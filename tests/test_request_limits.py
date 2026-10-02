@@ -360,6 +360,20 @@ def test_chat_validation_normalizes_and_bounds_inputs():
     assert out[4] is None and out[5] == "verify"
     assert out[6] == {"action": "modify", "analysis_id": "a_" + "1" * 32,
                       "slug": "total_amount", "revision": None}
+    assert out[7] is None
+    # A question over stored sheets names them instead of carrying them (upload once, 2026-10-02).
+    cid = "c_" + "2" * 32
+    reference = validate_chat_request({"message": "total", "conversation_id": cid, "source_hash": "a" * 64})
+    assert reference[1] == [] and reference[4] == cid and reference[7] == "a" * 64
+    for bad in ({"message": "x", "source_hash": "a" * 64},
+                {"message": "x", "conversation_id": cid, "source_hash": "A" * 64},
+                {"message": "x", "conversation_id": cid, "source_hash": "a" * 64,
+                 "tables": [{"name": "orders", "data": "id\n1\n"}]}):
+        try:
+            validate_chat_request(bad)
+            raise AssertionError(bad)
+        except ValueError:
+            pass
     for bad in ({"message": "x" * 20_001}, {"message": "x", "tables": [{}] * 9}):
         try:
             validate_chat_request(bad)
@@ -873,6 +887,85 @@ def test_an_answer_still_goes_out_when_its_replay_record_cannot_be_kept():
         httpd.shutdown()
 
 
+def test_a_question_names_its_stored_sheets_and_a_changed_sheet_is_uploaded_again():
+    """Upload once (2026-10-02): a client uploads its sheets when they change and asks by conversation and
+    source hash, so a question carries no rows. The engine serves the stored sheets, parsed once per
+    content; a replaced snapshot answers 409 with the stored hash, and another user's conversation 404."""
+    import json
+    import threading
+    import urllib.error
+    import urllib.request
+    from http.server import ThreadingHTTPServer
+
+    from engine import conversations, server
+
+    cid = "c_" + "9" * 32
+    stored = [{"name": "orders", "data": "id,amount\n1,2\n2,5\n"}]
+    served, parsed = [], []
+
+    reads = []
+
+    def stored_source(user_id, conversation_id, source_hash, *, tables=True):
+        if user_id != "sub-1":
+            raise conversations.NotOwned("conversation not found")
+        if source_hash != "a" * 64:
+            raise conversations.SourceChanged("a" * 64)
+        reads.append(tables)
+        return stored if tables else None
+
+    def csv_table(data, name):
+        parsed.append(name)
+        return original_csv_table(data, name)
+
+    class Model:
+        def serve(self, tables, question, conversation, as_of, **_kwargs):
+            served.append([(table["name"], table["rows"]) for table in tables])
+            return {"question": question, "result": {"columns": ["n"], "rows": [[len(tables[0]["rows"])]]},
+                    "error": None}
+
+    original_csv_table = server.csv_table
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.H)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    host, port = httpd.server_address[:2]
+    principal = {"value": ("sub-1", "uid-1")}
+
+    def post(body):
+        request = urllib.request.Request(
+            f"http://{host}:{port}/api/reason", data=json.dumps(body).encode(), method="POST",
+            headers={"Authorization": "Bearer token", "Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(request, timeout=10) as response:
+                return response.status, json.loads(response.read())
+        except urllib.error.HTTPError as exc:
+            return exc.code, json.loads(exc.read())
+
+    try:
+        with (
+            patch.object(server, "_verify_principal", lambda _token: principal["value"]),
+            patch.object(server, "stored_source", stored_source),
+            patch.object(server, "load_dataset_ops", lambda _conversation: []),
+            patch.object(server, "csv_table", csv_table),
+            patch.object(server, "resolve_conversation", lambda *_args: cid),
+            patch.object(server.master, "relevant_tables", lambda *_args: {"tables": [], "warnings": []}),
+            patch.object(server, "emitter", lambda *_args: (lambda *_a, **_k: None)),
+            patch.object(server, "MODEL", Model()),
+            patch.object(server, "_PARSED_TABLES", server.OrderedDict()),
+        ):
+            reference = {"question": "how many orders", "conversation_id": cid, "source_hash": "a" * 64}
+            first, second = post(reference), post(reference)
+            assert first[0] == 200 and first[1]["result"]["rows"] == [[2]] and second == first, (first, second)
+            assert served[0] == [("orders", [[1, 2], [2, 5]])], served
+            assert len(served) == 2 and parsed == ["orders"], "the same sheets are parsed once"
+            assert reads == [True, False], "a parsed snapshot's rows are not read again"
+            status, body = post({**reference, "source_hash": "b" * 64})
+            assert status == 409 and body["source_hash"] == "a" * 64, (status, body)
+            principal["value"] = ("sub-2", "uid-2")
+            assert post(reference)[0] == 404, "another user's conversation does not exist"
+            assert len(served) == 2
+    finally:
+        httpd.shutdown()
+
+
 TESTS = [
     test_a_chat_on_a_deleted_conversation_answers_404_not_500,
     test_raw_csv_repeated_blank_and_long_headers_preserve_every_value,
@@ -898,6 +991,9 @@ TESTS = [
     test_a_repeated_request_id_is_answered_once_with_the_first_response,
     test_a_lost_reason_response_is_sent_again_and_the_question_runs_once,
     test_an_answer_still_goes_out_when_its_replay_record_cannot_be_kept,
+
+
+    test_a_question_names_its_stored_sheets_and_a_changed_sheet_is_uploaded_again,
 ]
 
 

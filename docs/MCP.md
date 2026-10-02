@@ -42,6 +42,12 @@ Production defaults to fail-closed. `/api/dimension` is authenticated too.
 
 ## Tool Outcomes
 
+A question can carry its tables (`tables`, which the engine stores with the conversation) or name the tables the
+conversation already stores: `conversation_id` with the `source_hash` an earlier answer or
+`POST /api/conversation/sync` returned. A named snapshot the conversation no longer holds is an error (HTTP 409 with
+the stored hash); send the tables again. `prereasoner_query` takes both forms; the web app and the add-ins upload
+once per change and always name their sheets.
+
 The HTTP `/chat` body accepts `use=sql|py|both` (and the internal aliases documented in
 [DETERMINISTIC_EMITTERS.md](DETERMINISTIC_EMITTERS.md)). This is transport context: `_run_turn`
 passes it to every `engine_client.call_query`, which sends it in the `/api/reason` JSON body.

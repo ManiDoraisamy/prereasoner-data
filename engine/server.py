@@ -24,11 +24,13 @@ Run: python -m engine.server
 from __future__ import annotations
 
 import datetime
+import hashlib
 import os
 import threading
 import time
 import traceback
 import uuid
+from collections import OrderedDict
 from decimal import Decimal
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
@@ -55,6 +57,7 @@ from engine.conversations import (
     DatasetOpsLimitError,
     NotOwned,
     QuotaExceeded,
+    SourceChanged,
     append_dataset_ops,
     begin_analysis,
     cancel_analysis,
@@ -71,6 +74,7 @@ from engine.conversations import (
     resolve_conversation,
     save_state,
     source_snapshot_hash,
+    stored_source,
     sync_conversation_source,
 )
 from engine.dataset_semantics import DatasetOpError
@@ -128,6 +132,11 @@ def _start_spacy_warmup(model):
 
 MAX_BODY = 30 * 1024 * 1024
 MAX_SHEETS = 8
+# Parsed uploads by content, so a question over unchanged sheets (sent again or named by hash) is not
+# parsed again. Bounded by cells; the least recently used entry goes first.
+_PARSED_TABLES: OrderedDict = OrderedDict()
+_PARSED_TABLES_LOCK = threading.Lock()
+_PARSED_TABLES_MAX_CELLS = 4_000_000
 MAX_REFERENCE_ROWS = 5000
 MAX_CONVERSE_CHARS = 256 * 1024
 MAX_GENERATE_ROWS = 250
@@ -149,6 +158,40 @@ PAID_BUDGET = PostgresRequestBudget(_pg, {
 
 WORLD_ROUTES = ("/api/reason", "/api/knowledge")
 DIM_ROUTE = "/api/dimension"
+
+
+def _parsed_tables(sheets, snapshot=None):
+    """The planner tables of uploaded sheets (csv_table), parsed once per content, as fresh copies: the
+    serving path adds dataset-semantics columns to them and appends reference tables to the list.
+
+    A stored snapshot is also kept under its ``snapshot`` hash, in its stored order, so a question that
+    names it is served without reading its rows again. With no ``sheets``, the snapshot's tables if this
+    instance holds them, else None."""
+    if sheets is None:
+        key = "snapshot:" + snapshot
+    else:
+        usable = [sheet for sheet in sheets[:MAX_SHEETS]
+                  if isinstance(sheet, dict) and (sheet.get("data") or "").strip()]
+        key = ("snapshot:" + snapshot if snapshot else
+               hashlib.sha256(json_dumps([[sheet["name"], sheet["data"]] for sheet in usable],
+                                         ensure_ascii=False).encode("utf-8")).hexdigest())
+    with _PARSED_TABLES_LOCK:
+        cached = _PARSED_TABLES.get(key)
+        if cached is not None:
+            _PARSED_TABLES.move_to_end(key)
+    if cached is None and sheets is None:
+        return None
+    if cached is None:
+        parsed = tuple(csv_table(sheet["data"], sheet["name"]) for sheet in usable)
+        cells = sum(len(table["rows"]) * max(1, len(table["columns"])) for table in parsed)
+        cached = (parsed, cells)
+        if cells <= _PARSED_TABLES_MAX_CELLS:
+            with _PARSED_TABLES_LOCK:
+                _PARSED_TABLES[key] = cached
+                while sum(entry[1] for entry in _PARSED_TABLES.values()) > _PARSED_TABLES_MAX_CELLS:
+                    _PARSED_TABLES.popitem(last=False)
+    return [{"name": table["name"], "columns": list(table["columns"]),
+             "rows": [list(row) for row in table["rows"]]} for table in cached[0]]
 
 
 def _json_safe(value):
@@ -402,8 +445,11 @@ class H(BaseHTTPRequestHandler):
                 self._send(401, json_dumps({"error": "sign in required"})); return
             try:
                 tables = validate_tables(req.get("tables"))
+                question = req.get("question") or ""
+                if not isinstance(question, str):
+                    raise RequestValidationError("question must be text")
                 self._send(200, json_dumps(sync_conversation_source(
-                    sub, req.get("id", ""), tables,
+                    sub, req.get("id", ""), tables, question[:2000],
                 )))
             except RequestValidationError as exc:
                 self._send(exc.status_code, json_dumps({"error": str(exc)}))
@@ -691,10 +737,25 @@ class H(BaseHTTPRequestHandler):
                 self._send(429, json_dumps({"error": "request rate limit exceeded"}), retry_after=retry_after)
                 return
             sheets = req["tables"]
-            if sheets:
+            snapshot = req.get("source_hash")
+            source_sheets, tabs = None, None
+            if snapshot:
+                # The question names its conversation's stored sheets instead of carrying them: a
+                # client uploads once per change (/api/conversation/sync, 2026-10-02). Ownership and
+                # the snapshot are checked on every call; the rows are read only when this instance
+                # has not parsed that snapshot.
+                tabs = _parsed_tables(None, snapshot)
+                try:
+                    sheets = stored_source(sub, req["conversation_id"], snapshot, tables=tabs is None)
+                except NotOwned:
+                    self._send(404, json_dumps({"error": "conversation not found"})); return
+                except SourceChanged as exc:
+                    self._send(409, json_dumps({"error": str(exc), "source_hash": exc.source_hash})); return
+            if tabs is not None:
+                pass                                         # the snapshot, parsed already
+            elif sheets:
                 source_sheets = sheets
-                tabs = [csv_table(s["data"], s["name"])
-                        for i, s in enumerate(sheets[:MAX_SHEETS]) if isinstance(s, dict) and (s.get("data") or "").strip()]
+                tabs = _parsed_tables(sheets, snapshot)
             else:
                 data = req["data"]
                 if not data.strip():
@@ -810,7 +871,7 @@ class H(BaseHTTPRequestHandler):
                                           if enrichment is not None and enrichment.used else ()),
                             dataset_semantics=semantics,
                         ),
-                        request_source_hash=source_snapshot_hash(source_sheets),
+                        request_source_hash=snapshot or source_snapshot_hash(source_sheets),
                     )
                 except QuotaExceeded as exc:
                     self._send(429, json_dumps({"error": str(exc)}), retry_after=60); return
@@ -868,6 +929,8 @@ class H(BaseHTTPRequestHandler):
             res = provenance_context.decorate_response(res)
             if isinstance(res, dict):
                 res["conversation_id"] = conv                # so the browser persists it for follow-up turns
+                # The snapshot this answer read: a later question names it instead of sending the sheets.
+                res["source_hash"] = snapshot or source_snapshot_hash(source_sheets)
             # Include an empty effective list after a clear: [] is the authoritative state that tells
             # the browser to remove a previously rendered conversation-metadata badge.
             if isinstance(res, dict) and (incoming or ops_log):

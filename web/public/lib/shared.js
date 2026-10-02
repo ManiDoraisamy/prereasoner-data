@@ -44,7 +44,8 @@ const SS = {
   HOME_DRAFT: 'pr_home_draft',        // attachments preserved across the sign-in redirect
   AUTH_ACTION: 'pr_auth_action',      // ask | google-sheets — resumed after redirect
   ENTRY_ROUTE: 'pr_entry_route',      // landing route New chat returns to
-  SOURCE_INFO: 'pr_source_info'       // source hash/kind for the result freshness control
+  SOURCE_INFO: 'pr_source_info',      // source hash/kind for the result freshness control
+  UPLOADED: 'pr_uploaded'             // {cid, sourceHash, fingerprint} of the sheets the conversation stores
 };
 
 // The attached sheets (SS.TABLES, SS.HOME_DRAFT, SS.PENDING_SHEETS) travel between this tab's pages in

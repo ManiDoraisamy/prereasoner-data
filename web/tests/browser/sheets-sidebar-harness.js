@@ -84,7 +84,8 @@ async function openSidebar(page, rows, failing = {}, workbookOptions = {}) {
       askPrereasoner: (arg, ok, fail) => { window.__server.pendingAsk = {arg, ok, fail}; },
       savePrereasonerSheetConversation: (arg, ok) => ok({saved: arg.conversationId}),
       clearPrereasonerSheetConversation: (_, ok) => ok({cleared: 'sheet-1'}),
-      syncPrereasonerConversation: (_, ok) => ok({changed: true})
+      syncPrereasonerConversation: (arg, ok) => ok({changed: true,
+        conversationId: arg.conversationId || 'c_0123456789abcdef0123456789abcdef', sourceHash: 'a'.repeat(64)})
     };
     window.google = {script: {run: {withSuccessHandler(ok) {
       return {withFailureHandler(fail) {

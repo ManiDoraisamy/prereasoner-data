@@ -1989,3 +1989,29 @@ question-specific patch this repository refuses. Still open: about 20 s pass in 
 conversation's first question, and with the value "home inspection checklist" in two tabs the reading came from
 Inspection rather than the active Checklist tab. Checklist's added column ("shortlist") keeps it out of the other
 tabs' layout group, and words inside the value ("inspection") tip the encoder's table signal.
+
+## A sheet is uploaded once; a question names it (2026-10-02)
+
+Every client sent every table's CSV with every question. The Sheets add-on and the Excel add-in often sent it
+twice, once to restore or sync and once to `/chat`. The chat service passed it on to each engine call, and
+the engine parsed it again and rewrote the stored copy.
+
+Now a client uploads a conversation's sheets when they change. `POST /api/conversation/sync` stores them,
+starting the conversation when there is none, and returns their `source_hash`. A question then sends
+`conversation_id` and `source_hash` instead of `tables`:
+- `/chat` reads the stored copy once per turn for its own checks, named values and dataset-op headers. It
+  caches the copy by user, conversation and hash, so a cached copy never answers a user the engine did not
+  authorize.
+- Each engine call names the sheets instead of carrying them.
+- The engine checks ownership and the snapshot on every call. It parses a snapshot once per instance and
+  reads its rows only when it has not parsed it.
+- A replaced snapshot answers 409 with the stored hash, and the client uploads again.
+- An unchanged source is no longer rewritten.
+
+The web app, the add-ins and the chat service always name their sheets. External MCP clients may still
+send `tables`, which the engine stores with the conversation exactly as a sync would. So there is one
+serving path: the engine always serves a conversation's stored snapshot.
+
+This removes the per-question transfer and parse. It does not remove the per-question planning cost: the
+planner still reads every row in memory. A sheet of millions of rows needs the per-question work to be
+bounded, a separate change to the search and selection.

@@ -20,12 +20,14 @@ mcp = FastMCP("prereasoner")
 
 
 @mcp.tool(description=QUERY_DESC)
-async def prereasoner_query(question: str, tables: list, job_id: str | None = None,
+async def prereasoner_query(question: str, tables: list | None = None, job_id: str | None = None,
                             conversation_id: str | None = None,
                             action: str | None = None, slug: str | None = None,
                             analysis_id: str | None = None, revision: int | None = None,
-                            decomposition: dict | None = None) -> str:
-    """See description. `tables` = [{name, data(raw CSV)}], inline (no dataset_id).
+                            decomposition: dict | None = None, source_hash: str | None = None) -> str:
+    """See description. `tables` = [{name, data(raw CSV)}] uploads the sheets with the question; a later
+    question over the same sheets names them by `conversation_id` and the `source_hash` the answer
+    returned, and sends no tables (status 409 means they changed: send the tables again).
 
     Dataset claims are emitted only by the authenticated chat orchestrator because the engine
     requires a principal-bound transport attestation; arbitrary MCP clients cannot mint them.
@@ -36,7 +38,7 @@ async def prereasoner_query(question: str, tables: list, job_id: str | None = No
         analysis = {key: value for key, value in analysis.items() if value is not None}
     return json.dumps(await engine_client.call_query(
         question, tables or [], job_id, conversation_id, analysis=analysis,
-        decomposition=decomposition,
+        decomposition=decomposition, source_hash=source_hash,
     ))
 
 

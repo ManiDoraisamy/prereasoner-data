@@ -1727,6 +1727,87 @@ def test_a_yes_can_accept_the_question_a_clarification_offered():
         [{'role': 'assistant', 'content': 'Which Amount column should I use?'}], tables)
 
 
+def test_a_turn_over_stored_sheets_reads_them_once_and_names_them_in_each_engine_call():
+    """Upload once (2026-10-02): a client uploads its sheets when they change and the chat request names
+    them by conversation and source hash. The turn reads them from the engine for its own checks, and its
+    engine calls name them instead of carrying them."""
+    stored = [{"name": "orders", "data": "city,amount\nParis,10\nLyon,20\n"}]
+    fetched, engine_calls = [], []
+
+    async def source(conversation_id, source_hash, **kwargs):
+        fetched.append((conversation_id, source_hash, kwargs["principal"]))
+        return stored
+
+    async def query(*args, **kwargs):
+        engine_calls.append((args, kwargs))
+        return {"status": "answered", "answer": {"columns": ["total"], "rows": [["10"]]}}
+
+    async def catalog(*_args, **_kwargs):
+        return []
+
+    cid = "c_" + "3" * 32
+    with patch.object(orchestrator, "AsyncGeminiClient", lambda **_kwargs: _Client([], query_input={
+                "question": "total amount in Paris", "action": "create", "slug": "total_amount"})), \
+            patch.object(orchestrator.httpx, "AsyncClient", lambda **_kwargs: _HTTP()), \
+            patch.object(orchestrator.engine_client, "call_conversation_source", source), \
+            patch.object(orchestrator.engine_client, "call_query", query), \
+            patch.object(orchestrator.engine_client, "call_analysis_catalog", catalog):
+        asyncio.run(orchestrator._run_turn(
+            "total amount in Paris", [], [], engine_base_url="http://engine.invalid", bearer_token=None,
+            model="test-model", principal="user-a", conversation_id=cid, source_hash="a" * 64))
+    assert fetched == [(cid, "a" * 64, "user-a")], fetched
+    assert len(engine_calls) == 1 and engine_calls[0][1]["source_hash"] == "a" * 64
+    assert engine_calls[0][0][1] == stored, "the turn's own checks read the stored sheets"
+
+
+def test_the_engine_client_names_stored_sheets_and_caches_them_per_user():
+    """A question that names its stored sheets sends no rows. The stored copy the chat service reads is
+    cached by user, conversation and hash, so a cached copy never answers a user the engine did not; a
+    replaced snapshot is 409 with the stored hash, and a missing conversation 404."""
+    import httpx
+
+    from mcp_server import engine_client
+
+    cid = "c_" + "4" * 32
+    requests = []
+    stored = {"hash": "a" * 64}
+
+    def handler(request):
+        requests.append(request)
+        if request.url.path == "/api/conversation":
+            if request.headers.get("authorization") == "Bearer other":
+                return httpx.Response(404, json={"error": "conversation not found"})
+            return httpx.Response(200, json={"conversation_id": cid, "source_hash": stored["hash"],
+                                              "tables": [{"name": "orders", "data": "id\n1\n"}]})
+        return httpx.Response(200, json={"result": {"columns": ["n"], "rows": [[1]]}})
+
+    async def scenario():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            await engine_client.call_query("how many orders", [{"name": "orders", "data": "id\n1\n"}],
+                                           "job_1", cid, base_url="http://engine", client=client,
+                                           source_hash="a" * 64)
+            body = json.loads(requests[-1].content)
+            assert body["source_hash"] == "a" * 64 and "tables" not in body, body
+            first = await engine_client.call_conversation_source(
+                cid, "a" * 64, principal="user-a", base_url="http://engine", token="mine", client=client)
+            again = await engine_client.call_conversation_source(
+                cid, "a" * 64, principal="user-a", base_url="http://engine", token="mine", client=client)
+            assert first == again == [{"name": "orders", "data": "id\n1\n"}]
+            assert sum(request.url.path == "/api/conversation" for request in requests) == 1, "cached"
+            for principal, token, expected in (("user-b", "other", 404), ("user-a", "mine", 409)):
+                try:
+                    await engine_client.call_conversation_source(
+                        cid, "b" * 64, principal=principal, base_url="http://engine", token=token,
+                        client=client)
+                    raise AssertionError((principal, "no error"))
+                except engine_client.StoredSourceError as exc:
+                    assert exc.status == expected, (principal, exc.status)
+                    assert exc.source_hash == ("a" * 64 if expected == 409 else "")
+
+    with patch.object(engine_client, "_SOURCES", engine_client.OrderedDict()):
+        asyncio.run(scenario())
+
+
 TESTS = [
     test_the_reply_names_tables_as_the_user_did,
     test_intent_context_has_schema_and_questions_but_no_values_or_assistant_answers,
@@ -1734,6 +1815,8 @@ TESTS = [
     test_an_acknowledgment_is_answered_without_an_engine_query,
     test_rows_whose_entity_matched_nothing_reach_the_reply,
     test_a_gemini_reworded_question_is_the_turns_reading_not_part_of_the_reply,
+    test_a_turn_over_stored_sheets_reads_them_once_and_names_them_in_each_engine_call,
+    test_the_engine_client_names_stored_sheets_and_caches_them_per_user,
     test_request_execution_mode_reaches_each_orchestrated_engine_call,
     test_unambiguous_column_as_table_is_rebound_before_attestation,
     test_a_complete_question_reaches_the_engine_without_appended_context,

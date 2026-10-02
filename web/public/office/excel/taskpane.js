@@ -41,14 +41,31 @@ function token() {
   return getIdToken(auth.currentUser);
 }
 
-async function api(path, body) {
+// `answered`: HTTP statuses the caller handles itself; their body comes back with its `status`.
+async function api(path, body, answered = []) {
   const response = await fetch(path, {
     method: 'POST', headers: {'Content-Type': 'application/json', Authorization: `Bearer ${await token()}`},
     body: JSON.stringify(body)
   });
   const data = await response.json().catch(() => ({}));
+  if (answered.includes(response.status)) return {...data, status: response.status};
   if (!response.ok) throw new Error(data.error || `Request failed (${response.status}).`);
   return data;
+}
+
+// Upload once (2026-10-02): the workbook goes to the conversation before its first question and when it
+// changed; a question names the stored workbook by its hash instead of sending every cell again.
+async function fingerprint(tables) {
+  const bytes = new TextEncoder().encode(JSON.stringify(tables.map(table => [table.name, table.data])));
+  const hash = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(hash), byte => byte.toString(16).padStart(2, '0')).join('');
+}
+
+async function syncWorkbook(question, tables, print) {
+  const synced = await api('/api/conversation/sync', {id: state.conversationId || '', question, tables});
+  state.conversationId = synced.conversation_id || state.conversationId;
+  state.sourceHash = synced.source_hash || '';
+  state.syncedFingerprint = print;
 }
 
 async function get(path) {
@@ -98,12 +115,16 @@ async function persist() {
   });
 }
 
-async function restore(tables) {
+async function restore(tables, print) {
   if (!state.workbookId) state.workbookId = await workbookKey();
   const response = await api('/api/spreadsheet/conversation/restore', {
     host: 'excel', spreadsheet_id: state.workbookId, tables
   });
   state.conversationId = response.conversation_id || null;
+  // Unless the workbook changed since, the conversation already stores it: questions name it by hash.
+  state.sourceHash = state.conversationId && !response.source_changed ? response.source_hash || '' : '';
+  state.syncedFingerprint = state.sourceHash ? print : '';
+  state.restored = true;
   const saved = response.state;
   if (saved?.version === 1 && saved.client === 'prereasoner-excel-addon') {
     state.turns = Array.isArray(saved.turns) ? saved.turns.slice(-24) : [];
@@ -188,7 +209,11 @@ async function ask(question) {
     state.tables = workbook.tables;
     refreshSuggestions(workbook);
     $('sheetCount').textContent = `${workbook.tables.length} tab${workbook.tables.length === 1 ? '' : 's'} · ${workbook.name}`;
-    await restore(workbook.tables);
+    const print = await fingerprint(workbook.tables);
+    if (!state.restored) await restore(workbook.tables, print);
+    if (!state.conversationId || !state.sourceHash || print !== state.syncedFingerprint) {
+      await syncWorkbook(question, workbook.tables, print);
+    }
     baseHistory = state.history.slice();
     const turnId = crypto.randomUUID().replaceAll('-', '');
     state.history.push({role: 'user', content: question});
@@ -197,10 +222,16 @@ async function ask(question) {
     const streamResult = awaitStream(turnId);
     let response;
     try {
-      response = await api('/chat', {
-        message: question, tables: workbook.tables, history: baseHistory,
-        conversation_id: state.conversationId, turnId
-      });
+      const chat = () => api('/chat', {
+        message: question, history: baseHistory,
+        conversation_id: state.conversationId, source_hash: state.sourceHash, turnId
+      }, [409]);
+      response = await chat();
+      if (response.status === 409) {                         // the stored workbook was replaced since
+        await syncWorkbook(question, workbook.tables, print);
+        response = await chat();
+        if (response.status === 409) throw new Error('The workbook keeps changing. Ask again in a moment.');
+      }
     } catch (error) {
       if (state.conversationId && /conversation not found/i.test(error.message)) {
         // Deleted elsewhere (orchestrator/server.py answers 404): ask once more as a new chat, keeping

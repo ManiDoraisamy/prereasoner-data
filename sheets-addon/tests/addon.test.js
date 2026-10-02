@@ -150,20 +150,24 @@ const api = load(book([notes]), {
       execution: {actual: 'python'}, answer: {rows: [[840]]}}}]}],
   'https://chat.prereasoner.com/api/spreadsheet/conversation/restore': [200, {conversation_id: '', state: null, source_changed: false}]
 });
-const answer = api.askPrereasoner({question: '  What are total sales in France? ', tables,
+// A question names the sheet the conversation stores by its hash; the cells travel only with the upload.
+const stored = 'a'.repeat(64);
+const answer = api.askPrereasoner({question: '  What are total sales in France? ', sourceHash: stored,
   conversationId: 'c_0123456789abcdef0123456789abcdef', history: [{role: 'user', content: 'hi'}], turnId: 'turn_1'});
 const chat = api.fetches.find(call => call.url.endsWith('/chat'));
 equal(chat.options.headers.Authorization, 'Bearer firebase-id-token');
-equal(chat.body, {message: 'What are total sales in France?', tables: [{name: 'Orders', data: 'country,amount\nFrance,840',
-  source: {kind: 'google-sheets-addon'}}], history: [{role: 'user', content: 'hi'}],
-  conversation_id: 'c_0123456789abcdef0123456789abcdef', turnId: 'turn_1'});
+equal(chat.body, {message: 'What are total sales in France?', history: [{role: 'user', content: 'hi'}],
+  conversation_id: 'c_0123456789abcdef0123456789abcdef', source_hash: stored, turnId: 'turn_1'});
 equal(answer.reply, 'Total sales in France are **US$840**.');
 equal(answer.history, [{role: 'user', content: 'total'}], 'only user and assistant history returns');
 equal(answer.traces, [{jobId: 'job-1', question: 'total amount in France', analysis: {slug: 'france_sales'},
   execution: {actual: 'python'}, views: [{name: 'france_orders', op: 'filter', label: "where country = 'France'", inputs: ['c_x']}]}],
   'steps travel without their rows');
-assert.throws(() => api.askPrereasoner({question: 'x', tables, turnId: 'bad id!'}), /live request id is invalid/); checks++;
-assert.throws(() => api.askPrereasoner({question: 'x', tables: [{name: 'Orders'}]}), /could not be read/); checks++;
+assert.throws(() => api.askPrereasoner({question: 'x', sourceHash: stored,
+  conversationId: 'c_0123456789abcdef0123456789abcdef', turnId: 'bad id!'}), /live request id is invalid/); checks++;
+assert.throws(() => api.askPrereasoner({question: 'x', conversationId: 'c_0123456789abcdef0123456789abcdef'}),
+  /Send the sheet to Prereasoner before asking/); checks++;
+assert.throws(() => api.syncPrereasonerConversation({tables: [{name: 'Orders'}]}), /could not be read/); checks++;
 api.restorePrereasonerSheetConversation({tables});
 api.savePrereasonerSheetConversation({conversationId: 'c_0123456789abcdef0123456789abcdef', state: {version: 2}});
 api.clearPrereasonerSheetConversation();
@@ -174,9 +178,22 @@ equal(api.fetches.filter(call => call.url.startsWith('https://chat.prereasoner.c
   ['/api/spreadsheet/conversation/state', {spreadsheet_id: 'sheet-id-1', host: 'sheets',
     conversation_id: 'c_0123456789abcdef0123456789abcdef', state: {version: 2}}],
   ['/api/spreadsheet/conversation/clear', {spreadsheet_id: 'sheet-id-1', host: 'sheets'}],
-  ['/api/conversation/sync', {id: 'c_0123456789abcdef0123456789abcdef', tables: [{name: 'Orders',
+  ['/api/conversation/sync', {id: 'c_0123456789abcdef0123456789abcdef', question: '', tables: [{name: 'Orders',
     data: 'country,amount\nFrance,840', source: {kind: 'google-sheets-addon'}}]}]
 ]);
+// The first upload starts the conversation, and the question names it; a replaced stored sheet (409) is
+// reported to the sidebar, which uploads it again and asks once more.
+const first = load(book([notes]), {
+  'https://identitytoolkit.googleapis.com/': [200, {idToken: 'firebase-id-token'}],
+  'https://chat.prereasoner.com/api/conversation/sync': [200, {conversation_id: 'c_0123456789abcdef0123456789abcdef',
+    changed: true, source_hash: stored}],
+  'https://prereasoner-chat-271377281957.us-central1.run.app/chat': [409, {error: 'the sheets changed', source_hash: 'b'.repeat(64)}]
+});
+equal(first.syncPrereasonerConversation({question: 'total sales', tables}),
+  {changed: true, conversationId: 'c_0123456789abcdef0123456789abcdef', sourceHash: stored});
+equal(first.fetches.find(call => call.url.endsWith('/api/conversation/sync')).body.id, '');
+equal(first.askPrereasoner({question: 'total sales', sourceHash: stored,
+  conversationId: 'c_0123456789abcdef0123456789abcdef'}), {sourceChanged: true});
 const denied = load(book([notes]), {'https://identitytoolkit.googleapis.com/': [200, {idToken: 't'}],
   'https://chat.prereasoner.com/': [401, {error: 'sign in required'}]});
 assert.throws(() => denied.clearPrereasonerSheetConversation(), /^Error: Prereasoner: Google sign-in could not be verified\.$/); checks++;

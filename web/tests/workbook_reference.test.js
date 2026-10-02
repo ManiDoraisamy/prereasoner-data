@@ -37,13 +37,13 @@ const context = {
   clearTimeout,
   TextEncoder,
   URL,
-  crypto: {randomUUID: () => 'job'},
+  crypto: {randomUUID: () => 'job', subtle: require('crypto').webcrypto.subtle},
   location: {search: '', pathname: '/reason'},
   history: {replaceState() {}},
   document: {getElementById: () => null, querySelector: () => null, querySelectorAll: () => []},
   sessionStorage: {getItem: key => storage.get(key) || null, setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key)},
   localStorage: {getItem: key => storage.get('local:' + key) || null, setItem: (key, value) => storage.set('local:' + key, value)},
-  SS: {TABLES: 'tables', Q: 'question'},
+  SS: {TABLES: 'tables', Q: 'question', SOURCE_INFO: 'source_info', UPLOADED: 'uploaded'},
   // lib/shared.js's handoff, with nothing waiting in IndexedDB (the browser specs cover the large path).
   SHEET_HANDOFF: {waiting: () => false, get: async () => null, put: async () => {}, clear: async () => {}},
   API_BASE: '',
@@ -59,6 +59,32 @@ const checks = `
 (async function () {
   try {
     if (!hasCellValue(0)) throw new Error('numeric zero must be a real reference value');
+    // Upload once (2026-10-02): the sheets go to the conversation when they change, and a question names
+    // them by conversation and source hash.
+    SHEETS.splice(0, SHEETS.length, {name: 'orders', data: 'id,amount;1,2'});
+    const synced = [];
+    fetch = async (url, init) => { synced.push([url, JSON.parse(init.body)]); return {ok: true, status: 200,
+      json: async () => ({conversation_id: 'c_' + '1'.repeat(32), source_hash: 'a'.repeat(64)})}; };
+    sessionStorage.removeItem('pr_conversation_id');
+    const first = await uploadedSource('token', 'total amount');
+    if (synced.length !== 1 || synced[0][0] !== '/api/conversation/sync' || synced[0][1].id !== ''
+        || synced[0][1].question !== 'total amount' || synced[0][1].tables[0].name !== 'orders')
+      throw new Error('the first question uploads the sheets and starts the conversation');
+    if (first.conversation_id !== 'c_' + '1'.repeat(32) || first.source_hash !== 'a'.repeat(64))
+      throw new Error('the question names the stored sheets');
+    await uploadedSource('token', 'how about Lyon');
+    if (synced.length !== 1) throw new Error('unchanged sheets are not uploaded again');
+    SHEETS[0].data = 'id,amount;1,3';
+    await uploadedSource('token', 'total amount');
+    if (synced.length !== 2 || synced[1][1].id !== 'c_' + '1'.repeat(32))
+      throw new Error('edited sheets are uploaded to the same conversation');
+    await uploadedSource('token', 'total amount', true);
+    if (synced.length !== 3) throw new Error('replaced stored sheets (409) are uploaded again');
+    rememberConversationSource({conversation_id: 'c_' + '1'.repeat(32), source_hash: 'b'.repeat(64), tables: SHEETS});
+    await settleUploadRecord();
+    const reopened = await uploadedSource('token', 'total amount');
+    if (synced.length !== 3 || reopened.source_hash !== 'b'.repeat(64))
+      throw new Error('a reopened conversation names its stored sheets without uploading them');
     // A share of a whole reads as a percentage in the rail; any other one-number answer as before.
     J = {result: {columns: ['share'], rows: [['0.62318840579710144928']]}, unit: 'percent'};
     if (resultSummary().v !== '62.32%') throw new Error('a share was not shown as a percentage: ' + resultSummary().v);

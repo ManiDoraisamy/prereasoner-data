@@ -33,7 +33,7 @@ from engine.request_limits import (
 )
 from mcp_server import engine_client
 from orchestrator.orchestrator import run_chat
-from engine.request_validation import RequestValidationError, display_names, validate_chat_request
+from engine.request_validation import RequestValidationError, validate_chat_request
 
 WEB_ROOT = Path(config.__file__).resolve().parent.parent / "web" / "public"
 MAX_BODY = 30 * 1024 * 1024
@@ -196,7 +196,8 @@ class H(BaseHTTPRequestHandler):
             if req is None:
                 return
             try:
-                message, tables, history, turn_id, conversation_id, use, analysis = validate_chat_request(req)
+                (message, tables, history, turn_id, conversation_id, use, analysis,
+                 source_hash) = validate_chat_request(req)
             except RequestValidationError as exc:
                 self._send(exc.status_code, json_dumps({"error": str(exc)})); return
             token = self._bearer()
@@ -240,11 +241,17 @@ class H(BaseHTTPRequestHandler):
                          location=config.GEMINI_LOCATION,
                          turn_id=turn_id, emit=emit, conversation_id=conversation_id,
                          principal=uid, use=use, analysis_override=analysis,
-                         table_names=display_names(req.get("tables"))),
+                         source_hash=source_hash),
                 _LOOP,
             )
             res = fut.result(timeout=CHAT_TIMEOUT_SECONDS)
             self._send(200, json_dumps(res))
+        except engine_client.StoredSourceError as exc:
+            # The question named stored sheets the engine no longer holds as that snapshot: the client
+            # uploads its sheets again and asks with the hash the upload returns.
+            if emit:
+                emit("status", "error")
+            self._send(exc.status, json_dumps({"error": str(exc), "source_hash": exc.source_hash}))
         except FutureTimeoutError:
             if fut is not None:
                 fut.cancel()

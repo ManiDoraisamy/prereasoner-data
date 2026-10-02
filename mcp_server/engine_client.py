@@ -12,7 +12,9 @@ from __future__ import annotations
 
 import asyncio
 import os
+import threading
 import time
+from collections import OrderedDict
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -22,6 +24,21 @@ from engine import request_timing
 
 # Read at call time so tests / the orchestrator can set these before a call (mirrors engine/config.py style).
 DEFAULT_TIMEOUT = float(os.environ.get("ENGINE_HTTP_TIMEOUT", "180"))  # cold Cloud Run can take minutes
+# Stored sheets this process fetched, by (principal, conversation, source hash). A hash names one content,
+# and the principal keys the entry so a cached copy never answers a user the engine did not authorize.
+_SOURCES: OrderedDict = OrderedDict()
+_SOURCES_LOCK = threading.Lock()
+_SOURCES_MAX_CHARS = 64_000_000
+
+
+class StoredSourceError(Exception):
+    """A question named stored sheets the engine does not hold for this user: 409 with the stored hash when
+    they were replaced (the client uploads its sheets again), 404 when there is no such conversation."""
+
+    def __init__(self, status: int, message: str, source_hash: str = ""):
+        super().__init__(message)
+        self.status = status
+        self.source_hash = source_hash
 
 
 def _engine_base_url() -> str:
@@ -74,6 +91,8 @@ def shape_reason_response(engine_json: dict[str, Any], job_id: str | None) -> di
         out["trace"] = {"jobId": job_id}
         if j.get("conversation_id"):
             out["conversation_id"] = j["conversation_id"]    # so the orchestrator reuses ONE conversation for the whole session (no per-call minting)
+        if j.get("source_hash"):
+            out["source_hash"] = j["source_hash"]            # a later question names these sheets instead of sending them
     elif status == "decompose":
         out["decomposition_required"] = j["decomposition_required"]
         out["trace"] = {"jobId": job_id}
@@ -130,6 +149,44 @@ def _headers(token: str | None, request_id: str | None,
     return headers
 
 
+async def call_conversation_source(conversation_id: str, source_hash: str, *, principal: str,
+                                   base_url: str | None = None, token: str | None = None,
+                                   timeout: float | None = None, request_id: str | None = None,
+                                   client: httpx.AsyncClient | None = None) -> list[dict]:
+    """The sheets a conversation stores, when they are the snapshot ``source_hash`` names: a question names
+    its sheets instead of carrying them (upload once, 2026-10-02), and the chat service still reads their
+    headers and values for its own checks. Raises StoredSourceError."""
+    key = (principal, conversation_id, source_hash)
+    with _SOURCES_LOCK:
+        cached = _SOURCES.get(key)
+        if cached is not None:
+            _SOURCES.move_to_end(key)
+            return cached[0]
+    base = (base_url or _engine_base_url()).rstrip("/")
+    try:
+        async with _http(client, timeout) as http:
+            r = await http.get(f"{base}/api/conversation", params={"id": conversation_id},
+                               headers=_headers(token, request_id), timeout=timeout or DEFAULT_TIMEOUT)
+    except httpx.HTTPError as e:
+        raise StoredSourceError(502, f"could not reach the Prereasoner engine at {base}: {e}") from e
+    if r.status_code == 404:
+        raise StoredSourceError(404, "conversation not found")
+    if r.status_code != 200:
+        raise StoredSourceError(502, f"the engine returned HTTP {r.status_code} for the conversation")
+    body = r.json()
+    if body.get("source_hash") != source_hash:
+        raise StoredSourceError(409, "the conversation's sheets changed; upload them again",
+                                str(body.get("source_hash") or ""))
+    tables = list(body.get("tables") or [])
+    chars = sum(len(str(table.get("data") or "")) for table in tables)
+    if chars <= _SOURCES_MAX_CHARS:
+        with _SOURCES_LOCK:
+            _SOURCES[key] = (tables, chars)
+            while sum(entry[1] for entry in _SOURCES.values()) > _SOURCES_MAX_CHARS:
+                _SOURCES.popitem(last=False)
+    return tables
+
+
 async def call_query(question: str, tables: list[dict], job_id: str | None = None,
                      conversation_id: str | None = None,
                      *, base_url: str | None = None, token: str | None = None,
@@ -139,10 +196,13 @@ async def call_query(question: str, tables: list[dict], job_id: str | None = Non
                      dataset_attestation: str | None = None,
                      analysis: dict[str, Any] | None = None,
                      decomposition: dict[str, Any] | None = None,
-                     use: str | None = None) -> dict[str, Any]:
+                     use: str | None = None,
+                     source_hash: str | None = None) -> dict[str, Any]:
     """POST the question + inline tables to the engine's /api/reason and return the shaped tool output.
 
     `tables` is [{name, data}] where data is raw CSV text — exactly the engine's inline shape (no dataset_id).
+    With `source_hash`, the question names the sheets `conversation_id` stores instead (the tables stay
+    out of the request; the engine answers 409 when they were replaced).
     `conversation_id`, when given, keeps every call on ONE conversation schema (else the engine mints a fresh
     one per call — the orchestrated-mode conversation-spam bug).
 
@@ -150,7 +210,8 @@ async def call_query(question: str, tables: list[dict], job_id: str | None = Non
     loop, which runs on one shared event loop and would stall every concurrent turn on a blocking POST.
     One implementation serves both; pass `client` to reuse a connection across a turn's calls."""
     base = (base_url or _engine_base_url()).rstrip("/")
-    body: dict[str, Any] = {"tables": tables, "question": question}
+    body: dict[str, Any] = ({"source_hash": source_hash} if source_hash else {"tables": tables})
+    body["question"] = question
     if job_id:
         body["jobId"] = job_id
     if conversation_id:

@@ -68,6 +68,15 @@ class QuotaExceeded(ValueError):
     """The authenticated user has reached a bounded durable-storage quota."""
 
 
+class SourceChanged(Exception):
+    """A question named a source snapshot the conversation no longer holds: the client uploads its sheets
+    again (``sync_conversation_source``) and asks with the hash that returns."""
+
+    def __init__(self, source_hash):
+        super().__init__("the conversation's sheets changed; upload them again")
+        self.source_hash = source_hash
+
+
 def _new_id():
     return "c_" + uuid.uuid4().hex
 
@@ -160,6 +169,14 @@ def resolve_conversation(user_id, conversation_id, initial_prompt, sheets):
                                 (conversation_id,))
                     previous_row = cur.fetchone()
                     previous = int(previous_row[0] or 0)
+                    if previous_row[1] == source_hash:
+                        # The same sheets: nothing to store again. Every question rewrote them before
+                        # questions could name their source by hash (2026-10-02).
+                        cur.execute('UPDATE "chat"."conversation" SET last_active_at = now(), '
+                                    'expires_at = %s WHERE conversation_id = %s',
+                                    (_expiry(), conversation_id))
+                        conn.commit()
+                        return conversation_id
                     _check_storage(cur, user_id, previous=previous, replacement=source_bytes)
                     source_changed = bool(previous_row[1] and previous_row[1] != source_hash)
                     if source_changed:
@@ -201,18 +218,23 @@ def resolve_conversation(user_id, conversation_id, initial_prompt, sheets):
         conn.close()
 
 
-def sync_conversation_source(user_id, conversation_id, sheets):
-    """Replace one owned conversation's uploaded snapshot without recomputing its answer.
+def sync_conversation_source(user_id, conversation_id, sheets, initial_prompt=""):
+    """Store the sheets a conversation's questions run on, without running a question: the one upload.
 
-    The Google Sheets add-on uses this after it detects workbook changes. A changed source marks
-    analyses stale and advances the dataset version; the existing answer remains renderable until
-    the user explicitly recalculates it.
+    Every client uploads here when its sheets change, then asks by ``conversation_id`` and the returned
+    ``source_hash``, so a question carries no rows (2026-10-02). With no ``conversation_id`` the upload
+    starts a conversation. A changed source marks analyses stale and advances the dataset version; the
+    existing answer remains renderable until the user explicitly recalculates it.
     """
-    if not _ID_RE.match(conversation_id or ""):
-        raise NotOwned("bad conversation id")
     stored_tables = _store_tables(sheets)
     if not stored_tables:
         raise ValueError("at least one source table is required")
+    if not conversation_id:
+        created = resolve_conversation(user_id, None, initial_prompt, sheets)
+        return {"conversation_id": created, "changed": True,
+                "source_hash": source_snapshot_hash(stored_tables), "dataset_version": 1}
+    if not _ID_RE.match(conversation_id):
+        raise NotOwned("bad conversation id")
     source_bytes = _encoded_size(stored_tables)
     source_hash = source_snapshot_hash(stored_tables)
     conn = _pg()
@@ -837,6 +859,33 @@ def delete_all_conversations(user_id, *, rtdb_uid=None):
             except Exception:                                  # noqa: BLE001
                 pass
             raise
+    finally:
+        conn.close()
+
+
+def stored_source(user_id, conversation_id, source_hash, *, tables=True):
+    """The sheets an owned conversation stores, when they are still the snapshot ``source_hash`` names.
+
+    A question asks by hash instead of carrying its rows. NotOwned when the conversation is absent or
+    another user's; SourceChanged, with the stored hash, when the sheets were replaced since. With
+    ``tables=False`` (the caller holds that snapshot parsed already) it checks both and returns None."""
+    if not _ID_RE.match(conversation_id or ""):
+        raise NotOwned("bad conversation id")
+    conn = _pg()
+    try:
+        cur = conn.cursor()
+        cur.execute(f'SELECT {"c.tables" if tables else "NULL"}, c.source_hash FROM "chat"."conversation" c '
+                    'JOIN "chat"."user_conversation" uc ON uc.conversation_id = c.conversation_id '
+                    'WHERE uc.user_id = %s AND c.conversation_id = %s', (user_id, conversation_id))
+        row = cur.fetchone()
+        if not row:
+            raise NotOwned("conversation not found")
+        if (row[1] or "") != source_hash:
+            raise SourceChanged(row[1] or "")
+        cur.execute('UPDATE "chat"."conversation" SET last_active_at = now(), expires_at = %s '
+                    'WHERE conversation_id = %s', (_expiry(), conversation_id))
+        conn.commit()
+        return (row[0] or []) if tables else None
     finally:
         conn.close()
 

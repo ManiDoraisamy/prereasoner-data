@@ -195,7 +195,13 @@ replay. The legacy Wikidata schema migration is still pending.
 2. `engine.request_validation` validates both engine and orchestrator request shapes. It bounds questions, history,
    table count, per-table size, and aggregate size, then converts display names into one 34-byte canonical table
    identifier. Names that collide after canonicalization are rejected before parsing or paid inference.
-3. `engine.server` verifies the Firebase principal and parses the validated CSV payloads. A request repeated with
+3. A client uploads a conversation's sheets once per change: `POST /api/conversation/sync` stores them (starting the
+   conversation when there is none) and returns their `source_hash`. A question then names them by
+   `conversation_id` and `source_hash` instead of carrying them; `/chat` reads the stored copy for its own checks and
+   names it on each engine call, and the engine answers 409 with the stored hash when the sheets were replaced since,
+   so the client uploads again. `engine.server` verifies the Firebase principal and ownership on every call and
+   parses each stored snapshot once per instance (an inline upload in the request is stored the same way). A request
+   repeated with
    the jobId of one the same principal already sent is answered with that request's response, waiting while it
    still runs (`engine.request_replay.DurableResponseReplay`: one `chat.request_job` record shared by every engine
    instance, kept ten minutes after its response and removed when the user deletes a conversation); the chat's

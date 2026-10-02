@@ -243,6 +243,88 @@ def test_source_sync_keeps_the_answer_but_marks_changed_data_stale():
     assert connection.commits == 1 and connection.rollbacks == 0 and connection.closed
 
 
+def test_an_unchanged_source_is_not_stored_again():
+    """Every question rewrote the conversation's whole stored source, even when it was the same sheets
+    (2026-10-02). The same snapshot now only extends the conversation's life."""
+    sheets = [{"name": "orders", "data": "id,amount\n1,12\n"}]
+    same = conversations.source_snapshot_hash(sheets)
+
+    class Cursor:
+        def __init__(self):
+            self.one = None
+            self.statements = []
+
+        def execute(self, statement, params=None):
+            text = str(statement)
+            self.statements.append(text)
+            if 'SELECT 1 FROM "chat"."user_conversation"' in text:
+                self.one = (1,)
+            elif "SELECT source_bytes, source_hash" in text:
+                self.one = (10, same)
+
+        def fetchone(self):
+            return self.one
+
+    cursor = Cursor()
+    connection = _Connection(cursor)
+    cid = "c_" + "6" * 32
+    with patch.object(conversations, "_pg", return_value=connection):
+        assert conversations.resolve_conversation("user", cid, "total", sheets) == cid
+    assert not any(text.startswith('UPDATE "chat"."conversation" SET tables') for text in cursor.statements)
+    assert any(text.startswith('UPDATE "chat"."conversation" SET last_active_at') for text in cursor.statements)
+    assert connection.commits == 1 and connection.closed
+
+
+def test_a_question_names_its_stored_sheets_by_hash():
+    """A question carries no rows: it names the conversation and the source snapshot it was asked over.
+    Another snapshot is a changed sheet, which the client uploads again; another user's conversation
+    does not exist."""
+    stored = [{"name": "orders", "data": "id,amount\n1,12\n"}]
+
+    class Cursor:
+        def __init__(self, row):
+            self.row = row
+            self.statements = []
+
+        def execute(self, statement, params=None):
+            self.statements.append(str(statement))
+
+        def fetchone(self):
+            return self.row
+
+    cid = "c_" + "7" * 32
+    for row, source_hash, expected in (((stored, "a" * 64), "a" * 64, stored),
+                                       ((stored, "a" * 64), "b" * 64, conversations.SourceChanged),
+                                       (None, "a" * 64, conversations.NotOwned)):
+        connection = _Connection(Cursor(row))
+        with patch.object(conversations, "_pg", return_value=connection):
+            try:
+                outcome = conversations.stored_source("user", cid, source_hash)
+            except (conversations.SourceChanged, conversations.NotOwned) as exc:
+                outcome = type(exc)
+                if isinstance(exc, conversations.SourceChanged):
+                    assert exc.source_hash == "a" * 64, "the stored hash goes back to the client"
+        assert outcome == expected, (source_hash, outcome)
+        assert connection.closed
+
+
+def test_the_first_upload_starts_a_conversation():
+    """The one upload of a client's sheets precedes its first question, so sync starts the conversation
+    when there is none yet and returns its id and the snapshot's hash."""
+    tables = [{"name": "orders", "data": "id,amount\n1,14\n", "source": {"kind": "upload"}}]
+    calls = []
+
+    def resolve(user_id, conversation_id, prompt, sheets):
+        calls.append((user_id, conversation_id, prompt, sheets))
+        return "c_" + "8" * 32
+
+    with patch.object(conversations, "resolve_conversation", resolve):
+        result = conversations.sync_conversation_source("user", "", tables, "total amount")
+    assert result == {"conversation_id": "c_" + "8" * 32, "changed": True,
+                      "source_hash": conversations.source_snapshot_hash(tables), "dataset_version": 1}
+    assert calls == [("user", None, "total amount", tables)], "the first question names the conversation"
+
+
 def test_delete_all_removes_only_owned_valid_conversations_and_user_traces():
     valid = "c_" + "f" * 32
 
@@ -723,6 +805,9 @@ TESTS = [
     test_new_conversation_quota_counts_only_unexpired_conversations,
     test_conversation_limit_error_tells_user_how_to_recover,
     test_source_sync_keeps_the_answer_but_marks_changed_data_stale,
+    test_an_unchanged_source_is_not_stored_again,
+    test_a_question_names_its_stored_sheets_by_hash,
+    test_the_first_upload_starts_a_conversation,
     test_delete_all_removes_only_owned_valid_conversations_and_user_traces,
     test_deleting_a_conversation_removes_the_users_retry_records,
     test_append_dataset_ops_is_bounded_and_serialized,

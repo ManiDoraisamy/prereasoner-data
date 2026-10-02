@@ -24,6 +24,7 @@ MAX_UPLOAD_CELLS = 1_000_000
 MAX_TABLE_DISPLAY_NAME_CHARS = 128
 MAX_TABLE_CHARS = 8_000_000
 MAX_TABLE_TOTAL_CHARS = 20_000_000
+_SOURCE_HASH_RE = re.compile(r"[0-9a-f]{64}")
 
 # PostgreSQL identifiers are limited to 63 bytes. Runtime bridge tables append
 # " unconnected to knowledgebase" (29 characters), so uploaded identifiers use
@@ -227,6 +228,19 @@ def validate_execution_use(value) -> str | None:
         raise RequestValidationError("use must be sql, py, or both") from exc
 
 
+def validate_source_hash(req: dict) -> str | None:
+    """The stored source snapshot a request names instead of carrying its tables (64 hex), with the
+    conversation that stores it."""
+    value = req.get("source_hash")
+    if value in (None, ""):
+        return None
+    if not isinstance(value, str) or not _SOURCE_HASH_RE.fullmatch(value):
+        raise RequestValidationError("source_hash is invalid")
+    if not req.get("conversation_id"):
+        raise RequestValidationError("source_hash needs the conversation_id that stores it")
+    return value
+
+
 def validate_reason_request(req: object) -> dict:
     """Validate the authenticated /api/reason and /api/knowledge body."""
     if not isinstance(req, dict):
@@ -234,7 +248,10 @@ def validate_reason_request(req: object) -> dict:
     normalized = dict(req)
     normalized["question"] = validate_question(req.get("question"))
     normalized["tables"] = validate_tables(req.get("tables"), allow_single=True)
-    if not normalized["tables"]:
+    normalized["source_hash"] = validate_source_hash(req)
+    if normalized["tables"] and normalized["source_hash"]:
+        raise RequestValidationError("send tables or a source_hash, not both")
+    if not normalized["tables"] and not normalized["source_hash"]:
         data = req.get("data", "")
         if not isinstance(data, str):
             raise RequestValidationError("CSV data must be text")
@@ -300,6 +317,9 @@ def validate_chat_request(req: object):
         raise RequestValidationError("request must be a JSON object")
     message = validate_question(req.get("message"), field="message")
     tables = validate_tables(req.get("tables"))
+    source_hash = validate_source_hash(req)
+    if tables and source_hash:
+        raise RequestValidationError("send tables or a source_hash, not both")
 
     history = req.get("history") or []
     if not isinstance(history, list):
@@ -335,4 +355,4 @@ def validate_chat_request(req: object):
 
     return (message, tables, normalized_history, _optional_id(req, "turnId"),
             _optional_id(req, "conversation_id", conversation=True),
-            validate_execution_use(req.get("use")), analysis)
+            validate_execution_use(req.get("use")), analysis, source_hash)

@@ -1063,10 +1063,17 @@ async function startTurn(){
     // null, which reads as "proxy timeout, keep waiting" and once masked a 413 as an endless spinner.
     if(j&&j.error&&r.status>=400&&r.status<500)return {error:j.error};
     return null; }catch(_){ return null; } };
-  const httpPromise=fetch(CHAT_ENDPOINT,{method:'POST',
+  let source;
+  try{ source=await uploadedSource(token,question); }
+  catch(e){ if(RUN===myRun) fail((e&&e.message)||'the sheets could not be uploaded'); return; }
+  // The question names the conversation's stored sheets. A 409 means they were replaced since: upload the
+  // page's sheets again and ask once more.
+  const ask=()=>fetch(CHAT_ENDPOINT,{method:'POST',
     headers:{'content-type':'application/json','Authorization':'Bearer '+token},
-    body:JSON.stringify(Object.assign({message:question, tables:SHEETS, history:HISTORY, turnId:turnId,
-      conversation_id:convId()}, executionRequestFields(ONESHOT_USE)))}).then(parseBody).catch(()=>null);
+    body:JSON.stringify(Object.assign({message:question, history:HISTORY, turnId:turnId},
+      source, executionRequestFields(ONESHOT_USE)))});
+  const httpPromise=ask().then(async r=>{ if(r&&r.status===409){ source=await uploadedSource(token,question,true); return ask(); } return r; })
+    .then(parseBody).catch(()=>null);
   // (1) LIVE: subscribe to the turn node -> render each announced engine call's trace as it streams. This is
   // the PRIMARY completion path: the Firebase Hosting proxy times out at ~60s but the engine cold start +
   // Gemini loop can exceed that, so the answer often lands on RTDB after the HTTP call has already given up.
@@ -1205,11 +1212,26 @@ async function startRun(){
   // (1) kick off the job FIRE-AND-FORGET: on the streaming path the answer arrives via RTDB, not this
   // response. Keep the parsed-body promise so both fallbacks can await it (body reads exactly once).
   const parseBody=async r=>{ try{ if(!r)return null; const txt=await r.text(); return (r.ok&&txt.trim().charAt(0)==='{')?JSON.parse(txt):null; }catch(_){ return null; } };
+  let source;
+  try{ source=await uploadedSource(token,question); }
+  catch(e){ if(RUN===myRun) fail((e&&e.message)||'the sheets could not be uploaded'); return; }
   // One body for the job and every re-send of it: the engine answers a repeated jobId only for the same
   // input, and a re-send rebuilt after the stream had named the new conversation was refused 409 (2026-10-04).
-  const requestBody=JSON.stringify(Object.assign({tables:SHEETS,question:question,jobId:jobId,conversation_id:convId()}, executionRequestFields(ONESHOT_USE)));
-  const httpPromise=fetch(ENDPOINT,{method:'POST',headers:{'content-type':'application/json','Authorization':'Bearer '+token},
-                                    body:requestBody}).then(parseBody).catch(()=>null);
+  // The body names the conversation's stored sheets. A 409 that names a source hash means they were replaced
+  // since: the page uploads its sheets again and asks once more, with that one new body.
+  let requestBody=JSON.stringify(Object.assign({question:question,jobId:jobId}, source, executionRequestFields(ONESHOT_USE)));
+  const send=()=>fetch(ENDPOINT,{method:'POST',headers:{'content-type':'application/json','Authorization':'Bearer '+token},
+                                 body:requestBody});
+  let resent=false;
+  const ask=async()=>{ const r=await send();
+    if(r.status!==409||resent)return r;
+    const refused=await r.clone().json().catch(()=>null);
+    if(!refused||!('source_hash' in refused))return r;
+    resent=true;
+    source=await uploadedSource(token,question,true);
+    requestBody=JSON.stringify(Object.assign({question:question,jobId:jobId}, source, executionRequestFields(ONESHOT_USE)));
+    return send(); };
+  const httpPromise=ask().then(parseBody).catch(()=>null);
   // Persist the server-authoritative conversation_id — GUARDED to this turn (RUN===myRun) so a slow
   // earlier turn can't clobber a later one — and re-render so the follow-up send button re-enables.
   httpPromise.then(j=>{ if(RUN===myRun&&j&&j.conversation_id){ setConversation(j.conversation_id); renderRail(); } });   // setConversation (not a bare sessionStorage write) so the URL becomes /reason/<id> + a snapshot can save
@@ -1253,7 +1275,7 @@ async function startRun(){
     let j=null;
     for(let a=0;a<5&&!j&&live()&&!DONE;a++){
       try{
-        j=a===0?await httpPromise:await fetch(ENDPOINT,{method:'POST',headers:{'content-type':'application/json','Authorization':'Bearer '+token},body:requestBody}).then(parseBody);
+        j=a===0?await httpPromise:await ask().then(parseBody);
         if(j)break;
       }catch(_){}
       if(a<4&&live()){ STATUS=WB.warmupMsg; renderRail(); await new Promise(res=>setTimeout(res,4000)); }
@@ -1330,6 +1352,8 @@ async function run(){
     if(!handed||!handed.length){ fail('Your sheets could not be read in this browser. Attach them again from the home page.'); return; }
     SHEETS.push(...handed); TABNAMES.push(...handed.map((s,i)=>slug(s.name,i)));
   }
+  // A reopened conversation's sheets are its stored snapshot until the user edits them: fingerprint them now.
+  try{ await settleUploadRecord(); }catch(_){}
   // restore ORCH context ONLY when resuming an existing conversation (same guard the snapshot restore uses
   // below) — a fresh conversation must never inherit another conversation's transcript.
   try{ if(convId()){ const h=sessionStorage.getItem('pr_orch_history'); if(h){ const a=JSON.parse(h); if(Array.isArray(a)) HISTORY=a; } } }catch(_){}

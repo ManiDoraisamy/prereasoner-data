@@ -125,7 +125,8 @@ function restorePrereasonerSheetConversation(request) {
   return {
     conversationId: body.conversation_id || '',
     state: body.state && typeof body.state === 'object' ? body.state : null,
-    stale: !!body.source_changed
+    stale: !!body.source_changed,
+    sourceHash: body.source_hash || ''
   };
 }
 
@@ -147,15 +148,21 @@ function clearPrereasonerSheetConversation() {
     'Prereasoner could not start a new conversation.');
 }
 
-// The sheet changed since the conversation last saw it: bring the conversation's source up to date,
-// which marks its earlier answers stale.
+// The one upload of the sheet: before the first question (it starts the conversation) and whenever the sheet
+// changed since the conversation last saw it (that marks its earlier answers stale). Questions then name the
+// stored sheet by its hash instead of sending every cell again (2026-10-02).
 function syncPrereasonerConversation(request) {
   request = request || {};
-  var conversationId = conversationId_(request.conversationId);
-  if (!conversationId) throw new Error('Start a chat before syncing data.');
-  var body = apiRequest_('post', '/api/conversation/sync', {id: conversationId, tables: requestTables_(request)},
+  var conversationId = request.conversationId ? conversationId_(request.conversationId) : '';
+  if (request.conversationId && !conversationId) {
+    throw new Error('The conversation expired. Start a new conversation and try again.');
+  }
+  var body = apiRequest_('post', '/api/conversation/sync',
+    {id: conversationId, question: String(request.question || '').slice(0, REQUEST_LIMITS.questionChars),
+     tables: requestTables_(request)},
     'Prereasoner could not sync this spreadsheet.');
-  return {changed: !!body.changed};
+  return {changed: !!body.changed, conversationId: body.conversation_id || conversationId,
+          sourceHash: body.source_hash || ''};
 }
 
 function askPrereasoner(request) {
@@ -165,13 +172,15 @@ function askPrereasoner(request) {
   if (question.length > REQUEST_LIMITS.questionChars) {
     throw new Error('Questions must be ' + REQUEST_LIMITS.questionChars + ' characters or fewer.');
   }
+  var sourceHash = String(request.sourceHash || '');
+  if (!/^[0-9a-f]{64}$/.test(sourceHash)) throw new Error('Send the sheet to Prereasoner before asking.');
   var payload = {
     message: question,
-    tables: requestTables_(request),
     history: normalizeHistory_(request.history),
-    conversation_id: conversationId_(request.conversationId) || null
+    conversation_id: conversationId_(request.conversationId) || null,
+    source_hash: sourceHash
   };
-  if (request.conversationId && !payload.conversation_id) {
+  if (!payload.conversation_id) {
     throw new Error('The conversation expired. Start a new conversation and try again.');
   }
   var turnId = request.turnId == null ? '' : String(request.turnId).trim();
@@ -179,7 +188,9 @@ function askPrereasoner(request) {
     if (!/^[A-Za-z0-9_-]{1,128}$/.test(turnId)) throw new Error('The live request id is invalid.');
     payload.turnId = turnId;
   }
-  var raw = chatRequest_(payload);
+  var raw = chatRequest_(payload, [409]);
+  // The stored sheet was replaced since (another sidebar synced it): the sidebar uploads it again and asks once more.
+  if (raw.status === 409) return {sourceChanged: true};
   return {
     reply: String(raw.reply || '').trim(),
     conversationId: raw.conversation_id || null,
@@ -320,11 +331,13 @@ function apiRequest_(method, path, payload, failure) {
   return fetchJson_(PREREASONER_API_URL + path, method, payload, failure);
 }
 
-function chatRequest_(payload) {
-  return fetchJson_(PREREASONER_CHAT_URL, 'post', payload, 'Prereasoner could not be reached. Try again in a moment.');
+function chatRequest_(payload, answered) {
+  return fetchJson_(PREREASONER_CHAT_URL, 'post', payload, 'Prereasoner could not be reached. Try again in a moment.',
+    answered);
 }
 
-function fetchJson_(url, method, payload, failure) {
+// `answered`: HTTP statuses the caller handles itself; their body comes back with its `status`.
+function fetchJson_(url, method, payload, failure, answered) {
   var options = {
     method: method,
     headers: {Authorization: 'Bearer ' + firebaseIdToken_(), Accept: 'application/json'},
@@ -343,6 +356,7 @@ function fetchJson_(url, method, payload, failure) {
   var status = response.getResponseCode();
   var body = {};
   try { body = JSON.parse(response.getContentText() || '{}'); } catch (_) {}
+  if (answered && answered.indexOf(status) >= 0) return {status: status, error: body && body.error};
   if (status < 200 || status >= 300) {
     var message = body && body.error ? String(body.error) : 'request failed';
     if (status === 401) message = 'Google sign-in could not be verified';

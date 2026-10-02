@@ -37,7 +37,7 @@ from engine.analysis import (
 from engine.decomposition import DecompositionError, validate_decomposition
 # AsyncGeminiClient is the turn's model client; tests replace this module attribute with a fake.
 from engine.llm import AsyncGeminiClient
-from engine.request_validation import RequestValidationError, validate_question
+from engine.request_validation import RequestValidationError, display_names, validate_question
 from mcp_server import engine_client
 from mcp_server.descriptions import DESCRIBE_DESC, QUERY_DESC
 from orchestrator.system_prompt import SYSTEM_PROMPT
@@ -579,9 +579,11 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                     principal: str | None = None,
                     use: str | None = None,
                     analysis_override: dict[str, Any] | None = None,
-                    table_names: dict[str, str] | None = None) -> dict[str, Any]:
+                    source_hash: str | None = None) -> dict[str, Any]:
     """Run one chat turn. `history` is a lean transcript [{role, content:str}, ...]; `tables` is the
-    session's inline CSVs. Returns {reply, traces, history, conversation_id}.
+    session's inline CSVs, or, with `source_hash`, the sheets `conversation_id` stores: the turn reads them
+    from the engine for its own checks and each engine call names them instead of carrying them.
+    Returns {reply, traces, history, conversation_id}.
 
     `conversation_id` keeps every engine call on ONE conversation schema; the FIRST call mints one if none
     was passed and we capture + reuse it for the rest of the session (and return it to the browser).
@@ -593,6 +595,7 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
     that trace exactly as on the direct path. The model's final text + terminal status are emitted too.
     `emit` is best-effort (a no-op when RTDB is unset) — streaming must never break the answer."""
     traces: list[dict[str, Any]] = []
+    table_names: dict[str, str] = display_names(tables)
 
     def with_names(shaped):
         """The engine's facts with the tables' names as the request wrote them ("NT Report" for the engine's
@@ -628,6 +631,11 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
         AsyncGeminiClient(model=model, project=project, location=location) as client,
         httpx.AsyncClient(timeout=engine_client.DEFAULT_TIMEOUT) as http,
     ):
+        if source_hash:
+            tables = await engine_client.call_conversation_source(
+                conv, source_hash, principal=principal or "", base_url=engine_base_url,
+                token=bearer_token, client=http)
+            table_names = display_names(tables)
         catalog = []
         if conv:
             catalog = await engine_client.call_analysis_catalog(
@@ -869,7 +877,7 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                         # mutable state across concurrent turns of DIFFERENT users, so it is an argument.
                         with request_timing.span("engine_call"):
                             shaped = await engine_client.call_query(
-                                question, tables, job_id, conv,
+                                question, tables, job_id, conv, source_hash=source_hash,
                                 base_url=engine_base_url, token=bearer_token,
                                 request_id=job_id, client=http, dataset_ops=dataset_ops,
                                 dataset_attestation=attestation,

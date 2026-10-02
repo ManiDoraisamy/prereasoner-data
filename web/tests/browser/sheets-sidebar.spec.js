@@ -106,7 +106,12 @@ test('the Sheets sidebar renders the web rail, with live steps from the realtime
   await expect(page.locator('#suggestions')).toBeHidden();   // starters belong to an empty chat
   const ask = await page.evaluate(() => window.__server.pendingAsk.arg);
   expect(ask.question).toBe('What are total sales in France?');
-  expect(ask.tables[0].data).toBe('country,amount\nFrance,840\nFrance,400\nGermany,620');
+  // Upload once: the cells travel with the sync that starts the conversation; the question names them.
+  const [sync] = await calls(page, 'syncPrereasonerConversation');
+  expect(sync.arg.tables[0].data).toBe('country,amount\nFrance,840\nFrance,400\nGermany,620');
+  expect(ask.tables).toBeUndefined();
+  expect(ask.sourceHash).toBe('a'.repeat(64));
+  expect(ask.conversationId).toBe('c_0123456789abcdef0123456789abcdef');
   const turn = 'runs/sheet-user/' + ask.turnId;
   await expect.poll(() => page.evaluate(() => window.__rtdb.paths())).toContain('child:' + turn + '/calls');
 

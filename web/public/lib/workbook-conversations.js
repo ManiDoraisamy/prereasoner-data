@@ -22,6 +22,38 @@ function rememberConversationSource(j){
   if(!j)return;const info={kind:sourceKind(j.tables),sourceHash:j.source_hash||'',answerHash:(j.state&&j.state.sourceHash)||'',datasetVersion:j.dataset_version||0};
   info.stale=!!(info.sourceHash&&info.answerHash&&info.sourceHash!==info.answerHash);
   try{sessionStorage.setItem(SS.SOURCE_INFO,JSON.stringify(info));}catch(_){}
+  // The reopened sheets are the stored ones: the page fingerprints them when it loads (settleUploadRecord),
+  // so the next question names them instead of uploading them again.
+  try{if(j.conversation_id&&j.source_hash)sessionStorage.setItem(SS.UPLOADED,JSON.stringify({cid:j.conversation_id,sourceHash:j.source_hash,fingerprint:''}));}catch(_){}
+}
+
+/* ---- upload once (2026-10-02): the sheets go to the conversation when they change; a question names
+   them by conversation and source hash instead of carrying every row ---- */
+async function sheetsFingerprint(){
+  const bytes=new TextEncoder().encode(JSON.stringify(SHEETS.map(s=>[s.name,s.data])));
+  const hash=await crypto.subtle.digest('SHA-256',bytes);
+  return Array.from(new Uint8Array(hash),b=>b.toString(16).padStart(2,'0')).join('');
+}
+function uploadRecord(){try{return JSON.parse(sessionStorage.getItem(SS.UPLOADED)||'null');}catch(_){return null;}}
+// A reopened conversation's sheets, as the page loaded them, are its stored snapshot.
+async function settleUploadRecord(){
+  const last=uploadRecord();
+  if(!last||last.fingerprint||last.cid!==convId())return;
+  last.fingerprint=await sheetsFingerprint();
+  try{sessionStorage.setItem(SS.UPLOADED,JSON.stringify(last));}catch(_){}
+}
+async function uploadedSource(token,question,force){
+  const fingerprint=await sheetsFingerprint(),cid=convId(),last=uploadRecord();
+  if(!force&&last&&last.cid===cid&&last.sourceHash&&last.fingerprint===fingerprint)
+    return {conversation_id:cid,source_hash:last.sourceHash};
+  const r=await fetch(API_BASE+'/api/conversation/sync',{method:'POST',
+    headers:{'content-type':'application/json','Authorization':'Bearer '+token},
+    body:JSON.stringify({id:cid||'',question:question||'',tables:SHEETS})});
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok||!j.conversation_id||!j.source_hash)throw new Error(j.error||('the sheets could not be uploaded (HTTP '+r.status+')'));
+  setConversation(j.conversation_id);
+  try{sessionStorage.setItem(SS.UPLOADED,JSON.stringify({cid:j.conversation_id,sourceHash:j.source_hash,fingerprint}));}catch(_){}
+  return {conversation_id:j.conversation_id,source_hash:j.source_hash};
 }
 function currentSourceInfo(){try{return JSON.parse(sessionStorage.getItem(SS.SOURCE_INFO)||'{}')||{};}catch(_){return {};}}
 // Give the live conversation a stable, shareable URL: /reason/<conversationId>. Persists the id + rewrites the
@@ -58,7 +90,7 @@ async function openConversation(id){                          // re-hydrate a pa
 }
 function newConversation(){
   let route='/';try{const saved=sessionStorage.getItem(SS.ENTRY_ROUTE)||'/';if(/^\/(sheets|excel|csv)?\/?$/.test(saved))route=saved.replace(/\/$/,'')||'/';
-    ['pr_conversation_id','pr_orch_history','pr_conv_state',SS.Q,SS.SOURCE_INFO].forEach(k=>k&&sessionStorage.removeItem(k));
+    ['pr_conversation_id','pr_orch_history','pr_conv_state',SS.Q,SS.SOURCE_INFO,SS.UPLOADED].forEach(k=>k&&sessionStorage.removeItem(k));
   }catch(_){}
   SHEET_HANDOFF.clear(SS.TABLES).catch(()=>{}).finally(()=>{location.href=route+executionQuery();});
 }

@@ -137,8 +137,9 @@ const workbook = fs.readFileSync(path.join(__dirname, '..', 'public', 'lib', 'wo
 assert((workbook.match(/executionRequestFields\(ONESHOT_USE\)/g) || []).length >= 2,
   'direct and orchestrated requests must carry the selected execution mode');
 // A direct re-send repeats its first body, execution mode included (the engine refuses another input
-// under the same jobId; tests/browser/release-flow.spec.js drives it).
-assert((workbook.match(/body:requestBody/g) || []).length >= 2,
+// under the same jobId; tests/browser/release-flow.spec.js drives it). Only a 409 that names a replaced
+// source rebuilds the body, once.
+assert(workbook.includes('body:requestBody') && workbook.includes('await ask().then(parseBody)'),
   'a direct re-send must repeat the body it was first sent with');
 assert(/ONESHOT_USE=null;\s*\/\/ an ordinary question/.test(workbook),
   'an ordinary question must clear the one-off backend override');
