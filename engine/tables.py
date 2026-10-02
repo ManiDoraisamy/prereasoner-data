@@ -367,22 +367,6 @@ class TableQuery:
         return sims[0][0] if sims and sims[0][1] > 0.3 else None
 
     # ---------- planning ----------
-    def _pick_join(self, involved, fks, tables):
-        """If >=2 involved tables share a discovered FK, return (fact, dim, fk_col, pk_col). Else None."""
-        names = set(involved) if len(involved) >= 2 else set()
-        for f in fks:
-            if "from_col" not in f:
-                continue
-            if f["from_table"] in names and f["to_table"] in names:
-                return (f["from_table"], f["to_table"], f["from_col"], f["to_col"])
-        if len(involved) >= 2:                                    # involved tables with no direct FK: use any FK touching one
-            for f in fks:
-                if "from_col" not in f:
-                    continue
-                if f["from_table"] in involved or f["to_table"] in involved:
-                    return (f["from_table"], f["to_table"], f["from_col"], f["to_col"])
-        return None
-
     def ast_semantic_signals(self, question, sch):
         """Encode role-specific question phrases in the same metric space as schema columns."""
         from engine.calculations.registry import (
