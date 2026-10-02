@@ -57,6 +57,14 @@ const checks = `
 (async function () {
   try {
     if (!hasCellValue(0)) throw new Error('numeric zero must be a real reference value');
+    // A share of a whole reads as a percentage in the rail; any other one-number answer as before.
+    J = {result: {columns: ['share'], rows: [['0.62318840579710144928']]}, unit: 'percent'};
+    if (resultSummary().v !== '62.32%') throw new Error('a share was not shown as a percentage: ' + resultSummary().v);
+    J = {result: {columns: ['share'], rows: [['0.30000000000000000000']]}, unit: 'percent'};
+    if (resultSummary().v !== '30%') throw new Error('a share was not shown as a percentage: ' + resultSummary().v);
+    J = {result: {columns: ['avg'], rows: [['0.30000000000000000000']]}};
+    if (resultSummary().v !== '0.3') throw new Error('a plain fraction was shown as a percentage: ' + resultSummary().v);
+    J = null;
     if (referenceKey('products', ['sku', 'category']) !== 'sku') throw new Error('reference identity ignored its join key');
     const compact = referenceRows({rows: [[0, 'zero'], ['', ''], [null, null]]});
     if (compact.length !== 1 || compact[0][0] !== 0) throw new Error('referenceRows discarded or changed zero');
@@ -290,6 +298,17 @@ vm.runInContext(turnRendererSource, context, {filename: 'turn-renderer.js'});
     ['total', 'Added up the values to get the total.', 'filtered', 'both']
   ]);
   assert.strictEqual(R.stepStatus(views[0]), 'Filtering the rows…');
+  // A filter's sentence reads every comparison in its label. The engine's month comparison names the
+  // month: "total transfers signed in August" read "where signed = 8" (Chrome gate, 2026-10-02).
+  const filtered = label => R.stepDescription({op: 'filter', label: label});
+  assert.strictEqual(filtered('where month(signed) = 8'), 'Kept only the rows where signed is in August.');
+  assert.strictEqual(filtered('where month(signed) >= 7 and month(signed) <= 9'),
+    'Kept only the rows where signed is in or after July and signed is in or before September.');
+  assert.strictEqual(filtered("where country = 'France' and quarter = 'Q1'"),
+    'Kept only the rows where country is France and quarter is Q1.');
+  assert.strictEqual(filtered('where amount >= 100'), 'Kept only the rows where amount is at least 100.');
+  assert.strictEqual(filtered("where city <> 'Paris'"), 'Kept only the rows where city is not Paris.');
+  assert.strictEqual(filtered("where contestant_name LIKE '%al%'"), 'Kept only the rows where contestant_name contains al.');
   const link = R.renderStepLink(steps[1], 1, {href: 'https://chat.prereasoner.com/reason/c_1'});
   assert(link.startsWith('<a class="steplink" href="https://chat.prereasoner.com/reason/c_1"'), link);
   assert(link.includes('<span class=idx>2</span>') && link.includes(' · from filtered') && link.includes('PY = SQL'), link);

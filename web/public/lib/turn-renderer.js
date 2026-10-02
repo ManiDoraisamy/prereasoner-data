@@ -190,8 +190,26 @@
     return STEP_NAMES[op] || (view && view.label) || op || '';
   }
 
+  var MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September',
+    'October', 'November', 'December'];
+  var COMPARISONS = {'<>': ' is not ', '!=': ' is not ', '>=': ' is at least ', '<=': ' is at most ',
+    '>': ' is more than ', '<': ' is less than ', '=': ' is '};
+  var MONTH_COMPARISONS = {'<>': ' is not in ', '!=': ' is not in ', '>=': ' is in or after ',
+    '<=': ' is in or before ', '>': ' is after ', '<': ' is before ', '=': ' is in '};
+
+  // A filter label's condition as the rail says it: "country = 'France'" reads "country is France", and
+  // the engine's month comparison "month(signed) = 8" reads "signed is in August" (Chrome gate,
+  // 2026-10-02). Every comparison is read, not only the first: "amount >= 100" read "amount > is 100".
   function humanCondition(condition) {
-    return String(condition || '').replace(/\s*<>\s*/, ' is not ').replace(/\s*=\s*/, ' is ')
+    return String(condition || '')
+      .replace(/month\(([^()]+)\)\s*(<>|!=|>=|<=|=|>|<)\s*(\d{1,2})\b/gi, function (all, column, op, number) {
+        var month = MONTH_NAMES[Number(number) - 1];
+        return month ? column + MONTH_COMPARISONS[op] + month : all;
+      })
+      .replace(/\s+LIKE\s+'%([^%']*)%'/gi, ' contains $1')
+      .replace(/\s+LIKE\s+'([^%']*)%'/gi, ' starts with $1')
+      .replace(/\s+LIKE\s+'%([^%']*)'/gi, ' ends with $1')
+      .replace(/\s*(<>|!=|>=|<=|=|>|<)\s*/g, function (all, op) { return COMPARISONS[op]; })
       .replace(/'/g, '').trim();
   }
 
