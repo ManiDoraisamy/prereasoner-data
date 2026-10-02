@@ -2555,6 +2555,28 @@ def test_a_plural_reads_as_its_singular_everywhere():
     assert sorted(execute([players], finishes.sql)) == [(1,), (2,), (2,)], finishes.sql
 
 
+def test_a_key_named_by_the_table_it_references_needs_its_whole_name():
+    """Spider cre_Doc_Template_Mgt, 2026-10-02: "show all document names using templates with template type
+    code BK" listed Documents.Template_ID beside the names: "templates" was a mention of the foreign key
+    named by the table it references, and "code" counted as asking for keys. That table's word names the
+    table, which the join reaches; the key is a mention only where the question says its whole name ("the
+    template ids", "the ids of the documents")."""
+    templates = {"name": "Templates", "columns": ["Template_ID", "Version_Number", "Template_Type_Code"],
+                 "rows": [[1, 5, "BK"], [4, 4, "PP"], [6, 2, "BK"]]}
+    documents = {"name": "Documents", "columns": ["Document_ID", "Template_ID", "Document_Name"], "rows": [
+        [0, 6, "Introduction of OS"], [1, 1, "Understanding DB"], [3, 4, "Summer Show"]]}
+    fks = [{"from_table": "Documents", "from_col": "Template_ID", "to_table": "Templates", "to_col": "Template_ID"}]
+    tables = [templates, documents]
+    names = best("Show all document names using templates with template type code BK.", tables, fks)
+    assert sorted(execute(tables, names.sql)) == [("Introduction of OS",), ("Understanding DB",)], names.sql
+    ids = best("What are the ids of the documents using templates with template type code BK?", tables, fks)
+    assert sorted(execute(tables, ids.sql)) == [(0,), (1,)], ids.sql
+    # Contrast: the whole name lists the key.
+    keyed = best("Show the document names and their template ids.", tables, fks)
+    assert sorted(execute(tables, keyed.sql)) == [("Introduction of OS", 6), ("Summer Show", 4),
+                                                  ("Understanding DB", 1)], keyed.sql
+
+
 def test_multiple_aggregates_share_a_typed_operand():
     candidate = best("What are the average, minimum and maximum age of people from France?", [PEOPLE])
     assert execute([PEOPLE], candidate.sql) == [(25.0, 20, 30)]
@@ -2687,7 +2709,10 @@ def test_counted_table_beats_related_column_with_same_entity_word():
         [documents, templates, paragraphs],
         fks,
     )
-    assert 'COUNT("Documents".' in candidate.sql
+    # The documents are counted: their rows, or a column of theirs (Documents.Template_ID is a mention
+    # only where "template id" is said, test_a_key_named_by_the_table_it_references_needs_its_whole_name).
+    assert ('COUNT("Documents".' in candidate.sql
+            or candidate.sql.startswith('SELECT COUNT(*) FROM "Documents" JOIN "Templates"')), candidate.sql
     assert 'JOIN "Paragraphs"' not in candidate.sql
     assert execute([documents, templates, paragraphs], candidate.sql) == [(2,)]
 
@@ -4007,6 +4032,7 @@ TESTS = [
     test_a_value_stated_once_is_compared_once,
     test_a_column_is_named_without_the_word_of_its_kind,
     test_a_plural_reads_as_its_singular_everywhere,
+    test_a_key_named_by_the_table_it_references_needs_its_whole_name,
     test_multiple_aggregates_share_a_typed_operand,
     test_repeated_count_paraphrase_is_one_aggregate,
     test_total_number_of_entities_is_a_scalar_count,

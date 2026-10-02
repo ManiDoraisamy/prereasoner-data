@@ -170,10 +170,11 @@ class SQLSearcher:
         prefix = tuple("" if index in qualifiers else token for index, token in enumerate(tokens[:clause_boundary]))
         prefix_tokens = set(prefix)
         id_requested = bool(_ID_WORDS & set(tokens))
+        references = self._reference_keys()
         explicit_projection_columns = {
             schema_column.ref
             for schema_column in self.schema.columns
-            if (
+            if (schema_column.ref not in references or _says(tokens, schema_column.ref)) and (
                 (link_words := _column_link_words(schema_column.ref, id_requested))
                 and set(naming_words(link_words, context[schema_column.ref.table])) <= prefix_tokens
                 and _column_link_positions(schema_column.ref, prefix, self.schema, link_words)
@@ -495,6 +496,15 @@ class SQLSearcher:
                 forms.update(words)
         return frozenset(forms)
 
+    def _reference_keys(self) -> set[ColumnRef]:
+        """The foreign keys named by the table they reference: Documents.Template_ID is "template". The
+        table's word names that table, which the join reaches ("document names using templates with
+        template type code BK"); the key is a mention only where the question says its whole name ("the
+        template ids"). Spider cre_Doc_Template_Mgt, 2026-10-02: such readings listed the key beside the
+        names."""
+        return {child for foreign_key in self.schema.foreign_keys for child, parent in foreign_key.column_pairs
+                if set(_column_link_words(child, False)) <= {canon(word) for word in _name_words(parent.table)}}
+
     def _table_scores(self, tokens: tuple[str, ...]) -> dict[str, float]:
         scores = {}
         token_set = set(tokens)
@@ -516,9 +526,12 @@ class SQLSearcher:
             words = _column_link_words(schema_column.ref, id_requested)
             if len(words) == 2:
                 modifiers.setdefault(words[1], set()).add(words[0])
+        references = self._reference_keys()
         for schema_column in self.schema.columns:
             column = schema_column.ref
             if is_surrogate_key(column.name) and not id_requested:
+                continue
+            if column in references and not _says(tokens, column):
                 continue
             meaningful = _column_link_words(column, id_requested)
             positions = _column_link_positions(column, tokens, self.schema, meaningful)
@@ -1468,6 +1481,23 @@ def _names_together(tokens: tuple[str, ...], words: list[str], column_forms: fro
         return True
     return any(token == words[0] and canon_tokens[index + 1] in column_forms
                for index, token in enumerate(canon_tokens[:-1]))
+
+
+def _says(tokens: tuple[str, ...], column: ColumnRef) -> bool:
+    """Whether the question says the column's whole name: its words together ("template id") or its last
+    word first ("the ids of the documents")."""
+    words = tuple(canon(word) for word in _name_words(column.name))
+    if any(tokens[start:start + len(words)] == words for start in range(len(tokens) - len(words) + 1)):
+        return True
+    for start in range(len(tokens) - 1):
+        if tokens[start] != words[-1] or tokens[start + 1] != "of":
+            continue
+        following = start + 2
+        while following < len(tokens) and tokens[following] in {"the", "a", "an", "all", "each", "every"}:
+            following += 1
+        if tokens[following:following + len(words) - 1] == words[:-1]:
+            return True
+    return False
 
 
 def _coordinated_modifiers(tokens: tuple[str, ...], head: int, modifiers: set[str]) -> list[int]:
