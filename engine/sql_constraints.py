@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 import re
-from typing import Sequence
+from typing import Any, Sequence
 
 from engine.sql_ast import (
     Aggregate,
@@ -25,7 +25,6 @@ from engine.sql_ast import (
     Star,
     and_predicates,
     conjunction,
-    contradictory,
     equality_conflicts,
 )
 from engine.sql_dates import date_phrases
