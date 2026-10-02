@@ -2421,6 +2421,57 @@ def test_a_column_word_that_introduces_a_value_is_not_listed():
                                                  ("Qandahar", 237500)], both.sql
 
 
+def test_the_words_of_a_column_name_are_no_value():
+    """Spider wta_1 and tvshow, 2026-10-02: "list the first and last name of all players" filtered on a
+    player whose last name is 'Last', and "the Package Option of TV Channel ..." on a package option
+    'Option' (8 readings filtered on the words of a column's name). Words that spell a several-word column
+    name name that column; the same words quoted are a value."""
+    players = {"name": "players", "columns": ["player_id", "first_name", "last_name", "hand"], "rows": [
+        [1, "Martina", "Hingis", "R"], [2, "Mirjana", "Last", "L"], [3, "Ana", "Jones", "R"]]}
+    names = best("List the last name of all players.", [players])
+    assert sorted(execute([players], names.sql)) == [("Hingis",), ("Jones",), ("Last",)], names.sql
+    channels = {"name": "TV_Channel", "columns": ["id", "series_name", "Package_Option"], "rows": [
+        [1, "Sky Radio", "Option"], [2, "Sky Music", "Sky Famiglia"]]}
+    option = best('What is the Package Option of TV Channel with serial name "Sky Radio"?', [channels])
+    assert "WHERE" in option.sql and '"Package_Option" =' not in option.sql, option.sql
+    assert execute([channels], option.sql) == [("Option",)], option.sql
+    # Contrast: the quoted value is compared, once.
+    quoted = best("Which channels have the package option 'Option'?", [channels])
+    assert quoted.sql.count("'Option'") == 1 and execute([channels], quoted.sql) == [("Option",)], quoted.sql
+
+
+def test_a_several_word_column_name_is_a_mention_where_it_is_said():
+    """Spider student_transcripts_tracking and wta_1, 2026-10-02: "list the first name, middle name, last
+    name" and "the first, middle, and last name" listed one of the names. Each column was a mention at the
+    last "name", so the three were one mention read three ways. A several-word name is a mention where the
+    question says it, and so is each modifier coordinated before a shared last word."""
+    students = {"name": "Students", "columns": ["student_id", "first_name", "middle_name", "last_name",
+                                                 "date_first_registered"], "rows": [
+        [1, "Timmothy", "Anna", "Ward", "1971-02-05"], [2, "Hobart", "Lorenz", "Bergnaum", "1976-10-26"],
+        [3, "Warren", "Violet", "Gibson", "1990-03-01"]]}
+    listed = best("List the first name, middle name, last name of all students.", [students])
+    assert sorted(execute([students], listed.sql)) == [
+        ("Hobart", "Lorenz", "Bergnaum"), ("Timmothy", "Anna", "Ward"), ("Warren", "Violet", "Gibson")], listed.sql
+    first = best("What is the first, middle, and last name of the first student to register?", [students])
+    assert execute([students], first.sql) == [("Timmothy", "Anna", "Ward")], first.sql
+    # Contrast: one modifier before the shared word is one column.
+    last = best("List the last name of all students.", [students])
+    assert sorted(execute([students], last.sql)) == [("Bergnaum",), ("Gibson",), ("Ward",)], last.sql
+
+
+def test_the_article_a_is_no_value():
+    """Spider student_transcripts_tracking, 2026-10-02: "who is enrolled in a Bachelor degree program"
+    also filtered on the section named 'a' (4 readings compared the article with a value). A lowercase "a"
+    is the article; a capital "A" after the first word is the value."""
+    classes = {"name": "classes", "columns": ["class_id", "student", "class_name", "program"], "rows": [
+        [1, "Ann", "a", "Bachelor"], [2, "Bob", "b", "Bachelor"], [3, "Cy", "a", "Master"]]}
+    enrolled = best("List the students enrolled in a Bachelor program.", [classes])
+    assert sorted(execute([classes], enrolled.sql)) == [("Ann",), ("Bob",)], enrolled.sql
+    # Contrast: the capital is the class.
+    in_a = best("List the students in class A.", [classes])
+    assert sorted(execute([classes], in_a.sql)) == [("Ann",), ("Cy",)], in_a.sql
+
+
 def test_multiple_aggregates_share_a_typed_operand():
     candidate = best("What are the average, minimum and maximum age of people from France?", [PEOPLE])
     assert execute([PEOPLE], candidate.sql) == [(25.0, 20, 30)]
@@ -3866,6 +3917,9 @@ TESTS = [
     test_an_unjoinable_projection_drops_out_of_the_reading,
     test_two_values_a_child_table_holds_are_both,
     test_a_column_word_that_introduces_a_value_is_not_listed,
+    test_the_words_of_a_column_name_are_no_value,
+    test_a_several_word_column_name_is_a_mention_where_it_is_said,
+    test_the_article_a_is_no_value,
     test_multiple_aggregates_share_a_typed_operand,
     test_repeated_count_paraphrase_is_one_aggregate,
     test_total_number_of_entities_is_a_scalar_count,

@@ -880,6 +880,11 @@ def words(text: str) -> list[str]:
     return ["percent" if word == "%" else word for word in _QUESTION_WORD.findall(text.lower())]
 
 
+def word_spans(text: str) -> list[tuple[int, int]]:
+    """Where each of ``words(text)`` stands in ``text``."""
+    return [match.span() for match in _QUESTION_WORD.finditer(text.lower())]
+
+
 def tokens(text: str) -> tuple[str, ...]:
     out = []
     for token in words(text):
