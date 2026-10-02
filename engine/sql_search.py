@@ -234,7 +234,11 @@ class SQLSearcher:
                     )
                 else:
                     grouped = ()
-                    expressions = tuple(SelectItem(c) for c in raw_projection) or (SelectItem(Star()),)
+                    # A listing follows the question's order: "the airline names and abbreviations" lists the
+                    # names first (Spider DEV, 2026-10-02: 8 listings matched gold but for the order). A
+                    # grouped answer keeps its groups before their aggregates, as a table shows them.
+                    listed = sorted(raw_projection, key=lambda column: _named_at(tokens, column))
+                    expressions = tuple(SelectItem(c) for c in listed) or (SelectItem(Star()),)
 
                 orders = self._order_choices(tokens, mentions, draft, question)
                 for order_terms, limit, order_score, order_evidence in orders:
@@ -1498,6 +1502,28 @@ def _says(tokens: tuple[str, ...], column: ColumnRef) -> bool:
         if tokens[following:following + len(words) - 1] == words[:-1]:
             return True
     return False
+
+
+def _named_at(tokens: tuple[str, ...], column: ColumnRef) -> int:
+    """Where the question first names a column, past the end when it does not: where its whole name is
+    said ("template type codes"); at the last word of its name, or a modifier said just before it ("the
+    first and last name"); at another word of its name ("the role" of role_code); at its table's word."""
+    end = len(tokens)
+    name = tuple(canon(word) for word in _name_words(column.name))
+    size = len(name)
+    said = next((start for start in range(end - size + 1) if tokens[start:start + size] == name), None)
+    if said is not None:
+        return said
+    last = next((index for index, token in enumerate(tokens) if name and token == name[-1]), None)
+    if last is not None:
+        first = next((index for index in range(last - 1, max(-1, last - 5), -1)
+                      if size > 1 and tokens[index] == name[0]), None)
+        return last if first is None else first
+    for named in (set(name), {canon(word) for word in _name_words(column.table)}):
+        found = next((index for index, token in enumerate(tokens) if token in named), None)
+        if found is not None:
+            return found
+    return end
 
 
 def _coordinated_modifiers(tokens: tuple[str, ...], head: int, modifiers: set[str]) -> list[int]:

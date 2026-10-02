@@ -2615,6 +2615,27 @@ def test_a_denial_is_read_by_what_it_denies():
     assert sorted(execute(teachers, elsewhere.sql)) == [("Gustaaf Deloor",), ("Joseph Huts",)], elsewhere.sql
 
 
+def test_a_listing_follows_the_order_the_question_names():
+    """Spider DEV, 2026-10-02: "the airline names and abbreviations for airlines in the USA" listed the
+    abbreviation first, and "the names and birth dates of people" the dates: a column was placed at its last
+    mention ("airlines in the USA"), not where the question asks for it (8 listings matched gold but for
+    the order). A listing follows the question: a column where its whole name is said, a modifier
+    coordinated before a shared word at its own word, another word of its name ("the role")."""
+    airlines = {"name": "airlines", "columns": ["uid", "Airline", "Abbreviation", "Country"], "rows": [
+        [1, "United Airlines", "UAL", "USA"], [2, "US Airways", "USAir", "USA"], [3, "Air Canada", "ACA", "Canada"]]}
+    names = best("What are the airline names and abbreviations for airlines in the USA?", [airlines])
+    assert sorted(execute([airlines], names.sql)) == [("US Airways", "USAir"), ("United Airlines", "UAL")], names.sql
+    players = {"name": "players", "columns": ["player_id", "first_name", "last_name", "hand"], "rows": [
+        [1, "Martina", "Hingis", "R"], [2, "Mirjana", "Lucic", "L"]]}
+    full = best("List the first and last name of all players.", [players])
+    assert sorted(execute([players], full.sql)) == [("Martina", "Hingis"), ("Mirjana", "Lucic")], full.sql
+    # Contrast: a grouped answer lists its group before the aggregate, as a table shows it.
+    pets = {"name": "Pets", "columns": ["PetID", "PetType", "pet_age", "weight"], "rows": [
+        [2001, "cat", 3, 12.0], [2002, "dog", 2, 13.4], [2003, "dog", 1, 9.3]]}
+    average = best("Find the average weight for each pet type.", [pets])
+    assert sorted(execute([pets], average.sql)) == [("cat", 12.0), ("dog", 11.350000000000001)], average.sql
+
+
 def test_multiple_aggregates_share_a_typed_operand():
     candidate = best("What are the average, minimum and maximum age of people from France?", [PEOPLE])
     assert execute([PEOPLE], candidate.sql) == [(25.0, 20, 30)]
@@ -4072,6 +4093,7 @@ TESTS = [
     test_a_plural_reads_as_its_singular_everywhere,
     test_a_key_named_by_the_table_it_references_needs_its_whole_name,
     test_a_denial_is_read_by_what_it_denies,
+    test_a_listing_follows_the_order_the_question_names,
     test_multiple_aggregates_share_a_typed_operand,
     test_repeated_count_paraphrase_is_one_aggregate,
     test_total_number_of_entities_is_a_scalar_count,
