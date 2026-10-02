@@ -44,9 +44,12 @@ from engine.numeric import parse_decimal
 from engine.sql_candidate import ScoredQuery
 from engine.sql_dates import served_date_phrases
 from engine.sql_expansion import (
+    FUNCTION_WORDS,
     implicit_sum_measures,
     measure_words_after,
     money_total_position,
+    naming_context,
+    naming_words,
     ordering_requested,
     share_cue,
     share_requested,
@@ -60,13 +63,6 @@ _NUMBER_RE = re.compile(r"^-?(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d+)?$")
 _PROJECTION_CUES = frozenset({"show", "list", "display", "select", "give", "find", "which", "what"})
 # A text the question quotes: 'Al', "Sky Radio".
 _QUOTED_TEXT = re.compile(r"(?<![\w])['\"]([^'\"]+)['\"](?![\w])")
-# Grammar words a question writes in lower case: "in", "and" or "are" is never Code2 'IN', Code 'AND' or
-# Code 'ARE' (Spider world_1, 2026-10-02), and "enrolled in a Bachelors program" no section 'a', while a
-# question that names such a value writes it in capitals ("the division AS", "a grade of A").
-_FUNCTION_WORDS = frozenset({
-    "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "in", "into", "is", "it", "of", "on", "or",
-    "than", "that", "the", "this", "to", "was", "were", "with",
-})
 # Words that place a row first or last in time ("the first student to register", "the most recent order").
 _EARLY_WORDS = frozenset({"first", "earliest"})
 _LATE_WORDS = frozenset({"last", "latest", "recent", "newest"})
@@ -170,6 +166,7 @@ class SQLSearcher:
         # names in concerts in year 2014", "the airline with abbreviation 'UAL'" (Spider DEV, 2026-10-02: 30
         # readings listed the column they filtered). Another mention of the column still asks for it.
         qualifiers = self._value_qualifiers(tokens, question)
+        context = naming_context(self.schema)
         prefix = tuple("" if index in qualifiers else token for index, token in enumerate(tokens[:clause_boundary]))
         prefix_tokens = set(prefix)
         id_requested = bool(_ID_WORDS & set(tokens))
@@ -178,7 +175,7 @@ class SQLSearcher:
             for schema_column in self.schema.columns
             if (
                 (link_words := _column_link_words(schema_column.ref, id_requested))
-                and set(link_words) <= prefix_tokens
+                and set(naming_words(link_words, context[schema_column.ref.table])) <= prefix_tokens
                 and _column_link_positions(schema_column.ref, prefix, self.schema, link_words)
             )
         }
@@ -512,6 +509,7 @@ class SQLSearcher:
         grouped: dict[int, list[_ColumnOption]] = {}
         token_set = set(tokens)
         id_requested = bool(_ID_WORDS & token_set)
+        context = naming_context(self.schema)
         # The modifiers each two-word column name puts before its last word: "first" and "last" before "name".
         modifiers: dict[str, set[str]] = {}
         for schema_column in self.schema.columns:
@@ -526,9 +524,10 @@ class SQLSearcher:
             positions = _column_link_positions(column, tokens, self.schema, meaningful)
             if not positions:
                 continue
-            coverage = len({tokens[i] for i in positions} & set(meaningful)) / max(len(set(meaningful)), 1)
-            if coverage < 1.0 and len(meaningful) > 1:
+            said = {tokens[i] for i in positions}
+            if not set(naming_words(meaningful, context[column.table])) <= said:
                 continue
+            coverage = len(said & set(meaningful)) / max(len(set(meaningful)), 1)
             position = max(positions)
             phrase = " ".join(meaningful)
             exact = phrase in " ".join(tokens)
@@ -924,7 +923,7 @@ class SQLSearcher:
         matches: list[tuple[int, int, str, tuple[tuple[ColumnRef, Any], ...]]] = []
         for start in range(len(tokens)):
             for size in range(1, min(6, len(tokens) - start) + 1):
-                if size == 1 and tokens[start] in _FUNCTION_WORDS and tokens[start] not in capitalized:
+                if size == 1 and tokens[start] in FUNCTION_WORDS and tokens[start] not in capitalized:
                     continue                    # "in" alone is no Code2 'IN'; "Welcome to NY" stays one value
                 phrase = " ".join(tokens[start:start + size])
                 span = set(range(start, start + size))

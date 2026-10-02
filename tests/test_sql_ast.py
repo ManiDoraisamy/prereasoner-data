@@ -2507,6 +2507,35 @@ def test_a_value_stated_once_is_compared_once():
     assert sorted(execute(tables, either.sql)) == [("Joe Sharp",), ("Timbaland",)], either.sql
 
 
+def test_a_column_is_named_without_the_word_of_its_kind():
+    """Spider dog_kennels, 2026-10-02: "the emails of the professionals who live in the state of Hawaii or
+    the state of Wisconsin" and "their role, street, city and state" listed no email_address or role_code:
+    a several-word column was a mention only with every word said. The words of a column's kind (code,
+    number, address, date, ...) may go unsaid when the others say what its values are; "of" or a table's
+    word says nothing ("the cost of each treatment" names no date_of_treatment)."""
+    professionals = {"name": "Professionals", "columns": ["professional_id", "role_code", "email_address",
+                                                          "city", "state"], "rows": [
+        [1, "Employee", "deanna@example.com", "West Heidi", "Indiana"],
+        [2, "Employee", "lucile@example.com", "North Odellfurt", "Hawaii"],
+        [3, "Veterenarian", "uboehm@example.org", "Domenickton", "Wisconsin"]]}
+    emails = best("List the emails of the professionals who live in the state of Hawaii or the state of "
+                  "Wisconsin.", [professionals])
+    assert sorted(execute([professionals], emails.sql)) == [("lucile@example.com",), ("uboehm@example.org",)], \
+        emails.sql
+    roles = best("Find the role, city and state of the professionals.", [professionals])
+    assert sorted(execute([professionals], roles.sql))[0] == ("Employee", "North Odellfurt", "Hawaii"), roles.sql
+    # Contrast: a column named by "date" and "of" is not named by "of".
+    treatments = {"name": "Treatments", "columns": ["treatment_id", "date_of_treatment", "cost_of_treatment"],
+                  "rows": [[1, "2018-03-19", 567], [2, "2018-03-15", 147]]}
+    costs = best("List the cost of each treatment.", [treatments])
+    assert sorted(execute([treatments], costs.sql)) == [(147,), (567,)], costs.sql
+    # Contrast: a word two columns of a table share names neither ("the name of tourney" is no date).
+    matches = {"name": "matches", "columns": ["match_id", "tourney_name", "tourney_date"], "rows": [
+        [1, "Auckland", "2013-01-01"], [2, "Auckland", "2013-01-02"], [3, "Brisbane", "2013-01-03"]]}
+    tourneys = best("Find the name of tourney that has more than 1 matches.", [matches])
+    assert execute([matches], tourneys.sql) == [("Auckland",)], tourneys.sql
+
+
 def test_multiple_aggregates_share_a_typed_operand():
     candidate = best("What are the average, minimum and maximum age of people from France?", [PEOPLE])
     assert execute([PEOPLE], candidate.sql) == [(25.0, 20, 30)]
@@ -3957,6 +3986,7 @@ TESTS = [
     test_the_article_a_is_no_value,
     test_a_value_compares_the_column_whose_words_introduce_it,
     test_a_value_stated_once_is_compared_once,
+    test_a_column_is_named_without_the_word_of_its_kind,
     test_multiple_aggregates_share_a_typed_operand,
     test_repeated_count_paraphrase_is_one_aggregate,
     test_total_number_of_entities_is_a_scalar_count,

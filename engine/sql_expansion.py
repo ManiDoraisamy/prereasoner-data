@@ -6,9 +6,11 @@ private implementation details from one another.
 """
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
 import re
-from typing import Iterable, Sequence
+from typing import Any, Iterable, Sequence
+import weakref
 
 from engine.sql_ast import (
     Aggregate,
@@ -220,13 +222,14 @@ class ExpansionSupport:
         window = projection_window(question_tokens)
         token_set = {token for _, token in window}
         explicit_id = bool(token_set & {"id", "identifier", "code"})
+        context = naming_context(self.schema)
         matches = []
         for schema_column in self.schema.by_table.get(table, ()):
             column = schema_column.ref
             compact = re.sub(r"[^a-z0-9]", "", column.name.lower())
             if is_surrogate_key(column.name) and not explicit_id and compact not in token_set:
                 continue
-            if not column_matches(column.name, token_set, table):
+            if not column_matches(column.name, token_set, table, context[table]):
                 continue
             words = set(semantic_tokens(column.name))
             compact_hits = {index for index, token in window if token == compact}
@@ -561,7 +564,54 @@ def projection_window(question_tokens: tuple[str, ...]) -> tuple[tuple[int, str]
     return tuple(enumerate(question_tokens[start:end], start))
 
 
-def column_matches(name: str, question_tokens: set[str], table: str | None = None) -> bool:
+# Grammar words a question writes in lower case: "in", "and" or "are" is never Code2 'IN', Code 'AND' or
+# Code 'ARE' (Spider world_1, 2026-10-02), and "enrolled in a Bachelors program" no section 'a', while a
+# question that names such a value writes it in capitals ("the division AS", "a grade of A").
+FUNCTION_WORDS = frozenset({
+    "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "in", "into", "is", "it", "of", "on", "or",
+    "than", "that", "the", "this", "to", "was", "were", "with",
+})
+# Words that name the kind of a column's values rather than what they are: "the emails" are email_address,
+# "the role" role_code, "the cell phone" cell_number (canon() forms). "name" is not one: "the first student"
+# names no first_name.
+KIND_WORDS = frozenset({"code", "number", "address", "date", "description", "details", "value", "text",
+                        "flag", "yn"})
+
+
+_NAMING_CONTEXTS: "weakref.WeakKeyDictionary[Any, dict[str, frozenset[str]]]" = weakref.WeakKeyDictionary()
+
+
+def naming_context(schema: Any) -> dict[str, frozenset[str]]:
+    """For each table, the words that say what none of its columns holds alone: the words of the tables'
+    names ("the treatment type description" names no treatment_type_code) and the words two of its columns'
+    names share ("tourney" of tourney_name and tourney_date, Spider wta_1, 2026-10-02). Read once per
+    schema."""
+    context = _NAMING_CONTEXTS.get(schema)
+    if context is None:
+        entities = frozenset(word for table in schema.tables for word in name_tokens(table))
+        context = {}
+        for table in schema.tables:
+            names = {column.ref.name for column in schema.by_table.get(table, ())}
+            shared = Counter(word for name in names for word in set(name_tokens(name)))
+            context[table] = entities | frozenset(word for word, count in shared.items() if count > 1)
+        _NAMING_CONTEXTS[schema] = context
+    return context
+
+
+def naming_words(link_words: tuple[str, ...], context: frozenset[str]) -> tuple[str, ...]:
+    """The words of a column's name a question must say to name the column: all but the words of its
+    kind, when the others say what its values are ("email" names email_address): no function word ("of" of
+    date_of_treatment) and none of ``context``, its table's naming_context."""
+    content = tuple(word for word in link_words if word not in KIND_WORDS)
+    if content and not set(content) & (FUNCTION_WORDS | context):
+        return content
+    return link_words
+
+
+def column_matches(name: str, question_tokens: set[str], table: str | None = None,
+                   context: frozenset[str] | None = None) -> bool:
+    """Whether the question names the column ``name``: its words, or with its table's naming_context its
+    words but those of its kind (naming_words)."""
     compact = re.sub(r"[^a-z0-9]", "", str(name).lower())
     if compact in question_tokens:
         return True
@@ -585,6 +635,8 @@ def column_matches(name: str, question_tokens: set[str], table: str | None = Non
             word for word in name_tokens(name)
             if word != "of" and (word not in table_words or len(name_tokens(name)) == 1)
         ]
+        if context is not None:
+            words = list(naming_words(tuple(words), context))
         groups = tuple(aliases.get(word, {word}) for word in words)
     return bool(groups) and all(bool(group & question_tokens) for group in groups)
 
