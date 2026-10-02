@@ -1,6 +1,100 @@
 # Production-readiness workstream
 
-## Released — 2026-09-30
+## Released — 2026-10-02
+
+This supersedes the 2026-09-30 section below as the current release status.
+
+Production serves main. Engine `prereasoner-api-00135-wvh` =
+`engine@sha256:39de9807e5f9ddf10ef3c374aeac0665b35927910b00a2fba59de3bff24cd38f`, built from `b1f8bc8` (Cloud Build
+`b30dc848`), min 1 / max 1; the ECB refresh and retention jobs run the same image, and release-smoke passed on it.
+Chat `prereasoner-chat-00089-x29` = `chat@sha256:8814b8b640740b247f8a5393e039134014639cdefb041a96ef6304d22c01c9a9`,
+built from `2921963` (Cloud Build `56533813`). Firebase Hosting serves `74615d4`'s `web/public`, which is main's.
+Rollback: engine `00134-6q9` (`5e53309e…`, `76a6bd4`), then `00133-fq2` (`91645522…`, `74615d4`); chat `00088-28m`
+(`450e0715…`, `a37441a`), then `00087-r5l` (`5bc74667…`, `b1f8bc8`), then `00086-hvs` (`66977659…`, `89510c8`);
+Hosting from `00d2d36`.
+
+Fixed since the 2026-09-30 release, each with a `DECISIONS.md` entry and a regression test that fails on the code
+before it:
+
+- A join the foreign keys contradict is never eligible, and an anti-join's evidence leaf takes the first reading
+  that keeps the left grain (`4d5fe54`, `ca60bd6`). complex-promotions' second question had listed six
+  customer-product pairs instead of two.
+- A question mark is never a world value (`315eafb`): "how many orders came from Lyon?" answered 0.
+- The coverage gate stops declining questions over words that describe the rows (`1fa34ad`, `c7c8f4c`, `3d75f28`,
+  `599b4bc`, `e41c749`): verbs and adverbs, light-verb participles, the rows an aggregate is taken over, graded
+  adjectives, measure words, and the noun a ranking by the count takes the most of ("which country has the most
+  leads?"). A demonym after "most" is a place, not a grade.
+- The gate also stops answering a different question (`bb54adf`, `76a6bd4`): a world type the question asks for
+  ("which country has the most deposits?" was the top bank), a place named exactly that the query never filtered
+  ("which bank has the most deposits in Europe?" ranked every bank), and a share ("what percentage of orders are from
+  Paris?" listed customers) are declined unless realized. A count per world value counts each value's rows ("how
+  many attendees per country" answered 6, the number of countries).
+- A converted total is computed per the column the question groups or ranks by (`74615d4`), and named for its
+  currency (`b1f8bc8`): "which city has the highest total amount in US dollars?" was the total of every city, then
+  showed `city | sum`; it now shows `city | total_usd`.
+- A stated currency is never shown by its private name (`0ad1b87`): the status line read "Looking up
+  __currency_for_0af96a8ed622a394…" and the calculated sheet showed that hashed column.
+- A response lost between the chat and the engine is asked for again, and the question runs once (`b1f8bc8`). The
+  category-gaps follow-up was answered in 65 s, yet the reply asked the user to send the question again; the engine
+  now answers a repeated jobId from the first request's response.
+- A decomposition node id is a readable name (`b1f8bc8`): leaves named "c", "p", "ev" and a merge named "m1" had
+  become the sheets "c combined" and "m1" and the column "p_sum".
+- A new analysis name leaves out a number the question states (`a37441a`): "deliveries over 3kg" is "deliveries".
+- A repeated question answered from memory with a value of the user's data is recalculated (`2921963`): "how about
+  customers from Lyon?" came back as four product names with no engine call and no rows.
+- Chat (`3fb1303`, `e306022`, `1943ae6`, `4737c14`, `89510c8`): one-number values as the reply writes them, a currency
+  named once, no duplicate "_2" analyses, list replies that say what they hold, reopened conversations that follow
+  the rules, and a streamed reply that cannot end on a stale prefix.
+- Web (`dc0e8b3`, `00d2d36`): a projection step is named "selected columns", also in reopened conversations.
+
+Gates:
+
+- Hermetic, on `b1f8bc8`: `tests.run_all` with the live engine and external orchestrator suites off, every invoked
+  suite passed, among them `test_sql_ast` 134/134, `test_deterministic_emitters` 56/56, `test_calculations` 148/148,
+  `test_decomposition` 16/16, `test_compose` 26/26, `test_routing` 14/14, `test_request_limits` 20/20, `test_mcp`
+  49/49, `test_orchestrator_unit` 37/37, and `test_complex_datasets` 8/8 on the local 7B (0 skipped). The chat-only
+  commits after it (`a37441a`, `2921963`) passed `test_orchestrator_unit` 37/37 and the chat image's build gates.
+  Web unit suites and Playwright 34/34 on `0ad1b87`, the last web change.
+- Engine image `b1f8bc8` (and `599b4bc`, `e41c749`, `74615d4`, `76a6bd4` before it): the offline gate, boot smoke, CPU
+  HTTP smoke and the live product suites on a disposable seed (`test_world`, `test_nongeo`, `test_world_joins`,
+  `test_route_wired`, `test_geo`, `test_schema_probes`, `test_datasets`, `test_question_families`) all passed.
+- Spider DEV `whole_db`, fresh (tag `join-grounding-ca60bd6`): 866/1,034 strict (83.8%), 869 lenient (84.0%); against
+  the frozen 2026-09-29 run, 1 win (car_1 #151), 0 losses (`spider/results/RESULTS.md`). Nothing after `ca60bd6`
+  runs in that evaluation: the coverage gate, the world owner, the calculation evidence, the Python materializer, the
+  request replay and decomposition are serving paths, and the evaluator scores the typed-AST SQL.
+- Chrome gate, in the owner's signed-in Chrome on chat.prereasoner.com, every shipped dataset through `?load=` or an
+  upload, prompt.txt then every eval.txt follow-up in the same conversation:
+  - on engine 00134-6q9: fresh 85/85 turns over 24 datasets; the reading found one reply that asked the user to send
+    an answered question again and three decompositions whose sheets were named by a letter, all fixed in `b1f8bc8`;
+  - on this engine (00135-wvh) with chat 00087-r5l: fresh 85/85 turns over 24 datasets (shorthand 14/14, FX 17/17),
+    no failure replies and no sheet named by a letter. After the chat-only fixes, neartail-shipping 3/3 on chat
+    00088-28m (its new analysis is "deliveries"), and customer-orders 10/10 and complex-category-gaps 3/3 on
+    00089-x29;
+  - conversations created before this release, with chat 00088-28m: 60 of 61 follow-ups over 24 conversations. The
+    miss was the repeated "how about customers from Lyon?" answered from memory, fixed in `2921963` and answered
+    from the engine on chat 00089-x29.
+
+Open, for the owner (task chips filed for the planner and model items):
+
+1. Analysis names that hold a filter in conversations created before 2026-10-01 ("contracts value asia usd" over a
+   Europe answer): 24 of the 61 existing follow-ups. Renaming needs an engine API change or a migration of stored
+   names, the owner's call.
+2. Bank, restaurant and hospital sheets answer a country filter on the entity but not its country as a dimension or
+   a continent ("which country has the most deposits?", "total deposits for banks in Europe"); these now clarify.
+3. Not planned on own data: shares and percentages, month and date filters, an average with an output currency, and
+   "which customer spent the most in US dollars?" (read as a USD row filter). Each clarifies.
+4. A top-1 question over a tie serves one row ("which customer placed the most orders?" is a five-way tie). The world
+   owner labels Q213 "Czech Republic" where compose shows "Czechia".
+5. The 7B decode depends on what the process decoded before, and `engine/sql_prompt.py` writes the M-Schema headers as
+   private-use glyphs; both need their own Spider runs.
+6. A chat turn longer than 60 s gets a 502 from the Hosting proxy; the page shows the answer from the realtime record.
+7. With one engine instance, Cloud Run replaced the warm instance at 01:36 UTC on 2026-10-02 (no deploy, no error
+   logged), and questions queued for 3.5 minutes while the model loaded. A second instance would overlap such a
+   replacement but brings back the cold scale-out the 2026-10-01 decision removed.
+8. A long analysis name with a long leaf id exceeds PostgreSQL's 63 bytes, and the engine's view label for that step
+   ends in the name's hash ("top customers b966d67a"). The workbook names steps by what they do and does not show it.
+
+## Released — 2026-09-30 (superseded)
 
 This supersedes the deployment section below (`00125-jsx`) as the current release status.
 

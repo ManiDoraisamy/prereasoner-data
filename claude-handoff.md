@@ -7,6 +7,43 @@ results, and open questions. Newest section at the top. Committed evidence lives
 
 ---
 
+## 2026-10-02 — RELEASED: engine 00135-wvh (b1f8bc8) + chat 00089-x29 (2921963); Chrome gate fresh 85/85, existing 60/61 then the miss fixed
+
+**Production now:** engine `prereasoner-api-00135-wvh` = `engine@sha256:39de9807…`, built from `b1f8bc8` (Cloud Build
+`b30dc848`), min 1 / max 1; chat `prereasoner-chat-00089-x29` = `chat@sha256:8814b8b6…` (`2921963`); Hosting `74615d4`.
+Rollback: engine `00134-6q9` (`5e53309e…`, `76a6bd4`); chat `00088-28m` (`a37441a`), then `00087-r5l` (`b1f8bc8`);
+Hosting from `00d2d36`. Details and gates: `PRODUCTION_READINESS.md` (Released — 2026-10-02).
+
+**What shipped since 00131-cvw (2026-10-01),** each with a `DECISIONS.md` entry and a regression test: the coverage
+gate's verb/adverb/participle/measure-word families and "most leads" (`e41c749`); converted totals grouped or ranked
+by the column the question names (`74615d4`); world types, exact places and shares the query never realized are
+declined, and a count per world value counts its rows (`bb54adf`, `76a6bd4`); a stated currency never shown by its
+private name (`0ad1b87`); then, from the final Chrome gate, a lost chat-to-engine response asked for again with the
+question run once, readable decomposition node ids, converted totals named `total_<currency>` (`b1f8bc8`), numbers kept
+out of new analysis names (`a37441a`), and a repeated question answered from memory with the user's data recalculated
+(`2921963`).
+
+**The "send the question again" reply** (complex-category-gaps follow-up on 00134): the engine answered in 65 s (200,
+64 KB, revision committed, rows streamed), yet the reply asked the user to resend. Replays on claude-sonnet-5 with the
+engine's answer never produced that (0 of 46); with the connection dropped before the response, 5 of 5 did. The engine
+client now repeats a request once on a transport failure with its jobId, and the engine answers a repeated jobId from
+the first request's response (`ResponseReplay`), waiting while it still runs, so nothing is minted or appended twice.
+The timing lines now name a lost response (`engine_transport_<error>_ms`, `replayed_ms`).
+
+**Chrome gate:** on 00134, fresh 85/85 with four UX flags (the resend reply; sheets "c combined", "ev result", "m1").
+On 00135 with chat 00087: fresh 85/85 over 24 datasets (shorthand 14/14, FX 17/17), no flags. Existing conversations
+on chat 00088: 60/61; the miss was "how about customers from Lyon?" answered from the transcript in 2 s with no rows,
+fixed in `2921963` and answered from the engine on 00089. On the final chat, customer-orders 10/10 and
+complex-category-gaps 3/3 again.
+
+**Open:** legacy filter-holding analysis names in pre-10-01 conversations (24 of 61 existing follow-ups; needs a rename
+API); country-as-dimension on the bank/restaurant/hospital sheets; own-data shares and dates; top-1 ties; the 7B decode's
+history dependence and the private-use M-Schema headers (Spider runs needed); turns over 60 s at the Hosting proxy; a
+3.5-minute queue when Cloud Run replaced the only engine instance (01:36 UTC, no deploy); hashed engine view labels for
+long names (not shown in the workbook).
+
+---
+
 ## 2026-09-30 (late) — urllib3 rebuild released; chat `cb00714` answers a clarification an earlier turn settles; its Chrome gate is still open
 
 **Production now:** engine `prereasoner-api-00127-695` = `engine@sha256:45d001c0…`, built from `85d5c07` (Cloud Build

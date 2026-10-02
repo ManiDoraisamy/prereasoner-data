@@ -1,5 +1,29 @@
 # Spider Results
 
+## Join grounding, fresh whole_db DEV run (2026-10-01)
+
+`engine/sql_grounding.py` now also makes a pool member ineligible when it equates two columns the foreign keys keep
+apart (`DECISIONS.md`, 2026-10-01). The fresh serving-faithful run (`spider/probe/full_eval.py --config whole_db`,
+tag `join-grounding-ca60bd6`, source `ca60bd6` clean, the same XiYanSQL 7B Q4_K_M GGUF `50840d65…` at 8 threads, row
+cap 5,000, `served` selection, SQL backend) scored **866/1,034 strict (83.8%)** and **869/1,034 lenient (84.0%)**,
+against 865 and 868 for the frozen 2026-09-29 run. All 1,034 questions routed to the typed-AST planner; 1,031
+answered and 3 errored (car_1 #104, #135, #136: no connected AST candidate, as in the frozen run).
+
+| | strict |
+|---|---|
+| win | 1 (car_1 #151) |
+| loss | 0 |
+| both correct | 865 |
+| both wrong | 168 |
+
+Served SQL changed on 2 questions. The win is car_1 #151 ("Which distinctive models are produced by maker with the full
+name General Motors or weighing more than 3500?"): the proposer had joined `model_list.ModelId = car_names.Model`, a
+key with a name column that never matches; the search's join through `car_names.Model = model_list.Model` is served.
+The other is student_transcripts_tracking #575, whose decode exceeded its CPU budget in the frozen run and now
+finishes; it is wrong in both. Before the run, a replay of the frozen run's 1,022 importable served winners through
+the rule predicted exactly the #151 change. Prediction seconds: median 20.12, p90 39.23, p95 45.45, max 59.03.
+Output: `%LOCALAPPDATA%/Temp/prereasoner-join-grounding-20261001`.
+
 ## Serving answered 180 DEV questions from compose (2026-09-30; measured, fixed in `06819d6`)
 
 The evaluator (`spider/probe/full_eval.py`) lets compose own a question only when `compose_owns` accepts it, so every
