@@ -420,6 +420,14 @@ def share_aggregate(expression: ScalarExpr, query: SelectQuery) -> Aggregate | N
     return None
 
 
+def share_output(query: Query) -> bool:
+    """Whether ``query``'s one output is a share of a whole (``share_of``): a fraction that an answer
+    states as a percentage. "What percentage of orders are from Lyon?" was answered "0.3" (Chrome
+    gate, 2026-10-02)."""
+    return (isinstance(query, SelectQuery) and len(query.select) == 1
+            and share_aggregate(query.select[0].expression, query) is not None)
+
+
 def keep_ties(query: Query) -> Query:
     """The served form of a top-1 ranking: every row tied with the first one.
 

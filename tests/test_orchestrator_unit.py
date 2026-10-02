@@ -833,6 +833,17 @@ def test_a_one_number_answer_reaches_the_model_as_the_reply_writes_it():
     assert orchestrator._trim_for_model({"status": "answered", "answer": {"rows": [[6]]}})["value"] == "6"
     small = {"status": "answered", "answer": {"columns": ["share"], "rows": [["0.004567"]]}}
     assert orchestrator._trim_for_model(small)["value"] == "0.00457"
+    # A share of a whole is stated as a percentage: "What percentage of orders are from Lyon?" was
+    # answered "comes to 0.3" (Chrome gate, 2026-10-02). The grounding check reads "30%" as 0.3.
+    lyon = {"status": "answered", "unit": "percent",
+            "answer": {"columns": ["share"], "rows": [["0.30000000000000000000"]]}}
+    paris = {**lyon, "answer": {"columns": ["share"], "rows": [["0.62318840579710144928"]]}}
+    assert orchestrator._trim_for_model(lyon)["value"] == "30%"
+    assert orchestrator._trim_for_model(paris)["value"] == "62.32%"
+    assert orchestrator._trim_for_model({**small, "unit": "percent"})["value"] == "0.46%"
+    assert orchestrator._terminal_fallback(lyon) == "30%"
+    lyon_reply = "The percentage of orders from Lyon comes to 30%."
+    assert orchestrator._grounded_presentation(lyon, lyon_reply) == lyon_reply
     for answer in ({"rows": [["Ava"]]}, {"rows": [[1], [2]]}, {"rows": [[1, 2]]}, {"rows": []}):
         assert "value" not in orchestrator._trim_for_model({"status": "answered", "answer": answer})
 

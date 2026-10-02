@@ -439,9 +439,12 @@ function updateTabArrows(){
 }
 
 /* ---------------- rendering: the chat rail ---------------- */
+// A share of a whole (the engine's unit "percent") reads as a percentage, to two decimals: 0.3 is 30%.
+function fmtPercent(v){ const n=Number(v); return Number.isFinite(n)?(Math.round(n*10000)/100).toLocaleString('en-US')+'%':fmt(v,true); }
 function resultSummary(){
   const r=(J&&J.result)||null; if(!r||!r.rows||!r.rows.length) return null;
-  if(r.rows.length===1&&r.columns&&r.columns.length===1) return {k:r.columns[0],v:fmt(r.rows[0][0],true),big:true};
+  if(r.rows.length===1&&r.columns&&r.columns.length===1)
+    return {k:r.columns[0],v:J.unit==='percent'?fmtPercent(r.rows[0][0]):fmt(r.rows[0][0],true),big:true};
   if(r.rows.length===1) return {k:'result',v:r.columns.map((c,i)=>c+': '+fmt(r.rows[0][i],true)).join('  ·  '),big:false};
   return {k:'result',v:r.rows.length+' rows — see the Result sheet',big:false};
 }
@@ -1143,7 +1146,7 @@ function renderTurnFromHTTP(j){                               // fallback: no RT
       appendView({op:agg?'group_agg':'select', label:'result', columns:eng.answer.columns||[], rows:eng.answer.rows, sql:eng.sql,
         column_provenance:eng.answer.column_provenance||[]},execution,t.jobId); rendered=true; }
     if(eng.answer&&Array.isArray(eng.answer.rows)){
-      J=J||{}; J.result=eng.answer; if(eng.sql)J.sql=eng.sql;
+      J=J||{}; J.result=eng.answer; J.unit=eng.unit; if(eng.sql)J.sql=eng.sql;
       const last=BOOK.filter(s=>s.cls==='deriv'&&!s.stale&&s.executionKey===t.jobId).pop();
       if(last){ last.cols=eng.answer.columns||last.cols; last.rows=eng.answer.rows;
         last.columnProvenance=eng.answer.column_provenance||last.columnProvenance||[]; last.result=true; }

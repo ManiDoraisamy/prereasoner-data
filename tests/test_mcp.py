@@ -62,6 +62,9 @@ def test_shape():
     ok(converted.get("calculations") == calculations,
        "answer carries the calculation evidence (the verified output currency)")
     ok("currency" not in converted, "the compatibility projection is not a second copy in the tool output")
+    share = engine_client.shape_reason_response(
+        {"question": "q", "result": {"columns": ["share"], "rows": [["0.3"]]}, "unit": "percent"}, "job3")
+    ok(share.get("unit") == "percent", "answer carries the engine's unit (a share is stated as a percentage)")
 
     clar = engine_client.shape_reason_response(
         {"question": "q", "clarify": True, "proposed": "by country", "dropped": ["region"],

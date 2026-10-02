@@ -1210,6 +1210,12 @@ def test_a_share_of_the_whole_runs_in_both_programs():
     assert result.mode.value == "verify"
     assert sorted((row["city"], Decimal(str(row["share"]))) for row in result.rows) == [
         ("Lyon", Decimal("0.6")), ("Paris", Decimal("0.4"))], result.rows
+    # A one-output share is stated as a percentage ("0.3" answered "What percentage of orders are from
+    # Lyon?", Chrome gate 2026-10-02); the filtered total it divides is not a share, nor is a grouped one.
+    from engine.sql_ast import share_output
+
+    assert share_output(paris)
+    assert not share_output(filtered) and not share_output(by_city)
 
 
 def test_lowering_does_not_treat_a_repeated_foreign_id_as_row_identity():

@@ -235,7 +235,7 @@ def _trim_for_model(shaped: dict[str, Any]) -> dict[str, Any]:
         rows = shaped["answer"].get("rows") if isinstance(shaped["answer"], dict) else None
         if (isinstance(rows, list) and len(rows) == 1 and isinstance(rows[0], list) and len(rows[0]) == 1
                 and re.fullmatch(r"[-+]?\d+(?:\.\d+)?", str(rows[0][0]).strip())):
-            out["value"] = _readable_scalar(rows[0][0], bool(_output_currency(shaped)))
+            out["value"] = _readable_value(shaped, rows[0][0])
     # The rows the answer covers, as its filter steps name them. The final SQL alone hides them: the
     # reply to a total that had also kept only GBP rows said "For all of Europe" (2026-09-29).
     filters = [str(view["label"]) for view in shaped.get("views") or ()
@@ -540,9 +540,28 @@ def _terminal_fallback(shaped: dict[str, Any]) -> str:
     rows = answer.get("rows") or []
     if len(rows) == 1 and len(rows[0]) == 1:
         currency = _output_currency(shaped)
-        value = _readable_scalar(rows[0][0], bool(currency))
+        value = _readable_value(shaped, rows[0][0])
         return f"{value} {currency}" if currency else value
     return "I completed the calculation; the result and its reasoning are shown in the workbook."
+
+
+def _readable_value(shaped: dict[str, Any], value: Any) -> str:
+    """The engine's one-number answer as a reply writes it: a share of a whole as a percentage (the
+    engine's `unit`), any other number by `_readable_scalar`, to the cent in a verified currency."""
+    if shaped.get("unit") == "percent":
+        return _readable_percent(value)
+    return _readable_scalar(value, bool(_output_currency(shaped)))
+
+
+def _readable_percent(value: Any) -> str:
+    """A share of a whole as a percentage, to two decimals at most: 0.3 is "30%", 0.62318... is
+    "62.32%". The reply to "What percentage of orders are from Lyon?" said "0.3" (Chrome gate,
+    2026-10-02); the grounding check reads "30%" as 0.3 (`_stating_number`)."""
+    text = str(value).strip()
+    if not re.fullmatch(r"[-+]?\d+(?:\.\d+)?", text):
+        return text
+    percent = (Decimal(text) * 100).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP).normalize()
+    return f"{percent:,f}%"
 
 
 def _readable_scalar(value: Any, money: bool) -> str:

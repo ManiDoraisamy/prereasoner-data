@@ -823,6 +823,9 @@ class TableQuery:
             "model": model,
         }
         if candidate is not None:
+            from engine.sql_ast import share_output
+            if share_output(candidate.query):
+                response["unit"] = "percent"         # a share of a whole: 0.3 is stated as 30%
             from engine.calculations import assess_calculations
             from engine.calculations.registry import attach_calculation_evidence
             from engine.sql_schema import SchemaGraph
