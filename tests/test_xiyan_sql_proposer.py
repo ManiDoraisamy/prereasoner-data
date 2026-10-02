@@ -46,6 +46,13 @@ def test_xiyan_mschema_keeps_inferred_type_examples_and_foreign_keys():
     assert "# Table: singer" in rendered
     assert "(name:TEXT, Examples: [\"Mina\"])" in rendered
     assert "concert.singer_id=singer.id" in rendered
+    # M-Schema's section markers sit between the full-width brackets U+3010 and U+3011. From the 7B
+    # cutover (ad4f407) until 2026-10-02 the prompt carried private-use glyphs around the word "cite"
+    # in their place, so the model never saw the markers it was trained on.
+    assert rendered.startswith("【DB_ID】 SQLite database\n【Schema】\n# Table: singer\n[")
+    assert "]\n【Foreign keys】\nconcert.singer_id=singer.id" in rendered
+    prompt = xiyansql_prompt(FakeTokenizer(), graph, "Which singer?")
+    assert not [char for char in prompt if 0xE000 <= ord(char) <= 0xF8FF], "private-use characters"
 
 
 def test_xiyan_prompt_uses_the_publisher_user_template_and_chat_generation_prefix():

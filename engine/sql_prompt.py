@@ -25,12 +25,14 @@ def schema_prompt(tables: list[dict], question: str) -> str:
 
 
 def xiyan_mschema(graph) -> str:
-    """Render the XiYan prompt's typed schema and bounded examples.
+    """Render the XiYan prompt's typed schema and bounded examples in XiYan-SQL's M-Schema layout.
 
-    Column types are inferred by ``SchemaGraph`` from names and observed values. The labels
-    intentionally describe that inference rather than claiming SQLite DDL types.
+    The section markers are M-Schema's own, between the full-width brackets U+3010 and U+3011:
+    【DB_ID】, 【Schema】 and 【Foreign keys】 (XGenerationLab/M-Schema, ``to_mschema``). Column
+    types are inferred by ``SchemaGraph`` from names and observed values. The labels intentionally
+    describe that inference rather than claiming SQLite DDL types.
     """
-    lines = ["citeDB_ID SQLite database", "citeSchema"]
+    lines = ["【DB_ID】 SQLite database", "【Schema】"]
     for table_name in graph.tables:
         lines.extend((f"# Table: {table_name}", "["))
         fields = []
@@ -51,7 +53,7 @@ def xiyan_mschema(graph) -> str:
         for left, right in edge.column_pairs
     ]
     if relationships:
-        lines.append("citeForeign keys")
+        lines.append("【Foreign keys】")
         lines.extend(relationships)
     return "\n".join(lines)
 
