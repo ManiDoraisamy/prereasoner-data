@@ -2282,6 +2282,18 @@ def test_a_listing_drops_a_key_that_repeats_a_read_table():
     tables = [channel, series, cartoon]
     candidate = best('What is the content of TV Channel with serial name "Sky Radio"?', tables, fks)
     assert "JOIN" not in candidate.sql and execute(tables, candidate.sql) == [("music",)], candidate.sql
+    # Contrast: the question's own rows keep their key. "The currency symbol for every order" lists each
+    # order's currency beside its symbol (tests.test_enrichment serving benchmark, 2026-10-02: ccab4dc
+    # dropped orders.currency as a repeat of the joined currency's code).
+    orders = {"name": "orders", "columns": ["order_id", "currency", "amount"], "rows": [
+        [1, "USD", 20], [2, "EUR", 30], [3, "GBP", 40]]}
+    currencies = {"name": "currency_iso4217", "columns": ["alphabetic_code", "symbol"], "rows": [
+        ["USD", "$"], ["EUR", "EUR"], ["GBP", "GBP"]]}
+    keyed = [{"from_table": "orders", "from_col": "currency", "to_table": "currency_iso4217",
+              "to_col": "alphabetic_code"}]
+    symbols = SQLSearcher.from_tables([orders, currencies], keyed).search("Show the currency symbol for every order")
+    gold = [("USD", "$"), ("EUR", "EUR"), ("GBP", "GBP")]
+    assert any(execute([orders, currencies], symbol.sql) == gold for symbol in symbols), [c.sql for c in symbols[:3]]
 
 
 def test_a_comparative_than_a_number_compares_the_measure_it_describes():

@@ -306,7 +306,9 @@ class SQLSearcher:
         # The expansions read a conjunction of one column's values as either value or both
         # (engine/sql_constraints.py, engine/sql_recursive.py); the conjunction itself matches no row.
         pool = [candidate for candidate in pool if not contradictory(candidate.query)]
-        pool = _merge_candidates([], [self._simplified(candidate, named_tables) for candidate in pool])
+        # The tables the question names: their words together, and scored as a mention.
+        named_here = {table for table in named_tables if table_scores.get(table, 0.0) >= 2.5}
+        pool = _merge_candidates([], [self._simplified(candidate, named_here) for candidate in pool])
         if not rank_candidates:
             return pool[:self.max_candidates]
         from engine.sql_rank import CandidateRanker
@@ -385,6 +387,10 @@ class SQLSearcher:
                 (other.table for other in query.group_by if other != column),
                 _clause_tables(query.where), _clause_tables(query.having),
                 *(_clause_tables(term.expression) for term in query.order_by))
+            # The question's own rows keep their columns: "the currency symbol for every order" lists each
+            # order's currency beside its symbol (tests.test_enrichment serving benchmark, 2026-10-02).
+            if column.table == query.from_table or column.table in named_tables:
+                continue
             if column.table not in others and any(
                     other.table in others and other.table != column.table and find(other) == find(column)
                     for other in equated):
