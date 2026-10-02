@@ -80,7 +80,7 @@ SelectQuery(
 
 The node types are a real grammar: `SelectQuery`, `SelectItem`, `Aggregate`, `ColumnRef`, `Comparison`,
 `BooleanExpr`, `OrderTerm`, `Join`, `ScalarSubquery`, `InPredicate`, `DatePart` (the month of a date column,
-for "signed in August"), … Each candidate is wrapped as a
+for "signed in August", or its year-month, for "total amount by month"), … Each candidate is wrapped as a
 [`ScoredQuery(query, score, evidence, features)`](../engine/sql_candidate.py) — the `evidence` tuple is the
 human-readable trace (`"extrema:projection"`, `"aggregate:SUM(...)"`, ...). The search orders its pool with
 hand-written, named ranking rules (`CandidateRanker` in [`engine/sql_rank.py`](../engine/sql_rank.py)) and

@@ -1159,6 +1159,37 @@ def test_a_month_comparison_runs_in_both_programs():
     assert labels["filtered"] == "where month(signed) >= 7 and month(signed) <= 9", labels
 
 
+def test_a_total_by_month_groups_by_the_year_month_in_both_programs():
+    # "total amount by month" was one ungrouped total (2026-10-02). The year-month of each date is the group key,
+    # read from its ISO text by the SQL program and from the date by the Python program, and August 2025 and
+    # August 2026 stay two rows. The months read in calendar order; "which month had the highest total" keeps
+    # the top one.
+    from engine.sql_ast import DatePart, OrderTerm
+
+    month = DatePart("year_month", ColumnRef("orders", "date", SQLType.DATE))
+    amount = Aggregate("SUM", ColumnRef("orders", "amount", SQLType.INTEGER))
+    schema = [{"table": "orders", "name": "city", "affinity": "TEXT", "values": ["Paris", "Lyon"]},
+              {"table": "orders", "name": "date", "affinity": "TEXT", "is_date": True,
+               "values": ["2026-07-03", "2026-08-01"]},
+              {"table": "orders", "name": "amount", "affinity": "INTEGER", "values": [40, 60]}]
+    rows = [
+        "CREATE TABLE conversation.orders (city TEXT, date DATE, amount INTEGER)",
+        "INSERT INTO conversation.orders VALUES ('Paris', '2026-07-03', 40), ('Lyon', '2026-07-15', 25), "
+        "('Paris', '2026-08-01', 60), ('Nice', '2026-08-20', 30), ('Lyon', '2026-08-28', 45), "
+        "('Nice', '2025-08-09', 67)",
+    ]
+    by_month = SelectQuery((SelectItem(month, "month"), SelectItem(amount)), "orders",
+                           group_by=(month,), order_by=(OrderTerm(month),))
+    result = _execute_fixture(lower_select_query("by_month", by_month, schema, ()), rows, estimated_rows=6)
+    assert result.mode.value == "verify"                       # both programs ran and agreed
+    assert [tuple(row.values()) for row in result.rows] == [("2025-08", 67), ("2026-07", 65), ("2026-08", 135)]
+    top = SelectQuery((SelectItem(month, "month"), SelectItem(amount)), "orders", group_by=(month,),
+                      order_by=(OrderTerm(amount, "DESC"),), limit=1)
+    result = _execute_fixture(lower_select_query("top_month", top, schema, ()), rows, estimated_rows=6)
+    assert result.mode.value == "verify"
+    assert [tuple(row.values()) for row in result.rows] == [("2026-08", 135)], result.rows
+
+
 def test_a_contained_text_runs_in_both_programs():
     # "the contestants whose names contain the substring 'Al'" (2026-10-02): LOWER(name) LIKE '%al%' reads the
     # same in SQLite, PostgreSQL and the Python program, where LIKE alone differs in case between the engines.

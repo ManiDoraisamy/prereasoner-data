@@ -251,6 +251,8 @@ The AST, validator, renderer, and search rules support:
 - substring filters: `LOWER(column) LIKE '%text%'` (`Lower`);
 - calendar phrases on a date column (`engine/sql_dates.py`): a month without a year compares
   `DatePart('month')`, and a dated phrase ("after August 10, 2026") compares the date itself;
+- grouping by a column, or by the year-month of a date column (`DatePart('year_month')`, '2026-08'):
+  "total amount by month", "monthly", "per month", "which month" (`sql_dates.period_grouping`);
 - grouping, `HAVING`, ordering, and limits;
 - direct and multi-hop foreign-key joins;
 - aliases and self-joins;
@@ -294,7 +296,8 @@ Before rendering, recursive validation checks:
 - operand and literal types;
 - grouped projection and ordering rules;
 - compound-query compatibility;
-- `DatePart` reads a `DATE` column, and `month` is its only part;
+- `DatePart` reads a `DATE` column, and its part is `month` or `year_month`;
+- a `GROUP BY` term is a column or a `DatePart`;
 - `with_ties` needs `ORDER BY`, a `LIMIT`, and named projections (no `SELECT *`);
 - invalid aggregate forms such as `COUNT(DISTINCT *)`.
 

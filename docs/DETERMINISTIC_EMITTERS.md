@@ -329,10 +329,11 @@ through the existing timing collector; backend durations include stage materiali
 Own-data AST lowering supports unaliased inner joins, Boolean comparison filters (including `LIKE` over
 `LOWER(column)`), projections and arithmetic,
 `COUNT/SUM/AVG/MIN/MAX`, grouped aggregates whose projected group columns precede aggregates, the month of a
-date column (`DatePart('month')`, lowered as `FunctionValue` `MONTH`), a share of the whole for a
+date column (`DatePart('month')`, lowered as `FunctionValue` `MONTH`), a grouping by its year-month
+(`DatePart('year_month')`, lowered as `FunctionValue` `YEAR_MONTH`, the text '2026-08'), a share of the whole for a
 non-distinct column or `COUNT(*)` aggregate (`sql_ast.share_of`, a reduction crossed with the whole's
 reduction and divided), and deterministic ordering/limits over selected outputs, including a top 1 that keeps
-its ties. `FunctionValue` covers `LOWER`, `TEXT`, and `MONTH`. Unordered non-scalar limits, aliases,
+its ties. `FunctionValue` covers `LOWER`, `TEXT`, `MONTH`, and `YEAR_MONTH`. Unordered non-scalar limits, aliases,
 self-joins, DISTINCT, HAVING, subqueries, and set queries remain outside that AST adapter. This is distinct
 from the composition adapter's supported ordering and correlated operators.
 

@@ -1281,7 +1281,7 @@ def _orm_value(plan, value):
         return f"{table.class_name}.{table.scalar_attribute(value.column)}"
     if isinstance(value, FunctionValue):
         operand = _orm_value(plan, value.operand)
-        if value.function == "MONTH":
+        if value.function in {"MONTH", "YEAR_MONTH"}:
             raise TypeError("a month is not a join value")
         return (
             f"cast({operand}, Text)"

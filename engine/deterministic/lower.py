@@ -237,7 +237,7 @@ def lower_select_query(
     ]
     if aggregates:
         if any(
-            not isinstance(item.expression, (Aggregate, ColumnRef)) and index not in shares
+            not isinstance(item.expression, (Aggregate, ColumnRef, DatePart)) and index not in shares
             for index, item in enumerate(query.select)
         ):
             raise UnsupportedDeterministicPlan(
@@ -277,8 +277,9 @@ def lower_select_query(
                     f"{slug}_calculated", views[-1].name, tuple(calculations)
                 )
             )
+        # A group is a column or a period of a date column ("total amount by month" groups by its year-month).
         group_items = [
-            item for item in query.select if isinstance(item.expression, ColumnRef)
+            item for item in query.select if isinstance(item.expression, (ColumnRef, DatePart))
         ]
         if (
             {item.expression for item in group_items} != set(query.group_by)
@@ -290,7 +291,7 @@ def lower_select_query(
         grouped = [
             SelectedValue(name, _value(item.expression))
             for item, name in zip(query.select, output_names, strict=True)
-            if isinstance(item.expression, ColumnRef)
+            if isinstance(item.expression, (ColumnRef, DatePart))
         ]
         views.append(
             ReducedView(
@@ -503,8 +504,8 @@ def _value(value) -> Value:
         return LiteralValue(literal)
     if isinstance(value, BinaryExpr):
         return BinaryValue(_value(value.left), value.operator, _value(value.right))
-    if isinstance(value, DatePart) and value.part == "month":
-        return FunctionValue("MONTH", _value(value.operand))
+    if isinstance(value, DatePart):
+        return FunctionValue("YEAR_MONTH" if value.part == "year_month" else "MONTH", _value(value.operand))
     if isinstance(value, Lower):
         return FunctionValue("LOWER", _value(value.operand))
     raise UnsupportedDeterministicPlan(

@@ -2,3 +2,6 @@
 # Each question is sent in order in the same conversation after prompt.txt.
 chat: Find the top 2 products by revenue and the top 3 customers by total spend, then list each customer-product pair where that customer has never bought that product. Order customers by spend descending and products by revenue descending. => {"columns":["customer_name","product_name"],"rows":[["Cara","Beta"],["Bob","Gamma"]]}
 chat: use the top 3 products instead => {"columns":["customer_name","product_name"],"rows":[["Cara","Beta"],["Cara","Alpha"],["Bob","Gamma"]]}
+# One row per year-month of the order dates (orders.csv: 1001 and 1003 in January 2026, 1002 and 1004 in
+# February, 1005 in March), in calendar order.
+how many orders per month? => {"columns":["month","count"],"rows":[["2026-01",2],["2026-02",2],["2026-03",1]]}

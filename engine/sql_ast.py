@@ -80,15 +80,26 @@ class BinaryExpr:
 
 @dataclass(frozen=True)
 class DatePart:
-    """One calendar field of a date column, as an integer: the ``month`` of '2026-08-04' is 8.
+    """One calendar field or period of a date column: the ``month`` of '2026-08-04' is the integer 8, and its
+    ``year_month`` the text '2026-08'.
 
-    "How many transfers were signed in August?" compares the month of each date (2026-10-02). Both
-    SQLite and PostgreSQL read it from the date's ISO text (month_of_date_sql)."""
+    "How many transfers were signed in August?" compares the month of each date, and "total amount by month"
+    groups by the year-month (2026-10-02). Both SQLite and PostgreSQL read them from the date's ISO text
+    (month_of_date_sql, year_month_of_date_sql). Like Lower, it names its column's table and name for the
+    rewrites that read a query's columns."""
     part: str
     operand: ColumnRef
 
+    @property
+    def table(self) -> str:
+        return self.operand.table
 
-DATE_PARTS = frozenset({"month"})
+    @property
+    def name(self) -> str:
+        return self.operand.name
+
+
+DATE_PARTS = frozenset({"month", "year_month"})
 
 
 @dataclass(frozen=True)
@@ -174,7 +185,7 @@ class Join:
 
 @dataclass(frozen=True)
 class OrderTerm:
-    expression: ColumnRef | Aggregate | BinaryExpr
+    expression: ColumnRef | Aggregate | BinaryExpr | DatePart
     direction: str = "ASC"
 
     def __post_init__(self) -> None:
@@ -193,7 +204,8 @@ class SelectQuery:
     from_table: str | SubquerySource
     joins: tuple[Join, ...] = ()
     where: Predicate | None = None
-    group_by: tuple[ColumnRef, ...] = ()
+    # A column, or a period of a date column ("total amount by month" groups by its year-month).
+    group_by: tuple[ColumnRef | DatePart, ...] = ()
     having: Predicate | None = None
     order_by: tuple[OrderTerm, ...] = ()
     limit: int | None = None
@@ -251,11 +263,23 @@ def month_of_date_sql(operand: str) -> str:
     return f"CAST(SUBSTR(CAST({operand} AS TEXT), 6, 2) AS INTEGER)"
 
 
+def year_month_of_date_sql(operand: str) -> str:
+    """The year-month of an ISO date as one SQL expression SQLite and PostgreSQL both run: '2026-08-04' ->
+    '2026-08'. The typed AST renders DatePart with it and the deterministic SQL emitter renders YEAR_MONTH
+    with it."""
+    return f"SUBSTR(CAST({operand} AS TEXT), 1, 7)"
+
+
+def date_part_sql(part: str, operand: str) -> str:
+    """A DatePart's SQL: the month or the year-month of an ISO date."""
+    return year_month_of_date_sql(operand) if part == "year_month" else month_of_date_sql(operand)
+
+
 def expression_type(expr: ScalarExpr) -> SQLType:
     if isinstance(expr, ColumnRef):
         return expr.type
     if isinstance(expr, DatePart):
-        return SQLType.INTEGER
+        return SQLType.TEXT if expr.part == "year_month" else SQLType.INTEGER
     if isinstance(expr, Lower):
         return SQLType.TEXT
     if isinstance(expr, Literal):
@@ -334,6 +358,10 @@ def _validate_query(query: Query, outer_scope: frozenset[str]) -> None:
     visible = frozenset(joined) | outer_scope
     for item in query.select:
         _validate_expr(item.expression, visible)
+    for group in query.group_by:
+        if not isinstance(group, (ColumnRef, DatePart)):
+            raise ASTValidationError("GROUP BY reads a column or a period of a date column")
+        _validate_expr(group, visible)
     for term in query.order_by:
         _validate_expr(term.expression, visible)
         if term.direction not in {"ASC", "DESC"}:
@@ -740,7 +768,7 @@ def _render_expr(expr: ScalarExpr, dialect: str = "standard") -> str:
     if isinstance(expr, ScalarSubquery):
         return f"({_render_query(expr.query, dialect)})"
     if isinstance(expr, DatePart):
-        return month_of_date_sql(_render_expr(expr.operand, dialect))
+        return date_part_sql(expr.part, _render_expr(expr.operand, dialect))
     if isinstance(expr, Lower):
         return f"LOWER({_render_expr(expr.operand, dialect)})"
     raise TypeError(f"unsupported expression: {type(expr).__name__}")

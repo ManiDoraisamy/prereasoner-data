@@ -33,7 +33,7 @@ from engine.deterministic.plan import (
     WindowView,
 )
 from engine.numeric import DIVISION_SCALE
-from engine.sql_ast import month_of_date_sql
+from engine.sql_ast import month_of_date_sql, year_month_of_date_sql
 
 
 def _function(function: str, operand: str) -> str:
@@ -41,6 +41,8 @@ def _function(function: str, operand: str) -> str:
         return f"CAST({operand} AS TEXT)"
     if function == "MONTH":
         return month_of_date_sql(operand)
+    if function == "YEAR_MONTH":
+        return year_month_of_date_sql(operand)
     return f"LOWER({operand})"
 
 _BINARY = {"+": "+", "-": "-", "*": "*", "/": "/"}

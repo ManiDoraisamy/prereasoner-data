@@ -1613,3 +1613,26 @@ lookup took whichever row came first. They order by the name's primary entity, t
 (`length(qid), qid`). The exact-nearest lookup breaks a distance tie the same way. The geo city lookup
 (`engine/entities.py:_city_bridge_sql`) ranks a shared name by the row's country, `is_primary` and population. It
 has no final tie-break after those, and is left for its own change.
+
+## A total by month groups by the year-month (2026-10-02)
+
+"Total amount by month" and "monthly total amount" were planned as one ungrouped total, "how many orders per
+month" grouped by customer, and "which month had the highest total amount" returned the overall total. The coverage
+gate declined them over "month", so they were honest declines, but monthly totals are among the most common
+business questions.
+
+A month now groups by the year-month of a date column, the text '2026-08' (`DatePart('year_month')`). It is not the
+month of the year, so August 2025 and August 2026 stay two rows. Business data spans years, and merging every
+August would add up periods the user never named as one. A question that wants the calendar month across years can
+name it ("in August"), which filters as before.
+
+- One cue, `sql_dates.period_grouping`, serves the search and the ranker: "monthly", or "month" after by, per,
+  each, every, which or what. "The month of August" names a month.
+- A column's own name is that column. A text `month` column groups as itself, and "the avg. monthly searches"
+  asks for no month.
+- The date column is the one the question names, else a date of a table the query reads, else the schema's one
+  date.
+- The months read in calendar order unless the question ranks them.
+- Both emitters compute the key once in the plan (`FunctionValue` `YEAR_MONTH`), from the date's ISO text, as
+  SQLite, PostgreSQL and the Python program all can. The coverage gate reads "month", "months" and "monthly" as
+  realized only where the SQL groups by it.

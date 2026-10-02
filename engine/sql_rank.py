@@ -15,9 +15,10 @@ import re
 from typing import Mapping, Sequence
 
 from engine.sql_ast import (
-    Aggregate, ColumnRef, Comparison, Query, SelectQuery, SetQuery, keep_ties, render_query,
+    Aggregate, ColumnRef, Comparison, DatePart, Query, SelectQuery, SetQuery, keep_ties, render_query,
     share_aggregate,
 )
+from engine.sql_dates import period_grouping
 from engine.sql_expansion import by_groups, share_cue, share_requested, spelled_names, words
 from engine.sql_candidate import ScoredQuery
 from engine.sql_schema import SchemaGraph, canon, is_surrogate_key
@@ -49,6 +50,8 @@ class QuestionRoles:
     count_requested: bool
     distinct_requested: bool
     group_requested: bool
+    # The question asks for one row per month of a date column (sql_dates.period_grouping).
+    group_period: bool
     group_tables: frozenset[str]
     group_columns: frozenset[ColumnRef]
     counted_tables: frozenset[str]
@@ -246,7 +249,9 @@ class CandidateRanker:
         features.extend(self._model_features(query))
         return tuple(features)
 
-    def _group_alignment(self, column: ColumnRef, roles: QuestionRoles) -> bool:
+    def _group_alignment(self, column: ColumnRef | DatePart, roles: QuestionRoles) -> bool:
+        if isinstance(column, DatePart):
+            return roles.group_period and column.part == "year_month"
         if column in roles.group_columns or column.table in roles.group_tables:
             return True
         # "Show supplier and total amount" names an output dimension before the
@@ -349,6 +354,7 @@ def analyze_question(question: str, schema: SchemaGraph) -> QuestionRoles:
         group_positions += [i for i, token in enumerate(tokens)
                             if i > all_aggregate_positions[0] and by_groups(tokens, raw, i)]
     group_positions = sorted(set(group_positions))
+    period = period_grouping(tokens, schema)
 
     clause_stops = {"where", "with", "whose", "having", "order", "ordered", "sort", "sorted",
                     "top", "bottom", "after", "before", "between"}
@@ -407,7 +413,8 @@ def analyze_question(question: str, schema: SchemaGraph) -> QuestionRoles:
         aggregate_positions=frozen_positions,
         count_requested=bool(aggregate_positions["COUNT"]),
         distinct_requested=bool({"distinct", "different", "unique"} & set(tokens)),
-        group_requested=bool(group_positions),
+        group_requested=bool(group_positions) or period is not None,
+        group_period=period is not None,
         group_tables=frozenset(group_tables),
         group_columns=frozenset(group_columns),
         counted_tables=frozenset(counted_tables),

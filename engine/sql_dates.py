@@ -37,6 +37,7 @@ from engine.sql_ast import (
     SelectQuery,
     SQLType,
     month_of_date_sql,
+    year_month_of_date_sql,
 )
 
 MONTHS = {
@@ -394,6 +395,34 @@ def _listed(listed: list[_Mention], start: int, cue: str | None) -> DatePhrase:
                       (years[-1], last.last, None), spanless=not consecutive)
 
 
+# The words before "month" that ask for one row per month: "by month", "per month", "each month", "every month",
+# "which month", "what month".
+_PERIOD_LEADS = frozenset({"by", "per", "each", "every", "which", "what"})
+# The words a grouping by the year-month realizes, for the coverage gate.
+_PERIOD_WORDS = frozenset({"month", "months", "monthly"})
+
+
+def period_grouping(tokens: Sequence[str], schema) -> int | None:
+    """The position of the word that asks for one row per month of a date column of ``schema`` (a
+    SchemaGraph), or None: "monthly", or "month" after by, per, each, every, which or what ("total amount by
+    month", "how many orders per month", "which month had the highest total"). "The month of August" names a
+    month, not a grouping; a column's own name is that column ("total balance by month" over a text month
+    column, "the avg. monthly searches"). A month groups by its year-month, '2026-08', so August 2025 and
+    August 2026 stay two rows. The search (sql_search) and the ranker (sql_rank) read it alike."""
+    from engine.sql_expansion import name_tokens, spelled_names
+
+    if not any(column.ref.type == SQLType.DATE for column in schema.columns):
+        return None
+    spelled = spelled_names(tuple(tokens), schema)
+    names = {name_tokens(column.ref.name) for column in schema.columns}
+    for index, token in enumerate(tokens):
+        if index in spelled or (token,) in names:
+            continue
+        if token == "monthly" or (token == "month" and index > 0 and tokens[index - 1] in _PERIOD_LEADS):
+            return index
+    return None
+
+
 def served_date_phrases(question: str, tokens: Sequence[str], schema) -> tuple[DatePhrase, ...]:
     """The phrases a query over ``schema`` (a SchemaGraph) can realize: only where a date column takes
     their comparisons. A lone month that is a value of the data ("the first name April", a text month
@@ -413,7 +442,7 @@ def served_date_phrases(question: str, tokens: Sequence[str], schema) -> tuple[D
 
 def _comparison_key(comparison: Comparison):
     left = comparison.left
-    side = (("month",) + (left.operand.table, left.operand.name) if isinstance(left, DatePart)
+    side = ((left.part,) + (left.operand.table, left.operand.name) if isinstance(left, DatePart)
             else (left.table, left.name) if isinstance(left, ColumnRef) else None)
     right = comparison.right
     value = str(right.value) if isinstance(right, Literal) else None
@@ -446,12 +475,14 @@ def realizes_dates(query, phrases: Sequence[DatePhrase]) -> bool:
 
 
 def realized_month_words(question: str, sql: str) -> frozenset[str]:
-    """The calendar words of ``question`` (months, quarters) whose comparisons ``sql`` carries, for the
-    coverage gate."""
+    """The calendar words of ``question`` (months, quarters) whose comparisons ``sql`` carries, and the words
+    that ask for a grouping by month when ``sql`` groups by a year-month, for the coverage gate."""
     from engine.sql_expansion import tokens as question_tokens
 
     tokens = question_tokens(question)
     realized = set()
+    if re.search(re.escape(year_month_of_date_sql("§")).replace("§", ".+?"), sql or "", re.I):
+        realized.update(_PERIOD_WORDS)
     month_of = re.escape(month_of_date_sql("§")).replace("§", ".+?")
     for phrase in date_phrases(question, tokens):
         comparisons = phrase.comparisons(ColumnRef("t", "c", SQLType.DATE))

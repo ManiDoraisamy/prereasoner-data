@@ -189,13 +189,14 @@ class BinaryValue:
 
 @dataclass(frozen=True)
 class FunctionValue:
-    """A scalar function of one value: LOWER and TEXT of any value, MONTH of a date (an integer)."""
+    """A scalar function of one value: LOWER and TEXT of any value, MONTH of a date (an integer) and its
+    YEAR_MONTH (the text '2026-08')."""
 
     function: str
     operand: Value
 
     def __post_init__(self) -> None:
-        if self.function not in {"LOWER", "TEXT", "MONTH"}:
+        if self.function not in {"LOWER", "TEXT", "MONTH", "YEAR_MONTH"}:
             raise ValueError(f"unsupported scalar function: {self.function}")
 
 

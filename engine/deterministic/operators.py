@@ -311,6 +311,15 @@ def MONTH(value):
     return int(text[5:7])
 
 
+def YEAR_MONTH(value):
+    """The year-month of a date, read from its ISO text as the SQL program reads it: '2026-08-04' ->
+    '2026-08'."""
+    if value is None:
+        return None
+    text = value.isoformat() if isinstance(value, date) else str(value)
+    return text[:7]
+
+
 def AND(*values):
     return False if False in values else None if None in values else True
 

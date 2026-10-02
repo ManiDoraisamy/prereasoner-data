@@ -2641,6 +2641,46 @@ def test_a_ranking_measure_is_not_an_asked_aggregate():
     assert execute(tables, total.sql) == [(67,)], total.sql
 
 
+def test_a_total_by_month_groups_by_the_year_month():
+    """2026-10-02: "total amount by month" and "monthly total amount" were one ungrouped total, "how many orders
+    per month" was grouped by customer, and "which month had the highest total amount" was the overall total. A
+    month groups by the year-month of the date column, so August 2025 and August 2026 stay two rows, read in
+    calendar order. A month the question names still filters, another grouping is unchanged, a text column
+    named month is that column, and a spelled column name holding "monthly" asks for no month."""
+    orders = {"name": "orders", "columns": ["order_id", "customer", "city", "date", "amount"], "rows": [
+        [1, "Ada", "Paris", "2026-07-03", 40], [2, "Bo", "Lyon", "2026-07-15", 25],
+        [3, "Ada", "Paris", "2026-08-01", 60], [4, "Cy", "Nice", "2026-08-20", 30],
+        [5, "Bo", "Lyon", "2026-08-28", 45], [6, "Cy", "Nice", "2025-08-09", 67]]}
+    tables = [orders]
+    for question in ("total amount by month", "monthly total amount", "What is the total amount for each month?"):
+        answer = best(question, tables)
+        assert execute(tables, answer.sql) == [("2025-08", 67), ("2026-07", 65), ("2026-08", 135)], (question,
+                                                                                                    answer.sql)
+    per_month = best("how many orders per month", tables)
+    assert execute(tables, per_month.sql) == [("2025-08", 1), ("2026-07", 2), ("2026-08", 3)], per_month.sql
+    top = best("which month had the highest total amount", tables)
+    assert execute(tables, top.sql) == [("2026-08", 135)], top.sql
+    # The coverage gate reads "month" as realized only where the query groups by the year-month.
+    from engine.sql_dates import realized_month_words
+    assert {"month", "monthly"} <= realized_month_words("monthly total amount", top.sql)
+    assert not realized_month_words("total amount by month", 'SELECT SUM("orders"."amount") FROM "orders"')
+    # Contrastive: a named month filters, and a grouping by city stays one.
+    august = best("total amount in August", tables)
+    assert execute(tables, august.sql) == [(202,)], august.sql
+    by_city = best("total amount by city", tables)
+    assert sorted(execute(tables, by_city.sql)) == [("Lyon", 70), ("Nice", 97), ("Paris", 100)], by_city.sql
+    # Negative: a text column named month groups as that column; a spelled "Avg. monthly searches" beside a
+    # date column asks for no month.
+    leads = {"name": "leads", "columns": ["lead_id", "month", "contacted", "balance"], "rows": [
+        [1, "may", "2026-05-03", 100], [2, "jun", "2026-06-11", 50], [3, "may", "2026-05-20", 30]]}
+    by_text_month = best("total balance by month", [leads])
+    assert sorted(execute([leads], by_text_month.sql)) == [("jun", 50), ("may", 130)], by_text_month.sql
+    keywords = {"name": "keywords", "columns": ["Keyword", "Avg. monthly searches", "Checked"], "rows": [
+        ["forklift checklist", 5000, "2026-08-01"], ["forklift inspection", 500, "2026-09-01"]]}
+    searches = best("total of the avg. monthly searches", [keywords])
+    assert execute([keywords], searches.sql) == [(5500,)], searches.sql
+
+
 def test_same_shaped_tabs_answer_a_stated_keyword():
     """A customer's keyword-planner workbook, 2026-10-02: three tabs shaped alike (Forklift, Checklist and
     Inspection, each with Keyword, Avg. monthly searches, Top of page bid (low range), ...) gave "total of the
@@ -4169,6 +4209,7 @@ TESTS = [
     test_a_key_named_by_the_table_it_references_needs_its_whole_name,
     test_a_denial_is_read_by_what_it_denies,
     test_a_ranking_measure_is_not_an_asked_aggregate,
+    test_a_total_by_month_groups_by_the_year_month,
     test_same_shaped_tabs_answer_a_stated_keyword,
     test_a_listing_follows_the_order_the_question_names,
     test_by_after_a_participle_names_who_acted,

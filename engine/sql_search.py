@@ -42,7 +42,7 @@ from engine.sql_ast import (
 )
 from engine.numeric import parse_decimal
 from engine.sql_candidate import ScoredQuery
-from engine.sql_dates import served_date_phrases
+from engine.sql_dates import period_grouping, served_date_phrases
 from engine.sql_expansion import (
     FUNCTION_WORDS,
     by_groups,
@@ -238,7 +238,9 @@ class SQLSearcher:
                         if c in explicit_projection_columns and group_columns
                     )
                     grouped = _unique_columns(group_columns + raw_projection)
-                    expressions = tuple(SelectItem(c) for c in grouped) + tuple(
+                    # A period's column is headed by the period it is: "month", not its SQL.
+                    expressions = tuple(SelectItem(c, "month" if isinstance(c, DatePart) else None)
+                                        for c in grouped) + tuple(
                         SelectItem(a) for a in draft.aggregates
                     )
                 else:
@@ -251,6 +253,9 @@ class SQLSearcher:
 
                 orders = self._order_choices(tokens, mentions, draft, question)
                 for order_terms, limit, order_score, order_evidence in orders:
+                    if not order_terms:
+                        # The months of "total amount by month" read in calendar order.
+                        order_terms = tuple(OrderTerm(c) for c in grouped if isinstance(c, DatePart))
                     required = self._required_tables(expressions, draft.predicates, grouped, order_terms)
                     mentioned_tables = {table for table, score in table_scores.items()
                                         if score >= 2.5 and table in named_tables}
@@ -1302,6 +1307,13 @@ class SQLSearcher:
                         position_bonus = 1.5 if table_positions[table] >= position else 0.0
                         options.append((groups, 2.8 + score * 0.1 + position_bonus - 0.05 * distance,
                                         (f"group-entity:{table}.{displays[0].name}",)))
+        # "total amount by month", "monthly total amount", "how many orders per month": one row per year-month
+        # of a date column (2026-10-02: each was an ungrouped total, or grouped by customer). The column is the
+        # date the question names, else a date of a table the query reads, else the schema's one date.
+        if period_grouping(tokens, self.schema) is not None:
+            for column in self._period_columns(mentions, draft):
+                groups = _unique_columns(projection_groups + (DatePart("year_month", column),))
+                options.append((groups, 3.8, (f"group-period:{column.table}.{column.name}:year_month",)))
         if projection_groups:
             options.append((projection_groups, 2.5, tuple(f"group:{c.table}.{c.name}" for c in projection_groups)))
             if not explicit_positions and (
@@ -1321,6 +1333,19 @@ class SQLSearcher:
             if old is None or choice[1] > old[1]:
                 dedup[choice[0]] = choice
         return sorted(dedup.values(), key=lambda item: (-item[1], repr(item[0])))[:8]
+
+    def _period_columns(self, mentions: tuple[_Mention, ...], draft: _Draft) -> list[ColumnRef]:
+        """The date columns a grouping by month reads, at most two in schema order: those the question names,
+        else those of the tables the draft reads, else every date column."""
+        named = [option.column for mention in mentions for option in mention.options
+                 if option.column.type == SQLType.DATE]
+        if named:
+            return list(dict.fromkeys(named))[:2]
+        dates = [column.ref for column in self.schema.columns if column.ref.type == SQLType.DATE]
+        read = set().union(*(_clause_tables(aggregate.operand) for aggregate in draft.aggregates),
+                           *(_clause_tables(column) for column in draft.projections),
+                           *(_clause_tables(predicate) for predicate in draft.predicates))
+        return ([column for column in dates if column.table in read] or dates)[:2]
 
     def _order_choices(self, tokens: tuple[str, ...], mentions: tuple[_Mention, ...],
                        draft: _Draft, question: str) -> list[tuple[tuple[OrderTerm, ...], int | None, float, tuple[str, ...]]]:
@@ -1757,7 +1782,7 @@ def _unique_columns(columns: tuple[ColumnRef, ...]) -> tuple[ColumnRef, ...]:
 def _expression_tables(expression: Any) -> set[str]:
     if isinstance(expression, ColumnRef):
         return {expression.table}
-    if isinstance(expression, Aggregate):
+    if isinstance(expression, (Aggregate, DatePart)):
         return _expression_tables(expression.operand)
     if isinstance(expression, BinaryExpr):                       # SUM(amount * fx.rate): both tables are required
         return _expression_tables(expression.left) | _expression_tables(expression.right)
