@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import ROUND_HALF_UP, Decimal, localcontext
 from functools import cmp_to_key
+import re
 from typing import Generic, TypeVar
 
 from engine.numeric import DECIMAL_PRECISION, DIVISION_SCALE
@@ -290,6 +291,16 @@ def TEXT(value):
     if isinstance(value, bool):
         return "true" if value else "false"
     return str(value)
+
+
+def LIKE(value, pattern):
+    """SQL's LIKE over text, as both SQL engines read it: '%' matches any run of characters, '_' one
+    character, and every other character itself, over the whole text. The search compares lower-cased
+    text with a lower-case pattern (sql_ast.Lower), so case never decides it."""
+    if value is None or pattern is None:
+        return None
+    expression = "".join(".*" if part == "%" else "." if part == "_" else re.escape(part) for part in str(pattern))
+    return re.fullmatch(expression, str(value), re.DOTALL) is not None
 
 
 def MONTH(value):

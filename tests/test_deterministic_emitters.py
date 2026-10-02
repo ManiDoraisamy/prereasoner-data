@@ -1162,6 +1162,25 @@ def test_a_month_comparison_runs_in_both_programs():
     assert [tuple(row.values()) for row in result.rows] == [(3,)], result.rows
 
 
+def test_a_contained_text_runs_in_both_programs():
+    # "the contestants whose names contain the substring 'Al'" (2026-10-02): LOWER(name) LIKE '%al%' reads the
+    # same in SQLite, PostgreSQL and the Python program, where LIKE alone differs in case between the engines.
+    from engine.sql_ast import Lower
+
+    name = ColumnRef("contestants", "contestant_name", SQLType.TEXT)
+    query = SelectQuery((SelectItem(name),), "contestants",
+                        where=Comparison(Lower(name), "LIKE", Literal("%al%", SQLType.TEXT)),
+                        order_by=(OrderTerm(name, "ASC"),))
+    schema = [{"table": "contestants", "name": "contestant_name", "affinity": "TEXT",
+               "values": ["Alana", "Bob", "Kendall", "Sal_ly"]}]
+    result = _execute_fixture(lower_select_query("contained", query, schema, ()), [
+        "CREATE TABLE conversation.contestants (contestant_name TEXT)",
+        "INSERT INTO conversation.contestants VALUES ('Alana'), ('Bob'), ('Kendall'), ('Sal_ly')",
+    ], estimated_rows=4)
+    assert result.mode.value == "verify"                       # both programs ran and agreed
+    assert [tuple(row.values()) for row in result.rows] == [("Alana",), ("Kendall",), ("Sal_ly",)], result.rows
+
+
 def test_a_share_of_the_whole_runs_in_both_programs():
     # "what share of the total amount comes from Paris?" (2026-10-02): the kept rows' total, crossed with
     # the total of every row and divided, in both programs. The fractions are exact in binary, as SQLite's

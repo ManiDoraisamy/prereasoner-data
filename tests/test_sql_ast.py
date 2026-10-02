@@ -2301,6 +2301,32 @@ def test_a_comparative_than_a_number_compares_the_measure_it_describes():
     assert '"Pets"."pet_age" > 1' in older.sql, older.sql
 
 
+def test_a_contained_text_compares_the_lowered_values():
+    """Spider DEV, 2026-10-02: no reading had a substring filter, so "the contestants whose names contain
+    the substring 'Al'", "a song having 'Hey' in its name" and "the department whose name has the word
+    computer" dropped it ("'Al'" also became a state code 'AL'). A contained text compares
+    LOWER(column) LIKE '%al%', on the column that holds it; "includes the text 'Korea'" stays a whole
+    value."""
+    contestants = {"name": "CONTESTANTS", "columns": ["contestant_number", "contestant_name"], "rows": [
+        [1, "Alana"], [2, "Bob"], [3, "Kendall"], [4, "Jessie"]]}
+    states = {"name": "AREA_CODE_STATE", "columns": ["area_code", "state"], "rows": [[205, "AL"], [907, "AK"]]}
+    named = best("Return the names of the contestants whose names contain the substring 'Al' .", [contestants, states])
+    assert "LIKE '%al%'" in named.sql and execute([contestants, states], named.sql) == [("Alana",), ("Kendall",)], named.sql
+    singer = {"name": "singer", "columns": ["Singer_ID", "Name", "Country", "Song_Name"], "rows": [
+        [1, "Joe", "Netherlands", "You"], [2, "Timbaland", "US", "Dangerous"], [3, "Justin", "France", "Hey Oh"]]}
+    song = best("what is the name and nation of the singer who have a song having 'Hey' in its name?", [singer])
+    assert 'LOWER("singer"."Song_Name") LIKE \'%hey%\'' in song.sql, song.sql
+    departments = {"name": "Departments", "columns": ["department_id", "department_name", "department_description"],
+                   "rows": [[1, "computer science", "error"], [2, "history", "nihil"], [3, "art", "et"]]}
+    computing = best("What is the department description for the one whose name has the word computer?", [departments])
+    assert execute([departments], computing.sql) == [("error",)], computing.sql
+    # Contrast: "includes the text" names a whole value.
+    paragraphs = {"name": "Paragraphs", "columns": ["Paragraph_ID", "Paragraph_Text", "Other_Details"], "rows": [
+        [7, "Korea", "a"], [9, "North Korea", "b"]]}
+    korea = best("What are the details for the paragraph that includes the text 'Korea' ?", [paragraphs])
+    assert "LIKE" not in korea.sql and "\"Paragraph_Text\" = 'Korea'" in korea.sql, korea.sql
+
+
 def test_multiple_aggregates_share_a_typed_operand():
     candidate = best("What are the average, minimum and maximum age of people from France?", [PEOPLE])
     assert execute([PEOPLE], candidate.sql) == [(25.0, 20, 30)]
@@ -3728,6 +3754,7 @@ TESTS = [
     test_a_candidate_drops_a_key_echo_and_an_unread_join,
     test_a_listing_drops_a_key_that_repeats_a_read_table,
     test_a_comparative_than_a_number_compares_the_measure_it_describes,
+    test_a_contained_text_compares_the_lowered_values,
     test_multiple_aggregates_share_a_typed_operand,
     test_repeated_count_paraphrase_is_one_aggregate,
     test_total_number_of_entities_is_a_scalar_count,

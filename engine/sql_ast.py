@@ -90,12 +90,30 @@ class DatePart:
 
 DATE_PARTS = frozenset({"month"})
 
-ScalarExpr: TypeAlias = ColumnRef | Star | Literal | Aggregate | ScalarSubquery | BinaryExpr | DatePart
+
+@dataclass(frozen=True)
+class Lower:
+    """The lower-case text of a column. A "contains" filter compares LOWER(column) LIKE '%west%', which
+    SQLite, PostgreSQL and the Python program read alike: PostgreSQL's LIKE alone is case-sensitive and
+    SQLite's is not (2026-10-02). It names its column's table and name for the rewrites that group a
+    query's comparisons by column."""
+    operand: ColumnRef
+
+    @property
+    def table(self) -> str:
+        return self.operand.table
+
+    @property
+    def name(self) -> str:
+        return self.operand.name
+
+
+ScalarExpr: TypeAlias = ColumnRef | Star | Literal | Aggregate | ScalarSubquery | BinaryExpr | DatePart | Lower
 
 
 @dataclass(frozen=True)
 class Comparison:
-    left: ColumnRef | Aggregate | ScalarSubquery | DatePart
+    left: ColumnRef | Aggregate | ScalarSubquery | DatePart | Lower
     operator: str
     right: ColumnRef | Literal | Aggregate | ScalarSubquery
 
@@ -238,6 +256,8 @@ def expression_type(expr: ScalarExpr) -> SQLType:
         return expr.type
     if isinstance(expr, DatePart):
         return SQLType.INTEGER
+    if isinstance(expr, Lower):
+        return SQLType.TEXT
     if isinstance(expr, Literal):
         return expr.type
     if isinstance(expr, Aggregate):
@@ -571,6 +591,11 @@ def _validate_expr(expr: ScalarExpr, visible: frozenset[str]) -> None:
             raise ASTValidationError("a date part reads a date column")
         _validate_expr(expr.operand, visible)
         return
+    if isinstance(expr, Lower):
+        if not isinstance(expr.operand, ColumnRef):
+            raise ASTValidationError("LOWER reads a column")
+        _validate_expr(expr.operand, visible)
+        return
     if isinstance(expr, ScalarSubquery):
         _validate_query(expr.query, visible)
         if _output_arity(expr.query) != 1:
@@ -708,6 +733,8 @@ def _render_expr(expr: ScalarExpr, dialect: str = "standard") -> str:
         return f"({_render_query(expr.query, dialect)})"
     if isinstance(expr, DatePart):
         return month_of_date_sql(_render_expr(expr.operand, dialect))
+    if isinstance(expr, Lower):
+        return f"LOWER({_render_expr(expr.operand, dialect)})"
     raise TypeError(f"unsupported expression: {type(expr).__name__}")
 
 
@@ -799,7 +826,7 @@ def _predicate_has_aggregate(predicate: Predicate | None) -> bool:
 def _expr_tables(expr: ScalarExpr) -> set[str]:
     if isinstance(expr, ColumnRef):
         return {expr.table}
-    if isinstance(expr, (Aggregate, DatePart)):
+    if isinstance(expr, (Aggregate, DatePart, Lower)):
         return _expr_tables(expr.operand)
     if isinstance(expr, BinaryExpr):
         return _expr_tables(expr.left) | _expr_tables(expr.right)

@@ -20,7 +20,7 @@ from engine.sql_ast import SQLType
 _SCHEMAS = frozenset({"conversation", "knowledgebase", "public"})
 _AGGREGATES = frozenset({"SUM", "MAX", "MIN", "COUNT", "AVG"})
 _BINARY = frozenset({"+", "-", "*", "/"})
-_COMPARISONS = frozenset({"=", "!=", "<>", ">", "<", ">=", "<=", "IS", "IS NOT"})
+_COMPARISONS = frozenset({"=", "!=", "<>", ">", "<", ">=", "<=", "IS", "IS NOT", "LIKE"})
 
 
 @dataclass(frozen=True)

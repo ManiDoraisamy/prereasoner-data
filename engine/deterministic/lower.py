@@ -42,6 +42,7 @@ from engine.sql_ast import (
     ColumnRef,
     Comparison,
     DatePart,
+    Lower,
     Literal,
     SelectItem,
     SelectQuery,
@@ -478,7 +479,7 @@ def _predicate(value) -> PredicateValue:
         raise UnsupportedDeterministicPlan(
             "only one non-aggregate comparison is supported"
         )
-    if value.operator not in {"=", "!=", "<>", ">", "<", ">=", "<=", "IS", "IS NOT"}:
+    if value.operator not in {"=", "!=", "<>", ">", "<", ">=", "<=", "IS", "IS NOT", "LIKE"}:
         raise UnsupportedDeterministicPlan(
             f"comparison {value.operator!r} is not supported"
         )
@@ -504,6 +505,8 @@ def _value(value) -> Value:
         return BinaryValue(_value(value.left), value.operator, _value(value.right))
     if isinstance(value, DatePart) and value.part == "month":
         return FunctionValue("MONTH", _value(value.operand))
+    if isinstance(value, Lower):
+        return FunctionValue("LOWER", _value(value.operand))
     raise UnsupportedDeterministicPlan(
         f"expression {type(value).__name__} is not supported"
     )

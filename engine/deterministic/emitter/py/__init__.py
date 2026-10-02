@@ -59,6 +59,7 @@ _PREDICATE_FUNCTION = {
     "<=": "LE",
     "IS": "IS",
     "IS NOT": "IS_NOT",
+    "LIKE": "LIKE",
 }
 
 

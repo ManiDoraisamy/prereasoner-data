@@ -24,6 +24,7 @@ from engine.sql_ast import (
     ExistsPredicate,
     InPredicate,
     Literal,
+    Lower,
     OrderTerm,
     ScalarSubquery,
     SelectItem,
@@ -67,6 +68,10 @@ _LATE_WORDS = frozenset({"last", "latest", "recent", "newest"})
 # "name" or "line" names a part of a name or an address, not a place in an ordering.
 _NAME_PART_WORDS = frozenset({"first", "middle", "last", "second", "third", "and", "or", "full", "given", "family"})
 _ID_WORDS = frozenset({"id", "identifier", "code", "key"})
+# Words that ask for the values holding a text (canon() forms); "include" also names a whole value ("the
+# paragraph that includes the text 'Korea'" is that text).
+_SUBSTRING_CUES = frozenset({"contain", "containing", "substring", "letter"})
+_INCLUDE_CUES = frozenset({"include", "including"})
 # Comparatives and the operator each makes with the number after "than"; the measure some describe.
 _COMPARATIVES = {
     "greater": ">", "higher": ">", "bigger": ">", "larger": ">", "older": ">", "heavier": ">", "taller": ">",
@@ -745,6 +750,9 @@ class SQLSearcher:
         phrases = served_date_phrases(question, tokens, self.schema)
         claimed = {index for phrase in phrases for index in range(phrase.start, phrase.end)}
         capitalized = frozenset(word.lower() for word in re.findall(r"\b[A-Z]{2,}\b", question))
+        substrings, held = self._substring_groups(tokens, mentions, question, claimed)
+        claimed = claimed | held
+        groups.extend(substrings)
         groups.extend(self._value_predicate_groups(tokens, mentions, claimed, capitalized))
         groups.extend(self._date_phrase_groups(phrases, mentions))
         groups.extend(self._numeric_predicate_groups(tokens, mentions, claimed))
@@ -758,6 +766,53 @@ class SQLSearcher:
                     expanded.append((predicates + additions, score + option_score, evidence + (reason,)))
             beam = sorted(expanded, key=lambda item: (-item[1], repr(item[0])))[:self.beam_size]
         return [(predicates, score, evidence) for predicates, score, evidence in beam]
+
+    def _substring_groups(self, tokens: tuple[str, ...], mentions: tuple[_Mention, ...], question: str,
+                          claimed: set[int]) -> tuple[list[list[tuple[tuple[Comparison, ...], float, str]]], set[int]]:
+        """A text that a value contains: "the contestants whose names contain the substring 'Al'", "a song
+        having 'Hey' in its name", "the documents that contain the letter w in their description" compare
+        LOWER(column) LIKE '%al%' (Spider DEV, 2026-10-02: no reading had a substring filter). The text is
+        quoted, or the word after "substring", "letter" or "word"; a whole value of the data stays an
+        equality. The column is the text column the question names nearest the text, or one whose values
+        hold it."""
+        named = re.search(r"\b(?:substring|letter|word)\s+(?:the\s+)?['\"]?([\w-]+)", question, re.I)
+        # "contain", "substring" or "the word X" ask for a text inside values even where the text is also a
+        # whole value ("the substring 'Al'" beside a state code 'AL'); "'Hey' in its name" only where it is not.
+        explicit = bool(set(tokens) & _SUBSTRING_CUES) or named is not None
+        if (not explicit and not set(tokens) & _INCLUDE_CUES
+                and not re.search(r"\bin (?:its|their|the)\b", question, re.I)):
+            return [], set()
+        texts = [text.strip() for text in re.findall(r"(?<![\w])['\"]([^'\"]+)['\"](?![\w])", question)]
+        if named and not texts:
+            texts = [named.group(1)]
+        groups, held = [], set()
+        for text in texts:
+            wanted = _tokens(text)
+            if not wanted or (not explicit and self.schema.value_index.get(" ".join(wanted))):
+                continue
+            start = next((index for index in range(len(tokens) - len(wanted) + 1)
+                          if tokens[index:index + len(wanted)] == wanted and index not in claimed), None)
+            if start is None:
+                continue
+            folded = text.lower()
+            holders = [column.ref for column in self.schema.columns
+                       if column.ref.type == SQLType.TEXT
+                       and any(folded in str(value).lower() for value in column.values if value is not None)]
+            near = sorted((option for mention in mentions for option in mention.options
+                           if option.column.type == SQLType.TEXT),
+                          key=lambda option: (abs(option.position - start), -option.score,
+                                              option.column.table, option.column.name))
+            # A column whose values hold the text is the one compared, the nearest named first; without
+            # one, the nearest named text column (the text may be missing from the data).
+            targets = _unique_columns(tuple(option.column for option in near if option.column in holders)
+                                      + tuple(holders)) or _unique_columns(tuple(option.column for option in near))
+            options = [((Comparison(Lower(column), "LIKE", Literal(f"%{folded}%", SQLType.TEXT)),), 5.0,
+                        f"substring:{column.table}.{column.name}")
+                       for column in targets[:4]]
+            if options:
+                groups.append(options)
+                held.update(range(start, start + len(wanted)))
+        return groups, held
 
     def _value_predicate_groups(self, tokens: tuple[str, ...], mentions: tuple[_Mention, ...],
                                 claimed: set[int] = frozenset(),
@@ -1222,7 +1277,7 @@ def _clause_tables(node: Any) -> set[str]:
         return set()
     if isinstance(node, ColumnRef):
         return {node.table}
-    if isinstance(node, (Aggregate, DatePart)):
+    if isinstance(node, (Aggregate, DatePart, Lower)):
         return _clause_tables(node.operand)
     if isinstance(node, (BinaryExpr, Comparison)):
         return _clause_tables(node.left) | _clause_tables(node.right)
@@ -1252,7 +1307,7 @@ def _has_subquery(query: SelectQuery) -> bool:
             return True
         if isinstance(node, InPredicate):
             return not isinstance(node.source, tuple) or walk(node.left)
-        if isinstance(node, (Aggregate, DatePart)):
+        if isinstance(node, (Aggregate, DatePart, Lower)):
             return walk(node.operand)
         if isinstance(node, (BinaryExpr, Comparison)):
             return walk(node.left) or walk(node.right)
