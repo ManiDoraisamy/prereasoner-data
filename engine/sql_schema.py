@@ -385,14 +385,23 @@ def is_surrogate_key(name: str) -> bool:
 def _normalize_value(value: Any) -> str:
     if value is None:
         return ""
-    return " ".join(_canon(token) for token in _WORD_RE.findall(str(value).lower()))
+    return " ".join(canon(token) for token in _WORD_RE.findall(str(value).lower()))
 
 
-def _canon(word: str) -> str:
+def canon(word: str) -> str:
+    """A word's comparable form, the one the search, its expansions, the ranker and the value index read
+    questions, names and values with: lower case, and a plural as its singular ("courses" -> "course",
+    "matches" -> "match", "classes" -> "class", "cities" -> "city"). Spider DEV, 2026-10-02: "courses" read
+    "cours", "matches" "matche" and "finishes" "finishe", so a question saying "course", "match" or
+    "finish" named no Courses, matches or best_finish."""
     word = word.lower().strip()
+    if word == "handed":
+        return "hand"
+    if word == "ids":
+        return "id"
     if len(word) > 4 and word.endswith("ies"):
         return word[:-3] + "y"
-    if len(word) > 3 and word.endswith("ses"):
+    if word.endswith("sses") or (len(word) > 4 and word.endswith(("ches", "shes", "xes"))):
         return word[:-2]
     if len(word) > 3 and word.endswith("s") and not word.endswith("ss"):
         return word[:-1]

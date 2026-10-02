@@ -34,7 +34,7 @@ from engine.sql_ast import (
 from engine.numeric import parse_decimal
 from engine.sql_candidate import ScoredQuery
 from engine.sql_expansion import words
-from engine.sql_schema import ForeignKey, SchemaGraph, is_surrogate_key
+from engine.sql_schema import ForeignKey, SchemaGraph, canon, is_surrogate_key
 
 
 _NEGATIVE_RE = re.compile(
@@ -871,7 +871,7 @@ def _text_table_position(question: str, table: str) -> int | None:
 
 def _name_tokens(name: str) -> tuple[str, ...]:
     spaced = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", str(name))
-    return tuple(_canon(token) for token in re.findall(r"[A-Za-z0-9]+", spaced))
+    return tuple(canon(token) for token in re.findall(r"[A-Za-z0-9]+", spaced))
 
 
 def _semantic_name_tokens(name: str) -> tuple[str, ...]:
@@ -888,16 +888,5 @@ def _tokens(text: str) -> tuple[str, ...]:
     for token in words(text):
         if token.endswith("'s"):
             token = token[:-2]
-        out.append(_canon(token))
+        out.append(canon(token))
     return tuple(out)
-
-
-def _canon(word: str) -> str:
-    word = word.lower().strip()
-    if len(word) > 4 and word.endswith("ies"):
-        return word[:-3] + "y"
-    if len(word) > 3 and word.endswith("ses"):
-        return word[:-2]
-    if len(word) > 3 and word.endswith("s") and not word.endswith("ss"):
-        return word[:-1]
-    return word

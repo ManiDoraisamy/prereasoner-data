@@ -2536,6 +2536,25 @@ def test_a_column_is_named_without_the_word_of_its_kind():
     assert execute([matches], tourneys.sql) == [("Auckland",)], tourneys.sql
 
 
+def test_a_plural_reads_as_its_singular_everywhere():
+    """Spider DEV, 2026-10-02: five modules each kept a copy of one plural rule, which read "courses" as
+    "cours", "matches" as "matche" and "finishes" as "finishe", so "the course", "the match" and "the best
+    finishes" named no Courses, matches or Best_Finish. sql_schema.canon is the one rule the search, its
+    expansions, the ranker and the value index read with; "-ss" and short words keep their "s"."""
+    from engine.sql_schema import canon
+
+    for singular, plural in (("course", "courses"), ("match", "matches"), ("branch", "branches"),
+                             ("finish", "finishes"), ("tax", "taxes"), ("class", "classes"),
+                             ("address", "addresses"), ("city", "cities"), ("house", "houses")):
+        assert canon(singular) == canon(plural) == singular, (singular, plural, canon(plural))
+    # Contrast: a word that ends in "ss", or a short one, keeps its "s".
+    assert (canon("bus"), canon("class"), canon("business")) == ("bus", "class", "business")
+    players = {"name": "poker_player", "columns": ["Poker_Player_ID", "Name", "Best_Finish", "Earnings"],
+               "rows": [[1, "Aleksey", 1, 476000], [2, "Maksim", 2, 133833], [3, "Yevgeni", 2, 104871]]}
+    finishes = best("List the best finishes of all poker players.", [players])
+    assert sorted(execute([players], finishes.sql)) == [(1,), (2,), (2,)], finishes.sql
+
+
 def test_multiple_aggregates_share_a_typed_operand():
     candidate = best("What are the average, minimum and maximum age of people from France?", [PEOPLE])
     assert execute([PEOPLE], candidate.sql) == [(25.0, 20, 30)]
@@ -3987,6 +4006,7 @@ TESTS = [
     test_a_value_compares_the_column_whose_words_introduce_it,
     test_a_value_stated_once_is_compared_once,
     test_a_column_is_named_without_the_word_of_its_kind,
+    test_a_plural_reads_as_its_singular_everywhere,
     test_multiple_aggregates_share_a_typed_operand,
     test_repeated_count_paraphrase_is_one_aggregate,
     test_total_number_of_entities_is_a_scalar_count,

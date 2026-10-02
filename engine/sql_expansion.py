@@ -31,7 +31,7 @@ from engine.sql_ast import (
 )
 from engine.numeric import parse_decimal
 from engine.sql_candidate import ScoredQuery
-from engine.sql_schema import SchemaGraph, is_surrogate_key
+from engine.sql_schema import SchemaGraph, canon, is_surrogate_key
 
 
 def ordering_requested(question: str) -> bool:
@@ -944,16 +944,3 @@ def tokens(text: str) -> tuple[str, ...]:
             token = token[:-2]
         out.append(canon(token))
     return tuple(out)
-
-
-def canon(word: str) -> str:
-    word = word.lower().strip()
-    if word == "ids":
-        return "id"
-    if len(word) > 4 and word.endswith("ies"):
-        return word[:-3] + "y"
-    if len(word) > 3 and word.endswith("ses"):
-        return word[:-2]
-    if len(word) > 3 and word.endswith("s") and not word.endswith("ss"):
-        return word[:-1]
-    return word

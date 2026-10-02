@@ -20,7 +20,7 @@ from engine.sql_ast import (
 )
 from engine.sql_expansion import share_cue, share_requested, words
 from engine.sql_candidate import ScoredQuery
-from engine.sql_schema import SchemaGraph, is_surrogate_key
+from engine.sql_schema import SchemaGraph, canon, is_surrogate_key
 
 
 ColumnKey = tuple[str, str]
@@ -444,31 +444,18 @@ def _comparisons(predicate):
 
 
 def _tokens(text: str) -> tuple[str, ...]:
-    return tuple(_canon(token) for token in words(text))
+    return tuple(canon(token) for token in words(text))
 
 
 def _schema_tokens(name: str) -> tuple[str, ...]:
     spaced = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", str(name))
     return tuple(
-        "number" if token.lower() == "no" else _canon(token)
+        "number" if token.lower() == "no" else canon(token)
         for token in re.findall(r"[A-Za-z0-9]+", spaced)
-        if _canon(token) != "id"
+        if canon(token) != "id"
     )
 
 
-def _canon(word: str) -> str:
-    word = word.lower().strip()
-    if word == "handed":
-        return "hand"
-    if word == "ids":
-        return "id"
-    if len(word) > 4 and word.endswith("ies"):
-        return word[:-3] + "y"
-    if len(word) > 3 and word.endswith("ses"):
-        return word[:-2]
-    if len(word) > 3 and word.endswith("s") and not word.endswith("ss"):
-        return word[:-1]
-    return word
 
 
 def _travel_direction(tokens: tuple[str, ...]) -> str | None:
