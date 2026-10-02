@@ -129,6 +129,12 @@ through the service account: no API keys, no console steps. You supply a Google 
 and a billing account.
 
 It takes about 30 minutes and costs roughly **$90/month** while it runs, almost all of it Cloud SQL.
+
+The button installs the last release whose guided install passed its launch test
+([docs/COMMUNITY_LAUNCH_TEST.md](docs/COMMUNITY_LAUNCH_TEST.md)), `v0.2.23`. That release predates the
+design this README describes: its own README at the tag says what it runs. The button moves to the
+current release once that release passes the same test.
+
 To remove it:
 
 ```bash
