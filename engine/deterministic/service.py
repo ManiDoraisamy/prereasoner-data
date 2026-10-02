@@ -188,9 +188,7 @@ class ExecutionResult:
         ):
             rows = self.displayed(step, rows[:50])
             sql = statement.split(" AS ", 1)[1]
-            suffix = str(step).removeprefix(
-                str(self.emission.python.manifest["slug"]) + "_"
-            )
+            suffix = self.emission.python.manifest["view_logical_names"][step]
             section_id = self.emission.python.manifest["view_sections"][step]
             section = sections.get(section_id, {})
             views.append(

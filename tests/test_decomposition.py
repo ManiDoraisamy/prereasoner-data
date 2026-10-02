@@ -269,6 +269,58 @@ def test_long_leaf_names_are_unique_postgres_identifiers_with_the_root_slug():
     assert len(set(names)) == len(names)
 
 
+def test_long_leaf_names_keep_hash_free_labels():
+    """2026-10-02 Chrome gate (complex-promotions, complex-unsold-products): under the analysis
+    "top_customers_never_bought_top_products" a leaf view's name passed PostgreSQL's 63 bytes, was
+    cut and given a hash, and its label was read back from the cut name: "top customers top r
+    b966d67a". Each view keeps the name it had before the prefix, so the label reads as the step."""
+    import re
+
+    from sqlalchemy import create_engine
+
+    from engine.analysis import analysis_view_name
+    from engine.deterministic.service import DeterministicAnalysis
+
+    tables = [{"name": "products", "columns": ["id"], "rows": [[1], [2]]}]
+    schema = [{"table": "products", "name": "id", "affinity": "INTEGER", "values": [1, 2]}]
+    query = SelectQuery((SelectItem(ColumnRef("products", "id", SQLType.INTEGER), "id"),), "products")
+    planner = Mock()
+    planner.postgres_row_identity = False
+    planner.select_query.return_value = _served(ScoredQuery(query, "SELECT id FROM products", 1, ()))
+    planner.guard.return_value = (True, None)
+    proposal = _proposal()
+    ids = ["top_customers", "top_products_bought"]
+    for node, node_id in zip(proposal["subquestions"], ids, strict=True):
+        node["id"] = node_id
+    proposal["merges"][0]["inputs"] = ids
+    proposal["merges"][0]["id"] = "customer_product_pairs_never_bought"
+    proposal["output"] = "customer_product_pairs_never_bought"
+    slug = "top_customers_never_bought_top_products"
+    plan = build_decomposed_plan(planner, slug, tables, schema, (), proposal,
+                                 question="top customers never bought top products")
+    # The physical names are unchanged: the long ones are cut and hashed within 63 bytes.
+    names = [view.name for view in plan.views]
+    hashed = [name for name in names if re.search(r"_[0-9a-f]{8}$", name)]
+    assert hashed and all(len(name.encode("utf-8")) <= 63 for name in names), names
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    with engine.connect() as connection:
+        connection.exec_driver_sql("ATTACH DATABASE ':memory:' AS conversation")
+        connection.exec_driver_sql("CREATE TABLE conversation.products (id INTEGER)")
+        connection.exec_driver_sql("INSERT INTO conversation.products VALUES (1), (2)")
+        record = DeterministicAnalysis(plan, conversation_schema="conversation").run(
+            connection, mode="verify", estimated_rows=2).record()
+    views = {view["name"]: view for view in record["views"]}
+    assert set(hashed) & set(views), (hashed, list(views))
+    for view in record["views"]:
+        assert not re.search(r"[0-9a-f]{8}$", view["logical_name"]), view["logical_name"]
+        assert not re.search(r"[0-9a-f]{8}$", view["label"]), view["label"]
+    assert {name: view["label"] for name, view in views.items()} == {
+        analysis_view_name(slug, "top_customers_result"): "top customers result",
+        analysis_view_name(slug, "top_products_bought_result"): "top products bought result",
+        analysis_view_name(slug, "customer_product_pairs_never_bought"): "customer product pairs never bought",
+    }, views
+
+
 def test_decomposition_expands_a_wildcard_leaf_before_dual_lowering():
     """A broad natural-language leaf still gets explicit names for both emitters."""
     tables = [{"name": "products", "columns": ["id"], "rows": [[1], [2]]}]
@@ -712,6 +764,7 @@ TESTS = [
     test_anti_join_evidence_must_preserve_the_complete_left_grain,
     test_anti_join_evidence_takes_the_first_reading_that_keeps_the_left_grain,
     test_long_leaf_names_are_unique_postgres_identifiers_with_the_root_slug,
+    test_long_leaf_names_keep_hash_free_labels,
     test_decomposition_expands_a_wildcard_leaf_before_dual_lowering,
     test_decomposition_tries_next_ranked_candidate_when_best_cannot_dual_lower,
     test_ranked_leaf_projects_extra_group_key_only_for_named_entity,

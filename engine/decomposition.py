@@ -462,6 +462,7 @@ def build_decomposed_plan(
     }
     tables_by_name: dict[str, TableSpec] = {}
     leaf_views: dict[str, tuple] = {}
+    logical_names: dict[str, tuple] = {}
     merge_views = []
     merge_sections = []
     outputs: dict[str, str] = {}
@@ -484,6 +485,7 @@ def build_decomposed_plan(
         tables_by_name.clear()
         tables_by_name.update(merged)
         leaf_views[node_id] = child.views
+        logical_names[node_id] = child.logical_names
         outputs[node_id] = str(child.output)
         row_bounds[node_id] = _row_bound(child, str(child.output))
 
@@ -554,6 +556,7 @@ def build_decomposed_plan(
             )
             row_bounds[merge["id"]] = row_bounds[left_id]
         merge_views.append(view)
+        logical_names[merge["id"]] = ((name, merge["id"]),)
         outputs[merge["id"]] = name
         merge_sections.append(
             PlanSection(
@@ -587,6 +590,9 @@ def build_decomposed_plan(
         views,
         outputs[proposal["output"]],
         tuple(sections + merge_sections),
+        tuple(pair for node_id in [*(node["id"] for node in proposal["subquestions"]),
+                                   *(merge["id"] for merge in proposal["merges"])]
+              for pair in logical_names[node_id]),
     )
 
 
@@ -662,10 +668,12 @@ def _leaf_readings(planner, slug, node, tables, schema, foreign_keys, tablemap, 
         # Every leaf is linear, but its names must use the ROOT slug's 63-byte
         # naming contract. PostgreSQL truncates long identifiers silently; raw
         # slug + node + stage concatenation can collapse multiple stages to one.
+        # A cut name carries a hash, so each view keeps its leaf name as its logical name.
         names = {view.name: analysis_view_name(slug, view.name) for view in child.views}
         yield replace(
             child,
             slug=slug,
+            logical_names=tuple((names[view.name], view.name) for view in child.views),
             views=tuple(
                 replace(
                     view,

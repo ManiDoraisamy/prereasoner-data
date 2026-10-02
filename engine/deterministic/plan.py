@@ -501,11 +501,16 @@ class AnalysisPlan:
     views: tuple[ViewStep, ...]
     output: str | None = None
     sections: tuple[PlanSection, ...] = ()
+    # (view name, logical name) for a view whose name is not its logical name behind the slug: a
+    # decomposition names a leaf's "top_customers_result" under the root slug, and a name past 63
+    # bytes is cut and hashed (engine.analysis.analysis_view_name). The label reads the logical name.
+    logical_names: tuple[tuple[str, str], ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "tables", tuple(self.tables))
         object.__setattr__(self, "views", tuple(self.views))
         object.__setattr__(self, "sections", tuple(self.sections))
+        object.__setattr__(self, "logical_names", tuple(tuple(pair) for pair in self.logical_names))
         # A slug is a durable SQL/view prefix, not a Python symbol. Historical
         # analyses can legitimately be named ``yield`` or ``class``; the Python
         # emitter maps those to a separate safe entrypoint method.
@@ -793,6 +798,11 @@ class AnalysisPlan:
 
         if self.output not in emitted:
             raise ValueError("analysis output must name a materialized view")
+        named = [name for name, _logical in self.logical_names]
+        if len(named) != len(set(named)) or not set(named) <= emitted:
+            raise ValueError("logical names must name each materialized view at most once")
+        for _name, logical in self.logical_names:
+            _require_identifier(logical, "logical view name")
         if self.sections:
             section_ids: set[str] = set()
             section_views: list[str] = []
@@ -824,6 +834,10 @@ class AnalysisPlan:
                     raise ValueError(
                         "plan section inputs must match cross-section view dependencies"
                     )
+
+    def logical_name(self, view_name: str) -> str:
+        """The name a view has behind the analysis slug: the recorded one, else its name less the slug."""
+        return dict(self.logical_names).get(view_name, view_name.removeprefix(self.slug + "_"))
 
     def table(self, name: str) -> TableSpec:
         try:
@@ -997,6 +1011,7 @@ class AnalysisPlan:
                 for view in stages
             },
             "view_sections": {view.name: sections.get(view.name) for view in stages},
+            "view_logical_names": {view.name: self.logical_name(view.name) for view in stages},
             "sections": [
                 {
                     "id": section.id,
