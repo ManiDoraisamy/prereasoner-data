@@ -357,9 +357,15 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         if rows:
             return rows[0][0]
         vec = pgvector_literal(Embedder.get().encode([value])[0])
+        # The nearest entity of THIS type, exactly: the B-tree on (type, qid) bounds the scan to the type and
+        # the distance is sorted, not served by the HNSW index. The index scan is approximate and the type
+        # filter runs after it, so it can return no row or a farther one, depending on the graph a restore
+        # builds and on whether the planner picks it: on the 2026-10-02 build's fresh seed "Mayo Clinic"
+        # stayed unresolved, and the US hospitals totalled 32 instead of 46.
         rows = self._kb_rows(
-            'SELECT qid, 1-(embedding <=> %s::vector) FROM knowledgebase."words" WHERE type=%s AND qid IS NOT NULL '
-            'ORDER BY embedding <=> %s::vector LIMIT 1', (vec, wl, vec))
+            'SELECT qid, 1-(embedding <=> %s::vector) FROM knowledgebase."words" '
+            'WHERE type=%s AND qid IS NOT NULL AND embedding IS NOT NULL '
+            'ORDER BY (embedding <=> %s::vector) + 0 LIMIT 1', (vec, wl, vec))
         row = rows[0] if rows else None
         if row and row[1] is not None and row[1] >= 0.85:
             return row[0]

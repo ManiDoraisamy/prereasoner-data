@@ -121,6 +121,35 @@ def test_value_membership_routing_is_one_lookup_per_table():
     assert routes[("t", "tie")] == entities.TYPE_TO_FRIENDLY["country"], routes   # 'country' < 'state'
 
 
+def test_an_entity_resolves_to_the_exact_nearest_of_its_type():
+    """The 2026-10-02 engine build resolved "Mayo Clinic" on a fresh seed through the HNSW index with the
+    hospital filter applied after the approximate scan: no hospital came back, the US hospitals totalled 32
+    instead of 46, and every earlier build had found it. The fuzzy entity lookup sorts the exact distance
+    over the rows of its type, which the planner cannot serve from the approximate index."""
+    import numpy as np
+
+    import engine.knowledge_query as knowledge_query
+
+    class _Embedder:
+        @staticmethod
+        def encode(texts):
+            return np.zeros((len(texts), 4), dtype=np.float32)
+
+    calls = []
+    q = knowledge_query.KnowledgeQuery.__new__(knowledge_query.KnowledgeQuery)
+    q._kb_rows = lambda sql, params: calls.append((sql, params)) or (
+        [("hospital",)] if "types" in sql else [] if "norm=%s" in sql else [("Q30280159", 0.91)])
+    original = knowledge_query.Embedder
+    knowledge_query.Embedder = type("E", (), {"get": staticmethod(lambda: _Embedder())})
+    try:
+        assert q._resolve_world_qid("Mayo Clinic", "hospital", "Q16917") == "Q30280159"
+    finally:
+        knowledge_query.Embedder = original
+    sql = calls[-1][0]
+    assert "ORDER BY (embedding <=> %s::vector) + 0" in sql and "embedding IS NOT NULL" in sql, sql
+    assert calls[-1][1][1] == "hospital"
+
+
 TESTS = [
     test_identical_lookup_executes_once_per_request,
     test_different_params_never_collide,
@@ -129,6 +158,7 @@ TESTS = [
     test_list_params_hash_by_value,
     test_production_entry_opens_the_request,
     test_value_membership_routing_is_one_lookup_per_table,
+    test_an_entity_resolves_to_the_exact_nearest_of_its_type,
 ]
 
 
