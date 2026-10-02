@@ -231,15 +231,17 @@ def test_chat_facade_replays_a_function_call_with_its_thought_signature():
     assert first.stop_reason == "tool_use" and [block.type for block in first.content] == ["text", "tool_use"]
     assert first.content[1].name == "prereasoner_describe" and first.content[1].input == {}
     assert second.stop_reason == "end_turn" and chunks == ["You uploaded two tables."]
-    model, answer = vertex.requests[1]["contents"][1:]
+    model, answer, note = vertex.requests[1]["contents"][1:]
     assert model.role == "model"
     assert (model.parts[0].text, model.parts[0].thought_signature) == ("Let me look.", b"text-signature")
     assert model.parts[1].function_call.name == "prereasoner_describe"
     assert model.parts[1].function_call.args == {} and model.parts[1].thought_signature == b"call-signature"
-    assert answer.role == "user"
+    # A turn of function responses holds nothing else: with the chat's note beside them, Vertex
+    # answered 400 "Requests ending with a model turn are not supported" (2026-10-02).
+    assert answer.role == "user" and len(answer.parts) == 1
     assert answer.parts[0].function_response.name == "prereasoner_describe"
     assert answer.parts[0].function_response.response == {"result": '{"tables": 2}'}
-    assert answer.parts[1].text == "Answer on its own."
+    assert note.role == "user" and [part.text for part in note.parts] == ["Answer on its own."]
     assert vertex.closed == ["async", "sync"]
 
 

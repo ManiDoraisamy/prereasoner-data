@@ -277,6 +277,14 @@ class AsyncGeminiClient:
                         content = _field(block, "content", "")
                         response = {"error": content} if _field(block, "is_error", False) else {"result": content}
                         parts.append(types.Part.from_function_response(name=name, response=response))
+            # A turn of function responses holds nothing else. With a text part beside them (the chat's
+            # note after the tool results of a reopened conversation) Vertex answers 400 "Requests ending
+            # with a model turn are not supported", and every follow-up's presentation fell back to plain
+            # text (2026-10-02). The text follows as a user turn of its own.
+            responses = [part for part in parts if part.function_response is not None]
+            if responses and len(responses) < len(parts):
+                contents.append(types.Content(role=role, parts=responses))
+                parts = [part for part in parts if part.function_response is None]
             if parts:
                 contents.append(types.Content(role=role, parts=parts))
         return contents
