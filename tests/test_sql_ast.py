@@ -1922,6 +1922,93 @@ def test_a_share_divides_the_kept_rows_aggregate_by_the_whole():
     assert "share" not in average.sql.lower() or "AVG" not in average.sql, average.sql
 
 
+def test_a_share_word_is_the_aggregate_of_the_rows_it_divides():
+    """Probe, 2026-10-02: "what % of total amount comes from Paris" served the Paris total (the
+    tokenizers dropped "%"), "what fraction of the amount comes from Lyon" divided order counts,
+    "percentage of amount by city" and "share of orders by city" were listings that divided nothing
+    ("orders by" also read as a sort), and "what percentage of customers are in Paris" a share per
+    customer. A share word asks for the sum of the measure it names, else the count of the rows."""
+    orders = {"name": "orders", "columns": ["order ID", "customer", "amount", "city"], "rows": [
+        [1, "Ada", 100, "Paris"], [2, "Ben", 29, "Paris"], [3, "Cy", 60, "Lyon"], [4, "Dee", 12, "Marseille"],
+        [5, "Eve", 6, "Nice"]]}
+    for question, expected in (
+            ("What % of total amount comes from Paris?", 129 / 207),
+            ("What fraction of the amount comes from Lyon?", 60 / 207),
+            ("What percentage of customers are in Paris?", 2 / 5),
+            ("What share of the amount do Paris and Lyon account for?", 189 / 207),
+            ("What percentage of the amount comes from orders over 50?", 160 / 207)):
+        candidate = best(question, [orders])
+        assert abs(execute([orders], candidate.sql)[0][0] - expected) < 1e-12, (question, candidate.sql)
+    for question, expected in (("Percentage of amount by city", {"Paris": 129 / 207, "Lyon": 60 / 207}),
+                               ("share of orders by city", {"Paris": 2 / 5, "Lyon": 1 / 5})):
+        candidate = best(question, [orders])
+        shares = dict(execute([orders], candidate.sql))
+        assert set(shares) == {"Paris", "Lyon", "Marseille", "Nice"}, (question, candidate.sql)
+        assert all(abs(shares[city] - value) < 1e-12 for city, value in expected.items()), (question, candidate.sql)
+    # Contrast: a "%" after a number is its unit, not a share.
+    from engine.sql_expansion import tokens
+
+    assert tokens("What % of orders") == ("what", "percent", "of", "order")
+    assert "percent" not in tokens("orders with a discount over 50%") + tokens("a discount over 50 %")
+    discounted = {"name": "orders", "columns": ["order ID", "discount", "amount"], "rows": [
+        [1, 60, 100], [2, 10, 29], [3, 55, 60]]}
+    over = best("how many orders have a discount over 50%", [discounted])
+    assert "/" not in over.sql and execute([discounted], over.sql) == [(2,)], over.sql
+
+
+def test_two_values_of_one_column_are_either():
+    """Probe, 2026-10-02: "total amount from Paris and Lyon" filtered city = 'Paris' AND city =
+    'Lyon' and answered nothing. No row holds both, and no Spider gold query conjoins two such values
+    (Spider writes "the continents Asia and Europe" as OR): the search reads either value, and the
+    served selection grounds no such conjunction, from the search or from a proposer."""
+    orders = {"name": "orders", "columns": ["order ID", "customer", "amount", "city"], "rows": [
+        [1, "Ada", 100, "Paris"], [2, "Ben", 29, "Paris"], [3, "Cy", 60, "Lyon"], [4, "Dee", 12, "Marseille"],
+        [5, "Eve", 6, "Nice"]]}
+    for question, expected in (("total amount from Paris and Lyon", [(189,)]),
+                               ("how many orders are from Paris and Lyon", [(3,)]),
+                               ("total amount from Paris or Lyon", [(189,)])):
+        candidate = best(question, [orders])
+        assert execute([orders], candidate.sql) == expected, (question, candidate.sql)
+    # Contrast: excluding both values keeps both exclusions.
+    excluded = best("total amount not from Paris and not from Lyon", [orders])
+    assert execute([orders], excluded.sql) == [(18,)], excluded.sql
+    # Negative: the conjunction is never searched, and never grounded for the served selection.
+    from engine.sql_ast import BooleanExpr, conjunction, contradictory
+    from engine.sql_candidate import ScoredQuery
+    from engine.sql_grounding import grounded_members
+
+    city = ColumnRef("orders", "city", SQLType.TEXT)
+    both = SelectQuery((SelectItem(Aggregate("COUNT", Star())),), "orders",
+                       where=BooleanExpr("AND", (Comparison(city, "=", Literal("Paris", SQLType.TEXT)),
+                                                 Comparison(city, "=", Literal("Lyon", SQLType.TEXT)))))
+    assert contradictory(both)
+    searcher = SQLSearcher.from_tables([orders], [])
+    assert not any(contradictory(candidate.query) for candidate in searcher.search("total amount from Paris and Lyon"))
+    either = SelectQuery(both.select, "orders", where=conjunction(both.where.terms))
+    assert isinstance(either.where, BooleanExpr) and either.where.operator == "OR", either.where
+    pool = [ScoredQuery(both, render_query(both), 0.0, ()), ScoredQuery(either, render_query(either), 0.0, ())]
+    assert grounded_members(pool, {"orders": orders}, searcher.schema) == (False, True)
+    # Contrast: a self-join compares two aliases, not one column.
+    first, second = ColumnRef("T2", "city", SQLType.TEXT), ColumnRef("T3", "city", SQLType.TEXT)
+    route = BooleanExpr("AND", (Comparison(first, "=", Literal("Ashley", SQLType.TEXT)),
+                                Comparison(second, "=", Literal("Aberdeen", SQLType.TEXT))))
+    assert conjunction(route.terms) == route
+
+
+def test_a_noun_over_a_number_compares_each_row():
+    """Probe, 2026-10-02: "total amount of orders over 50" was read as "more than 50 orders" and lost
+    its total. A plural noun before "over <n>" compares each row, as in every Spider question of that
+    shape ("students over 20 years old"); "customers with over 1 orders" still counts."""
+    orders = {"name": "orders", "columns": ["order ID", "customer", "amount", "city"], "rows": [
+        [1, "Ada", 100, "Paris"], [2, "Ada", 29, "Paris"], [3, "Cy", 60, "Lyon"], [4, "Dee", 12, "Marseille"]]}
+    total = best("total amount of orders over 50", [orders])
+    assert execute([orders], total.sql) == [(160,)], total.sql
+    counted = best("how many orders over 50", [orders])
+    assert execute([orders], counted.sql) == [(2,)], counted.sql
+    repeat = best("customers with over 1 orders", [orders])
+    assert "HAVING COUNT(*) > 1" in repeat.sql and execute([orders], repeat.sql) == [("Ada",)], repeat.sql
+
+
 def test_multiple_aggregates_share_a_typed_operand():
     candidate = best("What are the average, minimum and maximum age of people from France?", [PEOPLE])
     assert execute([PEOPLE], candidate.sql) == [(25.0, 20, 30)]
@@ -3335,6 +3422,9 @@ TESTS = [
     test_date_ranges_lists_and_quarters_filter_one_span,
     test_the_coverage_gate_reads_the_months_a_query_compares,
     test_a_share_divides_the_kept_rows_aggregate_by_the_whole,
+    test_a_share_word_is_the_aggregate_of_the_rows_it_divides,
+    test_two_values_of_one_column_are_either,
+    test_a_noun_over_a_number_compares_each_row,
     test_multiple_aggregates_share_a_typed_operand,
     test_repeated_count_paraphrase_is_one_aggregate,
     test_total_number_of_entities_is_a_scalar_count,

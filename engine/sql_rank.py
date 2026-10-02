@@ -23,7 +23,7 @@ from engine.sql_ast import (
     Aggregate, ColumnRef, Comparison, Query, SelectQuery, SetQuery, keep_ties, render_query,
     share_aggregate,
 )
-from engine.sql_expansion import share_requested
+from engine.sql_expansion import share_cue, share_requested, words
 from engine.sql_candidate import ScoredQuery
 from engine.sql_schema import SchemaGraph, is_surrogate_key
 
@@ -336,13 +336,18 @@ def analyze_question(question: str, schema: SchemaGraph) -> QuestionRoles:
         elif token in {"maximum", "max"}:
             aggregate_positions["MAX"].append(i)
 
+    if not any(aggregate_positions.values()) and (share := share_cue(tokens, schema)):
+        aggregate_positions[share[0]].append(share[1])            # the search reads the same cue
     all_aggregate_positions = sorted(position for positions in aggregate_positions.values() for position in positions)
     group_positions = [i for i, token in enumerate(tokens) if token in {"each", "per"}]
     group_positions += [i for i in range(len(tokens) - 1) if tokens[i:i + 2] == ("group", "by")]
     if all_aggregate_positions:
+        # "ordered by" sorts, but "orders by city" groups the orders (probe, 2026-10-02).
+        raw = words(question)
         group_positions += [i for i, token in enumerate(tokens)
                             if token == "by" and i > all_aggregate_positions[0]
-                            and (i == 0 or tokens[i - 1] not in {"order", "ordered", "sort", "sorted"})]
+                            and (i == 0 or tokens[i - 1] not in {"order", "ordered", "sort", "sorted"}
+                                 or raw[i - 1] == "orders")]
     group_positions = sorted(set(group_positions))
 
     clause_stops = {"where", "with", "whose", "having", "order", "ordered", "sort", "sorted",
@@ -444,7 +449,7 @@ def _comparisons(predicate):
 
 
 def _tokens(text: str) -> tuple[str, ...]:
-    return tuple(_canon(token) for token in re.findall(r"[A-Za-z0-9]+(?:'[A-Za-z0-9]+)?", text.lower()))
+    return tuple(_canon(token) for token in words(text))
 
 
 def _schema_tokens(name: str) -> tuple[str, ...]:

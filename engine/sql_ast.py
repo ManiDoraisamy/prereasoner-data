@@ -11,7 +11,7 @@ from decimal import Decimal
 from enum import Enum
 import math
 from numbers import Real
-from typing import Any, Iterable, TypeAlias
+from typing import Any, Iterable, Sequence, TypeAlias
 
 
 class SQLType(str, Enum):
@@ -489,6 +489,64 @@ def and_predicates(predicates: Iterable[Predicate]) -> Predicate | None:
     if len(terms) == 1:
         return terms[0]
     return BooleanExpr("AND", terms)
+
+
+def _conjoined(predicate: Predicate | None) -> Iterable[Predicate]:
+    if isinstance(predicate, BooleanExpr) and predicate.operator == "AND":
+        for term in predicate.terms:
+            yield from _conjoined(term)
+    elif predicate is not None:
+        yield predicate
+
+
+def _equality(term: Predicate) -> bool:
+    return (isinstance(term, Comparison) and term.operator == "="
+            and isinstance(term.left, (ColumnRef, DatePart)) and isinstance(term.right, Literal))
+
+
+def _equality_conflicts(terms: Sequence[Predicate]) -> dict[ScalarExpr, list[Comparison]]:
+    """The expressions a conjunction of ``terms`` holds equal to two different values, with their
+    equalities: no row satisfies ``city = 'Paris' AND city = 'Lyon'``."""
+    groups: dict[ScalarExpr, list[Comparison]] = {}
+    for term in terms:
+        if _equality(term):
+            groups.setdefault(term.left, []).append(term)
+    return {left: group for left, group in groups.items()
+            if any(term.right.value != group[0].right.value for term in group)}
+
+
+def contradictory(query: Query) -> bool:
+    """Whether a WHERE of ``query``, in any of its SELECTs, holds one column equal to two different
+    values: ``city = 'Paris' AND city = 'Lyon'`` matches no row. No Spider gold query conjoins two
+    such values (2026-10-02); the search reads them as either value (``conjunction``), and the served
+    selection never grounds such a query (engine/sql_grounding.py)."""
+    if isinstance(query, SetQuery):
+        return contradictory(query.left) or contradictory(query.right)
+    if isinstance(query.from_table, SubquerySource) and contradictory(query.from_table.query):
+        return True
+    return bool(_equality_conflicts(tuple(_conjoined(query.where))))
+
+
+def conjunction(predicates: Iterable[Predicate]) -> Predicate | None:
+    """The predicates' AND, except that equalities of one column with different values are their union.
+    No row holds both, so "the total amount from Paris and Lyon" reads the rows of either: the AND
+    answered nothing (probe, 2026-10-02)."""
+    terms = tuple(predicate for predicate in predicates if predicate is not None)
+    conflicts = _equality_conflicts(terms)
+    if not conflicts:
+        return and_predicates(terms)
+    out: list[Predicate] = []
+    for term in terms:
+        group = conflicts.get(term.left) if _equality(term) else None
+        if group is None:
+            out.append(term)
+        elif term is group[0]:
+            unique: list[Comparison] = []
+            for member in group:
+                if member not in unique:
+                    unique.append(member)
+            out.append(BooleanExpr("OR", tuple(unique)))
+    return and_predicates(out)
 
 
 def _validate_expr(expr: ScalarExpr, visible: frozenset[str]) -> None:

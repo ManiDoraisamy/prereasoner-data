@@ -26,6 +26,7 @@ from engine.sql_ast import (
     SQLType,
     Star,
     and_predicates,
+    contradictory,
     render_query,
     share_of,
     validate_query,
@@ -38,12 +39,13 @@ from engine.sql_expansion import (
     measure_words_after,
     money_total_position,
     ordering_requested,
+    share_cue,
     share_requested,
+    words,
 )
 from engine.sql_profile_expansion import ProfileSearchConfig
 from engine.sql_schema import SchemaGraph, is_surrogate_key
 
-_WORD_RE = re.compile(r"[A-Za-z0-9]+(?:'[A-Za-z0-9]+)?")
 _NUMBER_RE = re.compile(r"^-?(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d+)?$")
 _PROJECTION_CUES = frozenset({"show", "list", "display", "select", "give", "find", "which", "what"})
 _ID_WORDS = frozenset({"id", "identifier", "code", "key"})
@@ -255,6 +257,9 @@ class SQLSearcher:
                 max(0.0, profile_binding_quality_weight),
             ).expand(question, pool)
             pool = _merge_candidates(pool, generated)
+        # The expansions read a conjunction of one column's values as either value or both
+        # (engine/sql_constraints.py, engine/sql_recursive.py); the conjunction itself matches no row.
+        pool = [candidate for candidate in pool if not contradictory(candidate.query)]
         if not rank_candidates:
             return pool[:self.max_candidates]
         from engine.sql_rank import CandidateRanker
@@ -459,6 +464,8 @@ class SQLSearcher:
                     cues.append(("SUM", measure.position))
                     implicit_measures[measure.position] = measure.column_words
                     break
+        if not cues and (share := share_cue(tokens, self.schema)) is not None:
+            cues.append(share)
         if not cues:
             return [((), 0.0, ())]
 
@@ -1006,7 +1013,7 @@ def _merge_candidates(
 
 
 def _tokens(question: str) -> tuple[str, ...]:
-    return tuple(_canon(token) for token in _WORD_RE.findall(question.lower()))
+    return tuple(_canon(token) for token in words(question))
 
 
 def _name_words(name: str) -> tuple[str, ...]:

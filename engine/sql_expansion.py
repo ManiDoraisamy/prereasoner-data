@@ -728,6 +728,25 @@ def share_requested(question_tokens: Sequence[str], column_words: Iterable[str] 
     return bool((SHARE_WORDS - set(column_words)) & set(question_tokens))
 
 
+def share_cue(question_tokens: Sequence[str], schema: SchemaGraph) -> tuple[str, int] | None:
+    """The aggregate a share word asks for, at the word's position: a share is an aggregate of the rows
+    it divides. "percentage of amount by city" sums the measure it names within its next three words;
+    "share of orders by city" and "what percentage of customers are in Paris" count the rows (probe,
+    2026-10-02: the first two were listings that divided nothing, the third a count per customer). A
+    share word that names a column asks for no share."""
+    column_words = {word for column in schema.columns for word in name_tokens(column.ref.name)}
+    position = next((index for index, token in enumerate(question_tokens)
+                     if token in SHARE_WORDS and token not in column_words), None)
+    if position is None:
+        return None
+    table_words = {word for table in schema.tables for word in name_tokens(table)}
+    measure_words = {word for column in schema.columns
+                     if column.ref.type.numeric and not is_surrogate_key(column.ref.name)
+                     for word in name_tokens(column.ref.name)}
+    named = set(question_tokens[position + 1:position + 4]) - table_words
+    return ("SUM" if named & measure_words else "COUNT"), position
+
+
 # A superlative of quantity ranks totals: "the most deposits" is the largest total of deposits. "The
 # highest amount" stays out: it may name the largest single value as well as the largest total.
 QUANTITY_SUPERLATIVES = frozenset({"most", "least", "fewest"})
@@ -826,9 +845,20 @@ def name_tokens(name: str) -> tuple[str, ...]:
     return tuple(canon(token) for token in re.findall(r"[A-Za-z0-9]+", spaced))
 
 
+# A "%" that follows no number is the word "percent" ("what % of the total amount comes from Paris"
+# served the Paris total, 2026-10-02); after a number ("over 50%") it is the number's unit.
+_QUESTION_WORD = re.compile(r"[A-Za-z0-9]+(?:'[A-Za-z0-9]+)?|(?<!\d)(?<!\d\s)%")
+
+
+def words(text: str) -> list[str]:
+    """The lowercase words of a question, before any module's own normalization: the one word
+    splitter the search, its expansions and the ranker read a question with."""
+    return ["percent" if word == "%" else word for word in _QUESTION_WORD.findall(text.lower())]
+
+
 def tokens(text: str) -> tuple[str, ...]:
     out = []
-    for token in re.findall(r"[A-Za-z0-9]+(?:'[A-Za-z0-9]+)?", text.lower()):
+    for token in words(text):
         if token.endswith("'s"):
             token = token[:-2]
         out.append(canon(token))

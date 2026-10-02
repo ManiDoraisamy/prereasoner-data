@@ -63,6 +63,7 @@ from engine.sql_ast import (
     SetQuery,
     SQLType,
     SubquerySource,
+    contradictory,
 )
 from engine.sql_schema import is_surrogate_key
 
@@ -101,7 +102,8 @@ def grounded_members(pool: Sequence, tables: Mapping[str, dict], graph) -> tuple
     return tuple(
         all(_grounded(binding, holders) for binding in fact.bindings)
         and not any(keys.contradicts(left, right) for left, right in fact.pairs)
-        for fact in facts
+        and not contradictory(candidate.query)
+        for fact, candidate in zip(facts, pool)
     )
 
 

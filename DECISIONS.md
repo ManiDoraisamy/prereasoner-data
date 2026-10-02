@@ -1486,3 +1486,22 @@ months run backwards), reads consecutive listed months and quarters as the span 
 10th of August". A lone "from" is the period it names ("orders from August 2026"); "from A onwards" reads as
 "since". A list with a gap ("January and March") and an impossible day compare nothing, so the coverage gate
 asks rather than answering for no rows. Relative dates ("last month") are still unread.
+
+## A column equal to two values is no query; share words are aggregates (2026-10-02)
+
+A probe of own-data phrasings found answers that were confidently wrong. "The total amount from Paris and
+Lyon" filtered `city = 'Paris' AND city = 'Lyon'` and answered nothing. No row holds both, and none of
+Spider's 8,034 gold queries conjoins two such values (Spider writes "the continents Asia and Europe" as OR).
+The base search still emits the conjunction, because the set and disjunction expansions build OR, UNION and
+INTERSECT readings from it. A union candidate now reads it as either value, the search drops the conjunction
+before ranking, and `engine/sql_grounding.py` grounds no such query, so a proposer's conjunction is never
+served either (`sql_ast.contradictory`). The disjunction rewrite also gained the SUM cue it lacked ("the total
+amount from Paris or Lyon" listed the amounts).
+
+A share word with no other aggregate cue is now one (`sql_expansion.share_cue`). It sums the measure it names
+within three words ("percentage of amount by city") and otherwise counts the rows ("share of orders by city"),
+and the search and the ranker read the same cue. The search, its expansions and the ranker had three copies
+of one word splitter, none of which kept "%". They now share `sql_expansion.words`, where a "%" that follows
+no number is the word "percent". A plural noun right before "over <n>" compares each row ("orders over 50"),
+as every Spider question of that shape does, instead of reading as "more than 50 orders". None of Spider DEV's
+8 share-word questions is affected (each word names a column there).

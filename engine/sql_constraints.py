@@ -24,6 +24,8 @@ from engine.sql_ast import (
     SelectQuery,
     Star,
     and_predicates,
+    conjunction,
+    contradictory,
 )
 from engine.sql_expansion import (
     CountThreshold,
@@ -62,6 +64,7 @@ class ConstraintQueryExpander(ExpansionSupport):
         generated.extend(self._count_having_candidates(question, candidates))
         generated.extend(self._aggregate_having_candidates(question, candidates))
         generated.extend(self._or_candidates(question, candidates))
+        generated.extend(self._union_candidates(candidates))
         generated.extend(self._scalar_aggregate_candidates(question, candidates))
         generated.extend(self._scalar_selector_candidates(question, candidates))
         generated.extend(self._membership_candidates(question, candidates))
@@ -83,8 +86,15 @@ class ConstraintQueryExpander(ExpansionSupport):
         if not thresholds:
             return []
         out = []
+        table_words = {word for table in self.schema.tables for word in _semantic_tokens(table)}
         for threshold in thresholds:
             if self.threshold_targets_column(tokens, threshold):
+                continue
+            if (tokens[threshold.start] == "over" and threshold.start > 0
+                    and tokens[threshold.start - 1] in table_words):
+                # "the total amount of orders over 50" compares each order, as every Spider question
+                # with a plural noun before "over <n>" does ("students over 20 years old"); it was
+                # read as "more than 50 orders" and lost its total (probe, 2026-10-02).
                 continue
             entity_options = self.entity_tables(tokens, threshold)
             for entity_table, entity_score in entity_options[:2]:
@@ -251,6 +261,22 @@ class ConstraintQueryExpander(ExpansionSupport):
                         )
                         if built is not None:
                             out.append(built)
+        return out
+
+    @staticmethod
+    def _union_candidates(candidates: Sequence[ScoredQuery]) -> list[ScoredQuery]:
+        """Two values of one column joined by "and" name the rows of either: "the total amount from
+        Paris and Lyon" filtered city = 'Paris' AND city = 'Lyon' and answered nothing (probe,
+        2026-10-02). "Or" is read by ``_or_candidates``; "both" by the set expansions."""
+        out = []
+        for candidate in candidates:
+            query = candidate.query
+            if not isinstance(query, SelectQuery) or not contradictory(query):
+                continue
+            built = _candidate(replace(query, where=conjunction(_and_terms(query.where))),
+                               candidate.score + 19.0, candidate.evidence + ("constraint:where-union",))
+            if built is not None:
+                out.append(built)
         return out
 
     def _or_candidates(
@@ -811,6 +837,9 @@ class ConstraintQueryExpander(ExpansionSupport):
             function = "MIN"
         elif set(tokens) & {"average", "avg", "mean"}:
             function = "AVG"
+        elif set(tokens) & {"sum", "total"}:
+            # "the total amount from Paris or Lyon" listed the amounts (probe, 2026-10-02).
+            function = "SUM"
         if function is not None:
             projection_tokens = {token for _, token in _projection_window(tokens)}
             for schema_column in self.schema.columns:
