@@ -1146,6 +1146,20 @@ def test_a_month_comparison_runs_in_both_programs():
     ], estimated_rows=4)
     assert result.mode.value == "verify"                       # both programs ran and agreed
     assert [tuple(row.values()) for row in result.rows] == [(2,)], result.rows
+    # "How many transfers were signed in Q3?": a yearless quarter is a range of months, in both programs.
+    from engine.sql_ast import BooleanExpr
+
+    month = DatePart("month", signed)
+    quarter = SelectQuery((SelectItem(Aggregate("COUNT", Star()), "transfers"),), "transfers",
+                          where=BooleanExpr("AND", (Comparison(month, ">=", Literal(7, SQLType.INTEGER)),
+                                                    Comparison(month, "<=", Literal(9, SQLType.INTEGER)))))
+    result = _execute_fixture(lower_select_query("third_quarter", quarter, schema, ()), [
+        "CREATE TABLE conversation.transfers (hospital TEXT, signed DATE)",
+        "INSERT INTO conversation.transfers VALUES ('Mayo', '2026-08-04'), ('Charite', '2026-07-13'), "
+        "('Toronto', '2026-09-15'), ('Oslo', '2026-10-02'), ('Lyon', '2026-06-30')",
+    ], estimated_rows=5)
+    assert result.mode.value == "verify"
+    assert [tuple(row.values()) for row in result.rows] == [(3,)], result.rows
 
 
 def test_a_share_of_the_whole_runs_in_both_programs():

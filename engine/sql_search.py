@@ -739,6 +739,8 @@ class SQLSearcher:
             targets = [column for column in self._date_targets(mentions, phrase.start)
                        if column.type == SQLType.DATE]
             label = "-".join(str(part) for part in (phrase.year, phrase.month, phrase.day) if part is not None)
+            if phrase.until is not None:
+                label += ".." + "-".join(str(part) for part in phrase.until if part is not None)
             options = [(phrase.comparisons(target), 5.0,
                         f"date:{target.table}.{target.name}:{phrase.cue or 'in'}:{label}")
                        for target in targets[:4] if phrase.comparisons(target)]
@@ -751,7 +753,7 @@ class SQLSearcher:
         groups = []
         used_numbers: set[int] = set(claimed)
         for i, token in enumerate(tokens):
-            if token != "between":
+            if token != "between" or i in claimed:              # "between July 1 and July 10, 2026" is dates
                 continue
             found = [(j, _number(tokens[j])) for j in range(i + 1, min(len(tokens), i + 7)) if _NUMBER_RE.match(tokens[j])]
             if len(found) < 2:

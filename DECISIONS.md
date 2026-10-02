@@ -1474,3 +1474,15 @@ a row depended on the graph a restore builds and on the planner: on the build's 
 unresolved and the US hospitals totalled 32 instead of 46. It now sorts the exact distance over the rows of its type,
 bounded by the `(type, qid)` B-tree; on production it returns the same match at similar latency. `knowledgebase.words`
 holds no embedding for any of its 3,114 banks, so a bank name resolves only by its exact name.
+
+## A date range, a list of months and a quarter are one span (2026-10-02)
+
+A probe of the date reader on common phrasings found wrong answers, not declines: "from March to May 2026"
+and "between March and May 2026" filtered May alone, "between July 1 and July 10, 2026" July 10 alone, "in
+August and September 2026" both months at once (no row), and "after the 10th of August 2026" all of August.
+`engine/sql_dates.py` now reads a range's two ends as one span ("between A and B", "from A to B", "A through
+B", "A-B", "from 5th to 10th August"), lends a year one end names to the other (across a year's end when the
+months run backwards), reads consecutive listed months and quarters as the span they cover, and reads "the
+10th of August". A lone "from" is the period it names ("orders from August 2026"); "from A onwards" reads as
+"since". A list with a gap ("January and March") and an impossible day compare nothing, so the coverage gate
+asks rather than answering for no rows. Relative dates ("last month") are still unread.

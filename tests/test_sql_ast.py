@@ -1817,6 +1817,56 @@ def test_month_and_dated_phrases_filter_the_date_column():
     assert execute([contacts], contacted.sql) == [(2,)], contacted.sql
 
 
+def test_date_ranges_lists_and_quarters_filter_one_span():
+    """Probe of the 2026-10-02 date reader: "from March to May 2026" and "between March and May 2026"
+    filtered May alone, "between July 1 and July 10, 2026" July 10 alone, "in August and September 2026"
+    both months at once (no row), and "after the 10th of August 2026" all of August. A range's ends, a
+    list of consecutive months and a quarter are one span; a year one end names is the other's too."""
+    dates = ["2025-11-20", "2025-12-15", "2026-01-10", "2026-02-14", "2026-03-03", "2026-04-18", "2026-05-30",
+             "2026-06-02", "2026-07-01", "2026-07-05", "2026-07-10", "2026-07-11", "2026-08-05", "2026-08-10",
+             "2026-08-12", "2026-09-09", "2026-10-01"]
+    orders = {"name": "orders", "columns": ["order_id", "placed", "amount"],
+              "rows": [[index + 1, placed, 100] for index, placed in enumerate(dates)]}
+    for question, expected in (
+            ("How many orders were placed from March to May 2026?", 3),
+            ("How many orders were placed from March 2026 to May 2026?", 3),
+            ("How many orders were placed between March and May 2026?", 3),
+            ("How many orders were placed between July 1 and July 10, 2026?", 3),
+            ("How many orders were placed in August and September 2026?", 4),
+            ("How many orders were placed in June, July and August 2026?", 8),
+            ("How many orders were placed after the 10th of August 2026?", 3),
+            ("How many orders were placed in Q3 2026?", 8),
+            ("How many orders were placed from November to February 2026?", 4),
+            ("How many orders were placed from 5th to 10th August 2026?", 2),
+            ("How many orders were placed March-May 2026?", 3)):
+        candidate = best(question, [orders])
+        assert execute([orders], candidate.sql)[0][0] == expected, (question, candidate.sql)
+
+    from engine.sql_ast import ColumnRef, DatePart, SQLType
+    from engine.sql_dates import date_phrases
+    from engine.sql_expansion import tokens
+
+    def read(question):
+        column = ColumnRef("orders", "placed", SQLType.DATE)
+        return [tuple((type(c.left) is DatePart, c.operator, c.right.value) for c in phrase.comparisons(column))
+                for phrase in date_phrases(question, tokens(question))]
+
+    # Same profile, other spans: a lone "from" is the period, "onwards" makes it "since", a yearless
+    # range compares months, and a yearless quarter its three months.
+    assert read("orders from August 2026") == [((False, ">=", "2026-08-01"), (False, "<", "2026-09-01"))]
+    assert read("orders from August 2026 onwards") == [((False, ">=", "2026-08-01"),)]
+    assert read("orders in March and April") == [((True, ">=", 3), (True, "<=", 4))]
+    assert read("orders in Q4") == [((True, ">=", 10), (True, "<=", 12))]
+    # Negative: a list with a gap, a range with an impossible day and a yearless day range compare
+    # nothing (the coverage gate asks), "before August" names no year, and "may" as a verb is no month.
+    assert read("orders in January and March 2026") == [()]
+    assert read("orders between February 30 and March 3, 2026") == [()]
+    assert read("orders from 5th to 10th August") == [()]
+    assert read("orders before August") == []
+    assert read("how many staff may join in June 2026") == [
+        ((False, ">=", "2026-06-01"), (False, "<", "2026-07-01"))]
+
+
 def test_the_coverage_gate_reads_the_months_a_query_compares():
     from engine.sql_dates import realized_month_words
 
@@ -1828,6 +1878,14 @@ def test_the_coverage_gate_reads_the_months_a_query_compares():
     # Contrast: another month's comparison, or none, realizes nothing.
     assert realized_month_words(question, month.replace("= 8", "= 7")) == frozenset()
     assert realized_month_words(dated, "SELECT COUNT(*) FROM x") == frozenset()
+    # A range realizes the months and quarters it names only when the query keeps the whole span.
+    spring = "How many orders from March to May 2026?"
+    kept = "SELECT COUNT(*) FROM o WHERE placed >= '2026-03-01' AND placed < '2026-06-01'"
+    assert realized_month_words(spring, kept) == {"march", "may"}
+    assert realized_month_words(spring, "SELECT COUNT(*) FROM o WHERE placed >= '2026-05-01'") == frozenset()
+    months = ('SELECT COUNT(*) FROM o WHERE CAST(SUBSTR(CAST("o"."placed" AS TEXT), 6, 2) AS INTEGER) >= 10 '
+              'AND CAST(SUBSTR(CAST("o"."placed" AS TEXT), 6, 2) AS INTEGER) <= 12')
+    assert realized_month_words("How many orders in Q4?", months) == {"q4"}
 
 
 def test_a_share_divides_the_kept_rows_aggregate_by_the_whole():
@@ -3274,6 +3332,7 @@ TESTS = [
     test_duplicate_property_projection_respects_entity_qualifier,
     test_directional_year_filter_targets_date_column,
     test_month_and_dated_phrases_filter_the_date_column,
+    test_date_ranges_lists_and_quarters_filter_one_span,
     test_the_coverage_gate_reads_the_months_a_query_compares,
     test_a_share_divides_the_kept_rows_aggregate_by_the_whole,
     test_multiple_aggregates_share_a_typed_operand,
