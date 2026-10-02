@@ -31,5 +31,6 @@ const fs = require('fs');
   const source = await video.path();
   const target = path.join(root, 'prereasoner-sheets-copilot-oauth-demo.webm');
   fs.copyFileSync(source, target);
+  fs.rmSync(videoDir, { recursive: true, force: true });
   console.log(target);
 })();
