@@ -2116,6 +2116,49 @@ def test_a_count_over_times_and_a_share_word_that_names_a_thing():
     assert "percent" not in tokens("names like 'A%'")
 
 
+def test_a_lowercase_grammar_word_links_to_no_value():
+    """Spider world_1, 2026-10-02: "in", "and", "is" and "are" linked to the codes 'IN', 'AND', 'IS' and
+    'ARE' (India, Andorra, Iceland, the Emirates), so a question about countries in Asia filtered
+    Code = 'ARE', and one with two such words had no satisfiable reading at all. A grammar word in lower
+    case links to no value; one the question writes in capitals still does ("the division AS")."""
+    country = {"name": "country", "columns": ["Code", "Code2", "Name", "Continent", "Population"], "rows": [
+        ["ARE", "AE", "United Arab Emirates", "Asia", 2441000], ["AND", "AD", "Andorra", "Europe", 78000],
+        ["IND", "IN", "India", "Asia", 1013662000], ["ISL", "IS", "Iceland", "Europe", 279000],
+        ["CHN", "CN", "China", "Asia", 1277558000]]}
+    asia = best("how many countries are in Asia?", [country])
+    assert execute([country], asia.sql) == [(3,)], asia.sql
+    europe = best("What are the names of the countries that are in Europe and have a population of 78000?",
+                  [country])
+    assert not {"'AND'", "'ARE'", "'IN'", "'IS'"} & set(re.findall(r"'[A-Z]+'", europe.sql)), europe.sql
+    # Contrast: a value the question writes in capitals is that value.
+    departments = {"name": "department", "columns": ["DName", "Division", "Building"], "rows": [
+        ["History", "AS", "NEB"], ["Physics", "AS", "OLS"], ["Civil", "EN", "NEB"]]}
+    division = best("How many departments are in the division AS?", [departments])
+    assert execute([departments], division.sql) == [(2,)], division.sql
+    # Negative: a grammar word inside a longer value still belongs to it.
+    documents = {"name": "documents", "columns": ["Document_ID", "Document_Name"], "rows": [
+        [1, "Welcome to NY"], [2, "Robbin CV"]]}
+    named = best("Show the id of the document with name 'Welcome to NY'.", [documents])
+    assert execute([documents], named.sql) == [(1,)], named.sql
+
+
+def test_a_stated_comparison_on_an_aggregate_needs_no_where():
+    """Spider world_1 #796 (2026-10-02): "each government form whose average life expectancy is longer
+    than 72" reached HAVING AVG(...) > 72 only through a WHERE a bogus code link had built; the rewrite
+    reads the comparison from the question. A bare number is no such comparison ("top 2 shoppers by
+    total spend" keeps its ranking)."""
+    country = {"name": "country", "columns": ["Code", "GovernmentForm", "Population", "LifeExpectancy"], "rows": [
+        ["A", "Republic", 100, 80.0], ["B", "Republic", 50, 70.0], ["C", "Monarchy", 30, 60.0],
+        ["D", "Monarchy", 20, 66.0]]}
+    question = ("Find the government form name and total population for each government form whose average "
+                "life expectancy is longer than 72.")
+    candidate = best(question, [country])
+    rows = execute([country], candidate.sql)
+    assert "HAVING AVG(" in candidate.sql and rows in ([(150, "Republic")], [("Republic", 150)]), candidate.sql
+    spend = best("top 2 shoppers by total spend", RETAIL, RETAIL_FKS)
+    assert "HAVING" not in spend.sql, spend.sql
+
+
 def test_multiple_aggregates_share_a_typed_operand():
     candidate = best("What are the average, minimum and maximum age of people from France?", [PEOPLE])
     assert execute([PEOPLE], candidate.sql) == [(25.0, 20, 30)]
@@ -3535,6 +3578,8 @@ TESTS = [
     test_a_month_word_joins_a_date_phrase_only_as_a_date,
     test_either_value_reads_only_listed_values,
     test_a_count_over_times_and_a_share_word_that_names_a_thing,
+    test_a_lowercase_grammar_word_links_to_no_value,
+    test_a_stated_comparison_on_an_aggregate_needs_no_where,
     test_multiple_aggregates_share_a_typed_operand,
     test_repeated_count_paraphrase_is_one_aggregate,
     test_total_number_of_entities_is_a_scalar_count,

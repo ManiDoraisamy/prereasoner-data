@@ -48,6 +48,13 @@ from engine.sql_schema import SchemaGraph, is_surrogate_key
 
 _NUMBER_RE = re.compile(r"^-?(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d+)?$")
 _PROJECTION_CUES = frozenset({"show", "list", "display", "select", "give", "find", "which", "what"})
+# Grammar words a question writes in lower case: "in", "and" or "are" is never Code2 'IN', Code 'AND' or
+# Code 'ARE' (Spider world_1, 2026-10-02), while a question that names such a value writes it in capitals
+# ("the division AS", every Spider train question of that kind).
+_FUNCTION_WORDS = frozenset({
+    "an", "and", "are", "as", "at", "be", "by", "for", "from", "in", "into", "is", "it", "of", "on", "or",
+    "than", "that", "the", "this", "to", "was", "were", "with",
+})
 _ID_WORDS = frozenset({"id", "identifier", "code", "key"})
 _CATEGORICAL_INITIALS = {
     "left": "l", "right": "r",
@@ -596,7 +603,8 @@ class SQLSearcher:
         # to compare, "in May" stays a value of a text month column.
         phrases = served_date_phrases(question, tokens, self.schema)
         claimed = {index for phrase in phrases for index in range(phrase.start, phrase.end)}
-        groups.extend(self._value_predicate_groups(tokens, mentions, claimed))
+        capitalized = frozenset(word.lower() for word in re.findall(r"\b[A-Z]{2,}\b", question))
+        groups.extend(self._value_predicate_groups(tokens, mentions, claimed, capitalized))
         groups.extend(self._date_phrase_groups(phrases, mentions))
         groups.extend(self._numeric_predicate_groups(tokens, mentions, claimed))
         if not groups:
@@ -611,10 +619,13 @@ class SQLSearcher:
         return [(predicates, score, evidence) for predicates, score, evidence in beam]
 
     def _value_predicate_groups(self, tokens: tuple[str, ...], mentions: tuple[_Mention, ...],
-                                claimed: set[int] = frozenset()) -> list[list[tuple[tuple[Comparison, ...], float, str]]]:
+                                claimed: set[int] = frozenset(),
+                                capitalized: frozenset[str] = frozenset()) -> list[list[tuple[tuple[Comparison, ...], float, str]]]:
         matches: list[tuple[int, int, str, tuple[tuple[ColumnRef, Any], ...]]] = []
         for start in range(len(tokens)):
             for size in range(1, min(6, len(tokens) - start) + 1):
+                if size == 1 and tokens[start] in _FUNCTION_WORDS and tokens[start] not in capitalized:
+                    continue                    # "in" alone is no Code2 'IN'; "Welcome to NY" stays one value
                 phrase = " ".join(tokens[start:start + size])
                 options = self.schema.value_index.get(phrase)
                 if options:

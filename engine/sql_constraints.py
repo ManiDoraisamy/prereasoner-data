@@ -214,8 +214,13 @@ class ConstraintQueryExpander(ExpansionSupport):
         out = []
         for candidate in candidates:
             query = candidate.query
-            if not isinstance(query, SelectQuery) or not query.group_by or query.where is None:
+            # A comparison the question states with a comparative may come from the question alone: "each
+            # government form whose average life expectancy is longer than 72" has no WHERE to move it from
+            # (Spider world_1 #796 was found only while lowercase "is" linked to a country code,
+            # 2026-10-02). A bare number ("top 2 shoppers by total spend") is no such comparison.
+            if not isinstance(query, SelectQuery) or not query.group_by:
                 continue
+            stated_only = query.where is None
             aggregates = [
                 item.expression for item in query.select
                 if isinstance(item.expression, Aggregate) and item.expression.function in requested
@@ -232,6 +237,7 @@ class ConstraintQueryExpander(ExpansionSupport):
                     comparison for comparison in self.numeric_comparisons(question_tokens)
                     if comparison.left == aggregate.operand
                     and comparison not in movable
+                    and not (stated_only and comparison.operator == "=")
                 )
                 for comparison in movable:
                     if not _explicit_aggregate_constraint(
