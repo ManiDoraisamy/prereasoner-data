@@ -1,5 +1,24 @@
 # Spider Results
 
+## The engine alone at `0624a24`, fresh whole_db DEV run (2026-10-02)
+
+The same serving-faithful contract as the runs below (`spider/probe/full_eval.py --config whole_db`,
+`served` selection, SQL backend, row cap 5,000, the Gemini fallback off), now from a clean checkout of
+`0624a24` (`worktree_dirty=false`, tag `main-0624a24`). It adds that evening's typed-search fixes on top of
+`d10ca77` and the removal: `73c189f` to `7743e60` and `ab5093a` to `72bf61e` (`DECISIONS.md`).
+
+| Difficulty | n | Answered | Strict | Lenient | Scalar |
+|---|---:|---:|---:|---:|---:|
+| easy | 248 | 248 | 151 | 169 | 126/173 |
+| medium | 446 | 440 | 194 | 242 | 69/101 |
+| hard | 174 | 172 | 65 | 100 | 54/77 |
+| extra | 166 | 165 | 48 | 58 | 24/57 |
+| **all** | **1,034** | **1,025** | **458 (44.3%)** | **569 (55.0%)** | **273/408 (66.9%)** |
+
+Against `d10ca77` plus the removal (380): **79 strict wins, 1 loss**. Nine questions have no candidate that
+runs and grounds (32 on `4679bed`). Prediction seconds: median 1.09, p90 2.39, p95 2.96, max 5.33. Output:
+`%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_main-0624a24.json`.
+
 ## No SQL-writing model: the engine alone, fresh whole_db DEV runs (2026-10-02)
 
 The 7B SQL proposer and the fitted arbiter are removed (`DECISIONS.md`, 2026-10-02). Selection serves the

@@ -335,11 +335,10 @@ Determinism does not remove ambiguity, incomplete schema linking, candidate-sear
 errors, missing world data, or wrong relationship inference. Accuracy work is split into measured
 stages: routing, table selection, candidate-pool recall, top-1 ranking, execution, and evaluation.
 
-With no model writing SQL, the engine alone scores **380/1,034 strict (36.8%)** on Spider DEV
-(`whole_db`, gold-blind, the Gemini fallback off), measured 2026-10-02. With a 7B SQL-writing model it
-scored 866. That gap is the cost of interpretability the project chose: every query is built by the
-search. The search already pools a correct query for 544 of the questions, so better ranking rules are
-the next deterministic lever. Records and history are in
+With no model writing SQL, the engine alone scores **458/1,034 strict (44.3%)** on Spider DEV
+(`whole_db`, gold-blind, the Gemini fallback off), measured 2026-10-02 at `0624a24`. With a 7B
+SQL-writing model it scored 866. That gap is the cost of interpretability the project chose: every query
+is built by the search, and accuracy now grows by search and ranking rules (380 to 458 in one evening). Records and history are in
 [spider/results/RESULTS.md](spider/results/RESULTS.md). `gold_tables` results are an oracle ablation, not a Spider comparison. See
 [docs/SQL_AST.md](docs/SQL_AST.md).
 
