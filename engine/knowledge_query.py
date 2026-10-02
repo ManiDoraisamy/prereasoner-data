@@ -48,7 +48,7 @@ from engine.currency_intent import (
 from engine.calculations import calculation_clarify
 from engine.numeric import parse_decimal
 from engine.sql_expansion import SHARE_WORDS
-from engine.sql_schema import is_surrogate_key
+from engine.sql_schema import canon, is_surrogate_key
 
 
 def _cos(a, b):
@@ -192,6 +192,12 @@ _QUERY_WORDS = _OPERATOR_WORDS | frozenset({
 })
 
 
+# Nouns that say how much of a measure there is: "search volume", "order value". After a word of the
+# tables' names they name that measure's amount (KnowledgeQuery._uncovered).
+_QUANTITY_WORDS = frozenset({
+    "volume", "volumes", "quantity", "quantities", "amount", "amounts", "value", "values", "level", "levels",
+})
+
 # Words that ask for a share of a total. Only a division realizes one.
 _SHARE_WORDS = SHARE_WORDS | {"percentages", "shares", "proportions", "fractions"}   # unstemmed words
 
@@ -217,18 +223,21 @@ def _word_forms(word):
 
 
 def _schema_vocabulary(sch):
-    """The words the uploaded tables' own names and column names contribute, with plural forms.
+    """The words the uploaded tables' own names and column names contribute, with plural forms and the
+    comparable form the search reads them in (sql_schema.canon): a question's word is the schema's when it
+    or its ``canon`` is in this set.
 
     Split on ANY non-alphanumeric: Sheets columns are space-named ('order ID'), and an underscore-only
     split left 'order' unrecognized ('Count ... Order ID rows' clarified with 'order' reported dropped
-    even though the column is literally named that, 2026-09-14). A 'city' column also covers 'cities'.
+    even though the column is literally named that, 2026-09-14). A 'city' column also covers 'cities', and
+    an 'Avg. monthly searches' column covers 'search' (customer report, 2026-10-02).
     """
     words = set()
     for column in sch:
         for name in (str(column["table"]).lower(), str(column["name"]).lower()):
             for part in {name} | set(re.split(r"[^a-z0-9]+", name)):
                 if part:
-                    words |= _word_forms(part)
+                    words |= _word_forms(part) | {canon(part)}
     return words
 
 
@@ -694,7 +703,7 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         action = {w for w in action_words(question) if w not in literals and w not in _STATUS_WORDS}
         content = [w for w in _re.findall(r"[a-z]+", question.lower())
                    if w not in STOP and w not in CUE and len(w) > 1 and w not in closed
-                   and w not in action and w not in sch_words and w.rstrip("s") not in sch_words]
+                   and w not in action and w not in sch_words and canon(w) not in sch_words]
         # A weak embedding match to a town must not reinterpret ordinary query
         # prose as geography. Only exempt bounded grammatical forms, and never
         # when a status column or an observed literal makes the word a real
@@ -749,6 +758,14 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
                     heads = [token for token in run if token in nouns]
                     head = heads[-1] if heads else run[-1]
                     content = [word for word in content if word != head]
+        if content and has_agg:
+            # A quantity noun after a word of the tables' names is that measure's amount: "the total search
+            # volume" sums "Avg. monthly searches" and was declined over 'volume' (customer report,
+            # 2026-10-02). After any other word ("shipping volume") it is still checked.
+            spoken = _re.findall(r"[a-z]+", question.lower())
+            quantities = {after for before, after in zip(spoken, spoken[1:]) if after in _QUANTITY_WORDS
+                          and (before in sch_words or canon(before) in sch_words)}
+            content = [word for word in content if word not in quantities]
         if content and has_agg:
             # The same holds for the rows another aggregate is taken over: "the average score of the leads"
             # was declined over 'leads' (Chrome exploration, 2026-10-01). A word before them ('German leads')
@@ -861,13 +878,9 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         import re as _re
         # tokens that name a table or column are SCHEMA, not world entities — exclude them so 'customers' isn't
         # bge-matched to some town (which would wrongly clarify a plain 'list all customers').
-        sch_words = set()
-        for t in norm:
-            n = t["name"].lower(); sch_words |= {n, n.rstrip("s")}
-        for c in sch:
-            cn = c["name"].lower(); sch_words |= {cn, cn.rstrip("s")} | set(cn.split("_"))
+        sch_words = _schema_vocabulary(sch)
         content = [w for w in _re.findall(r"[a-z]+", question.lower())
-                   if w not in STOP and len(w) > 1 and w not in sch_words and w.rstrip("s") not in sch_words]
+                   if w not in STOP and len(w) > 1 and w not in sch_words and canon(w) not in sch_words]
         if not content:
             return None
         ent = self._best_world_entity(content)               # ('german','Germany','country',0.70) | None

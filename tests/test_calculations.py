@@ -343,6 +343,48 @@ def test_the_coverage_gate_reads_a_place_as_one_name():
        "a place before the counted noun is still checked")
 
 
+def test_the_coverage_gate_reads_a_measure_named_in_other_words():
+    """A customer's Keyword Stats sheet (2026-10-02): "What is the total search volume for forklift
+    inspection checklist" built SUM("Avg. monthly searches") WHERE Keyword = 'forklift inspection checklist'
+    and was declined as having dropped 'search' and 'volume', which sat near places. 'search' is the column's
+    'searches' (one plural rule, sql_schema.canon), and a quantity noun after a word of the tables' names
+    ('search volume', 'sales volume') is that measure's amount. After any other word it is still checked."""
+    from tests import spacy_model_installed
+
+    if not spacy_model_installed():
+        print("  SKIP  test_the_coverage_gate_reads_a_measure_named_in_other_words: needs spaCy's en_core_web_md (the engine image installs it)")
+        return
+    from unittest.mock import patch
+
+    import numpy as np
+    from engine import knowledge_query
+
+    near = {"search": ("search", "Q1001", "city", 0.66), "volume": ("volume", "Q1002", "city", 0.62),
+            "shipping": ("shipping", "Q1003", "city", 0.7)}
+    gate = object.__new__(knowledge_query.KnowledgeQuery)
+    gate._kb_rows = lambda _sql, params: []
+    gate._word_qid = lambda _word: None
+    gate._best_world_entity = lambda tokens: near.get(tokens[0])
+    gate._encode = lambda texts: np.zeros((len(texts), 2), dtype=np.float32)
+
+    def dropped(question, measure, table="Forklift"):
+        schema = [{"table": table, "name": "Keyword", "affinity": "TEXT", "qvec": [0.0, 0.0]},
+                  {"table": table, "name": measure, "affinity": "INTEGER", "qvec": [0.0, 0.0]}]
+        sql = (f'SELECT SUM("{table}"."{measure}") FROM "{table}" '
+               f'WHERE "{table}"."Keyword" = \'forklift inspection checklist\'')
+        with patch.object(knowledge_query, "closed_class_words",
+                          lambda _text: frozenset({"what", "is", "the", "for"})):
+            return gate._uncovered(question, schema, sql)
+
+    ok(dropped("What is the total search volume for forklift inspection checklist", "Avg. monthly searches") == [],
+       "'search volume' names the searches column's amount")
+    ok(dropped("What is the total sales volume for forklift inspection checklist", "sales") == [],
+       "'sales volume' names the sales column's amount")
+    # Negative: a quantity noun after a word no table names is still checked, and so is that word.
+    ok(dropped("What is the total shipping volume for forklift inspection checklist", "Avg. monthly searches")
+       == ["shipping", "volume"], "'shipping volume' names nothing in the sheet")
+
+
 def test_a_continent_demonym_resolves_to_its_continent():
     """'how many orders from North American countries' filtered the United States (Q30): 'North American'
     has no exact entry, and the embedding fallback put it nearer the country than the continent. A
@@ -1335,6 +1377,7 @@ TESTS = [
     test_an_output_unit_is_not_also_a_filter_on_the_same_currency,
     test_a_world_word_that_names_the_scope_is_not_the_answer,
     test_the_coverage_gate_reads_a_place_as_one_name,
+    test_the_coverage_gate_reads_a_measure_named_in_other_words,
     test_a_continent_demonym_resolves_to_its_continent,
     test_an_exact_world_name_beats_a_nearer_fuzzy_guess,
     test_a_question_mark_is_never_a_world_value,
