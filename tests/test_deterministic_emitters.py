@@ -2595,7 +2595,7 @@ def test_a_converted_total_is_grouped_or_ranked_by_the_column_the_question_names
                 '("column" TEXT, value TEXT, entity_qid TEXT)')
             connection.exec_driver_sql("CREATE TABLE knowledgebase.city(qid TEXT, country TEXT)")
             connection.exec_driver_sql(
-                "CREATE TABLE knowledgebase.exchange_rate(currency_code TEXT, date TEXT, rate_to_usd REAL)")
+                "CREATE TABLE knowledgebase.exchange_rate(currency_code TEXT, date TEXT, rate_to_usd NUMERIC)")
             for row in rows:
                 connection.exec_driver_sql("INSERT INTO conversation.orders VALUES (?, ?, ?, ?)", row)
             for city, (qid, country) in cities.items():

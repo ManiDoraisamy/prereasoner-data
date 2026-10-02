@@ -12,8 +12,8 @@ stack and readable SQLAlchemy/Python source; see
 adapter and a relational readout) supplies model evidence: it reads intent and schema signals as named
 coordinates. No local model writes SQL. A deterministic search builds every own-data query as a typed
 AST, and selection serves the best-ranked one that runs. Only when no candidate runs, and the operator
-enabled Gemini, may Gemini reword the question for the search or propose one query; a proposal is used
-only if it imports into the typed AST and validates, and the answer is labelled (see
+enabled Gemini, may Gemini rewrite the current question for the deterministic search; Gemini cannot
+propose SQL, and the answer is labelled (see
 [Labelled Gemini fallback](#labelled-gemini-fallback)). No model writes Python or a numeric answer, and
 model text never reaches a database. AST construction, routing, joins, validation, selection,
 emission, and execution are deterministic for fixed inputs, configuration, database state, and model
@@ -273,8 +273,8 @@ The own-data path serves one typed SQL AST chosen from the deterministic search'
 | `engine/sql_rank.py` | Search ranking features (`CandidateRanker`), the pool contract (`SEARCH_CANDIDATES`, `EXECUTION_OP_LIMIT`), and the selection record (`PoolSelection`, `FallbackRecord`) |
 | `engine/sql_grounding.py` | Pool eligibility: text literals that fit their column, and joins the foreign keys allow |
 | `engine/tables.py` | Planner facade (`select_query`), SQL guard, pool and local SQLite execution |
-| `engine/sql_fallback.py` | The labelled Gemini fallback: one rewording of the question, then one proposed query |
-| `engine/sql_prompt.py` / `engine/sql_import.py` | The schema text Gemini reads; the SQL-to-typed-AST gate its proposal passes |
+| `engine/sql_fallback.py` | The labelled, stateless Gemini wording rewrite; deterministic search still owns SQL |
+| `engine/sql_prompt.py` | The schema text and rewrite prompt sent to Gemini |
 | `engine/decomposition.py` | Closed model proposal validation and fusion of planner-selected leaf ASTs into one shared DAG |
 
 1. The deterministic search builds up to 25 validated candidates (`SEARCH_CANDIDATES`) and orders
@@ -309,35 +309,16 @@ executes against the conversation schema through the shared SQL/Python plan.
 
 Only when no candidate is eligible, and the operator enabled Gemini (`EXTERNAL_LLM_ENABLED` plus a
 Vertex AI project, checked by `engine/llm.py`), does `select_query` call `engine/sql_fallback.py`.
-It takes two bounded steps:
+Gemini receives the current question and a bounded schema description (table and column names,
+inferred types, foreign keys, and up to three example values per column). It receives no conversation
+history and no full rows. It returns one wording rewrite; the response is not cached. The deterministic
+typed search alone builds candidates and SQL. Coverage checks both the user's original question and
+the rewrite against the emitted query, so a rewrite cannot silently remove a user condition.
 
-1. **Rewording.** Gemini rewords the question once, in the tables' own words. The deterministic search
-   runs again on the rewording, and its candidates pass the same run, ground, and serve steps. A
-   rewording equal to the question is ignored. The SQL is still built by the search
-   (`served_by: gemini-rewrite`).
-2. **Proposal.** When the rewording yields no eligible query, Gemini proposes one SQLite query. It is
-   text until `engine/sql_import.py` maps it into the typed AST, the validator accepts it, and the
-   renderer reproduces it. The engine's rendering, never Gemini's text, then runs and is grounded like
-   a search candidate (`served_by: gemini-sql`).
-
-Gemini reads the question and the schema text of `engine/sql_prompt.py`: table and column names,
-inferred column types, foreign keys, and at most three example values per column (its first
-non-null values in row order, each cut to 64 characters). It does not receive the rest of the rows,
-and it writes no number: the database computes every result. Calls run at temperature 0 with a
-fixed seed, and replies are cached per prompt in the engine process, so a repeated request there
-gets the same reading. Gemini does not guarantee the same reply after a restart or on another
-instance.
-
-A fallback answer is labelled. The response carries `fallback` (`kind`, `model`, and the rewording
-or Gemini's SQL text), `planner.selection.served_by`, and a `model` string that names the Gemini
-model; the workbook's status line repeats it. Later checks read the question the served query
-answers: for `gemini-rewrite` the coverage gate (through `engine/knowledge_query.py:_answered_question`)
-and the calculation checks (`TableQuery.serve`) read the rewording, and a `gemini-sql` query is held
-to every word of the user's own question. When neither step yields an eligible query, including when a Gemini call
-fails, `fallback.kind` is `none` with the reason and no query is served. Decomposition leaves call
-`select_query` with `allow_fallback=False`: a leaf's wording is already the chat model's, and a leaf
-with no runnable query rejects the decomposition so the model restates it, so no fused answer
-contains an unlabelled Gemini reading.
+The response labels an answer served after a rewrite with `fallback.kind: rewrite`, the model name,
+and the rewritten question. Gemini cannot write SQL, choose a candidate, or provide a result. When no
+eligible candidate is found after rewriting, or the rewrite call fails, no query is served. Decomposition
+leaves continue to use `allow_fallback=False`.
 
 `EXTERNAL_LLM_ENABLED` defaults to off, and with it off selection is deterministic and no model
 writes SQL. The guided Community deployment turns Gemini on together with chat, so its engine has

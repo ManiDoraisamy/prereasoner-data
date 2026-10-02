@@ -16,7 +16,7 @@ var FIREBASE_API_KEY = 'AIzaSyAC_Kiqj3lqd52ufpqYDAO17G6T7wfBd9Q';
 var FIREBASE_TOKEN_URL = 'https://identitytoolkit.googleapis.com/v1/accounts:signInWithIdp?key=' + FIREBASE_API_KEY;
 // The upload's worksheet limits (web/public/lib/upload-limits.js; tests pin this copy to it), checked
 // before any cell is read, plus a cell cap that bounds what one sidebar call reads and sends.
-var GRID_LIMITS = {sheets: 8, rows: 50000, columns: 256, cells: 500000};
+var GRID_LIMITS = {sheets: 8, rows: 50000, columns: 256, cells: 1000000};
 var REQUEST_LIMITS = {questionChars: 20000, historyItems: 24, historyChars: 80000};
 // The strings Sheets returns for a cell whose formula failed.
 var SHEETS_ERRORS = /^#(?:NULL!|DIV\/0!|VALUE!|REF!|NAME\?|NUM!|N\/A|ERROR!)$/;
@@ -208,7 +208,7 @@ function readGrids_(spreadsheet) {
       : columnCount > GRID_LIMITS.columns ? tab + 'each worksheet may contain at most 256 columns'
       : cellTotal + cells > GRID_LIMITS.cells
         ? tab + 'too large to analyze in one request (' + grouped_(cells) + ' cells; at most ' +
-          grouped_(GRID_LIMITS.cells) + ' in all). Reduce the data and try again.'
+          grouped_(GRID_LIMITS.cells) + ' in all). Reduce the data or ask about a smaller set of tabs.'
         : '';
     if (problem && index === 0) throw new Error(problem);
     if (problem) {

@@ -52,8 +52,9 @@ the entity resolution that assemble the query. Concretely, "total amount in Fran
 `customers + orders` becomes
 `… JOIN knowledgebase."city" ON "city".qid = bridge.world_key WHERE "city".country = 'Q142'`
 and computes **270** — no autoregressive generation anywhere in the loop. No local model writes SQL
-for any question. The one place an external LLM may write SQL is a labelled fallback the operator
-must enable, used only when the search finds no runnable query; section 4 says how it is contained.
+for any question. An optional labelled Gemini fallback may reword the question when the operator
+enables it and the search finds no runnable query; the deterministic search still writes the SQL.
+Section 4 describes the boundary.
 
 **Scope, stated honestly.** This is valuable and shippable for the **declarative** slice
 (CSV/Sheets Q&A → SQL): declarative targets work with small models because the parse tree is
@@ -150,15 +151,13 @@ rather than bluffs: if a content word resolved but never reached the SQL (an ent
 but isn't filtered, or a measure word with no aggregate), the system returns a "did you mean?"
 rephrasing instead of a confidently wrong number.
 
-**The one place an LLM may write SQL.** A bounded search cannot enumerate every shape. When none of
-its candidates runs, and the operator has enabled Gemini, the engine asks for help in two bounded
-steps (`engine/sql_fallback.py`). Gemini first rewords the question once, in the tables' own words,
-and the search runs again on the rewording, so the search still builds the SQL. Failing that, Gemini
-proposes one query, which counts only after it is re-derived into the same typed AST, validated, run,
-and grounded. Either way the single-query answer is labelled with what Gemini did. This is
-next-token SQL generation, contained and disclosed: Gemini sees the schema and at most three example
-values per column, its text never executes, and it never writes a number. With the operator's switch
-off, its default, no model in the loop writes SQL.
+**The one place an LLM may reword a question.** A bounded search cannot enumerate every shape. When
+none of its candidates runs and the operator has enabled Gemini, the engine may ask for one isolated
+wording rewrite (`engine/sql_fallback.py`). The deterministic search runs again on that wording and
+remains the only owner of SQL construction and selection. Coverage checks the original wording as
+well as the rewrite. Gemini sees the schema and at most three example values per column, receives no
+conversation history, and cannot provide SQL or a result. With the operator's switch off, its default,
+Gemini is not used for own-data selection.
 
 **What this costs.** Earlier designs pooled a local SQL-writing model with the search and scored
 higher on Spider than the search alone; those runs are history in `spider/results/RESULTS.md`.
@@ -295,8 +294,8 @@ boundary.
 > form calibrated class proposals, and exact source-key grounding authorizes a world join. The shared
 > Qwen/LoRA representation also supplies structural intent, ranking, and calculation retrieval.
 > Foreign-key discovery, typed AST search, calculation verification, and execution are deterministic,
-> and no local model writes SQL. An optional, labelled Gemini fallback may reword a question or propose
-> one query, used only after validation, when the search finds no runnable query.
+> and no model writes SQL. An optional, labelled Gemini fallback may reword a question when the search
+> finds no runnable query; the deterministic search still constructs and validates SQL.
 > Schema.org defines the semantic vocabulary; Wikidata and publisher datasets provide observations,
 > QID bridges, and pinned facts. All ontology classes are representable, while only the calibrated
 > supported subset is servable and the rest abstain. Historical taxonomy experiments remain lineage,

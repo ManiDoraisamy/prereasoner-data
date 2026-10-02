@@ -59,9 +59,10 @@ planner change, when a local SQL proposer shipped (a 0.5B LoRA, later a pinned 7
 proposers and their arbiter have since been removed. For the engine's own models the claim holds
 again: the encoder is used without its decoder, and no local model writes SQL. The qualifier is the
 optional Gemini fallback. When the operator enables it and the search finds no runnable query, Gemini
-may reword the question for the search or propose one query that must pass the typed-AST gate, and
-the answer says so. The accurate wording: "No local model writes SQL. When the engine cannot build a
-query, it can ask Gemini, and the answer says so." The chat service also uses Gemini, and no model
+may reword the current question once; the deterministic typed search still constructs and validates
+SQL, and the answer says when it used that rewrite. The accurate wording: "No model writes SQL. When
+the engine cannot build a query, it can ask Gemini to reword it, and the answer says so." The chat
+service also uses Gemini, and no model
 writes the numbers. The wording assumes the open gap in `docs/ARCHITECTURE.md` is closed first: a
 decomposed question whose leaf Gemini answered does not yet carry the label. This is a finding for
 the website owner; see `docs/MODEL_CARD.md`.

@@ -69,9 +69,9 @@ footer{border-top:1px solid var(--line);padding-top:24px;margin-top:52px;color:v
   results, handle ambiguity, orchestrate tools, and fill reference cells you explicitly request.</p></div>
 
   <p>When the engine cannot build a query for a question on its own, it can ask Gemini to reword the
-  question once or to propose one SQL query. That request contains the question, the table and
+  question once. That request contains the question, the table and
   column names, column types, foreign keys, and up to three example values per column. The engine
-  still checks, runs and labels any query that results, and the database computes every number.</p>
+  the deterministic typed search still builds and validates any query, and the database computes every number.</p>
 
   <p>Google receives those requests through the service's Google Cloud project. Its handling is
   governed by the operator's Google Cloud agreement and is also described in
@@ -87,7 +87,7 @@ footer{border-top:1px solid var(--line);padding-top:24px;margin-top:52px;color:v
     <li><strong>Google Cloud and Firebase:</strong> hosting, authentication, databases, and reasoning-trace delivery. See
     <a href="https://firebase.google.com/support/privacy" rel="noopener">Firebase privacy and security</a>.</li>
     <li><strong>Google Cloud Vertex AI (Gemini):</strong> language processing for the hosted assistant
-    features and the query fallback described above.</li>
+    features and the optional wording rewrite described above.</li>
   </ul>
 
   <p>Microsoft sign-in for Excel uses Microsoft's standard identity response through Firebase

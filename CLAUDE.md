@@ -24,8 +24,8 @@ decisions belong in `DECISIONS.md`, and measured SQL results belong in
 - Replace external presentation/orchestration with a local model only through the controlled model
   experiment and promotion rules below. Keep SQL construction, calculation semantics, and
   verification deterministic, and make provider migration transparent to users. The one exception
-  is the labelled Gemini fallback of own-data selection (`engine/sql_fallback.py`): it runs only when
-  the search finds no runnable query, its proposal passes the typed-AST gate, and the answer says so.
+  is the labelled Gemini wording rewrite of own-data selection (`engine/sql_fallback.py`): it runs
+  only when the search finds no runnable query, the deterministic search runs again, and the answer says so.
 
 ## Non-negotiable outcome
 
@@ -62,7 +62,7 @@ Extend these owners. Do not build parallel replacements.
 | Bounded compound-question proposal validation and typed leaf-plan fusion | `engine/decomposition.py`; the existing AST planner still owns every leaf and `engine/deterministic/` still owns the one executable DAG |
 | Own-data AST search orchestration | `engine/sql_search.py`, called by `engine/tables.py:TableQuery.select_query` |
 | Own-data query selection (search + pool execution + grounding, then the labelled Gemini fallback only when nothing is eligible) — the ONE selection used by serving, decomposition leaves, the Spider evaluator, and the offline regression gate; the decomposition probe reads its first stage (`search_pool`) | `engine/tables.py:TableQuery.select_query` |
-| Labelled Gemini fallback of own-data selection (one rewording of the question, then one proposed query), its prompt, and the SQL-to-typed-AST gate its proposal passes | `engine/sql_fallback.py` + `engine/sql_prompt.py` + `engine/sql_import.py` |
+| Labelled Gemini rewrite-only fallback of own-data selection; stateless request-scoped rewrite, then deterministic typed search | `engine/sql_fallback.py` + `engine/sql_prompt.py` |
 | The one LLM client (Gemini on Vertex AI) for the chat orchestrator, `/api/converse`, reference generation, and the selection fallback, gated by `EXTERNAL_LLM_ENABLED` | `engine/llm.py` |
 | Composition DAG, view execution, and the world-dependency record | `engine/compose.py` |
 | World/compose routing decision (the ONE shared `route()`) | `engine/routing.py` |
@@ -153,10 +153,10 @@ Consolidation is part of each phase, not a future cleanup phase.
 
 ## SQL planner and routing rules
 
-- No local model writes SQL. The typed search builds every served query from the encoder's named
+- No model writes SQL. The typed search builds every served query from the encoder's named
   readings; raise accuracy by extending that search, never by adding a SQL-generating model, a
-  learned ranker over model output, or a second selection path. The only model-written SQL is the
-  labelled Gemini fallback's single proposal, and only when the search finds no runnable query.
+  learned ranker over model output, or a second selection path. Gemini may only provide a labelled
+  wording rewrite when the search finds no runnable query.
 - The typed AST is the only own-data SQL representation. New SQL behavior must
   be expressed as typed AST nodes, constraints, expansions, and renderer
   support, with focused tests.

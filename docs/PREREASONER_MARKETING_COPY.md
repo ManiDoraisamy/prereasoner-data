@@ -31,7 +31,7 @@ connects tables to public knowledge, private references, and domain-specific cal
 ### Short feature list
 
 - **See the query** - Read the SQL that produced the result.
-- **Know who built it** - No local model writes SQL. When the engine cannot build a query, it can ask Gemini, and the answer says so.
+- **Know who built it** - No model writes SQL. When the engine cannot find a query, it can ask Gemini to reword the question; the deterministic search still builds the query, and the answer says so.
 - **Check the rows** - Open the matched input and reference rows.
 - **Use public facts** - Join approved source data when your table does not contain the answer.
 - **Keep the calculation** - See currency, ratio, tax, and commission operands and units.
@@ -154,7 +154,7 @@ run the same request against the same data and inspect what changed when the res
 ### Short feature list
 
 - **Named inputs** - See which columns, values, and source facts were used.
-- **Built by the engine** - No local model writes SQL. When the engine cannot build a query, it can ask Gemini, and the answer says so.
+- **Built by the engine** - No model writes SQL. When the engine cannot find a query, it can ask Gemini to reword the question; the deterministic search still builds the query, and the answer says so.
 - **Repeatable results** - Fixed inputs and artifacts produce the same plan and result, except a labelled answer that needed Gemini.
 - **Source-aware answers** - Read the source release and matched reference rows.
 - **Clear limits** - Missing or ambiguous evidence produces a reviewable refusal.

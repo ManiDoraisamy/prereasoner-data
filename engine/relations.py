@@ -37,18 +37,6 @@ def _norm(v):
     return None if v in (None, "") else str(v).strip().lower()
 
 
-def dedup(t):
-    """Drop exact duplicate rows (case/space-insensitive). Mutates + returns the table."""
-    seen, out, dropped = set(), [], 0
-    for row in t["rows"]:
-        k = tuple(_norm(v) for v in row)
-        if k in seen:
-            dropped += 1; continue
-        seen.add(k); out.append(row)
-    t["rows"] = out; t["_dedup_dropped"] = dropped
-    return t
-
-
 def is_key(values):
     # A join/FK TARGET must be EXACTLY unique — a 0.98 tolerance let a column with a few duplicate keys become
     # an FK target, so a fact row matched multiple parent rows and the join fanned out (inflating SUM/COUNT/AVG).
@@ -175,11 +163,8 @@ def _fk_signature(edge):
     return edge["from_table"], from_cols, edge["to_table"], to_cols
 
 
-def relate(tables, explicit_fks=(), *, deduplicated=False):
-    """Deduplicate tables and merge validated trusted edges with discovered scalar FKs."""
-    if not deduplicated:
-        for t in tables:
-            dedup(t)
+def relate(tables, explicit_fks=()):
+    """Preserve source rows and merge validated trusted edges with discovered scalar FKs."""
     explicit = [_explicit_fk(edge, tables) for edge in explicit_fks]
     merged = list(explicit)
     signatures = {_fk_signature(edge) for edge in explicit}

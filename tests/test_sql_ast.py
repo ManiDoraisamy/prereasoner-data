@@ -704,13 +704,13 @@ class FakeGemini:
     """engine/llm.py's surface as selection's labelled fallback uses it (engine/sql_fallback.py),
     with scripted replies and every call recorded. It never touches the network.
 
-    ``question`` is the rewording Gemini returns and ``sql`` its proposal; None is a reply without
-    the field. ``enabled`` is ``available()`` and ``outage`` makes every call raise LLMUnavailable."""
+    ``question`` is the rewording Gemini returns; None is a reply without the field. ``enabled`` is
+    ``available()`` and ``outage`` makes every call raise LLMUnavailable."""
 
     LLMUnavailable = llm.LLMUnavailable
 
-    def __init__(self, question=None, sql=None, *, enabled=True, outage=False):
-        self.replies = {"question": question, "sql": sql}
+    def __init__(self, question=None, *, enabled=True, outage=False):
+        self.replies = {"question": question}
         self.enabled = enabled
         self.outage = outage
         self.calls = []
@@ -731,11 +731,11 @@ class FakeGemini:
         return json.dumps({field: reply} if reply is not None else {}, ensure_ascii=False)
 
 
-def _gemini_planner(question=None, sql=None, **state):
+def _gemini_planner(question=None, **state):
     """A hermetic planner whose selection falls back to a FakeGemini; returns (planner, client)."""
     from engine.sql_fallback import SQLFallback
 
-    client = FakeGemini(question, sql, **state)
+    client = FakeGemini(question, **state)
     return _hermetic_planner(SQLFallback(client=client)), client
 
 
@@ -1083,7 +1083,7 @@ def test_a_compound_named_request_asks_for_decomposition_before_selection_runs()
 
     tables = _tables(DATASET_DIR / "complex-unsold-products")
     question = "List the product names that no customer from Paris has bought, ordered by product name."
-    planner, gemini = _gemini_planner(sql="SELECT product_name FROM products ORDER BY product_name")
+    planner, gemini = _gemini_planner()
     with patch.object(planner, "select_query", wraps=planner.select_query) as select:
         with analysis_execution_context({"slug": "unsold", "revision": 1}, "c_" + "9" * 32), \
                 patch.object(planner, "execute", side_effect=AssertionError("partial answer executed")):
@@ -1175,8 +1175,7 @@ def test_decoded_sql_normalizer_preserves_multiline_statements_and_strips_fences
 def test_the_fallback_is_never_asked_while_the_search_has_a_runnable_query():
     """The labelled Gemini fallback runs only when the search's pool holds no query that runs and is
     grounded. A question the search answers never reaches Gemini, even with Gemini enabled."""
-    planner, gemini = _gemini_planner(question="How many people are from France?",
-                                      sql="SELECT COUNT(*) FROM people")
+    planner, gemini = _gemini_planner(question="How many people are from France?")
     selection = _select(planner, "How many people are from France?")
     assert selection.selected == 0 and selection.served_by == "search" and selection.fallback is None
     served = planner.serve([PEOPLE], "How many people are from France?")
@@ -1192,7 +1191,7 @@ def test_a_question_the_search_cannot_read_is_answered_through_geminis_rewording
     the rewording, so the SQL is still the search's. The answer names the question it answered and
     says Gemini reworded it."""
     rewording = "How many people are from France?"
-    planner, gemini = _gemini_planner(question=rewording, sql="SELECT COUNT(*) FROM people")
+    planner, gemini = _gemini_planner(question=rewording)
     assert not _searched(planner, JAPANESE_FRANCE)
     selection = _select(planner, JAPANESE_FRANCE)
     assert selection.served_by == "gemini-rewrite"
@@ -1206,69 +1205,44 @@ def test_a_question_the_search_cannot_read_is_answered_through_geminis_rewording
     assert served["selection"]["fallback"] == served["fallback"]
     assert served["model"] == ("engine - typed SQL AST planner; the search read gemini-test's "
                                "rewording of the question")
-    assert [step for step, _ in gemini.calls] == ["question"], "no proposal after a rewording that ran"
+    assert [step for step, _ in gemini.calls] == ["question", "question"]
 
 
-def test_a_gemini_proposal_is_served_as_the_engines_own_rendering():
-    """When the search finds nothing for the rewording either (here Gemini kept the question's
-    language), Gemini proposes one query. It is text until the importer maps it into the typed AST
-    and the renderer reproduces it, so the served SQL is the engine's rendering, never Gemini's
-    text, and the answer says the query is Gemini's."""
-    proposal = "```sql\nselect count(*) from people\nwhere country = 'France';\n```"
-    planner, gemini = _gemini_planner(question="Сколько человек из Франции?", sql=proposal)
-    selection = _select(planner, RUSSIAN_FRANCE)
-    assert selection.served_by == "gemini-sql" and selection.candidate.sql == FRANCE_COUNT
-    assert selection.pool == (selection.candidate,)
-    assert selection.candidate.evidence == ("gemini:proposal",)
-    assert selection.fallback == FallbackRecord("sql", "gemini-test", proposal=proposal)
-    served = planner.serve([PEOPLE], RUSSIAN_FRANCE)
-    assert served["sql"] == FRANCE_COUNT and served["result"]["rows"] == [[2]]
-    assert served["fallback"] == {"kind": "sql", "model": "gemini-test", "proposal": proposal}
-    assert served["selection"]["served_by"] == "gemini-sql"
-    assert served["model"] == ("engine - typed SQL AST planner; query proposed by gemini-test, "
-                               "imported into the typed AST and validated")
-    assert [step for step, _ in gemini.calls] == ["question", "sql"]
+def test_gemini_rewording_cannot_drop_a_user_constraint_from_coverage():
+    """The rewrite is only a retrieval aid: coverage checks the original question too."""
+    from unittest.mock import patch
+    from engine.knowledge_query import KnowledgeQuery, _coverage_questions
+
+    original = "total amount for Germany"
+    response = {"fallback": {"kind": "rewrite", "question": "total amount"}}
+    questions = _coverage_questions(response, original)
+    assert questions == [original, "total amount"]
+    schema = [{"table": "orders", "name": "amount", "values": ["100"]}]
+    sql = "SELECT SUM(amount) FROM orders WHERE country = 'France'"
+    checked = []
+    def uncovered(_self, question, _schema, _sql):
+        checked.append(question)
+        return ["germany"] if question == original else []
+    owner = object.__new__(KnowledgeQuery)
+    with patch.object(KnowledgeQuery, "_uncovered", uncovered):
+        dropped = list(dict.fromkeys(
+            word for question in questions for word in owner._uncovered(question, schema, sql)
+        ))
+    assert checked == [original, "total amount"]
+    assert "germany" in dropped
 
 
-def test_a_gemini_proposal_that_does_not_import_run_or_ground_is_never_served():
-    """Gemini's query is never served on its word. One that does not import into the typed AST, does
-    not run, or tests a column against a value only another column holds is refused like a search
-    candidate, and the record says that the fallback served nothing and why."""
-    # Not importable: the tables have no salary column.
-    planner, _ = _gemini_planner(sql="SELECT salary FROM people")
+def test_gemini_cannot_write_sql_when_its_rewrite_is_not_searchable():
+    """When neither the typed search nor the reworded search can read a question, no SQL is served."""
+    planner, gemini = _gemini_planner(question=RUSSIAN_FRANCE)
     selection = _select(planner, JAPANESE_FRANCE)
     assert selection.selected is None and selection.served_by == "search"
     assert selection.fallback == FallbackRecord(
-        "none", "gemini-test", proposal="SELECT salary FROM people",
-        note="no usable reply; proposal not importable (Unsupported)")
+        "none", "gemini-test", question=RUSSIAN_FRANCE,
+        note="the search found no runnable query for the rewording")
+    assert [step for step, _ in gemini.calls] == ["question"]
     served = planner.serve([PEOPLE], JAPANESE_FRANCE)
     assert served["valid"] is False and served["sql"] is None
-    assert served["error"] == "planner: no valid AST candidate"
-    assert served["fallback"]["kind"] == "none" and served["selection"]["served_by"] == "search"
-
-    # Not runnable: SQLite's SUM overflows on these amounts, for the search's total, for its reading
-    # of the rewording and for Gemini's query alike.
-    ledger = {"name": "ledger", "columns": ["entry_id", "amount"],
-              "rows": [[1, 9223372036854775807], [2, 9223372036854775807]]}
-    planner, _ = _gemini_planner(question="What is the sum of amount?",
-                                 sql="SELECT SUM(amount) FROM ledger")
-    selection = _select(planner, "total amount", [ledger])
-    assert selection.pool and not any(selection.executable) and selection.selected is None
-    assert selection.fallback == FallbackRecord(
-        "none", "gemini-test", question="What is the sum of amount?",
-        proposal="SELECT SUM(amount) FROM ledger",
-        note="the search found no runnable query for the rewording; "
-             "the proposal does not run or is not grounded")
-    assert planner.serve([ledger], "total amount")["error"] == "planner: no executable AST candidate"
-
-    # Not grounded: 'Lyon' is a city in these rows, never a customer name.
-    misbound = "SELECT product_name FROM purchases WHERE customer_name = 'Lyon'"
-    planner, _ = _gemini_planner(sql=misbound)
-    selection = _select(planner, "リヨンの客が買った商品は？", [PURCHASES])   # "What did Lyon customers buy?"
-    assert selection.selected is None
-    assert selection.fallback == FallbackRecord(
-        "none", "gemini-test", proposal=misbound,
-        note="no usable reply; the proposal does not run or is not grounded")
 
 
 def test_a_disabled_fallback_is_never_asked():
@@ -1298,18 +1272,16 @@ def test_a_gemini_outage_serves_nothing_and_is_not_cached():
         selection.fallback)
 
 
-def test_the_fallback_asks_gemini_once_per_prompt():
-    """Replies are cached per prompt: a repeated request gets the same reading without another call,
-    and the same question over other tables is another prompt."""
-    proposal = "SELECT COUNT(*) FROM people WHERE Country = 'France'"
-    planner, gemini = _gemini_planner(question="Сколько человек из Франции?", sql=proposal)
+def test_the_fallback_is_stateless_across_repeated_requests():
+    """Every request is rewritten independently; process-local answers are never reused."""
+    planner, gemini = _gemini_planner(question="How many people are from France?")
     first = _select(planner, RUSSIAN_FRANCE)
     again = _select(planner, RUSSIAN_FRANCE)
-    assert first.served_by == again.served_by == "gemini-sql"
+    assert first.served_by == again.served_by == "gemini-rewrite"
     assert again.candidate.sql == first.candidate.sql == FRANCE_COUNT
-    assert [step for step, _ in gemini.calls] == ["question", "sql"], "each step is asked once"
+    assert [step for step, _ in gemini.calls] == ["question", "question"]
     _select(planner, RUSSIAN_FRANCE, [PEOPLE, PURCHASES])
-    assert [step for step, _ in gemini.calls] == ["question", "sql"] * 2
+    assert [step for step, _ in gemini.calls] == ["question"] * 3
 
 
 def test_gemini_reads_the_schema_and_three_example_values_per_column():
@@ -1319,15 +1291,14 @@ def test_gemini_reads_the_schema_and_three_example_values_per_column():
     question = "リヨンの客が買った商品は？"
     planner, gemini = _gemini_planner()
     _select(planner, question, [PURCHASES])
-    (rewrite_step, rewrite), (propose_step, propose) = gemini.calls
-    assert (rewrite_step, propose_step) == ("question", "sql")
+    (rewrite_step, rewrite), = gemini.calls
+    assert rewrite_step == "question"
     assert rewrite.startswith("Tables:\n【DB_ID】 SQLite database\n【Schema】\n# Table: purchases\n[")
-    assert propose.startswith("Database schema:\n【DB_ID】 SQLite database\n【Schema】\n")
-    assert rewrite.endswith("\n\nQuestion:\n" + question) and propose.endswith("\n\nQuestion:\n" + question)
+    assert rewrite.endswith("\n\nQuestion:\n" + question)
     assert '(purchase_id:INTEGER, Examples: [1, 2, 3])' in rewrite
     assert '(customer_name:TEXT, Examples: ["Alice", "Alice", "Bob"])' in rewrite
     for unsent in ("Cara", "Dan", "Eve", "Berlin", "Delta"):   # held only by rows 4-6
-        assert unsent not in rewrite and unsent not in propose, unsent
+        assert unsent not in rewrite, unsent
 
     planner, gemini = _gemini_planner()
     _select(planner, question, [CUSTOMERS, ORDERS, ITEMS])
@@ -2707,10 +2678,35 @@ def test_same_shaped_tabs_answer_a_stated_keyword():
         assert execute(tables, answer.sql) == [(500,)], answer.sql
     volume = best("What is the total search volume for forklift inspection checklist", workbook)
     assert execute(workbook, volume.sql) == [(5000,)], volume.sql
+    # The screenshot's follow-up paraphrase after the assistant asked whether to total "average
+    # monthly searches" must survive the same multi-tab workbook and preserve the exact keyword.
+    planner = _hermetic_planner()
+    for question in (
+        "total of the avg. monthly searches for forklift inspection checklist",
+        "total avg monthly searches for forklift inspection checklist",
+        "sum of average monthly searches for forklift inspection checklist",
+    ):
+        served = planner.serve(workbook, question)
+        assert served["valid"], (question, served)
+        assert served["result"]["rows"] == [[5000]], (question, served["sql"])
     orders = {"name": "orders", "columns": ["City", "Total Amount"],
               "rows": [["Paris", 10], ["Paris", 20], ["Lyon", 5]]}
     paris = best("What is the total amount in Paris?", [orders])
     assert execute([orders], paris.sql) == [(30,)], paris.sql
+
+
+def test_serving_preserves_repeated_source_rows_in_aggregates():
+    """Repeated identical transactions are separate source observations; ingestion must not turn
+    a $300 source total into $100 by dropping two identical-looking payment rows."""
+    from engine.tables import normalize_tables
+
+    payments = {"name": "payments", "columns": ["customer", "amount"],
+                "rows": [["Ada", 100], ["Ada", 100], ["ada", 100]]}
+    normalized = normalize_tables([payments])
+    assert len(normalized[0]["rows"]) == 3
+    served = _hermetic_planner().serve([payments], "total amount")
+    assert served["valid"], served
+    assert served["result"]["rows"] == [[300]], served
 
 
 def test_a_listing_follows_the_order_the_question_names():
@@ -4136,11 +4132,11 @@ TESTS = [
     test_decoded_sql_normalizer_preserves_multiline_statements_and_strips_fences,
     test_the_fallback_is_never_asked_while_the_search_has_a_runnable_query,
     test_a_question_the_search_cannot_read_is_answered_through_geminis_rewording,
-    test_a_gemini_proposal_is_served_as_the_engines_own_rendering,
-    test_a_gemini_proposal_that_does_not_import_run_or_ground_is_never_served,
+    test_gemini_rewording_cannot_drop_a_user_constraint_from_coverage,
+    test_gemini_cannot_write_sql_when_its_rewrite_is_not_searchable,
     test_a_disabled_fallback_is_never_asked,
     test_a_gemini_outage_serves_nothing_and_is_not_cached,
-    test_the_fallback_asks_gemini_once_per_prompt,
+    test_the_fallback_is_stateless_across_repeated_requests,
     test_gemini_reads_the_schema_and_three_example_values_per_column,
     test_evaluator_grades_the_served_selection,
     test_sql_import_maps_numeric_arithmetic_but_refuses_nonnumeric,
@@ -4211,6 +4207,7 @@ TESTS = [
     test_a_ranking_measure_is_not_an_asked_aggregate,
     test_a_total_by_month_groups_by_the_year_month,
     test_same_shaped_tabs_answer_a_stated_keyword,
+    test_serving_preserves_repeated_source_rows_in_aggregates,
     test_a_listing_follows_the_order_the_question_names,
     test_by_after_a_participle_names_who_acted,
     test_multiple_aggregates_share_a_typed_operand,

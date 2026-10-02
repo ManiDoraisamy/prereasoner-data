@@ -1,5 +1,5 @@
 """Multi-table interpretable text->SQL over uploaded CSVs. N tables joined on DETERMINISTIC foreign keys
-(engine.relations): dedup + FK discovery give the join graph, the model only PICKS which tables/columns the
+(engine.relations): FK discovery gives the join graph, the model only PICKS which tables/columns the
 question refers to (learned intent + name/representation binding) and the SQL is assembled with qualified
 `"t"."c"` identifiers, guarded SELECT-only, and executed on an in-memory SQLite with every table created.
 Per-token readout is read PER LAYER through the SAME anchored model, so a JOIN's `"orders"."customer_id"`
@@ -24,7 +24,7 @@ from engine import request_timing
 from engine.config import DATA_DIR, BASE_MODEL_ID as MODEL_ID  # noqa: F401 - public compatibility export
 from engine.fk_edges import edges
 from engine.numeric import parse_decimal, register_sqlite_decimal, sqlite_numeric, wire_decimal
-from engine.relations import dedup, relate
+from engine.relations import relate
 from engine.request_validation import canonical_table_name
 
 MAX_ROWS, MAX_LEN = 12, 48
@@ -73,8 +73,6 @@ def normalize_tables(tables):
             "columns": columns,
             "rows": rows,
         })
-    for table in normalized:
-        dedup(table)
     return normalized
 
 
@@ -301,9 +299,9 @@ class TableQuery:
 
     # ---------- ingest + schema ----------
     def ingest(self, tables, explicit_fks=()):
-        """Normalize tables, deduplicate rows, and merge trusted internal edges with discovered FKs."""
+        """Normalize tables without changing source row multiplicity and discover trusted joins."""
         norm = normalize_tables(tables)
-        g = relate(norm, explicit_fks=explicit_fks, deduplicated=True)
+        g = relate(norm, explicit_fks=explicit_fks)
         return g["tables"], g["fks"]
 
     def _schema_name_units(self, tables, fks):
@@ -470,10 +468,9 @@ class TableQuery:
            satisfies it, when one exists; and a money noun that names its table ("what's the sales in
            London") takes the best-ranked candidate that aggregates a money column
            (engine/sql_expansion.money_total_columns).
-        4. Only when no candidate is eligible, and the operator enabled Gemini, the labelled fallback
-           runs (engine/sql_fallback.py): the search reads Gemini's rewording of the question, and
-           when that finds nothing either, Gemini's one proposed query competes after the typed-AST
-           gate. The selection records it (``PoolSelection.fallback``).
+        4. Only when no candidate is eligible, and the operator enabled Gemini, it may reword the
+           question once (engine/sql_fallback.py). The deterministic typed search runs on that wording;
+           if no candidate is eligible, selection returns no query.
 
         This is the one own-data selection: serving, decomposition leaves, the Spider evaluator and
         the offline regression gate all call it. The decomposition probe reads only its first stage
@@ -533,35 +530,23 @@ class TableQuery:
             ranking, calculation_satisfied, money_total, date_satisfied))
 
     def _fall_back(self, question, norm, fks, sch, tablemap, graph, selection, fallback):
-        """Step 4 of ``select_query``: Gemini's rewording, then Gemini's proposal, each served only
-        through the same run-and-ground choice as the search's own candidates."""
+        """Step 4 of ``select_query``: one isolated rewrite, followed by the same typed search."""
         from dataclasses import replace
 
-        from engine.sql_fallback import UNAVAILABLE
         from engine.sql_rank import FallbackRecord
 
-        text = None
-        why_not_proposed = ""
         with request_timing.span("fallback"):
-            rewritten, why_not_rewritten = fallback.rewrite(question, graph)
-            if rewritten is not None:
-                reread = self._choose(rewritten, norm, sch, tablemap, graph,
-                                      self.search_pool(rewritten, norm, fks, sch))
-                if reread.selected is not None:
-                    return replace(reread, fallback=FallbackRecord(
-                        "rewrite", fallback.model, question=rewritten))
-                why_not_rewritten = "the search found no runnable query for the rewording"
-            if why_not_rewritten != UNAVAILABLE:
-                text, proposal, why_not_proposed = fallback.propose(question, graph)
-                if proposal is not None:
-                    proposed = self._choose(question, norm, sch, tablemap, graph, (proposal,))
-                    if proposed.selected is not None:
-                        return replace(proposed, fallback=FallbackRecord("sql", fallback.model,
-                                                                         proposal=text))
-                    why_not_proposed = "the proposal does not run or is not grounded"
-        note = "; ".join(why for why in (why_not_rewritten, why_not_proposed) if why)
-        return replace(selection, fallback=FallbackRecord(
-            "none", fallback.model, question=rewritten, proposal=text, note=note))
+            rewritten, note = fallback.rewrite(question, graph)
+            if rewritten is None:
+                return replace(selection, fallback=FallbackRecord("none", fallback.model, note=note))
+            reread = self._choose(rewritten, norm, sch, tablemap, graph,
+                                  self.search_pool(rewritten, norm, fks, sch))
+            if reread.selected is not None:
+                return replace(reread, fallback=FallbackRecord(
+                    "rewrite", fallback.model, question=rewritten))
+            return replace(selection, fallback=FallbackRecord(
+                "none", fallback.model, question=rewritten,
+                note="the search found no runnable query for the rewording"))
 
     def _serve_ast(self, question, norm, fks, sch, tablemap):
         """Select the own-data query (``select_query``) and execute it through this executor."""
@@ -784,9 +769,6 @@ class TableQuery:
         if served_by == "gemini-rewrite":
             model = (f"engine - typed SQL AST planner; the search read {fallback.model}'s rewording "
                      "of the question")
-        elif served_by == "gemini-sql":
-            model = (f"engine - typed SQL AST planner; query proposed by {fallback.model}, imported "
-                     "into the typed AST and validated")
         sql = candidate.sql if candidate is not None else None
         computation = None
         if candidate is not None:
@@ -800,7 +782,7 @@ class TableQuery:
             "result": result,
             "tables": [{
                 "name": table["name"], "columns": table["columns"],
-                "n_rows": len(table["rows"]), "dropped": table.get("_dedup_dropped", 0),
+                "n_rows": len(table["rows"]),
             } for table in norm],
             "fks": [{
                 "from": _fk_endpoint(fk, "from"),

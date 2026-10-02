@@ -55,14 +55,12 @@ and serves the best-ranked one that is left. The answer shows the query, its evi
 that chose it.
 
 **Gemini, when the search gives up.** If no candidate runs, and the operator has switched on Gemini
-(Vertex AI), the engine asks it for help in two bounded steps. First Gemini rewords the question once
-in your tables' own words, and the search runs again on the rewording, so the SQL is still built by
-the engine. If that finds nothing either, Gemini proposes one SQL query; it counts only after it
-converts into the same typed syntax tree and passes the same checks, and the coverage check holds it
-to every word of your question. Either way the answer says so: "the search read Gemini's rewording"
-or "query proposed by Gemini". Gemini sees the question, the table and column names, and up to three
-example values from each column, which are cells of your data; it never sees the rest of the rows and
-never writes a number.
+(Vertex AI), it may reword the current question once using the request schema. The engine then runs
+its deterministic typed search again. Gemini never writes SQL or selects a query. The rewrite is
+stateless: it receives no conversation history and is not cached between requests. The engine checks
+the executed query against both the user's original wording and the rewrite. A response that uses a
+rewrite is labelled. Gemini sees table and column names and up to three example values from each
+column, which are cells of your data; it never sees the rest of the rows and never writes a number.
 
 The optional chat service also uses Gemini, to talk with you and call the engine. It does not write
 numbers either.

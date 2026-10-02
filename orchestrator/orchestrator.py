@@ -262,7 +262,7 @@ def _trim_for_model(shaped: dict[str, Any]) -> dict[str, Any]:
     # The engine could not build this query from the question alone and Gemini helped
     # (engine/sql_fallback.py): the reply must say so, as the workbook does.
     fallback = shaped.get("fallback") if isinstance(shaped.get("fallback"), dict) else None
-    if fallback and fallback.get("kind") in ("rewrite", "sql"):
+    if fallback and fallback.get("kind") == "rewrite":
         out["fallback"] = {key: fallback[key] for key in ("kind", "question") if fallback.get(key)}
     # Rows whose hospital, bank or other entity matched nothing are not in the answer
     # (engine/knowledge_query.py:unmatched_rows): the reply says how many, as the workbook does.

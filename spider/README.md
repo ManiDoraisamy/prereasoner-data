@@ -256,7 +256,7 @@ python -m spider.probe.full_eval --dbs spider/data/dbs --config whole_db --backe
 python -m spider.probe.typing_probe --dbs spider/data/dbs   # Probe C
 ```
 
-Each per-example record carries `served_by` (`search`, `gemini-rewrite`, or `gemini-sql`) beside the
+Each per-example record carries `served_by` (`search` or `gemini-rewrite`) beside the
 selection record. The run's contract and summary carry `fallback` (`enabled`, `model`), and
 `--resume` refuses a checkpoint written under a different setting. A headline run shows
 `fallback.enabled: false`, so every example is `served_by: search`. A run with the fallback on is a

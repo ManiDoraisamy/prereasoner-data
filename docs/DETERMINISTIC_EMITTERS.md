@@ -9,8 +9,9 @@ the source tree; deployment and evaluation evidence must identify the tested rev
 The engine constructs and ranks typed SQL AST candidates. For a supported winner,
 `lower_select_query()` constructs one immutable `AnalysisPlan`. SQL and Python emitters independently
 consume that plan. No model writes Python source, and neither emitter translates the other's source.
-A query the labelled Gemini fallback proposed lowers only as the typed AST it was imported into
-([ARCHITECTURE.md](ARCHITECTURE.md#labelled-gemini-fallback)); no emitter reads Gemini's text.
+The labelled Gemini fallback can only rewrite a question; it cannot provide an AST or SQL. The search
+builds and ranks the typed AST that this shared plan consumes
+([ARCHITECTURE.md](ARCHITECTURE.md#labelled-gemini-fallback)).
 
 The chat orchestrator's model proposes a named analysis action and slug. It does not normally split a
 question. If the engine's selected typed AST is compound and cannot be represented as one shared-plan

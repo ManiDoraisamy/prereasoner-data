@@ -107,14 +107,15 @@ def _coverage_sql(response):
     return program.get("source") or response.get("sql")
 
 
-def _answered_question(response, question):
-    """The question a served query answers: Gemini's rewording when the search answered that
-    (engine/sql_fallback.py), else the user's own. A query Gemini proposed answers the user's own
-    question, so coverage holds it to every word of it."""
+def _coverage_questions(response, question):
+    """Check both the user's wording and any Gemini rewrite against the executed SQL.
+
+    A rewrite is only a retrieval aid; it must not erase a condition from the user's question.
+    """
     fallback = (response or {}).get("fallback") or {}
     if fallback.get("kind") == "rewrite" and fallback.get("question"):
-        return fallback["question"]
-    return question
+        return list(dict.fromkeys((question, fallback["question"])))
+    return [question]
 
 
 def verify_nonempty(res, question):
@@ -1069,7 +1070,11 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         # instead of "bullshitting" a wrong query. The clarify UI lets the user confirm or edit before re-running.
         if schema:
             try:
-                dropped = self._uncovered(_answered_question(res, question), sch, _coverage_sql(res))
+                sql = _coverage_sql(res)
+                dropped = list(dict.fromkeys(
+                    word for coverage_question in _coverage_questions(res, question)
+                    for word in self._uncovered(coverage_question, sch, sql)
+                ))
                 if currency and currency.get("status") == "satisfied":
                     realized = currency_conversion_words(currency["target"])
                     dropped = [word for word in dropped if word not in realized]

@@ -115,9 +115,13 @@ assert.throws(() => load(book([sheet(9, 'Long', rows(50001))])).getSidebarContex
   /^Error: Sheet "Long": each worksheet may contain at most 50,000 data rows$/); checks++;
 const wide = sheet(5, 'Wide', [Array.from({length: 257}, (_, i) => 'c' + i), Array.from({length: 257}, () => 1)]);
 assert.throws(() => load(book([wide])).getSidebarContext(), /^Error: Sheet "Wide": each worksheet may contain at most 256 columns$/); checks++;
-const dense = [Array.from({length: 26}, (_, i) => 'c' + i)].concat(Array.from({length: 20000}, () => Array(26).fill(1)));
-assert.throws(() => load(book([sheet(10, 'Dense', dense)])).getSidebarContext(),
-  /^Error: Sheet "Dense": too large to analyze in one request \(520,026 cells; at most 500,000 in all\)/); checks++;
+const realCustomerShape = [Array.from({length: 18}, (_, i) => 'c' + i)]
+  .concat(Array.from({length: 30000}, (_, i) => [i + 1].concat(Array(17).fill('value'))));
+equal(load(book([sheet(10, 'Subscriptions', realCustomerShape)])).getSidebarContext().workbook.grids.length, 1,
+  'a 30,000-row customer-shaped sheet fits the add-on grid cap');
+const dense = [Array.from({length: 26}, (_, i) => 'c' + i)].concat(Array.from({length: 40000}, () => Array(26).fill(1)));
+assert.throws(() => load(book([sheet(15, 'Dense', dense)])).getSidebarContext(),
+  /^Error: Sheet "Dense": too large to analyze in one request \(1,040,026 cells; at most 1,000,000 in all\)/); checks++;
 // Another tab that does not fit beside the active one is left out by name, not the whole spreadsheet: a
 // 30,000-row tab beside five more was refused (customer report, 2026-10-02). So is a tab past the row limit.
 const beside = load(book([sheet(11, 'NT', rows(30000)), sheet(12, 'SI', dense), sheet(13, 'Log', rows(50001)),

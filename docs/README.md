@@ -72,7 +72,7 @@ database releases.
 | Named-analysis SQL/Python emission | One immutable feed-forward plan and two source emitters | Deterministic for the supported subset |
 | Candidate ordering | Named structural and encoder-derived features with stable tie-breaking | Deterministic for fixed artifacts and inputs |
 | Own-data query choice | The best-ranked search candidate that runs on a copy of the data and is grounded; calculation and money-total preferences filter that ranking | Deterministic for fixed artifacts and inputs; no local model writes SQL |
-| Selection fallback | Optional Gemini step when no candidate runs: one rewording the search reads again, or one proposed query that must import into the typed AST and pass the same checks | External model, opt-in; its answers are labelled, and decomposition leaves never take it |
+| Selection fallback | Optional, stateless Gemini rewording when no candidate runs; the deterministic typed search still builds and validates SQL | External model, opt-in; rewritten answers are labelled, and decomposition leaves never take it |
 | Joins, calculations, validation, and execution | Typed rules, calculation specifications, guarded emitters, and PostgreSQL | Deterministic |
 | Entity fallback | Exact lookup, then similarity, followed by grounding checks | Retrieval signal plus deterministic gates |
 | Conversational presentation | Optional Gemini orchestrator | Cannot author SQL facts or numeric answers |

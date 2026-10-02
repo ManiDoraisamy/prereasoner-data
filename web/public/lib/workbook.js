@@ -153,15 +153,14 @@ function dedent(src){
   const pad=Math.min(...lines.filter(l=>l.trim()).map(l=>l.match(/^ */)[0].length));
   return lines.map(l=>l.slice(pad)).join('\n');
 }
-// When Gemini helped build a query (engine/sql_fallback.py), the engine says so in `fallback`, and the
-// settled status repeats it: the search read Gemini's rewording, or Gemini proposed the query.
+// When Gemini rewrote the question (engine/sql_fallback.py), the settled status repeats the label.
 let FALLBACK=null;
-function noteFallback(value){ if(value&&(value.kind==='rewrite'||value.kind==='sql'))FALLBACK=value; }
+function noteFallback(value){ if(value&&value.kind==='rewrite')FALLBACK=value; }
 function answeredStatus(n){
   const f=FALLBACK;
   return 'Answered in '+n+' step'+(n===1?'':'s')+(!f?'':f.kind==='rewrite'
     ?' · read as “'+f.question+'”, reworded by Gemini'
-    :' · query proposed by Gemini and checked by the engine');
+    :'');
 }
 function noteAnalysis(value){
   if(!value||!value.slug)return;

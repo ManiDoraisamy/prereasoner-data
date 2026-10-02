@@ -1,9 +1,7 @@
-"""The text Gemini reads when the labelled selection fallback runs (engine/sql_fallback.py).
+"""The schema and single-request wording prompt for deterministic SQL search.
 
-``schema_text`` renders the request's typed schema; ``rewrite_prompt`` asks for one rewording of the
-question in the tables' own words, and ``propose_prompt`` for one SQLite SELECT. Each reply is a JSON
-object of the matching ``*_SCHEMA`` shape. Gemini never sees the rows: only table and column names,
-inferred column types, foreign keys and at most three example values per column.
+Gemini sees table and column names, inferred types, listed foreign keys, up to three sample values per
+column, and the current question. It does not receive the conversation or full table rows.
 """
 from __future__ import annotations
 
@@ -22,34 +20,15 @@ REWRITE_SYSTEM = (
     "If the question cannot be answered from these tables, return it unchanged."
 )
 
-PROPOSE_SYSTEM = (
-    "You are an SQLite expert. Write one SQLite SELECT statement that answers the question from the "
-    "tables described. Use only the tables and columns listed, compare text columns with values as "
-    "they appear in the examples, and join tables only on the listed foreign keys. Return only the "
-    "statement."
-)
-
 REWRITE_SCHEMA = {
     "type": "object",
     "properties": {"question": {"type": "string"}},
     "required": ["question"],
 }
 
-PROPOSE_SCHEMA = {
-    "type": "object",
-    "properties": {"sql": {"type": "string"}},
-    "required": ["sql"],
-}
-
 
 def schema_text(graph) -> str:
-    """Render the typed schema and bounded examples in XiYan-SQL's M-Schema layout.
-
-    The section markers are M-Schema's own, between the full-width brackets U+3010 and U+3011:
-    【DB_ID】, 【Schema】 and 【Foreign keys】 (XGenerationLab/M-Schema, ``to_mschema``). Column
-    types are inferred by ``SchemaGraph`` from names and observed values. The labels intentionally
-    describe that inference rather than claiming SQLite DDL types.
-    """
+    """Render typed schema and bounded examples in XiYan-SQL's M-Schema layout."""
     lines = ["【DB_ID】 SQLite database", "【Schema】"]
     for table_name in graph.tables:
         lines.extend((f"# Table: {table_name}", "["))
@@ -78,7 +57,3 @@ def schema_text(graph) -> str:
 
 def rewrite_prompt(graph, question: str) -> str:
     return "Tables:\n" + schema_text(graph) + "\n\nQuestion:\n" + question
-
-
-def propose_prompt(graph, question: str) -> str:
-    return "Database schema:\n" + schema_text(graph) + "\n\nQuestion:\n" + question

@@ -41,7 +41,7 @@ def test_effective_input_hash_covers_values_references_and_table_order():
     changed = {**tiers, "rows": [["Gold", "0.2"]]}
     assert analysis_input_hash([orders, tiers]) != analysis_input_hash([orders, changed])
     duplicated = {**orders, "rows": [[1, "12.30"], ["1", "12.30"]]}
-    assert analysis_input_hash(normalize_tables([orders])) == \
+    assert analysis_input_hash(normalize_tables([orders])) != \
         analysis_input_hash(normalize_tables([duplicated]))
     fk = {"from_table": "orders", "from_cols": ["tier"],
           "to_table": "tier", "to_cols": ["tier"]}

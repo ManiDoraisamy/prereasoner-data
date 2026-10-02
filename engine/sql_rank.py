@@ -512,27 +512,23 @@ EXECUTION_OP_LIMIT = 100_000_000
 class FallbackRecord:
     """How the labelled Gemini fallback (engine/sql_fallback.py) took part in one selection.
 
-    ``kind`` is "rewrite" when the search answered Gemini's rewording of the question, "sql" when
-    the served query is Gemini's proposal after the typed-AST gate, and "none" when the fallback
-    ran and nothing it returned could be served. ``question`` is the rewording, ``proposal`` the
-    SQL text Gemini returned, ``model`` the Gemini model id and ``note`` why nothing was served.
+    ``kind`` is "rewrite" when the search answered Gemini's one-request rewording, and "none" when
+    the rewording could not produce a query. "model" is the Gemini model id; ``note`` explains an
+    unsuccessful rewrite.
     """
     kind: str
     model: str
     question: str | None = None
-    proposal: str | None = None
     note: str = ""
 
     def __post_init__(self):
-        if self.kind not in {"rewrite", "sql", "none"}:
+        if self.kind not in {"rewrite", "none"}:
             raise ValueError(f"unknown fallback kind: {self.kind}")
 
     def record(self) -> dict:
         out = {"kind": self.kind, "model": self.model}
         if self.question is not None:
             out["question"] = self.question
-        if self.proposal is not None:
-            out["proposal"] = self.proposal
         if self.note:
             out["note"] = self.note
         return out
@@ -576,8 +572,7 @@ class PoolSelection:
 
     @property
     def served_by(self) -> str:
-        """``search`` for the deterministic search's own reading, else ``gemini-rewrite`` (the search
-        answered Gemini's rewording) or ``gemini-sql`` (Gemini's proposal passed the typed-AST gate)."""
+        """``search`` for its own reading or ``gemini-rewrite`` for a search over one rewording."""
         if self.selected is None or self.fallback is None or self.fallback.kind == "none":
             return "search"
         return f"gemini-{self.fallback.kind}"

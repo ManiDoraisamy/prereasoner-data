@@ -1744,7 +1744,7 @@ def test_the_model_sees_the_rows_the_answer_covers():
 
 def test_a_gemini_assisted_answer_is_labelled_for_the_reply():
     """The engine builds every query itself; only when nothing it built runs does Gemini reword the
-    question or propose the query (engine/sql_fallback.py). The reply must say so, as the workbook
+    question (engine/sql_fallback.py). The reply must say so, as the workbook
     does, and must not say so for the engine's own answers."""
     from mcp_server.engine_client import shape_reason_response
 
@@ -1755,11 +1755,6 @@ def test_a_gemini_assisted_answer_is_labelled_for_the_reply():
     }, "job")
     seen = orchestrator._trim_for_model(reworded)
     assert seen["fallback"] == {"kind": "rewrite", "question": "total amount by city"}, seen
-    proposed = shape_reason_response({
-        "result": {"columns": ["n"], "rows": [[3]]},
-        "fallback": {"kind": "sql", "model": "gemini-3.8-flash", "proposal": "SELECT 3"},
-    }, "job")
-    assert orchestrator._trim_for_model(proposed)["fallback"] == {"kind": "sql"}
     nothing = shape_reason_response({
         "result": {"columns": ["n"], "rows": [[3]]},
         "fallback": {"kind": "none", "model": "gemini-3.8-flash", "note": "Gemini unavailable"},
@@ -1769,7 +1764,7 @@ def test_a_gemini_assisted_answer_is_labelled_for_the_reply():
     assert "fallback" not in orchestrator._trim_for_model(plain)
     prompt = " ".join(orchestrator.SYSTEM_PROMPT.split())
     assert "When the tool result has `fallback`" in prompt
-    assert "suggested by Gemini and checked before it ran" in prompt
+    assert "read this as" in prompt
 
 
 def test_rows_whose_entity_matched_nothing_reach_the_reply():

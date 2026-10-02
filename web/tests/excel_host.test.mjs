@@ -144,7 +144,9 @@ await assert.rejects(() => runWorkbook([sheet('Long', 'Visible', [], {rowCount: 
   /^Error: Sheet "Long": each worksheet may contain at most 50,000 data rows$/);
 await assert.rejects(() => runWorkbook([sheet('Wider', 'Visible', [], {rowCount: 2, columnCount: 257})]),
   /^Error: Sheet "Wider": each worksheet may contain at most 256 columns$/);
-await assert.rejects(() => runWorkbook([sheet('Wide', 'Visible', [], {rowCount: 2000, columnCount: 256})]),
+const tooManyCells = [['id', ...Array.from({length: 255}, (_, i) => `c${i}`)]]
+  .concat(Array.from({length: 4000}, (_, i) => [i + 1, ...Array(255).fill(1)]));
+await assert.rejects(() => runWorkbook([sheet('Wide', 'Visible', tooManyCells)]),
   /too large to analyze/);
 await assert.rejects(() => runWorkbook([sheet('No data', 'Visible', [['header']])]),
   /no visible table/);

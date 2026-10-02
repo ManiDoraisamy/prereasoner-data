@@ -1520,11 +1520,10 @@ dimensions. A model that writes SQL token by token contradicts it, however its t
   candidate that executes and is grounded; a date the question names, a registered calculation or a
   named money total can prefer a later eligible one. `PoolSelection.record()` reports why.
 - Only when no candidate is eligible and the operator enabled Gemini (`EXTERNAL_LLM_ENABLED`),
-  `engine/sql_fallback.py` asks Gemini once to reword the question (the search builds the SQL from the
-  rewording), then for one query that must pass `engine/sql_import.py`, validation, re-rendering,
-  execution and grounding. The answer carries `fallback`, `served_by` and a `model` string that say so,
-  and the workbook status line repeats it. Coverage checks a rewording against itself and holds a
-  proposal to every word of the user's question. Decomposition leaves never take the fallback.
+  `engine/sql_fallback.py` may ask Gemini once to reword the current question. The search alone builds
+  and validates SQL; Gemini cannot propose it. The answer carries `fallback`, `served_by` and a `model`
+  string that say so, and the workbook status line repeats it. The request is stateless and uncached,
+  and coverage checks both the original question and the rewrite. Decomposition leaves never take the fallback.
 - Gemini on Vertex AI (`engine/llm.py`) is the only LLM provider: chat, `/api/converse`, reference
   generation and the fallback. Anthropic is removed.
 
@@ -1636,3 +1635,13 @@ name it ("in August"), which filters as before.
 - Both emitters compute the key once in the plan (`FunctionValue` `YEAR_MONTH`), from the date's ISO text, as
   SQLite, PostgreSQL and the Python program all can. The coverage gate reads "month", "months" and "monthly" as
   realized only where the SQL groups by it.
+
+## 30,000-row Sheets workbooks fit the read cap (2026-10-02)
+
+The add-on already skipped oversized neighboring tabs, but a valid active worksheet could still be rejected
+at 500,000 cells. A 30,000-row customer sheet with 18 columns contains 540,018 cells including its header, so
+it exceeded that limit even though it stayed within the row limit and the parser's text bounds.
+
+Raise the shared live-grid ceiling to 1,000,000 cells in the Sheets add-on, Excel reader, and upload importer.
+Keep the per-sheet row/column limits and 8 MB/20 MB converted-text limits as separate guardrails. Regression
+coverage reads a 30,000 × 18 customer-shaped grid and still refuses an active grid above one million cells.

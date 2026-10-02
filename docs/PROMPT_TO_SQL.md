@@ -134,22 +134,18 @@ the system can use, described next, still has to import into the typed grammar a
 This section describes an exception, not the normal path. It runs only when Stage 4 leaves no eligible
 candidate **and** the operator enabled Gemini (`EXTERNAL_LLM_ENABLED`, [`engine/llm.py`](../engine/llm.py)).
 The switch defaults to off, and with it off nothing below happens; the guided Community deployment
-turns it on together with chat. [`engine/sql_fallback.py`](../engine/sql_fallback.py) takes two
-bounded steps:
+turns it on together with chat. [`engine/sql_fallback.py`](../engine/sql_fallback.py) makes one
+bounded rewrite request:
 
 1. **Gemini rewords the question once**, in the tables' own words. Stages 3 to 6 run again on the
    rewording, so the search still builds the SQL. The answer says the search read Gemini's rewording,
    and shows it.
-2. **If that finds nothing either, Gemini proposes one SQLite query.** It is text until
-   [`engine/sql_import.py:import_sql`](../engine/sql_import.py) maps it into the same `SelectQuery` nodes
-   (or raises `Unsupported`); the validator, Stage 4, and Stage 6 then run exactly as for a search
-   candidate, and the engine's rendering, not Gemini's text, is what runs. The answer says Gemini
-   proposed the query.
-
-Gemini sees the question and the schema text of [`engine/sql_prompt.py`](../engine/sql_prompt.py): table
-and column names, inferred types, foreign keys, and at most three example values per column. It does not
-see the rest of the rows, and it never writes a number. `served_by` is `gemini-rewrite` or `gemini-sql`,
-and the response's `fallback` record holds the rewording or Gemini's SQL text. See
+The deterministic search then builds SQL from the rewrite; there is no SQL proposal step. Coverage
+checks both the user's original question and the rewrite. Gemini sees the question and the schema text
+of [`engine/sql_prompt.py`](../engine/sql_prompt.py): table and column names, inferred types, foreign
+keys, and at most three example values per column. It receives no conversation history or full rows,
+and it never writes SQL or a number. `served_by` is `gemini-rewrite`, and the response's `fallback`
+record holds the rewording. Rewrites are not cached. See
 [`docs/ARCHITECTURE.md`](ARCHITECTURE.md#labelled-gemini-fallback) for the checks that apply to each case.
 
 ## The one caveat in this example: world queries
@@ -183,7 +179,7 @@ See [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) for how routing decides own-data v
 | One scored candidate | `engine/sql_candidate.py` · `ScoredQuery` |
 | Run and ground the candidates | `engine/tables.py` · `select_query`, `_executable`; `engine/sql_grounding.py` · `grounded_members` |
 | Serve the best-ranked eligible candidate | `engine/sql_rank.py` · `select_ranked_candidate`, `PoolSelection` |
-| Labelled Gemini fallback | `engine/sql_fallback.py` · `SQLFallback.rewrite`, `SQLFallback.propose`; `engine/sql_prompt.py` · `schema_text` |
+| Labelled Gemini rewrite | `engine/sql_fallback.py` · `SQLFallback.rewrite`; `engine/sql_prompt.py` · rewrite prompt and schema |
 | Model text → typed AST gate | `engine/sql_import.py` · `import_sql` |
 | Serving entry point (select, render, execute) | `engine/tables.py` · `select_query`, `_serve_ast` |
 | Own-data vs. world routing | `engine/routing.py` · `route`, `compose_owns` |

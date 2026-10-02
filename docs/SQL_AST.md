@@ -83,14 +83,10 @@ question + tables + foreign keys
           |   none eligible, and the operator enabled Gemini
           +------------------------------------------------+
           |                                                v
-          |                       labelled fallback (sql_fallback.py)
-          |                       1. Gemini rewords the question; the search
-          |                          runs again on it, same run/ground/serve
+          |                       one request-scoped wording rewrite
+          |                       search again -> run/ground/serve
+          |                       (original wording also coverage-checked)
           |                                                served_by: gemini-rewrite
-          |                       2. else Gemini proposes one query:
-          |                          import -> validate -> re-render,
-          |                          then run and ground it
-          |                                                served_by: gemini-sql
           v                                                |
   validated AST -> SQL (or SQL + Python) <-----------------+
   a top-1 ranking keeps its ties (keep_ties)
@@ -113,32 +109,26 @@ subject to the calculation and money-total preferences (`engine/sql_rank.py:sele
 | `rank` | The served member's place among the eligible members (0 is the best ranked) |
 | `score` | The served member's search score |
 | `calculation_satisfied`, `money_total` | Whether a calculation intent or a named money total chose it |
-| `served_by` | `search`, `gemini-rewrite`, or `gemini-sql` |
-| `fallback` | Present when the fallback ran: `kind`, `model`, the rewording or Gemini's SQL text, and why nothing was served |
+| `served_by` | `search` or `gemini-rewrite` |
+| `fallback` | Present when the rewriter ran: `kind`, `model`, the rewording, and why nothing was served |
 
-When the fallback served the answer, the counts describe the pool that served it: the search's
-candidates for the rewording, or the one imported proposal.
+When the fallback served the answer, the counts describe the deterministic search pool for the
+reworded question.
 
 ### Labelled Gemini fallback
 
 `engine/sql_fallback.py` runs only when no candidate is eligible and `engine/llm.py` reports Gemini
-available (`EXTERNAL_LLM_ENABLED` and a Vertex AI project). It takes two bounded steps, and each
-result passes the same run-and-ground choice as the search's own candidates:
+available (`EXTERNAL_LLM_ENABLED` and a Vertex AI project). It makes one request-scoped rewrite; the
+deterministic search then builds, runs, and grounds candidates as usual:
 
 1. `rewrite`: Gemini returns one rewording of the question in the tables' own words
    (`engine/sql_prompt.py:REWRITE_SYSTEM`). A rewording equal to the question, ignoring case and
    spacing, is discarded. The search runs on the rewording, so the SQL is still the search's.
-2. `propose`: when the rewording finds nothing eligible, Gemini returns one SQLite `SELECT`
-   (`PROPOSE_SYSTEM`). `engine/sql_import.py:import_sql` maps it into the typed AST or raises
-   `Unsupported`; the validator and renderer then run exactly as for search candidates. The served
-   SQL is the engine's rendering, never Gemini's text, and the candidate carries the evidence
-   `gemini:proposal`.
-
-Both prompts carry the question and the schema text of `engine/sql_prompt.py:schema_text`: names,
+The prompt carries the question and schema text from `engine/sql_prompt.py`: names,
 inferred types, foreign keys, and at most three example values per column, and no other row data.
-Replies are JSON objects of a fixed shape, bounded in length, and cached per prompt in the engine
-process. [ARCHITECTURE.md](ARCHITECTURE.md#labelled-gemini-fallback) describes the data Gemini
-receives, the labels an answer carries, and the checks that read the rewording.
+Replies are JSON objects of a fixed shape and bounded in length. No conversation history is sent and
+the reply is not cached. Coverage checks both the user's wording and the rewrite. [ARCHITECTURE.md](ARCHITECTURE.md#labelled-gemini-fallback)
+describes the data Gemini receives and the answer labels.
 
 ## Public API
 
@@ -320,9 +310,9 @@ SQL statements. Serving also retains its SELECT-only execution guard.
 | `engine/sql_extrema.py` | Extrema, top-N, and set difference. |
 | `engine/sql_parsimony.py` | Bounded projection/table variants of pooled candidates (minimal join, binding, drop/add column, operand swap, DISTINCT). |
 | `engine/sql_rank.py` | Hand-written search ranking features (`CandidateRanker`), the pool contract (`SEARCH_CANDIDATES`, `EXECUTION_OP_LIMIT`), and the selection record (`PoolSelection`, `FallbackRecord`). |
-| `engine/sql_fallback.py` | The labelled Gemini fallback: one rewording of the question, then one proposed query, with a per-process reply cache. |
+| `engine/sql_fallback.py` | The labelled, request-scoped Gemini wording rewriter; the deterministic search still owns SQL. |
 | `engine/sql_prompt.py` | The schema text and instructions Gemini reads in the fallback. |
-| `engine/sql_import.py` | SQL text to typed AST; the gate the fallback's proposal passes. |
+| `engine/sql_import.py` | SQL text importer used by offline evaluation and migration tools; not used by serving fallback. |
 | `engine/calculations/core.py` | Typed plans and branch-preserving computation evidence. |
 | `engine/calculations/specifications.py` | Registered currency, ratio, and rate-application semantics. |
 | `engine/calculations/search.py` | Calculation-plan expansion into validated AST candidates. |

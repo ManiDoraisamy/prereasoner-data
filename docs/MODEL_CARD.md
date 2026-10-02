@@ -77,18 +77,15 @@ releases, split policy, seed, and metrics are in `engine/data/schema_training_ma
 - What it sees: the question and the schema text of `engine/sql_prompt.py`: table and column names,
   inferred column types, foreign keys, and at most three example values per column. No other row
   data.
-- What it can do: reword the question once in the tables' own words, which the deterministic search
-  then reads; or, when that finds nothing, propose one SQLite query. The proposal is used only after
-  `engine/sql_import.py` maps it into the typed AST, the validator accepts it, the renderer reproduces
-  it, and it runs and is grounded like a search candidate. It never writes Python or a number, and its
-  text never reaches a database.
-- Labels: the response's `fallback` record (`kind`, `model`, and the rewording or the proposed SQL
-  text), `planner.selection.served_by` (`gemini-rewrite` or `gemini-sql`), and the response's `model`
+- What it can do: reword the current question once in the tables' own words, which the deterministic
+  search then reads. Gemini cannot propose SQL, a query plan, or a result.
+- Labels: the response's `fallback` record (`kind`, `model`, and the rewording),
+  `planner.selection.served_by` (`gemini-rewrite`), and the response's `model`
   string. The workbook's status line and the chat reply repeat it. Decomposition leaves never take
   the fallback.
-- Repeatability: calls run at temperature 0 with a fixed seed, and replies are cached per prompt in the
-  engine process. Gemini does not guarantee the same reply in another process, so a fallback answer
-  is outside the determinism statement in the summary.
+- Repeatability: the rewrite is request-scoped, receives no conversation history, and is never cached.
+  Gemini can return different wording on separate requests, so a fallback answer is outside the
+  determinism statement in the summary.
 
 The chat orchestrator, `/api/converse` replies, and reference-table generation also use Gemini
 through `engine/llm.py`, under the same switch. They sit outside the SQL planner; see

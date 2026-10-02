@@ -97,8 +97,9 @@ strip remains a flat topological list because it is a workbook navigator, not a 
     leaf questions and a closed merge topology after the engine requests it. The existing deterministic
     planner binds every leaf to schema, and one typed DAG supplies both emitters. No text of the
     decomposition proposal becomes SQL, Python, a table name, a column name, or a join key. A leaf the
-    search cannot read can reach the labelled Gemini fallback, whose proposal enters the plan only as a
-    validated typed AST ([ARCHITECTURE.md](ARCHITECTURE.md#labelled-gemini-fallback)).
+    search cannot read can reach the labelled Gemini wording rewrite; deterministic search still builds
+    every SQL plan, and coverage checks the user's original wording too
+    ([ARCHITECTURE.md](ARCHITECTURE.md#labelled-gemini-fallback)).
 
 ## Verification checklist (run against a live conversation)
 
