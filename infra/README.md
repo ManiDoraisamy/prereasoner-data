@@ -16,7 +16,8 @@ prepares Firebase Hosting and publishes the `web/public` CDN files after the Clo
 
 ```
 browser ── Firebase Hosting (web/) ── /api/** rewrite ──> Cloud Run "prereasoner-api"
-   │                                                        │ 16Gi / 8 vCPU, scale 0..3
+   │                                                        │ 16Gi / 8 vCPU, max 1 instance
+   │                                                        │ (min_instances 1 by default, or 0)
    ├── Firebase Auth (ID tokens, verified in-app)           │ unix socket /cloudsql/...
    └── Firebase RTDB  (live trace stream, optional) <───────┤
                                             Cloud SQL Postgres 16 (pgvector) "world"
@@ -47,9 +48,9 @@ browser ── Firebase Hosting (web/) ── /api/** rewrite ──> Cloud Run 
   project outside an organization. Hosting rewrites to Cloud Run require the **Blaze**
   (pay-as-you-go) plan.
 - A full working copy **including the model weights** in `engine/data/` (`encoder.pt`,
-  `encoder_meta.pt`, `anchor_assignment.npz`, `primitives.npz`, `qwen_lora/`). They are
-  gitignored; a bare clone builds an image that exits at startup with instructions.
-  See `engine/data/README.md`.
+  `encoder_meta.pt`, `anchor_assignment.npz`, `primitives.npz`, `qwen_lora/`,
+  `schema_property_head.pt`). They are gitignored; a bare clone builds an image that exits at
+  startup with instructions. See `engine/data/README.md`.
 
 ## Deploy (two-step: build, then apply)
 
@@ -139,14 +140,13 @@ easier to babysit interactively.
 ### 3a. Chat orchestrator
 
 The engine does not require an external model. Terraform can create the chat service and its
-dedicated service account. Production-compatible deployments select `chat_llm_provider=anthropic`
-and grant access to an **existing** Secret Manager secret; Community deployments select
-`chat_llm_provider=gemini` and grant the service account `roles/aiplatform.user` instead.
+dedicated service account. The chat model is Gemini on Vertex AI in this project (`gemini_model`,
+default `gemini-3.8-flash`; `gemini_location`, default `global`); no API key or secret is involved.
+Enabling chat enables Gemini for the engine too (`/api/converse`, reference generation, and the
+selection fallback): Terraform enables the Vertex AI API, grants both service accounts
+`roles/aiplatform.user`, and sets `EXTERNAL_LLM_ENABLED=true` on both services.
 
 ```bash
-gcloud secrets create prereasoner-chat-anthropic-key --replication-policy=automatic
-printf '%s' "$ANTHROPIC_API_KEY" | \
-  gcloud secrets versions add prereasoner-chat-anthropic-key --data-file=-
 python deploy/gcp/build_context.py --target chat --output /tmp/prereasoner-chat-build
 gcloud builds submit /tmp/prereasoner-chat-build \
   --config /tmp/prereasoner-chat-build/cloudbuild.orchestrator.yaml
@@ -159,20 +159,7 @@ terraform -chdir=infra apply \
   -var project_id=<PROJECT> \
   -var image=<engine-image@sha256:digest> \
   -var enable_orchestrator=true \
-  -var chat_image=<chat-image@sha256:digest> \
-  -var anthropic_secret_id=prereasoner-chat-anthropic-key
-```
-
-For Community chat, omit the Anthropic secret and use:
-
-```bash
-terraform -chdir=infra apply \
-  -var project_id=<PROJECT> \
-  -var image=<engine-image@sha256:digest> \
-  -var enable_orchestrator=true \
-  -var chat_image=<chat-image@sha256:digest> \
-  -var chat_llm_provider=gemini \
-  -var gemini_model=gemini-3.8-flash
+  -var chat_image=<chat-image@sha256:digest>
 ```
 
 Enabling the module is the authoritative deployment switch for external model processing. Publish
@@ -228,9 +215,10 @@ Community deployment explicitly enables the reviewed `iana_country` dataset.
 - `serving_db_role` — name of the mandatory non-superuser Cloud SQL role.
 - `admin_emails` - explicit Firebase email allowlist for `/api/admin/*`. Empty (the default)
   disables admin API access; forks never inherit a maintainer identity.
-- `enable_external_llm` - explicit opt-in for engine features that call the configured external
-  model. It defaults to false. The chat service has its separate `chat_llm_provider` setting;
-  Gemini chat does not enable the engine's optional Anthropic paths.
+- `enable_external_llm` - explicit opt-in for the engine's Gemini features (`/api/converse`,
+  reference generation, the selection fallback) in a deployment without chat. It defaults to false;
+  `enable_orchestrator=true` enables them regardless, because chat needs Gemini.
+- `gemini_model`, `gemini_location` - the Vertex AI Gemini model and location both services use.
 - `enrichment_active_datasets` — the deployment **allowlist** (2nd activation key; the 1st is
   per-dataset code approval in `engine/enrichment/registry.py`). Empty = enrichment off.
 
@@ -238,10 +226,11 @@ Community deployment explicitly enables the reviewed `iana_country` dataset.
 > checked-in lock file. Run `terraform plan` against the correct restored state before every
 > apply; validation alone cannot detect missing imports or verify live grants.
 >
-> Upgrade note: an existing engine-only deployment that intentionally uses `/api/converse` or
-> reference autofill must now pass `-var enable_external_llm=true` and its existing
-> `anthropic_secret_id`. Omitting the flag deliberately plans removal of the engine's Anthropic
-> secret binding and sets `EXTERNAL_LLM_ENABLED=false`.
+> Upgrade note: Gemini on Vertex AI replaced Anthropic. `anthropic_secret_id`, `anthropic_model`,
+> and `chat_llm_provider` no longer exist; remove them from saved variable files. The next plan
+> removes both Anthropic secret bindings and the `ANTHROPIC_*` / `LLM_PROVIDER` environment, and
+> adds the Vertex AI grants. The out-of-band Anthropic secret itself was never Terraform-managed:
+> delete it with `gcloud secrets delete` once the new revision serves.
 >
 > Upgrade note: `admin_emails` now reaches the service as an explicit `ADMIN_EMAILS` env var, and
 > `engine/admin.py` no longer carries a hardcoded owner fallback. An existing deployment that used

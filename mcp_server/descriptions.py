@@ -1,5 +1,5 @@
 """Single source of truth for the tool descriptions — imported by both the MCP server (mcp_server/server.py)
-and the orchestrator's Claude-facing tool schemas (orchestrator/orchestrator.py), so the routing-discipline
+and the orchestrator's model-facing tool schemas (orchestrator/orchestrator.py), so the routing-discipline
 rules (docs/MCP.md) live in exactly one place and any client inherits them."""
 
 QUERY_DESC = """\

@@ -18,7 +18,8 @@ external MCP: MCP client -> mcp_server/server.py (stdio)
 - `mcp_server/server.py` publishes `prereasoner_query` and `prereasoner_describe` over stdio for
   EXTERNAL MCP clients. The chat orchestrator does not spawn it — a per-turn Python subprocess cost
   a measured 0.86s of interpreter startup to relay an HTTP call the orchestrator can make itself.
-- `orchestrator` runs an optional Anthropic tool loop. It decides when to call a tool and how to present the result.
+- `orchestrator` runs an optional Gemini tool loop (Vertex AI, through `engine/llm.py`, enabled by the operator's
+  `EXTERNAL_LLM_ENABLED` switch). It decides when to call a tool and how to present the result.
 - Numbers and tables must come from the engine tool response. The orchestrator may not calculate or invent them.
 - Before a follow-up, the orchestrator reads the ownership-scoped `/api/analyses` catalog. The catalog contains
   only ids, slugs, latest questions, revision numbers, and stale flags; it does not duplicate workbook rows.
@@ -41,7 +42,7 @@ Production defaults to fail-closed. `/api/dimension` is authenticated too.
 The HTTP `/chat` body accepts `use=sql|py|both` (and the internal aliases documented in
 [DETERMINISTIC_EMITTERS.md](DETERMINISTIC_EMITTERS.md)). This is transport context: `_run_turn`
 passes it to every `engine_client.call_query`, which sends it in the `/api/reason` JSON body.
-It is not a mode chosen by Sonnet. The standalone MCP tool schema currently does not expose a
+It is not a mode chosen by the model. The standalone MCP tool schema currently does not expose a
 `use` argument; the shared Python HTTP adapter does.
 
 The adapter preserves `execution` metadata on answers and errors, and `deterministic` source and
@@ -56,6 +57,18 @@ verification. See the execution contract for the transient direct-request slug a
 - `decompose`: a non-terminal request for one bounded semantic split; no answer rows are returned;
 - `clarify`: the engine rejected a query that would drop or ambiguously realize part of the question;
 - `error`: transport, server, or malformed-response failure.
+
+The orchestrator's `prereasoner_query` schema also has an optional `dataset_ops` array for a fact the user
+states about their own data's meaning, such as "these amounts are in euros". Each item is a closed
+`set_measure_metadata` or `clear_measure_metadata` op naming an uploaded `table` and measure `column`, with
+optional `metadata` (`currency`, `date_column`) and a required `basis` of `{"source": "conversation", "text": ...}`
+quoting the user. The orchestrator binds unambiguous column names, verifies each quote against the conversation,
+checks every quote against the current user message (not earlier turns), and signs the list only when all quotes
+are present; otherwise the ops go unattested and the engine returns a clarify.
+If the engine rejects an op (an unknown sheet or column, an unsupported code), the model gets one
+`repair_required` round listing the uploaded sheets and columns; a second rejection is terminal. A decomposition
+retry does not resend ops the first call already persisted. The standalone stdio server does not expose
+`dataset_ops`. The grammar and trust model are in [DATASET_FORMATTER.md](DATASET_FORMATTER.md).
 
 Every orchestrated query also carries `action` and `slug`. `modify` and `inspect` carry the exact `analysis_id` from the catalog;
 `inspect` may name a revision. These are conversational intent fields, not authority. The engine canonicalizes the
@@ -93,7 +106,7 @@ shown. The model sees a verified output currency as `currency` on that result; a
 number.
 
 Workbook routing is separate from SQL routing. A qualifier change such as `in US dollars` modifies the existing
-analysis; a new output grain such as `top selling products` creates another analysis. Sonnet proposes that choice
+analysis; a new output grain such as `top selling products` creates another analysis. Gemini proposes that choice
 from conversation context and the catalog. The deterministic engine still owns SQL, calculations, authorization,
 view naming, and revision persistence.
 
@@ -102,18 +115,22 @@ own-data AST and world-aware execution. Serving and Spider evaluation continue t
 
 ## Running Locally
 
-Start the engine, then provide `ANTHROPIC_API_KEY` and run the orchestrator service described in
-[`../docker-compose.yml`](../docker-compose.yml). The MCP and orchestrator contract tests are:
+Start the engine, then run the orchestrator service described in
+[`../docker-compose.yml`](../docker-compose.yml) with `GOOGLE_CLOUD_PROJECT` (a project with the Vertex AI API
+enabled) and `EXTERNAL_LLM_ENABLED=true`. Gemini authenticates with Application Default Credentials: run
+`gcloud auth application-default login` once; no API key exists. The MCP, orchestrator, and Gemini-client
+contract tests are:
 
 ```powershell
 python -m tests.test_mcp
 python -m tests.test_orchestrator_unit
+python -m tests.test_llm
 python -m tests.test_orchestrator
 ```
 
 The exact chat image also runs `python -m mcp_server.healthcheck` during its Docker build. That check
 spawns the real stdio server, completes MCP `initialize`, and verifies both published tools; an import-only
-test is insufficient because the server is a child process in production.
+test is insufficient because external MCP clients launch it as a child process.
 
 The MCP adapter adds no model artifacts, training pipeline, or persistent state of its own. Named workbook state is
 owned by the engine's `chat.analysis` and `chat.analysis_revision` tables.

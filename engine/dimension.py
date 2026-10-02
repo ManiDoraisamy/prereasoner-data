@@ -19,15 +19,15 @@ class DimensionModel(TableQuery):
     """Dimension analysis over the production encoder and trained taxonomy readout.
 
     Production passes the already-loaded world encoder; standalone callers load the
-    same encoder bundle without constructing an unused SQL proposer/arbiter.
+    same encoder bundle and nothing else.
     """
 
     def __init__(self, deploy_dir=DATA_DIR, *, shared_encoder=None):
         d = Path(deploy_dir)
         TableQuery.__init__(self, d)
         if shared_encoder is None:
-            # Dimension is a readout over the same encoder bundle; it does not need its
-            # own SQL proposer/arbiter. load_encoder supplies the standalone/test path.
+            # Dimension is a readout over the same encoder bundle. load_encoder supplies
+            # the standalone/test path.
             load_encoder(self, d)
         else:
             # The world and dimension endpoints intentionally share one Qwen/LoRA and

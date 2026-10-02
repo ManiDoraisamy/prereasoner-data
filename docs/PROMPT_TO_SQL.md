@@ -1,12 +1,13 @@
 # From question to SQL
 
 This walkthrough follows one request through Prereasoner. The important boundary is simple:
-every query that runs is a typed AST the engine validated and rendered itself. Models contribute
-evidence: an encoder reads typed signals about the question and the tables, and a small SQL
-proposer suggests candidate queries. A suggestion is text until the importer maps it into the typed
-AST and the validator accepts it; only then can it compete, and a fitted arbiter picks the winner.
+every query that runs is a typed AST the engine validated and rendered itself. The encoder
+contributes evidence: typed signals about the question and the tables. A deterministic search builds
+candidate queries from those signals, and the engine serves the best-ranked one that runs and fits
+the data. No local model writes SQL. The one exception needs an operator switch; it is described,
+with how its answers are labelled, [after the walkthrough](#when-the-search-finds-nothing-the-labelled-gemini-fallback).
 
-![The search half of the pipeline: the encoder supplies typed signals, a deterministic search builds typed ASTs, and the chosen AST renders to SQL. Stages 4 and 5 below add the proposer's candidates and the arbiter.](img/readout-to-sql.svg)
+![The pipeline: the encoder supplies typed signals, a deterministic search builds typed ASTs, and the chosen AST renders to SQL.](img/readout-to-sql.svg)
 
 We trace **`"total amount in France"`** through the stack. This happens to need public world data,
 but the own-data planning steps are the same for an ordinary table question.
@@ -35,16 +36,16 @@ We keep the **last layer**:
 final = self._layers(units, x)[-1]     # final[unit_index] -> a vector over the anchors
 ```
 
-`final` is a **matrix**, not a token sequence. Each row `final[unit]` is a ~100-length vector over the model's
-**anchors**: **90 schema.org-property dims + 10 intent dims**, each squashed to `[0, 1]`. A row is a *fingerprint
-of meaning*:
+`final` is a **matrix**, not a token sequence. Each row `final[unit]` is a 90-length vector over the model's
+named **anchors**: 9 column types, 71 property names, and 10 query intents, each squashed to `[0, 1]`. A row
+is a *fingerprint of meaning* (values below are illustrative):
 
 | unit | reads as | which anchors light up |
 |---|---|---|
-| column `amount` | a **type** | `monetaryAmount` / measure ≈ .94 |
+| column `amount` | a **type** | `is_num` (a numeric measure) ≈ .94 |
 | column `city` | a **type** | `address` / place ≈ .91 |
 | word `total` | an **intent** | `intent_agg_sum` ≈ .88 |
-| word `France` | an **intent** | `filter` (equality) ≈ .86 |
+| word `France` | an **intent** | `intent_filter_eq` (equality filter) ≈ .86 |
 
 The *column* fingerprints are exactly what the `/api/dimension` endpoint returns. The *word* fingerprints hold
 the intents: [`read_op_model`](../engine/encoder_overlay.py) reads the aggregate operator straight off the verb
@@ -78,80 +79,78 @@ SelectQuery(
 ```
 
 The node types are a real grammar: `SelectQuery`, `SelectItem`, `Aggregate`, `ColumnRef`, `Comparison`,
-`BooleanExpr`, `OrderTerm`, `Join`, `ScalarSubquery`, `InPredicate`, … Each candidate is wrapped as a
+`BooleanExpr`, `OrderTerm`, `Join`, `ScalarSubquery`, `InPredicate`, `DatePart` (the month of a date column,
+for "signed in August"), … Each candidate is wrapped as a
 [`ScoredQuery(query, score, evidence, features)`](../engine/sql_candidate.py) — the `evidence` tuple is the
 human-readable trace (`"extrema:projection"`, `"aggregate:SUM(...)"`, ...). The search orders its pool with
-hand-written, named ranking rules.
+hand-written, named ranking rules (`CandidateRanker` in [`engine/sql_rank.py`](../engine/sql_rank.py)) and
+keeps the 25 best-ranked candidates (`SEARCH_CANDIDATES`).
 
-## Stage 4 — the proposer adds candidates the grammar rules missed
+## Stage 4 — run each candidate and check it against the data
 
-A bounded search only finds shapes its rules enumerate. [`engine/xiyan_sql_proposer.py`](../engine/xiyan_sql_proposer.py)
-covers that gap with the pinned XiYanSQL QwenCoder 7B Q4_K_M CPU model. It reads the publisher's
-M-Schema prompt with column types, bounded value examples, and foreign keys, serialized by
-[`engine/sql_prompt.py`](../engine/sql_prompt.py). Conceptually:
+[`engine/tables.py:select_query`](../engine/tables.py) runs every candidate on an in-memory copy of the
+tables, under the SELECT guard and a fixed budget of SQLite VM steps. A query that fails is out. So is one
+that compares a text column with a literal the column never holds while another column does
+(`customer_name = 'Lyon'` when `Lyon` is in the city column), and one that joins two columns the foreign
+keys keep apart ([`engine/sql_grounding.py`](../engine/sql_grounding.py)). The candidates that are
+left are *eligible*. Running is a validity check, not proof of meaning: an eligible query can still answer
+a different question.
 
-```
--- schema
-orders(order_id, city, amount)
--- question
-total amount in France
--- sql
-```
+## Stage 5 — serve the best-ranked eligible candidate
 
-and decodes **one deterministic greedy completion** (no sampling). The complete SQL goes through
-[`engine/sql_import.py:import_sql`](../engine/sql_import.py), which maps it into the same `SelectQuery` nodes
-or raises `Unsupported`; the validator and renderer then run exactly as for search candidates. A line the
-importer cannot map, the validator rejects, or the renderer cannot reproduce is dropped, so model text never
-reaches a database. Accepted proposals join the pool after the search candidates; a proposal identical to a
-search candidate is not added twice but marks that candidate `proposer:endorsed`.
-
-## Stage 5 — the arbiter chooses among the queries that run
-
-[`engine/tables.py:select_query`](../engine/tables.py) runs every pooled query on an in-memory copy of the
-tables (SELECT guard, fixed step budget); a query that fails is out, and so is one that compares a text
-column with a literal the column never holds while another column does, or one that joins two columns the
-foreign keys keep apart ([`engine/sql_grounding.py`](../engine/sql_grounding.py)). The deployed measured policy uses neutral
-likelihood sentinels `(0.0, 1)`, not real language-model likelihoods. The arbiter
-([`engine/sql_rank.py:SQLArbiter`](../engine/sql_rank.py))
-computes one number per query:
-
-```
-score = sum over 9 features of (value - mean) / scale * coefficient  +  intercept
-```
-
-The features are the likelihood, its length and per-token average, the pool score and position, whether the
-search, the proposer, or both produced the query, and the pool size. The highest score is served; the earlier
-pool position breaks ties. The response's `planner.selection` lists the winner's feature values and each
-feature's contribution to its score, so a reader can see why it won. Calculation and named money-total
-constraints can select another eligible ranked candidate through the shared post-ranking rule.
-The currently deployed coefficients were fit on the earlier 0.5B proposer: this mismatch is explicitly
-recorded in the model contract. Its measured DEV result is not proof that the arbiter is calibrated
-for new 7B pools. Matched retraining and production-entry-point regression gates are required for a
-replacement.
+The served query is the best-ranked eligible candidate. Nothing rescores the pool. Two registered
+preferences can pick a later eligible candidate instead: a calculation intent takes the best-ranked
+candidate that realizes it (`engine/calculations`), and a money noun that names its table ("what's the
+sales in London") takes the best-ranked candidate that aggregates a money column. The response's
+`planner.selection` records the pool counts (how many ran, how many were grounded), the served member's
+rank and search score, and `served_by: search`. The winner's own `evidence` and `features` show which
+rules put it first.
 
 ## Stage 6 — render the tree to a SQL string
 
 The winning AST is rendered to `SELECT SUM("amount") FROM "orders" WHERE "country" = 'France'`, guarded
-(SELECT-only), and executed.
+(SELECT-only), and executed. A served top-1 ranking (`ORDER BY ... LIMIT 1`) is rendered with
+`RANK() OVER` so it keeps every row tied with the first (`sql_ast.keep_ties`).
 
 ---
 
 ## Why this shape (the payoff)
 
-Because models only **read signals and suggest candidates**, and the engine **validates, arbitrates and
-renders the tree**:
+Because the model only **reads signals**, and the engine **builds, checks and renders the tree**:
 
 - **Interpretable** — you can see the per-column typing (the matrix), the per-node `evidence` for every
-  candidate, whether the search or the proposer produced the winner, and the arbiter's per-feature arithmetic.
-- **Deterministic** — the same input yields byte-identical SQL. This is enforced by a cross-process repeatability
-  test in [`tests/test_routing.py`](../tests/test_routing.py).
+  candidate, the named ranking features that put the winner first, and the selection record.
+- **Deterministic** — with the fallback below off, the same input yields byte-identical SQL. This is enforced
+  by a cross-process repeatability test in [`tests/test_routing.py`](../tests/test_routing.py).
 - **Valid by construction** — every candidate is a well-typed AST that passes constraint checks before it can
   win, so the planner cannot emit malformed SQL.
 
-Contrast with a pipeline that executes a decoder's SQL directly: a decoded column or table that does not exist, or
-syntax outside the grammar, is simply one rejected suggestion here, and a suggestion that imports still has to beat
-the search's candidates on the arbiter's recorded score. The proposer is small (0.5B), so it adds coverage without
-becoming the authority.
+Contrast with a pipeline that executes a model's SQL directly: a column the model invents, a clause it drops,
+or a join it guesses goes straight to the database. Here no local model writes SQL. The one model-written query
+the system can use, described next, still has to import into the typed grammar and pass Stages 4 to 6.
+
+## When the search finds nothing: the labelled Gemini fallback
+
+This section describes an exception, not the normal path. It runs only when Stage 4 leaves no eligible
+candidate **and** the operator enabled Gemini (`EXTERNAL_LLM_ENABLED`, [`engine/llm.py`](../engine/llm.py)).
+The switch defaults to off, and with it off nothing below happens; the guided Community deployment
+turns it on together with chat. [`engine/sql_fallback.py`](../engine/sql_fallback.py) takes two
+bounded steps:
+
+1. **Gemini rewords the question once**, in the tables' own words. Stages 3 to 6 run again on the
+   rewording, so the search still builds the SQL. The answer says the search read Gemini's rewording,
+   and shows it.
+2. **If that finds nothing either, Gemini proposes one SQLite query.** It is text until
+   [`engine/sql_import.py:import_sql`](../engine/sql_import.py) maps it into the same `SelectQuery` nodes
+   (or raises `Unsupported`); the validator, Stage 4, and Stage 6 then run exactly as for a search
+   candidate, and the engine's rendering, not Gemini's text, is what runs. The answer says Gemini
+   proposed the query.
+
+Gemini sees the question and the schema text of [`engine/sql_prompt.py`](../engine/sql_prompt.py): table
+and column names, inferred types, foreign keys, and at most three example values per column. It does not
+see the rest of the rows, and it never writes a number. `served_by` is `gemini-rewrite` or `gemini-sql`,
+and the response's `fallback` record holds the rewording or Gemini's SQL text. See
+[`docs/ARCHITECTURE.md`](ARCHITECTURE.md#labelled-gemini-fallback) for the checks that apply to each case.
 
 ## The one caveat in this example: world queries
 
@@ -182,8 +181,9 @@ See [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) for how routing decides own-data v
 | The typed AST node grammar | `engine/sql_ast.py` · `SelectQuery`, `SelectItem`, `Aggregate`, `Comparison`, … |
 | The search that assembles the tree | `engine/sql_search.py` · `SQLSearcher.search` |
 | One scored candidate | `engine/sql_candidate.py` · `ScoredQuery` |
-| Proposer: greedy CPU decoding + explicit neutral scores | `engine/xiyan_sql_proposer.py` · `XiYanSQLProposer.propose`, `XiYanSQLProposer.likelihoods` |
+| Run and ground the candidates | `engine/tables.py` · `select_query`, `_executable`; `engine/sql_grounding.py` · `grounded_members` |
+| Serve the best-ranked eligible candidate | `engine/sql_rank.py` · `select_ranked_candidate`, `PoolSelection` |
+| Labelled Gemini fallback | `engine/sql_fallback.py` · `SQLFallback.rewrite`, `SQLFallback.propose`; `engine/sql_prompt.py` · `schema_text` |
 | Model text → typed AST gate | `engine/sql_import.py` · `import_sql` |
-| Pool merge + arbiter | `engine/sql_rank.py` · `merge_proposals`, `SQLArbiter`, `PoolSelection` |
 | Serving entry point (select, render, execute) | `engine/tables.py` · `select_query`, `_serve_ast` |
 | Own-data vs. world routing | `engine/routing.py` · `route`, `compose_owns` |

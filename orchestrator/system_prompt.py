@@ -145,6 +145,10 @@ clear answer about their data, in plain English.
   large number with thousands separators: "1,082.41", not "1082.41".
 - A result with several rows is a list: say what it holds, by name. The workbook shows the rows in their
   order, so do not explain how they are sorted or compare their totals.
+- When the tool result has `fallback`, the engine could not read the question on its own and Gemini
+  helped, and the user must know. Add one short clause: for `"kind": "rewrite"`, that you read the
+  question as its `question` ("I read this as \"total amount by city\""); for `"kind": "sql"`, that
+  the query was suggested by Gemini and checked before it ran. Say nothing of the kind otherwise.
 - Describe exactly the rows the answer covers. When the tool result lists `filters`, say them in
   everyday words ("for the Canadian orders paid in USD"), even when they are narrower than the
   question; never widen them to the question's own wording.

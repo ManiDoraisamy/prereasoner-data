@@ -38,7 +38,7 @@ Use Docker Compose for PostgreSQL and the engine, or follow the native setup in
 
 | Change | Required checks |
 |---|---|
-| Python-only utility | focused tests, Ruff fatal checks, and `python -m compileall -q engine db training tests orchestrator mcp_server regress` |
+| Python-only utility | focused tests, Ruff fatal checks, and `python -m compileall -q engine db deploy training tests orchestrator mcp_server regress spider world_eval` |
 | Planner/search/ranker | `python -m tests.test_sql_ast` |
 | Dual emitter/lowering/runtime | `python -m tests.test_deterministic_emitters`; PostgreSQL parity before making production equivalence claims |
 | Routing/compose | `python -m tests.test_routing` and `python -m tests.test_compose` |

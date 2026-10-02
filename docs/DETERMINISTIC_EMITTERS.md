@@ -9,10 +9,12 @@ the source tree; deployment and evaluation evidence must identify the tested rev
 The engine constructs and ranks typed SQL AST candidates. For a supported winner,
 `lower_select_query()` constructs one immutable `AnalysisPlan`. SQL and Python emitters independently
 consume that plan. No model writes Python source, and neither emitter translates the other's source.
+A query the labelled Gemini fallback proposed lowers only as the typed AST it was imported into
+([ARCHITECTURE.md](ARCHITECTURE.md#labelled-gemini-fallback)); no emitter reads Gemini's text.
 
-Sonnet proposes a named analysis action and slug. It does not normally split a question. If the
-engine's selected typed AST is compound and cannot be represented as one shared-plan branch, the
-engine returns `decompose`; Sonnet may then make exactly one retry containing two to four
+The chat orchestrator's model proposes a named analysis action and slug. It does not normally split a
+question. If the engine's selected typed AST is compound and cannot be represented as one shared-plan
+branch, the engine returns `decompose`; the orchestrator may then make exactly one retry containing two to four
 natural-language subquestions and a closed `cross`/`anti_join` dependency graph. Each merge has exactly
 two inputs. A malformed proposal gets one model-facing correction round before a plain-language
 clarification; only one validated proposal may execute. The retry must keep
@@ -26,6 +28,9 @@ A failed compound probe does not authorize a partial composed answer.
 A slug such as `total_amount` is every SQL
 view's prefix and normally the Python method name. Durable slugs that are Python keywords stay
 unchanged in the workbook and SQL; the emitter records a safe entrypoint such as `analysis_yield`.
+A `modify` may shorten the slug by dropping filter words its question no longer asks about; the engine
+renames the analysis in place, keeping its id and revision history (`conversations._renamed_analysis`),
+and the next revision's views and method take the new slug.
 Each revision regenerates its program. A generated package currently contains one analysis method,
 not all conversation methods in one accumulating module.
 
@@ -82,7 +87,7 @@ class OrdersCustomersProducts:
 | Calculated | Retained columns plus expressions | `previous.for_each`, retaining objects and earlier values |
 | Projected | Selected outputs | `previous.for_each`, producing result rows |
 | Reduced | Aggregates and optional grouping | `previous.reduce` or `previous.group_reduce` |
-| Ordered | `ORDER BY ... NULLS LAST`, optional `LIMIT` | `previous.sort`, with explicit tie keys |
+| Ordered | `ORDER BY ... NULLS LAST`, optional `LIMIT`; with `ties_on`, `RANK() OVER` the leading terms, keeping `__rank <= n` | `previous.sort`, with explicit tie keys; with `ties_on`, the cut extends while the leading keys equal the last kept row |
 | Correlated | Share, running total, or previous-period join | `previous.for_each`, with visible reduction/join expressions |
 | Cross | Bounded `CROSS JOIN` | `left.cross(right)` |
 | Anti-join | `WHERE NOT EXISTS` over every physical dimension in the left grain | `left.anti_join(right, keys=...)` |
@@ -163,7 +168,7 @@ Use one value per URL:
 `load` selects the home dataset; `use` selects execution for subsequent questions. The browser
 preserves it through reason/conversation navigation, example selection, and the Sheets picker.
 It includes `use` in direct `/api/reason` and `/chat` bodies. The orchestrator forwards it on every
-engine call independently of Sonnet's tool arguments. Unknown values are rejected by request validation.
+engine call independently of the model's tool arguments. Unknown values are rejected by request validation.
 
 | Public value | Internal mode | Supported shared plan | Unsupported shape |
 |---|---|---|---|
@@ -246,7 +251,8 @@ uses a local 128-digit Decimal context; division and averages round to 20 decima
 away from zero, matching the emitted PostgreSQL `ROUND(..., 20)` policy.
 
 Verification compares each ordinary stage as an unordered multiset, preserving duplicates and column names.
-Explicit sorted stages are also checked in order; top-N adds deterministic tie keys.
+Explicit sorted stages are also checked in order; top-N adds deterministic tie keys, and a stage with
+`ties_on` keeps every row tied with its last kept row on the leading keys.
 Decimal values, integers, and decimal representations of floats normalize without rounding significant
 digits. A mismatch raises `VerificationMismatch` with the failing view in an exception note.
 Agreement does not prove that the shared planner correctly understood the question.
@@ -258,9 +264,11 @@ SQLite database; gold SQL still executes independently and correctness still use
 `spider.probe.spider_eval.compare`. Evaluator `auto` grades the successful Python result that AUTO
 serving would return, even if the original SQL candidate differs. It executes the original candidate
 separately to record discrepancies, never to replace a successful Python answer solely in evaluation.
-SQL fallback remains limited to unsupported lowering, row limits, or execution failure. A tied
-`ORDER BY ... LIMIT` cutoff can differ because the shared plan adds stable tie keys; report that
-change in scalar-gold results rather than hiding it behind an evaluator-only fallback. `verify` still
+SQL fallback remains limited to unsupported lowering, row limits, or execution failure. A served
+top-1 ranking keeps every tied row in both the SQL candidate and the shared plan
+(`sql_ast.keep_ties`, lowered as `SortedView.ties_on`). Only a tied `ORDER BY ... LIMIT n` cutoff with
+`n > 1` can differ, because the shared plan adds stable tie keys; report that change in scalar-gold
+results rather than hiding it behind an evaluator-only fallback. `verify` still
 fails on inequality against the original candidate. Shared-plan stage parity is a separate check
 against the SQL emitter, whose tie policy matches the Python emitter. Thus
 Python coverage and scalar-gold accuracy are additional fields in the same evaluation artifact, not a
@@ -317,15 +325,22 @@ through the existing timing collector; backend durations include stage materiali
 ## Coverage and extension
 
 Own-data AST lowering supports unaliased inner joins, Boolean comparison filters, projections and arithmetic,
-`COUNT/SUM/AVG/MIN/MAX`, grouped aggregates whose projected group columns precede aggregates, and deterministic
-ordering/limits over selected outputs. Unordered non-scalar limits, aliases,
+`COUNT/SUM/AVG/MIN/MAX`, grouped aggregates whose projected group columns precede aggregates, the month of a
+date column (`DatePart('month')`, lowered as `FunctionValue` `MONTH`), a share of the whole for a
+non-distinct column or `COUNT(*)` aggregate (`sql_ast.share_of`, a reduction crossed with the whole's
+reduction and divided), and deterministic ordering/limits over selected outputs, including a top 1 that keeps
+its ties. `FunctionValue` covers `LOWER`, `TEXT`, and `MONTH`. Unordered non-scalar limits, aliases,
 self-joins, DISTINCT, HAVING, subqueries, and set queries remain outside that AST adapter. This is distinct
 from the composition adapter's supported ordering and correlated operators.
 
 The world adapter consumes the existing planner's grounded relationship chain, filters, selected
 measure, registered calculation, and currency binding. It does not parse rendered SQL. Geographic
-and non-geographic scalar world queries, including the default customer-orders FX question, use it.
-World-only DISTINCT projections and grouped world extrema still require additional typed bindings.
+and non-geographic world queries, including the default customer-orders FX question, use it. They are
+scalar, grouped, or ranked: a total or row count per world attribute value, the top group with its ties,
+or the number of distinct non-empty values. A currency conversion converts each row and then lowers as a
+`SUM` or `AVG` (`total_<ccy>` or `average_<ccy>`). A non-geographic entity filters by its country or,
+through `country.continent`, its continent, and ranks by its country or by an uploaded column inside the
+filter.
 
 The composition adapter consumes the existing ComposeEngine's selected primitive records for both necessary
 world compositions and selected local analytical compositions. It supports

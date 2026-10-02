@@ -75,21 +75,17 @@ The class layer is deterministic once property probabilities are known. Each cla
 bias, signed property weights, a validation-calibrated threshold, support, and validation/test
 metrics. Selection uses train and validation only. Test is untouched until final evaluation.
 
-### Own-data SQL selection (`training/proposer/`, `training/rank/`)
+### Own-data SQL selection: nothing to train
 
-Two artifacts that ship and promote together choose own-data queries:
+No model trained here writes SQL or picks the served query. The own-data search builds typed ASTs
+with hand-written rules, the shared encoder supplies the similarities its named ranking features
+read, and selection serves the best-ranked candidate that runs and is grounded
+(`engine/tables.py:TableQuery.select_query`). Selection has no fitted parameters to train or
+promote. Raise its accuracy by extending the search for a named failure family, with tests.
 
-- the **SQL proposer**, pinned XiYanSQL 7B Q4_K_M with greedy CPU decoding; the older HF LoRA
-  experiments remain training-only (`training/proposer/`);
-- the **arbiter**, a logistic regression over nine named features, fit on execution-labeled pools of
-  search candidates plus proposer completions (`training/rank/`).
-
-The deployed baseline explicitly discloses an older 0.5B-fit arbiter with neutral likelihoods.
-New fitted arbiters must match the 7B generation/scoring contract; `training/rank/promote.py`
-stages and validates an entire immutable bundle before it is used in a release image. Spider TRAIN
-is the only selector training data; Spider dev
-is the measurement set recorded in `spider/results/RESULTS.md`. See `training/proposer/README.md` and
-`training/rank/README.md` for the commands.
+History: earlier designs trained a 0.5B LoRA SQL proposer (`training/proposer/`) and fit a linear
+arbiter on its pools (`training/rank/`). Both pipelines were removed with the models they served;
+their Spider runs remain in `spider/results/RESULTS.md` as measurements of those designs.
 
 ## Corpus Build
 

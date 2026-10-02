@@ -3,7 +3,8 @@
 Runs each suite as a subprocess and aggregates exit codes. Suites self-skip when their infra isn't
 present, so this is safe to run anywhere:
   - test_mcp            always runs (in-process stub; no external deps)
-  - test_orchestrator   runs iff ANTHROPIC_API_KEY is set (else SKIP, exit 0)
+  - test_orchestrator   runs iff Gemini is enabled and configured (EXTERNAL_LLM_ENABLED, GOOGLE_CLOUD_PROJECT,
+                        application-default credentials; else SKIP, exit 0)
   - test_world/geo/...  run iff KB_PG_PASSWORD is set (else SKIP, exit 0) — the real engine tests
 
 The PRE-DEPLOY gate is `regress.run_regression` (offline text-to-SQL goldens + world-model-join goldens);
@@ -12,7 +13,7 @@ this (or `regress.run_regression --require-world`) against a seeded Postgres for
 
 Run:  python -m tests.run_all
 Env:  RUN_ENGINE_TESTS=0 skips the live-Postgres engine suites even if KB_PG_PASSWORD is set.
-      RUN_ORCHESTRATOR_TESTS=0 skips the external Anthropic orchestrator suite.
+      RUN_ORCHESTRATOR_TESTS=0 skips the live Gemini orchestrator suite.
 """
 from __future__ import annotations
 
@@ -20,10 +21,10 @@ import os
 import subprocess
 import sys
 
-import engine.config  # noqa: F401 — autoloads repo .env so KB_PG_PASSWORD/ANTHROPIC_API_KEY reach the
+import engine.config  # noqa: F401 — autoloads repo .env so KB_PG_PASSWORD/GOOGLE_CLOUD_PROJECT reach the
 # spawned suites; without it the world suites silently SKIP (or return 1) and the gate falsely looks green.
 
-SUITES = ["tests.test_sql_ast", "tests.test_xiyan_sql_proposer", "tests.test_calculations", "tests.test_analysis", "tests.test_deterministic_emitters", "tests.test_decomposition", "tests.test_complex_datasets", "tests.test_routing", "tests.test_router_evidence", "tests.test_schema_decode",
+SUITES = ["tests.test_sql_ast", "tests.test_llm", "tests.test_calculations", "tests.test_analysis", "tests.test_deterministic_emitters", "tests.test_decomposition", "tests.test_complex_datasets", "tests.test_routing", "tests.test_router_evidence", "tests.test_schema_decode",
           "tests.test_schema_coverage", "tests.test_compose", "tests.test_converse", "tests.test_master_ingest",
           "tests.test_enrichment", "tests.test_source_sync", "tests.test_app_migrations",
           "tests.test_request_limits", "tests.test_request_timing", "tests.test_pg_upload",

@@ -1,12 +1,13 @@
-"""test_orchestrator.py — the Sonnet orchestrator's routing discipline (docs/MCP.md), against the
+"""test_orchestrator.py — the Gemini orchestrator's routing discipline (docs/MCP.md), against the
 in-process STUB engine so the orchestrator->MCP->engine loop is exercised without a seeded world
-Postgres.
+Postgres. Every model call goes to live Vertex AI Gemini through engine/llm.py.
 
-GATED on ANTHROPIC_API_KEY (mirrors how the engine tests gate on KB_PG_PASSWORD): absent => the suite
-self-skips with exit 0 rather than failing, so CI without a key stays green. It loads the repo .env if the
-key isn't already in the environment.
+GATED on GOOGLE_CLOUD_PROJECT plus Application Default Credentials (`gcloud auth application-default
+login`), the way the engine tests gate on KB_PG_PASSWORD: either absent => the suite self-skips with exit 0
+rather than failing, so CI without Google Cloud access stays green. engine.config loads the repo .env.
 
-For a hosted-release gate, set REQUIRE_ORCHESTRATOR_TESTS=1 so a missing key fails instead of skipping.
+For a hosted-release gate, set REQUIRE_ORCHESTRATOR_TESTS=1 so missing Gemini access fails instead of
+skipping.
 Run: python -m tests.test_orchestrator
 """
 from __future__ import annotations
@@ -37,16 +38,17 @@ def ok(cond, msg):
         print(f"  FAIL  {msg}")
 
 
-def _load_env():
-    if os.environ.get("ANTHROPIC_API_KEY"):
-        return
-    p = Path(__file__).resolve().parent.parent / ".env"
-    if p.exists():
-        for line in p.read_text().splitlines():
-            line = line.strip()
-            if line and not line.startswith("#") and "=" in line:
-                k, v = line.split("=", 1)
-                os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+def _gemini_missing():
+    """Why this suite cannot reach Gemini, or "" when it can."""
+    from engine import config
+    if not config.GOOGLE_CLOUD_PROJECT:
+        return "GOOGLE_CLOUD_PROJECT not set"
+    try:
+        import google.auth
+        google.auth.default()
+    except Exception as exc:  # noqa: BLE001 — any credential lookup failure means no Gemini access
+        return f"no Application Default Credentials ({type(exc).__name__})"
+    return ""
 
 
 TABLES = [
@@ -63,25 +65,25 @@ def _start_stub(port):
 
 
 def main():
-    _load_env()
-    if not os.environ.get("ANTHROPIC_API_KEY"):
+    missing = _gemini_missing()
+    if missing:
         if os.environ.get("REQUIRE_ORCHESTRATOR_TESTS") == "1":
-            print("test_orchestrator: FAIL (ANTHROPIC_API_KEY is required for this release gate)")
+            print(f"test_orchestrator: FAIL ({missing}; Gemini access is required for this release gate)")
             sys.exit(1)
-        print("test_orchestrator: SKIP (ANTHROPIC_API_KEY not set)")
+        print(f"test_orchestrator: SKIP ({missing})")
         sys.exit(0)
 
+    from engine import config
     from orchestrator.orchestrator import run_chat
 
     port = 8812
     base = f"http://127.0.0.1:{port}"
     srv = _start_stub(port)
-    model = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5")
-    key = os.environ["ANTHROPIC_API_KEY"]
 
     async def chat(msg, history=None, tables=None):
         return await run_chat(msg, tables or TABLES, history or [], engine_base_url=base,
-                              bearer_token=None, api_key=key, model=model)
+                              bearer_token=None, model=config.llm_model(),
+                              project=config.GOOGLE_CLOUD_PROJECT, location=config.GEMINI_LOCATION)
 
     try:
         # Rule 1 — a truth-bearing number buried in a strategic question must come from the tool.
@@ -276,7 +278,8 @@ def main():
                 belgium["latest_question"], TABLES,
                 [{"role": "user", "content": belgium["latest_question"]},
                  {"role": "assistant", "content": "367.4342"}],
-                engine_base_url=base, bearer_token=None, api_key=key, model=model,
+                engine_base_url=base, bearer_token=None, model=config.llm_model(),
+                project=config.GOOGLE_CLOUD_PROJECT, location=config.GEMINI_LOCATION,
                 conversation_id="c_" + "5" * 32,
             ))
         sent_r = [t.get("question", "") for t in r1g["traces"]]
@@ -383,7 +386,7 @@ def main():
         ok(len(clarified) >= 1, "the ambiguous query produced a clarify outcome")
         ok("region" in r2["reply"].lower(), "the reply relays the clarification (mentions 'region')")
 
-        # Real Sonnet authors the proposal. The fake engine asserts orchestration,
+        # Real Gemini authors the proposal. The fake engine asserts orchestration,
         # not SQL/Python correctness (the unmocked Chrome gate owns that evidence).
         print('[5] complex ordering follows output priority, not mention order')
         question = ('Find the top 3 categories by revenue and top 3 customers by spend, '
@@ -398,7 +401,7 @@ def main():
         with patch('orchestrator.orchestrator.engine_client.call_query', query):
             asyncio.run(chat(question))
         proposals = [options['decomposition'] for _, options in calls if options.get('decomposition')]
-        ok(len(proposals) == 1, 'Sonnet makes one engine-triggered decomposition proposal')
+        ok(len(proposals) == 1, 'Gemini makes one engine-triggered decomposition proposal')
         if proposals:
             proposal = proposals[0]
             leaves = {node['id']: node['question'].lower() for node in proposal['subquestions']}
@@ -515,7 +518,7 @@ def main():
 
         # server wiring — POST /chat returns a well-formed envelope (cheap, no tool needed).
         print("[S] POST /chat server envelope")
-        _test_server(key, model, base)
+        _test_server(base)
     finally:
         srv.shutdown()
 
@@ -523,10 +526,8 @@ def main():
     sys.exit(1 if F else 0)
 
 
-def _test_server(key, model, engine_base):
+def _test_server(engine_base):
     """Start the orchestrator HTTP server and post a trivial message (no tool call needed)."""
-    os.environ["ANTHROPIC_API_KEY"] = key
-    os.environ["ANTHROPIC_MODEL"] = model
     os.environ["ENGINE_BASE_URL"] = engine_base
     os.environ["ORCH_PORT"] = "8813"
     previous_app_env = os.environ.get("APP_ENV")
@@ -535,7 +536,7 @@ def _test_server(key, model, engine_base):
     # environment before reloading config so the envelope test exercises chat, not real Firebase.
     os.environ["APP_ENV"] = "test"
     os.environ["AUTH_TEST_SUB"] = "localdev"
-    # Relaying the message to Anthropic is egress, so /chat requires the operator's deployment
+    # Relaying the message to Gemini is egress, so /chat requires the operator's deployment
     # switch. Set it explicitly so the test does not depend on the developer's environment.
     previous_egress = os.environ.get("EXTERNAL_LLM_ENABLED")
     os.environ["EXTERNAL_LLM_ENABLED"] = "1"

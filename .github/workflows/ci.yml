@@ -41,12 +41,7 @@ jobs:
         run: |
           python -m pip_audit -r requirements-ci.lock.txt
           python -m pip_audit -r orchestrator/requirements.lock.txt
-          # diskcache is an unpatched transitive llama-cpp-python dependency; the
-          # narrowly scoped exception and reachability conditions are documented
-          # in SECURITY.md. Keep all other advisories fatal.
-          python -m pip_audit -r requirements.lock.txt \
-            --ignore-vuln PYSEC-2026-2447 \
-            --ignore-vuln GHSA-w8v5-vhqr-4h9v
+          python -m pip_audit -r requirements.lock.txt
           python -m pip_audit -r training/requirements.lock.txt
           python -m pip_audit -r db/sync/requirements-core.lock.txt
           python -m pip_audit -r db/sync/requirements.lock.txt
@@ -151,24 +146,25 @@ jobs:
           terraform -chdir="$PLAN_ROOT" plan -refresh=false -lock=false -input=false \
             -var='project_id=opensource-ci' -var="image=$ENGINE_IMAGE" -out=/tmp/default.tfplan
           terraform -chdir="$PLAN_ROOT" show -json /tmp/default.tfplan > /tmp/default.json
-          jq -e '[.resource_changes[] | select(.address | test("chat|anthropic"))] | length == 0' \
+          # The default core engine sends nothing to Gemini: no chat, no Vertex AI grant, switch off.
+          jq -e '[.resource_changes[] | select(.address | test("chat|vertex_ai"))] | length == 0' \
             /tmp/default.json
           jq -e '[.resource_changes[] | select(.address == "google_project_iam_member.run_rtdb")] | length == 0' \
             /tmp/default.json
-          if terraform -chdir="$PLAN_ROOT" plan -refresh=false -lock=false -input=false \
-            -var='project_id=opensource-ci' -var="image=$ENGINE_IMAGE" \
-            -var='enable_orchestrator=true' -var="chat_image=$CHAT_IMAGE" \
-            -out=/tmp/invalid.tfplan; then
-            echo "expected enable_orchestrator without anthropic_secret_id to fail" >&2
-            exit 1
-          fi
+          jq -e '[.resource_changes[] | select(.address == "google_cloud_run_v2_service.api")
+            | .change.after.template[0].containers[0].env[] | select(.name == "EXTERNAL_LLM_ENABLED")
+            | .value] == ["false"]' /tmp/default.json
+          # Chat needs no secret: it and the engine call Gemini on Vertex AI in this project.
           terraform -chdir="$PLAN_ROOT" plan -refresh=false -lock=false -input=false \
             -var='project_id=opensource-ci' -var="image=$ENGINE_IMAGE" \
-            -var='enable_orchestrator=true' -var="chat_image=$CHAT_IMAGE" \
-            -var='anthropic_secret_id=ci-anthropic-key' -out=/tmp/chat.tfplan
+            -var='enable_orchestrator=true' -var="chat_image=$CHAT_IMAGE" -out=/tmp/chat.tfplan
           terraform -chdir="$PLAN_ROOT" show -json /tmp/chat.tfplan > /tmp/chat.json
-          jq -e '[.resource_changes[] | select(.address | test("chat|anthropic"))] | length > 0' \
-            /tmp/chat.json
+          jq -e '[.resource_changes[] | select(.address | test("chat"))] | length > 0' /tmp/chat.json
+          jq -e '[.resource_changes[] | select(.address | test("vertex_ai"))] | length == 2' /tmp/chat.json
+          jq -e '[.resource_changes[]
+            | select(.address == "google_cloud_run_v2_service.api" or .address == "google_cloud_run_v2_service.chat[0]")
+            | .change.after.template[0].containers[0].env[] | select(.name == "EXTERNAL_LLM_ENABLED")
+            | .value] == ["true", "true"]' /tmp/chat.json
 
   containers:
     name: Build, SBOM, and critical-vulnerability scan

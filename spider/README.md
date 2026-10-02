@@ -1,16 +1,21 @@
 # Spider Benchmark — Diagnose and Measure
 
-> **Current planner note.** The own-data SQL layer is one typed-AST planner with two candidate
-> sources and one arbiter (`engine/tables.py:select_query`): a bounded deterministic search over typed
-> ASTs, a frozen SQL proposer whose beams must import into the same typed AST, execution of the pooled
-> queries, and a fitted linear arbiter over nine named features. Start with
-> [`docs/SQL_AST.md`](../docs/SQL_AST.md) for the implementation contract; this document explains the
-> benchmark and its failure taxonomy. The probe sections below predate the proposer and describe the
-> deterministic search's failure families.
+> **Current planner note.** The own-data SQL layer is one typed-AST planner
+> (`engine/tables.py:select_query`): a bounded deterministic search over typed ASTs ranks up to 25
+> candidates, each runs on an in-memory copy of the database and is grounded, and the best-ranked
+> eligible candidate is served. No local model writes SQL. A labelled Gemini fallback runs only when
+> no candidate is eligible and the operator enabled it; the headline is measured with it off. Start
+> with [`docs/SQL_AST.md`](../docs/SQL_AST.md) for the implementation contract; this document explains
+> the benchmark and its failure taxonomy. The probe sections below come from earlier runs and describe
+> the deterministic search's failure families.
 
 > **Current whole-database result.** [`results/RESULTS.md`](results/RESULTS.md) is the only place
-> accuracy numbers are maintained; it records the served pipeline's `whole_db` result with its source
-> commit, artifact hashes, and the `gold_tables` oracle ablation.
+> accuracy numbers are maintained; it records each served pipeline's `whole_db` result with its source
+> commit, artifact hashes, and the `gold_tables` oracle ablation. Every number there measured an
+> earlier design: the search under an older selector, then the search pooled with a local
+> SQL-writing model and a fitted arbiter. They also predate the rule that a served top-1 ranking keeps
+> every tied row (`sql_ast.keep_ties`). The engine-alone number for the current selection needs a
+> fresh `whole_db` run with the fallback off.
 
 > **Audience: contributors.** This is both the reproducible benchmark contract and a diagnostic guide.
 > The goal is to localize *why* Prereasoner scores low on Spider before changing anything. This is
@@ -31,7 +36,7 @@ Prereasoner is **not** a general NL→SQL model. It is an *interpretable spreads
 question over uploaded tables it:
 
 1. **Types columns** with a trained encoder (Qwen2.5-0.5B + LoRA + a relational readout) to a **42-leaf
-   Wikidata taxonomy** (`engine/taxonomy.py`, `data/taxonomy.csv`). Of those 42 leaves, **only two are
+   Wikidata taxonomy** (`engine/taxonomy.py`, `engine/data/taxonomy.csv`). Of those 42 leaves, **only two are
    backed by world tables: `city` and `country`.**
 2. **Resolves values** to Wikidata entities (bge) and can **join to a world-knowledge Postgres** (which
    country a city is in, population, …). This is the product's differentiator.
@@ -224,7 +229,9 @@ is visible; (d) hand spot-checks gate the histogram.
 ## How to reproduce
 
 ```bash
-# from repo root; deps already present: torch(cpu), transformers, peft. weights in engine/data/.
+# from repo root; deps already present: torch(cpu), transformers, peft, sqlglot (requirements.lock.txt).
+# weights in engine/data/ (python -m engine.fetch_weights). Leave EXTERNAL_LLM_ENABLED unset: the
+# headline is the engine alone, with no Gemini fallback.
 python -m spider.probe.fetch_data          # dev.json, tables.json, 20 dev SQLite DBs -> spider/data
 python -m spider.probe.static_probe        # Probe A + B
 
@@ -236,7 +243,9 @@ python -m spider.probe.full_eval --dbs spider/data/dbs --config gold_tables
 
 # Candidate-pool recall (oracle ablation, never serving): every pooled candidate is executed and the
 # EVALUATOR scores the example by its best member — the ceiling any selection improvement can reach.
-# The summary also reports the same run's served selection and the first-strict-hit rank histogram.
+# The summary also reports the same run's selected pool member (top1_cmp) and the first-strict-hit rank
+# histogram. top1_cmp grades that member without tie keeping; only --selection served grades a top-1
+# ranking with its ties.
 python -m spider.probe.full_eval --dbs spider/data/dbs --config whole_db --selection pool_oracle
 
 # Production Python-preferred policy on the existing scalar-gold contract:
@@ -246,3 +255,9 @@ python -m spider.probe.full_eval --dbs spider/data/dbs --config whole_db --backe
 
 python -m spider.probe.typing_probe --dbs spider/data/dbs   # Probe C
 ```
+
+Each per-example record carries `served_by` (`search`, `gemini-rewrite`, or `gemini-sql`) beside the
+selection record. The run's contract and summary carry `fallback` (`enabled`, `model`), and
+`--resume` refuses a checkpoint written under a different setting. A headline run shows
+`fallback.enabled: false`, so every example is `served_by: search`. A run with the fallback on is a
+separate measurement and must be reported as one.

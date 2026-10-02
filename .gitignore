@@ -26,13 +26,10 @@ engine/data/*.previous
 training/props/data/*
 !training/props/data/.gitkeep
 
-# training/rank pipeline scratch — labeled pools + candidate rank heads (rebuild via training/rank/README.md)
-training/rank/data/*
-!training/rank/data/.gitkeep
-
-# training/proposer scratch — SFT targets + candidate adapters (rebuild via training/proposer/README.md)
-training/proposer/data/*
-!training/proposer/data/.gitkeep
+# Retired SQL proposer and arbiter pipelines (removed 2026-10-02, DECISIONS.md): their local experiment
+# data may remain in old working copies and must never be committed.
+training/rank/
+training/proposer/
 
 # training/schema_org scratch — the regenerable semantic corpus + embedding cache (rebuild:
 # python -m training.schema_org.corpus). semantic_manifest.json IS committed: it is the corpus

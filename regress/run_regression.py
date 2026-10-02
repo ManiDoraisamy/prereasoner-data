@@ -5,7 +5,7 @@ Two tiers, run together:
     REAL engine (live routing: compose view-stack vs typed-AST planner) on in-memory SQLite. No Postgres needed.
   * WORLD (iff KB_PG_PASSWORD): the world-model-join golden cases (regress/world_cases.py) against a seeded
     world Postgres — the product's differentiator (city->country resolution, "total amount in France"=270).
-The offline run loads the encoder, SQL proposer and arbiter (Engine) and the Schema.org class interpreter
+The offline run loads the encoder (Engine) and the Schema.org class interpreter
 (run_bundle_checks) from the image's bundle, so a bundle serving cannot load fails the build.
 
 Exit non-zero if ANY case regresses. Designed to be the test step in cloudbuild.yaml (runs inside the built

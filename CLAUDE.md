@@ -22,8 +22,10 @@ decisions belong in `DECISIONS.md`, and measured SQL results belong in
 - Choosing processors, maintaining a lawful basis and contracts, minimizing transferred data, and
   replacing external models are operator responsibilities. Do not make users manage architecture.
 - Replace external presentation/orchestration with a local model only through the controlled model
-  experiment and promotion rules below. Keep SQL, calculation semantics, and verification
-  deterministic, and make provider migration transparent to users.
+  experiment and promotion rules below. Keep SQL construction, calculation semantics, and
+  verification deterministic, and make provider migration transparent to users. The one exception
+  is the labelled Gemini fallback of own-data selection (`engine/sql_fallback.py`): it runs only when
+  the search finds no runnable query, its proposal passes the typed-AST gate, and the answer says so.
 
 ## Non-negotiable outcome
 
@@ -59,22 +61,20 @@ Extend these owners. Do not build parallel replacements.
 | Dual SQL/Python source plan, emission, and parity runtime | `engine/deterministic/`; it consumes the typed-AST winner and never becomes a second planner |
 | Bounded compound-question proposal validation and typed leaf-plan fusion | `engine/decomposition.py`; the existing AST planner still owns every leaf and `engine/deterministic/` still owns the one executable DAG |
 | Own-data AST search orchestration | `engine/sql_search.py`, called by `engine/tables.py:TableQuery.select_query` |
-| Own-data query selection (search + proposer + pool execution + arbiter) — the ONE selection used by serving, decomposition leaves, the Spider evaluator, the offline regression gate, and arbiter training; the decomposition probe reads its first stage (`search_pool`) | `engine/tables.py:TableQuery.select_query` |
-| CPU SQL candidate proposer (pinned XiYanSQL 7B GGUF, deterministic greedy decoding), its prompt, and the SQL-to-typed-AST gate every proposal passes | `engine/xiyan_sql_proposer.py` + `engine/sql_prompt.py` + `engine/sql_import.py`; HF adapter verification is training-only in `training/proposer/inference.py` |
+| Own-data query selection (search + pool execution + grounding, then the labelled Gemini fallback only when nothing is eligible) — the ONE selection used by serving, decomposition leaves, the Spider evaluator, and the offline regression gate; the decomposition probe reads its first stage (`search_pool`) | `engine/tables.py:TableQuery.select_query` |
+| Labelled Gemini fallback of own-data selection (one rewording of the question, then one proposed query), its prompt, and the SQL-to-typed-AST gate its proposal passes | `engine/sql_fallback.py` + `engine/sql_prompt.py` + `engine/sql_import.py` |
+| The one LLM client (Gemini on Vertex AI) for the chat orchestrator, `/api/converse`, reference generation, and the selection fallback, gated by `EXTERNAL_LLM_ENABLED` | `engine/llm.py` |
 | Composition DAG, view execution, and the world-dependency record | `engine/compose.py` |
 | World/compose routing decision (the ONE shared `route()`) | `engine/routing.py` |
 | Compose serving host + world-grounding lookup | `engine/knowledge_compose.py` |
 | World grounding and knowledge joins | `engine/knowledge_query.py` |
-| Candidate scoring: search ranking, pool merge, and the fitted arbiter (`SQLArbiter`, `PoolSelection`) | `engine/sql_rank.py` |
+| Candidate scoring: search ranking (`CandidateRanker`), the pool contract, and the selection record (`PoolSelection`, `FallbackRecord`) | `engine/sql_rank.py` |
 | Table normalization and canonical planner table names | `engine/tables.py` |
 | World-table maintenance catalog (what is maintained, its cadence, when it last refreshed) | `db/sync/schedule.py` — the ONE writer of `knowledgebase.schedule`, read at serving time by `engine/pg.py:PgQuery._table_freshness` |
 | Private reference validation, persistence, and request selection | `engine/master.py` |
 | Runtime model loading and overlay | `engine/encoder_overlay.py` |
 | Runtime model bundle | `engine/data/`, pinned by `engine/data/weights_manifest.json` |
 | Property-model training pipeline | `training/props/` |
-| SQL arbiter training pipeline (execution-labeled Spider-train pools from the served selection + linear arbiter fit; candidates only, in `training/rank/data/experiments/<id>/`) | `training/rank/` |
-| SQL selection bundle staging (pinned GGUF + bound selector + runtime contract + manifest), validated before the immutable release image is deployed | `training/rank/promote.py`; never hot-replace individual files in a live bundle |
-| Proposer training pipeline (gold→typed-AST import, SFT targets, adapter training; candidates only, in `training/proposer/data/experiments/<id>/`) | `training/proposer/` |
 | Schema.org ontology contract (compiled vocabulary + inheritance) | `engine/schema_org.py` + `engine/data/schema_org_v30.json` |
 | Schema.org typing cache/evidence and learned family proposals | `engine/knowledge_typing.py` + `engine/schema_decode.py` + `engine/schema_model.py` + `engine/router.py`; source-key authorization stays in `engine/knowledge_query.py` |
 | Schema.org semantic corpus + named-property-head training | `training/schema_org/` (candidates only, in `training/schema_org/data/experiments/<corpus>/`) |
@@ -153,6 +153,10 @@ Consolidation is part of each phase, not a future cleanup phase.
 
 ## SQL planner and routing rules
 
+- No local model writes SQL. The typed search builds every served query from the encoder's named
+  readings; raise accuracy by extending that search, never by adding a SQL-generating model, a
+  learned ranker over model output, or a second selection path. The only model-written SQL is the
+  labelled Gemini fallback's single proposal, and only when the search finds no runnable query.
 - The typed AST is the only own-data SQL representation. New SQL behavior must
   be expressed as typed AST nodes, constraints, expansions, and renderer
   support, with focused tests.

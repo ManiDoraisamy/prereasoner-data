@@ -1,7 +1,7 @@
 """Hermetic control-flow tests for the chat orchestrator.
 
-The external ``tests.test_orchestrator`` suite checks prompt fidelity against Anthropic. These tests
-replace Anthropic and the engine with contract-shaped fakes so the release gate always proves that a
+The external ``tests.test_orchestrator`` suite checks prompt fidelity against Gemini. These tests
+replace Gemini and the engine with contract-shaped fakes so the release gate always proves that a
 terminal engine result cannot start another paid tool round.
 """
 from __future__ import annotations
@@ -13,6 +13,11 @@ from unittest.mock import patch
 
 from engine import dataset_attestation
 from orchestrator import orchestrator
+
+
+def _tools_enabled(kwargs) -> bool:
+    """Whether a model round may call a tool: the presentation round declares the tools with calls off."""
+    return "tools" in kwargs and kwargs.get("tool_choice") != {"type": "none"}
 
 
 class _TextStream:
@@ -116,11 +121,11 @@ async def _run(status: str, *, fail_presentation=False, use=None, query_input=No
     async def get_catalog(*_args, **_kwargs):
         return catalog or []
 
-    original_client = orchestrator.AsyncAnthropic
+    original_client = orchestrator.AsyncGeminiClient
     original_http = orchestrator.httpx.AsyncClient
     original_query = orchestrator.engine_client.call_query
     original_catalog = orchestrator.engine_client.call_analysis_catalog
-    orchestrator.AsyncAnthropic = lambda **_kwargs: _Client(
+    orchestrator.AsyncGeminiClient = lambda **_kwargs: _Client(
         model_calls, fail_presentation, query_input, **client_options,
     )
     orchestrator.httpx.AsyncClient = lambda **_kwargs: _HTTP()
@@ -133,7 +138,6 @@ async def _run(status: str, *, fail_presentation=False, use=None, query_input=No
             [],
             engine_base_url="http://engine.invalid",
             bearer_token=None,
-            api_key="test",
             model="test-model",
             use=use,
             principal="user-a",
@@ -141,7 +145,7 @@ async def _run(status: str, *, fail_presentation=False, use=None, query_input=No
             analysis_override=analysis_override,
         )
     finally:
-        orchestrator.AsyncAnthropic = original_client
+        orchestrator.AsyncGeminiClient = original_client
         orchestrator.httpx.AsyncClient = original_http
         orchestrator.engine_client.call_query = original_query
         orchestrator.engine_client.call_analysis_catalog = original_catalog
@@ -153,8 +157,10 @@ def test_terminal_engine_status_uses_one_query_and_a_tool_disabled_presentation(
         result, model_calls, engine_calls = asyncio.run(_run(status))
         assert len(engine_calls) == 1, (status, engine_calls)
         assert len(model_calls) == 2, (status, model_calls)
-        assert "tools" in model_calls[0]
-        assert "tools" not in model_calls[1]
+        assert model_calls[0]["tools"] is orchestrator.TOOLS and "tool_choice" not in model_calls[0]
+        # Gemini keeps the declarations a replayed function call refers to; calls are disabled instead.
+        assert model_calls[1]["tools"] is orchestrator.TOOLS
+        assert model_calls[1]["tool_choice"] == {"type": "none"}
         expected = "876.50" if status == "answered" else "The verified result is ready."
         assert result["reply"] == expected
         assert "step budget" not in result["reply"]
@@ -252,13 +258,13 @@ def _dataset_op_repair_turn(engine_answers):
         return engine_answers[len(engine_calls) - 1]
 
     async def run():
-        with patch.object(orchestrator, "AsyncAnthropic", lambda **_kwargs: Client()), \
+        with patch.object(orchestrator, "AsyncGeminiClient", lambda **_kwargs: Client()), \
                 patch.object(orchestrator.httpx, "AsyncClient", lambda **_kwargs: _HTTP()), \
                 patch.object(orchestrator.engine_client, "call_query", query), \
                 patch.dict("os.environ", {"DATASET_ATTESTATION_KEY": "unit-test-secret"}):
             return await orchestrator._run_turn(
                 user_message, tables, [], engine_base_url="http://engine.invalid",
-                bearer_token=None, api_key="test", model="test-model", principal="user-a",
+                bearer_token=None, model="test-model", principal="user-a",
             )
 
     return asyncio.run(run()), model_calls, engine_calls
@@ -457,14 +463,14 @@ def _answered_from_memory_turn(user_message, history, memory_reply, catalog=(), 
         return list(catalog)
 
     async def run():
-        with patch.object(orchestrator, "AsyncAnthropic", lambda **_kwargs: Client()), \
+        with patch.object(orchestrator, "AsyncGeminiClient", lambda **_kwargs: Client()), \
                 patch.object(orchestrator.httpx, "AsyncClient", lambda **_kwargs: _HTTP()), \
                 patch.object(orchestrator.engine_client, "call_query", query), \
                 patch.object(orchestrator.engine_client, "call_analysis_catalog", get_catalog):
             return await orchestrator._run_turn(
                 user_message, tables or [{"name": "orders", "data": "country,amount\nBelgium,10\n"}],
                 history, engine_base_url="http://engine.invalid", bearer_token=None,
-                api_key="test", model="test-model", principal="user-a", conversation_id="c_test",
+                model="test-model", principal="user-a", conversation_id="c_test",
             )
 
     return asyncio.run(run()), model_calls, engine_calls
@@ -490,8 +496,7 @@ def test_a_recalculation_answered_from_memory_still_reaches_the_engine():
     forced = model_calls[1]
     assert forced["last"]["content"] == orchestrator.RECALCULATION_NOTE
     assert forced["tool_choice"] == {"type": "tool", "name": "prereasoner_query"}
-    assert "thinking" not in forced, "a forced tool call cannot run with thinking on"
-    assert "tool_choice" not in model_calls[0] and "tool_choice" not in model_calls[2]
+    assert "tool_choice" not in model_calls[0] and model_calls[2]["tool_choice"] == {"type": "none"}
     assert "367.4342" not in result["reply"] and "366.0174" in result["reply"]
     assert orchestrator.RECALCULATION_NOTE not in json.dumps(result["history"])
 
@@ -556,7 +561,7 @@ def _clarified_follow_up(model_turns, engine_answers, history=COMMISSION_HISTORY
         def stream(self, **kwargs):
             last = kwargs["messages"][-1]["content"]
             seen = json.loads(last[0]["content"]) if isinstance(last, list) else None
-            model_calls.append({"tools": "tools" in kwargs, "tool_result": seen})
+            model_calls.append({"tools": _tools_enabled(kwargs), "tool_result": seen})
             turn = model_turns[len(model_calls) - 1] if len(model_calls) <= len(model_turns) else None
             if isinstance(turn, dict):
                 response = SimpleNamespace(stop_reason="tool_use", content=[SimpleNamespace(
@@ -577,13 +582,13 @@ def _clarified_follow_up(model_turns, engine_answers, history=COMMISSION_HISTORY
         return engine_answers[len(engine_calls) - 1]
 
     async def run():
-        with patch.object(orchestrator, "AsyncAnthropic", lambda **_kwargs: Client()), \
+        with patch.object(orchestrator, "AsyncGeminiClient", lambda **_kwargs: Client()), \
                 patch.object(orchestrator.httpx, "AsyncClient", lambda **_kwargs: _HTTP()), \
                 patch.object(orchestrator.engine_client, "call_query", query):
             return await orchestrator._run_turn(
                 user_message, [{"name": "payments", "data": "payment_instrument,amount\ncard,120\n"}],
                 history, engine_base_url="http://engine.invalid", bearer_token=None,
-                api_key="test", model="test-model",
+                model="test-model",
             )
 
     return asyncio.run(run()), model_calls, engine_calls
@@ -650,7 +655,7 @@ def test_a_result_is_presented_on_its_own_in_a_continued_conversation():
 
         class Messages:
             def stream(self, **kwargs):
-                if "tools" in kwargs:
+                if _tools_enabled(kwargs):
                     response = SimpleNamespace(stop_reason="tool_use", content=[SimpleNamespace(
                         type="tool_use", name="prereasoner_query", id="q1",
                         input={"question": "total commission amount for card payments",
@@ -669,14 +674,14 @@ def test_a_result_is_presented_on_its_own_in_a_continued_conversation():
             return COMMISSION_ANSWER
 
         async def run():
-            with patch.object(orchestrator, "AsyncAnthropic", lambda **_kwargs: Client()), \
+            with patch.object(orchestrator, "AsyncGeminiClient", lambda **_kwargs: Client()), \
                     patch.object(orchestrator.httpx, "AsyncClient", lambda **_kwargs: _HTTP()), \
                     patch.object(orchestrator.engine_client, "call_query", query):
                 return await orchestrator._run_turn(
                     "total commission amount for card payments",
                     [{"name": "payments", "data": "payment_instrument,amount\ncard,120\n"}], history,
                     engine_base_url="http://engine.invalid", bearer_token=None,
-                    api_key="test", model="test-model")
+                    model="test-model")
 
         result = asyncio.run(run())
         notes = [block for block in presented[0] if block.get("type") == "text"]
@@ -705,7 +710,7 @@ def test_a_clarification_nothing_earlier_can_settle_is_terminal():
 
 
 def test_named_workbook_tool_contract_and_catalog_boundary():
-    query_tool = next(tool for tool in orchestrator.CLAUDE_TOOLS
+    query_tool = next(tool for tool in orchestrator.TOOLS
                       if tool["name"] == "prereasoner_query")
     schema = query_tool["input_schema"]
     assert {"question", "action", "slug"}.issubset(schema["required"])
@@ -1006,7 +1011,7 @@ def test_an_analysis_is_named_for_its_measure_not_its_filter():
     assert "write any other large number with thousands separators" in prompt
     # A longer name is cut to the engine's limit with a hash ("top customers never bought top
     # 5e0be233"), so the model is told the limit.
-    slug = next(tool for tool in orchestrator.CLAUDE_TOOLS
+    slug = next(tool for tool in orchestrator.TOOLS
                 if tool["name"] == "prereasoner_query")["input_schema"]["properties"]["slug"]
     assert f"at most {orchestrator.MAX_ANALYSIS_SLUG_BYTES} characters" in slug["description"]
 
@@ -1148,13 +1153,13 @@ def test_decomposition_is_one_engine_triggered_retry_of_the_same_analysis():
         }
 
     async def run():
-        with patch.object(orchestrator, "AsyncAnthropic", lambda **_kwargs: Client()), \
+        with patch.object(orchestrator, "AsyncGeminiClient", lambda **_kwargs: Client()), \
                 patch.object(orchestrator.httpx, "AsyncClient", lambda **_kwargs: _HTTP()), \
                 patch.object(orchestrator.engine_client, "call_query", query):
             return await orchestrator._run_turn(
                 question, [{"name": "orders", "data": "id\n1\n"}], [],
                 engine_base_url="http://engine.invalid", bearer_token=None,
-                api_key="test", model="test-model",
+                model="test-model",
             )
 
     result = asyncio.run(run())
@@ -1163,8 +1168,8 @@ def test_decomposition_is_one_engine_triggered_retry_of_the_same_analysis():
     assert engine_calls[0][1]["analysis"] == engine_calls[1][1]["analysis"]
     assert engine_calls[0][1]["decomposition"] is None
     assert engine_calls[1][1]["decomposition"] == orchestrator.validate_decomposition(proposal)
-    assert "tools" in model_calls[0] and "tools" in model_calls[1]
-    assert "tools" not in model_calls[2]
+    assert _tools_enabled(model_calls[0]) and _tools_enabled(model_calls[1])
+    assert not _tools_enabled(model_calls[2])
     first_tool_result = next(
         block["content"]
         for message in model_calls[1]["messages"]
@@ -1214,14 +1219,14 @@ def test_a_query_call_without_a_question_is_repaired_by_the_model_not_sent_to_th
         return {"status": "answered", "answer": {"columns": ["total_usd"], "rows": [["1000.17"]]}}
 
     async def run():
-        with patch.object(orchestrator, "AsyncAnthropic", lambda **_kwargs: Client()), \
+        with patch.object(orchestrator, "AsyncGeminiClient", lambda **_kwargs: Client()), \
                 patch.object(orchestrator.httpx, "AsyncClient", lambda **_kwargs: _HTTP()), \
                 patch.object(orchestrator.engine_client, "call_query", query):
             return await orchestrator._run_turn(
                 "reduce the discount from total amount based on customer's tier",
                 [{"name": "orders", "data": "tier,amount\nGold,100\n"}], [],
                 engine_base_url="http://engine.invalid", bearer_token=None,
-                api_key="test", model="test-model",
+                model="test-model",
             )
 
     result = asyncio.run(run())
@@ -1241,7 +1246,7 @@ def test_a_query_call_without_a_question_is_repaired_by_the_model_not_sent_to_th
 
 def test_decomposition_contract_has_no_schema_or_code_escape_hatch():
     schema = next(
-        tool for tool in orchestrator.CLAUDE_TOOLS
+        tool for tool in orchestrator.TOOLS
         if tool["name"] == "prereasoner_query"
     )["input_schema"]["properties"]["decomposition"]
     assert schema["additionalProperties"] is False
@@ -1256,7 +1261,7 @@ def test_an_invalid_proposal_gets_one_correction_then_a_plain_clarification():
     """The Chrome pass caught Sonnet sending a merge with the wrong arity; the old flow
     consumed the single attempt and relayed the raw validator message to the user. An
     invalid proposal is now a MODEL-facing tool error with the exact validator detail, and
-    Sonnet may correct it once; the single ENGINE retry is consumed only by a valid
+    the model may correct it once; the single ENGINE retry is consumed only by a valid
     proposal. A second invalid proposal terminates with plain language, never internals."""
     question = "Find top customers and products they have not bought."
     analysis = {"action": "create", "slug": "promotion_gaps"}
@@ -1330,13 +1335,13 @@ def test_an_invalid_proposal_gets_one_correction_then_a_plain_clarification():
         }
 
     async def run():
-        with patch.object(orchestrator, "AsyncAnthropic", lambda **_kwargs: Client()), \
+        with patch.object(orchestrator, "AsyncGeminiClient", lambda **_kwargs: Client()), \
                 patch.object(orchestrator.httpx, "AsyncClient", lambda **_kwargs: _HTTP()), \
                 patch.object(orchestrator.engine_client, "call_query", query):
             return await orchestrator._run_turn(
                 question, [{"name": "orders", "data": "id\n1\n"}], [],
                 engine_base_url="http://engine.invalid", bearer_token=None,
-                api_key="test", model="test-model",
+                model="test-model",
             )
 
     result = asyncio.run(run())
@@ -1433,13 +1438,13 @@ def test_an_engine_rejected_proposal_gets_one_correction_then_answers():
                 "answer": {"columns": ["customer_name", "category"], "rows": [["Ava", "Travel"]]}}
 
     async def run():
-        with patch.object(orchestrator, "AsyncAnthropic", lambda **_kwargs: Client()), \
+        with patch.object(orchestrator, "AsyncGeminiClient", lambda **_kwargs: Client()), \
                 patch.object(orchestrator.httpx, "AsyncClient", lambda **_kwargs: _HTTP()), \
                 patch.object(orchestrator.engine_client, "call_query", query):
             return await orchestrator._run_turn(
                 question, [{"name": "purchases", "data": "id\n1\n"}], [],
                 engine_base_url="http://engine.invalid", bearer_token=None,
-                api_key="test", model="test-model",
+                model="test-model",
             )
 
     result = asyncio.run(run())
@@ -1508,13 +1513,13 @@ def test_engine_rejections_terminate_in_plain_language_once_the_budget_is_spent(
         }
 
     async def run():
-        with patch.object(orchestrator, "AsyncAnthropic", lambda **_kwargs: Client()), \
+        with patch.object(orchestrator, "AsyncGeminiClient", lambda **_kwargs: Client()), \
                 patch.object(orchestrator.httpx, "AsyncClient", lambda **_kwargs: _HTTP()), \
                 patch.object(orchestrator.engine_client, "call_query", query):
             return await orchestrator._run_turn(
                 question, [{"name": "purchases", "data": "id\n1\n"}], [],
                 engine_base_url="http://engine.invalid", bearer_token=None,
-                api_key="test", model="test-model",
+                model="test-model",
             )
 
     result = asyncio.run(run())
@@ -1578,13 +1583,13 @@ def test_invalid_proposals_terminate_in_plain_language_once_the_budget_is_spent(
         }
 
     async def run():
-        with patch.object(orchestrator, "AsyncAnthropic", lambda **_kwargs: Client()), \
+        with patch.object(orchestrator, "AsyncGeminiClient", lambda **_kwargs: Client()), \
                 patch.object(orchestrator.httpx, "AsyncClient", lambda **_kwargs: _HTTP()), \
                 patch.object(orchestrator.engine_client, "call_query", query):
             return await orchestrator._run_turn(
                 question, [{"name": "orders", "data": "id\n1\n"}], [],
                 engine_base_url="http://engine.invalid", bearer_token=None,
-                api_key="test", model="test-model",
+                model="test-model",
             )
 
     result = asyncio.run(run())
@@ -1633,13 +1638,13 @@ def test_a_split_proposed_before_the_engine_asks_is_sent_again_alone():
                 "answer": {"columns": ["customer_name", "category"], "rows": [["Cleo", "Home"]]}}
 
     async def run():
-        with patch.object(orchestrator, "AsyncAnthropic", lambda **_kwargs: Client()), \
+        with patch.object(orchestrator, "AsyncGeminiClient", lambda **_kwargs: Client()), \
                 patch.object(orchestrator.httpx, "AsyncClient", lambda **_kwargs: _HTTP()), \
                 patch.object(orchestrator.engine_client, "call_query", query):
             return await orchestrator._run_turn(
                 question, [{"name": "purchases", "data": "id\n1\n"}], [],
                 engine_base_url="http://engine.invalid", bearer_token=None,
-                api_key="test", model="test-model")
+                model="test-model")
 
     result = asyncio.run(run())
     repair = model_calls[1]
@@ -1665,18 +1670,18 @@ def test_tool_exhaustion_never_exposes_an_internal_budget():
             self.messages = LoopMessages()
 
     async def run():
-        original_client = orchestrator.AsyncAnthropic
+        original_client = orchestrator.AsyncGeminiClient
         original_http = orchestrator.httpx.AsyncClient
-        orchestrator.AsyncAnthropic = lambda **_kwargs: LoopClient()
+        orchestrator.AsyncGeminiClient = lambda **_kwargs: LoopClient()
         orchestrator.httpx.AsyncClient = lambda **_kwargs: _HTTP()
         try:
             return await orchestrator._run_turn(
                 "help with this data", [{"name": "orders", "data": "amount\n1\n"}], [],
                 engine_base_url="http://engine.invalid", bearer_token=None,
-                api_key="test", model="test-model",
+                model="test-model",
             )
         finally:
-            orchestrator.AsyncAnthropic = original_client
+            orchestrator.AsyncGeminiClient = original_client
             orchestrator.httpx.AsyncClient = original_http
 
     result = asyncio.run(run())
@@ -1704,7 +1709,38 @@ def test_the_model_sees_the_rows_the_answer_covers():
     assert "describe exactly the rows the answer covers" in prompt
 
 
+def test_a_gemini_assisted_answer_is_labelled_for_the_reply():
+    """The engine builds every query itself; only when nothing it built runs does Gemini reword the
+    question or propose the query (engine/sql_fallback.py). The reply must say so, as the workbook
+    does, and must not say so for the engine's own answers."""
+    from mcp_server.engine_client import shape_reason_response
+
+    reworded = shape_reason_response({
+        "result": {"columns": ["total"], "rows": [[42]]},
+        "fallback": {"kind": "rewrite", "model": "gemini-3.8-flash",
+                     "question": "total amount by city"},
+    }, "job")
+    seen = orchestrator._trim_for_model(reworded)
+    assert seen["fallback"] == {"kind": "rewrite", "question": "total amount by city"}, seen
+    proposed = shape_reason_response({
+        "result": {"columns": ["n"], "rows": [[3]]},
+        "fallback": {"kind": "sql", "model": "gemini-3.8-flash", "proposal": "SELECT 3"},
+    }, "job")
+    assert orchestrator._trim_for_model(proposed)["fallback"] == {"kind": "sql"}
+    nothing = shape_reason_response({
+        "result": {"columns": ["n"], "rows": [[3]]},
+        "fallback": {"kind": "none", "model": "gemini-3.8-flash", "note": "Gemini unavailable"},
+    }, "job")
+    assert "fallback" not in orchestrator._trim_for_model(nothing)
+    plain = shape_reason_response({"result": {"columns": ["n"], "rows": [[3]]}}, "job")
+    assert "fallback" not in orchestrator._trim_for_model(plain)
+    prompt = " ".join(orchestrator.SYSTEM_PROMPT.split())
+    assert "When the tool result has `fallback`" in prompt
+    assert "suggested by Gemini and checked before it ran" in prompt
+
+
 TESTS = [
+    test_a_gemini_assisted_answer_is_labelled_for_the_reply,
     test_request_execution_mode_reaches_each_orchestrated_engine_call,
     test_unambiguous_column_as_table_is_rebound_before_attestation,
     test_a_complete_question_reaches_the_engine_without_appended_context,

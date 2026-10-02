@@ -1,8 +1,9 @@
-# The provider-neutral orchestrator chat backend (prereasoner-chat) — docs/MCP.md.
+# The Gemini orchestrator chat backend (prereasoner-chat) — docs/MCP.md.
 #
 # A SECOND, lightweight Cloud Run service alongside the engine (google_cloud_run_v2_service.api in
-# main.tf). It calls the engine over HTTP and either Anthropic or Vertex AI Gemini; it does NOT touch
-# Postgres or write RTDB. Its SA receives only the selected provider's access and the shared attestation key.
+# main.tf). It calls the engine over HTTP and Vertex AI Gemini in this project; it does NOT touch
+# Postgres. Its SA receives only Vertex AI access, RTDB access when configured, and the shared
+# attestation key. Enabling it enables Gemini for the engine too (local.external_llm_enabled).
 #
 # The guided deployer performs the complete order in one install:
 #   1. build and push the tests-gated chat image;
@@ -14,12 +15,6 @@ variable "enable_orchestrator" {
   description = "Create the third-party chat orchestrator and its secret/IAM resources. The guided installer always enables this service."
   type        = bool
   default     = false
-}
-
-variable "anthropic_secret_id" {
-  description = "Existing Secret Manager secret ID containing the Anthropic API key. Used only when chat_llm_provider is anthropic."
-  type        = string
-  default     = ""
 }
 
 variable "chat_service_name" {
@@ -39,35 +34,6 @@ variable "chat_image" {
   }
 }
 
-variable "anthropic_model" {
-  description = "Anthropic model id used when chat_llm_provider is anthropic."
-  type        = string
-  default     = "claude-sonnet-5"
-}
-
-variable "chat_llm_provider" {
-  description = "Provider used by the required chat service: anthropic for production compatibility or gemini for Community Edition."
-  type        = string
-  default     = "anthropic"
-
-  validation {
-    condition     = contains(["anthropic", "gemini"], var.chat_llm_provider)
-    error_message = "chat_llm_provider must be anthropic or gemini."
-  }
-}
-
-variable "gemini_model" {
-  description = "Vertex AI Gemini model id used when chat_llm_provider is gemini."
-  type        = string
-  default     = "gemini-3.8-flash"
-}
-
-variable "gemini_location" {
-  description = "Vertex AI location used by the Gemini chat client."
-  type        = string
-  default     = "global"
-}
-
 # ---------- Service account for the orchestrator ----------
 resource "google_service_account" "chat_run" {
   count        = var.enable_orchestrator ? 1 : 0
@@ -76,15 +42,8 @@ resource "google_service_account" "chat_run" {
   depends_on   = [google_project_service.apis]
 }
 
-resource "google_secret_manager_secret_iam_member" "chat_anthropic_key" {
-  count     = var.enable_orchestrator && var.chat_llm_provider == "anthropic" ? 1 : 0
-  secret_id = var.anthropic_secret_id
-  role      = "roles/secretmanager.secretAccessor"
-  member    = "serviceAccount:${google_service_account.chat_run[0].email}"
-}
-
 resource "google_project_iam_member" "chat_vertex_ai" {
-  count   = var.enable_orchestrator && var.chat_llm_provider == "gemini" ? 1 : 0
+  count   = var.enable_orchestrator ? 1 : 0
   project = var.project_id
   role    = "roles/aiplatform.user"
   member  = "serviceAccount:${google_service_account.chat_run[0].email}"
@@ -113,13 +72,6 @@ resource "google_cloud_run_v2_service" "chat" {
   ingress             = "INGRESS_TRAFFIC_ALL"
   deletion_protection = var.deletion_protection
 
-  lifecycle {
-    precondition {
-      condition     = var.chat_llm_provider != "anthropic" || length(trimspace(var.anthropic_secret_id)) > 0
-      error_message = "anthropic_secret_id must name an out-of-band secret when chat_llm_provider=anthropic."
-    }
-  }
-
   template {
     service_account = google_service_account.chat_run[0].email
 
@@ -128,7 +80,7 @@ resource "google_cloud_run_v2_service" "chat" {
       max_instance_count = 3
     }
 
-    # I/O-bound (calls Anthropic + the engine), unlike the model-locked engine, so a higher
+    # I/O-bound (calls Gemini + the engine), unlike the model-locked engine, so a higher
     # per-instance concurrency is appropriate. Calls share one in-process HTTP client per turn.
     max_instance_request_concurrency = 20
     timeout                          = "300s" # a multi-hop tool loop can run tens of seconds
@@ -148,14 +100,6 @@ resource "google_cloud_run_v2_service" "chat" {
         container_port = 8090
       }
 
-      env {
-        name  = "LLM_PROVIDER"
-        value = var.chat_llm_provider
-      }
-      env {
-        name  = "ANTHROPIC_MODEL"
-        value = var.anthropic_model
-      }
       env {
         name  = "GEMINI_MODEL"
         value = var.gemini_model
@@ -182,20 +126,8 @@ resource "google_cloud_run_v2_service" "chat" {
         }
       }
       env {
-        name  = "EXTERNAL_LLM_ENABLED"
-        value = "true"
-      }
-      dynamic "env" {
-        for_each = var.chat_llm_provider == "anthropic" ? [var.anthropic_secret_id] : []
-        content {
-          name = "ANTHROPIC_API_KEY"
-          value_source {
-            secret_key_ref {
-              secret  = env.value
-              version = "latest"
-            }
-          }
-        }
+        name  = "EXTERNAL_LLM_ENABLED" # authoritative deployment switch; see PRIVACY.md
+        value = tostring(local.external_llm_enabled)
       }
       # The engine's own Cloud Run URL (server-to-server). The forwarded Firebase token authenticates
       # /api/reason at the app layer; the engine allows unauthenticated invocations at the network layer.
@@ -213,8 +145,8 @@ resource "google_cloud_run_v2_service" "chat" {
         }
       }
 
-      # Readiness imports the actual MCP server module and verifies the injected API key is present.
-      # This catches per-turn subprocess breakage that a shallow HTTP liveness probe cannot see.
+      # Readiness imports the engine client the turns use and verifies Gemini is enabled and
+      # configured and the attestation key is present, which a shallow liveness probe cannot see.
       startup_probe {
         http_get {
           path = "/readyz"
@@ -229,7 +161,6 @@ resource "google_cloud_run_v2_service" "chat" {
 
   depends_on = [
     google_project_service.apis,
-    google_secret_manager_secret_iam_member.chat_anthropic_key,
     google_project_iam_member.chat_vertex_ai,
     google_secret_manager_secret_iam_member.chat_dataset_attestation,
     google_secret_manager_secret_version.dataset_attestation,

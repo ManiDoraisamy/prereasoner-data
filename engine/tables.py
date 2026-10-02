@@ -231,8 +231,8 @@ class TableQuery:
         self.tok = None
         self.qwen = None
         self.hdim = None
-        self.sql_proposer = None
-        self.sql_arbiter = None
+        # The labelled Gemini fallback of select_query (engine/sql_fallback.py); EncoderQuery sets it.
+        self.sql_fallback = None
 
     # ---------- encoding ----------
     # The vector for a text depends only on the text and the loaded weights, so encoded texts are
@@ -430,7 +430,7 @@ class TableQuery:
         """Return ranked, typed SQL AST candidates from the deterministic search.
 
         Bounded typed-AST search with hand-written, inspectable ranking. This is the first half of
-        own-data planning; ``select_query`` adds the proposer's candidates and arbitrates.
+        own-data planning; ``select_query`` runs the candidates and serves the best one that runs.
         ``tables`` stays in the signature to make the boundary explicit; the rich ``sch`` already
         carries its values and inferred types.
         """
@@ -452,69 +452,63 @@ class TableQuery:
     def search_pool(self, question, norm, fks, sch):
         """The deterministic search's candidates under the pool contract: ``select_query``'s
         first stage. Its top candidate is the search's structural reading of the question."""
-        if self.sql_arbiter is None:
-            raise RuntimeError("SQL selection models are not loaded - construct the planner through "
-                               "engine.encoder_overlay (EncoderQuery / KnowledgeQuery)")
-        return self.search_ast(question, sch, norm, fks,
-                               max_candidates=self.sql_arbiter.search_candidates)
+        from engine.sql_rank import SEARCH_CANDIDATES
+        return self.search_ast(question, sch, norm, fks, max_candidates=SEARCH_CANDIDATES)
 
-    def select_query(self, question, norm, fks, sch, tablemap, searched=None):
+    def select_query(self, question, norm, fks, sch, tablemap, searched=None, allow_fallback=True):
         """Choose the query to serve for an own-data question; returns a ``PoolSelection``.
 
-        1. The deterministic search proposes up to ``search_candidates`` typed ASTs.
-        2. The SQL proposer adds its validated beams (engine/xiyan_sql_proposer.py); SQL both found is
-           pooled once and marked endorsed. A decode that runs past its CPU budget adds none, and the
-           record says so (``proposer_abstention``).
-        3. Every pooled query that passes the guard is run on an in-memory SQLite copy of the
+        1. The deterministic search ranks up to ``SEARCH_CANDIDATES`` typed ASTs (``search_pool``).
+        2. Every candidate that passes the guard is run on an in-memory SQLite copy of the
            request's tables under a fixed step budget. A query that fails cannot be chosen, and
            neither can one that tests a text column against a literal the column never holds
            while another column does, or one that joins two columns the foreign keys keep apart
            (engine/sql_grounding.py).
-        4. The proposer scores each eligible query's likelihood and the arbiter ranks them
-           (engine/sql_rank.py). A date the question names (engine/sql_dates) keeps the ranking to
-           the queries that realize it, when one does; a registered calculation intent
-           (engine/calculations) takes the best-ranked query that satisfies it, when one exists.
-        5. A money noun that names its table ("what's the sales in London") asks for that table's
-           money total (engine/sql_expansion.money_total_columns): the best-ranked query that
-           aggregates a money column is served when one exists; otherwise the ranking stands.
+        3. The best-ranked eligible candidate is served. A date the question names
+           (engine/sql_dates) keeps the choice to the candidates that realize it, when one does; a
+           registered calculation intent (engine/calculations) takes the best-ranked candidate that
+           satisfies it, when one exists; and a money noun that names its table ("what's the sales in
+           London") takes the best-ranked candidate that aggregates a money column
+           (engine/sql_expansion.money_total_columns).
+        4. Only when no candidate is eligible, and the operator enabled Gemini, the labelled fallback
+           runs (engine/sql_fallback.py): the search reads Gemini's rewording of the question, and
+           when that finds nothing either, Gemini's one proposed query competes after the typed-AST
+           gate. The selection records it (``PoolSelection.fallback``).
 
-        This is the one own-data selection: serving, decomposition leaves, the Spider evaluator,
-        the offline regression gate and arbiter training all call it. The decomposition probe
-        reads only its first stage (``search_pool``); a caller that already ran that stage passes
-        its pool as ``searched``.
+        This is the one own-data selection: serving, decomposition leaves, the Spider evaluator and
+        the offline regression gate all call it. The decomposition probe reads only its first stage
+        (``search_pool``); a caller that already ran that stage passes its pool as ``searched``.
+        Decomposition leaves pass ``allow_fallback=False`` (engine/decomposition.py:_leaf_readings).
         """
-        if self.sql_proposer is None or self.sql_arbiter is None:
-            raise RuntimeError("SQL selection models are not loaded - construct the planner through "
-                               "engine.encoder_overlay (EncoderQuery / KnowledgeQuery)")
+        from engine.sql_schema import SchemaGraph
+
+        if searched is None:
+            searched = self.search_pool(question, norm, fks, sch)
+        graph = SchemaGraph.from_planner(sch, fks)
+        selection = self._choose(question, norm, sch, tablemap, graph, searched)
+        fallback = self.sql_fallback
+        if (selection.selected is not None or not allow_fallback or fallback is None
+                or not fallback.available):
+            return selection
+        return self._fall_back(question, norm, fks, sch, tablemap, graph, selection, fallback)
+
+    def _choose(self, question, norm, sch, tablemap, graph, pool):
+        """Run, ground and choose among one pool (steps 2 and 3 of ``select_query``)."""
+        from dataclasses import replace
+
         from engine.calculations import select_calculation_candidate, detect_calculations
         from engine.sql_dates import realizes_dates, served_date_phrases
         from engine.sql_expansion import aggregates_money_column, money_total_columns
         from engine.sql_expansion import tokens as question_tokens
         from engine.sql_grounding import grounded_members
-        from engine.sql_rank import PoolSelection, arbitrate, merge_proposals, select_ranked_candidate
-        from engine.sql_schema import SchemaGraph
-        from engine.xiyan_sql_proposer import SQLDecodeBudgetExceeded
+        from engine.sql_rank import EXECUTION_OP_LIMIT, PoolSelection, select_ranked_candidate
 
-        arbiter = self.sql_arbiter
-        if searched is None:
-            searched = self.search_pool(question, norm, fks, sch)
-        graph = SchemaGraph.from_planner(sch, fks)
-        floor = min((candidate.score for candidate in searched), default=0.0)
-        try:
-            proposals, abstention = self.sql_proposer.propose(norm, question, graph, floor), ""
-        except SQLDecodeBudgetExceeded as exc:
-            proposals, abstention = [], str(exc)
-        pool, proposed = merge_proposals(searched, proposals)
-        executable = self._executable(pool, tablemap, sch, arbiter.execution_op_limit)
+        pool = tuple(pool)
+        executable = self._executable(pool, tablemap, sch, EXECUTION_OP_LIMIT)
         with request_timing.span("pool_grounding"):
             grounded = grounded_members(pool, tablemap, graph)
-        runnable = [index for index, (ran, sound) in enumerate(zip(executable, grounded))
-                    if ran and sound]
-        scored = self.sql_proposer.likelihoods(norm, question, [pool[i].sql for i in runnable])
-        likelihoods = [None] * len(pool)
-        for index, value in zip(runnable, scored):
-            likelihoods[index] = value
-        scores, ranking = arbitrate(pool, proposed, likelihoods, arbiter)
+        ranking = tuple(index for index, (ran, sound) in enumerate(zip(executable, grounded))
+                        if ran and sound)
         calculation_satisfied = [False] * len(pool)
         if detect_calculations(question):
             for index in ranking:
@@ -527,17 +521,47 @@ class TableQuery:
         if money is not None:
             table, columns = money
             names = [column["name"] for column in columns]
-
             for index in ranking:
                 money_total[index] = aggregates_money_column(pool[index].query, table, names)
         phrases = served_date_phrases(question, question_tokens(question), graph)
         date_satisfied = [realizes_dates(member.query, phrases) for member in pool]
-        selected = select_ranked_candidate(ranking, calculation_satisfied, money_total, date_satisfied)
         request_timing.count("pool", len(pool))
-        return PoolSelection(tuple(pool), proposed, executable, grounded, tuple(likelihoods),
-                             scores, ranking, selected, len(searched),
-                             tuple(calculation_satisfied), tuple(money_total), abstention,
-                             tuple(date_satisfied))
+        selection = PoolSelection(pool, tuple(executable), tuple(grounded), ranking, None,
+                                  tuple(calculation_satisfied), tuple(money_total),
+                                  tuple(date_satisfied))
+        return replace(selection, selected=select_ranked_candidate(
+            ranking, calculation_satisfied, money_total, date_satisfied))
+
+    def _fall_back(self, question, norm, fks, sch, tablemap, graph, selection, fallback):
+        """Step 4 of ``select_query``: Gemini's rewording, then Gemini's proposal, each served only
+        through the same run-and-ground choice as the search's own candidates."""
+        from dataclasses import replace
+
+        from engine.sql_fallback import UNAVAILABLE
+        from engine.sql_rank import FallbackRecord
+
+        text = None
+        why_not_proposed = ""
+        with request_timing.span("fallback"):
+            rewritten, why_not_rewritten = fallback.rewrite(question, graph)
+            if rewritten is not None:
+                reread = self._choose(rewritten, norm, sch, tablemap, graph,
+                                      self.search_pool(rewritten, norm, fks, sch))
+                if reread.selected is not None:
+                    return replace(reread, fallback=FallbackRecord(
+                        "rewrite", fallback.model, question=rewritten))
+                why_not_rewritten = "the search found no runnable query for the rewording"
+            if why_not_rewritten != UNAVAILABLE:
+                text, proposal, why_not_proposed = fallback.propose(question, graph)
+                if proposal is not None:
+                    proposed = self._choose(question, norm, sch, tablemap, graph, (proposal,))
+                    if proposed.selected is not None:
+                        return replace(proposed, fallback=FallbackRecord("sql", fallback.model,
+                                                                         proposal=text))
+                    why_not_proposed = "the proposal does not run or is not grounded"
+        note = "; ".join(why for why in (why_not_rewritten, why_not_proposed) if why)
+        return replace(selection, fallback=FallbackRecord(
+            "none", fallback.model, question=rewritten, proposal=text, note=note))
 
     def _serve_ast(self, question, norm, fks, sch, tablemap):
         """Select the own-data query (``select_query``) and execute it through this executor."""
@@ -552,10 +576,8 @@ class TableQuery:
             if compound is not None:
                 # A named compound request needs a branch proposal before it has an
                 # executable dual-emitter plan. Do not run a single query that answers one
-                # fragment of the question and then throw its rows away. The search's own
-                # reading decides it, so the proposer's decode is not paid either: on the CPU
-                # 7B a long compound prompt ran past its decode budget and the request failed
-                # instead of asking for the decomposition (tests.test_complex_datasets).
+                # fragment of the question and then throw its rows away: the search's own
+                # reading asks for the decomposition (tests.test_complex_datasets).
                 return compound, None, None, tuple(searched), None
         selection = self.select_query(question, norm, fks, sch, tablemap, searched=searched)
         candidates = selection.pool
@@ -568,8 +590,8 @@ class TableQuery:
         if analysis_context is not None:
             from engine.decomposition import single_branch
 
-            # One dual-emitter branch serves a named request. A set operation that only a
-            # proposer beam reads into the question is outranked by the best single query.
+            # One dual-emitter branch serves a named request, so a set operation gives way to the
+            # best-ranked single SELECT; compound questions are decomposed (engine/decomposition.py).
             selection = selection.constrained(single_branch)
             candidate = selection.candidate
             if candidate is None:
@@ -747,16 +769,24 @@ class TableQuery:
         """tables: [{name, columns, rows}]. Full multi-table pipeline for the web UI."""
         norm, fks = self.ingest(tables, explicit_fks=explicit_fks)
         sch, colidx, tablemap = self.schema(norm, fks)
-        from engine.xiyan_sql_proposer import SQLProposerUnavailable
         try:
             candidate, result, err, candidates, selection = self._serve_ast(
                 question, norm, fks, sch, tablemap
             )
-        except SQLProposerUnavailable:
-            raise                      # busy or closed: engine/server.py answers 503 {retryable: true}
         except Exception as exc:
             candidate, result, candidates, selection = None, None, (), None
             err = f"{type(exc).__name__}: {exc}"
+        fallback = selection.fallback if selection is not None else None
+        served_by = selection.served_by if selection is not None else "search"
+        # The question the served query answers: Gemini's rewording when the search answered that.
+        answered = fallback.question if served_by == "gemini-rewrite" else question
+        model = "engine - typed SQL AST planner (deterministic search)"
+        if served_by == "gemini-rewrite":
+            model = (f"engine - typed SQL AST planner; the search read {fallback.model}'s rewording "
+                     "of the question")
+        elif served_by == "gemini-sql":
+            model = (f"engine - typed SQL AST planner; query proposed by {fallback.model}, imported "
+                     "into the typed AST and validated")
         sql = candidate.sql if candidate is not None else None
         computation = None
         if candidate is not None:
@@ -788,15 +818,16 @@ class TableQuery:
             "evidence": list(candidate.evidence) if candidate is not None else [],
             "features": dict(candidate.features) if candidate is not None else {},
             "computation": computation.record() if computation is not None else None,
-            "selection": selection.record(self.sql_arbiter) if selection is not None else None,
-            "model": "engine - typed SQL AST planner (search + proposer, linear arbiter)",
+            "selection": selection.record() if selection is not None else None,
+            "fallback": fallback.record() if fallback is not None else None,
+            "model": model,
         }
         if candidate is not None:
             from engine.calculations import assess_calculations
             from engine.calculations.registry import attach_calculation_evidence
             from engine.sql_schema import SchemaGraph
             assessments = assess_calculations(
-                question,
+                answered,
                 norm,
                 SchemaGraph.from_planner(sch, fks),
                 computation,

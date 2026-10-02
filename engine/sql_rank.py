@@ -1,21 +1,16 @@
 """Candidate scoring for the own-data SQL planner.
 
-Two deterministic stages, each recorded as named features:
-
-1. ``CandidateRanker`` orders the typed-AST search pool with hand-written structural rules
-   and encoder similarities (engine/sql_search.py applies it). Every adjustment is a named
-   feature, so model similarity can improve ordering without hiding why a candidate won.
-2. ``SQLArbiter`` chooses the served query from the executed pool of search candidates plus
-   the SQL proposer's suggestions (engine/xiyan_sql_proposer.py): a fitted linear score over the
-   nine ``ARBITER_FEATURES``. The highest-scoring candidate that executes wins; a tie goes to
-   the earlier pool position. ``PoolSelection`` records the whole decision.
+``CandidateRanker`` orders the typed-AST search pool with hand-written structural rules and encoder
+similarities (engine/sql_search.py applies it). Every adjustment is a named feature, so model
+similarity can improve ordering without hiding why a candidate won. ``PoolSelection`` records the
+served choice: the best-ranked candidate that executes and is grounded, under the pool contract
+(``SEARCH_CANDIDATES``, ``EXECUTION_OP_LIMIT``). No model writes or scores SQL here; the labelled
+Gemini fallback (engine/sql_fallback.py) is recorded as ``FallbackRecord`` when it took part.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-import json
 import math
-from pathlib import Path
 import re
 from typing import Mapping, Sequence
 
@@ -503,169 +498,75 @@ def _column_label(column: ColumnRef) -> str:
 
 
 # ---------------------------------------------------------------------------------------------
-# Pool arbitration: the served choice among search candidates and proposer suggestions.
+# Pool selection: the served choice among the search's candidates.
 # ---------------------------------------------------------------------------------------------
 
-ENDORSED = "proposer:endorsed"
-# A proposal enters the pool below every search candidate and below the beams decoded before
-# it (`proposal_score`). The arbiter reads pool score and pool rank as features, so both
-# constants belong to its fitted contract: engine/data/sql_arbiter.json records them and
-# SQLArbiter.load refuses an artifact fit under different values.
-PROPOSAL_PENALTY = 5.0
-BEAM_STEP = 0.1
-
-ARBITER_FEATURES = (
-    "likelihood",            # log p(SQL | schema, question) under the proposer model
-    "likelihood_tokens",     # SQL length in proposer tokens
-    "likelihood_per_token",  # likelihood / likelihood_tokens
-    "pool_score",            # search score, or the penalized proposal score
-    "pool_rank",             # position in the merged pool (search order, then beam order)
-    "from_proposer",         # 1 when the proposer produced this SQL (alone or with the search)
-    "from_search",           # 1 when the deterministic search produced this SQL
-    "endorsed",              # 1 when both produced it
-    "pool_size",             # number of pooled candidates, executable or not
-)
-
-
-def proposal_score(floor: float, beam: int) -> float:
-    """Pool score of the proposal decoded at beam position `beam` (0 = best beam)."""
-    return floor - PROPOSAL_PENALTY - BEAM_STEP * beam
-
-
-def merge_proposals(candidates: Sequence[ScoredQuery], proposals: Sequence[ScoredQuery]
-                    ) -> tuple[list[ScoredQuery], frozenset[str]]:
-    """Append proposals to the search pool; return (pool, SQL only the proposer produced).
-
-    A proposal that renders to SQL the search already found is not pooled twice: that search
-    candidate keeps its position and gains the ``proposer:endorsed`` tag plus the proposal's
-    evidence, because two independent derivations agreeing is a signal the arbiter weighs.
-    Novel proposals are appended in beam order.
-    """
-    pool = list(candidates)
-    position = {candidate.sql: index for index, candidate in enumerate(pool)}
-    proposed = set()
-    for proposal in proposals:
-        index = position.get(proposal.sql)
-        if index is not None:
-            existing = pool[index]
-            pool[index] = replace(
-                existing,
-                evidence=existing.evidence + (ENDORSED,) + proposal.evidence,
-                features=existing.features + proposal.features,
-            )
-            continue
-        position[proposal.sql] = len(pool)
-        pool.append(proposal)
-        proposed.add(proposal.sql)
-    return pool, frozenset(proposed)
-
-
-def arbiter_features(candidate: ScoredQuery, rank: int, pool_size: int, likelihood: float,
-                     tokens: int, proposed: bool) -> tuple[float, ...]:
-    """The arbiter's input for one pooled candidate, in ARBITER_FEATURES order."""
-    tokens = max(float(tokens), 1.0)
-    likelihood = float(likelihood)
-    endorsed = ENDORSED in candidate.evidence
-    return (
-        likelihood,
-        tokens,
-        likelihood / tokens,
-        float(candidate.score),
-        float(rank),
-        1.0 if proposed or endorsed else 0.0,
-        0.0 if proposed else 1.0,
-        1.0 if endorsed else 0.0,
-        float(pool_size),
-    )
+# The pool contract (engine/tables.py:TableQuery.select_query): how many ranked search candidates
+# are pooled, and the SQLite VM steps a pooled query may take before it counts as not running. The
+# step budget is deterministic and machine-independent; it stops a pathological join, not a normal
+# query.
+SEARCH_CANDIDATES = 25
+EXECUTION_OP_LIMIT = 100_000_000
 
 
 @dataclass(frozen=True)
-class SQLArbiter:
-    """A fitted linear score over standardized ARBITER_FEATURES.
+class FallbackRecord:
+    """How the labelled Gemini fallback (engine/sql_fallback.py) took part in one selection.
 
-    ``score = sum((value - mean) / scale * coef) + intercept``: plain arithmetic, so every
-    selection can be explained feature by feature (``contributions``). The pool fields are the
-    candidate-pool contract the coefficients were fit under; serving builds pools that way.
+    ``kind`` is "rewrite" when the search answered Gemini's rewording of the question, "sql" when
+    the served query is Gemini's proposal after the typed-AST gate, and "none" when the fallback
+    ran and nothing it returned could be served. ``question`` is the rewording, ``proposal`` the
+    SQL text Gemini returned, ``model`` the Gemini model id and ``note`` why nothing was served.
     """
-    mean: tuple[float, ...]
-    scale: tuple[float, ...]
-    coef: tuple[float, ...]
-    intercept: float
-    search_candidates: int
-    proposer_beams: int
-    proposer_max_new_tokens: int
-    execution_op_limit: int
+    kind: str
+    model: str
+    question: str | None = None
+    proposal: str | None = None
+    note: str = ""
 
-    @classmethod
-    def load(cls, path: str | Path) -> "SQLArbiter":
-        return cls.from_payload(json.loads(Path(path).read_text(encoding="utf-8")), str(path))
+    def __post_init__(self):
+        if self.kind not in {"rewrite", "sql", "none"}:
+            raise ValueError(f"unknown fallback kind: {self.kind}")
 
-    @classmethod
-    def from_payload(cls, data: Mapping, path: str = "arbiter") -> "SQLArbiter":
-        if tuple(data.get("features") or ()) != ARBITER_FEATURES:
-            raise ValueError(f"{path}: arbiter features differ from ARBITER_FEATURES")
-        pool = data["pool"]
-        if (pool["proposal_penalty"], pool["beam_step"]) != (PROPOSAL_PENALTY, BEAM_STEP):
-            raise ValueError(f"{path}: arbiter was fit under a different proposal scoring")
-        arbiter = cls(
-            mean=tuple(float(value) for value in data["mean"]),
-            scale=tuple(float(value) for value in data["scale"]),
-            coef=tuple(float(value) for value in data["coef"]),
-            intercept=float(data["intercept"]),
-            search_candidates=int(pool["search_candidates"]),
-            proposer_beams=int(pool["proposer_beams"]),
-            proposer_max_new_tokens=int(pool["proposer_max_new_tokens"]),
-            execution_op_limit=int(pool["execution_op_limit"]),
-        )
-        width = len(ARBITER_FEATURES)
-        if not (len(arbiter.mean) == len(arbiter.scale) == len(arbiter.coef) == width):
-            raise ValueError(f"{path}: arbiter parameters must each have {width} values")
-        return arbiter
-
-    def score(self, features: Sequence[float]) -> float:
-        return sum((value - mean) / (scale or 1.0) * coef
-                   for value, mean, scale, coef in zip(features, self.mean, self.scale, self.coef)
-                   ) + self.intercept
-
-    def contributions(self, features: Sequence[float]) -> dict[str, float]:
-        """Each feature's additive share of the score (the intercept is the remainder)."""
-        return {name: (value - mean) / (scale or 1.0) * coef
-                for name, value, mean, scale, coef in zip(
-                    ARBITER_FEATURES, features, self.mean, self.scale, self.coef)}
+    def record(self) -> dict:
+        out = {"kind": self.kind, "model": self.model}
+        if self.question is not None:
+            out["question"] = self.question
+        if self.proposal is not None:
+            out["proposal"] = self.proposal
+        if self.note:
+            out["note"] = self.note
+        return out
 
 
 @dataclass(frozen=True)
 class PoolSelection:
-    """How one question's query was chosen. Serving, evaluation and training read this record.
+    """How one question's query was chosen. Serving, decomposition leaves, the Spider evaluator and
+    the offline regression gate read this record.
 
-    ``executable`` records which members ran within the step budget and ``grounded`` which
-    compare every text literal with a column that can hold it and join no two columns the
-    foreign keys keep apart (engine/sql_grounding.py). A
-    member is eligible when both hold; ``likelihoods`` and ``scores`` are None for the rest, and
-    those can never be selected. ``ranking`` lists the eligible members best first. ``selected`` is
-    usually ``ranking[0]``; a question with a registered calculation intent takes the best
-    ranked member that satisfies it (engine/calculations), when one exists. The first
-    ``searched`` pool members are the deterministic search's, in its order, so the first member
-    is the search's own structural reading of the question (engine/decomposition.compound_candidate).
+    ``pool`` is the deterministic search's candidates in its ranked order (``CandidateRanker``), or the
+    fallback's when ``fallback`` says so. ``executable`` records which members ran within
+    ``EXECUTION_OP_LIMIT`` SQLite steps and ``grounded`` which compare every text literal with a column
+    that can hold it and join no two columns the foreign keys keep apart (engine/sql_grounding.py).
+    ``ranking`` lists the eligible members, where both hold, in pool order. ``selected`` is usually
+    ``ranking[0]``; a query that keeps the question's dates, a registered calculation intent or a named
+    money total can prefer a later eligible member (``select_ranked_candidate``). The first pool member is the search's own structural reading
+    of the question (engine/decomposition.compound_candidate).
     """
     pool: tuple[ScoredQuery, ...]
-    proposed: frozenset[str]
     executable: tuple[bool, ...]
     grounded: tuple[bool, ...]
-    likelihoods: tuple[tuple[float, int] | None, ...]
-    scores: tuple[float | None, ...]
     ranking: tuple[int, ...]
     selected: int | None
-    searched: int
     calculation_satisfied: tuple[bool, ...] = ()
     money_total: tuple[bool, ...] = ()
-    proposer_abstention: str = ""
     date_satisfied: tuple[bool, ...] = ()
+    fallback: FallbackRecord | None = None
 
     @property
     def candidate(self) -> ScoredQuery | None:
         """The member served: the selected pool member, a top-1 ranking keeping every tied row
-        (sql_ast.keep_ties). Ranking, features and origin read the pool member itself."""
+        (sql_ast.keep_ties). Ranking and evidence read the pool member itself."""
         if self.selected is None:
             return None
         member = self.pool[self.selected]
@@ -674,51 +575,54 @@ class PoolSelection:
             return member
         return ScoredQuery(served, render_query(served), member.score, member.evidence)
 
+    @property
+    def served_by(self) -> str:
+        """``search`` for the deterministic search's own reading, else ``gemini-rewrite`` (the search
+        answered Gemini's rewording) or ``gemini-sql`` (Gemini's proposal passed the typed-AST gate)."""
+        if self.selected is None or self.fallback is None or self.fallback.kind == "none":
+            return "search"
+        return f"gemini-{self.fallback.kind}"
+
     def constrained(self, admissible) -> PoolSelection:
         """This selection under a caller's contract, a filter on the ranking and never a rescore.
 
         Unchanged when the selected member satisfies ``admissible``; otherwise re-selected to the
-        best-ranked executable member that does (``selected`` is None when none does), so the
-        record always describes the member that was actually served.
+        best-ranked eligible member that does (``selected`` is None when none does), so the record
+        always describes the member that was actually served. A fallback whose reading the contract
+        refuses served nothing, and its record says so.
         """
         if self.selected is not None and admissible(self.pool[self.selected]):
             return self
-        return replace(self, selected=next(
-            (index for index in self.ranking if admissible(self.pool[index])), None))
+        selected = next((index for index in self.ranking if admissible(self.pool[index])), None)
+        fallback = self.fallback
+        if selected is None and fallback is not None and fallback.kind != "none":
+            fallback = replace(fallback, kind="none",
+                               note="the caller's contract refuses the fallback's reading")
+        return replace(self, selected=selected, fallback=fallback)
 
-    def origin(self, index: int) -> str:
-        candidate = self.pool[index]
-        if candidate.sql in self.proposed:
-            return "proposer"
-        return "search+proposer" if ENDORSED in candidate.evidence else "search"
-
-    def features(self, index: int) -> tuple[float, ...]:
-        likelihood, tokens = self.likelihoods[index]
-        return arbiter_features(self.pool[index], index, len(self.pool), likelihood, tokens,
-                                self.pool[index].sql in self.proposed)
-
-    def record(self, arbiter: SQLArbiter) -> dict:
-        """JSON evidence: pool counts and the winner's score, broken down by feature."""
+    def record(self) -> dict:
+        """JSON evidence: pool counts, the winner's place among the eligible members and its search
+        score, which preference chose it, and the fallback when it took part."""
         evidence = {
             "pool_size": len(self.pool),
-            "proposed": len(self.proposed),
             "executable": sum(self.executable),
             "misgrounded": sum(ran and not sound
                                for ran, sound in zip(self.executable, self.grounded)),
+            "eligible": len(self.ranking),
             "selected": self.selected,
+            "served_by": self.served_by,
         }
-        if self.proposer_abstention:
-            evidence["proposer_abstention"] = self.proposer_abstention
         if self.selected is not None:
-            features = self.features(self.selected)
             evidence.update(
-                origin=self.origin(self.selected),
-                score=round(self.scores[self.selected], 6),
-                features={name: round(value, 6) for name, value in zip(ARBITER_FEATURES, features)},
-                contributions={name: round(value, 6)
-                               for name, value in arbiter.contributions(features).items()},
-                intercept=round(arbiter.intercept, 6),
+                rank=self.ranking.index(self.selected),
+                score=round(self.pool[self.selected].score, 6),
+                calculation_satisfied=bool(self.calculation_satisfied
+                                           and self.calculation_satisfied[self.selected]),
+                money_total=bool(self.money_total and self.money_total[self.selected]),
+                date_satisfied=bool(self.date_satisfied and self.date_satisfied[self.selected]),
             )
+        if self.fallback is not None:
+            evidence["fallback"] = self.fallback.record()
         return evidence
 
 
@@ -728,11 +632,10 @@ def select_ranked_candidate(ranking: Sequence[int], calculation_satisfied: Seque
     """The shared post-ranking serving rule; inputs are gold-blind candidate facts.
 
     A query that keeps the dates the question names (engine/sql_dates.realizes_dates) is served
-    when any does: with the 7B's undated readings in the pool, "how many contracts were signed before
+    when any does: an undated reading ranked first, and "how many contracts were signed before
     July 10, 2026" was served undated and declined (2026-10-02). Among those, prefer a satisfied
     calculation, if any. A named money total then constrains that choice, retaining it when
-    compatible or taking the first ranked total. Training replays these exact facts rather than
-    copying this policy.
+    compatible or taking the first ranked total.
     """
     if not ranking:
         return None
@@ -742,20 +645,3 @@ def select_ranked_candidate(ranking: Sequence[int], calculation_satisfied: Seque
     if totals and not money_total[selected]:
         selected = totals[0]
     return selected
-
-
-def arbitrate(pool: Sequence[ScoredQuery], proposed: frozenset[str],
-              likelihoods: Sequence[tuple[float, int] | None], arbiter: SQLArbiter
-              ) -> tuple[tuple[float | None, ...], tuple[int, ...]]:
-    """Score every executable member (likelihood present); rank best first, pool order on ties."""
-    scores: list[float | None] = []
-    for index, (candidate, scored) in enumerate(zip(pool, likelihoods)):
-        if scored is None:
-            scores.append(None)
-            continue
-        likelihood, tokens = scored
-        scores.append(arbiter.score(arbiter_features(
-            candidate, index, len(pool), likelihood, tokens, candidate.sql in proposed)))
-    ranking = sorted((index for index, score in enumerate(scores) if score is not None),
-                     key=lambda index: (-scores[index], index))
-    return tuple(scores), tuple(ranking)

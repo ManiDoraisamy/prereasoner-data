@@ -115,7 +115,7 @@ class ComposedKnowledgeQuery:
 
     # A question with a DATA-INTENT word, or that names a schema column/table, or whose token resolves to a
     # world entity, is a query OVER THE DATA. A question with NONE of these ("how does this work?") is almost
-    # certainly conversational — route it to the Sonnet fallback instead of forcing a degenerate COUNT(*). This
+    # certainly conversational — route it to the Gemini fallback instead of forcing a degenerate COUNT(*). This
     # is the COVERAGE gate for wholly-non-data questions (the clarify gate still handles AMBIGUOUS data ones).
     _DATA_INTENT = frozenset({
         "total", "sum", "average", "avg", "mean", "count", "number", "list", "show", "give", "display",
@@ -162,7 +162,7 @@ class ComposedKnowledgeQuery:
 
     # An emotional / opinion / first-person-worry cue. When a question IS a real data query (an answer gets
     # computed) but is phrased like a human talking rather than a query spec, a bare number reads cold — we
-    # route the computed answer + derivation through Sonnet to PRESENT it in human words. Cheap lexical test;
+    # route the computed answer + derivation through Gemini to PRESENT it in human words. Cheap lexical test;
     # it fires only alongside a real answer, so an occasional false positive just means a warmer reply.
     # Deliberately EMOTIONAL words only. Generic adjectives that double as data values / status / intensifiers
     # ("really", "okay", "ok", "normal", "healthy", "please", "fine") are excluded — they'd fire on plain

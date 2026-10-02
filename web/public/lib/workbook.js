@@ -43,7 +43,7 @@ let CHAT=[],question=getQ();
 let J=null,VIEWS=[],RESOLVES=[],SETTLED=false,DONE=false,UNSUB=null,doneTimer=null,STATUS='Analyzing input…',FAILMSG=null,RUN=0;
 let SEEN=new Set(),SEEN_R=new Set();
 let CONV=null,CONVPENDING=false,CONVPROP=null;   // conversational fallback: a clarify / non-data question answered IN the rail (no redirect)
-let PRESENT=false;                               // present mode: a REAL answer, phrased humanly -> Sonnet presents it in words, derivation stays in the panel
+let PRESENT=false;                               // present mode: a REAL answer, phrased humanly -> Gemini presents it in words, derivation stays in the panel
 let HTTPJ=null;                                  // the atomic HTTP body (result+present+sql) — the race-free answer source for present
 let TRANSPORT_ERROR=null, ANALYSIS_LOAD=0;
 let EXEC=null;                                   // latest {actual,verified}; each derivation sheet owns its execution
@@ -58,10 +58,10 @@ function noteDatasetSemantics(list){
   // An empty array is an authoritative clear; ignoring it leaves a removed claim painted on the source sheet.
   if(Array.isArray(list)){ DS_META=list; paint(); }
 }
-// ---- orchestrated (Sonnet front-door) mode: WB.chat routes each turn through /chat (Sonnet + engine-MCP),
+// ---- orchestrated (Gemini front-door) mode: WB.chat routes each turn through /chat (Gemini + engine-MCP),
 // which resolves context ("How about germany?" -> "total amount in Germany") and can make several engine
 // calls per turn. Off by default -> the direct /api/reason path above is byte-identical. ----
-// ORCH (Sonnet front-door) is the DEFAULT. Turn it OFF for a session with the URL query ?chat=0 (works on
+// ORCH (Gemini front-door) is the DEFAULT. Turn it OFF for a session with the URL query ?chat=0 (works on
 // any origin, no console; persists to localStorage 'pr_chat'), or set WB.chat=false on a page. ?chat=1
 // forces it on. This is the path that reads each message in context and rewrites it into a precise query.
 const ORCH = (()=>{ try{
@@ -71,7 +71,7 @@ const ORCH = (()=>{ try{
 }catch(_){} return WB.chat!==false; })();
 const CHAT_ENDPOINT = API_BASE + (WB.chatEndpoint || '/chat');
 // ---- external LLM: /chat, /api/converse and /api/master/generate send the user's message AND sheet
-// data to Anthropic's Claude API. EXTERNAL_LLM_ENABLED is the authoritative operator switch. The
+// data to Gemini on Vertex AI. EXTERNAL_LLM_ENABLED is the authoritative operator switch. The
 // durable disclosure is /privacy; do not add notices to the answer rail. ?chat=0 is a developer
 // routing control that runs the deterministic /api/reason path without the orchestrator.
 let HISTORY=[];                                  // lean cross-turn transcript for the orchestrator [{role,content}]
@@ -152,6 +152,16 @@ function dedent(src){
   const lines=String(src||'').replace(/\s+$/,'').split('\n');
   const pad=Math.min(...lines.filter(l=>l.trim()).map(l=>l.match(/^ */)[0].length));
   return lines.map(l=>l.slice(pad)).join('\n');
+}
+// When Gemini helped build a query (engine/sql_fallback.py), the engine says so in `fallback`, and the
+// settled status repeats it: the search read Gemini's rewording, or Gemini proposed the query.
+let FALLBACK=null;
+function noteFallback(value){ if(value&&(value.kind==='rewrite'||value.kind==='sql'))FALLBACK=value; }
+function answeredStatus(n){
+  const f=FALLBACK;
+  return 'Answered in '+n+' step'+(n===1?'':'s')+(!f?'':f.kind==='rewrite'
+    ?' · read as “'+f.question+'”, reworded by Gemini'
+    :' · query proposed by Gemini and checked by the engine');
 }
 function noteAnalysis(value){
   if(!value||!value.slug)return;
@@ -931,17 +941,17 @@ function finalize(){
   derivs.forEach(s=>{s.result=false;});
   if(output){ output.result=true; if(AUTO) ACTIVE=output.id; }
   const n=BOOK.filter(s=>s.cls==='deriv').length;
-  STATUS='Answered in '+n+' step'+(n===1?'':'s');
+  STATUS=answeredStatus(n);
   markSourceAnswerCurrent();
   surfaceUnresolved();                                        // offer master-data sheets for text columns not in the world model
   paint();
-  if(PRESENT) tryPresent();                                   // real answer + human phrasing -> Sonnet presents it (derivation stays in the panel)
-  else saveConvState();                                       // (present path re-saves once Sonnet's reply lands) persist a restorable snapshot
+  if(PRESENT) tryPresent();                                   // real answer + human phrasing -> Gemini presents it (derivation stays in the panel)
+  else saveConvState();                                       // (present path re-saves once Gemini's reply lands) persist a restorable snapshot
 }
-// Route a REAL answer through Sonnet to present it in words. RTDB delivers result/present/status on separate
+// Route a REAL answer through Gemini to present it in words. RTDB delivers result/present/status on separate
 // nodes with NO cross-node ordering guarantee, so this is called from several triggers (onPresent, finalize,
 // onResult, the HTTP body) and only fires once BOTH the derivation has settled in the panel AND a concrete
-// answer is in hand — otherwise it no-ops and a later trigger retries. Never sends a null answer to Sonnet.
+// answer is in hand — otherwise it no-ops and a later trigger retries. Never sends a null answer to Gemini.
 function tryPresent(){
   if(!PRESENT||CONV||CONVPENDING||!SETTLED)return;            // not flagged / already presenting / derivation not final yet
   const ans=(J&&J.result)||(HTTPJ&&HTTPJ.result)||null;      // prefer the streamed result, fall back to the atomic HTTP body
@@ -962,7 +972,7 @@ function renderFromJSON(j,executionKey=null){
   if(!BOOK.some(s=>s.id===ACTIVE))AUTO=true;
   SETTLED=false; FAILMSG=null; TRANSPORT_ERROR=null;
   const execution=noteExecution(executionOf(j),executionKey);
-  J=j; noteDatasetSemantics(j.dataset_semantics); noteAnalysis(j.analysis);
+  J=j; noteDatasetSemantics(j.dataset_semantics); noteAnalysis(j.analysis); noteFallback(j.fallback);
   (j.views||[]).forEach(v=>appendView(v,execution,executionKey));
   if(j.present) PRESENT=true;                                 // flag BEFORE finalize so it triggers the present reply
   DONE=true; finalize();
@@ -981,7 +991,7 @@ function dropUnusedLookups(){
   paint();
 }
 function settle(){ SETTLED=true; clearTimeout(doneTimer); if(UNSUB){try{UNSUB();}catch(_){}UNSUB=null;} dropUnusedLookups(); renderRail(); renderSourceStatus(); }   // the source chip leaves "checking" with the turn
-// Answer a clarify / non-data question IN THE RAIL (no page redirect). Try the Sonnet fallback
+// Answer a clarify / non-data question IN THE RAIL (no page redirect). Try the Gemini fallback
 // (POST /api/converse); if it isn't deployed yet or errors, degrade to a payload-based "did you mean".
 async function conversationalReply(c){
   const present=!!(c&&c.present);
@@ -1009,8 +1019,8 @@ async function conversationalReply(c){
     if(res.ok){ const j=await res.json().catch(()=>null); reply=j&&j.reply; }
   }catch(_){}
   CONVPENDING=false;
-  if(present&&!reply){                                        // present + Sonnet unavailable -> degrade to the raw result with a clean header
-    CONV=null; const n=BOOK.filter(s=>s.cls==='deriv').length; STATUS='Answered in '+n+' step'+(n===1?'':'s');
+  if(present&&!reply){                                        // present + Gemini unavailable -> degrade to the raw result with a clean header
+    CONV=null; const n=BOOK.filter(s=>s.cls==='deriv').length; STATUS=answeredStatus(n);
   } else {
     CONV=reply||clarifyFallbackText(c);
   }
@@ -1028,13 +1038,13 @@ function clarifyFallbackText(c){
 function runProposed(){ if(!CONVPROP)return; const p=CONVPROP; archiveTurn(); question=p;
   try{ sessionStorage.setItem(SS.Q,p); }catch(_){}; resetRun(); paint(); startRun(); }
 
-/* ---------------- orchestrated run (Sonnet front-door via /chat) ---------------- */
-// One turn = one POST /chat. Sonnet (with HISTORY) resolves context + decides the engine calls; each call is
+/* ---------------- orchestrated run (Gemini front-door via /chat) ---------------- */
+// One turn = one POST /chat. Gemini (with HISTORY) resolves context + decides the engine calls; each call is
 // announced on the turn's RTDB node with its REWRITTEN question, and the engine streams that call's trace
 // under its own jobId (rendered by the same appendView/appendResolve as the direct path). The turn's answer
-// is Sonnet's REPLY (shown in the rail); the derivation (every call's steps) stays in the panel.
+// is Gemini's REPLY (shown in the rail); the derivation (every call's steps) stays in the panel.
 async function startTurn(){
-  const myRun=++RUN;
+  const myRun=++RUN; FALLBACK=null;
   const live=()=>RUN===myRun&&!SETTLED;
   LASTQ=question; if(EDITED){ syncInputsToSheets(); EDITED=false; showRecalc(false); } stampBaseline();   // pick up any input-cell edits; re-baseline what we're about to compute
   let token;
@@ -1056,7 +1066,7 @@ async function startTurn(){
       conversation_id:convId()}, executionRequestFields(ONESHOT_USE)))}).then(parseBody).catch(()=>null);
   // (1) LIVE: subscribe to the turn node -> render each announced engine call's trace as it streams. This is
   // the PRIMARY completion path: the Firebase Hosting proxy times out at ~60s but the engine cold start +
-  // Sonnet loop can exceed that, so the answer often lands on RTDB after the HTTP call has already given up.
+  // Gemini loop can exceed that, so the answer often lands on RTDB after the HTTP call has already given up.
   if(streaming){
     UNSUB=window.subscribeTurn(uid,turnId,{
       onStatus:st=>{ if(!live())return; if(st==='done') markTurnDone(); if(st==='error') fail('the assistant hit an error'); },
@@ -1074,12 +1084,12 @@ async function startTurn(){
     if(j&&Array.isArray(j.history)){ HISTORY=j.history; HTTPHIST=true; }
     if(!j){ if(!streaming&&!SETTLED) fail('the assistant did not respond — please try again'); return; }
     if(Array.isArray(j.traces)) j.traces.forEach(t=>{ const engine=t.engine||{};
-      noteDatasetSemantics(engine.dataset_semantics); noteAnalysis(engine.analysis);
+      noteDatasetSemantics(engine.dataset_semantics); noteAnalysis(engine.analysis); noteFallback(engine.fallback);
       noteExecution(engine.execution,t.jobId); });            // metadata even when views streamed live
     if(EXEC&&BOOK.some(s=>s.cls==='deriv')) paint();
     if(j.error&&!VIEWS.length&&!REPLY){ REPLY='⚠ '+j.error; }
     if(Array.isArray(j.traces)){ try{renderTurnFromHTTP(j);}catch(error){fail('The answer data could not be loaded. Reopen this analysis to recover it.');return;}
-      if(SETTLED){ const n=BOOK.filter(s=>s.cls==='deriv').length; if(n){ STATUS='Answered in '+n+' step'+(n===1?'':'s'); renderRail(); } saveConvState(); } }   // body landed AFTER 'done' settled: refresh the settled status + re-persist so a reload restores the real derivation
+      if(SETTLED){ const n=BOOK.filter(s=>s.cls==='deriv').length; if(n){ STATUS=answeredStatus(n); renderRail(); } saveConvState(); } }   // body landed AFTER 'done' settled: refresh the settled status + re-persist so a reload restores the real derivation
     takeBodyReply(j.reply);
     if(!SETTLED) markTurnDone();
     else if(EXEC) saveConvState();                            // late HTTP metadata upgrades the durable per-sheet provenance
@@ -1087,7 +1097,7 @@ async function startTurn(){
   // (3) SAFETY NET: fail only if NOTHING arrived through either channel (covers a truly dead run / cold start).
   setTimeout(()=>{ if(RUN!==myRun||SETTLED)return; if(!VIEWS.length&&!REPLY&&!CALLS.length) fail('the assistant is taking too long — please try again in a moment'); }, 180000);
 }
-function addCall(uid,c){                                      // an engine call Sonnet made this turn — stream its trace into the panel
+function addCall(uid,c){                                      // an engine call Gemini made this turn — stream its trace into the panel
   CALLS.push(c);
   STATUS='Reading as: “'+c.question+'”…'; renderRail();
   if(!uid||!window.subscribeRun)return;
@@ -1150,7 +1160,7 @@ function takeBodyReply(reply){
   REPLY=reply;
   if(SETTLED&&!FAILMSG){ CONV=REPLY; renderRail(); saveConvState(); }
 }
-function markTurnDone(){                                      // the turn finished: settle, show Sonnet's reply in the rail
+function markTurnDone(){                                      // the turn finished: settle, show Gemini's reply in the rail
   if(SETTLED)return;
   callSubs.forEach(u=>{try{u();}catch(_){}}); callSubs=[];
   settle();
@@ -1161,7 +1171,7 @@ function markTurnDone(){                                      // the turn finish
   try{ sessionStorage.setItem('pr_orch_history', JSON.stringify(HISTORY)); }catch(_){}   // survive a reload of THIS conversation
   if(TRANSPORT_ERROR){recoverTransport();return;}
   const n=BOOK.filter(s=>s.cls==='deriv').length;
-  STATUS = n?('Answered in '+n+' step'+(n===1?'':'s')):'Done';
+  STATUS = n?answeredStatus(n):'Done';
   surfaceUnresolved();                                        // offer master-data sheets for unresolved text columns
   renderRail();
   saveConvState();                                            // persist a renderable snapshot so a reload restores this turn
@@ -1181,7 +1191,7 @@ async function startRun(){
   try{ await autosaveRefs(); }                                // reference state is part of this turn: never reason against a stale saved copy
   catch(e){ fail('Could not save reference data, so the query was not run: '+(e&&e.message||e)); return; }
   if(ORCH) return startTurn();                                // orchestrated front door; ?chat=0 falls through to the direct path below, which uses no external LLM
-  const myRun=++RUN;                                          // supersede guard: an old run's async callbacks must not paint
+  const myRun=++RUN; FALLBACK=null;                           // supersede guard: an old run's async callbacks must not paint
   const live=()=>RUN===myRun&&!SETTLED;
   LASTQ=question; if(EDITED){ syncInputsToSheets(); EDITED=false; showRecalc(false); } stampBaseline();   // pick up any input-cell edits; re-baseline what we're about to compute
   let token;
@@ -1253,7 +1263,7 @@ function resetRun(){
   if(UNSUB){try{UNSUB();}catch(_){}UNSUB=null;} clearTimeout(doneTimer);
   // Keep the previous turn's derivation/reference sheets, marked "stale", rather than dropping them now: a
   // data query retires them when it makes its own first sheet (dropStale); a conversational/meta follow-up
-  // (answered by Sonnet, no sheets of its own) leaves the last derivation on screen — it's usually the subject.
+  // (answered by Gemini, no sheets of its own) leaves the last derivation on screen — it's usually the subject.
   BOOK.forEach(s=>{ if(s.cls!=='input'&&s.cls!=='master') s.stale=true; });   // master data persists like the user's own tables
   J=null; VIEWS=[]; RESOLVES=[]; SETTLED=false; DONE=false; FAILMSG=null;TRANSPORT_ERROR=null;
   CONV=null; CONVPENDING=false; CONVPROP=null; PRESENT=false; HTTPJ=null; EXEC=null; SRCOPEN=false; SRC_PINNED=false; SRC='py';

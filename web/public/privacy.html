@@ -34,7 +34,7 @@ footer{border-top:1px solid var(--line);padding-top:24px;margin-top:52px;color:v
 <header><nav class="nav" aria-label="Primary"><a class="brand" href="https://prereasoner.com/">Prereasoner</a><a class="back" href="/">Back to the app</a></nav></header>
 <main>
   <h1>Privacy</h1>
-  <div class="updated">Last updated: September 24, 2026</div>
+  <div class="updated">Last updated: October 2, 2026</div>
 
   <p class="plain">Prereasoner analyzes the spreadsheet data and questions you submit so it can
   compute an answer and show the steps used to reach it. The reference service at
@@ -58,28 +58,36 @@ footer{border-top:1px solid var(--line);padding-top:24px;margin-top:52px;color:v
 
   <h2>How answers are produced</h2>
   <p>The core engine builds and executes inspectable SQL against your data. It uses a frozen model as
-  an encoder for intent and schema signals; that model does not decode SQL or invent the numerical
-  answer.</p>
+  an encoder for intent and schema signals; no model on the service's servers writes SQL or invents the
+  numerical answer, and the database computes it. When the engine cannot build a query on its own, it can
+  ask Gemini for help as described below, and the answer says so.</p>
 
-  <div class="important"><p><strong>Assistant processing.</strong> The hosted assistant currently
-  uses Anthropic. Assistant requests can include your messages, conversation history, attached
-  table contents, table and column names, generated SQL, limited query results, and trimmed tool
-  output. This processing is used to present results, handle ambiguity, orchestrate tools, and fill
-  reference cells you explicitly request.</p></div>
+  <div class="important"><p><strong>Assistant processing.</strong> The hosted assistant uses
+  Google's Gemini models on Vertex AI, in the service's own Google Cloud project. Assistant requests
+  can include your messages, conversation history, attached table contents, table and column names,
+  generated SQL, limited query results, and trimmed tool output. This processing is used to present
+  results, handle ambiguity, orchestrate tools, and fill reference cells you explicitly request.</p></div>
 
-  <p>Anthropic receives those requests through the service's API account. Its handling is governed
-  by the operator's agreement and is also described in the
-  <a href="https://www.anthropic.com/legal/privacy" rel="noopener">Anthropic Privacy Policy</a> and
-  <a href="https://privacy.claude.com/" rel="noopener">Privacy Center</a>. Prereasoner is working
-  toward operating this assistant layer locally once a local model meets the required quality,
-  latency, security, and cost standards. The calculation and verification path remains
-  deterministic.</p>
+  <p>When the engine cannot build a query for a question on its own, it can ask Gemini to reword the
+  question once or to propose one SQL query. That request contains the question, the table and
+  column names, column types, foreign keys, and up to three example values per column. The engine
+  still checks, runs and labels any query that results, and the database computes every number.</p>
+
+  <p>Google receives those requests through the service's Google Cloud project. Its handling is
+  governed by the operator's Google Cloud agreement and is also described in
+  <a href="https://cloud.google.com/vertex-ai/generative-ai/docs/data-governance" rel="noopener">Vertex
+  AI data governance</a> and the
+  <a href="https://cloud.google.com/terms/cloud-privacy-notice" rel="noopener">Google Cloud Privacy
+  Notice</a>. Prereasoner is working toward operating this assistant layer locally once a local
+  model meets the required quality, latency, security, and cost standards. The calculation and
+  verification path remains deterministic.</p>
 
   <h2>Service providers</h2>
   <ul>
     <li><strong>Google Cloud and Firebase:</strong> hosting, authentication, databases, and reasoning-trace delivery. See
     <a href="https://firebase.google.com/support/privacy" rel="noopener">Firebase privacy and security</a>.</li>
-    <li><strong>Anthropic:</strong> language processing for the hosted assistant features described above.</li>
+    <li><strong>Google Cloud Vertex AI (Gemini):</strong> language processing for the hosted assistant
+    features and the query fallback described above.</li>
   </ul>
 
   <p>Microsoft sign-in for Excel uses Microsoft's standard identity response through Firebase
@@ -103,8 +111,8 @@ footer{border-top:1px solid var(--line);padding-top:24px;margin-top:52px;color:v
   conversations, and related security and support functions described on this page. We do not use,
   transfer, or sell raw, aggregated, anonymized, or derived Google user data to create, train, or
   improve generalized or non-personalized artificial-intelligence or machine-learning models. Data
-  sent to a model provider is used only to process the user's requested feature; it is not sent or
-  authorized for provider or third-party model training.</p>
+  sent to Gemini on Vertex AI is used only to process the user's requested feature; it is not sent
+  or authorized for Google or third-party model training.</p>
 
   <h2>Sharing and international processing</h2>
   <p>We do not sell customer spreadsheet data or use it for targeted advertising. We share data with
@@ -125,8 +133,9 @@ footer{border-top:1px solid var(--line);padding-top:24px;margin-top:52px;color:v
     <li>Cloud SQL is reached through an IAM-authenticated connector rather than an open database
     network. Runtime services use dedicated, least-privilege service accounts and a non-superuser
     database role.</li>
-    <li>Database credentials and provider keys are stored in Google Secret Manager and are not
-    embedded in client code or operational logs.</li>
+    <li>Database credentials are stored in Google Secret Manager and are not embedded in client
+    code or operational logs. Gemini is called with the service's own Google Cloud identity, so no
+    model API key exists.</li>
     <li>Request-size, row, rate, and storage limits reduce abuse and unnecessary data exposure.
     Production logs exclude spreadsheet rows, questions, conversation history, generated SQL,
     credentials, request bodies, and full error messages.</li>

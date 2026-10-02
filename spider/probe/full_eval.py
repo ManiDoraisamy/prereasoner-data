@@ -17,7 +17,7 @@ model, candidate pool, ranking, gold query, input cap, or the existing `spider_e
 contract. World resolution is irrelevant to self-contained Spider and the live clarify gate remains omitted;
 a refusal would still score wrong, so that omission can only make the benchmark an upper bound.
 
-Selection is the served one: `TableQuery.select_query` (search + proposer + pool execution + arbiter), loaded
+Selection is the served one: `TableQuery.select_query` (search + pool execution + grounding), loaded
 from the same runtime bundle the service loads, so the evaluator measures the shipped pipeline and cannot
 drift from it. --selection pool_oracle runs that same selection, then executes the ENTIRE pool and scores the
 example by its best member: an explicitly labeled oracle ablation (like --config gold_tables) that measures
@@ -207,7 +207,7 @@ def ast_predict(
         "candidate_count": len(candidates),
         "executed_candidate_count": sum(chosen.executable),
         "selected_candidate_rank": chosen.selected,
-        "selection": chosen.record(enc.sql_arbiter),
+        "selection": chosen.record(),
     }
 
     def execute(sql):
@@ -303,29 +303,26 @@ def ast_predict(
                 "stage": "ast_search", "path": "ast", **evidence}
     if selection == "pool_oracle":
         # Oracle ablation (never serving): execute EVERY pooled candidate so the EVALUATOR can score
-        # the example by its best member. Gold rows stay in the evaluator; prediction never sees them.
+        # the example by its best member: the pool's recall, separate from the served ranking. Gold rows
+        # stay in the evaluator; prediction never sees them.
         import sqlite3
 
-        # Arbiter training labels every pooled candidate, so the oracle scores the whole pool
-        # (the served selection already scored the executable members; those come from cache).
-        likelihoods = enc.sql_proposer.likelihoods(norm, question,
-                                                   [candidate.sql for candidate in candidates])
+        from engine.sql_rank import EXECUTION_OP_LIMIT
+
         connection = enc._sqlite_tables(tmap, sch)
-        connection.set_progress_handler(lambda: 1, enc.sql_arbiter.execution_op_limit)
+        connection.set_progress_handler(lambda: 1, EXECUTION_OP_LIMIT)
         pool = []
         for rank, candidate in enumerate(candidates):
             entry = {"rank": rank, "sql": candidate.sql,
                      "score": candidate.score,
                      "features": dict(candidate.features),
                      "evidence": list(candidate.evidence),
-                     "proposed": candidate.sql in chosen.proposed,
                      "executable": chosen.executable[rank],
                      "grounded": chosen.grounded[rank],
                      "eligible": chosen.executable[rank] and chosen.grounded[rank],
                      "calculation_satisfied": chosen.calculation_satisfied[rank],
                      "money_total": chosen.money_total[rank],
                      "date_satisfied": chosen.date_satisfied[rank]}
-            entry["likelihood"], entry["likelihood_tokens"] = likelihoods[rank]
             ok, why = enc.guard(candidate.sql)
             if not ok:
                 entry["error"] = f"guard: {why}"
@@ -363,7 +360,7 @@ def ast_predict(
         "path": "ast",
         **backend,
         "plan": list(candidate.evidence),
-        "proposal_selected": chosen.origin(chosen.selected) == "proposer",
+        "served_by": chosen.served_by,
         "candidate_score": round(candidate.score, 4),
         **evidence,
     }
@@ -386,15 +383,10 @@ def _score_pool_oracle(record, gold_rows):
         pool = []
         for entry in raw:
             eligible = bool(entry.get("eligible")) and "error" not in entry
-            features = dict(entry.get("features") or {})
-            if entry.get("likelihood") is not None:
-                features["proposer:scored_logprob"] = entry["likelihood"]
-                features["proposer:scored_tokens"] = float(entry["likelihood_tokens"])
             serving_facts = {
                 "score": entry.get("score"),
-                "features": features,
+                "features": dict(entry.get("features") or {}),
                 "evidence": list(entry.get("evidence") or ()),
-                "proposed": bool(entry.get("proposed")),
                 "executable": bool(entry.get("executable")),
                 "grounded": bool(entry.get("grounded")),
                 "eligible": bool(entry.get("eligible")),
@@ -594,10 +586,13 @@ def main():
         "cap": args.cap,
         "timeout": args.timeout,
     }
-    from engine.xiyan_sql_proposer import effective_cpu_threads, load_contract
-    checkpoint_contract["sql_proposer_threads"] = effective_cpu_threads(load_contract())
-    from engine.artifact_provenance import adapter_sha256, fingerprint_paths, sha256_file
+    from engine import llm
+    from engine.artifact_provenance import adapter_sha256, fingerprint_paths
     from engine.config import DATA_DIR
+
+    # The labelled Gemini fallback runs only when the operator enabled Gemini. The headline is the
+    # engine alone (EXTERNAL_LLM_ENABLED unset); a run with the fallback says so and names its model.
+    checkpoint_contract["fallback"] = {"enabled": llm.available(), "model": llm.model_id()}
 
     # Fingerprint the FULL serving path, not just the planner core — a routing or semantic-signal change
     # (tables.py / knowledge_compose.py / primitive_head.py / compose.py / encoder_overlay.py) or an edit to
@@ -605,7 +600,7 @@ def main():
     engine_code = ("routing.py", "tables.py", "sql_search.py", "sql_rank.py", "sql_ast.py", "sql_candidate.py",
                    "sql_schema.py", "sql_expansion.py", "sql_constraints.py", "sql_extrema.py",
                    "sql_recursive.py", "sql_parsimony.py", "sql_profile.py", "sql_profile_expansion.py",
-                   "xiyan_sql_proposer.py", "sql_prompt.py", "sql_import.py", "sql_grounding.py",
+                   "sql_fallback.py", "sql_prompt.py", "sql_import.py", "sql_grounding.py", "llm.py",
                    "model_revisions.py",
                    "decomposition.py",
                    "knowledge_compose.py", "primitive_head.py", "compose.py", "encoder_overlay.py",
@@ -627,9 +622,6 @@ def main():
             "tables": os.path.join(args.data, "tables.json"),
             "encoder": DATA_DIR / "encoder.pt",
             "encoder_meta": DATA_DIR / "encoder_meta.pt",
-            "sql_arbiter": DATA_DIR / "sql_arbiter.json",
-            "sql_proposer_contract": DATA_DIR / "xiyan_sql_proposer.json",
-            "sql_proposer_model": DATA_DIR / "xiyan_sql_proposer.gguf",
             "eval_harness": os.path.join(ROOT, "spider", "probe", "full_eval.py"),
             **{f"engine/{name}": os.path.join(ROOT, "engine", name) for name in engine_code},
             **{
@@ -638,7 +630,6 @@ def main():
             },
         }),
         "encoder_adapter": adapter_sha256(DATA_DIR / "qwen_lora"),
-        "proposer_model_sha256": sha256_file(DATA_DIR / "xiyan_sql_proposer.gguf"),
         **_git_provenance(ROOT),   # source_commit + worktree_dirty: a run traces to an exact tree; a dirty
     }                              # tree (or a different commit) invalidates a --resume checkpoint.
     completed = {}
@@ -652,7 +643,7 @@ def main():
         )
         print(f"resuming from {len(completed)} checkpointed examples", flush=True)
 
-    print("loading the runtime bundle (encoder, SQL proposer, arbiter)...", flush=True)
+    print("loading the runtime bundle (encoder)...", flush=True)
     from engine.compose import ComposeEngine
     from engine.encoder_overlay import EncoderQuery
     from engine.primitive_head import PrimitiveReader
@@ -660,7 +651,7 @@ def main():
     reader = PrimitiveReader(encoder=enc)
     eng = ComposeEngine(reader=reader)
     print(f"loaded. evaluating {len(picked)} examples (config={args.config}, "
-          f"proposer device={enc.sql_proposer.device})\n", flush=True)
+          f"fallback={'on: ' + llm.model_id() if enc.sql_fallback.available else 'off'})\n", flush=True)
 
     db_cache = {}
     ast_schema_cache = {}
@@ -814,7 +805,7 @@ def main():
         "python_row_limit": args.python_row_limit,
         "scalar_only": args.scalar_only,
         "compose": not args.no_compose,
-        "proposer_device": enc.sql_proposer.device,
+        "fallback": checkpoint_contract["fallback"],
         "cap": args.cap,
         "timeout": args.timeout,
         "prediction_seconds": _latency_summary(

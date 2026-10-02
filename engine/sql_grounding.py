@@ -2,10 +2,10 @@
 
 Literal grounding: a text literal compared with a column must be a value that column can hold.
 
-The SQL proposer reads the schema, never the values (engine/sql_prompt.py). For "product names
-bought by Lyon customers" it wrote ``purchases.customer_name = 'Lyon'``, a filter that matches no
-row because 'Lyon' is a city; the deterministic search links values against the data and bound it
-to ``purchases.city``. A comparison is mis-grounded when its literal occurs in no row of its own
+A model-written query sees at most a few example values per column (engine/sql_prompt.py). For
+"product names bought by Lyon customers" a SQL model wrote ``purchases.customer_name = 'Lyon'``, a
+filter that matches no row because 'Lyon' is a city; the deterministic search links values against
+the data and bound it to ``purchases.city``. A comparison is mis-grounded when its literal occurs in no row of its own
 column but does occur in another column of the request's tables. Such a query answers a different
 question, so it is never eligible for selection (``TableQuery.select_query``). A literal that
 occurs in no column is left alone: the question may name a value the data does not hold, and the
@@ -19,15 +19,15 @@ Exclusions are checked like equality. `customer_name != 'Lyon'` on data where Ly
 excludes nothing: it is the Lyon mis-binding in negated form, and "customers not from Lyon" would list
 everyone. The accepted cost: when two columns share a domain (a ship city and a billing city) and the
 question names the one that legitimately lacks the value while its sibling holds it, the right reading
-is ineligible, so a grounded member is selected instead or the question is not answered. The proposer
+is ineligible, so a grounded member is selected instead or the question is not answered. A SQL model
 mis-binds values far more often than a question names an empty value of one of two same-kind columns.
 
 Join grounding: a join must not equate two columns the foreign keys keep apart.
 
-For complex-promotions' "for each customer, list every product name they have ever bought" the
-proposer joined ``products ON orders.order_id = products.product_id``, skipping the ``order_items``
-bridge the discovered foreign keys state. The query ran and matched no row, the arbiter ranked it
-first, and the anti-join it fed removed nothing (2026-10-01). A pair of equated columns from two
+For complex-promotions' "for each customer, list every product name they have ever bought" a SQL
+model joined ``products ON orders.order_id = products.product_id``, skipping the ``order_items``
+bridge the discovered foreign keys state. The query ran and matched no row, it was served, and the
+anti-join it fed removed nothing (2026-10-01). A pair of equated columns from two
 different tables is mis-joined when the foreign keys connect the two tables, the columns are not
 one key under them (the foreign-key column pairs, closed transitively), and either both columns
 are foreign-key columns, so the keys name each one and tell them apart, or one of them is a key
@@ -273,7 +273,7 @@ def _walk_predicate(predicate, scope: Mapping[str, str | None], out: _Facts) -> 
         _walk_expr(predicate.left, scope, out)
         _walk_expr(predicate.right, scope, out)
         if predicate.operator in _EQUALITY:
-            # Both operand orders: imported proposer SQL may put the literal first.
+            # Both operand orders: imported model SQL may put the literal first.
             _bind(predicate.left, predicate.right, scope, out)
             _bind(predicate.right, predicate.left, scope, out)
         if predicate.operator == "=":

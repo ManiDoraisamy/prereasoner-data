@@ -31,10 +31,11 @@ connects tables to public knowledge, private references, and domain-specific cal
 ### Short feature list
 
 - **See the query** - Read the SQL that produced the result.
+- **Know who built it** - No local model writes SQL. When the engine cannot build a query, it can ask Gemini, and the answer says so.
 - **Check the rows** - Open the matched input and reference rows.
 - **Use public facts** - Join approved source data when your table does not contain the answer.
 - **Keep the calculation** - See currency, ratio, tax, and commission operands and units.
-- **Repeat the answer** - Fixed data and model files produce the same result again.
+- **Repeat the answer** - Fixed data and model files produce the same query and result again. An answer that needed Gemini is the exception, and it is labelled.
 - **Refuse when the data is not enough** - An unsupported answer is returned for review instead of silently filled in.
 
 ### Call to action
@@ -153,7 +154,8 @@ run the same request against the same data and inspect what changed when the res
 ### Short feature list
 
 - **Named inputs** - See which columns, values, and source facts were used.
-- **Repeatable results** - Fixed inputs and artifacts produce the same plan and result.
+- **Built by the engine** - No local model writes SQL. When the engine cannot build a query, it can ask Gemini, and the answer says so.
+- **Repeatable results** - Fixed inputs and artifacts produce the same plan and result, except a labelled answer that needed Gemini.
 - **Source-aware answers** - Read the source release and matched reference rows.
 - **Clear limits** - Missing or ambiguous evidence produces a reviewable refusal.
 - **Local deployment** - Run the engine with your own data and infrastructure.
@@ -179,8 +181,9 @@ build the shared reference tables. Run it on your CPU or deploy it to your own G
 
 ### Be precise about the database
 
-The source checkout does not contain a ready-made production database snapshot. A deployment builds
-the required source tables through the documented ETL and records the source releases used. The
+The source checkout does not contain a database. The guided Google Cloud deployment restores a
+minimal public seed dump, pinned by SHA-256, and records the source releases used; the hosted
+production database is not distributed. The
 deployment needs a Google Cloud project, authorization, and billing. It is not an anonymous or
 zero-cost hosted service.
 

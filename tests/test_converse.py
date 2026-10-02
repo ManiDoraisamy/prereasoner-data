@@ -1,6 +1,7 @@
-"""test_converse.py — offline unit tests for engine.converse.generate_master (the STREAMING master-data fill
-behind /api/master/generate). Mocks the Anthropic streaming SDK so it runs with NO key and NO network, pinning:
-the user's already-filled cells are PRESERVED, empty cells filled, an entity-only table gains columns, ragged
+"""test_converse.py — offline unit tests for engine.converse: reply() behind /api/converse and generate_master
+(the STREAMING master-data fill behind /api/master/generate). Fakes engine.llm's Gemini calls, so it runs
+with NO credentials and NO network, pinning: the computed answer reaches the PRESENT prompt verbatim, the
+user's already-filled cells are PRESERVED, empty cells filled, an entity-only table gains columns, ragged
 rows normalized, the instruction + current rows reach the prompt, each header/row is EMITTED to RTDB live in
 order, incremental parsing survives chunk splits mid-line, and a non-JSONL {columns, rows} blob still parses.
 
@@ -12,38 +13,52 @@ import json
 import os
 import sys
 import types
+from unittest.mock import patch
+
+from engine import converse, llm
 
 
 def _gen(chunks, columns, rows, instruction=None, emit=None):
-    """Call generate_master with a FAKE Anthropic STREAMING client whose text_stream yields `chunks` (a str is
-    sent as one chunk; a list is streamed piece by piece, letting a test split JSONL mid-line). Returns
-    (out, captured) where captured has the user/system prompt the client saw."""
+    """Call generate_master with a FAKE Gemini stream that yields `chunks` (a str is sent as one chunk; a
+    list is streamed piece by piece, letting a test split JSONL mid-line). Returns (out, captured) where
+    captured has the user/system prompt the stream was asked for."""
     chunks = [chunks] if isinstance(chunks, str) else list(chunks)
     cap = {}
-    fake = types.ModuleType("anthropic")
 
-    class _Stream:
-        def __enter__(self): return self
-        def __exit__(self, *a): return False
-        @property
-        def text_stream(self):
-            for c in chunks:
-                yield c
+    def stream_text(*, system, prompt, max_output_tokens, timeout_seconds=60.0):
+        cap["user"] = prompt; cap["system"] = system; cap["max_output_tokens"] = max_output_tokens
+        return iter(chunks)
 
-    class _Msgs:
-        def stream(self, **kw):
-            cap["user"] = kw["messages"][0]["content"]; cap["system"] = kw.get("system"); cap["model"] = kw.get("model")
-            return _Stream()
+    with patch.object(llm, "stream_text", stream_text):
+        return converse.generate_master("series", columns, rows, instruction=instruction, emit=emit), cap
 
-    class _Client:
-        def __init__(self, *a, **k): self.messages = _Msgs()
 
-    fake.Anthropic = _Client
-    sys.modules["anthropic"] = fake
-    import engine.config as cfg
-    cfg.anthropic_api_key = lambda: "test-key"               # generate_master imports this at call time; no real key needed
-    from engine import converse
-    return converse.generate_master("series", columns, rows, instruction=instruction, emit=emit), cap
+def test_reply_presents_the_computed_answer_through_gemini():
+    seen = {}
+
+    def generate_text(*, system, prompt, max_output_tokens, json_schema=None, timeout_seconds=30.0):
+        seen.update(system=system, prompt=prompt, max_output_tokens=max_output_tokens, json_schema=json_schema)
+        return "  That comes to 876.50 after the discount.  \n"
+
+    with patch.object(llm, "generate_text", generate_text):
+        text = converse.reply("how much after the discount?", tables=[{"name": "orders", "columns": ["amount"]}],
+                              answer={"columns": ["net_amount"], "rows": [["876.50"]]}, sql="SELECT 1")
+    assert text == "That comes to 876.50 after the discount."
+    assert seen["system"] == converse.SYSTEM and seen["json_schema"] is None
+    assert "MODE: PRESENT" in seen["prompt"] and "net_amount | 876.50" in seen["prompt"], seen["prompt"]
+    assert "orders(amount)" in seen["prompt"] and seen["max_output_tokens"] == converse.REPLY_MAX_TOKENS
+
+
+def test_unavailable_gemini_reaches_the_converse_handler_as_llm_unavailable():
+    """/api/converse and /api/master/generate answer 503 from this exception; the browser then falls back."""
+    with patch.dict("os.environ", {"EXTERNAL_LLM_ENABLED": "false"}):
+        for call in (lambda: converse.reply("what is this?", clarify={"proposed": "total amount"}),
+                     lambda: converse.generate_master("series", ["series"], [["Doyle"]])):
+            try:
+                call()
+                raise AssertionError("expected LLMUnavailable")
+            except llm.LLMUnavailable:
+                pass
 
 
 def _jsonl(cols, rows):
@@ -192,6 +207,8 @@ def test_trace_deletion_filters_by_conversation_and_supports_delete_all():
 
 
 TESTS = [
+    test_reply_presents_the_computed_answer_through_gemini,
+    test_unavailable_gemini_reaches_the_converse_handler_as_llm_unavailable,
     test_preserves_existing_and_fills_empty,
     test_preserves_by_column_name_even_if_model_reorders,
     test_instruction_and_current_rows_reach_the_prompt,

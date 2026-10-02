@@ -1,7 +1,14 @@
 # Prereasoner local stack: Postgres (pgvector) + serving engine + required chat/UI service.
 #
-#   cp .env.example .env            # set KB_PG_PASSWORD (defaults to "devpassword" if unset)
+#   cp .env.example .env            # set GOOGLE_CLOUD_PROJECT; KB_PG_PASSWORD defaults to "devpassword"
+#   gcloud auth application-default login     # once: the Gemini credentials mounted below
 #   docker compose up --build       # db + engine + chat/UI (http://localhost:8090)
+#
+# Gemini on Vertex AI (engine/llm.py) is the one external model. As in a deployment with chat, it is
+# enabled for both the engine and chat, in GOOGLE_CLOUD_PROJECT (which needs the Vertex AI API), with
+# your gcloud configuration directory (it holds the Application Default Credentials file) mounted
+# read-only. On Windows set GCLOUD_CONFIG_DIR in .env. Without GOOGLE_CLOUD_PROJECT the stack still
+# starts: chat answers 503, and the engine runs without Gemini.
 #
 # AUTH_TEST_SUB=localdev is set on the engine so reviewers can call /api/reason and
 # /api/knowledge WITHOUT a Firebase ID token (test-only bypass; never set it in production).
@@ -19,6 +26,15 @@
 #   docker compose --profile seed run --rm seed \
 #     bash -c "python db/sync/sync_wikidata.py --reset && python db/sync/build_world.py && \
 #              python db/sync/build_words.py --cities --city-aliases && python db/sync/sync_types.py"
+
+x-gemini-environment: &gemini-environment
+  EXTERNAL_LLM_ENABLED: "true"
+  GOOGLE_CLOUD_PROJECT: ${GOOGLE_CLOUD_PROJECT:-}
+  GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.8-flash}
+  GEMINI_LOCATION: ${GEMINI_LOCATION:-global}
+  GOOGLE_APPLICATION_CREDENTIALS: /gcloud/application_default_credentials.json
+x-gemini-credentials: &gemini-credentials
+  ${GCLOUD_CONFIG_DIR:-~/.config/gcloud}:/gcloud:ro
 
 services:
   db:
@@ -43,7 +59,10 @@ services:
     build: .
     ports:
       - "8080:8080"
+    volumes:
+      - *gemini-credentials
     environment:
+      <<: *gemini-environment
       KB_PG_HOST: db
       KB_PG_PORT: "5432"
       KB_PG_DB: world
@@ -59,10 +78,10 @@ services:
       db:
         condition: service_healthy
 
-  # The Sonnet orchestrator + Prereasoner MCP server (docs/MCP.md). Calls the engine over the compose
-  # network (ENGINE_BASE_URL=http://engine:8080), same way the engine reaches db. Needs ANTHROPIC_API_KEY
-  # in .env. Local: chat UI + /chat on http://localhost:8090; the engine runs with AUTH_TEST_SUB so no
-  # Firebase token is needed and RTDB is unset (the reasoning player rebuilds from the returned views).
+  # The Gemini orchestrator + Prereasoner MCP server (docs/MCP.md). Calls the engine over the compose
+  # network (ENGINE_BASE_URL=http://engine:8080), same way the engine reaches db, and Gemini with the
+  # settings above. Local: chat UI + /chat on http://localhost:8090; the engine runs with AUTH_TEST_SUB so
+  # no Firebase token is needed and RTDB is unset (the reasoning player rebuilds from the returned views).
   chat:
     build:
       context: .
@@ -70,11 +89,11 @@ services:
     volumes:
       # Reuse the canonical Firebase Hosting source locally; the container does not own a second copy.
       - ./web/public:/app/web/public:ro
+      - *gemini-credentials
     ports:
       - "8090:8090"
     environment:
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?set ANTHROPIC_API_KEY in .env}
-      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-5}
+      <<: *gemini-environment
       ENGINE_BASE_URL: http://engine:8080
       APP_ENV: development
       AUTH_TEST_SUB: localdev         # /chat requires a verified identity; local dev has no Google sign-in, so

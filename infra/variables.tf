@@ -89,9 +89,21 @@ variable "admin_emails" {
 }
 
 variable "enable_external_llm" {
-  description = "Enable engine features that call the configured external LLM. False leaves its secret, IAM grant, and request paths disabled."
+  description = "Enable the engine's Gemini features (/api/converse, reference generation, the selection fallback) without the chat service. Enabling the chat service enables them too. False with chat off leaves the Vertex AI API, IAM grant, and request paths disabled."
   type        = bool
   default     = false
+}
+
+variable "gemini_model" {
+  description = "Vertex AI Gemini model id used by the engine and the chat service."
+  type        = string
+  default     = "gemini-3.8-flash"
+}
+
+variable "gemini_location" {
+  description = "Vertex AI location of the Gemini model."
+  type        = string
+  default     = "global"
 }
 
 variable "community_seed_uri" {

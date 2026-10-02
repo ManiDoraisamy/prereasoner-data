@@ -150,11 +150,9 @@ def compound_candidate(searched):
     """The search's compound reading that makes a named request need decomposition, or None.
 
     Compound structure is the deterministic search's own reading of the question: the top
-    candidate of its pool (``search_pool``), from a grammar that models set operations. Neither
-    the proposer nor the arbiter decides it, so it is read before any decode. A proposer beam can
-    read a single-goal question as a set operation over invented values (a world question over
-    data that lacks the world attribute), and a single-query answer to a multi-goal question is
-    only a fragment of it; the decomposition proposal owns such questions.
+    candidate of its pool (``search_pool``), from a grammar that models set operations, read before
+    any candidate runs. A single-query answer to a multi-goal question is only a fragment of it; the
+    decomposition proposal owns such questions.
     """
     top = searched[0] if searched else None
     return top if selected_decomposition_required(top) is not None else None
@@ -280,9 +278,9 @@ def ranked_entity_projected(candidate, node_id: str, question: str, feeds_cross:
 
 
 def leaf_candidates(selection, node_id: str, question: str, feeds_cross: bool):
-    """Return all single-query readings in arbiter order, with named measures projected.
+    """Return all single-query readings in selection order, with named measures projected.
 
-    Readings follow the arbiter's order, with its choice first and each names-only ranking
+    Readings follow the selection's order, with its choice first and each names-only ranking
     projected with its measure. The caller must enforce the measure and ranking-grain
     contracts separately: a lower-ranked pool member may be compatible even when the
     preferred reading is not.
@@ -312,7 +310,7 @@ def compound_decomposition_required(planner, tables, question) -> dict[str, Any]
     building a composition: a multi-goal question's surface ("top ...") can satisfy the
     compose gate, and a composed top-N would then answer one fragment of the question.
     Compound structure is the search's reading alone, so the probe runs only the search stage
-    of the one own-data selection (``search_pool``): no proposer decode, no execution. A
+    of the one own-data selection (``search_pool``): no execution, no fallback. A
     failed probe must not authorize a partial composed answer.
     """
     try:
@@ -432,7 +430,7 @@ def build_decomposed_plan(
     states (`unstated_cutoff_rejection`).
 
     An anti-join's evidence leaf is chosen when its merge is built: the first of its
-    contract-compatible readings, in arbiter order, that keeps every dimension of the left
+    contract-compatible readings, in selection order, that keeps every dimension of the left
     input (`_bind_merge_keys`). "For each customer, list every product name they have ever
     bought" was ranked first as a product-only reading, which cannot say which customer bought
     what; the customer-and-product reading ranked next is the evidence the merge needs.
@@ -600,8 +598,12 @@ def _leaf_readings(planner, slug, node, tables, schema, foreign_keys, tablemap, 
                    feeds_cross: bool, question: str):
     """Yield a leaf's contract-compatible readings, lowered and named for the root slug.
 
-    Readings come in the arbiter's order (`leaf_candidates`). Raises DecompositionError,
+    Readings come in the selection's order (`leaf_candidates`). Raises DecompositionError,
     naming the first reason a reading failed, when the leaf has none.
+
+    A leaf never takes the Gemini fallback: its question is already the chat model's wording, and a
+    leaf with no runnable query rejects the decomposition with that reason so the model restates
+    the leaf (a bounded correction), instead of fusing an unlabelled Gemini reading into the answer.
     """
     from engine.analysis import analysis_view_name
     from engine.deterministic.lower import (
@@ -610,7 +612,7 @@ def _leaf_readings(planner, slug, node, tables, schema, foreign_keys, tablemap, 
     )
 
     selection = planner.select_query(
-        node["question"], tables, foreign_keys, schema, tablemap
+        node["question"], tables, foreign_keys, schema, tablemap, allow_fallback=False
     )
     candidates = selection.pool
     if not candidates:
@@ -626,7 +628,7 @@ def _leaf_readings(planner, slug, node, tables, schema, foreign_keys, tablemap, 
     first_guard_failure = None
     first_lowering_failure = None
     found = False
-    # Pool order is the arbiter's order, but compatibility with the typed AST does
+    # Pool order is the selection's order, but compatibility with the typed AST does
     # not imply compatibility with the stricter dual-emitter subset. Try each
     # already-ranked, contract-compatible reading before clarifying. This preserves
     # all semantic and deterministic guards while avoiding a false failure caused

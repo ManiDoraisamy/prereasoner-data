@@ -5,6 +5,11 @@
 # Hosting-version resource does not support static files.
 
 locals {
+  # Gemini on Vertex AI in this project is the only external model (engine/llm.py). The chat service
+  # cannot work without it, so enabling chat enables it for the engine too; enable_external_llm
+  # turns it on for a deployment without chat. EXTERNAL_LLM_ENABLED carries this to both services.
+  external_llm_enabled = var.enable_external_llm || var.enable_orchestrator
+
   required_apis = concat([
     "firebase.googleapis.com",         # Firebase project APIs
     "firebasehosting.googleapis.com",  # Firebase Hosting release stage
@@ -17,15 +22,11 @@ locals {
     "cloudbuild.googleapis.com",       # gcloud builds submit
     "iam.googleapis.com",              # dedicated service account
     "cloudscheduler.googleapis.com",   # scheduled conversation and trace retention
-    ], var.enable_orchestrator && var.chat_llm_provider == "gemini" ? [
-    "aiplatform.googleapis.com", # Vertex AI Gemini Community chat
+    ], local.external_llm_enabled ? [
+    "aiplatform.googleapis.com", # Vertex AI Gemini
   ] : [])
 
   image = var.image
-
-  # The engine's optional Anthropic paths remain enabled for the production profile. Community
-  # chat uses Gemini in the separate orchestrator, so enabling chat must not require Anthropic.
-  external_llm_enabled = var.enable_external_llm || (var.enable_orchestrator && var.chat_llm_provider == "anthropic")
 
   serving_user                  = var.serving_db_role
   serving_secret_id             = google_secret_manager_secret.serving_db_password.secret_id
@@ -229,11 +230,12 @@ resource "google_project_iam_member" "run_rtdb" {
   member  = "serviceAccount:${google_service_account.run.email}"
 }
 
-resource "google_secret_manager_secret_iam_member" "run_anthropic_key" {
-  count     = local.external_llm_enabled ? 1 : 0
-  secret_id = var.anthropic_secret_id
-  role      = "roles/secretmanager.secretAccessor"
-  member    = "serviceAccount:${google_service_account.run.email}"
+# Gemini on Vertex AI (engine/llm.py): /api/converse, reference generation, and the selection fallback.
+resource "google_project_iam_member" "run_vertex_ai" {
+  count   = local.external_llm_enabled ? 1 : 0
+  project = var.project_id
+  role    = "roles/aiplatform.user"
+  member  = "serviceAccount:${google_service_account.run.email}"
 }
 
 resource "google_secret_manager_secret_iam_member" "sync_db_password" {
@@ -249,13 +251,6 @@ resource "google_cloud_run_v2_service" "api" {
   location            = var.region
   ingress             = "INGRESS_TRAFFIC_ALL"
   deletion_protection = var.deletion_protection
-
-  lifecycle {
-    precondition {
-      condition     = !local.external_llm_enabled || length(trimspace(var.anthropic_secret_id)) > 0
-      error_message = "anthropic_secret_id is required when external LLM processing is enabled."
-    }
-  }
 
   template {
     service_account = google_service_account.run.email
@@ -285,10 +280,11 @@ resource "google_cloud_run_v2_service" "api" {
     containers {
       image = local.image
 
-      # Sizing: 8 vCPU / 16Gi for the existing reasoner/encoder models plus the XiYanSQL 7B
-      # Q4_K_M SQL proposer. Leave memory headroom for request-time tensors, 10 MB request bodies,
-      # and the in-memory SQLite copies of uploaded sheets. A short 8-vCPU Cloud Run release sample
-      # measured proposer-decode p90 at 10.1 s; this is a smoke result, not a sustained-load SLA.
+      # Sizing: 8 vCPU / 16Gi was set for the in-engine SQL proposers (2026-09-23), removed on
+      # 2026-10-02 (DECISIONS.md). The encoder stack ran on 4 vCPU / 8Gi before them; downsizing is
+      # the operator's cost decision.
+      # Leave memory headroom for request-time tensors, 10 MB request bodies, and the in-memory
+      # SQLite copies of uploaded sheets.
       resources {
         limits = {
           cpu    = "8"
@@ -328,20 +324,20 @@ resource "google_cloud_run_v2_service" "api" {
         name  = "EXTERNAL_LLM_ENABLED" # authoritative deployment switch; see PRIVACY.md
         value = tostring(local.external_llm_enabled)
       }
-      # Sonnet presentation (/api/converse) and reference autofill (/api/master/generate) read the
-      # same key the orchestrator uses; without it both degrade to 503 and the UI falls back to
-      # local text. Same out-of-band secret as the chat service (see orchestrator.tf).
-      dynamic "env" {
-        for_each = local.external_llm_enabled ? [var.anthropic_secret_id] : []
-        content {
-          name = "ANTHROPIC_API_KEY"
-          value_source {
-            secret_key_ref {
-              secret  = env.value
-              version = "latest"
-            }
-          }
-        }
+      # Gemini on Vertex AI in this project, authorized by the service account (run_vertex_ai). With
+      # the switch off, /api/converse and /api/master/generate answer 503 and the UI falls back to
+      # local text; selection runs without its Gemini fallback.
+      env {
+        name  = "GEMINI_MODEL"
+        value = var.gemini_model
+      }
+      env {
+        name  = "GEMINI_LOCATION"
+        value = var.gemini_location
+      }
+      env {
+        name  = "GOOGLE_CLOUD_PROJECT"
+        value = var.project_id
       }
       env {
         name  = "CORS_ORIGINS"
@@ -437,7 +433,7 @@ resource "google_cloud_run_v2_service" "api" {
     google_secret_manager_secret_iam_member.run_serving_db_password,
     google_secret_manager_secret_version.dataset_attestation,
     google_secret_manager_secret_iam_member.run_dataset_attestation,
-    google_secret_manager_secret_iam_member.run_anthropic_key,
+    google_project_iam_member.run_vertex_ai,
   ]
 }
 

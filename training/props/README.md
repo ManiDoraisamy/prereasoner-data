@@ -3,7 +3,7 @@
 This is the **vendored** home of the property-typing training pipeline: it rebuilds the shipped
 PROPERTY-consensus model in `engine/data/` (`alloc.json`, `families.json`, `props_thr.json`, `encoder.pt`,
 `encoder_meta.pt`, `qwen_lora/`) from this repo. The keystone data file `bridge_prop.csv` (Wikidata-P-id →
-schema.org-property URI, 181 mappings) lives here.
+schema.org-property URI, 183 rows over 173 distinct P-ids) lives here.
 
 - **The DAG + runbook** (per-stage consumes/produces, external inputs, env vars, exact command order):
   [`pipeline.md`](pipeline.md).
@@ -54,11 +54,15 @@ None class collapsed 0.769 → 0.138 — spurious fires), on a question-text-spl
    0.808 engine baseline** with the `howmany_customers_france` probe OK.
 7. `python -m training.props.build_families` (software gets `operatingSystem` as its distinctive prop) +
    `python -m training.props.calibrate_props` (Youden-J thresholds for the 4 new dims).
-8. Copy the Stage-3 outputs into `engine/data/` under the engine's names
-   (`encoder.pt`/`encoder_meta.pt`/`qwen_lora/`/`alloc.json`; `families.json` + `props_thr.json` are already
-   staged there by step 7), then `python -m tests.test_world` + `test_geo` (software must pass) **and**
+8. Install the Stage-3 outputs with `python -m training.props.promote --local-only`. It atomically copies
+   `training/props/data/{encoder_props.pt, encoder_props_meta.pt, qwen_lora_props/, props_thr.json}` into
+   `engine/data/` under the engine's names (`encoder.pt`, `encoder_meta.pt`, `qwen_lora/`, `props_thr.json`),
+   refuses an encoder that the runtime Schema.org head was not trained on, and rewrites the manifest hashes
+   (`--source`/`--destination` override the defaults). `families.json` is already staged by step 7. Then run
+   `python -m tests.test_world` + `test_geo` (software must pass) **and**
    `python -m tests.test_route_wired` (the COUNT world-join must still answer — the French-customer count,
-   3 with the current fixture; the test asserts ≥2).
+   3 with the current fixture; the test asserts ≥2). After uploading the manifested files, publish with
+   `python -m training.props.promote --revision <immutable-hf-commit>`.
 
 ## External inputs (not committed)
 

@@ -1,31 +1,49 @@
-"""The one prompt the SQL proposer reads. Training, evaluation and serving all import it.
+"""The text Gemini reads when the labelled selection fallback runs (engine/sql_fallback.py).
 
-Every table becomes one line, ``name(column, column, ...)``, in the order given and with
-columns in stored order, followed by the question:
-
-    -- schema
-    singer(Singer_ID, Name, Country)
-    -- question
-    How many singers are there?
-    -- sql
-
-The format is part of the proposer adapter's identity: an adapter only understands the
-prompt it was fine-tuned on (``training/proposer/train_sft.py`` builds its targets with this
-same function), so any change here requires retraining the adapter.
+``schema_text`` renders the request's typed schema; ``rewrite_prompt`` asks for one rewording of the
+question in the tables' own words, and ``propose_prompt`` for one SQLite SELECT. Each reply is a JSON
+object of the matching ``*_SCHEMA`` shape. Gemini never sees the rows: only table and column names,
+inferred column types, foreign keys and at most three example values per column.
 """
 from __future__ import annotations
 
 import json
 
+EXAMPLES_PER_COLUMN = 3
+EXAMPLE_CHARS = 64
 
-def schema_prompt(tables: list[dict], question: str) -> str:
-    lines = [f"{table['name']}({', '.join(str(column) for column in table['columns'])})"
-             for table in tables]
-    return "-- schema\n" + "\n".join(lines) + f"\n-- question\n{question}\n-- sql\n"
+REWRITE_SYSTEM = (
+    "You reword a question about the user's tables so that a deterministic SQL planner can read it. "
+    "The planner matches words to the tables' column names and values, and reads plain operation "
+    "words: how many, total, average, highest, lowest, top N, by <column>, per <column>. "
+    "Reword the question with the tables' own column names and values and those plain words. "
+    "Keep every value, name, date, number and currency the question states, exactly as written. "
+    "Do not add or drop a condition, do not answer the question, and do not write SQL. "
+    "If the question cannot be answered from these tables, return it unchanged."
+)
+
+PROPOSE_SYSTEM = (
+    "You are an SQLite expert. Write one SQLite SELECT statement that answers the question from the "
+    "tables described. Use only the tables and columns listed, compare text columns with values as "
+    "they appear in the examples, and join tables only on the listed foreign keys. Return only the "
+    "statement."
+)
+
+REWRITE_SCHEMA = {
+    "type": "object",
+    "properties": {"question": {"type": "string"}},
+    "required": ["question"],
+}
+
+PROPOSE_SCHEMA = {
+    "type": "object",
+    "properties": {"sql": {"type": "string"}},
+    "required": ["sql"],
+}
 
 
-def xiyan_mschema(graph) -> str:
-    """Render the XiYan prompt's typed schema and bounded examples in XiYan-SQL's M-Schema layout.
+def schema_text(graph) -> str:
+    """Render the typed schema and bounded examples in XiYan-SQL's M-Schema layout.
 
     The section markers are M-Schema's own, between the full-width brackets U+3010 and U+3011:
     【DB_ID】, 【Schema】 and 【Foreign keys】 (XGenerationLab/M-Schema, ``to_mschema``). Column
@@ -39,9 +57,9 @@ def xiyan_mschema(graph) -> str:
         for column in graph.by_table[table_name]:
             type_name = getattr(column.ref.type, "value", str(column.ref.type)).upper()
             field = f"({column.ref.name}:{type_name}"
-            examples = [value for value in column.values if value is not None][:3]
+            examples = [value for value in column.values if value is not None][:EXAMPLES_PER_COLUMN]
             if examples:
-                encoded = [json.dumps(value, ensure_ascii=False, default=str)[:64]
+                encoded = [json.dumps(value, ensure_ascii=False, default=str)[:EXAMPLE_CHARS]
                            for value in examples]
                 field += ", Examples: [" + ", ".join(encoded) + "]"
             fields.append(field + ")")
@@ -58,21 +76,9 @@ def xiyan_mschema(graph) -> str:
     return "\n".join(lines)
 
 
-def xiyansql_prompt(tokenizer, graph, question: str) -> str:
-    """Build the pinned publisher chat prompt used by the measured Q4_K_M candidate."""
-    user_prompt = (
-        "You are an SQLite expert. Read and understand the database schema below, "
-        "then use SQLite knowledge to write SQL that answers the user question.\n"
-        "User question:\n" + question + "\n\n"
-        "Database schema:\n" + xiyan_mschema(graph) + "\n\n"
-        "Reference information:\n\n"
-        "User question:\n" + question + "\n\n```sql"
-    )
-    rendered = tokenizer.apply_chat_template(
-        [{"role": "user", "content": user_prompt}],
-        tokenize=False,
-        add_generation_prompt=True,
-    )
-    if not isinstance(rendered, str) or not rendered:
-        raise RuntimeError("XiYanSQL tokenizer returned an empty chat prompt")
-    return rendered
+def rewrite_prompt(graph, question: str) -> str:
+    return "Tables:\n" + schema_text(graph) + "\n\nQuestion:\n" + question
+
+
+def propose_prompt(graph, question: str) -> str:
+    return "Database schema:\n" + schema_text(graph) + "\n\nQuestion:\n" + question

@@ -33,7 +33,7 @@ from engine.config import DATA_DIR, kb_model_route_enabled
 from engine.entities import EntityQuery, PLACE_TYPES, WORLD_TABLE_TYPE
 from engine.dataset_semantics import is_synthetic_currency_column
 from engine.embeddings import Embedder, demonym_stems, pgvector_literal, normalize_surface
-from engine.encoder_overlay import EncoderQuery, load_encoder, load_sql_selection
+from engine.encoder_overlay import EncoderQuery, attach_sql_fallback, load_encoder
 from engine.knowledge_bridges import KnowledgeBridgeMixin
 from engine.knowledge_typing import KnowledgeTypingMixin
 from engine.knowledge_tables import COUNT_CUE
@@ -68,6 +68,16 @@ def _coverage_sql(response):
     response = response or {}
     program = (response.get("deterministic") or {}).get("sql") or {}
     return program.get("source") or response.get("sql")
+
+
+def _answered_question(response, question):
+    """The question a served query answers: Gemini's rewording when the search answered that
+    (engine/sql_fallback.py), else the user's own. A query Gemini proposed answers the user's own
+    question, so coverage holds it to every word of it."""
+    fallback = (response or {}).get("fallback") or {}
+    if fallback.get("kind") == "rewrite" and fallback.get("question"):
+        return fallback["question"]
+    return question
 
 
 def verify_nonempty(res, question):
@@ -267,12 +277,12 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
     HYBRID_LIMIT = 10
 
     _SHARE = ("alloc", "nc", "dims", "sid", "thr", "model", "nL", "tok", "qwen", "hdim",
-              "sql_proposer", "sql_arbiter")
+              "sql_fallback")
 
     def __init__(self, deploy_dir=DATA_DIR):
         EntityQuery.__init__(self, deploy_dir)       # bge + Postgres + world metadata + spaCy
         load_encoder(self, deploy_dir)               # ONE MODEL: the trained encoder (operator+bridge+typing)
-        load_sql_selection(self, deploy_dir)         # the own-data query proposer + arbiter
+        attach_sql_fallback(self)                    # selection's labelled Gemini fallback
         self._schema_interpreter()                   # Schema.org head: a bundle it cannot load fails here
         # The planner composes a TableQuery (self.q11) for the single-table delegate path. Point it at the SAME
         # models (shared refs — one copy of each in memory) so EVERY path goes through the same weights.
@@ -989,7 +999,7 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         # instead of "bullshitting" a wrong query. The clarify UI lets the user confirm or edit before re-running.
         if schema:
             try:
-                dropped = self._uncovered(question, sch, _coverage_sql(res))
+                dropped = self._uncovered(_answered_question(res, question), sch, _coverage_sql(res))
                 if currency and currency.get("status") == "satisfied":
                     realized = currency_conversion_words(currency["target"])
                     dropped = [word for word in dropped if word not in realized]

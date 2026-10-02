@@ -64,6 +64,7 @@ def test_chat_authenticates_without_a_database_and_signs_with_the_firebase_uid()
     import re
     import sys
     import threading
+    import urllib.error
     import urllib.request
     from http.server import ThreadingHTTPServer
 
@@ -94,8 +95,7 @@ def test_chat_authenticates_without_a_database_and_signs_with_the_firebase_uid()
                 patch.object(auth, "auth_test_sub", lambda: None), \
                 patch.object(auth, "_storage_principal", storage_principal), \
                 patch.dict(sys.modules, {"engine.pg": None}), \
-                patch.object(config, "external_llm_enabled", lambda: True), \
-                patch.object(config, "anthropic_api_key", lambda: "test-only-key"), \
+                patch.object(server.llm, "available", lambda: True), \
                 patch.object(server, "run_chat", run_chat):
             request = urllib.request.Request(
                 f"http://127.0.0.1:{httpd.server_address[1]}/chat", data=body, method="POST",
@@ -103,9 +103,22 @@ def test_chat_authenticates_without_a_database_and_signs_with_the_firebase_uid()
             with urllib.request.urlopen(request, timeout=30) as response:
                 assert response.status == 200
             assert seen["principal"] == "fb-uid-1", seen
+            # The turn runs on the configured Gemini model in the operator's project; there is no key.
+            assert (seen["model"], seen["project"], seen["location"]) == (
+                config.GEMINI_MODEL, config.GOOGLE_CLOUD_PROJECT, config.GEMINI_LOCATION), seen
+            assert "api_key" not in seen
             # The engine maps the same identity to its storage principal.
             with patch.object(auth, "_storage_principal", lambda uid, google: f"owner:{google}"):
                 assert auth._verify_principal("id-token") == ("owner:google-sub-1", "fb-uid-1")
+            # Switched off, or switched on without a project to call, chat refuses before any turn runs.
+            seen.clear()
+            with patch.object(server.llm, "available", lambda: False):
+                try:
+                    urllib.request.urlopen(request, timeout=30)
+                    raise AssertionError("a chat turn ran while Gemini was unavailable")
+                except urllib.error.HTTPError as exc:
+                    assert exc.code == 503, exc.code
+            assert not seen
     finally:
         httpd.shutdown()
     source = pathlib.Path("engine/server.py").read_text(encoding="utf-8")

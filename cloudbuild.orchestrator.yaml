@@ -1,11 +1,12 @@
-# Build + push the orchestrator (Sonnet chat backend + Prereasoner MCP server) image, GATED on tests.
+# Build + push the orchestrator (Gemini chat backend + Prereasoner MCP server) image, GATED on tests.
 #
 #   python deploy/gcp/build_context.py --target chat --output /tmp/prereasoner-chat-build
 #   gcloud builds submit /tmp/prereasoner-chat-build --config /tmp/prereasoner-chat-build/cloudbuild.orchestrator.yaml \
 #     --substitutions=_REGION=us-central1,_REPO=prereasoner,_TAG=latest
 #
-# The `test` step runs the suites compatible with this lean image before building. `test_mcp` and
-# `test_orchestrator_unit` always run; `test_orchestrator` self-skips unless ANTHROPIC_API_KEY is provided. Repository CI owns
+# The `test` step runs the suites compatible with this lean image before building. `test_mcp`,
+# `test_orchestrator_unit`, and `test_llm` always run; `test_orchestrator` self-skips unless GOOGLE_CLOUD_PROJECT
+# and Application Default Credentials reach Vertex AI. Repository CI owns
 # the full hermetic suite, and the release-database regression remains a separate deployment gate.
 # A focused failure here still stops the chat image from being pushed.
 
@@ -18,12 +19,14 @@ steps:
       - |
         set -e
         pip install --no-cache-dir --require-hashes -r orchestrator/requirements.lock.txt
-        # Only the suites this LEAN image can run: the MCP contract (always) + the orchestrator routing
-        # discipline (self-skips unless ANTHROPIC_API_KEY is wired in as a substitution). The engine suites
-        # (test_sql_ast / test_world / ...) need torch/numpy/psycopg — absent here by design — and gate the
-        # engine build (cloudbuild.yaml) instead. A failing suite here still fails the build.
+        # Only the suites this LEAN image can run: the MCP contract, the orchestrator and Gemini-client
+        # contracts (always) + the orchestrator routing discipline (self-skips unless GOOGLE_CLOUD_PROJECT
+        # and ADC reach Vertex AI). The engine suites (test_sql_ast / test_world / ...) need
+        # torch/numpy/psycopg — absent here by design — and gate the engine build (cloudbuild.yaml)
+        # instead. A failing suite here still fails the build.
         python -m tests.test_mcp
         python -m tests.test_orchestrator_unit
+        python -m tests.test_llm
         python -m tests.test_orchestrator
 
   - id: build

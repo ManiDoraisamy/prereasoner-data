@@ -14,7 +14,8 @@ canonical `web/public` tree is used locally and by the Firebase Hosting CDN, whi
 - Community seed artifact: `community-seed-v4.dump`, imported by the installer after its pinned
   SHA-256 is verified. The dump contains public world/reference schemas only; it must not contain
   `chat`, `c_*`, or `m_*` schemas.
-- Chat model: Vertex AI `gemini-3.8-flash`, authorized by the Community chat service account.
+- Model: Vertex AI `gemini-3.8-flash` for the chat service and the engine, authorized by their
+  Community service accounts.
 - Default browser fixture: `web/public/dataset/customer-orders/orders.csv` with the question
   `total amount in France in US dollars` from `prompt.txt`.
 
@@ -47,8 +48,8 @@ Test ID: `CE-GCP-001`
      --name ce-test-0915
    ```
 
-   The installer must not prompt for an Anthropic key. It enables Vertex AI, grants the chat
-   service account `roles/aiplatform.user`, and imports the pinned Community seed artifact.
+   The installer must not prompt for a model key. It enables Vertex AI, grants the chat and engine
+   service accounts `roles/aiplatform.user`, and imports the pinned Community seed artifact.
 
    It must also complete with NO console work. A Community deployment signs users in with Firebase
    ANONYMOUS auth, which the hosting release enables over the API. Google sign-in is deliberately
@@ -99,7 +100,8 @@ Test ID: `CE-GCP-001`
 Test ID: `CE-LOCAL-001`
 
 1. From the exact same release ref, create `.env` from `.env.example` and set only local values,
-   including `ANTHROPIC_API_KEY`. Never commit `.env`.
+   including `GOOGLE_CLOUD_PROJECT` (with the Vertex AI API enabled), and run
+   `gcloud auth application-default login`. Never commit `.env`.
 2. Provision/verify the pinned model bundle and start the required full stack:
 
    ```powershell
@@ -131,4 +133,5 @@ Attach the release commit/ref, deployment name, Hosting URL, timestamps, browser
 or trace, Cloud Run/Hosting rewrite evidence, and teardown command output. A run is **PASS** only
 when both install paths answer the default question and both teardown paths leave no test runtime
 resources. A missing Docker engine, an unaccepted Firebase Terms boundary, a stale Cloud Shell ref,
-or a missing Anthropic key is a **BLOCKED PRECONDITION**, not a successful install.
+or missing Vertex AI access (project or Application Default Credentials) is a **BLOCKED
+PRECONDITION**, not a successful install.

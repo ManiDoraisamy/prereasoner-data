@@ -73,9 +73,9 @@ window.subscribeRun = (uid, jobId, cb) => {
   return () => { try { uConv(); uStatus(); uResolve(); uView(); uExecution(); uAnalysis(); uResult(); uDatasetSemantics(); uQuestion(); uClarify(); uLowConf(); uPresent(); uError(); uMcols(); uMrow(); off(base); } catch(_){} };
 };
 
-// Subscribe to an ORCHESTRATED turn at /runs/{uid}/{turnId}: the Sonnet front-door announces each engine
+// Subscribe to an ORCHESTRATED turn at /runs/{uid}/{turnId}: the Gemini front-door announces each engine
 // call it makes (calls/{i} = {jobId, question}) so the browser can subscribe to that call's own live trace
-// via subscribeRun, plus the final `reply` (Sonnet's text) and terminal `status`. Same ownership rules as
+// via subscribeRun, plus the final `reply` (Gemini's text) and terminal `status`. Same ownership rules as
 // subscribeRun (reads gated to auth.uid). Returns an unsubscribe fn.
 window.subscribeTurn = (uid, turnId, cb) => {
   const onValue=(target,handler)=>watch(watchValue,target,cb,handler);

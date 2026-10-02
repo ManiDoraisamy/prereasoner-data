@@ -44,9 +44,9 @@ The reference service's use of information received from Google Workspace APIs a
 Google User Data and Developer Policy, including its Limited Use requirements. Raw, aggregated,
 anonymized, and derived Google user data is used only for the visible user-facing features the user
 requests and the security and support needed to operate them. It is not used, transferred, or sold
-to create, train, or improve generalized or non-personalized AI or ML models. External model
-providers receive request data only to produce the requested feature output; the operator must not
-authorize provider or third-party model training on that data.
+to create, train, or improve generalized or non-personalized AI or ML models. The external model
+(Gemini on Vertex AI) receives request data only to produce the requested feature output; the
+operator must not authorize Google or third-party model training on that data.
 
 ## Data Protection
 
@@ -59,8 +59,8 @@ The production reference deployment protects user data through the following con
 - Cloud SQL accepts runtime access through the IAM-authenticated connector with no authorized
   public networks. Dedicated service accounts and a non-superuser serving role enforce least
   privilege.
-- Credentials and provider keys are stored in Secret Manager, never in browser code or application
-  logs.
+- Credentials are stored in Secret Manager, never in browser code or application logs. Gemini is
+  reached with the service account's own Google Cloud identity; no model API key exists.
 - Request, row, rate, and storage limits bound exposure. Production logs exclude raw request bodies,
   questions, conversation history, generated SQL, credentials, spreadsheet rows, source values,
   and full exception messages.
@@ -69,10 +69,12 @@ The production reference deployment protects user data through the following con
 
 ## External LLM Processing
 
-The open-source default is `EXTERNAL_LLM_ENABLED=false`. The reference hosted deployment can use
-Anthropic for the conversational assistant, presentation, ambiguity handling, tool orchestration,
-and explicitly requested reference-cell generation. Depending on the feature, an Anthropic request
-can contain:
+The open-source default is `EXTERNAL_LLM_ENABLED=false`. When the operator enables it, Prereasoner
+uses one external model: Google's Gemini on Vertex AI, called in the operator's own Google Cloud
+project under that project's service account. Deploying the chat service enables it for the engine
+as well. The reference hosted deployment uses Gemini for the conversational assistant, tool
+orchestration, presentation, ambiguity handling, explicitly requested reference-cell generation,
+and the engine's query fallback. Depending on the feature, a Gemini request can contain:
 
 - the user's message and conversation history;
 - attached table names, columns, and contents for the chat assistant;
@@ -80,14 +82,20 @@ can contain:
 - generated SQL, result columns, and up to 40 result rows; and
 - trimmed reasoning or tool output.
 
-The deterministic SQL path computes answers and does not require Anthropic to generate SQL or
-numbers. Anthropic's current handling of commercial-customer data is governed by the operator's
-agreement with Anthropic and Anthropic's published privacy materials. Do not make training,
-retention, residency, or deletion claims on Anthropic's behalf unless they are verified against the
+When the engine cannot build a query for a question on its own, it can ask Gemini to reword the
+question once or to propose one SQL query. That request contains the question, the table and column
+names, column types, foreign keys, and up to three example values per column. The engine still
+checks, runs and labels any query that results, and the database computes every number.
+
+The deterministic SQL path computes every answer: Gemini never executes a query or calculates a
+result. Google's handling of this data is governed by the operator's Google Cloud agreement and the terms
+and data-governance commitments that apply to Vertex AI in that project. Do not make training,
+retention, residency, or deletion claims on Google's behalf unless they are verified against the
 applicable agreement and configuration.
 
-The server-side `EXTERNAL_LLM_ENABLED` switch is authoritative. When false, gated endpoints refuse
-the call. Self-hosters can therefore run the deterministic engine without an external model.
+The server-side `EXTERNAL_LLM_ENABLED` switch is authoritative for every Gemini call. When false,
+gated endpoints refuse the call and the engine runs without its fallback. Self-hosters can
+therefore run the deterministic engine without an external model.
 
 The architectural target is to replace external presentation and orchestration with a locally
 operated model once a candidate passes the repository's quality, latency, security, and cost gates.

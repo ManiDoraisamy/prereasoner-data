@@ -1,110 +1,121 @@
 # Prereasoner
 
-Prereasoner is an interpretable AI system built around named dimensions. It maps language, data,
-and source facts to explicit semantic properties and classes, then composes those dimensions into an
-inspectable derivation.
+Prereasoner answers questions about your tables, and shows how it got each answer.
+
+Large language models store what they know in thousands of unnamed dimensions. Nobody can say which
+of them holds "France". Prereasoner's model works the other way: the dimensions it reads have names,
+taken from [Schema.org](https://schema.org/) properties, a small set of column types, and a small set
+of query intents. Facts come from [Wikidata](https://www.wikidata.org/) and other publisher releases
+stored in a database, not from model weights. The engine turns a question into a typed SQL query the
+database runs, so each step of an answer can be checked.
 
 [Website](https://prereasoner.com/) | [Try it](https://chat.prereasoner.com/)
 
-Today, Prereasoner compiles those dimensions into a typed table plan. SQL gives every derivation a
-precise execution path. Supported own-data, world, and composed analyses also emit readable SQLAlchemy/Python from
-the same immutable plan, using explicit feed-forward `View` stages and operator calls. The same
-semantic model extends to public knowledge, source-grounded enrichment, structured retrieval, and
-domain-specific calculations without hiding the decision in generated text.
+## A Question The Sheet Cannot Answer On Its Own
 
-The long-term objective is an interpretable AI substrate: a shared representation of objects,
-attributes, relationships, and calculations that can be grounded in different sources and applied
-across domains. SQL is the first concrete execution target because it makes each derivation
-inspectable, testable, and useful today.
+The home-page workbook is an `orders.csv` file with a `city` column and an amount in each order's own
+currency. It has no `country` column. The question is:
 
-For a table question, Prereasoner identifies the columns and relationships it needs, searches a
-bounded set of valid SQL queries, adds candidates suggested by a small SQL model, and returns the
-chosen result with the query and supporting rows.
+> total amount in France in US dollars
 
-The learned models identify intent, column roles, and schema relationships, and suggest candidate
-queries. No model writes Python or a numeric answer, and a suggested query runs only after the typed
-planner has mapped it into its own AST, checked it, and chosen it on a recorded score. For fixed input
-data, configuration, database state, and model files, the same request produces the same plan and
-result.
+Plain SQL cannot filter by country, because the sheet has no country column. An LLM could guess that
+Paris is in France, but it reads that from unnamed dimensions you cannot inspect. Prereasoner does
+it as a join:
 
-When the data does not support an answer, the engine reports that instead of filling the gap with a
-guess. This is useful when a reviewer needs to reproduce a calculation, check the source rows, or
-understand why a request was declined.
+1. Each `city` cell is resolved to a Wikidata entity (Paris → `Q90`) by exact lookup, with an
+   embedding search as a fallback. The matches are stored in a bridge table for the conversation.
+2. The bridge joins the `knowledgebase."city"` table on that ID, and the query keeps the rows whose
+   city is in France.
+3. Each amount joins the European Central Bank's published rate for its `(currency, date)` pair.
+4. The database computes `SUM(amount * rate_to_usd)`.
 
-## Look Up Rows By Relationship
+The answer comes with the SQL, the resolved entities, every intermediate table, and the source
+release the rates came from. If a city does not resolve, or a rate is missing for a date, the answer
+says so instead of guessing.
 
-Your sheet has a city column holding Paris and Strasbourg. You ask for total sales in France.
+## Named Dimensions
 
-Text-to-SQL may stop because the table has no country column.
+Think of colour in CSS. `rgb(165, 42, 42)` describes brown with three dimensions that everyone has
+agreed to name. Prereasoner applies the same idea to the words people use about business data. A
+Schema.org class such as `Product` is a table, its properties (`brand`, `color`, `weight`) are named
+dimensions, and Wikidata items are the rows.
 
-Vector search embeds the cities and returns what looks like French. Strasbourg comes back. So does
-Kehl, a German town near Strasbourg. Similarity is not membership.
+What runs today:
 
-Prereasoner can link the city column to a reference table, resolve each city to its entity, and join
-that entity to its country. Kehl is in Germany, so it is left out. The query and the join are
-visible in the result.
+| Component | What it is | What it decides |
+|---|---|---|
+| Encoder | `Qwen/Qwen2.5-0.5B` used without its decoder, adapted with a LoRA and a 10-block relational readout trained to fill **90 named coordinates**: 9 column types (`is_num`, `is_time`, `currency`, ...), 71 property names (`addressCountry`, `brand`, `birthDate`, ...), and 10 query intents (`intent_agg_sum`, `intent_filter_gt`, `intent_sort_desc`, ...) | What each column is and what the question asks for |
+| Schema.org head | A linear layer reading 80 Schema.org properties. A class score is a weighted sum of those property scores. 56 properties and 11 classes pass the release gates; the others abstain | Which world table a column may join. Joins also need exact source-key matches |
+| Typed SQL search | A bounded search that builds queries as a typed syntax tree from those named readings, with hand-written ranking rules whose every adjustment is a named feature | The candidate queries, and which one is served: the best-ranked one that runs and matches the data |
+| Execution | PostgreSQL, plus a generated Python program that mirrors the SQL for supported shapes | The numbers |
 
-One request can use:
+No model writes the SQL. The search builds every query from the encoder's named readings, runs each
+candidate on a copy of your tables, drops the ones that fail or test a value the column never holds,
+and serves the best-ranked one that is left. The answer shows the query, its evidence, and the rule
+that chose it.
 
-- uploaded tables owned by a conversation;
-- reusable private reference tables owned by a user;
-- shared public facts from source-owned releases, with Wikidata used for public entity identity and
-  publisher datasets used for source-specific facts.
+**Gemini, when the search gives up.** If no candidate runs, and the operator has switched on Gemini
+(Vertex AI), the engine asks it for help in two bounded steps. First Gemini rewords the question once
+in your tables' own words, and the search runs again on the rewording, so the SQL is still built by
+the engine. If that finds nothing either, Gemini proposes one SQL query; it counts only after it
+converts into the same typed syntax tree and passes the same checks, and the coverage check holds it
+to every word of your question. Either way the answer says so: "the search read Gemini's rewording"
+or "query proposed by Gemini". Gemini sees the question, the table and column names, and up to three
+example values from each column, which are cells of your data; it never sees the rest of the rows and
+never writes a number.
 
-A conversation can keep several named analysis workbooks over those same inputs. A refinement such as “in US
-dollars” creates a new revision of the existing workbook; a different result such as “top selling products” creates
-another workbook. Each rail link restores the exact SQL, rows, provenance, and—when dual emission
-applies—the generated Python source and hashes that produced that answer.
+The optional chat service also uses Gemini, to talk with you and call the engine. It does not write
+numbers either.
+
+### The Cost Of Naming
+
+Named dimensions give up some of what a model could represent with unnamed ones. The current
+version pays that cost in three visible ways:
+
+- **Schema.org is lossy.** It names much less than an LLM represents. Only 56 of the 80 trained
+  properties and 11 of 926 classes pass the release gates; every other class abstains.
+- **Schema.org is mostly about business data.** It has few scientific types, and many of its types
+  have no public data source yet. Facts come from Wikidata, the ECB, GeoNames, IANA, CLDR, CDC, NLM
+  and the other releases listed in [docs/SOURCE_DATA.md](docs/SOURCE_DATA.md).
+- **Nouns, not actions.** Properties name things. Actions are covered only by the ten fixed query
+  intents, so Prereasoner handles questions over structured data such as CSV and spreadsheet files,
+  and nothing broader.
+
+The project is open source so that this vocabulary can grow the way the periodic table did, one
+named dimension at a time. [docs/RESEARCH.md](docs/RESEARCH.md) gives the research position and its
+limits. [docs/MODEL_CARD.md](docs/MODEL_CARD.md) gives the exact models, artifacts, and metrics.
 
 ## What Is Deterministic
 
-The answer is computed by a deterministic emitted program, never written by a model. The supported
-shared-plan subset can run readable Python for bounded small inputs and SQL for larger inputs; a
-verification mode executes and compares both at every named stage. The workbook URL can select a
-request-local backend with `?use=sql`, `?use=py`, or `?use=both` (`both` is stage-by-stage verification).
-Every direct request uses a transient analysis plan; named workbook revisions retain their authoritative
-slugs. The default `auto` policy prefers Python at or below 10,000 estimated input rows and SQL above it,
-with a hard materialization bound and recorded SQL fallback. Unsupported queries can use the existing SQL
-path with `sql` or the default policy; explicit `py` and `both` requests return an error instead of accepting a SQL fallback.
-Responses report the actual backend. Opening a saved conversation does not rerun it in the new mode.
-See [the execution contract](docs/DETERMINISTIC_EMITTERS.md) for coverage, source lifetime, and limits.
+For fixed input data, configuration, database state, and model files, the same request produces the
+same plan and the same result. Determinism removes sampling variance. It does not remove ambiguous
+wording or missing data. [Accuracy Boundary](#accuracy-boundary) says what is still open.
 
-A frozen Qwen2.5-0.5B encoder reads intent and schema signals. A pinned, CPU-quantized XiYanSQL 7B
-SQL proposer suggests candidate queries for own-data questions with deterministic greedy decoding; a suggestion
-competes only after it imports into the engine's typed AST and validates, so its raw text never reaches a
-database, and no model writes a number. A fitted linear arbiter picks the served query from the
-search's candidates and the proposer's, and every response shows which source won and the arbiter's
-per-feature arithmetic ([how a question becomes SQL](docs/PROMPT_TO_SQL.md)).
+The answer is computed by a deterministic program. The supported subset of query shapes compiles one
+immutable plan into both SQL and readable SQLAlchemy/Python, made of named `View` stages and operator
+calls. Small inputs run the Python; larger inputs run the SQL; a verification mode runs both and
+compares every stage. The workbook URL can choose with `?use=sql`, `?use=py`, or `?use=both`. The
+default `auto` policy uses Python up to 10,000 estimated input rows and SQL above that. Shapes outside
+the subset run as SQL; an explicit `py` or `both` request for them returns an error rather than a
+silent fallback. See [the execution contract](docs/DETERMINISTIC_EMITTERS.md).
 
-Schema.org supplies the semantic vocabulary: classes, properties, domains, ranges, and inheritance.
-It is not the source of mutable facts. Wikidata provides public entity identity and mapped
-observations. Publisher-owned sources such as IANA, CLDR, GeoNames, ECB, CDC, and NLM provide
-source-specific facts. Those facts remain in versioned database releases and are selected at
-runtime; they are not treated as facts memorized by the model. `knowledgebase.schedule` records
-source refresh expectations and the last successful refresh, so stale data can be reported rather
-than silently treated as current.
-
-The engine is Apache-2.0 with open weights and runs on your CPU, so regulated data stays on your own
-hardware. Determinism removes sampling variance. It does not remove ambiguity or missing data, and
-[Accuracy Boundary](#accuracy-boundary) says what is still open.
+A conversation can keep several named analysis workbooks over the same tables. A refinement such as
+"in US dollars" adds a revision to the current workbook; a different question such as "top selling
+products" starts another. A follow-up that drops a filter ("now for Lyon" after "orders in Paris")
+also drops that word from the workbook's name. Each saved revision restores its exact SQL, rows,
+sources, and, where the shape is supported, the generated Python and its hashes.
 
 ## Start Here
 
-The [documentation map](docs/README.md) shows what is running, what is opt-in, and what is still
-planned. It also points each kind of change to its owner.
+The [documentation map](docs/README.md) shows what runs today, what is opt-in, and what is planned.
+The core path for a new contributor:
 
-The core path for a new contributor is:
-
-1. [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) - install, run the public-checkout tests, and find the code.
+1. [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) - install, run the public-checkout tests, find the code.
 2. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - follow a request from upload to result.
-3. [docs/PROMPT_TO_SQL.md](docs/PROMPT_TO_SQL.md) - walk through one question and its typed query.
-4. [docs/DETERMINISTIC_EMITTERS.md](docs/DETERMINISTIC_EMITTERS.md) - inspect the matching SQL/Python contract.
-5. [docs/TESTING.md](docs/TESTING.md) - choose the right test for the change.
+3. [docs/PROMPT_TO_SQL.md](docs/PROMPT_TO_SQL.md) - follow one question to its typed query.
+4. [docs/DETERMINISTIC_EMITTERS.md](docs/DETERMINISTIC_EMITTERS.md) - the matching SQL and Python programs.
+5. [docs/TESTING.md](docs/TESTING.md) - choose the right test for a change.
 6. [CONTRIBUTING.md](CONTRIBUTING.md) - change discipline and pull-request evidence.
-
-The planner, source-data, training, deployment, release, privacy, and roadmap paths are indexed in
-[docs/README.md](docs/README.md). The enrichment roadmap is not required reading for a planner
-change; it contains both shipped foundations and clearly marked future work.
 
 ## Deploy To Google Cloud
 
@@ -114,10 +125,11 @@ publishes the UI to Firebase Hosting, and loads the world database from a versio
 [![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https%3A%2F%2Fgithub.com%2FManiDoraisamy%2Fprereasoner-data&cloudshell_git_branch=v0.2.23&cloudshell_tutorial=deploy%2Fgcp%2Fcloudshell-tutorial.md&cloudshell_workspace=.&show=terminal)
 
 **Nothing to configure afterwards.** Sign-in is set up for you, and chat runs on Vertex AI Gemini
-through the service account — no API keys, no console steps. You supply a Google login, a project,
+through the service account: no API keys, no console steps. You supply a Google login, a project,
 and a billing account.
 
-About 30 minutes, and roughly **$90/month** while it runs — almost all Cloud SQL. To remove it:
+It takes about 30 minutes and costs roughly **$90/month** while it runs, almost all of it Cloud SQL.
+To remove it:
 
 ```bash
 bash deploy/gcp/deploy.sh --project <PROJECT_ID> --destroy
@@ -125,12 +137,12 @@ bash deploy/gcp/deploy.sh --project <PROJECT_ID> --destroy
 
 [Deployment contract](deploy/gcp/README.md) (cost, teardown, how sign-in works) ·
 [Release gate](docs/COMMUNITY_LAUNCH_TEST.md) ·
-[Local dev setup](#install-on-a-local-machine) (contributors; Docker Compose + Anthropic key)
+[Local dev setup](#install-on-a-local-machine) (contributors; Docker Compose and a Google Cloud project)
 
 ## How A Request Works
 
 ```text
-browser or MCP client
+browser, chat service, or MCP client
         |
         | tables + question + authenticated conversation
         v
@@ -144,13 +156,14 @@ engine/server.py                 HTTP/auth/request adapter
         v
 engine/knowledge.py              one serving entry point
         |
-        +--> own-data typed AST planner: deterministic search + SQL proposer,
-        |       pooled, executed, and chosen by a linear arbiter
-        |       engine/tables.py (select_query), engine/sql_search.py,
-        |       engine/xiyan_sql_proposer.py, engine/sql_rank.py, engine/sql_ast.py
+        +--> own-data typed AST planner: deterministic search; candidates run and
+        |       grounded; the best-ranked one served; labelled Gemini fallback only
+        |       when nothing runs
+        |       engine/tables.py (select_query), engine/sql_search.py, engine/sql_rank.py,
+        |       engine/sql_ast.py, engine/sql_fallback.py
         |
         +--> world grounding when a public entity relation is required
-                engine/knowledge_query.py, engine/knowledge_compose.py
+                engine/knowledge_query.py, engine/knowledge_compose.py (engine/routing.py decides)
         |
         v
 supported shared-plan subset: bounded Python/SQL execution and optional parity
@@ -160,10 +173,11 @@ other shapes: SQL execution; explicit Python/verification rejects the fallback
 engine/provenance.py + inspectable trace
 ```
 
-The AST planner receives uploaded tables and any selected reference tables in the same typed table format.
-`engine.relations` owns the planner relationship graph: `discover_fks` infers scalar edges from request data, while
-`relate(..., explicit_fks=...)` validates trusted internal tuple edges from reference enrichment. Client table payloads
-cannot declare trusted edges. Public world joins are separate because they require entity-to-QID grounding.
+The planner sees uploaded tables and selected reference tables in the same typed format.
+`engine.relations` owns the relationship graph: `discover_fks` infers edges from request data, and
+`relate(..., explicit_fks=...)` validates trusted edges from reference enrichment. Client payloads
+cannot declare trusted edges. Public world joins are separate because they need entity-to-QID
+grounding.
 
 ## Data And Isolation
 
@@ -171,35 +185,33 @@ One PostgreSQL database contains:
 
 | Scope | Schema | Purpose |
 |---|---|---|
-| Curated shared serving projections | `knowledgebase`; `public.settlement` | Internal resolver index, taxonomy, Wikidata-derived QID/geo projections, and the release-labelled ECB daily exchange-rate projection. These are legacy derived runtime schemas, not source owners; the coordinated Wikidata target is `wikidata` |
-| Synchronized reference sources | `iana`, `cldr`, `google_libphonenumber`, `geonames`, `ecb`, `ec_tedb`, `nager_date`, `cdc`, `nlm_cde` | Immutable or bounded source snapshots. IANA country-name lookup is code-approved; raw Terraform is empty by default and the guided Community deploy enables it. See `docs/SOURCE_DATA.md` |
-| Conversation | `c_<32hex>` | Stable uploaded tables and world-resolution bridges for one authorized conversation |
+| Curated shared serving projections | `knowledgebase`; `public.settlement` | Resolver index, taxonomy, Wikidata-derived entity and place tables, and the release-labelled ECB daily exchange-rate projection. These are derived runtime schemas, not source owners |
+| Synchronized reference sources | `iana`, `cldr`, `google_libphonenumber`, `geonames`, `ecb`, `ec_tedb`, `nager_date`, `cdc`, `nlm_cde` | Immutable or bounded source snapshots. See `docs/SOURCE_DATA.md` |
+| Conversation | `c_<32hex>` | Uploaded tables and world-resolution bridges for one authorized conversation |
 | Application | `chat` | Conversation ownership, working-table manifests, named analyses, and immutable workbook revisions |
-| User | `m_<md5(sub)>` | Private reference dimensions such as product-to-category or SKU-to-region |
+| User | `m_<md5(sub)>` | Private reference tables such as product-to-category or SKU-to-region |
 
-The authenticated Google subject is verified server-side. Conversation ids are ownership-checked before they can
-name a schema. A saved reference is not placed blindly on `search_path`: `engine.master.relevant_tables` loads
-only references connected to the request by the production FK graph and materializes those bounded rows into the
-working planner table set. This keeps unrelated cross-conversation data out of the query schema.
+The Google subject is verified server-side, and a conversation id is ownership-checked before it can
+name a schema. A saved reference is never placed blindly on `search_path`: `engine.master.relevant_tables`
+loads only references connected to the request by the foreign-key graph, and copies those bounded
+rows into the planner's table set.
 
-Reference tables have a deliberate contract: the first column is a non-empty, unique key; remaining columns are
-attributes. The browser auto-saves changed references before a query. If that save fails, the query is stopped
-instead of silently running against an older copy.
+A reference table's first column is a non-empty, unique key; the other columns are attributes. The
+browser saves changed references before a query, and the query stops if that save fails.
 
-Conversation storage is bounded and expires by inactivity. The defaults are 100 conversations and 256 MiB of
-serialized source/workbook state per user, 1 MiB for each browser or analysis snapshot, and 90 days of inactivity. One daily
-retention job removes expired conversation schemas and RTDB traces. Requests and state saves serialize quota
-checks per user in PostgreSQL, so multiple service instances cannot race the limits.
+Storage is bounded and expires by inactivity: by default 100 conversations and 256 MiB of saved
+state per user, 1 MiB per browser or analysis snapshot, and 90 days of inactivity. A daily job
+removes expired conversation schemas and traces.
 
-The browser does not guess provenance from column names. The server combines source records with the selected
-typed AST's output expressions and returns one `column_provenance` record per result column, including qualified
-operands and publisher release IDs when a versioned source was used.
+The browser does not guess provenance from column names. The server returns one
+`column_provenance` record per result column, with its operands and the publisher release IDs used.
 
 ## Install On A Local Machine
 
-The complete local UI/chat installation runs the engine, the browser-facing chat service, and PostgreSQL
-through Docker Compose. Chat requires an `ANTHROPIC_API_KEY`; keep it in the local `.env` file and never
-commit that file. The deterministic engine-only path does not require this key.
+The full local installation runs the engine, the chat service, and PostgreSQL through Docker
+Compose. Chat and the engine's Gemini fallback need a Google Cloud project with Vertex AI and your
+application-default credentials (`gcloud auth application-default login`); set `GOOGLE_CLOUD_PROJECT`
+and `EXTERNAL_LLM_ENABLED=true` in the local `.env` file. The engine alone needs neither.
 
 Requirements:
 
@@ -207,7 +219,8 @@ Requirements:
 - PostgreSQL 16 with `vector` and `pg_trgm`, or Docker
 - runtime model artifacts in `engine/data/`
 
-For planner, routing, enrichment, sync-parser, and migration work, install only the public CI dependencies:
+For planner, routing, enrichment, sync-parser, and migration work, the public CI dependencies are
+enough:
 
 ```powershell
 python -m venv .venv
@@ -218,14 +231,13 @@ $env:RUN_ORCHESTRATOR_TESTS = "0"
 python -m tests.run_all
 ```
 
-The full engine requires the model stack and manifest-pinned runtime artifacts. Provision them before
-building the engine image, then seed the database before making a world-dependent request:
+The full engine needs the model files. Fetch them, then seed the database before asking a question
+that needs world facts:
 
 ```powershell
 Copy-Item .env.example .env
-# Edit .env and set: ANTHROPIC_API_KEY=...
+# Edit .env and set: GOOGLE_CLOUD_PROJECT=... and EXTERNAL_LLM_ENABLED=true
 python -m engine.fetch_weights
-python -m engine.fetch_xiyan_sql
 docker compose up -d db
 docker compose --profile seed run --rm seed
 docker compose up --build
@@ -233,24 +245,23 @@ docker compose up --build
 
 Open the local UI at `http://localhost:8090`.
 
-The local Compose profile remains Anthropic-configured through `.env`. The guided GCP Community
-profile uses Vertex AI Gemini through its Cloud Run service account and does not ask for this key;
-raw production-compatible Terraform may still select Anthropic explicitly.
-
-The default [weight repository](https://huggingface.co/prereasoner/prereasoner-weights) is public;
-`engine.fetch_weights` needs no Hugging Face account or token and verifies the complete bundle against
-the immutable revision and hashes in `engine/data/weights_manifest.json`. See
+`engine.fetch_weights` downloads the public
+[weight bundle](https://huggingface.co/prereasoner/prereasoner-weights) without a token and checks
+every file against the revision and hashes in `engine/data/weights_manifest.json`. See
 [engine/data/README.md](engine/data/README.md).
 
-The home-page workbook contains orders with dates, ISO currency codes, and amounts, but no
-rate sheet. Currency conversion is grounded in the synchronized ECB release through the
-daily `knowledgebase.exchange_rate` projection. The projection expands each published rate
-through the next applicable calendar days, retains the true ECB business date, joins each
-dated fact row on `(currency, date)`, verifies `SUM(amount * rate_to_target)`, and reports the
-pinned source release. Uploaded rate tables still take precedence as the user's own data.
+The guided Google Cloud deployment uses Vertex AI Gemini through its service account and does not ask
+for a key.
 
-Docker Compose exposes the engine on `http://localhost:8080` with the test-only principal `localdev`. After the
-engine is healthy:
+Currency conversion uses the synchronized ECB release through the daily
+`knowledgebase.exchange_rate` projection. Each published rate covers the following calendar days
+until the next one, keeps its true ECB business date, joins each dated row on `(currency, date)`, and
+reports the source release. A total or an average is converted row by row
+(`SUM` or `AVG` of `amount * rate_to_target`). An uploaded rate table takes precedence, as the
+user's own data.
+
+Docker Compose exposes the engine on `http://localhost:8080` with the test-only principal
+`localdev`. Once it is healthy:
 
 ```powershell
 $body = @{
@@ -261,7 +272,7 @@ Invoke-RestMethod http://localhost:8080/api/reason -Method Post `
   -Headers @{Authorization="Bearer dev"} -ContentType application/json -Body $body
 ```
 
-For native Python, Firebase emulator, and database-seeding instructions, use
+For native Python, the Firebase emulator, and database seeding, see
 [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md).
 
 ## Tests
@@ -270,6 +281,7 @@ Fast checks that need neither weights nor Postgres:
 
 ```powershell
 python -m tests.test_sql_ast
+python -m tests.test_deterministic_emitters
 python -m tests.test_calculations
 python -m tests.test_analysis
 python -m tests.test_master_ingest
@@ -290,15 +302,16 @@ python -m ruff check engine db deploy training tests orchestrator mcp_server reg
 python -m compileall -q engine db deploy training tests orchestrator mcp_server regress spider world_eval
 ```
 
-The repository-wide runner executes hermetic suites and then live suites when their prerequisites are available:
+The repository-wide runner runs the hermetic suites, then the live suites whose prerequisites are
+present:
 
 ```powershell
 python -m tests.run_all
 ```
 
-Skipped live suites are reported as skips and are not evidence of a full integration pass. Spider metrics and exact
-evaluation provenance live only in [spider/results/RESULTS.md](spider/results/RESULTS.md); `whole_db` is the
-gold-blind headline configuration, while `gold_tables` is an oracle ablation.
+A skipped live suite is reported as a skip, not as a pass. Every demo workbook under
+`web/public/dataset/` ships a `prompt.txt` and an `eval.txt` of follow-up questions with expected
+answers derived from the CSV files; `python -m tests.test_datasets` runs them against a live database.
 
 ## Repository Map
 
@@ -306,23 +319,31 @@ gold-blind headline configuration, while `gold_tables` is an oracle ablation.
 |---|---|
 | `engine/` | Runtime typing, planning, grounding, execution, auth, conversations, and references |
 | `engine/enrichment/` | Deterministic intent, source policy, request-local reference materialization, and replay manifests |
-| `web/` | Static workbook UI, Firebase Hosting configuration, and browser tests |
-| `orchestrator/` | Optional conversational tool loop; it presents engine results but does not invent numbers |
+| `web/` | Workbook UI, Firebase Hosting configuration, demo datasets, and browser tests |
+| `orchestrator/` | Optional chat service; it presents engine results and does not write numbers |
 | `mcp_server/` | MCP adapter over the same engine API |
-| `db/` | Reproducible PostgreSQL schema, source synchronization, migrations, and grants |
-| `training/` | Property/intent training and calibration; not imported as a second serving path |
+| `sheets-addon/`, `excel-addon/` | Google Sheets and Excel add-ons; they call the hosted chat service |
+| `db/` | PostgreSQL schema, source synchronization, migrations, and grants |
+| `training/` | Encoder and Schema.org head training and calibration; never imported by serving |
 | `tests/` | Hermetic and live integration suites |
 | `spider/` | Serving-faithful Spider evaluation and recorded results |
 | `docs/` | Architecture, developer guides, testing, research, and training |
 
 ## Accuracy Boundary
 
-Determinism removes sampling variance; it does not remove ambiguity, incomplete schema linking, candidate-search
-limits, ranking errors, missing world data, or incorrect relationship inference. Accuracy work is therefore split
-into measurable stages: routing, table selection, candidate-pool recall, top-1 ranking, execution, and evaluation.
-See [docs/SQL_AST.md](docs/SQL_AST.md) and [spider/results/RESULTS.md](spider/results/RESULTS.md).
+Determinism does not remove ambiguity, incomplete schema linking, candidate-search limits, ranking
+errors, missing world data, or wrong relationship inference. Accuracy work is split into measured
+stages: routing, table selection, candidate-pool recall, top-1 ranking, execution, and evaluation.
+
+With no model writing SQL, the engine alone scores **380/1,034 strict (36.8%)** on Spider DEV
+(`whole_db`, gold-blind, the Gemini fallback off), measured 2026-10-02. With a 7B SQL-writing model it
+scored 866. That gap is the cost of interpretability the project chose: every query is built by the
+search. The search already pools a correct query for 544 of the questions, so better ranking rules are
+the next deterministic lever. Records and history are in
+[spider/results/RESULTS.md](spider/results/RESULTS.md). `gold_tables` results are an oracle ablation, not a Spider comparison. See
+[docs/SQL_AST.md](docs/SQL_AST.md).
 
 ## License
 
-[Apache 2.0](LICENSE). Models, knowledge data, and dependencies retain their upstream terms; see
+[Apache 2.0](LICENSE). Models, knowledge data, and dependencies keep their upstream terms; see
 [THIRD_PARTY.md](THIRD_PARTY.md). Citation metadata is in [CITATION.cff](CITATION.cff).

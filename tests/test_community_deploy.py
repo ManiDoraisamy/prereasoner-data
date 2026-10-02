@@ -418,8 +418,6 @@ def test_public_deployer_has_isolated_state_and_cost_safe_defaults():
         "-backend-config=\"prefix=${STATE_PREFIX}\"",
         "-var=db_availability_type=ZONAL",
         "-var=min_instances=0",
-        "-var=enable_external_llm=false",
-        "-var=chat_llm_provider=gemini",
         "-var=gemini_model=gemini-3.8-flash",
         "community-seed-v4.dump",
         "db.sync.community_seed_import",
@@ -446,6 +444,9 @@ def test_public_deployer_has_isolated_state_and_cost_safe_defaults():
         assert required in deploy
     assert "prompt_and_store_chat_key" not in deploy
     assert "cleanup_chat_secret" not in deploy
+    # Gemini on Vertex AI is the only model; enabling chat enables it for both services.
+    assert "anthropic" not in deploy.lower() and "llm_provider" not in deploy
+    assert "-var=enable_external_llm" not in deploy
     assert "Type %s to continue" in deploy
     assert "gcloud auth login --update-adc" in deploy
     assert "--allow-unauthenticated" not in deploy

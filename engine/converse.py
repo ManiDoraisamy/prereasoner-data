@@ -1,14 +1,17 @@
-"""converse.py — the Sonnet conversational fallback for the /reason rail.
+"""converse.py — the Gemini conversational fallback for the /reason rail.
 
 When the deterministic engine cannot run a message as a data query — it returned a CLARIFY (ambiguous), or
 the message is META/conversational ("how did you convert germany to Germany?") — the browser calls
-POST /api/converse and we return ONE short conversational reply from Sonnet, answered IN the same
-conversation (never a page redirect, never a fabricated number). This is the cost-efficient fallback: the
-fast deterministic path still answers real data questions with zero LLM cost; Sonnet is spent only here.
+POST /api/converse and we return ONE short conversational reply from Gemini (engine/llm.py), answered IN
+the same conversation (never a page redirect, never a fabricated number). This is the cost-efficient
+fallback: the fast deterministic path still answers real data questions with zero LLM cost; Gemini is
+spent only here.
 """
 from __future__ import annotations
 
 import json
+
+from engine import llm
 
 SYSTEM = """You are the conversational layer for Prereasoner, a product that answers questions about a \
 user's own spreadsheet by writing and running REAL SQL — never by guessing. You run in one of two modes,
@@ -50,7 +53,7 @@ def _schema_text(tables):
 def _answer_text(answer, limit=40):
     """A compact 'col, col | v, v; v, v' rendering of a computed result, capped so we never blow the prompt.
     An EMPTY result (zero rows) renders as an explicit sentinel — never a bare 'col | ' with no value, which
-    would leave Sonnet told to 'use the number' with no number in hand."""
+    would leave the model told to 'use the number' with no number in hand."""
     if not isinstance(answer, dict):
         return "(no result)"
     cols = answer.get("columns") or []
@@ -63,16 +66,18 @@ def _answer_text(answer, limit=40):
     return f"{head} | {body}{more}"
 
 
+# Output caps leave room for Gemini's thinking tokens, which count toward max_output_tokens: a cap sized
+# for the visible text alone can end the reply before it starts.
+REPLY_MAX_TOKENS = 1024
+GENERATE_MAX_TOKENS = 8192
+
+
 def reply(question, clarify=None, error=None, tables=None, answer=None, sql=None,
-          model=None, api_key=None, max_tokens=400):
-    """Return a short conversational reply (str). Raises if the Anthropic key/SDK is unavailable.
+          max_tokens=REPLY_MAX_TOKENS):
+    """Return a short conversational reply (str). Raises llm.LLMUnavailable when Gemini is unavailable.
 
     PRESENT mode: pass `answer` (a {columns, rows} result the engine already computed) and optionally `sql` —
-    Sonnet wraps that exact value in warm human text. FALLBACK mode: pass `clarify`/`error` (no `answer`)."""
-    from anthropic import Anthropic
-    from engine.config import anthropic_api_key, ANTHROPIC_MODEL
-
-    client = Anthropic(api_key=api_key or anthropic_api_key())
+    Gemini wraps that exact value in warm human text. FALLBACK mode: pass `clarify`/`error` (no `answer`)."""
     schema = _schema_text(tables)
     user = f"The user's tables: {schema}\n\nThe user's message: {question!r}\n"
     if answer is not None:
@@ -90,11 +95,7 @@ def reply(question, clarify=None, error=None, tables=None, answer=None, sql=None
             user += f"The engine returned this error: {error}\n"
     user += "\nReply to the user now, per your instructions."
 
-    resp = client.messages.create(
-        model=model or ANTHROPIC_MODEL, max_tokens=max_tokens, system=SYSTEM,
-        messages=[{"role": "user", "content": user}],
-    )
-    return "".join(b.text for b in resp.content if getattr(b, "type", None) == "text").strip()
+    return llm.generate_text(system=SYSTEM, prompt=user, max_output_tokens=max_tokens).strip()
 
 
 GEN_SYSTEM = """You fill in a REFERENCE ("master") data table for a spreadsheet product. You are given a table
@@ -115,17 +116,14 @@ Output STREAMING JSONL — one JSON object per line, nothing else, no markdown, 
 Emit each row on its own line as soon as it is ready (the product renders rows live as they arrive)."""
 
 
-def generate_master(name, columns, rows, instruction=None, emit=None, model=None, api_key=None, max_tokens=2000):
-    """Generate/fill a master (reference) table with Sonnet, STREAMING. `columns` = headers (first is the
+def generate_master(name, columns, rows, instruction=None, emit=None, max_tokens=GENERATE_MAX_TOKENS):
+    """Generate/fill a master (reference) table with Gemini, STREAMING. `columns` = headers (first is the
     entity key); `rows` = existing rows (only the first column's entity values are required; other cells may
     already be filled). `instruction` = optional user guidance (which columns to add, or fill only missing
     cells). `emit` = optional RTDB emit(node, value) — when given, the header is streamed to `mcols` and each
     completed row to `mrows/<i>` AS IT ARRIVES, so the browser fills the sheet live. Returns the assembled
     {'columns', 'rows'} (entity column verbatim, already-filled cells preserved, empties filled) regardless.
-    Raises if the Anthropic key/SDK is unavailable."""
-    from anthropic import Anthropic
-    from engine.config import anthropic_api_key, ANTHROPIC_MODEL
-
+    Raises llm.LLMUnavailable when Gemini is unavailable."""
     columns = [str(c) for c in (columns or [])] or ["name"]
     # entities (col 0) + the already-filled cells to PRESERVE, keyed by (entity, column name) so a preserved
     # value survives even if the model adds/reorders columns.
@@ -141,7 +139,6 @@ def generate_master(name, columns, rows, instruction=None, emit=None, model=None
                                for i in range(1, min(len(cells), len(columns))) if cells[i].strip()}
     if not entities:
         return {"columns": columns, "rows": []}
-    client = Anthropic(api_key=api_key or anthropic_api_key())
     guidance = (f"\n\nAdditional instruction from the user (follow it):\n{instruction.strip()}"
                 if instruction and str(instruction).strip() else "")
     user = (f"Table name: {name!r}\nColumns: {json.dumps(columns)}\n"
@@ -181,13 +178,11 @@ def generate_master(name, columns, rows, instruction=None, emit=None, model=None
                 emit(f"mrows/{len(out_rows) - 1:04d}", rr)     # zero-padded key so RTDB child order == row order
 
     full, buf = "", ""
-    with client.messages.stream(model=model or ANTHROPIC_MODEL, max_tokens=max_tokens, system=GEN_SYSTEM,
-                                messages=[{"role": "user", "content": user}]) as stream:
-        for text in stream.text_stream:
-            full += text; buf += text
-            while "\n" in buf:
-                line, buf = buf.split("\n", 1)
-                _consume(line)
+    for text in llm.stream_text(system=GEN_SYSTEM, prompt=user, max_output_tokens=max_tokens):
+        full += text; buf += text
+        while "\n" in buf:
+            line, buf = buf.split("\n", 1)
+            _consume(line)
     if buf.strip():
         _consume(buf)                                          # a trailing line with no closing newline
 

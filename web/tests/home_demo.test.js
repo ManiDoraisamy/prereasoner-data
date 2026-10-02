@@ -308,9 +308,9 @@ assert(!fs.readFileSync(path.join(__dirname, '..', 'public', 'styles.css'), 'utf
 assert(!wb.includes('external_llm_consent') && !chat.includes('external_llm_consent'),
   'ordinary processing must not carry a misleading per-request consent field');
 // (the confirm() calls that remain guard destructive deletes, which is unrelated and correct)
-assert(!/confirm\([^)]*(Anthropic|Claude|consent|local-only)/i.test(wb),
+assert(!/confirm\([^)]*(Gemini|Vertex|consent|local-only)/i.test(wb),
   'the external LLM must never be gated behind a blocking dialog');
-assert(!/confirm\([^)]*(Anthropic|Claude|consent|local-only)/i.test(chat),
+assert(!/confirm\([^)]*(Gemini|Vertex|consent|local-only)/i.test(chat),
   'the standalone chat must never show a processor dialog');
 assert(html.includes('href="/privacy"'), 'the home page must link to the published privacy policy');
 assert(html.includes('href="/terms"'), 'the home page must link to the published terms');
@@ -319,7 +319,7 @@ for (const page of ['reason.html', 'knowledge.html', 'picker.html', 'chatui.html
   const body = fs.readFileSync(path.join(__dirname, '..', 'public', page), 'utf8');
   assert(body.includes('href="/privacy"'), `${page} must link to the published privacy policy`);
 }
-for (const required of ['What we process', 'Anthropic', 'Google Cloud and Firebase', 'Why we process data',
+for (const required of ['What we process', 'Vertex AI (Gemini)', 'Google Cloud and Firebase', 'Why we process data',
   'Google API Limited Use and AI/ML', 'Limited Use requirements', 'Data protection', 'encrypted in transit',
   'encrypted at rest', 'not used to train or improve shared models', 'Storage and retention', 'Deletion']) {
   assert(privacy.includes(required), `the published privacy policy must disclose: ${required}`);

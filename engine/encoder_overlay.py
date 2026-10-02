@@ -70,54 +70,21 @@ def load_encoder(obj, deploy_dir=DATA_DIR):
     obj.hdim = base.config.hidden_size
 
 
-def load_sql_selection(obj, deploy_dir=DATA_DIR):
-    """Load the one pinned CPU SQL proposer and its explicitly evaluated selector."""
-    import json
-    import os
-    from pathlib import Path
-
-    from engine.artifact_provenance import load_weights_manifest, sha256_file
-    from engine.sql_rank import SQLArbiter
-    from engine.xiyan_sql_proposer import XiYanSQLProposer
-    d = Path(deploy_dir)
-    contract_path = d / "xiyan_sql_proposer.json"
-    manifest = load_weights_manifest(d)
-    if manifest is None:
-        raise ValueError("XiYanSQL proposer requires a hash-pinned weights manifest")
-    if sha256_file(contract_path) != (
-        manifest.get("committed_artifacts", {}).get("xiyan_sql_proposer.json", {}).get("sha256")
-    ):
-        raise RuntimeError("XiYanSQL proposer contract differs from the manifested artifact")
-    contract = XiYanSQLProposer.read_contract(contract_path)
-    arbiter_path = d / contract["selector"]["artifact"]
-    if sha256_file(arbiter_path) != contract["selector"]["sha256"]:
-        raise RuntimeError("SQL arbiter does not match the XiYanSQL selection contract")
-    arbiter_payload = json.loads(arbiter_path.read_text(encoding="utf-8"))
-    fitted_proposer = (arbiter_payload.get("fit") or {}).get("proposer_adapter_sha256")
-    if fitted_proposer != contract["selector"]["fit_source_proposer_sha256"]:
-        raise RuntimeError("XiYanSQL contract disagrees with the arbiter's recorded fit provenance")
-    obj.sql_arbiter = SQLArbiter.from_payload(
-        arbiter_payload, str(arbiter_path)
-    )
-    if contract["selector"]["model_matched_arbiter"]:
-        if (obj.sql_arbiter.proposer_beams != 1
-                or obj.sql_arbiter.proposer_max_new_tokens != contract["generation"]["max_new_tokens"]
-                or arbiter_payload["fit"].get("likelihood_policy") != contract["likelihood_policy"]):
-            raise RuntimeError("matched arbiter generation/scoring contract differs from the CPU runtime")
-    obj.sql_proposer = XiYanSQLProposer.load(
-        os.environ.get("SQL_PROPOSER_MODEL_PATH") or d / "xiyan_sql_proposer.gguf",
-        contract_path=contract_path,
-    )
+def attach_sql_fallback(obj):
+    """Give the planner selection's labelled Gemini fallback (engine/sql_fallback.py). Nothing is
+    loaded: it calls Gemini only when the operator enabled it and the search found no runnable query."""
+    from engine.sql_fallback import SQLFallback
+    obj.sql_fallback = SQLFallback()
 
 
 class EncoderQuery(TableQuery):
-    """TableQuery with the complete runtime bundle loaded: the unified (LoRA-fine-tuned) Qwen encoder, the
-    trained relational readout, and the SQL proposer + arbiter that select own-data queries."""
+    """TableQuery with the complete runtime bundle loaded: the unified (LoRA-fine-tuned) Qwen encoder and
+    the trained relational readout, whose named dimensions drive the deterministic SQL search."""
 
     def __init__(self, deploy_dir=DATA_DIR):
         super().__init__(deploy_dir)
         load_encoder(self, deploy_dir)
-        load_sql_selection(self, deploy_dir)
+        attach_sql_fallback(self)
 
     # ---------- operator FROM THE MODEL (retires the keyword AGG_CUES) ----------
     INTENT_OPS: ClassVar[dict[str, str]] = {

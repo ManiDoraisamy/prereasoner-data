@@ -44,7 +44,7 @@ are not public yet.
 | Website claim | Repository evidence |
 |---|---|
 | Apache-2.0 engine source | `LICENSE` and the public source tree |
-| CPU-capable model size | the 0.5B base and runtime configuration support CPU inference, subject to measured latency |
+| CPU-capable model size | the whole runtime runs on CPU; its local models are the Qwen2.5-0.5B encoder (used without its decoder) and the bge-small embedder, and no SQL model is loaded. Spider prediction takes under 2 seconds per question at the median on a workstation CPU (`spider/results/RESULTS.md`); service memory for this design is not yet measured |
 | Inspectable query and source-row path | planner, execution trace, and workbook implementation |
 | Deterministic source synchronization | source-specific ETL, releases, checksums, and replay metadata under `db/sync/` |
 | Public reference domains | documented Wikidata, IANA, CLDR, GeoNames, ECB, CDC, NLM, and other source pipelines |
@@ -52,14 +52,19 @@ are not public yet.
 Determinism means fixed inputs, configuration, database snapshot, and model artifacts produce the
 same ranked plan and result. It does not mean every plan is correct.
 
-### No longer supported after the 2026-09-23 planner change
+### Accurate again, with one qualifier, now that local SQL models are removed
 
-"Qwen2.5-0.5B core used without autoregressive SQL generation" was accurate until the SQL proposer
-shipped. The own-data planner now decodes candidate SQL from a LoRA-adapted Qwen2.5-0.5B with
-deterministic beam search. What remains true, and is the accurate replacement: every candidate is
-mapped into the typed AST and validated before it can run, model text never reaches a database, and a
-fitted linear arbiter with reported per-feature contributions chooses the executed query. This is a
-finding for the website owner; see `docs/MODEL_CARD.md`.
+"Qwen2.5-0.5B core used without autoregressive SQL generation" was contradicted from the 2026-09-23
+planner change, when a local SQL proposer shipped (a 0.5B LoRA, later a pinned 7B GGUF). Both
+proposers and their arbiter have since been removed. For the engine's own models the claim holds
+again: the encoder is used without its decoder, and no local model writes SQL. The qualifier is the
+optional Gemini fallback. When the operator enables it and the search finds no runnable query, Gemini
+may reword the question for the search or propose one query that must pass the typed-AST gate, and
+the answer says so. The accurate wording: "No local model writes SQL. When the engine cannot build a
+query, it can ask Gemini, and the answer says so." The chat service also uses Gemini, and no model
+writes the numbers. The wording assumes the open gap in `docs/ARCHITECTURE.md` is closed first: a
+decomposed question whose leaf Gemini answered does not yet carry the label. This is a finding for
+the website owner; see `docs/MODEL_CARD.md`.
 
 ## Launch Gaps In The Current Marketing Copy
 
@@ -134,7 +139,8 @@ not establish Prereasoner scope. The linked Community Edition privacy page is cu
 Google Forms add-on policy. It says the product receives form responses and uploaded files and names
 Stripe, OpenAI, and Sarvam AI, but it does not document Prereasoner's Firebase identity, PostgreSQL
 conversations, 90-day inactivity retention, delete-all behavior, minimized logs, or the
-operator-controlled Anthropic path. Its stated effective date is 2019. Replace it with
+operator-controlled Gemini path (chat and the labelled selection fallback). Its stated effective date
+is 2019. Replace it with
 product-specific durable policy text aligned with `PRIVACY.md`; do not add repeated consent dialogs.
 
 ## Launch Evidence Checklist

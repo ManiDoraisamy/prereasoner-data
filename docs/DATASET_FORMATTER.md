@@ -56,7 +56,7 @@ rejected with a clarify; no op ever changes a cell.
 
 ## Where it runs
 
-A tool-using chat turn is two Sonnet rounds (tool request, then final prose). The op rides the
+A tool-using chat turn is two Gemini rounds (tool request, then final prose). The op rides the
 EXISTING first round — the query tool's schema gains `dataset_ops` next to `question` — so v1 adds
 ZERO new model calls. The orchestrator verifies the user quote and passes an attestation bound to
 the verified Firebase UID; the engine validates the closed grammar and table binding, then persists the operations

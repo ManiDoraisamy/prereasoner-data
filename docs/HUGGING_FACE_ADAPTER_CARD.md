@@ -9,13 +9,16 @@ tags:
 
 # Prereasoner Qwen Adapters
 
-The bundle carries two LoRA adapters on `Qwen/Qwen2.5-0.5B`, each one component of the
-[Prereasoner runtime bundle](https://huggingface.co/prereasoner/prereasoner-weights):
+This revision of the
+[Prereasoner runtime bundle](https://huggingface.co/prereasoner/prereasoner-weights) carries two LoRA
+adapters on `Qwen/Qwen2.5-0.5B`:
 
 - `qwen_lora/` adapts the base as an encoder whose representation feeds named semantic readouts.
-- `sql_proposer/` adapts the base as a causal LM that decodes candidate SQL for own-data questions.
-  Prereasoner maps each candidate into its typed AST, validates it, and lets a fitted arbiter choose
-  among candidates that execute; the adapter is not a standalone text-to-SQL generator.
+  Current Prereasoner loads it.
+- `sql_proposer/` is a retired causal-LM adapter that decoded candidate SQL for own-data questions in
+  an earlier design. Current Prereasoner loads neither it nor any other SQL model: a deterministic
+  search builds every query. The source manifest does not list the adapter, so the fetcher does not
+  download it; it remains in this published revision.
 
 Install and validate the complete compatible bundle through the source repository:
 

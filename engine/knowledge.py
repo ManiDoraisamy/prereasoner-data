@@ -45,7 +45,7 @@ class KnowledgeReasoner:
                 return self._tag_present(r, question, tables)               # geo nearby handled (server emits its result)
         # COVERAGE PRE-GATE: a question with no data-intent, no schema mention, and no resolvable entity is
         # conversational ("how does this work?"), not a query. Short-circuit BEFORE reasoning (nothing garbage
-        # streams) with low_confidence -> the UI answers it in-chat via the Sonnet fallback. Best-effort.
+        # streams) with low_confidence -> the UI answers it in-chat via the Gemini fallback. Best-effort.
         try:
             if not self.composed._has_data_signal(question, tables):
                 return {"question": question, "as_of": as_of, "low_confidence": True,
@@ -106,8 +106,8 @@ class KnowledgeReasoner:
 
     def _tag_present(self, res, question, tables=None):
         """PRESENT signal: the answer is real, but the phrasing is emotional/human — flag it so the UI routes
-        the computed answer + derivation through Sonnet to present it in words (derivation still shown in the
-        panel). Only when signaled (human tone) — plain data queries stay raw, zero Sonnet cost. Applied to
+        the computed answer + derivation through Gemini to present it in words (derivation still shown in the
+        panel). Only when signaled (human tone) — plain data queries stay raw, zero Gemini cost. Applied to
         BOTH the geo path and the composed path. Best-effort — never breaks the answer."""
         try:
             if (isinstance(res, dict) and res.get("result") and not res.get("clarify")

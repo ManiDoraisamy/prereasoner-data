@@ -17,6 +17,11 @@ The encoder's 71 older property-named coordinates remain compatibility and ranki
 not the active class vocabulary. The promoted Schema.org head represents all 1,521 properties and 926
 classes, releases only classes that pass evidence and heldout gates, and abstains on the rest.
 
+Nothing here trains a model that writes SQL or picks the served query. The encoder's similarities
+feed named ranking features, but the own-data planner builds its queries with a deterministic search
+and hand-written ranking rules. The optional Gemini fallback is an external service, not a trained
+artifact.
+
 ## Current Pipeline
 
 From the repository root, after building the synchronized source corpus:

@@ -22,7 +22,7 @@ that can exercise the code you are touching.
 | Browser state and static UI | Node 20 and a static/Firebase server |
 | Full engine request | Runtime weights and PostgreSQL |
 | World grounding | Runtime weights and a seeded knowledgebase with the required offline projections |
-| Conversational presentation | Everything above plus `ANTHROPIC_API_KEY` |
+| Conversational presentation and chat | Everything above plus `GOOGLE_CLOUD_PROJECT` with the Vertex AI API enabled, Application Default Credentials, and `EXTERNAL_LLM_ENABLED=true` |
 
 Start with hermetic tests. Add infrastructure only when the owner you are changing needs it.
 
@@ -56,15 +56,12 @@ Runtime artifacts are deliberately not committed. Fetch the manifest-pinned bund
 
 ```powershell
 python -m engine.fetch_weights
-python -m engine.fetch_xiyan_sql
 ```
 
 The default [weight repository](https://huggingface.co/prereasoner/prereasoner-weights) is public and
 requires no account or token. The fetch command pins an immutable repository commit and validates every
 file hash before installation. `HF_TOKEN` is only needed for an explicitly configured private replacement.
-The second command provisions the 4.68-GB CPU SQL model and its pinned tokenizer. An existing
-verified model can be reused with `--out <path>`; set `SQL_PROPOSER_MODEL_PATH` to that path when
-running the engine or model-backed tests. The Docker build performs the same fetch step.
+The engine has no other model to fetch: no local model writes SQL.
 
 ## 3. Run fast tests first
 
@@ -103,10 +100,14 @@ docker compose --profile seed run --rm seed
 docker compose up --build
 ```
 
-For the complete local UI/chat installation, put `ANTHROPIC_API_KEY` in `.env` before the last
-command. Compose mounts the canonical `web/public` directory into the chat service, so local
-development and Firebase Hosting use one static-file source. The engine-only service remains
-available for backend-only work.
+For the complete local UI/chat installation, set `GOOGLE_CLOUD_PROJECT` in `.env` (a project with the
+Vertex AI API enabled) and run `gcloud auth application-default login` once before the last command.
+Compose enables Gemini (`EXTERNAL_LLM_ENABLED=true`) for its engine and chat services and mounts your
+gcloud configuration directory read-only; on Windows set `GCLOUD_CONFIG_DIR` to `%APPDATA%\gcloud`.
+No model API key exists. Compose also mounts the canonical `web/public` directory into the chat
+service, so local development and Firebase Hosting use one static-file source. Without a project the
+stack still starts: chat answers 503, and the engine-only service remains available for backend-only
+work.
 
 The seed is a one-time operation. It builds the resolution index, taxonomy, and world tables described in
 [../db/README.md](../db/README.md). The engine listens on `http://localhost:8080` and Compose sets the development-
@@ -274,7 +275,8 @@ while frontend or reference plumbing changes do not unless they alter planner in
 
 ## 10. Common failure modes
 
-- **Engine does not start:** run `python -m engine.fetch_weights` and verify `engine/data/weights_manifest.json`.
+- **Engine does not start:** run `python -m engine.fetch_weights`, then verify
+  `engine/data/weights_manifest.json`.
 - **World tests skip:** set `KB_PG_PASSWORD` and seed the knowledgebase.
 - **Reference is saved but not joined:** verify a unique first-column key, at least 90% FK inclusion, compatible
   column names, and exact text case; SQL equality joins are case-sensitive.

@@ -1,11 +1,10 @@
 """Map SQL text into the engine's typed AST.
 
-One importer serves three callers: Spider gold SQL becomes proposer training targets
-(``training/proposer/import_gold.py``), and at serving time every SQL line the proposer model
-decodes is imported here before it may join the candidate pool (``engine/xiyan_sql_proposer.py``).
-Only shapes the typed AST can express are mapped; anything else raises ``Unsupported``, so model
-text can never reach a database except as a validated, re-rendered AST. The importer has no
-dataset access and never receives a gold answer or an execution label.
+The one caller is selection's labelled Gemini fallback (engine/sql_fallback.py): the query Gemini
+proposes is imported here before it may be run, grounded and served. Only shapes the typed AST can
+express are mapped; anything else raises ``Unsupported``, so model text can never reach a database
+except as a validated, re-rendered AST. The importer has no dataset access and never receives a
+gold answer or an execution label.
 """
 from __future__ import annotations
 

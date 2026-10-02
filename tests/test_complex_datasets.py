@@ -263,7 +263,7 @@ def test_compose_surface_does_not_swallow_a_compound_question():
         assert required is not None, name
         assert "compound" in required["reason"], name
     # A genuinely simple question must NOT trigger the probe, or every composed
-    # top-N would bounce to Sonnet for a pointless proposal.
+    # top-N would bounce to Gemini for a pointless proposal.
     simple = compound_decomposition_required(
         planner, _tables(DATASET_DIR / "complex-promotions"),
         "total quantity by product name",

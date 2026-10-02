@@ -26,9 +26,10 @@ docs. Do not preserve two competing descriptions of the same behavior.
 4. Use the owner table in `GETTING_STARTED.md` to find the module and focused test for a change.
 5. Run the CI-equivalent command in [TESTING.md](TESTING.md) before adding model or database prerequisites.
 
-Runtime weights are public and hash-verified. A seeded knowledge database is not distributed as a
-snapshot, so reproducing the hosted application also requires the documented source ETL and a local
-database build. That boundary is described in [OPEN_SOURCE_RELEASE.md](OPEN_SOURCE_RELEASE.md).
+Runtime weights are public and hash-verified. The hosted production database is not distributed.
+The Community deploy restores a minimal public, SHA-256-pinned seed (`community-seed-v4.dump`); a
+fuller database needs the documented source ETL. That boundary is described in
+[OPEN_SOURCE_RELEASE.md](OPEN_SOURCE_RELEASE.md).
 
 ## Mental Model
 
@@ -70,11 +71,11 @@ database releases.
 | SQL representation and expansion | Typed AST and schema graph | Deterministic |
 | Named-analysis SQL/Python emission | One immutable feed-forward plan and two source emitters | Deterministic for the supported subset |
 | Candidate ordering | Named structural and encoder-derived features with stable tie-breaking | Deterministic for fixed artifacts and inputs |
-| Own-data candidate proposals | Frozen SQL proposer, deterministic beams; every proposal imported into the typed AST and validated | Deterministic for fixed artifacts and inputs |
-| Own-data query choice | Fitted linear arbiter over nine named features, among candidates that execute | Deterministic for fixed artifacts and inputs |
+| Own-data query choice | The best-ranked search candidate that runs on a copy of the data and is grounded; calculation and money-total preferences filter that ranking | Deterministic for fixed artifacts and inputs; no local model writes SQL |
+| Selection fallback | Optional Gemini step when no candidate runs: one rewording the search reads again, or one proposed query that must import into the typed AST and pass the same checks | External model, opt-in; its answers are labelled (a decomposition leaf's is not yet) |
 | Joins, calculations, validation, and execution | Typed rules, calculation specifications, guarded emitters, and PostgreSQL | Deterministic |
 | Entity fallback | Exact lookup, then similarity, followed by grounding checks | Retrieval signal plus deterministic gates |
-| Conversational presentation | Optional external orchestrator | Cannot author SQL facts or numeric answers |
+| Conversational presentation | Optional Gemini orchestrator | Cannot author SQL facts or numeric answers |
 
 Determinism removes sampling variance. It does not remove ambiguous wording, missing candidates,
 schema-linking mistakes, selection mistakes, source gaps, or entity-resolution errors.
@@ -95,9 +96,9 @@ schema-linking mistakes, selection mistakes, source gaps, or entity-resolution e
 | IANA country enrichment | **Current in guided Community deploy** | Raw Terraform remains opt-in; the guided deployment applies grants and activates it |
 | Other synchronized publisher datasets | **Current storage, not serving** | Planner activation remains gated |
 | Firebase trace streaming | **Opt-in** | Completed HTTP responses still render when RTDB is disabled |
-| Anthropic conversational orchestration | **Opt-in** | Requires the deployment switch and operator configuration |
+| Gemini on Vertex AI: conversational orchestration and the labelled selection fallback | **Opt-in** | Requires the `EXTERNAL_LLM_ENABLED` deployment switch and a Vertex AI project; the guided Community deploy enables both together with chat |
 | Runtime weights | **External** | Public, manifest-pinned Hugging Face bundle |
-| Seeded knowledge database | **External** | Built through source ETL rather than distributed as a snapshot |
+| Seeded knowledge database | **External** | Community restores a minimal pinned seed dump; the production database is built through source ETL and not distributed |
 | `wikidata` migration, organization tenancy, and generic temporal enrichment | **Planned** | Do not describe these as shipped |
 
 ## Canonical Documents

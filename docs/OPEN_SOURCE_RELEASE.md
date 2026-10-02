@@ -6,7 +6,9 @@ architecture and status vocabulary.
 
 This repository can be published as Apache-2.0 source code. A public clone can run the
 deterministic SQL planner, routing, enrichment-policy, source-parser, migration, MCP, and
-frontend tests without downloading model weights or provisioning a production database.
+frontend tests without downloading model weights or provisioning a production database. Without the
+weight bundle, `tests.test_complex_datasets` reports its model-backed cases as SKIP (skips are not
+passes).
 
 ## Public Checkout
 
@@ -39,13 +41,14 @@ These are intentionally not source files:
 | Schema.org property head | Public in the same pinned bundle | `schema_property_head.pt` is required by the manifest and container startup gate |
 | Schema.org semantic corpus JSONL | Generated, not committed | Rebuild from the exact synchronized releases with `python -m training.schema_org.corpus`; the committed semantic manifest preserves identity |
 | Unified-router training inputs | Not committed | `columns.csv`, `type_table_map.csv`, databases, and warm-start inputs are documented in `training/props/pipeline.md` |
-| Seeded Wikidata/source database | Not distributed | Build from publisher artifacts with `db/README.md` and `docs/SOURCE_DATA.md` |
+| Community seed database | Public minimal seed dump (`community-seed-v4.dump`), SHA-256-pinned | Restored by the guided deployment; see `deploy/gcp/README.md` and `deploy/gcp/deploy.sh` |
+| Hosted production database | Not distributed | Build serving data from publisher artifacts with `db/README.md` and `docs/SOURCE_DATA.md` |
 | Spider dataset | Not bundled; licensed upstream under CC BY-SA 4.0 | Fetch from Yale with `spider/probe/fetch_data.py`; only aggregate measurements and attribution are committed |
 | Production Terraform state and secrets | Never distributed | Create a new state backend, or restore/import an existing deployment before planning |
 | Customer-held-out metadata | Never distributed without explicit consent | Keep consent-bound corpora under ignored `regress/private/` |
 
-Publishing source plus the public manifested bundle reproduces the shipped model artifacts. It does
-not reproduce the hosted application's seeded knowledge database, cloud state, or secrets. The public
+Publishing source plus the public manifested bundle reproduces the shipped model artifacts. It does not reproduce the hosted production database, cloud state, or secrets.
+The Community seed dump is a minimal public serving database, not a copy of the hosted one. The public
 source and deterministic non-model test path are reproducible without those deployment resources.
 
 ## What May Be Claimed
@@ -60,9 +63,9 @@ source and deterministic non-model test path are reproducible without those depl
   restricted browser keys, live auth/isolation tests, the scheduled retention job, and a release-database
   regression run.
 
-Community Edition is an intentional release offer. The runtime weights are public and manifest-pinned;
-the guided Google Cloud path rebuilds its minimal Wikidata, IANA, and ECB serving data instead of shipping
-a database snapshot. The separately owned marketing-repository boundary and remaining website findings are
+Community Edition is an intentional release offer. The runtime weights are public and manifest-pinned.
+The guided Google Cloud path restores a minimal public
+seed dump (`community-seed-v4.dump`, SHA-256-pinned); the hosted production database is not distributed. The separately owned marketing-repository boundary and remaining website findings are
 recorded in `docs/MARKETING_WEBSITE_REVIEW.md`. Changes to this repository do not authorize edits or deployment
 of the marketing website.
 
@@ -94,8 +97,9 @@ source-key grounding remains mandatory.
    CI-equivalent public-checkout suite and frontend test shown above.
 3. Run `python -m tests.run_all`; record every live/external skip separately.
    For a hosted release, the prompt-owned question-fidelity test is mandatory and must not silently
-   skip. Set `REQUIRE_ORCHESTRATOR_TESTS=1` with `ANTHROPIC_API_KEY` available, then run
-   `python -m tests.test_orchestrator` and retain its engine-received-question results as release evidence.
+   skip. Set `REQUIRE_ORCHESTRATOR_TESTS=1` with `GOOGLE_CLOUD_PROJECT` and Application Default Credentials
+   that reach Vertex AI Gemini, then run `python -m tests.test_orchestrator` and retain its
+   engine-received-question results as release evidence.
 4. Maintainer-only: run `python -m regress.run_regression --require-world` against the fully
    seeded release database. A public checkout without that database must record this gate as skipped.
 5. For planner changes, run a fresh provenance-bearing Spider `whole_db` evaluation and compare per-example losses.
@@ -138,11 +142,12 @@ runner image and records that runtime in the model candidate manifest.
 
 ## Deployment Boundary
 
-Terraform defaults to a core engine with external model processing disabled and no Anthropic
-secret or IAM grant. Set `enable_external_llm=true` for engine-only assistant features, or set
-`enable_orchestrator=true` and provide an immutable `chat_image`; either mode also requires the ID
-of an out-of-band `anthropic_secret_id`. The secret value never belongs in Terraform variables or
-state. Reference enrichment is
+Terraform defaults to a core engine with external model processing disabled: no Vertex AI API,
+IAM grant, or Gemini call. Gemini on Vertex AI, in the deployment's own project, is the only
+external model. Set `enable_external_llm=true` for the engine's Gemini features alone, or set
+`enable_orchestrator=true` and provide an immutable `chat_image`, which enables Gemini for the
+engine and chat together. Neither mode needs a model API key or secret: each service account is
+granted `roles/aiplatform.user`. Reference enrichment is
 also independently opt-in through code approval, database grants, and
 `ENRICHMENT_ACTIVE_DATASETS`.
 

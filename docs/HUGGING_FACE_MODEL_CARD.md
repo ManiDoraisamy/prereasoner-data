@@ -13,9 +13,10 @@ tags:
 
 This repository contains the public, manifest-pinned runtime weights for
 [Prereasoner](https://github.com/ManiDoraisamy/prereasoner-data), an interpretable
-table-question-answering system. Learned components produce semantic evidence and candidate SQL;
-a typed AST planner validates every candidate and owns joins, calculation verification, arbitration,
-rendering, and execution. The bundle is not a standalone text-to-SQL model.
+table-question-answering system. Learned components produce semantic evidence: named coordinates
+for columns and question words, and Schema.org property and class scores. A deterministic typed AST
+planner builds every query and owns joins, calculation verification, selection, rendering, and
+execution. No model in this bundle writes SQL, and the bundle is not a standalone text-to-SQL model.
 
 ## Install
 
@@ -39,23 +40,25 @@ the complete bundle, and only then installs it.
 | `encoder_meta.pt` | Readout allocation and constructor configuration |
 | `qwen_lora/adapter_model.safetensors` | LoRA adapter for `Qwen/Qwen2.5-0.5B` |
 | `qwen_lora/adapter_config.json` | PEFT adapter configuration |
-| `sql_proposer/adapter_model.safetensors` | LoRA adapter for `Qwen/Qwen2.5-0.5B` (causal LM) that proposes own-data SQL candidates |
-| `sql_proposer/adapter_config.json` | PEFT adapter configuration |
+| `sql_proposer/adapter_model.safetensors` | Retired LoRA SQL proposer from an earlier design; not in the source manifest, not downloaded, not loaded |
+| `sql_proposer/adapter_config.json` | PEFT adapter configuration for the retired proposer |
 | `anchor_assignment.npz` | Calibrated named-dimension thresholds |
 | `primitives.npz` | Learned primitive-composition head |
 | `schema_property_head.pt` | Calibrated Schema.org named-property evidence head |
 
-The source repository contains the small ontology, calibration, taxonomy, arbiter, and manifest
-artifacts.
-The base Qwen model is downloaded separately from its publisher.
+The source repository contains the small ontology, calibration, taxonomy, and manifest artifacts.
+The base Qwen model is downloaded separately from its publisher. `python -m engine.fetch_weights`
+downloads only the files the source manifest lists, so it skips the retired `sql_proposer/`
+directory. Current Prereasoner loads no SQL-generating model.
 
 ## Model Boundary
 
 The encoder adapter emits named Schema.org property probabilities, calibrated class proposals,
 embeddings for structural intent and ranking, and calculation operand signals. A released class may
 propose a coarse resolver family, but no score can authorize a table, join, calculation, or answer.
-The SQL proposer adapter decodes candidate SQL; Prereasoner uses a candidate only after mapping it into
-its typed AST and validating it, and a fitted arbiter chooses among validated candidates that execute.
+Prereasoner's deterministic search builds every query from these signals, and the engine serves the
+best-ranked query that runs on the data. An operator may enable an external Gemini fallback for
+questions the search cannot answer; it is not part of this bundle, and its answers are labelled.
 Deterministic code applies ontology mapping, exact source grounding, typed constraints, abstention
 rules, and execution checks.
 
@@ -93,6 +96,6 @@ servable. Unsupported and under-calibrated coordinates abstain.
 ## License
 
 The Prereasoner weight bundle is released under Apache-2.0. The base model and source datasets retain
-their own licenses and terms. The `sql_proposer/` adapter was trained on Spider TRAIN (Yu et al.,
+their own licenses and terms. The retired `sql_proposer/` adapter was trained on Spider TRAIN (Yu et al.,
 EMNLP 2018; CC BY-SA 4.0); keep that attribution when redistributing it. See
 [`THIRD_PARTY.md`](https://github.com/ManiDoraisamy/prereasoner-data/blob/main/THIRD_PARTY.md).

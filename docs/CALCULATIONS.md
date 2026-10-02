@@ -24,7 +24,7 @@ released only when a registered specification proves that the selected query mat
 
 | Specification | Accepted shape | Required evidence |
 |---|---|---|
-| Currency | filter, identity/unit annotation, or `SUM(amount * rate_to_target)` | ISO target, monetary measure, exact typed rate edge in the selected AST, complete branch coverage |
+| Currency | filter, identity/unit annotation, or `SUM(amount * rate_to_target)` (`total_<ccy>`), or `AVG(amount * rate_to_target)` (`average_<ccy>`) when the base query averages the amount | ISO target, monetary measure, exact typed rate edge in the selected AST, complete branch coverage |
 | Ratio | `SUM(numerator) / SUM(denominator)` | two eligible numeric roles, selected complete registered-key path, same operands on every branch |
 | Rate application | rate amount, `SUM(amount * rate)`; inclusive total, `SUM(amount * (1 + rate))`; deducted total, `SUM(amount * (1 - rate))` | monetary measure, dimensionless flat rate, unambiguous direction, selected complete registered-key path, temporal coordinate when the rate is dated |
 
@@ -38,7 +38,9 @@ The generic calculation planner deliberately abstains on tiered or progressive s
 compound or variable-period interest, latest-prior/as-of joins, missing temporal alignment, unknown
 rate units, and ambiguous add/subtract direction or operand bindings. Compatible row factors compose
 inside one aggregate: for example, currency conversion plus a customer-tier discount becomes one
-`SUM(amount * exchange_rate * (1 - discount_rate))`. The verifier requires the final AST to equal a
+`SUM(amount * exchange_rate * (1 - discount_rate))`. A row factor applies to each row before the rows
+are combined, so the planned `SUM` follows the base query's aggregate: a base that averages the measure
+gets the `AVG` of the factored rows (`engine/calculations/search.py:_aggregated_as_base`). The verifier requires the final AST to equal a
 composition of every detected specification; proving either factor alone is insufficient. A question
 that merely asks for a tax, commission, or discount *rate* is an ordinary projection, not a request to
 apply that rate.
@@ -46,8 +48,12 @@ apply that rate.
 Own-data AST search and scalar world-filter queries consume the same registered calculation plan.
 The world adapter owns its request-local entity bridge, but it renders the registry's typed scalar
 expression and returns that same expression as verification evidence; it does not maintain a separate
-currency-only formula. Calculated world projections/groupings remain fail-closed until their grouping
-columns are represented in that typed bridge.
+currency-only formula. A total grouped or ranked by a world attribute or an uploaded column ("total
+amount by continent in US dollars", "which city has the highest total amount in US dollars") does
+not use the registered plan, which computes one figure over every row. The world adapter renders the
+converted `SUM` or `AVG` per group itself (`KnowledgeTableQuery._aggregated`), records that
+expression with the grain it is computed per, and the same registered checks assess it
+(`KnowledgeTableQuery._record_computation`).
 
 ECB conversion does not weaken that rule. Its offline projection expands the active source release
 to exact calendar-date rows and preserves both the true source business date and release ID. Serving

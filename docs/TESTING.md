@@ -3,10 +3,8 @@
 Prereasoner has hermetic tests, browser-state tests, live database integrations, a deployment regression gate, and
 Spider accuracy evaluation. They answer different questions and should not be collapsed into one green badge.
 
-Model-backed tests need both `python -m engine.fetch_weights` and
-`python -m engine.fetch_xiyan_sql` (GGUF plus tokenizer). Set `SQL_PROPOSER_MODEL_PATH` only
-when reusing a verified GGUF outside `engine/data/`. The runner gives live engine and complex
-dataset suites 7,200 seconds on CPU; other suites retain 900 seconds.
+Model-backed tests need `python -m engine.fetch_weights`. The runner gives live engine and
+complex dataset suites 7,200 seconds on CPU; other suites retain 900 seconds.
 `TEST_SUITE_TIMEOUT_SECONDS` explicitly overrides either default. A suite exiting zero after
 reporting SKIP is not evidence that the skipped integration passed.
 
@@ -87,7 +85,9 @@ git diff --check
 
 These cover typed AST behavior, deterministic routing, private-reference selection and validation, workbook
 reference state, JavaScript syntax, and Python syntax. The platform locks generated from
-`requirements-ci.txt` are intentionally independent of the model stack. Live engine suites still
+`requirements-ci.txt` are intentionally independent of the model stack. The remaining locks target Linux
+containers. The `python-hermetic` GitHub Actions job audits them on Linux; auditing them from Windows asks
+pip to resolve Windows-only transitive dependencies and is not a valid check of the release image. Live engine suites still
 require the serving container, model artifacts, and PostgreSQL.
 CI additionally scans the complete Git history with the immutable Gitleaks v3 action; a shallow local
 working-tree scan is not equivalent to that gate.
@@ -121,14 +121,18 @@ $env:RUN_ORCHESTRATOR_TESTS = "0"
 python -m tests.run_all
 ```
 
-The runner executes the canonical suites in this order:
+The runner executes the canonical suites in this order. The live engine suites from `tests.test_world`
+onward run last, after the orchestrator suites, unless `RUN_ENGINE_TESTS=0`:
 
 | Suite | Primary boundary |
 |---|---|
 | `tests.test_sql_ast` | Typed planning, ranking, recursion, constraints, extrema, evaluation contract |
-| `tests.test_deterministic_emitters` | Plan validation, byte-stable source, ORM object relationships, stage alignment, execution policy, and SQL/Python parity |
-| `tests.test_complex_datasets` | Promoted-planner leaves, fused complex DAGs, independent gold rows, and SQL/Python stage verification on shipped fixtures |
+| `tests.test_llm` | The one Gemini client (`engine/llm.py`): the switch and configuration gate, deterministic JSON requests against the real SDK types, failures only as `LLMUnavailable`, one client per process, and the chat facade's thought-signature replay and forced/disabled tool calls; no network |
 | `tests.test_calculations` | Typed arithmetic, operand eligibility, complete joins, all-branch proof, abstention, and clarify transport |
+| `tests.test_analysis` | Slug/identity validation, effective table/relationship/semantic hashing, bounded unique view names, executed-SQL preservation, and HTTP/live-stream parity |
+| `tests.test_deterministic_emitters` | Plan validation, byte-stable source, ORM object relationships, stage alignment, execution policy, and SQL/Python parity |
+| `tests.test_decomposition` | Compound-question proposal validation, merge keys, leaf naming, and fused-plan contracts at the decomposition owner and serving boundary |
+| `tests.test_complex_datasets` | Promoted-planner leaves, fused complex DAGs, independent gold rows, and SQL/Python stage verification on shipped fixtures |
 | `tests.test_routing` | Shared route authority and cross-process determinism |
 | `tests.test_router_evidence` | Property-family consensus and surfaced routing evidence |
 | `tests.test_schema_decode` | URI-indexed property evidence, deterministic class scoring, abstention, and artifact identity |
@@ -140,13 +144,22 @@ The runner executes the canonical suites in this order:
 | `tests.test_source_sync` | Hermetic fixtures for every public and credential-gated source parser, including hierarchy, composite-key, rights, and rejection invariants |
 | `tests.test_app_migrations` | Application schema migrations, the world-table maintenance catalog, and least-privilege grants |
 | `tests.test_request_limits` | Canonical request validation, resource bounds, auth bypass isolation, and paid-request budgets |
-| `tests.test_analysis` | Slug/identity validation, effective table/relationship/semantic hashing, bounded unique view names, executed-SQL preservation, and HTTP/live-stream parity |
+| `tests.test_request_timing` | One `[timing]` line per request: no double-counted nested spans, emitted on failure, unchanged results, no user data in the line |
+| `tests.test_pg_upload` | Uploaded-sheet load issues page-bounded statements with byte-identical values, against a recording cursor |
+| `tests.test_dimension_model` | `/api/dimension` startup and encoder sharing |
+| `tests.test_kb_memo` | Request-scoped shared-knowledge memo dedupes identical lookups without changing answers |
+| `tests.test_encode_cache` | Encoder text cache dedupes forward passes without changing any vector |
+| `tests.test_stream_buffer` | Coalescing RTDB stream writer bounds writes and ends authoritatively |
+| `tests.test_dataset_semantics` | Dataset-semantics op validation, replay, application, and authenticated transport |
+| `tests.test_dataset_gold` | The browser release gate grades with the same gold as `tests.test_datasets` |
 | `tests.test_conversations` | Stable pagination, atomic storage accounting including analysis revisions, snapshot limits, and owned deletion |
+| `tests.test_sheet_sessions` | Per-Google-Sheet sidebar restoration, ownership, and bounded snapshots |
 | `tests.test_provenance` | Typed output lineage, source/release identity, and HTTP/stream parity |
 | `tests.test_release` | Public-tree invariants: artifact boundary, secure model pins, privacy route, and canonical owners |
+| `tests.test_community_deploy` | Community bootstrap and seed import, world projections, deployer defaults, and release smoke checks |
 | `tests.test_mcp` | MCP response shape and engine adapter |
 | `tests.test_orchestrator_unit` | Terminal query control, tool-disabled presentation, and fallback preservation with contract fakes |
-| `tests.test_orchestrator` | External Anthropic tool-use integration and HTTP envelope; requires a key |
+| `tests.test_orchestrator` | External Vertex AI Gemini tool-use integration and HTTP envelope; requires `GOOGLE_CLOUD_PROJECT` and Application Default Credentials |
 | `tests.test_world` | Grounding, geo basics, and aggregate delegation |
 | `tests.test_nongeo` | Non-geographic world resolution from pre-synchronized projections |
 | `tests.test_world_joins` | Country, continent, and state world-table joins |
@@ -157,8 +170,8 @@ The runner executes the canonical suites in this order:
 | `tests.test_question_families` | Question families over the shipped sheets (output currency vs row filter, codes that live in the upload, place nouns, multi-word places, the sheet's own name, learned rankings); golds from the CSVs and the stored ECB rate, FX to 0.5% |
 
 For a hosted release, set `REQUIRE_ORCHESTRATOR_TESTS=1` before running
-`python -m tests.test_orchestrator`. With that flag, a missing `ANTHROPIC_API_KEY` is a failure rather
-than a skip. The suite checks standalone pass-through, follow-up qualifier carry-over, and the joined
+`python -m tests.test_orchestrator`. With that flag, a missing `GOOGLE_CLOUD_PROJECT` or missing
+Application Default Credentials (`gcloud auth application-default login`) is a failure rather than a skip. The suite checks standalone pass-through, follow-up qualifier carry-over, and the joined
 tier-discount regression at the exact question received by the engine; public pull-request CI keeps
 this paid external test disabled. `orders-tiers` and `payment-commissions` provide independent
 joined-rate fixtures so the calculation gate covers both discount and commission semantics.
@@ -189,7 +202,7 @@ the production importer. `workbook-import.js` identifies complete headers after 
 blank separators and explicit separated footer notes, preserves numeric values and dates/timestamps, and
 records source header/row counts. Simple merged parent headings are flattened; merged data cells,
 duplicate headers and ambiguous total/subtotal rows are rejected. Cached formula values are read, never
-executed or recalculated. Missing caches and Excel errors fail visibly. Neither Sonnet nor the engine
+executed or recalculated. Missing caches and Excel errors fail visibly. Neither Gemini nor the engine
 currently repairs arbitrary workbook layouts: the deterministic upload adapter handles this bounded subset.
 The original .xls/.xlsx files remain unchanged in evaluation-only directories with publisher attribution.
 
@@ -207,7 +220,8 @@ regressions. These use mocked backend responses and are NOT live model accuracy 
 For unmocked Chrome evaluation, run `node regress/browser_matrix.js` against `EVAL_BASE_URL` (default
 `http://127.0.0.1:8091`). Start the real engine and orchestrator on loopback with the same isolated
 test principal, `APP_ENV=test`, `RTDB_URL` empty, and `EXTERNAL_LLM_ENABLED=1` explicitly enabled for
-the requested Sonnet evaluation. PostgreSQL should use the IAM proxy and serving role. No database
+the requested Gemini evaluation (with `GOOGLE_CLOUD_PROJECT` and Application Default Credentials).
+PostgreSQL should use the IAM proxy and serving role. No database
 firewall changes or production auth bypasses are required. For a deployed origin, supply an authorized
 Playwright `EVAL_STORAGE_STATE`; the harness does not mint credentials or automate Google login.
 For customer-facing examples listed in `dataset.txt`, the runner opens the exact `?load=<dataset>` URL,
@@ -257,10 +271,6 @@ The workbook reference tests run in a Node VM with a minimal browser/Firebase ha
 ```powershell
 node web/tests/workbook_reference.test.js
 ```
-
-The remaining locks target Linux containers. The `python-hermetic` GitHub Actions job audits them
-on Linux; auditing them from Windows asks pip to resolve Windows-only transitive dependencies and is
-not a valid check of the release image.
 
 They cover dirty-state autosave, failed-save blocking, delete behavior, zero values, named-analysis identity,
 per-call execution provenance, bounded snapshot compaction, and snapshot restoration. Run
@@ -341,8 +351,9 @@ python -m spider.probe.full_eval `
   --out spider/results/<unique-tag>/whole_db/full_eval_whole_db
 ```
 
-On CPU the proposer makes a full run take hours; a CUDA machine with `DEVICE=cuda` runs the same
-fp32 code much faster.
+No SQL model runs, so a full run takes under an hour on a workstation CPU: the 2026-10-02 runs in
+[RESULTS.md](../spider/results/RESULTS.md) measured a median under 2 s per question. Leave
+`EXTERNAL_LLM_ENABLED` unset for the headline; the summary records whether the Gemini fallback ran.
 
 To exercise the production backend policy on the clean scalar-gold subset, keep the same runner and
 comparison contract:
@@ -390,10 +401,11 @@ The engine image entrypoint lets `python -m engine.retention_cleanup` run withou
 that command only against a disposable or explicitly selected database. CI asserts the entrypoint contract without
 connecting to customer storage; the live database suite covers cleanup behavior with isolated fixtures.
 
-CI also runs credential-free, no-refresh plans to prove that the default creates no chat
-resources, that `enable_orchestrator=true` fails without `anthropic_secret_id`, and that a
-complete optional-chat configuration produces the expected resources. Both image inputs are
-dummy immutable digests in this structural plan; no image is pulled.
+CI also runs credential-free, no-refresh plans to prove that the default creates no chat or
+Vertex AI resources and leaves the engine's `EXTERNAL_LLM_ENABLED` false, and that
+`enable_orchestrator=true` needs no secret: it creates the chat resources, grants both service
+accounts Vertex AI access, and sets `EXTERNAL_LLM_ENABLED` true on both services. Both image inputs
+are dummy immutable digests in this structural plan; no image is pulled.
 
 If Docker or Terraform is unavailable, say so explicitly. Static parsing and unit tests do not replace an image
 build or Terraform validation. On a fresh checkout, `terraform init -backend=false` is credential-free; an existing

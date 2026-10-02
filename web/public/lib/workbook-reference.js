@@ -182,7 +182,7 @@ function openGenModal(sh){
   document.body.appendChild(ov);
   const ta=document.getElementById('genta'); if(ta){ ta.focus(); ta.setSelectionRange(ta.value.length,ta.value.length); }
 }
-// Fire the fill job and render the master sheet LIVE as Sonnet streams: the header arrives (columns appear),
+// Fire the fill job and render the master sheet LIVE as Gemini streams: the header arrives (columns appear),
 // then each row fills in as it completes. RTDB is the primary channel (decoupled from the 60s proxy timeout);
 // the HTTP body is the warm/fast fallback. Progress rides on the master sheet's own Generate button (sh._gen),
 // so it survives every per-row re-render.

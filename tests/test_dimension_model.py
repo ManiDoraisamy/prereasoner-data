@@ -58,7 +58,9 @@ def test_dimension_reuses_world_encoder_and_copies_thresholds():
     ok(shared.thr == {"taxonomy": 0.5}, "world calibration remains unchanged")
 
 
-def test_dimension_standalone_loads_encoder_without_constructing_sql_proposer():
+def test_dimension_standalone_loads_only_the_encoder():
+    """The dimension endpoint is a readout over the encoder bundle. It once constructed the own-data
+    planner's SQL proposer without using it; it attaches no part of own-data selection."""
     calls = []
     original = dimension_module.load_encoder
 
@@ -77,13 +79,14 @@ def test_dimension_standalone_loads_encoder_without_constructing_sql_proposer():
     ok(len(calls) == 1, "standalone dimension loads the shared encoder bundle once")
     ok(calls[0][0] is model, "standalone loader initializes the dimension model")
     ok(calls[0][1] == deploy_dir, "standalone loader receives the selected bundle directory")
-    ok(model.sql_proposer is None, "dimension endpoint does not construct an unused SQL proposer")
+    ok(model.sql_fallback is None, "dimension endpoint attaches no own-data SQL selection fallback")
 
 
 def test_dimension_waits_on_the_shared_engine_lock_with_a_bound():
     """DIM_LOCK is WORLD_LOCK (the endpoints share the world encoder). /api/reason waits
     QUEUE_TIMEOUT_SECONDS and answers 503; /api/dimension waited without a bound and held its
-    request thread for a whole 7B decode. It now answers the same retryable 503."""
+    request thread for the whole request ahead of it (then a 7B SQL decode). It now answers the
+    same retryable 503."""
     import threading
     from engine import server
 
@@ -118,7 +121,7 @@ def test_dimension_waits_on_the_shared_engine_lock_with_a_bound():
         (server._verify_principal, server.DIM_RATE, server.DIM_LOCK, server.QUEUE_TIMEOUT_SECONDS,
          server.DIM_MODEL) = originals
     ok(sent[0] == (503, {"error": "Engine is busy; retry shortly", "retryable": True}),
-       f"a dimension request behind a decode is a retryable 503 (got {sent[:1]})")
+       f"a dimension request behind another request is a retryable 503 (got {sent[:1]})")
     ok(sent[1:] == [(200, {"columns": []})] and not lock.locked(),
        "once the engine is free the request is served and the lock released")
 
@@ -126,7 +129,7 @@ def test_dimension_waits_on_the_shared_engine_lock_with_a_bound():
 def main():
     print("[dimension] shared model startup contract")
     test_dimension_reuses_world_encoder_and_copies_thresholds()
-    test_dimension_standalone_loads_encoder_without_constructing_sql_proposer()
+    test_dimension_standalone_loads_only_the_encoder()
     test_dimension_waits_on_the_shared_engine_lock_with_a_bound()
     print(f"\ntest_dimension_model: {P} passed, {F} failed")
     sys.exit(1 if F else 0)

@@ -1058,7 +1058,7 @@ prioritize the largest validated miss family in the same existing planner path.
 User request (excerpt, formatting normalized): "Ok, go ahead and propose the full plan for 7-8B-led accuracy
 development, CPU-only serving as a requirement, and 3B as a measured alternative."
 
-Canonical proposal: [training/proposer/README.md](training/proposer/README.md#proposed-cpu-only-accuracy-program-2026-09-24).
+Canonical proposal: `training/proposer/README.md` ("Proposed CPU-only accuracy program", 2026-09-24; the directory was removed on 2026-10-02 and remains in git history).
 This is a documentation task; no training, paid jobs, model downloads, commits, or deployments
 were started. Existing production ownership and the measured 645/1,034 baseline are unchanged.
 

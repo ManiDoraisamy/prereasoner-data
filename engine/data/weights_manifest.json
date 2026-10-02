@@ -15,14 +15,6 @@
     "schema_training_manifest.json": {
       "note": "tracked in git; immutable Schema.org training provenance installed only by promotion",
       "sha256": "9c8d92e288d706b3095db729bb42279d4f7d502976119678345ba521fdba7b96"
-    },
-    "xiyan_sql_proposer.json": {
-      "note": "tracked model/runtime contract for the single SQL proposer; the pinned GGUF is downloaded and hash-verified during image build",
-      "sha256": "3c7836a87994bb6c8b95391f1077a17f24240196fd8781486dd15c6db4ff8961"
-    },
-    "sql_arbiter.json": {
-      "note": "tracked in git (not fetched); fitted SQL arbiter installed only by training/rank/promote.py",
-      "sha256": "fc84162a4dc9900f963bbea751ccf13f2d9218842a0f781ee1cb7e964584977d"
     }
   },
   "files": {

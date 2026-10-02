@@ -50,8 +50,8 @@ from engine.analysis import (
     decorate_analysis_response,
 )
 from engine.auth import _bearer, _verify_principal
-from engine.config import HOST, PORT, external_llm_enabled
-from engine.xiyan_sql_proposer import QUEUE_TIMEOUT_SECONDS, SQLProposerUnavailable
+from engine import llm
+from engine.config import HOST, PORT
 from engine.conversations import (
     DatasetOpsLimitError,
     NotOwned,
@@ -103,6 +103,11 @@ DIM_MODEL = None                   # the ONE DimensionModel for /api/dimension
 ENRICHMENT = None                  # request-local enrichment; registry activation remains authoritative
 WORLD_LOCK = threading.Lock()      # one request at a time through the shared world model (set_ctx is per-request)
 DIM_LOCK = threading.Lock()        # one request at a time through the dimension model
+QUEUE_TIMEOUT_SECONDS = 15.0       # how long a request waits for the engine before 503 {retryable: true}
+
+
+class EngineBusy(RuntimeError):
+    """The engine did not admit a request within QUEUE_TIMEOUT_SECONDS."""
 
 
 def _start_spacy_warmup(model):
@@ -536,12 +541,12 @@ class H(BaseHTTPRequestHandler):
             print(f"admin delete failed: {type(e).__name__}", flush=True)
             self._send(500, json.dumps({"error": "internal server error"}))
 
-    # ---------------- /api/converse (Sonnet conversational fallback for the /reason rail) ----------------
+    # ---------------- /api/converse (Gemini conversational fallback for the /reason rail) ----------------
     def _post_converse(self):
-        """Answer a clarify / non-data question conversationally (Sonnet), so the rail replies in-chat
-        instead of redirecting. One Anthropic call is protected by local concurrency and PostgreSQL-backed
+        """Answer a clarify / non-data question conversationally (Gemini), so the rail replies in-chat
+        instead of redirecting. One Gemini call is protected by local concurrency and PostgreSQL-backed
         cross-instance quotas; the deterministic path is unchanged. Firebase-auth'd like the reasoning routes;
-        a missing key degrades to a clear 503."""
+        Gemini being unavailable degrades to a clear 503."""
         try:
             req = self._read_json(MAX_CONVERSE_CHARS)
             if req is None:
@@ -549,7 +554,7 @@ class H(BaseHTTPRequestHandler):
             sub, _uid = _verify_principal(_bearer(self.headers, req))
             if not sub:
                 self._send(401, json.dumps({"error": "sign in required"})); return
-            if not external_llm_enabled():
+            if not llm.available():
                 self._send(503, json.dumps({
                     "error": "assistant processing is unavailable for this request"
                 })); return
@@ -564,7 +569,7 @@ class H(BaseHTTPRequestHandler):
                     text = converse.reply(req.get("question", ""), clarify=req.get("clarify"),
                                           error=req.get("error"), tables=req.get("tables"),
                                           answer=req.get("answer"), sql=req.get("sql"))
-            except Exception as e:                           # noqa: BLE001 — no key / SDK / upstream: let the client fall back
+            except Exception as e:                           # noqa: BLE001 — Gemini unavailable: let the client fall back
                 print(f"/api/converse degraded (503): {type(e).__name__}", flush=True)
                 self._send(503, json.dumps({"error": "converse unavailable"})); return
             self._send(200, json.dumps({"reply": text}))
@@ -572,14 +577,14 @@ class H(BaseHTTPRequestHandler):
             print(f"/api/converse failed: {type(e).__name__}", flush=True)
             self._send(500, json.dumps({"error": "internal server error"}))
 
-    # ---------------- /api/master/generate (Sonnet fills a reference table) ----------------
+    # ---------------- /api/master/generate (Gemini fills a reference table) ----------------
     def _post_master_generate(self):
-        """POST /api/master/generate {name, columns, rows, instruction?, jobId?} → Sonnet fills the reference
+        """POST /api/master/generate {name, columns, rows, instruction?, jobId?} → Gemini fills the reference
         table's attribute columns for each entity (col 0), preserving already-filled cells, and returns
-        {columns, rows}. The Sonnet fill can exceed the ~60s Firebase-proxy timeout (cold start + generation),
+        {columns, rows}. The Gemini fill can exceed the ~60s Firebase-proxy timeout (cold start + generation),
         so — exactly like the reasoning routes — the result is ALSO streamed to RTDB (/runs/{uid}/{jobId}):
-        the browser reads it there even when the POST response is lost to the proxy. A missing/failed Anthropic
-        key degrades to a clear 503 (+ an RTDB error) so the popup re-enables."""
+        the browser reads it there even when the POST response is lost to the proxy. Gemini being unavailable
+        or failing degrades to a clear 503 (+ an RTDB error) so the popup re-enables."""
         emit = None
         try:
             req = self._read_json(MAX_GENERATE_CHARS)
@@ -588,7 +593,7 @@ class H(BaseHTTPRequestHandler):
             sub, uid = _verify_principal(_bearer(self.headers, req))
             if not sub:
                 self._send(401, json.dumps({"error": "sign in required"})); return
-            if not external_llm_enabled():
+            if not llm.available():
                 self._send(503, json.dumps({
                     "error": "assistant processing is unavailable for this request"
                 })); return
@@ -619,7 +624,7 @@ class H(BaseHTTPRequestHandler):
                 with lease:
                     out = converse.generate_master(req.get("name", "reference"), columns, rows,
                                                    instruction=req.get("instruction"), emit=emit)
-            except Exception as e:                           # noqa: BLE001 — no key / SDK / bad JSON: let the client re-enable
+            except Exception as e:                           # noqa: BLE001 — Gemini unavailable: let the client re-enable
                 print(f"/api/master/generate degraded (503): {type(e).__name__}", flush=True)
                 emit("error", "generate unavailable"); emit("status", "error")
                 self._send(503, json.dumps({"error": "generate unavailable"})); return
@@ -827,7 +832,7 @@ class H(BaseHTTPRequestHandler):
             # fixes, and one line has to tell them apart.
             with request_timing.span("lock_wait"):
                 if not WORLD_LOCK.acquire(timeout=QUEUE_TIMEOUT_SECONDS):
-                    raise SQLProposerUnavailable("Engine is busy; retry shortly")
+                    raise EngineBusy("Engine is busy; retry shortly")
             try:
                 set_ctx(emit)                                # so the DEEP bridge build streams the cell→qid lookup live
                 try:
@@ -911,7 +916,7 @@ class H(BaseHTTPRequestHandler):
                         discard_analysis()
             stream_final(emit, res)                          # terminal state -> RTDB (decoupled from this response)
             self._send(200, json.dumps(res, default=_json_safe))
-        except SQLProposerUnavailable as exc:
+        except EngineBusy as exc:
             discard_analysis()
             if emit is not None:
                 emit("error", str(exc))
@@ -964,8 +969,8 @@ class H(BaseHTTPRequestHandler):
             if row_error:
                 self._send(413, json.dumps({"error": row_error})); return
             # DIM_LOCK is WORLD_LOCK: the dimension model shares the world encoder, so it queues behind a
-            # /api/reason decode. Wait as long as /api/reason does, then answer 503 like it — an unbounded
-            # wait held a request thread for the whole decode.
+            # /api/reason request. Wait as long as /api/reason does, then answer 503 like it — an unbounded
+            # wait held a request thread for the whole request.
             if not DIM_LOCK.acquire(timeout=QUEUE_TIMEOUT_SECONDS):
                 self._send(503, json.dumps({"error": "Engine is busy; retry shortly", "retryable": True}))
                 return
@@ -1017,8 +1022,8 @@ def main():
     DIM_LOCK = WORLD_LOCK
     # spaCy is lazy and is only needed by entity extraction on a subset of queries.
     # It is not part of model readiness: loading it synchronously here can consume
-    # the last seconds of Cloud Run's 600s startup-probe budget after the Qwen,
-    # SQL proposer, and embedding models are already usable. Start its cache warmup
+    # the last seconds of Cloud Run's startup-probe budget after the Qwen encoder and
+    # embedding models are already usable. Start its cache warmup
     # in the background; spacy_model() is internally locked, so a first request
     # racing this warmup safely waits on the same singleton initialization.
     _start_spacy_warmup(MODEL)

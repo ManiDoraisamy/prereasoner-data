@@ -5,10 +5,10 @@ Run: python -m tests.test_sql_ast
 from __future__ import annotations
 
 from collections import Counter
+import inspect
 import json
 import os
 import re
-from pathlib import Path
 import sqlite3
 import sys
 import tempfile
@@ -38,18 +38,11 @@ from engine.sql_ast import (
     render_query,
     validate_query,
 )
+from engine import llm
 from engine.artifact_provenance import sha256_file, validate_weight_bundle
 from engine.sql_grounding import grounded_members, join_pairs, literal_bindings
-from engine.sql_rank import (
-    ARBITER_FEATURES,
-    SQLArbiter,
-    SemanticSignals,
-    analyze_question,
-    arbitrate,
-    merge_proposals,
-)
-from training.proposer.inference import SQLProposer
-from engine.sql_import import normalize_decoded_sql
+from engine.sql_rank import FallbackRecord, SemanticSignals, analyze_question
+from engine.sql_import import import_sql, normalize_decoded_sql
 from engine.sql_search import SQLSearcher, SchemaGraph, ScoredQuery
 from engine.sql_profile_expansion import ProfileQueryExpander, ProfileSearchConfig
 from spider.probe.evalutil import run_with_budget
@@ -650,34 +643,10 @@ def test_duplicate_named_projection_keeps_single_binding_variant_in_pool():
     assert any("projection:add:templates.type_code" in evidence for evidence in tags), tags
 
 
-SHIPPED_ARBITER = SQLArbiter.load(Path(__file__).resolve().parents[1] / "engine" / "data" / "sql_arbiter.json")
-
-
-class ScriptedProposer(SQLProposer):
-    """A scripted HF training proposer used to exercise the real selection owner.
-
-    `beam_lines` stands in for beam search and `likelihood` for the teacher-forced score, so
-    import, validation, rendering, de-duplication, pool scoring and caching all run for real.
-    """
-
-    def __init__(self, beam_lines=(), likelihood=None):
-        super().__init__(None, None, beams=4, max_new_tokens=96, device="cpu",
-                         adapter_sha256="scripted")
-        self.lines = tuple(beam_lines)
-        self.likelihood = likelihood or (lambda sql: (-10.0, 10))
-        self.decodes = 0
-        self.scored = []
-
-    def _decode(self, prompt):
-        self.decodes += 1
-        return self.lines
-
-    def _score(self, prompt, sqls):
-        self.scored.append(tuple(sqls))
-        return [self.likelihood(sql) for sql in sqls]
-
-
-def _hermetic_planner(proposer, arbiter=None):
+def _hermetic_planner(fallback=None):
+    """The production TableQuery without its encoder: ``schema`` types columns from their values and
+    the search reads no encoder signals. ``fallback`` is selection's labelled Gemini fallback
+    (engine/sql_fallback.py); a planner without one serves the search alone."""
     class HermeticPlanner(TableQuery):
         def schema(self, tables, fks):
             columns, index = [], 0
@@ -699,169 +668,116 @@ def _hermetic_planner(proposer, arbiter=None):
             return SemanticSignals.empty()
 
     planner = HermeticPlanner()
-    planner.sql_proposer = proposer
-    planner.sql_arbiter = arbiter or SHIPPED_ARBITER
+    planner.sql_fallback = fallback
     return planner
 
 
-def _select(planner, question, tables=None):
+def _request(planner, tables=None):
+    """(norm, fks, sch, tablemap) for one request's tables, prepared the way serve() prepares them."""
     norm, fks = planner.ingest(tables or [PEOPLE])
     sch, _, tablemap = planner.schema(norm, fks)
-    return planner.select_query(question, norm, fks, sch, tablemap)
+    return norm, fks, sch, tablemap
 
 
-def test_proposal_merge_endorses_search_sql_and_appends_novel_beams():
-    query = SelectQuery((SelectItem(ColumnRef("t", "a")),), "t")
-
-    def candidate(sql, evidence=(), score=0.0):
-        return ScoredQuery(query, sql, score, tuple(evidence))
-
-    search = [candidate("SELECT A", ("search:a",), 3.0), candidate("SELECT B", ("search:b",), 2.0)]
-    proposals = [candidate("SELECT B", ("proposer:beam0",)), candidate("SELECT C", ("proposer:beam1",)),
-                 candidate("SELECT D", ("proposer:beam3",))]
-    pool, proposed = merge_proposals(search, proposals)
-    assert [c.sql for c in pool] == ["SELECT A", "SELECT B", "SELECT C", "SELECT D"]
-    assert proposed == frozenset({"SELECT C", "SELECT D"})
-    assert pool[1].evidence == ("search:b", "proposer:endorsed", "proposer:beam0")
-    assert pool[1].score == 2.0, "an endorsement keeps the search candidate's score and position"
-    pool, proposed = merge_proposals(search, [candidate("SELECT B", ("proposer:beam0",))])
-    assert len(pool) == 2 and proposed == frozenset()
+def _select(planner, question, tables=None, searched=None):
+    """The production own-data selection. ``searched`` is the pool select_query ranks, runs and
+    grounds; None runs the deterministic search for it, as serving does."""
+    return planner.select_query(question, *_request(planner, tables), searched=searched)
 
 
-def _toy_arbiter(coef=(1.0, 0, 0, 0, 0, 0, 0, 0, 0), op_limit=100_000_000):
-    return SQLArbiter.from_payload({
-        "features": list(ARBITER_FEATURES), "mean": [0.0] * 9, "scale": [1.0] * 9,
-        "coef": list(coef), "intercept": 0.5,
-        "pool": {"search_candidates": 25, "proposer_beams": 4, "proposer_max_new_tokens": 96,
-                 "execution_op_limit": op_limit, "proposal_penalty": 5.0, "beam_step": 0.1},
-    })
+def _searched(planner, question, tables=None):
+    """The deterministic search's own pool for ``question`` (select_query's first stage)."""
+    norm, fks, sch, _ = _request(planner, tables)
+    return planner.search_pool(question, norm, fks, sch)
 
 
-def test_arbiter_score_is_named_linear_arithmetic_with_pool_order_ties():
-    arbiter = _toy_arbiter(coef=(1.0, 0, 0, 0, -0.5, 0, 0, 0, 0))
-    features = (-3.0, 4.0, -0.75, 1.0, 2.0, 0.0, 1.0, 0.0, 3.0)
-    assert arbiter.score(features) == -3.0 - 1.0 + 0.5
-    contributions = arbiter.contributions(features)
-    assert list(contributions) == list(ARBITER_FEATURES)
-    assert sum(contributions.values()) + arbiter.intercept == arbiter.score(features)
-    query = SelectQuery((SelectItem(ColumnRef("t", "a")),), "t")
-    pool = [ScoredQuery(query, sql, 0.0, ()) for sql in ("S0", "S1", "S2", "S3")]
-    # S1 cannot run (no likelihood); S0 and S3 tie after S3's rank penalty cancels; pool order wins.
-    likelihoods = [(-3.0, 3), None, (-9.0, 3), (-1.5, 3)]
-    scores, ranking = arbitrate(pool, frozenset(), likelihoods, arbiter)
-    assert scores[1] is None and scores[0] == scores[3]
-    assert ranking == (0, 3, 2)
+def _model_query(planner, sql, tables=None):
+    """A query a SQL model wrote, imported into the typed AST against the request's schema and
+    re-rendered (engine/sql_import.py): a pool member select_query can rank, run and ground."""
+    norm, fks, sch, _ = _request(planner, tables)
+    query = import_sql(sql, SchemaGraph.from_planner(sch, fks))
+    validate_query(query)
+    return ScoredQuery(query, render_query(query), 0.0, ("model:query",))
 
 
-def test_arbiter_refuses_an_artifact_fit_under_another_contract():
-    good = {"features": list(ARBITER_FEATURES), "mean": [0.0] * 9, "scale": [1.0] * 9,
-            "coef": [0.0] * 9, "intercept": 0.0,
-            "pool": {"search_candidates": 25, "proposer_beams": 4, "proposer_max_new_tokens": 96,
-                     "execution_op_limit": 1, "proposal_penalty": 5.0, "beam_step": 0.1}}
-    SQLArbiter.from_payload(good)
-    for bad in ({**good, "features": list(ARBITER_FEATURES)[::-1]},
-                {**good, "pool": {**good["pool"], "proposal_penalty": 4.0}},
-                {**good, "coef": [0.0] * 15}):
-        try:
-            SQLArbiter.from_payload(bad)
-        except ValueError:
-            pass
-        else:
-            raise AssertionError("an arbiter fit under a different contract was accepted")
+class FakeGemini:
+    """engine/llm.py's surface as selection's labelled fallback uses it (engine/sql_fallback.py),
+    with scripted replies and every call recorded. It never touches the network.
+
+    ``question`` is the rewording Gemini returns and ``sql`` its proposal; None is a reply without
+    the field. ``enabled`` is ``available()`` and ``outage`` makes every call raise LLMUnavailable."""
+
+    LLMUnavailable = llm.LLMUnavailable
+
+    def __init__(self, question=None, sql=None, *, enabled=True, outage=False):
+        self.replies = {"question": question, "sql": sql}
+        self.enabled = enabled
+        self.outage = outage
+        self.calls = []
+
+    def available(self):
+        return self.enabled
+
+    def model_id(self):
+        return "gemini-test"
+
+    def generate_text(self, **request):
+        inspect.signature(llm.generate_text).bind(**request)   # the call engine/llm.py accepts
+        field = next(iter(request["json_schema"]["properties"]))
+        self.calls.append((field, request["prompt"]))
+        if self.outage:
+            raise self.LLMUnavailable("Gemini call failed (TimeoutError)")
+        reply = self.replies[field]
+        return json.dumps({field: reply} if reply is not None else {}, ensure_ascii=False)
 
 
+def _gemini_planner(question=None, sql=None, **state):
+    """A hermetic planner whose selection falls back to a FakeGemini; returns (planner, client)."""
+    from engine.sql_fallback import SQLFallback
+
+    client = FakeGemini(question, sql, **state)
+    return _hermetic_planner(SQLFallback(client=client)), client
 
 
-
-
-def test_xiyan_runtime_thread_override_is_recorded_and_bounded():
-    from engine.xiyan_sql_proposer import effective_cpu_threads
-
-    contract = {"runtime": {"threads": 8}}
-    assert effective_cpu_threads(contract, {}) == 8
-    assert effective_cpu_threads(contract, {"SQL_PROPOSER_THREADS": "16"}) == 16
-    try:
-        effective_cpu_threads(contract, {"SQL_PROPOSER_THREADS": "32"})
-    except ValueError as exc:
-        assert "between 1 and 16" in str(exc)
-    else:
-        raise AssertionError("unsupported thread override was accepted")
-
-
-
-def test_shipped_arbiter_is_the_manifested_served_contract():
-    data = Path(__file__).resolve().parents[1] / "engine" / "data"
-    payload = json.loads((data / "sql_arbiter.json").read_text(encoding="utf-8"))
-    manifest = json.loads((data / "weights_manifest.json").read_text(encoding="utf-8"))
-    assert manifest["committed_artifacts"]["sql_arbiter.json"]["sha256"] == sha256_file(
-        data / "sql_arbiter.json")
-    assert "xiyan_sql_proposer.json" in manifest["committed_artifacts"]
-    assert "xiyan_sql_proposer/adapter_model.safetensors" not in manifest["files"]
-    assert (SHIPPED_ARBITER.search_candidates, SHIPPED_ARBITER.proposer_beams,
-            SHIPPED_ARBITER.proposer_max_new_tokens) == (25, 4, 96)
-    assert payload["fit"]["proposer_adapter_sha256"], "the arbiter must name the adapter it was fit on"
-
-
-def test_select_query_pools_validated_proposals_and_lets_the_arbiter_choose():
-    lines = (
-        'SELECT COUNT(*) FROM "people"',               # beam 0: the search found it too -> endorse
-        'SELEC name FRM people',                       # beam 1: does not parse -> dropped
-        'SELECT COUNT(*) FROM people WHERE age > 30',  # beam 2: novel, valid
-        'SELECT salary FROM people',                   # beam 3: unknown column -> dropped
-    )
-    favored = 'SELECT COUNT(*) FROM "people" WHERE "people"."Age" > 30'
-    proposer = ScriptedProposer(lines, likelihood=lambda sql: (-1.0, 12) if sql == favored
-                                else (-80.0, 12))
-    planner = _hermetic_planner(proposer)
-    # A phrasing the search does not read ("older than 30" it compares itself), so beam 2 is novel.
-    selection = _select(planner, "how many people have an age exceeding 30")
-    novel = [c for c in selection.pool if c.sql in selection.proposed]
-    assert [c.sql for c in novel] == [favored]
-    floor = min(c.score for c in selection.pool if c.sql not in selection.proposed)
-    assert novel[0].score == floor - 5.0 - 0.1 * 2, "beam position counts rejected lines"
-    assert novel[0].evidence == ("proposer:beam2",)
-    endorsed = [c for c in selection.pool if "proposer:endorsed" in c.evidence]
-    assert [c.evidence[-1] for c in endorsed] == ["proposer:beam0"]
-    assert all(selection.executable) and selection.candidate.sql == favored
-    assert selection.origin(selection.selected) == "proposer"
-    assert set(proposer.scored[-1]) == {c.sql for c in selection.pool}
-
-    # The same question over the same tables is decoded and scored once (request-memo).
-    decodes = proposer.decodes
-    again = _select(planner, "how many people have an age exceeding 30")
-    assert again.candidate.sql == favored and proposer.decodes == decodes
-    assert len(proposer.scored) == 1
+# The search reads words; a question in a script it has no words for gives it an empty pool.
+JAPANESE_FRANCE = "フランス出身の人は何人ですか？"   # "How many people are from France?"
+RUSSIAN_FRANCE = "Сколько людей из Франции?"          # the same, in Russian
+FRANCE_COUNT = "SELECT COUNT(*) FROM \"people\" WHERE \"people\".\"Country\" = 'France'"
 
 
 def test_select_query_serves_the_reading_that_keeps_the_named_date():
-    """Cloud product suite, 2026-10-02: with the 7B's undated reading ranked first, "How many
-    contracts were signed before July 10, 2026?" was served without its date and declined. The
-    served selection keeps to the readings that realize the date when one does."""
+    """Cloud product suite, 2026-10-02: with an undated reading ranked first, "How many contracts
+    were signed before July 10, 2026?" was served without its date and declined. The served
+    selection keeps to the readings that realize the date when one does."""
     contracts = {"name": "contracts", "columns": ["contract", "value", "signed"], "rows": [
         ["NDA", 5000, "2026-07-06"], ["License", 900000, "2026-07-05"], ["Lease", 30000, "2026-07-12"]]}
-    undated = 'SELECT COUNT(*) FROM "contracts"'
-    proposer = ScriptedProposer((undated,), likelihood=lambda sql: (-1.0, 8) if sql == undated
-                                else (-90.0, 8))
-    selection = _select(_hermetic_planner(proposer), "How many contracts were signed before July 10, 2026?",
-                        [contracts])
-    assert selection.pool[selection.ranking[0]].sql == undated, "the arbiter prefers the undated reading"
+    planner = _hermetic_planner()
+    question = "How many contracts were signed before July 10, 2026?"
+    undated = _model_query(planner, "SELECT COUNT(*) FROM contracts", [contracts])
+    selection = _select(planner, question, [contracts],
+                        searched=[undated, *_searched(planner, question, [contracts])])
+    assert selection.pool[selection.ranking[0]].sql == undated.sql, "the undated reading ranks first"
     served = selection.candidate
     assert "'2026-07-10'" in served.sql and selection.date_satisfied[selection.selected], served.sql
-    # Contrast: without a date in the question the arbiter's choice stands.
-    plain = _select(_hermetic_planner(ScriptedProposer((undated,), likelihood=lambda sql: (-1.0, 8)
-                                                       if sql == undated else (-90.0, 8))),
-                    "How many contracts are there?", [contracts])
-    assert plain.candidate.sql == undated and not any(plain.date_satisfied)
+    assert selection.record()["date_satisfied"] is True
+    # Contrast: without a date in the question the ranking's choice stands.
+    plain_question = "How many contracts are there?"
+    plain = _select(planner, plain_question, [contracts],
+                    searched=[undated, *_searched(planner, plain_question, [contracts])])
+    assert plain.candidate.sql == undated.sql and not any(plain.date_satisfied)
 
 
 def test_select_query_never_chooses_a_query_that_does_not_run():
-    planner = _hermetic_planner(ScriptedProposer(), _toy_arbiter(op_limit=1))
-    selection = _select(planner, "list person names")
+    """A pooled query that does not finish within the SQLite step budget (EXECUTION_OP_LIMIT) is
+    never chosen, and a question whose pool holds none that runs is not answered."""
+    planner = _hermetic_planner()
+    with patch("engine.sql_rank.EXECUTION_OP_LIMIT", 1):
+        selection = _select(planner, "list person names")
+        response = planner.serve([PEOPLE], "list person names")
     assert selection.pool and not any(selection.executable)
-    assert selection.selected is None and selection.candidate is None
-    assert not planner.sql_proposer.scored, "a query that cannot run is never scored"
-    response = planner.serve([PEOPLE], "list person names")
-    assert response["valid"] is False
+    assert selection.ranking == () and selection.selected is None and selection.candidate is None
+    assert selection.record()["executable"] == 0 and selection.served_by == "search"
+    assert response["valid"] is False and response["fallback"] is None
     assert response["error"] == "planner: no executable AST candidate"
 
 
@@ -939,32 +855,31 @@ def test_literal_grounding_names_the_column_a_value_actually_occupies():
                                 {"orders": orders}, SchemaGraph.from_tables([orders], ()))[0]
 
 
-def test_select_query_never_serves_a_misgrounded_proposal():
-    """The proposer reads the schema, never the values. For "Lyon customers" its favored beam
-    filtered customer_name = 'Lyon', which matches no row, and the arbiter ranked it first."""
+def test_select_query_never_serves_a_misgrounded_query():
+    """A SQL model reads the schema and a few example values, never the data its filter tests. For
+    "Lyon customers" a model's query filtered customer_name = 'Lyon', which matches no row because
+    'Lyon' is a city, and it was ranked first. Ranked first, it is still never served: the search's
+    own reading, which binds 'Lyon' to the column that holds it, is."""
     misbound, bound = "\"customer_name\" = 'Lyon'", "\"city\" = 'Lyon'"
-    lines = ("SELECT product_name FROM purchases WHERE customer_name = 'Lyon'",
-             "SELECT product_name FROM purchases WHERE city = 'Lyon'")
+    planner = _hermetic_planner()
+    question = "product names bought by Lyon customers"
+    model = _model_query(planner, "SELECT product_name FROM purchases WHERE customer_name = 'Lyon'",
+                         [PURCHASES])
+    selection = _select(planner, question, [PURCHASES],
+                        searched=[model, *_searched(planner, question, [PURCHASES])])
+    assert misbound in selection.pool[0].sql
+    assert selection.executable[0] and not selection.grounded[0] and 0 not in selection.ranking
+    assert selection.selected == 1 and bound in selection.candidate.sql, selection.candidate.sql
+    assert selection.record()["misgrounded"] == 1
 
-    def likelihood(sql):
-        return (-1.0, 12) if misbound in sql else (-2.0, 12) if bound in sql else (-80.0, 12)
-
-    planner = _hermetic_planner(ScriptedProposer(lines, likelihood=likelihood))
-    selection = _select(planner, "product names bought by Lyon customers", [PURCHASES])
-    wrong = next(index for index, candidate in enumerate(selection.pool)
-                 if misbound in candidate.sql)
-    assert selection.executable[wrong] and not selection.grounded[wrong]
-    assert selection.scores[wrong] is None and wrong not in selection.ranking
-    assert bound in selection.candidate.sql, selection.candidate.sql
-    assert selection.record(planner.sql_arbiter)["misgrounded"] == 1
-
-    # Same profile, a value the column does hold: the proposal is served as before.
+    # Same profile, a value the column does hold: the model's query is served as before.
     alice = "\"customer_name\" = 'Alice'"
-    planner = _hermetic_planner(ScriptedProposer(
-        ("SELECT product_name FROM purchases WHERE customer_name = 'Alice'",),
-        likelihood=lambda sql: (-1.0, 12) if alice in sql else (-80.0, 12)))
-    selection = _select(planner, "product names bought by Alice", [PURCHASES])
-    assert alice in selection.candidate.sql and all(selection.grounded)
+    question = "product names bought by Alice"
+    model = _model_query(planner, "SELECT product_name FROM purchases WHERE customer_name = 'Alice'",
+                         [PURCHASES])
+    selection = _select(planner, question, [PURCHASES],
+                        searched=[model, *_searched(planner, question, [PURCHASES])])
+    assert selection.selected == 0 and alice in selection.candidate.sql and all(selection.grounded)
 
 
 def _promotions():
@@ -977,31 +892,33 @@ def _promotions():
 
 def test_select_query_never_serves_a_join_the_foreign_keys_contradict():
     """Production 2026-10-01, complex-promotions leaf "For each customer, list every product name
-    they have ever bought": the proposer joined products ON orders.order_id = products.product_id,
-    skipping order_items. The query ran and matched no row, the arbiter ranked it first, and the
-    anti-join it fed removed nothing, so six customer-product pairs were listed instead of three."""
+    they have ever bought": a SQL model joined products ON orders.order_id = products.product_id,
+    skipping order_items. The query ran and matched no row, it was ranked first, and the anti-join
+    it fed removed nothing, so six customer-product pairs were listed instead of three."""
     bypass = '"orders"."order_id" = "products"."product_id"'
     bridge = '"order_items"."product_id" = "products"."product_id"'
-    planner = _hermetic_planner(ScriptedProposer((
+    planner = _hermetic_planner()
+    tables = _promotions()
+    question = "For each customer, list every product name they have ever bought"
+    model = _model_query(planner, (
         "SELECT T1.customer_name , T3.product_name FROM customers AS T1 JOIN orders AS T2 "
-        "ON T1.customer_id = T2.customer_id JOIN products AS T3 ON T2.order_id = T3.product_id",)))
-    selection = _select(planner, "For each customer, list every product name they have ever bought",
-                        _promotions())
-    wrong = next(index for index, candidate in enumerate(selection.pool) if bypass in candidate.sql)
-    assert selection.executable[wrong], "it runs: execution is not evidence"
-    assert not selection.grounded[wrong], "two keys the foreign keys tell apart"
-    assert selection.scores[wrong] is None and wrong not in selection.ranking
+        "ON T1.customer_id = T2.customer_id JOIN products AS T3 ON T2.order_id = T3.product_id"), tables)
+    selection = _select(planner, question, tables,
+                        searched=[model, *_searched(planner, question, tables)])
+    assert bypass in selection.pool[0].sql
+    assert selection.executable[0], "it runs: execution is not evidence"
+    assert not selection.grounded[0], "two keys the foreign keys tell apart"
+    assert 0 not in selection.ranking
     assert bridge in selection.candidate.sql, selection.candidate.sql
-    assert selection.record(planner.sql_arbiter)["misgrounded"] == 1
+    assert selection.record()["misgrounded"] == 1
 
     # The same bypass inside a subquery is the same defect.
-    planner = _hermetic_planner(ScriptedProposer((
+    nested = _model_query(planner, (
         "SELECT customer_name FROM customers WHERE customer_id IN (SELECT orders.customer_id "
         "FROM orders JOIN products ON orders.order_id = products.product_id "
-        "WHERE products.product_name = 'Alpha')",)))
-    selection = _select(planner, "customers who bought Alpha", _promotions())
-    wrong = next(index for index, candidate in enumerate(selection.pool) if bypass in candidate.sql)
-    assert not selection.grounded[wrong] and wrong not in selection.ranking
+        "WHERE products.product_name = 'Alpha')"), tables)
+    selection = _select(planner, "customers who bought Alpha", tables, searched=[nested])
+    assert bypass in nested.sql and not selection.grounded[0] and selection.ranking == ()
 
     # A key equated with a column whose values it never holds (Spider car_1: model_list.ModelId
     # joined to car_names.Model, a name) can never match either.
@@ -1010,32 +927,36 @@ def test_select_query_never_serves_a_join_the_foreign_keys_contradict():
     names = {"name": "car_names", "columns": ["make_id", "model", "make"],
              "rows": [[1, "amc", "amc hornet"], [2, "amc", "amc gremlin"], [3, "audi", "audi 100ls"],
                       [4, "bmw", "bmw 2002"]]}
-    planner = _hermetic_planner(ScriptedProposer((
-        "SELECT car_names.make FROM model_list JOIN car_names ON model_list.model_id = car_names.model",)))
-    selection = _select(planner, "which makes does each model have", [models, names])
-    wrong = next(index for index, candidate in enumerate(selection.pool)
-                 if '"model_list"."model_id" = "car_names"."model"' in candidate.sql)
-    assert not selection.grounded[wrong] and wrong not in selection.ranking
+    keyed = _model_query(
+        planner, "SELECT car_names.make FROM model_list JOIN car_names ON model_list.model_id = car_names.model",
+        [models, names])
+    selection = _select(planner, "which makes does each model have", [models, names], searched=[keyed])
+    assert '"model_list"."model_id" = "car_names"."model"' in keyed.sql
+    assert not selection.grounded[0] and selection.ranking == ()
 
 
 def test_select_query_serves_the_bridge_join_the_foreign_keys_state():
-    """Same profile: the proposer's join through order_items is eligible and served."""
+    """Same profile: a model's join through order_items is eligible and, ranked first, served."""
     bridge = '"order_items"."product_id" = "products"."product_id"'
-    planner = _hermetic_planner(ScriptedProposer((
+    planner = _hermetic_planner()
+    tables = _promotions()
+    question = "customer name and product name for each purchase"
+    model = _model_query(planner, (
         "SELECT T1.customer_name , T4.product_name FROM customers AS T1 JOIN orders AS T2 ON "
         "T1.customer_id = T2.customer_id JOIN order_items AS T3 ON T2.order_id = T3.order_id "
-        "JOIN products AS T4 ON T3.product_id = T4.product_id",)))
-    selection = _select(planner, "customer name and product name for each purchase", _promotions())
+        "JOIN products AS T4 ON T3.product_id = T4.product_id"), tables)
+    selection = _select(planner, question, tables, searched=[model, *_searched(planner, question, tables)])
     assert all(selection.grounded)
-    assert selection.origin(selection.selected) == "proposer" and bridge in selection.candidate.sql
+    assert selection.selected == 0 and bridge in selection.candidate.sql
 
 
 def test_join_grounding_leaves_joins_the_foreign_keys_do_not_contradict():
+    planner = _hermetic_planner()
+
     def eligible(question, tables, line):
-        selection = _select(_hermetic_planner(ScriptedProposer((line,))), question, tables)
-        member = next(index for index, candidate in enumerate(selection.pool)
-                      if candidate.sql in selection.proposed)
-        assert selection.grounded[member] and member in selection.ranking, selection.pool[member].sql
+        member = _model_query(planner, line, tables)
+        selection = _select(planner, question, tables, searched=[member])
+        assert selection.grounded[0] and selection.ranking == (0,), member.sql
 
     # A shortcut through a shared parent key (world_1: city.CountryCode = countrylanguage.CountryCode).
     country = {"name": "country", "columns": ["code", "country_name"],
@@ -1103,109 +1024,86 @@ def test_join_grounding_reads_every_equated_column_pair():
     assert join_pairs(boss) == ()
 
 
-def test_named_request_decomposes_a_compound_question_the_proposer_answers_in_one_query():
-    """The search reads "products no Paris customer bought" as a set difference; the proposer
-    offers one join that lists what Paris DID buy, and the arbiter prefers it. Evaluation (no
-    analysis context) serves the arbiter's choice. A named product request must instead ask for
-    decomposition and execute nothing: a single query cannot answer a compound question."""
+def _ranked_first(planner, member):
+    """select_query over the search's own pool with ``member`` ranked ahead of it: the production
+    selection, given a pool in which a model's query outranks the search's readings."""
+    select = planner.select_query
 
-    from engine.deterministic.context import analysis_execution_context
-    from tests.test_datasets import DATASET_DIR, _tables
+    def selection(question, norm, fks, sch, tablemap, searched=None):
+        if searched is None:
+            searched = planner.search_pool(question, norm, fks, sch)
+        return select(question, norm, fks, sch, tablemap, searched=[member, *searched])
 
-    tables = _tables(DATASET_DIR / "complex-unsold-products")
-    question = "List the product names that no customer from Paris has bought, ordered by product name."
-    one_query = ("SELECT products.product_name FROM products JOIN purchases "
-                 "ON products.product_name = purchases.product_name "
-                 "WHERE purchases.city = 'Paris' ORDER BY products.product_name")
-    proposer = ScriptedProposer((one_query,), likelihood=lambda sql: (
-        (-1.0, 40) if sql.startswith('SELECT "products"."product_name" FROM "products" JOIN')
-        else (-90.0, 40)))
-    planner = _hermetic_planner(proposer)
-    selection = _select(planner, question, tables)
-    assert isinstance(selection.pool[0].query, SetQuery)
-    assert selection.origin(selection.selected) == "proposer"
+    return selection
 
-    evaluated = planner.serve(tables, question)
-    assert evaluated["valid"] and evaluated["result"]["rows"], "evaluation serves the choice"
 
-    with analysis_execution_context({"slug": "unsold", "revision": 1}, "c_" + "9" * 32), \
-            patch.object(planner, "execute", side_effect=AssertionError("partial answer executed")):
-        named = planner.serve(tables, question)
-    assert named.get("decomposition_required"), named
-    assert named["result"] is None and named["error"] is None
+def test_named_request_decomposes_a_compound_question_a_single_query_answers_in_part():
+    """The search reads "products no Paris customer bought" as a set difference; a SQL model offered
+    one join that lists what Paris DID buy, and it was ranked first. Evaluation (no analysis context)
+    serves selection's choice. A named product request must instead ask for decomposition and
+    execute nothing: a single query cannot answer a compound question."""
 
-    # The compose path's probe asks the same question of the search alone: no proposer decode.
     from engine.decomposition import compound_decomposition_required
+    from engine.deterministic.context import analysis_execution_context
+    from tests.test_datasets import DATASET_DIR, _tables
 
-    probe = ScriptedProposer((one_query,))
-    assert compound_decomposition_required(_hermetic_planner(probe), tables, question)
-    assert probe.decodes == 0
+    tables = _tables(DATASET_DIR / "complex-unsold-products")
+    question = "List the product names that no customer from Paris has bought, ordered by product name."
+    planner = _hermetic_planner()
+    assert isinstance(_searched(planner, question, tables)[0].query, SetQuery)
+    one_join = _model_query(planner, (
+        "SELECT products.product_name FROM products JOIN purchases "
+        "ON products.product_name = purchases.product_name "
+        "WHERE purchases.city = 'Paris' ORDER BY products.product_name"), tables)
+
+    with patch.object(planner, "select_query", side_effect=_ranked_first(planner, one_join)):
+        evaluated = planner.serve(tables, question)
+        assert evaluated["valid"] and evaluated["sql"] == one_join.sql, "evaluation serves the choice"
+        assert evaluated["result"]["rows"]
+        with analysis_execution_context({"slug": "unsold", "revision": 1}, "c_" + "9" * 32), \
+                patch.object(planner, "execute", side_effect=AssertionError("partial answer executed")):
+            named = planner.serve(tables, question)
+    assert named.get("decomposition_required"), named
+    assert named["result"] is None and named["error"] is None
+
+    # The compose path's probe asks the same question of the search alone: no selection runs.
+    with patch.object(planner, "select_query", side_effect=AssertionError("the probe ran selection")):
+        assert compound_decomposition_required(planner, tables, question)
 
 
-def test_a_compound_named_request_asks_for_decomposition_before_any_decode():
-    """tests.test_complex_datasets failed on the CPU 7B (2026-09-30): a named compound request
-    decoded the whole prompt before asking whether the search read it as compound, the decode ran
-    past its CPU budget, and the request failed instead of asking for a decomposition. The search's
-    top alone decides compound structure, so a named compound request never decodes."""
+def test_a_compound_named_request_asks_for_decomposition_before_selection_runs():
+    """tests.test_complex_datasets failed on the CPU 7B SQL model (2026-09-30): a named compound
+    request decoded the whole prompt before asking whether the search read it as compound, the
+    decode ran past its CPU budget, and the request failed instead of asking for a decomposition.
+    The search's top alone decides compound structure, so a named compound request runs no
+    selection: no pool execution and no fallback call."""
 
     from engine.deterministic.context import analysis_execution_context
     from tests.test_datasets import DATASET_DIR, _tables
 
     tables = _tables(DATASET_DIR / "complex-unsold-products")
     question = "List the product names that no customer from Paris has bought, ordered by product name."
-    one_query = "SELECT products.product_name FROM products ORDER BY products.product_name"
-    proposer = ScriptedProposer((one_query,))
-    planner = _hermetic_planner(proposer)
-    with analysis_execution_context({"slug": "unsold", "revision": 1}, "c_" + "9" * 32),             patch.object(planner, "execute", side_effect=AssertionError("partial answer executed")):
-        named = planner.serve(tables, question)
-    assert named.get("decomposition_required"), named
-    assert named["result"] is None and named["error"] is None
-    assert proposer.decodes == 0, f"a compound named request decoded {proposer.decodes} time(s)"
-    # Contrast: evaluation (no analysis context) serves the arbiter's choice, so it decodes.
-    planner.serve(tables, question)
-    assert proposer.decodes == 1
+    planner, gemini = _gemini_planner(sql="SELECT product_name FROM products ORDER BY product_name")
+    with patch.object(planner, "select_query", wraps=planner.select_query) as select:
+        with analysis_execution_context({"slug": "unsold", "revision": 1}, "c_" + "9" * 32), \
+                patch.object(planner, "execute", side_effect=AssertionError("partial answer executed")):
+            named = planner.serve(tables, question)
+        assert named.get("decomposition_required"), named
+        assert named["result"] is None and named["error"] is None
+        assert select.call_count == 0, f"a compound named request ran selection {select.call_count} time(s)"
+        # Contrast: evaluation (no analysis context) serves selection's choice, so it runs it.
+        assert planner.serve(tables, question)["valid"]
+        assert select.call_count == 1
+    assert gemini.calls == [], "the search's runnable readings never reach the fallback"
 
 
-def test_a_decode_past_its_budget_abstains_and_a_busy_model_is_retryable():
-    """A decode past DECODE_TIMEOUT_SECONDS used to escape the selection, and TableQuery.serve turned
-    it into a 200 response whose error read "SQLProposerUnavailable: SQL decoding exceeded its CPU
-    budget". Greedy decoding of the same prompt takes as long again, so the proposer abstains: the
-    search pool is served and the record says why. A busy model is different — a retry can succeed —
-    so it reaches engine/server.py's 503 {retryable: true} instead of becoming an error answer."""
-    from engine.xiyan_sql_proposer import SQLDecodeBudgetExceeded, SQLProposerUnavailable
-
-    class Stalled(ScriptedProposer):
-        def __init__(self, failure):
-            super().__init__()
-            self.failure = failure
-
-        def _decode(self, prompt):
-            raise self.failure
-
-    planner = _hermetic_planner(Stalled(SQLDecodeBudgetExceeded("SQL decoding exceeded its CPU budget")))
-    selection = _select(planner, "how many purchases are there", [PURCHASES])
-    assert selection.candidate is not None and not selection.proposed, selection
-    assert selection.record(planner.sql_arbiter)["proposer_abstention"] ==         "SQL decoding exceeded its CPU budget"
-    served = planner.serve([PURCHASES], "how many purchases are there")
-    assert served["error"] is None and served["result"]["rows"], served
-    assert served["selection"]["proposer_abstention"], served["selection"]
-
-    busy = _hermetic_planner(Stalled(SQLProposerUnavailable("SQL model is busy; retry shortly")))
-    try:
-        busy.serve([PURCHASES], "how many purchases are there")
-    except SQLProposerUnavailable:
-        pass
-    else:
-        raise AssertionError("a busy proposer became an answer instead of a retryable 503")
-
-
-def test_named_request_never_serves_or_decomposes_a_proposer_only_set_operation():
-    """The live demo gate caught this after the proposer shipped. "total amount for restaurants
-    in United States" is a world question; the catering sheet has no country column. The
-    proposer's top beam read it as an INTERSECT over invented values and the arbiter chose it,
-    so every named request asked for a decomposition and the world join never ran. Compound
-    structure is the search's reading: a named request neither decomposes nor serves that beam,
-    it serves the best-ranked single query. Evaluation still serves the arbiter's choice."""
+def test_named_request_never_serves_or_decomposes_a_model_only_set_operation():
+    """The live demo gate caught this after a SQL model's queries could be served. "total amount for
+    restaurants in United States" is a world question; the catering sheet has no country column. A
+    model read it as an INTERSECT over invented values and it was ranked first, so every named
+    request asked for a decomposition and the world join never ran. Compound structure is the
+    search's reading: a named request neither decomposes nor serves that set operation, it serves
+    the best-ranked single query. Evaluation still serves selection's choice."""
 
     from engine.decomposition import compound_decomposition_required, single_branch
     from engine.deterministic.context import analysis_execution_context
@@ -1214,42 +1112,39 @@ def test_named_request_never_serves_or_decomposes_a_proposer_only_set_operation(
     (sheet,) = _tables(DATASET_DIR / "neartail-catering")
     tables = [dict(sheet, rows=[[name, event, int(amount)] for name, event, amount in sheet["rows"]])]
     question = "total amount for restaurants in United States"
-    invented = ("SELECT SUM(amount) FROM catering WHERE event = 'breakfast' "
-                "INTERSECT SELECT SUM(amount) FROM catering WHERE event = 'lunch'")
+    planner = _hermetic_planner()
+    invented = _model_query(planner, ("SELECT SUM(amount) FROM catering WHERE event = 'breakfast' "
+                                      "INTERSECT SELECT SUM(amount) FROM catering WHERE event = 'lunch'"),
+                            tables)
+    searched = _searched(planner, question, tables)
+    assert isinstance(searched[0].query, SelectQuery), "the search reads one goal"
+    selection = _select(planner, question, tables, searched=[invented, *searched])
+    assert isinstance(selection.candidate.query, SetQuery), "ranked first, the set operation is chosen"
+    with patch.object(planner, "select_query", side_effect=_ranked_first(planner, invented)):
+        evaluated = planner.serve(tables, question)
+        assert evaluated["sql"] == selection.candidate.sql, "evaluation serves selection's choice"
 
-    def proposer():
-        return ScriptedProposer((invented,), likelihood=lambda sql: (
-            (-1.0, 30) if "INTERSECT" in sql else (-90.0, 30)))
+        served = selection.constrained(single_branch)
+        assert isinstance(served.candidate.query, SelectQuery) and served.selected != selection.selected
+        ran = []
 
-    planner = _hermetic_planner(proposer())
-    selection = _select(planner, question, tables)
-    assert isinstance(selection.candidate.query, SetQuery), "the arbiter prefers the beam"
-    assert isinstance(selection.pool[0].query, SelectQuery), "the search reads one goal"
-    evaluated = planner.serve(tables, question)
-    assert evaluated["sql"] == selection.candidate.sql, "evaluation serves the arbiter's choice"
+        def execute(tablemap, sch, sql, query=None, deterministic_plan=None):
+            ran.append(query)
+            return ["total"], [(27000,)]
 
-    served = selection.constrained(single_branch)
-    assert isinstance(served.candidate.query, SelectQuery) and served.selected != selection.selected
-    ran = []
-
-    def execute(tablemap, sch, sql, query=None, deterministic_plan=None):
-        ran.append(query)
-        return ["total"], [(27000,)]
-
-    with analysis_execution_context({"slug": "catering", "revision": 1}, "c_" + "8" * 32), \
-            patch.object(planner, "execute", side_effect=execute):
-        named = planner.serve(tables, question)
+        with analysis_execution_context({"slug": "catering", "revision": 1}, "c_" + "8" * 32), \
+                patch.object(planner, "execute", side_effect=execute):
+            named = planner.serve(tables, question)
     assert not named.get("decomposition_required"), named
     assert ran == [served.candidate.query] and named["error"] is None
     assert named["selection"]["selected"] == served.selected, "the record names what was served"
 
     # The compose probe that gates the world path agrees, from the search alone.
-    probe = proposer()
-    assert compound_decomposition_required(_hermetic_planner(probe), tables, question) is None
-    assert probe.decodes == 0
+    with patch.object(planner, "select_query", side_effect=AssertionError("the probe ran selection")):
+        assert compound_decomposition_required(planner, tables, question) is None
 
-    # A selection whose choice is already one query is left exactly as the arbiter ranked it.
-    simple = _select(_hermetic_planner(ScriptedProposer()), "total amount for Noma", tables)
+    # A selection whose choice is already one query is left exactly as it was ranked.
+    simple = _select(planner, "total amount for Noma", tables)
     assert isinstance(simple.candidate.query, SelectQuery)
     assert simple.constrained(single_branch) is simple
 
@@ -1277,24 +1172,196 @@ def test_decoded_sql_normalizer_preserves_multiline_statements_and_strips_fences
     )
 
 
+def test_the_fallback_is_never_asked_while_the_search_has_a_runnable_query():
+    """The labelled Gemini fallback runs only when the search's pool holds no query that runs and is
+    grounded. A question the search answers never reaches Gemini, even with Gemini enabled."""
+    planner, gemini = _gemini_planner(question="How many people are from France?",
+                                      sql="SELECT COUNT(*) FROM people")
+    selection = _select(planner, "How many people are from France?")
+    assert selection.selected == 0 and selection.served_by == "search" and selection.fallback is None
+    served = planner.serve([PEOPLE], "How many people are from France?")
+    assert served["sql"] == FRANCE_COUNT and served["result"]["rows"] == [[2]]
+    assert served["fallback"] is None
+    assert served["model"] == "engine - typed SQL AST planner (deterministic search)"
+    assert gemini.calls == []
+
+
+def test_a_question_the_search_cannot_read_is_answered_through_geminis_rewording():
+    """The search reads words, and a question in Japanese gives it none: its pool is empty. The
+    fallback asks Gemini once to reword the question in the tables' own words and the search answers
+    the rewording, so the SQL is still the search's. The answer names the question it answered and
+    says Gemini reworded it."""
+    rewording = "How many people are from France?"
+    planner, gemini = _gemini_planner(question=rewording, sql="SELECT COUNT(*) FROM people")
+    assert not _searched(planner, JAPANESE_FRANCE)
+    selection = _select(planner, JAPANESE_FRANCE)
+    assert selection.served_by == "gemini-rewrite"
+    assert selection.fallback == FallbackRecord("rewrite", "gemini-test", question=rewording)
+    assert selection.candidate.sql == _searched(planner, rewording)[0].sql == FRANCE_COUNT
+    served = planner.serve([PEOPLE], JAPANESE_FRANCE)
+    assert served["valid"] and served["question"] == JAPANESE_FRANCE
+    assert served["sql"] == FRANCE_COUNT and served["result"]["rows"] == [[2]]
+    assert served["fallback"] == {"kind": "rewrite", "model": "gemini-test", "question": rewording}
+    assert served["selection"]["served_by"] == "gemini-rewrite"
+    assert served["selection"]["fallback"] == served["fallback"]
+    assert served["model"] == ("engine - typed SQL AST planner; the search read gemini-test's "
+                               "rewording of the question")
+    assert [step for step, _ in gemini.calls] == ["question"], "no proposal after a rewording that ran"
+
+
+def test_a_gemini_proposal_is_served_as_the_engines_own_rendering():
+    """When the search finds nothing for the rewording either (here Gemini kept the question's
+    language), Gemini proposes one query. It is text until the importer maps it into the typed AST
+    and the renderer reproduces it, so the served SQL is the engine's rendering, never Gemini's
+    text, and the answer says the query is Gemini's."""
+    proposal = "```sql\nselect count(*) from people\nwhere country = 'France';\n```"
+    planner, gemini = _gemini_planner(question="Сколько человек из Франции?", sql=proposal)
+    selection = _select(planner, RUSSIAN_FRANCE)
+    assert selection.served_by == "gemini-sql" and selection.candidate.sql == FRANCE_COUNT
+    assert selection.pool == (selection.candidate,)
+    assert selection.candidate.evidence == ("gemini:proposal",)
+    assert selection.fallback == FallbackRecord("sql", "gemini-test", proposal=proposal)
+    served = planner.serve([PEOPLE], RUSSIAN_FRANCE)
+    assert served["sql"] == FRANCE_COUNT and served["result"]["rows"] == [[2]]
+    assert served["fallback"] == {"kind": "sql", "model": "gemini-test", "proposal": proposal}
+    assert served["selection"]["served_by"] == "gemini-sql"
+    assert served["model"] == ("engine - typed SQL AST planner; query proposed by gemini-test, "
+                               "imported into the typed AST and validated")
+    assert [step for step, _ in gemini.calls] == ["question", "sql"]
+
+
+def test_a_gemini_proposal_that_does_not_import_run_or_ground_is_never_served():
+    """Gemini's query is never served on its word. One that does not import into the typed AST, does
+    not run, or tests a column against a value only another column holds is refused like a search
+    candidate, and the record says that the fallback served nothing and why."""
+    # Not importable: the tables have no salary column.
+    planner, _ = _gemini_planner(sql="SELECT salary FROM people")
+    selection = _select(planner, JAPANESE_FRANCE)
+    assert selection.selected is None and selection.served_by == "search"
+    assert selection.fallback == FallbackRecord(
+        "none", "gemini-test", proposal="SELECT salary FROM people",
+        note="no usable reply; proposal not importable (Unsupported)")
+    served = planner.serve([PEOPLE], JAPANESE_FRANCE)
+    assert served["valid"] is False and served["sql"] is None
+    assert served["error"] == "planner: no valid AST candidate"
+    assert served["fallback"]["kind"] == "none" and served["selection"]["served_by"] == "search"
+
+    # Not runnable: SQLite's SUM overflows on these amounts, for the search's total, for its reading
+    # of the rewording and for Gemini's query alike.
+    ledger = {"name": "ledger", "columns": ["entry_id", "amount"],
+              "rows": [[1, 9223372036854775807], [2, 9223372036854775807]]}
+    planner, _ = _gemini_planner(question="What is the sum of amount?",
+                                 sql="SELECT SUM(amount) FROM ledger")
+    selection = _select(planner, "total amount", [ledger])
+    assert selection.pool and not any(selection.executable) and selection.selected is None
+    assert selection.fallback == FallbackRecord(
+        "none", "gemini-test", question="What is the sum of amount?",
+        proposal="SELECT SUM(amount) FROM ledger",
+        note="the search found no runnable query for the rewording; "
+             "the proposal does not run or is not grounded")
+    assert planner.serve([ledger], "total amount")["error"] == "planner: no executable AST candidate"
+
+    # Not grounded: 'Lyon' is a city in these rows, never a customer name.
+    misbound = "SELECT product_name FROM purchases WHERE customer_name = 'Lyon'"
+    planner, _ = _gemini_planner(sql=misbound)
+    selection = _select(planner, "リヨンの客が買った商品は？", [PURCHASES])   # "What did Lyon customers buy?"
+    assert selection.selected is None
+    assert selection.fallback == FallbackRecord(
+        "none", "gemini-test", proposal=misbound,
+        note="no usable reply; the proposal does not run or is not grounded")
+
+
+def test_a_disabled_fallback_is_never_asked():
+    """With external models off (EXTERNAL_LLM_ENABLED unset, or Gemini unconfigured) selection is the
+    search alone: no call and no fallback record, and a question it cannot read is not answered."""
+    planner, gemini = _gemini_planner(question="How many people are from France?", enabled=False)
+    selection = _select(planner, JAPANESE_FRANCE)
+    assert selection.selected is None and selection.fallback is None
+    served = planner.serve([PEOPLE], JAPANESE_FRANCE)
+    assert served["error"] == "planner: no valid AST candidate" and served["fallback"] is None
+    assert served["model"] == "engine - typed SQL AST planner (deterministic search)"
+    assert gemini.calls == []
+
+
+def test_a_gemini_outage_serves_nothing_and_is_not_cached():
+    """engine.llm raises LLMUnavailable for a failed call or a timeout. That is not the prompt's
+    answer: selection serves nothing and says Gemini was unavailable, and once Gemini answers again
+    the same question is asked afresh."""
+    planner, gemini = _gemini_planner(question="How many people are from France?", outage=True)
+    selection = _select(planner, JAPANESE_FRANCE)
+    assert selection.selected is None and selection.served_by == "search"
+    assert selection.fallback.kind == "none"
+    gemini.outage = False
+    recovered = _select(planner, JAPANESE_FRANCE)
+    assert recovered.served_by == "gemini-rewrite" and recovered.candidate.sql == FRANCE_COUNT
+    assert selection.fallback == FallbackRecord("none", "gemini-test", note="Gemini unavailable"), (
+        selection.fallback)
+
+
+def test_the_fallback_asks_gemini_once_per_prompt():
+    """Replies are cached per prompt: a repeated request gets the same reading without another call,
+    and the same question over other tables is another prompt."""
+    proposal = "SELECT COUNT(*) FROM people WHERE Country = 'France'"
+    planner, gemini = _gemini_planner(question="Сколько человек из Франции?", sql=proposal)
+    first = _select(planner, RUSSIAN_FRANCE)
+    again = _select(planner, RUSSIAN_FRANCE)
+    assert first.served_by == again.served_by == "gemini-sql"
+    assert again.candidate.sql == first.candidate.sql == FRANCE_COUNT
+    assert [step for step, _ in gemini.calls] == ["question", "sql"], "each step is asked once"
+    _select(planner, RUSSIAN_FRANCE, [PEOPLE, PURCHASES])
+    assert [step for step, _ in gemini.calls] == ["question", "sql"] * 2
+
+
+def test_gemini_reads_the_schema_and_three_example_values_per_column():
+    """What the fallback sends Gemini (engine/sql_prompt.py): the question, each table's typed
+    columns in M-Schema layout, the foreign keys, and at most three example values per column,
+    never the rest of the rows."""
+    question = "リヨンの客が買った商品は？"
+    planner, gemini = _gemini_planner()
+    _select(planner, question, [PURCHASES])
+    (rewrite_step, rewrite), (propose_step, propose) = gemini.calls
+    assert (rewrite_step, propose_step) == ("question", "sql")
+    assert rewrite.startswith("Tables:\n【DB_ID】 SQLite database\n【Schema】\n# Table: purchases\n[")
+    assert propose.startswith("Database schema:\n【DB_ID】 SQLite database\n【Schema】\n")
+    assert rewrite.endswith("\n\nQuestion:\n" + question) and propose.endswith("\n\nQuestion:\n" + question)
+    assert '(purchase_id:INTEGER, Examples: [1, 2, 3])' in rewrite
+    assert '(customer_name:TEXT, Examples: ["Alice", "Alice", "Bob"])' in rewrite
+    for unsent in ("Cara", "Dan", "Eve", "Berlin", "Delta"):   # held only by rows 4-6
+        assert unsent not in rewrite and unsent not in propose, unsent
+
+    planner, gemini = _gemini_planner()
+    _select(planner, question, [CUSTOMERS, ORDERS, ITEMS])
+    prompt = gemini.calls[0][1]
+    assert "]\n【Foreign keys】\n" in prompt
+    assert "orders.Customer_ID=customers.Customer_ID" in prompt and "items.Order_ID=orders.Order_ID" in prompt
+    assert not [char for char in prompt if 0xE000 <= ord(char) <= 0xF8FF], "private-use characters"
+
+
 def test_evaluator_grades_the_served_selection():
     from spider.probe.full_eval import ast_predict
 
-    planner = _hermetic_planner(ScriptedProposer())
+    planner = _hermetic_planner()
     served = _select(planner, "list person names")
     record = ast_predict(planner, [PEOPLE], "list person names")
     assert record["ok"] and record["sql"] == served.candidate.sql
     assert record["selected_candidate_rank"] == served.selected
-    assert record["selection"] == served.record(planner.sql_arbiter)
+    assert record["selection"] == served.record()
+    assert record["served_by"] == served.served_by == "search"
     oracle = ast_predict(planner, [PEOPLE], "list person names", selection="pool_oracle")
     assert [entry["sql"] for entry in oracle["pool_execution"]] == [c.sql for c in served.pool]
-    assert all("likelihood" in entry for entry in oracle["pool_execution"])
     for rank, entry in enumerate(oracle["pool_execution"]):
         assert entry["score"] == served.pool[rank].score
-        assert entry["proposed"] == (served.pool[rank].sql in served.proposed)
         assert entry["executable"] == served.executable[rank]
         assert entry["grounded"] == served.grounded[rank]
         assert entry["eligible"] == (served.executable[rank] and served.grounded[rank])
+
+    # An answer the fallback produced is graded as served and labelled as Gemini's, so a run with
+    # the fallback enabled can never pass for the engine alone.
+    planner, _ = _gemini_planner(question="How many people are from France?")
+    record = ast_predict(planner, [PEOPLE], JAPANESE_FRANCE)
+    assert record["ok"] and record["rows"] == [[2]] and record["served_by"] == "gemini-rewrite"
+    assert record["selection"]["fallback"] == {
+        "kind": "rewrite", "model": "gemini-test", "question": "How many people are from France?"}
 
 
 def test_pool_oracle_counts_only_eligible_denotation_hits_and_validates_checkpoints():
@@ -1306,18 +1373,15 @@ def test_pool_oracle_counts_only_eligible_denotation_hits_and_validates_checkpoi
         "pool_execution": [
             {"rank": 0, "sql": "SELECT 1", "rows": [["gold"]], "score": 0.0,
              "features": {}, "evidence": [], "eligible": False, "executable": True,
-             "grounded": False, "calculation_satisfied": False, "money_total": False,
-             "likelihood": 0.0, "likelihood_tokens": 1, "proposed": True},
+             "grounded": False, "calculation_satisfied": False, "money_total": False},
             {"rank": 1, "sql": "SELECT 2", "rows": [["gold"]], "score": -5.0,
-             "features": {}, "evidence": ["proposer:variant0"], "eligible": True,
+             "features": {"projection": 1.0}, "evidence": ["extrema:projection"], "eligible": True,
              "executable": True, "grounded": True, "calculation_satisfied": False,
-             "money_total": True, "likelihood": -3.0, "likelihood_tokens": 10,
-             "proposed": True},
+             "money_total": True},
             {"rank": 2, "sql": "SELECT 3", "score": -6.0,
              "features": {}, "evidence": [], "eligible": True, "executable": True,
              "grounded": True, "calculation_satisfied": False, "money_total": False,
-             "likelihood": -4.0, "likelihood_tokens": 10, "proposed": False,
-             "error": "label pass timeout"},
+             "error": "OperationalError: interrupted"},
         ],
     }
     oracle, top1 = _score_pool_oracle(record, [["gold"]])
@@ -1325,7 +1389,8 @@ def test_pool_oracle_counts_only_eligible_denotation_hits_and_validates_checkpoi
     assert top1["strict"] is True
     assert record["pool"][0]["strict"] and not record["pool"][0]["eligible"]
     assert record["pool"][1]["eligible"]
-    assert record["pool"][1]["features"]["proposer:scored_logprob"] == -3.0
+    assert record["pool"][1]["features"] == {"projection": 1.0}
+    assert record["pool"][1]["evidence"] == ["extrema:projection"]
     assert record["pool"][1]["calculation_satisfied"] is False
     assert record["pool"][1]["money_total"] is True
     assert record["pool"][1]["oracle_executed"] is True
@@ -1343,115 +1408,6 @@ def test_pool_oracle_counts_only_eligible_denotation_hits_and_validates_checkpoi
             raise AssertionError("duplicate, out-of-denominator, or malformed checkpoint accepted")
 
 
-def test_arbiter_labels_preserve_structural_origin_and_grounding():
-    from training.rank.fit_arbiter import pool_rows, replay
-
-    candidate = {"sql": "SELECT 1", "score": 0.0,
-                 "evidence": ["proposer:variant0"],
-                 "features": {"proposer:scored_logprob": 0.0, "proposer:scored_tokens": 1},
-                 "strict": True, "proposed": True, "eligible": True,
-                 "executable": True, "grounded": True,
-                 "calculation_satisfied": False, "money_total": False, "date_satisfied": False}
-    record = {"db_id": "fixture", "idx": 0, "candidates": [candidate]}
-    row = pool_rows(record)[0]
-    assert row[1][ARBITER_FEATURES.index("from_search")] == 0.0
-    candidate["proposed"] = False  # Structural origin overrides copied decode tags.
-    assert pool_rows(record)[0][1][ARBITER_FEATURES.index("from_search")] == 1.0
-    candidate["grounded"] = False
-    assert not pool_rows(record)[0][3]
-    total, _ = replay([record], _toy_arbiter())
-    assert total == {"n": 1, "strict": 0, "oracle": 0}
-
-
-def test_arbiter_pool_rows_keep_serving_eligibility_when_label_execution_fails():
-    from training.rank.fit_arbiter import paired_replay, pool_rows
-
-    candidate = {"sql": "SELECT 1", "score": 0.0, "evidence": [],
-                 "features": {"proposer:scored_logprob": -1.0,
-                              "proposer:scored_tokens": 2},
-                 "error": "label pass timeout", "proposed": False,
-                 "eligible": True, "executable": True, "grounded": True}
-    _, _, _, eligible = pool_rows({"candidates": [candidate]})[0]
-    assert eligible, "a failed second label pass must not change serving-time eligibility"
-
-    candidate["features"] = {"proposer:scored_logprob": float("nan"),
-                              "proposer:scored_tokens": 2}
-    try:
-        pool_rows({"candidates": [candidate]})
-    except ValueError as exc:
-        assert "invalid proposer likelihood" in str(exc)
-    else:
-        raise AssertionError("non-finite scorer features silently entered arbiter fitting")
-
-    candidates = [
-        {"sql": "SELECT 1", "score": 0.0, "evidence": ["search:fixture"],
-         "features": {"proposer:scored_logprob": -1.0, "proposer:scored_tokens": 1},
-         "strict": False, "proposed": False, "eligible": True, "executable": True,
-         "grounded": True, "calculation_satisfied": False, "money_total": False,
-         "date_satisfied": False},
-        {"sql": "SELECT 2", "score": -5.0, "evidence": ["proposer:variant0"],
-         "features": {"proposer:scored_logprob": -2.0, "proposer:scored_tokens": 1},
-         "strict": True, "proposed": True, "eligible": True, "executable": True,
-         "grounded": True, "calculation_satisfied": False, "money_total": False,
-         "date_satisfied": False},
-    ]
-    record = {"db_id": "fixture", "idx": 0, "candidates": candidates}
-    old = _toy_arbiter(coef=(1.0, 0, 0, 0, 0, 0, 0, 0, 0))
-    new = _toy_arbiter(coef=(-1.0, 0, 0, 0, 0, 0, 0, 0, 0))
-    paired, by_db = paired_replay([record], new, old)
-    assert paired == {"n": 1, "candidate_strict": 1, "baseline_strict": 0,
-                      "wins": 1, "losses": 0, "oracle": 1, "net_wins": 1}
-    assert by_db["fixture"]["net_wins"] == 1
-
-
-def test_pool_contract_records_live_proposer_not_arbiter_fit_defaults():
-    from types import SimpleNamespace
-    from training.rank.build_pool_labels import pool_contract
-
-    enc = SimpleNamespace(sql_arbiter=SHIPPED_ARBITER,
-                          sql_proposer=SimpleNamespace(beams=1, max_new_tokens=1024))
-    contract = pool_contract(enc)
-    assert contract["proposer_beams"] == 1
-    assert contract["proposer_max_new_tokens"] == 1024
-
-
-def test_pool_resume_and_fitting_reject_changed_contracts_and_missing_questions():
-    from training.rank.build_pool_labels import resume_indices
-    from training.rank.fit_arbiter import load_pools
-
-    meta = {"schema_version": 2, "selection_policy": "shared-ranked-intents-v1",
-            "pool": {}, "proposer_adapter_sha256": "a" * 64,
-            "expected_examples": [[0, "fixture"], [1, "fixture"]],
-            "source_hashes": {"engine/tables.py": "b" * 64},
-            "databases": {"fixture": "c" * 64}}
-    records = [{"idx": i, "db_id": "fixture", "candidates": [], "error": "missing_db"}
-               for i in range(2)]
-    with tempfile.TemporaryDirectory() as directory:
-        path = Path(directory) / "pools.jsonl"
-        def write(items):
-            path.write_text("".join(json.dumps(item) + "\n" for item in items), encoding="utf-8")
-        write([{"_meta": meta}])
-        assert resume_indices(path, meta) == set()  # header-only resumes do not add another header
-        write([{"_meta": meta}, *records])
-        assert resume_indices(path, meta) == {0, 1}
-        assert len(load_pools([path])[0]) == 2  # failed examples retain the denominator
-        try:
-            resume_indices(path, {**meta, "proposer_adapter_sha256": "d" * 64})
-        except ValueError:
-            pass
-        else:
-            raise AssertionError("changed source contract resumed")
-        for items in ([{"_meta": meta}, records[0]], records,
-                      [{"_meta": meta}, records[0], records[0]]):
-            write(items)
-            try:
-                load_pools([path])
-            except ValueError:
-                pass
-            else:
-                raise AssertionError("missing/headerless/duplicated denominator fitted")
-
-
 def test_shared_ranking_rule_preserves_calculation_then_money_precedence():
     from engine.sql_rank import select_ranked_candidate
     assert select_ranked_candidate((), (), ()) is None
@@ -1463,12 +1419,14 @@ def test_shared_ranking_rule_preserves_calculation_then_money_precedence():
     assert select_ranked_candidate((2, 1, 0), (False, True, False), (False,) * 3, (True, True, False)) == 1
     assert select_ranked_candidate((2, 1, 0), (False, True, False), (False,) * 3, (False,) * 3) == 1
 
-def test_gold_import_maps_numeric_arithmetic_but_refuses_nonnumeric():
-    """The proposer importer maps row/order arithmetic over numeric columns into BinaryExpr
-    (Spider gold like `max_f - min_f`), while the validator still refuses arithmetic over
-    non-numeric operands — coverage without weakening type semantics."""
+
+def test_sql_import_maps_numeric_arithmetic_but_refuses_nonnumeric():
+    """The importer every model-written query passes (engine/sql_import.py) maps row/order
+    arithmetic over numeric columns into BinaryExpr (`max_f - min_f`, as Spider's gold SQL writes
+    it), while the validator still refuses arithmetic over non-numeric operands — coverage without
+    weakening type semantics."""
     from engine.sql_ast import render_query, validate_query
-    from engine.sql_import import Unsupported, import_sql
+    from engine.sql_import import Unsupported
 
     weather = {"name": "weather", "columns": ["day", "max_f", "min_f"],
                "rows": [["2019-01-01", 60, 40], ["2019-01-02", 55, 50]]}
@@ -1488,8 +1446,8 @@ def test_gold_import_maps_numeric_arithmetic_but_refuses_nonnumeric():
         pass
 
 
-def test_gold_import_preserves_distinct_self_join_roles():
-    from engine.sql_import import Unsupported, import_sql
+def test_sql_import_preserves_distinct_self_join_roles():
+    from engine.sql_import import Unsupported
 
     employees = {"name": "employees", "columns": ["id", "name"],
                  "rows": [[1, "Approver"], [2, "Operator"]]}
@@ -1525,12 +1483,11 @@ def test_gold_import_preserves_distinct_self_join_roles():
     assert execute([movies], render_query(import_sql(gold, mgraph))) == [("A", "X"), ("B", "X")]
 
 
-def test_gold_import_round_trip_executes_and_matches():
-    """The proposer-side importer must map alias-heavy, double-quoted-literal gold SQL into
-    the typed AST such that the engine's own rendering reproduces the gold denotation."""
-    from engine.sql_import import import_sql
-
-    city = {"name": "city", "columns": ["city_id", "cname", "status", "population"],
+def test_sql_import_round_trip_executes_and_matches():
+    """The importer must map alias-heavy, double-quoted-literal SQL, as models and Spider's gold
+    queries write it, into the typed AST such that the engine's own rendering reproduces the
+    original denotation."""
+    city ={"name": "city", "columns": ["city_id", "cname", "status", "population"],
             "rows": [[1, "Aa", "Village", 100], [2, "Bb", "City", 5000], [3, "Cc", "Town", 900]]}
     mayor = {"name": "mayor", "columns": ["mayor_id", "city_id", "mname"],
              "rows": [[7, 2, "Kim"], [8, 3, "Lee"]]}
@@ -2663,9 +2620,9 @@ def test_money_named_table_without_a_money_column_keeps_the_entity():
 
 def test_served_selection_contract_keeps_money_totals_and_converted_totals():
     """select_query serves the best-ranked member that aggregates the money column when the rule
-    fires, so the arbiter's preference for a listing beam cannot turn "what's the sales in
-    London" back into rows. A converted total (SUM(amount * rate)) satisfies the contract, so a
-    currency intent's choice is never displaced."""
+    fires, so a ranking that puts a listing first cannot turn "what's the sales in London" back
+    into rows. A converted total (SUM(amount * rate)) satisfies the contract, so a currency
+    intent's choice is never displaced."""
     from engine.sql_ast import Aggregate, BinaryExpr, ColumnRef, SelectItem, SelectQuery
     from engine.sql_expansion import aggregates_money_column, money_total_columns
 
@@ -2683,6 +2640,15 @@ def test_served_selection_contract_keeps_money_totals_and_converted_totals():
     converted = SelectQuery(select=(SelectItem(Aggregate("SUM", BinaryExpr(
         ColumnRef("sales", "amount"), "*", ColumnRef("rates", "rate")))),), from_table="sales")
     assert aggregates_money_column(converted, "sales", ["amount"])
+
+    # At the selection owner: the listing ranked first gives way to the money total ranked second.
+    planner = _hermetic_planner()
+    pool = [ScoredQuery(query, render_query(query), 0.0, ()) for query in (listed, summed)]
+    selection = _select(planner, "What's the sales in London", [SALES_LEDGER], searched=pool)
+    assert selection.ranking == (0, 1) and selection.money_total == (False, True)
+    assert selection.selected == 1 and selection.record()["money_total"] is True
+    listing = _select(planner, "list the sales in London", [SALES_LEDGER], searched=pool)
+    assert listing.selected == 0 and listing.money_total == (False, False), "the rule did not fire"
 
 
 def test_world_path_money_noun_naming_the_table_sums_its_money_column():
@@ -3433,20 +3399,18 @@ def test_live_table_query_ast_mode_executes_typed_candidate():
             return SemanticSignals.empty()
 
     planner = HermeticTableQuery()
-    planner.sql_proposer = ScriptedProposer()
-    planner.sql_arbiter = SHIPPED_ARBITER
     response = planner.serve([PEOPLE], "list person names")
     assert response["valid"] is True
     assert response["error"] is None
     assert response["result"]["rows"] == [["Alice"], ["Bob"], ["Cara"]]
     assert response["candidate_count"] > 0
     assert response["ast"].startswith("SelectQuery(")
-    assert "AST planner" in response["model"]
+    assert response["model"] == "engine - typed SQL AST planner (deterministic search)"
+    assert response["fallback"] is None
     selection = response["selection"]
-    assert selection["origin"] == "search" and selection["executable"] == selection["pool_size"]
-    assert set(selection["contributions"]) == set(ARBITER_FEATURES)
-    assert abs(sum(selection["contributions"].values()) + selection["intercept"]
-               - selection["score"]) < 1e-5
+    assert selection["served_by"] == "search" and selection["executable"] == selection["pool_size"]
+    assert selection["eligible"] == selection["pool_size"] and selection["rank"] == 0
+    assert "fallback" not in selection
     assert compare_spider_rows([["1"], [None]], [[None], [1.0]])["strict"]
     assert not compare_spider_rows([[1, 2]], [[2, 1]])["strict"]
     assert not compare_spider_rows([[1, 1]], [[1]])["strict"]
@@ -3511,7 +3475,9 @@ def test_world_own_data_route_preserves_ast_observability():
                 "candidate_count": 7,
                 "evidence": ["extrema:projection"],
                 "features": {"projection": 1.0},
-                "selection": {"origin": "proposer", "pool_size": 7},
+                "selection": {"served_by": "gemini-rewrite", "pool_size": 7},
+                "fallback": {"kind": "rewrite", "model": "gemini-test",
+                             "question": "list the Name of every person"},
                 "calculations": [{"specification": "ratio", "status": "satisfied"}],
                 "model": "typed planner",
             }
@@ -3551,10 +3517,13 @@ def test_world_own_data_route_preserves_ast_observability():
         "candidate_count": 7,
         "evidence": ["extrema:projection"],
         "features": {"projection": 1.0},
-        "selection": {"origin": "proposer", "pool_size": 7},
+        "selection": {"served_by": "gemini-rewrite", "pool_size": 7},
     }
     assert response["model"] == "typed planner"
     assert response["calculations"] == [{"specification": "ratio", "status": "satisfied"}]
+    # The coverage gate reads the question the served query answers from this record.
+    assert response["fallback"] == {"kind": "rewrite", "model": "gemini-test",
+                                    "question": "list the Name of every person"}
 
 
 def test_world_target_uses_the_synced_iso_currency_column():
@@ -3730,37 +3699,35 @@ def test_ast_failure_diagnosis_separates_recall_and_linking_bottlenecks():
 
 
 TESTS = [
-    test_pool_resume_and_fitting_reject_changed_contracts_and_missing_questions,
     test_shared_ranking_rule_preserves_calculation_then_money_precedence,
-    test_arbiter_labels_preserve_structural_origin_and_grounding,
-    test_arbiter_pool_rows_keep_serving_eligibility_when_label_execution_fails,
     test_pool_oracle_counts_only_eligible_denotation_hits_and_validates_checkpoints,
-    test_pool_contract_records_live_proposer_not_arbiter_fit_defaults,
     test_mentioned_table_join_keeps_minimal_variant_in_pool,
     test_duplicate_named_projection_keeps_single_binding_variant_in_pool,
-    test_proposal_merge_endorses_search_sql_and_appends_novel_beams,
-    test_arbiter_score_is_named_linear_arithmetic_with_pool_order_ties,
-    test_arbiter_refuses_an_artifact_fit_under_another_contract,
-    test_xiyan_runtime_thread_override_is_recorded_and_bounded,
-    test_shipped_arbiter_is_the_manifested_served_contract,
-    test_select_query_pools_validated_proposals_and_lets_the_arbiter_choose,
     test_select_query_serves_the_reading_that_keeps_the_named_date,
     test_select_query_never_chooses_a_query_that_does_not_run,
     test_literal_grounding_names_the_column_a_value_actually_occupies,
-    test_select_query_never_serves_a_misgrounded_proposal,
+    test_select_query_never_serves_a_misgrounded_query,
     test_select_query_never_serves_a_join_the_foreign_keys_contradict,
     test_select_query_serves_the_bridge_join_the_foreign_keys_state,
     test_join_grounding_leaves_joins_the_foreign_keys_do_not_contradict,
     test_join_grounding_reads_every_equated_column_pair,
-    test_named_request_decomposes_a_compound_question_the_proposer_answers_in_one_query,
-    test_a_compound_named_request_asks_for_decomposition_before_any_decode,
-    test_a_decode_past_its_budget_abstains_and_a_busy_model_is_retryable,
-    test_named_request_never_serves_or_decomposes_a_proposer_only_set_operation,
+    test_named_request_decomposes_a_compound_question_a_single_query_answers_in_part,
+    test_a_compound_named_request_asks_for_decomposition_before_selection_runs,
+    test_named_request_never_serves_or_decomposes_a_model_only_set_operation,
     test_proposal_import_rejects_malformed_model_text,
+    test_decoded_sql_normalizer_preserves_multiline_statements_and_strips_fences,
+    test_the_fallback_is_never_asked_while_the_search_has_a_runnable_query,
+    test_a_question_the_search_cannot_read_is_answered_through_geminis_rewording,
+    test_a_gemini_proposal_is_served_as_the_engines_own_rendering,
+    test_a_gemini_proposal_that_does_not_import_run_or_ground_is_never_served,
+    test_a_disabled_fallback_is_never_asked,
+    test_a_gemini_outage_serves_nothing_and_is_not_cached,
+    test_the_fallback_asks_gemini_once_per_prompt,
+    test_gemini_reads_the_schema_and_three_example_values_per_column,
     test_evaluator_grades_the_served_selection,
-    test_gold_import_maps_numeric_arithmetic_but_refuses_nonnumeric,
-    test_gold_import_round_trip_executes_and_matches,
-    test_gold_import_preserves_distinct_self_join_roles,
+    test_sql_import_maps_numeric_arithmetic_but_refuses_nonnumeric,
+    test_sql_import_round_trip_executes_and_matches,
+    test_sql_import_preserves_distinct_self_join_roles,
     test_typed_ast_rejects_invalid_aggregate,
     test_grouped_ast_rejects_ungrouped_ordering,
     test_typed_ast_rejects_mismatched_literal_payloads,

@@ -98,8 +98,10 @@ def test_public_weight_bundle_is_manifested_and_documented():
     assert manifest["repository"] == "prereasoner/prereasoner-weights"
     assert re.fullmatch(r"[0-9a-f]{40}", manifest["revision"])
     assert len(manifest["files"]) == 7
+    # No SQL-writing model or fitted selector is part of the runtime bundle: the typed search builds
+    # every query (CLAUDE.md, SQL planner rules).
     assert "sql_proposer/adapter_model.safetensors" not in manifest["files"]
-    assert "xiyan_sql_proposer.json" in manifest["committed_artifacts"]
+    assert not {"xiyan_sql_proposer.json", "sql_arbiter.json"} & set(manifest["committed_artifacts"])
 
     setup_docs = "\n".join(
         _text(path)
@@ -162,12 +164,12 @@ def test_weight_fetch_paths_follow_manifest_and_reject_path_escape():
     manifest = {
         "files": {
             "encoder.pt": "a" * 64,
-            "sql_proposer/base.gguf": "b" * 64,
-            "sql_proposer/runtime.json": "c" * 64,
+            "qwen_lora/adapter_model.safetensors": "b" * 64,
+            "qwen_lora/adapter_config.json": "c" * 64,
         }
     }
     assert _downloadable_files(manifest) == (
-        "encoder.pt", "sql_proposer/base.gguf", "sql_proposer/runtime.json",
+        "encoder.pt", "qwen_lora/adapter_config.json", "qwen_lora/adapter_model.safetensors",
     )
     for unsafe in (
         "../outside.bin", "nested/../../outside.bin", r"nested\outside.bin",
@@ -229,88 +231,6 @@ def test_cached_weight_fetch_does_not_silently_ignore_source_override():
             assert main() == 2
 
 
-def test_gguf_diagnostic_package_manifests_every_runtime_file_as_local_only():
-    from argparse import Namespace
-
-    from engine.artifact_provenance import (
-        sha256_file,
-        validate_weight_bundle,
-        write_json_artifact,
-    )
-    from training.proposer.package_gguf_diagnostic import package
-
-    with tempfile.TemporaryDirectory() as directory:
-        root = Path(directory)
-        source = root / "source"
-        source.mkdir()
-        (source / "model.bin").write_bytes(b"old-model")
-        arbiter = {"fit": {"proposer_adapter_sha256": "old-adapter"}, "pool": {}}
-        write_json_artifact(source / "sql_arbiter.json", arbiter)
-        manifest = {
-            "version": 1,
-            "repository": "example/weights",
-            "revision": "a" * 40,
-            "files": {"model.bin": sha256_file(source / "model.bin")},
-            "committed_artifacts": {
-                "sql_arbiter.json": {
-                    "note": "fixture",
-                    "sha256": sha256_file(source / "sql_arbiter.json"),
-                }
-            },
-        }
-        write_json_artifact(source / "weights_manifest.json", manifest, indent=2)
-
-        base = root / "base.gguf"
-        adapter = root / "adapter.gguf"
-        base.write_bytes(b"base")
-        adapter.write_bytes(b"adapter")
-        tokenizer = root / "tokenizer"
-        tokenizer.mkdir()
-        (tokenizer / "tokenizer.json").write_text("{}", encoding="utf-8")
-        contract = root / "contract.json"
-        write_json_artifact(contract, {
-            "selected_peft_adapter_sha256": "selected-adapter",
-            "base_gguf_sha256": sha256_file(base),
-            "lora_gguf_sha256": sha256_file(adapter),
-            "base_model": "fixture/model",
-            "base_revision": "b" * 40,
-            "variant_count": 1,
-            "max_new_tokens": 256,
-        })
-        output = root / "output"
-        args = Namespace(
-            source_bundle=source,
-            output_bundle=output,
-            base_gguf=base,
-            lora_gguf=adapter,
-            tokenizer_snapshot=tokenizer,
-            source_contract=contract,
-            tokenizer_model_id="fixture/model",
-            tokenizer_revision="b" * 40,
-            prompt_variant=["return one SQL query"],
-            max_new_tokens=256,
-            context_tokens=8192,
-            cpu_threads=8,
-            lora_scale=1.0,
-            system_prompt="SQL only",
-            thinking=None,
-        )
-        package(args)
-
-        packaged = json.loads((output / "weights_manifest.json").read_text(encoding="utf-8"))
-        from engine.fetch_weights import _downloadable_files
-
-        assert packaged["revision"] is None
-        assert packaged["unpublished_local"] is True
-        assert {
-            "sql_proposer/diagnostic_gguf/base.gguf",
-            "sql_proposer/diagnostic_gguf/adapter.gguf",
-            "sql_proposer/diagnostic_gguf/tokenizer/tokenizer.json",
-        } <= set(packaged["files"])
-        assert _downloadable_files(packaged) == tuple(sorted(packaged["files"]))
-        assert validate_weight_bundle(output)
-
-
 def test_supported_model_stack_is_security_baseline():
     serving = _text("requirements.txt")
     training = _text("training/requirements.txt")
@@ -345,7 +265,8 @@ def test_supported_model_stack_is_security_baseline():
 
 def test_privacy_is_a_published_route_not_a_request_dialog():
     privacy = _text("web/public/privacy.html")
-    assert "Anthropic" in privacy and "Google Cloud" in privacy
+    assert "Vertex AI" in privacy and "Gemini" in privacy and "Google Cloud" in privacy
+    assert "Anthropic" not in privacy and "Anthropic" not in _text("PRIVACY.md")
     for page in ("index.html", "reason.html", "knowledge.html", "picker.html", "chatui.html"):
         assert 'href="/privacy"' in _text(f"web/public/{page}")
     client = (_text("web/public/lib/workbook-reference.js")
@@ -353,7 +274,7 @@ def test_privacy_is_a_published_route_not_a_request_dialog():
               + _text("web/public/lib/workbook.js") + _text("web/public/chatui.html"))
     assert "external_llm_consent" not in client
     assert not re.search(
-        r"confirm\([^)]*(Anthropic|Claude|consent|local-only)", client, re.IGNORECASE
+        r"confirm\([^)]*(Gemini|Vertex|consent|local-only)", client, re.IGNORECASE
     )
 
 
@@ -364,9 +285,12 @@ def test_external_model_deployment_fails_closed():
     assert 'variable "enable_external_llm"' in variables
     external_var = variables.split('variable "enable_external_llm"', 1)[1].split("}", 1)[0]
     assert re.search(r"default\s*=\s*false", external_var)
-    assert "external_llm_enabled = var.enable_external_llm || (var.enable_orchestrator && var.chat_llm_provider == \"anthropic\")" in main
+    # One switch for both services: chat needs Gemini, so enabling chat enables it for the engine too.
+    assert "external_llm_enabled = var.enable_external_llm || var.enable_orchestrator" in main
     assert 'value = tostring(local.external_llm_enabled)' in main
-    assert 'count     = local.external_llm_enabled ? 1 : 0' in main
+    assert 'value = tostring(local.external_llm_enabled)' in orchestrator_tf
+    assert 'count   = local.external_llm_enabled ? 1 : 0' in main      # the engine's Vertex AI grant
+    assert "anthropic" not in (variables + main + orchestrator_tf).lower()
     assert 'resource "google_secret_manager_secret" "dataset_attestation"' in main
     assert 'name = "DATASET_ATTESTATION_KEY"' in main
     assert 'name = "DATASET_ATTESTATION_KEY"' in orchestrator_tf
@@ -391,28 +315,6 @@ def test_orchestrator_prompt_owns_generic_question_fidelity():
     assert "currency_conversion_target" not in orchestrator
     assert "REQUIRE_ORCHESTRATOR_TESTS" in live_test
     assert "REQUIRE_ORCHESTRATOR_TESTS" in release_guide
-
-
-def test_proposer_training_refuses_to_truncate_sql_supervision():
-    from training.proposer.train_sft import encode_training_example
-
-    class Tokenizer:
-        eos_token_id = 99
-
-        def __call__(self, text, add_special_tokens=False):
-            assert not add_special_tokens
-            return {"input_ids": list(range(len(text)))}
-
-    ids, labels = encode_training_example(Tokenizer(), "ab", "SQL", seq_len=6)
-    assert ids == [0, 1, 0, 1, 2, 99]
-    assert labels == [-100, -100, 0, 1, 2, 99]
-    try:
-        encode_training_example(Tokenizer(), "ab", "SQL", seq_len=5)
-    except ValueError as exc:
-        assert "target was not truncated" in str(exc)
-        assert "combined 6 exceeds --seq-len 5" in str(exc)
-    else:
-        raise AssertionError("overlength supervision was silently truncated")
 
 
 def test_wikidata_precreator_is_non_destructive():
@@ -951,7 +853,7 @@ def test_release_installs_only_hash_locked_dependencies():
         lock = _text(relative)
         assert "--hash=sha256:" in lock, f"release dependency lock has no hashes: {relative}"
     assert "--require-hashes -r /tmp/requirements.lock.txt" in _text("Dockerfile")
-    assert "--require-hashes -r /tmp/requirements-build.lock.txt" in _text("Dockerfile")
+    assert "requirements-build" not in _text("Dockerfile"), "no source build: llama.cpp is gone"
     assert "--require-hashes -r orchestrator/requirements.lock.txt" in _text(
         "Dockerfile.orchestrator"
     )
@@ -1151,28 +1053,6 @@ def test_class_metrics_separate_evidence_coverage_from_accuracy():
     assert metrics["evidence_coverage"] == 0.5
 
 
-def test_xiyan_cached_model_still_provisions_the_pinned_tokenizer():
-    import types
-    from engine.fetch_xiyan_sql import fetch
-
-    with tempfile.TemporaryDirectory() as directory:
-        root = Path(directory)
-        model = root / "model.gguf"
-        model.write_bytes(b"fixture")
-        digest = hashlib.sha256(b"fixture").hexdigest()
-        contract = root / "contract.json"
-        contract.write_text(json.dumps({
-            "gguf": {"sha256": digest, "size_bytes": 7},
-            "tokenizer": {"repository": "fixture/tokenizer", "revision": "a" * 40},
-        }), encoding="utf-8")
-        from unittest.mock import Mock
-        tokenizer = Mock()
-        with patch.dict(sys.modules, {"transformers": types.SimpleNamespace(AutoTokenizer=tokenizer)}):
-            assert fetch(contract, model) == digest
-        assert tokenizer.from_pretrained.call_args.args == ("fixture/tokenizer",)
-        assert tokenizer.from_pretrained.call_args.kwargs["revision"] == "a" * 40
-
-
 def test_cpu_suite_timeouts_are_bounded_and_overridable():
     import os
     from tests.run_all import suite_timeout_seconds
@@ -1191,66 +1071,8 @@ def test_cpu_suite_timeouts_are_bounded_and_overridable():
             raise AssertionError("unbounded timeout accepted")
 
 
-def test_sql_bundle_is_validated_before_atomic_publication():
-    from engine.artifact_provenance import sha256_file, validate_weight_bundle, write_json_artifact
-    from training.rank.promote import promote
-
-    with tempfile.TemporaryDirectory() as directory:
-        root = Path(directory)
-        source = root / "source"
-        source.mkdir()
-        (source / "xiyan_sql_proposer.gguf").write_bytes(b"public-fixture")
-        model_sha = sha256_file(source / "xiyan_sql_proposer.gguf")
-        contract = json.loads(_text("engine/data/xiyan_sql_proposer.json"))
-        contract["gguf"].update(sha256=model_sha, size_bytes=len(b"public-fixture"))
-        payload = json.loads(_text("engine/data/sql_arbiter.json"))
-        write_json_artifact(source / "sql_arbiter.json", payload)
-        contract["selector"]["sha256"] = sha256_file(source / "sql_arbiter.json")
-        write_json_artifact(source / "xiyan_sql_proposer.json", contract)
-        manifest = {"version": 1, "files": {}, "committed_artifacts": {
-            name: {"sha256": sha256_file(source / name)}
-            for name in ("sql_arbiter.json", "xiyan_sql_proposer.json")}}
-        write_json_artifact(source / "weights_manifest.json", manifest)
-        original = validate_weight_bundle(source)
-        payload["fit"].update(proposer_adapter_sha256=model_sha, likelihood_policy="neutral-sentinel-v1")
-        payload["pool"].update(proposer_beams=1, proposer_max_new_tokens=1024)
-        payload["validation"] = {"metric": "saved_pool_serving_selection"}
-        candidate = root / "candidate.json"
-        write_json_artifact(candidate, payload)
-        destination = root / "published"
-        with patch("training.rank.promote.shutil.copytree", side_effect=OSError("disk full")):
-            try:
-                promote(source, candidate, destination)
-            except OSError:
-                pass
-            else:
-                raise AssertionError("failed copy published a bundle")
-        assert not destination.exists()
-        assert validate_weight_bundle(source) == original
-        report = promote(source, candidate, destination)
-        assert report["model_matched_arbiter"] and not report["release_gates_passed"]
-        assert validate_weight_bundle(destination) == report["bundle"]
-        assert validate_weight_bundle(source) == original
-        try:
-            promote(source, candidate, destination)
-        except ValueError:
-            pass
-        else:
-            raise AssertionError("immutable destination overwritten")
-        payload["fit"]["proposer_adapter_sha256"] = "f" * 64
-        write_json_artifact(candidate, payload)
-        try:
-            promote(source, candidate, root / "mismatch")
-        except ValueError:
-            pass
-        else:
-            raise AssertionError("new mismatched selector installed")
-
-
 TESTS = [
-    test_xiyan_cached_model_still_provisions_the_pinned_tokenizer,
     test_cpu_suite_timeouts_are_bounded_and_overridable,
-    test_sql_bundle_is_validated_before_atomic_publication,
     test_public_artifact_boundary,
     test_spacy_warmup_does_not_block_model_readiness,
     test_vendored_xlsx_parser_has_the_reviewed_identity,
@@ -1259,12 +1081,10 @@ TESTS = [
     test_fresh_weight_fetch_stages_committed_artifacts,
     test_weight_fetch_paths_follow_manifest_and_reject_path_escape,
     test_cached_weight_fetch_does_not_silently_ignore_source_override,
-    test_gguf_diagnostic_package_manifests_every_runtime_file_as_local_only,
     test_supported_model_stack_is_security_baseline,
     test_privacy_is_a_published_route_not_a_request_dialog,
     test_external_model_deployment_fails_closed,
     test_orchestrator_prompt_owns_generic_question_fidelity,
-    test_proposer_training_refuses_to_truncate_sql_supervision,
     test_wikidata_precreator_is_non_destructive,
     test_local_documentation_links_resolve,
     test_public_test_imports_do_not_require_model_stack,

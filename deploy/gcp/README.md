@@ -70,8 +70,9 @@ Options:
 ```
 
 The Community profile uses Zonal Cloud SQL `db-custom-2-7680` and `min_instances=0`. Its required chat
-service uses Vertex AI `gemini-3.8-flash`; Terraform enables the Vertex AI API and grants the chat
-service account `roles/aiplatform.user`, so no provider key is collected or written to Secret Manager.
+service and the engine (`/api/converse`, reference generation, the selection fallback) use Vertex AI
+`gemini-3.8-flash` in this project; Terraform enables the Vertex AI API and grants both service accounts
+`roles/aiplatform.user`, so no model key is collected or written to Secret Manager.
 It keeps deletion protection on, activates only the reviewed `iana_country` enrichment dataset, and
 restores the pinned `community-seed-v4.dump` after verifying its SHA-256. The deployment creates the
 engine API, chat service, Firebase Hosting CDN release, and daily PostgreSQL conversation-retention job.

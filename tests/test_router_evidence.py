@@ -218,7 +218,7 @@ def test_engine_construction_loads_the_interpreter():
     with (
         patch.object(knowledge_query.EntityQuery, "__init__", lambda self, _deploy_dir: None),
         patch.object(knowledge_query, "load_encoder", _encoder),
-        patch.object(knowledge_query, "load_sql_selection", lambda obj, _deploy_dir: None),
+        patch.object(knowledge_query, "attach_sql_fallback", lambda obj: None),
         patch("engine.schema_model.SchemaInterpreter", _broken_interpreter),
     ):
         try:

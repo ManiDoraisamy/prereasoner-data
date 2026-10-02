@@ -3,12 +3,13 @@
 ## Summary
 
 Prereasoner is a tabular question-answering system with a learned semantic layer and a typed SQL
-layer. Learned components provide embeddings, Schema.org property probabilities, class scores,
-structural relevance signals, and — for own-data questions — candidate SQL from a small proposer
-model plus a fitted linear arbiter that chooses among candidates. Every executed query is a typed AST
-the engine validated and rendered. Typed SQL search, route ownership, source-key authorization,
-calculation semantics, arbitration, SQL rendering, and execution are deterministic for fixed inputs and
-pinned artifacts.
+layer. Learned components provide embeddings, Schema.org property probabilities, class scores, and
+structural relevance signals. No local model writes SQL: a deterministic search builds every
+own-data query as a typed AST, and the engine validates, renders, and executes it. Typed SQL search,
+selection, route ownership, source-key authorization, calculation semantics, SQL rendering, and
+execution are deterministic for fixed inputs and pinned artifacts. One external model, Gemini, is
+optional. When the operator enables it, it can help only where the search finds no runnable query,
+and its answers are labelled ([Gemini fallback](#gemini-fallback-external-optional)).
 
 Schema.org 30.0 is the semantic coordinate system. Wikidata and publisher-owned releases provide
 observations projected into that vocabulary; they do not define it. Mutable facts remain in
@@ -20,7 +21,15 @@ versioned database releases and are not intended to be memorized in model weight
 
 - Base: `Qwen/Qwen2.5-0.5B`, encoder-only, pinned at Hugging Face revision
   `060db6499f32faf8b98477b0a26969ef7d8b9987`.
-- Adaptation: LoRA plus `engine.encoder_model.RelationalModel`.
+- Adaptation: a LoRA adapter (rank 32, alpha 64, on the q/k/v/o projections of all 24 layers,
+  `engine/data/qwen_lora/`) trained jointly with `engine.encoder_model.RelationalModel`: one
+  896→384 projection and 10 relational-attention blocks (6 heads, 384 wide). Both are frozen at
+  serving. No decoder is used.
+- Named coordinates: 90 output coordinates carry names (`encoder_meta.pt["alloc"]`, mirrored in
+  `engine/data/alloc.json`): 9 structural
+  types (`is_str`, `is_num`, `is_time`, `is_key`, `currency`, ...), 71 property names such as
+  `addressCountry`, `birthDate`, `brand`, and `postalCode`, and 10 query intents (`intent_agg_sum`,
+  `intent_filter_gt`, `intent_sort_desc`, `intent_limit`, ...).
 - Active uses: structural intent, deterministic candidate-ranking features, calculation operand
   retrieval, and the representation consumed by the Schema.org property head.
 - Historical compatibility output: `alloc.json` still exposes 71 property-named coordinates. Two
@@ -56,27 +65,34 @@ The exact per-property and per-class support, thresholds, precision, recall, F1,
 counts are in `engine/data/schema_property_model.json`. Training identity, dependencies, source
 releases, split policy, seed, and metrics are in `engine/data/schema_training_manifest.json`.
 
-### SQL proposer and arbiter
+### Gemini fallback (external, optional)
 
-- Proposer base: the same pinned `Qwen/Qwen2.5-0.5B`, loaded as a causal LM with a separate LoRA
-  adapter (`engine/data/sql_proposer/`, experiment `d2`: rank 16 on q/k/v/o projections, 6,000 steps,
-  seed 7).
-- Training data: Spider TRAIN gold SQL that the serving importer maps into the typed AST and whose
-  rendering reproduces the gold execution (90% of TRAIN); databases in the held-out md5 bucket are
-  excluded. Spider dev is never trained on; it is the measurement set.
-- Use: four deterministic beams per own-data question from a schema-plus-question prompt, plus
-  teacher-forced likelihoods of every runnable candidate. fp32 on every device.
-- Boundary: a proposal is text until `engine/sql_import.py` maps it into the typed AST, the validator
-  accepts it, and the renderer reproduces it; otherwise it is dropped. The model never writes Python
-  or a number, and its text never reaches a database.
-- Arbiter: `engine/data/sql_arbiter.json`, a logistic regression over nine named features (likelihood,
-  length, per-token likelihood, pool score and rank, source flags, pool size), fit on execution-labeled
-  pools of 15 Spider TRAIN databases. The served choice is the highest score among candidates that
-  execute; each response reports the winner's per-feature contributions.
-- Limitation: both were fit on Spider's academic schemas and answer conventions (for example,
-  "top customers by spend" answered with names only). Product conventions are protected by explicit
-  constraints — compound questions route to decomposition, and decomposition leaves must keep their
-  summed measure — not by the model.
+- Model: Gemini on Vertex AI (`GEMINI_MODEL`, default `gemini-3.8-flash`), called through
+  `engine/llm.py`. It is an external service, not part of the weight bundle, and Prereasoner does not
+  train or fine-tune it.
+- Gate: it runs only when the operator enabled external models (`EXTERNAL_LLM_ENABLED`, default
+  off; the guided Community deployment turns it on together with chat) and configured a Vertex AI
+  project, and only for an own-data question whose search candidates all fail to run or to ground
+  (`engine/sql_fallback.py`, called by `engine/tables.py:TableQuery.select_query`).
+- What it sees: the question and the schema text of `engine/sql_prompt.py`: table and column names,
+  inferred column types, foreign keys, and at most three example values per column. No other row
+  data.
+- What it can do: reword the question once in the tables' own words, which the deterministic search
+  then reads; or, when that finds nothing, propose one SQLite query. The proposal is used only after
+  `engine/sql_import.py` maps it into the typed AST, the validator accepts it, the renderer reproduces
+  it, and it runs and is grounded like a search candidate. It never writes Python or a number, and its
+  text never reaches a database.
+- Labels: the response's `fallback` record (`kind`, `model`, and the rewording or the proposed SQL
+  text), `planner.selection.served_by` (`gemini-rewrite` or `gemini-sql`), and the response's `model`
+  string. The workbook's status line and the chat reply repeat it. Decomposition leaves never take
+  the fallback.
+- Repeatability: calls run at temperature 0 with a fixed seed, and replies are cached per prompt in the
+  engine process. Gemini does not guarantee the same reply in another process, so a fallback answer
+  is outside the determinism statement in the summary.
+
+The chat orchestrator, `/api/converse` replies, and reference-table generation also use Gemini
+through `engine/llm.py`, under the same switch. They sit outside the SQL planner; see
+[MCP.md](MCP.md).
 
 ### Entity-resolution embedder
 
@@ -93,9 +109,10 @@ committed Schema.org artifacts. Runtime validation rejects missing or mismatched
 The public bundle is
 [`prereasoner/prereasoner-weights`](https://huggingface.co/prereasoner/prereasoner-weights) at
 immutable revision `3455714f98cb253ec787473af8a5204c72ad3290`. The promoted property-head SHA-256 is
-`cef8a43cfa1c5f719b9b1a7ef6e977197890d4c86236035049e1be91e9550e0c`; the SQL proposer adapter directory's
-(`sql_proposer/`) tree SHA-256 is `d8939fea27e474eea3e77384e9a56b2bfbeac7ec7a90cf5a990a46b6e8bfacdf`.
+`cef8a43cfa1c5f719b9b1a7ef6e977197890d4c86236035049e1be91e9550e0c`.
 `python -m engine.fetch_weights` downloads that revision without a token and verifies every digest.
+That revision also holds a retired `sql_proposer/` LoRA adapter from an earlier design. The manifest
+does not list it, the fetcher does not download it, and current Prereasoner loads no SQL model.
 
 ## Intended Uses
 
@@ -115,14 +132,16 @@ immutable revision `3455714f98cb253ec787473af8a5204c72ad3290`. The promoted prop
 ## Evaluation And Limitations
 
 Determinism removes sampling variance; it does not guarantee correctness. Remaining error classes
-include ambiguous schema linking, missing AST candidates, arbitration errors, incomplete entity
-resolution, source gaps, and unsupported Schema.org coordinates. The proposer adds CPU latency: its beam
-search dominates own-data request time on CPU.
+include ambiguous schema linking, missing AST candidates, ranking errors, incomplete entity
+resolution, source gaps, and unsupported Schema.org coordinates. Without a SQL model, Spider
+prediction takes under 2 seconds per question at the median on a workstation CPU
+(`spider/results/RESULTS.md`).
 
 The Schema.org head has group-disjoint validation and untouched-test metrics. The shared historical
 encoder does not have equivalent original-training provenance, so their metrics must not be merged.
 SQL accuracy belongs in `spider/results/RESULTS.md`, and source-backed behavior belongs in
-`world_eval/RESULTS.md`; neither is implied by the class-head metrics.
+`world_eval/RESULTS.md`; neither is implied by the class-head metrics. The recorded Spider runs
+measured earlier designs and the current selection, with the fallback off.
 
 ## Checkpoint Release Contract
 

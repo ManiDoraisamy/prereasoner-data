@@ -8,12 +8,16 @@ Prereasoner represents a question, its data, and its source evidence as named di
 runtime composes those dimensions into a checked query plan, runs it, and returns the result with its
 rows and trace. For the supported own-data subset, one immutable plan emits both a SQL view
 stack and readable SQLAlchemy/Python source; see
-[DETERMINISTIC_EMITTERS.md](DETERMINISTIC_EMITTERS.md). Two frozen LoRA adapters on Qwen2.5-0.5B
-supply model evidence: an encoder reads intent and schema signals, and a SQL proposer suggests
-candidate queries for own-data questions. A proposed query is used only if it imports into the typed
-AST and validates; no model writes Python or a numeric answer, and model text never reaches a
-database. AST construction, routing, joins, validation, arbitration, emission, and execution are
-deterministic for fixed inputs, configuration, database state, and model files.
+[DETERMINISTIC_EMITTERS.md](DETERMINISTIC_EMITTERS.md). One frozen encoder (Qwen2.5-0.5B with a LoRA
+adapter and a relational readout) supplies model evidence: it reads intent and schema signals as named
+coordinates. No local model writes SQL. A deterministic search builds every own-data query as a typed
+AST, and selection serves the best-ranked one that runs. Only when no candidate runs, and the operator
+enabled Gemini, may Gemini reword the question for the search or propose one query; a proposal is used
+only if it imports into the typed AST and validates, and the answer is labelled (see
+[Labelled Gemini fallback](#labelled-gemini-fallback)). No model writes Python or a numeric answer, and
+model text never reaches a database. AST construction, routing, joins, validation, selection,
+emission, and execution are deterministic for fixed inputs, configuration, database state, and model
+files. An answer the fallback supplied also depends on Gemini's reply.
 
 Read [GETTING_STARTED.md](GETTING_STARTED.md) first when setting up the repository. Read
 [SQL_AST.md](SQL_AST.md) for planner internals, [SOURCE_DATA.md](SOURCE_DATA.md) for
@@ -71,7 +75,8 @@ mistaken for a condition missing from the final aggregate. A word the tagger rea
 an adverb ("which item sold the most units") is covered, because it says what the rows did, and so are a light
 verb's participle ("made"), the rows an aggregate is taken over ("the average score of the leads") and an
 adjective an ordering grades ("the most expensive event"); other participles, words the data holds as values,
-and the payment and listing states are still checked.
+and the payment and listing states are still checked. A month word is covered when the SQL compares a date
+column with that month or date (`engine/sql_dates.py:realized_month_words`).
 
 The own-data `TableQuery._serve_ast` winner, world planner's grounded slots, and selected
 ComposeEngine primitive records have separate lowering adapters under `engine/deterministic/`.
@@ -92,7 +97,7 @@ by explicit leaf limits. A leaf may keep only a row cutoff the decomposed questi
 cannot meet that bound by inventing one. The existing AST planner independently binds every leaf; common dimension keys
 for an anti-join come from those typed relations, and the evidence relation must preserve every physical
 dimension in the left input's grain: an evidence leaf serves the first of its contract-compatible
-readings, in arbiter order, that does. The result is one `AnalysisPlan`, not independently
+readings, in ranked order, that does. The result is one `AnalysisPlan`, not independently
 generated SQL and Python and not a model-executed chain of partial answers.
 
 Temporary SQL views are evaluated when read, whereas Python stages retain tuples. Current trace
@@ -162,9 +167,9 @@ offline into a release-labelled daily `knowledgebase.exchange_rate` projection, 
 planner joins dated facts on the exact `(currency, date)` pair. It carries the prior published
 business-day value only during projection construction, never through request-time network or
 latest-prior SQL. The calculation verifier proves direction and aggregate arithmetic; missing
-coverage fails closed. A converted SUM is computed per the uploaded column or world attribute the
-question groups or ranks by, and its evidence records that grain; an AVG with an output currency
-fails closed. No embedded or demo FX fixture is a production fact source.
+coverage fails closed. Each row is converted before the rows are combined, so a conversion is a SUM
+(`total_<ccy>`) or an AVG (`average_<ccy>`) as the question asks; either is computed per the uploaded
+column or world attribute the question groups or ranks by, and its evidence records that grain. No embedded or demo FX fixture is a production fact source.
 
 The target source-materialization design makes the database boundary explicit: physical shared
 schemas are source-owned (`wikidata` after its pending migration and the publisher schemas in
@@ -251,53 +256,93 @@ correct interpretation of the question.
 
 ## Own-Data SQL Planner
 
-The own-data path pools two candidate sources over one typed SQL AST and selects with one arbiter
-(`engine/tables.py:TableQuery.select_query`):
+The own-data path serves one typed SQL AST chosen from the deterministic search's candidates
+(`engine/tables.py:TableQuery.select_query`). No local model writes or scores SQL:
 
 | Owner | Responsibility |
 |---|---|
 | `engine/sql_ast.py` | Immutable query nodes, type/visibility validation, rendering |
 | `engine/sql_schema.py` | Typed schema graph and deterministic join-tree enumeration |
 | `engine/sql_search.py` | Projection, filter, aggregate, grouping, order, limit, and base candidate expansion |
+| `engine/sql_dates.py` | Calendar phrases ("in August", "after August 10, 2026") as typed comparisons on a date column |
 | `engine/sql_recursive.py` | Subqueries, `EXISTS`/`IN`, set operations, and self-join shapes |
 | `engine/sql_constraints.py` | HAVING, disjunction, and relationship constraints |
 | `engine/sql_extrema.py` | Row, aggregate, frequency, and zero-inclusive extrema |
 | `engine/sql_parsimony.py` | Bounded projection/table variants of pooled candidates (minimal join, binding, drop/add column, operand swap, DISTINCT) |
 | `engine/sql_profile_expansion.py` | Typed variants driven by predicted structural profiles |
-| `engine/xiyan_sql_proposer.py` | Pinned 7B GGUF CPU proposer: deterministic greedy decoding, explicit neutral likelihood policy |
-| `engine/sql_prompt.py` / `engine/sql_import.py` | The proposer's one prompt; the SQL-to-typed-AST gate every proposal passes |
-| `engine/sql_rank.py` | Search ranking features; pool merge and the linear arbiter over executed candidates |
+| `engine/sql_rank.py` | Search ranking features (`CandidateRanker`), the pool contract (`SEARCH_CANDIDATES`, `EXECUTION_OP_LIMIT`), and the selection record (`PoolSelection`, `FallbackRecord`) |
+| `engine/sql_grounding.py` | Pool eligibility: text literals that fit their column, and joins the foreign keys allow |
 | `engine/tables.py` | Planner facade (`select_query`), SQL guard, pool and local SQLite execution |
+| `engine/sql_fallback.py` | The labelled Gemini fallback: one rewording of the question, then one proposed query |
+| `engine/sql_prompt.py` / `engine/sql_import.py` | The schema text Gemini reads; the SQL-to-typed-AST gate its proposal passes |
 | `engine/decomposition.py` | Closed model proposal validation and fusion of planner-selected leaf ASTs into one shared DAG |
 
-1. The deterministic search builds up to 25 validated candidates and orders them with named rules;
-   the encoder contributes table, column-role, and structural-profile similarities.
-2. The SQL proposer decodes one greedy completion from the pinned M-Schema prompt. Complete SQL
-   is imported into the typed AST, validated, and re-rendered; incomplete or oversized requests are
-   dropped. A proposal that renders to SQL the search already found marks that candidate endorsed.
-3. Every pooled query runs on an in-memory SQLite copy of the request's tables under the SELECT guard
-   and a fixed VM-step budget. A query that fails cannot be chosen. Neither can one that tests a text
-   column against a literal the column never holds while another column does
-   (`engine/sql_grounding.py`): bounded prompt values do not guarantee correct binding; an earlier proposer wrote
-   `customer_name = 'Lyon'` for "Lyon customers". Nor can one that equates two columns the foreign keys
-   keep apart, between tables they connect: two foreign-key columns of different keys, or a key and a
-   column that shares no value with it. The 7B joined `orders.order_id = products.product_id`,
-   skipping the `order_items` bridge; the query ran and matched no row. Eligibility is not evidence
-   that the query answers the question.
-4. The arbiter scores each runnable query: a standardized linear function of nine named features
-   (proposer likelihood, its length, per-token likelihood, pool score, pool rank, which source produced
-   it, endorsement, pool size). The best score wins; the earlier pool position breaks ties. Calculation
-   intents, the single-branch serving contract and the decomposition leaf contract constrain this
-   ranking rather than rescoring it.
-   The current 7B policy supplies neutral likelihood sentinels, not measured likelihoods. Its
-   contract discloses the historical 0.5B-fit arbiter until a matched replacement passes paired gates.
-5. For a named request, a compound question — the search reads it as a set operation — requests
-   decomposition instead of executing a single query. Otherwise one dual-emitter branch serves it: the
-   best-ranked single query, so a set operation that only a proposer beam reads into the question is
-   neither served nor treated as compound.
+1. The deterministic search builds up to 25 validated candidates (`SEARCH_CANDIDATES`) and orders
+   them with named rules; the encoder contributes table, column-role, and structural-profile
+   similarities.
+2. Every candidate runs on an in-memory SQLite copy of the request's tables under the SELECT guard
+   and a fixed budget of 100,000,000 SQLite VM steps (`EXECUTION_OP_LIMIT`). A query that fails
+   cannot be chosen. Neither can one that tests a text column against a literal the column never
+   holds while another column does (`engine/sql_grounding.py`): a SQL model once wrote
+   `customer_name = 'Lyon'` for "Lyon customers". Nor can one that equates two columns the foreign
+   keys keep apart, between tables they connect: two foreign-key columns of different keys, or a key
+   and a column that shares no value with it. A SQL model once joined
+   `orders.order_id = products.product_id`, skipping the `order_items` bridge; the query ran and
+   matched no row. Eligibility is not evidence that the query answers the question.
+3. The best-ranked eligible candidate is served. A registered calculation intent
+   (`engine/calculations`) takes the best-ranked eligible candidate that satisfies it, and a money
+   noun that names its table ("what's the sales in London") takes the best-ranked eligible candidate
+   that aggregates a money column (`engine/sql_expansion.money_total_columns`). These preferences,
+   the single-branch serving contract, and the decomposition leaf contract filter the ranking; none
+   rescores it. A served top-1 ranking keeps every row tied with its first row (`sql_ast.keep_ties`,
+   rendered with `RANK() OVER`).
+4. For a named request, the search's top candidate is read first, before any candidate runs: a
+   set operation (a compound question) requests decomposition instead of executing a single query.
+   Otherwise one dual-emitter branch serves the request: the best-ranked eligible single query.
 
-The response's `planner.selection` records the winner's origin, score, and per-feature contributions.
-The winning AST then executes against the conversation schema through the shared SQL/Python plan.
+The response's `planner.selection` records the pool counts (`pool_size`, `executable`,
+`misgrounded`, `eligible`), the served member's place among the eligible ones and its search score,
+whether a calculation or money-total preference chose it, and `served_by`. The winning AST then
+executes against the conversation schema through the shared SQL/Python plan.
+
+### Labelled Gemini fallback
+
+Only when no candidate is eligible, and the operator enabled Gemini (`EXTERNAL_LLM_ENABLED` plus a
+Vertex AI project, checked by `engine/llm.py`), does `select_query` call `engine/sql_fallback.py`.
+It takes two bounded steps:
+
+1. **Rewording.** Gemini rewords the question once, in the tables' own words. The deterministic search
+   runs again on the rewording, and its candidates pass the same run, ground, and serve steps. A
+   rewording equal to the question is ignored. The SQL is still built by the search
+   (`served_by: gemini-rewrite`).
+2. **Proposal.** When the rewording yields no eligible query, Gemini proposes one SQLite query. It is
+   text until `engine/sql_import.py` maps it into the typed AST, the validator accepts it, and the
+   renderer reproduces it. The engine's rendering, never Gemini's text, then runs and is grounded like
+   a search candidate (`served_by: gemini-sql`).
+
+Gemini reads the question and the schema text of `engine/sql_prompt.py`: table and column names,
+inferred column types, foreign keys, and at most three example values per column (its first
+non-null values in row order, each cut to 64 characters). It does not receive the rest of the rows,
+and it writes no number: the database computes every result. Calls run at temperature 0 with a
+fixed seed, and replies are cached per prompt in the engine process, so a repeated request there
+gets the same reading. Gemini does not guarantee the same reply after a restart or on another
+instance.
+
+A fallback answer is labelled. The response carries `fallback` (`kind`, `model`, and the rewording
+or Gemini's SQL text), `planner.selection.served_by`, and a `model` string that names the Gemini
+model; the workbook's status line repeats it. Later checks read the question the served query
+answers: for `gemini-rewrite` the coverage gate (through `engine/knowledge_query.py:_answered_question`)
+and the calculation checks (`TableQuery.serve`) read the rewording, and a `gemini-sql` query is held
+to every word of the user's own question. When neither step yields an eligible query, including when a Gemini call
+fails, `fallback.kind` is `none` with the reason and no query is served. Decomposition leaves call
+`select_query` with `allow_fallback=False`: a leaf's wording is already the chat model's, and a leaf
+with no runnable query rejects the decomposition so the model restates it, so no fused answer
+contains an unlabelled Gemini reading.
+
+`EXTERNAL_LLM_ENABLED` defaults to off, and with it off selection is deterministic and no model
+writes SQL. The guided Community deployment turns Gemini on together with chat, so its engine has
+the fallback. The Spider headline is measured with it off; the evaluator records the setting in its
+contract ([`spider/README.md`](../spider/README.md)).
 
 ## World Grounding And Composition
 
@@ -312,8 +357,11 @@ filters by country. The path is:
 
 `engine/knowledge_query.py` owns ordinary world lookup. A non-geographic entity column (a bank, a restaurant, a
 hospital) grounds through the same bridge to its Wikidata table, whose country answers a filter, a grouped or
-ranked dimension ("which country has the most deposits"), and through `country.continent` a continent filter; a
-sheet with its own place column answers places through that column. `engine/knowledge_compose.py` and
+ranked dimension ("which country has the most deposits"), and through `country.continent` a continent filter; an
+uploaded column ranks inside such a filter. A quantity superlative ranks totals of the column it names ("the most
+deposits") or counts the rows it names ("the most banks"), and a count of a noun a numeric column already counts is
+that column's total ("how many transfers"; `engine/sql_expansion.py:ranked_measure_columns`, `ranked_row_tables`,
+`counted_measure_columns`). A sheet with its own place column answers places through that column. `engine/knowledge_compose.py` and
 `engine/compose.py` own multi-step operations that genuinely require a world dependency. `engine.routing.compose_owns()` is the authority;
 a primitive prediction alone cannot seize a self-contained own-data question.
 
@@ -477,8 +525,9 @@ maintenance command from loading model artifacts.
 | `training/` | Offline datasets, fitting, and calibration | A competing serving implementation |
 | `spider/` | Serving-faithful evaluation and research artifacts | Production selection shortcuts |
 
-The engine container includes the complete runtime. The orchestrator is opt-in in Docker Compose and Terraform;
-the engine does not require an Anthropic key. The orchestrator container copies only the auth, trace, request
+The engine container includes the complete runtime. The orchestrator is opt-in in Docker Compose and Terraform.
+The engine runs without Gemini: with `EXTERNAL_LLM_ENABLED` off it makes no external model call, and
+selection has no fallback. The orchestrator container copies only the auth, trace, request
 validation, currency-intent, configuration, and adapter modules it imports; it does not contain planner weights or
 planner implementation modules.
 
@@ -492,15 +541,17 @@ planner implementation modules.
 - SQL is read-only, identifiers are quoted, and conversation schemas are ownership checked.
 - Reference writes are atomic and failures are visible to callers.
 - Optional trace or presentation failures do not fabricate a successful answer.
+- A failed Gemini call yields nothing for its fallback step; selection never serves an unchecked query in its place.
 - External lookups use bounded retry behavior; live integration tests can therefore be slower than hermetic tests.
 
 ## Artifacts And Configuration
 
 `engine/config.py` is the owner for runtime environment variables. `.env.example` documents deployable defaults.
 Runtime model artifacts live under `engine/data/` and are validated by a manifest; they are not source files and are
-not duplicated under versioned names. The bundle holds the encoder (`qwen_lora/`, `encoder.pt`, heads) and the
-own-data selection pair: the SQL proposer adapter (`sql_proposer/`) and the arbiter fit on its pools
-(`sql_arbiter.json`). `DEVICE` selects where the proposer runs (`cpu` by default). Training output becomes
+not duplicated under versioned names. The bundle holds the encoder (`qwen_lora/`, `encoder.pt`,
+`encoder_meta.pt`), its calibrated heads (`anchor_assignment.npz`, `primitives.npz`), and the Schema.org
+property head (`schema_property_head.pt`). It contains no SQL model and no fitted selector. Gemini is an
+external service configured in `engine/config.py`, not a bundle artifact. Training output becomes
 serving input only through the documented promotion process in [TRAINING.md](TRAINING.md).
 
 The default [weight repository](https://huggingface.co/prereasoner/prereasoner-weights) is public. The
@@ -515,7 +566,9 @@ The repository has one owner per decision:
 - routing: `engine.routing.route()`;
 - relationship discovery: `engine.relations.discover_fks()`;
 - own-data SQL representation: the typed AST;
-- own-data query selection (search, proposer, pool execution, arbiter): `engine.tables.TableQuery.select_query`;
+- own-data query selection (search, pool execution, grounding, and the labelled Gemini fallback):
+  `engine.tables.TableQuery.select_query`;
+- the one external model client (Gemini on Vertex AI): `engine.llm`;
 - dual SQL/Python plan, source emission, and parity: `engine.deterministic`;
 - bounded compound-question proposal validation and typed-plan fusion: `engine.decomposition`;
 - private-reference behavior: `engine.master`;

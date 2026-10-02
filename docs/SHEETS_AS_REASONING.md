@@ -28,7 +28,7 @@ pretend that unrelated branches form one linear pipeline.
 | 3 | `world_join` | `knowledgebase_lookup` (renders as "enriched") | a knowledgebase reference table is joined | the base rows **plus every reference column any later step uses** (e.g. `country`), badged with the reference source |
 | 4 | `filter` / `world_filter` / `time_filter` / `having` | `filtered` | rows are dropped | the kept rows; the step label names the human-readable condition |
 | 5 | `convert` | `calculated` | per-row arithmetic (e.g. currency) | each input value beside the exact factor used (rate + its publication date) and the derived column, so the Result is visibly that column aggregated |
-| 6 | `select` / `group_agg` / `topn` / `sort` / `yoy` / `running` / `divide` / `share` | `selected columns` / `total` / `top_results` / … | the final shaping | the aggregate the Result overlays, or the kept columns of each row |
+| 6 | `select` / `group_agg` / `topn` / `sort` / `yoy` / `running` / `divide` / `share` | `selected columns` / `total` / `top_results` / … | the final shaping | the aggregate the Result overlays, or the kept columns of each row; a top 1 keeps every row tied with the first |
 | 7 | `cross` | `candidate_pairs` | two independently bounded result sets form every candidate combination | both input rows flattened into one row; each input keeps a cutoff the question states, and their product is at most 10,000 |
 | 8 | `anti_join` | `not_yet_purchased` / … | candidates already present in an evidence branch must be removed | left rows with no SQL-equal key pair in the right branch, implemented as `NOT EXISTS` / `anti_join` |
 
@@ -82,7 +82,9 @@ strip remains a flat topological list because it is a workbook navigator, not a 
    any future emitter produce the same ops, names, and ordering above. If a path cannot express
    its work in this grammar, fix the path, not the grammar.
 9. **Named revisions are immutable.** `modify` creates the next revision under the same analysis id; it does not
-   overwrite the prior response. `create` receives a distinct engine-owned id and a collision-free slug.
+   overwrite the prior response. `create` receives a distinct engine-owned id and a collision-free slug. A
+   `modify` may shorten the analysis name by dropping filter words its question no longer asks about; the id and
+   revision history are kept, and the next revision's sheets carry the new name.
 10. **A workbook link is exact.** “Reasoning steps for total sales” links to both the analysis id and revision.
     Selecting it retains the source and private-reference tabs and replaces only the derived stack. Stale analyses
     are marked when a source table changes and must be recomputed before their old values are treated as current.
@@ -93,8 +95,10 @@ strip remains a flat topological list because it is a workbook navigator, not a 
     named `group_reduce` stage even though its implementation maintains an in-memory group map.
 12. **Decomposition does not author computation.** A model may propose only bounded natural-language
     leaf questions and a closed merge topology after the engine requests it. The existing deterministic
-    planner binds every leaf to schema, and one typed DAG supplies both emitters. No model-authored SQL,
-    Python, table name, column name, or join key can enter the plan.
+    planner binds every leaf to schema, and one typed DAG supplies both emitters. No text of the
+    decomposition proposal becomes SQL, Python, a table name, a column name, or a join key. A leaf the
+    search cannot read can reach the labelled Gemini fallback, whose proposal enters the plan only as a
+    validated typed AST ([ARCHITECTURE.md](ARCHITECTURE.md#labelled-gemini-fallback)).
 
 ## Verification checklist (run against a live conversation)
 
@@ -110,6 +114,8 @@ strip remains a flat topological list because it is a workbook navigator, not a 
       recomputes by eye (amount × rate).
 - [ ] Provenance badges name the true source (SRC/KB/FX), not a generic AI.
 - [ ] A modify follow-up keeps the analysis id and increments its revision; a distinct question creates a new id.
+- [ ] A modify that drops a filter drops that filter's words from the analysis name, never adds words.
+- [ ] A top-1 question whose top value is tied shows every tied row.
 - [ ] Each historical rail link restores its exact result while the input-table tabs remain present.
 
 Registered in `CLAUDE.md`'s ownership map. Demo datasets under `web/public/dataset/` are the

@@ -1505,3 +1505,41 @@ of one word splitter, none of which kept "%". They now share `sql_expansion.word
 no number is the word "percent". A plural noun right before "over <n>" compares each row ("orders over 50"),
 as every Spider question of that shape does, instead of reading as "more than 50 orders". None of Spider DEV's
 8 share-word questions is affected (each word names a column there).
+
+## No local model writes SQL; Gemini is a labelled fallback and the only LLM (2026-10-02)
+
+**Decision (owner).** The project's objective is interpretable, deterministic answers built from named
+dimensions. A model that writes SQL token by token contradicts it, however its text is gated. So:
+
+- Removed: the XiYanSQL-QwenCoder-7B Q4_K_M proposer (`engine/xiyan_sql_proposer.py`, its fetcher,
+  contract, GGUF and `llama-cpp-python`), the fitted linear arbiter (`SQLArbiter`,
+  `engine/data/sql_arbiter.json`, proposal merge, endorsement and likelihood features), and their
+  pipelines (`training/proposer/`, `training/rank/`, the SQL selection bundle). The earlier 0.5B LoRA
+  SQL proposer was already retired; its adapter remains only in the published weight revision.
+- Selection (`engine/tables.py:TableQuery.select_query`) serves the deterministic search's best-ranked
+  candidate that executes and is grounded; a date the question names, a registered calculation or a
+  named money total can prefer a later eligible one. `PoolSelection.record()` reports why.
+- Only when no candidate is eligible and the operator enabled Gemini (`EXTERNAL_LLM_ENABLED`),
+  `engine/sql_fallback.py` asks Gemini once to reword the question (the search builds the SQL from the
+  rewording), then for one query that must pass `engine/sql_import.py`, validation, re-rendering,
+  execution and grounding. The answer carries `fallback`, `served_by` and a `model` string that say so,
+  and the workbook status line repeats it. Coverage checks a rewording against itself and holds a
+  proposal to every word of the user's question. Decomposition leaves never take the fallback.
+- Gemini on Vertex AI (`engine/llm.py`) is the only LLM provider: chat, `/api/converse`, reference
+  generation and the fallback. Anthropic is removed.
+
+**Why not keep the 7B and label it.** It served about 60% of Spider answers (626 of 1,034 on
+2026-10-01), so the essay's claim that Prereasoner never generates SQL by next-token prediction was false
+for most own-data answers, and the arbiter that chose between it and the search had been fit on a
+different, retired model. It also set the engine's cost: 8 vCPU / 16 GiB, a ~20 s median decode, a
+5–7 minute cold load, and long waits behind the engine's one-request-at-a-time lock.
+
+**Cost, measured** (`spider/results/RESULTS.md`, 2026-10-02). Spider DEV `whole_db`, engine alone,
+fallback off: 354/1,034 strict for the removal alone, 380 with the same day's search fixes, against 866
+with the 7B. The search pools a correct query for 544 questions, so ranking, not the removed model, is
+the next deterministic lever. Median prediction time fell from about 20 s to under 2 s per question.
+
+**How to apply.** Raise accuracy by extending the typed search (`engine/sql_search.py`); CLAUDE.md now
+forbids a SQL-generating model or a learned ranker over model output. The fallback fires only when
+nothing runs; most wrong readings still run (a `SELECT *` almost always does), so it is not an accuracy
+lever and must not be widened without the owner.

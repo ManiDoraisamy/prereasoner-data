@@ -1,6 +1,6 @@
-"""orchestrator.py — the provider-neutral tool loop over the Prereasoner engine.
+"""orchestrator.py — the Gemini tool loop over the Prereasoner engine.
 
-Per chat request we: (1) run a manual provider tool loop so we control the jobId per
+Per chat request we: (1) run a manual Gemini tool loop (engine/llm.py) so we control the jobId per
 `prereasoner_query` call and can capture the full engine trace to return to the browser; (2) call the
 engine through `mcp_server.engine_client` — the same coroutine `mcp_server/server.py` exposes to
 external MCP clients — passing the user's Firebase token EXPLICITLY per call (identity passthrough,
@@ -32,15 +32,12 @@ from engine.analysis import (
     MAX_ANALYSIS_SLUG_BYTES, AnalysisError, canonical_analysis_slug, validate_analysis_spec,
 )
 from engine.decomposition import DecompositionError, validate_decomposition
+# AsyncGeminiClient is the turn's model client; tests replace this module attribute with a fake.
+from engine.llm import AsyncGeminiClient
 from engine.request_validation import RequestValidationError, validate_question
 from mcp_server import engine_client
 from mcp_server.descriptions import DESCRIBE_DESC, QUERY_DESC
-from orchestrator.llm import create_client
 from orchestrator.system_prompt import SYSTEM_PROMPT
-
-# The Anthropic client class, or None to let create_client import the SDK only when the Anthropic
-# provider is actually selected (Gemini deployments never need it). Tests inject a fake here.
-AsyncAnthropic = None
 
 # What the USER reads when a split cannot be made to work. Validator internals are
 # model-facing tool errors only; they never become the reply.
@@ -86,10 +83,10 @@ TOOL_EXHAUSTED_REPLY = (
     "I couldn't complete that request. Please try one specific question about the attached data."
 )
 
-# Claude-facing tool schemas. The model supplies the question and named-workbook decision; the
+# The model's tool schemas. The model supplies the question and named-workbook decision; the
 # orchestrator injects session tables and a fresh jobId (large CSVs and infrastructure IDs stay out
 # of the LLM loop). Analysis IDs may only be copied from the engine-owned catalog.
-CLAUDE_TOOLS = [
+TOOLS = [
     {
         "name": "prereasoner_query",
         "description": QUERY_DESC,
@@ -262,6 +259,11 @@ def _trim_for_model(shaped: dict[str, Any]) -> dict[str, Any]:
         out["analysis"] = shaped["analysis"]
     if shaped.get("decomposition_required") is not None:
         out["decomposition_required"] = shaped["decomposition_required"]
+    # The engine could not build this query from the question alone and Gemini helped
+    # (engine/sql_fallback.py): the reply must say so, as the workbook does.
+    fallback = shaped.get("fallback") if isinstance(shaped.get("fallback"), dict) else None
+    if fallback and fallback.get("kind") in ("rewrite", "sql"):
+        out["fallback"] = {key: fallback[key] for key in ("kind", "question") if fallback.get(key)}
     return out
 
 
@@ -717,8 +719,7 @@ async def run_chat(user_message: str, tables: list[dict], history: list[dict], *
 
 async def _run_turn(user_message: str, tables: list[dict], history: list[dict], *,
                     engine_base_url: str, bearer_token: str | None,
-                    api_key: str | None, model: str, provider: str = "anthropic",
-                    provider_project: str | None = None, provider_location: str = "global",
+                    model: str, project: str | None = None, location: str = "global",
                     turn_id: str | None = None,
                     emit=None, conversation_id: str | None = None,
                     principal: str | None = None,
@@ -734,7 +735,7 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
     the engine under a DERIVABLE jobId `<turn_id>_<i>` and the call is ANNOUNCED on the turn's RTDB node
     (`emit("calls/<i>", {jobId, question})`) BEFORE it runs — so the browser, subscribed to the turn node,
     discovers each engine call and subscribes to its live `/runs/{uid}/{jobId}` trace. The engine streams
-    that trace exactly as on the direct path. The final Sonnet text + terminal status are emitted too.
+    that trace exactly as on the direct path. The model's final text + terminal status are emitted too.
     `emit` is best-effort (a no-op when RTDB is unset) — streaming must never break the answer."""
     traces: list[dict[str, Any]] = []
     call_idx = 0                                             # per-turn engine-call counter (drives the jobIds)
@@ -762,9 +763,7 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
     # clients; it and this path now call the same `engine_client` coroutine, so there is one
     # implementation of the engine contract, not two.
     async with (
-        create_client(provider, api_key=api_key, model=model,
-                      project=provider_project, location=provider_location,
-                      anthropic_client_cls=AsyncAnthropic) as client,
+        AsyncGeminiClient(model=model, project=project, location=location) as client,
         httpx.AsyncClient(timeout=engine_client.DEFAULT_TIMEOUT) as http,
     ):
         catalog = []
@@ -801,13 +800,9 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                 round_text = ""
                 round_args: dict[str, Any] = {
                     "model": model, "max_tokens": MAX_MODEL_TOKENS, "system": system_prompt,
-                    "thinking": {"type": "adaptive"} if provider == "anthropic" else None,
-                    "tools": CLAUDE_TOOLS, "messages": messages,
+                    "tools": TOOLS, "messages": messages,
                 }
                 if recalculation_forced:
-                    # The API cannot force a tool call while thinking is on; this one round
-                    # runs without it.
-                    del round_args["thinking"]
                     round_args["tool_choice"] = {"type": "tool", "name": "prereasoner_query"}
                     recalculation_forced = False
                 with request_timing.span("llm"):
@@ -817,10 +812,8 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                             if stream_buffer is not None and round_text:
                                 stream_buffer.update(round_text)
                         resp = await llm_stream.get_final_message()
-                # Append the assistant turn verbatim (thinking blocks preserved for same-turn
-                # continuation). The BLOCK OBJECTS go back as-is — the SDK owns their wire shape.
-                # model_dump() here once shipped an SDK-internal field (`parsed_output`) that the
-                # API rejects with 400 "Extra inputs are not permitted" on replay.
+                # Append the assistant turn verbatim. The BLOCK OBJECTS go back as-is: each keeps the
+                # thought signature Gemini requires on a replayed function call (engine/llm.py).
                 messages.append({"role": "assistant", "content": resp.content})
 
                 if resp.stop_reason != "tool_use":
@@ -1154,8 +1147,8 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                     # answered, clarified, or failed, another tool-enabled round can only ask a
                     # different question. That was the production loop behind the misleading
                     # "step budget" response: five progressively weaker rewrites replaced a useful
-                    # terminal result. Let Sonnet present the result, but remove tools for this one
-                    # final round so the computation remains the engine's.
+                    # terminal result. Let the model present the result, with tool calls disabled for
+                    # this one final round so the computation remains the engine's.
                     final_text = _terminal_fallback(terminal_query)
                     presentation_text = ""
                     if history:
@@ -1170,7 +1163,8 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                                 model=model,
                                 max_tokens=MAX_MODEL_TOKENS,
                                 system=system_prompt,
-                                thinking={"type": "adaptive"} if provider == "anthropic" else None,
+                                tools=TOOLS,
+                                tool_choice={"type": "none"},
                                 messages=messages,
                             ) as presentation_stream:
                                 async for delta in presentation_stream.text_stream:
@@ -1196,7 +1190,7 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
             if stream_buffer is not None:
                 stream_buffer.close()             # the _emit('reply', final_text) below stays authoritative
 
-    _emit("reply", final_text)                               # the Sonnet text for the rail
+    _emit("reply", final_text)                               # the model's text for the rail
     _emit("status", "done")                                  # terminal — the browser stops waiting
 
     # Lean cross-turn transcript: user + assistant final text only (avoids block-replay pitfalls; the

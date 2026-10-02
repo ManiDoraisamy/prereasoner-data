@@ -1,5 +1,56 @@
 # Spider Results
 
+## No SQL-writing model: the engine alone, fresh whole_db DEV runs (2026-10-02)
+
+The 7B SQL proposer and the fitted arbiter are removed (`DECISIONS.md`, 2026-10-02). Selection serves the
+deterministic search's best-ranked candidate that executes and is grounded. The labelled Gemini fallback
+was off in every run below (`fallback.enabled: false` in each summary), so no model wrote SQL. Each run is
+serving-faithful (`spider/probe/full_eval.py --config whole_db`, `served` selection, SQL backend, row cap
+5,000) on a shared workstation CPU, Python 3.14, with the change uncommitted
+(`worktree_dirty=true`; every recorded source file is the change applied to the named base).
+
+| Run | Base | Strict | Lenient | Scalar-gold | Answered |
+|---|---|---:|---:|---:|---:|
+| `no-sql-model-4679bed`: the removal alone | `4679bed` | **354/1,034 (34.2%)** | 470/1,034 (45.5%) | 230/408 (56.4%) | 1,002 |
+| `no-sql-model-d10ca77`: plus that day's search fixes (`8af41e9`, `0d925e2`, `f4dfa37`, `d10ca77`) | `d10ca77` | **380/1,034 (36.8%)** | 515/1,034 (49.8%) | 254/408 (62.3%) | 1,004 |
+
+| Difficulty (`d10ca77`) | n | Answered | Strict | Lenient | Scalar |
+|---|---:|---:|---:|---:|---:|
+| easy | 248 | 243 | 137 | 159 | 118/173 |
+| medium | 446 | 434 | 142 | 207 | 64/101 |
+| hard | 174 | 165 | 56 | 93 | 52/77 |
+| extra | 166 | 162 | 45 | 56 | 20/57 |
+| **all** | **1,034** | **1,004** | **380** | **515** | **254/408** |
+
+**What the removal cost.** Against the 2026-10-01 7B run (`ca60bd6`, 866 strict) the removal-alone run is
+not a paired comparison: the code also differs by the commits between `ca60bd6` and `4679bed`.
+
+| | strict | lenient |
+|---|---:|---:|
+| win | 11 | 10 |
+| loss | 523 | 409 |
+| both correct | 343 | 460 |
+| both wrong | 157 | 155 |
+
+455 of the 523 strict losses had been served from the 7B's SQL. The other 68 came from the search's own
+candidates, which the old arbiter ranked differently or which commits since `ca60bd6` changed; these runs
+do not separate the two. The search fixes then added 30 strict wins and 4 losses (`4679bed` to `d10ca77`).
+
+**Where the rest is.** The pool-oracle ablation of the removal-alone run (`--selection pool_oracle`, tag
+`no-sql-model-4679bed-pool`, never serving) finds a strict-correct candidate in the search's pool for
+**544/1,034 (52.6%)**, lenient 626, scalar 286/408; the same run's top-1 is 363 strict (that mode grades
+the selected member without its tied rows). So about 180 questions are ranking misses with the right query
+already pooled (first strict hit at rank 1: 28, rank 2: 37, rank 3: 19, deeper: 97), and about 490 have no
+correct candidate. 30 questions on `d10ca77` (32 on `4679bed`) have no candidate that runs and grounds:
+those are the only questions on which the Gemini fallback would run.
+
+**Latency.** Per-question prediction seconds, `d10ca77`: median 1.71, p90 4.60, p95 5.66, max 19.22, on a
+machine shared with other evaluations (the removal-alone run: median 1.28, p90 2.73). The 7B run measured a
+median of 20.12 and a p90 of 39.23.
+
+Outputs: `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002` (`full_eval_no-sql-model-*.json` and their
+per-example files).
+
 ## Join grounding, fresh whole_db DEV run (2026-10-01)
 
 `engine/sql_grounding.py` now also makes a pool member ineligible when it equates two columns the foreign keys keep

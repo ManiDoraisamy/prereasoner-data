@@ -24,7 +24,7 @@ from pathlib import Path
 
 import httpx
 
-from engine import config, dataset_attestation
+from engine import config, dataset_attestation, llm
 from engine.request_limits import (
     JSONBodyError, RequestGate, allowed_origin, parse_content_length, read_json_object,
 )
@@ -36,7 +36,7 @@ MAX_BODY = 8 * 1024 * 1024
 CHAT_TIMEOUT_SECONDS = 240
 CHAT_GATE = RequestGate(requests=10, window_seconds=60, in_flight=8)
 
-# One asyncio loop in a background thread keeps Anthropic and engine HTTP work off request threads
+# One asyncio loop in a background thread keeps Gemini and engine HTTP work off request threads
 # and avoids per-request event-loop churn.
 _LOOP = asyncio.new_event_loop()
 threading.Thread(target=_LOOP.run_forever, name="orch-loop", daemon=True).start()
@@ -92,7 +92,7 @@ class H(BaseHTTPRequestHandler):
             # Readiness must check what a turn actually uses. That is the engine client this process
             # calls in-process — NOT mcp_server.server, which is now only the entry point for
             # external MCP clients and whose health says nothing about this service's ability to serve.
-            ready = config.external_llm_enabled() and config.llm_configured() and dataset_attestation.configured()
+            ready = llm.available() and dataset_attestation.configured()
             try:
                 module = importlib.import_module("mcp_server.engine_client")
                 ready = ready and hasattr(module, "call_query")
@@ -132,7 +132,7 @@ class H(BaseHTTPRequestHandler):
             except RequestValidationError as exc:
                 self._send(exc.status_code, json.dumps({"error": str(exc)})); return
             token = self._bearer()
-            # AUTH GATE (required): run_chat drives external-model inference on the owner's key, so demand a verified
+            # AUTH GATE (required): run_chat drives Gemini inference billed to the operator, so demand a verified
             # identity BEFORE any work — otherwise an anonymous caller is denial-of-wallet. In local dev the engine's
             # AUTH_TEST_SUB makes verified_identity accept without a token, so this is a no-op there; in prod it
             # requires a real Firebase token. The browser always sends Authorization: Bearer <token> to /chat.
@@ -147,7 +147,7 @@ class H(BaseHTTPRequestHandler):
                 uid = None
             if not uid:
                 self._send(401, json.dumps({"error": "sign in required"})); return
-            if not config.external_llm_enabled():
+            if not llm.available():                         # the operator's switch, and a project to call
                 self._send(503, json.dumps({
                     "error": "assistant processing is unavailable for this request"
                 })); return
@@ -168,11 +168,8 @@ class H(BaseHTTPRequestHandler):
             fut = asyncio.run_coroutine_threadsafe(
                 run_chat(message, tables, history,
                          engine_base_url=config.ENGINE_BASE_URL, bearer_token=token,
-                         api_key=(config.anthropic_api_key()
-                                  if config.llm_provider() == "anthropic" else None),
-                         model=config.llm_model(), provider=config.llm_provider(),
-                         provider_project=config.GOOGLE_CLOUD_PROJECT,
-                         provider_location=config.GEMINI_LOCATION,
+                         model=config.llm_model(), project=config.GOOGLE_CLOUD_PROJECT,
+                         location=config.GEMINI_LOCATION,
                          turn_id=turn_id, emit=emit, conversation_id=conversation_id,
                          principal=uid, use=use, analysis_override=analysis),
                 _LOOP,
@@ -237,7 +234,7 @@ class H(BaseHTTPRequestHandler):
 
 
 def main():
-    # engine.config autoloads the repo .env at import, so ANTHROPIC_API_KEY / ENGINE_BASE_URL are already
+    # engine.config autoloads the repo .env at import, so GOOGLE_CLOUD_PROJECT / ENGINE_BASE_URL are already
     # in place here. Nothing else to bootstrap.
     print(f"orchestrator ready: http://{config.ORCH_HOST}:{config.ORCH_PORT}  "
           f"(POST /chat; auth={config.ORCH_AUTH_MODE}; engine at {config.ENGINE_BASE_URL})", flush=True)

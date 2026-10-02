@@ -40,8 +40,8 @@ from engine.sql_rank import PoolSelection
 
 
 def _served(candidate):
-    """What select_query returns when `candidate` is the only, executable pool member."""
-    return PoolSelection((candidate,), frozenset(), (True,), (True,), ((-1.0, 1),), (0.0,), (0,), 0, 1)
+    """What select_query returns when `candidate` is the only, eligible pool member."""
+    return PoolSelection((candidate,), (True,), (True,), (0,), 0)
 
 
 def _proposal():
@@ -359,10 +359,7 @@ def test_decomposition_tries_next_ranked_candidate_when_best_cannot_dual_lower()
         ScoredQuery(unsupported, render_query(unsupported), 2.0, ()),
         ScoredQuery(supported, render_query(supported), 1.0, ()),
     )
-    selection = PoolSelection(
-        pool, frozenset(), (True, True), (True, True), ((-1.0, 1),) * 2,
-        (2.0, 1.0), (0, 1), 0, 2,
-    )
+    selection = PoolSelection(pool, (True, True), (True, True), (0, 1), 0)
     planner = Mock()
     planner.postgres_row_identity = False
     planner.select_query.return_value = selection
@@ -564,7 +561,7 @@ def test_failed_compound_probe_cannot_authorize_a_partial_composed_answer():
 
 
 def test_a_leaf_serves_the_chosen_ranking_with_its_measure_projected():
-    """A decomposition leaf reads single queries in the arbiter's order, its choice first, each
+    """A decomposition leaf reads single queries in selection's ranked order, its choice first, each
     names-only ranking with its ORDER BY measure projected (the same rows in the same order),
     and serves the first reading that sums and ranks by the measure the question names. The
     Chrome release gate found both failure directions: a lower-ranked member that projected a
@@ -593,8 +590,7 @@ def test_a_leaf_serves_the_chosen_ranking_with_its_measure_projected():
     def pool_selection(*queries):
         pool = tuple(ScoredQuery(query, f"q{index}", 1.0, ()) for index, query in enumerate(queries))
         n = len(pool)
-        return PoolSelection(pool, frozenset(), (True,) * n, (True,) * n, ((-1.0, 9),) * n,
-                             tuple(float(n - index) for index in range(n)), tuple(range(n)), 0, n)
+        return PoolSelection(pool, (True,) * n, (True,) * n, tuple(range(n)), 0)
 
     def served_query(selection, node_id, question):
         # Observe the real dual-emitter lowering, after production's guard and
@@ -690,8 +686,7 @@ def test_anti_join_evidence_takes_the_first_reading_that_keeps_the_left_grain():
     def pool_selection(*queries):
         pool = tuple(ScoredQuery(query, f"q{index}", 1.0, ()) for index, query in enumerate(queries))
         n = len(pool)
-        return PoolSelection(pool, frozenset(), (True,) * n, (True,) * n, ((-1.0, 9),) * n,
-                             tuple(float(n - index) for index in range(n)), tuple(range(n)), 0, n)
+        return PoolSelection(pool, (True,) * n, (True,) * n, tuple(range(n)), 0)
 
     tables = [
         {"name": "products", "columns": ["product_id", "product_name"], "rows": [[1, "Coat"]]},
@@ -727,8 +722,12 @@ def test_anti_join_evidence_takes_the_first_reading_that_keeps_the_left_grain():
     def plan_with(*readings):
         planner = Mock()
         planner.postgres_row_identity = False
-        planner.select_query.side_effect = lambda leaf, *_: (
-            leaves[leaf] if leaf in leaves else pool_selection(*readings))
+        def select_query(leaf, *_, allow_fallback=True):
+            # A leaf is the chat model's wording: it never takes the Gemini fallback.
+            assert allow_fallback is False, "a decomposition leaf asked for the Gemini fallback"
+            return leaves[leaf] if leaf in leaves else pool_selection(*readings)
+
+        planner.select_query.side_effect = select_query
         planner.guard.return_value = (True, None)
         with patch("engine.deterministic.lower.lower_select_query",
                    wraps=lower_select_query) as lower:

@@ -15,7 +15,7 @@ the modules, the env-var contract, and the data files the serving path opens.
 
 | module | classes / responsibility |
 |---|---|
-| `server.py` | ONE ThreadingHTTPServer. `POST /api/reason`, `POST /api/knowledge` (Firebase auth + RTDB streaming, shared `KnowledgeReasoner` + shared `WORLD_LOCK`), `POST /api/dimension` (authenticated stateless readout, own `DIM_LOCK`), `POST /api/converse` (Sonnet fallback/present), `GET /healthz`. Exact-origin CORS, body/rate/row limits. |
+| `server.py` | ONE ThreadingHTTPServer. `POST /api/reason`, `POST /api/knowledge` (Firebase auth + RTDB streaming, shared `KnowledgeReasoner` + shared `WORLD_LOCK`), `POST /api/dimension` (authenticated stateless readout, own `DIM_LOCK`), `POST /api/converse` (Gemini fallback/present), `GET /healthz`. Exact-origin CORS, body/rate/row limits. |
 | `auth.py` | `_verify_principal`, `_bearer` (security-critical). Test bypass via `AUTH_TEST_SUB`. |
 | `config.py` | the ONE env-var reader (see contract below). |
 | `tables.py` | `TableQuery`; canonical `table_name`, `csv_table` / `table_from_rows`, SQL quoting and table parsing. `TableQuery.__init__` defers encoder loading (the encoder overlay supplies the model at serve time). |
@@ -42,7 +42,7 @@ the modules, the env-var contract, and the data files the serving path opens.
 | `primitive_head.py` | `PrimitiveReader` (head at `DATA_DIR/primitives.npz`; default encoder = `EncoderQuery`). |
 | `joins.py` | compose's join assembly: `join_plan` (fact selection + flatten-safe keep-lists). FK discovery delegates to `relations.discover_fks` (one shared detector). |
 | `taxonomy.py` | `snake`, `name_like`, and the taxonomy constants (`TAX`/`LEAF_PATH`/`LEAF_QID`/`LEAF_TABLES`) loaded from `taxonomy.csv`. |
-| `converse.py` | `reply()` — the optional in-chat Sonnet fallback/presentation (see §"Conversational layer"). |
+| `converse.py` | `reply()` — the optional in-chat Gemini fallback/presentation (see §"Conversational layer"). |
 | `conversations.py` | the `chat` schema (conversation identity + ownership; IDOR-safe). |
 | `master.py` | Per-user reference persistence, validation, and direct/multi-hop request selection through `relations.discover_fks`. |
 
@@ -70,7 +70,9 @@ The engine is a proper package run from the repo root (no `sys.path` hacks).
 | `DEVICE` | `cpu` | torch device for the router/encoder (`cuda` honored only if available). |
 | `BASE_MODEL_ID` | `Qwen/Qwen2.5-0.5B` | the Qwen base the LoRA adapter attaches to; matches the training/ package. |
 | `KB_MODEL_ROUTE` | `1` | `0` disables model-driven column routing (value-membership fallback). |
-| `ANTHROPIC_API_KEY` | *(unset)* | OPTIONAL. Powers `/api/converse`; unset ⇒ graceful 503 degrade. |
+| `EXTERNAL_LLM_ENABLED` | `false` | Authoritative switch for every Gemini call (`engine/llm.py`). |
+| `GOOGLE_CLOUD_PROJECT` | *(unset)* | OPTIONAL. The Vertex AI project for Gemini (ADC credentials, no key): `/api/converse`, `/api/master/generate`, the selection fallback; unset ⇒ graceful 503 degrade and no fallback. |
+| `GEMINI_MODEL` / `GEMINI_LOCATION` | `gemini-3.8-flash` / `global` | the Vertex AI model and location. |
 | `GEO_TEST_SUB` | `geotest` | tests only. |
 
 ## Data files (engine/data — see its README for the full table)
@@ -141,18 +143,19 @@ layout.
 
 ## Conversational layer
 
-The engine side of the in-chat Sonnet fallback + answer presentation. Full design
+The engine side of the in-chat Gemini fallback + answer presentation. Full design
 in docs/ARCHITECTURE.md §10; this note records the engine surface for maintainers.
 
 - **`engine/converse.py`**: `reply(question, clarify=, error=, tables=, answer=, sql=)` — one
-  short Sonnet message. Two modes selected by whether `answer` is supplied: PRESENT (wrap a computed
+  short Gemini message. Two modes selected by whether `answer` is supplied: PRESENT (wrap a computed
   `{columns,rows}` verbatim; empty result renders an explicit "no rows" sentinel) and FALLBACK
-  (offer a clarify rephrasing / explain a meta question; never state an unseen number). Uses
-  `config.anthropic_api_key()` + `ANTHROPIC_MODEL`.
+  (offer a clarify rephrasing / explain a meta question; never state an unseen number). Calls
+  `engine.llm.generate_text`; `generate_master` streams through `engine.llm.stream_text`.
 - **`engine/server.py`**: `POST /api/converse` (`_post_converse`) — Firebase-auth'd like the reason
-  routes; forwards `answer`/`sql`; a missing key / SDK / upstream error is caught → **503** (logged)
-  so the browser degrades to its built-in fallback. This is the ONLY generative-LLM call in the
-  engine, and it is optional.
+  routes; forwards `answer`/`sql`; `LLMUnavailable` (switch off, no project, or an upstream error)
+  is caught → **503** (logged) so the browser degrades to its built-in fallback. Every engine Gemini
+  call — this one, reference generation, and the selection fallback (`engine/sql_fallback.py`) —
+  goes through `engine/llm.py`, and all of them are optional.
 - **`engine/knowledge.py`** (`KnowledgeReasoner.serve`): the COVERAGE PRE-GATE (`_has_data_signal` → return
   `low_confidence` before reasoning) and `_tag_present` (apply the `present` flag when a real answer
   is human-toned), applied across both the geo and composed paths. `KnowledgeReasoner` also lives here.
@@ -161,5 +164,5 @@ in docs/ARCHITECTURE.md §10; this note records the engine surface for maintaine
   a column is data, not tone). Lexicons: `_DATA_INTENT`, `_META_STOP`, `_HUMAN_CUE`, `_HUMAN_RE`.
 - **`engine/trace.py`** (`stream_final`): streams `low_confidence` and `present` alongside the
   existing terminal nodes.
-- **`engine/config.py`**: `ANTHROPIC_API_KEY` is OPTIONAL for the engine — it powers /api/converse;
-  unset ⇒ graceful 503 degrade.
+- **`engine/config.py`**: `GOOGLE_CLOUD_PROJECT` (with `EXTERNAL_LLM_ENABLED`) is OPTIONAL for the
+  engine — it powers /api/converse; unset ⇒ graceful 503 degrade.

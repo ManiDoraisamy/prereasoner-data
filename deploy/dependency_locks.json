@@ -24,32 +24,26 @@
     },
     "orchestrator/requirements.lock.txt": {
       "input": "orchestrator/requirements.txt",
-      "input_sha256": "ba46f7ef86f803a2fcdfa425725b714f8dc481837aecdd535b7415ee189cd645",
-      "lock_sha256": "8d414745f4a5723c55fd1f5faa687a306c81b56371d2d202ac86607dafd54473",
-      "target": "linux-x86_64-python3.11"
-    },
-    "requirements-build.lock.txt": {
-      "input": "requirements-build.txt",
-      "input_sha256": "a5305d34e2ffbd6eba544637814b9424b6333151ee714d392db758484973bf21",
-      "lock_sha256": "ff5885b4a7c4d3c8ac41468265100b87855c85df3ffb27b6e0c757e04a56a191",
+      "input_sha256": "29e55d581c12f9b42ac0c8e74605a0ff5e9652e17e11164d9adb4d236aea6fc2",
+      "lock_sha256": "8b371d254998f07bb8790e7e2c9c66c98385cf8b6b9bfad8739fa8e8fdc0ba58",
       "target": "linux-x86_64-python3.11"
     },
     "requirements-ci-windows.lock.txt": {
       "input": "requirements-ci.txt",
-      "input_sha256": "efa090c61507f9f9c6aa5612134093fcd5eb309463d9e1a68ebf75e38c42e26a",
-      "lock_sha256": "2ec8e861c1fc86b18b853697dcccc89bf4384ab516e7a40eedc236821a3f72dd",
+      "input_sha256": "efd6c53c1fe2579847681588842e2e345ff92d3fc71e9a674673d32282756bf3",
+      "lock_sha256": "63caef0557db1f67d36d1f95b7074c2c9855a84242dd5500cfc8e605f629e7dd",
       "target": "windows-x86_64-python3.11"
     },
     "requirements-ci.lock.txt": {
       "input": "requirements-ci.txt",
-      "input_sha256": "efa090c61507f9f9c6aa5612134093fcd5eb309463d9e1a68ebf75e38c42e26a",
-      "lock_sha256": "dbf70dd1afc5bc5929dbc9e3e6c92938b470f2e69b5e1c79f00c577efbda7822",
+      "input_sha256": "efd6c53c1fe2579847681588842e2e345ff92d3fc71e9a674673d32282756bf3",
+      "lock_sha256": "ea12ebfb6d0aac62b6b714ba5890092a65e5e40a00510a310f166be3131ac7a1",
       "target": "linux-x86_64-python3.11"
     },
     "requirements.lock.txt": {
       "input": "requirements.txt",
-      "input_sha256": "9916642b576d88a4f381b93454f889233e0f19d5abf102f499d6d99553ba5cc1",
-      "lock_sha256": "f150919fb2a56e456d770875cbaa565217025d26c48953135ac8d332ca1972e4",
+      "input_sha256": "4ac11002d5f69217ba8ec8a150353bb3bf30f9694b30dd25b9b49113654e2cc8",
+      "lock_sha256": "e189642736956c95082be5d306a3069506144fb7b932f5314ac2ee7126901aff",
       "target": "linux-x86_64-python3.11"
     },
     "training/requirements.lock.txt": {

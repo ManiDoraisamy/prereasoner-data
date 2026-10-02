@@ -38,8 +38,8 @@ It shows one cost confirmation, then:
 
 1. creates a private, versioned Terraform-state bucket in this project;
 2. enables the required APIs and creates Artifact Registry;
-3. enables Vertex AI for the Community Gemini chat service and grants its Cloud Run service account
-   `roles/aiplatform.user`;
+3. enables Vertex AI for Gemini, which the chat service and the engine call, and grants both Cloud
+   Run service accounts `roles/aiplatform.user`;
 4. downloads and verifies the public manifested weights;
 5. builds and regression-tests immutable engine and chat images in Cloud Build;
 6. applies the Zonal, scale-to-zero Community Terraform profile with chat enabled;
@@ -73,8 +73,9 @@ Google sign-in is not offered because enabling it requires an OAuth client that 
 create for a project outside an organization — it cannot be automated, and this installer refuses to
 hand you console homework instead.
 
-External model processing is enabled only for the required chat service, using Vertex AI Gemini
-through the Cloud Run service account. The guided profile activates only the reviewed IANA country dataset; other reference
+External model processing uses Vertex AI Gemini in this project through the Cloud Run service
+accounts: the required chat service, and the engine's presentation replies, reference generation,
+and query fallback. Gemini is billed per request. The guided profile activates only the reviewed IANA country dataset; other reference
 datasets remain disabled until the operator adds the required source data, grants, and allowlist entry.
 
 Adding Firebase to a brand-new project succeeded without any Terms prompt when this was last verified
