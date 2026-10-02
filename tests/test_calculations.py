@@ -856,7 +856,7 @@ def test_joined_discount_and_currency_compose_as_one_typed_calculation():
         candidate.sql,
         query=candidate.query,
     )
-    ok(columns == ["total_usd_and_net_amount"] and rows == [(584.5,)],
+    ok(columns == ["net_amount_usd"] and rows == [(584.5,)],
        "the composed calculation executes with exact typed arithmetic")
 
     discount_only = "reduce the discount from total amount based on customer's tier"

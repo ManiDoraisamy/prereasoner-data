@@ -358,6 +358,17 @@ def _output_realizes_plan(expression: ScalarExpr, plan: CalculationPlan) -> bool
     return True
 
 
+def _composed_alias(plans: tuple[CalculationPlan, ...]) -> str:
+    """One measure name for composed row factors: the adjusted measure, then the currency it is
+    converted to ("net_amount_usd"). Joining the aliases read "total_usd_and_net_amount" as the
+    result header (orders-tiers, Chrome gate 2026-10-02)."""
+    currencies = [plan.output_unit.lower() for plan in plans if plan.specification == "currency"]
+    adjusted = [plan.alias for plan in plans if plan.specification != "currency"]
+    if adjusted and currencies:
+        return "_".join(adjusted + currencies)
+    return "_and_".join(plan.alias for plan in plans)
+
+
 def compose_row_plans(plans: tuple[CalculationPlan, ...]) -> CalculationPlan | None:
     """Compose compatible row factors into one exact ``SUM(measure * factors...)`` plan."""
     if not plans:
@@ -381,7 +392,7 @@ def compose_row_plans(plans: tuple[CalculationPlan, ...]) -> CalculationPlan | N
     return CalculationPlan(
         "+".join(plan.specification for plan in plans),
         Aggregate("SUM", operand),
-        "_and_".join(plan.alias for plan in plans),
+        _composed_alias(plans),
         plans[-1].output_unit,
         "+".join(plan.rule for plan in plans),
         bindings,

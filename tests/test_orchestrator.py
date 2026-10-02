@@ -470,7 +470,7 @@ def main():
         discounted, _ = presented(
             "total amount in France in US dollars after customer tier discount",
             {"status": "answered", "calculations": usd,
-             "answer": {"columns": ["total_usd_and_net_amount"], "rows": [["995.26575"]]}},
+             "answer": {"columns": ["net_amount_usd"], "rows": [["995.26575"]]}},
             history=[
                 {"role": "user", "content": "total amount in France in US dollars"},
                 {"role": "assistant", "content": "Your total for France comes to $1,101.44 in US dollars."},
