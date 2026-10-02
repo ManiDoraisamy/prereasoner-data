@@ -204,7 +204,8 @@ class SQLSearcher:
                                                     draft.score + group_score + order_score + join_score,
                                                     evidence))
 
-        if share_requested(tokens):
+        column_words = {_canon(word) for column in self.schema.columns for word in _name_words(column.ref.name)}
+        if share_requested(tokens, column_words):
             complete.extend(self._share_candidates(complete))
         dedup: dict[str, ScoredQuery] = {}
         for candidate in complete:

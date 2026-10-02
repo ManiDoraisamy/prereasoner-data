@@ -105,6 +105,8 @@ class CandidateRanker:
     def __init__(self, schema: SchemaGraph, signals: SemanticSignals | None = None):
         self.schema = schema
         self.signals = signals or SemanticSignals.empty()
+        self.column_words = frozenset(
+            token for column in schema.columns for token in _schema_tokens(column.ref.name))
 
     def rank(self, question: str, candidates: Sequence[ScoredQuery]) -> list[ScoredQuery]:
         roles = analyze_question(question, self.schema)
@@ -145,9 +147,10 @@ class CandidateRanker:
             for term in query.order_by
         )
         features: list[tuple[str, float]] = [("base", 0.0)]
-        if shares or share_requested(roles.tokens):
+        asked = share_requested(roles.tokens, self.column_words)
+        if shares or asked:
             # "what share of the total amount comes from Paris" asks for the fraction, not the total.
-            features.append(("share_of_whole", 6.0 if shares and share_requested(roles.tokens) else -6.0))
+            features.append(("share_of_whole", 6.0 if shares and asked else -6.0))
 
         if roles.count_requested:
             if count_ranked:

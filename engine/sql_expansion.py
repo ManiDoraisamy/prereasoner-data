@@ -722,8 +722,10 @@ def implicit_sum_measures(question_tokens: Sequence[str]) -> tuple[ImplicitMeasu
 SHARE_WORDS = frozenset({"share", "percentage", "percent", "proportion", "fraction"})
 
 
-def share_requested(question_tokens: Sequence[str]) -> bool:
-    return bool(SHARE_WORDS & set(question_tokens))
+def share_requested(question_tokens: Sequence[str], column_words: Iterable[str] = ()) -> bool:
+    """Whether the question asks for a fraction of a whole. A share word that names a column ("the
+    maximum share of TV series", "the largest percentage of people") is that column, not a fraction."""
+    return bool((SHARE_WORDS - set(column_words)) & set(question_tokens))
 
 
 # A superlative of quantity ranks totals: "the most deposits" is the largest total of deposits. "The

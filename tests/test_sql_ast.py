@@ -1811,6 +1811,16 @@ def test_a_share_divides_the_kept_rows_aggregate_by_the_whole():
     # Contrast, same sheet: a total asked without a share word stays the total.
     total = best("total amount from Paris", [orders])
     assert "/" not in total.sql and execute([orders], total.sql) == [(129,)], total.sql
+    # Negative: a share word that names a column is that column (Spider tvshow and world_1).
+    series = {"name": "TV_series", "columns": ["id", "Episode", "Share", "Rating"], "rows": [
+        [1, "A", 5.5, 9], [2, "B", 7.0, 8], [3, "C", 4.5, 7]]}
+    shares = best("What is minimum and maximum share of TV series?", [series])
+    assert "/" not in shares.sql and "MAX(" in shares.sql and "MIN(" in shares.sql, shares.sql
+    languages = {"name": "countrylanguage", "columns": ["CountryCode", "Language", "Percentage"], "rows": [
+        ["ABW", "Dutch", 5.3], ["ABW", "English", 9.5], ["AFG", "Pashto", 52.4]]}
+    spoken = best("What is the total number of countries where English is spoken by the largest percentage of people?",
+                  [languages])
+    assert "/" not in spoken.sql, spoken.sql
     # Negative: an average is never shared out.
     average = best("what share of orders have the highest average amount", [orders])
     assert "share" not in average.sql.lower() or "AVG" not in average.sql, average.sql
