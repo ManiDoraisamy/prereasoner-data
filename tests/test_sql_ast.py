@@ -2393,6 +2393,34 @@ def test_two_values_a_child_table_holds_are_both():
     assert "LIKE" not in contained.sql and "= 'Brazil'" in contained.sql, contained.sql
 
 
+def test_a_column_word_that_introduces_a_value_is_not_listed():
+    """Spider DEV, 2026-10-02: "which airline has abbreviation 'UAL'" listed the abbreviation beside the
+    airline, and "the names of cities that have a population between 160000 and 900000" the population
+    beside each name (30 readings listed the column they filtered). A column word before the value it
+    introduces, across "of", "the" or a comparison, or right after a data value ("'Brig' type ships"),
+    names the compared column; a second mention of the column still lists it."""
+    airlines = {"name": "airlines", "columns": ["uid", "Airline", "Abbreviation", "Country"], "rows": [
+        [1, "United Airlines", "UAL", "USA"], [2, "JetBlue Airways", "JetBlue", "USA"],
+        [3, "Air Canada", "ACA", "Canada"]]}
+    airline = best("Which airline has abbreviation 'UAL'?", [airlines])
+    assert execute([airlines], airline.sql) == [("United Airlines",)], airline.sql
+    abbreviation = best('What is the abbreviation of Airline "JetBlue Airways"?', [airlines])
+    assert execute([airlines], abbreviation.sql) == [("JetBlue",)], abbreviation.sql
+    city = {"name": "city", "columns": ["ID", "Name", "Population"], "rows": [
+        [1, "Kabul", 1780000], [2, "Qandahar", 237500], [3, "Herat", 186800], [4, "Amsterdam", 731200]]}
+    names = best("Return the names of cities that have a population between 160000 and 900000.", [city])
+    assert sorted(execute([city], names.sql)) == [("Amsterdam",), ("Herat",), ("Qandahar",)], names.sql
+    ship = {"name": "ship", "columns": ["id", "name", "ship_type", "tonnage"], "rows": [
+        [1, "Lettice", "Brig", 249], [2, "Bon Accord", "Brig", 300], [3, "Mary", "Schooner", 120]]}
+    brigs = best("What are the names of 'Brig' type ships?", [ship])
+    assert sorted(execute([ship], brigs.sql)) == [("Bon Accord",), ("Lettice",)], brigs.sql
+    # Contrast: the column named again in the list is listed.
+    both = best("Show the name and population of cities that have a population between 160000 and 900000.",
+                [city])
+    assert sorted(execute([city], both.sql)) == [("Amsterdam", 731200), ("Herat", 186800),
+                                                 ("Qandahar", 237500)], both.sql
+
+
 def test_multiple_aggregates_share_a_typed_operand():
     candidate = best("What are the average, minimum and maximum age of people from France?", [PEOPLE])
     assert execute([PEOPLE], candidate.sql) == [(25.0, 20, 30)]
@@ -3837,6 +3865,7 @@ TESTS = [
     test_a_year_column_compares_the_year_itself,
     test_an_unjoinable_projection_drops_out_of_the_reading,
     test_two_values_a_child_table_holds_are_both,
+    test_a_column_word_that_introduces_a_value_is_not_listed,
     test_multiple_aggregates_share_a_typed_operand,
     test_repeated_count_paraphrase_is_one_aggregate,
     test_total_number_of_entities_is_a_scalar_count,

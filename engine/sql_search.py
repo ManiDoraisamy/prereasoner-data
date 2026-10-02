@@ -84,6 +84,14 @@ _COMPARATIVE_COLUMNS = {
     "lighter": frozenset({"weight"}), "taller": frozenset({"height"}), "shorter": frozenset({"height", "length"}),
     "longer": frozenset({"length", "duration"}), "cheaper": frozenset({"price", "cost"}),
 }
+# Words between a column's name and the value it introduces (canon() forms): "the year 2014", "the state of
+# Hawaii", "earnings above 300000", "a population between 160000 and 900000".
+_VALUE_BRIDGE_WORDS = frozenset({
+    "the", "a", "an", "of", "is", "are", "was", "were", "be", "being", "equal", "to", "named", "called", "as",
+    "more", "less", "than", "greater", "smaller", "larger", "fewer", "higher", "lower", "above", "below", "over",
+    "under", "after", "before", "between", "since", "until", "at", "least", "most", "exactly", "exceeding",
+    "exceed", "both", "either",
+})
 _CATEGORICAL_INITIALS = {
     "left": "l", "right": "r",
     "male": "m", "female": "f",
@@ -152,7 +160,12 @@ class SQLSearcher:
                                 if token in {"where", "with", "whose", "having", "from", "for",
                                              "order", "ordered", "sort", "sorted", "rank", "ranked"}),
                                len(tokens))
-        prefix_tokens = set(tokens[:clause_boundary])
+        # A column word that introduces a stated value names the compared column, not one to list: "singer
+        # names in concerts in year 2014", "the airline with abbreviation 'UAL'" (Spider DEV, 2026-10-02: 30
+        # readings listed the column they filtered). Another mention of the column still asks for it.
+        qualifiers = self._value_qualifiers(tokens, question)
+        prefix = tuple("" if index in qualifiers else token for index, token in enumerate(tokens[:clause_boundary]))
+        prefix_tokens = set(prefix)
         id_requested = bool(_ID_WORDS & set(tokens))
         explicit_projection_columns = {
             schema_column.ref
@@ -160,9 +173,7 @@ class SQLSearcher:
             if (
                 (link_words := _column_link_words(schema_column.ref, id_requested))
                 and set(link_words) <= prefix_tokens
-                and _column_link_positions(
-                    schema_column.ref, tokens[:clause_boundary], self.schema, link_words
-                )
+                and _column_link_positions(schema_column.ref, prefix, self.schema, link_words)
             )
         }
         clause_only_columns = {
@@ -805,7 +816,7 @@ class SQLSearcher:
         # to compare, "in May" stays a value of a text month column.
         phrases = served_date_phrases(question, tokens, self.schema)
         claimed = {index for phrase in phrases for index in range(phrase.start, phrase.end)}
-        capitalized = frozenset(word.lower() for word in re.findall(r"\b[A-Z]{2,}\b", question))
+        capitalized = _capitalized(question)
         substrings, held = self._substring_groups(tokens, mentions, question, claimed)
         claimed = claimed | held
         groups.extend(substrings)
@@ -871,9 +882,10 @@ class SQLSearcher:
                 held.update(range(start, start + len(wanted)))
         return groups, held
 
-    def _value_predicate_groups(self, tokens: tuple[str, ...], mentions: tuple[_Mention, ...],
-                                claimed: set[int] = frozenset(),
-                                capitalized: frozenset[str] = frozenset()) -> list[list[tuple[tuple[Comparison, ...], float, str]]]:
+    def _value_matches(self, tokens: tuple[str, ...], claimed: set[int] | frozenset[int],
+                       capitalized: frozenset[str]) -> tuple[list[tuple[int, int, str, tuple[tuple[ColumnRef, Any], ...]]], set[int]]:
+        """The data values the question states, longest first without overlap, in question order, and the
+        positions they and ``claimed`` occupy."""
         matches: list[tuple[int, int, str, tuple[tuple[ColumnRef, Any], ...]]] = []
         for start in range(len(tokens)):
             for size in range(1, min(6, len(tokens) - start) + 1):
@@ -893,6 +905,36 @@ class SQLSearcher:
             occupied.update(span)
             selected.append(match)
         selected.sort()
+        return selected, occupied
+
+    def _value_qualifiers(self, tokens: tuple[str, ...], question: str) -> frozenset[int]:
+        """Positions of the column words that introduce a value the question states: the words of the
+        value's own column before it, across bridge words ("in year 2014", "the state of Hawaii", "earnings
+        above 300000", "written by Joseph Kuhr"), or right after a data value ("'Brig' type ships"). A
+        number's column is any numeric or date one ("hired after 2015")."""
+        selected, _ = self._value_matches(tokens, frozenset(), _capitalized(question))
+        spans = [(start, end, {column for column, _ in options}, True) for start, end, _, options in selected]
+        numeric = {column.ref for column in self.schema.columns
+                   if column.ref.type.numeric or column.ref.type == SQLType.DATE}
+        spans += [(index, index + 1, numeric, False) for index, token in enumerate(tokens) if _NUMBER_RE.match(token)]
+        qualifiers: set[int] = set()
+        for start, end, columns, data_value in spans:
+            words = {word for column in columns for word in _column_link_words(column, True)}
+            before = start - 1
+            while before >= 0 and (tokens[before] in words or tokens[before] in _VALUE_BRIDGE_WORDS):
+                if tokens[before] in words:
+                    qualifiers.add(before)
+                before -= 1
+            after = end
+            while data_value and after < len(tokens) and tokens[after] in words:
+                qualifiers.add(after)
+                after += 1
+        return frozenset(qualifiers)
+
+    def _value_predicate_groups(self, tokens: tuple[str, ...], mentions: tuple[_Mention, ...],
+                                claimed: set[int] = frozenset(),
+                                capitalized: frozenset[str] = frozenset()) -> list[list[tuple[tuple[Comparison, ...], float, str]]]:
+        selected, occupied = self._value_matches(tokens, claimed, capitalized)
         groups = []
         for start, _, phrase, options in selected:
             operator = "!=" if set(tokens[max(0, start - 3):start]) & {"not", "except", "excluding", "without"} else "="
@@ -1396,6 +1438,11 @@ def _names_together(tokens: tuple[str, ...], words: list[str], column_forms: fro
         return True
     return any(token == words[0] and canon_tokens[index + 1] in column_forms
                for index, token in enumerate(canon_tokens[:-1]))
+
+
+def _capitalized(question: str) -> frozenset[str]:
+    """The question's words written in capitals ("NY", "UAL"): a function word so written is a value."""
+    return frozenset(word.lower() for word in re.findall(r"\b[A-Z]{2,}\b", question))
 
 
 def _names_a_part(tokens: tuple[str, ...], index: int) -> bool:
