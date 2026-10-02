@@ -10,3 +10,6 @@ how many orders in Lyon => 3
 total amount in Paris => 129
 how many orders came from Lyon? => 3
 What is the total amount in Paris? => 129
+What share of the total amount comes from Paris? => 0.6232
+total amount from Paris and Lyon => 189
+What percentage of orders are from Lyon? => 0.3

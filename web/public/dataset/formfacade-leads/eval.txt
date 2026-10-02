@@ -19,3 +19,5 @@ total budget in Africa => clarify
 chat: How about all of Europe? => ~72056.40
 # Leads submitted 2026-08-11, 08-12, 08-14, 08-15 and 08-18.
 How many leads were submitted after August 10, 2026? => 5
+How many leads were submitted between August 4 and August 9, 2026? => 4
+What is the total budget from August 11 to August 15, 2026? => 37000
