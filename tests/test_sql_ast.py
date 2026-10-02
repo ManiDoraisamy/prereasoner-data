@@ -2210,6 +2210,26 @@ def test_a_table_joins_every_reading_only_when_named_together():
     assert counts == {"america": 1, "europe": 3}, candidate.sql
 
 
+def test_an_order_of_names_its_target_as_by_does():
+    """Spider concert_singer, 2026-10-02: "the names, countries, and ages for every singer in descending
+    order of age" ordered by the stadium's Average and joined three tables for it. "Order of" names the
+    ordering column as "by" does."""
+    singer = {"name": "singer", "columns": ["Singer_ID", "Name", "Country", "Age"], "rows": [
+        [1, "Joe", "Netherlands", 52], [2, "Tribal", "United States", 29], [3, "Rose", "France", 41]]}
+    stadium = {"name": "stadium", "columns": ["Stadium_ID", "Location", "Capacity", "Highest", "Lowest", "Average"],
+               "rows": [[1, "Raith", 10104, 4812, 1294, 2106], [2, "Ayr", 4125, 1057, 331, 638]]}
+    concert = {"name": "concert", "columns": ["concert_ID", "Stadium_ID"], "rows": [[1, 1], [2, 2]]}
+    sung = {"name": "singer_in_concert", "columns": ["concert_ID", "Singer_ID"], "rows": [[1, 1], [2, 2], [2, 3]]}
+    fks = [{"from_table": "concert", "from_col": "Stadium_ID", "to_table": "stadium", "to_col": "Stadium_ID"},
+           {"from_table": "singer_in_concert", "from_col": "concert_ID", "to_table": "concert", "to_col": "concert_ID"},
+           {"from_table": "singer_in_concert", "from_col": "Singer_ID", "to_table": "singer", "to_col": "Singer_ID"}]
+    tables = [stadium, singer, concert, sung]
+    candidate = best("What are the names, countries, and ages for every singer in descending order of age?",
+                     tables, fks)
+    assert 'ORDER BY "singer"."Age" DESC' in candidate.sql and "JOIN" not in candidate.sql, candidate.sql
+    assert [row[-1] for row in execute(tables, candidate.sql)] == [52, 41, 29], candidate.sql
+
+
 def test_multiple_aggregates_share_a_typed_operand():
     candidate = best("What are the average, minimum and maximum age of people from France?", [PEOPLE])
     assert execute([PEOPLE], candidate.sql) == [(25.0, 20, 30)]
@@ -3633,6 +3653,7 @@ TESTS = [
     test_a_stated_comparison_on_an_aggregate_needs_no_where,
     test_a_word_of_time_orders_by_a_date_and_a_name_part_places_nothing,
     test_a_table_joins_every_reading_only_when_named_together,
+    test_an_order_of_names_its_target_as_by_does,
     test_multiple_aggregates_share_a_typed_operand,
     test_repeated_count_paraphrase_is_one_aggregate,
     test_total_number_of_entities_is_a_scalar_count,

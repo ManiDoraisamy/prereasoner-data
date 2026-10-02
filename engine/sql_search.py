@@ -990,7 +990,10 @@ class SQLSearcher:
         directions: dict[ColumnRef, str] = {}
 
         expressions: list[tuple[ColumnRef | Aggregate, float]] = []
-        by_position = next((i for i, token in enumerate(tokens) if token == "by"), None)
+        # "in descending order of age" names its target as "by age" does (Spider concert_singer, 2026-10-02:
+        # it ordered by the stadium's Average and joined three tables for it).
+        by_position = next((i for i, token in enumerate(tokens)
+                            if token == "by" or (token == "of" and i > 0 and tokens[i - 1] == "order")), None)
         if by_position is not None:
             nearby = self._target_columns(mentions, by_position, numeric=False)
             expressions.extend((option.column, 2.0 - 0.1 * abs(option.position - by_position))
