@@ -158,9 +158,13 @@ class SQLSearcher:
         # makers"); Spider car_1, 2026-10-02: "how many car makers are there in each continent? List the
         # continent name" named car_names by "car" and "name" far apart, and every reading joined it,
         # multiplying the counted rows. A table named so still scores, for the root and its display.
+        # A column word that names another table names that table: "TV Channel" is TV_Channel, not
+        # TV_series' first word before its Channel column.
+        table_words = {table: {_canon(word) for word in _name_words(table)} for table in self.schema.tables}
         named_tables = {table for table in self.schema.tables
                         if _names_together(tokens, [_canon(word) for word in _name_words(table)],
-                                           self._column_forms(table))}
+                                           self._column_forms(table).difference(
+                                               *(words for other, words in table_words.items() if other != table)))}
         aggregate_choices = self._aggregate_choices(tokens, mentions)
         predicate_choices = self._predicate_choices(tokens, mentions, question)
 
@@ -313,20 +317,27 @@ class SQLSearcher:
         return sorted(expanded, key=lambda d: (-d.score, repr(d)))[:self.beam_size]
 
     def _simplified(self, candidate: ScoredQuery, named_tables: set[str]) -> ScoredQuery:
-        """``candidate`` without what its answer never reads: the second end of a foreign key in its
-        projection (both ends carry one value), and a joined table no clause reads that the question
-        does not name. Spider DEV, 2026-10-02: "the id and name of the museum with the most staff"
+        """``candidate`` without what its answer never reads: a second column its joins equate with one it
+        projects (they carry one value), and a joined table no clause reads that the question does not
+        name. Spider DEV, 2026-10-02: "the id and name of the museum with the most staff"
         projected museum.Museum_ID and visit.Museum_ID, and an unread join multiplies the rows a count
         counts. Every expansion's candidates pass through it; queries with subqueries or aliases stay."""
         query = candidate.query
         if (not isinstance(query, SelectQuery) or not query.joins or not isinstance(query.from_table, str)
                 or query.from_alias or any(join.alias for join in query.joins) or _has_subquery(query)):
             return candidate
-        twins: dict[ColumnRef, set[ColumnRef]] = {}
-        for fk in self.schema.foreign_keys:
-            for child, parent in fk.column_pairs:
-                twins.setdefault(child, set()).add(parent)
-                twins.setdefault(parent, set()).add(child)
+        # Columns the query's own joins equate carry one value in every row it reads: Cartoon.Channel,
+        # TV_Channel.id and TV_series.Channel when both join TV_Channel.
+        classes: dict[ColumnRef, ColumnRef] = {}
+
+        def find(column: ColumnRef) -> ColumnRef:
+            while classes.get(column, column) != column:
+                column = classes[column]
+            return column
+
+        for join in query.joins:
+            for left, right in join.predicates:
+                classes[find(left)] = find(right)
         anchored = set().union(
             *(_clause_tables(item.expression) for item in query.select if not isinstance(item.expression, ColumnRef)),
             _clause_tables(query.where), _clause_tables(query.having),
@@ -336,13 +347,32 @@ class SQLSearcher:
             column = item.expression
             if not isinstance(column, ColumnRef):
                 continue
-            twin = next((other for other in kept if other in twins.get(column, ())), None)
+            twin = next((other for other in kept if find(other) == find(column)), None)
             if twin is None:
                 kept.append(column)
             elif column.table in anchored and twin.table not in anchored:
                 kept[kept.index(twin)] = column
         echoes = {item.expression for item in query.select
                   if isinstance(item.expression, ColumnRef) and item.expression not in kept}
+        # In a listing, a projected key that only repeats, through the joins, a table the query reads
+        # for something else names that table: "the content of TV Channel with serial name Sky Radio"
+        # projected TV_series.Channel and joined TV_series for it (Spider tvshow, 2026-10-02). A grouped
+        # or aggregated query keeps its columns: they set what it groups.
+        equated = [column for join in query.joins for pair in join.predicates for column in pair]
+        listing = not query.group_by and not any(isinstance(item.expression, Aggregate) for item in query.select)
+        for column in kept if listing else ():
+            if column in echoes:
+                continue
+            others = set().union(
+                *(_clause_tables(item.expression) for item in query.select
+                  if item.expression != column and item.expression not in echoes),
+                (other.table for other in query.group_by if other != column),
+                _clause_tables(query.where), _clause_tables(query.having),
+                *(_clause_tables(term.expression) for term in query.order_by))
+            if column.table not in others and any(
+                    other.table in others and other.table != column.table and find(other) == find(column)
+                    for other in equated):
+                echoes.add(column)
         select = tuple(item for item in query.select if item.expression not in echoes)
         group_by = tuple(column for column in query.group_by if column not in echoes)
         joins = list(query.joins)

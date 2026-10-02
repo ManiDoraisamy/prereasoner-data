@@ -2265,6 +2265,24 @@ def test_a_candidate_drops_a_key_echo_and_an_unread_join():
     assert '"model_list"' in named.sql and named.sql.count('"Model"') == 3, named.sql
 
 
+def test_a_listing_drops_a_key_that_repeats_a_read_table():
+    """Spider tvshow, 2026-10-02: "what is the content of TV Channel with serial name Sky Radio" projected
+    TV_series.Channel, which only repeats TV_Channel's id through the join, and joined TV_series for it;
+    "TV Channel" also counted as TV_series' first word before its Channel column. A listing drops a key
+    that repeats a table it reads for something else, and a word that names another table names that
+    table."""
+    channel = {"name": "TV_Channel", "columns": ["id", "series_name", "Content", "Language"], "rows": [
+        ["700", "Sky Radio", "music", "Italian"], ["701", "Sky Music", "music", "English"]]}
+    series = {"name": "TV_series", "columns": ["id", "Episode", "Channel"], "rows": [
+        [1, "A Love of a Lifetime", "700"], [2, "Friendly Skies", "700"], [3, "Blowback", "701"]]}
+    cartoon = {"name": "Cartoon", "columns": ["id", "Title", "Channel"], "rows": [[1, "The Rise of the Blue Beetle!", "701"]]}
+    fks = [{"from_table": "TV_series", "from_col": "Channel", "to_table": "TV_Channel", "to_col": "id"},
+           {"from_table": "Cartoon", "from_col": "Channel", "to_table": "TV_Channel", "to_col": "id"}]
+    tables = [channel, series, cartoon]
+    candidate = best('What is the content of TV Channel with serial name "Sky Radio"?', tables, fks)
+    assert "JOIN" not in candidate.sql and execute(tables, candidate.sql) == [("music",)], candidate.sql
+
+
 def test_multiple_aggregates_share_a_typed_operand():
     candidate = best("What are the average, minimum and maximum age of people from France?", [PEOPLE])
     assert execute([PEOPLE], candidate.sql) == [(25.0, 20, 30)]
@@ -3690,6 +3708,7 @@ TESTS = [
     test_a_table_joins_every_reading_only_when_named_together,
     test_an_order_of_names_its_target_as_by_does,
     test_a_candidate_drops_a_key_echo_and_an_unread_join,
+    test_a_listing_drops_a_key_that_repeats_a_read_table,
     test_multiple_aggregates_share_a_typed_operand,
     test_repeated_count_paraphrase_is_one_aggregate,
     test_total_number_of_entities_is_a_scalar_count,
