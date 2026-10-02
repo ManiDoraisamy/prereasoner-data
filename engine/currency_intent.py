@@ -56,11 +56,28 @@ class CurrencyIntent:
     negated: bool = False
 
 
-def _code(value: str) -> str | None:
+def currency_alias_code(value: str) -> str | None:
+    """The code a named currency spells ("usd", "US dollars", "euros", "British pounds"), else None.
+
+    It reads no reference data, so the chat image, which carries this module alone, can use it."""
     text = " ".join(str(value).split())
     for code, aliases in _CURRENCY_ALIASES.items():
         if any(re.fullmatch(alias, text, re.I) for alias in aliases):
             return code
+    return None
+
+
+def currency_alias_codes(text: str) -> frozenset[str]:
+    """Every code a named currency in ``text`` spells."""
+    return frozenset(code for code, aliases in _CURRENCY_ALIASES.items()
+                     if any(re.search(r"\b(?:" + alias + r")\b", str(text), re.I) for alias in aliases))
+
+
+def _code(value: str) -> str | None:
+    text = " ".join(str(value).split())
+    alias = currency_alias_code(text)
+    if alias is not None:
+        return alias
     from engine.enrichment.value_types import ISO4217_CODES
     # Many ISO codes are ordinary English words (ALL, COP, GEL, MAD, PEN, TOP, TRY).
     # Generic codes therefore require their conventional uppercase spelling; named aliases above

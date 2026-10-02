@@ -475,14 +475,13 @@ def _without_dropped_filters(spec: dict[str, Any], catalog: list[dict[str, Any]]
     follow-up: in the 2026-10-02 Chrome gate's existing conversations, 25 of 60 follow-ups showed
     "Reasoning steps for orders in paris" over a Lyon answer, or "total amount france usd" over a Europe
     total in pounds. A word of the stored name is a filter when it is a word of a value of the uploaded
-    data, a currency, or a name the analysis's last question capitalizes (France, Asia) other than the
+    data, a named currency (usd, euros), or a name the analysis's last question capitalizes (France, Asia) other than the
     data's own table and column names; it stays while the question still asks for it, and an aggregate
     or a measure word ("average price") always stays.
     The engine renames the analysis in place (conversations._renamed_analysis): the id, the links and
     the revision history stay.
     """
-    from engine.currency_intent import currency_intent
-    from engine.enrichment.value_types import ISO4217_CODES
+    from engine.currency_intent import currency_alias_code, currency_alias_codes
 
     if spec.get("action") != "modify" or not isinstance(spec.get("slug"), str):
         return spec
@@ -492,8 +491,7 @@ def _without_dropped_filters(spec: dict[str, Any], catalog: list[dict[str, Any]]
         return spec
     words = spec["slug"].split("_")
     asked = set(_question_words(question))
-    intent = currency_intent(question)
-    target = intent.target.casefold() if intent is not None else None
+    currencies = currency_alias_codes(question)
     values = {word for value, _column in _named_values(" ".join(words), tables or []) for word in value}
     schema = set()
     for table in tables or ():
@@ -511,8 +509,8 @@ def _without_dropped_filters(spec: dict[str, Any], catalog: list[dict[str, Any]]
             return False
         if word in values:
             return True
-        if word.upper() in ISO4217_CODES or word in {"dollar", "dollars", "euro", "euros", "pound", "pounds"}:
-            return word != target
+        if (code := currency_alias_code(word)) is not None:
+            return code not in currencies
         return word in proper and word not in schema
 
     kept = [word for word in words if not dropped(word)]
