@@ -363,6 +363,10 @@ _COMPARISON_NAME_WORDS = frozenset({
     "above", "after", "before", "below", "between", "exceeding", "fewer", "greater", "least", "less",
     "more", "most", "over", "since", "than", "under", "until",
 })
+# The comparisons that state a time or a threshold filter, not a ranking ("most", "less").
+_FILTER_COMPARISON_WORDS = frozenset({
+    "above", "after", "before", "below", "between", "exceeding", "over", "since", "under", "until",
+})
 # Words that cannot be a name alone: "count" says nothing about what is counted.
 _GENERIC_NAME_WORDS = frozenset({
     "average", "avg", "count", "highest", "lowest", "max", "maximum", "mean", "min", "minimum",
@@ -515,7 +519,14 @@ def _without_dropped_filters(spec: dict[str, Any], catalog: list[dict[str, Any]]
             return code not in currencies
         return word in proper and word not in schema
 
-    kept = [word for word in words if not dropped(word)]
+    # A time or threshold comparison the question no longer makes goes with the word it compares:
+    # "leads submitted after date" headed the answer to "between August 4 and August 9" (Chrome gate,
+    # 2026-10-02). A ranking word ("most orders") names the measure and stays.
+    compared = {index for index, word in enumerate(words)
+                if word.casefold() in _FILTER_COMPARISON_WORDS and word.casefold() not in asked}
+    compared |= {index + 1 for index in set(compared) if index + 1 < len(words)
+                 and words[index + 1].casefold() not in asked | _GENERIC_NAME_WORDS}
+    kept = [word for index, word in enumerate(words) if index not in compared and not dropped(word)]
     # A connector the dropped words left dangling goes too: "orders in paris" is "orders".
     kept = [word for index, word in enumerate(kept)
             if word.casefold() not in _NAME_CONNECTORS

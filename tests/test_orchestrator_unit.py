@@ -1092,6 +1092,7 @@ def test_a_follow_up_drops_the_filter_its_question_no_longer_asks_from_the_name(
                                          "2,Bo,Lyon,EUR,20\n"}]
     contracts = [{"name": "contracts", "data": "contract,party,country,currency,value\n"
                                                "C1,Acme,Japan,JPY,100\n"}]
+    leads = [{"name": "leads", "data": "lead,source,submitted date\nAda,Web,2026-08-03\n"}]
 
     def renamed(slug, latest, question, tables):
         catalog = [{"analysis_id": "a_" + "4" * 32, "slug": slug, "latest_question": latest}]
@@ -1111,7 +1112,15 @@ def test_a_follow_up_drops_the_filter_its_question_no_longer_asks_from_the_name(
              "total amount in France in British pounds", orders, "total_amount_france"),
             # Negative: an aggregate and a column of the data are never filters.
             ("average_amount_by_city", "average amount by city", "maximum amount by currency", orders,
-             "average_amount_by_city")):
+             "average_amount_by_city"),
+            # A time or threshold comparison the question no longer makes goes with what it compares
+            # (formfacade-leads, Chrome gate 2026-10-02); one it still makes stays, and a ranking word stays.
+            ("leads_submitted_after_date", "How many leads were submitted after August 3?",
+             "How many leads were submitted between August 4 and August 9?", leads, "leads_submitted"),
+            ("leads_submitted_after_date", "How many leads were submitted after August 3?",
+             "How many leads were submitted after August 9?", leads, "leads_submitted_after_date"),
+            ("customers_most_orders", "which customers placed the most orders",
+             "which customers placed the fewest orders", orders, "customers_most_orders")):
         assert renamed(slug, latest, question, tables) == expected, (slug, question)
     # Negative: a create, and a modify the catalog does not hold, are sent as they are.
     create = {"action": "create", "slug": "orders_in_paris"}
