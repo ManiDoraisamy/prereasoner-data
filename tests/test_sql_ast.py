@@ -2636,6 +2636,23 @@ def test_a_listing_follows_the_order_the_question_names():
     assert sorted(execute([pets], average.sql)) == [("cat", 12.0), ("dog", 11.350000000000001)], average.sql
 
 
+def test_by_after_a_participle_names_who_acted():
+    """Spider DEV, 2026-10-02: "how many cartoons were written by Joseph Kuhr" counted one group per
+    writer and "the number of pets owned by students who are older than 20" one per student: "by" read as a
+    grouping cue wherever it stood. After a participle it names who acted ("written by", "owned by"); after
+    "grouped" or "broken down" it still names the groups, and "ordered by" sorts."""
+    cartoon = {"name": "Cartoon", "columns": ["id", "Title", "Written_by", "Channel"], "rows": [
+        [1, "The Rise of the Blue Beetle!", "Michael Jelenic", "700"], [2, "Terror on Dinosaur Island!",
+                                                                       "Joseph Kuhr", "701"],
+        [3, "Evil Under the Sea!", "Joseph Kuhr", "701"]]}
+    written = best("How many cartoons were written by Joseph Kuhr?", [cartoon])
+    assert not written.query.group_by and execute([cartoon], written.sql) == [(2,)], written.sql
+    # Contrast: "grouped by" names the groups.
+    grouped = best("Count the cartoons grouped by channel.", [cartoon])
+    channels = sorted(execute([cartoon], grouped.sql))
+    assert grouped.query.group_by and channels == [("700", 1), ("701", 2)], grouped.sql
+
+
 def test_multiple_aggregates_share_a_typed_operand():
     candidate = best("What are the average, minimum and maximum age of people from France?", [PEOPLE])
     assert execute([PEOPLE], candidate.sql) == [(25.0, 20, 30)]
@@ -4094,6 +4111,7 @@ TESTS = [
     test_a_key_named_by_the_table_it_references_needs_its_whole_name,
     test_a_denial_is_read_by_what_it_denies,
     test_a_listing_follows_the_order_the_question_names,
+    test_by_after_a_participle_names_who_acted,
     test_multiple_aggregates_share_a_typed_operand,
     test_repeated_count_paraphrase_is_one_aggregate,
     test_total_number_of_entities_is_a_scalar_count,

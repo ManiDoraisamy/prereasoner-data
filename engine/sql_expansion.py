@@ -455,6 +455,32 @@ def join_key(joins: tuple[Join, ...], table: str) -> ColumnRef | None:
     )[0] if columns else None
 
 
+# Words after which "by" sorts ("ordered by age"); the noun "orders by city" groups.
+_ORDERING_WORDS = frozenset({"order", "ordered", "sort", "sorted", "rank", "ranked"})
+# Words after which "by" names groups although a participle ("grouped by", "broken down by").
+_GROUPING_WORDS = frozenset({"grouped", "down", "split", "categorized", "classified", "segmented", "bucketed"})
+# Participles that do not end in "-ed" ("written by Joseph Kuhr").
+_IRREGULAR_PARTICIPLES = frozenset({
+    "written", "done", "made", "held", "won", "given", "taken", "driven", "shown", "seen", "known", "built",
+    "sold", "bought", "taught", "paid", "led", "run", "kept", "lost", "drawn", "chosen", "spoken", "brought",
+    "caught", "found", "hit", "set", "put", "sung", "drunk", "eaten", "flown", "worn", "begun",
+})
+
+
+def by_groups(question_tokens: tuple[str, ...], raw_words: Sequence[str], index: int) -> bool:
+    """Whether the "by" at ``index`` asks for groups ("total sales by city", "orders by city") rather than
+    an order ("ordered by age") or who acted ("pets owned by students", "cartoons written by Joseph Kuhr":
+    Spider DEV, 2026-10-02, both counted one group per student or writer)."""
+    if index == 0 or question_tokens[index] != "by":
+        return False
+    before = question_tokens[index - 1]
+    if before in _GROUPING_WORDS:
+        return True
+    if before in _ORDERING_WORDS:
+        return raw_words[index - 1] == "orders"
+    return not (before in _IRREGULAR_PARTICIPLES or (len(before) > 4 and before.endswith("ed")))
+
+
 def positive_predicate(predicate: Predicate | None) -> Predicate | None:
     """The rows a denial excludes: ``predicate`` with each "!=" read as "=" ("students who do not have a cat"
     exclude the students who have one)."""

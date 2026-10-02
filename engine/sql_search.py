@@ -45,6 +45,7 @@ from engine.sql_candidate import ScoredQuery
 from engine.sql_dates import served_date_phrases
 from engine.sql_expansion import (
     FUNCTION_WORDS,
+    by_groups,
     implicit_sum_measures,
     measure_words_after,
     money_total_position,
@@ -207,7 +208,7 @@ class SQLSearcher:
 
         complete: list[ScoredQuery] = []
         for draft in drafts:
-            groups = self._group_choices(tokens, mentions, table_scores, draft)
+            groups = self._group_choices(tokens, mentions, table_scores, draft, question)
             for group_columns, group_score, group_evidence in groups:
                 aggregated_columns = set().union(
                     *(_operand_columns(a.operand) for a in draft.aggregates)
@@ -1252,15 +1253,15 @@ class SQLSearcher:
         ]
 
     def _group_choices(self, tokens: tuple[str, ...], mentions: tuple[_Mention, ...],
-                       table_scores: dict[str, float], draft: _Draft) -> list[tuple[tuple[ColumnRef, ...], float, tuple[str, ...]]]:
+                       table_scores: dict[str, float], draft: _Draft,
+                       question: str) -> list[tuple[tuple[ColumnRef, ...], float, tuple[str, ...]]]:
         if not draft.aggregates:
             return [((), 0.0, ())]
         targets = set().union(*(_operand_columns(a.operand) for a in draft.aggregates))
         projection_groups = _unique_columns(tuple(c for c in draft.projections if c not in targets))
-        explicit_positions = []
-        for i, token in enumerate(tokens):
-            if token in {"each", "per"} or (token == "by" and i > 0):
-                explicit_positions.append(i)
+        raw = words(question)
+        explicit_positions = [i for i, token in enumerate(tokens)
+                              if token in {"each", "per"} or by_groups(tokens, raw, i)]
         options: list[tuple[tuple[ColumnRef, ...], float, tuple[str, ...]]] = []
         for position in explicit_positions:
             nearby = sorted(

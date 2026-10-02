@@ -18,7 +18,7 @@ from engine.sql_ast import (
     Aggregate, ColumnRef, Comparison, Query, SelectQuery, SetQuery, keep_ties, render_query,
     share_aggregate,
 )
-from engine.sql_expansion import share_cue, share_requested, words
+from engine.sql_expansion import by_groups, share_cue, share_requested, words
 from engine.sql_candidate import ScoredQuery
 from engine.sql_schema import SchemaGraph, canon, is_surrogate_key
 
@@ -337,12 +337,11 @@ def analyze_question(question: str, schema: SchemaGraph) -> QuestionRoles:
     group_positions = [i for i, token in enumerate(tokens) if token in {"each", "per"}]
     group_positions += [i for i in range(len(tokens) - 1) if tokens[i:i + 2] == ("group", "by")]
     if all_aggregate_positions:
-        # "ordered by" sorts, but "orders by city" groups the orders (probe, 2026-10-02).
+        # "ordered by" sorts and "owned by students" names who acted, but "orders by city" groups the orders
+        # (sql_expansion.by_groups, the search's reading).
         raw = words(question)
         group_positions += [i for i, token in enumerate(tokens)
-                            if token == "by" and i > all_aggregate_positions[0]
-                            and (i == 0 or tokens[i - 1] not in {"order", "ordered", "sort", "sorted"}
-                                 or raw[i - 1] == "orders")]
+                            if i > all_aggregate_positions[0] and by_groups(tokens, raw, i)]
     group_positions = sorted(set(group_positions))
 
     clause_stops = {"where", "with", "whose", "having", "order", "ordered", "sort", "sorted",
