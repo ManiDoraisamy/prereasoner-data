@@ -149,6 +149,13 @@ class SQLSearcher:
         }
 
         projection_choices = self._projection_choices(tokens, mentions, table_scores)
+        # A table joins every reading only when the question names it with its words together ("car
+        # makers"); Spider car_1, 2026-10-02: "how many car makers are there in each continent? List the
+        # continent name" named car_names by "car" and "name" far apart, and every reading joined it,
+        # multiplying the counted rows. A table named so still scores, for the root and its display.
+        named_tables = {table for table in self.schema.tables
+                        if _names_together(tokens, [_canon(word) for word in _name_words(table)],
+                                           self._column_forms(table))}
         aggregate_choices = self._aggregate_choices(tokens, mentions)
         predicate_choices = self._predicate_choices(tokens, mentions, question)
 
@@ -191,7 +198,8 @@ class SQLSearcher:
                 orders = self._order_choices(tokens, mentions, draft, question)
                 for order_terms, limit, order_score, order_evidence in orders:
                     required = self._required_tables(expressions, draft.predicates, grouped, order_terms)
-                    mentioned_tables = {table for table, score in table_scores.items() if score >= 2.5}
+                    mentioned_tables = {table for table, score in table_scores.items()
+                                        if score >= 2.5 and table in named_tables}
                     required.update(mentioned_tables)
                     if not required:
                         required.add(max(table_scores, key=table_scores.get) if table_scores else self.schema.tables[0])
@@ -297,6 +305,17 @@ class SQLSearcher:
                 expanded.append(replace(draft, **{field: value}, score=draft.score + score,
                                         evidence=draft.evidence + evidence))
         return sorted(expanded, key=lambda d: (-d.score, repr(d)))[:self.beam_size]
+
+    def _column_forms(self, table: str) -> frozenset[str]:
+        """The words a question may name a column of ``table`` by: its whole name run together ("makeid")
+        and its own words."""
+        forms = set()
+        for column in self.schema.columns:
+            if column.ref.table == table:
+                words = [_canon(word) for word in _name_words(column.ref.name)]
+                forms.add("".join(words))
+                forms.update(words)
+        return frozenset(forms)
 
     def _table_scores(self, tokens: tuple[str, ...]) -> dict[str, float]:
         scores = {}
@@ -1046,6 +1065,23 @@ def _merge_candidates(
         if old is None or candidate.score > old.score:
             combined[candidate.sql] = candidate
     return sorted(combined.values(), key=lambda candidate: (-candidate.score, candidate.sql))
+
+
+def _names_together(tokens: tuple[str, ...], words: list[str], column_forms: frozenset[str] = frozenset()) -> bool:
+    """Whether the question names a several-word table by its words together: "car makers", turned
+    around with "of" ("names of cars"), or its first word before one of its columns ("the car makeid" of
+    car_names)."""
+    if len(words) < 2:
+        return True
+    size = len(words)
+    canon_tokens = tuple(_canon(token) for token in tokens)
+    if any(canon_tokens[index:index + size] == tuple(words) for index in range(len(tokens) - size + 1)):
+        return True
+    turned = (words[-1], "of", *words[:-1])
+    if any(canon_tokens[index:index + size + 1] == turned for index in range(len(tokens) - size)):
+        return True
+    return any(token == words[0] and canon_tokens[index + 1] in column_forms
+               for index, token in enumerate(canon_tokens[:-1]))
 
 
 def _names_a_part(tokens: tuple[str, ...], index: int) -> bool:

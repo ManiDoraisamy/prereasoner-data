@@ -2183,6 +2183,33 @@ def test_a_word_of_time_orders_by_a_date_and_a_name_part_places_nothing():
     assert 'ORDER BY "student"."age" ASC LIMIT 2' in by_age.sql, by_age.sql
 
 
+def test_a_table_joins_every_reading_only_when_named_together():
+    """Spider car_1, 2026-10-02: "how many car makers are there in each continent? List the continent
+    name and the count" named car_names by "car" and "name" far apart, every reading joined it through
+    model_list, and each maker counted once per car name. A several-word table joins every reading only
+    when its words come together ("car makers"), turned around with "of", or as its first word before one
+    of its columns ("the car makeid")."""
+    continents = {"name": "continents", "columns": ["ContId", "Continent"], "rows": [[1, "america"], [2, "europe"]]}
+    countries = {"name": "countries", "columns": ["CountryId", "CountryName", "Continent"], "rows": [
+        [1, "usa", 1], [2, "germany", 2], [3, "france", 2]]}
+    makers = {"name": "car_makers", "columns": ["Id", "Maker", "Country"], "rows": [
+        [1, "ford", 1], [2, "bmw", 2], [3, "renault", 3], [4, "audi", 2]]}
+    models = {"name": "model_list", "columns": ["ModelId", "Maker", "Model"], "rows": [
+        [1, 1, "mustang"], [2, 1, "focus"], [3, 2, "x5"]]}
+    names = {"name": "car_names", "columns": ["MakeId", "Model", "Make"], "rows": [
+        [1, "mustang", "ford mustang"], [2, "focus", "ford focus"], [3, "x5", "bmw x5"]]}
+    fks = [{"from_table": "countries", "from_col": "Continent", "to_table": "continents", "to_col": "ContId"},
+           {"from_table": "car_makers", "from_col": "Country", "to_table": "countries", "to_col": "CountryId"},
+           {"from_table": "model_list", "from_col": "Maker", "to_table": "car_makers", "to_col": "Id"},
+           {"from_table": "car_names", "from_col": "Model", "to_table": "model_list", "to_col": "Model"}]
+    tables = [continents, countries, makers, models, names]
+    candidate = best("How many car makers are there in each continents? List the continent name and the count.",
+                     tables, fks)
+    assert '"car_names"' not in candidate.sql and '"model_list"' not in candidate.sql, candidate.sql
+    counts = {next(value for value in row if isinstance(value, str)): row[-1] for row in execute(tables, candidate.sql)}
+    assert counts == {"america": 1, "europe": 3}, candidate.sql
+
+
 def test_multiple_aggregates_share_a_typed_operand():
     candidate = best("What are the average, minimum and maximum age of people from France?", [PEOPLE])
     assert execute([PEOPLE], candidate.sql) == [(25.0, 20, 30)]
@@ -3605,6 +3632,7 @@ TESTS = [
     test_a_lowercase_grammar_word_links_to_no_value,
     test_a_stated_comparison_on_an_aggregate_needs_no_where,
     test_a_word_of_time_orders_by_a_date_and_a_name_part_places_nothing,
+    test_a_table_joins_every_reading_only_when_named_together,
     test_multiple_aggregates_share_a_typed_operand,
     test_repeated_count_paraphrase_is_one_aggregate,
     test_total_number_of_entities_is_a_scalar_count,
