@@ -53,6 +53,8 @@ _MIN_CUES = frozenset({
 })
 # Words that ask for an aggregate of the rows (canon() forms).
 _AGGREGATE_CUES = frozenset({"average", "avg", "mean", "sum", "total", "maximum", "max", "minimum", "min"})
+# Words between "by" and the measure it ranks by: "by the total", "by their average".
+_BY_DETERMINERS = frozenset({"the", "their", "its", "his", "her"})
 _NEGATIVE_RE = re.compile(
     r"\b(?:except|without|no|not|never|did not|do not|does not|have not|has not)\b",
     re.I,
@@ -486,7 +488,7 @@ class ExtremaQueryExpander(ExpansionSupport):
         # pet" asks an aggregate of those rows, which an EXCEPT of their values cannot carry (it would average
         # distinct ages): the anti-join that keeps the aggregate answers it (engine/sql_recursive.py). Spider
         # DEV, 2026-10-02: 17 of the 40 differences that won over gold dropped such an aggregate.
-        if _count_requested(tokens) or set(tokens) & _AGGREGATE_CUES:
+        if _count_requested(tokens) or _asks_aggregate(tokens):
             return []
         # A row's own value the question denies is an inequality, not a difference: "the teachers whose
         # hometown is not Little Lever Urban District", "the tv channels that do not use English" (Spider
@@ -828,6 +830,21 @@ def _target_requested_in_projection(target: ColumnRef, tokens: tuple[str, ...]) 
 
 def _explicit_distinct(tokens: tuple[str, ...]) -> bool:
     return bool(set(tokens) & {"distinct", "distinctive", "different", "unique"})
+
+
+def _asks_aggregate(tokens: tuple[str, ...]) -> bool:
+    """Whether the question asks an aggregate of its rows. An aggregate word after "by" names the measure the
+    rows are ranked by, not the answer: "the top 2 customers by total spend, then list each pair where that
+    customer has never bought that product" asks for a listing (tests.test_complex_datasets, 2026-10-02)."""
+    for index, token in enumerate(tokens):
+        if token not in _AGGREGATE_CUES:
+            continue
+        before = index - 1
+        while before >= 0 and tokens[before] in _BY_DETERMINERS:
+            before -= 1
+        if before < 0 or tokens[before] != "by":
+            return True
+    return False
 
 
 def _lists_and_denies(query) -> bool:

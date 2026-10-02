@@ -2615,6 +2615,32 @@ def test_a_denial_is_read_by_what_it_denies():
     assert sorted(execute(teachers, elsewhere.sql)) == [("Gustaaf Deloor",), ("Joseph Huts",)], elsewhere.sql
 
 
+def test_a_ranking_measure_is_not_an_asked_aggregate():
+    """tests.test_complex_datasets, 2026-10-02: "find the top 3 products by units sold and the top 2 customers by
+    total spend, then list each pair where that customer has never bought that product" stopped asking for a
+    decomposition. "Total" in "by total spend" read as an asked aggregate, which leaves a denial no difference,
+    and the compound reading went with it (engine/decomposition.compound_candidate). An aggregate word after
+    "by" names the measure the rows are ranked by; an aggregate the question asks of the rows left still
+    takes the anti-join that keeps it."""
+    from engine.decomposition import compound_candidate
+
+    student = {"name": "Student", "columns": ["StuID", "LName", "Major", "Age"], "rows": [
+        [1001, "Smith", 600, 18], [1002, "Kim", 600, 19], [1003, "Jones", 600, 21], [1004, "Kumar", 600, 20],
+        [1005, "Gompers", 520, 26]]}
+    has_pet = {"name": "Has_Pet", "columns": ["StuID", "PetID"], "rows": [[1001, 2001], [1002, 2002],
+                                                                         [1002, 2003]]}
+    pets = {"name": "Pets", "columns": ["PetID", "PetType", "pet_age", "weight"], "rows": [
+        [2001, "cat", 3, 12.0], [2002, "dog", 2, 13.4], [2003, "dog", 1, 9.3]]}
+    fks = [{"from_table": "Has_Pet", "from_col": "StuID", "to_table": "Student", "to_col": "StuID"},
+           {"from_table": "Has_Pet", "from_col": "PetID", "to_table": "Pets", "to_col": "PetID"}]
+    tables = [student, has_pet, pets]
+    ranked = SQLSearcher.from_tables(tables, fks).search(
+        "Find the top 2 majors by total age, then list the last names of students who do not have any pet.")
+    assert compound_candidate(ranked) is not None, ranked[0].sql
+    total = best("Find the total age of students who do not have any pet.", tables, fks)
+    assert execute(tables, total.sql) == [(67,)], total.sql
+
+
 def test_a_listing_follows_the_order_the_question_names():
     """Spider DEV, 2026-10-02: "the airline names and abbreviations for airlines in the USA" listed the
     abbreviation first, and "the names and birth dates of people" the dates: a column was placed at its last
@@ -4110,6 +4136,7 @@ TESTS = [
     test_a_plural_reads_as_its_singular_everywhere,
     test_a_key_named_by_the_table_it_references_needs_its_whole_name,
     test_a_denial_is_read_by_what_it_denies,
+    test_a_ranking_measure_is_not_an_asked_aggregate,
     test_a_listing_follows_the_order_the_question_names,
     test_by_after_a_participle_names_who_acted,
     test_multiple_aggregates_share_a_typed_operand,
