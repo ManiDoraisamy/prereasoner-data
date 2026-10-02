@@ -50,6 +50,43 @@ from engine.numeric import parse_decimal
 from engine.sql_expansion import SHARE_WORDS
 from engine.sql_schema import canon, is_surrogate_key
 
+# The order a non-geo entity lookup breaks a tie in: the name's primary entity, then the lowest numeric QID.
+_ENTITY_TIE_BREAK = "is_primary IS TRUE DESC, length(qid), qid"
+# How many of the names a non-geo answer could not match it lists.
+UNMATCHED_NAMES_SHOWN = 5
+
+
+def unmatched_rows(table, column, rows, matched, own_filters, entity):
+    """The uploaded rows a non-geo world answer leaves out because their entity matched no knowledgebase entity.
+
+    ``rows`` are the rows of ``table`` that name an entity in ``column``, and ``matched`` says, row by row,
+    whether that entity resolved. Only the rows the uploaded-value filters keep could have been counted, so
+    only those are reported; the filters are compared as the shared plan compares them, LOWER(cell) =
+    LOWER(value), by its own operators. Returns None when every such row matched, else the count, the rows
+    it is out of, and the first UNMATCHED_NAMES_SHOWN distinct names in row order."""
+    from engine.deterministic.operators import EQ, LOWER
+    columns = table["columns"]
+
+    def cell(row, index):
+        return str(row[index]) if index < len(row) and row[index] is not None else ""
+
+    filters = [(columns.index(name), str(value)) for owner, name, value in own_filters if owner == table["name"]]
+    kept = [(row, hit) for row, hit in zip(rows, matched, strict=True)
+            if all(EQ(LOWER(cell(row, index)), LOWER(value)) for index, value in filters)]
+    missed = [row for row, hit in kept if not hit]
+    if not missed:
+        return None
+    index = columns.index(column)
+    names = list(dict.fromkeys(cell(row, index).strip() for row in missed))
+    return {"table": table["name"], "column": column, "entity": entity, "rows": len(missed), "of": len(kept),
+            "names": names[:UNMATCHED_NAMES_SHOWN], "more": len(names) - len(names[:UNMATCHED_NAMES_SHOWN])}
+
+
+def unmatched_names(unmatched):
+    """The names an unmatched-rows disclosure lists, as a sentence writes them."""
+    shown = ", ".join(unmatched["names"])
+    return f"{shown} and {unmatched['more']} more" if unmatched["more"] else shown
+
 
 def _cos(a, b):
     a = np.asarray(a, np.float32); b = np.asarray(b, np.float32)
@@ -371,8 +408,10 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         _r = self._kb_rows('SELECT label FROM knowledgebase."types" WHERE qid=%s', (type_qid,))
         wl = (str(_r[0][0]) if _r and _r[0][0] else label)            # the exact label used by the offline projection
         n = normalize_surface(value)
-        rows = self._kb_rows('SELECT qid FROM knowledgebase."words" WHERE type=%s AND norm=%s AND qid IS NOT NULL LIMIT 1',
-                             (wl, n))
+        # A name two entities share picks one the same way every time: the primary entity of the name, then
+        # the lowest numeric QID (2026-10-02: 87 hospital names named two QIDs, and either could be served).
+        rows = self._kb_rows('SELECT qid FROM knowledgebase."words" WHERE type=%s AND norm=%s AND qid IS NOT NULL '
+                             f'ORDER BY {_ENTITY_TIE_BREAK} LIMIT 1', (wl, n))
         if rows:
             return rows[0][0]
         vec = pgvector_literal(Embedder.get().encode([value])[0])
@@ -384,7 +423,7 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         rows = self._kb_rows(
             'SELECT qid, 1-(embedding <=> %s::vector) FROM knowledgebase."words" '
             'WHERE type=%s AND qid IS NOT NULL AND embedding IS NOT NULL '
-            'ORDER BY (embedding <=> %s::vector) + 0 LIMIT 1', (vec, wl, vec))
+            f'ORDER BY (embedding <=> %s::vector) + 0, {_ENTITY_TIE_BREAK} LIMIT 1', (vec, wl, vec))
         row = rows[0] if rows else None
         if row and row[1] is not None and row[1] >= 0.85:
             return row[0]
@@ -546,14 +585,16 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         aggregate = plan["aggregate"]
 
         resolved = []                                                     # (upload row, resolved world qid)
+        named, matched = [], []                                           # the rows that name an entity; which resolved
         for rw in t["rows"]:
             v = str(rw[ci]) if ci < len(rw) and rw[ci] not in (None, "") else None
             if not v:
                 continue
             wq = self._resolve_world_qid(v, label, plan["qid"])
-            if not wq:
-                continue
-            resolved.append((list(rw), wq))
+            named.append(rw)
+            matched.append(bool(wq))
+            if wq:
+                resolved.append((list(rw), wq))
 
         cur = self._rconn().cursor()
         cur.execute('SELECT label FROM knowledgebase."types" WHERE qid=%s', (plan["qid"],))
@@ -576,6 +617,17 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         # A value the upload holds is the user's filter ('total deposits for UBS in Europe').
         own_filters = [(table, column, value) for table, column, value in self._own_value_matches(question, norm)
                        if table == t["name"]]
+        # A row whose entity matched no knowledgebase entity cannot be counted. The answer says how many and
+        # names them; when they are most of the rows it could count it declines (DECISIONS.md, 2026-10-02).
+        # A US hospital the lookup missed used to lower "total transfers to US hospitals" without a word.
+        unmatched = unmatched_rows(t, plan["col"], named, matched, own_filters, label)
+        if unmatched and 2 * unmatched["rows"] > unmatched["of"]:
+            return {"question": question, "as_of": None, "clarify": True, "result": None, "error": None,
+                    "reason": (f"{unmatched['rows']} of the {unmatched['of']} {label} names in your sheet could "
+                               f"not be matched to a known {label} ({unmatched_names(unmatched)}), so an answer "
+                               "would leave most of them out"),
+                    "unmatched": unmatched,
+                    "model": "engine - clarify (most names matched no knowledgebase entity)"}
         model = f'engine - non-geo world join (pre-synchronized knowledgebase."{wl}")'
         from engine.deterministic.context import current_analysis_context, current_execution_record
         context = current_analysis_context()
@@ -608,6 +660,11 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         response = {"question": question, "as_of": None, "sql": record["final_sql"],
                     "result": {"columns": columns, "rows": wire_rows(rows[:50])},
                     "views": record["views"], "deterministic": record, "model": model}
+        if unmatched:
+            response["unmatched"] = unmatched
+            response["warnings"] = [
+                f"{unmatched['rows']} of the {unmatched['of']} rows name a {label} that could not be matched to a "
+                f"known {label} ({unmatched_names(unmatched)}); they are not counted."]
         # The computation, with the grain it is computed per (the entity's country, or the uploaded column
         # a ranking keeps), for the registered calculation checks.
         graph = SchemaGraph.from_planner(sch, [])

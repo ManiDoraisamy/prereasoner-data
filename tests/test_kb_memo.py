@@ -150,6 +150,61 @@ def test_an_entity_resolves_to_the_exact_nearest_of_its_type():
     assert calls[-1][1][1] == "hospital"
 
 
+def test_a_shared_name_resolves_the_same_way_every_time():
+    """87 hospital names named two QIDs in production (2026-10-02), and the exact lookup took whichever row
+    came first: no ORDER BY. Both lookups now break a tie by the name's primary entity, then the lowest
+    numeric QID (length first, so Q9 precedes Q10)."""
+    import numpy as np
+
+    import engine.knowledge_query as knowledge_query
+
+    class _Embedder:
+        @staticmethod
+        def encode(texts):
+            return np.zeros((len(texts), 4), dtype=np.float32)
+
+    calls = []
+    q = knowledge_query.KnowledgeQuery.__new__(knowledge_query.KnowledgeQuery)
+    q._kb_rows = lambda sql, params: calls.append(sql) or ([("hospital",)] if "types" in sql else [])
+    original = knowledge_query.Embedder
+    knowledge_query.Embedder = type("E", (), {"get": staticmethod(lambda: _Embedder())})
+    try:
+        assert q._resolve_world_qid("St. Mary's Hospital", "hospital", "Q16917") is None
+    finally:
+        knowledge_query.Embedder = original
+    exact, nearest = calls[1], calls[2]
+    assert "norm=%s" in exact and "ORDER BY is_primary IS TRUE DESC, length(qid), qid LIMIT 1" in exact, exact
+    assert "ORDER BY (embedding <=> %s::vector) + 0, is_primary IS TRUE DESC, length(qid), qid" in nearest, nearest
+
+
+def test_rows_whose_entity_matched_nothing_are_disclosed():
+    """A non-geo world total skipped every uploaded row whose entity resolved to nothing, so an unmatched US
+    hospital lowered "total transfers to US hospitals" without a word (2026-10-02). The rows are reported
+    with their names, counted only among the rows the uploaded-value filters keep, as the plan compares
+    them (case-insensitively)."""
+    from engine.knowledge_query import UNMATCHED_NAMES_SHOWN, unmatched_rows
+
+    table = {"name": "transfers", "columns": ["hospital", "region", "transfers"], "rows": []}
+    rows = [["Mayo Clinic", "North", 14], ["Xqzv Kpltr", "North", 3], ["Cleveland Clinic", "South", 12],
+            ["Pqrw Hosp", "south", 5], ["Xqzv Kpltr", "North", 2]]
+    matched = [True, False, True, False, False]
+    report = unmatched_rows(table, "hospital", rows, matched, [], "hospital")
+    assert report == {"table": "transfers", "column": "hospital", "entity": "hospital", "rows": 3, "of": 5,
+                      "names": ["Xqzv Kpltr", "Pqrw Hosp"], "more": 0}, report
+    # Contrastive: a filter on the upload keeps only its rows, compared as LOWER(cell) = LOWER(value).
+    south = unmatched_rows(table, "hospital", rows, matched, [("transfers", "region", "South")], "hospital")
+    assert (south["rows"], south["of"], south["names"]) == (1, 2, ["Pqrw Hosp"]), south
+    # A filter on another sheet is not this table's.
+    other = unmatched_rows(table, "hospital", rows, matched, [("regions", "region", "South")], "hospital")
+    assert other["of"] == 5, other
+    # Negative: every row matched, nothing to say.
+    assert unmatched_rows(table, "hospital", rows, [True] * 5, [], "hospital") is None
+    # The names are bounded; the rest are counted.
+    many = [[f"Unknown {index}", "North", 1] for index in range(UNMATCHED_NAMES_SHOWN + 2)]
+    bounded = unmatched_rows(table, "hospital", many, [False] * len(many), [], "hospital")
+    assert len(bounded["names"]) == UNMATCHED_NAMES_SHOWN and bounded["more"] == 2, bounded
+
+
 TESTS = [
     test_identical_lookup_executes_once_per_request,
     test_different_params_never_collide,
@@ -159,6 +214,8 @@ TESTS = [
     test_production_entry_opens_the_request,
     test_value_membership_routing_is_one_lookup_per_table,
     test_an_entity_resolves_to_the_exact_nearest_of_its_type,
+    test_a_shared_name_resolves_the_same_way_every_time,
+    test_rows_whose_entity_matched_nothing_are_disclosed,
 ]
 
 

@@ -1772,7 +1772,31 @@ def test_a_gemini_assisted_answer_is_labelled_for_the_reply():
     assert "suggested by Gemini and checked before it ran" in prompt
 
 
+def test_rows_whose_entity_matched_nothing_reach_the_reply():
+    """A non-geo total skipped the rows whose hospital matched no known hospital without a word, so
+    "total transfers to US hospitals" could undercount silently (2026-10-02). The engine now reports them
+    (engine/knowledge_query.py:unmatched_rows); the model must see the count to say it, and nothing when
+    every row matched."""
+    from mcp_server.engine_client import shape_reason_response
+
+    unmatched = {"table": "transfers", "column": "hospital", "entity": "hospital", "rows": 1, "of": 5,
+                 "names": ["Xqzv Kpltr"], "more": 0}
+    partial = shape_reason_response({"result": {"columns": ["sum"], "rows": [[46]]},
+                                     "unmatched": unmatched}, "job")
+    seen = orchestrator._trim_for_model(partial)
+    assert seen["unmatched"] == {"rows": 1, "of": 5, "entity": "hospital", "names": ["Xqzv Kpltr"], "more": 0}, seen
+    whole = shape_reason_response({"result": {"columns": ["sum"], "rows": [[46]]}}, "job")
+    assert "unmatched" not in orchestrator._trim_for_model(whole)
+    # The reply states the total and the count; the grounding check keeps prose that states the value.
+    assert orchestrator._grounded_presentation(
+        partial, "Your US hospitals total 46 transfers; 1 of the 5 rows names a hospital I couldn't match.",
+    ).startswith("Your US hospitals total 46")
+    prompt = " ".join(orchestrator.SYSTEM_PROMPT.split())
+    assert "When the tool result has `unmatched`" in prompt
+
+
 TESTS = [
+    test_rows_whose_entity_matched_nothing_reach_the_reply,
     test_a_gemini_assisted_answer_is_labelled_for_the_reply,
     test_request_execution_mode_reaches_each_orchestrated_engine_call,
     test_unambiguous_column_as_table_is_rebound_before_attestation,

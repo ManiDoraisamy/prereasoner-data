@@ -264,6 +264,12 @@ def _trim_for_model(shaped: dict[str, Any]) -> dict[str, Any]:
     fallback = shaped.get("fallback") if isinstance(shaped.get("fallback"), dict) else None
     if fallback and fallback.get("kind") in ("rewrite", "sql"):
         out["fallback"] = {key: fallback[key] for key in ("kind", "question") if fallback.get(key)}
+    # Rows whose hospital, bank or other entity matched nothing are not in the answer
+    # (engine/knowledge_query.py:unmatched_rows): the reply says how many, as the workbook does.
+    unmatched = shaped.get("unmatched") if isinstance(shaped.get("unmatched"), dict) else None
+    if unmatched:
+        out["unmatched"] = {key: unmatched[key] for key in ("rows", "of", "entity", "names", "more")
+                            if key in unmatched}
     return out
 
 

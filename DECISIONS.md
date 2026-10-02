@@ -1588,3 +1588,28 @@ One engine instance still serves one question at a time, and a large sheet holds
 costing per question only when a sheet is uploaded once and every question runs on the stored tables. The
 add-on's own limit lives in Apps Script (`sheets-addon/Code.js`). It reaches users only after a `clasp
 push` and a new version set in the Marketplace App Configuration.
+
+## A non-geo answer says which names it could not match (2026-10-02)
+
+A non-geo world answer ("total transfers for hospitals in the United States") resolves each uploaded entity name
+to a knowledgebase entity of its type, and skipped every row whose name resolved to nothing. An unmatched US
+hospital lowered the total without a word. `KnowledgeQuery._serve_world_type` now reports those rows
+(`engine/knowledge_query.py:unmatched_rows`). It counts them only among the rows the uploaded-value filters keep,
+compared as the shared plan compares them, by its own operators. It reports the first five distinct names, and the
+rest as a count.
+
+- When the unmatched rows are at most half of the rows the answer could count, the engine answers. The response
+  carries `unmatched` (count, out of, names) and a `warnings` sentence, which the rail shows. The MCP tool output
+  and the chat pass `unmatched` to the reply, which states the count in one clause
+  (`orchestrator/system_prompt.py`).
+- When they are more than half, it declines with a clarification naming them, before any bridge is written. A
+  total over a minority of the user's rows is no answer to their question, even with a caveat.
+- The shared plan and its trail are unchanged. The lookup sheet shows the matched rows, and the warning says which
+  rows it could not show. An outer lookup would have kept them on the sheet, but a ranking by the entity's country
+  would then need a step dropping the rows with no country, a no-op sheet whenever every row matched.
+
+Both entity lookups now break ties deterministically. 87 hospital names name two QIDs in production, and the exact
+lookup took whichever row came first. They order by the name's primary entity, then the lowest numeric QID
+(`length(qid), qid`). The exact-nearest lookup breaks a distance tie the same way. The geo city lookup
+(`engine/entities.py:_city_bridge_sql`) ranks a shared name by the row's country, `is_primary` and population. It
+has no final tie-break after those, and is left for its own change.

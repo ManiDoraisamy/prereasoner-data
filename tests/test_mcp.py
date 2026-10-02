@@ -65,6 +65,19 @@ def test_shape():
     share = engine_client.shape_reason_response(
         {"question": "q", "result": {"columns": ["share"], "rows": [["0.3"]]}, "unit": "percent"}, "job3")
     ok(share.get("unit") == "percent", "answer carries the engine's unit (a share is stated as a percentage)")
+    # A non-geo total that left out rows whose entity matched nothing says so (engine/knowledge_query.py
+    # unmatched_rows); the disclosure was never forwarded to the chat, so the reply could not say it.
+    unmatched = {"table": "transfers", "column": "hospital", "entity": "hospital", "rows": 1, "of": 5,
+                 "names": ["Xqzv Kpltr"], "more": 0}
+    partial = engine_client.shape_reason_response(
+        {"question": "q", "result": {"columns": ["sum"], "rows": [[46]]}, "unmatched": unmatched,
+         "warnings": ["1 of the 5 rows name a hospital that could not be matched"]}, "job4")
+    ok(partial.get("unmatched") == unmatched, "answer carries the rows whose entity matched nothing")
+    declined = engine_client.shape_reason_response(
+        {"question": "q", "clarify": True, "reason": "3 of the 5 hospital names could not be matched",
+         "unmatched": {**unmatched, "rows": 3}}, "job5")
+    ok(declined["status"] == "clarify" and declined["clarify"].get("unmatched", {}).get("rows") == 3,
+       "a decline over unmatched names carries them in the clarification")
 
     clar = engine_client.shape_reason_response(
         {"question": "q", "clarify": True, "proposed": "by country", "dropped": ["region"],

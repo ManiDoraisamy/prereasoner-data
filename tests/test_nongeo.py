@@ -86,6 +86,28 @@ def main():
         fails.append("illustrative pseudo-SQL (resolve(...)) returned — sheets must show executed SQL only")
     if "columns" not in (r1.get("result") or {}):                  # the client render reads result.columns (NOT .cols);
         fails.append("result missing 'columns' key — the UI table would render empty")  # the value alone isn't enough
+    if r1.get("unmatched") or r1.get("warnings"):
+        fails.append(f"every hospital matched, yet the answer reports unmatched rows: {r1.get('unmatched')}")
+    # A name no hospital matches is said, never dropped without a word (2026-10-02): the total stays the
+    # matched hospitals', and the row is reported to the reply and the rail. When such rows are most of the
+    # rows the answer could count, it declines instead.
+    unknown = {"name": "hospitals", "columns": ["hospital", "beds"], "rows": [*HOSP["rows"], ["Xqzv Kpltr", 40]]}
+    r_unknown = served(schema, Q.serve, [unknown], "total beds for hospitals in United States", schema=schema)
+    disclosed = r_unknown.get("unmatched") or {}
+    print(f"total beds, one unmatched -> {_scalar(r_unknown)} unmatched={disclosed.get('rows')}/{disclosed.get('of')}")
+    if (_scalar(r_unknown) != 240
+            or (disclosed.get("rows"), disclosed.get("of"), disclosed.get("names")) != (1, 5, ["Xqzv Kpltr"])
+            or not any("Xqzv Kpltr" in warning for warning in r_unknown.get("warnings") or [])):
+        fails.append(f"an unmatched hospital was not disclosed: total={_scalar(r_unknown)} unmatched={disclosed} "
+                     f"warnings={r_unknown.get('warnings')}")
+    mostly = {"name": "hospitals", "columns": ["hospital", "beds"], "rows": [
+        ["Cleveland Clinic", 80], ["Johns Hopkins Hospital", 60], ["Xqzv Kpltr", 10], ["Xqzv Kpltr", 20],
+        ["Xqzv Kpltr", 30]]}
+    r_mostly = served(schema, Q.serve, [mostly], "total beds for hospitals in United States", schema=schema)
+    print(f"total beds, most unmatched -> clarify={r_mostly.get('clarify')} reason={r_mostly.get('reason')}")
+    if (not r_mostly.get("clarify") or (r_mostly.get("unmatched") or {}).get("rows") != 3
+            or (r_mostly.get("result") or {}).get("rows")):
+        fails.append(f"most hospitals unmatched, yet answered: {r_mostly.get('result')} ({r_mostly.get('reason')})")
     # COUNT US hospitals
     r2 = served(schema, Q.serve, [HOSP], "how many hospitals in United States", schema=schema)
     got2 = _scalar(r2)
