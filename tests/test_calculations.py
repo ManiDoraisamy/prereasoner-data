@@ -295,6 +295,11 @@ def test_the_coverage_gate_reads_a_place_as_one_name():
     resolving one word of a place on its own: 'united' of 'the United Kingdom' surfaced another country,
     'north' of 'North American' a town called North, 'European' Germany. A span that names a qid the SQL
     filters on covers its words, and a demonym is its place plus '-n'/'-an'."""
+    from tests import spacy_model_installed
+
+    if not spacy_model_installed():
+        print("  SKIP  test_the_coverage_gate_reads_a_place_as_one_name: needs spaCy's en_core_web_md (the engine image installs it)")
+        return
     from unittest.mock import patch
 
     import numpy as np

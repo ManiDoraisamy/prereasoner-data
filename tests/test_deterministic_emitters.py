@@ -1651,6 +1651,11 @@ def test_knowledge_delegate_preserves_shared_plan_execution_evidence():
 
 
 def test_coverage_checks_filters_in_the_full_emitted_program():
+    from tests import spacy_model_installed
+
+    if not spacy_model_installed():
+        print("  SKIP  test_coverage_checks_filters_in_the_full_emitted_program: needs spaCy's en_core_web_md (the engine image installs it)")
+        return
     from types import SimpleNamespace
     from unittest.mock import patch
 
@@ -1685,6 +1690,11 @@ def test_coverage_checks_filters_in_the_full_emitted_program():
 
 
 def test_coverage_prose_is_not_a_place_or_an_ignored_status():
+    from tests import spacy_model_installed
+
+    if not spacy_model_installed():
+        print("  SKIP  test_coverage_prose_is_not_a_place_or_an_ignored_status: needs spaCy's en_core_web_md (the engine image installs it)")
+        return
     from types import SimpleNamespace
     from unittest.mock import patch
     import engine.knowledge_query as knowledge_query
@@ -1715,6 +1725,11 @@ def test_coverage_prose_is_not_a_place_or_an_ignored_status():
 
 
 def test_distinct_count_operator_and_sheet_scope_are_covered():
+    from tests import spacy_model_installed
+
+    if not spacy_model_installed():
+        print("  SKIP  test_distinct_count_operator_and_sheet_scope_are_covered: needs spaCy's en_core_web_md (the engine image installs it)")
+        return
     from types import SimpleNamespace
     from unittest.mock import patch
     import engine.knowledge_query as knowledge_query
@@ -1749,6 +1764,11 @@ def test_a_verb_or_adverb_says_what_the_rows_did_not_which_rows():
     adjective an ordering grades, a participle on the measured column and a measure word an aggregate
     realizes; a participle that names a state of the rows, and a verb the data holds as a value, are still row
     filters."""
+    from tests import spacy_model_installed
+
+    if not spacy_model_installed():
+        print("  SKIP  test_a_verb_or_adverb_says_what_the_rows_did_not_which_rows: needs spaCy's en_core_web_md (the engine image installs it)")
+        return
     from types import SimpleNamespace
     from unittest.mock import patch
     import engine.knowledge_query as knowledge_query
@@ -1858,6 +1878,11 @@ def test_a_place_or_world_type_the_query_never_realized_is_dropped():
     has the most deposits in Europe" ranked every bank in the world. A world type the question asks for is
     dropped unless a column of that name or the query realizes it, and so is a place named exactly that the
     query never filtered on, continents included."""
+    from tests import spacy_model_installed
+
+    if not spacy_model_installed():
+        print("  SKIP  test_a_place_or_world_type_the_query_never_realized_is_dropped: needs spaCy's en_core_web_md (the engine image installs it)")
+        return
     from types import SimpleNamespace
     from unittest.mock import patch
     import engine.knowledge_query as knowledge_query
