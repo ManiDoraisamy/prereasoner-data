@@ -634,6 +634,9 @@ class SQLSearcher:
                 for column in self._counted_entity_identities(tokens, position):
                     options.append((Aggregate("COUNT", column, distinct=True), 3.8,
                                     f"aggregate:COUNT(DISTINCT {column.table}.{column.name})"))
+                for column in self._distinct_counted_columns(tokens, position):
+                    options.append((Aggregate("COUNT", column, distinct=True), 3.3,
+                                    f"aggregate:COUNT(DISTINCT {column.table}.{column.name}):noun"))
             else:
                 implicit_words = implicit_measures.get(position)
                 if implicit_words is not None:
@@ -677,6 +680,19 @@ class SQLSearcher:
                     expanded.append((aggregates + (aggregate,), score + option_score, evidence + (reason,)))
             beam = sorted(expanded, key=lambda item: (-item[1], repr(item[0])))[:self.beam_size]
         return [(aggregates, score, evidence) for aggregates, score, evidence in beam]
+
+    def _distinct_counted_columns(self, tokens: tuple[str, ...], position: int) -> list[ColumnRef]:
+        """The columns a counted noun after "distinct", "different" or "unique" names by a word of their
+        name: "how many distinct countries do players come from" counts players.country_code once each
+        (Spider wta_1, 2026-10-02: no such column was a mention, and the count counted rows)."""
+        distinct_at = next((index for index in range(position, min(len(tokens), position + 4))
+                            if tokens[index] in {"different", "distinct", "unique"}), None)
+        if distinct_at is None or distinct_at + 1 >= len(tokens):
+            return []
+        noun = tokens[distinct_at + 1]
+        named = [column.ref for column in self.schema.columns
+                 if noun in {_canon(word) for word in _name_words(column.ref.name)}]
+        return sorted(named, key=lambda column: (column.table, column.name))[:4]
 
     def _counted_entity_identities(
         self, tokens: tuple[str, ...], position: int

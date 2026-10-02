@@ -2327,6 +2327,19 @@ def test_a_contained_text_compares_the_lowered_values():
     assert "LIKE" not in korea.sql and "\"Paragraph_Text\" = 'Korea'" in korea.sql, korea.sql
 
 
+def test_a_distinct_counted_noun_counts_the_column_it_names():
+    """Spider wta_1, 2026-10-02: "how many distinct countries do players come from" counted rows, since no
+    column was a mention of "countries". A noun after "distinct", "different" or "unique" counts, once
+    each, the column a word of whose name it is (players.country_code)."""
+    players = {"name": "players", "columns": ["player_id", "first_name", "country_code"], "rows": [
+        [1, "Serena", "USA"], [2, "Venus", "USA"], [3, "Angelique", "GER"], [4, "Simona", "ROU"]]}
+    countries = best("How many distinct countries do players come from?", [players])
+    assert "COUNT(DISTINCT" in countries.sql and execute([players], countries.sql) == [(3,)], countries.sql
+    # Contrast: without "distinct" a count counts the rows.
+    everyone = best("How many players are there?", [players])
+    assert execute([players], everyone.sql) == [(4,)], everyone.sql
+
+
 def test_multiple_aggregates_share_a_typed_operand():
     candidate = best("What are the average, minimum and maximum age of people from France?", [PEOPLE])
     assert execute([PEOPLE], candidate.sql) == [(25.0, 20, 30)]
@@ -3755,6 +3768,7 @@ TESTS = [
     test_a_listing_drops_a_key_that_repeats_a_read_table,
     test_a_comparative_than_a_number_compares_the_measure_it_describes,
     test_a_contained_text_compares_the_lowered_values,
+    test_a_distinct_counted_noun_counts_the_column_it_names,
     test_multiple_aggregates_share_a_typed_operand,
     test_repeated_count_paraphrase_is_one_aggregate,
     test_total_number_of_entities_is_a_scalar_count,
