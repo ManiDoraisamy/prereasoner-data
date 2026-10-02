@@ -152,6 +152,25 @@ def test_no_name_signal_column_is_not_a_foreign_key():
     assert discover_fks([cat, pri]) == [], discover_fks([cat, pri])
 
 
+def test_tabs_with_the_same_columns_are_not_foreign_keys_of_each_other():
+    # A customer's Keyword Stats workbook (2026-10-02): the Checklist and Inspection tabs are two exports of
+    # one keyword-planner layout, and ingest linked Checklist."Avg. monthly searches" to the unique values of
+    # Inspection."Avg. monthly searches", a measure, on the identical name alone. Tabs with the same columns are
+    # siblings, never parent and child.
+    columns = ["Keyword", "Avg. monthly searches", "Competition"]
+    checklist = {"name": "Checklist", "columns": columns,
+                 "rows": [["safety checklist", 5000, "Low"], ["forklift inspection checklist", 5000, "High"],
+                          ["vehicle inspection checklist", 500, "Medium"], ["daily checklist", 500, "Low"]]}
+    inspection = {"name": "Inspection", "columns": columns,
+                  "rows": [["forklift inspection", 500, "Medium"], ["vehicle inspection", 5000, "Medium"],
+                           ["home inspection", 50000, "High"]]}
+    assert discover_fks([checklist, inspection]) == [], discover_fks([checklist, inspection])
+    # Contrast: a same-named code column between differently shaped tables is still a reference.
+    products = {"name": "products", "columns": ["sku", "title"], "rows": [["A1", "Pen"], ["B2", "Ink"], ["C3", "Pad"]]}
+    sales = {"name": "sales", "columns": ["order", "sku", "qty"], "rows": [[1, "A1", 2], [2, "B2", 1], [3, "A1", 5]]}
+    assert ("sales", "sku", "products", "sku") in discover_fks([products, sales]), discover_fks([products, sales])
+
+
 def test_name_signaled_foreign_keys_still_resolve():
     # Contrastive: the name-signal requirement must NOT over-reject real FKs. An id-named FK (shops.city_id ->
     # cities.id) and the relationship-named STRING FK (orders.customer -> customers.name) both carry name evidence.
@@ -504,6 +523,7 @@ TESTS = [
     test_string_fk_joins_uploaded_tables_for_a_world_query,
     test_non_unique_parent_is_not_a_spurious_foreign_key,
     test_no_name_signal_column_is_not_a_foreign_key,
+    test_tabs_with_the_same_columns_are_not_foreign_keys_of_each_other,
     test_name_signaled_foreign_keys_still_resolve,
 ]
 

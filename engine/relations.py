@@ -72,6 +72,15 @@ def _name_boost(ax, bname, by):
     return b
 
 
+def _column_names(table):
+    return {" ".join(str(column).lower().split()) for column in table["columns"]}
+
+
+def _same_columns(a, b):
+    """Whether two tables have the same column names, ignoring case, spacing and order."""
+    return _column_names(a) == _column_names(b)
+
+
 def discover_fks(tables, min_incl=0.9):
     keys = {}                                                  # (table, col) -> set of normalized key values
     for t in tables:
@@ -92,6 +101,11 @@ def discover_fks(tables, min_incl=0.9):
                 if bname == A["name"]:
                     continue                                   # a join FK lives ACROSS tables, never same-table
                 B = next(t for t in tables if t["name"] == bname)
+                if _same_columns(A, B):
+                    # Tabs with the same columns are copies of one layout (monthly exports, one tab per keyword
+                    # list), never parent and child: a customer's Checklist "Avg. monthly searches" was linked to
+                    # Inspection's unique values of that measure on the identical name alone (2026-10-02).
+                    continue
                 if at != coltype(cells(B, B["columns"].index(by))):
                     continue
                 if len(aset) > len(bset):
