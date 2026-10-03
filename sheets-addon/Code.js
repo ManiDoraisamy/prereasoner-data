@@ -193,11 +193,9 @@ function readGrids_(spreadsheet) {
   if (sheets.length > GRID_LIMITS.sheets) {
     throw new Error('Prereasoner can read at most ' + GRID_LIMITS.sheets + ' non-empty tabs at once.');
   }
-  // The active tab is read first and must fit. Another tab that does not fit, by itself or beside the tabs
-  // already read, is left out by name: a 30,000-row tab beside five more refused the whole spreadsheet
-  // (customer report, 2026-10-02).
+  // Do not analyze a partial workbook when a visible tab exceeds the budget.
+  // Hiding unwanted tabs explicitly selects the source scope without changing cells.
   var cellTotal = 0;
-  var skipped = [];
   var fitting = sheets.filter(function(sheet, index) {
     var rowCount = sheet.getLastRow();
     var columnCount = sheet.getLastColumn();
@@ -214,10 +212,9 @@ function readGrids_(spreadsheet) {
           grouped_(GRID_LIMITS.cells) + ' in all). Reduce the data or ask about a smaller set of tabs.';
       throw new Error(problem);
     }
-    if (reason) {
-      skipped.push({name: sheet.getName(), reason: reason});
-      return false;
-    }
+    if (reason) throw new Error(tab + 'cannot be included within the ' + reason +
+      ' limit. Hide tabs you do not want to analyze, or reduce this tab, then ask again. ' +
+      'No answer will be calculated from an incomplete workbook.');
     cellTotal += cells;
     return true;
   });
@@ -242,7 +239,7 @@ function readGrids_(spreadsheet) {
       date1904: false
     };
   });
-  return {grids: grids, skipped: skipped};
+  return {grids: grids};
 }
 
 // A count as the add-on's messages write it: 50000 is "50,000".

@@ -46,7 +46,7 @@ def mandatory_predicates(predicate):
 
 
 def constraint_violations(question, query, graph):
-    from engine.sql_ast import Aggregate, Comparison, DatePart, ExistsPredicate, InPredicate, SelectQuery, SetQuery
+    from engine.sql_ast import Aggregate, ColumnRef, Comparison, DatePart, ExistsPredicate, InPredicate, SelectQuery, SetQuery, Star
     from engine.sql_dates import realizes_dates, served_date_phrases
     from engine.sql_expansion import ExpansionSupport, tokens
     from engine.sql_candidate import ScoredQuery
@@ -59,6 +59,13 @@ def constraint_violations(question, query, graph):
     question_tokens = tokens(question)
     phrases = served_date_phrases(question, question_tokens, graph)
     violations = []
+    if re.search(r'\b(?:show|list|display)\s+(?:all|every)\s+(?:rows?|records?)\b', question, re.I):
+        projected = {item.expression for item in query.select if isinstance(item.expression, ColumnRef)}
+        required = {column.ref for column in graph.columns if column.ref.table == query.from_table}
+        if not any(isinstance(item.expression, Star) for item in query.select) and not required <= projected:
+            violations.append('showing all rows must preserve every source column')
+        if query.limit is not None:
+            violations.append('showing all rows must not impose an unstated row cutoff')
     if phrases and not realizes_dates(query, phrases):
         violations.append("requested calendar constraint is missing or changed")
     elif phrases:
@@ -227,7 +234,7 @@ def has_unread_terms(question, candidate, graph, *, calculation_satisfied=False)
 
     table_words = {canon(word) for table in graph.tables for word in lexical_words(table)}
     requested_fields = set(words) & (schema_words - table_words)
-    explicitly_all_fields = bool(re.search(r'\ball\s+(?:columns|fields)\b', question, re.I))
+    explicitly_all_fields = bool(re.search(r'\b(?:all|every)\s+(?:columns|fields|rows?|records?)\b', question, re.I))
     return has_star(candidate.query) and bool(requested_fields) and not explicitly_all_fields
 
 

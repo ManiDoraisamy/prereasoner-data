@@ -164,27 +164,23 @@
         // The sheet through the web upload importer: the same header, date, duration, merge, total and
         // formula-error rule as an upload of the same cells.
         function importGrids(workbook) {
+          if (workbook.skipped && workbook.skipped.length) {
+            throw new Error('These visible tabs could not be included: ' + workbook.skipped.map(function (tab) {
+              return typeof tab === 'string' ? tab : tab.name;
+            }).join(', ') + '. Hide tabs you do not want to analyze, or reduce their size, then ask again. ' +
+              'No answer will be calculated from an incomplete workbook.');
+          }
           var result = window.WORKBOOK_IMPORT.convert({grids: workbook.grids}, window.XLSX, window.UPLOAD_LIMITS);
           if (!result.ok) throw new Error(result.error);
           if (!result.sheets.length) throw new Error('This spreadsheet needs a header row and at least one data row.');
-          // A tab the add-on could not read beside the active one, and a column with values but no header,
-          // are left out; say which.
-          var skipped = workbook.skipped || [];
-          var skippedNote = skipped.map(function (tab) {
-            var name = typeof tab === 'string' ? tab : tab.name;
-            var reason = typeof tab === 'string' ? 'cells' : tab.reason;
-            var explanation = reason === 'rows' ? 'it has more than 50,000 data rows. Reduce its size to include it.'
-              : reason === 'columns' ? 'it has more than 256 columns. Remove unused columns to include it.'
-              : 'including it would exceed the 1,000,000-cell limit. Hide tabs you do not need to include it.';
-            return 'Left out tab "' + name + '": ' + explanation;
-          }).join(' ');
-          state.importNote = [skippedNote].concat(result.sheets.filter(function (sheet) {
+          // Unnamed columns are identified explicitly; oversized tabs are refused above.
+          state.importNote = result.sheets.filter(function (sheet) {
             return sheet.import && sheet.import.leftOutColumns && sheet.import.leftOutColumns.length;
           }).map(function (sheet) {
             var columns = sheet.import.leftOutColumns, one = columns.length === 1;
             return 'Sheet "' + sheet.name + '": ' + (one ? 'column ' : 'columns ') + columns.join(', ') +
               (one ? ' has' : ' have') + ' no header, so ' + (one ? 'it was' : 'they were') + ' left out.';
-          })).filter(Boolean).join(' ');
+          }).filter(Boolean).join(' ');
           return result.sheets.map(function (sheet) {
             return {name: sheet.name, data: sheet.csv, source: {kind: 'google-sheets-addon'}};
           });

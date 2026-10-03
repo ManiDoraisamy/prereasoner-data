@@ -72,20 +72,22 @@ The production reference deployment protects user data through the following con
 The open-source default is `EXTERNAL_LLM_ENABLED=false`. When the operator enables it, Prereasoner
 uses one external model: Google's Gemini on Vertex AI, called in the operator's own Google Cloud
 project under that project's service account. Deploying the chat service enables it for the engine
-as well. The reference hosted deployment uses Gemini for the conversational assistant, tool
-orchestration, presentation, ambiguity handling, explicitly requested reference-cell generation,
-and the engine's query fallback. Depending on the feature, a Gemini request can contain:
+as well. Question answering uses Gemini to interpret intent and normalize wording. The
+conversational request contains the current question, at most two previous user questions,
+table/column names, and an analysis catalog containing identifiers, revisions and canonical
+questions. Interpretation status can be returned to the model. Source/result cells, generated
+SQL and previous assistant answers are not sent in this workflow. Values that the user writes
+in a question are part of that question and may therefore reach Gemini.
 
-- the user's message and conversation history;
-- attached table names, columns, and contents for the chat assistant;
-- entity names and existing reference-table cells;
-- generated SQL, result columns, and up to 40 result rows; and
-- trimmed reasoning or tool output.
+The engine's stateless wording helper receives one question and schema metadata (table/column
+names, types and foreign keys), without history or example values. It can return canonical
+wording, never SQL or a query plan. The local engine validates the rewrite and builds, checks,
+executes and labels its own plan. Final factual replies are rendered from verified engine output
+without a model presentation round.
 
-When the engine cannot build a query for a question on its own, it can ask Gemini to reword the
-question once or to propose one SQL query. That request contains the question, the table and column
-names, column types, foreign keys, and up to three example values per column. The engine still
-checks, runs and labels any query that results, and the database computes every number.
+Explicit reference-cell generation is a separate feature. When the user requests it, Gemini
+receives the requested headers, entity names, existing reference cells and generation instruction.
+Generated reference content is labelled; it is not verified knowledgebase data.
 
 The deterministic SQL path computes every answer: Gemini never executes a query or calculates a
 result. Google's handling of this data is governed by the operator's Google Cloud agreement and the terms
@@ -94,7 +96,7 @@ retention, residency, or deletion claims on Google's behalf unless they are veri
 applicable agreement and configuration.
 
 The server-side `EXTERNAL_LLM_ENABLED` switch is authoritative for every Gemini call. When false,
-gated endpoints refuse the call and the engine runs without its fallback. Self-hosters can
+gated endpoints refuse the call and the engine runs without its wording helper. Self-hosters can
 therefore run the deterministic engine without an external model.
 
 The architectural target is to replace external presentation and orchestration with a locally
@@ -107,8 +109,9 @@ SQL execution, and verification remain deterministic.
 
 Stored conversations expire after 90 days of inactivity by default (`CONVERSATION_RETENTION_DAYS`,
 bounded to 1-3650 days). Reopening, querying, or saving a conversation refreshes that expiry. The
-default per-user limits are 100 durable conversations and 256 MiB of serialized source tables plus
-workbook state. Each persisted workbook snapshot is limited to 1 MiB. These limits bound application
+default per-user limits are 1,000 durable conversations and 256 MiB of serialized source tables,
+analysis revisions and workbook state. Saved UI state is limited to 1 MiB; an authoritative
+analysis snapshot is limited to 32 MiB. These limits bound application
 storage; PostgreSQL backups follow the operator's separately configured backup policy.
 
 Conversation deletion removes owned PostgreSQL metadata, its per-conversation schema, and RTDB jobs

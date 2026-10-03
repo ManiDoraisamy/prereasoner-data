@@ -15,7 +15,7 @@ _IDENTIFIER = re.compile(r"^[a-z][a-z0-9_]*$")
 _WRITE_PRIVILEGES = ("INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER")
 _CHAT_TABLES = (
     "user_profile", "conversation", "user_conversation", "sheet_session", "auth_principal", "analysis", "analysis_revision",
-    "working_table", "request_usage", "request_lease",
+    "working_table", "request_usage", "request_lease", "request_job",
 )
 
 # Older deployments exposed these admin-owned functions to the serving role for

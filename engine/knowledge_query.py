@@ -1073,7 +1073,13 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         # ('German sales'), OR a measure word with no aggregate ('French sales' -> SELECT name WHERE France) — offer
         # a best-guess unambiguous rephrasing (from the model's sub-threshold signals) for the user to confirm,
         # instead of "bullshitting" a wrong query. The clarify UI lets the user confirm or edit before re-running.
-        if schema:
+        typed_coverage = (res or {}).get('coverage') if isinstance(res, dict) else None
+        # The own-data planner has already certified its complete typed AST. Do
+        # not reinterpret a proven exclusive date boundary through SQL token
+        # matching ("after August 10" legitimately emits an August 11 boundary).
+        # World/composed routes without that proof still use their residual gate.
+        certified = isinstance(typed_coverage, dict) and typed_coverage.get('complete') is True
+        if schema and not certified:
             try:
                 sql = _coverage_sql(res)
                 dropped = list(dict.fromkeys(

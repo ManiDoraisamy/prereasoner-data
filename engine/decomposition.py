@@ -489,6 +489,17 @@ def build_decomposed_plan(
 
     tablemap = {table["name"]: table for table in tables}
     for node in proposal["subquestions"]:
+        # Reject a proposed cutoff before leaf selection can hide its violation
+        # behind an unrelated unsupported-plan error.
+        from engine.sql_expansion import parse_number, tokens
+        words = tokens(node['question'])
+        for cue, number in zip(words, words[1:]):
+            if cue in {'top', 'bottom'}:
+                cutoff = parse_number(number)
+                if cutoff is not None:
+                    rejection = unstated_cutoff_rejection(node['id'], question, cutoff)
+                    if rejection:
+                        raise DecompositionError(rejection)
         readings = _leaf_readings(
             planner, slug, node, tables, schema, foreign_keys, tablemap,
             feeds_cross=node["id"] in cross_inputs, question=question,

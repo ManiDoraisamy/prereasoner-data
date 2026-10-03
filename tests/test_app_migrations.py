@@ -6,6 +6,7 @@ import re
 import sys
 
 from db.reference_grants import (
+    _CHAT_TABLES,
     _LEGACY_LAZY_FILL_FUNCTIONS,
     apply_shared_read_boundary,
     harden_runtime_role,
@@ -428,7 +429,13 @@ def test_serving_guard_consults_the_catalog_instead_of_skipping():
         "the freshness read must not open its own connection"
 
 
+def test_durable_retry_relation_has_explicit_serving_grants():
+    assert "request_job" in _CHAT_TABLES
+    assert any(m.name == "durable_request_replay" for m in CHAT_MIGRATIONS)
+
+
 TESTS = [
+    test_durable_retry_relation_has_explicit_serving_grants,
     test_chat_migration_is_admin_run_and_idempotent,
     test_knowledgebase_migration_installs_definer_functions,
     test_serving_path_has_no_direct_knowledgebase_writes,

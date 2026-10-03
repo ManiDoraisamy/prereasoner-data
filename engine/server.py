@@ -546,7 +546,7 @@ class H(BaseHTTPRequestHandler):
             print(f"admin delete failed: {type(e).__name__}", flush=True)
             self._send(500, json.dumps({"error": "internal server error"}))
 
-    # ---------------- /api/converse (Gemini conversational fallback for the /reason rail) ----------------
+    # ---------------- /api/converse (shared deterministic renderer for the /reason rail) ----------------
     def _post_converse(self):
         """Compatibility endpoint for deterministic result and clarification rendering."""
         try:

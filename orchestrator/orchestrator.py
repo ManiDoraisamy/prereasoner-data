@@ -11,8 +11,8 @@ measured 0.86s of interpreter startup to relay an HTTP call this process can mak
 the entry point for OTHER MCP clients, over the shared `engine_client`.
 
 Manual loop (not the SDK tool_runner) on purpose: we need to mint the jobId, inject the session `tables`
-(kept out of the LLM's context — the model only ever sees the `question`), and keep the full `views` stack
-for the reasoning player while feeding the model only a trimmed result.
+(kept out of the LLM's context), and keep the full `views` stack for the reasoning player.
+The model receives schema/intent context and interpretation status; factual presentation stays local.
 """
 from __future__ import annotations
 

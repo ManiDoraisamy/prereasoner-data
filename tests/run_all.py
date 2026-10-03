@@ -32,7 +32,7 @@ SUITES = ["tests.test_sql_ast", "tests.test_query_contract", "tests.test_llm", "
           "tests.test_kb_memo", "tests.test_encode_cache", "tests.test_stream_buffer",
           "tests.test_dataset_semantics", "tests.test_dataset_gold",
           "tests.test_conversations", "tests.test_sheet_sessions", "tests.test_provenance",
-          "tests.test_release", "tests.test_community_deploy",
+          "tests.test_release", "tests.test_promotion_gate", "tests.test_community_deploy",
           "tests.test_mcp", "tests.test_orchestrator_unit", "tests.test_orchestrator"]
 ENGINE_SUITES = ["tests.test_world", "tests.test_nongeo", "tests.test_world_joins",
                  "tests.test_route_wired", "tests.test_geo", "tests.test_schema_probes",

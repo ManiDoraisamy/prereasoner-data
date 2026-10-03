@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import csv
+import io
 from decimal import Decimal
 import json
 import os
@@ -49,10 +50,29 @@ def main():
                                 'seconds':round(elapsed,3),'gold':str(expected),'execution':result.get('execution')})
                 print('scale',json.dumps(records[-1]),flush=True)
         start=time.perf_counter()
-        result=served(lease.name,Q.serve,[table],'show all rows',lease.name,mode='sql')
+        result=served(lease.name,Q.serve,[table],'show all rows ordered by id',lease.name,mode='sql')
         answer=(result.get('result') or {}).get('rows') or []
         assert len(answer)==30000, ('full-result rows',len(answer),result.get('error'))
-        assert len(answer[0])==12 and answer[0][0]=='sub_00000000' and answer[-1][0]=='sub_00029999'
+        columns = [column.casefold() for column in result['result']['columns']]
+        assert set(columns)=={column.casefold() for column in table['columns']}, columns
+        id_column, amount_column = columns.index('id'), columns.index('amount')
+        assert len(answer[0])==12 and answer[0][id_column]=='sub_00000000' and answer[-1][id_column]=='sub_00029999', answer[:1]
+        assert [row[id_column] for row in answer] == [row[0] for row in table['rows']]
+        assert sum(Decimal(str(row[amount_column])) for row in answer) == gold
+        # Persist and reload the authoritative version, not the capped UI preview.
+        from engine import conversations
+        buffer = io.StringIO()
+        writer = csv.writer(buffer)
+        writer.writerow(table['columns']); writer.writerows(table['rows'])
+        source = [{'name': table['name'], 'data': buffer.getvalue(), 'source': {'kind': 'csv'}}]
+        conversations.sync_conversation_source(lease.user_id, lease.name, source)
+        descriptor = conversations.begin_analysis(lease.user_id, lease.name,
+            {'action': 'create', 'slug': 'scale_complete'}, 'show all rows',
+            request_input_hash='a'*64, request_source_hash=conversations.source_snapshot_hash(source))
+        conversations.complete_analysis(lease.user_id, lease.name, descriptor, 'show all rows', result)
+        reloaded = conversations.get_analysis_revision(lease.user_id, lease.name,
+            descriptor['analysis_id'], descriptor['revision'])['response']['result']['rows']
+        assert reloaded == answer, 'Authoritative reload changed/truncated the complete result'
         print('scale_full_result',json.dumps({'rows':len(answer),'seconds':round(time.perf_counter()-start,3),
                                             'bytes':len(json.dumps(result,default=str).encode())}),flush=True)
         print('PASS scale: 30000 rows, exact gold and complete output',flush=True)

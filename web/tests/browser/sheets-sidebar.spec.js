@@ -87,16 +87,13 @@ test('the Sheets sidebar refuses a shifted header row, then reads the fixed shee
   await expect(page.locator('.answer.error')).toHaveCount(0);
 });
 
-test('the Sheets sidebar explains why oversized tabs were left out', async ({page}) => {
+test('the Sheets sidebar refuses an incomplete workbook from an older add-on server', async ({page}) => {
   await openSidebar(page, orders, {}, {skipped: [
     {name: 'SI', reason: 'cells'}, {name: 'Log', reason: 'rows'}, {name: 'Wide', reason: 'columns'}
   ]});
-  await expect(page.locator('#note')).toHaveText(
-    'Left out tab "SI": including it would exceed the 1,000,000-cell limit. Hide tabs you do not need to include it. ' +
-    'Left out tab "Log": it has more than 50,000 data rows. Reduce its size to include it. ' +
-    'Left out tab "Wide": it has more than 256 columns. Remove unused columns to include it.'
-  );
-  await expect(page.locator('#note')).not.toContainText('together with this tab');
+  await expect(page.locator('.sheet-error')).toContainText('SI, Log, Wide');
+  await expect(page.locator('.sheet-error')).toContainText('No answer will be calculated from an incomplete workbook.');
+  await expect(page.locator('#sheetCount')).toHaveText('');
 });
 
 test('the Sheets sidebar explains a multi-account refusal instead of blaming the sheet', async ({page}) => {

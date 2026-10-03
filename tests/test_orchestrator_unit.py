@@ -695,8 +695,7 @@ def test_followup_prompt_separates_geography_from_output_currency_and_executes_y
     prompt = " ".join(orchestrator.SYSTEM_PROMPT.lower().split())
     assert "never limits the rows to those already recorded in it" in prompt
     assert 'accepts the specific action your previous message offered' in prompt
-    assert "never substitute a reason the tool did not give" in prompt
-    assert "report only the failure the tool returned" in prompt
+    assert orchestrator._terminal_fallback({"status": "error", "error": "Engine is busy; retry shortly"}) == "Engine is busy; retry shortly"
     assert "europe" not in prompt and "£810" not in prompt
 
 
@@ -823,13 +822,15 @@ def test_a_one_number_answer_reaches_the_model_as_the_reply_writes_it():
     assert orchestrator._terminal_fallback(europe) == "1,914.18 GBP"
     assert orchestrator._terminal_fallback(plain) == "263.96"
     prompt = " ".join(orchestrator.SYSTEM_PROMPT.lower().split())
-    assert "a one-number result comes with `value`" in prompt
-    assert "use it exactly as given, adding only its currency" in prompt
+    assert "a deterministic renderer produces" in prompt
+    assert "must never invent a factual" in prompt
 
 
 def test_unverified_currency_sign_is_never_added_to_terminal_value():
     shaped = {"status":"answered", "answer":{"rows":[["250.78"]]}}
     assert orchestrator._grounded_presentation(shaped, "$250.78 per order") == "250.78"
+    assert orchestrator._terminal_fallback({'status': 'answered', 'answer': {'rows': [[None]]}}) == 'No value was recorded for the matching rows.'
+    assert orchestrator._terminal_fallback({'status': 'answered', 'answer': {'rows': [[0]]}}) == '0'
 
 
 
@@ -842,11 +843,8 @@ def test_terminal_currency_comes_only_from_verified_calculation():
 
 
 
-def test_the_model_is_told_the_currency_the_engine_verified():
-    """The model guessed a currency because the result it was shown never said whether there was
-    one. A verified output currency now reaches it as `currency`; a rows-already-in-it filter and
-    an answer with no currency calculation carry none, and the prompt says such a figure is a bare
-    number."""
+def test_currency_stays_in_the_deterministic_renderer():
+    """Verified currency is rendered locally; the model receives no result values."""
     def trimmed(**calculation):
         return {"currency": presentation.output_currency({
             "status": "answered", "answer": {"columns": ["total"], "rows": [[70401]]},
@@ -859,10 +857,8 @@ def test_the_model_is_told_the_currency_the_engine_verified():
     assert "currency" not in orchestrator._model_feedback(
         {"status": "answered", "answer": {"columns": ["avg_price"], "rows": [["250.78"]]}})
     prompt = " ".join(orchestrator.SYSTEM_PROMPT.lower().split())
-    assert "a figure is in a currency only when you were given one for it" in prompt
-    assert "write that currency once, right beside the amount" in prompt
-    assert "give the bare number" in prompt and "never guess or ask about a unit" in prompt
-    assert "do not remark that the currency is unknown" in prompt
+    assert "the engine owns factual answers, units" in prompt
+    assert "you do not receive source cells, answer rows or sql" in prompt
 
 
 def test_a_reply_says_only_what_the_result_shows():
@@ -872,17 +868,12 @@ def test_a_reply_says_only_what_the_result_shows():
     converted at that turn's rate. The demo replies are the live cases in tests.test_orchestrator, so
     the prompt carries the rule and not the demo."""
     prompt = " ".join(orchestrator.SYSTEM_PROMPT.lower().split())
-    assert "say only what the result shows" in prompt
-    assert "the result does not say where each one ranks, not even when a single row came back" in prompt
-    assert "name a rank only when the rows list the whole ranking in order" in prompt
-    assert "leave out figures from earlier turns, and comparisons with them" in prompt
-    assert "ava" not in prompt.split() and "cleo" not in prompt.split()
-    # Chrome gate, 2026-10-01: the promotions replies explained the row order ("Cara is listed ahead
-    # of Bob since she's the higher spender"), in 4 of 10 first answers on replay, and 9 of 10 ran
-    # past 260 characters; with the rule, 0 and 1 of 10.
-    assert "a result with several rows is a list: say what it holds, by name" in prompt
-    assert "do not explain how they are sorted or compare their totals" in prompt
-    assert 'refer to the people in the data by name, never as "he" or "she"' in prompt
+    assert "must never invent a factual" in prompt
+    shaped = {"status": "answered", "answer": {"columns": ["customer", "amount"], "rows": [["Ava", 200], ["Cleo", 340]]}}
+    reply = orchestrator._grounded_presentation(shaped, "Ava is your top spender, she spent 999999 more than before.")
+    assert reply == orchestrator._terminal_fallback(shaped)
+    assert all(claim not in reply for claim in ("top spender", "999999", "she", "more than before"))
+
 
 
 def test_a_failed_turn_promises_no_retry():
@@ -892,8 +883,7 @@ def test_a_failed_turn_promises_no_retry():
     my end just now, let me try that again", and nothing was retried: a terminal engine outcome ends the
     turn (test_terminal_engine_status_uses_one_query_and_a_tool_disabled_presentation)."""
     prompt = " ".join(orchestrator.SYSTEM_PROMPT.lower().split())
-    assert "never say you will try again" in prompt
-    assert "ask the user to send the question again in a moment" in prompt
+    assert orchestrator._terminal_fallback({"status": "error", "error": "Engine is busy; retry shortly"}) == "Engine is busy; retry shortly"
 
 
 def test_an_analysis_is_named_for_its_measure_not_its_filter():
@@ -909,7 +899,7 @@ def test_an_analysis_is_named_for_its_measure_not_its_filter():
     assert ("the same list or ranking asked again with other cutoffs, or ranked by another measure, is "
             "also `modify`") in prompt
     assert "another aggregate of a column (the highest instead of the average) is a new analysis" in prompt
-    assert "write any other large number with thousands separators" in prompt
+    assert orchestrator._terminal_fallback({"status": "answered", "answer": {"rows": [["1082.41"]]}}) == "1,082.41"
     # A longer name is cut to the engine's limit with a hash ("top customers never bought top
     # 5e0be233"), so the model is told the limit.
     slug = next(tool for tool in orchestrator.TOOLS
@@ -1616,7 +1606,7 @@ def test_the_model_sees_the_rows_the_answer_covers():
     unfiltered = orchestrator._model_feedback({**shaped, "views": [{"op": "group_agg", "label": "total"}]})
     assert "filters" not in unfiltered
     prompt = " ".join(orchestrator.SYSTEM_PROMPT.lower().split())
-    assert "describe exactly the rows the answer covers" in prompt
+    assert "you do not receive source cells, answer rows or sql" in prompt
 
 
 def test_a_gemini_assisted_answer_is_labelled_for_the_reply():
@@ -1641,8 +1631,8 @@ def test_a_gemini_assisted_answer_is_labelled_for_the_reply():
     plain = shape_reason_response({"result": {"columns": ["n"], "rows": [[3]]}}, "job")
     assert "fallback" not in orchestrator._model_feedback(plain)
     prompt = " ".join(orchestrator.SYSTEM_PROMPT.split())
-    assert "When the tool result has `fallback`" in prompt
-    assert "read this as" in prompt
+    assert "Gemini reworded the question as: total amount by city" in orchestrator._terminal_fallback(reworded)
+    assert "Gemini" not in orchestrator._terminal_fallback(plain)
 
 
 def test_rows_whose_entity_matched_nothing_reach_the_reply():
@@ -1666,7 +1656,7 @@ def test_rows_whose_entity_matched_nothing_reach_the_reply():
         partial, "Your US hospitals total 46 transfers; 1 of the 5 rows names a hospital I couldn't match.",
     )== "46\n\n1 of 5 source rows could not be matched and were excluded."
     prompt = " ".join(orchestrator.SYSTEM_PROMPT.split())
-    assert "When the tool result has `unmatched`" in prompt
+    assert "excluded" not in orchestrator._terminal_fallback(whole)
 
 
 def test_intent_context_has_schema_and_questions_but_no_values_or_assistant_answers():
@@ -1697,7 +1687,7 @@ TESTS = [
     test_a_one_number_answer_reaches_the_model_as_the_reply_writes_it,
     test_unverified_currency_sign_is_never_added_to_terminal_value,
     test_terminal_currency_comes_only_from_verified_calculation,
-    test_the_model_is_told_the_currency_the_engine_verified,
+    test_currency_stays_in_the_deterministic_renderer,
     test_a_whole_place_follow_up_asks_for_one_figure_not_a_ranking,
     test_a_reply_says_only_what_the_result_shows,
     test_a_failed_turn_promises_no_retry,

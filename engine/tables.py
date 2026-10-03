@@ -542,15 +542,21 @@ class TableQuery:
                 money_total[index] = aggregates_money_column(pool[index].query, table, names)
         phrases = served_date_phrases(question, question_tokens(question), graph)
         date_satisfied = [realizes_dates(member.query, phrases) for member in pool]
-        from engine.query_contract import constraint_violations
+        from engine.query_contract import constraint_violations, coverage
         ranking = tuple(index for index in ranking
                         if not constraint_violations(question, pool[index].query, graph))
         request_timing.count("pool", len(pool))
         selection = PoolSelection(pool, tuple(executable), tuple(grounded), ranking, None,
                                   tuple(calculation_satisfied), tuple(money_total),
                                   tuple(date_satisfied))
-        return replace(selection, selected=select_ranked_candidate(
-            ranking, calculation_satisfied, money_total, date_satisfied))
+        selected = select_ranked_candidate(ranking, calculation_satisfied, money_total, date_satisfied)
+        if selected is not None and not coverage(question, pool[selected], graph,
+                calculation_satisfied=calculation_satisfied[selected]).complete:
+            complete = tuple(index for index in ranking if coverage(question, pool[index], graph,
+                calculation_satisfied=calculation_satisfied[index]).complete)
+            if complete:
+                selected = select_ranked_candidate(complete, calculation_satisfied, money_total, date_satisfied)
+        return replace(selection, selected=selected)
 
     def _fall_back(self, question, norm, fks, sch, tablemap, graph, selection, fallback,
                    reject_baseline=False):

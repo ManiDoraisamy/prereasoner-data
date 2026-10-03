@@ -167,3 +167,20 @@ This is a guided infrastructure deployment, not anonymous execution. Google auth
 selection, IAM, billing, one cost confirmation, and organization-policy enforcement cannot be bypassed.
 The marketing button must be described as **Deploy to Google Cloud**, not as a credential-free or
 zero-cost installation.
+
+## Launch promotion evidence
+
+Freeze a clean commit with `build_context.py`. The engine build runs offline,
+startup, complete hermetic and seeded live-product gates before pushing; the chat
+build runs its lean contracts. Record both build IDs, tags and immutable digests,
+the model fingerprint, migration version 11, current configuration, and retained
+engine/chat/Hosting rollback targets in a release manifest. Run
+`python deploy/gcp/release_gate.py <manifest.json>` before any service promotion.
+Apply migrations and `python -m db.reference_grants --role serving` as the admin,
+then run `engine.release_smoke` using the new image and the serving identity.
+
+Build passes do not certify a launch. After compatible backend/Hosting/Apps Script
+updates, record public version identity, all 18 `?load=` examples, ordered
+conversational follow-ups, real Sheets, 30,000-row scale and history recovery in
+hosted evidence. `release_gate.py --hosted-evidence <evidence.json>` rejects missing
+or skipped lanes. Keep per-case observations and gold alongside that report.

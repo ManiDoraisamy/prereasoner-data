@@ -122,13 +122,14 @@ equal(load(book([sheet(10, 'Subscriptions', realCustomerShape)])).getSidebarCont
 const dense = [Array.from({length: 26}, (_, i) => 'c' + i)].concat(Array.from({length: 40000}, () => Array(26).fill(1)));
 assert.throws(() => load(book([sheet(15, 'Dense', dense)])).getSidebarContext(),
   /^Error: Sheet "Dense": too large to analyze in one request \(1,040,026 cells; at most 1,000,000 in all\)/); checks++;
-// Another tab that does not fit beside the active one is left out by name, not the whole spreadsheet: a
-// 30,000-row tab beside five more was refused (customer report, 2026-10-02). So is a tab past the row limit.
-const beside = load(book([sheet(11, 'NT', rows(30000)), sheet(12, 'SI', dense), sheet(13, 'Log', rows(50001)),
-  sheet(14, 'FF', rows(100))])).getSidebarContext().workbook;
-equal(beside.grids.map(grid => grid.name), ['NT', 'FF'], 'the active tab and the tabs that fit beside it');
-equal(beside.skipped, [{name: 'SI', reason: 'cells'}, {name: 'Log', reason: 'rows'}],
-  'the tabs left out, with their exact size-limit reasons');
+// Oversized secondary tabs cannot silently turn a workbook question into a subset answer.
+assert.throws(() => load(book([sheet(11, 'NT', rows(30000)), sheet(12, 'SI', dense),
+  sheet(14, 'FF', rows(100))])).getSidebarContext(), /Sheet "SI":.*Hide tabs.*incomplete workbook/); checks++;
+assert.throws(() => load(book([sheet(11, 'NT', rows(30000)), sheet(13, 'Log', rows(50001))]))
+  .getSidebarContext(), /Sheet "Log":.*rows limit.*incomplete workbook/); checks++;
+equal(load(book([sheet(11, 'NT', rows(30000)), sheet(12, 'SI', dense, {hidden: true}),
+  sheet(14, 'FF', rows(100))])).getSidebarContext().workbook.grids.map(grid => grid.name), ['NT', 'FF'],
+  'explicit visible-tab scope still admits the complete 30,000-row source');
 assert.throws(() => load(book([blank])).getSidebarContext(), /header row and at least one data row/); checks++;
 
 // Prereasoner calls go server to server with the Firebase identity of the Google account.

@@ -24,6 +24,8 @@ def terminal_reply(shaped: dict[str, Any]) -> str:
         notes.append(f"Gemini reworded the question as: {rewrite.get('question', '')}")
     suffix = ("\n\n" + " ".join(notes)) if notes else ""
     if len(rows) == 1 and len(rows[0]) == 1:
+        if rows[0][0] is None:
+            return 'No value was recorded for the matching rows.' + suffix
         currency = output_currency(shaped)
         value = readable_value(shaped, rows[0][0])
         return (f"{value} {currency}" if currency else value) + suffix
@@ -41,9 +43,7 @@ def readable_value(shaped: dict[str, Any], value: Any) -> str:
 
 
 def readable_percent(value: Any) -> str:
-    """A share of a whole as a percentage, to two decimals at most: 0.3 is "30%", 0.62318... is
-    "62.32%". The reply to "What percentage of orders are from Lyon?" said "0.3" (Chrome gate,
-    2026-10-02); the grounding check reads "30%" as 0.3 (`_stating_number`)."""
+    """A verified fraction as a percentage: 0.3 is "30%", 0.62318... is "62.32%"."""
     text = str(value).strip()
     if not re.fullmatch(r"[-+]?\d+(?:\.\d+)?", text):
         return text

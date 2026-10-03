@@ -31,6 +31,17 @@ docker volume create "$node_volume" >/dev/null
 docker run --rm --volume "$node_volume:/node" node:22-bookworm-slim@sha256:43ac6c60b8f89723f746e8a92ce91abd5017e627ce1ddfe4238355d3a30b772c \
   sh -ceu 'cp "$(command -v node)" /node/node; chmod 0555 /node/node'
 
+# The focused offline planner gate is not a substitute for the complete hermetic
+# source suite. Run it on the candidate's Python/model image, adding CI-only tools
+# in this disposable container; the shipped runtime stays unchanged.
+docker run --rm --cpus=8 --memory=16g \
+  --volume "$node_volume:/opt/node:ro" --volume /workspace:/workspace:ro \
+  --workdir /app \
+  --env PATH=/opt/node:/opt/venv/bin:/usr/local/bin:/usr/bin:/bin \
+  --env RUN_ENGINE_TESTS=0 --env RUN_ORCHESTRATOR_TESTS=0 \
+  --env INSTALL_CI_REQUIREMENTS=1 --env EXTERNAL_LLM_ENABLED=false \
+  --entrypoint /bin/sh "$image" /workspace/deploy/gcp/run_hermetic_suite.sh
+
 docker run -d --name "$db_name" --network "$network" --network-alias product-db \
   --cpus=4 --memory=5g --memory-swap=5g --shm-size=3g \
   --volume "$volume:/var/lib/postgresql/data" \

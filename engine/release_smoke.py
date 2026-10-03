@@ -24,6 +24,25 @@ def _assert_reasoning_result(result: dict) -> None:
 
 
 def run() -> dict:
+    # Prove retry storage is usable by the real serving role, not just present
+    # under the migration administrator. The gate creates and removes only its
+    # uniquely scoped fixture records.
+    from engine.request_replay import DurableResponseReplay
+    subject = 'release_smoke_' + uuid.uuid4().hex
+    key = ('/api/reason', subject, 'retry')
+    replay = DurableResponseReplay()
+    terminal = (200, '{"ok":true}', 'application/json', None)
+    try:
+        assert replay.claim(key, 'smoke_input') == (True, None)
+        replay.finish(key, terminal)
+        assert DurableResponseReplay().claim(key, 'smoke_input') == (False, terminal)
+    finally:
+        connection = _pg()
+        try:
+            connection.cursor().execute('DELETE FROM chat.request_job WHERE subject_key=%s', (subject,))
+            connection.commit()
+        finally:
+            connection.close()
     connection = _pg()
     try:
         cursor = connection.cursor()

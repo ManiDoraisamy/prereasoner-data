@@ -105,6 +105,23 @@ def test_row_count_noun_does_not_depend_on_the_upload_filename():
     assert not coverage('How many German leads?', candidate, graph).complete
 
 
+def test_all_rows_preserve_the_complete_projection():
+    assert not check('show all rows', 'SELECT city FROM orders').complete
+    assert check('show all rows', 'SELECT * FROM orders').complete
+    assert not check('show all rows', 'SELECT * FROM orders LIMIT 50').complete
+
+
+def test_a_complete_lower_ranked_reading_survives():
+    from unittest.mock import patch
+    planner = _hermetic_planner()
+    question = 'total Amount for 東京'
+    pool = [_model_query(planner, 'SELECT SUM(Amount) FROM orders', [TABLE]),
+            _model_query(planner, "SELECT SUM(Amount) FROM orders WHERE city='東京'", [TABLE])]
+    with patch.object(planner, 'search_pool', return_value=pool):
+        selection = _select(planner, question, [TABLE])
+    assert selection.selected == 1 and "東京" in selection.candidate.sql
+
+
 TESTS = [value for name, value in globals().copy().items() if name.startswith('test_') and callable(value)]
 
 if __name__ == '__main__':
