@@ -4,6 +4,24 @@ Dated entries come newest first. Each records a run at the commit it names; the 
 entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection arbiter`) may since have
 been removed, and that commit holds the code that ran.
 
+## Release review at `4c29cd5`, whole_db DEV (2026-10-03)
+
+Clean source `4c29cd537e1bd5e820d795c2fbb0ce6ce4f04dbe`, served selection,
+`--backend auto`, row cap 5,000, external rewriting disabled, 1,034 questions:
+**243 strict (23.5%), 308 lenient (29.8%), 404 answered, 630 abstained**.
+Among answered questions, **161 fail strict comparison and 96 fail lenient comparison**.
+Scalar gold is 148/408. This is a material accuracy limitation; the system is not at
+general LLM SQL accuracy, and completeness checks do not certify semantic correctness.
+
+Artifacts are `full_eval_launch4c29cd5.json` and
+`full_eval_per_example_launch4c29cd5.json` in the operator's temporary
+`prereasoner-spider-4c29cd5` directory. They pin source/model/harness hashes and
+record the clean checkout and local Python 3.11 CPU execution environment.
+The separate rewrite-assisted run is still pending and must not be merged into this score.
+Subsequent sidebar metadata and own-data response-proof propagation changes do not
+change this evaluator's typed planner, ranker, model bundle or lowering artifacts.
+The measurements remain labelled with the commit actually evaluated.
+
 ## Release review at `5856348`, whole_db DEV (2026-10-03)
 
 Clean source `58563489357173a0f84556680d705cba2e2a83df`, served selection,

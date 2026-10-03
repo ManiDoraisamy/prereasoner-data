@@ -220,6 +220,36 @@ def test_a_complete_lower_ranked_reading_survives():
     assert selection.selected == 1 and "東京" in selection.candidate.sql
 
 
+def test_own_data_adapter_preserves_calendar_proof_and_selection():
+    from types import SimpleNamespace
+    from engine.knowledge_tables import KnowledgeTableQuery
+    tables=[{'name':'responses','columns':['submitted','budget'],
+             'rows':[['2026-08-11',18000],['2026-08-15',4000]]}]
+    planner=_hermetic_planner()
+    _,fks,sch,_=_request(planner,tables)
+    graph=SchemaGraph.from_planner(sch,fks)
+    for question,sql in (
+        ('How many leads were submitted after August 10, 2026?',
+         "SELECT COUNT(submitted) FROM responses WHERE submitted >= '2026-08-11'"),
+        ('What is the total budget from August 11 to August 15, 2026?',
+         "SELECT SUM(budget) FROM responses WHERE submitted >= '2026-08-11' AND submitted < '2026-08-16'"),
+    ):
+        proof=coverage(question,_model_query(planner,sql,tables),graph).record()
+        assert proof['complete']
+        for carried in (proof,{'complete':False,'violations':['missing date']}):
+            response={'sql':sql,'coverage':carried,'selection':{'served_by':'search','selected':0}}
+            adapter=KnowledgeTableQuery.__new__(KnowledgeTableQuery)
+            adapter.q11=SimpleNamespace(ingest=lambda t:(t,[]),schema=lambda n,f:(sch,{},{}),serve=lambda *a:response)
+            adapter.route=lambda t:{};adapter.column_dims=lambda s,n:{};adapter.read_op_all=lambda q,s:None
+            adapter._currency_conversion_binding=lambda *a:None;adapter._world_rate_binding=lambda *a:None
+            adapter._own_value_matches=lambda *a:[];adapter.meaning_filter=lambda *a:None
+            adapter.world_target=lambda *a:None;adapter._debug_input=lambda *a:{}
+            actual=adapter.serve(tables,question)
+            assert actual['coverage']==carried and actual['selection']==response['selection']
+    adapter.q11.serve=lambda *a:{'sql':sql}
+    assert 'coverage' not in adapter.serve(tables,question), 'an absent proof cannot be manufactured'
+
+
 TESTS = [value for name, value in globals().copy().items() if name.startswith('test_') and callable(value)]
 
 if __name__ == '__main__':

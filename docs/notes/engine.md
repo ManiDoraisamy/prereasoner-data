@@ -15,7 +15,7 @@ the modules, the env-var contract, and the data files the serving path opens.
 
 | module | classes / responsibility |
 |---|---|
-| `server.py` | ONE ThreadingHTTPServer. `POST /api/reason`, `POST /api/knowledge` (Firebase auth + RTDB streaming, shared `KnowledgeReasoner` + shared `WORLD_LOCK`), `POST /api/dimension` (authenticated stateless readout, own `DIM_LOCK`), `POST /api/converse` (Gemini fallback/present), `GET /healthz`. Exact-origin CORS, body/rate/row limits. |
+| `server.py` | ONE ThreadingHTTPServer. `POST /api/reason`, `POST /api/knowledge` (Firebase auth + RTDB streaming, shared `KnowledgeReasoner` + shared `WORLD_LOCK`), `POST /api/dimension` (authenticated stateless readout, own `DIM_LOCK`), `POST /api/converse` (deterministic answer rendering), `GET /healthz`. Exact-origin CORS, body/rate/row limits. |
 | `auth.py` | `_verify_principal`, `_bearer` (security-critical). Test bypass via `AUTH_TEST_SUB`. |
 | `config.py` | the ONE env-var reader (see contract below). |
 | `tables.py` | `TableQuery`; canonical `table_name`, `csv_table` / `table_from_rows`, SQL quoting and table parsing. `TableQuery.__init__` defers encoder loading (the encoder overlay supplies the model at serve time). |
@@ -41,7 +41,9 @@ the modules, the env-var contract, and the data files the serving path opens.
 | `primitive_head.py` | `PrimitiveReader` (head at `DATA_DIR/primitives.npz`; default encoder = `EncoderQuery`). |
 | `joins.py` | compose's join assembly: `join_plan` (fact selection + flatten-safe keep-lists). FK discovery delegates to `relations.discover_fks` (one shared detector). |
 | `taxonomy.py` | `snake`, `name_like`, and the taxonomy constants (`TAX`/`LEAF_PATH`/`LEAF_QID`/`LEAF_TABLES`) loaded from `taxonomy.csv`. |
-| `converse.py` | `reply()` — the optional in-chat Gemini fallback/presentation (see §"Conversational layer"). |
+| `answer_presentation.py` | Shared deterministic factual answer and recovery text. |
+| `question_rewrite.py` | Optional schema-only question rewording followed by the same typed planner. |
+| `reference_generation.py` | Separate explicit reference-fill feature. |
 | `conversations.py` | the `chat` schema (conversation identity + ownership; IDOR-safe). |
 | `master.py` | Per-user reference persistence, validation, and direct/multi-hop request selection through `relations.discover_fks`. |
 
@@ -162,4 +164,4 @@ in docs/ARCHITECTURE.md §10; this note records the engine surface for maintaine
 - **`engine/trace.py`** (`stream_final`): streams `low_confidence` and `present` alongside the
   existing terminal nodes.
 - **`engine/config.py`**: `GOOGLE_CLOUD_PROJECT` (with `EXTERNAL_LLM_ENABLED`) is OPTIONAL for the
-  engine — it powers /api/converse; unset ⇒ graceful 503 degrade.
+  engine — they enable external wording/reference assistance. `/api/converse` renders facts locally.
