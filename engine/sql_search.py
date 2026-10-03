@@ -538,6 +538,18 @@ class SQLSearcher:
         token_set = set(tokens)
         id_requested = bool(_ID_WORDS & token_set)
         context = naming_context(self.schema)
+        keyword_volume = (
+            any(tokens[index:index + 2] == ("keyword", "volume") for index in range(len(tokens) - 1))
+            and any(
+                _column_link_words(column.ref, id_requested) == ("keyword",)
+                for column in self.schema.columns
+            )
+            and any(
+                column.ref.type.numeric
+                and {"monthly", "search"} <= set(_column_link_words(column.ref, id_requested))
+                for column in self.schema.columns
+            )
+        )
         # The modifiers each two-word column name puts before its last word: "first" and "last" before "name".
         modifiers: dict[str, set[str]] = {}
         for schema_column in self.schema.columns:
@@ -549,10 +561,16 @@ class SQLSearcher:
             column = schema_column.ref
             if is_surrogate_key(column.name) and not id_requested:
                 continue
+            if keyword_volume and _column_link_words(column, id_requested) == ("keyword",):
+                continue
             if column in references and not _says(tokens, column):
                 continue
             meaningful = _column_link_words(column, id_requested)
-            positions = _column_link_positions(column, tokens, self.schema, meaningful)
+            if keyword_volume and column.type.numeric and {"monthly", "search"} <= set(meaningful):
+                positions = [index for index, token in enumerate(tokens) if token == "volume"]
+                meaningful = ("volume",)
+            else:
+                positions = _column_link_positions(column, tokens, self.schema, meaningful)
             if not positions:
                 continue
             said = {tokens[i] for i in positions}
@@ -1681,6 +1699,8 @@ def _column_link_words(column: ColumnRef, id_requested: bool) -> tuple[str, ...]
         word for word in words
         if word != "id" and word not in table_words
     )
+    if len(meaningful) > 1 and meaningful[0] in {"avg", "average"}:
+        meaningful = meaningful[1:]
     if not meaningful and is_surrogate_key(column.name) and id_requested:
         return ("id",)
     return meaningful or tuple(word for word in words if word != "id")

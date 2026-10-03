@@ -2695,6 +2695,25 @@ def test_same_shaped_tabs_answer_a_stated_keyword():
     assert execute([orders], paris.sql) == [(30,)], paris.sql
 
 
+def test_keyword_volume_and_monthly_searches_resolve_to_the_recorded_measure():
+    sheet = {"name": "Checklist", "columns": [
+        "Keyword", "shortlist", "Currency", "Avg. monthly searches",
+        "Three month change", "YoY change", "Competition",
+    ], "rows": [
+        ["home inspection checklist", "", "USD", 5000, "0%", "900%", "Low"],
+        ["fire extinguisher audit checklist", "", "USD", 5000, "0%", "900%", "Low"],
+    ]}
+    planner = _hermetic_planner()
+    for question in (
+        "keyword volume for home inspection checklist",
+        "monthly searches for home inspection checklist",
+    ):
+        served = planner.serve([sheet], question)
+        assert served["valid"], (question, served)
+        assert served["result"]["rows"] == [[5000]], (question, served["sql"])
+        assert '"Keyword" FROM' not in served["sql"], served["sql"]
+
+
 def test_serving_preserves_repeated_source_rows_in_aggregates():
     """Repeated identical transactions are separate source observations; ingestion must not turn
     a $300 source total into $100 by dropping two identical-looking payment rows."""
@@ -4207,6 +4226,7 @@ TESTS = [
     test_a_ranking_measure_is_not_an_asked_aggregate,
     test_a_total_by_month_groups_by_the_year_month,
     test_same_shaped_tabs_answer_a_stated_keyword,
+    test_keyword_volume_and_monthly_searches_resolve_to_the_recorded_measure,
     test_serving_preserves_repeated_source_rows_in_aggregates,
     test_a_listing_follows_the_order_the_question_names,
     test_by_after_a_participle_names_who_acted,
