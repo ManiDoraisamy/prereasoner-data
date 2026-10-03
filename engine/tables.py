@@ -919,12 +919,18 @@ def _query_has_unread_terms(question, candidate, graph, *, calculation_satisfied
         "did", "do", "does", "for", "from", "give", "has", "have", "how", "in", "is", "it",
         "me", "of", "on", "or", "please", "show", "the", "there", "to", "what", "when", "where",
         "which", "who", "whom", "with", "would", "was", "were", "that", "all", "many", "much", "number", "total", "sum",
+        "current", "row", "rows", "header", "headers", "blank", "empty", "non",
         "average", "avg", "mean", "count", "highest", "lowest", "largest", "smallest", "most",
         "least", "top", "bottom", "per", "each", "than", "more", "less", "greater", "above", "below",
         "before", "after", "between", "not", "no", "except", "excluding", "without", "month", "year",
         "day", "date", "value", "values", "column", "field", "data", "sheet", "spreadsheet", "tell",
         "find", "list", "get", "return", "display", "calculate", "bought", "ordered",
     }
+    if _query_realizes_numeric_comparisons(question, candidate, graph):
+        ordinary_words.update({
+            "over", "under", "above", "below", "greater", "less", "more", "fewer",
+            "than", "least", "most", "at",
+        })
     ordinary_words.update(canon(word) for word in action_words(question))
     if any(word not in schema_words | sql_literals | ordinary_words for word in words):
         return True
@@ -938,6 +944,78 @@ def _query_has_unread_terms(question, candidate, graph, *, calculation_satisfied
         return any(isinstance(item.expression, Star) for item in query.select)
 
     return has_star(candidate.query) and bool(set(words) & schema_words)
+
+
+def _query_realizes_numeric_comparisons(question, candidate, graph):
+    """Whether a typed query realizes the question's numeric threshold operators and targets.
+
+    The ambiguous ``over``/``under`` wording counts as read only when the selected AST contains the
+    same operator/value against a matching column (including an aggregate over that column). This
+    prevents ``over`` from forcing Gemini while still rejecting a query that reverses it to ``under``.
+    """
+    from engine.sql_ast import Aggregate, BinaryExpr, BooleanExpr, ColumnRef, Comparison, DatePart
+    from engine.sql_ast import SelectQuery, SetQuery, SubquerySource
+    from engine.sql_expansion import ExpansionSupport, tokens
+    from engine.sql_search import _number
+
+    requested = ExpansionSupport(graph).numeric_comparisons(tokens(question))
+    if not requested:
+        return False
+
+    def comparisons(predicate):
+        if isinstance(predicate, Comparison):
+            return [predicate]
+        if isinstance(predicate, BooleanExpr):
+            return [item for term in predicate.terms for item in comparisons(term)]
+        return []
+
+    def queries(query):
+        if isinstance(query, SetQuery):
+            yield from queries(query.left)
+            yield from queries(query.right)
+        elif isinstance(query, SelectQuery):
+            yield query
+            if isinstance(query.from_table, SubquerySource):
+                yield from queries(query.from_table.query)
+
+    def refs(expression):
+        if isinstance(expression, ColumnRef):
+            return {expression}
+        if isinstance(expression, Aggregate):
+            return refs(expression.operand)
+        if isinstance(expression, BinaryExpr):
+            return refs(expression.left) | refs(expression.right)
+        if isinstance(expression, DatePart):
+            return refs(expression.operand)
+        return set()
+
+    actual = []
+    for query in queries(candidate.query):
+        for predicate in (query.where, query.having):
+            actual.extend(comparisons(predicate))
+
+    def number(value):
+        try:
+            return float(_number(str(value)))
+        except (TypeError, ValueError):
+            return None
+
+    grouped = {}
+    for comparison in requested:
+        value = number(comparison.right.value)
+        if value is None:
+            continue
+        grouped.setdefault((comparison.operator, value), set()).add(comparison.left)
+    if not grouped:
+        return False
+    for (operator, value), targets in grouped.items():
+        if not any(
+            item.operator == operator and number(item.right.value) == value
+            and bool(refs(item.left) & targets)
+            for item in actual
+        ):
+            return False
+    return True
 
 
 def _rewrite_improves_reading(original, rewritten):

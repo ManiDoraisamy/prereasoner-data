@@ -1256,6 +1256,41 @@ def test_schema_rewrite_can_resolve_a_synonym_without_changing_the_sql_reading()
     assert [step for step, _ in gemini.calls] == ["question"]
 
 
+def test_unread_check_accepts_a_threshold_only_when_the_ast_realizes_it():
+    from engine.tables import _query_has_unread_terms
+
+    sales = {"name": "s", "columns": ["city", "sales"],
+             "rows": [["Tokyo", 100], ["Osaka", 200], ["Nagoya", 50]]}
+    planner = _hermetic_planner()
+    question = "cities with total sales over 100"
+    norm, fks, sch, tablemap = _request(planner, [sales])
+    graph = SchemaGraph.from_planner(sch, fks)
+    selected = planner.select_query(question, norm, fks, sch, tablemap)
+    assert selected.candidate is not None
+    assert not _query_has_unread_terms(question, selected.candidate, graph)
+
+    reversed_comparison = _model_query(
+        planner, "SELECT city, SUM(sales) FROM s GROUP BY city HAVING SUM(sales) < 100", [sales],
+    )
+    assert _query_has_unread_terms(question, reversed_comparison, graph)
+
+
+def test_unread_check_treats_sheet_scope_words_as_context_not_filters():
+    from engine.tables import _query_has_unread_terms
+
+    sheet = {"name": "customers", "columns": ["order ID", "customer", "city", "amount"],
+             "rows": [[101, "Poirot", "Brussels", 38], [102, "Lupin", "Paris", 180]]}
+    planner = _hermetic_planner()
+    norm, fks, sch, _tablemap = _request(planner, [sheet])
+    graph = SchemaGraph.from_planner(sch, fks)
+    candidate = _model_query(planner, 'SELECT COUNT(*) FROM "customers"', [sheet])
+    for question in (
+        "How many orders are in the current sheet?",
+        "Count all non-empty Order ID rows below the header in the Customers sheet",
+    ):
+        assert not _query_has_unread_terms(question, candidate, graph), question
+
+
 def test_gemini_rewording_cannot_drop_a_user_constraint_from_coverage():
     """The rewrite is only a retrieval aid: coverage checks the original question too."""
     from unittest.mock import patch
@@ -4206,6 +4241,8 @@ TESTS = [
     test_the_fallback_is_stateless_across_repeated_requests,
     test_rewriter_recovers_when_a_runnable_plan_ignores_part_of_the_question,
     test_schema_rewrite_can_resolve_a_synonym_without_changing_the_sql_reading,
+    test_unread_check_accepts_a_threshold_only_when_the_ast_realizes_it,
+    test_unread_check_treats_sheet_scope_words_as_context_not_filters,
     test_gemini_reads_schema_names_but_not_cell_values,
     test_gemini_rewrite_must_preserve_data_values_and_numbers,
     test_evaluator_grades_the_served_selection,

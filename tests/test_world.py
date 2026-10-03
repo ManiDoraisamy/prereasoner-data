@@ -266,7 +266,9 @@ def main():
     # Contrast: a comparison on the measure thresholds each city's total.
     response = served(sub, wr.serve, [CITY_SALES], "cities with total sales over 100", sub)
     ok("threshold: 'cities with total sales over 100' keeps Osaka's total",
-       [list(row) for row in rows_of(response)] in ([["Osaka", 200]], [["Osaka"]]), f"rows={rows_of(response)}")
+       [list(row) for row in rows_of(response)] in ([["Osaka", 200]], [["Osaka"]]),
+       f"rows={rows_of(response)} error={response.get('error')} reason={response.get('reason')} "
+       f"views={[view.get('label') for view in response.get('views') or []]}")
     # Negative: an explicit grouping keeps one row per restricted city, and 'which cities' lists them.
     response = served(sub, wr.serve, [CITY_SALES],
                       "total sales by city for cities with population over 1,000,000", sub)
