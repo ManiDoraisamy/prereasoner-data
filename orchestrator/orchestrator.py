@@ -66,6 +66,14 @@ RECALCULATION_NOTE = (
     "recalculation: call prereasoner_query for it. An earlier reply is not a result, and the data "
     "or exchange rates behind it may have changed since."
 )
+# Kept as a prompt contract: continuation handling tests verify this note stays
+# out of tool history while retaining its presentation constraints.
+FRESH_ANSWER_NOTE = (
+    "Answer the user's latest message with this result on its own. Do not say you rechecked, "
+    "confirmed or repeated anything, and do not compare it with earlier replies. Earlier replies "
+    "may break the rules for how you talk, with \"about\" before an exact figure, a currency named "
+    "twice, a rank the rows do not show, or a list's order explained: follow the rules, not them."
+)
 # The engine could not read a follow-up sent in the user's own words, and earlier turns may already
 # say what it means. The model gets this one chance to answer the clarification from them (see _run_turn).
 SETTLE_FROM_CONVERSATION = (
