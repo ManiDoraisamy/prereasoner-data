@@ -10,7 +10,7 @@ const element = id => {
   if(!elements.has(id))elements.set(id,{value:'',disabled:false,hidden:false,textContent:'',classList:{toggle(){}}});
   return elements.get(id);
 };
-const context = {console,crypto:require('node:crypto').webcrypto,window:{PrereasonerTurnRenderer:{},PrereasonerSuggestions:{create:()=>({update(){},clear(){}}),schema:()=>({})}},
+const context = {console,crypto:require('node:crypto').webcrypto,window:{PrereasonerTurnRenderer:{},PrereasonerSuggestions:{...require('../public/lib/sidebar-suggestions.js'),create:()=>({update(){},clear(){}})}},
   document:{getElementById:element},initializeApp:()=>({}),getAuth:()=>({currentUser:{uid:'fixture'}}),
   getDatabase:()=>({}),firebaseConfig:{}};
 vm.createContext(context);
@@ -30,7 +30,7 @@ const deadline = setTimeout(()=>{console.error('Excel lifecycle did not complete
   assert.equal(element('send').disabled,true);
   assert.equal(element('newChat').disabled,true);
   element('question').value='and for France?';
-  read.resolve({name:'Orders',tables:[{name:'Orders',data:'Amount\n10',import:{warnings:['Repeated headers were kept.']}}]});
+  read.resolve({name:'Orders',activeSheet:'Orders',sheetNames:['Orders'],tables:[{name:'Orders',data:'Amount\n10',import:{warnings:['Repeated headers were kept.']}}]});
   reply.resolve({reply:'10',conversation_id:'fixture',traces:[]});
   await pending;
   assert.equal(element('question').value,'and for France?');
@@ -40,7 +40,7 @@ const deadline = setTimeout(()=>{console.error('Excel lifecycle did not complete
   assert.match(element('notice').textContent,/Repeated headers/);
   assert.equal(element('send').disabled,false);
   context.api=async()=>{throw new Error('Request rejected');};
-  context.readWorkbook=async()=>({name:'Orders',tables:[]});
+  context.readWorkbook=async()=>({name:'Orders',activeSheet:'Orders',sheetNames:['Orders'],tables:[]});
   const failed=context.lifecycle.ask('second question');
   element('question').value='a newer draft'; await failed;
   assert.equal(element('question').value,'a newer draft');

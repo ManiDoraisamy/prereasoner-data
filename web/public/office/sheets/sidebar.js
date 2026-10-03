@@ -16,14 +16,8 @@
         });
         var workbookSchema = null;
         function refreshSuggestions() {
-          var normalized = window.PrereasonerSuggestions.schema(state.tables, workbookSchema && workbookSchema.active_sheet);
-          var schema = workbookSchema ? {sheets: workbookSchema.sheets.map(function(sheet) {
-            return normalized.sheets.find(function(table) { return table.name === sheet.name; }) || sheet;
-          }), active_sheet: workbookSchema.active_sheet,
-            scope: state.tables.length ? normalized.scope : workbookSchema.scope} : normalized;
-          if (schema.sheets.length && schema.scope.length && schema.sheets.every(function(sheet) {
-            return schema.scope.indexOf(sheet.name) < 0 || sheet.columns.length;
-          })) suggestions.update(schema);
+          var schema = window.PrereasonerSuggestions.merge(workbookSchema, state.tables);
+          if (schema) suggestions.update(schema);
         }
         var state = {conversationId: null, turns: [], history: [], tables: [], syncedFingerprint: '', ready: false,
           restored: false, sheetError: '', uid: null, signedIn: null, busy: true, live: null, failed: null,
@@ -368,7 +362,7 @@
           callServer('getWorkbookSchema', {scope: state.scope}).then(function (schema) {
             workbookSchema = schema;
             // Suggestions must follow the chosen scope even before the next full read.
-            suggestions.update(schema);
+            refreshSuggestions();
           }).catch(function () {});
           showNote('Your next question will use ' + (state.scope === 'active' ? 'the active sheet' : 'all visible tabs') + '.');
         });

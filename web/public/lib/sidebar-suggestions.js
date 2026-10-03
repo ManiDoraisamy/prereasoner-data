@@ -17,6 +17,15 @@
     const sheets=tables.map(t=>({name:t.name,columns:header(t.data)}));
     return {sheets,active_sheet:sheets.some(t=>t.name===active)?active:sheets[0]?.name,scope:sheets.map(t=>t.name)};
   }
+  function merge(metadata,tables,active){
+    const normalized=schema(tables||[],active||metadata?.active_sheet);
+    const sheets=(metadata?.sheets||[]).map(sheet=>normalized.sheets.find(t=>t.name===sheet.name)||sheet);
+    for(const sheet of normalized.sheets)if(!sheets.some(t=>t.name===sheet.name))sheets.push(sheet);
+    const scope=normalized.sheets.length?normalized.scope:metadata?.scope||[];
+    if(!scope.length||scope.some(name=>!sheets.find(t=>t.name===name)?.columns.length))return null;
+    const current=active||metadata?.active_sheet||normalized.active_sheet;
+    return {sheets,scope,active_sheet:sheets.some(t=>t.name===current)?current:sheets[0]?.name};
+  }
   function create({container,composer,request}){
     let generation=0,key='',loaded=[];
     container.classList.add('starter-questions');
@@ -55,6 +64,6 @@
     }
     return {update,clear};
   }
-  root.PrereasonerSuggestions={create,schema,header};
+  root.PrereasonerSuggestions={create,schema,merge,header};
   if(typeof module==='object'&&module.exports)module.exports=root.PrereasonerSuggestions;
 })(globalThis);

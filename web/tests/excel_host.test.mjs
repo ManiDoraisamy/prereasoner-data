@@ -158,5 +158,18 @@ assert.deepEqual(metadata.sheets.map(s=>s.name),['Orders','Hidden']);
 assert.deepEqual(metadata.sheets[0].columns,['id','customer','company','date','paid']);
 assert(!JSON.stringify(metadata).includes('A, Inc'));
 await runWorkbook([sheet('Duplicate','Visible',[['Amount','Amount'],[1,2]])]);
-await assert.rejects(()=>readWorkbookSchema(),/Wait for normalized schema/);
-console.log('Excel workbook reader and metadata: 20 checks passed');
+assert.deepEqual((await readWorkbookSchema()).sheets[0].columns,[], 'uncertain headers retain sheet metadata for the normalized merge');
+assert.deepEqual(result.sheetNames,['Orders','Hidden','Blank']);
+const {merge,header}=createRequire(import.meta.url)('../public/lib/sidebar-suggestions.js');
+const raw={sheets:[{name:'Orders',columns:[]},{name:'Hidden',columns:['secret']}],scope:['Orders'],active_sheet:'Orders'};
+assert.equal(merge(raw,[]),null,'unknown in-scope headers wait without dropping metadata');
+const normalized=[{name:'Orders',data:'Amount [column A],Amount [column B]\n1,2'},
+  {name:'Orders summaries',data:'Amount\n3'}];
+const merged=merge(raw,normalized);
+assert.deepEqual(merged.sheets.map(s=>s.name),['Orders','Hidden','Orders summaries']);
+assert.deepEqual(merged.scope,['Orders','Orders summaries']);
+assert.deepEqual(merged.sheets[0].columns,['Amount [column A]','Amount [column B]']);
+assert.deepEqual(merge({...raw,sheets:[{name:'Orders',columns:['Amount','Amount']},raw.sheets[1]]},normalized),merged,
+  'a late raw header read cannot overwrite normalized names');
+assert.deepEqual(header('"Column, one","Column\n two"\nPRIVATE,VALUES'),['Column, one','Column\n two']);
+console.log('Excel workbook reader and shared metadata: 26 checks passed');

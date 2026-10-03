@@ -66,7 +66,6 @@ export async function readWorkbookSchema() {
       const reliable = row.length && row.every(value => typeof value === 'string' && value.trim()) && new Set(row.map(value=>value.trim().toLowerCase())).size === row.length;
       return {name: item.sheet.name, columns: reliable ? row.map(value=>value.trim()) : []};
     });
-    if (!scope.length || schemas.some(sheet=>scope.includes(sheet.name)&&!sheet.columns.length)) throw new Error('Wait for normalized schema.');
     return {sheets: schemas,active_sheet:active.name,scope};
   });
 }
@@ -145,7 +144,8 @@ export async function readWorkbook(normalize = normalizeInWorker) {
       }
       grids.push({name: sheet.name, rows, formats, errors, merges, date1904});
     }
-    return {grids, name: workbook.name || 'Excel workbook', activeSheet: active.name};
+    return {grids, name: workbook.name || 'Excel workbook', activeSheet: active.name,
+      sheetNames: worksheets.items.map(sheet=>sheet.name)};
   });
   const sheets = collected.grids.length ? await normalize(collected.grids) : [];
   let byteTotal = 0;
@@ -157,7 +157,7 @@ export async function readWorkbook(normalize = normalizeInWorker) {
     return {name: sheet.name, data: sheet.csv, import: sheet.import, source: {kind: 'excel', warnings: (sheet.import?.warnings || []).map(warning => warning.slice(0,4096))}};
   });
   if (!tables.length) throw new Error('This workbook has no visible table with a header and data rows.');
-  return {tables, name: collected.name, activeSheet: collected.activeSheet};
+  return {tables, name: collected.name, activeSheet: collected.activeSheet, sheetNames: collected.sheetNames};
 }
 
 export async function workbookKey() {

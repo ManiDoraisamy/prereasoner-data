@@ -17,6 +17,13 @@ const suggestions = window.PrereasonerSuggestions.create({container: $('suggesti
   request: schema => api('/chat/suggestions', schema)});
 let activeDialog = null;
 let pendingWorkbookRead = null;
+let workbookSchema = null;
+function refreshSuggestions(workbook) {
+  if (workbook && !workbookSchema) workbookSchema = {
+    sheets: workbook.sheetNames.map(name=>({name,columns:[]})), active_sheet:workbook.activeSheet, scope:[]};
+  const schema=window.PrereasonerSuggestions.merge(workbookSchema,state.tables,workbook?.activeSheet);
+  if(schema)suggestions.update(schema);
+}
 function currentWorkbook() {
   if (!pendingWorkbookRead) pendingWorkbookRead = readWorkbook().finally(() => { pendingWorkbookRead = null; });
   return pendingWorkbookRead;
@@ -178,7 +185,7 @@ async function ask(question) {
   try {
     const workbook = await currentWorkbook();
     state.tables = workbook.tables;
-    suggestions.update(window.PrereasonerSuggestions.schema(workbook.tables, workbook.activeSheet));
+    refreshSuggestions(workbook);
     $('sheetCount').textContent = `${workbook.tables.length} tab${workbook.tables.length === 1 ? '' : 's'} · ${workbook.name}`;
     await restore(workbook.tables);
     baseHistory = state.history.slice();
@@ -328,9 +335,9 @@ function onSignedIn(user) {
     currentWorkbook().then(workbook => {
       state.tables = workbook.tables;
       $('sheetCount').textContent = `${workbook.tables.length} tabs · ${workbook.name}`;
-      suggestions.update(window.PrereasonerSuggestions.schema(workbook.tables, workbook.activeSheet));
+      refreshSuggestions(workbook);
     }).catch(error => notice(error.message, true));
-    readWorkbookSchema().then(schema=>suggestions.update(schema)).catch(()=>{});
+    readWorkbookSchema().then(schema=>{workbookSchema=schema;refreshSuggestions();}).catch(()=>{});
   }
 }
 
