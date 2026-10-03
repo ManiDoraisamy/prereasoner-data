@@ -199,7 +199,21 @@ def constraint_violations(question, query, graph):
             continue
         named_fields.setdefault(label, set()).add(column.ref)
     from engine.sql_rank import analyze_question
-    roles = analyze_question(question, graph)
+    # "Avg." at the start of a schema label (for example, "Avg. monthly searches")
+    # names the source field. Do not also feed that abbreviation to the operator
+    # detector as a request to calculate AVG over the field.
+    role_question = question
+    for column in graph.columns:
+        words = lexical_words(column.ref.name)
+        if len(words) < 2 or words[0] != "avg":
+            continue
+        tail = r"\s+".join(re.escape(word) for word in words[1:])
+        full_label = r"\bavg\.?\s+" + tail + r"\b"
+        if re.search(full_label, role_question, re.I):
+            role_question = re.sub(
+                r"\bavg\.?(?=\s+" + tail + r"\b)", " ", role_question, flags=re.I,
+            )
+    roles = analyze_question(role_question, graph)
     count_requested = roles.count_requested
     from engine.closed_class import recipient_classes
     recipients = {canon(word) for word in recipient_classes(question)}
@@ -233,8 +247,17 @@ def constraint_violations(question, query, graph):
     counts_rows = count_requested and any(isinstance(item.expression, Aggregate)
         and item.expression.function == 'COUNT' and isinstance(item.expression.operand, Star)
         for item in query.select)
+    ranked_grouping = (query.limit is not None and any(
+        isinstance(term.expression, Aggregate) for term in query.order_by
+    ))
     for label, refs in named_fields.items():
         if ' '+label+' ' not in question_text:
+            continue
+        # A role linker can include an entity named in "top customers by total spend"
+        # among the possible SUM targets. If the query correctly uses that entity as
+        # its output grain, it is not a requested measure and must not make the
+        # otherwise correct ranking look semantically incomplete.
+        if ranked_grouping and refs & (projected | set(query.group_by)):
             continue
         requested_targets = {function: set(targets) for function, targets
                              in roles.aggregate_targets.items()}
