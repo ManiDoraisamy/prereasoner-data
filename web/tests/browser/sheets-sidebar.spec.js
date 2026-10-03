@@ -31,6 +31,33 @@ test('suggestion failure never blocks reading, typing or sending a question', as
   await expect.poll(()=>page.evaluate(()=>Boolean(window.__server.pendingAsk))).toBe(true);
 });
 
+test('changing source scope discards old schemas and ignores a delayed earlier scope read', async ({page}) => {
+  const schema={sheets:[{name:'Orders',columns:['country','amount']},{name:'Archive',columns:['id']}],
+    active_sheet:'Orders',scope:['Orders','Archive']};
+  const grids=[{name:'Orders',rows:orders},{name:'Archive',rows:[['id'],[1]]}];
+  await openSidebar(page,orders,{}, {schema,grids});
+  await expect(page.locator('#newConversation')).toBeEnabled();
+  await expect(page.locator('#suggestions .starter-question')).toHaveCount(3);
+  await page.evaluate(()=>{window.__server.holdSchemas=true;});
+  await page.locator('#question').fill('keep my draft');
+  await page.locator('#sheetScope').selectOption('active');
+  await expect.poll(()=>page.evaluate(()=>window.__server.pendingSchemas.length)).toBe(1);
+  await page.evaluate(s=>window.__server.pendingSchemas[0].ok({...s,scope:['Orders']}),schema);
+  await expect.poll(async()=> (await calls(page,'getPrereasonerSuggestions')).at(-1).arg.scope).toEqual(['Orders']);
+  await page.locator('#sheetScope').selectOption('all');
+  await expect.poll(()=>page.evaluate(()=>window.__server.pendingSchemas.length)).toBe(2);
+  await page.locator('#sheetScope').selectOption('active');
+  await expect.poll(()=>page.evaluate(()=>window.__server.pendingSchemas.length)).toBe(3);
+  await page.evaluate(s=>window.__server.pendingSchemas[2].ok({...s,scope:['Orders']}),schema);
+  await expect(page.locator('#suggestions .starter-question')).toHaveCount(3);
+  const count=(await calls(page,'getPrereasonerSuggestions')).length;
+  await page.evaluate(s=>window.__server.pendingSchemas[1].ok(s),schema);
+  await page.waitForTimeout(50);
+  expect((await calls(page,'getPrereasonerSuggestions')).length).toBe(count);
+  expect((await calls(page,'getPrereasonerSuggestions')).at(-1).arg.scope).toEqual(['Orders']);
+  await expect(page.locator('#question')).toHaveValue('keep my draft');
+});
+
 test('the Sheets sidebar renders the web rail, with live steps from the realtime trace', async ({page}) => {
   await openSidebar(page, orders);
   await expect(page.locator('.empty')).toContainText('Ask a question about the current sheet.');

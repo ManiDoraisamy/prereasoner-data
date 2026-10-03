@@ -15,9 +15,18 @@
           request: function (schema) { return callServer('getPrereasonerSuggestions', schema); }
         });
         var workbookSchema = null;
+        var metadataGeneration = 0;
         function refreshSuggestions() {
           var schema = window.PrereasonerSuggestions.merge(workbookSchema, state.tables);
           if (schema) suggestions.update(schema);
+        }
+        function readSuggestionMetadata() {
+          var generation = ++metadataGeneration;
+          callServer('getWorkbookSchema', {scope: state.scope}).then(function (schema) {
+            if (generation !== metadataGeneration) return;
+            workbookSchema = schema;
+            refreshSuggestions();
+          }).catch(function () {});
         }
         var state = {conversationId: null, turns: [], history: [], tables: [], syncedFingerprint: '', ready: false,
           restored: false, sheetError: '', uid: null, signedIn: null, busy: true, live: null, failed: null,
@@ -358,12 +367,12 @@
         });
         scopeEl.addEventListener('change', function () {
           state.scope = scopeEl.value;
+          // The previous import belongs to the previous source scope. The next
+          // question reads fresh cells before syncing; suggestions use fresh metadata.
+          state.tables = [];
+          workbookSchema = null;
           suggestions.clear();
-          callServer('getWorkbookSchema', {scope: state.scope}).then(function (schema) {
-            workbookSchema = schema;
-            // Suggestions must follow the chosen scope even before the next full read.
-            refreshSuggestions();
-          }).catch(function () {});
+          readSuggestionMetadata();
           showNote('Your next question will use ' + (state.scope === 'active' ? 'the active sheet' : 'all visible tabs') + '.');
         });
         questionEl.addEventListener('keydown', function (event) {
@@ -419,5 +428,5 @@
           questionEl.focus();
         });
         // Headers only: starts in parallel with the first full sheet read.
-        callServer('getWorkbookSchema').then(function (schema) { workbookSchema = schema; refreshSuggestions(); }).catch(function () {});
+        readSuggestionMetadata();
       })();

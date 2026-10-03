@@ -66,7 +66,7 @@ async function openSidebar(page, rows, failing = {}, workbookOptions = {}) {
   await page.route('https://ssl.gstatic.com/**', route => route.fulfill({contentType: 'text/css', body: ''}));
   await page.addInitScript(({initialRows, failing, workbookOptions}) => {
     window.__calls = [];
-    window.__server = {rows: initialRows, pendingAsk: null, workbookOptions};
+    window.__server = {rows: initialRows, pendingAsk: null, pendingSchemas: [], holdSchemas: false, workbookOptions};
     const grids = () => Object.assign({grids: [{name: 'Orders', rows: window.__server.rows,
       formats: window.__server.rows.map(row => row.map(() => 'General')),
       errors: window.__server.rows.map(row => row.map(() => false)), merges: [], date1904: false}]},
@@ -74,7 +74,10 @@ async function openSidebar(page, rows, failing = {}, workbookOptions = {}) {
     const handlers = {
       getSidebarContext: (_, ok) => ok({token: 'google-token', spreadsheetId: 'sheet-1', name: 'Sales', workbook: grids()}),
       getWorkbookGrids: (_, ok) => ok(grids()),
-      getWorkbookSchema: (_, ok) => ok({sheets:[{name:'Orders',columns:window.__server.rows[0]}],active_sheet:'Orders',scope:['Orders']}),
+      getWorkbookSchema: (arg, ok) => {
+        if(window.__server.holdSchemas) window.__server.pendingSchemas.push({arg,ok});
+        else ok(workbookOptions.schema || {sheets:[{name:'Orders',columns:window.__server.rows[0]}],active_sheet:'Orders',scope:['Orders']});
+      },
       getPrereasonerSuggestions: (schema, ok) => ok({questions:['How many rows are in \"Orders\"?','Count rows in \"Orders\" by \"country\".','What is the total \"amount\" in \"Orders\"?'],source:'gemini',schema_only:true}),
       restorePrereasonerSheetConversation: (_, ok) => ok({conversationId: '', state: null, stale: false}),
       askPrereasoner: (arg, ok, fail) => { window.__server.pendingAsk = {arg, ok, fail}; },
