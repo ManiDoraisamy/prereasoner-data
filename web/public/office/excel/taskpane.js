@@ -2,7 +2,7 @@ import {initializeApp} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase
 import {getAuth, OAuthProvider, onAuthStateChanged, signInWithCredential, getIdToken} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 import {getDatabase, ref, onValue} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js';
 import {firebaseConfig} from '../../lib/config.js';
-import {readWorkbook, workbookKey} from './host.js';
+import {readWorkbook, readWorkbookSchema, workbookKey} from './host.js';
 import {credentialForDialog} from './auth-bridge.js';
 import {explainMicrosoftAuthError} from './auth-errors.js';
 import {streamResponse} from './turn-bridge.js';
@@ -13,7 +13,14 @@ const database = getDatabase(app);
 const $ = id => document.getElementById(id);
 const renderer = window.PrereasonerTurnRenderer;
 const state = {conversationId: null, history: [], turns: [], tables: [], workbookId: null, nextPage: null};
+const suggestions = window.PrereasonerSuggestions.create({container: $('suggestions'), composer: $('question'),
+  request: schema => api('/chat/suggestions', schema)});
 let activeDialog = null;
+let pendingWorkbookRead = null;
+function currentWorkbook() {
+  if (!pendingWorkbookRead) pendingWorkbookRead = readWorkbook().finally(() => { pendingWorkbookRead = null; });
+  return pendingWorkbookRead;
+}
 
 function notice(message, error = false) {
   const el = $('notice');
@@ -169,8 +176,9 @@ async function ask(question) {
   $('question').value = '';
   let baseHistory = state.history.slice();
   try {
-    const workbook = await readWorkbook();
+    const workbook = await currentWorkbook();
     state.tables = workbook.tables;
+    suggestions.update(window.PrereasonerSuggestions.schema(workbook.tables, workbook.activeSheet));
     $('sheetCount').textContent = `${workbook.tables.length} tab${workbook.tables.length === 1 ? '' : 's'} · ${workbook.name}`;
     await restore(workbook.tables);
     baseHistory = state.history.slice();
@@ -315,6 +323,15 @@ function onSignedIn(user) {
   $('previousChats').hidden = false;
   $('question').focus();
   if (new URLSearchParams(location.search).get('view') === 'history') showHistory(true);
+  else if (!state.tables.length) {
+    // Reading suggestions is independent of submitting a question; the draft stays editable.
+    currentWorkbook().then(workbook => {
+      state.tables = workbook.tables;
+      $('sheetCount').textContent = `${workbook.tables.length} tabs · ${workbook.name}`;
+      suggestions.update(window.PrereasonerSuggestions.schema(workbook.tables, workbook.activeSheet));
+    }).catch(error => notice(error.message, true));
+    readWorkbookSchema().then(schema=>suggestions.update(schema)).catch(()=>{});
+  }
 }
 
 async function init() {

@@ -9,6 +9,10 @@
     ],
     "rewrites": [
       {
+        "source": "/chat/**",
+        "run": { "serviceId": "prereasoner-chat", "region": "us-central1" }
+      },
+      {
         "source": "/chat",
         "run": { "serviceId": "prereasoner-chat", "region": "us-central1" }
       },
@@ -29,6 +33,10 @@
       { "source": "/CSV", "destination": "/csv", "type": 301 }
     ],
     "headers": [
+      {
+        "source": "/office/sheets/**",
+        "headers": [ { "key": "Access-Control-Allow-Origin", "value": "*" } ]
+      },
       {
         "source": "**/*.@(html|css|svg|js)",
         "headers": [ { "key": "Cache-Control", "value": "no-cache, max-age=0, must-revalidate" } ]

@@ -126,6 +126,21 @@ def measured_rows(text, measures):
 
 
 @lru_cache(maxsize=1024)
+def recipient_classes(text):
+    """Unqualified plural recipient nouns of a verb, as in 'paid to suppliers'.
+
+    This is a grammatical role, not a business-field synonym. A singular/named
+    recipient or one carrying a modifier remains a potential row constraint.
+    """
+    return frozenset(token.text.casefold() for token in spacy_model()(text or '')
+                     if token.pos_ == 'NOUN' and token.tag_ == 'NNS' and not token.ent_type_
+                     and token.dep_ == 'pobj' and token.head.lower_ == 'to'
+                     and token.head.head.pos_ == 'VERB'
+                     and not any(child.dep_ in {'amod', 'compound', 'nmod', 'acl', 'appos'}
+                                 for child in token.children))
+
+
+@lru_cache(maxsize=1024)
 def closed_class_words(text):
     """The lowercased words the tagger reads as closed-class somewhere in ``text``, except exclusion cues.
 

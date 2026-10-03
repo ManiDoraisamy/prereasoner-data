@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
-import {readWorkbook} from '../public/office/excel/host.js';
+import {readWorkbook, readWorkbookSchema} from '../public/office/excel/host.js';
 
 // The task pane posts its cell grids to lib/xlsx-worker.js, the upload importer. The same worker
 // runs here (tests/workbook_fixture.js), so these checks exercise the production rule.
@@ -24,6 +24,7 @@ function sheet(name, visibility, grid, options = {}) {
   const columnIndex = options.columnIndex ?? 0;
   return {
     name, visibility, id: name,
+    getUsedRangeOrNullObject(valuesOnly){return {...this.getUsedRange(valuesOnly),isNullObject:false};},
     getUsedRange(valuesOnly) {
       assert.equal(valuesOnly, true);
       return {
@@ -59,7 +60,7 @@ async function runWorkbook(sheets, name = 'Book1', date1904 = false, merges = fa
   globalThis.Excel.run = callback => callback({
     workbook: {
       name, use1904DateSystem: date1904,
-      worksheets: {items: sheets, load() {}},
+      worksheets: {items: sheets, load() {}, getActiveWorksheet(){return {name:sheets[0].name,load(){}};}},
       load() {}
     },
     sync: async () => {}
@@ -149,4 +150,13 @@ await assert.rejects(() => runWorkbook([sheet('Wide', 'Visible', tooManyCells)])
 await assert.rejects(() => runWorkbook([sheet('No data', 'Visible', [['header']])]),
   /no visible table/);
 
-console.log('Excel workbook reader: 14 checks passed');
+await runWorkbook([visible,hidden]);
+const metadata=await readWorkbookSchema();
+assert.deepEqual(metadata.scope,['Orders']);
+assert.equal(metadata.active_sheet,'Orders');
+assert.deepEqual(metadata.sheets.map(s=>s.name),['Orders','Hidden']);
+assert.deepEqual(metadata.sheets[0].columns,['id','customer','company','date','paid']);
+assert(!JSON.stringify(metadata).includes('A, Inc'));
+await runWorkbook([sheet('Duplicate','Visible',[['Amount','Amount'],[1,2]])]);
+await assert.rejects(()=>readWorkbookSchema(),/Wait for normalized schema/);
+console.log('Excel workbook reader and metadata: 20 checks passed');

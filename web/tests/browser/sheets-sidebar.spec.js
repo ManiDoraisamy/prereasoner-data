@@ -7,6 +7,30 @@ const {conversation, orders, views, openSidebar, answer} = require('./sheets-sid
 
 const calls = (page, name) => page.evaluate(n => window.__calls.filter(call => call.name === n), name);
 
+test('hosted shell loads three shared schema-only questions while the composer stays editable', async ({page}) => {
+  await openSidebar(page, orders, {}, {contextDelay: 1000});
+  await expect(page.locator('#question')).toBeEditable();
+  await page.locator('#question').fill('my draft');
+  await expect(page.locator('#suggestions .starter-question')).toHaveCount(3);
+  const [request] = await calls(page, 'getPrereasonerSuggestions');
+  expect(request.arg).toEqual({sheets:[{name:'Orders',columns:['country','amount']}],active_sheet:'Orders',scope:['Orders']});
+  expect(JSON.stringify(request.arg)).not.toContain('840');
+  await page.locator('#suggestions .starter-question').first().click();
+  await expect(page.locator('#question')).toHaveValue('my draft');
+  await page.getByRole('button',{name:'Replace my draft with this question',exact:true}).click();
+  await expect(page.locator('#question')).toHaveValue('How many rows are in "Orders"?');
+  expect(await page.evaluate(()=>Boolean(window.__server.pendingAsk))).toBe(false);
+});
+
+test('suggestion failure never blocks reading, typing or sending a question', async ({page}) => {
+  await openSidebar(page, orders, {getPrereasonerSuggestions:'Gemini unavailable'});
+  await expect(page.locator('#newConversation')).toBeEnabled();
+  await expect(page.locator('#suggestions')).toBeHidden();
+  await page.locator('#question').fill('total amount');
+  await page.locator('#question').press('Enter');
+  await expect.poll(()=>page.evaluate(()=>Boolean(window.__server.pendingAsk))).toBe(true);
+});
+
 test('the Sheets sidebar renders the web rail, with live steps from the realtime trace', async ({page}) => {
   await openSidebar(page, orders);
   await expect(page.locator('.empty')).toContainText('Ask a question about the current sheet.');
@@ -133,6 +157,7 @@ test('the Sheets sidebar explains a multi-account refusal instead of blaming the
 test('the Sheets sidebar keeps the answer and shows the server reason when sheet history cannot save', async ({page}) => {
   await openSidebar(page, orders, {savePrereasonerSheetConversation: 'Prereasoner: spreadsheet session limit reached.'});
   await page.locator('#question').fill('What are total sales in France?');
+  await expect(page.locator('#send')).toBeEnabled();
   await page.locator('#question').press('Enter');
   await expect.poll(() => page.evaluate(() => Boolean(window.__server.pendingAsk))).toBe(true);
   await answer(page, 'Total sales in France are **US$1,240**.', views);

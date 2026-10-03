@@ -8,7 +8,10 @@ const vm = require('vm');
 
 const root = path.resolve(__dirname, '..');
 const source = fs.readFileSync(path.join(root, 'Code.js'), 'utf8');
-const sidebar = fs.readFileSync(path.join(root, 'Sidebar.html'), 'utf8');
+const shell = fs.readFileSync(path.join(root, 'Sidebar.html'), 'utf8');
+const sidebar = fs.readFileSync(path.join(root, '../web/public/office/sheets/sidebar.html'), 'utf8') + fs.readFileSync(path.join(root, '../web/public/office/sheets/sidebar.js'), 'utf8') + fs.readFileSync(path.join(root, '../web/public/office/sheets/sidebar-firebase.js'), 'utf8');
+checkShell();
+function checkShell(){assert(shell.includes('/office/sheets/boot.js'));assert(!shell.includes('<style>'));assert(!shell.includes('google.script.run'));}
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'appsscript.json'), 'utf8'));
 let checks = 0;
 const check = (condition, message) => { assert(condition, message); checks++; };
@@ -193,7 +196,7 @@ for (const script of ['https://chat.prereasoner.com/lib/turn-renderer.js', 'http
   'https://chat.prereasoner.com/vendor/xlsx-0.20.3.full.min.js', "from 'https://chat.prereasoner.com/lib/firebase-init.js'"]) {
   check(sidebar.includes(script), script);
 }
-check(sidebar.includes('https://ssl.gstatic.com/docs/script/css/add-ons1.css'), 'the add-on keeps Sheets’ own styling');
+check(sidebar.includes('https://ssl.gstatic.com/docs/script/css/add-ons1.css'), 'the add-on keeps SheetsÃ¢â‚¬â„¢ own styling');
 check(sidebar.includes('R.stepsFromViews(') && sidebar.includes('window.subscribeTurn') && sidebar.includes('WORKBOOK_IMPORT.convert('),
   'steps, the live trace and the import come from the shared web code');
 check(!/liveStepLabel|operationLabel|liveJson|iframe/.test(sidebar), 'no second step presentation, no polling, no framed page');

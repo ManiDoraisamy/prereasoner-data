@@ -27,6 +27,7 @@ steps:
         python -m tests.test_mcp
         python -m tests.test_orchestrator_unit
         python -m tests.test_llm
+        python -m tests.test_suggestions
         python -m tests.test_orchestrator
 
   - id: build

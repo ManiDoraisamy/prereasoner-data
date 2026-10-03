@@ -39,11 +39,45 @@ function cellValue(value, type) {
   return value;
 }
 
+// Optional fast metadata lane. Uncertain headers wait for the shared normalized import instead.
+export async function readWorkbookSchema() {
+  await Office.onReady();
+  return Excel.run(async context => {
+    const sheets = context.workbook.worksheets;
+    const active = sheets.getActiveWorksheet();
+    active.load('name'); sheets.load('items/name,items/visibility');
+    await context.sync();
+    if (sheets.items.length > 64) throw new Error('Wait for normalized schema.');
+    const used = sheets.items.map(sheet => {
+      const range = sheet.getUsedRangeOrNullObject(true);
+      range.load('isNullObject,rowIndex,columnIndex,rowCount,columnCount');
+      return {sheet,range};
+    });
+    await context.sync();
+    for (const item of used) {
+      if (item.range.isNullObject || !item.range.columnCount) continue;
+      item.header = item.sheet.getRangeByIndexes(item.range.rowIndex, item.range.columnIndex, 1, Math.min(256,item.range.columnCount));
+      item.header.load('values');
+    }
+    await context.sync();
+    const scope = used.filter(item => item.sheet.visibility === Excel.SheetVisibility.visible && !item.range.isNullObject && item.range.rowCount > 1).map(item => item.sheet.name);
+    const schemas = used.map(item => {
+      const row = item.header?.values?.[0] || [];
+      const reliable = row.length && row.every(value => typeof value === 'string' && value.trim()) && new Set(row.map(value=>value.trim().toLowerCase())).size === row.length;
+      return {name: item.sheet.name, columns: reliable ? row.map(value=>value.trim()) : []};
+    });
+    if (!scope.length || schemas.some(sheet=>scope.includes(sheet.name)&&!sheet.columns.length)) throw new Error('Wait for normalized schema.');
+    return {sheets: schemas,active_sheet:active.name,scope};
+  });
+}
+
 export async function readWorkbook(normalize = normalizeInWorker) {
   await Office.onReady();
   const collected = await Excel.run(async context => {
     const workbook = context.workbook;
     const worksheets = workbook.worksheets;
+    const active = worksheets.getActiveWorksheet();
+    active.load('name');
     worksheets.load('items/name,items/visibility,items/id');
     workbook.load('use1904DateSystem,name');
     await context.sync();
@@ -111,7 +145,7 @@ export async function readWorkbook(normalize = normalizeInWorker) {
       }
       grids.push({name: sheet.name, rows, formats, errors, merges, date1904});
     }
-    return {grids, name: workbook.name || 'Excel workbook'};
+    return {grids, name: workbook.name || 'Excel workbook', activeSheet: active.name};
   });
   const sheets = collected.grids.length ? await normalize(collected.grids) : [];
   let byteTotal = 0;
@@ -123,7 +157,7 @@ export async function readWorkbook(normalize = normalizeInWorker) {
     return {name: sheet.name, data: sheet.csv, import: sheet.import, source: {kind: 'excel', warnings: (sheet.import?.warnings || []).map(warning => warning.slice(0,4096))}};
   });
   if (!tables.length) throw new Error('This workbook has no visible table with a header and data rows.');
-  return {tables, name: collected.name};
+  return {tables, name: collected.name, activeSheet: collected.activeSheet};
 }
 
 export async function workbookKey() {

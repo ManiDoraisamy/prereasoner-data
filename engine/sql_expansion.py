@@ -34,6 +34,12 @@ from engine.sql_candidate import ScoredQuery
 from engine.sql_schema import SchemaGraph, canon, is_surrogate_key
 
 
+def complete_projection_requested(question: str) -> bool:
+    """An explicit request to display complete records, including their fields."""
+    return bool(re.search(r'\b(?:show|list|display)\s+(?:all|every)\s+(?:rows?|records?|columns?|fields?)\b',
+                          question, re.I))
+
+
 def ordering_requested(question: str) -> bool:
     """An order instruction, not a business noun.
 

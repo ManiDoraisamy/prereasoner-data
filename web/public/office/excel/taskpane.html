@@ -7,9 +7,11 @@
   <title>Prereasoner</title>
   <link rel="stylesheet" href="taskpane.css">
   <link rel="stylesheet" href="../../lib/conversation.css?v=1">
+  <link rel="stylesheet" href="../../lib/sidebar-suggestions.css">
   <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
   <script src="../../lib/number-format.js?v=1"></script>
   <script src="../../lib/result-wire.js?v=1"></script>
+  <script src="../../lib/sidebar-suggestions.js"></script>
   <script src="../../lib/turn-renderer.js?v=2"></script>
   <script type="module" src="taskpane.js"></script>
 </head>
@@ -32,6 +34,7 @@
     <section id="thread" class="thread" aria-label="Conversation">
       <div id="empty" class="empty">Ask a question about this workbook.</div>
     </section>
+    <section id="suggestions" hidden></section>
     <section id="history" class="history" aria-label="Previous conversations" hidden>
       <h1>Previous conversations</h1>
       <div id="historyList" class="history-list"></div>

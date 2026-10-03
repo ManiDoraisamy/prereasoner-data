@@ -167,6 +167,10 @@ def constraint_violations(question, query, graph):
     from engine.sql_rank import analyze_question
     roles = analyze_question(question, graph)
     count_requested = roles.count_requested
+    from engine.closed_class import recipient_classes
+    recipients = {canon(word) for word in recipient_classes(question)}
+    data_literals = {canon(word) for column in graph.columns for value in column.values
+                     if value is not None for word in lexical_words(value)} if recipients else set()
     def aggregate_functions(value):
         found = {value.function} if isinstance(value, Aggregate) else set()
         if is_dataclass(value):
@@ -183,6 +187,8 @@ def constraint_violations(question, query, graph):
         for item in query.select)
     for label, refs in named_fields.items():
         if ' '+label+' ' not in question_text or refs & used:
+            continue
+        if roles.aggregate_positions and label in recipients and label not in data_literals:
             continue
         # Counting a populated field in the base table is exactly COUNT(*).
         # This evidence is local data, not a learned guess about missing values.
@@ -204,7 +210,8 @@ def constraint_violations(question, query, graph):
         explicit = explicit or bool(re.search(r'\bcolumn\s+'+re.escape(match[2])+r'\b', question, re.I))
         if not explicit:
             violations.append('Which repeated field should be used: '+', '.join(sorted(r.name for r in siblings))+'?')
-    if re.search(r'\b(?:show|list|display)\s+(?:all|every)\s+(?:rows?|records?)\b', question, re.I):
+    from engine.sql_expansion import complete_projection_requested
+    if complete_projection_requested(question):
         projected = {item.expression for item in query.select if isinstance(item.expression, ColumnRef)}
         required = {column.ref for column in graph.columns if column.ref.table == query.from_table}
         if not any(isinstance(item.expression, Star) for item in query.select) and not required <= projected:
@@ -380,7 +387,8 @@ def has_unread_terms(question, candidate, graph, *, calculation_satisfied=False)
 
     table_words = {canon(word) for table in graph.tables for word in lexical_words(table)}
     requested_fields = set(words) & (schema_words - table_words)
-    explicitly_all_fields = bool(re.search(r'\b(?:all|every)\s+(?:columns|fields|rows?|records?)\b', question, re.I))
+    from engine.sql_expansion import complete_projection_requested
+    explicitly_all_fields = complete_projection_requested(question)
     return has_star(candidate.query) and bool(requested_fields) and not explicitly_all_fields
 
 

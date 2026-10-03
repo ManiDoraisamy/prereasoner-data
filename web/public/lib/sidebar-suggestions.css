@@ -1,0 +1,5 @@
+.starter-questions{display:flex;flex-direction:column;gap:7px;margin:16px 0;padding:0 2px;color:#4b4167}
+.starter-questions[hidden]{display:none}
+.starter-title{font:500 12px/1.4 Arial,sans-serif;color:#6f667a}
+.starter-question{display:block;text-align:left;width:100%;box-sizing:border-box;border:1px solid #e6e0ef;border-radius:9px;background:#faf9ff;color:#4b4167;padding:10px 12px;font:13px/1.4 Arial,sans-serif;cursor:pointer;overflow-wrap:anywhere}
+.starter-question:hover,.starter-question:focus-visible{border-color:#8f7bf2;background:#f0ecfc;outline:2px solid transparent}

@@ -5,6 +5,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel=stylesheet>
 <link rel=stylesheet href="/styles.css?v=15">
 <link rel=stylesheet href="/lib/conversation.css?v=1">
+<link rel=stylesheet href="/lib/sidebar-suggestions.css">
 </head><body class=app>
 <!-- The read-only WORKBOOK (shared logic: lib/workbook.js; shared styles: styles.css).
      Green sheets = the user's tables (the AI never writes here). Blue sheets = one per
@@ -39,6 +40,7 @@
     <div class=rail>
       <div class=railhead><span class=inputcount id=inputcount>0 sheets</span><button class=syncstate id=syncstate type=button hidden></button></div>
       <div class=railscroll id=rail></div>
+      <section id=suggestions hidden style="padding:0 12px;max-height:35vh;overflow:auto"></section>
       <div class=chatbar>
         <textarea id=chatq rows=1 placeholder="Ask a follow-up…"></textarea>
         <button id=chatsend class=sendbtn aria-label=Send disabled>&#8593;</button>
@@ -48,6 +50,7 @@
 </div>
 <script src="/lib/shared.js"></script>
 <script src="/lib/result-wire.js"></script>
+<script src="/lib/sidebar-suggestions.js"></script>
 <script src="/lib/turn-renderer.js?v=2"></script>
 <script>
 window.WB_CONFIG = { endpoint: '/api/reason' };   // reason: composition over the uploaded sheets (+world joins)

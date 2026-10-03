@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <link rel="stylesheet" href="https://ssl.gstatic.com/docs/script/css/add-ons1.css">
+    <link rel="stylesheet" href="https://chat.prereasoner.com/office/sheets/sidebar.css">
+    <link rel="stylesheet" href="https://chat.prereasoner.com/lib/conversation.css?v=1">
+    <link rel="stylesheet" href="https://chat.prereasoner.com/lib/sidebar-suggestions.css">
+  </head>
+  <body>
+    <div class="sidebar branding-below" id="scroll">
+      <div class="topline">
+        <button class="new-chat" id="newConversation" type="button" disabled>+ New chat</button>
+        <span class="sheet-count" id="sheetCount">Reading the sheet…</span>
+      </div>
+      <div class="note" id="note" role="status" hidden></div>
+      <label for="sheetScope">Answer using</label>
+      <select id="sheetScope" aria-label="Sheet scope" disabled><option value="all">All visible tabs</option><option value="active">Active sheet</option></select>
+      <div id="thread" aria-live="polite"></div>
+      <section id="suggestions" hidden></section>
+    </div>
+
+    <div class="sidebar bottom">
+      <form class="composer" id="composer">
+        <label class="sr-only" for="question">Ask about this spreadsheet</label>
+        <textarea id="question" placeholder="Ask about this spreadsheet…" rows="1"></textarea>
+        <button id="send" type="submit" aria-label="Send" disabled>↑</button>
+      </form>
+    </div>
+
+    <!-- The web rail's shared component and the web upload importer, from chat.prereasoner.com. -->
+    <script src="https://chat.prereasoner.com/lib/result-wire.js?v=1"></script>
+    <script src="https://chat.prereasoner.com/lib/sidebar-suggestions.js"></script>
+    <script src="https://chat.prereasoner.com/lib/turn-renderer.js?v=3"></script>
+    <script src="https://chat.prereasoner.com/vendor/xlsx-0.20.3.full.min.js"></script>
+    <script src="https://chat.prereasoner.com/lib/upload-limits.js"></script>
+    <script src="https://chat.prereasoner.com/lib/number-format.js"></script>
+    <script src="https://chat.prereasoner.com/lib/workbook-import.js?v=3"></script>
+    <!-- The web's live trace (subscribeTurn/subscribeRun) and its Firebase sign-in. -->
+    <script type="module" src="https://chat.prereasoner.com/office/sheets/sidebar-firebase.js"></script>
+    <script src="https://chat.prereasoner.com/office/sheets/sidebar.js"></script>
+  </body>
+</html>

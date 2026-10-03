@@ -74,6 +74,8 @@ async function openSidebar(page, rows, failing = {}, workbookOptions = {}) {
     const handlers = {
       getSidebarContext: (_, ok) => ok({token: 'google-token', spreadsheetId: 'sheet-1', name: 'Sales', workbook: grids()}),
       getWorkbookGrids: (_, ok) => ok(grids()),
+      getWorkbookSchema: (_, ok) => ok({sheets:[{name:'Orders',columns:window.__server.rows[0]}],active_sheet:'Orders',scope:['Orders']}),
+      getPrereasonerSuggestions: (schema, ok) => ok({questions:['How many rows are in \"Orders\"?','Count rows in \"Orders\" by \"country\".','What is the total \"amount\" in \"Orders\"?'],source:'gemini',schema_only:true}),
       restorePrereasonerSheetConversation: (_, ok) => ok({conversationId: '', state: null, stale: false}),
       askPrereasoner: (arg, ok, fail) => { window.__server.pendingAsk = {arg, ok, fail}; },
       savePrereasonerSheetConversation: (arg, ok) => ok({saved: arg.conversationId}),

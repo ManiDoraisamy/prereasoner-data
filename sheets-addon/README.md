@@ -6,7 +6,7 @@ This Apps Script add-on puts Prereasoner in a Google Sheets™ sidebar. The side
 - `web/public/lib/firebase-init.js`: the live trace. Each step appears as it finishes, and the reply streams as it is written.
 - `web/public/lib/workbook-import.js`: the upload importer. The sidebar reads a sheet exactly as an upload of the same cells, with the same header, date, duration, merge, total, and formula-error rules and the same messages.
 
-All three load from chat.prereasoner.com, so a Hosting deploy updates them; the add-on needs a new version only when `Code.js`, `Sidebar.html`, `Previous.html`, or the manifest change.
+The shared suggestion controller also loads from Hosting. `Sidebar.html` and `Previous.html` are stable loaders: the actual markup, platform JavaScript and CSS live under `web/public/office/sheets/`. A Hosting deploy updates the whole UI without a new Apps Script version. Changes to the mandatory `Code.js` bridge, loader protocol, permissions or manifest still need a platform release.
 
 `Code.js` supplies what the sidebar cannot do from the Apps Script sandbox: the cells of up to eight visible, non-empty tabs (the active tab first), and authenticated calls to Prereasoner. Prereasoner accepts browser requests only from its own origins, so these calls go server to server with `UrlFetchApp`, using a Firebase identity for the user's Google account. `/chat` goes directly to Cloud Run for its 300-second timeout.
 

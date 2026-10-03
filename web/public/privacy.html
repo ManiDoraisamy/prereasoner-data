@@ -42,14 +42,14 @@ footer{border-top:1px solid var(--line);padding-top:24px;margin-top:52px;color:v
 
   <h2>What we process</h2>
   <ul>
-    <li>Files and spreadsheets you choose. In the Google Sheets™ add-on, this is limited to the visible,
+    <li>Files and spreadsheets you choose. In the Google Sheetsâ„¢ add-on, this is limited to the visible,
     non-empty tabs in the current spreadsheet when you submit a question, including table names,
     columns, and cell values. The Excel add-in reads visible, used ranges in the open workbook when
     you submit a question, including values and column labels; filtered or hidden rows in a visible
     worksheet are included. It does not edit cells.</li>
     <li>Your questions, conversation history, generated SQL, results, and reasoning traces.</li>
     <li>Account and session identifiers supplied through Google, Microsoft, and Firebase Authentication.</li>
-    <li>For the Google Sheets™ add-on, the document ID needed to reopen the conversation associated
+    <li>For the Google Sheetsâ„¢ add-on, the document ID needed to reopen the conversation associated
     with that spreadsheet for your signed-in account.</li>
     <li>For the Excel add-in, a one-way hash of the workbook URL is used to reopen its associated
     conversation; the workbook URL itself is not stored for this purpose.</li>
@@ -75,6 +75,8 @@ footer{border-top:1px solid var(--line);padding-top:24px;margin-top:52px;color:v
   column names, column types and foreign keys. It contains no example cell values or conversation
   history. The deterministic typed search builds and validates every query, and the database
   computes every number. Values you include in your question are part of that question.</p>
+
+  <p>Starter questions are generated from sheet names, column names, the active sheet and selected source scope only. No cell values, formulas, computed answers or conversation history are sent for suggestions. Suggested wording is checked against supported operations and fields; selecting it fills the question box for your review.</p>
 
   <p>Reference-table generation is a separate, explicit action. When you request it, Gemini receives
   the reference table's headers, entity names, existing reference cells and your instruction so it
@@ -193,7 +195,7 @@ footer{border-top:1px solid var(--line);padding-top:24px;margin-top:52px;color:v
 
   <footer>We update this page before materially changing processors or data flows. The open-source
   software's technical privacy contract is published with the source code.<br>
-  <a href="/terms">Terms of Service</a> · <a href="/support">Support</a></footer>
+  <a href="/terms">Terms of Service</a> Â· <a href="/support">Support</a></footer>
 </main>
 </body>
 </html>

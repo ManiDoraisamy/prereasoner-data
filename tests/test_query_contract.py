@@ -151,6 +151,36 @@ def test_all_rows_preserve_the_complete_projection():
     assert not check('show all rows', 'SELECT * FROM orders LIMIT 50').complete
 
 
+def test_complete_records_do_not_shrink_to_the_ordering_key():
+    from tests.test_scale import fixture
+    from tests.test_sql_ast import execute
+    table = fixture(100)
+    planner = _hermetic_planner()
+    for question in ('show all rows ordered by id', 'show all columns ordered by id'):
+        selected = _select(planner, question, [table]).candidate
+        assert selected is not None
+        rows = execute([table], selected.sql)
+        assert len(rows) == 100 and all(len(row) == len(table['columns']) for row in rows)
+        assert [row[0] for row in rows] == [row[0] for row in table['rows']]
+
+
+def test_recipient_class_does_not_invent_a_grouping():
+    table = {'name': 'payments', 'columns': ['Amount', 'Supplier'],
+             'rows': [[10, 'Acme'], [20, 'Other']]}
+    planner = _hermetic_planner()
+    _, fks, sch, _ = _request(planner, [table])
+    graph = SchemaGraph.from_planner(sch, fks)
+    total = _model_query(planner, 'SELECT SUM(Amount) FROM payments', [table])
+    assert coverage('What is the total amount paid to suppliers?', total, graph).complete
+    assert not coverage('total Amount paid to German suppliers', total, graph).complete
+    assert not coverage('total Amount paid to Acme', total, graph).complete
+    assert not coverage('total Amount by Supplier', total, graph).complete
+    selected = _select(planner, 'What is the total amount paid to suppliers?', [table]).candidate
+    assert selected is not None and 'GROUP BY' not in selected.sql
+    from tests.test_sql_ast import execute
+    assert execute([table], selected.sql) == [(30,)]
+
+
 def test_distinct_is_proven_by_the_selected_plan():
     assert check('show distinct city', 'SELECT DISTINCT city FROM orders').complete
     assert not check('show distinct city', 'SELECT city FROM orders').complete

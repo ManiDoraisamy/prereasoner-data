@@ -71,8 +71,43 @@ function getSidebarContext() {
     token: ScriptApp.getOAuthToken(),
     spreadsheetId: spreadsheet.getId(),
     name: spreadsheet.getName(),
+    activeSheet: spreadsheet.getActiveSheet().getName(),
     workbook: readGrids_(spreadsheet)
   };
+}
+
+// Fast metadata lane; the full cell read and conversation restoration run independently.
+function getWorkbookSchema(request) {
+  var spreadsheet = activeSpreadsheet_();
+  var active = spreadsheet.getActiveSheet().getName();
+  var visible = spreadsheet.getSheets().filter(function(sheet) {
+    return !sheet.isSheetHidden() && sheet.getLastRow() > 1 && sheet.getLastColumn() > 0;
+  });
+  if (!visible.length || visible.length > 64) throw new Error('Schema suggestions unavailable for this workbook.');
+  var total = visible.reduce(function(n, sheet) { return n + sheet.getLastRow() * sheet.getLastColumn(); }, 0);
+  var allFit = visible.length <= GRID_LIMITS.sheets && total <= GRID_LIMITS.cells && visible.every(function(sheet) {
+    return sheet.getLastRow() - 1 <= GRID_LIMITS.rows && sheet.getLastColumn() <= GRID_LIMITS.columns;
+  });
+  var schemas = spreadsheet.getSheets().map(function(sheet) {
+    var width = Math.min(sheet.getLastColumn(), GRID_LIMITS.columns);
+    var headers = width ? sheet.getRange(1, 1, 1, width).getValues()[0] : [];
+    var reliable = headers.length && headers.every(function(value) { return typeof value === 'string' && value.trim(); });
+    if (reliable && headers.some(function(label) {
+      return headers.filter(function(other) { return other.trim().toLowerCase() === label.trim().toLowerCase(); }).length > 1;
+    })) reliable = false;
+    return {name: sheet.getName(), columns: reliable ? headers.map(function(value) { return value.trim(); }) : []};
+  });
+  var scope = request && request.scope === 'active' ? [active] : allFit ? visible.map(function(s) { return s.getName(); }) : [active];
+  // Uncertain headers wait for the shared importer's positional names, without guessing.
+  return {sheets: schemas, active_sheet: active, scope: scope};
+}
+
+function getPrereasonerSuggestions(schema) {
+  // Whitelist before sending to the service. The service validates nested keys and budget too.
+  if (!schema || Object.keys(schema).some(function(key) { return ['sheets', 'active_sheet', 'scope'].indexOf(key) < 0; })) {
+    throw new Error('Suggestions accept schema metadata only.');
+  }
+  return fetchJson_(PREREASONER_CHAT_URL + '/suggestions', 'post', schema, 'Suggested questions are unavailable.');
 }
 
 // Called before each question, so a changed sheet is noticed.
@@ -84,7 +119,7 @@ function restorePrereasonerSheetConversation(request) {
   var tables = requestTables_(request);
   var body = apiRequest_('post', '/api/spreadsheet/conversation/restore',
     {spreadsheet_id: activeSpreadsheet_().getId(), host: 'sheets', tables: tables},
-    'Prereasoner could not restore this sheet’s conversation.');
+    'Prereasoner could not restore this sheetâ€™s conversation.');
   return {
     conversationId: body.conversation_id || '',
     state: body.state && typeof body.state === 'object' ? body.state : null,
@@ -101,7 +136,7 @@ function savePrereasonerSheetConversation(request) {
   }
   return apiRequest_('post', '/api/spreadsheet/conversation/state',
     {spreadsheet_id: activeSpreadsheet_().getId(), host: 'sheets', conversation_id: conversationId, state: request.state},
-    'Prereasoner could not save this sheet’s conversation.');
+    'Prereasoner could not save this sheetâ€™s conversation.');
 }
 
 function clearPrereasonerSheetConversation() {

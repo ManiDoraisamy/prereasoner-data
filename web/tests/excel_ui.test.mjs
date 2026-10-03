@@ -10,7 +10,7 @@ const [html, pane, auth, bridge, css, sharedCss, webPage, sheetsSidebar] = await
   readFile(new URL('taskpane.css', root), 'utf8'),
   readFile(new URL('../../lib/conversation.css', root), 'utf8'),
   readFile(new URL('../../reason.html', root), 'utf8'),
-  readFile(new URL('../../../../sheets-addon/Sidebar.html', root), 'utf8')
+  Promise.all(['../sheets/sidebar.html','../sheets/sidebar.js'].map(file=>readFile(new URL(file,root),'utf8'))).then(parts=>parts.join('\n'))
 ]);
 
 assert.match(html, /id="authPanel"/);

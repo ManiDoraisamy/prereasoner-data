@@ -69,6 +69,11 @@ The production reference deployment protects user data through the following con
 
 ## External LLM Processing
 
+Starter questions use only sheet names, column names, the current sheet and selected source scope.
+No source values, formulas, conversation history or computed answers are included. Gemini selects
+three supported operations and field indices, which the service validates before rendering suggested
+wording. Suggestions do not execute a query or alter a workbook; selecting one fills the composer.
+
 The open-source default is `EXTERNAL_LLM_ENABLED=false`. When the operator enables it, Prereasoner
 uses one external model: Google's Gemini on Vertex AI, called in the operator's own Google Cloud
 project under that project's service account. Deploying the chat service enables it for the engine

@@ -12,6 +12,7 @@
 <link rel=preconnect href="https://fonts.googleapis.com"><link rel=preconnect href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel=stylesheet>
 <link rel=stylesheet href="styles.css?v=15">
+<link rel=stylesheet href="lib/sidebar-suggestions.css">
 <style>
 .attachbar{flex-wrap:nowrap}
 .chip{min-width:0;cursor:pointer;padding:6px 12px 6px 7px;gap:8px}
@@ -92,6 +93,7 @@
     </div>
     <button type=button class=morex id=morex aria-haspopup=dialog>More examples<svg viewBox="0 0 24 24" aria-hidden=true><polyline points="9 6 15 12 9 18"></polyline></svg></button>
     <div class=err id=err></div>
+    <section id=suggestions hidden></section>
   </form>
   </div>
   <footer class=sitefoot><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/support">Support</a></footer>
@@ -105,6 +107,7 @@
 <script src="lib/workbook-conversations.js"></script>
 <script src="lib/upload-limits.js"></script>
 <script src="lib/xlsx-reader.js"></script>
+<script src="lib/sidebar-suggestions.js"></script>
 <script>
 // Demo workbooks live in /dataset/<name>/ as plain CSVs plus a prompt.txt that prefills the
 // question, selected by ?load=. The default is the single denormalized orders sheet (with each
@@ -131,6 +134,13 @@ let DEMO_Q=Q0;                                             // the demo's questio
 function clearDemoQuestion(){ if($('q').value===DEMO_Q){ $('q').value=''; $('q').focus(); } }
 let SHEETS=[], isSample=true;                              // first real upload replaces the demo
 let UPLOAD_PENDING=false, UPLOAD_ERROR='', UPLOAD_BATCH=0;
+let suggestionsReady=false;
+const homeSuggestions=window.PrereasonerSuggestions.create({container:$('suggestions'),composer:$('q'),
+  request:async schema=>{
+    const response=await fetch('/chat/suggestions',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+await window.ensureToken()},body:JSON.stringify(schema)});
+    if(!response.ok)throw new Error('Suggestions unavailable');return response.json();
+  }});
+function refreshSuggestions(){if(suggestionsReady)homeSuggestions.update(window.PrereasonerSuggestions.schema(SHEETS));}
 const DEMO_LOAD=Promise.all([
   Promise.all(DATASETS[DATASET].map(n=>{
     // A registry entry ending in .xlsx ships as a real workbook and converts to CSV text
@@ -154,6 +164,7 @@ const DEMO_LOAD=Promise.all([
   if(p&&$('q').value===Q0){ $('q').value=p; DEMO_Q=p; }    // a question the user typed or a picker round-trip restored
 }).catch(e=>{ if(isSample)$('err').textContent='The demo data did not load ('+(e&&e.message||e)+'). Attach your own file, or reload.'; });
 function renderChips(){
+  refreshSuggestions();
   $('chips').innerHTML=SHEETS.map((s,i)=>'<span class=chip role=button tabindex=0 data-i="'+i+'" title="Preview '+escAttr(s.filename||s.name)+'"><span class=ic aria-hidden=true><svg viewBox="0 0 16 16"><rect x="2.5" y="2.5" width="11" height="11" rx="1.5"></rect><path d="M2.5 6h11M6 2.5v11"></path></svg></span><span class=nm>'+esc(s.name)+'</span><button class=chipx type=button aria-label="Remove '+escAttr(s.name)+'" title="Remove">&times;</button></span>').join('');
   [...$('chips').querySelectorAll('.chip')].forEach(el=>el.onclick=e=>{if(!e.target.closest('.chipx'))openPreview(+el.dataset.i);});
   [...$('chips').querySelectorAll('.chip')].forEach(el=>el.onkeydown=e=>{if(!e.target.closest('.chipx')&&(e.key==='Enter'||e.key===' ')){e.preventDefault();openPreview(+el.dataset.i);}});
@@ -349,6 +360,7 @@ document.getElementById('signoutbtn').addEventListener('click',async()=>{await s
 // Signed in: the rail IS the signed-in state, so the badge is redundant — drop it and show
 // the user's conversations instead. Rendering reuses the /reason drawer's list.
 function showSignedIn(user){
+  suggestionsReady=true;refreshSuggestions();
   login.hidden=true;
   const rail=document.getElementById('homerail'); if(!rail) return;
   rail.hidden=false; homeMenu.hidden=false; accountWrap.hidden=!user; document.body.classList.add('hasrail','signed-in'); setHomeDrawer(false);

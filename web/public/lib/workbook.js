@@ -31,6 +31,12 @@ function getSheets(){
 }
 function getQ(){try{const q=sessionStorage.getItem(SS.Q);if(q)return q;}catch(_){}return WB.demoQ;}
 const SHEETS=getSheets();
+const starterSuggestions=document.getElementById('suggestions')&&window.PrereasonerSuggestions
+  ?window.PrereasonerSuggestions.create({container:document.getElementById('suggestions'),composer:document.getElementById('chatq'),
+    request:async schema=>{
+      const response=await fetch(API_BASE+'/chat/suggestions',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+await window.ensureToken()},body:JSON.stringify(schema)});
+      if(!response.ok)throw new Error('Suggestions unavailable');return response.json();
+    }}) : null;
 const TABNAMES=SHEETS.map((s,i)=>slug(s.name,i));
 const MAX_RENDER_ROWS=500;
 
@@ -426,7 +432,10 @@ function renderTabs(){
   const a=document.querySelector('.wtab.active'); if(a&&a.scrollIntoView) a.scrollIntoView({inline:'nearest',block:'nearest'});
   updateTabArrows();
 }
-function pick(id){ AUTO=false; ACTIVE=id; paint(); }
+function pick(id){ AUTO=false; ACTIVE=id; paint();
+  const sheet=BOOK.find(s=>s.id===id&&s.cls==='input');
+  if(sheet&&starterSuggestions)starterSuggestions.update(window.PrereasonerSuggestions.schema(SHEETS,sheet.name));
+}
 function pickStep(id){ SRCOPEN=true; pick(id); }
 // Google-Sheets-style paging for the tab strip (its native scrollbar is hidden).
 function scrollTabs(d){ const t=$('tabstrip'); if(t) t.scrollBy({left:d*220,behavior:'smooth'}); }
@@ -1303,6 +1312,7 @@ function setHeaderTitle(q){ const el=$('htitle'); if(el){ el.textContent=q; el.t
 
 /* ---- conversations drawer (backed by the engine's chat schema; ownership-scoped) ---- */
 async function run(){
+  if(starterSuggestions)starterSuggestions.update(window.PrereasonerSuggestions.schema(SHEETS));
   // Deep link: landing on /reason/<id> in a session that isn't that conversation -> load it, then reload so
   // the module-level SHEETS/question pick it up. (A normal home->reason flow has no id in the URL.)
   const ucid=urlConvId(), linkedAnalysis=urlAnalysis();

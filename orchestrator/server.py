@@ -19,6 +19,9 @@ from concurrent.futures import TimeoutError as FutureTimeoutError
 import importlib
 import json
 import threading
+import hashlib
+import time
+from collections import OrderedDict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -35,6 +38,9 @@ WEB_ROOT = Path(config.__file__).resolve().parent.parent / "web" / "public"
 MAX_BODY = 30 * 1024 * 1024
 CHAT_TIMEOUT_SECONDS = 240
 CHAT_GATE = RequestGate(requests=10, window_seconds=60, in_flight=8)
+SUGGESTION_GATE = RequestGate(requests=6, window_seconds=60, in_flight=1)
+_SUGGESTIONS = OrderedDict()
+_SUGGESTIONS_LOCK = threading.Lock()
 
 # One asyncio loop in a background thread keeps Gemini and engine HTTP work off request threads
 # and avoids per-request event-loop churn.
@@ -115,7 +121,9 @@ class H(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = self.path.split("?", 1)[0]
-        if path.rstrip("/") == "/chat":
+        if path.rstrip("/") == "/chat/suggestions":
+            self._suggestions()
+        elif path.rstrip("/") == "/chat":
             self._chat()
         elif path.startswith("/api/"):
             self._proxy_api("POST")
@@ -123,6 +131,47 @@ class H(BaseHTTPRequestHandler):
             self._send(404, json.dumps({"error": "POST /chat"}))
 
     # ---------- /chat ----------
+    def _suggestions(self):
+        from engine.auth import verified_identity
+        from orchestrator.suggestions import validate_schema, starter_questions
+        lease = None
+        try:
+            try:
+                uid, _ = verified_identity(self._bearer())
+            except Exception:  # noqa: BLE001 - same verification boundary as chat
+                uid = None
+            if not uid:
+                self._send(401, json.dumps({"error": "sign in required"})); return
+            try:
+                body = read_json_object(self.rfile, self.headers.get("Content-Length"), 512 * 1024)
+                schema = validate_schema(body)
+            except JSONBodyError as exc:
+                self._send(exc.status_code, json.dumps({"error": str(exc)})); return
+            except ValueError as exc:
+                self._send(400, json.dumps({"error": str(exc)})); return
+            key = (uid, hashlib.sha256(json.dumps(schema, sort_keys=True).encode()).hexdigest())
+            with _SUGGESTIONS_LOCK:
+                cached = _SUGGESTIONS.get(key)
+            if cached and cached[0] > time.monotonic():
+                self._send(200, json.dumps(cached[1])); return
+            lease, retry_after, reason = SUGGESTION_GATE.acquire(uid)
+            if lease is None:
+                self._send(429, json.dumps({"error": "suggestion request budget exceeded", "reason": reason}),
+                           retry_after=retry_after); return
+            result = starter_questions(schema)
+            with _SUGGESTIONS_LOCK:
+                _SUGGESTIONS[key] = (time.monotonic() + 1800, result)
+                _SUGGESTIONS.move_to_end(key)
+                while len(_SUGGESTIONS) > 256:
+                    _SUGGESTIONS.popitem(last=False)
+            self._send(200, json.dumps(result))
+        except Exception as exc:  # noqa: BLE001 - no schema/prompt logging
+            print(f"suggestions failed: {type(exc).__name__}", flush=True)
+            self._send(503, json.dumps({"error": "suggestions temporarily unavailable"}))
+        finally:
+            if lease is not None:
+                lease.release()
+
     def _chat(self):
         emit = None
         fut = None

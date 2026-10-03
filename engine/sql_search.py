@@ -194,6 +194,8 @@ class SQLSearcher:
             if option.column not in explicit_projection_columns
         }
 
+        from engine.sql_expansion import complete_projection_requested
+        complete_projection = complete_projection_requested(question)
         projection_choices = self._projection_choices(tokens, mentions, table_scores)
         # A table joins every reading only when the question names it with its words together ("car
         # makers"); Spider car_1, 2026-10-02: "how many car makers are there in each continent? List the
@@ -222,7 +224,7 @@ class SQLSearcher:
                     *(_operand_columns(a.operand) for a in draft.aggregates)
                 ) if draft.aggregates else set()
                 raw_projection = tuple(c for c in draft.projections if c not in aggregated_columns)
-                if not draft.aggregates and len(raw_projection) > 1:
+                if not draft.aggregates and len(raw_projection) > 1 and not complete_projection:
                     predicate_columns = {predicate.left for predicate in draft.predicates
                                          if isinstance(predicate.left, ColumnRef)}
                     raw_projection = tuple(c for c in raw_projection
@@ -248,7 +250,7 @@ class SQLSearcher:
                     # A listing follows the question's order: "the airline names and abbreviations" lists the
                     # names first (Spider DEV, 2026-10-02: 8 listings matched gold but for the order). A
                     # grouped answer keeps its groups before their aggregates, as a table shows them.
-                    listed = sorted(raw_projection, key=lambda column: _named_at(tokens, column))
+                    listed = raw_projection if complete_projection else sorted(raw_projection, key=lambda column: _named_at(tokens, column))
                     expressions = tuple(SelectItem(c) for c in listed) or (SelectItem(Star()),)
 
                 orders = self._order_choices(tokens, mentions, draft, question)
@@ -585,6 +587,13 @@ class SQLSearcher:
 
     def _projection_choices(self, tokens: tuple[str, ...], mentions: tuple[_Mention, ...],
                             table_scores: dict[str, float]) -> list[tuple[tuple, float, tuple[str, ...]]]:
+        from engine.sql_expansion import complete_projection_requested
+        if complete_projection_requested(' '.join(tokens)):
+            # A column named only as the sort key is not the output projection.
+            # Preserve every field, including IDs and unheaded helper fields.
+            return [(tuple(column.ref for column in self.schema.columns if column.ref.table == table),
+                     max(score, 0.5), (f'complete-projection:{table}',))
+                    for table, score in sorted(table_scores.items(), key=lambda item: (-item[1], item[0]))[:3]]
         if mentions:
             beam: list[tuple[tuple[ColumnRef, ...], float, tuple[str, ...]]] = [((), 0.0, ())]
             for mention in mentions:

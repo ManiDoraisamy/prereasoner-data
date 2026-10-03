@@ -10,7 +10,7 @@ const element = id => {
   if(!elements.has(id))elements.set(id,{value:'',disabled:false,hidden:false,textContent:'',classList:{toggle(){}}});
   return elements.get(id);
 };
-const context = {console,crypto:require('node:crypto').webcrypto,window:{PrereasonerTurnRenderer:{}},
+const context = {console,crypto:require('node:crypto').webcrypto,window:{PrereasonerTurnRenderer:{},PrereasonerSuggestions:{create:()=>({update(){},clear(){}}),schema:()=>({})}},
   document:{getElementById:element},initializeApp:()=>({}),getAuth:()=>({currentUser:{uid:'fixture'}}),
   getDatabase:()=>({}),firebaseConfig:{}};
 vm.createContext(context);
