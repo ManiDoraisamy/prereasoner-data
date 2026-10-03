@@ -16,7 +16,7 @@ test('the Sheets sidebar renders the web rail, with live steps from the realtime
   expect(await page.evaluate(() => window.__signedInWith)).toBe('google-token');
   const [restore] = await calls(page, 'restorePrereasonerSheetConversation');
   expect(restore.arg.tables).toEqual([{name: 'Orders', data: 'country,amount\nFrance,840\nFrance,400\nGermany,620',
-    source: {kind: 'google-sheets-addon'}}]);
+    source: {kind: 'google-sheets-addon', warnings: [], scope: {mode:'all', included:['Orders'], available:['Orders']}}}]);
 
   await page.locator('#question').fill('What are total sales in France?');
   await page.locator('#question').press('Enter');
@@ -61,30 +61,33 @@ test('the Sheets sidebar renders the web rail, with live steps from the realtime
   expect((await calls(page, 'clearPrereasonerSheetConversation')).length).toBe(1);
 });
 
-test('the Sheets sidebar refuses a shifted header row, then reads the fixed sheet without the unnamed column', async ({page}) => {
-  // The owner's sheet: an inserted index column shifted the header row one cell left, so "amount" sits
-  // over text and the amounts have no header. Every answer would read the wrong column.
-  const shifted = [['order ID', 'customer', 'amount'], [1, 101, 'Holmes', 118], [2, 102, 'Watson', 95]];
-  await openSidebar(page, shifted);
-  await expect(page.locator('.empty.sheet-error')).toContainText('Sheet "Orders": Column D has values but no header, and the ' +
-    'headers look one column to the left of their data (C1 "amount" is above "Holmes"). Put each header above its data.');
-  await expect(page.locator('.empty.sheet-error')).toContainText('Fix the sheet, then ask your question.');
-  expect(await calls(page, 'restorePrereasonerSheetConversation')).toEqual([]);
-  await page.locator('#question').fill('total amount');
-  await page.locator('#question').press('Enter');
-  await expect(page.locator('.answer.error')).toContainText('the headers look one column to the left of their data');
-  await expect(page.locator('#question')).toHaveValue('total amount');
-
-  // The owner's fix: the headers moved right, leaving A1 empty over the row numbers. That column is
-  // not a field; it is left out, the note says so, and the question runs on the rest.
-  await page.evaluate(() => { window.__server.rows = [['', 'order ID', 'customer', 'amount'], [1, 101, 'Holmes', 118], [2, 102, 'Watson', 95]]; });
+test('messy headers warn without preventing a question', async ({page}) => {
+  await openSidebar(page, [['id','amount','amount',null],[1,10,20,'note']]);
+  await expect(page.locator('#newConversation')).toBeEnabled();
+  await expect(page.locator('.sheet-error')).toHaveCount(0);
+  await expect(page.locator('#note')).toContainText('Repeated headers were kept');
+  await page.locator('#question').fill('How many rows are there?');
   await page.locator('#question').press('Enter');
   await expect.poll(() => page.evaluate(() => Boolean(window.__server.pendingAsk))).toBe(true);
-  expect((await calls(page, 'restorePrereasonerSheetConversation')).length).toBe(1);
   expect((await page.evaluate(() => window.__server.pendingAsk.arg)).tables[0].data)
-    .toBe('order ID,customer,amount\n101,Holmes,118\n102,Watson,95');
-  await expect(page.locator('#note')).toHaveText('Sheet "Orders": column A has no header, so it was left out.');
-  await expect(page.locator('.answer.error')).toHaveCount(0);
+    .toBe('id,amount [column B],amount [column C],Column D\n1,10,20,note');
+});
+
+test('typing while reading and answering preserves the draft even on failure', async ({page}) => {
+  await openSidebar(page, orders, {}, {contextDelay: 1500});
+  await expect(page.locator('#sheetCount')).toHaveText('Reading the sheet…');
+  await expect(page.locator('#question')).toBeEnabled();
+  await expect(page.locator('#send')).toBeDisabled();
+  await page.locator('#question').fill('total amount');
+  await expect(page.locator('#send')).toBeEnabled();
+  await expect(page.locator('#question')).toHaveValue('total amount');
+  await page.locator('#question').press('Enter');
+  await expect.poll(() => page.evaluate(() => Boolean(window.__server.pendingAsk))).toBe(true);
+  await expect(page.locator('#question')).toBeEnabled();
+  await page.locator('#question').fill('and for Germany?');
+  await page.evaluate(() => window.__server.pendingAsk.fail({message:'Network unavailable'}));
+  await expect(page.locator('.answer.error')).toContainText('Network unavailable');
+  await expect(page.locator('#question')).toHaveValue('and for Germany?');
 });
 
 test('the Sheets sidebar refuses an incomplete workbook from an older add-on server', async ({page}) => {
@@ -92,8 +95,21 @@ test('the Sheets sidebar refuses an incomplete workbook from an older add-on ser
     {name: 'SI', reason: 'cells'}, {name: 'Log', reason: 'rows'}, {name: 'Wide', reason: 'columns'}
   ]});
   await expect(page.locator('.sheet-error')).toContainText('SI, Log, Wide');
-  await expect(page.locator('.sheet-error')).toContainText('No answer will be calculated from an incomplete workbook.');
+  await expect(page.locator('.sheet-error')).toContainText('Choose Active sheet');
   await expect(page.locator('#sheetCount')).toHaveText('');
+});
+
+test('an active-sheet scope is visible and can be changed without editing the workbook', async ({page}) => {
+  await openSidebar(page, orders, {}, {scope:'active', availableTabs:['Orders','Archive']});
+  await expect(page.locator('#newConversation')).toBeEnabled();
+  await expect(page.locator('#sheetScope')).toHaveValue('active');
+  await expect(page.locator('#note')).toContainText('Using the active sheet only: Orders.');
+  await page.locator('#sheetScope').selectOption('all');
+  await expect(page.locator('#note')).toContainText('Your next question will use all visible tabs.');
+  await page.locator('#question').fill('total amount');
+  await page.locator('#question').press('Enter');
+  await expect.poll(async () => (await calls(page, 'getWorkbookGrids')).length).toBe(1);
+  expect((await calls(page,'getWorkbookGrids'))[0].arg).toEqual({scope:'all'});
 });
 
 test('the Sheets sidebar explains a multi-account refusal instead of blaming the sheet', async ({page}) => {

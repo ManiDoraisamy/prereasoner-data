@@ -59,6 +59,94 @@ def constraint_violations(question, query, graph):
     question_tokens = tokens(question)
     phrases = served_date_phrases(question, question_tokens, graph)
     violations = []
+    # The spreadsheet importer preserves duplicate headers with their original
+    # column letters. Displaying both is safe; choosing one for a calculation or
+    # filter needs the user to distinguish it, rather than an arbitrary model pick.
+    from dataclasses import fields, is_dataclass
+
+    def references(value):
+        if isinstance(value, ColumnRef):
+            yield value
+        elif is_dataclass(value):
+            for field in fields(value):
+                yield from references(getattr(value, field.name))
+        elif isinstance(value, (tuple, list)):
+            for item in value:
+                yield from references(item)
+
+    used = set(references(query))
+    projected = {item.expression for item in query.select if isinstance(item.expression, ColumnRef)}
+    constrained = set(references((query.where, query.having, query.group_by, query.order_by)))
+    constrained.update(ref for item in query.select if not isinstance(item.expression, ColumnRef)
+                       for ref in references(item.expression))
+    from engine.sql_schema import canon
+    from engine.closed_class import closed_class_words
+    question_text = ' ' + ' '.join(canon(word) for word in lexical_words(question)) + ' '
+    noise = {canon(word) for word in closed_class_words(question)}
+    table_labels = {' '.join(canon(word) for word in lexical_words(table)) for table in graph.tables}
+    duplicate_groups = {}
+    for column in graph.columns:
+        match = re.fullmatch(r'(.*) \[column ([A-Z]+)\](?: \d+)?', column.ref.name)
+        if match:
+            duplicate_groups.setdefault((column.ref.table, match[1].casefold()), set()).add(column.ref)
+    for (table, base), siblings in duplicate_groups.items():
+        label = ' '.join(canon(word) for word in lexical_words(base))
+        if table not in query.referenced_tables() or len(siblings) < 2 or label in table_labels or ' '+label+' ' not in question_text:
+            continue
+        explicit_position = any(re.search(r'\bcolumn\s+'+re.escape(re.search(r'\[column ([A-Z]+)\]', ref.name)[1])+r'\b', question, re.I)
+                                for ref in siblings)
+        if explicit_position:
+            specified = {ref for ref in siblings if re.search(r'\bcolumn\s+'+re.escape(re.search(r'\[column ([A-Z]+)\]', ref.name)[1])+r'\b', question, re.I)}
+            if not specified & used:
+                violations.append('The requested field is not used: '+', '.join(sorted(ref.name for ref in specified)))
+        if not explicit_position and not (siblings <= projected and not siblings & constrained):
+            violations.append('Which repeated field should be used: '+', '.join(sorted(ref.name for ref in siblings))+'?')
+    named_fields = {}
+    for column in graph.columns:
+        label = ' '.join(canon(word) for word in lexical_words(column.ref.name))
+        if not label or label in table_labels or (len(label.split()) == 1 and label in noise):
+            continue
+        named_fields.setdefault(label, set()).add(column.ref)
+    from engine.sql_rank import analyze_question
+    roles = analyze_question(question, graph)
+    count_requested = roles.count_requested
+    def aggregate_functions(value):
+        found = {value.function} if isinstance(value, Aggregate) else set()
+        if is_dataclass(value):
+            for field in fields(value):
+                found.update(aggregate_functions(getattr(value, field.name)))
+        elif isinstance(value, (tuple, list)):
+            for item in value:
+                found.update(aggregate_functions(item))
+        return found
+    if roles.aggregate_positions.get('SUM') and not count_requested and 'SUM' not in aggregate_functions(query.select):
+        violations.append('A requested total needs a sum of values, not a row count or projection')
+    counts_rows = count_requested and any(isinstance(item.expression, Aggregate)
+        and item.expression.function == 'COUNT' and isinstance(item.expression.operand, Star)
+        for item in query.select)
+    for label, refs in named_fields.items():
+        if ' '+label+' ' not in question_text or refs & used:
+            continue
+        # Counting a populated field in the base table is exactly COUNT(*).
+        # This evidence is local data, not a learned guess about missing values.
+        if counts_rows and any(ref.table == query.from_table and graph.column_map[(ref.table, ref.name)].values
+            and all(value is not None and str(value).strip() for value in graph.column_map[(ref.table, ref.name)].values)
+            for ref in refs):
+            continue
+        if not any(isinstance(item.expression, Star) for item in query.select):
+            violations.append('The requested field is not used: '+sorted(ref.name for ref in refs)[0])
+    for ref in used:
+        match = re.fullmatch(r'(.*) \[column ([A-Z]+)\](?: \d+)?', ref.name)
+        if not match:
+            continue
+        siblings = {column.ref for column in graph.columns if column.ref.table == ref.table
+                    and re.fullmatch(re.escape(match[1]) + r' \[column [A-Z]+\]', column.ref.name, re.I)}
+        if len(siblings) < 2 or (ref not in constrained and siblings <= projected):
+            continue
+        explicit = ' '.join(lexical_words(ref.name)) in ' '.join(lexical_words(question))
+        explicit = explicit or bool(re.search(r'\bcolumn\s+'+re.escape(match[2])+r'\b', question, re.I))
+        if not explicit:
+            violations.append('Which repeated field should be used: '+', '.join(sorted(r.name for r in siblings))+'?')
     if re.search(r'\b(?:show|list|display)\s+(?:all|every)\s+(?:rows?|records?)\b', question, re.I):
         projected = {item.expression for item in query.select if isinstance(item.expression, ColumnRef)}
         required = {column.ref for column in graph.columns if column.ref.table == query.from_table}

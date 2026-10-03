@@ -8,18 +8,20 @@ const {readWorkbook}=require('../../tests/workbook_fixture.js');
 const normalize=rows=>WORKBOOK_IMPORT.normalize(XLSX.utils.aoa_to_sheet(rows,{UTC:true}),XLSX);
 assert.equal(normalize([['Report'],[],['id','amount'],[1,0],[2,10]]).import.headerRow,3);
 assert.match(normalize([['id','amount'],[1,0]]).csv,/1,0/);
-assert.throws(()=>normalize([['id','id'],[1,2]]),/Duplicate/);
-assert.throws(()=>normalize([['id','amount'],[1,2],['Total',2]]),/double-counting/);
+assert.equal(normalize([['id','id'],[1,2]]).csv,'id [column A],id [column B]\n1,2');
+const summaries=normalize([['id','amount'],[1,2],['Total',2]]);
+assert.equal(summaries.csv,'id,amount\n1,2');
+assert.equal(summaries.summaryCsv,'id,amount\nTotal,2');
 const missing=XLSX.utils.aoa_to_sheet([['id','amount'],[1,2]]);
 missing.B2={t:'n',f:'1+1'};
-assert.throws(()=>WORKBOOK_IMPORT.normalize(missing,XLSX),/no cached value/);
+assert.match(WORKBOOK_IMPORT.normalize(missing,XLSX).csv,/#UNAVAILABLE!/);
 const blankFormula=XLSX.utils.aoa_to_sheet([['amount'],[1]]);blankFormula.A2={t:'n',f:'1+1'};
-assert.throws(()=>WORKBOOK_IMPORT.normalize(blankFormula,XLSX),/no cached value/);
+assert.match(WORKBOOK_IMPORT.normalize(blankFormula,XLSX).csv,/#UNAVAILABLE!/);
 const timestamp=new Date('2026-06-01T13:45:00.000Z');
 assert.match(normalize([['id','created'],[1,timestamp]]).csv,/2026-06-01T13:45:00/);
 const merged=XLSX.utils.aoa_to_sheet([['id','amount'],[1,2],[null,3]]);
 merged['!merges']=[{s:{r:1,c:0},e:{r:2,c:0}}];
-assert.throws(()=>WORKBOOK_IMPORT.normalize(merged,XLSX),/Merged data/);
+assert.equal(WORKBOOK_IMPORT.normalize(merged,XLSX).csv,'id,amount\n1,2\n,3');
 const grouped=XLSX.utils.aoa_to_sheet([['Order','Amounts',null],['ID','Net','Tax'],[1,10,2]]);
 grouped['!merges']=[{s:{r:0,c:1},e:{r:0,c:2}}];
 assert.match(WORKBOOK_IMPORT.normalize(grouped,XLSX).csv,/"?ID"?,Amounts Net,Amounts Tax/);
@@ -81,30 +83,45 @@ for(const date1904 of [false,true]){
     assert.equal(JSON.stringify(grid.import),JSON.stringify(uploaded.import));   // results from separate VM realms
   }finally{fs.unlinkSync(file);}
 }
-// The Sheets add-on screenshot: an index column A was inserted but the header row was not moved, so
-// "amount" labels the currency codes and the amounts in H have no header. The add-ins used to name
-// that column "column_8" and answer from shifted labels. Every answer would read the wrong column, so
-// this layout is refused, with the worksheet, the evidence and the fix.
+// Messy headers preserve every value and its source position. Suspected shifts
+// use neutral names rather than guessing a binding that could yield wrong money.
 const shifted=[['order ID','customer','city','tier','ordered','currency','amount'],
   [1,101,'Sherlock Holmes','London','Gold','Magnifying Glass','GBP',118],
   [2,102,'Sherlock Holmes','London','Gold','Calabash Pipe','GBP',95]];
-assert.throws(()=>normalizeGrids([{name:'notes',rows:[['note'],['ok']]},{name:'sales',rows:shifted}]),
-  /^Error: Sheet "sales": Column H has values but no header, and the headers look one column to the left of their data \(G1 "amount" is above "GBP"\)\. Put each header above its data\.$/);
-// The owner's fix moved the headers right and left A1 empty over the row numbers. A column with values
-// but no header is not a field: it is left out, and the import says which; nothing is named for it.
+const [shiftedSheet]=normalizeGrids([{name:'sales',rows:shifted}]);
+assert.match(shiftedSheet.csv,/Column A,Column B,Column C,Column D,Column E,Column F,Column G,Column H/);
+assert.match(shiftedSheet.csv,/1,101,Sherlock Holmes,London,Gold,Magnifying Glass,GBP,118/);
+assert.match(shiftedSheet.import.warnings.join(' '),/shifted/);
 const [realigned]=normalizeGrids([{name:'sales',rows:[[null,...shifted[0]],...shifted.slice(1)]}]);
-assert.strictEqual(realigned.csv,'order ID,customer,city,tier,ordered,currency,amount\n'
-  +'101,Sherlock Holmes,London,Gold,Magnifying Glass,GBP,118\n102,Sherlock Holmes,London,Gold,Calabash Pipe,GBP,95');
-assert.strictEqual(JSON.stringify([realigned.import.leftOutColumns,realigned.import.columns,realigned.import.headerRow]),'[["A"],7,1]');
+assert.match(realigned.csv,/Column A,order ID,customer,city,tier,ordered,currency,amount/);
+assert.deepEqual(Array.from(realigned.import.leftOutColumns),[]);
 const [helper]=normalizeGrids([{name:'orders',rows:[['id','amount',null],[1,10,'check'],[2,20,'ok']]}]);
-assert.strictEqual(helper.csv,'id,amount\n1,10\n2,20');
-assert.strictEqual(JSON.stringify(helper.import.leftOutColumns),'["C"]');
-// A layout with no header-like row at all keeps the general message.
-assert.throws(()=>normalizeGrids([{name:'numbers',rows:[[1,2],[3,4]]}]),/No unambiguous header found in the first 64 rows/);
-assert.throws(()=>normalizeGrids([{name:'dupes',rows:[['id','customer','customer'],[1,'A','B']]}]),/Duplicate column headers/);
-assert.throws(()=>normalizeGrids([{name:'errors',rows:[['id','ratio'],[1,'#DIV/0!']],errors:[[false,false],[false,true]]}]),
-  /formula error/);
+assert.equal(helper.csv,'id,amount,Column C\n1,10,check\n2,20,ok');
+const [numbers]=normalizeGrids([{name:'numbers',rows:[[1,2],[3,4]]}]);
+assert.equal(numbers.csv,'Column A,Column B\n1,2\n3,4');
+assert.equal(numbers.import.headerRow,null);
+const [dupes]=normalizeGrids([{name:'dupes',rows:[['id','customer','customer'],[1,'A','B']]}]);
+assert.equal(dupes.csv,'id,customer [column B],customer [column C]\n1,A,B');
+const [errors]=normalizeGrids([{name:'errors',rows:[['id','ratio'],[1,'#DIV/0!']],errors:[[false,false],[false,true]]}]);
+assert.match(errors.csv,/#DIV\/0!/);
+assert.match(errors.import.warnings.join(' '),/not numbers/);
+const sections=normalizeGrids([{name:'sales',rows:[['item','amount'],['A',2],['B',3],['Total',5]]}]);
+assert.equal(sections.length,2);
+assert.equal(sections[0].csv,'item,amount\nA,2\nB,3');
+assert.equal(sections[1].csv,'item,amount\nTotal,5');
+assert.equal(sections[1].name,'sales summaries');
+// A product literally named Total is not a summary when other attributes exist.
+assert.match(normalize([['item','region','amount'],['A','FR',2],['Total','FR',3]]).csv,/Total,FR,3/);
 const [groupedGrid]=normalizeGrids([{name:'grouped',rows:[['Order','Amounts',null],['ID','Net','Tax'],[1,10,2]],
   merges:[{s:{r:0,c:1},e:{r:0,c:2}}]}]);
 assert.match(groupedGrid.csv,/"?ID"?,Amounts Net,Amounts Tax/);
+// The server CSV parser and the browser importer use the same positional
+// naming contract, including UTF-8 PostgreSQL's 63-byte identifier bound.
+const headers=['amount','amount','', '東京'.repeat(40), 'x'.repeat(52)+' [column C]', 'x'.repeat(100)];
+const imported=normalize([headers,[1,2,3,4,5,6]]);
+const expected=JSON.parse(execFileSync('python',['-c',
+  'import json,sys; from engine.column_names import canonical_columns; print(json.dumps(canonical_columns(json.loads(sys.stdin.buffer.read().decode("utf-8")))))'],
+  {input:JSON.stringify(headers),encoding:'utf8'}));
+assert.deepEqual(imported.import.columnBindings.map(binding=>binding.name),expected);
+assert(expected.every(name=>Buffer.byteLength(name,'utf8')<=63));
 console.log('workbook layout: 32 checks passed (including 3 downloaded originals, 3 timezones, 2 date systems and host grids)');

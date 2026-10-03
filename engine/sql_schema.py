@@ -378,7 +378,7 @@ SURROGATE_KEY_WORDS = frozenset({"id", "ids", "uid", "uuid", "guid", "identifier
 def is_surrogate_key(name: str) -> bool:
     """'order ID', 'customer_id', 'OrderID' and 'index' are keys; 'orders', 'idea', 'paid' and 'price index'
     are not."""
-    words = _name_words(name)
+    words = _name_words(re.sub(r' \[column [A-Z]+\](?: \d+)?$', '', name))
     return bool(words) and (words[-1] in SURROGATE_KEY_WORDS or words == ("index",))
 
 

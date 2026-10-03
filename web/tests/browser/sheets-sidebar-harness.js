@@ -84,7 +84,7 @@ async function openSidebar(page, rows, failing = {}, workbookOptions = {}) {
       return {withFailureHandler(fail) {
         return new Proxy({}, {get: (_, name) => arg => {
           window.__calls.push({name, arg: arg === undefined ? null : JSON.parse(JSON.stringify(arg))});
-          setTimeout(() => failing[name] ? fail({name: 'ScriptError', message: failing[name]}) : handlers[name](arg, ok, fail), 10);
+          setTimeout(() => failing[name] ? fail({name: 'ScriptError', message: failing[name]}) : handlers[name](arg, ok, fail), name === 'getSidebarContext' ? (workbookOptions.contextDelay || 10) : 10);
         }});
       }};
     }}}};

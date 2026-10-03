@@ -1,9 +1,8 @@
-// Conservative layout normalization, shared by the browser worker and release
-// evaluator. Formatting is not business meaning: never invent values, fill down
-// data cells, execute formulas/macros, or silently include an ambiguous subtotal.
+// Shared spreadsheet normalization. Preserve data and positions, name messy
+// columns deterministically, and describe uncertainty without inventing values.
 (function(root){
   'use strict';
-  const filled=v=>v!==null&&v!==undefined&&v!=='';
+  const filled=v=>v!==null&&v!==undefined&&v!==''&&(typeof v!=='string'||v.trim()!=='');
   const text=v=>typeof v==='string'&&v.trim()!=='';
   const DAY=86400000;
   // SheetJS reads an elapsed-time cell ([h]:mm) as a Date near its epoch. Give back the day count
@@ -23,6 +22,16 @@
     // SheetJS otherwise localizes date objects during extraction. Excel/Sheets
     // cells are timezone-free: keep their wall-clock value across browser zones.
     const raw=XLSX.utils.sheet_to_json(sheet,{header:1,raw:true,defval:null,blankrows:true,UTC:true});
+    const formulaWarnings=new Set();
+    raw.forEach((row,r)=>row.forEach((value,c)=>{
+      const cell=cellAt(r,c);
+      if(cell&&cell.t==='e'){
+        row[c]=cell.w||Object.keys(ERROR_CODES).find(key=>ERROR_CODES[key]===cell.v)||'#VALUE!';
+        formulaWarnings.add(XLSX.utils.encode_col(c+bounds.s.c));
+      }else if(cell&&cell.f&&cell.v==null){
+        row[c]='#UNAVAILABLE!';formulaWarnings.add(XLSX.utils.encode_col(c+bounds.s.c));
+      }
+    }));
     raw.forEach((r,i)=>r.forEach((v,c)=>{
       const cell=v instanceof Date&&cellAt(i,c);
       if(cell&&root.NUMBER_FORMAT.isElapsed(cell.z))r[c]=elapsedDays(v,date1904);
@@ -34,34 +43,34 @@
     const count=r=>r.filter(filled).length;
     const letter=c=>XLSX.utils.encode_col(c+bounds.s.c);
     const merges=sheet['!merges']||[];
-    // The header row names the fields: the first row that names every populated column or, failing
-    // that, the first all-text row that names at least two thirds of them. A column with values but
-    // no header is not a field (row numbers, a helper column): it is left out, and the import says so;
-    // nothing is named for it. Prefix rows must be narrower metadata, not an earlier rectangular data
-    // table that we would discard.
-    const noHeader='No unambiguous header found in the first 64 rows. Use one named column per field.';
+    // Prefer a text header row. Blank or repeated labels retain their positions;
+    // when no header is identifiable, neutral column letters preserve all rows.
+    const warnings=[];
+    if(formulaWarnings.size)warnings.push('Formula results are unavailable in columns '+[...formulaWarnings].join(', ')+'. Error markers were kept; these cells are not numbers.');
     let start=rows.findIndex((r,i)=>i<64&&r.every(text));
     if(start<0)start=rows.findIndex((r,i)=>i<64&&count(r)>=2&&count(r)*3>=width*2&&r.every(v=>!filled(v)||text(v)));
-    if(start<0)throw new Error(noHeader);
-    const unnamed=rows[start].map((v,c)=>c).filter(c=>!filled(rows[start][c]));
-    // A cell under a merged header belongs to that header's group: one name for two columns is ambiguous.
+    const inferredHeader=start>=0;
+    if(!inferredHeader){start=-1;warnings.push('No header row was identified. All rows were kept with column-letter names.');}
+    const headers=inferredHeader?rows[start]:Array(width).fill(null);
+    const unnamed=headers.map((v,c)=>c).filter(c=>!filled(headers[c]));
+    // A merged header can span multiple fields; preserve each cell position.
     if(unnamed.some(c=>merges.some(m=>m.s.r<=start+bounds.s.r&&m.e.r>=start+bounds.s.r&&m.s.c<=c+bounds.s.c&&m.e.c>=c+bounds.s.c)))
-      throw new Error(noHeader);
+      warnings.push('A merged header covers several columns; their positions distinguish the fields.');
     const below=c=>rows.slice(start+1).map(r=>r[c]).filter(filled);
-    const leftOut=unnamed.filter(c=>below(c).length);
-    // A header row one column to the left of its data (a column inserted without moving the headers)
-    // leaves only the last column unnamed, holding numbers, while the last header sits over text:
-    // every answer would read the wrong column, so the sheet is refused with the fix.
+    const unnamedPopulated=unnamed.filter(c=>below(c).length);
+    // Suspected header shifts must not bind amount to currency or customer to ID.
+    // Keep the data with neutral positional names and a visible warning.
     const last=width-1, share=(c,test)=>below(c).filter(test).length/Math.max(1,below(c).length);
-    if(leftOut.length===1&&leftOut[0]===last&&unnamed.length===1&&share(last,v=>typeof v==='number')>=0.8
-       &&share(last-1,v=>typeof v==='string'&&!/^-?[\d.,]+$/.test(v.trim()))>=0.8){
-      throw new Error('Column '+letter(last)+' has values but no header, and the headers look one column to the left of their data ('
-        +letter(last-1)+(start+bounds.s.r+1)+' "'+rows[start][last-1].trim()+'" is above "'+below(last-1)[0]+'"). Put each header above its data.');
+    const shifted=unnamedPopulated.length===1&&unnamedPopulated[0]===last&&unnamed.length===1&&share(last,v=>typeof v==='number')>=0.8
+       &&share(last-1,v=>typeof v==='string'&&!/^-?[\d.,]+$/.test(v.trim()))>=0.8;
+    if(shifted)warnings.push('Headers may be shifted relative to the cells. All columns were kept with column-letter names; refer to their letters when asking a question.');
+    if(start>0&&rows.slice(0,start).some(r=>count(r)===width)){
+      warnings.push('An earlier populated row may be data. All rows were kept with column-letter names.');
+      start=-1;
     }
-    if(rows.slice(0,start).some(r=>count(r)===width))
-      throw new Error('Multiple or ambiguous header rows. Select a single table before uploading.');
-    const keep=rows[start].map((v,c)=>c).filter(c=>!unnamed.includes(c));
-    let columns=keep.map(c=>rows[start][c].trim());
+    const keep=Array.from({length:width},(_,c)=>c);
+    let columns=keep.map(c=>!shifted&&start>=0&&text(headers[c])?headers[c].trim():'Column '+letter(c));
+    if(unnamedPopulated.length&&start>=0&&!shifted)warnings.push('Unnamed columns '+unnamedPopulated.map(letter).join(', ')+' were kept with column-letter names.');
     if(start>0&&count(rows[start-1])>=2){
       const parent=rows[start-1], absolute=start-1+bounds.s.r;
       columns=columns.map((name,i)=>{
@@ -71,9 +80,20 @@
         return text(group)&&group.trim()!==name?group.trim()+' '+name:name;
       });
     }
-    if(new Set(columns.map(c=>c.toLowerCase())).size!==columns.length)
-      throw new Error('Duplicate column headers. Give each field a unique name.');
-    let end=rows.length, validationEnd=rows.length;
+    columns=columns.map(name=>name.replace(/[\uD800-\uDFFF]/gu,'\uFFFD'));
+    const names=new Set(), duplicates=columns.filter((name,i)=>columns.some((other,j)=>j!==i&&other.toLowerCase()===name.toLowerCase()));
+    const byteLength=value=>Array.from(value).reduce((sum,char)=>sum+(char.codePointAt(0)<128?1:char.codePointAt(0)<2048?2:char.codePointAt(0)<65536?3:4),0);
+    const shorten=(value,suffix)=>{let points=Array.from(value);while(byteLength(points.join(''))+byteLength(suffix)>63)points.pop();return points.join('')+suffix;};
+    columns=columns.map((name,c)=>{
+      const suffix=' [column '+letter(c)+']';
+      let candidate=duplicates.includes(name)||byteLength(name)>63?shorten(name,suffix):name;
+      let counter=1;
+      while(names.has(candidate.toLowerCase()))candidate=shorten(name,suffix+' '+(++counter));
+      names.add(candidate.toLowerCase());return candidate;
+    });
+    if(duplicates.length)warnings.push('Repeated headers were kept and distinguished by column letter: '+[...new Set(duplicates)].join(', ')+'.');
+    if(columns.some((name,i)=>name!==String(headers[i]||'').trim()&&byteLength(String(headers[i]||''))>63))warnings.push('Long field names were shortened with column-letter suffixes for stable database identifiers.');
+    let end=rows.length;
     while(end>start+1&&!count(rows[end-1]))end--;
     // A separated, sparse final annotation block is metadata, not table rows.
     // Require an explicit note label: density alone would discard valid records.
@@ -81,37 +101,36 @@
       const values=rows[i].filter(filled);
       if(i>start+1&&!count(rows[i-1])&&values.length===1&&typeof values[0]==='string'&&
          /^(?:notes?|source|last reviewed|last updated)\s*:/i.test(values[0])&&
-         rows.slice(i).every(r=>count(r)<=1)) {end=i;validationEnd=i;break;}
+         rows.slice(i).every(r=>count(r)<=1)) {end=i;break;}
     }
-    const data=[]; const skipped=[];
+    const data=[]; const skipped=[]; const summaryRows=[];
     if(merges.some(m=>m.e.r>=start+1+bounds.s.r&&m.s.r<end+bounds.s.r&&
         m.s.c<width+bounds.s.c&&m.e.c>=bounds.s.c))
-      throw new Error('Merged data cells are ambiguous. Unmerge the detail table and supply each record explicitly.');
+      warnings.push('Merged data cells were kept as stored: blank cells were not filled with invented values.');
     for(let i=start+1;i<end;i++){
       if(!count(rows[i])){skipped.push(i+bounds.s.r+1);continue;}
       const row=rows[i];
-      if(row.some(v=>typeof v==='string'&&/^(grand total|sub[ -]?total|total)\s*:?$/i.test(v.trim())))
-        throw new Error('A total/subtotal row is mixed with records. Select the detail table to avoid double-counting.');
-      data.push(keep.map(c=>row[c]).map(v=>{
+      const values=row.filter(filled);
+      const summary=data.length&&typeof values[0]==='string'&&/^(grand total|sub[ -]?total|total)\s*:?$/i.test(values[0].trim())
+        &&values.length>1&&values.slice(1).every(v=>typeof v==='number');
+      const normalizedRow=keep.map(c=>row[c]).map(v=>{
         if(!(v instanceof Date))return v;
         const iso=v.toISOString();
         // Excel dates carry no timezone. Preserve non-midnight time components
         // instead of silently truncating a timestamp to a calendar date.
         return iso.endsWith('T00:00:00.000Z')?iso.slice(0,10):iso.slice(0,-1);
-      }));
+      });
+      if(summary)summaryRows.push(normalizedRow);else data.push(normalizedRow);
     }
-    // The input file's cached values are authoritative; no formula is executed.
-    for(let r=start+1;r<validationEnd;r++)for(const c of keep){
-      const cell=cellAt(r,c);
-      if(cell&&cell.f&&cell.v==null)throw new Error('A formula has no cached value. Recalculate and save the workbook in Excel first.');
-      if(cell&&cell.t==='e')throw new Error('The table contains an Excel formula error. Correct it before uploading.');
-    }
+    if(summaryRows.length)warnings.push('Explicit total/subtotal rows were separated into a summaries table to avoid counting them twice.');
     if(!data.length)return null;
     const normalized=XLSX.utils.aoa_to_sheet([columns,...data]);
-    return {csv:XLSX.utils.sheet_to_csv(normalized,{blankrows:false}),import:{
-      version:1,method:'deterministic-layout',headerRow:start+bounds.s.r+1,
-      dataRows:data.length,columns:keep.length,leftOutColumns:leftOut.map(letter),skippedBlankRows:skipped,
-      prefixRows:start,suffixRows:rows.length-end,formulaValues:'cached-only',
+    return {csv:XLSX.utils.sheet_to_csv(normalized,{blankrows:false}),
+      summaryCsv:summaryRows.length?XLSX.utils.sheet_to_csv(XLSX.utils.aoa_to_sheet([columns,...summaryRows]),{blankrows:false}):null,import:{
+      version:2,method:'deterministic-layout',headerRow:start<0?null:start+bounds.s.r+1,
+      dataRows:data.length,columns:keep.length,leftOutColumns:[],skippedBlankRows:skipped,warnings,
+      columnBindings:keep.map((c,i)=>({name:columns[i],column:letter(c),originalHeader:start>=0?headers[c]:null})),
+      prefixRows:Math.max(0,start),suffixRows:rows.length-end,formulaValues:'cached-only',
     }};
   }
   // A host that reads live cells (the Excel task pane, the Sheets sidebar) passes grids instead of
@@ -170,7 +189,15 @@
         total+=normalized.csv.length;
         if(total>limits.totalChars)throw new Error('the expanded workbook is too large');
         sheets.push({name,...normalized});
+        if(normalized.summaryCsv){
+          total+=normalized.summaryCsv.length;
+          if(total>limits.totalChars)throw new Error('the expanded workbook is too large');
+          const base=name+' summaries';let summaryName=base;
+          while(workbook.SheetNames.includes(summaryName)||sheets.some(s=>s.name===summaryName))summaryName+=' summary';
+          sheets.push({name:summaryName,csv:normalized.summaryCsv,import:{...normalized.import,section:'summaries',warnings:[],dataRows:normalized.summaryCsv.split('\n').length-1}});
+        }
       }
+      if(sheets.length>limits.sheets)throw new Error('This workbook has more than '+limits.sheets+' data regions. Choose the sheets or regions relevant to your question.');
       return {ok:true,sheets};
     }catch(error){
       return {ok:false,error:(error&&error.message)||String(error)};

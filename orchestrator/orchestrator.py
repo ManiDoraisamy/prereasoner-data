@@ -238,6 +238,7 @@ def _intent_context(history, tables):
     """Explicit wording context and schema, with no assistant replies or cell values."""
     import csv
     import io
+    from engine.column_names import canonical_columns
 
     questions = [str(item['content']) for item in history or ()
                  if item.get('role') == 'user' and isinstance(item.get('content'), str)][-2:]
@@ -245,8 +246,16 @@ def _intent_context(history, tables):
     for table in tables or ():
         columns = table.get('columns')
         if columns is None:
-            columns = next(csv.reader(io.StringIO(table.get('data') or '')), [])
-        schema.append({'table': table.get('name') or 'data', 'columns': list(columns)})
+            reader = csv.reader(io.StringIO(table.get('data') or ''))
+            columns = next(reader, [])
+            width = max((index+1 for index, value in enumerate(columns) if value.strip()), default=0)
+            width = max(width, max((index+1 for row in reader for index, value in enumerate(row) if value.strip()), default=0))
+            columns = columns[:width] + [None] * max(0,width-len(columns))
+        entry = {'table': table.get('name') or 'data', 'columns': canonical_columns(columns)}
+        scope = (table.get('source') or {}).get('scope')
+        if scope:
+            entry['scope'] = scope
+        schema.append(entry)
     return {'recent_questions': questions, 'schema': schema}
 
 
@@ -957,8 +966,7 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                     # answered, clarified, or failed, another tool-enabled round can only ask a
                     # different question. That was the production loop behind the misleading
                     # "step budget" response: five progressively weaker rewrites replaced a useful
-                    # terminal result. Let the model present the result, with tool calls disabled for
-                    # this one final round so the computation remains the engine's.
+                    # terminal result. Render facts locally from the engine result.
                     final_text = _terminal_fallback(terminal_query)
                     break
             else:
@@ -969,7 +977,12 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
             if stream_buffer is not None:
                 stream_buffer.close()             # the _emit('reply', final_text) below stays authoritative
 
-    _emit("reply", final_text)                               # the model's text for the rail
+    scoped_names = sorted({name for table in tables or ()
+                           for scope in [(table.get('source') or {}).get('scope') or {}]
+                           if scope.get('mode') == 'active' for name in scope.get('included', [])})
+    if scoped_names:
+        final_text = 'Using the selected active sheet: ' + ', '.join(scoped_names) + '.\n\n' + final_text
+    _emit("reply", final_text)
     _emit("status", "done")                                  # terminal — the browser stops waiting
 
     # Lean cross-turn transcript: user + assistant final text only (avoids block-replay pitfalls; the

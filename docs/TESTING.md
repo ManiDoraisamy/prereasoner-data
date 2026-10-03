@@ -200,10 +200,12 @@ Binary eval fixtures pass through `tests/workbook_fixture.js`, which executes th
 Do not substitute a custom XML reader: omitted cells, multiple sheets and formatted headers must follow
 the production importer. `workbook-import.js` identifies complete headers after bounded metadata, removes
 blank separators and explicit separated footer notes, preserves numeric values and dates/timestamps, and
-records source header/row counts. Simple merged parent headings are flattened; merged data cells,
-duplicate headers and ambiguous total/subtotal rows are rejected. Cached formula values are read, never
-executed or recalculated. Missing caches and Excel errors fail visibly. Neither Gemini nor the engine
-currently repairs arbitrary workbook layouts: the deterministic upload adapter handles this bounded subset.
+records source header/row counts and warnings. Merged parent headings are flattened; merged data
+cells retain stored values and blanks. Duplicate and blank headers get stable positional names.
+Explicit numeric summary rows are retained in a separate summaries table. Cached formula values are
+read without execution; unavailable/error values remain text, blocking arithmetic on the affected
+column without blocking counts or unrelated fields. Unreliable headers use neutral column letters.
+Neither Gemini nor the engine invents missing cell values or repairs arbitrary layouts.
 The original .xls/.xlsx files remain unchanged in evaluation-only directories with publisher attribution.
 
 The Google Sheets picker reads the selected file once via Drive `files.export` (XLSX), using the existing

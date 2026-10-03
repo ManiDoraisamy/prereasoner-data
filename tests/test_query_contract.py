@@ -1,11 +1,51 @@
 """Contrast tests for request completeness, independently of model accuracy."""
-from engine.query_contract import coverage
+from engine.query_contract import coverage, constraint_violations
 from engine.question_rewrite import _preserves_explicit_constraints
 from engine.sql_schema import SchemaGraph
 from tests.test_sql_ast import _hermetic_planner, _gemini_planner, _model_query, _request, _select
 
 TABLE = {"name": "orders", "columns": ["Amount", "city", "signed", "created"], "rows": [
     [120, "Paris", "2026-07-01", "2026-08-12"], [40, "東京", "2026-08-12", "2026-07-01"]]}
+
+
+def test_repeated_headers_need_clarification_only_when_a_field_is_selected():
+    from engine.sql_ast import Aggregate, ColumnRef, SelectItem, SelectQuery, SQLType, Star
+    graph = SchemaGraph.from_tables([{"name": "orders", "columns": ["Amount [column B]", "Amount [column C]", "Units"],
+                                     "rows": [[10, 20, 99]]}], [])
+    amount = ColumnRef("orders", "Amount [column B]", SQLType.INTEGER)
+    query = SelectQuery((SelectItem(Aggregate("SUM", amount)),), "orders")
+    assert any('Which repeated field' in v for v in constraint_violations('total Amount', query, graph))
+    assert not constraint_violations('total Amount in column B', query, graph)
+    count = SelectQuery((SelectItem(Aggregate("COUNT", Star())),), "orders")
+    assert not constraint_violations('How many rows?', count, graph)
+    unrelated = SelectQuery((SelectItem(Aggregate("COUNT", Star())),), "orders")
+    assert any('Which repeated field' in v for v in constraint_violations('total Amount', unrelated, graph))
+    units = SelectQuery((SelectItem(Aggregate('SUM', ColumnRef('orders','Units',SQLType.INTEGER))),), 'orders')
+    assert constraint_violations('total Amount in column B', units, graph)
+
+
+def test_a_known_named_field_cannot_be_replaced_by_another_measure():
+    from engine.sql_ast import Aggregate, ColumnRef, SelectItem, SelectQuery, SQLType
+    graph = SchemaGraph.from_tables([{"name": "orders", "columns": ["Amount", "Units"], "rows": [[10, 99]]}], [])
+    query = SelectQuery((SelectItem(Aggregate("SUM", ColumnRef('orders','Units',SQLType.INTEGER))),), 'orders')
+    assert any('requested field is not used: Amount' in v for v in constraint_violations('total Amount', query, graph))
+    assert not constraint_violations('total Units', query, graph)
+    count = SelectQuery((SelectItem(Aggregate('COUNT', ColumnRef('orders','Amount',SQLType.INTEGER))),), 'orders')
+    assert any('requested total needs a sum' in v for v in constraint_violations('total Amount', count, graph))
+
+
+def test_model_numeric_prediction_does_not_erase_notes_or_formula_errors():
+    import numpy as np
+    from engine.tables import TableQuery
+    planner = TableQuery()
+    planner.dims = [{"name": "is_num", "family": "struct", "dim_id": 0}]
+    planner._encode = lambda names: np.ones((len(names), 1))
+    planner._layers = lambda units, encoded: [encoded]
+    schema, _, _ = planner.schema([{"name": "orders", "columns": ["amount", "units"],
+                                   "rows": [[10, 2], ["#DIV/0!", 3]]}], [])
+    assert schema[0]['affinity'] == 'TEXT'
+    assert schema[0]['values'] == [10, '#DIV/0!']
+    assert schema[1]['affinity'] == 'INTEGER'
 
 
 def check(question, sql):

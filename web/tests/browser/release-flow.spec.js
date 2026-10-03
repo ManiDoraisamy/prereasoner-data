@@ -65,23 +65,28 @@ for(const failure of [null,429,'layout'])test('Google Sheets uses the shared wor
     if(failure===429)return route.fulfill({status:429,headers});
     let body=fs.readFileSync(path.resolve(__dirname,'../../public/dataset/eval-neartail-supplier-report-xlsx/payments.xlsx'));
     if(failure==='layout'){
-      const book=XLSX.utils.book_new();XLSX.utils.book_append_sheet(book,XLSX.utils.aoa_to_sheet([['amount'],[10],['Total']]),'Data');
+      const book=XLSX.utils.book_new();XLSX.utils.book_append_sheet(book,XLSX.utils.aoa_to_sheet([['amount','amount'],[10,20]]),'Data');
       body=Buffer.from(XLSX.write(book,{type:'buffer',bookType:'xlsx'}));
     }
     return route.fulfill({headers,contentType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',body});
   });
   await page.goto('/picker?use=both');
-  if(failure){
-    await expect(page.locator('#msg')).toContainText(failure===429?'rate-limited':'double-counting');
+  if(failure===429){
+    await expect(page.locator('#msg')).toContainText('rate-limited');
     expect(await page.evaluate(()=>sessionStorage.getItem(SS.PENDING_SHEETS))).toBeNull();
   }else{
     await expect(page).toHaveURL(/\/sheets\?use=both$/);
     await expect(page.locator('#chips .nm')).toHaveText(['Supplier report']);
     await page.locator('#chips .chip').click();
-    await expect(page.locator('#ph')).toContainText('30 rows');
-    await expect(page.locator('#ph')).toContainText('header row 11 (Google Sheets snapshot)');
-    expect(await page.evaluate(()=>SHEETS[0].data)).toBe(require('../../../tests/workbook_fixture.js').readWorkbook(
-      path.resolve(__dirname,'../../public/dataset/eval-neartail-supplier-report-xlsx/payments.xlsx'))[0].csv);
+    if(failure==='layout'){
+      await expect(page.locator('#ph')).toContainText('Repeated headers were kept');
+      expect(await page.evaluate(()=>SHEETS[0].data)).toBe('amount [column A],amount [column B]\n10,20');
+    }else{
+      await expect(page.locator('#ph')).toContainText('30 rows');
+      await expect(page.locator('#ph')).toContainText('header row 11 (Google Sheets snapshot)');
+      expect(await page.evaluate(()=>SHEETS[0].data)).toBe(require('../../../tests/workbook_fixture.js').readWorkbook(
+        path.resolve(__dirname,'../../public/dataset/eval-neartail-supplier-report-xlsx/payments.xlsx'))[0].csv);
+    }
   }
   expect(downloads).toBe(1);
   expect(await page.evaluate(()=>JSON.stringify({...sessionStorage}))).not.toContain('picker-fixture-token');

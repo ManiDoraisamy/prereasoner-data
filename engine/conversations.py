@@ -85,7 +85,8 @@ def _store_tables(sheets):
             table = {"name": s.get("name") or "table", "data": s["data"]}
             source = s.get("source")
             if isinstance(source, dict) and isinstance(source.get("kind"), str):
-                table["source"] = {"kind": source["kind"][:40]}
+                from engine.request_validation import validate_source
+                table["source"] = validate_source(source)
             out.append(table)
     return out[:8]
 

@@ -12,7 +12,6 @@ it), so the ONE trained model drives every path.
 from __future__ import annotations
 import csv as _csv
 import io
-import json
 import re
 import sqlite3
 from functools import wraps
@@ -26,6 +25,7 @@ from engine.fk_edges import edges
 from engine.numeric import parse_decimal, register_sqlite_decimal, sqlite_numeric, wire_decimal
 from engine.relations import relate
 from engine.request_validation import canonical_table_name
+from engine.column_names import canonical_columns
 
 MAX_ROWS, MAX_LEN = 12, 48
 FORBID = re.compile(r"\b(insert|update|delete|drop|alter|create|attach|detach|pragma|replace|truncate|vacuum|with)\b", re.I)
@@ -65,8 +65,9 @@ def normalize_tables(tables):
     """Return the canonical table/row representation used by planning and execution."""
     normalized = []
     for table in tables:
-        columns = list(table["columns"])
-        rows = [row if isinstance(row, list) else [row.get(column) for column in columns]
+        original_columns = list(table["columns"])
+        columns = canonical_columns(original_columns)
+        rows = [row if isinstance(row, list) else [row.get(column) for column in original_columns]
                 for row in table["rows"]]
         normalized.append({
             "name": normalize_table_name(table["name"]),
@@ -165,34 +166,27 @@ def _unquote(s):
     return s
 
 
-def parse_rows(text, fmt="auto"):
+def parse_rows(text):
     text = (text or "").strip()
-    if fmt == "ndjson" or (fmt == "auto" and text[:1] in "{["):
-        rows = []
-        for line in text.splitlines():
-            line = line.strip()
-            if line:
-                try:
-                    r = json.loads(line)
-                    if isinstance(r, dict):
-                        rows.append(r)
-                except Exception:
-                    pass
-        return rows
     g = list(_csv.reader(io.StringIO(text), skipinitialspace=True))
     if len(g) < 1:
         return []
-    header = [_unquote(h) or f"col{i}" for i, h in enumerate(g[0])]
+    width = max((index+1 for row in g for index, value in enumerate(row) if value.strip()), default=0)
+    if not width:
+        return []
+    original = g[0][:width]
+    header = canonical_columns([_unquote(h) for h in original] + [None] * (width-len(original)))
     rows = []
     for r in g[1:]:
         if not any((c or "").strip() for c in r):
             continue
-        rows.append({k: _typed(_unquote(v)) for k, v in zip(header, r)})
+        rows.append({key: _typed(_unquote(r[index])) if index < len(r) else None
+                     for index, key in enumerate(header)})
     return rows
 
 
 def csv_table(csv_text, name):
-    rows = parse_rows(csv_text, "auto")
+    rows = parse_rows(csv_text)
     cols = list(rows[0].keys()) if rows else []
     return {"name": name, "columns": cols, "rows": [[r.get(c) for c in cols] for r in rows]}
 
@@ -202,7 +196,7 @@ def table_from_rows(name, columns, rows):
     _unquote then _typed. Without this, a saved-reference cell keeps any wrapping quotes while the same value
     uploaded as CSV is unquoted, so master.relevant_tables' case-sensitive value-inclusion guard would drop the
     reference. Kept byte-identical so a master table is just another own-data table to the planner."""
-    cols = [_unquote(str(column)) or f"col{i}" for i, column in enumerate(columns or [])]
+    cols = canonical_columns([_unquote(None if column is None else str(column)) for column in columns or []])
     width = len(cols)
     typed_rows = []
     for row in rows or []:
@@ -340,6 +334,11 @@ class TableQuery:
                 ne = [v for v in vals if v is not None and str(v).strip() != ""]
                 if ne and all(_num_str(v) for v in ne):
                     aff = "REAL" if any("." in str(v) for v in ne) else "INTEGER"
+                elif ne and not all(isinstance(v, bool) for v in ne):
+                    # A learned numeric label cannot turn notes or formula errors
+                    # into missing numbers. Keep the cells and prevent arithmetic
+                    # on this column; other columns and row counts remain usable.
+                    aff = "TEXT"
                 else:
                     aff = affinity(struct)
                 sch.append({"table": t["name"], "name": str(c), "idx": colidx[(t["name"], c)], "struct": struct,
@@ -620,6 +619,13 @@ class TableQuery:
             return None, None, "planner: no valid AST candidate", candidates, selection
         candidate = selection.candidate
         if candidate is None:
+            from engine.query_contract import constraint_violations
+            from engine.sql_schema import SchemaGraph
+            graph = SchemaGraph.from_planner(sch, fks)
+            for member in candidates:
+                for violation in constraint_violations(question, member.query, graph):
+                    if violation.startswith('Which repeated field'):
+                        return None, None, violation, candidates, selection
             return None, None, "planner: no executable AST candidate", candidates, selection
         deterministic_plan = None
         if analysis_context is not None:

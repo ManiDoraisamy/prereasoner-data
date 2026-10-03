@@ -87,13 +87,15 @@
         <span class="sheet-count" id="sheetCount">Reading the sheet…</span>
       </div>
       <div class="note" id="note" role="status" hidden></div>
+      <label for="sheetScope">Answer using</label>
+      <select id="sheetScope" aria-label="Sheet scope" disabled><option value="all">All visible tabs</option><option value="active">Active sheet</option></select>
       <div id="thread" aria-live="polite"></div>
     </div>
 
     <div class="sidebar bottom">
       <form class="composer" id="composer">
         <label class="sr-only" for="question">Ask about this spreadsheet</label>
-        <textarea id="question" placeholder="Ask about this spreadsheet…" rows="1" disabled></textarea>
+        <textarea id="question" placeholder="Ask about this spreadsheet…" rows="1"></textarea>
         <button id="send" type="submit" aria-label="Send" disabled>↑</button>
       </form>
     </div>
@@ -104,7 +106,7 @@
     <script src="https://chat.prereasoner.com/vendor/xlsx-0.20.3.full.min.js"></script>
     <script src="https://chat.prereasoner.com/lib/upload-limits.js"></script>
     <script src="https://chat.prereasoner.com/lib/number-format.js"></script>
-    <script src="https://chat.prereasoner.com/lib/workbook-import.js?v=2"></script>
+    <script src="https://chat.prereasoner.com/lib/workbook-import.js?v=3"></script>
     <!-- The web's live trace (subscribeTurn/subscribeRun) and its Firebase sign-in. -->
     <script type="module">
       import {signInWithHostToken} from 'https://chat.prereasoner.com/lib/firebase-init.js';
@@ -123,9 +125,10 @@
         var questionEl = document.getElementById('question');
         var sendEl = document.getElementById('send');
         var newEl = document.getElementById('newConversation');
+        var scopeEl = document.getElementById('sheetScope');
         var state = {conversationId: null, turns: [], history: [], tables: [], syncedFingerprint: '', ready: false,
           restored: false, sheetError: '', uid: null, signedIn: null, busy: true, live: null, failed: null,
-          importNote: '', note: ''};
+          importNote: '', note: '', scope: 'auto'};
 
         function callServer(name, arg) {
           return new Promise(function (resolve, reject) {
@@ -167,22 +170,24 @@
           if (workbook.skipped && workbook.skipped.length) {
             throw new Error('These visible tabs could not be included: ' + workbook.skipped.map(function (tab) {
               return typeof tab === 'string' ? tab : tab.name;
-            }).join(', ') + '. Hide tabs you do not want to analyze, or reduce their size, then ask again. ' +
-              'No answer will be calculated from an incomplete workbook.');
+            }).join(', ') + '. Choose Active sheet to analyze the current tab.');
           }
+          state.scope = workbook.scope || (state.scope === 'auto' ? 'all' : state.scope);
+          scopeEl.value = state.scope;
           var result = window.WORKBOOK_IMPORT.convert({grids: workbook.grids}, window.XLSX, window.UPLOAD_LIMITS);
           if (!result.ok) throw new Error(result.error);
-          if (!result.sheets.length) throw new Error('This spreadsheet needs a header row and at least one data row.');
-          // Unnamed columns are identified explicitly; oversized tabs are refused above.
-          state.importNote = result.sheets.filter(function (sheet) {
-            return sheet.import && sheet.import.leftOutColumns && sheet.import.leftOutColumns.length;
-          }).map(function (sheet) {
-            var columns = sheet.import.leftOutColumns, one = columns.length === 1;
-            return 'Sheet "' + sheet.name + '": ' + (one ? 'column ' : 'columns ') + columns.join(', ') +
-              (one ? ' has' : ' have') + ' no header, so ' + (one ? 'it was' : 'they were') + ' left out.';
+          if (!result.sheets.length) throw new Error('There are no data rows in the selected sheets. Choose a populated tab.');
+          state.importNote = result.sheets.map(function (sheet) {
+            var warnings = sheet.import && sheet.import.warnings || [];
+            return warnings.length ? 'Sheet "' + sheet.name + '": ' + warnings.join(' ') : '';
           }).filter(Boolean).join(' ');
+          if (state.scope === 'active') state.importNote = 'Using the active sheet only: ' +
+            result.sheets.map(function (sheet) { return sheet.name; }).join(', ') + '. ' + state.importNote;
           return result.sheets.map(function (sheet) {
-            return {name: sheet.name, data: sheet.csv, source: {kind: 'google-sheets-addon'}};
+            return {name: sheet.name, data: sheet.csv, source: {kind: 'google-sheets-addon',
+              warnings: (sheet.import && sheet.import.warnings || []).map(function (warning) { return warning.slice(0,4096); }),
+              scope: {mode: state.scope, included: result.sheets.map(function (s) { return s.name; }),
+                available: workbook.availableTabs || result.sheets.map(function (s) { return s.name; })}}};
           });
         }
 
@@ -250,11 +255,10 @@
 
         function emptyHtml() {
           if (state.sheetError) {
-            return '<div class="empty sheet-error">' + R.escapeHtml(state.sheetError) +
-              (state.sheetError === ACCOUNT_MESSAGE ? '' : '<br>Fix the sheet, then ask your question.') + '</div>';
+            return '<div class="empty sheet-error">' + R.escapeHtml(state.sheetError) + '</div>';
           }
           return '<div class="empty"><div>Ask a question about the current sheet.</div><p class="data-notice">When you send a question, ' +
-            'Prereasoner securely processes your question and the visible, non-empty tabs in this spreadsheet to produce and save ' +
+            'Prereasoner securely processes your question and the sheets selected above to produce and save ' +
             'the answer. This data is not used to train generalized AI models. <a href="' + PRIVACY_URL +
             '" target="_blank" rel="noopener">Privacy</a></p></div>';
         }
@@ -280,7 +284,7 @@
           scrollToEnd();
         }
 
-        // The note shows what the last import left out, plus one passing message.
+        // Describe import warnings and source scope alongside recovery messages.
         function showNote(text) {
           state.note = text || '';
           var combined = [state.importNote, state.note].filter(Boolean).join(' ');
@@ -297,9 +301,11 @@
 
         function setBusy(busy) {
           state.busy = busy;
-          questionEl.disabled = busy;
+          // Reading and answering must never lock the user's draft.
+          questionEl.disabled = false;
           sendEl.disabled = busy;
           newEl.disabled = busy || !state.ready;
+          scopeEl.disabled = busy;
           sendEl.textContent = busy ? '…' : '↑';
         }
 
@@ -400,7 +406,7 @@
           render();
           var stopLive = function () {};
           try {
-            var tables = importGrids(await callServer('getWorkbookGrids'));
+            var tables = importGrids(await callServer('getWorkbookGrids', {scope: state.scope}));
             showNote(state.note);
             state.sheetError = '';
             state.tables = tables;
@@ -443,7 +449,7 @@
           } catch (error) {
             state.live = null;
             state.failed = {question: question, error: errorText(error)};
-            questionEl.value = question;
+            if (!questionEl.value.trim()) questionEl.value = question;
             render();
           } finally {
             stopLive();
@@ -456,8 +462,12 @@
           event.preventDefault();
           submit();
         });
+        scopeEl.addEventListener('change', function () {
+          state.scope = scopeEl.value;
+          showNote('Your next question will use ' + (state.scope === 'active' ? 'the active sheet' : 'all visible tabs') + '.');
+        });
         questionEl.addEventListener('keydown', function (event) {
-          if (event.key === 'Enter' && !event.altKey && !event.shiftKey && !event.ctrlKey && !event.metaKey) {
+          if (!state.busy && event.key === 'Enter' && !event.altKey && !event.shiftKey && !event.ctrlKey && !event.metaKey) {
             event.preventDefault();
             submit();
           }

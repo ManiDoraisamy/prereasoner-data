@@ -162,10 +162,9 @@ function renderChips(){
 function openPreview(i){
   const s=SHEETS[i], p=parseCSV(s.data);
   $('ph').innerHTML=esc(s.name)+' <span class=c>· '+p.rows.length+' rows × '+p.cols.length+' cols'
-    +(s.import?' · imported from header row '+s.import.headerRow
+    +(s.import?' · '+(s.import.headerRow?'imported from header row '+s.import.headerRow:'imported using column letters')
       +(s.import.source==='google-sheets'?' (Google Sheets snapshot)':' (cached Excel values)')
-      +((s.import.leftOutColumns||[]).length?' · left out column'+(s.import.leftOutColumns.length===1?' ':'s ')
-        +esc(s.import.leftOutColumns.join(', '))+' (no header)':''):'')
+      +((s.import.warnings||[]).length?' · '+esc(s.import.warnings.join(' ')):''):'')
     +(p.rows.length>500?' · previewing first 500':'')+'</span>';
   let h='<table class=ptab><tr><th class=rn></th>'+p.cols.map(c=>'<th>'+esc(c.trim())+'</th>').join('')+'</tr>';
   p.rows.slice(0,500).forEach((r,ri)=>{h+='<tr><td class=rn>'+(ri+1)+'</td>'+p.cols.map((c,ci)=>'<td>'+esc(r[ci]==null?'':r[ci])+'</td>').join('')+'</tr>';});
@@ -222,7 +221,7 @@ $('file').addEventListener('change',async function(e){     // CSV/TSV read as te
       if(/\.(xlsx|xlsm|xls)$/i.test(f.name)){
         const used=await XLSX_READER.readWorkbook(f);
         if(!used.length)throw new Error('“'+f.name+'” has no sheet with a header and a data row.');
-        used.forEach(x=>pending.push({name:used.length>1?x.name:baseName(f.name),data:x.csv,filename:f.name,import:x.import,source:{kind:'excel'}}));
+        used.forEach(x=>pending.push({name:used.length>1?x.name:baseName(f.name),data:x.csv,filename:f.name,import:x.import,source:{kind:'excel',warnings:(x.import?.warnings||[]).map(warning=>warning.slice(0,4096))}}));
       }else{
         const data=await XLSX_READER.readText(f);
         if(!parseCSV(data).rows.length)throw new Error('“'+f.name+'” has no data rows.');

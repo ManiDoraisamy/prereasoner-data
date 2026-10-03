@@ -12,6 +12,21 @@ apt-get install -y --no-install-recommends git
 rm -rf /var/lib/apt/lists/*
 if [ "${INSTALL_CI_REQUIREMENTS:-1}" = "1" ]; then
   python -m pip install --require-hashes -r /app/requirements-ci.lock.txt
+  # Node is supplied by the pinned build helper. Execute each reviewed web-test
+  # command directly so the immutable candidate also gates shared import, host
+  # adapters and Hosting configuration without adding tools to the shipped image.
+  python - <<'PY'
+import json
+import shlex
+import subprocess
+
+commands = json.load(open('/app/package.json', encoding='utf-8'))['scripts']['test:web']
+for command in commands.split(' && '):
+    arguments = shlex.split(command)
+    if arguments[0] != 'node' or len(arguments) != 2:
+        raise SystemExit('web gate requires explicit Node test files')
+    subprocess.run(arguments, cwd='/app', check=True, timeout=180)
+PY
 fi
 
 # git archive intentionally has no history. Build a synthetic local commit from the attested

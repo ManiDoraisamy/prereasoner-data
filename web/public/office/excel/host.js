@@ -120,7 +120,7 @@ export async function readWorkbook(normalize = normalizeInWorker) {
     if (bytes > MAX_TABLE_BYTES) throw new Error(`The tab “${sheet.name}” is larger than ${MAX_TABLE_BYTES / 1e6} MB.`);
     byteTotal += bytes;
     if (byteTotal > MAX_TOTAL_BYTES) throw new Error(`Combined workbook data is larger than ${MAX_TOTAL_BYTES / 1e6} MB.`);
-    return {name: sheet.name, data: sheet.csv, import: sheet.import, source: {kind: 'excel'}};
+    return {name: sheet.name, data: sheet.csv, import: sheet.import, source: {kind: 'excel', warnings: (sheet.import?.warnings || []).map(warning => warning.slice(0,4096))}};
   });
   if (!tables.length) throw new Error('This workbook has no visible table with a header and data rows.');
   return {tables, name: collected.name};

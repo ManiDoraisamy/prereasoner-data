@@ -13,9 +13,14 @@ const fs = require("fs");
 const sdk = JSON.parse(fs.readFileSync("/tmp/firebase-js-config.json", "utf8"));
 const projectId = sdk.projectId || process.env.TARGET_PROJECT;
 const hostingSite = process.env.HOSTING_SITE;
+const authProvider = process.env.HOSTING_AUTH_PROVIDER || 'anonymous';
+if (!['anonymous', 'google'].includes(authProvider)) throw new Error('unsupported Hosting auth provider');
+const customDomains = (process.env.HOSTING_CUSTOM_DOMAINS || '').split(',').filter(Boolean);
+if (customDomains.some(domain => !/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/.test(domain)))
+  throw new Error('invalid Hosting custom domain');
 // The ONE definition of this deployment's browser origins: the client pins authDomain to them and
 // Firebase Auth is told to trust them, so the two can never disagree.
-const hostingDomains = [hostingSite + ".web.app", hostingSite + ".firebaseapp.com"];
+const hostingDomains = [...new Set([hostingSite + ".web.app", hostingSite + ".firebaseapp.com", ...customDomains])];
 
 async function buildToken() {
   const metadata = await fetch(
@@ -101,11 +106,12 @@ function writeClientConfig() {
     "  projectId: " + JSON.stringify(firebaseConfig.projectId) + ",\n" +
     "  appId: " + JSON.stringify(firebaseConfig.appId) + ",\n" +
     "  databaseURL: " + JSON.stringify(firebaseConfig.databaseURL) + "\n};\n" +
-    'export const AUTH_PROVIDER = "anonymous";\n\n';
+    'export const AUTH_PROVIDER = ' + JSON.stringify(authProvider) + ';\n\n';
   fs.writeFileSync("web/public/lib/config.js", source.slice(0, start) + block + source.slice(end));
 }
 
-enableAnonymousSignIn()
+Promise.resolve()
+  .then(() => authProvider === 'anonymous' ? enableAnonymousSignIn() : undefined)
   .then(authorizeHostingDomains)
   .then(writeClientConfig)
   .catch(function (error) {

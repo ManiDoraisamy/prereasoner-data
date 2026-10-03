@@ -27,10 +27,10 @@
         chunks.push(value);
       }}finally{reader.releaseLock();}
       const sheets=await root.XLSX_READER.readWorkbook(new Blob(chunks,{type:MIME}));
-      if(!sheets.length)throw new Error('This Sheet has no tab with a header and a data row.');
+      if(!sheets.length)throw new Error('This spreadsheet has no data rows to analyze.');
       return sheets.map(s=>({name:sheets.length>1?s.name:title||s.name,data:s.csv,
         import:{...s.import,source:'google-sheets',formulaValues:'google-export-snapshot'},
-        source:{kind:'google-sheets'}}));
+        source:{kind:'google-sheets',warnings:(s.import?.warnings||[]).map(warning=>warning.slice(0,4096))}}));
     }catch(error){
       if(error.name==='AbortError')throw new Error('Google Sheet import timed out. Try again or export a smaller workbook.');
       throw error;

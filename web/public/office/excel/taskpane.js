@@ -45,8 +45,11 @@ async function get(path) {
 }
 
 function setBusy(busy) {
-  $('question').disabled = busy || !auth.currentUser;
+  state.busy = busy;
+  $('question').disabled = false;
   $('send').disabled = busy || !auth.currentUser;
+  $('newChat').disabled = busy || !auth.currentUser;
+  $('previousChats').disabled = busy || !auth.currentUser;
 }
 
 function renderTurns() {
@@ -163,6 +166,7 @@ function awaitStream(turnId) {
 
 async function ask(question) {
   setBusy(true);
+  $('question').value = '';
   let baseHistory = state.history.slice();
   try {
     const workbook = await readWorkbook();
@@ -193,13 +197,16 @@ async function ask(question) {
       conversationId: state.conversationId
     };
     state.history.push({role: 'assistant', content: response.reply || ''});
-    await persist();
-    $('question').value = '';
+    let saveWarning = '';
+    try { await persist(); }
+    catch (error) { saveWarning = 'The answer was returned, but workbook history could not be saved: ' + error.message; }
     renderTurns();
-    notice('');
+    const warnings = workbook.tables.flatMap(table => (table.import?.warnings || []).map(warning => table.name + ': ' + warning));
+    notice([...warnings, saveWarning].filter(Boolean).join(' '), Boolean(saveWarning));
   } catch (error) {
     if (state.turns[state.turns.length - 1]?.pending) state.turns.pop();
     state.history = baseHistory;
+    if (!$('question').value.trim()) $('question').value = question;
     renderTurns(); notice(error.message || 'Could not answer that question.', true);
   } finally { setBusy(false); }
 }
@@ -325,11 +332,11 @@ async function init() {
   $('previousChats').addEventListener('click', () => showHistory($('history').hidden));
   $('composer').addEventListener('submit', event => {
     event.preventDefault(); const question = $('question').value.trim();
-    if (!question || !auth.currentUser) return;
+    if (!question || !auth.currentUser || state.busy) return;
     ask(question).catch(error => notice(error.message, true));
   });
   $('question').addEventListener('keydown', event => {
-    if (event.key === 'Enter' && !event.altKey && !event.shiftKey && !event.ctrlKey && !event.metaKey) {
+    if (!state.busy && event.key === 'Enter' && !event.altKey && !event.shiftKey && !event.ctrlKey && !event.metaKey) {
       event.preventDefault();
       $('composer').requestSubmit();
     }

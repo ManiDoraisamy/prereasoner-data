@@ -76,8 +76,8 @@ function getSidebarContext() {
 }
 
 // Called before each question, so a changed sheet is noticed.
-function getWorkbookGrids() {
-  return readGrids_(activeSpreadsheet_());
+function getWorkbookGrids(request) {
+  return readGrids_(activeSpreadsheet_(), request && request.scope);
 }
 
 function restorePrereasonerSheetConversation(request) {
@@ -172,13 +172,15 @@ function requestTables_(request) {
     if (!table || typeof table.name !== 'string' || typeof table.data !== 'string') {
       throw new Error('The spreadsheet could not be read. Close and reopen Prereasoner.');
     }
-    return {name: table.name, data: table.data, source: {kind: 'google-sheets-addon'}};
+    return {name: table.name, data: table.data, source: Object.assign({}, table.source || {}, {kind: 'google-sheets-addon'})};
   });
 }
 
 // Visible, non-empty tabs (the active one first) as cell grids: values, number formats, failed
 // formulas and merged ranges.
-function readGrids_(spreadsheet) {
+function readGrids_(spreadsheet, requestedScope) {
+  var scope = requestedScope || 'auto';
+  if (['auto', 'active', 'all'].indexOf(scope) < 0) throw new Error('Choose the active sheet or all tabs.');
   var timeZone = spreadsheet.getSpreadsheetTimeZone() || 'UTC';
   var active = spreadsheet.getActiveSheet();
   var sheets = spreadsheet.getSheets().filter(function(sheet) {
@@ -190,33 +192,24 @@ function readGrids_(spreadsheet) {
     return a.getIndex() - b.getIndex();
   });
   if (!sheets.length) throw new Error('This spreadsheet needs a header row and at least one data row.');
-  if (sheets.length > GRID_LIMITS.sheets) {
-    throw new Error('Prereasoner can read at most ' + GRID_LIMITS.sheets + ' non-empty tabs at once.');
+  var total = sheets.reduce(function(sum, sheet) { return sum + sheet.getLastRow() * sheet.getLastColumn(); }, 0);
+  var allFit = sheets.length <= GRID_LIMITS.sheets && total <= GRID_LIMITS.cells && sheets.every(function(sheet) {
+    return sheet.getLastRow() - 1 <= GRID_LIMITS.rows && sheet.getLastColumn() <= GRID_LIMITS.columns;
+  });
+  var available = sheets.map(function(sheet) { return sheet.getName(); });
+  // Default to the active sheet when unrelated tabs exceed the request budget.
+  // The sidebar displays and lets the user choose this source scope explicitly.
+  if (scope === 'auto') scope = allFit ? 'all' : 'active';
+  if (scope === 'all' && !allFit) {
+    throw new Error('All tabs exceed the current analysis capacity. Choose "Active sheet" to answer from the current tab, or select a smaller range of data.');
   }
-  // Do not analyze a partial workbook when a visible tab exceeds the budget.
-  // Hiding unwanted tabs explicitly selects the source scope without changing cells.
-  var cellTotal = 0;
-  var fitting = sheets.filter(function(sheet, index) {
-    var rowCount = sheet.getLastRow();
-    var columnCount = sheet.getLastColumn();
-    var cells = rowCount * columnCount;
-    var tab = 'Sheet "' + sheet.getName() + '": ';
-    var reason = rowCount - 1 > GRID_LIMITS.rows ? 'rows'
-      : columnCount > GRID_LIMITS.columns ? 'columns'
-      : cellTotal + cells > GRID_LIMITS.cells ? 'cells' : '';
-    if (reason && index === 0) {
-      var problem = reason === 'rows'
-        ? tab + 'each worksheet may contain at most ' + grouped_(GRID_LIMITS.rows) + ' data rows'
-        : reason === 'columns' ? tab + 'each worksheet may contain at most 256 columns'
-        : tab + 'too large to analyze in one request (' + grouped_(cells) + ' cells; at most ' +
-          grouped_(GRID_LIMITS.cells) + ' in all). Reduce the data or ask about a smaller set of tabs.';
-      throw new Error(problem);
-    }
-    if (reason) throw new Error(tab + 'cannot be included within the ' + reason +
-      ' limit. Hide tabs you do not want to analyze, or reduce this tab, then ask again. ' +
-      'No answer will be calculated from an incomplete workbook.');
-    cellTotal += cells;
-    return true;
+  var fitting = scope === 'active' ? sheets.filter(function(sheet) { return sheet.getSheetId() === active.getSheetId(); }) : sheets;
+  if (!fitting.length) throw new Error('The active sheet has no data rows. Choose a populated tab or all tabs.');
+  fitting.forEach(function(sheet) {
+    var rows = sheet.getLastRow(), columns = sheet.getLastColumn();
+    if (rows - 1 > GRID_LIMITS.rows) throw new Error('Sheet "' + sheet.getName() + '": each worksheet may contain at most ' + grouped_(GRID_LIMITS.rows) + ' data rows');
+    if (columns > GRID_LIMITS.columns) throw new Error('Sheet "' + sheet.getName() + '": each worksheet may contain at most 256 columns');
+    if (rows * columns > GRID_LIMITS.cells) throw new Error('The active sheet exceeds the current analysis capacity of ' + grouped_(GRID_LIMITS.cells) + ' cells.');
   });
   var grids = fitting.map(function(sheet) {
     var rowCount = sheet.getLastRow();
@@ -239,7 +232,7 @@ function readGrids_(spreadsheet) {
       date1904: false
     };
   });
-  return {grids: grids};
+  return {grids: grids, scope: scope, availableTabs: available};
 }
 
 // A count as the add-on's messages write it: 50000 is "50,000".

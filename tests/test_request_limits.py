@@ -646,7 +646,47 @@ def test_a_lost_reason_response_is_sent_again_and_the_question_runs_once():
         httpd.shutdown()
 
 
+def test_messy_import_warnings_and_explicit_scope_survive_validation_and_storage():
+    from engine.request_validation import RequestValidationError, validate_tables
+    from engine.conversations import _store_tables, source_snapshot_hash
+    source = {'kind': 'google-sheets-addon', 'warnings': ['Repeated headers were kept.'],
+              'scope': {'mode': 'active', 'included': ['NT'], 'available': ['NT', 'Archive']}}
+    table = {'name': 'NT', 'data': 'id,amount [column B],amount [column C]\n1,10,20', 'source': source}
+    normalized = validate_tables([table])
+    assert normalized[0]['source'] == source
+    assert _store_tables(normalized)[0]['source'] == source
+    assert source_snapshot_hash(normalized) != source_snapshot_hash([{**normalized[0], 'source': {'kind': 'google-sheets-addon'}}])
+    for invalid in ({'kind': []}, {'kind': 'excel', 'warnings': 'bad'},
+                    {'kind': 'excel', 'scope': {'mode': []}}):
+        try:
+            validate_tables([{**table, 'source': invalid}])
+        except RequestValidationError:
+            pass
+        else:
+            raise AssertionError('invalid source metadata was accepted')
+
+
+def test_raw_csv_repeated_blank_and_long_headers_preserve_every_value():
+    from engine.tables import csv_table, table_from_rows
+    from engine.column_names import canonical_columns
+    headers = ['Amount', 'Amount', '', '東京'*40]
+    names = canonical_columns(headers)
+    table = csv_table(','.join(headers)+'\n1,2,3,4', 'orders')
+    assert table['columns'] == names and table['rows'] == [[1,2,3,4]]
+    assert table_from_rows('orders', headers, [[1,2,3,4]]) == table
+    assert len(set(names)) == 4 and all(len(name.encode('utf-8')) <= 63 for name in names)
+    # A pre-existing positional name must not create a truncation collision loop.
+    names = canonical_columns(['x'*52+' [column C]', 'id', 'x'*100])
+    assert len(set(names)) == 3 and all(len(name.encode('utf-8')) <= 63 for name in names)
+    uneven = csv_table('[id],Amount\n1,10,keep this note\n2,20', 'orders')
+    assert uneven['columns'] == ['[id]', 'Amount', 'Column C']
+    assert uneven['rows'] == [[1,10,'keep this note'],[2,20,None]]
+    assert csv_table('id,amount,,\n1,10,,,\n2,20,,', 'orders')['columns'] == ['id','amount']
+
+
 TESTS = [
+    test_raw_csv_repeated_blank_and_long_headers_preserve_every_value,
+    test_messy_import_warnings_and_explicit_scope_survive_validation_and_storage,
     test_sliding_window_limiter_is_bounded_and_expires,
     test_server_500_logs_where_it_failed_without_user_data,
     test_chat_authenticates_without_a_database_and_signs_with_the_firebase_uid,

@@ -701,7 +701,7 @@ def test_community_install_provisions_an_auth_provider_it_can_actually_enable():
     assert "signIn.anonymous.enabled" in release
     assert "identityPlatform:initializeAuth" in release, \
         "a provider cannot be enabled before Auth is initialized"
-    assert 'export const AUTH_PROVIDER = "anonymous";' in release, \
+    assert "const authProvider = process.env.HOSTING_AUTH_PROVIDER || 'anonymous'" in release and 'JSON.stringify(authProvider)' in release, \
         "the generated client config must select the provider the install actually enabled"
     # Enabling must be fatal, never best-effort: a deployment whose provider is off cannot sign in.
     assert "enabling anonymous sign-in failed" in release
@@ -743,7 +743,7 @@ def test_hosting_release_authorizes_its_own_sign_in_domains():
     assert "trusted.concat(missing)" in release
     # ONE definition of this deployment's origins feeds BOTH the authorization and the client
     # config; a second copy would let the trusted set and the pinned authDomain drift apart.
-    assert release.count('[hostingSite + ".web.app", hostingSite + ".firebaseapp.com"]') == 1
+    assert release.count('[hostingSite + ".web.app", hostingSite + ".firebaseapp.com", ...customDomains]') == 1
     assert "JSON.stringify(hostingDomains)" in release
     # Publishing a UI that cannot sign in is worse than failing the release.
     assert "process.exit(1)" in release

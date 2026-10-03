@@ -115,19 +115,17 @@ assert.equal(formats.tables[0].data,
   'red,accounting,currency,condition,escaped,minutes,localeDate\n' +
   '1234.5,1234.5,1234.5,150,12,0.001736111,2024-01-01');
 
-// One layout rule with the upload. The Sheets add-on screenshot: an index column was inserted
-// without moving the header row, so "amount" labelled the currency codes and the amounts had no
-// header. The reader used to call that column "column_8"; the shared rule refuses the layout.
-await assert.rejects(() => runWorkbook([sheet('sales', 'Visible', [
+// The same forgiving importer preserves malformed headers and errors across hosts.
+const shifted = await runWorkbook([sheet('sales', 'Visible', [
   ['order ID', 'customer', 'city', 'tier', 'ordered', 'currency', 'amount'],
   [1, 101, 'Sherlock Holmes', 'London', 'Gold', 'Magnifying Glass', 'GBP', 118],
   [2, 102, 'Sherlock Holmes', 'London', 'Gold', 'Calabash Pipe', 'GBP', 95]
-])]), /^Error: Sheet "sales": Column H has values but no header, and the headers look one column to the left of their data/);
-await assert.rejects(() => runWorkbook([sheet('Dupes', 'Visible', [['id', 'customer', 'customer'], [1, 'A', 'B']])]),
-  /Duplicate column headers/);
-await assert.rejects(() => runWorkbook([sheet('Errors', 'Visible', [
-  ['id', 'ratio'], [1, {type: 'error', value: '#DIV/0!'}]
-])]), /formula error/);
+])]);
+assert.match(shifted.tables[0].data, /^Column A,Column B,Column C,Column D,Column E,Column F,Column G,Column H/);
+const dupes = await runWorkbook([sheet('Dupes', 'Visible', [['id', 'customer', 'customer'], [1, 'A', 'B']])]);
+assert.match(dupes.tables[0].data, /customer \[column B\],customer \[column C\]/);
+const errors = await runWorkbook([sheet('Errors', 'Visible', [['id', 'ratio'], [1, {type: 'error', value: '#DIV/0!'}]])]);
+assert.match(errors.tables[0].data, /#DIV\/0!/);
 
 // Hosts with ExcelApi 1.13 send merged areas: a merged group header prefixes its columns.
 const grouped = await runWorkbook([sheet('Grouped', 'Visible', [

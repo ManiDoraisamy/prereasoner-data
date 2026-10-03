@@ -76,6 +76,21 @@ def main():
         print('scale_full_result',json.dumps({'rows':len(answer),'seconds':round(time.perf_counter()-start,3),
                                             'bytes':len(json.dumps(result,default=str).encode())}),flush=True)
         print('PASS scale: 30000 rows, exact gold and complete output',flush=True)
+        # Messy import acceptance: ambiguity/errors are column-specific, never a
+        # reason to discard an unrelated measure or all the records.
+        from engine.tables import csv_table
+        messy = csv_table('id,Amount,Amount,Units\n1,10,20,2\n2,30,40,3', 'orders')
+        broken = csv_table('id,Amount,Units\n1,10,2\n2,#DIV/0!,3', 'orders')
+        for fixture_table in (messy, broken):
+            for question, expected in [('How many orders?', Decimal(2)), ('total Units', Decimal(5))]:
+                result = served(lease.name, Q.serve, [fixture_table], question, lease.name, mode='sql')
+                rows = (result.get('result') or {}).get('rows') or []
+                assert not result.get('error') and not result.get('clarify') and rows, (question, result)
+                assert Decimal(str(rows[0][0])) == expected, (question, rows)
+            result = served(lease.name, Q.serve, [fixture_table], 'total Amount', lease.name, mode='sql')
+            assert not (result.get('result') or {}).get('rows'), 'An ambiguous/invalid amount produced an authoritative total'
+            assert result.get('clarify') or result.get('error'), result
+        print('PASS messy sheets: all rows and unrelated measures work; affected totals need clarification', flush=True)
     finally:
         lease.close()
 

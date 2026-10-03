@@ -32,6 +32,36 @@ MAX_TABLE_IDENTIFIER_BYTES = 34
 _KNOWN_TABLE_EXTENSIONS = re.compile(r"\.(csv|tsv|txt|xlsx|xlsm|xls)$", re.IGNORECASE)
 _SAFE_REQUEST_ID = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 _CONVERSATION_ID = re.compile(r"^c_[0-9a-f]{32}$")
+
+
+def validate_source(source):
+    """Bounded, descriptive import provenance; never execution instructions."""
+    if not isinstance(source, dict):
+        raise RequestValidationError("table source must be an object")
+    kind = source.get("kind")
+    if not isinstance(kind, str) or kind not in {"example", "google-sheets", "google-sheets-addon", "excel", "csv", "upload"}:
+        raise RequestValidationError("table source kind is invalid")
+    normalized = {"kind": kind}
+    warnings = source.get("warnings")
+    if warnings is not None:
+        if not isinstance(warnings, list) or len(warnings) > 32 or any(
+            not isinstance(item, str) or len(item) > 4096 for item in warnings
+        ):
+            raise RequestValidationError("table source warnings are invalid")
+        normalized["warnings"] = list(warnings)
+    scope = source.get("scope")
+    if scope is not None:
+        if not isinstance(scope, dict) or not isinstance(scope.get("mode"), str) or scope.get("mode") not in {"active", "all"}:
+            raise RequestValidationError("table source scope is invalid")
+        normalized["scope"] = {"mode": scope["mode"]}
+        for key in ("included", "available"):
+            names = scope.get(key)
+            if not isinstance(names, list) or len(names) > 256 or any(
+                not isinstance(name, str) or len(name) > 128 for name in names
+            ):
+                raise RequestValidationError("table source scope names are invalid")
+            normalized["scope"][key] = list(names)
+    return normalized
 _EXECUTION_USE = {
     "auto": "auto",
     "sql": "sql",
@@ -120,13 +150,7 @@ def validate_tables(value, *, allow_single: bool = False) -> list[dict]:
         normalized = {"name": identifier, "data": data}
         source = table.get("source")
         if source is not None:
-            if not isinstance(source, dict):
-                raise RequestValidationError("table source must be an object")
-            kind = source.get("kind")
-            allowed = {"example", "google-sheets", "google-sheets-addon", "excel", "csv", "upload"}
-            if not isinstance(kind, str) or kind not in allowed:
-                raise RequestValidationError("table source kind is invalid")
-            normalized["source"] = {"kind": kind}
+            normalized["source"] = validate_source(source)
         tables.append(normalized)
     return tables
 

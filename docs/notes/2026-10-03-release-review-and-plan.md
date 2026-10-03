@@ -275,3 +275,46 @@ Two important corrections to interpreting the log:
 - Model-only and rewrite-assisted accuracy are measured separately on the exact final commit; parity and successful execution are not called semantic accuracy.
 - Engine/chat/Hosting/Apps Script/configuration/data versions match the release manifest, with required lanes passed and rollback targets recorded.
 - Residual unsupported cases have specific, recoverable outcomes and published scope; neither code nor documentation claims that every conceivable bug or question has been solved.
+
+
+## Revised acceptance policy: useful answers from imperfect spreadsheets
+
+This revision incorporates the user's 3 October feedback. Input irregularity is not a reason to
+require workbook cleanup. Preserve data, make the chosen source scope visible, and clarify only
+an ambiguity that affects the requested answer. Keep automatic knowledgebase joins for city/country
+and currency/rates. Gemini may rewrite wording using schema context; it must not produce SQL or
+receive cell values for question answering.
+
+### Implementation and alternatives
+
+| Change | Plan A implemented in the next candidate | Alternative if its acceptance gate fails |
+|---|---|---|
+| Typing during loading/answering | Sheets and Excel composers stay editable; send alone waits for readiness. Submitted text is cleared at submission; a failure restores it only if no newer draft exists. | Preserve the draft independently of the host iframe lifecycle; show a retry action for the failed turn. |
+| Duplicate/blank headers | Keep every column. Assign stable column-letter names to blanks and positional suffixes to duplicates. A repeated field selected for arithmetic/filtering must be distinguished by the question. Counts and unrelated fields remain usable. | Present the repeated fields as a targeted choice, preserving the original cells and remaining analysis. |
+| Shifted/missing headers | Keep all cells with neutral positional names when a header is unreliable; show a warning instead of refusing the entire sheet. | Ask which source column the requested measure refers to; do not guess a shifted monetary binding. |
+| Merged data cells | Preserve stored values and blanks; never invent a fill-down value. | Offer an explicit, inspectable fill-down transformation for a selected field, with original cells retained. |
+| Formula errors/missing cached values | Preserve error markers as text and warn. Observed nonnumeric values override a learned numeric label, so other fields/counts work without silently dropping invalid amounts. No formula execution. | Return a labelled partial calculation with counts of excluded/missing cells, only under an explicit user-selected policy. |
+| Embedded totals | Separate rows explicitly labelled Total/Subtotal with numeric remainder into a summaries table. Detail values and the existing totals are both retained. | Ask about the affected data region when layout alone cannot distinguish summaries from records. Do not silently count both. |
+| Unrelated oversized tabs | Default to the active sheet if the entire workbook exceeds the bounded request capacity. Display a scope selector and the selected sheet; all-tabs requests remain complete or produce a scope-specific capacity message. Source scope is stored with the conversation and sent as schema context. | Read selected tabs or selected data regions in bounded batches, retaining an included/omitted manifest. Never claim a workbook total from an unlabelled subset. |
+| Audit and recovery | Persist bounded warnings/source scope. Keep correct answers if history saving fails. Keep the newer draft after a network failure. | Downloadable answer/source audit plus retryable persistence, using the same durable request identity. |
+
+These are adaptations of items 8, 10, 12, 13, 14 and 17 above. They do not relax operator fidelity,
+Unicode/polarity preservation, complete result delivery, or factual rendering. Unknown values are not
+zero, a city need not have a user-supplied country master, and an unsupported interpretation is not
+permission to answer a different question.
+
+### Current evidence and remaining gates
+
+- The previous `97dd830` image passed the earlier failed seeded dataset cases except the after-August-10 count; its remaining failures were that count, full-column scale projection and serving-role access to durable replay. Source `301b46e` addresses those three; a new full candidate build is required to establish that they pass together.
+- The new forgiving-import changes pass 752 local Python tests, the complete web test script and 45 browser fixtures. These include draft recovery, source scope, duplicate/blank headers, formula errors, long Unicode field names and field/aggregate fidelity. Local tests do not certify production deployment or live Gemini/Apps Script behavior.
+- The 1,034-question model-only Spider run for `97dd830` scored 225 strict and 274 lenient, with 370 answered and 664 abstained. It is neither the earlier 497 result nor evidence of final-candidate accuracy. Re-evaluate the frozen final candidate and publish answered-wrong versus abstained counts separately.
+- Preserve the original independent numerical gold and all ordered follow-ups. Test expectations that required duplicate-header or merged-cell blanket refusals are replaced with value-preservation, ambiguity and draft-recovery assertions; arithmetic gold is not loosened.
+- Production still needs the new image gates, migration/grants and serving-role smoke, exact artifact promotion, Hosting/Apps Script version checks, all 18 public examples with ordered follow-ups, real Sheets, realistic 30,000-row persistence/reload/export, and final review. Do not describe this source work as already deployed or launch-complete.
+- Use the signed-in **in-app browser**, per the user's clarification; no separate Chrome connection is required.
+
+### Additional final-candidate safeguards
+
+- Raw CSV follows the same deterministic field naming contract as workbook imports. Uneven rows retain populated surplus fields; blank trailing fields do not create phantom columns. The unused NDJSON auto-detection path is removed, preventing bracketed CSV headers from being mistaken for JSON.
+- Field identifiers are bounded to 63 UTF-8 bytes with stable positional suffixes. Duplicate fields require a targeted choice only when the requested operation depends on one of them. A known requested measure cannot be replaced by a different measure or row count.
+- Hosting preserves the reference deployment's Google sign-in. Publish it with `_AUTH_PROVIDER=google` and `_CUSTOM_DOMAINS=chat.prereasoner.com,prereasoner.com`; Community deployments retain the anonymous default. Verify the destination site before publishing.
+- The immutable engine build now runs the reviewed full web test script alongside Python checks and the live seeded product suites. Real 30,000-row host responsiveness remains an authenticated browser gate; fixture success is not a latency measurement.

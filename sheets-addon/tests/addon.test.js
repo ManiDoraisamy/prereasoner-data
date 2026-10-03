@@ -95,12 +95,11 @@ const clean = load(book([sheet(6, 'Hours', [
   ['order ID', 'placed', 'worked'], [101, new Date(Date.UTC(2024, 0, 1)), new Date(Date.UTC(1899, 11, 31, 3, 30))]
 ], {formats: [['General', 'General', 'General'], ['0', 'yyyy-mm-dd', '[h]:mm']]})])).getSidebarContext();
 equal(normalizeGrids(clean.workbook.grids)[0].csv, 'order ID,placed,worked\n101,2024-01-01,1.145833333');
-assert.throws(() => normalizeGrids(grids), /Sheet "Orders": No unambiguous header found/); checks++;   // a merged header cell is not a name
+assert(normalizeGrids(grids)[1].csv.includes('Column F')); checks++; // merged headers preserve positions
 const failed = load(book([sheet(8, 'Ratios', [['id', 'ratio'], [1, '#DIV/0!']])])).getSidebarContext();
-assert.throws(() => normalizeGrids(failed.workbook.grids), /formula error/); checks++;
+assert(normalizeGrids(failed.workbook.grids)[0].csv.includes('#DIV/0!')); checks++;
 const shifted = load(book([sheet(7, 'sales', [['order ID', 'customer', 'amount'], [1, 101, 'Holmes', 118]])])).getSidebarContext();
-assert.throws(() => normalizeGrids(shifted.workbook.grids),
-  /^Error: Sheet "sales": Column D has values but no header, and the headers look one column to the left of their data \(C1 "amount" is above "Holmes"\)\./); checks++;
+assert(normalizeGrids(shifted.workbook.grids)[0].csv.startsWith('Column A,Column B,Column C,Column D')); checks++;
 
 // Apps Script cannot load web/public/lib/upload-limits.js, so the add-on's copy is pinned to it here.
 const shared = {};
@@ -121,12 +120,15 @@ equal(load(book([sheet(10, 'Subscriptions', realCustomerShape)])).getSidebarCont
   'a 30,000-row customer-shaped sheet fits the add-on grid cap');
 const dense = [Array.from({length: 26}, (_, i) => 'c' + i)].concat(Array.from({length: 40000}, () => Array(26).fill(1)));
 assert.throws(() => load(book([sheet(15, 'Dense', dense)])).getSidebarContext(),
-  /^Error: Sheet "Dense": too large to analyze in one request \(1,040,026 cells; at most 1,000,000 in all\)/); checks++;
-// Oversized secondary tabs cannot silently turn a workbook question into a subset answer.
-assert.throws(() => load(book([sheet(11, 'NT', rows(30000)), sheet(12, 'SI', dense),
-  sheet(14, 'FF', rows(100))])).getSidebarContext(), /Sheet "SI":.*Hide tabs.*incomplete workbook/); checks++;
-assert.throws(() => load(book([sheet(11, 'NT', rows(30000)), sheet(13, 'Log', rows(50001))]))
-  .getSidebarContext(), /Sheet "Log":.*rows limit.*incomplete workbook/); checks++;
+  /active sheet exceeds the current analysis capacity/); checks++;
+// Oversized unrelated tabs select a clearly labelled active-sheet scope.
+const scoped = load(book([sheet(11, 'NT', rows(30000)), sheet(12, 'SI', dense), sheet(14, 'FF', rows(100))]));
+const scopedBook = scoped.getSidebarContext().workbook;
+equal(scopedBook.scope, 'active');
+equal(scopedBook.grids.map(grid => grid.name), ['NT']);
+equal(scopedBook.availableTabs, ['NT', 'SI', 'FF']);
+assert.throws(() => scoped.getWorkbookGrids({scope:'all'}), /Choose "Active sheet"/); checks++;
+equal(scoped.getWorkbookGrids({scope:'active'}).grids.map(grid => grid.name), ['NT']);
 equal(load(book([sheet(11, 'NT', rows(30000)), sheet(12, 'SI', dense, {hidden: true}),
   sheet(14, 'FF', rows(100))])).getSidebarContext().workbook.grids.map(grid => grid.name), ['NT', 'FF'],
   'explicit visible-tab scope still admits the complete 30,000-row source');
@@ -195,8 +197,9 @@ check(sidebar.includes('https://ssl.gstatic.com/docs/script/css/add-ons1.css'), 
 check(sidebar.includes('R.stepsFromViews(') && sidebar.includes('window.subscribeTurn') && sidebar.includes('WORKBOOK_IMPORT.convert('),
   'steps, the live trace and the import come from the shared web code');
 check(!/liveStepLabel|operationLabel|liveJson|iframe/.test(sidebar), 'no second step presentation, no polling, no framed page');
-check(sidebar.includes('When you send a question, \' +\n            \'Prereasoner securely processes your question and the visible, non-empty tabs in this spreadsheet to produce and save \' +\n            \'the answer. This data is not used to train generalized AI models.'),
-  'the data-use notice the OAuth verification describes');
+check(sidebar.includes('When you send a question, ') && sidebar.includes('the sheets selected above to produce and save ')
+  && sidebar.includes('This data is not used to train generalized AI models.'),
+  'the data-use notice describes the selected source scope and training boundary');
 
 // Read-only and bounded: no writes, no storage, no CSV conversion of its own.
 check(!/PropertiesService|setValue|setValues|valuesToCsv_|normalizeHeaders_|column_/.test(source), 'read-only, one importer');
