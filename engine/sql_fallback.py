@@ -6,6 +6,7 @@ reply is never cached. Only ``TableQuery``'s typed search can construct executab
 from __future__ import annotations
 
 import json
+import re
 
 from engine import llm, request_timing
 from engine.sql_prompt import REWRITE_SCHEMA, REWRITE_SYSTEM, rewrite_prompt
@@ -46,4 +47,26 @@ class SQLFallback:
             return None, "no usable reply"
         if " ".join(value.casefold().split()) == " ".join(question.casefold().split()):
             return None, "rewording unchanged"
+        if not _preserves_explicit_constraints(question, value, graph):
+            return None, "rewording changed a stated value or number"
         return value, ""
+
+
+def _preserves_explicit_constraints(question: str, rewritten: str, graph) -> bool:
+    """Keep request literals intact without sending workbook cell values to Gemini."""
+    from engine.sql_search import SQLSearcher, _tokens
+
+    original = " ".join(question.casefold().split())
+    candidate = " ".join(rewritten.casefold().split())
+    numbers = re.findall(r"(?<![a-z0-9])[+-]?\d[\d,]*(?:\.\d+)?(?![a-z0-9])", original)
+    if any(number.casefold() not in candidate for number in numbers):
+        return False
+    quoted = re.findall(r"[\"']([^\"']{1,160})[\"']", question)
+    if any(" ".join(value.casefold().split()) not in candidate for value in quoted):
+        return False
+    searcher = SQLSearcher(graph)
+    matches, _occupied = searcher._value_matches(_tokens(question), frozenset(), question)
+    for _start, _end, phrase, _options in matches:
+        if " ".join(phrase.casefold().split()) not in candidate:
+            return False
+    return True

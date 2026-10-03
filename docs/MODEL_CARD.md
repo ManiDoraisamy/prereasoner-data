@@ -72,11 +72,11 @@ releases, split policy, seed, and metrics are in `engine/data/schema_training_ma
   train or fine-tune it.
 - Gate: it runs only when the operator enabled external models (`EXTERNAL_LLM_ENABLED`, default
   off; the guided Community deployment turns it on together with chat) and configured a Vertex AI
-  project, and only for an own-data question whose search candidates all fail to run or to ground
-  (`engine/sql_fallback.py`, called by `engine/tables.py:TableQuery.select_query`).
-- What it sees: the question and the schema text of `engine/sql_prompt.py`: table and column names,
-  inferred column types, foreign keys, and at most three example values per column. No other row
-  data.
+  project. It is called when no own-data candidate is eligible or the selected plan leaves question
+  wording unresolved (`engine/sql_fallback.py`, called by `engine/tables.py:TableQuery.select_query`).
+- What it sees: the current question and schema text from `engine/sql_prompt.py`: table and column
+  names, inferred column types, and foreign keys. It receives no cell values, full rows, or
+  conversation history.
 - What it can do: reword the current question once in the tables' own words, which the deterministic
   search then reads. Gemini cannot propose SQL, a query plan, or a result.
 - Labels: the response's `fallback` record (`kind`, `model`, and the rewording),

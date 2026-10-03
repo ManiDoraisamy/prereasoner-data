@@ -2,13 +2,11 @@
 
 Literal grounding: a text literal compared with a column must be a value that column can hold.
 
-A model-written query sees at most a few example values per column (engine/sql_prompt.py). For
-"product names bought by Lyon customers" a SQL model wrote ``purchases.customer_name = 'Lyon'``, a
-filter that matches no row because 'Lyon' is a city; the deterministic search links values against
-the data and bound it to ``purchases.city``. A comparison is mis-grounded when its literal occurs in no row of its own
-column but does occur in another column of the request's tables. Such a query answers a different
-question, so it is never eligible for selection (``TableQuery.select_query``). A literal that
-occurs in no column is left alone: the question may name a value the data does not hold, and the
+Question values are linked against the request's data locally; they are not sent to Gemini for
+rewriting (engine/sql_prompt.py). A comparison is mis-grounded when its literal occurs in no row of
+its own column but does occur in another column of the request's tables. Such a query answers a
+different question, so it is never eligible for selection (``TableQuery.select_query``). A literal
+that occurs in no column is left alone: the question may name a value the data does not hold, and the
 honest answer is then empty.
 
 Checked: a text column tested against a text literal with `=`, `!=`, `<>`, `IN` or `NOT IN`, in

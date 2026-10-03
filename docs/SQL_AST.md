@@ -117,17 +117,19 @@ reworded question.
 
 ### Labelled Gemini fallback
 
-`engine/sql_fallback.py` runs only when no candidate is eligible and `engine/llm.py` reports Gemini
-available (`EXTERNAL_LLM_ENABLED` and a Vertex AI project). It makes one request-scoped rewrite; the
+`engine/sql_fallback.py` runs when no candidate is eligible or the selected plan leaves request words
+unresolved, and `engine/llm.py` reports Gemini available (`EXTERNAL_LLM_ENABLED` and a Vertex AI
+project). It makes one request-scoped rewrite; the
 deterministic search then builds, runs, and grounds candidates as usual:
 
 1. `rewrite`: Gemini returns one rewording of the question in the tables' own words
    (`engine/sql_prompt.py:REWRITE_SYSTEM`). A rewording equal to the question, ignoring case and
    spacing, is discarded. The search runs on the rewording, so the SQL is still the search's.
-The prompt carries the question and schema text from `engine/sql_prompt.py`: names,
-inferred types, foreign keys, and at most three example values per column, and no other row data.
-Replies are JSON objects of a fixed shape and bounded in length. No conversation history is sent and
-the reply is not cached. Coverage checks both the user's wording and the rewrite. [ARCHITECTURE.md](ARCHITECTURE.md#labelled-gemini-fallback)
+The prompt carries the question and schema text from `engine/sql_prompt.py`: table and column names,
+inferred types, and foreign keys. It carries no cell values, conversation history, or full rows.
+Replies are JSON objects of a fixed shape and bounded in length. Recognized source values, quoted
+text, and numbers from the question must remain in the rewrite; the reply is not cached.
+[ARCHITECTURE.md](ARCHITECTURE.md#labelled-gemini-fallback)
 describes the data Gemini receives and the answer labels.
 
 ## Public API

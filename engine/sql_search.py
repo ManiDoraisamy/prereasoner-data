@@ -689,6 +689,14 @@ class SQLSearcher:
         # only when no other word does. "The total of the avg. monthly searches" sums them, with no stray
         # average (a customer's keyword tabs, 2026-10-02); "the total amount in Paris" still totals Total Amount.
         spelled = spelled_names(tokens, self.schema)
+        explicit_field_cues = {
+            position for _function, position in cues
+            if position in spelled
+            and set(tokens[max(0, position - 3):position]) & {"column", "field"}
+        }
+        if explicit_field_cues:
+            cues = [(function, position) for function, position in cues
+                    if position not in explicit_field_cues]
         if any(position not in spelled for _, position in cues):
             cues = [(function, position) for function, position in cues if position not in spelled]
         # "count the number" and "average mean" are reinforcing paraphrases, not requests for duplicate

@@ -1172,9 +1172,8 @@ def test_decoded_sql_normalizer_preserves_multiline_statements_and_strips_fences
     )
 
 
-def test_the_fallback_is_never_asked_while_the_search_has_a_runnable_query():
-    """The labelled Gemini fallback runs only when the search's pool holds no query that runs and is
-    grounded. A question the search answers never reaches Gemini, even with Gemini enabled."""
+def test_the_fallback_is_not_asked_when_the_search_covers_the_question():
+    """A runnable, grounded, lexically covered question stays on deterministic search."""
     planner, gemini = _gemini_planner(question="How many people are from France?")
     selection = _select(planner, "How many people are from France?")
     assert selection.selected == 0 and selection.served_by == "search" and selection.fallback is None
@@ -1206,6 +1205,35 @@ def test_a_question_the_search_cannot_read_is_answered_through_geminis_rewording
     assert served["model"] == ("engine - typed SQL AST planner; the search read gemini-test's "
                                "rewording of the question")
     assert [step for step, _ in gemini.calls] == ["question", "question"]
+
+
+def test_rewriter_recovers_when_a_runnable_plan_ignores_part_of_the_question():
+    """A runnable projection of Keyword is not accepted when the question also asks for volume."""
+    sheet = {"name": "Checklist", "columns": [
+        "Keyword", "shortlist", "Currency", "Avg. monthly searches",
+    ], "rows": [
+        ["home inspection checklist", "", "USD", 5000],
+        ["fire extinguisher audit checklist", "", "USD", 5000],
+    ]}
+    rewording = "show the column Avg. monthly searches for the keyword home inspection checklist"
+    for question in (
+        "keyword volume for home inspection checklist",
+        "Suchvolumen für home inspection checklist",
+    ):
+        planner, gemini = _gemini_planner(question=rewording)
+        baseline = _select(_hermetic_planner(), question, [sheet])
+        assert baseline.candidate.sql.endswith("WHERE \"Checklist\".\"Keyword\" = 'home inspection checklist'")
+        selection = _select(planner, question, [sheet])
+        assert selection.served_by == "gemini-rewrite"
+        assert "Avg. monthly searches" in selection.candidate.sql
+        assert "AVG(" not in selection.candidate.sql
+        assert selection.candidate.sql.endswith("WHERE \"Checklist\".\"Keyword\" = 'home inspection checklist'")
+        assert selection.fallback.question == rewording
+        assert [step for step, _ in gemini.calls] == ["question"]
+        prompt = gemini.calls[0][1]
+        assert "5000" not in prompt and "home inspection checklist" in prompt
+        served = planner.serve([sheet], question)
+        assert served["valid"] and served["result"]["rows"] == [[5000]], served
 
 
 def test_gemini_rewording_cannot_drop_a_user_constraint_from_coverage():
@@ -1272,6 +1300,15 @@ def test_a_gemini_outage_serves_nothing_and_is_not_cached():
         selection.fallback)
 
 
+def test_unreadable_runnable_baseline_is_not_served_when_rewriting_fails():
+    sheet = {"name": "Checklist", "columns": ["Keyword", "Avg. monthly searches"],
+             "rows": [["home inspection checklist", 5000]]}
+    planner, _gemini = _gemini_planner(outage=True)
+    selection = _select(planner, "keyword volume for home inspection checklist", [sheet])
+    assert selection.selected is None
+    assert selection.fallback == FallbackRecord("none", "gemini-test", note="Gemini unavailable")
+
+
 def test_the_fallback_is_stateless_across_repeated_requests():
     """Every request is rewritten independently; process-local answers are never reused."""
     planner, gemini = _gemini_planner(question="How many people are from France?")
@@ -1284,10 +1321,8 @@ def test_the_fallback_is_stateless_across_repeated_requests():
     assert [step for step, _ in gemini.calls] == ["question"] * 3
 
 
-def test_gemini_reads_the_schema_and_three_example_values_per_column():
-    """What the fallback sends Gemini (engine/sql_prompt.py): the question, each table's typed
-    columns in M-Schema layout, the foreign keys, and at most three example values per column,
-    never the rest of the rows."""
+def test_gemini_reads_schema_names_but_not_cell_values():
+    """The fallback sends names and types, never workbook cell values or conversation history."""
     question = "リヨンの客が買った商品は？"
     planner, gemini = _gemini_planner()
     _select(planner, question, [PURCHASES])
@@ -1295,9 +1330,9 @@ def test_gemini_reads_the_schema_and_three_example_values_per_column():
     assert rewrite_step == "question"
     assert rewrite.startswith("Tables:\n【DB_ID】 SQLite database\n【Schema】\n# Table: purchases\n[")
     assert rewrite.endswith("\n\nQuestion:\n" + question)
-    assert '(purchase_id:INTEGER, Examples: [1, 2, 3])' in rewrite
-    assert '(customer_name:TEXT, Examples: ["Alice", "Alice", "Bob"])' in rewrite
-    for unsent in ("Cara", "Dan", "Eve", "Berlin", "Delta"):   # held only by rows 4-6
+    assert "(purchase_id:INTEGER)" in rewrite
+    assert "(customer_name:TEXT)" in rewrite
+    for unsent in ("Alice", "Cara", "Dan", "Eve", "Berlin", "Delta", "Examples:"):
         assert unsent not in rewrite, unsent
 
     planner, gemini = _gemini_planner()
@@ -1306,6 +1341,17 @@ def test_gemini_reads_the_schema_and_three_example_values_per_column():
     assert "]\n【Foreign keys】\n" in prompt
     assert "orders.Customer_ID=customers.Customer_ID" in prompt and "items.Order_ID=orders.Order_ID" in prompt
     assert not [char for char in prompt if 0xE000 <= ord(char) <= 0xF8FF], "private-use characters"
+
+
+def test_gemini_rewrite_must_preserve_data_values_and_numbers():
+    question = "top 5 customers in France"
+    planner, gemini = _gemini_planner(question="top 3 customers")
+    _norm, fks, sch, _tablemap = _request(planner, [PEOPLE])
+    graph = SchemaGraph.from_planner(sch, fks)
+    rewritten, note = planner.sql_fallback.rewrite(question, graph)
+    assert rewritten is None
+    assert note == "rewording changed a stated value or number"
+    assert [step for step, _ in gemini.calls] == ["question"]
 
 
 def test_evaluator_grades_the_served_selection():
@@ -4130,14 +4176,17 @@ TESTS = [
     test_named_request_never_serves_or_decomposes_a_model_only_set_operation,
     test_proposal_import_rejects_malformed_model_text,
     test_decoded_sql_normalizer_preserves_multiline_statements_and_strips_fences,
-    test_the_fallback_is_never_asked_while_the_search_has_a_runnable_query,
+    test_the_fallback_is_not_asked_when_the_search_covers_the_question,
     test_a_question_the_search_cannot_read_is_answered_through_geminis_rewording,
     test_gemini_rewording_cannot_drop_a_user_constraint_from_coverage,
     test_gemini_cannot_write_sql_when_its_rewrite_is_not_searchable,
     test_a_disabled_fallback_is_never_asked,
     test_a_gemini_outage_serves_nothing_and_is_not_cached,
+    test_unreadable_runnable_baseline_is_not_served_when_rewriting_fails,
     test_the_fallback_is_stateless_across_repeated_requests,
-    test_gemini_reads_the_schema_and_three_example_values_per_column,
+    test_rewriter_recovers_when_a_runnable_plan_ignores_part_of_the_question,
+    test_gemini_reads_schema_names_but_not_cell_values,
+    test_gemini_rewrite_must_preserve_data_values_and_numbers,
     test_evaluator_grades_the_served_selection,
     test_sql_import_maps_numeric_arithmetic_but_refuses_nonnumeric,
     test_sql_import_round_trip_executes_and_matches,

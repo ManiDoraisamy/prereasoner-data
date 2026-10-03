@@ -131,8 +131,9 @@ the system can use, described next, still has to import into the typed grammar a
 
 ## When the search finds nothing: the labelled Gemini fallback
 
-This section describes an exception, not the normal path. It runs only when Stage 4 leaves no eligible
-candidate **and** the operator enabled Gemini (`EXTERNAL_LLM_ENABLED`, [`engine/llm.py`](../engine/llm.py)).
+This section describes an optional wording aid. It runs when Stage 4 leaves no eligible candidate or
+the selected plan leaves request wording unresolved, and the operator enabled Gemini
+(`EXTERNAL_LLM_ENABLED`, [`engine/llm.py`](../engine/llm.py)).
 The switch defaults to off, and with it off nothing below happens; the guided Community deployment
 turns it on together with chat. [`engine/sql_fallback.py`](../engine/sql_fallback.py) makes one
 bounded rewrite request:
@@ -140,12 +141,12 @@ bounded rewrite request:
 1. **Gemini rewords the question once**, in the tables' own words. Stages 3 to 6 run again on the
    rewording, so the search still builds the SQL. The answer says the search read Gemini's rewording,
    and shows it.
-The deterministic search then builds SQL from the rewrite; there is no SQL proposal step. Coverage
-checks both the user's original question and the rewrite. Gemini sees the question and the schema text
-of [`engine/sql_prompt.py`](../engine/sql_prompt.py): table and column names, inferred types, foreign
-keys, and at most three example values per column. It receives no conversation history or full rows,
-and it never writes SQL or a number. `served_by` is `gemini-rewrite`, and the response's `fallback`
-record holds the rewording. Rewrites are not cached. See
+The deterministic search then builds SQL from the rewrite; there is no SQL proposal step. Before the
+rewrite is searched, the engine checks that recognized source values, quoted text, and numbers from
+the user question remain. Gemini sees table and column names, inferred types, and foreign keys from
+[`engine/sql_prompt.py`](../engine/sql_prompt.py). It receives no cell values, conversation history, or
+full rows, and it never writes SQL or a number. `served_by` is `gemini-rewrite`, and the response's
+`fallback` record holds the rewording. Rewrites are not cached. See
 [`docs/ARCHITECTURE.md`](ARCHITECTURE.md#labelled-gemini-fallback) for the checks that apply to each case.
 
 ## The one caveat in this example: world queries

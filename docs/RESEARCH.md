@@ -152,12 +152,13 @@ but isn't filtered, or a measure word with no aggregate), the system returns a "
 rephrasing instead of a confidently wrong number.
 
 **The one place an LLM may reword a question.** A bounded search cannot enumerate every shape. When
-none of its candidates runs and the operator has enabled Gemini, the engine may ask for one isolated
-wording rewrite (`engine/sql_fallback.py`). The deterministic search runs again on that wording and
-remains the only owner of SQL construction and selection. Coverage checks the original wording as
-well as the rewrite. Gemini sees the schema and at most three example values per column, receives no
-conversation history, and cannot provide SQL or a result. With the operator's switch off, its default,
-Gemini is not used for own-data selection.
+none of its candidates runs or the selected plan leaves request wording unresolved, and the operator
+enabled Gemini, the engine may ask for one isolated wording rewrite (`engine/sql_fallback.py`). The
+deterministic search runs again on that wording and remains the only owner of SQL construction and
+selection. The rewriter preserves recognized source values, quoted text, and numbers. Gemini sees
+table and column names, inferred types, and foreign keys; it receives no cell values or conversation
+history and cannot provide SQL or a result. With the operator's switch off, its default, Gemini is not
+used for own-data selection.
 
 **What this costs.** Earlier designs pooled a local SQL-writing model with the search and scored
 higher on Spider than the search alone; those runs are history in `spider/results/RESULTS.md`.

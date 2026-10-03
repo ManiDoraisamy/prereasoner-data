@@ -468,15 +468,18 @@ class TableQuery:
            satisfies it, when one exists; and a money noun that names its table ("what's the sales in
            London") takes the best-ranked candidate that aggregates a money column
            (engine/sql_expansion.money_total_columns).
-        4. Only when no candidate is eligible, and the operator enabled Gemini, it may reword the
-           question once (engine/sql_fallback.py). The deterministic typed search runs on that wording;
-           if no candidate is eligible, selection returns no query.
+        4. When no candidate is eligible or the selected plan leaves request words unread, and the
+           operator enabled Gemini, it may reword the question once (engine/sql_fallback.py). Gemini
+           sees schema names and types, never cell values or conversation history. The deterministic
+           typed search runs on that wording and replaces the baseline only when its reading is more
+           specific.
 
         This is the one own-data selection: serving, decomposition leaves, the Spider evaluator and
         the offline regression gate all call it. The decomposition probe reads only its first stage
         (``search_pool``); a caller that already ran that stage passes its pool as ``searched``.
         Decomposition leaves pass ``allow_fallback=False`` (engine/decomposition.py:_leaf_readings).
         """
+        from dataclasses import replace
         from engine.sql_schema import SchemaGraph
 
         if searched is None:
@@ -484,10 +487,21 @@ class TableQuery:
         graph = SchemaGraph.from_planner(sch, fks)
         selection = self._choose(question, norm, sch, tablemap, graph, searched)
         fallback = self.sql_fallback
-        if (selection.selected is not None or not allow_fallback or fallback is None
-                or not fallback.available):
+        unread = _query_has_unread_terms(question, selection.candidate, graph)
+        needs_rewrite = selection.selected is None or unread
+        if not needs_rewrite:
             return selection
-        return self._fall_back(question, norm, fks, sch, tablemap, graph, selection, fallback)
+        if not allow_fallback or fallback is None:
+            return selection
+        if not fallback.available:
+            if selection.selected is None or not unread:
+                return selection
+            from engine.sql_rank import FallbackRecord
+
+            return replace(selection, selected=None, fallback=FallbackRecord(
+                "none", fallback.model, note="Gemini unavailable"))
+        return self._fall_back(question, norm, fks, sch, tablemap, graph, selection, fallback,
+                               reject_baseline=selection.selected is not None and unread)
 
     def _choose(self, question, norm, sch, tablemap, graph, pool):
         """Run, ground and choose among one pool (steps 2 and 3 of ``select_query``)."""
@@ -529,7 +543,8 @@ class TableQuery:
         return replace(selection, selected=select_ranked_candidate(
             ranking, calculation_satisfied, money_total, date_satisfied))
 
-    def _fall_back(self, question, norm, fks, sch, tablemap, graph, selection, fallback):
+    def _fall_back(self, question, norm, fks, sch, tablemap, graph, selection, fallback,
+                   reject_baseline=False):
         """Step 4 of ``select_query``: one isolated rewrite, followed by the same typed search."""
         from dataclasses import replace
 
@@ -538,13 +553,20 @@ class TableQuery:
         with request_timing.span("fallback"):
             rewritten, note = fallback.rewrite(question, graph)
             if rewritten is None:
-                return replace(selection, fallback=FallbackRecord("none", fallback.model, note=note))
+                baseline = replace(selection, selected=None) if reject_baseline else selection
+                return replace(baseline, fallback=FallbackRecord("none", fallback.model, note=note))
             reread = self._choose(rewritten, norm, sch, tablemap, graph,
                                   self.search_pool(rewritten, norm, fks, sch))
             if reread.selected is not None:
+                if selection.selected is not None and not _rewrite_improves_reading(selection, reread):
+                    baseline = replace(selection, selected=None) if reject_baseline else selection
+                    return replace(baseline, fallback=FallbackRecord(
+                        "none", fallback.model, question=rewritten,
+                        note="the deterministic search's original reading was stronger"))
                 return replace(reread, fallback=FallbackRecord(
                     "rewrite", fallback.model, question=rewritten))
-            return replace(selection, fallback=FallbackRecord(
+            baseline = replace(selection, selected=None) if reject_baseline else selection
+            return replace(baseline, fallback=FallbackRecord(
                 "none", fallback.model, question=rewritten,
                 note="the search found no runnable query for the rewording"))
 
@@ -835,6 +857,75 @@ class TableQuery:
             if current_analysis_context() is not None and required:
                 response["decomposition_required"] = required
         return response
+
+
+def _query_has_unread_terms(question, candidate, graph):
+    """Ask the stateless rewriter when a runnable plan leaves wording out or returns every field.
+
+    Matching one named column can produce executable SQL while ignoring another part of the request.
+    Unmatched wording and a wildcard projection over a named field are bounded rewrite signals.
+    """
+    if candidate is None:
+        return True
+    from engine.sql_ast import SelectQuery, SetQuery, Star, SubquerySource
+    from engine.sql_schema import canon
+    from engine.closed_class import action_words
+
+    words = tuple(canon(word) for word in re.findall(r"[A-Za-z0-9]+", str(question).casefold()))
+    schema_words = {
+        canon(word)
+        for column in graph.columns
+        for word in re.findall(r"[A-Za-z0-9]+", f"{column.ref.table} {column.ref.name}")
+    }
+    sql_literals = {
+        canon(word)
+        for literal in re.findall(r"'((?:[^']|'')*)'", candidate.sql)
+        for word in re.findall(r"[A-Za-z0-9]+", literal.replace("''", "'"))
+    }
+    ordinary_words = {
+        "a", "an", "and", "are", "as", "at", "be", "been", "being", "by", "can", "could",
+        "did", "do", "does", "for", "from", "give", "has", "have", "how", "in", "is", "it",
+        "me", "of", "on", "or", "please", "show", "the", "there", "to", "what", "when", "where",
+        "which", "who", "whom", "with", "would", "that", "all", "many", "much", "number", "total", "sum",
+        "average", "avg", "mean", "count", "highest", "lowest", "largest", "smallest", "most",
+        "least", "top", "bottom", "per", "each", "than", "more", "less", "greater", "above", "below",
+        "before", "after", "between", "not", "no", "except", "excluding", "without", "month", "year",
+        "day", "date", "value", "values", "column", "field", "data", "sheet", "spreadsheet", "tell",
+        "find", "list", "get", "return", "display", "calculate", "bought", "ordered",
+    }
+    ordinary_words.update(canon(word) for word in action_words(question))
+    if any(word not in schema_words | sql_literals | ordinary_words for word in words):
+        return True
+    def has_star(query):
+        if isinstance(query, SetQuery):
+            return has_star(query.left) or has_star(query.right)
+        if not isinstance(query, SelectQuery):
+            return False
+        if isinstance(query.from_table, SubquerySource) and has_star(query.from_table.query):
+            return True
+        return any(isinstance(item.expression, Star) for item in query.select)
+
+    return has_star(candidate.query) and bool(set(words) & schema_words)
+
+
+def _rewrite_improves_reading(original, rewritten):
+    """A rewording can replace the baseline only when it makes the typed reading more specific."""
+    from engine.sql_ast import SelectQuery, SetQuery, Star, SubquerySource
+
+    def has_star(query):
+        if isinstance(query, SetQuery):
+            return has_star(query.left) or has_star(query.right)
+        if not isinstance(query, SelectQuery):
+            return False
+        if isinstance(query.from_table, SubquerySource) and has_star(query.from_table.query):
+            return True
+        return any(isinstance(item.expression, Star) for item in query.select)
+
+    old = original.candidate
+    new = rewritten.candidate
+    old_star = has_star(old.query)
+    new_star = has_star(new.query)
+    return (old_star and not new_star) or new.score > old.score
 
 
 def sch_col_of(agg, sch):
