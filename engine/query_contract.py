@@ -60,7 +60,7 @@ def relational_operator_evidence(question, query, graph):
         return frozenset(), ()
     text = ' '.join(lexical_words(question))
     instruction_words = set(lexical_words(text)) & {'distinct', 'different', 'unique',
-                                                   'ascending', 'descending', 'asc', 'desc'}
+                                                   'ascending', 'descending', 'asc', 'desc', 'table', 'tables'}
     if not instruction_words:
         return frozenset(), ()
     data_words = {canon(word) for column in graph.columns
@@ -69,6 +69,19 @@ def relational_operator_evidence(question, query, graph):
                       if value is not None for word in lexical_words(value))
     requested_words = instruction_words - data_words
     consumed, violations = set(), []
+    scope_words = requested_words & {'table', 'tables'}
+    if scope_words:
+        referenced = {query.from_table} if isinstance(query.from_table, str) else set()
+        referenced.update(join.table for join in query.joins if isinstance(join.table, str))
+        for table in graph.tables:
+            label = ' '.join(lexical_words(table))
+            if not label:
+                continue
+            if re.search(r'\b(?:tables?\s+'+re.escape(label)+'|'+re.escape(label)+r'\s+tables?)\b', text):
+                if table in referenced:
+                    consumed.update(scope_words)
+                else:
+                    violations.append('the requested table is not used: '+table)
     distinct_words = requested_words & {'distinct', 'different', 'unique'}
     if distinct_words:
         counted = [item.expression for item in query.select

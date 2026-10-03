@@ -220,6 +220,20 @@ def test_a_complete_lower_ranked_reading_survives():
     assert selection.selected == 1 and "東京" in selection.candidate.sql
 
 
+def test_named_table_scope_is_proven_by_the_ast_without_business_synonyms():
+    tables=[{'name':'Checklist','columns':['Keyword','Avg. monthly searches'],
+             'rows':[['home inspection checklist',5000]]},
+            {'name':'Other','columns':['Keyword','Avg. monthly searches'],'rows':[['home inspection checklist',99]]}]
+    planner=_hermetic_planner(); _,fks,sch,_=_request(planner,tables)
+    graph=SchemaGraph.from_planner(sch,fks)
+    question='What is the Avg. monthly searches for the Keyword home inspection checklist in the Checklist table?'
+    for table, expected in [('Checklist',True),('Other',False)]:
+        candidate=_model_query(planner,f'''SELECT AVG("Avg. monthly searches") FROM "{table}" WHERE Keyword='home inspection checklist' ''',tables)
+        assert coverage(question,candidate,graph).complete is expected
+    candidate=_model_query(planner,'''SELECT AVG("Avg. monthly searches") FROM "Checklist" WHERE Keyword='home inspection checklist' ''',tables)
+    assert not coverage('average monthly searches for home inspection checklist in an unknown table',candidate,graph).complete
+
+
 def test_own_data_adapter_preserves_calendar_proof_and_selection():
     from types import SimpleNamespace
     from engine.knowledge_tables import KnowledgeTableQuery
