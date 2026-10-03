@@ -1236,6 +1236,26 @@ def test_rewriter_recovers_when_a_runnable_plan_ignores_part_of_the_question():
         assert served["valid"] and served["result"]["rows"] == [[5000]], served
 
 
+def test_schema_rewrite_can_resolve_a_synonym_without_changing_the_sql_reading():
+    """A safe rewrite that maps an unknown measure phrase onto a schema column can confirm the
+    same correct AST; it need not manufacture a different SQL string to count as a better reading."""
+    planner, gemini = _gemini_planner(question="what is total Amount")
+    amounts = {"name": "orders", "columns": ["Amount"], "rows": [[100], [200]]}
+    candidate = _model_query(planner, 'SELECT SUM("orders"."Amount") FROM "orders"', [amounts])
+    # The typed search is stubbed at its canonical-column result so this test isolates the
+    # selection rule; the real search and schema rewrite are exercised in neighboring tests.
+    planner.search_pool = lambda *_args, **_kwargs: [candidate]
+    searched = [candidate]
+    original = _select(_hermetic_planner(), "what is total turnover", [amounts], searched=searched)
+    assert original.candidate is not None
+    selection = _select(planner, "what is total turnover", [amounts], searched=searched)
+    assert selection.served_by == "gemini-rewrite"
+    assert selection.candidate.sql == original.candidate.sql
+    assert selection.candidate.sql == 'SELECT SUM("orders"."Amount") FROM "orders"'
+    assert selection.fallback.question == "what is total Amount"
+    assert [step for step, _ in gemini.calls] == ["question"]
+
+
 def test_gemini_rewording_cannot_drop_a_user_constraint_from_coverage():
     """The rewrite is only a retrieval aid: coverage checks the original question too."""
     from unittest.mock import patch
@@ -4185,6 +4205,7 @@ TESTS = [
     test_unreadable_runnable_baseline_is_not_served_when_rewriting_fails,
     test_the_fallback_is_stateless_across_repeated_requests,
     test_rewriter_recovers_when_a_runnable_plan_ignores_part_of_the_question,
+    test_schema_rewrite_can_resolve_a_synonym_without_changing_the_sql_reading,
     test_gemini_reads_schema_names_but_not_cell_values,
     test_gemini_rewrite_must_preserve_data_values_and_numbers,
     test_evaluator_grades_the_served_selection,

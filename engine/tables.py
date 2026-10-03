@@ -487,7 +487,13 @@ class TableQuery:
         graph = SchemaGraph.from_planner(sch, fks)
         selection = self._choose(question, norm, sch, tablemap, graph, searched)
         fallback = self.sql_fallback
-        unread = _query_has_unread_terms(question, selection.candidate, graph)
+        selected_index = selection.selected
+        calculation_satisfied = (selected_index is not None and
+                                  selection.calculation_satisfied[selected_index])
+        unread = _query_has_unread_terms(
+            question, selection.candidate, graph,
+            calculation_satisfied=calculation_satisfied,
+        )
         needs_rewrite = selection.selected is None or unread
         if not needs_rewrite:
             return selection
@@ -558,7 +564,21 @@ class TableQuery:
             reread = self._choose(rewritten, norm, sch, tablemap, graph,
                                   self.search_pool(rewritten, norm, fks, sch))
             if reread.selected is not None:
-                if selection.selected is not None and not _rewrite_improves_reading(selection, reread):
+                rewritten_is_complete = not _query_has_unread_terms(
+                    rewritten, reread.candidate, graph,
+                    calculation_satisfied=(
+                        reread.selected is not None and
+                        reread.calculation_satisfied[reread.selected]
+                    ),
+                )
+                if (selection.selected is not None and reject_baseline and
+                        not rewritten_is_complete):
+                    baseline = replace(selection, selected=None) if reject_baseline else selection
+                    return replace(baseline, fallback=FallbackRecord(
+                        "none", fallback.model, question=rewritten,
+                        note="the rewritten question still has unread terms"))
+                if (selection.selected is not None and not reject_baseline and
+                        not _rewrite_improves_reading(selection, reread)):
                     baseline = replace(selection, selected=None) if reject_baseline else selection
                     return replace(baseline, fallback=FallbackRecord(
                         "none", fallback.model, question=rewritten,
@@ -859,7 +879,7 @@ class TableQuery:
         return response
 
 
-def _query_has_unread_terms(question, candidate, graph):
+def _query_has_unread_terms(question, candidate, graph, *, calculation_satisfied=False):
     """Ask the stateless rewriter when a runnable plan leaves wording out or returns every field.
 
     Matching one named column can produce executable SQL while ignoring another part of the request.
@@ -871,7 +891,15 @@ def _query_has_unread_terms(question, candidate, graph):
     from engine.sql_schema import canon
     from engine.closed_class import action_words
 
-    words = tuple(canon(word) for word in re.findall(r"[A-Za-z0-9]+", str(question).casefold()))
+    recognized_question = str(question)
+    if calculation_satisfied:
+        from engine.calculations import detect_calculations
+
+        for intent in detect_calculations(question):
+            recognized_question = re.sub(
+                re.escape(intent.phrase), " ", recognized_question, count=1, flags=re.IGNORECASE,
+            )
+    words = tuple(canon(word) for word in re.findall(r"[A-Za-z0-9]+", recognized_question.casefold()))
     schema_words = {
         canon(word)
         for column in graph.columns
@@ -882,11 +910,15 @@ def _query_has_unread_terms(question, candidate, graph):
         for literal in re.findall(r"'((?:[^']|'')*)'", candidate.sql)
         for word in re.findall(r"[A-Za-z0-9]+", literal.replace("''", "'"))
     }
+    sql_literals.update(
+        canon(number)
+        for number in re.findall(r"(?<![A-Za-z0-9_])[+-]?\d[\d,]*(?:\.\d+)?(?![A-Za-z0-9_])", candidate.sql)
+    )
     ordinary_words = {
-        "a", "an", "and", "are", "as", "at", "be", "been", "being", "by", "can", "could",
+        "a", "an", "am", "and", "are", "as", "at", "be", "been", "being", "by", "can", "could",
         "did", "do", "does", "for", "from", "give", "has", "have", "how", "in", "is", "it",
         "me", "of", "on", "or", "please", "show", "the", "there", "to", "what", "when", "where",
-        "which", "who", "whom", "with", "would", "that", "all", "many", "much", "number", "total", "sum",
+        "which", "who", "whom", "with", "would", "was", "were", "that", "all", "many", "much", "number", "total", "sum",
         "average", "avg", "mean", "count", "highest", "lowest", "largest", "smallest", "most",
         "least", "top", "bottom", "per", "each", "than", "more", "less", "greater", "above", "below",
         "before", "after", "between", "not", "no", "except", "excluding", "without", "month", "year",
