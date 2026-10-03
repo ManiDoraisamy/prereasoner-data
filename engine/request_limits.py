@@ -145,7 +145,7 @@ class ResponseReplay:
         self._entries: dict = {}                  # key -> [done Event, response or None, finished at]
         self._lock = threading.Lock()
 
-    def claim(self, key) -> tuple[bool, object]:
+    def claim(self, key, fingerprint=None) -> tuple[bool, object]:
         """(True, None) when the caller owns `key` and must `finish` or `release` it; (False,
         response) when an earlier request with `key` produced `response`; (False, None) when that
         request is still running after `wait_seconds`."""
@@ -155,8 +155,11 @@ class ResponseReplay:
                 self._expire()
                 entry = self._entries.get(key)
                 if entry is None:
-                    self._entries[key] = [threading.Event(), None, None]
+                    self._entries[key] = [threading.Event(), None, None, fingerprint]
                     return True, None
+                if entry[3] != fingerprint:
+                    from engine.request_replay import ReplayConflict
+                    raise ReplayConflict('This request ID belongs to a different input. Start a new request.')
             # The entry itself is read once it is set, so a response evicted after it finished is
             # still the one returned.
             if not entry[0].wait(max(0.0, deadline - self._clock())):

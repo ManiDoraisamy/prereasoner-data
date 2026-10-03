@@ -19,6 +19,8 @@ MAX_HISTORY_ITEMS = 24
 MAX_HISTORY_CHARS = 80_000
 MAX_TABLES = 8
 MAX_UPLOAD_ROWS = 50_000
+MAX_UPLOAD_COLUMNS = 256
+MAX_UPLOAD_CELLS = 1_000_000
 MAX_TABLE_DISPLAY_NAME_CHARS = 128
 MAX_TABLE_CHARS = 8_000_000
 MAX_TABLE_TOTAL_CHARS = 20_000_000
@@ -136,11 +138,18 @@ def upload_row_limit_error(tables, *, limit: int = MAX_UPLOAD_ROWS) -> str | Non
     the same semantics as the table loader.  The HTTP handlers use this check to
     reject oversized uploads; they must never silently discard user data.
     """
+    total_cells = 0
     for table in tables or ():
         rows = table.get("rows") or ()
+        width = len(table.get('columns') or ())
+        if width > MAX_UPLOAD_COLUMNS:
+            return f"{table.get('name', 'uploaded table')} has too many columns; maximum is {MAX_UPLOAD_COLUMNS}"
+        total_cells += len(rows) * width
         if len(rows) > limit:
             name = str(table.get("name") or "uploaded table")
             return f"{name} has too many data rows; maximum is {limit}"
+    if total_cells > MAX_UPLOAD_CELLS:
+        return f"The uploaded workbook has too many cells; maximum is {MAX_UPLOAD_CELLS}"
     return None
 
 

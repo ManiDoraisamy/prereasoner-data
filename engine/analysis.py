@@ -16,7 +16,7 @@ from typing import Any
 
 ANALYSIS_ACTIONS = frozenset({"create", "modify", "inspect"})
 MAX_ANALYSIS_SLUG_BYTES = 40
-MAX_ANALYSIS_SNAPSHOT_BYTES = 1 * 1024 * 1024
+MAX_ANALYSIS_SNAPSHOT_BYTES = 32 * 1024 * 1024
 _ANALYSIS_ID = re.compile(r"^a_[0-9a-f]{32}$")
 _SLUG = re.compile(r"^[a-z][a-z0-9_]{0,39}$")
 

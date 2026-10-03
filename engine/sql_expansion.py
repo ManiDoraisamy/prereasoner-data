@@ -955,7 +955,7 @@ def compatible_types(left: SQLType, right: SQLType) -> bool:
 
 def name_tokens(name: str) -> tuple[str, ...]:
     spaced = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", str(name))
-    return tuple(canon(token) for token in re.findall(r"[A-Za-z0-9]+", spaced))
+    return tuple(canon(token) for token in re.findall(r"[^\W_]+", spaced, re.UNICODE))
 
 
 def spelled_names(question_tokens: tuple[str, ...], schema: Any) -> frozenset[int]:
@@ -981,7 +981,7 @@ def spelled_names(question_tokens: tuple[str, ...], schema: Any) -> frozenset[in
 # A "%" standing alone is the word "percent" ("what % of the total amount comes from Paris" served the
 # Paris total, 2026-10-02); after a number ("over 50%") it is the number's unit, and inside a word or
 # quotes ("names like 'A%'") a pattern's wildcard.
-_QUESTION_WORD = re.compile(r"[A-Za-z0-9]+(?:'[A-Za-z0-9]+)?|(?<![\w%'\"])(?<!\d\s)%(?![\w'\"])")
+_QUESTION_WORD = re.compile(r"[^\W_]+(?:'[^\W_]+)?|(?<![\w%'\"])(?<!\d\s)%(?![\w'\"])", re.UNICODE)
 
 
 def words(text: str) -> list[str]:

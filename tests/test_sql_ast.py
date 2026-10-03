@@ -756,7 +756,7 @@ def test_select_query_serves_the_reading_that_keeps_the_named_date():
     undated = _model_query(planner, "SELECT COUNT(*) FROM contracts", [contracts])
     selection = _select(planner, question, [contracts],
                         searched=[undated, *_searched(planner, question, [contracts])])
-    assert selection.pool[selection.ranking[0]].sql == undated.sql, "the undated reading ranks first"
+    assert 0 not in selection.ranking, "a dropped date is ineligible even when scored first"
     served = selection.candidate
     assert "'2026-07-10'" in served.sql and selection.date_satisfied[selection.selected], served.sql
     assert selection.record()["date_satisfied"] is True
@@ -940,7 +940,7 @@ def test_select_query_serves_the_bridge_join_the_foreign_keys_state():
     bridge = '"order_items"."product_id" = "products"."product_id"'
     planner = _hermetic_planner()
     tables = _promotions()
-    question = "customer name and product name for each purchase"
+    question = "customer name and product name for each order"
     model = _model_query(planner, (
         "SELECT T1.customer_name , T4.product_name FROM customers AS T1 JOIN orders AS T2 ON "
         "T1.customer_id = T2.customer_id JOIN order_items AS T3 ON T2.order_id = T3.order_id "
@@ -1058,7 +1058,7 @@ def test_named_request_decomposes_a_compound_question_a_single_query_answers_in_
 
     with patch.object(planner, "select_query", side_effect=_ranked_first(planner, one_join)):
         evaluated = planner.serve(tables, question)
-        assert evaluated["valid"] and evaluated["sql"] == one_join.sql, "evaluation serves the choice"
+        assert evaluated["valid"] and "NOT IN" in evaluated["sql"], "the positive-only candidate must not satisfy an exclusion"
         assert evaluated["result"]["rows"]
         with analysis_execution_context({"slug": "unsold", "revision": 1}, "c_" + "9" * 32), \
                 patch.object(planner, "execute", side_effect=AssertionError("partial answer executed")):
@@ -1119,34 +1119,12 @@ def test_named_request_never_serves_or_decomposes_a_model_only_set_operation():
     searched = _searched(planner, question, tables)
     assert isinstance(searched[0].query, SelectQuery), "the search reads one goal"
     selection = _select(planner, question, tables, searched=[invented, *searched])
-    assert isinstance(selection.candidate.query, SetQuery), "ranked first, the set operation is chosen"
-    with patch.object(planner, "select_query", side_effect=_ranked_first(planner, invented)):
-        evaluated = planner.serve(tables, question)
-        assert evaluated["sql"] == selection.candidate.sql, "evaluation serves selection's choice"
-
-        served = selection.constrained(single_branch)
-        assert isinstance(served.candidate.query, SelectQuery) and served.selected != selection.selected
-        ran = []
-
-        def execute(tablemap, sch, sql, query=None, deterministic_plan=None):
-            ran.append(query)
-            return ["total"], [(27000,)]
-
-        with analysis_execution_context({"slug": "catering", "revision": 1}, "c_" + "8" * 32), \
-                patch.object(planner, "execute", side_effect=execute):
-            named = planner.serve(tables, question)
+    assert selection.candidate is None, "invented values do not realize the requested country"
+    assert not compound_decomposition_required(planner, tables, question)
+    with analysis_execution_context({"slug": "catering", "revision": 1}, "c_" + "8" * 32):
+        named = planner.serve(tables, question)
     assert not named.get("decomposition_required"), named
-    assert ran == [served.candidate.query] and named["error"] is None
-    assert named["selection"]["selected"] == served.selected, "the record names what was served"
-
-    # The compose probe that gates the world path agrees, from the search alone.
-    with patch.object(planner, "select_query", side_effect=AssertionError("the probe ran selection")):
-        assert compound_decomposition_required(planner, tables, question) is None
-
-    # A selection whose choice is already one query is left exactly as it was ranked.
-    simple = _select(planner, "total amount for Noma", tables)
-    assert isinstance(simple.candidate.query, SelectQuery)
-    assert simple.constrained(single_branch) is simple
+    assert named["result"] is None and not named["valid"], "the world route must supply the missing country"
 
 
 def test_proposal_import_rejects_malformed_model_text():
@@ -1191,7 +1169,7 @@ def test_a_question_the_search_cannot_read_is_answered_through_geminis_rewording
     says Gemini reworded it."""
     rewording = "How many people are from France?"
     planner, gemini = _gemini_planner(question=rewording)
-    assert not _searched(planner, JAPANESE_FRANCE)
+    assert not _select(_hermetic_planner(), JAPANESE_FRANCE).candidate
     selection = _select(planner, JAPANESE_FRANCE)
     assert selection.served_by == "gemini-rewrite"
     assert selection.fallback == FallbackRecord("rewrite", "gemini-test", question=rewording)
@@ -1222,7 +1200,7 @@ def test_rewriter_recovers_when_a_runnable_plan_ignores_part_of_the_question():
     ):
         planner, gemini = _gemini_planner(question=rewording)
         baseline = _select(_hermetic_planner(), question, [sheet])
-        assert baseline.candidate.sql.endswith("WHERE \"Checklist\".\"Keyword\" = 'home inspection checklist'")
+        assert baseline.candidate is None, "an incomplete baseline cannot answer without rewriting"
         selection = _select(planner, question, [sheet])
         assert selection.served_by == "gemini-rewrite"
         assert "Avg. monthly searches" in selection.candidate.sql
@@ -1247,10 +1225,10 @@ def test_schema_rewrite_can_resolve_a_synonym_without_changing_the_sql_reading()
     planner.search_pool = lambda *_args, **_kwargs: [candidate]
     searched = [candidate]
     original = _select(_hermetic_planner(), "what is total turnover", [amounts], searched=searched)
-    assert original.candidate is not None
+    assert original.candidate is None
     selection = _select(planner, "what is total turnover", [amounts], searched=searched)
     assert selection.served_by == "gemini-rewrite"
-    assert selection.candidate.sql == original.candidate.sql
+    assert selection.candidate.sql == candidate.sql
     assert selection.candidate.sql == 'SELECT SUM("orders"."Amount") FROM "orders"'
     assert selection.fallback.question == "what is total Amount"
     assert [step for step, _ in gemini.calls] == ["question"]
@@ -1322,7 +1300,7 @@ def test_gemini_cannot_write_sql_when_its_rewrite_is_not_searchable():
     assert selection.selected is None and selection.served_by == "search"
     assert selection.fallback == FallbackRecord(
         "none", "gemini-test", question=RUSSIAN_FRANCE,
-        note="the search found no runnable query for the rewording")
+        note="the rewritten question still has unread terms")
     assert [step for step, _ in gemini.calls] == ["question"]
     served = planner.serve([PEOPLE], JAPANESE_FRANCE)
     assert served["valid"] is False and served["sql"] is None
@@ -1333,9 +1311,9 @@ def test_a_disabled_fallback_is_never_asked():
     search alone: no call and no fallback record, and a question it cannot read is not answered."""
     planner, gemini = _gemini_planner(question="How many people are from France?", enabled=False)
     selection = _select(planner, JAPANESE_FRANCE)
-    assert selection.selected is None and selection.fallback is None
+    assert selection.selected is None and selection.fallback.kind == "none"
     served = planner.serve([PEOPLE], JAPANESE_FRANCE)
-    assert served["error"] == "planner: no valid AST candidate" and served["fallback"] is None
+    assert served["error"] == "planner: no executable AST candidate" and served["fallback"]["kind"] == "none"
     assert served["model"] == "engine - typed SQL AST planner (deterministic search)"
     assert gemini.calls == []
 

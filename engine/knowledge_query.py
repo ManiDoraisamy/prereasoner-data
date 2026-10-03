@@ -659,7 +659,7 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
             con.close()
             self._con = None
         response = {"question": question, "as_of": None, "sql": record["final_sql"],
-                    "result": {"columns": columns, "rows": wire_rows(rows[:50])},
+                    "result": {"columns": columns, "rows": wire_rows(rows)},
                     "views": record["views"], "deterministic": record, "model": model}
         if unmatched:
             response["unmatched"] = unmatched
@@ -1080,8 +1080,12 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
                     dropped = [word for word in dropped if word not in realized]
                 claimed = _calculation_coverage_words(calculations)
                 dropped = [word for word in dropped if word not in claimed]
-            except Exception as e:                           # noqa: BLE001 — the gate must never break the world path
-                print(f"coverage check failed: {type(e).__name__}", flush=True); dropped = []
+            except Exception as e:                           # verification failures cannot certify an answer
+                print(f"coverage check failed: {type(e).__name__}", flush=True)
+                return {"question": question, "as_of": as_of, "clarify": True,
+                        "proposed": "", "bindings": [], "dropped": [],
+                        "error": "The interpretation could not be verified. Please retry.",
+                        "model": "engine - interpretation verification unavailable"}
             if dropped:
                 try:
                     c = self._clarify(question, norm, fks, sch)

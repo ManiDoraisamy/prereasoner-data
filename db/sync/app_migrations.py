@@ -232,6 +232,20 @@ CHAT_MIGRATIONS = (
             'ADD CONSTRAINT sheet_session_pkey PRIMARY KEY (user_id, host, spreadsheet_id)',
         ),
     ),
+    ApplicationMigration(
+        11,
+        "durable_request_replay",
+        (
+            '''CREATE TABLE IF NOT EXISTS chat.request_job (
+                route text NOT NULL, subject_key text NOT NULL, job_id text NOT NULL,
+                payload_hash text NOT NULL, lease_owner text NOT NULL,
+                lease_until timestamptz NOT NULL, response jsonb,
+                expires_at timestamptz NOT NULL DEFAULT (now()+interval '1 day'),
+                PRIMARY KEY(route,subject_key,job_id)
+            )''',
+            'CREATE INDEX IF NOT EXISTS ix_request_job_expiry ON chat.request_job(expires_at)',
+        ),
+    ),
 )
 
 # Legacy compatibility functions from the former request-time Wikidata fill path.

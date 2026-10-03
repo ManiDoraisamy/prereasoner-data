@@ -1676,7 +1676,7 @@ def _tokens(question: str) -> tuple[str, ...]:
 
 def _name_words(name: str) -> tuple[str, ...]:
     spaced = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", str(name))
-    return tuple(word.lower() for word in re.findall(r"[A-Za-z0-9]+", spaced))
+    return tuple(word.lower() for word in re.findall(r"[^\W_]+", spaced, re.UNICODE))
 
 
 

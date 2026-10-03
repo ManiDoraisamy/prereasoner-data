@@ -498,7 +498,7 @@ class TableQuery:
         if not needs_rewrite:
             return selection
         if not allow_fallback or fallback is None:
-            return selection
+            return replace(selection, selected=None) if unread else selection
         if not fallback.available:
             if selection.selected is None or not unread:
                 return selection
@@ -542,6 +542,9 @@ class TableQuery:
                 money_total[index] = aggregates_money_column(pool[index].query, table, names)
         phrases = served_date_phrases(question, question_tokens(question), graph)
         date_satisfied = [realizes_dates(member.query, phrases) for member in pool]
+        from engine.query_contract import constraint_violations
+        ranking = tuple(index for index in ranking
+                        if not constraint_violations(question, pool[index].query, graph))
         request_timing.count("pool", len(pool))
         selection = PoolSelection(pool, tuple(executable), tuple(grounded), ranking, None,
                                   tuple(calculation_satisfied), tuple(money_total),
@@ -571,8 +574,7 @@ class TableQuery:
                         reread.calculation_satisfied[reread.selected]
                     ),
                 )
-                if (selection.selected is not None and reject_baseline and
-                        not rewritten_is_complete):
+                if not rewritten_is_complete:
                     baseline = replace(selection, selected=None) if reject_baseline else selection
                     return replace(baseline, fallback=FallbackRecord(
                         "none", fallback.model, question=rewritten,
@@ -646,7 +648,7 @@ class TableQuery:
             )
             result = {
                 "columns": cols,
-                "rows": [["" if value is None else value for value in row] for row in rows[:50]],
+                "rows": [["" if value is None else value for value in row] for row in rows],
             }
             return candidate, result, None, candidates, selection
         except Exception as exc:  # execution errors are returned in the serving envelope
@@ -698,15 +700,28 @@ class TableQuery:
         if not pool:
             return ()
         con = self._sqlite_tables(tablemap, sch)
-        con.set_progress_handler(lambda: 1, int(op_limit))
+        from engine.request_deadline import expired, remaining
+        steps = 0
+        interval = max(1, min(10000, int(op_limit)))
+        def progress():
+            nonlocal steps
+            steps += interval
+            return int(steps >= op_limit or expired())
+        con.set_progress_handler(progress, interval)
         outcomes = []
         with request_timing.span("pool_execute"):
             for candidate in pool:
+                remaining()
+                steps = 0
                 if not self.guard(candidate.sql)[0]:
                     outcomes.append(False)
                     continue
                 try:
-                    con.execute(candidate.sql).fetchall()
+                    # Eligibility needs completion, but not a second materialized copy
+                    # of tens of thousands of result rows for each candidate.
+                    cursor = con.execute(candidate.sql)
+                    while cursor.fetchmany(1024):
+                        remaining()
                     outcomes.append(True)
                 except sqlite3.Error:
                     outcomes.append(False)
@@ -847,6 +862,14 @@ class TableQuery:
             "model": model,
         }
         if candidate is not None:
+            from engine.query_contract import coverage
+            from engine.sql_schema import SchemaGraph
+            checked_question = fallback.question if fallback is not None and fallback.kind == 'rewrite' else question
+            response['coverage'] = coverage(
+                checked_question, candidate, SchemaGraph.from_planner(sch, fks),
+                calculation_satisfied=bool(selection is not None and selection.selected is not None
+                                           and selection.calculation_satisfied[selection.selected]),
+            ).record()
             from engine.sql_ast import share_output
             if share_output(candidate.query):
                 response["unit"] = "percent"         # a share of a whole: 0.3 is stated as 30%
@@ -880,142 +903,9 @@ class TableQuery:
 
 
 def _query_has_unread_terms(question, candidate, graph, *, calculation_satisfied=False):
-    """Ask the stateless rewriter when a runnable plan leaves wording out or returns every field.
-
-    Matching one named column can produce executable SQL while ignoring another part of the request.
-    Unmatched wording and a wildcard projection over a named field are bounded rewrite signals.
-    """
-    if candidate is None:
-        return True
-    from engine.sql_ast import SelectQuery, SetQuery, Star, SubquerySource
-    from engine.sql_schema import canon
-    from engine.closed_class import action_words
-
-    recognized_question = str(question)
-    if calculation_satisfied:
-        from engine.calculations import detect_calculations
-
-        for intent in detect_calculations(question):
-            recognized_question = re.sub(
-                re.escape(intent.phrase), " ", recognized_question, count=1, flags=re.IGNORECASE,
-            )
-    words = tuple(canon(word) for word in re.findall(r"[A-Za-z0-9]+", recognized_question.casefold()))
-    schema_words = {
-        canon(word)
-        for column in graph.columns
-        for word in re.findall(r"[A-Za-z0-9]+", f"{column.ref.table} {column.ref.name}")
-    }
-    sql_literals = {
-        canon(word)
-        for literal in re.findall(r"'((?:[^']|'')*)'", candidate.sql)
-        for word in re.findall(r"[A-Za-z0-9]+", literal.replace("''", "'"))
-    }
-    sql_literals.update(
-        canon(number)
-        for number in re.findall(r"(?<![A-Za-z0-9_])[+-]?\d[\d,]*(?:\.\d+)?(?![A-Za-z0-9_])", candidate.sql)
-    )
-    ordinary_words = {
-        "a", "an", "am", "and", "are", "as", "at", "be", "been", "being", "by", "can", "could",
-        "did", "do", "does", "for", "from", "give", "has", "have", "how", "in", "is", "it",
-        "me", "of", "on", "or", "please", "show", "the", "there", "to", "what", "when", "where",
-        "which", "who", "whom", "with", "would", "was", "were", "that", "all", "many", "much", "number", "total", "sum",
-        "current", "row", "rows", "header", "headers", "blank", "empty", "non",
-        "average", "avg", "mean", "count", "highest", "lowest", "largest", "smallest", "most",
-        "least", "top", "bottom", "per", "each", "than", "more", "less", "greater", "above", "below",
-        "before", "after", "between", "not", "no", "except", "excluding", "without", "month", "year",
-        "day", "date", "value", "values", "column", "field", "data", "sheet", "spreadsheet", "tell",
-        "find", "list", "get", "return", "display", "calculate", "bought", "ordered",
-    }
-    if _query_realizes_numeric_comparisons(question, candidate, graph):
-        ordinary_words.update({
-            "over", "under", "above", "below", "greater", "less", "more", "fewer",
-            "than", "least", "most", "at",
-        })
-    ordinary_words.update(canon(word) for word in action_words(question))
-    if any(word not in schema_words | sql_literals | ordinary_words for word in words):
-        return True
-    def has_star(query):
-        if isinstance(query, SetQuery):
-            return has_star(query.left) or has_star(query.right)
-        if not isinstance(query, SelectQuery):
-            return False
-        if isinstance(query.from_table, SubquerySource) and has_star(query.from_table.query):
-            return True
-        return any(isinstance(item.expression, Star) for item in query.select)
-
-    return has_star(candidate.query) and bool(set(words) & schema_words)
-
-
-def _query_realizes_numeric_comparisons(question, candidate, graph):
-    """Whether a typed query realizes the question's numeric threshold operators and targets.
-
-    The ambiguous ``over``/``under`` wording counts as read only when the selected AST contains the
-    same operator/value against a matching column (including an aggregate over that column). This
-    prevents ``over`` from forcing Gemini while still rejecting a query that reverses it to ``under``.
-    """
-    from engine.sql_ast import Aggregate, BinaryExpr, BooleanExpr, ColumnRef, Comparison, DatePart
-    from engine.sql_ast import SelectQuery, SetQuery, SubquerySource
-    from engine.sql_expansion import ExpansionSupport, tokens
-    from engine.sql_search import _number
-
-    requested = ExpansionSupport(graph).numeric_comparisons(tokens(question))
-    if not requested:
-        return False
-
-    def comparisons(predicate):
-        if isinstance(predicate, Comparison):
-            return [predicate]
-        if isinstance(predicate, BooleanExpr):
-            return [item for term in predicate.terms for item in comparisons(term)]
-        return []
-
-    def queries(query):
-        if isinstance(query, SetQuery):
-            yield from queries(query.left)
-            yield from queries(query.right)
-        elif isinstance(query, SelectQuery):
-            yield query
-            if isinstance(query.from_table, SubquerySource):
-                yield from queries(query.from_table.query)
-
-    def refs(expression):
-        if isinstance(expression, ColumnRef):
-            return {expression}
-        if isinstance(expression, Aggregate):
-            return refs(expression.operand)
-        if isinstance(expression, BinaryExpr):
-            return refs(expression.left) | refs(expression.right)
-        if isinstance(expression, DatePart):
-            return refs(expression.operand)
-        return set()
-
-    actual = []
-    for query in queries(candidate.query):
-        for predicate in (query.where, query.having):
-            actual.extend(comparisons(predicate))
-
-    def number(value):
-        try:
-            return float(_number(str(value)))
-        except (TypeError, ValueError):
-            return None
-
-    grouped = {}
-    for comparison in requested:
-        value = number(comparison.right.value)
-        if value is None:
-            continue
-        grouped.setdefault((comparison.operator, value), set()).add(comparison.left)
-    if not grouped:
-        return False
-    for (operator, value), targets in grouped.items():
-        if not any(
-            item.operator == operator and number(item.right.value) == value
-            and bool(refs(item.left) & targets)
-            for item in actual
-        ):
-            return False
-    return True
+    from engine.query_contract import coverage
+    return not coverage(question, candidate, graph,
+                        calculation_satisfied=calculation_satisfied).complete
 
 
 def _rewrite_improves_reading(original, rewritten):

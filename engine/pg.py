@@ -97,6 +97,12 @@ class _TimedCursor(psycopg2.extensions.cursor):
     """
 
     def execute(self, query, vars=None):
+        from engine.request_deadline import remaining
+        budget = remaining()
+        if budget is not None:
+            super().execute("SELECT set_config('statement_timeout', %s, false), "
+                            "set_config('lock_timeout', %s, false)",
+                            (str(max(1, int(budget * 1000))), str(min(5000, max(1, int(budget * 1000))))))
         started = time.perf_counter()
         with request_timing.span("sql"):                 # the span publishes its own sql_n
             result = super().execute(query, vars)
@@ -125,6 +131,10 @@ def _pg():
     """
     kw = dict(host=KB_PG_HOST, dbname=KB_PG_DB, user=KB_PG_USER,
               password=kb_pg_password(), connect_timeout=30, cursor_factory=_TimedCursor)
+    from engine.request_deadline import remaining
+    budget = remaining()
+    if budget is not None:
+        kw['connect_timeout'] = max(1, min(30, int(budget)))
     if not KB_PG_HOST.startswith("/"):
         kw["port"] = KB_PG_PORT
         kw["sslmode"] = KB_PG_SSLMODE

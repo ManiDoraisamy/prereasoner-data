@@ -165,7 +165,7 @@ def test_shape():
 
 
 # ---------------- (B) integration: against the stub engine ----------------
-def test_integration(base):
+def run_integration(base):
     print("[B] engine_client against the stub engine")
     tables = [{"name": "customers", "data": "customer_id,city\n1,Paris\n2,Lyon\n3,Berlin\n"},
               {"name": "orders", "data": "order_id,customer_id,amount\n10,1,120\n11,2,150\n12,3,90\n"}]
@@ -299,7 +299,7 @@ def main():
         test_shape()
         test_mcp_server_module_imports()
         test_mcp_stdio_handshake()
-        test_integration(base)
+        run_integration(base)
     finally:
         srv.shutdown()
     print(f"\ntest_mcp: {P} passed, {F} failed")

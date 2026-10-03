@@ -156,12 +156,10 @@ def test_terminal_engine_status_uses_one_query_and_a_tool_disabled_presentation(
     for status in ("answered", "clarify", "error"):
         result, model_calls, engine_calls = asyncio.run(_run(status))
         assert len(engine_calls) == 1, (status, engine_calls)
-        assert len(model_calls) == 2, (status, model_calls)
+        assert len(model_calls) == 1, (status, model_calls)
         assert model_calls[0]["tools"] is orchestrator.TOOLS and "tool_choice" not in model_calls[0]
-        # Gemini keeps the declarations a replayed function call refers to; calls are disabled instead.
-        assert model_calls[1]["tools"] is orchestrator.TOOLS
-        assert model_calls[1]["tool_choice"] == {"type": "none"}
-        expected = "876.50" if status == "answered" else "The verified result is ready."
+        expected = {"answered": "876.50", "clarify": "choose a discount schedule",
+                    "error": "engine unavailable"}[status]
         assert result["reply"] == expected
         assert "step budget" not in result["reply"]
         assert len(result["traces"]) == 1
@@ -318,7 +316,7 @@ def test_terminal_fallback_preserves_the_engine_outcome():
     result, model_calls, engine_calls = asyncio.run(_run(
         "answered", fail_presentation=True,
     ))
-    assert len(model_calls) == 2
+    assert len(model_calls) == 1
     assert len(engine_calls) == 1
     assert result["reply"] == "876.50"
     assert "step budget" not in result["reply"]
@@ -365,68 +363,21 @@ def test_recalculation_identity_and_scalar_presentation_are_grounded():
     assert engine_calls[0][1]["analysis"] == analysis
     shaped = {"status": "answered", "answer": {"rows": [[23]], "columns": ["count"]}}
     assert orchestrator._grounded_presentation(shaped, "There are 100 distinct IDs.") == "23"
-    assert orchestrator._grounded_presentation(shaped, "There are 23 distinct IDs.") == "There are 23 distinct IDs."
+    assert orchestrator._grounded_presentation(shaped, "There are 23 distinct IDs.") == "23"
     clarify = {"status": "clarify", "clarify": {"reason": "Please choose a column."}}
     assert orchestrator._grounded_presentation(clarify, "There are 100 distinct IDs.") == "Please choose a column."
     error = {"status": "error", "error": "The calculation failed."}
     assert orchestrator._grounded_presentation(error, "There are 100 distinct IDs.") == "The calculation failed."
 
 
-def test_presentation_that_states_the_engine_value_in_prose_is_kept():
-    # Production, 2026-09-26: the Sheets sidebar showed "125" for "total amount in india". The
-    # model had written "Your total amount in India comes to 125.", and the grounding check
-    # read the full stop as a decimal point and replaced the sentence with the bare value.
-    # Replays on claude-sonnet-5 kept 4 of 14 correct sentences; these are the model's own. The
-    # engine had satisfied a currency for the answer, so a sign against the amount stays as well
-    # (test_a_currency_sign_the_turn_never_gave_is_dropped holds the other case).
-    def kept(value, prose):
-        shaped = {"status": "answered", "answer": {"columns": ["value"], "rows": [[value]]},
-                  "calculations": [{"specification": "currency", "status": "satisfied",
-                                    "realization": "unit_annotation", "target": "USD"}]}
-        return orchestrator._grounded_presentation(shaped, prose) == prose
+def test_terminal_facts_preserve_signs_and_ignore_every_model_claim():
+    for value, expected in ((-120, "-120"), (0, "0"), (120, "120"), ("876.50", "876.50")):
+        shaped = {"status": "answered", "answer": {"columns": ["amount"], "rows": [[value]]}}
+        for prose in ("Your profit is 120.", "Total 120 and 999 orders.", "Invented table total 999999."):
+            assert orchestrator._grounded_presentation(shaped, prose) == expected
+    shaped = {"status": "answered", "answer": {"columns": ["city", "amount"], "rows": [["Paris",120],["Lyon",40]]}}
+    assert "999999" not in orchestrator._grounded_presentation(shaped, "Total 999999.")
 
-    for value, prose in [
-        (125, "Your total amount in India comes to 125."),
-        (1240.5, "Your total amount in France comes to 1,240.50."),
-        ("876.50", "Your net amount after discount comes to $876.50. The full breakdown is in the tabs."),
-        (250.77935327248008, "The average price for your VIP customers comes out to about $250.78."),
-        (263.961291749613, "Your calls last about 264 on average — so just under 4.5 minutes per call."),
-        (4.667, "The average rating for Sourdough Baking comes to 4.67 out of 5 — a really solid score!"),
-        (5238.47, "Your total for Belgium comes to $5,238.47 in US dollars."),
-        (125, "Your total in India comes to Rs.125."),
-        (125000, "That comes to ₹1,25,000."),
-        (250.77935327248008, "The average price is around 250."),
-        (0.4166, "France accounts for about 42% of sales."),
-        (-12, "Sales were down 12 compared with last year."),
-        # Abbreviated magnitudes (Chrome pass, 2026-09-30: a correct converted total became "70401").
-        (70401, "Across Europe, your budget comes to about $70.4k in US dollars."),
-        (70401, "That is roughly 70.4 thousand US dollars."),
-        ("128831117.68", "Your purchase orders total about £128.8 million."),
-        (2500000000, "Revenue reached 2.5bn this year."),
-    ]:
-        assert kept(value, prose), (value, prose)
-
-    # Same sentence, another number: a different value, a stale one, or a rounding too coarse
-    # to be the value still falls back to the engine's scalar.
-    for value, prose in [
-        (125, "Your total amount in India comes to 12.5."),
-        (125, "Your total amount in India comes to 0.125."),
-        (125, "Your total amount in India comes to 1255."),
-        (125, "Your total amount in India comes to 120."),
-        (1250, "Your total was 1,240 last time."),
-        (4.667, "The average rating is about 5."),
-        (1234, "It comes to about 1,000."),
-        (0.034, "That is 0 percent of sales."),
-        (125, "Your total amount in India is ready in the tabs."),
-        (10 ** 30, "It comes to 0.00000000000000000000000000001."),
-        (70401, "Across Europe, your budget comes to about $70.4 million."),
-        (70401, "That is roughly 70.4 in total."),
-        (70401, "About 7k of it came from Germany."),
-    ]:
-        assert not kept(value, prose), (value, prose)
-        assert orchestrator._grounded_presentation(
-            {"status": "answered", "answer": {"columns": ["value"], "rows": [[value]]}}, prose,
-        ) == orchestrator._readable_scalar(value, False)
 
 
 def _answered_from_memory_turn(user_message, history, memory_reply, catalog=(), tables=None):
@@ -496,8 +447,8 @@ def test_a_recalculation_answered_from_memory_still_reaches_the_engine():
     forced = model_calls[1]
     assert forced["last"]["content"] == orchestrator.RECALCULATION_NOTE
     assert forced["tool_choice"] == {"type": "tool", "name": "prereasoner_query"}
-    assert "tool_choice" not in model_calls[0] and model_calls[2]["tool_choice"] == {"type": "none"}
-    assert "367.4342" not in result["reply"] and "366.0174" in result["reply"]
+    assert "tool_choice" not in model_calls[0] and len(model_calls) == 2
+    assert result["reply"] == "366.02"
     assert orchestrator.RECALCULATION_NOTE not in json.dumps(result["history"])
 
     # A short question the catalog does not hold is caught as a repeat of the user's own words.
@@ -610,8 +561,8 @@ def test_an_engine_clarification_the_conversation_settles_is_answered():
     assert offered["tool_result"]["status"] == "ambiguous_wording", offered["tool_result"]
     assert offered["tool_result"]["detail"] == orchestrator.SETTLE_FROM_CONVERSATION
     assert offered["tool_result"]["clarify"] == COMMISSION_CLARIFY["clarify"]
-    assert [call["tools"] for call in model_calls] == [True, True, False]
-    assert result["reply"] == "The commission from card payments comes to 9.28."
+    assert [call["tools"] for call in model_calls] == [True, True]
+    assert result["reply"] == "9.28"
     assert [trace["engine"]["status"] for trace in result["traces"]] == ["clarify", "answered"]
 
     # The answer is written in the earlier turn's words, so the user's words are not restored.
@@ -629,18 +580,18 @@ def test_an_engine_clarification_is_settled_at_most_once():
         [{"question": COMMISSION_FOLLOW_UP}, {"question": COMMISSION_FOLLOW_UP}, ask],
         [COMMISSION_CLARIFY])
     assert engine_calls == [COMMISSION_FOLLOW_UP]
-    assert [call["tools"] for call in model_calls] == [True, True, False]
-    assert model_calls[2]["tool_result"]["status"] == "clarify"
-    assert result["reply"] == ask
+    assert [call["tools"] for call in model_calls] == [True, True]
+    assert len(model_calls) == 2
+    assert result["reply"] == "I need one more detail before I can answer that."
     # A second clarification is terminal.
     _result, model_calls, engine_calls = _clarified_follow_up(
         [{"question": COMMISSION_FOLLOW_UP}, {"question": "total commission for card payments"}],
         [COMMISSION_CLARIFY, COMMISSION_CLARIFY])
-    assert len(engine_calls) == 2 and [call["tools"] for call in model_calls] == [True, True, False]
+    assert len(engine_calls) == 2 and [call["tools"] for call in model_calls] == [True, True]
     # The model may ask the user itself; that reply is the clarification and adds no number.
     result, model_calls, engine_calls = _clarified_follow_up(
         [{"question": COMMISSION_FOLLOW_UP}, ask], [COMMISSION_CLARIFY])
-    assert (len(model_calls), engine_calls, result["reply"]) == (2, [COMMISSION_FOLLOW_UP], ask)
+    assert (len(model_calls), engine_calls, result["reply"]) == (2, [COMMISSION_FOLLOW_UP], "I need one more detail before I can answer that.")
     result, _model_calls, _engine_calls = _clarified_follow_up(
         [{"question": COMMISSION_FOLLOW_UP}, "It is 9.28, as before."], [COMMISSION_CLARIFY])
     assert "9.28" not in result["reply"], result["reply"]
@@ -684,8 +635,8 @@ def test_a_result_is_presented_on_its_own_in_a_continued_conversation():
                     model="test-model")
 
         result = asyncio.run(run())
-        notes = [block for block in presented[0] if block.get("type") == "text"]
-        assert (notes == [{"type": "text", "text": orchestrator.FRESH_ANSWER_NOTE}]) is noted, notes
+        assert presented == [], "terminal results never invoke a presentation model"
+        assert result["reply"] == "9.28"
         assert orchestrator.FRESH_ANSWER_NOTE not in json.dumps(result["history"])
     # Chrome gate, 2026-10-01: conversations reopened after the reply rules changed kept the style of
     # their earlier replies ("about $365.63 in US dollars", "Cara, your top spender", "she's the
@@ -705,8 +656,8 @@ def test_a_clarification_nothing_earlier_can_settle_is_terminal():
             [{"question": question}, "Do you mean the commission amount or the rate?"],
             [COMMISSION_CLARIFY], history=history)
         assert engine_calls == [question]
-        assert [call["tools"] for call in model_calls] == [True, False], (history, question)
-        assert model_calls[1]["tool_result"]["status"] == "clarify"
+        assert [call["tools"] for call in model_calls] == [True], (history, question)
+        assert len(model_calls) == 1
 
 
 def test_named_workbook_tool_contract_and_catalog_boundary():
@@ -790,7 +741,7 @@ def test_fallback_names_the_verified_output_currency():
     assert orchestrator._terminal_fallback(shaped(target="dollars")) == "70,401"
     assert orchestrator._terminal_fallback({"status": "answered", "answer": {"rows": [[70401]]}}) == "70,401"
     assert orchestrator._grounded_presentation(shaped(), "It comes to about seventy thousand dollars.") == "70,401.00 USD"
-    assert orchestrator._grounded_presentation(shaped(), "Converted, it comes to $70,401.") == "Converted, it comes to $70,401."
+    assert orchestrator._grounded_presentation(shaped(), "Converted, it comes to $70,401.") == "70,401.00 USD"
 
 
 def test_a_new_analysis_named_like_an_existing_one_continues_it():
@@ -856,18 +807,18 @@ def test_a_one_number_answer_reaches_the_model_as_the_reply_writes_it():
     assert orchestrator._trim_for_model({**small, "unit": "percent"})["value"] == "0.46%"
     assert orchestrator._terminal_fallback(lyon) == "30%"
     lyon_reply = "The percentage of orders from Lyon comes to 30%."
-    assert orchestrator._grounded_presentation(lyon, lyon_reply) == lyon_reply
+    assert orchestrator._grounded_presentation(lyon, lyon_reply) == "30%"
     for answer in ({"rows": [["Ava"]]}, {"rows": [[1], [2]]}, {"rows": [[1, 2]]}, {"rows": []}):
         assert "value" not in orchestrator._trim_for_model({"status": "answered", "answer": answer})
 
     assert orchestrator._grounded_presentation(
         belgium, "Your total for Belgium comes to $365,631.00.") == "365.63 USD"
     assert orchestrator._grounded_presentation(
-        belgium, "Your total for Belgium comes to $365.63.") == "Your total for Belgium comes to $365.63."
+        belgium, "Your total for Belgium comes to $365.63.") == "365.63 USD"
     assert orchestrator._grounded_presentation(
         leads, "Your total budget for Europe comes to $70,401.50.") == "70,401.00 USD"
     assert orchestrator._grounded_presentation(
-        leads, "Your total budget for Europe comes to $70,401.00.") == "Your total budget for Europe comes to $70,401.00."
+        leads, "Your total budget for Europe comes to $70,401.00.") == "70,401.00 USD"
     assert orchestrator._terminal_fallback(europe) == "1,914.18 GBP"
     assert orchestrator._terminal_fallback(plain) == "263.96"
     prompt = " ".join(orchestrator.SYSTEM_PROMPT.lower().split())
@@ -875,94 +826,19 @@ def test_a_one_number_answer_reaches_the_model_as_the_reply_writes_it():
     assert "use it exactly as given, adding only its currency" in prompt
 
 
-def test_a_currency_sign_the_turn_never_gave_is_dropped():
-    """Chrome pass, 2026-09-30: "average price for VIP customers" over a plain `price` column was
-    answered "$250.78", and a purchase-order sheet titled in pounds "$128,831,117.68 ... over $5,000".
-    The engine had satisfied no currency and nothing the turn was given carried that sign. A sign
-    stays when the engine satisfied a currency calculation, or when the question or the result the
-    model was shown has it."""
-    price = {"status": "answered", "sql": "SELECT AVG(price) AS avg_price FROM orders",
-             "answer": {"columns": ["avg_price"], "rows": [["250.77935327248009322198"]]}}
-
-    def reply(shaped, prose, asked="average price for VIP customers"):
-        return orchestrator._grounded_presentation(shaped, prose, asked)
-
-    assert reply(price, "The average price for your VIP customers comes to about $250.78 per order.") == \
-        "The average price for your VIP customers comes to about 250.78 per order."
-    assert reply(price, "About US$250.78, or 250.78 €.") == "About 250.78, or 250.78."
-    orders = {"status": "answered", "answer": {"columns": ["total"], "rows": [["128831117.68"]]},
-              "sql": 'SELECT SUM("Net PO Value") AS total FROM "Purchase orders over £5000"'}
-    asked = "What is the total Net PO Value?"
-    assert reply(orders, "Your purchase orders over $5,000 add up to $128,831,117.68.", asked) == \
-        "Your purchase orders over 5,000 add up to 128,831,117.68."
-    table = {"status": "answered",
-             "answer": {"columns": ["customer", "spend"], "rows": [["Cleo", 340], ["Ava", 200]]}}
-    assert reply(table, "Cleo spent $340 and Ava $200.", "spend by customer") == "Cleo spent 340 and Ava 200."
-
-    # Contrasts: the sheet's own sign, the user's own sign, a currency the engine satisfied, and a
-    # sign that is not written against an amount.
-    in_pounds = "Your total Net PO Value comes to £128,831,117.68."
-    assert reply(orders, in_pounds, asked) == in_pounds
-    assert reply(price, "About $250.78.", "average price in $ for VIP customers") == "About $250.78."
-    for realization in ("converted", "identity", "unit_annotation", "currency_filter"):
-        satisfied = {**price, "calculations": [{"specification": "currency", "status": "satisfied",
-                                                 "realization": realization, "target": "USD"}]}
-        assert reply(satisfied, "About $250.78.") == "About $250.78.", realization
-    ambiguous = {**price, "calculations": [{"specification": "currency", "status": "ambiguous",
-                                             "realization": "currency_filter", "target": "USD"}]}
-    assert reply(ambiguous, "About $250.78.") == "About 250.78."
-    unsigned = "Prices are listed in $; the average is 250.78, up 4%."
-    assert reply(price, unsigned) == unsigned
-
-    # The turn's reply and the transcript the next turn reads both carry the amount without it.
-    result, _model_calls, _engine_calls = asyncio.run(_run(
-        "answered", user_message="total amount after the customer tier discount",
-        presentation="Your net amount after the discount comes to $876.50.",
-    ))
-    assert result["reply"] == "Your net amount after the discount comes to 876.50."
-    assert result["history"][-1] == {"role": "assistant", "content": result["reply"]}
+def test_unverified_currency_sign_is_never_added_to_terminal_value():
+    shaped = {"status":"answered", "answer":{"rows":[["250.78"]]}}
+    assert orchestrator._grounded_presentation(shaped, "$250.78 per order") == "250.78"
 
 
-def test_a_verified_currency_is_written_beside_the_amount():
-    """Chrome pass, 2026-09-30 (formfacade-leads): two converted totals were right and their replies
-    failed the gate, "In US dollars, your total budget for the German entries comes to 37,471.50." and
-    "your total budget comes to 70,401 in US dollars." The gold comparator binds a converted value to
-    the currency written against it, so the chat writes the verified currency there itself.
-    tests.test_dataset_gold grades these same replies with that comparator; this suite also runs in
-    the chat image's build, which does not carry it."""
-    shaped = {"status": "answered", "answer": {"columns": ["total_usd"], "rows": [[70401]]},
-              "calculations": [{"specification": "currency", "status": "satisfied",
-                                "realization": "converted", "target": "USD"}]}
 
-    def reply(prose, outcome=shaped):
-        return orchestrator._grounded_presentation(outcome, prose)
+def test_terminal_currency_comes_only_from_verified_calculation():
+    shaped = {"status": "answered", "answer": {"rows": [[70401]]}, "calculations": [
+        {"specification":"currency", "status":"satisfied", "realization":"converted", "target":"USD"}]}
+    assert orchestrator._grounded_presentation(shaped, "Invented EUR 999.") == "70,401.00 USD"
+    shaped["calculations"][0]["realization"] = "currency_filter"
+    assert orchestrator._grounded_presentation(shaped, "$70,401") == "70,401"
 
-    for prose, expected in [
-        ("In US dollars, your total budget for the European entries comes to 70,401.",
-         "In US dollars, your total budget for the European entries comes to 70,401 USD."),
-        ("For all of Europe, your total budget comes to 70,401 in US dollars.",
-         "For all of Europe, your total budget comes to 70,401 USD in US dollars."),
-        # Already beside it: a sign or the code before the amount, or the code after it.
-        ("Converted, it comes to $70,401.", "Converted, it comes to $70,401."),
-        ("Your total comes to **$70,401.00**.", "Your total comes to **$70,401.00**."),
-        ("That is 70,401 USD across Europe.", "That is 70,401 USD across Europe."),
-        ("In total: USD 70,401.", "In total: USD 70,401."),
-        # Markdown between the two is not beside, to the comparator or here.
-        ("That is **70,401** USD.", "That is **70,401 USD** USD."),
-    ]:
-        assert reply(prose) == expected, (prose, reply(prose))
-
-    # The code follows the whole amount, magnitude word included.
-    assert reply("Across Europe that is about **70.4k** in total.") == \
-        "Across Europe that is about **70.4k USD** in total."
-
-    # Only a verified output currency is added: not a filter's, and not where none was computed.
-    bare = "Your total budget for Europe comes to 70,401."
-    filtered = {**shaped, "calculations": [{**shaped["calculations"][0], "realization": "currency_filter"}]}
-    assert reply(bare, filtered) == bare
-    assert reply(bare, {"status": "answered", "answer": shaped["answer"]}) == bare
-    share = {**shaped, "answer": {"columns": ["share"], "rows": [["0.4166"]]}}
-    assert reply("France accounts for about 42% of it.", share) == "France accounts for about 42% of it."
 
 
 def test_the_model_is_told_the_currency_the_engine_verified():
@@ -1202,7 +1078,7 @@ def test_decomposition_is_one_engine_triggered_retry_of_the_same_analysis():
     assert engine_calls[0][1]["decomposition"] is None
     assert engine_calls[1][1]["decomposition"] == orchestrator.validate_decomposition(proposal)
     assert _tools_enabled(model_calls[0]) and _tools_enabled(model_calls[1])
-    assert not _tools_enabled(model_calls[2])
+    assert len(model_calls) == 2, "no model round follows a terminal engine answer"
     first_tool_result = next(
         block["content"]
         for message in model_calls[1]["messages"]
@@ -1211,7 +1087,7 @@ def test_decomposition_is_one_engine_triggered_retry_of_the_same_analysis():
         if "decomposition_required" in block.get("content", "")
     )
     assert "decomposition_required" in first_tool_result and '"rows"' not in first_tool_result
-    assert result["reply"] == "Three promotion gaps are ready."
+    assert result["reply"] == "I completed the calculation; the result and its reasoning are shown in the workbook."
     assert len(result["traces"]) == 2
 
 
@@ -1384,7 +1260,7 @@ def test_an_invalid_proposal_gets_one_correction_then_a_plain_clarification():
     assert [m["id"] for m in forwarded["merges"]] == ["pairs", "gaps"]
     assert all(len(m["inputs"]) == 2 for m in forwarded["merges"])
     assert forwarded["output"] == "gaps"
-    assert result["reply"] == "Cara has never bought Beta."
+    assert result["reply"] == "I completed the calculation; the result and its reasoning are shown in the workbook."
 
 
 def test_an_engine_rejected_proposal_gets_one_correction_then_answers():
@@ -1484,7 +1360,7 @@ def test_an_engine_rejected_proposal_gets_one_correction_then_answers():
     assert len(engine_calls) == 3, "probe, rejected proposal, corrected proposal"
     corrected = engine_calls[2][1]["decomposition"]
     assert corrected["subquestions"][0]["question"] == "top 2 categories by total revenue"
-    assert result["reply"] == "Ava has never bought from Travel."
+    assert result["reply"] == "I completed the calculation; the result and its reasoning are shown in the workbook."
     # The raw engine clarify stays honest in the trace for diagnostics.
     assert result["traces"][1]["engine"].get("decomposition_rejected") is True
 
@@ -1560,7 +1436,7 @@ def test_engine_rejections_terminate_in_plain_language_once_the_budget_is_spent(
         "probe plus exactly the budgeted rejected proposals, then terminal"
     )
     assert "subquestion" not in result["reply"], "validator internals never reach the user"
-    assert result["reply"] == "Could you ask the parts separately?"
+    assert result["reply"] == "I couldn't split this question into parts I can run reliably. Try asking the parts as separate questions."
 
 
 def test_invalid_proposals_terminate_in_plain_language_once_the_budget_is_spent():
@@ -1627,7 +1503,7 @@ def test_invalid_proposals_terminate_in_plain_language_once_the_budget_is_spent(
 
     result = asyncio.run(run())
     assert len(engine_calls) == 1, "invalid proposals must never reach the engine"
-    assert result["reply"] == "Could you ask those parts separately?"
+    assert result["reply"] == "I couldn't split this question into parts I can run reliably. Try asking the parts as separate questions."
 
 
 def test_a_split_proposed_before_the_engine_asks_is_sent_again_alone():
@@ -1683,7 +1559,7 @@ def test_a_split_proposed_before_the_engine_asks_is_sent_again_alone():
     repair = model_calls[1]
     assert repair["status"] == "repair_required" and repair["code"] == "decomposition_not_requested", repair
     assert engine_calls == [(question, None)], "the early split never reaches the engine"
-    assert result["reply"] == "Cleo has never bought from Home."
+    assert result["reply"] == "I completed the calculation; the result and its reasoning are shown in the workbook."
 
 
 def test_tool_exhaustion_never_exposes_an_internal_budget():
@@ -1785,7 +1661,7 @@ def test_rows_whose_entity_matched_nothing_reach_the_reply():
     # The reply states the total and the count; the grounding check keeps prose that states the value.
     assert orchestrator._grounded_presentation(
         partial, "Your US hospitals total 46 transfers; 1 of the 5 rows names a hospital I couldn't match.",
-    ).startswith("Your US hospitals total 46")
+    )== "46\n\n1 of 5 source rows could not be matched and were excluded."
     prompt = " ".join(orchestrator.SYSTEM_PROMPT.split())
     assert "When the tool result has `unmatched`" in prompt
 
@@ -1803,15 +1679,15 @@ TESTS = [
     test_fallback_names_the_verified_output_currency,
     test_a_new_analysis_named_like_an_existing_one_continues_it,
     test_a_one_number_answer_reaches_the_model_as_the_reply_writes_it,
-    test_a_currency_sign_the_turn_never_gave_is_dropped,
-    test_a_verified_currency_is_written_beside_the_amount,
+    test_unverified_currency_sign_is_never_added_to_terminal_value,
+    test_terminal_currency_comes_only_from_verified_calculation,
     test_the_model_is_told_the_currency_the_engine_verified,
     test_a_whole_place_follow_up_asks_for_one_figure_not_a_ranking,
     test_a_reply_says_only_what_the_result_shows,
     test_a_failed_turn_promises_no_retry,
     test_an_analysis_is_named_for_its_measure_not_its_filter,
     test_recalculation_identity_and_scalar_presentation_are_grounded,
-    test_presentation_that_states_the_engine_value_in_prose_is_kept,
+    test_terminal_facts_preserve_signs_and_ignore_every_model_claim,
     test_a_recalculation_answered_from_memory_still_reaches_the_engine,
     test_an_engine_clarification_the_conversation_settles_is_answered,
     test_an_engine_clarification_is_settled_at_most_once,

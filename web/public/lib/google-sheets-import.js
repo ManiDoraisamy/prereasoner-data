@@ -15,7 +15,7 @@
       if(response.status===429)throw new Error('Google rate-limited this import. Wait a minute and try again.');
       if(!response.ok)throw new Error('Google export failed (HTTP '+response.status+'). Check that downloading this Sheet is allowed.');
       const limit=root.UPLOAD_LIMITS.workbookBytes;
-      if(Number(response.headers.get('content-length'))>limit)throw new Error('Spreadsheet exports must be 8 MB or smaller.');
+      if(Number(response.headers.get('content-length'))>limit)throw new Error('Spreadsheet exports must be 16 MB or smaller.');
       // Enforce the limit while downloading, including chunked responses with no
       // Content-Length. Do not read an unbounded response into browser memory.
       const reader=response.body.getReader(), chunks=[];
@@ -23,7 +23,7 @@
       try{for(;;){
         const {done,value}=await reader.read();if(done)break;
         size+=value.byteLength;
-        if(size>limit){await reader.cancel();throw new Error('Spreadsheet exports must be 8 MB or smaller.');}
+        if(size>limit){await reader.cancel();throw new Error('Spreadsheet exports must be 16 MB or smaller.');}
         chunks.push(value);
       }}finally{reader.releaseLock();}
       const sheets=await root.XLSX_READER.readWorkbook(new Blob(chunks,{type:MIME}));

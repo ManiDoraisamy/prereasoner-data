@@ -58,6 +58,31 @@ def _preserves_explicit_constraints(question: str, rewritten: str, graph) -> boo
 
     original = " ".join(question.casefold().split())
     candidate = " ".join(rewritten.casefold().split())
+    from engine.query_contract import lexical_words
+    from engine.closed_class import EXCLUSION_CUES
+
+    if bool(EXCLUSION_CUES.search(question)) != bool(EXCLUSION_CUES.search(rewritten)):
+        return False
+    # Preserve recognized computation roles. A rewrite may replace a schema label,
+    # but cannot turn a known comparison, aggregate, ranking or grouping into another.
+    def roles(text):
+        text = " ".join(lexical_words(text))
+        for column in sorted(graph.columns, key=lambda c: -len(c.ref.name)):
+            text = text.replace(" ".join(lexical_words(column.ref.name)), " ")
+        patterns = {
+            "sum": r"\b(?:sum|total)\b", "avg": r"\b(?:avg|average|mean)\b",
+            "max": r"\b(?:max|maximum)\b", "min": r"\b(?:min|minimum)\b",
+            "count": r"\b(?:count|how many|number of)\b",
+            "greater": r"\b(?:greater than|more than|over|above)\b",
+            "less": r"\b(?:less than|fewer than|under|below)\b",
+            "before": r"\bbefore\b", "after": r"\bafter\b", "between": r"\bbetween\b",
+            "top": r"\btop\b", "bottom": r"\bbottom\b",
+            "share": r"\b(?:share|percentage|percent)\b",
+            "group": r"\b(?:by|per|each)\b",
+        }
+        return {role for role, pattern in patterns.items() if re.search(pattern, text)}
+    if not roles(question).issubset(roles(rewritten)):
+        return False
     numbers = re.findall(r"(?<![a-z0-9])[+-]?\d[\d,]*(?:\.\d+)?(?![a-z0-9])", original)
     if any(number.casefold() not in candidate for number in numbers):
         return False
@@ -69,4 +94,12 @@ def _preserves_explicit_constraints(question: str, rewritten: str, graph) -> boo
     for _start, _end, phrase, _options in matches:
         if " ".join(phrase.casefold().split()) not in candidate:
             return False
+    # The English candidate search tokenizer cannot be the literal-preservation
+    # authority for names such as 東京. Bind those locally with Unicode boundaries.
+    for column in graph.columns:
+        for value in set(str(v) for v in column.values if v is not None):
+            value = " ".join(value.casefold().split())
+            if value and re.search(r"(?<!\w)" + re.escape(value) + r"(?!\w)", original):
+                if not re.search(r"(?<!\w)" + re.escape(value) + r"(?!\w)", candidate):
+                    return False
     return True

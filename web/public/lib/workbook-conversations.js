@@ -37,9 +37,9 @@ async function listConversations(before){
   try{ const tk=await window.ensureToken();
     const url=API_BASE+'/api/conversations?limit=50'+(before?'&before='+encodeURIComponent(before):'');
     const r=await fetch(url,{headers:{Authorization:'Bearer '+tk}});
-    if(!r.ok) return {conversations:[],next_cursor:null}; const j=await r.json();
+    if(!r.ok) throw new Error('Could not load chats (HTTP '+r.status+'). Please retry.'); const j=await r.json();
     return {conversations:j.conversations||[],next_cursor:j.next_cursor||null};
-  }catch(_){ return {conversations:[],next_cursor:null}; }
+  }catch(error){ return {conversations:[],next_cursor:null,error:error.message||'Could not load chats. Please retry.'}; }
 }
 async function openConversation(id){                          // re-hydrate a past conversation (its stored tables + prompt) at its own URL
   const it=document.querySelector('.convitem[data-cid="'+id+'"]'); if(it) it.classList.add('loading');
@@ -76,6 +76,7 @@ async function renderDrawer(){
   const list=$('convlist'); if(!list)return;
   list.innerHTML='<div class=convempty>Loading…</div>';
   const page=await listConversations(), convs=page.conversations;
+  if(page.error){conversationListError(page.error);return;}
   list.innerHTML='';
   if(!convs.length){ list.innerHTML='<div class=convempty>Your previous chats will appear here.</div>'; return; }
   const cur=convId();
@@ -97,7 +98,7 @@ async function renderDrawer(){
   });
   appendItems(convs);
   if(page.next_cursor){ let cursor=page.next_cursor; const more=document.createElement('button'); more.className='convclear'; more.textContent='Load older conversations';
-    more.onclick=async()=>{more.disabled=true;const next=await listConversations(cursor);appendItems(next.conversations,more);
+    more.onclick=async()=>{more.disabled=true;const next=await listConversations(cursor);if(next.error){conversationListError(next.error);more.disabled=false;return;}appendItems(next.conversations,more);
       cursor=next.next_cursor;if(cursor)more.disabled=false;else more.remove();}; list.appendChild(more); }
   const clr=document.createElement('button'); clr.className='convclear'; clr.textContent='Clear all conversations'; clr.onclick=clearAllConvs;
   list.appendChild(clr);
@@ -111,18 +112,30 @@ function bindConversationList(){
     const it=e.target.closest('.convitem'); if(it&&it.dataset.cid) openConversation(it.dataset.cid); });
 }
 async function deleteConv(id){
-  const it=document.querySelector('.convitem[data-cid="'+id+'"]'); if(it) it.style.opacity='.4';
+  const it=document.querySelector('.convitem[data-cid="'+id+'"]');
+  if(it&&it.dataset.pending)return;
+  if(it){it.dataset.pending='1';it.style.opacity='.4';it.querySelectorAll('button').forEach(b=>b.disabled=true);}
   try{ const tk=await window.ensureToken();
-    await fetch(API_BASE+'/api/conversation/delete',{method:'POST',headers:{'content-type':'application/json','Authorization':'Bearer '+tk},body:JSON.stringify({id})});
-  }catch(_){}
+    const r=await fetch(API_BASE+'/api/conversation/delete',{method:'POST',headers:{'content-type':'application/json','Authorization':'Bearer '+tk},body:JSON.stringify({id})});
+    if(!r.ok)throw new Error('Chat was not deleted (HTTP '+r.status+'). Please retry.');
+  }catch(error){conversationListError(error.message||'Chat was not deleted. Check your connection and retry.');return;}
+  finally{if(it){delete it.dataset.pending;it.style.opacity='';it.querySelectorAll('button').forEach(b=>b.disabled=false);}}
   if(id===convId()) newConversation(); else renderDrawer();   // deleting the open one -> start fresh
 }
 async function clearAllConvs(){
   if(!confirm('Delete ALL your conversations? This cannot be undone.'))return;
   try{ const tk=await window.ensureToken();
-    await fetch(API_BASE+'/api/conversation/delete-all',{method:'POST',headers:{'content-type':'application/json','Authorization':'Bearer '+tk},body:'{}'});
-  }catch(_){}
+    const r=await fetch(API_BASE+'/api/conversation/delete-all',{method:'POST',headers:{'content-type':'application/json','Authorization':'Bearer '+tk},body:'{}'});
+    if(!r.ok)throw new Error('Chats were not deleted (HTTP '+r.status+'). Please retry.');
+  }catch(error){conversationListError(error.message||'Chats were not deleted. Check your connection and retry.');return;}
   newConversation();
+}
+
+function conversationListError(message){
+  const list=$('convlist');if(!list)return;
+  const loading=list.querySelector('.convempty');if(loading&&loading.textContent==='Loading…')loading.remove();
+  let box=list.querySelector('.converror');if(!box){box=document.createElement('div');box.className='convempty converror';box.setAttribute('role','alert');list.prepend(box);}
+  box.textContent=message+' ';const retry=document.createElement('button');retry.type='button';retry.textContent='Retry';retry.onclick=renderDrawer;box.appendChild(retry);
 }
 
 /* ---- conversation snapshot: persist a RENDERABLE view of the conversation (turns + derived sheets + result +
@@ -220,6 +233,7 @@ function restoredStep(s){
 }
 function restoreConvState(st){                               // render a stored snapshot; returns true if it took over (no re-run)
   if(!st||![1,2,3].includes(st.v)||!Array.isArray(st.turns)||!st.turns.length) return false;
+  if(st.compacted)return false; // recover the complete immutable analysis, never display a partial snapshot as complete
   if(st.cid && convId() && st.cid!==convId()) return false;  // stale snapshot from another conversation
   try{
     // Validate atomically: do not restore half a workbook before discovering an

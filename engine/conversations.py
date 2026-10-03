@@ -51,7 +51,8 @@ _ANALYSIS_ID_RE = re.compile(r"^a_[0-9a-f]{32}$")
 _ANALYSIS_RESPONSE_FIELDS = (
     "question", "as_of", "sql", "result", "views", "model", "meaning_join",
     "provenance", "warnings", "calculations", "computation", "currency", "analysis",
-    "dataset_semantics", "reference", "present", "deterministic",
+    "dataset_semantics", "reference", "present", "deterministic", "fallback", "selection", "coverage",
+    "unit", "unmatched",
 )
 
 

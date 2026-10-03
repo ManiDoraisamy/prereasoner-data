@@ -12,7 +12,7 @@ from engine.numeric import parse_decimal
 from engine.sql_ast import ColumnRef, Join, SQLType
 
 
-_WORD_RE = re.compile(r"[A-Za-z0-9]+(?:'[A-Za-z0-9]+)?")
+_WORD_RE = re.compile(r"[^\W_]+(?:'[^\W_]+)?", re.UNICODE)
 _NUMBER_RE = re.compile(r"^-?(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d+)?$")
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}(?:[ T].*)?$")
 _NAME_WORDS = frozenset({"name", "title", "label"})
@@ -366,7 +366,7 @@ def _row_value(row: Any, index: int, name: str) -> Any:
 
 def _name_words(name: str) -> tuple[str, ...]:
     spaced = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", str(name))
-    return tuple(word.lower() for word in re.findall(r"[A-Za-z0-9]+", spaced))
+    return tuple(word.lower() for word in re.findall(r"[^\W_]+", spaced, re.UNICODE))
 
 
 # A column is a surrogate key (a primary or foreign key, never a measure) when the last word of its name is

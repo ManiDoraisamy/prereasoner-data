@@ -442,7 +442,7 @@ class ComposedKnowledgeQuery:
                         "model": "engine - composed view stack", "plan": res["plan"],
                         "primitives": res["primitives"], "world_dependency": res["world_dependency"],
                         "deterministic": record, "views": record["views"], "sql": record["final_sql"],
-                        "result": {"columns": columns, "rows": wire_rows(rows[:50])}}
+                        "result": {"columns": columns, "rows": wire_rows(rows)}}
             finally:
                 connection.close()
                 self.qw._con = None
@@ -711,6 +711,6 @@ class ComposedKnowledgeQuery:
             },
             "views": record["views"],
             "sql": record["final_sql"],
-            "result": {"columns": columns, "rows": wire_rows(rows[:50])},
+            "result": {"columns": columns, "rows": wire_rows(rows)},
             "dataset_semantics": list(dataset_semantics or ()),
         }

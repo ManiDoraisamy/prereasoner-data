@@ -1334,7 +1334,7 @@ async function run(){
       // An incompatible snapshot must not trigger another paid model run or
       // silently replace dirty reference data. Recover only durable derivations.
       const local=(st.sheets||[]).filter(item=>item.cls==='master');
-      if(analysis&&restoreConvState({...st,sheets:local})){
+      if(analysis&&restoreConvState({...st,compacted:false,sheets:local})){
         await loadAnalysis(analysis.analysis_id,analysis.revision); restored=true;
       }else{fail('This saved result needs recovery. The original snapshot is retained; open its analysis from conversation history.');return;}
     }

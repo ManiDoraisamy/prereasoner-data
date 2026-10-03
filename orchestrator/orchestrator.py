@@ -20,7 +20,6 @@ import csv
 import io
 import json
 import re
-import unicodedata
 import uuid
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
@@ -555,11 +554,19 @@ def _terminal_fallback(shaped: dict[str, Any]) -> str:
         return str(shaped.get("error") or "I couldn't complete that data question.")
     answer = shaped.get("answer") or {}
     rows = answer.get("rows") or []
+    notes = []
+    unmatched = shaped.get("unmatched") or {}
+    if unmatched.get("rows"):
+        notes.append(f"{unmatched['rows']} of {unmatched.get('of', '?')} source rows could not be matched and were excluded.")
+    rewrite = shaped.get("fallback") or {}
+    if rewrite.get("kind") == "rewrite":
+        notes.append(f"Gemini reworded the question as: {rewrite.get('question', '')}")
+    suffix = ("\n\n" + " ".join(notes)) if notes else ""
     if len(rows) == 1 and len(rows[0]) == 1:
         currency = _output_currency(shaped)
         value = _readable_value(shaped, rows[0][0])
-        return f"{value} {currency}" if currency else value
-    return "I completed the calculation; the result and its reasoning are shown in the workbook."
+        return (f"{value} {currency}" if currency else value) + suffix
+    return "I completed the calculation; the result and its reasoning are shown in the workbook." + suffix
 
 
 def _readable_value(shaped: dict[str, Any], value: Any) -> str:
@@ -612,127 +619,9 @@ def _output_currency(shaped: dict[str, Any]) -> str:
     return ""
 
 
-# Currency signs as Unicode classes them (category Sc): $, £, €, ¥, ₹ and the rest of the BMP's.
-_CURRENCY_SIGNS = re.escape("".join(
-    chr(point) for point in range(0x10000) if unicodedata.category(chr(point)) == "Sc"
-))
-# A sign written against an amount: before it ("$250", "US$ 250") or after it ("250 €").
-_AMOUNT_SIGN = re.compile(
-    rf"(?:(?<![A-Za-z])[A-Z]{{1,3}})?(?P<before>[{_CURRENCY_SIGNS}])\s?(?=\d)"
-    rf"|(?<=\d)\s?(?P<after>[{_CURRENCY_SIGNS}])"
-)
-
-
-def _given_currency_signs(shaped: dict[str, Any], prose: str, asked: str) -> str:
-    """Remove a currency sign the turn never gave.
-
-    A sign against an amount stays when the engine satisfied a currency calculation for the answer
-    (a conversion, a unit, a currency filter), or when that sign is in what the user asked or in the
-    result the model was shown, such as a sheet titled "over £5000". Any other sign is the model's
-    assumption, and the amount stands without it: "$250.78" for the average of a `price` column
-    becomes "250.78". A currency written as a word is left to the prompt.
-    """
-    if any(isinstance(calculation, dict) and calculation.get("specification") == "currency"
-           and calculation.get("status") == "satisfied"
-           for calculation in shaped.get("calculations") or ()):
-        return prose
-    given = asked + json.dumps(_trim_for_model(shaped), ensure_ascii=False)
-    return _AMOUNT_SIGN.sub(
-        lambda match: match.group(0) if (match.group("before") or match.group("after")) in given else "",
-        prose,
-    )
-
-
 def _grounded_presentation(shaped: dict[str, Any], presentation: str, asked: str = "") -> str:
-    """Never let optional presentation prose contradict a terminal engine outcome. `asked` is the
-    user's message and the question the engine answered."""
-    fallback = _terminal_fallback(shaped)
-    if shaped.get("status") != "answered":
-        # A presentation model can make a clarification or error friendlier, but it cannot safely
-        # introduce a value. In production it copied a stale "100" from history over an engine
-        # clarification whose proposed SQL was COUNT(DISTINCT ...). Preserve the terminal outcome
-        # whenever the prose adds a numeric claim the engine outcome does not contain.
-        prose = presentation.strip()
-        allowed_numbers = set(re.findall(r"[-+]?\d+(?:[.,]\d+)?", fallback))
-        claimed_numbers = set(re.findall(r"[-+]?\d+(?:[.,]\d+)?", prose))
-        if claimed_numbers - allowed_numbers:
-            return fallback
-        return prose or fallback
-    prose = _given_currency_signs(shaped, presentation.strip(), asked)
-    answer = shaped.get("answer") or {}
-    rows = answer.get("rows") or []
-    if len(rows) != 1 or len(rows[0]) != 1:
-        return prose or fallback
-    scalar = str(rows[0][0]).strip()
-    if not re.fullmatch(r"[-+]?\d+(?:\.\d+)?", scalar):
-        return prose or fallback
-    stated = _stating_number(prose, Decimal(scalar))
-    if stated is None:
-        return fallback
-    currency = _output_currency(shaped)
-    return _beside_its_currency(prose, stated, currency) if currency else prose
-
-
-def _beside_its_currency(prose: str, stated: re.Match, currency: str) -> str:
-    """Write the verified output currency beside the amount that states the answer.
-
-    The amount carries it when a currency sign or the ISO code stands right before it, or the code
-    right after it. Otherwise the code is added after the amount: "In US dollars, your budget comes
-    to 70,401." names the currency eight words from its amount, and the release gate
-    (`regress.browser_gold`) binds a converted value to the currency written against it.
-    """
-    before, after = prose[:stated.start()], prose[stated.end():]
-    code = re.escape(currency)
-    if (stated.group(3)                                  # a percentage is not an amount of money
-            or re.search(rf"(?:[{_CURRENCY_SIGNS}]|\b{code})\s*$", before, re.I)
-            or re.match(rf"\s*{code}\b", after, re.I)):
-        return prose
-    return f"{before}{stated.group(0)} {currency}{after}"
-
-
-# A number as prose writes it: thousands groups (1,240 or the Indian 1,25,000), a decimal part, and
-# an optional percent sign or magnitude word ("$70.4k", "1.2 million"). Scanning left to right keeps
-# "0.125" one number, so its "125" never stands alone, while the full stop that ends "comes to 125."
-# is not a decimal point.
-_PROSE_NUMBER = re.compile(
-    r"(\d{1,3}(?:,\d{2,3})+|\d+)(?:\.(\d+))?(\s?(?:%|percent\b))?"
-    r"(?:\s?(k|K|thousand|m|M|mn|million|bn|b|B|billion)\b)?"
-)
-_MAGNITUDES = {"k": 3, "thousand": 3, "m": 6, "mn": 6, "million": 6, "b": 9, "bn": 9, "billion": 9}
-
-
-def _stating_number(prose: str, value: Decimal) -> re.Match | None:
-    """The first number in the prose that states the engine's scalar, if one does.
-
-    A number in the prose states it when it equals the value, or equals the value rounded to the
-    precision that number shows ("about 264" for 263.96, "$250.78" for 250.779..., "around 250")
-    and stays within 5% of it, so "about 5" does not pass for 4.667. A number followed by "%" may
-    also read as a fraction (42% for 0.4166), and one followed by a magnitude word as that multiple
-    ("$70.4k" for 70,401, "1.2 million" for 1,204,300). Magnitudes are compared, since prose says
-    "down 12", not "-12". Any other number, such as a stale one copied from the chat, does not state it.
-    """
-    target = abs(value)
-    for match in _PROSE_NUMBER.finditer(prose):
-        whole, fraction, percent, magnitude = match.groups()
-        digits = whole.replace(",", "")
-        number = Decimal(digits + ("." + fraction if fraction else ""))
-        if fraction:
-            step = Decimal(1).scaleb(-len(fraction))
-        else:
-            step = Decimal(1).scaleb(len(digits) - len(digits.rstrip("0")) if number else 0)
-        readings = [(number, step)] + ([(number / 100, step / 100)] if percent else [])
-        if magnitude and not percent:
-            exponent = _MAGNITUDES[magnitude.lower()]
-            readings.append((number.scaleb(exponent), step.scaleb(exponent)))
-        for stated, unit in readings:
-            if stated == target:
-                return match
-            # Rounded half up to `unit`, the value lands on `stated` exactly when it lies in
-            # [stated - unit/2, stated + unit/2).
-            if (target and stated - unit / 2 <= target < stated + unit / 2
-                    and abs(stated - target) <= target * Decimal("0.05")):
-                return match
-    return None
+    """Render terminal facts from the engine's structured result, never model prose."""
+    return _terminal_fallback(shaped)
 
 
 async def run_chat(user_message: str, tables: list[dict], history: list[dict], **kw) -> dict[str, Any]:
@@ -845,8 +734,6 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                     async with client.messages.stream(**round_args) as llm_stream:
                         async for delta in llm_stream.text_stream:
                             round_text += delta
-                            if stream_buffer is not None and round_text:
-                                stream_buffer.update(round_text)
                         resp = await llm_stream.get_final_message()
                 # Append the assistant turn verbatim. The BLOCK OBJECTS go back as-is: each keeps the
                 # thought signature Gemini requires on a replayed function call (engine/llm.py).
@@ -1186,37 +1073,6 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                     # terminal result. Let the model present the result, with tool calls disabled for
                     # this one final round so the computation remains the engine's.
                     final_text = _terminal_fallback(terminal_query)
-                    presentation_text = ""
-                    if history:
-                        # In a reopened conversation nearly every answer began "Rechecked it —" or
-                        # "Confirmed —" and said the total "still" came to its figure (8 of 8 in the
-                        # customer-orders Chrome gate, 2026-10-01): the model presented the result
-                        # against its earlier replies. The note stays inside this turn.
-                        messages[-1]["content"].append({"type": "text", "text": FRESH_ANSWER_NOTE})
-                    try:
-                        with request_timing.span("llm"):
-                            async with client.messages.stream(
-                                model=model,
-                                max_tokens=MAX_MODEL_TOKENS,
-                                system=system_prompt,
-                                tools=TOOLS,
-                                tool_choice={"type": "none"},
-                                messages=messages,
-                            ) as presentation_stream:
-                                async for delta in presentation_stream.text_stream:
-                                    presentation_text += delta
-                                    if stream_buffer is not None and presentation_text:
-                                        stream_buffer.update(presentation_text)
-                                presentation = await presentation_stream.get_final_message()
-                        presentation_text = "".join(
-                            block.text for block in presentation.content if block.type == "text"
-                        ).strip()
-                        final_text = _grounded_presentation(
-                            terminal_query, presentation_text,
-                            asked=" ".join((user_message, *(trace["question"] for trace in traces[-1:]))),
-                        )
-                    except Exception as exc:  # noqa: BLE001 - presentation is optional after terminal data
-                        print(f"[chat] presentation_failed error={type(exc).__name__}", flush=True)
                     break
             else:
                 final_text = final_text or (

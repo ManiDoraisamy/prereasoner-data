@@ -83,7 +83,6 @@ from engine.request_limits import (
     JSONBodyError,
     RequestGate,
     RequestLease,
-    ResponseReplay,
     SlidingWindowLimiter,
     allowed_origin,
     read_json_object,
@@ -138,7 +137,8 @@ MAX_GENERATE_CHARS = 256 * 1024
 WORLD_RATE = SlidingWindowLimiter(limit=30, window_seconds=60)
 # A /api/reason or /api/knowledge request repeated with the jobId of one that already ran is
 # answered with that request's response (engine.request_limits.ResponseReplay).
-WORLD_REPLAY = ResponseReplay()
+from engine.request_replay import DurableResponseReplay, ReplayConflict
+WORLD_REPLAY = DurableResponseReplay()
 DIM_RATE = SlidingWindowLimiter(limit=60, window_seconds=60)
 PAID_LOCAL_GATES = {
     "converse": RequestGate(requests=6, window_seconds=60, in_flight=4),
@@ -656,6 +656,8 @@ class H(BaseHTTPRequestHandler):
         # The id comes from the caller when the orchestrator supplies one, so a chat turn's engine
         # calls can be correlated with the turn that issued them across the two services.
         timing_token = request_timing.begin(self.headers.get("X-Request-Id") or uuid.uuid4().hex[:12])
+        from engine import request_deadline
+        deadline_token = request_deadline.begin()
         try:
             req = self._read_json()
             if req is None:
@@ -676,7 +678,13 @@ class H(BaseHTTPRequestHandler):
                 # it while it runs.
                 replay_key = (self.path.rstrip("/"), sub, req["jobId"])
                 waited = time.perf_counter()
-                owner, replayed = WORLD_REPLAY.claim(replay_key)
+                import hashlib
+                fingerprint = hashlib.sha256(json.dumps(req, sort_keys=True, ensure_ascii=False,
+                                                        separators=(",", ":")).encode()).hexdigest()
+                try:
+                    owner, replayed = WORLD_REPLAY.claim(replay_key, fingerprint)
+                except ReplayConflict as exc:
+                    self._send(409, json.dumps({"error": str(exc)})); return
                 if not owner:
                     request_timing.mark("replayed", time.perf_counter() - waited)
                     if replayed is None:
@@ -920,6 +928,15 @@ class H(BaseHTTPRequestHandler):
                 emit("error", str(exc))
                 emit("status", "error")
             self._send(503, json.dumps({"error": str(exc), "retryable": True}))
+        except request_deadline.RequestTimedOut as exc:
+            cleanup_token = request_deadline.begin(10)
+            try:
+                discard_analysis()
+            finally:
+                request_deadline.end(cleanup_token)
+            if emit is not None:
+                emit("error", str(exc)); emit("status", "error")
+            self._send(503, json.dumps({"error": str(exc), "retryable": True}))
         except Exception as e:                           # noqa: BLE001
             discard_analysis()
             if emit is not None:                         # don't leave the client stuck on 'running' — stream the error
@@ -943,6 +960,7 @@ class H(BaseHTTPRequestHandler):
             request_timing.emit("reason", status=getattr(self, "_status", None),
                                 py_fallback=getattr(self, "_py_fallback", None))
             request_timing.end(timing_token)
+            request_deadline.end(deadline_token)
 
     # ---------------- /api/dimension (stateless, authenticated) ----------------
     def _post_dimension(self):

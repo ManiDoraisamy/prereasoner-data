@@ -1023,7 +1023,7 @@ class KnowledgeTableQuery:
                 cols, rows = self.q11._execute_deterministic(tablemap, shared_plan, release,
                                                              labels=self._qid_labels)
                 deterministic_record = current_execution_record()
-                result = {"columns": cols, "rows": wire_rows(rows[:50])}
+                result = {"columns": cols, "rows": wire_rows(rows)}
                 if mf:                            # FRESHNESS GUARD — trace the word rows that ACTUALLY contributed
                     ft = mf["filter_table"]; key = self.words[ft]["key"]
                     if "updated_at" in self.words[ft]["columns"]:
