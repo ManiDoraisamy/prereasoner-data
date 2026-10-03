@@ -10,6 +10,7 @@ import argparse
 import json
 from pathlib import Path
 import re
+import shutil
 import subprocess
 
 
@@ -68,6 +69,17 @@ def verify_launch(manifest: dict, evidence: dict) -> None:
         raise ValueError('Apps Script version was not recorded')
 
 
+def describe_build(project: str, build_id: str) -> dict:
+    # Resolve the installed command explicitly; bare "gcloud" is not executable
+    # by Python on Windows, where the supported SDK entry point is gcloud.CMD.
+    executable = shutil.which('gcloud')
+    if executable is None:
+        raise RuntimeError('Google Cloud SDK is required to verify candidate builds')
+    raw = subprocess.check_output([executable, 'builds', 'describe', build_id,
+        '--project=' + project, '--format=json'], text=True, encoding='utf-8')
+    return json.loads(raw)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('manifest', type=Path)
@@ -76,9 +88,8 @@ def main() -> None:
     manifest = json.loads(args.manifest.read_text(encoding='utf-8'))
     validate_manifest(manifest)
     for target in REQUIRED_STEPS:
-        raw = subprocess.check_output(['gcloud', 'builds', 'describe', manifest[target]['build_id'],
-            '--project=' + manifest['project'], '--format=json'], text=True, encoding='utf-8')
-        print(target + '=' + verify_build(manifest, target, json.loads(raw)))
+        build = describe_build(manifest['project'], manifest[target]['build_id'])
+        print(target + '=' + verify_build(manifest, target, build))
     if args.hosted_evidence:
         verify_launch(manifest, json.loads(args.hosted_evidence.read_text(encoding='utf-8')))
         print('launch evidence verified')

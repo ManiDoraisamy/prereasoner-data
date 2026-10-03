@@ -4,7 +4,7 @@ Excel task-pane add-in for the existing Prereasoner conversation APIs. This fold
 
 ## Current state
 
-The Office ribbon/task-pane shell, bounded read-only workbook snapshots, Microsoft sign-in flow, shared question/answer rendering, and previous-conversations view are implemented. Firebase Hosting is deployed and Microsoft's production manifest validator passes. Microsoft sign-in is not configured: Firebase has no Entra application ID or secret. Do not submit until sign-in is configured, the end-to-end question flow is tested, and the supported host matrix is complete. Listing copy is in `MARKETPLACE_LISTING.md`.
+The Office ribbon/task-pane shell, bounded read-only workbook snapshots, Microsoft sign-in flow, shared question/answer rendering, and previous-conversations view are implemented. Firebase Hosting is deployed and Microsoft's production manifest validator passes. The production Firebase Microsoft provider is enabled and has an Entra application ID configured, as verified on 2026-10-04. That configuration check does not establish a successful OAuth callback or an end-to-end question flow. Do not submit until the question flow and supported host matrix pass. Listing copy is in `MARKETPLACE_LISTING.md`.
 
 The manifest requests `ReadWriteDocument` because Microsoft requires that permission for Excel's application-specific JavaScript APIs, even when those APIs are used only to read. The current UI and implementation must not write to workbook cells or workbook metadata. It declares `ExcelApi` 1.2, the minimum needed for values-only used-range discovery.
 
@@ -18,7 +18,7 @@ Sideload `manifest.xml` in Excel's **Add-ins → More Add-ins → My Add-ins →
 
 - Create/configure the Microsoft identity application and enable the Firebase Microsoft provider. Do not merge Google and Microsoft accounts by matching email.
 - Confirm the account-principal and Excel session database migrations, then verify least-privilege serving grants before rollout.
-- Test Excel for Windows, Mac, and web at the supported API requirement set. Current live verification reached the Excel web task pane and workbook reader, but the question flow remains unverified because the Prereasoner authentication provider is not configured for the signed-in Microsoft account.
+- Test Excel for Windows, Mac, and web at the supported API requirement set. The earlier live verification reached the Excel web task pane and workbook reader. A fresh authenticated question-flow gate is required now that Microsoft sign-in is configured.
 - Verify that a question never writes to the source workbook.
 - Validate the HTTPS host framing policy, icon paths, and the Office task-pane/dialog auth flow.
 - Complete the listing, privacy copy, publisher enrollment, and Microsoft certification review.

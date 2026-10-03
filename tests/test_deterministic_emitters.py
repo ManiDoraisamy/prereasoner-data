@@ -719,7 +719,7 @@ def test_spider_scalar_gold_runner_executes_the_selected_ast_with_python():
         query, "SELECT SUM(amount) AS total FROM orders", 1, ()
     )
     plan, estimated_rows = _lower_python_candidate(candidate, tables, schema, ())
-    rows = _execute_python_candidate(plan, tables, estimated_rows, 10_000)
+    rows = _execute_python_candidate(plan, tables, schema, estimated_rows, 10_000)
     assert rows == [[30]]
     assert compare([[30]], rows)["scalar_exact"] is True
 
@@ -753,6 +753,45 @@ def test_spider_scalar_gold_runner_executes_the_selected_ast_with_python():
     assert evaluated["rows"] == [[30]]
     assert evaluated["execution_backend_actual"] == "python"
     assert evaluated["python_sql_equal"] is True
+
+
+def test_spider_backend_parity_preserves_blank_text_and_null_as_different_cells():
+    from engine.tables import TableQuery
+    from spider.probe.full_eval import _execute_python_candidate
+    from spider.probe.evalutil import build_mem_db
+
+    tables = [{"name": "items", "columns": ["id", "label"],
+               "rows": [[1, ""], [2, None], [3, "Korea"]]}]
+    schema = [
+        {"table": "items", "name": "id", "affinity": "INTEGER", "values": [1, 2, 3]},
+        {"table": "items", "name": "label", "affinity": "TEXT", "values": ["", None, "Korea"]},
+    ]
+    label = ColumnRef("items", "label", SQLType.TEXT)
+    queries = [
+        (SelectQuery((SelectItem(label, "label"),), "items"),
+         'SELECT label FROM items', [[""], [None], ["Korea"]]),
+        (SelectQuery((SelectItem(label, "label"),
+                      SelectItem(Aggregate("COUNT", label), "n")),
+                     "items", group_by=(label,)),
+         'SELECT label, COUNT(label) FROM items GROUP BY label',
+         [[None, 0], ["", 1], ["Korea", 1]]),
+    ]
+    for query, sql, expected in queries:
+        plan = lower_select_query("cells", query, schema, ())
+        python_rows = _execute_python_candidate(plan, tables, schema, 3, 10_000)
+        connection = TableQuery._sqlite_tables(None, {"items": tables[0]}, schema)
+        try:
+            sql_rows = [list(row) for row in connection.execute(sql)]
+        finally:
+            connection.close()
+        assert sorted(map(repr, python_rows)) == sorted(map(repr, expected))
+        assert sorted(map(repr, python_rows)) == sorted(map(repr, sql_rows))
+    # Correcting candidate parity must not silently change independent gold.
+    gold = build_mem_db(tables)
+    try:
+        assert list(gold.execute('SELECT label FROM items')) == [(None,), (None,), ("Korea",)]
+    finally:
+        gold.close()
 
 
 def test_auto_grades_the_served_python_answer_when_a_limit_cutoff_ties():

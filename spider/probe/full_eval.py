@@ -103,7 +103,7 @@ def _lower_python_candidate(candidate, tables, schema, foreign_keys):
     return plan, estimated_rows
 
 
-def _execute_python_candidate(plan, tables, estimated_rows, row_limit):
+def _execute_python_candidate(plan, tables, schema, estimated_rows, row_limit):
     """Execute one lowered generated ORM/Python program on Spider's SQLite rows.
 
     Spider's independent gold SQL still runs through the existing evaluator. This helper changes
@@ -114,8 +114,14 @@ def _execute_python_candidate(plan, tables, estimated_rows, row_limit):
     from sqlalchemy.pool import StaticPool
 
     from engine.deterministic import DeterministicAnalysis
+    from engine.tables import TableQuery
 
-    raw = build_mem_db(tables)
+    # Use a separate connection with the candidate executor's exact storage
+    # contract. The gold fixture has its own historical coercion rules (including
+    # blank text -> NULL); applying those only to Python changes the source cells
+    # and manufactures backend disagreements. Gold remains independent.
+    raw = TableQuery._sqlite_tables(None, {table["name"]: table for table in tables}, schema)
+    raw.commit()  # SQLAlchemy's initial rollback must not discard the fixture inserts.
     engine = create_engine(
         "sqlite+pysqlite://",
         creator=lambda: raw,
@@ -260,7 +266,7 @@ def ast_predict(
 
         try:
             python_rows = _execute_python_candidate(
-                plan, norm, estimated_rows, python_row_limit
+                plan, norm, sch, estimated_rows, python_row_limit
             )
         except PythonRowLimitExceeded as exc:
             metadata["python_fallback_reason"] = str(exc)
