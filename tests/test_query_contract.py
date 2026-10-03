@@ -24,11 +24,42 @@ def test_repeated_headers_need_clarification_only_when_a_field_is_selected():
     assert constraint_violations('total Amount in column B', units, graph)
 
 
+def test_non_numeric_formula_error_column_cannot_produce_a_sum():
+    from engine.sql_ast import Aggregate, ColumnRef, SelectItem, SelectQuery, SQLType
+    table = {"name": "orders", "columns": ["Amount", "Units"],
+             "rows": [[10, 2], ["#DIV/0!", 3]]}
+    graph = SchemaGraph.from_tables([table], [])
+    bad = SelectQuery((SelectItem(Aggregate("SUM", ColumnRef("orders", "Amount", SQLType.TEXT))),), "orders")
+    units = SelectQuery((SelectItem(Aggregate("SUM", ColumnRef("orders", "Units", SQLType.INTEGER))),), "orders")
+    assert any("Amount" in value and "nonnumeric or ambiguous" in value
+               for value in constraint_violations("total Amount", bad, graph))
+    assert not constraint_violations("total Units", units, graph)
+
+
+def test_gemini_rewrite_cannot_pick_a_duplicate_field_or_substitute_another_measure():
+    from engine.tables import csv_table
+    from tests.test_sql_ast import _gemini_planner
+
+    duplicate = csv_table("id,Amount,Amount,Units\n1,10,20,2\n2,30,40,3", "orders")
+    planner, _ = _gemini_planner(question="total Amount in column C")
+    result = planner.serve([duplicate], "total Amount")
+    assert result["valid"] is False and "Which repeated field" in result["error"]
+    assert result.get("result") is None
+
+    broken = csv_table("id,Amount,Units\n1,10,2\n2,#DIV/0!,3", "orders")
+    planner, _ = _gemini_planner(question="total Amount")
+    result = planner.serve([broken], "total Amount")
+    assert result["valid"] is False and "Amount" in result["error"]
+    assert result.get("result") is None
+    assert planner.serve([broken], "How many orders?")["result"]["rows"] == [[2]]
+    assert planner.serve([broken], "total Units")["result"]["rows"] == [[5]]
+
+
 def test_a_known_named_field_cannot_be_replaced_by_another_measure():
     from engine.sql_ast import Aggregate, ColumnRef, SelectItem, SelectQuery, SQLType
     graph = SchemaGraph.from_tables([{"name": "orders", "columns": ["Amount", "Units"], "rows": [[10, 99]]}], [])
     query = SelectQuery((SelectItem(Aggregate("SUM", ColumnRef('orders','Units',SQLType.INTEGER))),), 'orders')
-    assert any('requested field is not used: Amount' in v for v in constraint_violations('total Amount', query, graph))
+    assert any("total for 'Amount'" in v for v in constraint_violations('total Amount', query, graph))
     assert not constraint_violations('total Units', query, graph)
     count = SelectQuery((SelectItem(Aggregate('COUNT', ColumnRef('orders','Amount',SQLType.INTEGER))),), 'orders')
     assert any('requested total needs a sum' in v for v in constraint_violations('total Amount', count, graph))

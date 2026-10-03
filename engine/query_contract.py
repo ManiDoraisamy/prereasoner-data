@@ -126,14 +126,35 @@ def constraint_violations(question, query, graph):
                                    + constraint_violations(question, query.right, graph)))
     if not isinstance(query, SelectQuery):
         return ("unsupported interpretation scope",)
+    violations = []
+    # SQLite and PostgreSQL both accept SUM/AVG over some text expressions, but
+    # do not agree on their coercion. More importantly, SQLite silently treats
+    # arbitrary strings such as spreadsheet formula errors as zero. Do not let
+    # a runnable aggregate turn malformed source cells into an authoritative
+    # number; counts and other numeric columns remain available.
+    from engine.sql_ast import expression_type
+    from dataclasses import fields, is_dataclass
+
+    def aggregates(value):
+        if isinstance(value, Aggregate):
+            yield value
+        if is_dataclass(value):
+            for field in fields(value):
+                yield from aggregates(getattr(value, field.name))
+        elif isinstance(value, (tuple, list)):
+            for item in value:
+                yield from aggregates(item)
+
+    for aggregate in set(aggregates(query)):
+        if aggregate.function in {"SUM", "AVG"} and not expression_type(aggregate.operand).numeric:
+            field = getattr(aggregate.operand, "name", "selected measure")
+            violations.append(f"The field {field!r} contains nonnumeric or ambiguous values and cannot be totaled")
     question_tokens = tokens(question)
     phrases = served_date_phrases(question, question_tokens, graph)
-    violations = list(relational_operator_evidence(question, query, graph)[1])
+    violations.extend(relational_operator_evidence(question, query, graph)[1])
     # The spreadsheet importer preserves duplicate headers with their original
     # column letters. Displaying both is safe; choosing one for a calculation or
     # filter needs the user to distinguish it, rather than an arbitrary model pick.
-    from dataclasses import fields, is_dataclass
-
     def references(value):
         if isinstance(value, ColumnRef):
             yield value
@@ -193,13 +214,38 @@ def constraint_violations(question, query, graph):
             for item in value:
                 found.update(aggregate_functions(item))
         return found
+    def aggregate_columns(value):
+        found = {}
+        if isinstance(value, Aggregate):
+            found.setdefault(value.function, set()).update(references(value.operand))
+        if is_dataclass(value):
+            for field in fields(value):
+                for function, refs in aggregate_columns(getattr(value, field.name)).items():
+                    found.setdefault(function, set()).update(refs)
+        elif isinstance(value, (tuple, list)):
+            for item in value:
+                for function, refs in aggregate_columns(item).items():
+                    found.setdefault(function, set()).update(refs)
+        return found
+    measures = aggregate_columns(query.select)
     if roles.aggregate_positions.get('SUM') and not count_requested and 'SUM' not in aggregate_functions(query.select):
         violations.append('A requested total needs a sum of values, not a row count or projection')
     counts_rows = count_requested and any(isinstance(item.expression, Aggregate)
         and item.expression.function == 'COUNT' and isinstance(item.expression.operand, Star)
         for item in query.select)
     for label, refs in named_fields.items():
-        if ' '+label+' ' not in question_text or refs & used:
+        if ' '+label+' ' not in question_text:
+            continue
+        requested_targets = {function: set(targets) for function, targets
+                             in roles.aggregate_targets.items()}
+        mismatched = [function for function, targets in requested_targets.items()
+                      if refs & targets and not refs & measures.get(function, set())]
+        if mismatched:
+            violations.append('The requested total for '
+                              + repr(sorted(ref.name for ref in refs)[0])
+                              + ' could not be computed from that field; check for nonnumeric/error cells or choose a numeric field')
+            continue
+        if refs & used:
             continue
         if roles.aggregate_positions and label in recipients and label not in data_literals:
             continue

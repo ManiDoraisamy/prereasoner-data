@@ -572,6 +572,19 @@ class TableQuery:
             reread = self._choose(rewritten, norm, sch, tablemap, graph,
                                   self.search_pool(rewritten, norm, fks, sch))
             if reread.selected is not None:
+                # Rewording may resolve a language/schema mismatch, but it may
+                # not choose between repeated source fields or reinterpret a
+                # named measure. Prove the original request against the returned
+                # AST too; cell values never go to Gemini for this check.
+                from engine.query_contract import constraint_violations
+                original_violations = constraint_violations(
+                    question, reread.candidate.query, graph
+                )
+                if original_violations:
+                    baseline = replace(selection, selected=None)
+                    return replace(baseline, fallback=FallbackRecord(
+                        "none", fallback.model, question=rewritten,
+                        note=original_violations[0]))
                 rewritten_is_complete = not _query_has_unread_terms(
                     rewritten, reread.candidate, graph,
                     calculation_satisfied=(
@@ -624,7 +637,9 @@ class TableQuery:
             graph = SchemaGraph.from_planner(sch, fks)
             for member in candidates:
                 for violation in constraint_violations(question, member.query, graph):
-                    if violation.startswith('Which repeated field'):
+                    if (violation.startswith('Which repeated field')
+                            or violation.startswith('The field ')
+                            or violation.startswith('The requested total for ')):
                         return None, None, violation, candidates, selection
             return None, None, "planner: no executable AST candidate", candidates, selection
         deterministic_plan = None
