@@ -72,12 +72,16 @@ function setDrawer(open){
 }
 function openDrawer(){setDrawer(true);}
 function closeDrawer(){setDrawer(false);}
+let conversationListGeneration=0;
 async function renderDrawer(){
   const list=$('convlist'); if(!list)return;
-  list.innerHTML='<div class=convempty>Loading…</div>';
+  const generation=++conversationListGeneration;
+  if(!list.querySelector('.convitem'))list.innerHTML='<div class=convempty>Loading…</div>';
   const page=await listConversations(), convs=page.conversations;
+  if(generation!==conversationListGeneration)return;
   if(page.error){conversationListError(page.error);return;}
   list.innerHTML='';
+  showConversationQuota(list);
   if(!convs.length){ list.innerHTML='<div class=convempty>Your previous chats will appear here.</div>'; return; }
   const cur=convId();
   // Build with the DOM API (dataset + textContent), never string-concatenated HTML — the conversation
@@ -102,6 +106,13 @@ async function renderDrawer(){
       cursor=next.next_cursor;if(cursor)more.disabled=false;else more.remove();}; list.appendChild(more); }
   const clr=document.createElement('button'); clr.className='convclear'; clr.textContent='Clear all conversations'; clr.onclick=clearAllConvs;
   list.appendChild(clr);
+}
+async function showConversationQuota(list){
+  try{const tk=await window.ensureToken();const r=await fetch(API_BASE+'/api/conversation/quota',{headers:{Authorization:'Bearer '+tk}});if(!r.ok)return;
+    const quota=await r.json();if(!Number.isFinite(quota.used)||!Number.isFinite(quota.limit))return;
+    let item=list.querySelector('.convquota');if(!item){item=document.createElement('div');item.className='convempty convquota';list.prepend(item);}
+    item.textContent=quota.used+' of '+quota.limit+' saved chats'+(quota.used>=quota.limit?'. Delete a saved chat to start another, or continue an existing chat.':'.');
+  }catch(_){} // quota metadata is optional; a failure must not replace working history
 }
 // One binding for the conversation list, used by BOTH surfaces that render it: the /reason
 // drawer and the signed-in home rail. Delegated, so it survives renderDrawer() rebuilds.
@@ -206,19 +217,24 @@ function saveConvState(){                                     // persist the sna
     if(st){ try{ sessionStorage.setItem('pr_conv_state',JSON.stringify(st)); }catch(inner){ console.warn('conversation snapshot could not be cached',inner&&inner.name||'Error'); } }
     else console.warn('conversation snapshot exceeds both persistence limits',error&&error.name||'Error');
   }
-  if(!st){ console.warn('conversation snapshot exceeds the server limit after safe compaction'); return; }
+  if(!st){conversationSaveError('This workbook is too large to save. Your answer is still available; download it before leaving.');return;}
   const body=JSON.stringify({id:cid, state:st});
   clearTimeout(_saveStateT);
   _saveStateT=setTimeout(async ()=>{                         // DEBOUNCED: durable server persist (survives a fresh session / other device)
     try{ const tk=await window.ensureToken();
       const response=await fetch(API_BASE+'/api/conversation/state',{method:'POST',
         headers:{'content-type':'application/json','Authorization':'Bearer '+tk}, body});
-      if(!response.ok) console.warn('conversation snapshot was not persisted: HTTP '+response.status);
+      if(!response.ok) conversationSaveError('This chat view was not saved (HTTP '+response.status+'). Your answer is still available. Download it or retry saving.');
       else{const saved=await response.json();if(saved.source_hash){const info=currentSourceInfo();info.sourceHash=saved.source_hash;info.answerHash=saved.source_hash;info.stale=false;
         try{sessionStorage.setItem(SS.SOURCE_INFO,JSON.stringify(info));full.sourceHash=saved.source_hash;sessionStorage.setItem('pr_conv_state',JSON.stringify(full));}catch(_){}
         if(typeof renderSourceStatus==='function')renderSourceStatus();}}
-    }catch(error){ console.warn('conversation snapshot was not persisted',error&&error.name||'Error'); }
+    }catch(error){conversationSaveError('This chat view was not saved. Check your connection and retry saving.');}
   }, 700);
+}
+function conversationSaveError(message){
+  let box=document.getElementById('conversation-save-error');
+  if(!box){box=document.createElement('div');box.id='conversation-save-error';box.setAttribute('role','alert');box.style.cssText='padding:10px;background:#fff4df;color:#6c4200;';const host=$('chat')||$('chatrail')||document.body;host.appendChild(box);}
+  box.textContent=message+' ';const retry=document.createElement('button');retry.type='button';retry.textContent='Retry save';retry.onclick=()=>{box.remove();saveConvState();};box.appendChild(retry);
 }
 function restoredSheetExecution(st,s){
   return normalizedExecution((s&&s.execution)||((st&&st.v<3)&&st.execution));

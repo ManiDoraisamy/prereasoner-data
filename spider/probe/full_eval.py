@@ -600,7 +600,7 @@ def main():
     engine_code = ("routing.py", "tables.py", "sql_search.py", "sql_rank.py", "sql_ast.py", "sql_candidate.py",
                    "sql_schema.py", "sql_expansion.py", "sql_constraints.py", "sql_extrema.py",
                    "sql_recursive.py", "sql_parsimony.py", "sql_profile.py", "sql_profile_expansion.py",
-                   "sql_fallback.py", "sql_prompt.py", "sql_import.py", "sql_grounding.py", "llm.py",
+                   "question_rewrite.py", "sql_prompt.py", "query_contract.py", "request_deadline.py", "sql_grounding.py", "llm.py",
                    "model_revisions.py",
                    "decomposition.py",
                    "knowledge_compose.py", "primitive_head.py", "compose.py", "encoder_overlay.py",
@@ -651,7 +651,7 @@ def main():
     reader = PrimitiveReader(encoder=enc)
     eng = ComposeEngine(reader=reader)
     print(f"loaded. evaluating {len(picked)} examples (config={args.config}, "
-          f"fallback={'on: ' + llm.model_id() if enc.sql_fallback.available else 'off'})\n", flush=True)
+          f"fallback={'on: ' + llm.model_id() if enc.question_rewriter.available else 'off'})\n", flush=True)
 
     db_cache = {}
     ast_schema_cache = {}

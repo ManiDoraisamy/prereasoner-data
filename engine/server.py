@@ -245,7 +245,11 @@ class H(BaseHTTPRequestHandler):
             self._send(200, json.dumps({"ok": MODEL is not None and DIM_MODEL is not None,
                                         "reason": MODEL is not None, "world": MODEL is not None,
                                         "dimension": DIM_MODEL is not None}))
-        elif path in ("/api/conversations", "/api/conversation"):
+        elif path == '/api/version':
+            from engine.release_identity import release_identity
+            from engine.config import DATA_DIR
+            self._send(200, json.dumps(release_identity(DATA_DIR / 'build_provenance.json')))
+        elif path in ("/api/conversations", "/api/conversation", "/api/conversation/quota"):
             self._get_conversations(path, parse_qs(u.query))
         elif path in ("/api/analyses", "/api/analysis"):
             self._get_analyses(path, parse_qs(u.query))
@@ -264,6 +268,9 @@ class H(BaseHTTPRequestHandler):
             sub, _uid = _verify_principal(_bearer(self.headers, None))
             if not sub:
                 self._send(401, json.dumps({"error": "sign in required"})); return
+            if path == '/api/conversation/quota':
+                from engine.conversations import conversation_quota
+                self._send(200, json.dumps(conversation_quota(sub))); return
             if path == "/api/conversations":
                 try:
                     limit = int((qs.get("limit") or ["50"])[0])
@@ -541,10 +548,7 @@ class H(BaseHTTPRequestHandler):
 
     # ---------------- /api/converse (Gemini conversational fallback for the /reason rail) ----------------
     def _post_converse(self):
-        """Answer a clarify / non-data question conversationally (Gemini), so the rail replies in-chat
-        instead of redirecting. One Gemini call is protected by local concurrency and PostgreSQL-backed
-        cross-instance quotas; the deterministic path is unchanged. Firebase-auth'd like the reasoning routes;
-        Gemini being unavailable degrades to a clear 503."""
+        """Compatibility endpoint for deterministic result and clarification rendering."""
         try:
             req = self._read_json(MAX_CONVERSE_CHARS)
             if req is None:
@@ -552,24 +556,13 @@ class H(BaseHTTPRequestHandler):
             sub, _uid = _verify_principal(_bearer(self.headers, req))
             if not sub:
                 self._send(401, json.dumps({"error": "sign in required"})); return
-            if not llm.available():
-                self._send(503, json.dumps({
-                    "error": "assistant processing is unavailable for this request"
-                })); return
-            if len(json.dumps(req, ensure_ascii=False)) > MAX_CONVERSE_CHARS:
-                self._send(413, json.dumps({"error": "conversation context is too large"})); return
-            lease = self._acquire_paid_budget(sub, "converse")
-            if lease is None:
-                return
-            from engine import converse
-            try:
-                with lease:
-                    text = converse.reply(req.get("question", ""), clarify=req.get("clarify"),
-                                          error=req.get("error"), tables=req.get("tables"),
-                                          answer=req.get("answer"), sql=req.get("sql"))
-            except Exception as e:                           # noqa: BLE001 — Gemini unavailable: let the client fall back
-                print(f"/api/converse degraded (503): {type(e).__name__}", flush=True)
-                self._send(503, json.dumps({"error": "converse unavailable"})); return
+            from engine.answer_presentation import terminal_reply
+            shaped = {'status': 'answered' if req.get('answer') is not None else
+                      'error' if req.get('error') else 'clarify',
+                      'answer': req.get('answer'), 'clarify': req.get('clarify'),
+                      'error': req.get('error'), 'calculations': req.get('calculations') or [],
+                      'unit': req.get('unit')}
+            text = terminal_reply(shaped)
             self._send(200, json.dumps({"reply": text}))
         except Exception as e:                               # noqa: BLE001
             print(f"/api/converse failed: {type(e).__name__}", flush=True)
@@ -617,10 +610,10 @@ class H(BaseHTTPRequestHandler):
                 return
             emit = emitter(uid, req.get("jobId"))            # no-op if RTDB/jobId absent; else streams past the 60s proxy
             emit("status", "running")
-            from engine import converse
+            from engine import reference_generation
             try:
                 with lease:
-                    out = converse.generate_master(req.get("name", "reference"), columns, rows,
+                    out = reference_generation.generate_master(req.get("name", "reference"), columns, rows,
                                                    instruction=req.get("instruction"), emit=emit)
             except Exception as e:                           # noqa: BLE001 — Gemini unavailable: let the client re-enable
                 print(f"/api/master/generate degraded (503): {type(e).__name__}", flush=True)
@@ -899,8 +892,12 @@ class H(BaseHTTPRequestHandler):
                         snapshot = complete_analysis(sub, conv, analysis, req.get("question", ""), res)
                     except QuotaExceeded as exc:
                         discard_analysis()
-                        emit("error", str(exc)); emit("status", "error")
-                        self._send(429, json.dumps({"error": str(exc)}), retry_after=60); return
+                        # The calculation is valid even if its durable workbook cannot
+                        # be saved. Keep the answer usable and disclose the save failure.
+                        res.pop('analysis', None)
+                        res['persistence'] = {'status': 'unsaved', 'reason': str(exc)}
+                        res.setdefault('warnings', []).append(str(exc) + '; this answer was not saved. Download it before leaving.')
+                        snapshot = None
                     except (AnalysisConflict, NotOwned):
                         discard_analysis()
                         emit("error", "analysis changed while the answer was running; please retry")
@@ -908,8 +905,9 @@ class H(BaseHTTPRequestHandler):
                         self._send(409, json.dumps({
                             "error": "analysis changed while the answer was running; please retry",
                         })); return
-                    res["analysis"] = snapshot["analysis"]
-                    emit("analysis", snapshot["analysis"])
+                    if snapshot is not None:
+                        res["analysis"] = snapshot["analysis"]
+                        emit("analysis", snapshot["analysis"])
                     analysis = None                         # committed; the exception path must not fail it
                 else:
                     if isinstance(res, dict) and res.get("decomposition_required"):

@@ -5,7 +5,7 @@ similarities (engine/sql_search.py applies it). Every adjustment is a named feat
 similarity can improve ordering without hiding why a candidate won. ``PoolSelection`` records the
 served choice: the best-ranked candidate that executes and is grounded, under the pool contract
 (``SEARCH_CANDIDATES``, ``EXECUTION_OP_LIMIT``). No model writes or scores SQL here; the labelled
-Gemini fallback (engine/sql_fallback.py) is recorded as ``FallbackRecord`` when it took part.
+Gemini fallback (engine/question_rewrite.py) is recorded as ``FallbackRecord`` when it took part.
 """
 from __future__ import annotations
 
@@ -510,7 +510,7 @@ EXECUTION_OP_LIMIT = 100_000_000
 
 @dataclass(frozen=True)
 class FallbackRecord:
-    """How the labelled Gemini fallback (engine/sql_fallback.py) took part in one selection.
+    """How the labelled Gemini fallback (engine/question_rewrite.py) took part in one selection.
 
     ``kind`` is "rewrite" when the search answered Gemini's one-request rewording, and "none" when
     the rewording could not produce a query. "model" is the Gemini model id; ``note`` explains an

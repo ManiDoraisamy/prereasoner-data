@@ -1,12 +1,4 @@
-"""test_converse.py — offline unit tests for engine.converse: reply() behind /api/converse and generate_master
-(the STREAMING master-data fill behind /api/master/generate). Fakes engine.llm's Gemini calls, so it runs
-with NO credentials and NO network, pinning: the computed answer reaches the PRESENT prompt verbatim, the
-user's already-filled cells are PRESERVED, empty cells filled, an entity-only table gains columns, ragged
-rows normalized, the instruction + current rows reach the prompt, each header/row is EMITTED to RTDB live in
-order, incremental parsing survives chunk splits mid-line, and a non-JSONL {columns, rows} blob still parses.
-
-Run:  python -m tests.test_converse
-"""
+"""Shared deterministic answer presentation and explicit reference generation contracts."""
 from __future__ import annotations
 
 import json
@@ -15,7 +7,7 @@ import sys
 import types
 from unittest.mock import patch
 
-from engine import converse, llm
+from engine import reference_generation as converse, llm
 
 
 def _gen(chunks, columns, rows, instruction=None, emit=None):
@@ -33,32 +25,22 @@ def _gen(chunks, columns, rows, instruction=None, emit=None):
         return converse.generate_master("series", columns, rows, instruction=instruction, emit=emit), cap
 
 
-def test_reply_presents_the_computed_answer_through_gemini():
-    seen = {}
-
-    def generate_text(*, system, prompt, max_output_tokens, json_schema=None, timeout_seconds=30.0):
-        seen.update(system=system, prompt=prompt, max_output_tokens=max_output_tokens, json_schema=json_schema)
-        return "  That comes to 876.50 after the discount.  \n"
-
-    with patch.object(llm, "generate_text", generate_text):
-        text = converse.reply("how much after the discount?", tables=[{"name": "orders", "columns": ["amount"]}],
-                              answer={"columns": ["net_amount"], "rows": [["876.50"]]}, sql="SELECT 1")
-    assert text == "That comes to 876.50 after the discount."
-    assert seen["system"] == converse.SYSTEM and seen["json_schema"] is None
-    assert "MODE: PRESENT" in seen["prompt"] and "net_amount | 876.50" in seen["prompt"], seen["prompt"]
-    assert "orders(amount)" in seen["prompt"] and seen["max_output_tokens"] == converse.REPLY_MAX_TOKENS
+def test_reply_presents_the_computed_answer_without_external_processing():
+    from engine.answer_presentation import terminal_reply
+    with patch.object(llm, 'generate_text', side_effect=AssertionError('Results must not reach Gemini')):
+        assert terminal_reply({'status': 'answered', 'answer': {'columns': ['net_amount'], 'rows': [['876.50']]}}) == '876.50'
+        assert terminal_reply({'status': 'answered', 'answer': {'rows': [[-120]]}}) == '-120'
+        assert terminal_reply({'status': 'clarify', 'clarify': {'reason': 'Choose a measure'}}) == 'Choose a measure'
 
 
-def test_unavailable_gemini_reaches_the_converse_handler_as_llm_unavailable():
-    """/api/converse and /api/master/generate answer 503 from this exception; the browser then falls back."""
-    with patch.dict("os.environ", {"EXTERNAL_LLM_ENABLED": "false"}):
-        for call in (lambda: converse.reply("what is this?", clarify={"proposed": "total amount"}),
-                     lambda: converse.generate_master("series", ["series"], [["Doyle"]])):
-            try:
-                call()
-                raise AssertionError("expected LLMUnavailable")
-            except llm.LLMUnavailable:
-                pass
+def test_unavailable_gemini_reaches_reference_generation_as_llm_unavailable():
+    with patch.dict('os.environ', {'EXTERNAL_LLM_ENABLED': 'false'}):
+        try:
+            converse.generate_master('series', ['series'], [['Doyle']])
+        except llm.LLMUnavailable:
+            pass
+        else:
+            raise AssertionError('Expected unavailable generation')
 
 
 def _jsonl(cols, rows):
@@ -207,8 +189,8 @@ def test_trace_deletion_filters_by_conversation_and_supports_delete_all():
 
 
 TESTS = [
-    test_reply_presents_the_computed_answer_through_gemini,
-    test_unavailable_gemini_reaches_the_converse_handler_as_llm_unavailable,
+    test_reply_presents_the_computed_answer_without_external_processing,
+    test_unavailable_gemini_reaches_reference_generation_as_llm_unavailable,
     test_preserves_existing_and_fills_empty,
     test_preserves_by_column_name_even_if_model_reorders,
     test_instruction_and_current_rows_reach_the_prompt,

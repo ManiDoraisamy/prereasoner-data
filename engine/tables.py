@@ -229,8 +229,8 @@ class TableQuery:
         self.tok = None
         self.qwen = None
         self.hdim = None
-        # The labelled Gemini fallback of select_query (engine/sql_fallback.py); EncoderQuery sets it.
-        self.sql_fallback = None
+        # The labelled Gemini fallback of select_query (engine/question_rewrite.py); EncoderQuery sets it.
+        self.question_rewriter = None
 
     # ---------- encoding ----------
     # The vector for a text depends only on the text and the loaded weights, so encoded texts are
@@ -469,7 +469,7 @@ class TableQuery:
            London") takes the best-ranked candidate that aggregates a money column
            (engine/sql_expansion.money_total_columns).
         4. When no candidate is eligible or the selected plan leaves request words unread, and the
-           operator enabled Gemini, it may reword the question once (engine/sql_fallback.py). Gemini
+           operator enabled Gemini, it may reword the question once (engine/question_rewrite.py). Gemini
            sees schema names and types, never cell values or conversation history. The deterministic
            typed search runs on that wording and replaces the baseline only when its reading is more
            specific.
@@ -486,7 +486,7 @@ class TableQuery:
             searched = self.search_pool(question, norm, fks, sch)
         graph = SchemaGraph.from_planner(sch, fks)
         selection = self._choose(question, norm, sch, tablemap, graph, searched)
-        fallback = self.sql_fallback
+        fallback = self.question_rewriter
         selected_index = selection.selected
         calculation_satisfied = (selected_index is not None and
                                   selection.calculation_satisfied[selected_index])

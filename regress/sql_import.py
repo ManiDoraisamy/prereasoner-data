@@ -1,10 +1,7 @@
-"""Map SQL text into the engine's typed AST.
+"""Offline SQL-to-AST adapter for evaluation and structural contrast fixtures.
 
-The one caller is selection's labelled Gemini fallback (engine/sql_fallback.py): the query Gemini
-proposes is imported here before it may be run, grounded and served. Only shapes the typed AST can
-express are mapped; anything else raises ``Unsupported``, so model text can never reach a database
-except as a validated, re-rendered AST. The importer has no dataset access and never receives a
-gold answer or an execution label.
+Serving never imports generated SQL. This adapter is kept outside the serving
+package because regression tests still need independently specified ASTs.
 """
 from __future__ import annotations
 

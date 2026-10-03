@@ -7,13 +7,13 @@
 
 steps:
   - id: publish-hosting
-    name: node:22-bookworm-slim
+    name: node:22-bookworm-slim@sha256:43ac6c60b8f89723f746e8a92ce91abd5017e627ce1ddfe4238355d3a30b772c
     entrypoint: bash
     args:
       - -c
       - |
         set -euo pipefail
-        npm install --global --no-fund --no-audit firebase-tools
+        npm install --global --no-fund --no-audit firebase-tools@${_FIREBASE_TOOLS_VERSION}
 
         # Firebase resources are prepared in this same release stage. If the selected GCP project
         # has not been made a Firebase project yet, this is the only automated setup attempt. Firebase
@@ -130,6 +130,7 @@ steps:
           --non-interactive
 
 substitutions:
+  _FIREBASE_TOOLS_VERSION: "15.32.1"
   _REGION: us-central1
   _API_SERVICE: prereasoner-api
   _CHAT_SERVICE: prereasoner-chat

@@ -117,7 +117,7 @@ reworded question.
 
 ### Labelled Gemini fallback
 
-`engine/sql_fallback.py` runs when no candidate is eligible or the selected plan leaves request words
+`engine/question_rewrite.py` runs when no candidate is eligible or the selected plan leaves request words
 unresolved, and `engine/llm.py` reports Gemini available (`EXTERNAL_LLM_ENABLED` and a Vertex AI
 project). It makes one request-scoped rewrite; the
 deterministic search then builds, runs, and grounds candidates as usual:
@@ -312,9 +312,9 @@ SQL statements. Serving also retains its SELECT-only execution guard.
 | `engine/sql_extrema.py` | Extrema, top-N, and set difference. |
 | `engine/sql_parsimony.py` | Bounded projection/table variants of pooled candidates (minimal join, binding, drop/add column, operand swap, DISTINCT). |
 | `engine/sql_rank.py` | Hand-written search ranking features (`CandidateRanker`), the pool contract (`SEARCH_CANDIDATES`, `EXECUTION_OP_LIMIT`), and the selection record (`PoolSelection`, `FallbackRecord`). |
-| `engine/sql_fallback.py` | The labelled, request-scoped Gemini wording rewriter; the deterministic search still owns SQL. |
+| `engine/question_rewrite.py` | The labelled, request-scoped Gemini wording rewriter; the deterministic search still owns SQL. |
 | `engine/sql_prompt.py` | The schema text and instructions Gemini reads in the fallback. |
-| `engine/sql_import.py` | SQL text importer used by offline evaluation and migration tools; not used by serving fallback. |
+| `regress/sql_import.py` | SQL text importer used by offline evaluation and migration tools; not used by serving fallback. |
 | `engine/calculations/core.py` | Typed plans and branch-preserving computation evidence. |
 | `engine/calculations/specifications.py` | Registered currency, ratio, and rate-application semantics. |
 | `engine/calculations/search.py` | Calculation-plan expansion into validated AST candidates. |

@@ -88,6 +88,10 @@ class H(BaseHTTPRequestHandler):
         path = self.path.split("?", 1)[0]
         if path.rstrip("/") == "/healthz":
             self._send(200, json.dumps({"ok": True, "service": "orchestrator"}))
+        elif path.rstrip('/') == '/version':
+            from engine.release_identity import release_identity
+            from pathlib import Path
+            self._send(200, json.dumps(release_identity(Path(__file__).with_name('build_provenance.json'))))
         elif path.rstrip("/") == "/readyz":
             # Readiness must check what a turn actually uses. That is the engine client this process
             # calls in-process — NOT mcp_server.server, which is now only the entry point for

@@ -79,7 +79,7 @@ def test_dimension_standalone_loads_only_the_encoder():
     ok(len(calls) == 1, "standalone dimension loads the shared encoder bundle once")
     ok(calls[0][0] is model, "standalone loader initializes the dimension model")
     ok(calls[0][1] == deploy_dir, "standalone loader receives the selected bundle directory")
-    ok(model.sql_fallback is None, "dimension endpoint attaches no own-data SQL selection fallback")
+    ok(model.question_rewriter is None, "dimension endpoint attaches no own-data SQL selection fallback")
 
 
 def test_dimension_waits_on_the_shared_engine_lock_with_a_bound():

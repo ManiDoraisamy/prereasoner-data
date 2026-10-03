@@ -19,7 +19,10 @@ external MCP: MCP client -> mcp_server/server.py (stdio)
   EXTERNAL MCP clients. The chat orchestrator does not spawn it — a per-turn Python subprocess cost
   a measured 0.86s of interpreter startup to relay an HTTP call the orchestrator can make itself.
 - `orchestrator` runs an optional Gemini tool loop (Vertex AI, through `engine/llm.py`, enabled by the operator's
-  `EXTERNAL_LLM_ENABLED` switch). It decides when to call a tool and how to present the result.
+  `EXTERNAL_LLM_ENABLED` switch). It makes follow-up wording explicit and requests typed engine operations.
+  Each request receives schema metadata, at most two recent user questions, and the authoritative analysis
+  catalog. Earlier assistant answers, source cells, generated SQL and computed result values are excluded.
+  Results and clarifications are rendered by `engine.answer_presentation` without a presentation model.
 - Numbers and tables must come from the engine tool response. The orchestrator may not calculate or invent them.
 - Before a follow-up, the orchestrator reads the ownership-scoped `/api/analyses` catalog. The catalog contains
   only ids, slugs, latest questions, revision numbers, and stale flags; it does not duplicate workbook rows.

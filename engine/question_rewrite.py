@@ -15,7 +15,7 @@ MAX_QUESTION_CHARS = 500
 UNAVAILABLE = "Gemini unavailable"
 
 
-class SQLFallback:
+class QuestionRewriter:
     """Optional one-shot question rewriter, enabled only by the operator's external-model switch."""
 
     def __init__(self, client=llm):
@@ -62,6 +62,10 @@ def _preserves_explicit_constraints(question: str, rewritten: str, graph) -> boo
     from engine.closed_class import EXCLUSION_CUES
 
     if bool(EXCLUSION_CUES.search(question)) != bool(EXCLUSION_CUES.search(rewritten)):
+        return False
+    from engine.currency_intent import currency_conversion_target
+    target = currency_conversion_target(question)
+    if target is not None and currency_conversion_target(rewritten) != target:
         return False
     # Preserve recognized computation roles. A rewrite may replace a schema label,
     # but cannot turn a known comparison, aggregate, ranking or grouping into another.

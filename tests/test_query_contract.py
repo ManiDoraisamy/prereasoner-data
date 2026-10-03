@@ -1,6 +1,6 @@
 """Contrast tests for request completeness, independently of model accuracy."""
 from engine.query_contract import coverage
-from engine.sql_fallback import _preserves_explicit_constraints
+from engine.question_rewrite import _preserves_explicit_constraints
 from engine.sql_schema import SchemaGraph
 from tests.test_sql_ast import _hermetic_planner, _gemini_planner, _model_query, _request, _select
 
@@ -66,6 +66,43 @@ def test_final_results_keep_more_than_fifty_rows():
     table = {'name': 'orders', 'columns': ['Amount'], 'rows': [[i] for i in range(1000)]}
     result = _hermetic_planner().serve([table], 'show Amount')
     assert result['valid'] and result['result']['rows'] == table['rows']
+
+
+def test_world_coverage_keeps_unicode_constraints():
+    from unittest.mock import patch
+    from engine.knowledge_query import KnowledgeQuery
+    owner = object.__new__(KnowledgeQuery)
+    schema = [{'table': 'orders', 'name': 'Amount', 'affinity': 'REAL', 'values': [100]}]
+    with patch.object(owner, '_phrase_qids', return_value={}), patch.object(owner, '_word_qid', return_value=None), \
+            patch.object(owner, '_best_world_entity', return_value=None):
+        assert '東京' in owner._uncovered('total Amount for 東京', schema, 'SELECT SUM(Amount) FROM orders')
+        assert '東京' not in owner._uncovered('total Amount for 東京', schema, "SELECT SUM(Amount) FROM orders WHERE city='東京'")
+
+
+def test_rate_magnitude_cannot_invent_its_unit():
+    from engine.calculations.specifications import _rate_scale
+    table = {'name': 'orders', 'columns': ['rate', 'rate_pct', 'rate_fraction'], 'rows': [[0.8, 0.8, 0.8]]}
+    graph = SchemaGraph.from_tables([table], [])
+    refs = {c.ref.name: c.ref for c in graph.columns}
+    assert _rate_scale(graph, refs['rate']) is None
+    assert _rate_scale(graph, refs['rate_pct']) == (100.0, 'percent')
+    assert _rate_scale(graph, refs['rate_fraction']) == (1.0, 'fraction')
+
+
+def test_row_count_noun_does_not_depend_on_the_upload_filename():
+    from tests.test_datasets import _tables, DATASET_DIR
+    from tests.test_sql_ast import execute
+    tables = _tables(DATASET_DIR / 'formfacade-leads')
+    planner = _hermetic_planner()
+    for question, gold in [('How many leads were submitted after August 10, 2026?', 5),
+                           ('How many leads were submitted between August 4 and August 9, 2026?', 4)]:
+        selected = _select(planner, question, tables).candidate
+        assert selected is not None
+        assert execute(tables, selected.sql) == [(gold,)]
+    _, fks, schema, _ = _request(planner, tables)
+    graph = SchemaGraph.from_planner(schema, fks)
+    candidate = _model_query(planner, 'SELECT COUNT(*) FROM responses', tables)
+    assert not coverage('How many German leads?', candidate, graph).complete
 
 
 TESTS = [value for name, value in globals().copy().items() if name.startswith('test_') and callable(value)]

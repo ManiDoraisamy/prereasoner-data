@@ -273,7 +273,7 @@ The own-data path serves one typed SQL AST chosen from the deterministic search'
 | `engine/sql_rank.py` | Search ranking features (`CandidateRanker`), the pool contract (`SEARCH_CANDIDATES`, `EXECUTION_OP_LIMIT`), and the selection record (`PoolSelection`, `FallbackRecord`) |
 | `engine/sql_grounding.py` | Pool eligibility: text literals that fit their column, and joins the foreign keys allow |
 | `engine/tables.py` | Planner facade (`select_query`), SQL guard, pool and local SQLite execution |
-| `engine/sql_fallback.py` | The labelled, stateless Gemini wording rewrite; deterministic search still owns SQL |
+| `engine/question_rewrite.py` | The labelled, stateless Gemini wording rewrite; deterministic search still owns SQL |
 | `engine/sql_prompt.py` | The schema text and rewrite prompt sent to Gemini |
 | `engine/decomposition.py` | Closed model proposal validation and fusion of planner-selected leaf ASTs into one shared DAG |
 
@@ -309,7 +309,7 @@ executes against the conversation schema through the shared SQL/Python plan.
 
 When no candidate is eligible or the selected plan leaves request wording unresolved, and the operator
 enabled Gemini (`EXTERNAL_LLM_ENABLED` plus a Vertex AI project, checked by `engine/llm.py`),
-`select_query` may call `engine/sql_fallback.py` once. Gemini receives the current question and a
+`select_query` may call `engine/question_rewrite.py` once. Gemini receives the current question and a
 schema description containing table and column names, inferred types, and declared foreign keys.
 It receives no cell values, full rows, or conversation history. The rewriter checks that numbers,
 quoted text, and any source values it recognized in the question remain in its rewrite. Replies are

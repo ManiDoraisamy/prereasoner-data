@@ -153,7 +153,7 @@ rephrasing instead of a confidently wrong number.
 
 **The one place an LLM may reword a question.** A bounded search cannot enumerate every shape. When
 none of its candidates runs or the selected plan leaves request wording unresolved, and the operator
-enabled Gemini, the engine may ask for one isolated wording rewrite (`engine/sql_fallback.py`). The
+enabled Gemini, the engine may ask for one isolated wording rewrite (`engine/question_rewrite.py`). The
 deterministic search runs again on that wording and remains the only owner of SQL construction and
 selection. The rewriter preserves recognized source values, quoted text, and numbers. Gemini sees
 table and column names, inferred types, and foreign keys; it receives no cell values or conversation

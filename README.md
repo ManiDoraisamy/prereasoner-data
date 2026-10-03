@@ -61,8 +61,10 @@ or conversation history. It does not write SQL or select a query. The determinis
 builds and checks SQL from the rewrite; the response labels when that rewrite supplied the wording.
 The rewrite is not cached between requests.
 
-The optional chat service also uses Gemini, to talk with you and call the engine. It does not write
-numbers either.
+The optional chat service uses Gemini to make follow-up wording explicit and request engine operations.
+It sends schema metadata, bounded recent user questions and saved analysis questions. It sends no source
+rows, computed answer values or earlier assistant replies. One deterministic renderer presents engine
+results on both chat and direct-query surfaces. Explicit reference-table generation is a separate Gemini action.
 
 ### The Cost Of Naming
 
@@ -163,7 +165,7 @@ engine/knowledge.py              one serving entry point
         |       grounded; the best-ranked one served; labelled Gemini fallback only
         |       when nothing runs
         |       engine/tables.py (select_query), engine/sql_search.py, engine/sql_rank.py,
-        |       engine/sql_ast.py, engine/sql_fallback.py
+        |       engine/sql_ast.py, engine/question_rewrite.py
         |
         +--> world grounding when a public entity relation is required
                 engine/knowledge_query.py, engine/knowledge_compose.py (engine/routing.py decides)

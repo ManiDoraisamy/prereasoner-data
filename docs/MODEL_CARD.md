@@ -8,8 +8,8 @@ structural relevance signals. No local model writes SQL: a deterministic search 
 own-data query as a typed AST, and the engine validates, renders, and executes it. Typed SQL search,
 selection, route ownership, source-key authorization, calculation semantics, SQL rendering, and
 execution are deterministic for fixed inputs and pinned artifacts. One external model, Gemini, is
-optional. When the operator enables it, it can help only where the search finds no runnable query,
-and its answers are labelled ([Gemini fallback](#gemini-fallback-external-optional)).
+optional. When the operator enables it, it can rewrite unresolved wording, including when a runnable
+candidate fails completeness. Accepted rewrites are labelled ([Gemini fallback](#gemini-fallback-external-optional)).
 
 Schema.org 30.0 is the semantic coordinate system. Wikidata and publisher-owned releases provide
 observations projected into that vocabulary; they do not define it. Mutable facts remain in
@@ -73,7 +73,7 @@ releases, split policy, seed, and metrics are in `engine/data/schema_training_ma
 - Gate: it runs only when the operator enabled external models (`EXTERNAL_LLM_ENABLED`, default
   off; the guided Community deployment turns it on together with chat) and configured a Vertex AI
   project. It is called when no own-data candidate is eligible or the selected plan leaves question
-  wording unresolved (`engine/sql_fallback.py`, called by `engine/tables.py:TableQuery.select_query`).
+  wording unresolved (`engine/question_rewrite.py`, called by `engine/tables.py:TableQuery.select_query`).
 - What it sees: the current question and schema text from `engine/sql_prompt.py`: table and column
   names, inferred column types, and foreign keys. It receives no cell values, full rows, or
   conversation history.
@@ -87,7 +87,7 @@ releases, split policy, seed, and metrics are in `engine/data/schema_training_ma
   Gemini can return different wording on separate requests, so a fallback answer is outside the
   determinism statement in the summary.
 
-The chat orchestrator, `/api/converse` replies, and reference-table generation also use Gemini
+The chat orchestrator and explicit reference-table generation also use Gemini
 through `engine/llm.py`, under the same switch. They sit outside the SQL planner; see
 [MCP.md](MCP.md).
 

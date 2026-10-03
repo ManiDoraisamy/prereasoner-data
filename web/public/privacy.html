@@ -34,7 +34,7 @@ footer{border-top:1px solid var(--line);padding-top:24px;margin-top:52px;color:v
 <header><nav class="nav" aria-label="Primary"><a class="brand" href="https://prereasoner.com/">Prereasoner</a><a class="back" href="/">Back to the app</a></nav></header>
 <main>
   <h1>Privacy</h1>
-  <div class="updated">Last updated: October 2, 2026</div>
+  <div class="updated">Last updated: October 3, 2026</div>
 
   <p class="plain">Prereasoner analyzes the spreadsheet data and questions you submit so it can
   compute an answer and show the steps used to reach it. The reference service at
@@ -64,14 +64,21 @@ footer{border-top:1px solid var(--line);padding-top:24px;margin-top:52px;color:v
 
   <div class="important"><p><strong>Assistant processing.</strong> The hosted assistant uses
   Google's Gemini models on Vertex AI, in the service's own Google Cloud project. Assistant requests
-  can include your messages, conversation history, attached table contents, table and column names,
-  generated SQL, limited query results, and trimmed tool output. This processing is used to present
-  results, handle ambiguity, orchestrate tools, and fill reference cells you explicitly request.</p></div>
+  receives your current question, a bounded context of recent user questions and saved analysis
+  questions, table and column names, and interpretation status. It uses this information to make
+  follow-ups explicit and request engine operations. Spreadsheet rows, computed result values,
+  SQL and earlier assistant answers are not sent for question answering. Answers are rendered from
+  engine results without a presentation model.</p></div>
 
   <p>When the engine cannot build a query for a question on its own, it can ask Gemini to reword the
   question once. That request contains the question, the table and
-  column names, column types, foreign keys, and up to three example values per column. The engine
-  the deterministic typed search still builds and validates any query, and the database computes every number.</p>
+  column names, column types and foreign keys. It contains no example cell values or conversation
+  history. The deterministic typed search builds and validates every query, and the database
+  computes every number. Values you include in your question are part of that question.</p>
+
+  <p>Reference-table generation is a separate, explicit action. When you request it, Gemini receives
+  the reference table's headers, entity names, existing reference cells and your instruction so it
+  can fill missing reference cells. These generated reference values require your review.</p>
 
   <p>Google receives those requests through the service's Google Cloud project. Its handling is
   governed by the operator's Google Cloud agreement and is also described in

@@ -74,6 +74,29 @@ def measure_participles(text, measures):
 
 
 @lru_cache(maxsize=1024)
+def counted_rows(text):
+    """The head of the row noun phrase governed by an explicit count cue.
+
+    This recognizes grammar, not a mapping of business nouns to column labels.
+    Modifiers such as German remain constraints and are never consumed here.
+    """
+    low = str(text).casefold()
+    closed = closed_class_words(text)
+    nouns = noun_words(text)
+    heads = set()
+    for cue in re.finditer(r'\b(?:how many|number of|count)\s+', low):
+        phrase = []
+        for word in re.findall(r'[^\W_]+|[.,;:!?]', low[cue.end():], re.UNICODE):
+            if word in closed or not word.isalpha() or len(phrase) == 4:
+                break
+            phrase.append(word)
+        if phrase:
+            head = [word for word in phrase if word in nouns]
+            heads.add(head[-1] if head else phrase[-1])
+    return frozenset(heads)
+
+
+@lru_cache(maxsize=1024)
 def degree_words(text):
     """The lowercased adjectives ``text`` grades: a comparative or superlative ("cheapest", "higher"), or one a
     degree word modifies ("most expensive", "least popular"). An ordering or a comparison realizes them. A named

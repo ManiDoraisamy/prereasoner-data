@@ -70,11 +70,11 @@ def load_encoder(obj, deploy_dir=DATA_DIR):
     obj.hdim = base.config.hidden_size
 
 
-def attach_sql_fallback(obj):
-    """Give the planner selection's labelled Gemini fallback (engine/sql_fallback.py). Nothing is
+def attach_question_rewriter(obj):
+    """Give the planner selection's labelled Gemini fallback (engine/question_rewrite.py). Nothing is
     loaded: it calls Gemini only when the operator enabled it and the search found no runnable query."""
-    from engine.sql_fallback import SQLFallback
-    obj.sql_fallback = SQLFallback()
+    from engine.question_rewrite import QuestionRewriter
+    obj.question_rewriter = QuestionRewriter()
 
 
 class EncoderQuery(TableQuery):
@@ -84,7 +84,7 @@ class EncoderQuery(TableQuery):
     def __init__(self, deploy_dir=DATA_DIR):
         super().__init__(deploy_dir)
         load_encoder(self, deploy_dir)
-        attach_sql_fallback(self)
+        attach_question_rewriter(self)
 
     # ---------- operator FROM THE MODEL (retires the keyword AGG_CUES) ----------
     INTENT_OPS: ClassVar[dict[str, str]] = {

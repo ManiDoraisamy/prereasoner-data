@@ -27,7 +27,6 @@ from engine.currency_intent import (
     substitute_currency_filter,
     substitute_currency_target,
 )
-from engine.numeric import parse_decimal
 from engine.dataset_semantics import is_synthetic_currency_column, synthetic_currency_column
 from engine.enrichment.value_types import ISO4217_CODES
 from engine.sql_ast import Aggregate, BinaryExpr, ColumnRef, Literal, SQLType
@@ -569,15 +568,8 @@ def _rate_scale(graph: SchemaGraph, column: ColumnRef) -> tuple[float, str] | No
         return 100.0, "percent"
     if words & {"fraction", "decimal"}:
         return 1.0, "fraction"
-    schema_column = graph.column_map.get((column.table, column.name))
-    values = []
-    for value in () if schema_column is None else schema_column.values:
-        try:
-            values.append(parse_decimal(value))
-        except ValueError:
-            continue
-    if values and all(0 <= value <= 1 for value in values):
-        return 1.0, "observed_fraction"
+    # A generic 0.8 rate could mean 0.8% or an 80% fraction. Observed
+    # magnitudes cannot establish its unit; require an explicit column unit.
     return None
 
 

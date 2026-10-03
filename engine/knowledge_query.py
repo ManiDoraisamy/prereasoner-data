@@ -33,7 +33,7 @@ from engine.config import DATA_DIR, kb_model_route_enabled
 from engine.entities import EntityQuery, PLACE_TYPES, WORLD_TABLE_TYPE
 from engine.dataset_semantics import is_synthetic_currency_column
 from engine.embeddings import Embedder, demonym_stems, pgvector_literal, normalize_surface
-from engine.encoder_overlay import EncoderQuery, attach_sql_fallback, load_encoder
+from engine.encoder_overlay import EncoderQuery, attach_question_rewriter, load_encoder
 from engine.knowledge_bridges import KnowledgeBridgeMixin
 from engine.knowledge_typing import KnowledgeTypingMixin
 from engine.knowledge_tables import COUNT_CUE
@@ -49,6 +49,7 @@ from engine.calculations import calculation_clarify
 from engine.numeric import parse_decimal
 from engine.sql_expansion import SHARE_WORDS
 from engine.sql_schema import canon, is_surrogate_key
+from engine.query_contract import Coverage, lexical_words
 
 # The order a non-geo entity lookup breaks a tie in: the name's primary entity, then the lowest numeric QID.
 _ENTITY_TIE_BREAK = "is_primary IS TRUE DESC, length(qid), qid"
@@ -324,12 +325,12 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
     HYBRID_LIMIT = 10
 
     _SHARE = ("alloc", "nc", "dims", "sid", "thr", "model", "nL", "tok", "qwen", "hdim",
-              "sql_fallback")
+              "question_rewriter")
 
     def __init__(self, deploy_dir=DATA_DIR):
         EntityQuery.__init__(self, deploy_dir)       # bge + Postgres + world metadata + spaCy
         load_encoder(self, deploy_dir)               # ONE MODEL: the trained encoder (operator+bridge+typing)
-        attach_sql_fallback(self)                    # selection's labelled Gemini fallback
+        attach_question_rewriter(self)                    # selection's labelled Gemini fallback
         self._schema_interpreter()                   # Schema.org head: a bundle it cannot load fails here
         # The planner composes a TableQuery (self.q11) for the single-table delegate path. Point it at the SAME
         # models (shared refs — one copy of each in memory) so EVERY path goes through the same weights.
@@ -752,14 +753,14 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         # exclusion cues are never closed-class here (engine.closed_class), so a dropped 'not' is still caught.
         closed = closed_class_words(question)
         literals = {word for c in sch for value in (c.get('values') or ())
-                    if value is not None for word in _re.findall(r'[a-z]+', str(value).casefold())}
+                    if value is not None for word in lexical_words(value)}
         # A finite verb or an adverb says what the rows did or how, never which rows. Each was declined as a
         # dropped town: "which item sold the most units" (sold), "how many documents are still pending"
         # (still), "how many deliveries weigh more than 3 kg" (weigh), "how many leads came from France"
         # (came) (Chrome exploration, 2026-10-01). A word the data holds as a value ("Sold") is still a row
         # filter, and so are the payment and listing states that the prose rule below decides.
         action = {w for w in action_words(question) if w not in literals and w not in _STATUS_WORDS}
-        content = [w for w in _re.findall(r"[a-z]+", question.lower())
+        content = [w for w in lexical_words(question)
                    if w not in STOP and w not in CUE and len(w) > 1 and w not in closed
                    and w not in action and w not in sch_words and canon(w) not in sch_words]
         # A weak embedding match to a town must not reinterpret ordinary query
@@ -844,7 +845,7 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
             # on, its words are covered. Word by word, 'united' in 'the United Kingdom' surfaced another country,
             # 'north' surfaced a town called North, and 'European' surfaced Germany: each declined a correct
             # plan (2026-09-30).
-            words = _re.findall(r"[a-z]+", question.lower())
+            words = list(lexical_words(question))
             spans = {" ".join(words[i:i + n]): words[i:i + n]
                      for n in (3, 2, 1) for i in range(len(words) - n + 1)}
             forms = {phrase: {phrase, *demonym_stems(phrase)} for phrase in spans}
@@ -890,6 +891,10 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
                     dropped.append(w)
                 continue                                     # entity present in the SQL -> used
             if not has_agg and measure(i):                   # a measure word, but no aggregate applied -> dropped
+                dropped.append(w)
+            elif not w.isascii():
+                # Unsupported-language wording cannot disappear because the world
+                # resolver happens not to recognize it. Normalize or clarify it.
                 dropped.append(w)
         return asked + dropped
 
@@ -1099,7 +1104,7 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
                 # or not a rephrasing exists: "which country has the most deposits" served the top bank because
                 # none was found (Chrome exploration, 2026-10-01).
                 firm = [word for word in dropped
-                        if word in _WORLD_TYPE_WORDS or word in _SHARE_WORDS or self._word_qid(word)]
+                        if word in _WORLD_TYPE_WORDS or word in _SHARE_WORDS or not word.isascii() or self._word_qid(word)]
                 if rephrased or firm:
                     return {"question": question, "as_of": as_of, "clarify": True,
                             "original_sql": (res or {}).get("sql"),
@@ -1109,6 +1114,8 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
                             "computation": (res or {}).get("computation"),
                             "currency": currency,
                             "model": "engine - clarify (the query dropped part of the question)"}
+            if isinstance(res, dict):
+                res['coverage'] = Coverage(not dropped, tuple(dropped)).record()
         return res
 
 

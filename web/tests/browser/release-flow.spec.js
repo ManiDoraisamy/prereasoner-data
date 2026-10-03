@@ -3,6 +3,28 @@ const XLSX=require('../../public/vendor/xlsx-0.20.3.full.min.js');
 const path=require('node:path');
 const fs=require('node:fs');
 
+for(const status of [401,403,429,500,'network'])test('failed deletion preserves chat and offers retry: '+status,async({page})=>{
+  await mockAuth(page);await page.goto('/');await page.getByRole('button',{name:'Login',exact:true}).click();
+  await page.getByRole('button',{name:'Conversations',exact:true}).click();
+  await expect(page.locator('.convitem')).toHaveCount(1);
+  await page.route('**/api/conversation/delete',route=>status==='network'?route.abort():route.fulfill({status,contentType:'application/json',body:'{"error":"fixture refusal"}'}));
+  const before=page.url();await page.getByRole('button',{name:'Delete chat',exact:true}).click();
+  await expect(page.locator('.converror')).toContainText(/not deleted|fetch|network/i);
+  await expect(page.locator('.convitem')).toHaveCount(1);
+  await expect(page.getByRole('button',{name:'Delete chat',exact:true})).toBeEnabled();
+  expect(page.url()).toBe(before);
+  const state=await page.request.get('/__state');expect((await state.json()).deleted).toBe(false);
+});
+
+test('history failure is visible and preserves loaded chats',async({page})=>{
+  await mockAuth(page);await page.goto('/');await page.getByRole('button',{name:'Login',exact:true}).click();
+  await page.getByRole('button',{name:'Conversations',exact:true}).click();await expect(page.locator('.convitem')).toHaveCount(1);
+  await page.route('**/api/conversations?*',route=>route.fulfill({status:500,contentType:'application/json',body:'{}'}));
+  await page.getByRole('button',{name:'Close chats',exact:true}).click();await page.getByRole('button',{name:'Conversations',exact:true}).click();
+  await expect(page.locator('.converror')).toContainText('Could not load chats');
+  await expect(page.locator('.convitem')).toHaveCount(1);
+});
+
 for(const timezoneId of ['America/Los_Angeles','Pacific/Auckland'])test.describe(timezoneId,()=>{
   test.use({timezoneId});
   test('spreadsheet dates retain their day in '+timezoneId,async({page})=>{

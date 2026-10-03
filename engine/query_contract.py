@@ -191,6 +191,11 @@ def has_unread_terms(question, candidate, graph, *, calculation_satisfied=False)
     ordinary_words.update(canon(word) for word in action_words(question) if canon(word) not in observed)
     has_aggregate = any(isinstance(item.expression, Aggregate)
                         for item in getattr(candidate.query, 'select', ()))
+    if len(graph.tables) == 1 and any(isinstance(item.expression, Aggregate) and item.expression.function == 'COUNT'
+                                    for item in getattr(candidate.query, 'select', ())):
+        from engine.closed_class import counted_rows
+        ordinary_words.update(canon(word) for word in counted_rows(question)
+                              if canon(word) not in observed)
     if has_aggregate:
         ordinary_words.update(canon(word) for word in measure_participles(question, frozenset(schema_words))
                               if canon(word) not in observed)
@@ -220,7 +225,10 @@ def has_unread_terms(question, candidate, graph, *, calculation_satisfied=False)
             return True
         return any(isinstance(item.expression, Star) for item in query.select)
 
-    return has_star(candidate.query) and bool(set(words) & schema_words)
+    table_words = {canon(word) for table in graph.tables for word in lexical_words(table)}
+    requested_fields = set(words) & (schema_words - table_words)
+    explicitly_all_fields = bool(re.search(r'\ball\s+(?:columns|fields)\b', question, re.I))
+    return has_star(candidate.query) and bool(requested_fields) and not explicitly_all_fields
 
 
 def realizes_numeric_comparisons(question, candidate, graph, *, exclude_positions=frozenset()):

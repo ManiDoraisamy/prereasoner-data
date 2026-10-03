@@ -70,8 +70,8 @@ const ORCH = (()=>{ try{
   const o=localStorage.getItem('pr_chat'); if(o==='1')return true; if(o==='0')return false;
 }catch(_){} return WB.chat!==false; })();
 const CHAT_ENDPOINT = API_BASE + (WB.chatEndpoint || '/chat');
-// ---- external LLM: /chat, /api/converse and /api/master/generate send the user's message AND sheet
-// data to Gemini on Vertex AI. EXTERNAL_LLM_ENABLED is the authoritative operator switch. The
+// ---- external LLM: /chat sends wording context and schema metadata to Gemini.
+// Only explicit /api/master/generate sends reference cells. EXTERNAL_LLM_ENABLED is the operator switch. The
 // durable disclosure is /privacy; do not add notices to the answer rail. ?chat=0 is a developer
 // routing control that runs the deterministic /api/reason path without the orchestrator.
 let HISTORY=[];                                  // lean cross-turn transcript for the orchestrator [{role,content}]
@@ -1013,8 +1013,8 @@ async function conversationalReply(c){
       clarify:c.clarify?{proposed:c.proposed||null,original_sql:c.original_sql||null,bindings:c.bindings||null,
         reason:c.reason||null,unmet:c.unmet||null,calculations:c.calculations||null,
         currency:c.currency||null}:null,
-      error:c.error||null, tables:SHEETS, conversation_id:convId()};
-    if(present){ body.answer=c.answer||((J&&J.result)||null); body.sql=c.sql||((J&&J.sql)||null); }
+      error:c.error||null, conversation_id:convId()};
+    if(present){body.answer=c.answer||((J&&J.result)||null);body.calculations=(J&&J.calculations)||[];body.unit=J&&J.unit;}
     const res=await fetch(API_BASE+'/api/converse',{method:'POST',
       headers:{'content-type':'application/json','Authorization':'Bearer '+token},
       body:JSON.stringify(body)});
@@ -1041,10 +1041,10 @@ function runProposed(){ if(!CONVPROP)return; const p=CONVPROP; archiveTurn(); qu
   try{ sessionStorage.setItem(SS.Q,p); }catch(_){}; resetRun(); paint(); startRun(); }
 
 /* ---------------- orchestrated run (Gemini front-door via /chat) ---------------- */
-// One turn = one POST /chat. Gemini (with HISTORY) resolves context + decides the engine calls; each call is
+// One turn = one POST /chat. Gemini receives bounded wording context and schema metadata to request engine calls; each call is
 // announced on the turn's RTDB node with its REWRITTEN question, and the engine streams that call's trace
 // under its own jobId (rendered by the same appendView/appendResolve as the direct path). The turn's answer
-// is Gemini's REPLY (shown in the rail); the derivation (every call's steps) stays in the panel.
+// is rendered directly from the engine result (shown in the rail); the derivation (every call's steps) stays in the panel.
 async function startTurn(){
   const myRun=++RUN; FALLBACK=null;
   const live=()=>RUN===myRun&&!SETTLED;

@@ -135,7 +135,7 @@ This section describes an optional wording aid. It runs when Stage 4 leaves no e
 the selected plan leaves request wording unresolved, and the operator enabled Gemini
 (`EXTERNAL_LLM_ENABLED`, [`engine/llm.py`](../engine/llm.py)).
 The switch defaults to off, and with it off nothing below happens; the guided Community deployment
-turns it on together with chat. [`engine/sql_fallback.py`](../engine/sql_fallback.py) makes one
+turns it on together with chat. [`engine/question_rewrite.py`](../engine/question_rewrite.py) makes one
 bounded rewrite request:
 
 1. **Gemini rewords the question once**, in the tables' own words. Stages 3 to 6 run again on the
@@ -180,7 +180,7 @@ See [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) for how routing decides own-data v
 | One scored candidate | `engine/sql_candidate.py` · `ScoredQuery` |
 | Run and ground the candidates | `engine/tables.py` · `select_query`, `_executable`; `engine/sql_grounding.py` · `grounded_members` |
 | Serve the best-ranked eligible candidate | `engine/sql_rank.py` · `select_ranked_candidate`, `PoolSelection` |
-| Labelled Gemini rewrite | `engine/sql_fallback.py` · `SQLFallback.rewrite`; `engine/sql_prompt.py` · rewrite prompt and schema |
-| Model text → typed AST gate | `engine/sql_import.py` · `import_sql` |
+| Labelled Gemini rewrite | `engine/question_rewrite.py` · `QuestionRewriter.rewrite`; `engine/sql_prompt.py` · rewrite prompt and schema |
+| Offline SQL → typed AST fixtures | `regress/sql_import.py` · `import_sql`; never used by serving |
 | Serving entry point (select, render, execute) | `engine/tables.py` · `select_query`, `_serve_ast` |
 | Own-data vs. world routing | `engine/routing.py` · `route`, `compose_owns` |

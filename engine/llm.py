@@ -3,7 +3,7 @@
 Gemini is the only external model. Two surfaces share this module:
 
 - The synchronous calls of the engine's threaded HTTP server: ``generate_text`` (the /api/converse
-  reply and the labelled selection fallback, engine/sql_fallback.py) and ``stream_text`` (reference
+  reply and the labelled selection fallback, engine/question_rewrite.py) and ``stream_text`` (reference
   generation, /api/master/generate). One ``genai.Client`` per process, created lazily under a lock.
   Every call runs at temperature 0 with seed 0, and every failure, "not enabled" included, reaches
   the caller as ``LLMUnavailable``.
@@ -61,6 +61,11 @@ def _client():
 def _config(system: str, max_output_tokens: int, timeout_seconds: float,
             json_schema: dict | None = None):
     from google.genai import types
+    from engine.request_deadline import remaining
+
+    budget = remaining()
+    if budget is not None:
+        timeout_seconds = min(timeout_seconds, budget)
 
     json_mode = ({"response_mime_type": "application/json", "response_json_schema": json_schema}
                  if json_schema is not None else {})
@@ -113,6 +118,8 @@ def _stream(system: str, prompt: str, max_output_tokens: int, timeout_seconds: f
             config=_config(system, max_output_tokens, timeout_seconds),
         )
         for chunk in chunks:
+            from engine.request_deadline import remaining
+            remaining()
             text = chunk.text
             if text:
                 produced = True

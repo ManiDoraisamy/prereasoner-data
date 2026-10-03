@@ -5,6 +5,7 @@ replace Gemini and the engine with contract-shaped fakes so the release gate alw
 terminal engine result cannot start another paid tool round.
 """
 from __future__ import annotations
+from engine import answer_presentation as presentation
 
 import asyncio
 import json
@@ -157,7 +158,7 @@ def test_terminal_engine_status_uses_one_query_and_a_tool_disabled_presentation(
         result, model_calls, engine_calls = asyncio.run(_run(status))
         assert len(engine_calls) == 1, (status, engine_calls)
         assert len(model_calls) == 1, (status, model_calls)
-        assert model_calls[0]["tools"] is orchestrator.TOOLS and "tool_choice" not in model_calls[0]
+        assert model_calls[0]["tools"] is orchestrator.TOOLS and model_calls[0]["tool_choice"] == {"type": "tool", "name": "prereasoner_query"}
         expected = {"answered": "876.50", "clarify": "choose a discount schedule",
                     "error": "engine unavailable"}[status]
         assert result["reply"] == expected
@@ -447,7 +448,7 @@ def test_a_recalculation_answered_from_memory_still_reaches_the_engine():
     forced = model_calls[1]
     assert forced["last"]["content"] == orchestrator.RECALCULATION_NOTE
     assert forced["tool_choice"] == {"type": "tool", "name": "prereasoner_query"}
-    assert "tool_choice" not in model_calls[0] and len(model_calls) == 2
+    assert model_calls[0]["tool_choice"] == {"type": "tool", "name": "prereasoner_query"} and len(model_calls) == 2
     assert result["reply"] == "366.02"
     assert orchestrator.RECALCULATION_NOTE not in json.dumps(result["history"])
 
@@ -480,8 +481,8 @@ def test_a_recalculation_answered_from_memory_still_reaches_the_engine():
             ("thanks, that is all", thanks, "You're welcome!"),
             ("what was the minimum you told me?", notice, "I said 5 days.")):
         result, model_calls, engine_calls = _answered_from_memory_turn(user_message, history, reply)
-        assert (len(model_calls), len(engine_calls)) == (1, 0), user_message
-        assert result["reply"] == reply
+        assert (len(model_calls), len(engine_calls)) == ((1, 0) if user_message.startswith("thanks") else (2, 1)), user_message
+        assert result["reply"] == (reply if user_message.startswith("thanks") else "366.02")
 
 
 COMMISSION_HISTORY = [
@@ -582,7 +583,7 @@ def test_an_engine_clarification_is_settled_at_most_once():
     assert engine_calls == [COMMISSION_FOLLOW_UP]
     assert [call["tools"] for call in model_calls] == [True, True]
     assert len(model_calls) == 2
-    assert result["reply"] == "I need one more detail before I can answer that."
+    assert result["reply"] == "I need one more detail before I can answer that. Try: total commission_percent"
     # A second clarification is terminal.
     _result, model_calls, engine_calls = _clarified_follow_up(
         [{"question": COMMISSION_FOLLOW_UP}, {"question": "total commission for card payments"}],
@@ -591,7 +592,7 @@ def test_an_engine_clarification_is_settled_at_most_once():
     # The model may ask the user itself; that reply is the clarification and adds no number.
     result, model_calls, engine_calls = _clarified_follow_up(
         [{"question": COMMISSION_FOLLOW_UP}, ask], [COMMISSION_CLARIFY])
-    assert (len(model_calls), engine_calls, result["reply"]) == (2, [COMMISSION_FOLLOW_UP], "I need one more detail before I can answer that.")
+    assert (len(model_calls), engine_calls, result["reply"]) == (2, [COMMISSION_FOLLOW_UP], "I need one more detail before I can answer that. Try: total commission_percent")
     result, _model_calls, _engine_calls = _clarified_follow_up(
         [{"question": COMMISSION_FOLLOW_UP}, "It is 9.28, as before."], [COMMISSION_CLARIFY])
     assert "9.28" not in result["reply"], result["reply"]
@@ -789,27 +790,27 @@ def test_a_one_number_answer_reaches_the_model_as_the_reply_writes_it():
                                   "realization": "converted", "target": target}]}
 
     belgium, europe, leads = converted("365.631"), converted("1914.18196", "GBP"), converted(70401)
-    assert orchestrator._trim_for_model(belgium)["value"] == "365.63"
-    assert orchestrator._trim_for_model(europe)["value"] == "1,914.18"
-    assert orchestrator._trim_for_model(leads)["value"] == "70,401.00"
+    assert presentation.readable_value(belgium, belgium["answer"]["rows"][0][0]) == "365.63"
+    assert presentation.readable_value(europe, europe["answer"]["rows"][0][0]) == "1,914.18"
+    assert presentation.readable_value(leads, leads["answer"]["rows"][0][0]) == "70,401.00"
     plain = {"status": "answered", "answer": {"columns": ["avg"], "rows": [["263.96129174961291749613"]]}}
-    assert orchestrator._trim_for_model(plain)["value"] == "263.96"
-    assert orchestrator._trim_for_model({"status": "answered", "answer": {"rows": [[6]]}})["value"] == "6"
+    assert presentation.readable_value(plain, plain["answer"]["rows"][0][0]) == "263.96"
+    assert orchestrator._terminal_fallback({"status": "answered", "answer": {"rows": [[6]]}}) == "6"
     small = {"status": "answered", "answer": {"columns": ["share"], "rows": [["0.004567"]]}}
-    assert orchestrator._trim_for_model(small)["value"] == "0.00457"
+    assert presentation.readable_value(small, small["answer"]["rows"][0][0]) == "0.00457"
     # A share of a whole is stated as a percentage: "What percentage of orders are from Lyon?" was
     # answered "comes to 0.3" (Chrome gate, 2026-10-02). The grounding check reads "30%" as 0.3.
     lyon = {"status": "answered", "unit": "percent",
             "answer": {"columns": ["share"], "rows": [["0.30000000000000000000"]]}}
     paris = {**lyon, "answer": {"columns": ["share"], "rows": [["0.62318840579710144928"]]}}
-    assert orchestrator._trim_for_model(lyon)["value"] == "30%"
-    assert orchestrator._trim_for_model(paris)["value"] == "62.32%"
-    assert orchestrator._trim_for_model({**small, "unit": "percent"})["value"] == "0.46%"
+    assert presentation.readable_value(lyon, lyon["answer"]["rows"][0][0]) == "30%"
+    assert presentation.readable_value(paris, paris["answer"]["rows"][0][0]) == "62.32%"
+    assert presentation.readable_value({**small, "unit": "percent"}, small["answer"]["rows"][0][0]) == "0.46%"
     assert orchestrator._terminal_fallback(lyon) == "30%"
     lyon_reply = "The percentage of orders from Lyon comes to 30%."
     assert orchestrator._grounded_presentation(lyon, lyon_reply) == "30%"
     for answer in ({"rows": [["Ava"]]}, {"rows": [[1], [2]]}, {"rows": [[1, 2]]}, {"rows": []}):
-        assert "value" not in orchestrator._trim_for_model({"status": "answered", "answer": answer})
+        assert "value" not in orchestrator._model_feedback({"status": "answered", "answer": answer})
 
     assert orchestrator._grounded_presentation(
         belgium, "Your total for Belgium comes to $365,631.00.") == "365.63 USD"
@@ -847,15 +848,15 @@ def test_the_model_is_told_the_currency_the_engine_verified():
     an answer with no currency calculation carry none, and the prompt says such a figure is a bare
     number."""
     def trimmed(**calculation):
-        return orchestrator._trim_for_model({
+        return {"currency": presentation.output_currency({
             "status": "answered", "answer": {"columns": ["total"], "rows": [[70401]]},
             "calculations": [{"specification": "currency", "status": "satisfied", **calculation}],
-        })
+        })}
 
     assert trimmed(realization="converted", target="USD")["currency"] == "USD"
     assert trimmed(realization="identity", target="gbp")["currency"] == "GBP"
-    assert "currency" not in trimmed(realization="currency_filter", target="GBP")
-    assert "currency" not in orchestrator._trim_for_model(
+    assert trimmed(realization="currency_filter", target="GBP")["currency"] == ''
+    assert "currency" not in orchestrator._model_feedback(
         {"status": "answered", "answer": {"columns": ["avg_price"], "rows": [["250.78"]]}})
     prompt = " ".join(orchestrator.SYSTEM_PROMPT.lower().split())
     assert "a figure is in a currency only when you were given one for it" in prompt
@@ -1609,10 +1610,10 @@ def test_the_model_sees_the_rows_the_answer_covers():
                         {"op": "filter", "label": "where continent = 'Europe' and currency = 'GBP'"},
                         {"op": "convert", "label": "calculated"},
                         {"op": "group_agg", "label": "total"}]}
-    trimmed = orchestrator._trim_for_model(shaped)
-    assert trimmed["filters"] == ["where continent = 'Europe' and currency = 'GBP'"], trimmed
+    trimmed = orchestrator._model_feedback(shaped)
+    assert "filters" not in trimmed and "answer" not in trimmed and "sql" not in trimmed, trimmed
     assert "views" not in trimmed
-    unfiltered = orchestrator._trim_for_model({**shaped, "views": [{"op": "group_agg", "label": "total"}]})
+    unfiltered = orchestrator._model_feedback({**shaped, "views": [{"op": "group_agg", "label": "total"}]})
     assert "filters" not in unfiltered
     prompt = " ".join(orchestrator.SYSTEM_PROMPT.lower().split())
     assert "describe exactly the rows the answer covers" in prompt
@@ -1620,7 +1621,7 @@ def test_the_model_sees_the_rows_the_answer_covers():
 
 def test_a_gemini_assisted_answer_is_labelled_for_the_reply():
     """The engine builds every query itself; only when nothing it built runs does Gemini reword the
-    question (engine/sql_fallback.py). The reply must say so, as the workbook
+    question (engine/question_rewrite.py). The reply must say so, as the workbook
     does, and must not say so for the engine's own answers."""
     from mcp_server.engine_client import shape_reason_response
 
@@ -1629,15 +1630,16 @@ def test_a_gemini_assisted_answer_is_labelled_for_the_reply():
         "fallback": {"kind": "rewrite", "model": "gemini-3.8-flash",
                      "question": "total amount by city"},
     }, "job")
-    seen = orchestrator._trim_for_model(reworded)
-    assert seen["fallback"] == {"kind": "rewrite", "question": "total amount by city"}, seen
+    seen = orchestrator._model_feedback(reworded)
+    assert "fallback" not in seen
+    assert 'Gemini reworded the question as: total amount by city' in orchestrator._terminal_fallback(reworded)
     nothing = shape_reason_response({
         "result": {"columns": ["n"], "rows": [[3]]},
         "fallback": {"kind": "none", "model": "gemini-3.8-flash", "note": "Gemini unavailable"},
     }, "job")
-    assert "fallback" not in orchestrator._trim_for_model(nothing)
+    assert "fallback" not in orchestrator._model_feedback(nothing)
     plain = shape_reason_response({"result": {"columns": ["n"], "rows": [[3]]}}, "job")
-    assert "fallback" not in orchestrator._trim_for_model(plain)
+    assert "fallback" not in orchestrator._model_feedback(plain)
     prompt = " ".join(orchestrator.SYSTEM_PROMPT.split())
     assert "When the tool result has `fallback`" in prompt
     assert "read this as" in prompt
@@ -1654,10 +1656,11 @@ def test_rows_whose_entity_matched_nothing_reach_the_reply():
                  "names": ["Xqzv Kpltr"], "more": 0}
     partial = shape_reason_response({"result": {"columns": ["sum"], "rows": [[46]]},
                                      "unmatched": unmatched}, "job")
-    seen = orchestrator._trim_for_model(partial)
-    assert seen["unmatched"] == {"rows": 1, "of": 5, "entity": "hospital", "names": ["Xqzv Kpltr"], "more": 0}, seen
+    seen = orchestrator._model_feedback(partial)
+    assert "unmatched" not in seen
+    assert "1 of 5 source rows" in orchestrator._terminal_fallback(partial)
     whole = shape_reason_response({"result": {"columns": ["sum"], "rows": [[46]]}}, "job")
-    assert "unmatched" not in orchestrator._trim_for_model(whole)
+    assert "unmatched" not in orchestrator._model_feedback(whole)
     # The reply states the total and the count; the grounding check keeps prose that states the value.
     assert orchestrator._grounded_presentation(
         partial, "Your US hospitals total 46 transfers; 1 of the 5 rows names a hospital I couldn't match.",
@@ -1666,7 +1669,20 @@ def test_rows_whose_entity_matched_nothing_reach_the_reply():
     assert "When the tool result has `unmatched`" in prompt
 
 
+def test_intent_context_has_schema_and_questions_but_no_values_or_assistant_answers():
+    context = orchestrator._intent_context([
+        {'role': 'user', 'content': 'total Amount in France'},
+        {'role': 'assistant', 'content': 'secret previous result 89123'},
+        {'role': 'user', 'content': 'how about Germany?'}],
+        [{'name': 'orders', 'data': 'city,Amount\nprivate source city,98765\n'}])
+    assert context == {'recent_questions': ['total Amount in France', 'how about Germany?'],
+                       'schema': [{'table': 'orders', 'columns': ['city', 'Amount']}]}
+    assert orchestrator._model_feedback({'status': 'answered', 'answer': {'rows': [[98765]]},
+                                        'sql': 'private query', 'views': [{'rows': [[89123]]}]}) == {'status': 'answered'}
+
+
 TESTS = [
+    test_intent_context_has_schema_and_questions_but_no_values_or_assistant_answers,
     test_rows_whose_entity_matched_nothing_reach_the_reply,
     test_a_gemini_assisted_answer_is_labelled_for_the_reply,
     test_request_execution_mode_reaches_each_orchestrated_engine_call,

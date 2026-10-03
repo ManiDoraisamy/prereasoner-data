@@ -42,7 +42,7 @@ from engine import llm
 from engine.artifact_provenance import sha256_file, validate_weight_bundle
 from engine.sql_grounding import grounded_members, join_pairs, literal_bindings
 from engine.sql_rank import FallbackRecord, SemanticSignals, analyze_question
-from engine.sql_import import import_sql, normalize_decoded_sql
+from regress.sql_import import import_sql, normalize_decoded_sql
 from engine.sql_search import SQLSearcher, SchemaGraph, ScoredQuery
 from engine.sql_profile_expansion import ProfileQueryExpander, ProfileSearchConfig
 from spider.probe.evalutil import run_with_budget
@@ -646,7 +646,7 @@ def test_duplicate_named_projection_keeps_single_binding_variant_in_pool():
 def _hermetic_planner(fallback=None):
     """The production TableQuery without its encoder: ``schema`` types columns from their values and
     the search reads no encoder signals. ``fallback`` is selection's labelled Gemini fallback
-    (engine/sql_fallback.py); a planner without one serves the search alone."""
+    (engine/question_rewrite.py); a planner without one serves the search alone."""
     class HermeticPlanner(TableQuery):
         def schema(self, tables, fks):
             columns, index = [], 0
@@ -668,7 +668,7 @@ def _hermetic_planner(fallback=None):
             return SemanticSignals.empty()
 
     planner = HermeticPlanner()
-    planner.sql_fallback = fallback
+    planner.question_rewriter = fallback
     return planner
 
 
@@ -693,7 +693,7 @@ def _searched(planner, question, tables=None):
 
 def _model_query(planner, sql, tables=None):
     """A query a SQL model wrote, imported into the typed AST against the request's schema and
-    re-rendered (engine/sql_import.py): a pool member select_query can rank, run and ground."""
+    re-rendered (regress/sql_import.py): a pool member select_query can rank, run and ground."""
     norm, fks, sch, _ = _request(planner, tables)
     query = import_sql(sql, SchemaGraph.from_planner(sch, fks))
     validate_query(query)
@@ -701,7 +701,7 @@ def _model_query(planner, sql, tables=None):
 
 
 class FakeGemini:
-    """engine/llm.py's surface as selection's labelled fallback uses it (engine/sql_fallback.py),
+    """engine/llm.py's surface as selection's labelled fallback uses it (engine/question_rewrite.py),
     with scripted replies and every call recorded. It never touches the network.
 
     ``question`` is the rewording Gemini returns; None is a reply without the field. ``enabled`` is
@@ -733,10 +733,10 @@ class FakeGemini:
 
 def _gemini_planner(question=None, **state):
     """A hermetic planner whose selection falls back to a FakeGemini; returns (planner, client)."""
-    from engine.sql_fallback import SQLFallback
+    from engine.question_rewrite import QuestionRewriter
 
     client = FakeGemini(question, **state)
-    return _hermetic_planner(SQLFallback(client=client)), client
+    return _hermetic_planner(QuestionRewriter(client=client)), client
 
 
 # The search reads words; a question in a script it has no words for gives it an empty pool.
@@ -1105,7 +1105,7 @@ def test_named_request_never_serves_or_decomposes_a_model_only_set_operation():
     search's reading: a named request neither decomposes nor serves that set operation, it serves
     the best-ranked single query. Evaluation still serves selection's choice."""
 
-    from engine.decomposition import compound_decomposition_required, single_branch
+    from engine.decomposition import compound_decomposition_required
     from engine.deterministic.context import analysis_execution_context
     from tests.test_datasets import DATASET_DIR, _tables
 
@@ -1128,7 +1128,7 @@ def test_named_request_never_serves_or_decomposes_a_model_only_set_operation():
 
 
 def test_proposal_import_rejects_malformed_model_text():
-    from engine.sql_import import Unsupported, import_sql
+    from regress.sql_import import Unsupported, import_sql
 
     graph = SchemaGraph.from_tables([PEOPLE], [])
     for text in ("SELECT * FROM", "EXISTS", "SELECT Name FROM people LIMIT NULL",
@@ -1381,7 +1381,7 @@ def test_gemini_rewrite_must_preserve_data_values_and_numbers():
     planner, gemini = _gemini_planner(question="top 3 customers")
     _norm, fks, sch, _tablemap = _request(planner, [PEOPLE])
     graph = SchemaGraph.from_planner(sch, fks)
-    rewritten, note = planner.sql_fallback.rewrite(question, graph)
+    rewritten, note = planner.question_rewriter.rewrite(question, graph)
     assert rewritten is None
     assert note == "rewording changed a stated value or number"
     assert [step for step, _ in gemini.calls] == ["question"]
@@ -1471,12 +1471,12 @@ def test_shared_ranking_rule_preserves_calculation_then_money_precedence():
 
 
 def test_sql_import_maps_numeric_arithmetic_but_refuses_nonnumeric():
-    """The importer every model-written query passes (engine/sql_import.py) maps row/order
+    """The importer every model-written query passes (regress/sql_import.py) maps row/order
     arithmetic over numeric columns into BinaryExpr (`max_f - min_f`, as Spider's gold SQL writes
     it), while the validator still refuses arithmetic over non-numeric operands — coverage without
     weakening type semantics."""
     from engine.sql_ast import render_query, validate_query
-    from engine.sql_import import Unsupported
+    from regress.sql_import import Unsupported
 
     weather = {"name": "weather", "columns": ["day", "max_f", "min_f"],
                "rows": [["2019-01-01", 60, 40], ["2019-01-02", 55, 50]]}
@@ -1497,7 +1497,7 @@ def test_sql_import_maps_numeric_arithmetic_but_refuses_nonnumeric():
 
 
 def test_sql_import_preserves_distinct_self_join_roles():
-    from engine.sql_import import Unsupported
+    from regress.sql_import import Unsupported
 
     employees = {"name": "employees", "columns": ["id", "name"],
                  "rows": [[1, "Approver"], [2, "Operator"]]}

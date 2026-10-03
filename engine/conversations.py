@@ -754,6 +754,20 @@ def list_conversations(user_id, limit=50):
     return conversation_page(user_id, limit)["conversations"]
 
 
+def conversation_quota(user_id):
+    conn = _pg()
+    try:
+        cur = conn.cursor()
+        cur.execute('SELECT count(*) FROM chat.user_conversation WHERE user_id=%s', (user_id,))
+        used = int(cur.fetchone()[0])
+        size = _user_metadata_bytes(cur, user_id)
+        conn.commit()
+        return {'used': used, 'limit': config.max_conversations_per_user(),
+                'storage_bytes': size, 'storage_limit_bytes': config.max_conversation_storage_bytes()}
+    finally:
+        conn.close()
+
+
 def delete_conversation(user_id, conversation_id, *, rtdb_uid=None):
     """Delete a conversation the user OWNS: its metadata + its data schema. Ownership-checked (no IDOR);
     conversation_id is validated to the strict c_<32 hex> shape before it reaches SQL/DROP SCHEMA."""
