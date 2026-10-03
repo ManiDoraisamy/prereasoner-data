@@ -203,16 +203,19 @@ function readGrids_(spreadsheet) {
     var columnCount = sheet.getLastColumn();
     var cells = rowCount * columnCount;
     var tab = 'Sheet "' + sheet.getName() + '": ';
-    var problem = rowCount - 1 > GRID_LIMITS.rows
-      ? tab + 'each worksheet may contain at most ' + grouped_(GRID_LIMITS.rows) + ' data rows'
-      : columnCount > GRID_LIMITS.columns ? tab + 'each worksheet may contain at most 256 columns'
-      : cellTotal + cells > GRID_LIMITS.cells
-        ? tab + 'too large to analyze in one request (' + grouped_(cells) + ' cells; at most ' +
-          grouped_(GRID_LIMITS.cells) + ' in all). Reduce the data or ask about a smaller set of tabs.'
-        : '';
-    if (problem && index === 0) throw new Error(problem);
-    if (problem) {
-      skipped.push(sheet.getName());
+    var reason = rowCount - 1 > GRID_LIMITS.rows ? 'rows'
+      : columnCount > GRID_LIMITS.columns ? 'columns'
+      : cellTotal + cells > GRID_LIMITS.cells ? 'cells' : '';
+    if (reason && index === 0) {
+      var problem = reason === 'rows'
+        ? tab + 'each worksheet may contain at most ' + grouped_(GRID_LIMITS.rows) + ' data rows'
+        : reason === 'columns' ? tab + 'each worksheet may contain at most 256 columns'
+        : tab + 'too large to analyze in one request (' + grouped_(cells) + ' cells; at most ' +
+          grouped_(GRID_LIMITS.cells) + ' in all). Reduce the data or ask about a smaller set of tabs.';
+      throw new Error(problem);
+    }
+    if (reason) {
+      skipped.push({name: sheet.getName(), reason: reason});
       return false;
     }
     cellTotal += cells;

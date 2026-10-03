@@ -92,7 +92,7 @@ for(const [file,names,count,header] of [
   await expect(page.locator('#err')).toBeEmpty();
 });
 
-test('10,000-row workbooks are accepted, but 10,001 rows are rejected atomically',async({page})=>{
+test('50,000-row workbooks are accepted, but 50,001 rows are rejected atomically',async({page})=>{
   await mockAuth(page);await page.goto('/');
   const book=XLSX.utils.book_new();
   const rows=[['id','amount'],...Array.from({length:50000},(_,i)=>[i+1,1])];

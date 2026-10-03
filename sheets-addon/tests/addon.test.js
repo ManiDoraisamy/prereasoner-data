@@ -127,7 +127,8 @@ assert.throws(() => load(book([sheet(15, 'Dense', dense)])).getSidebarContext(),
 const beside = load(book([sheet(11, 'NT', rows(30000)), sheet(12, 'SI', dense), sheet(13, 'Log', rows(50001)),
   sheet(14, 'FF', rows(100))])).getSidebarContext().workbook;
 equal(beside.grids.map(grid => grid.name), ['NT', 'FF'], 'the active tab and the tabs that fit beside it');
-equal(beside.skipped, ['SI', 'Log'], 'the tabs left out, by name');
+equal(beside.skipped, [{name: 'SI', reason: 'cells'}, {name: 'Log', reason: 'rows'}],
+  'the tabs left out, with their exact size-limit reasons');
 assert.throws(() => load(book([blank])).getSidebarContext(), /header row and at least one data row/); checks++;
 
 // Prereasoner calls go server to server with the Firebase identity of the Google account.

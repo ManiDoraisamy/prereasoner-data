@@ -170,11 +170,14 @@
           // A tab the add-on could not read beside the active one, and a column with values but no header,
           // are left out; say which.
           var skipped = workbook.skipped || [];
-          var skippedNote = skipped.length ? 'Left out ' + (skipped.length === 1 ? 'tab ' : 'tabs ') +
-            skipped.map(function (name) { return '"' + name + '"'; }).join(', ') +
-            ': together with this tab ' + (skipped.length === 1 ? 'it is' : 'they are') +
-            ' more than one question can read. Hide the tabs you do not need to include ' +
-            (skipped.length === 1 ? 'it.' : 'them.') : '';
+          var skippedNote = skipped.map(function (tab) {
+            var name = typeof tab === 'string' ? tab : tab.name;
+            var reason = typeof tab === 'string' ? 'cells' : tab.reason;
+            var explanation = reason === 'rows' ? 'it has more than 50,000 data rows. Reduce its size to include it.'
+              : reason === 'columns' ? 'it has more than 256 columns. Remove unused columns to include it.'
+              : 'including it would exceed the 1,000,000-cell limit. Hide tabs you do not need to include it.';
+            return 'Left out tab "' + name + '": ' + explanation;
+          }).join(' ');
           state.importNote = [skippedNote].concat(result.sheets.filter(function (sheet) {
             return sheet.import && sheet.import.leftOutColumns && sheet.import.leftOutColumns.length;
           }).map(function (sheet) {

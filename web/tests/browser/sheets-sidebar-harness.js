@@ -51,7 +51,7 @@ const views = [
 // Opens the sidebar on `page` with the sheet `rows`; google.script.run calls are recorded in window.__calls
 // and askPrereasoner waits in window.__server.pendingAsk for the caller to answer. `failing` maps a server
 // function to the message Apps Script rejects it with.
-async function openSidebar(page, rows, failing = {}) {
+async function openSidebar(page, rows, failing = {}, workbookOptions = {}) {
   const sidebar = fs.readFileSync(path.join(root, 'sheets-addon/Sidebar.html'), 'utf8')
     .replace('<?!= reasonBase ?>', JSON.stringify('https://chat.prereasoner.com/reason/'));
   await page.route(SIDEBAR_URL, route => route.fulfill({contentType: 'text/html; charset=utf-8', body: sidebar}));
@@ -64,12 +64,13 @@ async function openSidebar(page, rows, failing = {}) {
   await page.route('https://www.gstatic.com/firebasejs/**', route => route.fulfill({contentType: 'text/javascript',
     headers: {'access-control-allow-origin': '*'}, body: fakeFirebase[path.basename(new URL(route.request().url()).pathname)]}));
   await page.route('https://ssl.gstatic.com/**', route => route.fulfill({contentType: 'text/css', body: ''}));
-  await page.addInitScript(({initialRows, failing}) => {
+  await page.addInitScript(({initialRows, failing, workbookOptions}) => {
     window.__calls = [];
-    window.__server = {rows: initialRows, pendingAsk: null};
-    const grids = () => ({grids: [{name: 'Orders', rows: window.__server.rows,
+    window.__server = {rows: initialRows, pendingAsk: null, workbookOptions};
+    const grids = () => Object.assign({grids: [{name: 'Orders', rows: window.__server.rows,
       formats: window.__server.rows.map(row => row.map(() => 'General')),
-      errors: window.__server.rows.map(row => row.map(() => false)), merges: [], date1904: false}]});
+      errors: window.__server.rows.map(row => row.map(() => false)), merges: [], date1904: false}]},
+      window.__server.workbookOptions);
     const handlers = {
       getSidebarContext: (_, ok) => ok({token: 'google-token', spreadsheetId: 'sheet-1', name: 'Sales', workbook: grids()}),
       getWorkbookGrids: (_, ok) => ok(grids()),
@@ -87,7 +88,7 @@ async function openSidebar(page, rows, failing = {}) {
         }});
       }};
     }}}};
-  }, {initialRows: rows, failing});
+  }, {initialRows: rows, failing, workbookOptions});
   await page.goto(SIDEBAR_URL);
 }
 
