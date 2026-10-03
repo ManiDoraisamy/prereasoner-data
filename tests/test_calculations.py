@@ -1070,7 +1070,7 @@ def test_grain_check_accepts_either_side_of_an_equality_join():
     # same grain, so requiring literal identity would report every joined calculation as ungrouped.
     sales = {"name": "sales", "columns": ["country", "amount"],
              "rows": [["France", 100.0], ["Germany", 200.0]]}
-    rates = {"name": "tax_rates", "columns": ["country", "tax_rate"],
+    rates = {"name": "tax_rates", "columns": ["country", "tax_fraction"],
              "rows": [["France", 0.2], ["Germany", 0.19]]}
     edge = {"from_table": "sales", "from_cols": ["country"],
             "to_table": "tax_rates", "to_cols": ["country"]}
@@ -1082,7 +1082,7 @@ def test_grain_check_accepts_either_side_of_an_equality_join():
     grouped = SelectQuery(
         (SelectItem(column("sales", "country")),
          SelectItem(Aggregate("SUM", BinaryExpr(column("sales", "amount"), "*",
-                                                column("tax_rates", "tax_rate"))),
+                                                column("tax_rates", "tax_fraction"))),
                     alias="tax_amount")),
         "sales",
         joins=(Join("tax_rates", column("sales", "country"), column("tax_rates", "country")),),

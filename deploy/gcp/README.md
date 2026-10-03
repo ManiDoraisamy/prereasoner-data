@@ -43,6 +43,11 @@ is that identity is per-browser: conversations do not follow a user to another d
 `AUTH_PROVIDER` in the generated `web/public/lib/config.js` records which provider a deployment
 actually has, so the reference deployment keeps Google sign-in without a second code path.
 
+For an existing reference installation with Google sign-in already configured, publish Hosting with
+`_AUTH_PROVIDER=google` and `_CUSTOM_DOMAINS=chat.prereasoner.com,prereasoner.com`, selecting the
+site that owns the custom domain. This preserves its provider and merges its authorized domains;
+it does not create a new OAuth client. Community installations keep the anonymous default.
+
 No Google credential or database password is sent to prereasoner.com. The database administrator
 password remains in the caller's Secret Manager. The temporary bootstrap identity is granted access
 to that secret and Cloud SQL only for the initialization job, then removed.

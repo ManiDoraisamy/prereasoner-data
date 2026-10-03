@@ -31,6 +31,15 @@ def test_reply_presents_the_computed_answer_without_external_processing():
         assert terminal_reply({'status': 'answered', 'answer': {'columns': ['net_amount'], 'rows': [['876.50']]}}) == '876.50'
         assert terminal_reply({'status': 'answered', 'answer': {'rows': [[-120]]}}) == '-120'
         assert terminal_reply({'status': 'clarify', 'clarify': {'reason': 'Choose a measure'}}) == 'Choose a measure'
+        reason = 'GBP can mean converting every order into GBP or keeping only the orders recorded in GBP'
+        assert terminal_reply({'status': 'clarify', 'clarify': {'reason': reason}}) == reason + ' Which interpretation should I use?'
+        assert terminal_reply({'status': 'clarify', 'clarify': {'reason': 'Which Amount column should I use?'}}) == 'Which Amount column should I use?'
+        rows = [['Ava', 'Travel'], ['Cleo', None]]
+        assert terminal_reply({'status': 'answered', 'answer': {'columns': ['customer', 'category'], 'rows': rows}}) == '- customer: Ava; category: Travel\n- customer: Cleo; category: Not recorded'
+        large = {'status': 'answered', 'answer': {'columns': ['customer', 'category'], 'rows': rows * 6}}
+        assert 'shown in the workbook' in terminal_reply(large)
+        assert terminal_reply({'status': 'error', 'error': 'Invalid date'}) == 'Invalid date'
+        assert 'again' in terminal_reply({'status': 'error', 'error': 'Engine is busy; retry shortly'})
 
 
 def test_unavailable_gemini_reaches_reference_generation_as_llm_unavailable():

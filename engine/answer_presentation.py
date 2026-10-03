@@ -10,9 +10,16 @@ def terminal_reply(shaped: dict[str, Any]) -> str:
         clarify = shaped.get("clarify") or {}
         reason = str(clarify.get("reason") or "I need one more detail before I can answer that.")
         proposed = clarify.get('proposed')
-        return reason + (f' Try: {proposed}' if proposed else '')
+        prompt = reason + (f' Try: {proposed}' if proposed else '')
+        actionable = re.search(r'\b(?:choose|select|try asking|try:)\b', prompt, re.I)
+        if '?' not in prompt and not actionable:
+            prompt = prompt.rstrip() + ' Which interpretation should I use?'
+        return prompt
     if shaped.get("status") == "error":
-        return str(shaped.get("error") or "I couldn't complete that data question.")
+        error = str(shaped.get("error") or "I couldn't complete that data question.")
+        if re.search(r'\bbusy\b', error, re.I):
+            error += ' Please send your question again shortly.'
+        return error
     answer = shaped.get("answer") or {}
     rows = answer.get("rows") or []
     notes = []
@@ -31,6 +38,14 @@ def terminal_reply(shaped: dict[str, Any]) -> str:
         return (f"{value} {currency}" if currency else value) + suffix
     if not rows:
         return 'No matching rows were found.' + suffix
+    columns = answer.get('columns') or []
+    if columns and len(rows) <= 10 and all(len(row) == len(columns) for row in rows):
+        def cell(value):
+            return 'Not recorded' if value is None else re.sub(r'\s+', ' ', str(value)).strip()
+        preview = '\n'.join('- ' + '; '.join(f'{cell(name)}: {cell(value)}'
+                            for name, value in zip(columns, row)) for row in rows)
+        if len(preview) <= 2000:
+            return preview + suffix
     return "I completed the calculation; the result and its reasoning are shown in the workbook." + suffix
 
 

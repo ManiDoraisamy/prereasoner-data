@@ -318,3 +318,9 @@ permission to answer a different question.
 - Field identifiers are bounded to 63 UTF-8 bytes with stable positional suffixes. Duplicate fields require a targeted choice only when the requested operation depends on one of them. A known requested measure cannot be replaced by a different measure or row count.
 - Hosting preserves the reference deployment's Google sign-in. Publish it with `_AUTH_PROVIDER=google` and `_CUSTOM_DOMAINS=chat.prereasoner.com,prereasoner.com`; Community deployments retain the anonymous default. Verify the destination site before publishing.
 - The immutable engine build now runs the reviewed full web test script alongside Python checks and the live seeded product suites. Real 30,000-row host responsiveness remains an authenticated browser gate; fixture success is not a latency measurement.
+
+### Candidate review iteration
+
+- The `fcd9dab` engine build stopped at a calculation fixture that used an ambiguous generic rate while testing grouping. The grouped fixture now states a fraction unit explicitly; the generic-rate ambiguity guard remains intact. Run module entry points as well as pytest: several historical suites record failures in counters instead of raising assertions, so pytest alone is insufficient evidence.
+- Live Gemini routing found three presentation failures: an ambiguity was stated without requesting a choice, a small tabular result omitted its values from chat, and a busy-engine message did not explicitly tell the user to resend. The shared deterministic renderer now provides those recovery/result details without invoking factual prose generation. Existing arithmetic and tool-loop tests retain their gold; display expectations reflect the new helpful text.
+- The subsequent complete local module runner passed every invoked hermetic suite. The live external-model and rebuilt seeded-image lanes remain separate requirements; none of these changes has yet been promoted to production.

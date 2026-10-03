@@ -583,7 +583,7 @@ def test_an_engine_clarification_is_settled_at_most_once():
     assert engine_calls == [COMMISSION_FOLLOW_UP]
     assert [call["tools"] for call in model_calls] == [True, True]
     assert len(model_calls) == 2
-    assert result["reply"] == "I need one more detail before I can answer that. Try: total commission_percent"
+    assert result["reply"] == "I need one more detail before I can answer that. Try: total commission_percent Which interpretation should I use?"
     # A second clarification is terminal.
     _result, model_calls, engine_calls = _clarified_follow_up(
         [{"question": COMMISSION_FOLLOW_UP}, {"question": "total commission for card payments"}],
@@ -592,7 +592,7 @@ def test_an_engine_clarification_is_settled_at_most_once():
     # The model may ask the user itself; that reply is the clarification and adds no number.
     result, model_calls, engine_calls = _clarified_follow_up(
         [{"question": COMMISSION_FOLLOW_UP}, ask], [COMMISSION_CLARIFY])
-    assert (len(model_calls), engine_calls, result["reply"]) == (2, [COMMISSION_FOLLOW_UP], "I need one more detail before I can answer that. Try: total commission_percent")
+    assert (len(model_calls), engine_calls, result["reply"]) == (2, [COMMISSION_FOLLOW_UP], "I need one more detail before I can answer that. Try: total commission_percent Which interpretation should I use?")
     result, _model_calls, _engine_calls = _clarified_follow_up(
         [{"question": COMMISSION_FOLLOW_UP}, "It is 9.28, as before."], [COMMISSION_CLARIFY])
     assert "9.28" not in result["reply"], result["reply"]
@@ -695,7 +695,7 @@ def test_followup_prompt_separates_geography_from_output_currency_and_executes_y
     prompt = " ".join(orchestrator.SYSTEM_PROMPT.lower().split())
     assert "never limits the rows to those already recorded in it" in prompt
     assert 'accepts the specific action your previous message offered' in prompt
-    assert orchestrator._terminal_fallback({"status": "error", "error": "Engine is busy; retry shortly"}) == "Engine is busy; retry shortly"
+    assert orchestrator._terminal_fallback({"status": "error", "error": "Engine is busy; retry shortly"}) == "Engine is busy; retry shortly Please send your question again shortly."
     assert "europe" not in prompt and "£810" not in prompt
 
 
@@ -883,7 +883,7 @@ def test_a_failed_turn_promises_no_retry():
     my end just now, let me try that again", and nothing was retried: a terminal engine outcome ends the
     turn (test_terminal_engine_status_uses_one_query_and_a_tool_disabled_presentation)."""
     prompt = " ".join(orchestrator.SYSTEM_PROMPT.lower().split())
-    assert orchestrator._terminal_fallback({"status": "error", "error": "Engine is busy; retry shortly"}) == "Engine is busy; retry shortly"
+    assert orchestrator._terminal_fallback({"status": "error", "error": "Engine is busy; retry shortly"}) == "Engine is busy; retry shortly Please send your question again shortly."
 
 
 def test_an_analysis_is_named_for_its_measure_not_its_filter():
@@ -1078,7 +1078,7 @@ def test_decomposition_is_one_engine_triggered_retry_of_the_same_analysis():
         if "decomposition_required" in block.get("content", "")
     )
     assert "decomposition_required" in first_tool_result and '"rows"' not in first_tool_result
-    assert result["reply"] == "I completed the calculation; the result and its reasoning are shown in the workbook."
+    assert result["reply"] == '- customer: Cara; product: Beta'
     assert len(result["traces"]) == 2
 
 
@@ -1251,7 +1251,7 @@ def test_an_invalid_proposal_gets_one_correction_then_a_plain_clarification():
     assert [m["id"] for m in forwarded["merges"]] == ["pairs", "gaps"]
     assert all(len(m["inputs"]) == 2 for m in forwarded["merges"])
     assert forwarded["output"] == "gaps"
-    assert result["reply"] == "I completed the calculation; the result and its reasoning are shown in the workbook."
+    assert result["reply"] == '- customer_name: Cara; product_name: Beta'
 
 
 def test_an_engine_rejected_proposal_gets_one_correction_then_answers():
@@ -1351,7 +1351,7 @@ def test_an_engine_rejected_proposal_gets_one_correction_then_answers():
     assert len(engine_calls) == 3, "probe, rejected proposal, corrected proposal"
     corrected = engine_calls[2][1]["decomposition"]
     assert corrected["subquestions"][0]["question"] == "top 2 categories by total revenue"
-    assert result["reply"] == "I completed the calculation; the result and its reasoning are shown in the workbook."
+    assert result["reply"] == '- customer_name: Ava; category: Travel'
     # The raw engine clarify stays honest in the trace for diagnostics.
     assert result["traces"][1]["engine"].get("decomposition_rejected") is True
 
@@ -1550,7 +1550,7 @@ def test_a_split_proposed_before_the_engine_asks_is_sent_again_alone():
     repair = model_calls[1]
     assert repair["status"] == "repair_required" and repair["code"] == "decomposition_not_requested", repair
     assert engine_calls == [(question, None)], "the early split never reaches the engine"
-    assert result["reply"] == "I completed the calculation; the result and its reasoning are shown in the workbook."
+    assert result["reply"] == '- customer_name: Cleo; category: Home'
 
 
 def test_tool_exhaustion_never_exposes_an_internal_budget():

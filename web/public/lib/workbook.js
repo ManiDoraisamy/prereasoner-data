@@ -153,7 +153,7 @@ function dedent(src){
   const pad=Math.min(...lines.filter(l=>l.trim()).map(l=>l.match(/^ */)[0].length));
   return lines.map(l=>l.slice(pad)).join('\n');
 }
-// When Gemini rewrote the question (engine/sql_fallback.py), the settled status repeats the label.
+// When Gemini rewrote the question (engine/question_rewrite.py), the settled status repeats the label.
 let FALLBACK=null;
 function noteFallback(value){ if(value&&value.kind==='rewrite')FALLBACK=value; }
 function answeredStatus(n){
