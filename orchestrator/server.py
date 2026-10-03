@@ -17,7 +17,6 @@ from __future__ import annotations
 import asyncio
 from concurrent.futures import TimeoutError as FutureTimeoutError
 import importlib
-import json
 import threading
 import hashlib
 import time
@@ -28,6 +27,7 @@ from pathlib import Path
 import httpx
 
 from engine import config, dataset_attestation, llm
+from engine.numeric import json_dumps
 from engine.request_limits import (
     JSONBodyError, RequestGate, allowed_origin, parse_content_length, read_json_object,
 )
@@ -83,7 +83,7 @@ class H(BaseHTTPRequestHandler):
         try:
             return read_json_object(self.rfile, self.headers.get("Content-Length"), MAX_BODY)
         except JSONBodyError as exc:
-            self._send(exc.status_code, json.dumps({"error": str(exc)}))
+            self._send(exc.status_code, json_dumps({"error": str(exc)}))
             return None
 
     def do_OPTIONS(self):
@@ -93,11 +93,11 @@ class H(BaseHTTPRequestHandler):
     def do_GET(self):
         path = self.path.split("?", 1)[0]
         if path.rstrip("/") == "/healthz":
-            self._send(200, json.dumps({"ok": True, "service": "orchestrator"}))
+            self._send(200, json_dumps({"ok": True, "service": "orchestrator"}))
         elif path.rstrip('/') == '/version':
             from engine.release_identity import release_identity
             from pathlib import Path
-            self._send(200, json.dumps(release_identity(Path(__file__).with_name('build_provenance.json'))))
+            self._send(200, json_dumps(release_identity(Path(__file__).with_name('build_provenance.json'))))
         elif path.rstrip("/") == "/readyz":
             # Readiness must check what a turn actually uses. That is the engine client this process
             # calls in-process — NOT mcp_server.server, which is now only the entry point for
@@ -108,11 +108,11 @@ class H(BaseHTTPRequestHandler):
                 ready = ready and hasattr(module, "call_query")
             except Exception:  # noqa: BLE001 - readiness must not expose import details
                 ready = False
-            self._send(200 if ready else 503, json.dumps({"ok": ready, "service": "orchestrator"}))
+            self._send(200 if ready else 503, json_dumps({"ok": ready, "service": "orchestrator"}))
         elif path.rstrip("/") == "/config":
             # The chat UI reads this to decide sign-in: "test" => local AUTH_TEST_SUB bypass,
             # "firebase" => real Google sign-in (talking to the deployed engine).
-            self._send(200, json.dumps({"authMode": config.ORCH_AUTH_MODE,
+            self._send(200, json_dumps({"authMode": config.ORCH_AUTH_MODE,
                                         "engine": config.ENGINE_BASE_URL}))
         elif path.startswith("/api/"):
             self._proxy_api("GET")
@@ -128,7 +128,7 @@ class H(BaseHTTPRequestHandler):
         elif path.startswith("/api/"):
             self._proxy_api("POST")
         else:
-            self._send(404, json.dumps({"error": "POST /chat"}))
+            self._send(404, json_dumps({"error": "POST /chat"}))
 
     # ---------- /chat ----------
     def _suggestions(self):
@@ -141,22 +141,22 @@ class H(BaseHTTPRequestHandler):
             except Exception:  # noqa: BLE001 - same verification boundary as chat
                 uid = None
             if not uid:
-                self._send(401, json.dumps({"error": "sign in required"})); return
+                self._send(401, json_dumps({"error": "sign in required"})); return
             try:
                 body = read_json_object(self.rfile, self.headers.get("Content-Length"), 512 * 1024)
                 schema = validate_schema(body)
             except JSONBodyError as exc:
-                self._send(exc.status_code, json.dumps({"error": str(exc)})); return
+                self._send(exc.status_code, json_dumps({"error": str(exc)})); return
             except ValueError as exc:
-                self._send(400, json.dumps({"error": str(exc)})); return
-            key = (uid, hashlib.sha256(json.dumps(schema, sort_keys=True).encode()).hexdigest())
+                self._send(400, json_dumps({"error": str(exc)})); return
+            key = (uid, hashlib.sha256(json_dumps(schema, sort_keys=True).encode()).hexdigest())
             with _SUGGESTIONS_LOCK:
                 cached = _SUGGESTIONS.get(key)
             if cached and cached[0] > time.monotonic():
-                self._send(200, json.dumps(cached[1])); return
+                self._send(200, json_dumps(cached[1])); return
             lease, retry_after, reason = SUGGESTION_GATE.acquire(uid)
             if lease is None:
-                self._send(429, json.dumps({"error": "suggestion request budget exceeded", "reason": reason}),
+                self._send(429, json_dumps({"error": "suggestion request budget exceeded", "reason": reason}),
                            retry_after=retry_after); return
             result = starter_questions(schema)
             with _SUGGESTIONS_LOCK:
@@ -164,10 +164,10 @@ class H(BaseHTTPRequestHandler):
                 _SUGGESTIONS.move_to_end(key)
                 while len(_SUGGESTIONS) > 256:
                     _SUGGESTIONS.popitem(last=False)
-            self._send(200, json.dumps(result))
+            self._send(200, json_dumps(result))
         except Exception as exc:  # noqa: BLE001 - no schema/prompt logging
             print(f"suggestions failed: {type(exc).__name__}", flush=True)
-            self._send(503, json.dumps({"error": "suggestions temporarily unavailable"}))
+            self._send(503, json_dumps({"error": "suggestions temporarily unavailable"}))
         finally:
             if lease is not None:
                 lease.release()
@@ -183,7 +183,7 @@ class H(BaseHTTPRequestHandler):
             try:
                 message, tables, history, turn_id, conversation_id, use, analysis = validate_chat_request(req)
             except RequestValidationError as exc:
-                self._send(exc.status_code, json.dumps({"error": str(exc)})); return
+                self._send(exc.status_code, json_dumps({"error": str(exc)})); return
             token = self._bearer()
             # AUTH GATE (required): run_chat drives Gemini inference billed to the operator, so demand a verified
             # identity BEFORE any work — otherwise an anonymous caller is denial-of-wallet. In local dev the engine's
@@ -199,14 +199,14 @@ class H(BaseHTTPRequestHandler):
                 print(f"orchestrator auth verify failed: {type(e).__name__}", flush=True)
                 uid = None
             if not uid:
-                self._send(401, json.dumps({"error": "sign in required"})); return
+                self._send(401, json_dumps({"error": "sign in required"})); return
             if not llm.available():                         # the operator's switch, and a project to call
-                self._send(503, json.dumps({
+                self._send(503, json_dumps({
                     "error": "assistant processing is unavailable for this request"
                 })); return
             lease, retry_after, reason = CHAT_GATE.acquire(uid)
             if lease is None:
-                self._send(429, json.dumps({"error": "chat request budget exceeded", "reason": reason}),
+                self._send(429, json_dumps({"error": "chat request budget exceeded", "reason": reason}),
                            retry_after=retry_after)
                 return
             # LIVE TRACE: stream this turn under /runs/{uid}/{turnId} — the SAME verified uid the browser subscribes
@@ -228,13 +228,13 @@ class H(BaseHTTPRequestHandler):
                 _LOOP,
             )
             res = fut.result(timeout=CHAT_TIMEOUT_SECONDS)
-            self._send(200, json.dumps(res))
+            self._send(200, json_dumps(res))
         except FutureTimeoutError:
             if fut is not None:
                 fut.cancel()
             if emit:
                 emit("error", "request timed out"); emit("status", "error")
-            self._send(504, json.dumps({"error": "chat request timed out"}))
+            self._send(504, json_dumps({"error": "chat request timed out"}))
         except Exception as e:  # noqa: BLE001
             if emit:
                 try:
@@ -242,7 +242,7 @@ class H(BaseHTTPRequestHandler):
                 except Exception:                            # noqa: BLE001
                     pass
             print(f"orchestrator chat failed: {type(e).__name__} turn={getattr(self, 'path', '-')}", flush=True)
-            self._send(500, json.dumps({"error": "internal server error"}))
+            self._send(500, json_dumps({"error": "internal server error"}))
         finally:
             if lease is not None:
                 lease.release()
@@ -259,7 +259,7 @@ class H(BaseHTTPRequestHandler):
                 try:
                     n = parse_content_length(self.headers.get("Content-Length"), MAX_BODY)
                 except JSONBodyError as exc:
-                    self._send(exc.status_code, json.dumps({"error": str(exc)})); return
+                    self._send(exc.status_code, json_dumps({"error": str(exc)})); return
                 body = self.rfile.read(n) if n else None
                 headers["content-type"] = self.headers.get("content-type", "application/json")
             r = httpx.request(method, url, content=body, headers=headers, timeout=180)
@@ -267,7 +267,7 @@ class H(BaseHTTPRequestHandler):
                        r.headers.get("content-type", "application/json"))
         except Exception as e:  # noqa: BLE001
             print(f"orchestrator engine proxy failed: {type(e).__name__}", flush=True)
-            self._send(502, json.dumps({"error": "engine proxy unavailable"}))
+            self._send(502, json_dumps({"error": "engine proxy unavailable"}))
 
     # ---------- static ----------
     def _static(self, path):
@@ -279,9 +279,9 @@ class H(BaseHTTPRequestHandler):
         try:
             f.relative_to(WEB_ROOT.resolve())  # no path traversal
         except ValueError:
-            self._send(403, json.dumps({"error": "forbidden"})); return
+            self._send(403, json_dumps({"error": "forbidden"})); return
         if not f.is_file():
-            self._send(404, json.dumps({"error": "not found"})); return
+            self._send(404, json_dumps({"error": "not found"})); return
         ctype = _MIME.get(f.suffix.lower(), "application/octet-stream")
         self._send(200, f.read_bytes(), ctype)
 

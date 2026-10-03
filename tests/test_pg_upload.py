@@ -255,7 +255,19 @@ def test_place_ambiguity_is_one_lookup_for_every_value():
     assert warnings == ["'Paris' is ambiguous in city: Q142, Q30", "'London' is ambiguous in city: Q145, Q30"], warnings
 
 
+def test_large_identifier_and_scientific_decimal_use_exact_storage():
+    from engine.numeric import observed_numeric_affinity
+    rows = [[str(10**30), '1e-3'], [str(10**30+1), '2e-3']]
+    sch = [{'table':'ledger', 'name':name, 'affinity':observed_numeric_affinity([row[i] for row in rows])}
+           for i,name in enumerate(('id','amount'))]
+    cur = RecordingCursor()
+    _load_user_schema(cur, 'tenant', sch, {'ledger':{'columns':['id','amount'], 'rows':rows}})
+    assert cur.recorded_rows == [[Decimal(10**30), Decimal('0.001')], [Decimal(10**30+1), Decimal('0.002')]]
+    assert any('NUMERIC(58,20)' in statement for statement, _ in cur.statements)
+
+
 TESTS = [
+    test_large_identifier_and_scientific_decimal_use_exact_storage,
     test_statement_count_is_bounded_by_pages_not_rows,
     test_every_row_is_loaded_with_the_same_coercion,
     test_fractional_values_stay_exact_decimals,

@@ -36,7 +36,7 @@ from engine.analysis import (
     AnalysisError,
     canonical_analysis_slug,
 )
-from engine.numeric import wire_value
+from engine.numeric import wire_value, json_dumps
 from engine.pg import _pg
 
 # conversation_id is also a Postgres schema name — keep it a safe, fixed-shape identifier.
@@ -484,7 +484,7 @@ def complete_analysis(user_id, conversation_id, descriptor, question, response):
         snapshot_analysis = dict(snapshot.get("analysis") or descriptor)
         snapshot_analysis["stale"] = stale
         snapshot["analysis"] = snapshot_analysis
-        encoded = json.dumps(
+        encoded = json_dumps(
             snapshot, default=_snapshot_value, ensure_ascii=False, separators=(",", ":"),
         )
         response_bytes = len(encoded.encode("utf-8"))

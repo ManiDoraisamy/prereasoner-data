@@ -24,7 +24,6 @@ Run: python -m engine.server
 from __future__ import annotations
 
 import datetime
-import json
 import os
 import threading
 import time
@@ -75,7 +74,7 @@ from engine.conversations import (
     sync_conversation_source,
 )
 from engine.dataset_semantics import DatasetOpError
-from engine.numeric import wire_value
+from engine.numeric import wire_value, json_dumps
 from engine.pg import _pg
 from engine.provenance import ProvenanceContext
 from engine.request_budget import BudgetPolicy, PostgresRequestBudget
@@ -205,13 +204,13 @@ class H(BaseHTTPRequestHandler):
         try:
             return read_json_object(self.rfile, self.headers.get("Content-Length"), max_bytes)
         except JSONBodyError as exc:
-            self._send(exc.status_code, json.dumps({"error": str(exc)}))
+            self._send(exc.status_code, json_dumps({"error": str(exc)}))
             return None
 
     def _acquire_paid_budget(self, subject, operation):
         local, retry_after, reason = PAID_LOCAL_GATES[operation].acquire(subject)
         if local is None:
-            self._send(429, json.dumps({"error": "request budget exceeded", "reason": reason}),
+            self._send(429, json_dumps({"error": "request budget exceeded", "reason": reason}),
                        retry_after=retry_after)
             return None
         try:
@@ -219,11 +218,11 @@ class H(BaseHTTPRequestHandler):
         except Exception as exc:                              # accounting must fail closed before paid work
             local.release()
             print(f"paid request budget unavailable: {type(exc).__name__}", flush=True)
-            self._send(503, json.dumps({"error": "request budget unavailable"}))
+            self._send(503, json_dumps({"error": "request budget unavailable"}))
             return None
         if distributed is None:
             local.release()
-            self._send(429, json.dumps({"error": "request budget exceeded", "reason": reason}),
+            self._send(429, json_dumps({"error": "request budget exceeded", "reason": reason}),
                        retry_after=retry_after)
             return None
 
@@ -242,13 +241,13 @@ class H(BaseHTTPRequestHandler):
         # /api/healthz is an alias: Google's front end reserves /healthz on *.run.app
         # domains (answers 404 itself), so external monitors must use the /api/ path.
         if path in ("/healthz", "/api/healthz"):
-            self._send(200, json.dumps({"ok": MODEL is not None and DIM_MODEL is not None,
+            self._send(200, json_dumps({"ok": MODEL is not None and DIM_MODEL is not None,
                                         "reason": MODEL is not None, "world": MODEL is not None,
                                         "dimension": DIM_MODEL is not None}))
         elif path == '/api/version':
             from engine.release_identity import release_identity
             from engine.config import DATA_DIR
-            self._send(200, json.dumps(release_identity(DATA_DIR / 'build_provenance.json')))
+            self._send(200, json_dumps(release_identity(DATA_DIR / 'build_provenance.json')))
         elif path in ("/api/conversations", "/api/conversation", "/api/conversation/quota"):
             self._get_conversations(path, parse_qs(u.query))
         elif path in ("/api/analyses", "/api/analysis"):
@@ -267,39 +266,39 @@ class H(BaseHTTPRequestHandler):
         try:
             sub, _uid = _verify_principal(_bearer(self.headers, None))
             if not sub:
-                self._send(401, json.dumps({"error": "sign in required"})); return
+                self._send(401, json_dumps({"error": "sign in required"})); return
             if path == '/api/conversation/quota':
                 from engine.conversations import conversation_quota
-                self._send(200, json.dumps(conversation_quota(sub))); return
+                self._send(200, json_dumps(conversation_quota(sub))); return
             if path == "/api/conversations":
                 try:
                     limit = int((qs.get("limit") or ["50"])[0])
                 except ValueError:
-                    self._send(400, json.dumps({"error": "limit is invalid"})); return
+                    self._send(400, json_dumps({"error": "limit is invalid"})); return
                 before = (qs.get("before") or [None])[0]
                 try:
                     page = conversation_page(sub, limit, before)
                 except ValueError as exc:
-                    self._send(400, json.dumps({"error": str(exc)})); return
-                self._send(200, json.dumps(page)); return
+                    self._send(400, json_dumps({"error": str(exc)})); return
+                self._send(200, json_dumps(page)); return
             cid = (qs.get("id") or [""])[0]
             try:
-                self._send(200, json.dumps(get_conversation(sub, cid)))
+                self._send(200, json_dumps(get_conversation(sub, cid)))
             except NotOwned:
-                self._send(404, json.dumps({"error": "conversation not found"}))   # not yours OR absent
+                self._send(404, json_dumps({"error": "conversation not found"}))   # not yours OR absent
         except Exception as e:                               # noqa: BLE001
             print(f"conversation lookup failed: {type(e).__name__}", flush=True)
-            self._send(500, json.dumps({"error": "internal server error"}))
+            self._send(500, json_dumps({"error": "internal server error"}))
 
     def _get_analyses(self, path, qs):
         """List named workbooks or load one exact, ownership-scoped revision."""
         try:
             sub, _uid = _verify_principal(_bearer(self.headers, None))
             if not sub:
-                self._send(401, json.dumps({"error": "sign in required"})); return
+                self._send(401, json_dumps({"error": "sign in required"})); return
             conversation_id = (qs.get("conversation_id") or [""])[0]
             if path == "/api/analyses":
-                self._send(200, json.dumps({
+                self._send(200, json_dumps({
                     "analyses": list_analyses(sub, conversation_id),
                 }, default=_json_safe)); return
             analysis_id = (qs.get("analysis_id") or [""])[0]
@@ -307,9 +306,9 @@ class H(BaseHTTPRequestHandler):
             try:
                 revision = int(raw_revision) if raw_revision is not None else None
             except (TypeError, ValueError):
-                self._send(400, json.dumps({"error": "analysis revision is invalid"})); return
+                self._send(400, json_dumps({"error": "analysis revision is invalid"})); return
             if revision is not None and not 1 <= revision <= 1_000_000:
-                self._send(400, json.dumps({"error": "analysis revision is invalid"})); return
+                self._send(400, json_dumps({"error": "analysis revision is invalid"})); return
             loaded = get_analysis_revision(
                 sub, conversation_id, analysis_id, revision=revision,
             )
@@ -318,14 +317,14 @@ class H(BaseHTTPRequestHandler):
                 loaded["turn"] = get_analysis_turn(
                     sub, conversation_id, analysis_id, selected_revision,
                 )
-            self._send(200, json.dumps(loaded, default=_json_safe))
+            self._send(200, json_dumps(loaded, default=_json_safe))
         except NotOwned:
-            self._send(404, json.dumps({"error": "analysis not found"}))
+            self._send(404, json_dumps({"error": "analysis not found"}))
         except AnalysisError as exc:
-            self._send(404, json.dumps({"error": str(exc)}))
+            self._send(404, json_dumps({"error": str(exc)}))
         except Exception as exc:  # noqa: BLE001
             print(f"analysis lookup failed: {type(exc).__name__}", flush=True)
-            self._send(500, json.dumps({"error": "internal server error"}))
+            self._send(500, json_dumps({"error": "internal server error"}))
 
     # ---------------- master data (per-user reference tables; auth required, uid-scoped) ----------------
     def _get_master(self, qs):
@@ -333,17 +332,17 @@ class H(BaseHTTPRequestHandler):
         try:
             sub, _uid = _verify_principal(_bearer(self.headers, None))
             if not sub:
-                self._send(401, json.dumps({"error": "sign in required"})); return
+                self._send(401, json_dumps({"error": "sign in required"})); return
             name = (qs.get("name") or [""])[0]
             if name:
                 m = master.get_master(sub, name)
-                self._send(200 if m else 404, json.dumps(m or {"error": "not found"})); return
-            self._send(200, json.dumps({"tables": master.list_master(sub)}))
+                self._send(200 if m else 404, json_dumps(m or {"error": "not found"})); return
+            self._send(200, json_dumps({"tables": master.list_master(sub)}))
         except ValueError as e:
-            self._send(400, json.dumps({"error": str(e)}))
+            self._send(400, json_dumps({"error": str(e)}))
         except Exception as e:                               # noqa: BLE001
             print(f"master lookup failed: {type(e).__name__}", flush=True)
-            self._send(500, json.dumps({"error": "internal server error"}))
+            self._send(500, json_dumps({"error": "internal server error"}))
 
     def _post_master(self, path):
         """POST /api/master {name, columns, rows} → create-or-replace a master table.
@@ -354,21 +353,21 @@ class H(BaseHTTPRequestHandler):
                 return
             sub, uid = _verify_principal(_bearer(self.headers, req))
             if not sub:
-                self._send(401, json.dumps({"error": "sign in required"})); return
+                self._send(401, json_dumps({"error": "sign in required"})); return
             if path == "/api/master/delete":
                 try:
-                    self._send(200, json.dumps(master.delete_master(sub, req.get("name", ""))))
+                    self._send(200, json_dumps(master.delete_master(sub, req.get("name", ""))))
                 except ValueError as e:
-                    self._send(400, json.dumps({"error": str(e)}))
+                    self._send(400, json_dumps({"error": str(e)}))
                 return
             try:
                 out = master.save_master(sub, req.get("name", ""), req.get("columns") or [], req.get("rows") or [])
             except ValueError as e:
-                self._send(400, json.dumps({"error": str(e)})); return
-            self._send(200, json.dumps(out))
+                self._send(400, json_dumps({"error": str(e)})); return
+            self._send(200, json_dumps(out))
         except Exception as e:                               # noqa: BLE001
             print(f"master write failed: {type(e).__name__}", flush=True)
-            self._send(500, json.dumps({"error": "internal server error"}))
+            self._send(500, json_dumps({"error": "internal server error"}))
 
     def _post_conv_state(self):
         """POST /api/conversation/state {id, state} -> persist the client's renderable snapshot so a reload
@@ -379,16 +378,16 @@ class H(BaseHTTPRequestHandler):
                 return
             sub, uid = _verify_principal(_bearer(self.headers, req))
             if not sub:
-                self._send(401, json.dumps({"error": "sign in required"})); return
+                self._send(401, json_dumps({"error": "sign in required"})); return
             try:
-                self._send(200, json.dumps(save_state(sub, req.get("id", ""), req.get("state"))))
+                self._send(200, json_dumps(save_state(sub, req.get("id", ""), req.get("state"))))
             except NotOwned:
-                self._send(404, json.dumps({"error": "conversation not found"}))
+                self._send(404, json_dumps({"error": "conversation not found"}))
             except QuotaExceeded as exc:
-                self._send(413, json.dumps({"error": str(exc)}))
+                self._send(413, json_dumps({"error": str(exc)}))
         except Exception as e:                               # noqa: BLE001
             print(f"conversation state failed: {type(e).__name__}", flush=True)
-            self._send(500, json.dumps({"error": "internal server error"}))
+            self._send(500, json_dumps({"error": "internal server error"}))
 
     def _post_conv_sync(self):
         """POST /api/conversation/sync updates source data but deliberately does not run analysis."""
@@ -398,23 +397,23 @@ class H(BaseHTTPRequestHandler):
                 return
             sub, _uid = _verify_principal(_bearer(self.headers, req))
             if not sub:
-                self._send(401, json.dumps({"error": "sign in required"})); return
+                self._send(401, json_dumps({"error": "sign in required"})); return
             try:
                 tables = validate_tables(req.get("tables"))
-                self._send(200, json.dumps(sync_conversation_source(
+                self._send(200, json_dumps(sync_conversation_source(
                     sub, req.get("id", ""), tables,
                 )))
             except RequestValidationError as exc:
-                self._send(exc.status_code, json.dumps({"error": str(exc)}))
+                self._send(exc.status_code, json_dumps({"error": str(exc)}))
             except NotOwned:
-                self._send(404, json.dumps({"error": "conversation not found"}))
+                self._send(404, json_dumps({"error": "conversation not found"}))
             except QuotaExceeded as exc:
-                self._send(413, json.dumps({"error": str(exc)}))
+                self._send(413, json_dumps({"error": str(exc)}))
             except ValueError as exc:
-                self._send(400, json.dumps({"error": str(exc)}))
+                self._send(400, json_dumps({"error": str(exc)}))
         except Exception as exc:  # noqa: BLE001
             print(f"conversation source sync failed: {type(exc).__name__}", flush=True)
-            self._send(500, json.dumps({"error": "internal server error"}))
+            self._send(500, json_dumps({"error": "internal server error"}))
 
     def _post_sheet_session(self, path):
         """Restore, save, or explicitly clear one authenticated workbook sidebar session."""
@@ -424,7 +423,7 @@ class H(BaseHTTPRequestHandler):
                 return
             sub, _uid = _verify_principal(_bearer(self.headers, req))
             if not sub:
-                self._send(401, json.dumps({"error": "sign in required"})); return
+                self._send(401, json_dumps({"error": "sign in required"})); return
             spreadsheet_id = req.get("spreadsheet_id", "")
             host = req.get("host", "sheets")
             try:
@@ -439,18 +438,18 @@ class H(BaseHTTPRequestHandler):
                     )
                 else:
                     result = clear_sheet_session(sub, spreadsheet_id, host=host)
-                self._send(200, json.dumps(result))
+                self._send(200, json_dumps(result))
             except RequestValidationError as exc:
-                self._send(exc.status_code, json.dumps({"error": str(exc)}))
+                self._send(exc.status_code, json_dumps({"error": str(exc)}))
             except NotOwned:
-                self._send(404, json.dumps({"error": "conversation not found"}))
+                self._send(404, json_dumps({"error": "conversation not found"}))
             except QuotaExceeded as exc:
-                self._send(413, json.dumps({"error": str(exc)}))
+                self._send(413, json_dumps({"error": str(exc)}))
             except ValueError as exc:
-                self._send(400, json.dumps({"error": str(exc)}))
+                self._send(400, json_dumps({"error": str(exc)}))
         except Exception as exc:  # noqa: BLE001
             print(f"spreadsheet session failed: {type(exc).__name__}", flush=True)
-            self._send(500, json.dumps({"error": "internal server error"}))
+            self._send(500, json_dumps({"error": "internal server error"}))
 
     def _post_conv_delete(self, path):
         """POST /api/conversation/delete {id} -> drop one conversation; /delete-all -> drop them all. uid-scoped."""
@@ -460,18 +459,18 @@ class H(BaseHTTPRequestHandler):
                 return
             sub, uid = _verify_principal(_bearer(self.headers, req))
             if not sub:
-                self._send(401, json.dumps({"error": "sign in required"})); return
+                self._send(401, json_dumps({"error": "sign in required"})); return
             if path == "/api/conversation/delete-all":
-                self._send(200, json.dumps(delete_all_conversations(sub, rtdb_uid=uid))); return
+                self._send(200, json_dumps(delete_all_conversations(sub, rtdb_uid=uid))); return
             try:
-                self._send(200, json.dumps(
+                self._send(200, json_dumps(
                     delete_conversation(sub, req.get("id", ""), rtdb_uid=uid)
                 ))
             except NotOwned:
-                self._send(404, json.dumps({"error": "conversation not found"}))
+                self._send(404, json_dumps({"error": "conversation not found"}))
         except Exception as e:                               # noqa: BLE001
             print(f"conversation delete failed: {type(e).__name__}", flush=True)
-            self._send(500, json.dumps({"error": "internal server error"}))
+            self._send(500, json_dumps({"error": "internal server error"}))
 
     def do_POST(self):
         path = self.path.rstrip("/")
@@ -500,13 +499,13 @@ class H(BaseHTTPRequestHandler):
         elif path == "/api/admin/delete":
             self._post_admin_delete()
         else:
-            self._send(404, json.dumps({"error": "POST /api/reason | /api/knowledge | /api/dimension"}))
+            self._send(404, json_dumps({"error": "POST /api/reason | /api/knowledge | /api/dimension"}))
 
     # ---------------- admin dashboard (email-allowlisted; reads via GET, deletes via POST) ----------------
     def _require_admin(self, body=None):
         who = admin.verify_admin(_bearer(self.headers, body))
         if not who:
-            self._send(403, json.dumps({"error": "admin only"}))
+            self._send(403, json_dumps({"error": "admin only"}))
         return who
 
     def _get_admin(self, path, qs):
@@ -514,16 +513,16 @@ class H(BaseHTTPRequestHandler):
             if not self._require_admin():
                 return
             if path.rstrip("/") == "/api/admin/users":
-                self._send(200, json.dumps({"users": admin.list_users()}))
+                self._send(200, json_dumps({"users": admin.list_users()}))
             elif path.rstrip("/") == "/api/admin/conversations":
-                self._send(200, json.dumps({"conversations": admin.list_conversations((qs.get("user") or [None])[0])}))
+                self._send(200, json_dumps({"conversations": admin.list_conversations((qs.get("user") or [None])[0])}))
             elif path.rstrip("/") == "/api/admin/orphans":
-                self._send(200, json.dumps({"orphans": admin.list_orphans()}))
+                self._send(200, json_dumps({"orphans": admin.list_orphans()}))
             else:
-                self._send(404, json.dumps({"error": "GET /api/admin/users | conversations[?user=] | orphans"}))
+                self._send(404, json_dumps({"error": "GET /api/admin/users | conversations[?user=] | orphans"}))
         except Exception as e:                               # noqa: BLE001
             print(f"admin read failed: {type(e).__name__}", flush=True)
-            self._send(500, json.dumps({"error": "internal server error"}))
+            self._send(500, json_dumps({"error": "internal server error"}))
 
     def _post_admin_delete(self):
         try:
@@ -540,11 +539,11 @@ class H(BaseHTTPRequestHandler):
             elif target == "orphans":
                 out = admin.delete_orphans()
             else:
-                self._send(400, json.dumps({"error": "target must be conversation | user | orphans"})); return
-            self._send(200, json.dumps({"ok": True, **out}))
+                self._send(400, json_dumps({"error": "target must be conversation | user | orphans"})); return
+            self._send(200, json_dumps({"ok": True, **out}))
         except Exception as e:                               # noqa: BLE001
             print(f"admin delete failed: {type(e).__name__}", flush=True)
-            self._send(500, json.dumps({"error": "internal server error"}))
+            self._send(500, json_dumps({"error": "internal server error"}))
 
     # ---------------- /api/converse (shared deterministic renderer for the /reason rail) ----------------
     def _post_converse(self):
@@ -555,7 +554,7 @@ class H(BaseHTTPRequestHandler):
                 return
             sub, _uid = _verify_principal(_bearer(self.headers, req))
             if not sub:
-                self._send(401, json.dumps({"error": "sign in required"})); return
+                self._send(401, json_dumps({"error": "sign in required"})); return
             from engine.answer_presentation import terminal_reply
             shaped = {'status': 'answered' if req.get('answer') is not None else
                       'error' if req.get('error') else 'clarify',
@@ -563,10 +562,10 @@ class H(BaseHTTPRequestHandler):
                       'error': req.get('error'), 'calculations': req.get('calculations') or [],
                       'unit': req.get('unit')}
             text = terminal_reply(shaped)
-            self._send(200, json.dumps({"reply": text}))
+            self._send(200, json_dumps({"reply": text}))
         except Exception as e:                               # noqa: BLE001
             print(f"/api/converse failed: {type(e).__name__}", flush=True)
-            self._send(500, json.dumps({"error": "internal server error"}))
+            self._send(500, json_dumps({"error": "internal server error"}))
 
     # ---------------- /api/master/generate (Gemini fills a reference table) ----------------
     def _post_master_generate(self):
@@ -583,28 +582,28 @@ class H(BaseHTTPRequestHandler):
                 return
             sub, uid = _verify_principal(_bearer(self.headers, req))
             if not sub:
-                self._send(401, json.dumps({"error": "sign in required"})); return
+                self._send(401, json_dumps({"error": "sign in required"})); return
             if not llm.available():
-                self._send(503, json.dumps({
+                self._send(503, json_dumps({
                     "error": "assistant processing is unavailable for this request"
                 })); return
             columns, rows = req.get("columns") or [], req.get("rows") or []
             if not isinstance(columns, list) or not isinstance(rows, list):
-                self._send(400, json.dumps({"error": "columns and rows must be arrays"})); return
+                self._send(400, json_dumps({"error": "columns and rows must be arrays"})); return
             if (
                 not columns
                 or any(not isinstance(column, str) or not column.strip() for column in columns)
                 or any(not isinstance(row, list) or len(row) > len(columns) for row in rows)
             ):
-                self._send(400, json.dumps({"error": "generation table shape is invalid"})); return
+                self._send(400, json_dumps({"error": "generation table shape is invalid"})); return
             if len(columns) > MAX_GENERATE_COLS or len(rows) > MAX_GENERATE_ROWS:
-                self._send(413, json.dumps({"error": "generation table is too large"})); return
-            generation_chars = len(json.dumps({
+                self._send(413, json_dumps({"error": "generation table is too large"})); return
+            generation_chars = len(json_dumps({
                 "name": req.get("name"), "columns": columns, "rows": rows,
                 "instruction": req.get("instruction"),
             }, ensure_ascii=False))
             if generation_chars > MAX_GENERATE_CHARS:
-                self._send(413, json.dumps({"error": "generation context is too large"})); return
+                self._send(413, json_dumps({"error": "generation context is too large"})); return
             lease = self._acquire_paid_budget(sub, "master_generate")
             if lease is None:
                 return
@@ -618,15 +617,15 @@ class H(BaseHTTPRequestHandler):
             except Exception as e:                           # noqa: BLE001 — Gemini unavailable: let the client re-enable
                 print(f"/api/master/generate degraded (503): {type(e).__name__}", flush=True)
                 emit("error", "generate unavailable"); emit("status", "error")
-                self._send(503, json.dumps({"error": "generate unavailable"})); return
+                self._send(503, json_dumps({"error": "generate unavailable"})); return
             emit("result", out); emit("status", "done")      # terminal state -> RTDB (decoupled from this response)
-            self._send(200, json.dumps(out))
+            self._send(200, json_dumps(out))
         except Exception as e:                               # noqa: BLE001
             if emit is not None:
                 try: emit("error", "internal server error"); emit("status", "error")
                 except Exception: pass                       # noqa: BLE001 — streaming is best-effort
             print(f"/api/master/generate failed: {type(e).__name__}", flush=True)
-            self._send(500, json.dumps({"error": "internal server error"}))
+            self._send(500, json_dumps({"error": "internal server error"}))
 
     # ---------------- /api/reason + /api/knowledge (Firebase auth + RTDB trace stream) ----------------
     def _post_world(self):
@@ -658,12 +657,12 @@ class H(BaseHTTPRequestHandler):
             try:
                 req = validate_reason_request(req)
             except RequestValidationError as exc:
-                self._send(exc.status_code, json.dumps({"error": str(exc)})); return
+                self._send(exc.status_code, json_dumps({"error": str(exc)})); return
             if not self.headers.get("X-Request-Id"):
                 request_timing.set_request_id(req.get("jobId"))   # jobId already ties a call to its chat turn
             sub, uid = _verify_principal(_bearer(self.headers, req))   # sub = VERIFIED user id (auth); uid = RTDB /runs key
             if not sub:
-                self._send(401, json.dumps({"error": "sign in required (no valid Google token)"}))
+                self._send(401, json_dumps({"error": "sign in required (no valid Google token)"}))
                 return
             if req.get("jobId"):
                 # The chat service repeats a request whose response it lost, with the same jobId.
@@ -672,23 +671,23 @@ class H(BaseHTTPRequestHandler):
                 replay_key = (self.path.rstrip("/"), sub, req["jobId"])
                 waited = time.perf_counter()
                 import hashlib
-                fingerprint = hashlib.sha256(json.dumps(req, sort_keys=True, ensure_ascii=False,
+                fingerprint = hashlib.sha256(json_dumps(req, sort_keys=True, ensure_ascii=False,
                                                         separators=(",", ":")).encode()).hexdigest()
                 try:
                     owner, replayed = WORLD_REPLAY.claim(replay_key, fingerprint)
                 except ReplayConflict as exc:
-                    self._send(409, json.dumps({"error": str(exc)})); return
+                    self._send(409, json_dumps({"error": str(exc)})); return
                 if not owner:
                     request_timing.mark("replayed", time.perf_counter() - waited)
                     if replayed is None:
-                        self._send(503, json.dumps({"error": "Engine is busy; retry shortly", "retryable": True}))
+                        self._send(503, json_dumps({"error": "Engine is busy; retry shortly", "retryable": True}))
                     else:
                         self._send(*replayed)
                     return
                 self._replay_key = replay_key
             allowed, retry_after = WORLD_RATE.allow(sub or self.client_address[0])
             if not allowed:
-                self._send(429, json.dumps({"error": "request rate limit exceeded"}), retry_after=retry_after)
+                self._send(429, json_dumps({"error": "request rate limit exceeded"}), retry_after=retry_after)
                 return
             sheets = req["tables"]
             if sheets:
@@ -698,14 +697,14 @@ class H(BaseHTTPRequestHandler):
             else:
                 data = req["data"]
                 if not data.strip():
-                    self._send(200, json.dumps({"error": "no CSV (need {tables:[…], question})"})); return
+                    self._send(200, json_dumps({"error": "no CSV (need {tables:[…], question})"})); return
                 source_sheets = [{"name": req["table"], "data": data}]
                 tabs = [csv_table(data, req["table"])]
             if not tabs:
-                self._send(200, json.dumps({"error": "no CSV rows"})); return
+                self._send(200, json_dumps({"error": "no CSV rows"})); return
             row_error = upload_row_limit_error(tabs)
             if row_error:
-                self._send(413, json.dumps({"error": row_error})); return
+                self._send(413, json_dumps({"error": row_error})); return
             uploaded_count = len(tabs)
             # The WORKING Postgres schema is the CONVERSATION, not the user. A client-supplied
             # conversation id is honored ONLY after the ownership check (chat.user_conversation);
@@ -717,9 +716,9 @@ class H(BaseHTTPRequestHandler):
                 )
             except NotOwned:
                 # 404 (not 403) to match GET /api/conversation — "not yours" and "absent" look identical (no enumeration).
-                self._send(404, json.dumps({"error": "conversation not found"})); return
+                self._send(404, json_dumps({"error": "conversation not found"})); return
             except QuotaExceeded as exc:
-                self._send(429, json.dumps({"error": str(exc)}), retry_after=60); return
+                self._send(429, json_dumps({"error": str(exc)}), retry_after=60); return
             analysis_spec = req.get("analysis")
             if analysis_spec and analysis_spec["action"] == "inspect":
                 try:
@@ -727,7 +726,7 @@ class H(BaseHTTPRequestHandler):
                         sub, conv, analysis_spec["analysis_id"], analysis_spec.get("revision"),
                     )
                 except (NotOwned, AnalysisError):
-                    self._send(404, json.dumps({"error": "analysis not found"})); return
+                    self._send(404, json_dumps({"error": "analysis not found"})); return
                 res = dict(loaded["response"])
                 res["conversation_id"] = conv
                 emit = emitter(uid, req.get("jobId"))
@@ -736,7 +735,7 @@ class H(BaseHTTPRequestHandler):
                 for index, view in enumerate(res.get("views") or ()):
                     emit(f"views/{index}", view)
                 stream_final(emit, res)
-                self._send(200, json.dumps(res, default=_json_safe)); return
+                self._send(200, json_dumps(res, default=_json_safe)); return
             references = master.relevant_tables(
                 sub, tabs, MAX_SHEETS - len(tabs), MAX_REFERENCE_ROWS,
             )
@@ -794,7 +793,7 @@ class H(BaseHTTPRequestHandler):
                     res["dataset_ops_rejected"] = True
                 emit = emitter(uid, req.get("jobId"))
                 stream_final(emit, res)
-                self._send(200, json.dumps(res)); return
+                self._send(200, json_dumps(res)); return
             provenance_context = ProvenanceContext(
                 tabs, uploaded_count=uploaded_count, reference_count=reference_count,
                 enrichment=enrichment, dataset_semantics=semantics,
@@ -813,13 +812,13 @@ class H(BaseHTTPRequestHandler):
                         request_source_hash=source_snapshot_hash(source_sheets),
                     )
                 except QuotaExceeded as exc:
-                    self._send(429, json.dumps({"error": str(exc)}), retry_after=60); return
+                    self._send(429, json_dumps({"error": str(exc)}), retry_after=60); return
                 except AnalysisConflict as exc:
-                    self._send(409, json.dumps({"error": str(exc)})); return
+                    self._send(409, json_dumps({"error": str(exc)})); return
                 except NotOwned:
-                    self._send(404, json.dumps({"error": "analysis not found"})); return
+                    self._send(404, json_dumps({"error": "analysis not found"})); return
                 except AnalysisError as exc:
-                    self._send(400, json.dumps({"error": str(exc)})); return
+                    self._send(400, json_dumps({"error": str(exc)})); return
                 analysis_user = sub
                 analysis_conversation = conv
                 emit = analysis_emitter(emit, analysis)
@@ -902,7 +901,7 @@ class H(BaseHTTPRequestHandler):
                         discard_analysis()
                         emit("error", "analysis changed while the answer was running; please retry")
                         emit("status", "error")
-                        self._send(409, json.dumps({
+                        self._send(409, json_dumps({
                             "error": "analysis changed while the answer was running; please retry",
                         })); return
                     if snapshot is not None:
@@ -919,13 +918,13 @@ class H(BaseHTTPRequestHandler):
                     else:
                         discard_analysis()
             stream_final(emit, res)                          # terminal state -> RTDB (decoupled from this response)
-            self._send(200, json.dumps(res, default=_json_safe))
+            self._send(200, json_dumps(res, default=_json_safe))
         except EngineBusy as exc:
             discard_analysis()
             if emit is not None:
                 emit("error", str(exc))
                 emit("status", "error")
-            self._send(503, json.dumps({"error": str(exc), "retryable": True}))
+            self._send(503, json_dumps({"error": str(exc), "retryable": True}))
         except request_deadline.RequestTimedOut as exc:
             cleanup_token = request_deadline.begin(10)
             try:
@@ -934,7 +933,7 @@ class H(BaseHTTPRequestHandler):
                 request_deadline.end(cleanup_token)
             if emit is not None:
                 emit("error", str(exc)); emit("status", "error")
-            self._send(503, json.dumps({"error": str(exc), "retryable": True}))
+            self._send(503, json_dumps({"error": str(exc), "retryable": True}))
         except Exception as e:                           # noqa: BLE001
             discard_analysis()
             if emit is not None:                         # don't leave the client stuck on 'running' — stream the error
@@ -950,7 +949,7 @@ class H(BaseHTTPRequestHandler):
                 f"{os.path.basename(f.filename)}:{f.lineno}:{f.name}"
                 for f in reversed(traceback.extract_tb(e.__traceback__)[-4:]))
             print(f"world request failed: {type(e).__name__} at {frames}", flush=True)
-            self._send(500, json.dumps({"error": "internal server error"}))
+            self._send(500, json_dumps({"error": "internal server error"}))
         finally:
             replay_key, self._replay_key = getattr(self, "_replay_key", None), None
             if replay_key is not None:                   # ended without a response: the next request with the id runs
@@ -968,34 +967,34 @@ class H(BaseHTTPRequestHandler):
                 return
             sub, _uid = _verify_principal(_bearer(self.headers, None))
             if not sub:
-                self._send(401, json.dumps({"error": "sign in required"})); return
+                self._send(401, json_dumps({"error": "sign in required"})); return
             allowed, retry_after = DIM_RATE.allow(sub or self.client_address[0])
             if not allowed:
-                self._send(429, json.dumps({"error": "request rate limit exceeded"}), retry_after=retry_after)
+                self._send(429, json_dumps({"error": "request rate limit exceeded"}), retry_after=retry_after)
                 return
             data = req.get("data", "")
             if not isinstance(data, str):
-                self._send(400, json.dumps({"error": "CSV data must be text"})); return
+                self._send(400, json_dumps({"error": "CSV data must be text"})); return
             if not data.strip():
-                self._send(400, json.dumps({"error": "no CSV (need {data, mode:'analyze'})"})); return
+                self._send(400, json_dumps({"error": "no CSV (need {data, mode:'analyze'})"})); return
             tbl = csv_table(data, table_name(req.get("table", "data"), 0))
             row_error = upload_row_limit_error([tbl])
             if row_error:
-                self._send(413, json.dumps({"error": row_error})); return
+                self._send(413, json_dumps({"error": row_error})); return
             # DIM_LOCK is WORLD_LOCK: the dimension model shares the world encoder, so it queues behind a
             # /api/reason request. Wait as long as /api/reason does, then answer 503 like it — an unbounded
             # wait held a request thread for the whole request.
             if not DIM_LOCK.acquire(timeout=QUEUE_TIMEOUT_SECONDS):
-                self._send(503, json.dumps({"error": "Engine is busy; retry shortly", "retryable": True}))
+                self._send(503, json_dumps({"error": "Engine is busy; retry shortly", "retryable": True}))
                 return
             try:
                 res = DIM_MODEL.analyze(tbl)
             finally:
                 DIM_LOCK.release()
-            self._send(200, json.dumps(res))
+            self._send(200, json_dumps(res))
         except Exception as e:                               # noqa: BLE001
             print(f"dimension request failed: {type(e).__name__}", flush=True)
-            self._send(500, json.dumps({"error": "internal server error"}))
+            self._send(500, json_dumps({"error": "internal server error"}))
 
 
 def main():

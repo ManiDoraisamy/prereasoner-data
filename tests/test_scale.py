@@ -36,6 +36,16 @@ def main():
     canceled=sum(Decimal(row[8]) for row in table['rows'] if row[-1]=='canceled')
     Q=KnowledgeReasoner();lease=live_schema();records=[]
     try:
+        # Wide numeric identifiers must not block counts or sums on another field.
+        large = {'name':'ledger', 'columns':['id','Amount'],
+                 'rows':[[str(10**30),'1e-3'],[str(10**30+1),'2e-3']]}
+        for question, expected in [('How many ledger rows?', Decimal(2)), ('total Amount', Decimal('0.003'))]:
+            for mode in ('sql', None):
+                result = served(lease.name,Q.serve,[large],question,lease.name,mode=mode)
+                answer = (result.get('result') or {}).get('rows') or []
+                assert not result.get('error') and not result.get('clarify'), result
+                assert len(answer)==1 and len(answer[0])==1 and Decimal(str(answer[0][0]))==expected, (question,answer)
+        print('PASS numeric storage: oversized identifiers and scientific decimals preserved', flush=True)
         for mode in ('sql', None):
             for question, expected in [('How many subscriptions?', Decimal(30000)),
                                        ('total Amount', gold), ('total Amount for canceled', canceled)]:

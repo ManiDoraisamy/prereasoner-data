@@ -343,3 +343,7 @@ permission to answer a different question.
 The new feature expands schema-only language assistance, not the set of deterministic engine operations.
 An offered question is a proposed request, not a claim about unseen rows. Final image, production and
 authenticated browser gates remain pending; no launch-ready claim is made by this implementation record.
+
+- The actual NT workbook revealed a numeric identifier outside the shared 64-bit INTEGER/BIGINT storage range. Numeric columns now promote to the existing exact NUMERIC/SQLite-decimal dialect using every observed value; scientific fractional notation receives decimal storage too. Invalid or over-capacity operands remain text. This preserves unrelated counts and measures rather than rejecting the sheet or rounding/dropping cells.
+- The same review found that ordinary JSON numbers could round large integral results in JavaScript. HTTP responses, live traces and authoritative analysis snapshots now share exact integer serialization: values outside the browser's safe integer range cross as digit strings. Internal arithmetic and independent numerical gold remain unchanged. New storage, schema, upload and live PostgreSQL scale checks cover these boundaries.
+- Actual-model local checks of the original NT data now pass its 9,741-record count and all four independent per-currency totals. The previous candidate is superseded; fresh immutable image and accuracy gates are required before promotion.

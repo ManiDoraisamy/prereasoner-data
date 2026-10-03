@@ -11,6 +11,7 @@ from __future__ import annotations
 from decimal import Decimal, DivisionByZero, InvalidOperation, localcontext
 import math
 import sqlite3
+import json
 from typing import Any, Iterable
 
 
@@ -18,6 +19,45 @@ MAX_INTEGER_DIGITS = 38
 MAX_DECIMAL_SCALE = 20
 DECIMAL_PRECISION = 128
 DIVISION_SCALE = 20
+MIN_STORAGE_INTEGER = -(2**63)
+MAX_STORAGE_INTEGER = 2**63 - 1
+MAX_JSON_SAFE_INTEGER = 2**53 - 1
+
+
+def wire_document(value: Any) -> Any:
+    """Keep integer digits exact in browser HTTP, live traces and saved snapshots."""
+    if type(value) is int and abs(value) > MAX_JSON_SAFE_INTEGER:
+        return str(value)
+    if isinstance(value, Decimal):
+        return wire_document(wire_decimal(value))
+    if isinstance(value, dict):
+        return {key: wire_document(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [wire_document(item) for item in value]
+    return value
+
+
+def json_dumps(value: Any, **kwargs) -> str:
+    return json.dumps(wire_document(value), **kwargs)
+
+
+def observed_numeric_affinity(values: Iterable[Any]) -> str:
+    """Choose storage from every observed value, with exact decimal promotion at integer bounds.
+
+    A large numeric identifier must not crash unrelated queries. PostgreSQL BIGINT and SQLite
+    INTEGER share these bounds; larger finite values use the existing exact NUMERIC/text dialect.
+    Invalid/out-of-contract cells remain text, preserving them instead of casting them to NULL.
+    """
+    fractional = False
+    for value in values:
+        try:
+            number = parse_decimal(value)
+        except (TypeError, ValueError):
+            return "TEXT"
+        if ("." in str(value) or number != number.to_integral_value()
+                or not MIN_STORAGE_INTEGER <= number <= MAX_STORAGE_INTEGER):
+            fractional = True
+    return "REAL" if fractional else "INTEGER"
 
 
 def parse_decimal(value: Any, *, enforce_input_bounds: bool = True) -> Decimal:

@@ -22,7 +22,7 @@ import numpy as np
 from engine import request_timing
 from engine.config import DATA_DIR, BASE_MODEL_ID as MODEL_ID  # noqa: F401 - public compatibility export
 from engine.fk_edges import edges
-from engine.numeric import parse_decimal, register_sqlite_decimal, sqlite_numeric, wire_decimal
+from engine.numeric import parse_decimal, register_sqlite_decimal, sqlite_numeric, wire_decimal, observed_numeric_affinity
 from engine.relations import relate
 from engine.request_validation import canonical_table_name
 from engine.column_names import canonical_columns
@@ -333,7 +333,7 @@ class TableQuery:
                 vals = [rd.get(c) for rd in rowdicts]
                 ne = [v for v in vals if v is not None and str(v).strip() != ""]
                 if ne and all(_num_str(v) for v in ne):
-                    aff = "REAL" if any("." in str(v) for v in ne) else "INTEGER"
+                    aff = observed_numeric_affinity(ne)
                 elif ne and not all(isinstance(v, bool) for v in ne):
                     # A learned numeric label cannot turn notes or formula errors
                     # into missing numbers. Keep the cells and prevent arithmetic

@@ -16,7 +16,7 @@ from decimal import Decimal
 
 from engine import request_timing
 from engine.config import RTDB_URL, rtdb_trace_retention_days
-from engine.numeric import wire_value
+from engine.numeric import wire_value, json_dumps
 
 _NOOP = lambda *a, **k: None
 
@@ -36,7 +36,7 @@ def rtdb_safe(value):
     calculation rows can contain ``Decimal`` values, so a response could succeed while its live
     result write failed with ``TypeError`` and left the browser with a partial trace.
     """
-    return json.loads(json.dumps(value, default=_rtdb_scalar, allow_nan=False))
+    return json.loads(json_dumps(value, default=_rtdb_scalar, allow_nan=False))
 
 
 def rtdb_encode(value):

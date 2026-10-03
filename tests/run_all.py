@@ -24,7 +24,7 @@ import sys
 import engine.config  # noqa: F401 â€” autoloads repo .env so KB_PG_PASSWORD/GOOGLE_CLOUD_PROJECT reach the
 # spawned suites; without it the world suites silently SKIP (or return 1) and the gate falsely looks green.
 
-SUITES = ["tests.test_suggestions", "tests.test_sql_ast", "tests.test_query_contract", "tests.test_llm", "tests.test_calculations", "tests.test_analysis", "tests.test_deterministic_emitters", "tests.test_decomposition", "tests.test_complex_datasets", "tests.test_routing", "tests.test_router_evidence", "tests.test_schema_decode",
+SUITES = ["tests.test_numeric_storage", "tests.test_suggestions", "tests.test_sql_ast", "tests.test_query_contract", "tests.test_llm", "tests.test_calculations", "tests.test_analysis", "tests.test_deterministic_emitters", "tests.test_decomposition", "tests.test_complex_datasets", "tests.test_routing", "tests.test_router_evidence", "tests.test_schema_decode",
           "tests.test_schema_coverage", "tests.test_compose", "tests.test_converse", "tests.test_master_ingest",
           "tests.test_enrichment", "tests.test_source_sync", "tests.test_app_migrations",
           "tests.test_request_limits", "tests.test_request_timing", "tests.test_pg_upload",
@@ -34,7 +34,7 @@ SUITES = ["tests.test_suggestions", "tests.test_sql_ast", "tests.test_query_cont
           "tests.test_conversations", "tests.test_sheet_sessions", "tests.test_provenance",
           "tests.test_release", "tests.test_promotion_gate", "tests.test_community_deploy",
           "tests.test_mcp", "tests.test_orchestrator_unit", "tests.test_orchestrator"]
-ENGINE_SUITES = ["tests.test_suggestions", "tests.test_world", "tests.test_nongeo", "tests.test_world_joins",
+ENGINE_SUITES = ["tests.test_numeric_storage", "tests.test_suggestions", "tests.test_world", "tests.test_nongeo", "tests.test_world_joins",
                  "tests.test_route_wired", "tests.test_geo", "tests.test_schema_probes",
                  "tests.test_datasets", "tests.test_question_families", "tests.test_scale", "tests.test_request_replay_live"]
 
