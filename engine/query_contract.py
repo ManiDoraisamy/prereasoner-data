@@ -45,6 +45,63 @@ def mandatory_predicates(predicate):
         yield predicate
 
 
+def relational_operator_evidence(question, query, graph):
+    """Consume relational instruction words only after the AST proves them.
+
+    These are SQL operations, not aliases for business nouns. A field or observed
+    value named ``Unique``/``Descending`` remains data. Missing or reversed
+    operations must not be accepted merely by adding words to a noise list.
+    """
+    from engine.sql_ast import Aggregate, ColumnRef, SelectQuery
+    from engine.sql_expansion import ExpansionSupport, ordering_requested, tokens
+    from engine.sql_schema import canon
+
+    if not isinstance(query, SelectQuery):
+        return frozenset(), ()
+    text = ' '.join(lexical_words(question))
+    instruction_words = set(lexical_words(text)) & {'distinct', 'different', 'unique',
+                                                   'ascending', 'descending', 'asc', 'desc'}
+    if not instruction_words:
+        return frozenset(), ()
+    data_words = {canon(word) for column in graph.columns
+                  for word in lexical_words(column.ref.name)}
+    data_words.update(canon(word) for column in graph.columns for value in column.values
+                      if value is not None for word in lexical_words(value))
+    requested_words = instruction_words - data_words
+    consumed, violations = set(), []
+    distinct_words = requested_words & {'distinct', 'different', 'unique'}
+    if distinct_words:
+        counted = [item.expression for item in query.select
+                   if isinstance(item.expression, Aggregate)
+                   and item.expression.function == 'COUNT']
+        projected = [item.expression for item in query.select]
+        grouped_projection = (bool(query.group_by) and bool(projected)
+                              and all(isinstance(item, ColumnRef) and item in query.group_by
+                                      for item in projected))
+        if query.distinct or (counted and all(item.distinct for item in counted)) or grouped_projection:
+            consumed.update(distinct_words)
+        else:
+            violations.append('requested distinct results are missing')
+    direction_words = requested_words & {'ascending', 'descending', 'asc', 'desc'}
+    if direction_words and ordering_requested(question):
+        expected = {'ASC' if word in {'ascending', 'asc'} else 'DESC' for word in direction_words}
+        if len(expected) != 1 or not query.order_by or query.order_by[0].direction not in expected:
+            violations.append('requested ordering direction is missing or reversed')
+        else:
+            consumed.update(direction_words)
+            consumed.add('order')
+        # Match the explicitly named ordering target through the same schema
+        # linker used by search, rather than mistaking a projected field for proof.
+        match = re.search(r'\b(?:order(?:ed)?\s+by|order\s+of|sort(?:ed)?\s+by)\s+([^?!.;]+)', text)
+        if match:
+            named = {ref for _, ref in ExpansionSupport(graph).mentioned_columns(tokens(match[1]), False)}
+            actual = query.order_by[0].expression if query.order_by else None
+            actual = actual.operand if isinstance(actual, Aggregate) else actual
+            if named and actual not in named:
+                violations.append('requested ordering uses a different field')
+    return frozenset(consumed), tuple(violations)
+
+
 def constraint_violations(question, query, graph):
     from engine.sql_ast import Aggregate, ColumnRef, Comparison, DatePart, ExistsPredicate, InPredicate, SelectQuery, SetQuery, Star
     from engine.sql_dates import realizes_dates, served_date_phrases
@@ -58,7 +115,7 @@ def constraint_violations(question, query, graph):
         return ("unsupported interpretation scope",)
     question_tokens = tokens(question)
     phrases = served_date_phrases(question, question_tokens, graph)
-    violations = []
+    violations = list(relational_operator_evidence(question, query, graph)[1])
     # The spreadsheet importer preserves duplicate headers with their original
     # column letters. Displaying both is safe; choosing one for a calculation or
     # filter needs the user to distinguish it, rather than an arbitrary model pick.
@@ -283,6 +340,7 @@ def has_unread_terms(question, candidate, graph, *, calculation_satisfied=False)
     observed = {canon(word) for column in graph.columns for value in column.values
                 if value is not None for word in lexical_words(value)}
     ordinary_words.update(canon(word) for word in closed_class_words(question))
+    ordinary_words.update(relational_operator_evidence(question, candidate.query, graph)[0])
     ordinary_words.update(canon(word) for word in action_words(question) if canon(word) not in observed)
     has_aggregate = any(isinstance(item.expression, Aggregate)
                         for item in getattr(candidate.query, 'select', ()))

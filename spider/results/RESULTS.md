@@ -4,6 +4,27 @@ Dated entries come newest first. Each records a run at the commit it names; the 
 entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection arbiter`) may since have
 been removed, and that commit holds the code that ran.
 
+## Release review at `5856348`, whole_db DEV (2026-10-03)
+
+Clean source `58563489357173a0f84556680d705cba2e2a83df`, served selection,
+`--backend auto`, row cap 5,000, external rewriting disabled, 1,034 questions:
+**214 strict (20.7%), 274 lenient (26.5%), 363 answered, 671 abstained**.
+Among answered questions, 149 fail strict comparison and 89 fail lenient comparison.
+These are denotation metrics, not guarantees that an answer is correct.
+
+This run includes the mandatory completeness/constraint gate across every selection
+configuration; older runs can accept more incomplete readings. It also uses the
+automatic Python/SQL execution policy rather than the older SQL-only policy.
+The local Python 3.11 CPU environment is not the pinned release image environment.
+Artifacts are `full_eval_launch5856348.json` and
+`full_eval_per_example_launch5856348.json` under the operator's temporary
+`prereasoner-spider-5856348` evaluation directory, with source and model hashes.
+
+The review reproduced valid distinct queries rejected as unread and found explicit
+ordering needed direction/field proof. The subsequent candidate addresses these
+through AST evidence, and requires its own fresh evaluation. The earlier 497 result
+below is historical; it must not be presented as current release accuracy.
+
 ## The engine alone at `60a55a3`, fresh whole_db DEV run (2026-10-02)
 
 The same serving-faithful contract as the runs below (`spider/probe/full_eval.py --config whole_db`,

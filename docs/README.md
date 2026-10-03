@@ -75,7 +75,7 @@ database releases.
 | Selection fallback | Optional, stateless Gemini rewording when no candidate runs; the deterministic typed search still builds and validates SQL | External model, opt-in; rewritten answers are labelled, and decomposition leaves never take it |
 | Joins, calculations, validation, and execution | Typed rules, calculation specifications, guarded emitters, and PostgreSQL | Deterministic |
 | Entity fallback | Exact lookup, then similarity, followed by grounding checks | Retrieval signal plus deterministic gates |
-| Conversational presentation | Optional Gemini orchestrator | Cannot author SQL facts or numeric answers |
+| Factual answer presentation | Shared deterministic renderer | Displays structured engine results; Gemini may route or rewrite questions using schema context |
 
 Determinism removes sampling variance. It does not remove ambiguous wording, missing candidates,
 schema-linking mistakes, selection mistakes, source gaps, or entity-resolution errors.

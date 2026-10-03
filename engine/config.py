@@ -33,15 +33,15 @@ Env contract:
   BASE_MODEL_REVISION  Immutable Hugging Face commit for that base model
   KB_MODEL_ROUTE    "0" disables model-driven column routing (falls back to value membership; default on)
 
-  --- External model: Gemini on Vertex AI (engine/llm.py) — /api/converse, reference generation, the
-      selection fallback, and the chat orchestrator ---
+  --- External model: Gemini on Vertex AI (engine/llm.py) — reference generation, the
+      stateless wording rewrite, and the chat orchestrator ---
   EXTERNAL_LLM_ENABLED Authoritative deployment switch for every Gemini call; default false. See PRIVACY.md.
   GEMINI_MODEL         Vertex AI Gemini model id (default gemini-3.8-flash)
   GEMINI_LOCATION      Vertex AI location (default global)
   GOOGLE_CLOUD_PROJECT Google Cloud project whose Vertex AI serves Gemini. Credentials are Application Default
                        Credentials (the Cloud Run service account; `gcloud auth application-default login`
-                       locally). Unset ⇒ Gemini is unavailable: /api/converse and /api/master/generate answer
-                       503, the UI degrades gracefully, and selection runs without its fallback.
+                       locally). Unset ⇒ Gemini is unavailable: /api/master/generate answers
+                       503 and selection runs without rewriting. Factual presentation is deterministic.
   ENGINE_BASE_URL      where the MCP server reaches this engine over HTTP (default http://127.0.0.1:$PORT)
   ORCH_HOST            bind address for the orchestrator chat server (default 0.0.0.0)
   ORCH_PORT            port for the orchestrator chat server          (default 8090)

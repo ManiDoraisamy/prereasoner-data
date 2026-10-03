@@ -2585,7 +2585,23 @@ def test_a_converted_total_is_grouped_or_ranked_by_the_column_the_question_names
             **binding,
         )
         engine = create_engine("sqlite+pysqlite:///:memory:")
+        # SQLite 3.38's ROUND(120.0, 20) returns 119.9999999999999,
+        # unlike PostgreSQL NUMERIC ROUND. This fixture has binary-exact
+        # operands; emulate only PostgreSQL rounding rather than relaxing
+        # stage equality or changing its independent numerical gold.
+        def install_numeric_round(dbapi_connection, _record):
+            from decimal import Decimal, ROUND_HALF_UP, localcontext
+            def numeric_round(value, scale):
+                if value is None:
+                    return None
+                with localcontext() as ctx:
+                    ctx.prec = 100
+                    return float(Decimal(str(value)).quantize(
+                        Decimal(1).scaleb(-int(scale)), rounding=ROUND_HALF_UP))
+            dbapi_connection.create_function('round', 2, numeric_round, deterministic=True)
+        event.listen(engine, 'connect', install_numeric_round)
         with engine.begin() as connection:
+            assert connection.exec_driver_sql('SELECT ROUND(120.0, 20)').scalar_one() == 120.0
             for namespace in ("conversation", "knowledgebase"):
                 connection.exec_driver_sql(f"ATTACH DATABASE ':memory:' AS {namespace}")
             connection.exec_driver_sql(

@@ -151,6 +151,34 @@ def test_all_rows_preserve_the_complete_projection():
     assert not check('show all rows', 'SELECT * FROM orders LIMIT 50').complete
 
 
+def test_distinct_is_proven_by_the_selected_plan():
+    assert check('show distinct city', 'SELECT DISTINCT city FROM orders').complete
+    assert not check('show distinct city', 'SELECT city FROM orders').complete
+    assert check('count different city', 'SELECT COUNT(DISTINCT city) FROM orders').complete
+    assert not check('count different city', 'SELECT COUNT(city) FROM orders').complete
+    assert check('show unique city', 'SELECT city FROM orders GROUP BY city').complete
+
+
+def test_explicit_ordering_requires_direction_and_field():
+    question = 'show city and Amount in descending order of Amount'
+    assert check(question, 'SELECT city, Amount FROM orders ORDER BY Amount DESC').complete
+    assert not check(question, 'SELECT city, Amount FROM orders ORDER BY Amount ASC').complete
+    assert not check(question, 'SELECT city, Amount FROM orders ORDER BY city DESC').complete
+    assert not check(question, 'SELECT city, Amount FROM orders').complete
+    assert check('show Amount in ascending order of Amount',
+                 'SELECT Amount FROM orders ORDER BY Amount ASC').complete
+
+
+def test_operator_words_in_source_fields_remain_data():
+    from engine.sql_ast import ColumnRef, SelectItem, SelectQuery, SQLType, render_query
+    from engine.sql_candidate import ScoredQuery
+    table = {'name': 'labels', 'columns': ['Unique', 'Descending'], 'rows': [['A', 'B']]}
+    graph = SchemaGraph.from_tables([table], [])
+    query = SelectQuery(tuple(SelectItem(ColumnRef('labels', name, SQLType.TEXT))
+                              for name in table['columns']), 'labels')
+    assert coverage('show Unique and Descending', ScoredQuery(query, render_query(query), 0.0, ()), graph).complete
+
+
 def test_a_complete_lower_ranked_reading_survives():
     from unittest.mock import patch
     planner = _hermetic_planner()

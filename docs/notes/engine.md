@@ -70,7 +70,7 @@ The engine is a proper package run from the repo root (no `sys.path` hacks).
 | `BASE_MODEL_ID` | `Qwen/Qwen2.5-0.5B` | the Qwen base the LoRA adapter attaches to; matches the training/ package. |
 | `KB_MODEL_ROUTE` | `1` | `0` disables model-driven column routing (value-membership fallback). |
 | `EXTERNAL_LLM_ENABLED` | `false` | Authoritative switch for every Gemini call (`engine/llm.py`). |
-| `GOOGLE_CLOUD_PROJECT` | *(unset)* | OPTIONAL. The Vertex AI project for Gemini (ADC credentials, no key): `/api/converse`, `/api/master/generate`, the selection fallback; unset ⇒ graceful 503 degrade and no fallback. |
+| `GOOGLE_CLOUD_PROJECT` | *(unset)* | OPTIONAL. The Vertex AI project for Gemini (ADC credentials, no key): `/api/master/generate` and stateless wording rewriting. Factual presentation does not need Gemini. |
 | `GEMINI_MODEL` / `GEMINI_LOCATION` | `gemini-3.8-flash` / `global` | the Vertex AI model and location. |
 | `GEO_TEST_SUB` | `geotest` | tests only. |
 
@@ -141,19 +141,18 @@ layout.
 
 ## Conversational layer
 
-The engine side of the in-chat Gemini fallback + answer presentation. Full design
+The engine side of stateless wording assistance and factual answer presentation. Full design
 in docs/ARCHITECTURE.md §10; this note records the engine surface for maintainers.
 
-- **`engine/converse.py`**: `reply(question, clarify=, error=, tables=, answer=, sql=)` — one
-  short Gemini message. Two modes selected by whether `answer` is supplied: PRESENT (wrap a computed
-  `{columns,rows}` verbatim; empty result renders an explicit "no rows" sentinel) and FALLBACK
-  (offer a clarify rephrasing / explain a meta question; never state an unseen number). Calls
-  `engine.llm.generate_text`; `generate_master` streams through `engine.llm.stream_text`.
+- **`engine/answer_presentation.py`**: the shared deterministic renderer for engine and orchestrator
+  answers. Structured values, nulls, currency and percentage evidence determine factual text;
+  clarification and retry messages come from the engine envelope. No computed results are sent to Gemini.
 - **`engine/server.py`**: `POST /api/converse` (`_post_converse`) — Firebase-auth'd like the reason
-  routes; forwards `answer`/`sql`; `LLMUnavailable` (switch off, no project, or an upstream error)
-  is caught → **503** (logged) so the browser degrades to its built-in fallback. Every engine Gemini
-  call — this one, reference generation, and the selection fallback (`engine/sql_fallback.py`) —
-  goes through `engine/llm.py`, and all of them are optional.
+  routes; uses the shared deterministic renderer. The Gemini switch does not disable factual rendering.
+- **`engine/question_rewrite.py`**: optional stateless schema/question wording assistance. It receives
+  field names and types, never source values or computed answers; the engine builds and validates SQL.
+  **`engine/reference_generation.py`** is the separate explicit reference-fill feature. Both external
+  paths use the single `engine/llm.py` client and honor the deployment switch.
 - **`engine/knowledge.py`** (`KnowledgeReasoner.serve`): the COVERAGE PRE-GATE (`_has_data_signal` → return
   `low_confidence` before reasoning) and `_tag_present` (apply the `present` flag when a real answer
   is human-toned), applied across both the geo and composed paths. `KnowledgeReasoner` also lives here.
