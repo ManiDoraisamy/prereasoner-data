@@ -367,6 +367,10 @@ test('sign in, upload, answer, inspect trace, follow up, and delete',async({page
 
   const deleteChat=page.getByTitle('Delete chat');
   if(!await deleteChat.isVisible())await page.getByRole('button',{name:'Conversations',exact:true}).click();
+  await deleteChat.hover();
+  await expect(deleteChat.locator('svg')).toHaveAttribute('viewBox','0 0 24 24');
+  await expect(deleteChat).toHaveJSProperty('textContent','');
+  await expect.poll(()=>deleteChat.evaluate(el=>getComputedStyle(el).opacity)).toBe('1');
   const deletion=page.waitForRequest(req=>req.url().endsWith('/api/conversation/delete')&&req.method()==='POST');
   await deleteChat.click();
   await deletion;

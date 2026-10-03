@@ -174,6 +174,15 @@ equal(api.fetches.filter(call => call.url.startsWith('https://chat.prereasoner.c
 const denied = load(book([notes]), {'https://identitytoolkit.googleapis.com/': [200, {idToken: 't'}],
   'https://chat.prereasoner.com/': [401, {error: 'sign in required'}]});
 assert.throws(() => denied.clearPrereasonerSheetConversation(), /^Error: Prereasoner: Google sign-in could not be verified\.$/); checks++;
+const quota = load(book([notes]), {'https://identitytoolkit.googleapis.com/': [200, {idToken: 't'}],
+  'https://prereasoner-chat-271377281957.us-central1.run.app/chat': [429,
+    {error: 'conversation limit reached; delete a saved chat from Chats to start another one'}]});
+assert.throws(() => quota.askPrereasoner({question: 'total', tables, turnId: 'quota-test'}),
+  /conversation limit reached; delete a saved chat from Chats to start another one/); checks++;
+const limited = load(book([notes]), {'https://identitytoolkit.googleapis.com/': [200, {idToken: 't'}],
+  'https://prereasoner-chat-271377281957.us-central1.run.app/chat': [429, {error: 'request rate limit exceeded'}]});
+assert.throws(() => limited.askPrereasoner({question: 'total', tables, turnId: 'rate-test'}),
+  /too many requests; wait a moment and try again/); checks++;
 
 // The sidebar is the add-on's own UI and renders with the web's shared code: the rail component, the
 // importer and the live trace, all from chat.prereasoner.com; it keeps no step presentation of its own.

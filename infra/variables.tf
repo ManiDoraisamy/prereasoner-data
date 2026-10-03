@@ -152,7 +152,7 @@ variable "conversation_retention_days" {
 variable "max_conversations_per_user" {
   description = "Maximum number of durable conversations per authenticated user."
   type        = number
-  default     = 100
+  default     = 1000
   validation {
     condition     = var.max_conversations_per_user >= 1 && var.max_conversations_per_user <= 1000 && floor(var.max_conversations_per_user) == var.max_conversations_per_user
     error_message = "max_conversations_per_user must be a whole number from 1 through 1000."

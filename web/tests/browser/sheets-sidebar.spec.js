@@ -12,6 +12,7 @@ test('the Sheets sidebar renders the web rail, with live steps from the realtime
   await expect(page.locator('.empty')).toContainText('Ask a question about the current sheet.');
   await expect(page.locator('.data-notice')).toContainText('This data is not used to train generalized AI models.');
   await expect(page.locator('#sheetCount')).toHaveText('1 tab: Orders');
+  await expect(page.locator('#newConversation')).toBeEnabled();
   expect(await page.evaluate(() => window.__signedInWith)).toBe('google-token');
   const [restore] = await calls(page, 'restorePrereasonerSheetConversation');
   expect(restore.arg.tables).toEqual([{name: 'Orders', data: 'country,amount\nFrance,840\nFrance,400\nGermany,620',
@@ -114,4 +115,17 @@ test('the Sheets sidebar explains a multi-account refusal instead of blaming the
   await expect(page.locator('.answer.error')).toContainText(account);
   await expect(page.locator('#question')).toHaveValue('What is the keyword volume for permit management?');
   expect(await calls(page, 'askPrereasoner')).toEqual([]);
+});
+
+test('the Sheets sidebar keeps the answer and shows the server reason when sheet history cannot save', async ({page}) => {
+  await openSidebar(page, orders, {savePrereasonerSheetConversation: 'Prereasoner: spreadsheet session limit reached.'});
+  await page.locator('#question').fill('What are total sales in France?');
+  await page.locator('#question').press('Enter');
+  await expect.poll(() => page.evaluate(() => Boolean(window.__server.pendingAsk))).toBe(true);
+  await answer(page, 'Total sales in France are **US$1,240**.', views);
+  await expect(page.locator('.turn-answer')).toHaveText('Total sales in France are US$1,240.');
+  await expect(page.locator('#note')).toHaveText(
+    'The answer was returned, but this sheet’s conversation could not be saved: Prereasoner: spreadsheet session limit reached.'
+  );
+  await expect(page.locator('#newConversation')).toBeEnabled();
 });

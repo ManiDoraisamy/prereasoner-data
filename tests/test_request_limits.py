@@ -150,6 +150,8 @@ def test_conversation_lifecycle_limits_are_bounded_and_configurable():
         assert config.conversation_retention_days() == 3650
         assert config.max_conversations_per_user() == 1
         assert config.max_conversation_storage_bytes() == 1024 * 1024
+    with patch.dict("os.environ", {}, clear=True):
+        assert config.max_conversations_per_user() == 1000
 
 
 def test_admin_access_fails_closed_without_an_explicit_allowlist():

@@ -123,7 +123,7 @@
         var questionEl = document.getElementById('question');
         var sendEl = document.getElementById('send');
         var newEl = document.getElementById('newConversation');
-        var state = {conversationId: null, turns: [], history: [], tables: [], syncedFingerprint: '',
+        var state = {conversationId: null, turns: [], history: [], tables: [], syncedFingerprint: '', ready: false,
           restored: false, sheetError: '', uid: null, signedIn: null, busy: true, live: null, failed: null,
           importNote: '', note: ''};
 
@@ -303,7 +303,7 @@
           state.busy = busy;
           questionEl.disabled = busy;
           sendEl.disabled = busy;
-          newEl.disabled = busy || !state.conversationId;
+          newEl.disabled = busy || !state.ready;
           sendEl.textContent = busy ? '…' : '↑';
         }
 
@@ -441,7 +441,9 @@
             state.live = null;
             render();
             callServer('savePrereasonerSheetConversation', {conversationId: state.conversationId, state: snapshot()})
-              .catch(function () { showNote('This conversation could not be saved for this sheet.'); });
+              .catch(function (error) {
+                showNote('The answer was returned, but this sheet’s conversation could not be saved: ' + errorText(error));
+              });
           } catch (error) {
             state.live = null;
             state.failed = {question: question, error: errorText(error)};
@@ -504,6 +506,7 @@
         }).then(function () {
           if (!state.tables.length) countEl.textContent = '';
           render();
+          state.ready = true;
           setBusy(false);
           questionEl.focus();
         });

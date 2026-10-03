@@ -321,7 +321,9 @@ function fetchJson_(url, method, payload, failure) {
   if (status < 200 || status >= 300) {
     var message = body && body.error ? String(body.error) : 'request failed';
     if (status === 401) message = 'Google sign-in could not be verified';
-    if (status === 429) message = 'too many requests; wait a moment and try again';
+    if (status === 429 && /too many requests|rate limit|request rate/i.test(message)) {
+      message = 'too many requests; wait a moment and try again';
+    }
     throw new Error('Prereasoner: ' + message + '.');
   }
   return body;

@@ -173,9 +173,11 @@ def resolve_conversation(user_id, conversation_id, initial_prompt, sheets):
                                 'WHERE conversation_id = %s', (_expiry(), conversation_id))
                 conn.commit()
                 return conversation_id
-            cur.execute('SELECT count(*) FROM "chat"."user_conversation" WHERE user_id = %s', (user_id,))
+            cur.execute('SELECT count(*) FROM "chat"."user_conversation" uc '
+                        'JOIN "chat"."conversation" c ON c.conversation_id = uc.conversation_id '
+                        'WHERE uc.user_id = %s AND c.expires_at > now()', (user_id,))
             if int(cur.fetchone()[0]) >= config.max_conversations_per_user():
-                raise QuotaExceeded("conversation limit reached")
+                raise QuotaExceeded("conversation limit reached; delete a saved chat from Chats to start another one")
             _check_storage(cur, user_id, replacement=source_bytes)
             cid = _new_id()
             cur.execute('INSERT INTO "chat"."conversation" '

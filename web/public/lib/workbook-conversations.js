@@ -85,7 +85,14 @@ async function renderDrawer(){
     const b=document.createElement('div'); b.className='convitem'+(c.id===cur?' on':''); b.dataset.cid=c.id;
     const q=document.createElement('div'); q.className='cq'; q.textContent=c.question||'(untitled)'; b.appendChild(q);
     if(c.ts){ const t=document.createElement('div'); t.className='ct'; t.textContent=prettyTs(c.ts); b.appendChild(t); }
-    const x=document.createElement('button'); x.className='convdel'; x.dataset.del=c.id; x.title='Delete chat'; x.setAttribute('aria-label','Delete chat'); x.textContent='⌫'; b.appendChild(x);
+    const x=document.createElement('button'); x.className='convdel'; x.type='button'; x.dataset.del=c.id; x.title='Delete chat'; x.setAttribute('aria-label','Delete chat');
+    const icon=document.createElementNS('http://www.w3.org/2000/svg','svg');
+    icon.setAttribute('viewBox','0 0 24 24'); icon.setAttribute('aria-hidden','true'); icon.setAttribute('focusable','false');
+    const path=document.createElementNS('http://www.w3.org/2000/svg','path');
+    path.setAttribute('d','M4 7h16M10 11v6m4-6v6M6 7l1 14h10l1-14M9 7V4h6v3');
+    path.setAttribute('fill','none'); path.setAttribute('stroke','currentColor'); path.setAttribute('stroke-width','1.8');
+    path.setAttribute('stroke-linecap','round'); path.setAttribute('stroke-linejoin','round');
+    icon.appendChild(path); x.appendChild(icon); b.appendChild(x);
     list.insertBefore(b,before);
   });
   appendItems(convs);

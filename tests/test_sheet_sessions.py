@@ -88,6 +88,9 @@ def test_restore_backfills_the_latest_exact_source_conversation_once():
     assert restored["conversation_id"] == cid and restored["legacy"] is True
     insert = next(item for item in cursor.statements if item[0].startswith('INSERT INTO "chat"."sheet_session"'))
     assert insert[1][3] == cid
+    limit_query = next(statement for statement, _ in cursor.statements
+                       if statement.startswith('SELECT count(*) FROM "chat"."sheet_session"'))
+    assert 'expires_at > now()' in limit_query
 
 
 def test_excel_restore_does_not_bind_a_google_sheet_by_matching_contents():

@@ -481,12 +481,15 @@ engine renames the analysis in place, keeping its id, links and revision history
 historical turn always restores the workbook that produced that answer. Shared input and private-reference tabs
 remain visible while only the derived stack is switched.
 
-Defaults are 100 durable conversations per user, 256 MiB of serialized source and workbook state per user, 1 MiB
-per browser snapshot, 1 MiB per analysis revision, at most 50 analyses and 100 revisions per analysis, and deletion
-after 90 days of inactivity. Configuration is bounded in `engine.config`; the per-analysis limits are constants in
-`engine.conversations`. Creation, revision reservation, and source replacement use PostgreSQL advisory transaction
-locks. Failed revisions are retained as zero-payload tombstones so a revision number is never reused; an abandoned
-pending revision becomes a tombstone after one hour. Reopening, querying, or saving refreshes the conversation expiry.
+Defaults are 1,000 active durable conversations and 1,000 spreadsheet-session bindings per user, 256 MiB of
+serialized source and workbook state per user, 1 MiB per browser snapshot, 1 MiB per analysis revision, at most 50
+analyses and 100 revisions per analysis, and deletion after 90 days of inactivity. Expired records stop consuming
+conversation and spreadsheet-session slots immediately; the daily cleanup removes their stored data. Configuration
+is bounded in `engine.config`; the per-analysis and spreadsheet-session limits are constants in
+`engine.conversations` and `engine.sheet_sessions`. Creation, revision reservation, and source replacement use
+PostgreSQL advisory transaction locks. Failed revisions are retained as zero-payload tombstones so a revision
+number is never reused; an abandoned pending revision becomes a tombstone after one hour. Reopening, querying, or
+saving refreshes the conversation expiry.
 
 `python -m engine.retention_cleanup` is the single scheduled cleanup owner. It deletes expired conversation
 metadata and the corresponding schemas in bounded batches, then removes expired RTDB traces when RTDB is enabled.

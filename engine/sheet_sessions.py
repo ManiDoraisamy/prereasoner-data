@@ -18,7 +18,7 @@ from engine.pg import _pg
 
 _SPREADSHEET_ID_RE = re.compile(r"^[A-Za-z0-9_-]{10,256}$")
 _CONVERSATION_ID_RE = re.compile(r"^c_[0-9a-f]{32}$")
-MAX_SHEET_SESSIONS_PER_USER = 100
+MAX_SHEET_SESSIONS_PER_USER = 1000
 MAX_SIDEBAR_STATE_BYTES = 512 * 1024
 
 
@@ -63,7 +63,8 @@ def _ensure_user(cur, user_id):
 
 
 def _check_new_session_limit(cur, user_id):
-    cur.execute('SELECT count(*) FROM "chat"."sheet_session" WHERE user_id = %s', (user_id,))
+    cur.execute('SELECT count(*) FROM "chat"."sheet_session" '
+                'WHERE user_id = %s AND expires_at > now()', (user_id,))
     if int(cur.fetchone()[0] or 0) >= MAX_SHEET_SESSIONS_PER_USER:
         raise QuotaExceeded("spreadsheet session limit reached")
 

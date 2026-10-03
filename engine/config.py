@@ -18,7 +18,7 @@ Env contract:
                        clean no-op; the HTTP response still carries the full JSON answer.
   RTDB_TRACE_RETENTION_DAYS age-based trace retention (default 7; enforced by the cleanup job).
   CONVERSATION_RETENTION_DAYS inactivity retention for stored conversations (default 90).
-  MAX_CONVERSATIONS_PER_USER durable conversation-count cap (default 100).
+  MAX_CONVERSATIONS_PER_USER durable conversation-count cap (default 1000).
   MAX_CONVERSATION_STORAGE_BYTES per-user stored source/state byte cap (default 256 MiB).
   AUTH_TEST_SUB        TEST-ONLY auth bypass: a fixed principal, skips Firebase token verification.
   APP_ENV              environment name; test bypasses are honored only in development/test.
@@ -122,9 +122,9 @@ def conversation_retention_days() -> int:
 
 def max_conversations_per_user() -> int:
     try:
-        count = int(os.environ.get("MAX_CONVERSATIONS_PER_USER", "100"))
+        count = int(os.environ.get("MAX_CONVERSATIONS_PER_USER", "1000"))
     except ValueError:
-        count = 100
+        count = 1000
     return max(1, min(count, 1000))
 
 

@@ -447,9 +447,11 @@ body.hasrail .page{margin-left:0}
 .convitem.on{background:#f3effd}
 .convitem .cq{font:500 13.5px var(--disp);color:var(--card-ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .convitem .ct{font:11px var(--mono);color:var(--card-ink-dim);margin-top:2px}
-.convdel{all:unset;position:absolute;right:6px;top:50%;transform:translateY(-50%);width:22px;height:22px;line-height:22px;text-align:center;border-radius:6px;color:#b9b3cf;font-size:17px;cursor:pointer;opacity:0}
-.convitem:hover .convdel{opacity:1}
-.convdel:hover{background:#fbe4e4;color:#d05252}
+.convdel{all:unset;position:absolute;right:6px;top:50%;transform:translateY(-50%);display:grid;place-items:center;width:26px;height:26px;border-radius:6px;color:#968fa0;cursor:pointer;opacity:0}
+.convdel svg{display:block;width:15px;height:15px}
+.convitem:hover .convdel,.convitem:focus-within .convdel{opacity:1}
+.convdel:hover,.convdel:focus-visible{background:#fbe4e4;color:#d05252}
+.convdel:focus-visible{outline:2px solid #6b3df4;outline-offset:2px}
 .convclear{all:unset;display:block;margin:12px 11px 0;padding:8px;text-align:center;color:#b0a9c4;font:12px var(--disp);cursor:pointer;border-radius:8px}
 .convclear:hover{background:#fbe4e4;color:#d05252}
 .convempty{padding:22px 14px;color:var(--card-ink-dim);font:13px/1.5 var(--disp);text-align:center}
@@ -492,7 +494,7 @@ body.signed-in:not(.app) .page>.hdr .brand{display:none}
 .railtop{padding:14px 12px 8px}.railnew,.convnew{box-sizing:border-box;width:100%;margin:0;padding:10px 13px;text-align:left;border:1px solid #d9d3e5;border-radius:9px;background:#fff;color:#342a48;font:600 13px var(--disp);box-shadow:none}
 .railnew::before,.convnew::before{content:"+";margin-right:8px;color:var(--brand);font-size:16px;font-weight:500}.railnew:hover,.convnew:hover{background:#f6f3fc;border-style:solid;border-color:#c9bfdd}
 .convlist{padding:8px 9px 14px}.convitem{padding:10px 34px 10px 11px}.convitem:hover{background:#f1eff4}.convitem.on{background:#eae5f7}
-.convitem .cq{font-size:13px}.convitem .ct{color:#8b8493}.convdel{font-size:14px;color:#968fa0}.convitem:hover .convdel,.convitem:focus-within .convdel{opacity:1}
+.convitem .cq{font-size:13px}.convitem .ct{color:#8b8493}
 .railuser{border-color:#e7e4ea}.railav,.accountbtn{background:var(--brand)}
 .homeback,.drawer-backdrop{background:rgba(24,20,32,.28)}
 

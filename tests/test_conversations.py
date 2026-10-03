@@ -161,6 +161,56 @@ def test_source_replacement_advances_dataset_version_and_marks_analyses_stale():
     assert update[1][3] == 1
 
 
+def test_new_conversation_quota_counts_only_unexpired_conversations():
+    class Cursor:
+        def __init__(self):
+            self.one = None
+            self.statements = []
+
+        def execute(self, statement, params=None):
+            text = str(statement)
+            self.statements.append((text, params))
+            if text.startswith('SELECT count(*) FROM "chat"."user_conversation"'):
+                self.one = (0,)
+            elif 'SUM(c.source_bytes' in text or 'SUM(ar.response_bytes)' in text:
+                self.one = (0,)
+
+        def fetchone(self):
+            return self.one
+
+    cursor = Cursor()
+    connection = _Connection(cursor)
+    with patch.object(conversations, "_pg", return_value=connection):
+        conversations.resolve_conversation("user", None, "total", [{"name": "orders", "data": "id,amount\n1,12\n"}])
+    count = next(statement for statement, _ in cursor.statements
+                 if statement.startswith('SELECT count(*) FROM "chat"."user_conversation"'))
+    assert 'c.expires_at > now()' in count
+
+
+def test_conversation_limit_error_tells_user_how_to_recover():
+    class Cursor:
+        def __init__(self):
+            self.one = None
+
+        def execute(self, statement, params=None):
+            if str(statement).startswith('SELECT count(*) FROM "chat"."user_conversation"'):
+                self.one = (1,)
+
+        def fetchone(self):
+            return self.one
+
+    connection = _Connection(Cursor())
+    with patch.object(conversations, "_pg", return_value=connection), \
+            patch.object(conversations.config, "max_conversations_per_user", return_value=1):
+        try:
+            conversations.resolve_conversation("user", None, "total", [])
+        except conversations.QuotaExceeded as exc:
+            assert "delete a saved chat from Chats" in str(exc)
+        else:
+            raise AssertionError("conversation cap did not reject the new conversation")
+    assert connection.rollbacks == 1 and connection.closed
+
+
 def test_source_sync_keeps_the_answer_but_marks_changed_data_stale():
     class Cursor:
         def __init__(self):
@@ -645,6 +695,8 @@ TESTS = [
     test_save_state_rejects_an_oversized_snapshot_and_rolls_back,
     test_source_snapshot_hash_is_order_independent_but_value_sensitive,
     test_source_replacement_advances_dataset_version_and_marks_analyses_stale,
+    test_new_conversation_quota_counts_only_unexpired_conversations,
+    test_conversation_limit_error_tells_user_how_to_recover,
     test_source_sync_keeps_the_answer_but_marks_changed_data_stale,
     test_delete_all_removes_only_owned_valid_conversations_and_user_traces,
     test_append_dataset_ops_is_bounded_and_serialized,
