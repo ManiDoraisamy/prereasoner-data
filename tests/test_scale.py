@@ -82,7 +82,13 @@ def main():
         conversations.complete_analysis(lease.user_id, lease.name, descriptor, 'show all rows', result)
         reloaded = conversations.get_analysis_revision(lease.user_id, lease.name,
             descriptor['analysis_id'], descriptor['revision'])['response']['result']['rows']
-        assert reloaded == answer, 'Authoritative reload changed/truncated the complete result'
+        # SQL returns Decimal cells in memory. The browser and JSONB both receive
+        # the exact shared wire encoding, whose fractional decimals can be strings.
+        # Compare those actual product representations, preserving every row/cell.
+        from engine.numeric import json_dumps
+        immediate_wire = json.loads(json_dumps(result, default=conversations._snapshot_value))['result']['rows']
+        assert reloaded == immediate_wire, 'Authoritative reload changed/truncated the complete wire result'
+        assert len(reloaded) == 30000 and sum(Decimal(str(row[amount_column])) for row in reloaded) == gold
         print('scale_full_result',json.dumps({'rows':len(answer),'seconds':round(time.perf_counter()-start,3),
                                             'bytes':len(json.dumps(result,default=str).encode())}),flush=True)
         print('PASS scale: 30000 rows, exact gold and complete output',flush=True)
