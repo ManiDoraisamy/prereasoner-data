@@ -192,6 +192,18 @@ def main():
            and "don't have a reliable way" not in accepted["reply"].lower(),
            "the assistant does not invent a missing-rate failure before the engine responds")
 
+        # The engine's own clarification offers a question ("Try asking: “…”"), and the user says
+        # "yes". The model sees no earlier replies, so it had nothing to accept (2026-10-04).
+        print("[1c] yes accepts the question an engine clarification offered")
+        from engine.answer_presentation import clarify_reply
+        offered = clarify_reply({"reason": "I need one more detail before I can answer that.",
+                                 "proposed": "total amount in Germany"})
+        clarified = asyncio.run(chat("yes", history=[{"role": "user", "content": "germany amount please"},
+                                                     {"role": "assistant", "content": offered}]))
+        clarified_sent = [t.get("question", "") for t in clarified["traces"]]
+        ok(clarified_sent == ["total amount in Germany"],
+           f"yes sends the offered question as written (got {clarified_sent})")
+
         # Chrome pass, 2026-09-30 (formfacade-leads, fresh conversation): the complete question "total
         # budget in Africa" between the USD request and the shorthand made the rewrite drop USD, so
         # Europe came back as 62,000 in euros. The standalone question itself stays verbatim ([1e]).

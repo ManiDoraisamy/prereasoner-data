@@ -42,7 +42,7 @@ def clarify_reply(clarify: dict[str, Any]) -> str:
         sentence = reason if reason[-1:] in ".?!" else reason + "."
         return f"{sentence} Try asking: “{proposed}”"
     if "?" not in reason and not re.search(r"\b(?:choose|select|try asking)\b", reason, re.I):
-        reason += " Which interpretation should I use?"
+        reason = (reason if reason[-1:] in ".!" else reason + ".") + " Which interpretation should I use?"
     return reason
 
 

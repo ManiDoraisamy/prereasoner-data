@@ -32,7 +32,9 @@ def test_reply_presents_the_computed_answer_without_external_processing():
         assert terminal_reply({'status': 'answered', 'answer': {'rows': [[-120]]}}) == '-120'
         assert terminal_reply({'status': 'clarify', 'clarify': {'reason': 'Choose a measure'}}) == 'Choose a measure'
         reason = 'GBP can mean converting every order into GBP or keeping only the orders recorded in GBP'
-        assert terminal_reply({'status': 'clarify', 'clarify': {'reason': reason}}) == reason + ' Which interpretation should I use?'
+        # One sentence ends before the question: "…recorded in GBP Which interpretation…" ran on (2026-10-04).
+        assert terminal_reply({'status': 'clarify', 'clarify': {'reason': reason}}) == reason + '. Which interpretation should I use?'
+        assert terminal_reply({'status': 'clarify', 'clarify': {'reason': reason + '.'}}) == reason + '. Which interpretation should I use?'
         assert terminal_reply({'status': 'clarify', 'clarify': {'reason': 'Which Amount column should I use?'}}) == 'Which Amount column should I use?'
         rows = [['Ava', 'Travel'], ['Cleo', None]]
         assert terminal_reply({'status': 'answered', 'answer': {'columns': ['customer', 'category'], 'rows': rows}}) == '- customer: Ava; category: Travel\n- customer: Cleo; category: Not recorded'
