@@ -313,7 +313,7 @@ def test_a_value_the_query_compares_is_data_not_an_exclusion_cue():
     assert planner.serve([answers], 'How many responses have Newsletter No?')['result']['rows'] == [[3]]
 
 
-def test_the_requested_grain_is_the_searchs_reading_of_by():
+def test_the_requested_grain_ends_with_its_clause_and_a_shared_name_counts_once():
     # "sorted by average Price" orders the groups; reading it as a second grain refused the
     # correct plan and served GROUP BY Category, Price.
     from engine.tables import csv_table
@@ -330,6 +330,12 @@ def test_the_requested_grain_is_the_searchs_reading_of_by():
         'What is the average Price by Category?', overall, graph).violations
     items = csv_table('Item,Category,Price\na,Tools,30\nb,Tools,10\nc,Toys,5', 'items')
     assert planner.serve([items], question)['result']['rows'] == [['Tools', 20], ['Toys', 5]]
+    # A name two tables share (a join key) is one requested grain, met by grouping either column.
+    joined = [{'name': 'stadium', 'columns': ['Stadium_ID', 'Name'], 'rows': [[1, 'Arena'], [2, 'Bowl']]},
+              {'name': 'concert', 'columns': ['concert_ID', 'Stadium_ID'], 'rows': [[10, 1], [11, 1], [12, 2]]}]
+    graph = _graph(planner, joined)
+    per_key = _model_query(planner, 'SELECT Stadium_ID, COUNT(*) FROM concert GROUP BY Stadium_ID', joined)
+    assert coverage('How many concerts are there for each stadium id?', per_key, graph).complete
 
 
 def test_own_data_adapter_preserves_calendar_proof_and_selection():

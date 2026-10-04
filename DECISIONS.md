@@ -1720,8 +1720,8 @@ A review of the 2026-10-03 changes found:
 ## The completeness check reads names, compared values and the search's grain (2026-10-04)
 
 The same review found the completeness check (`engine/query_contract.py`) refusing answers the previous
-release served, and in one case serving a wrong one. Each fix makes the check read the question the way
-the search reads it, rather than adding words to a list:
+release served, and in one case serving a wrong one. Each fix reads the question's structure rather
+than adding words to a list:
 
 - **A field name holding an aggregate word.** The check deleted "avg" from the question before reading
   it. On the owner's keyword sheet, "the total Avg. monthly searches for the Keyword X" then made the
@@ -1731,9 +1731,14 @@ the search reads it, rather than adding words to a list:
 - **A value the query compares.** "How many responses have Newsletter No?" and "How many tasks are Not
   Started?" were refused as unmet exclusions. A value the query filters on is data, so a cue inside it
   is ignored. "not Done" still needs its `!=`.
-- **The requested grain.** Every column named after "by" had to be a group key. "The average Price by
-  Category, sorted by average Price" refused `GROUP BY Category` and served `GROUP BY Category, Price`.
-  The grain is now the search's group window, which ends at "sorted by".
+- **The requested grain.** Every column whose name appeared anywhere after "by" had to be a group key.
+  "The average Price by Category, sorted by average Price" refused `GROUP BY Category` and served
+  `GROUP BY Category, Price`. Now:
+  - The grain is a field named in full, up to the clause's end, so "sorted by" orders and asks for no
+    grain.
+  - A name two tables share (a join key) counts once.
+  - The search's own group window was tried first: it drops "id" from names, so "each stadium" asked
+    for both tables' `Stadium_ID`, and four Spider DEV answers were lost.
 - **Violation order.** It no longer depends on set iteration, so the same question gets the same
   message.
 

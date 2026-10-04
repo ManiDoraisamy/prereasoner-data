@@ -358,11 +358,25 @@ def constraint_violations(question, query, graph):
     if cutoff and (query.limit != int(cutoff[2]) or not query.order_by):
         violations.append("requested ranking cutoff is missing")
     # Explicitly named output grain must be represented, rather than just appearing
-    # somewhere in the schema. The grain is the search's own reading of "by/per/each"
-    # (sql_rank.analyze_question): "sorted by average Price" orders, it does not group.
-    if roles.group_columns and aggregates and not roles.group_columns <= set(query.group_by):
-        violations.append("requested output grain is missing")
-    return tuple(violations)
+    # somewhere in the schema: a field named in full after "by/per/each", up to the clause's
+    # end. "sorted by average Price" orders the groups and asks for no grain of its own, and a
+    # name shared by two tables (a join key) is met by grouping either one.
+    lowered = question.casefold()
+    grouped = set(query.group_by)
+    for match in re.finditer(r"\b(?:by|per|each)\s+([^?!.;,]+)", lowered):
+        if re.search(r"\b(?:sort|sorted|order|ordered|rank|ranked)\s+$", lowered[:match.start()]):
+            continue
+        tail = re.split(r"\b(?:sort|sorted|order|ordered|rank|ranked)\s+by\b|\b(?:where|whose|having)\b",
+                        match[1])[0]
+        tail_words = " " + " ".join(lexical_words(tail)) + " "
+        labels = {}
+        for column in graph.columns:
+            label = " ".join(lexical_words(column.ref.name))
+            if label and " " + label + " " in tail_words:
+                labels.setdefault(label, set()).add(column.ref)
+        if aggregates and any(not refs & grouped for refs in labels.values()):
+            violations.append("requested output grain is missing")
+    return tuple(dict.fromkeys(violations))
 
 
 def _compared_texts(predicates):
