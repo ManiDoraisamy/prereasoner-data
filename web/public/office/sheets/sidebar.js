@@ -7,11 +7,14 @@
         var questionEl = document.getElementById('question');
         var sendEl = document.getElementById('send');
         var newEl = document.getElementById('newConversation');
+        var syncEl = document.getElementById('syncStatus');
+        // Starters show as soon as the headers are read, while the cells are still being read; a saved
+        // chat that comes back replaces them. They waited for the whole read, ten minutes on a six-tab
+        // workbook (2026-10-04).
         var suggestions = window.PrereasonerSuggestions.create({
           container: document.getElementById('suggestions'), composer: questionEl,
           request: function (schema) { return callServer('getPrereasonerSuggestions', schema); }
         });
-        suggestions.setActive(false);   // until the first render knows whether a saved chat comes back
         var workbookSchema = null;
         var metadataGeneration = 0;
         function refreshSuggestions() {
@@ -23,11 +26,21 @@
           callServer('getWorkbookSchema', {scope: state.scope}).then(function (schema) {
             if (generation !== metadataGeneration) return;
             workbookSchema = schema;
+            if (state.loading && schema && Array.isArray(schema.scope) && schema.scope.length) {
+              state.loading.tabs = schema.scope.length;
+              if (!state.turns.length && !state.live) render();
+            }
             refreshSuggestions();
           }).catch(function () {});
         }
+        // A sheet whose read takes this long is not read again before every question: the question uses
+        // the last read, and the header says how old it is (a click reads it again). A six-tab workbook
+        // spent five minutes reading before each question (2026-10-04); a small sheet reads in a second
+        // or two and is always read fresh.
+        var READ_REUSE_MS = 15000;
         var state = {conversationId: null, turns: [], history: [], tables: [], syncedFingerprint: '', ready: false,
-          restored: false, sheetError: '', uid: null, signedIn: null, busy: true, live: null, scope: 'auto'};
+          restored: false, sheetError: '', uid: null, signedIn: null, busy: false, live: null, scope: 'auto',
+          loading: null, loaded: null, print: '', readMs: 0, syncedAt: 0, syncing: false};
         // The chat service's answer for a conversation deleted elsewhere (orchestrator/server.py).
         var NOT_FOUND = /conversation not found/i;
 
@@ -85,6 +98,40 @@
           });
         }
 
+        // A read of the sheet, made usable: imported, fingerprinted and timed. The header's sync time is
+        // the moment the cells were read, which is the data the next question uses.
+        async function takeWorkbook(workbook, startedAt) {
+          var readMs = Date.now() - startedAt;
+          await nextFrame();                 // let the status repaint before the import's busy work
+          var importStarted = Date.now();
+          var tables = importGrids(workbook);
+          var print = await fingerprint(tables);
+          state.tables = tables;
+          state.print = print;
+          state.readMs = readMs;
+          state.syncedAt = startedAt + readMs;
+          console.info('[prereasoner] sheet read ' + (readMs / 1000).toFixed(1) + ' s, prepared ' +
+            ((Date.now() - importStarted) / 1000).toFixed(1) + ' s, ' + tables.length + ' tab(s)');
+          return tables;
+        }
+
+        // Read the sheet again (before a question, or on the header's click), shown as syncing.
+        async function readSheet() {
+          state.syncing = true;
+          renderSync();
+          try {
+            var startedAt = Date.now();
+            return await takeWorkbook(await callServer('getWorkbookGrids', {scope: state.scope}), startedAt);
+          } finally {
+            state.syncing = false;
+            renderSync();
+          }
+        }
+
+        function nextFrame() {
+          return new Promise(function (resolve) { window.setTimeout(resolve, 0); });
+        }
+
         async function fingerprint(tables) {
           var text = JSON.stringify(tables.map(function (table) { return [table.name, table.data]; }));
           var hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
@@ -139,9 +186,60 @@
             R.renderAssistantTurn({reasoningHtml: reasoningHtml(turn, false), reply: turn.reply || 'No answer was returned.'})});
         }
 
+        // Time since `since`, once it is long enough to reassure ("· 1:42"), filled in by `tick`.
+        function elapsedHtml(since) {
+          return '<span class="elapsed" data-since="' + Number(since) + '"></span>';
+        }
+
+        // What the sidebar is doing while it reads the sheet, from the first moment. A six-tab workbook left
+        // the sidebar blank for ten minutes, and the user took it for broken (2026-10-04).
+        function loadingHtml(loading) {
+          var text = loading.stage === 'reading'
+            ? (loading.tabs ? 'Reading ' + loading.tabs + (loading.tabs === 1 ? ' tab…' : ' tabs…') : 'Reading your spreadsheet…')
+            : loading.stage === 'preparing' ? 'Preparing your sheets…' : 'Restoring your conversation…';
+          return '<div class="loading" role="status"><div class="statusline"><span class="spin"></span>' +
+            '<span>' + R.escapeHtml(text) + '</span>' + elapsedHtml(loading.startedAt) + '</div>' +
+            '<div class="loading-hint" data-after="' + (loading.startedAt + 20000) + '" hidden>' +
+            'Large spreadsheets take a few minutes to read.</div></div>';
+        }
+
+        function ago(ms) {
+          var minutes = Math.floor(ms / 60000);
+          if (minutes < 1) return 'just now';
+          if (minutes < 60) return minutes + (minutes === 1 ? ' min ago' : ' mins ago');
+          var hours = Math.floor(minutes / 60);
+          if (hours < 24) return hours + (hours === 1 ? ' hour ago' : ' hours ago');
+          var days = Math.floor(hours / 24);
+          return days + (days === 1 ? ' day ago' : ' days ago');
+        }
+
+        // The header's right side: whether the sheet is being read, or how old the read the next question
+        // uses is. A click reads the sheet again.
+        function renderSync() {
+          var text = state.syncing ? 'Syncing…' : state.syncedAt ? 'Synced ' + ago(Date.now() - state.syncedAt) : '';
+          syncEl.textContent = text;
+          syncEl.hidden = !text;
+          syncEl.dataset.state = state.syncing ? 'syncing' : 'synced';
+          syncEl.title = state.syncing ? 'Reading the spreadsheet' : 'Sync now';
+          syncEl.disabled = state.syncing || state.busy || !!state.loading;
+        }
+
+        function tick() {
+          var now = Date.now();
+          Array.prototype.forEach.call(document.querySelectorAll('[data-since]'), function (element) {
+            var seconds = Math.max(0, Math.floor((now - Number(element.dataset.since)) / 1000));
+            element.textContent = seconds >= 5
+              ? ' · ' + Math.floor(seconds / 60) + ':' + String(seconds % 60).padStart(2, '0') : '';
+          });
+          Array.prototype.forEach.call(document.querySelectorAll('[data-after]'), function (element) {
+            element.hidden = now < Number(element.dataset.after);
+          });
+        }
+
         function liveHtml(live) {
           return R.renderTurn({question: live.question, assistantHtml: '<div class="turn-content">' +
-            '<div class="statusline"><span class="spin"></span>' + R.escapeHtml(live.status) + '</div>' +
+            '<div class="statusline"><span class="spin"></span>' + R.escapeHtml(live.status) +
+            elapsedHtml(live.startedAt) + '</div>' +
             reasoningHtml(live, true) +
             (live.reply ? '<div class="turn-answer convmsg answer">' + R.renderMarkdown(live.reply) + '</div>' : '') +
             '</div>'});
@@ -156,15 +254,19 @@
           window.requestAnimationFrame(function () { scrollEl.scrollTop = scrollEl.scrollHeight; });
         }
 
-        // An empty sidebar is the composer and three starter questions; nothing else.
+        // An empty sidebar is the composer and three starter questions, under the reading status while the
+        // sheet is read. A chat adds the header: New chat, and the sheet's sync time.
         function render() {
           var html = state.turns.map(turnHtml).join('');
           if (state.live) html += '<div id="liveTurn">' + liveHtml(state.live) + '</div>';
           var empty = !html;
           if (empty && state.sheetError) html = '<div class="empty sheet-error">' + R.escapeHtml(state.sheetError) + '</div>';
+          else if (empty && state.loading) html = loadingHtml(state.loading);
           threadEl.innerHTML = html;
           toplineEl.hidden = !state.turns.length;
-          suggestions.setActive(empty && !state.sheetError);
+          renderSync();
+          suggestions.setActive(!state.turns.length && !state.live && !state.sheetError);
+          tick();
           scrollToEnd();
         }
 
@@ -185,16 +287,19 @@
           var element = document.getElementById('liveTurn');
           if (!element || !state.live) return render();
           element.innerHTML = liveHtml(state.live);
+          tick();
           scrollToEnd();
         }
 
         function setBusy(busy) {
           state.busy = busy;
-          // Reading and answering must never lock the user's draft.
+          // Reading and answering must never lock the user's draft, and a question asked while the sheet
+          // is still being read waits for that read.
           questionEl.disabled = false;
           sendEl.disabled = busy;
           newEl.disabled = busy || !state.ready;
           sendEl.textContent = busy ? '…' : '↑';
+          renderSync();
         }
 
         // Follow the turn as it runs: the calls the assistant makes, each call's steps as they finish,
@@ -293,15 +398,23 @@
           if (!question || state.busy) return;
           questionEl.value = '';
           setBusy(true);
-          var live = {question: question, turnId: randomId(), status: 'Reading the sheet…', steps: [], asks: [], reply: ''};
+          var live = {question: question, turnId: randomId(), startedAt: Date.now(), steps: [], asks: [], reply: '',
+            status: state.loading ? 'Waiting for the sheet to finish reading…' : 'Reading the sheet…'};
           state.live = live;
           render();
           var stopLive = function () {};
           try {
-            var tables = importGrids(await callServer('getWorkbookGrids', {scope: state.scope}));
+            if (state.loaded) await state.loaded;          // the read that opened the sidebar
+            // A sheet that reads quickly is read again, so an edit since then is in the answer; a slow one
+            // uses its last read, whose age the header shows.
+            var tables = state.tables.length && state.readMs >= READ_REUSE_MS ? state.tables : null;
+            if (!tables) {
+              live.status = 'Reading the sheet…';
+              renderLive();
+              tables = await readSheet();
+            }
+            var print = state.print;
             state.sheetError = '';
-            state.tables = tables;
-            var print = await fingerprint(tables);
             if (!state.restored) await restore(tables, true);
             if (state.conversationId && state.syncedFingerprint && print !== state.syncedFingerprint) {
               live.status = 'Syncing the changed sheet…';
@@ -392,26 +505,51 @@
           }
         });
 
-        callServer('getSidebarContext').then(async function (context) {
+        syncEl.addEventListener('click', async function () {
+          if (state.busy || state.syncing || state.loading) return;
+          try {
+            await readSheet();
+            state.sheetError = '';
+          } catch (error) {
+            keepFailed('', error);
+          }
+          render();
+        });
+
+        // Opening: the reading status at once, the starters as soon as the headers are read, and the cells,
+        // the sign-in and this sheet's saved chat after them.
+        setBusy(false);
+        state.loading = {stage: 'reading', startedAt: Date.now(), tabs: 0};
+        state.syncing = true;
+        render();
+        window.setInterval(function () { tick(); renderSync(); }, 1000);
+        readSuggestionMetadata();            // headers only: starts before the full read
+        var contextStarted = Date.now();
+        state.loaded = callServer('getSidebarContext').then(async function (context) {
           state.signedIn = signIn(context.token);
           state.signedIn.catch(function () {});
+          state.loading.stage = 'preparing';
+          render();
           try {
-            state.tables = importGrids(context.workbook);
+            await takeWorkbook(context.workbook, contextStarted);
           } catch (error) {
             state.sheetError = errorText(error);
             return;
           }
           // Independent of restore/answers. A slow or unavailable suggestion never blocks typing.
           refreshSuggestions();
+          state.loading.stage = 'restoring';
+          render();
           await restore(state.tables);
         }).catch(function (error) {
           state.sheetError = errorText(error);
         }).then(function () {
-          render();
+          state.loading = null;
+          state.loaded = null;
+          state.syncing = false;
           state.ready = true;
-          setBusy(false);
-          questionEl.focus();
+          render();
+          setBusy(state.busy);               // a question asked while reading is still being answered
+          if (!state.busy) questionEl.focus();
         });
-        // Headers only: starts in parallel with the first full sheet read.
-        readSuggestionMetadata();
       })();

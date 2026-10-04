@@ -1799,6 +1799,17 @@ text is the whole reply.
   words the query dropped, usually the calculation's own phrase ("in euros"). The same rule keeps a
   decomposition request intact under a currency question.
 
+**The Sheets sidebar says what it is doing, and reads a slow sheet once.** On a six-tab, 8.9 MB
+workbook the sidebar stayed blank for ten minutes while it read every cell, its starters waited for that
+read, and each question read the whole workbook again (about five minutes) before Prereasoner saw it.
+- From its first moment the sidebar shows the reading status ("Reading 6 tabs…", the time taken, and a
+  note after 20 seconds), then preparing and restoring. The starters come with the headers.
+- A question asked while the sheet is read waits for that read instead of reading again.
+- A sheet whose read took 15 s or more keeps its last read for later questions. Once a chat exists, the
+  header shows New chat and "Syncing…" or the read's age ("Synced 5 mins ago"); a click reads the sheet
+  again. A sheet that reads faster is still read before every question, so an edit is in the answer.
+- These run in the hosted sidebar against the published Apps Script (v30); no new script version.
+
 **Kept: an unread word refuses the reading.** The check still refuses a runnable query whose question
 has a word it cannot read, then asks Gemini to reword. That widened the 2026-10-02 rule ("the fallback
 fires only when nothing runs"). Spider DEV `whole_db` with the fallback off fell from 497 strict at

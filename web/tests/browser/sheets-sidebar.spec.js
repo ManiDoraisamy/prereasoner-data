@@ -92,7 +92,8 @@ test('the Sheets sidebar renders the web rail, with live steps from the realtime
   await expect(page.locator('#suggestions .starter-question')).toHaveCount(3);
   await expect(page.locator('#thread')).toHaveText('');
   await expect(page.locator('#topline')).toBeHidden();
-  for (const removed of ['.data-notice', '#syncStatus', '#note', '.starter-title', '.empty'])
+  await expect(page.locator('#syncStatus')).toBeHidden();
+  for (const removed of ['.data-notice', '#note', '.starter-title', '.empty', '.loading'])
     await expect(page.locator(removed)).toHaveCount(0);
   expect(await page.evaluate(() => window.__signedInWith)).toBe('google-token');
   const [restore] = await calls(page, 'restorePrereasonerSheetConversation');
@@ -136,6 +137,12 @@ test('the Sheets sidebar renders the web rail, with live steps from the realtime
   expect(save.arg.state.version).toBe(2);
   expect(save.arg.state.turns[0].steps.map(step => step.description))
     .toEqual(['Kept only the rows where country is France.', 'Added up the values to get the total.']);
+
+  // The header: New chat on the left, and on the right when the sheet the answer used was read.
+  await expect(page.locator('#topline')).toBeVisible();
+  await expect(page.locator('#syncStatus')).toHaveText('Synced just now');
+  const [newChat, synced] = [await page.locator('#newConversation').boundingBox(), await page.locator('#syncStatus').boundingBox()];
+  expect(newChat.x + newChat.width).toBeLessThan(synced.x);
 
   // New chat unbinds the sheet and brings the starters back.
   await expect(page.locator('#topline')).toBeVisible();
@@ -189,7 +196,7 @@ test('messy headers are read without a warning and without preventing a question
 test('typing while reading and answering preserves the draft even on failure', async ({page}) => {
   await openSidebar(page, orders, {}, {contextDelay: 1500});
   await expect(page.locator('#question')).toBeEnabled();
-  await expect(page.locator('#send')).toBeDisabled();
+  await expect(page.locator('#send')).toBeEnabled();   // a question sent while the sheet is read waits for it
   await page.locator('#question').fill('total amount');
   await expect(page.locator('#send')).toBeEnabled();
   await expect(page.locator('#question')).toHaveValue('total amount');
@@ -333,4 +340,68 @@ test('the Sheets sidebar keeps the answer without a notice when sheet history ca
   await expect.poll(async () => (await calls(page, 'savePrereasonerSheetConversation')).length).toBe(1);
   await expect(page.locator('#scroll')).not.toContainText('could not be saved');
   await expect(page.locator('#newConversation')).toBeEnabled();
+});
+
+test('a slow sheet read shows what the sidebar is doing from the first moment, with the starters', async ({page}) => {
+  // A six-tab workbook left the sidebar blank for ten minutes, and its starters waited for the whole
+  // read (2026-10-04). The status is there at once, the starters come with the headers, and typing works.
+  await page.clock.install();
+  await openSidebar(page, orders, {}, {contextDelay: 120000});
+  await expect(page.locator('#thread .loading')).toContainText('Reading 1 tab…');
+  await expect(page.locator('#suggestions .starter-question')).toHaveCount(3);
+  await expect(page.locator('#question')).toBeEditable();
+  await expect(page.locator('#send')).toBeEnabled();
+  await expect(page.locator('#thread .loading-hint')).toBeHidden();
+  await page.clock.fastForward(25000);
+  await expect(page.locator('#thread .loading .elapsed')).toContainText(' · 0:2');
+  await expect(page.locator('#thread .loading-hint')).toHaveText('Large spreadsheets take a few minutes to read.');
+  await page.clock.fastForward(100000);
+  await expect(page.locator('#thread .loading')).toHaveCount(0);
+  await expect(page.locator('#thread')).toHaveText('');
+  await expect(page.locator('#suggestions .starter-question')).toHaveCount(3);
+  await expect(page.locator('#newConversation')).toBeEnabled();
+});
+
+test('a slow sheet is read once: a question asked while it is read waits, and later ones reuse that read', async ({page}) => {
+  // The six-tab workbook was read again before every question, five minutes each (2026-10-04). A sheet
+  // whose read takes 15 s or more keeps that read; the header says how old it is and reads it again on a click.
+  await page.clock.install();
+  await openSidebar(page, orders, {}, {contextDelay: 20000});
+  await expect(page.locator('#thread .loading')).toContainText('Reading 1 tab…');
+  await page.locator('#question').fill('total amount');
+  await page.locator('#question').press('Enter');
+  await expect(page.locator('#liveTurn .statusline')).toContainText('Waiting for the sheet to finish reading…');
+  await expect(page.locator('#suggestions')).toBeHidden();
+  await page.clock.fastForward(21000);
+  await expect.poll(() => page.evaluate(() => Boolean(window.__server.pendingAsk))).toBe(true);
+  expect(await calls(page, 'getWorkbookGrids')).toEqual([]);
+  await answer(page, 'Total sales are **US$1,860**.', views);
+  await expect(page.locator('#syncStatus')).toHaveText('Synced just now');
+  await page.clock.fastForward(5 * 60000);
+  await expect(page.locator('#syncStatus')).toHaveText('Synced 5 mins ago');
+  await page.clock.fastForward(3 * 3600000);
+  await expect(page.locator('#syncStatus')).toHaveText('Synced 3 hours ago');
+  await page.clock.fastForward(2 * 86400000);
+  await expect(page.locator('#syncStatus')).toHaveText('Synced 2 days ago');
+
+  await page.locator('#question').fill('and in France?');
+  await page.locator('#question').press('Enter');
+  await expect.poll(() => page.evaluate(() => window.__server.pendingAsk.arg.question)).toBe('and in France?');
+  expect(await calls(page, 'getWorkbookGrids')).toEqual([]);
+  await answer(page, 'Total sales in France are **US$1,240**.', views);
+  await expect(page.locator('#syncStatus')).toHaveText('Synced 2 days ago');
+
+  await page.locator('#syncStatus').click();
+  await expect.poll(async () => (await calls(page, 'getWorkbookGrids')).length).toBe(1);
+  await expect(page.locator('#syncStatus')).toHaveText('Synced just now');
+});
+
+test('a quick sheet is read again before each question, so an edit is in the answer', async ({page}) => {
+  await openSidebar(page, orders);
+  await expect(page.locator('#newConversation')).toBeEnabled();
+  await page.locator('#question').fill('total amount');
+  await page.locator('#question').press('Enter');
+  await expect.poll(() => page.evaluate(() => Boolean(window.__server.pendingAsk))).toBe(true);
+  expect((await calls(page, 'getWorkbookGrids')).length).toBe(1);
+  await expect(page.locator('#liveTurn .statusline')).not.toContainText('Waiting');
 });
