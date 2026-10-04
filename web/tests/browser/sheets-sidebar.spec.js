@@ -13,6 +13,7 @@ test('hosted shell loads three shared schema-only questions while the composer s
   await page.locator('#question').fill('my draft');
   await expect(page.locator('#suggestions .starter-question')).toHaveCount(3);
   await expect(page.locator('#suggestions')).toContainText('Questions for this sheet');
+  await expect(page.locator('#suggestions .starter-question').first()).toHaveCSS('white-space','normal');
   await expect(page.locator('#sheetScope')).toHaveCount(0);
   const [request] = await calls(page, 'getPrereasonerSuggestions');
   expect(request.arg).toEqual({sheets:[{name:'Orders',columns:['country','amount']}],active_sheet:'Orders',scope:['Orders']});
