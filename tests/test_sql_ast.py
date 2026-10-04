@@ -2831,6 +2831,16 @@ def test_tabs_of_one_layout_are_read_as_one():
     assert sorted(map(tuple, served["result"]["rows"])) == [("price_a", "eur", 9), ("price_a", "usd", 20), ("price_b", "eur", 7), ("price_b", "usd", 8)], served["sql"]
     assert served["layout_copies"] == {"read": ["NT"], "others": ["SI", "FF"]}, served.get("layout_copies")
     assert "layout_copies" not in planner.serve(workbook, "What is the total Amount in SI by Plan?")
+    # A near copy (SI with one more column) is named too; another table that merely has the column read is not.
+    near = planner.serve(_subscription_workbook(extra_si_column=True), question)
+    assert set(near["layout_copies"]["others"]) == {"NT", "SI", "FF"} - set(near["layout_copies"]["read"]), near.get("layout_copies")
+    customers = {"name": "customers", "columns": ["customer_id", "name", "country"],
+                 "rows": [["c1", "Ada", "France"], ["c2", "Lin", "Japan"]]}
+    suppliers = {"name": "suppliers", "columns": ["supplier_id", "name", "country"],
+                 "rows": [["s1", "Acme", "Germany"], ["s2", "Bolt", "France"]]}
+    listed = planner.serve([customers, suppliers], "list the countries")
+    assert listed["valid"] and listed["sql"] == 'SELECT "customers"."country" FROM "customers"', listed["sql"]
+    assert "layout_copies" not in listed, listed.get("layout_copies")
     # The narrowed graph keeps its parent's value index for the tables it keeps.
     graph = SchemaGraph.from_tables(workbook, [])
     kept = [column for column in graph.columns if column.ref.table not in {"SI", "FF"}]

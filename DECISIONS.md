@@ -1864,10 +1864,16 @@ no key joined), and the chat service gave up at 180 s. Three causes, each fixed 
   check required that field. SUM(Amount) now satisfies it: the aggregate the first word asks for, over the
   field the rest of the name names (`query_contract.constraint_violations`, `sql_expansion.AGGREGATE_CUES`).
 
-**The answer says which tab it read.** A one-table answer that other tables could give (copies of its layout,
-or tables holding every column it read) ends "From NT. SI and FF could answer this too; name one in your
-question to read that one instead." (`layout_copies` in the response). It is not added when the question
-names the table. Combining the copies (a UNION of the three exports) would answer a different question
+**A long answer lists its first rows.** The total by Plan and Currency has 160 rows, and the reply said "the
+result and its reasoning are shown in the workbook". The Sheets sidebar has no workbook, so no number was shown.
+An answer of more than ten rows now lists its first ten (fewer when rows are wide, within 2,000 characters) and
+says how many there are ("The first 10 of 160 rows.").
+
+**The answer says which tab it read.** A one-table answer that other tables could give ends "From NT. SI and
+FF could answer this too; name one in your question to read that one instead." (`layout_copies` in the
+response). Those tables are copies of its layout, or near copies (one layout holds the other's, as an export
+with one more column does) that hold every column it read. A table that only shares a column, such as
+suppliers' country beside customers', is not named, and nothing is added when the question names the table. Combining the copies (a UNION of the three exports) would answer a different question
 ("across all tabs"), so the note offers the others instead.
 
 **One derivation per request.** On the same workbook a request built the planner's schema and the schema

@@ -943,10 +943,11 @@ class TableQuery:
 
 
 def _unread_copies(question, query, graph):
-    """{"read": [table], "others": [...]}: the other tables that could answer a one-table reading, copies of
-    its layout (`SchemaGraph.layout_copies`) or holders of every column it reads, when the question names
-    no table; else None. An answer from one of three subscription exports (NT, SI and FF) says which, so
-    it is not taken for the workbook's total (2026-10-04)."""
+    """{"read": [table], "others": [...]}: the other tables that could answer a one-table reading when the
+    question names no table, else None: copies of its layout (`SchemaGraph.layout_copies`), and near copies
+    (one layout holds the other's, as an export with one more column does) that hold every column it reads.
+    An answer from one of three subscription exports (NT, SI and FF) says which, so it is not taken for the
+    workbook's total (2026-10-04). A table that only shares a key or a name (orders' customer_id) is not one."""
     from engine.relations import layout
     from engine.sql_ast import column_refs
     referenced = query.referenced_tables()
@@ -956,9 +957,14 @@ def _unread_copies(question, query, graph):
     if set(name_words(table)) <= set(name_words(question)):
         return None
     read = layout(column.name for column in column_refs(query))
+    own = layout(column.ref.name for column in graph.by_table[table])
     copies = next((group for group in graph.layout_copies if table in group), ())
-    others = [other for other in graph.tables if other != table and (
-        other in copies or (read and read <= layout(column.ref.name for column in graph.by_table[other])))]
+
+    def near_copy(other):
+        theirs = layout(column.ref.name for column in graph.by_table[other])
+        return len(own & theirs) >= 3 and (own <= theirs or theirs <= own) and read <= theirs
+
+    others = [other for other in graph.tables if other != table and (other in copies or near_copy(other))]
     if not others:
         return None
     return {"read": [table.replace("_", " ")], "others": [other.replace("_", " ") for other in others]}
