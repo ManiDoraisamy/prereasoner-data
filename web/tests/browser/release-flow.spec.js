@@ -668,6 +668,30 @@ for(const use of ['sql','py','both']){
   }
 }
 
+// A snapshot over 1 MiB is compacted and restores from the server's analysis. When its last turn was a
+// clarification, with no analysis of its own, the page stopped at "needs recovery" although the earlier
+// answer was on the server (2026-10-04).
+test('a compacted chat whose last turn made no analysis reopens on its latest analysis',async({page})=>{
+  await mockAuth(page);
+  await page.goto('/?load=orders-tiers');
+  await page.locator('#q').fill('total amount');
+  await page.getByRole('button',{name:'Ask'}).click();
+  await expect(page.locator('.wb.result tbody')).toContainText('180');
+  await expect.poll(()=>page.evaluate(()=>!!sessionStorage.getItem('pr_conv_state'))).toBe(true);
+  await page.evaluate(()=>{
+    const st=JSON.parse(sessionStorage.getItem('pr_conv_state'));
+    st.compacted=true; st.viewedAnalysis=null;
+    st.turns.push({q:'which one?',reply:'Which Amount column should I use?',analysis:null});
+    sessionStorage.setItem('pr_conv_state',JSON.stringify(st));
+  });
+  const before=(await (await page.request.get('/__state')).json()).requestCount;
+  await page.reload();
+  await expect(page.locator('.wb.result tbody')).toContainText('180');
+  await expect(page.getByText(/needs recovery/)).toHaveCount(0);
+  await expect(page.locator('.turn.user')).toHaveCount(2);
+  expect((await (await page.request.get('/__state')).json()).requestCount).toBe(before);
+});
+
 // The direct path sends its job again when nothing has arrived for 90 s. The engine answers a repeated
 // jobId only for the same input, and the re-send rebuilt its body after the stream had named the new
 // conversation, so every re-send was refused 409 and the page gave up (2026-10-04).

@@ -1333,7 +1333,11 @@ async function run(){
   try{ const s=sessionStorage.getItem('pr_conv_state'); if(s){ const st=JSON.parse(s); if(st&&st.cid&&st.cid===convId()){
     restored=restoreConvState(st);
     if(!restored){
-      const last=Array.isArray(st.turns)&&st.turns[st.turns.length-1], analysis=st.viewedAnalysis||(last&&last.analysis);
+      // The latest turn that made an analysis: a snapshot whose last turn was a clarification or an
+      // error has none of its own, and the page stopped at "needs recovery" with every earlier
+      // answer still on the server (2026-10-04).
+      const analysis=st.viewedAnalysis||(Array.isArray(st.turns)?st.turns:[]).slice().reverse()
+        .map(turn=>turn&&turn.analysis).find(Boolean);
       // An incompatible snapshot must not trigger another paid model run or
       // silently replace dirty reference data. Recover only durable derivations.
       const local=(st.sheets||[]).filter(item=>item.cls==='master');
