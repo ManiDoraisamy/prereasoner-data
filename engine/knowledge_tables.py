@@ -276,7 +276,9 @@ class KnowledgeTableQuery:
                     sl = s.lower()
                     if len(sl) < 3 or sl.replace(".", "").isdigit() or (cols[ci], sl) in seen:
                         continue
-                    if re.search(r"(?<![a-z0-9])" + re.escape(sl) + r"(?![a-z0-9])", q):
+                    # The phrase test first: a regex per distinct cell compiled 390,000 patterns on a
+                    # 34,500-row workbook (2026-10-04), and only a value inside the question can match.
+                    if sl in q and re.search(r"(?<![a-z0-9])" + re.escape(sl) + r"(?![a-z0-9])", q):
                         seen.add((cols[ci], sl)); out.append((t["name"], cols[ci], s))
         return out
 
@@ -742,7 +744,7 @@ class KnowledgeTableQuery:
                 response["calculations"] = r["calculations"]
             if r.get("currency") is not None:  # compatibility projection of calculations
                 response["currency"] = r["currency"]
-            for key in ("views", "deterministic", "fallback", "unit", "coverage", "selection"):
+            for key in ("views", "deterministic", "fallback", "unit", "coverage", "selection", "layout_copies"):
                 if r.get(key) is not None:
                     response[key] = r[key]
             return response

@@ -73,6 +73,10 @@ def test_shape():
         {"question": "q", "result": {"columns": ["sum"], "rows": [[46]]}, "unmatched": unmatched,
          "warnings": ["1 of the 5 rows name a hospital that could not be matched"]}, "job4")
     ok(partial.get("unmatched") == unmatched, "answer carries the rows whose entity matched nothing")
+    copies = {"read": ["NT"], "others": ["SI", "FF"]}
+    copied = engine_client.shape_reason_response(
+        {"question": "q", "result": {"columns": ["sum"], "rows": [[20]]}, "layout_copies": copies}, "job6")
+    ok(copied.get("layout_copies") == copies, "answer carries the other tables that could answer it")
     declined = engine_client.shape_reason_response(
         {"question": "q", "clarify": True, "reason": "3 of the 5 hospital names could not be matched",
          "unmatched": {**unmatched, "rows": 3}}, "job5")

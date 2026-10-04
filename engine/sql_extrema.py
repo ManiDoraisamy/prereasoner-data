@@ -21,6 +21,7 @@ from engine.sql_ast import (
     and_predicates,
 )
 from engine.sql_expansion import (
+    AGGREGATE_CUES,
     CountThreshold,
     ExpansionSupport,
     and_terms as _and_terms,
@@ -51,8 +52,6 @@ _MIN_CUES = frozenset({
     "earliest", "fewest", "least", "lowest", "min", "minimum", "rarest",
     "shortest", "smallest",
 })
-# Words that ask for an aggregate of the rows (canon() forms).
-_AGGREGATE_CUES = frozenset({"average", "avg", "mean", "sum", "total", "maximum", "max", "minimum", "min"})
 # Words between "by" and the measure it ranks by: "by the total", "by their average".
 _BY_DETERMINERS = frozenset({"the", "their", "its", "his", "her"})
 _NEGATIVE_RE = re.compile(
@@ -837,7 +836,7 @@ def _asks_aggregate(tokens: tuple[str, ...]) -> bool:
     rows are ranked by, not the answer: "the top 2 customers by total spend, then list each pair where that
     customer has never bought that product" asks for a listing (tests.test_complex_datasets, 2026-10-02)."""
     for index, token in enumerate(tokens):
-        if token not in _AGGREGATE_CUES:
+        if token not in AGGREGATE_CUES:
             continue
         before = index - 1
         while before >= 0 and tokens[before] in _BY_DETERMINERS:

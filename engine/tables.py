@@ -318,6 +318,16 @@ class TableQuery:
         return units, colidx
 
     def schema(self, tables, fks):
+        """The planner's schema of the tables: one record per column (its encoder reading, affinity and
+        values), the global column index, and the tables by name. Built once per request
+        (`relations.memoized`): each record and mapping is the caller's own copy."""
+        from engine.relations import content_key, memoized
+        sch, colidx, tablemap = memoized(
+            "planner_schema", lambda: (id(self.model), content_key(tables), repr(fks)),
+            lambda: self._schema(tables, fks))
+        return [dict(column) for column in sch], dict(colidx), dict(tablemap)
+
+    def _schema(self, tables, fks):
         units, colidx = self._schema_name_units(tables, fks)
         x = self._encode([u["text"] for u in units])
         final = self._layers(units, x)[-1]
@@ -901,6 +911,9 @@ class TableQuery:
             from engine.sql_ast import share_output
             if share_output(candidate.query):
                 response["unit"] = "percent"         # a share of a whole: 0.3 is stated as 30%
+            copies = _unread_copies(question, candidate.query, graph)
+            if copies:
+                response["layout_copies"] = copies   # the answer says which of them it read
             from engine.calculations import assess_calculations
             from engine.calculations.registry import attach_calculation_evidence
             assessments = assess_calculations(
@@ -927,6 +940,28 @@ class TableQuery:
             if current_analysis_context() is not None and required:
                 response["decomposition_required"] = required
         return response
+
+
+def _unread_copies(question, query, graph):
+    """{"read": [table], "others": [...]}: the other tables that could answer a one-table reading, copies of
+    its layout (`SchemaGraph.layout_copies`) or holders of every column it reads, when the question names
+    no table; else None. An answer from one of three subscription exports (NT, SI and FF) says which, so
+    it is not taken for the workbook's total (2026-10-04)."""
+    from engine.relations import layout
+    from engine.sql_ast import column_refs
+    referenced = query.referenced_tables()
+    if len(referenced) != 1:
+        return None
+    (table,) = referenced
+    if set(name_words(table)) <= set(name_words(question)):
+        return None
+    read = layout(column.name for column in column_refs(query))
+    copies = next((group for group in graph.layout_copies if table in group), ())
+    others = [other for other in graph.tables if other != table and (
+        other in copies or (read and read <= layout(column.ref.name for column in graph.by_table[other])))]
+    if not others:
+        return None
+    return {"read": [table.replace("_", " ")], "others": [other.replace("_", " ") for other in others]}
 
 
 def _query_has_unread_terms(question, candidate, graph, *, calculation_satisfied=False):

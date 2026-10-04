@@ -20,6 +20,34 @@ def fixture(count=30000):
     return {'name':'subscriptions', 'columns':columns, 'rows':rows}
 
 
+def subscription_workbook(rows=11500):
+    """Three subscription exports with one layout (NT, SI and FF) and a report of each: a customer's Stripe
+    workbook (2026-10-04), whose "total Amount broken down by Plan and Currency" had no reading and ran out
+    the request deadline. Seeded, so the gold is fixed."""
+    import random
+    tabs = []
+    for index, name in enumerate(('NT', 'SI', 'FF')):
+        rng = random.Random(2026 + index)
+        plans = [(f'price_{name}_{plan:02}', rng.choice(['Startup', 'Business', 'Pro']), rng.choice([9, 19, 49, 99]))
+                 for plan in range(40)]
+        export = []
+        for i in range(rows):
+            plan, product, amount = rng.choice(plans)
+            export.append([f'sub_{name}_{i:06}', f'cus_{i % 9000:06}', plan, product,
+                           rng.choice(['usd'] * 17 + ['eur', 'inr', 'gbp']), str(amount),
+                           rng.choice(['active', 'canceled', 'past_due']), f'2026-0{1 + i % 9}-{1 + i % 28:02}'])
+        tabs.append({'name': name, 'columns': ['id', 'Customer ID', 'Plan', 'Product', 'Currency', 'Amount', 'Status',
+                                               'Created'], 'rows': export})
+        totals = {}
+        for row in export:
+            count, total = totals.get((row[3], row[4]), (0, 0))
+            totals[(row[3], row[4])] = (count + 1, total + int(row[5]))
+        tabs.append({'name': f'{name} Report', 'columns': ['Product', 'Currency', 'Subscriptions', 'Total Amount'],
+                     'rows': [[product, currency, str(count), str(total)]
+                              for (product, currency), (count, total) in sorted(totals.items())]})
+    return tabs
+
+
 def write_fixture(path):
     table = fixture()
     with Path(path).open('w', encoding='utf-8', newline='') as stream:
@@ -92,6 +120,22 @@ def main():
         print('scale_full_result',json.dumps({'rows':len(answer),'seconds':round(time.perf_counter()-start,3),
                                             'bytes':len(json.dumps(result,default=str).encode())}),flush=True)
         print('PASS scale: 30000 rows, exact gold and complete output',flush=True)
+        # Tabs of one layout: the first sent answers, and says the others could.
+        workbook = subscription_workbook()
+        by_plan = {}
+        for row in workbook[0]['rows']:
+            by_plan[(row[2], row[4])] = by_plan.get((row[2], row[4]), Decimal(0)) + Decimal(row[5])
+        question = 'What is the total Amount broken down by Plan and Currency?'
+        start = time.perf_counter()
+        result = served(lease.name, Q.serve, workbook, question, lease.name)
+        elapsed = time.perf_counter() - start
+        answer = (result.get('result') or {}).get('rows') or []
+        assert not result.get('error') and not result.get('clarify'), result
+        assert {(row[0], row[1]): Decimal(str(row[2])) for row in answer} == by_plan, (result.get('sql'), answer[:3])
+        assert result.get('layout_copies') == {'read': ['NT'], 'others': ['SI', 'FF']}, result.get('layout_copies')
+        assert elapsed < 120, (question, elapsed)
+        print('scale', json.dumps({'tabs': 6, 'rows': sum(len(tab['rows']) for tab in workbook), 'question': question,
+                                   'seconds': round(elapsed, 3)}), flush=True)
         # Messy import acceptance: ambiguity/errors are column-specific, never a
         # reason to discard an unrelated measure or all the records.
         from engine.tables import csv_table

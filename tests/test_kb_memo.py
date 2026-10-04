@@ -205,6 +205,51 @@ def test_rows_whose_entity_matched_nothing_are_disclosed():
     assert len(bounded["names"]) == UNMATCHED_NAMES_SHOWN and bounded["more"] == 2, bounded
 
 
+def test_a_request_derives_its_tables_once():
+    """A 6-tab, 34,500-row workbook ran foreign-key discovery, the planner's schema and the schema graph up to
+    four times a request (2026-10-04). Within `relations.request_memo` an equal derivation is reused and each
+    caller gets its own records; a key that cannot be hashed computes afresh; a new request, or none, recomputes."""
+    from engine.relations import memoized, request_memo
+    from engine.sql_schema import SchemaGraph
+    from engine.tables import TableQuery
+    calls = []
+
+    def compute():
+        calls.append(1)
+        return ["result"]
+
+    memoized("kind", lambda: ("k",), compute)
+    memoized("kind", lambda: ("k",), compute)
+    assert len(calls) == 2, "outside a request nothing is kept"
+    with request_memo():
+        first = memoized("kind", lambda: ("k",), compute)
+        assert memoized("kind", lambda: ("k",), compute) is first and len(calls) == 3
+        memoized("other", lambda: ("k",), compute)
+        assert len(calls) == 4, "another derivation never collides"
+        memoized("kind", lambda: ([1],), compute)
+        memoized("kind", lambda: ([1],), compute)
+        assert len(calls) == 6, "an unhashable key computes afresh"
+    with request_memo():
+        memoized("kind", lambda: ("k",), compute)
+        assert len(calls) == 7, "a new request recomputes"
+    planner = TableQuery.__new__(TableQuery)
+    planner.model = object()
+    built = []
+
+    def schema(tables, fks):
+        built.append(1)
+        return ([{"table": t["name"], "name": c, "idx": i, "affinity": "TEXT", "values": [row[i] for row in t["rows"]]}
+                 for t in tables for i, c in enumerate(t["columns"])], {}, {t["name"]: t for t in tables})
+
+    planner._schema = schema
+    orders = {"name": "orders", "columns": ["city"], "rows": [["Paris"], ["Lyon"]]}
+    with request_memo():
+        sch, _, _ = planner.schema([orders], [])
+        again, _, _ = planner.schema([dict(orders)], [])       # an equal table, another object
+        assert len(built) == 1 and sch == again and sch[0] is not again[0], "one build, the caller's own records"
+        assert SchemaGraph.from_planner(sch, []) is SchemaGraph.from_planner(again, []), "one graph a request"
+
+
 TESTS = [
     test_identical_lookup_executes_once_per_request,
     test_different_params_never_collide,
@@ -216,6 +261,7 @@ TESTS = [
     test_an_entity_resolves_to_the_exact_nearest_of_its_type,
     test_a_shared_name_resolves_the_same_way_every_time,
     test_rows_whose_entity_matched_nothing_are_disclosed,
+    test_a_request_derives_its_tables_once,
 ]
 
 

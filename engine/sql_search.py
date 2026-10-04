@@ -44,6 +44,7 @@ from engine.numeric import parse_decimal
 from engine.sql_candidate import ScoredQuery
 from engine.sql_dates import period_grouping, served_date_phrases
 from engine.sql_expansion import (
+    AGGREGATE_CUES,
     FUNCTION_WORDS,
     by_groups,
     implicit_sum_measures,
@@ -158,6 +159,13 @@ class SQLSearcher:
         tokens = _tokens(question)
         if not tokens:
             return []
+        copies = self._unasked_copies(tokens, question)
+        if copies:
+            return SQLSearcher(self.schema.without(copies), self.beam_size, self.max_candidates).search(
+                question, semantic_signals, rank_candidates, expand_recursive, expand_constraints,
+                expand_extrema, expand_parsimony, profile_max_candidates, profile_per_profile,
+                profile_generation_penalty, profile_binding_quality_weight, profile_preserve_baseline_top,
+                profile_config)
         # The words of a several-word value the question states are the value's: "the avg. monthly searches for
         # forklift inspection" names the keyword 'forklift inspection', not the Forklift and Inspection tabs,
         # which no key joins (a customer's three keyword tabs, 2026-10-02: no reading at all).
@@ -383,6 +391,28 @@ class SQLSearcher:
             ranked = ranked[:self.max_candidates]
         return ranked
 
+    def _unasked_copies(self, tokens: tuple[str, ...], question: str) -> frozenset[str]:
+        """The tables the search leaves out as copies of another's layout (`SchemaGraph.layout_copies`): each
+        copy gives the same readings, and six subscription tabs (three exports, three reports) crowded every
+        word's options until no reading joined ("the total Amount broken down by Plan and Currency",
+        2026-10-04). A group keeps the copies the question names, else the first holding a value it states,
+        else the first one sent; the Sheets add-on sends the active tab first."""
+        groups = self.schema.layout_copies
+        if not groups:
+            return frozenset()
+        stated, _ = self._value_matches(tokens, frozenset(), question)
+        holding = {column.table for _, _, _, options in stated for column, _ in options}
+        in_values = {index for start, end, _, _ in stated if end - start > 1 for index in range(start, end)}
+        unvalued = tuple("" if index in in_values else token for index, token in enumerate(tokens))
+        table_scores = self._table_scores(unvalued)
+        left_out: set[str] = set()
+        for group in groups:
+            named = [table for table in group if table_scores[table] >= 2.5
+                     and _names_together(unvalued, [canon(word) for word in _name_words(table)])]
+            kept = named or [table for table in group if table in holding][:1] or [group[0]]
+            left_out.update(table for table in group if table not in kept)
+        return frozenset(left_out)
+
     def _expand(self, drafts: list[_Draft], choices: list[tuple[tuple, float, tuple[str, ...]]],
                 field: str) -> list[_Draft]:
         expanded = []
@@ -547,6 +577,7 @@ class SQLSearcher:
             if len(words) == 2:
                 modifiers.setdefault(words[1], set()).add(words[0])
         references = self._reference_keys()
+        unaggregated = tuple("" if token in AGGREGATE_CUES else token for token in tokens)
         for schema_column in self.schema.columns:
             column = schema_column.ref
             if is_surrogate_key(column.name) and not id_requested:
@@ -555,6 +586,14 @@ class SQLSearcher:
                 continue
             meaningful = _column_link_words(column, id_requested)
             positions = _column_link_positions(column, tokens, self.schema, meaningful)
+            contested: set[int] = set()
+            if column.type.numeric and unaggregated != tokens:
+                # A word asking an aggregate before a measure's name may be the aggregate's, not the first word
+                # of another column's name: "the total Amount by Plan" totals Amount as well as naming the
+                # report tabs' Total Amount. Amount was no mention, and the question had no reading (near
+                # copies of a subscriptions export, 2026-10-04). The name said whole stays the stronger mention.
+                contested = set(_column_link_positions(column, unaggregated, self.schema, meaningful)) - set(positions)
+                positions = sorted(set(positions) | contested)
             if not positions:
                 continue
             said = {tokens[i] for i in positions}
@@ -577,6 +616,7 @@ class SQLSearcher:
                             for index in _coordinated_modifiers(tokens, head, modifiers[meaningful[1]])
                             if tokens[index] == meaningful[0]][:1]
                 position = said[-1] if said else position
+            exact = exact and position not in contested
             score = 3.0 + coverage + (1.0 if exact else 0.0) + 0.15 * table_scores.get(column.table, 0.0)
             grouped.setdefault(position, []).append(_ColumnOption(column, score, position))
         mentions = []

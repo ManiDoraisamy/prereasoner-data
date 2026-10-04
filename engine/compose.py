@@ -172,8 +172,8 @@ class ComposeEngine:
             ci = cols.index(c)
             for v in {str(r[ci]) for r in rows if ci < len(r) and r[ci] not in (None, "")}:
                 vl = v.lower()
-                if len(vl) < 3 or v == skip or vl in self._VALUE_STOP:
-                    continue
+                if len(vl) < 3 or v == skip or vl in self._VALUE_STOP or vl not in low:
+                    continue                                 # only a value inside the question can match below
                 if re.search(r'\b' + re.escape(vl) + r'\b', low) and (best is None or len(vl) > best[2]):
                     best = (c, v, len(vl))
         return (best[0], best[1]) if best else None

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import cached_property, lru_cache
 import heapq
 import math
 from numbers import Real
@@ -9,6 +10,7 @@ import re
 from typing import Any, Iterable, Sequence
 
 from engine.numeric import parse_decimal
+from engine.relations import layout
 from engine.sql_ast import ColumnRef, Join, SQLType
 
 
@@ -80,7 +82,8 @@ class JoinTree:
 class SchemaGraph:
     """Typed columns, observed values, and searchable foreign-key relationships."""
 
-    def __init__(self, columns: Iterable[SchemaColumn], foreign_keys: Iterable[ForeignKey]):
+    def __init__(self, columns: Iterable[SchemaColumn], foreign_keys: Iterable[ForeignKey],
+                 value_index: dict[str, tuple[tuple[ColumnRef, Any], ...]] | None = None):
         self.columns = tuple(columns)
         grouped: dict[str, list[SchemaColumn]] = {}
         for column in self.columns:
@@ -106,7 +109,8 @@ class SchemaGraph:
             table: tuple(sorted(indexes, key=self._edge_sort_key))
             for table, indexes in adjacency.items()
         }
-        self.value_index = self._build_value_index()
+        self.value_index = self._build_value_index() if value_index is None else value_index
+        self._without: dict[frozenset[str], SchemaGraph] = {}
 
     @classmethod
     def from_tables(cls, tables: Sequence[dict], fks: Sequence[dict | tuple]) -> "SchemaGraph":
@@ -132,6 +136,19 @@ class SchemaGraph:
 
     @classmethod
     def from_planner(cls, schema: Sequence[dict], fks: Sequence[dict | tuple]) -> "SchemaGraph":
+        """The graph of the planner's schema (`TableQuery.schema`), built once per request
+        (`relations.memoized`): its value index reads every cell."""
+        from engine.relations import memoized
+
+        def key():
+            return (tuple((str(column["table"]), str(column["name"]), int(column.get("idx", index)),
+                           _planner_type(column), tuple(column.get("values") or ()))
+                          for index, column in enumerate(schema)), repr(fks))
+
+        return memoized("schema_graph", key, lambda: cls._from_planner(schema, fks))
+
+    @classmethod
+    def _from_planner(cls, schema: Sequence[dict], fks: Sequence[dict | tuple]) -> "SchemaGraph":
         columns: list[SchemaColumn] = []
         refs: dict[tuple[str, str], ColumnRef] = {}
         for index, column in enumerate(schema):
@@ -150,6 +167,31 @@ class SchemaGraph:
             ))
         edges = (_foreign_key(foreign_key, refs) for foreign_key in fks)
         return cls(columns, (edge for edge in edges if edge is not None))
+
+    @cached_property
+    def layout_copies(self) -> tuple[tuple[str, ...], ...]:
+        """The tables that are copies of one layout (`relations.layout`), as groups in the tables' order: an
+        export of several columns kept per product or month, such as NT, SI and FF subscriptions. A table of
+        one or two columns lists one thing (customers' names, orders' names), and a table a foreign key
+        references is its own thing (two code lookups different keys reference): neither is a copy."""
+        referenced = {foreign_key.to_column.table for foreign_key in self.foreign_keys}
+        groups: dict[frozenset[str], list[str]] = {}
+        for table in self.tables:
+            if table not in referenced and len(self.by_table[table]) >= 3:
+                groups.setdefault(layout(column.ref.name for column in self.by_table[table]), []).append(table)
+        return tuple(tuple(group) for group in groups.values() if len(group) > 1)
+
+    def without(self, tables: frozenset[str]) -> "SchemaGraph":
+        """This graph less ``tables`` and their foreign keys, built once per set of tables."""
+        if tables not in self._without:
+            index = {}
+            for value, options in self.value_index.items():
+                kept = tuple(option for option in options if option[0].table not in tables)
+                if kept:
+                    index[value] = kept
+            self._without[tables] = SchemaGraph(
+                (column for column in self.columns if column.ref.table not in tables), self.foreign_keys, index)
+        return self._without[tables]
 
     def display_columns(self, table: str) -> tuple[ColumnRef, ...]:
         columns = list(self.by_table.get(table, ()))
@@ -255,13 +297,22 @@ class SchemaGraph:
         values: dict[str, list[tuple[ColumnRef, Any]]] = {}
         for column in self.columns:
             seen = set()
-            for value in column.values:
+            for value in distinct_values(column.values):
                 normalized = _normalize_value(value)
                 if not normalized or normalized in seen or _NUMBER_RE.match(normalized):
                     continue
                 seen.add(normalized)
                 values.setdefault(normalized, []).append((column.ref, value))
         return {value: tuple(options) for value, options in values.items()}
+
+
+def distinct_values(values: Sequence[Any]) -> Sequence[Any]:
+    """The values without repeats, first occurrence first, 1 and True apart: a 34,500-row workbook read
+    each repeated currency, plan and status cell anew, thousands of times a column (2026-10-04)."""
+    try:
+        return [value for _, value in dict.fromkeys((type(value), value) for value in values)]
+    except TypeError:                                          # an unhashable cell
+        return values
 
 
 def _foreign_key(
@@ -388,6 +439,7 @@ def _normalize_value(value: Any) -> str:
     return " ".join(canon(token) for token in _WORD_RE.findall(str(value).lower()))
 
 
+@lru_cache(maxsize=1 << 16)                                    # millions of calls a request, few words
 def canon(word: str) -> str:
     """A word's comparable form, the one the search, its expansions, the ranker and the value index read
     questions, names and values with: lower case, and a plural as its singular ("courses" -> "course",

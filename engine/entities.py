@@ -308,8 +308,11 @@ class EntityQuery(RoutedQuery):
             if any(norms):
                 columns.append((col, cells, norms))
         # ONE membership lookup for every column's values: it was one round trip per column (seven for the
-        # customer-orders sheet) on every world request, 2026-09-30.
-        uniq = sorted({n for _col, _cells, norms in columns for n in norms if n})
+        # customer-orders sheet) on every world request, 2026-09-30. A number names no place: dates, amounts
+        # and numeric ids were most of the ~100,000 values an 11,500-row subscriptions tab sent, and the
+        # lookup took 5 s (2026-10-04). Four Wikidata place names are digits (area codes such as "416"); a
+        # column of them is not a column of places.
+        uniq = sorted({n for _col, _cells, norms in columns for n in norms if n and not n.isdigit()})
         ntypes = {}
         if uniq:
             for nm, ty in self._kb_rows(

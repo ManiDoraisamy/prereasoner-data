@@ -6,7 +6,7 @@ scope-aware and always runs before rendering.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, fields, is_dataclass, replace
 from decimal import Decimal
 from enum import Enum
 import math
@@ -254,6 +254,18 @@ class ASTValidationError(ValueError):
 AGGREGATES = frozenset({"COUNT", "SUM", "AVG", "MIN", "MAX"})
 COMPARISONS = frozenset({"=", "!=", "<>", ">", "<", ">=", "<=", "LIKE", "NOT LIKE", "IS", "IS NOT"})
 SET_OPERATORS = frozenset({"UNION", "INTERSECT", "EXCEPT"})
+
+
+def column_refs(node: Any) -> Iterable["ColumnRef"]:
+    """Every column reference in an AST node or a sequence of nodes, subqueries included, in tree order."""
+    if isinstance(node, ColumnRef):
+        yield node
+    elif is_dataclass(node):
+        for field in fields(node):
+            yield from column_refs(getattr(node, field.name))
+    elif isinstance(node, (tuple, list)):
+        for item in node:
+            yield from column_refs(item)
 
 
 def month_of_date_sql(operand: str) -> str:

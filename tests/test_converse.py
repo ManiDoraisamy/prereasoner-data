@@ -128,6 +128,22 @@ def test_a_listed_answer_reads_as_a_one_number_answer_does():
     assert terminal_reply(bare) == 'order year: 2026; count: 1200'
 
 
+def test_an_answer_from_one_of_several_tables_says_which():
+    """A customer's Stripe workbook, 2026-10-04: three subscription tabs with one layout, and the total by Plan
+    and Currency came from the first with nothing to say so: it read as the workbook's total. The reply names the
+    table it read and the others that could answer."""
+    from engine.answer_presentation import terminal_reply
+    answer = {'columns': ['Plan', 'sum'], 'rows': [['price_a', 20]]}
+    copies = {'read': ['NT'], 'others': ['SI', 'FF']}
+    assert terminal_reply({'status': 'answered', 'answer': answer, 'layout_copies': copies}) == (
+        'Plan: price_a; sum: 20\n\nFrom NT. SI and FF could answer this too; name one in your question to '
+        'read that one instead.')
+    one = {'status': 'answered', 'answer': answer, 'layout_copies': {'read': ['NT'], 'others': ['SI']}}
+    assert terminal_reply(one).endswith('From NT. SI could answer this too; name it in your question to read '
+                                        'it instead.')
+    assert terminal_reply({'status': 'answered', 'answer': answer}) == 'Plan: price_a; sum: 20'
+
+
 def test_a_malformed_converse_body_is_a_client_error_not_a_500():
     """`clarify: true`, `answer: "42"` and a row of 5 raised inside the renderer, and /api/converse
     answered 500 (review, 2026-10-04)."""
@@ -325,6 +341,7 @@ TESTS = [
     test_an_engine_failure_is_one_sentence_the_user_can_act_on,
     test_a_blank_answer_or_a_link_in_a_cell_is_shown_as_data,
     test_a_listed_answer_reads_as_a_one_number_answer_does,
+    test_an_answer_from_one_of_several_tables_says_which,
     test_a_malformed_converse_body_is_a_client_error_not_a_500,
     test_unavailable_gemini_reaches_reference_generation_as_llm_unavailable,
     test_preserves_existing_and_fills_empty,

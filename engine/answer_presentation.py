@@ -68,6 +68,14 @@ def terminal_reply(shaped: dict[str, Any]) -> str:
     unmatched = shaped.get("unmatched") or {}
     if unmatched.get("rows"):
         notes.append(f"{unmatched['rows']} of {unmatched.get('of', '?')} source rows could not be matched and were excluded.")
+    copies = shaped.get("layout_copies") or {}
+    if isinstance(copies, dict) and copies.get("read") and copies.get("others"):
+        # One of several tables that could answer did: say which, so the answer is not taken for all of
+        # them together (2026-10-04).
+        others = [str(name) for name in copies["others"]]
+        notes.append(f"From {_listed_names(copies['read'])}. {_listed_names(others)} could answer this too; "
+                     f"name {'it' if len(others) == 1 else 'one'} in your question to read "
+                     f"{'it' if len(others) == 1 else 'that one'} instead.")
     # A question Gemini reworded is the turn's reading, shown on its "read as" line
     # (orchestrator.reading); appended to the answer, it was a second answer to read (2026-10-04).
     suffix = ("\n\n" + " ".join(notes)) if notes else ""
@@ -129,6 +137,11 @@ def _label(name: Any, currency: str) -> str:
     if currency:
         words = [currency if word.casefold() == currency.casefold() else word for word in words]
     return _data_text(' '.join(words)) or 'value'
+
+
+def _listed_names(names) -> str:
+    names = [_data_text(name) for name in names]
+    return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
 
 
 def _blank(value: Any) -> bool:

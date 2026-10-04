@@ -608,6 +608,10 @@ def projection_window(question_tokens: tuple[str, ...]) -> tuple[tuple[int, str]
     return tuple(enumerate(question_tokens[start:end], start))
 
 
+# Words that ask for an aggregate of the rows (canon() forms), and the aggregate each asks for.
+AGGREGATE_CUES = {"average": "AVG", "avg": "AVG", "mean": "AVG", "sum": "SUM", "total": "SUM",
+                  "maximum": "MAX", "max": "MAX", "minimum": "MIN", "min": "MIN"}
+
 # Grammar words a question writes in lower case: "in", "and" or "are" is never Code2 'IN', Code 'AND' or
 # Code 'ARE' (Spider world_1, 2026-10-02), and "enrolled in a Bachelors program" no section 'a', while a
 # question that names such a value writes it in capitals ("the division AS", "a grade of A").

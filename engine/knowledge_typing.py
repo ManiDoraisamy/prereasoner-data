@@ -11,6 +11,7 @@ import hashlib
 from engine.config import kb_model_route_enabled
 from engine.entities import TYPE_TO_FRIENDLY
 from engine.embeddings import normalize_surface
+from engine.numeric import parse_decimal
 
 
 class KnowledgeTypingMixin:
@@ -101,6 +102,10 @@ class KnowledgeTypingMixin:
                 ]
                 if len(cells) < 3 or self._avglen(table, column) > self.FREETEXT_MIN_AVGLEN:
                     continue
+                if all(_number(cell) for cell in cells):
+                    # A column of numbers names no entity, and the router abstains on it: a third of the
+                    # encoder passes of a six-tab subscriptions workbook were amounts and counts (2026-10-04).
+                    continue
                 proposal = router.route(cells, header=column)
                 if not proposal:
                     continue
@@ -155,3 +160,11 @@ class KnowledgeTypingMixin:
         except Exception as error:  # noqa: BLE001 - class evidence never authorizes a join
             print(f"[knowledge_query] schema class evidence failed: {type(error).__name__}", flush=True)
         return routes, typing
+
+
+def _number(cell):
+    try:
+        parse_decimal(cell)
+    except (TypeError, ValueError):
+        return False
+    return True

@@ -1839,3 +1839,52 @@ field should be used". A long header now keeps its start and its last 16 bytes a
 Saved analyses are snapshots, and recalculating re-plans from the question, so neither depends on the
 old names. A conversation's currency claim on a column renamed this way stops applying and must be
 stated again; that needs a monetary column whose header is over 63 bytes.
+
+## Tabs of one layout are read as one, and "the total Amount" totals Amount (2026-10-05)
+
+The owner's Stripe workbook has six tabs: three subscription exports with one layout (NT, SI and FF, 11,500
+rows each, with Plan, Currency and Amount) and three report tabs (Product, Currency, Subscriptions, Total
+Amount). Its starter "What is the total Amount broken down by Plan and Currency?" answered "Prereasoner
+couldn't answer that right now." after four minutes. The engine ran 242 s (115 s executing readings that
+no key joined), and the chat service gave up at 180 s. Three causes, each fixed in its owner:
+
+- **"total" was read as part of another column's name.** The reports' Total Amount made "total" a word
+  that qualifies "Amount" as theirs, so the exports' Amount, named by three tabs, was never a mention. A
+  word that asks an aggregate before a measure's name may be the aggregate's (`sql_search._column_mentions`).
+  The measure stays a mention, scored below a column whose whole name the question spells, so "total
+  amount" still reads a Total Amount column wherever that column can answer.
+- **Six tabs crowded every word's options.** Each word keeps four options, and with no key joining the
+  tabs every draft mixed them. Tables that are copies of one layout are now searched as one
+  (`SchemaGraph.layout_copies`, `SQLSearcher._unasked_copies`). A copy has three or more columns with the
+  same names, and no key references it. Two-column lists such as customers' and orders' names, and code
+  lookups that keys reference, are different things. The search keeps the copy the question names, else
+  the first that holds a value the question states, else the first sent; the Sheets add-on sends the
+  active tab first.
+- **The completeness check refused the reading.** The question spells the reports' Total Amount, and the
+  check required that field. SUM(Amount) now satisfies it: the aggregate the first word asks for, over the
+  field the rest of the name names (`query_contract.constraint_violations`, `sql_expansion.AGGREGATE_CUES`).
+
+**The answer says which tab it read.** A one-table answer that other tables could give (copies of its layout,
+or tables holding every column it read) ends "From NT. SI and FF could answer this too; name one in your
+question to read that one instead." (`layout_copies` in the response). It is not added when the question
+names the table. Combining the copies (a UNION of the three exports) would answer a different question
+("across all tabs"), so the note offers the others instead.
+
+**One derivation per request.** On the same workbook a request built the planner's schema and the schema
+graph four times each, and FK discovery read every cell in each layer that ingested the tables. Within one
+request (`relations.request_memo`) each is now derived once (`relations.memoized`) and each caller gets its
+own records. The narrowed graph filters its parent's value index, each distinct cell is normalized once,
+and `sql_schema.canon` is cached. World typing skips columns of numbers, on which the router abstains. The
+knowledge-base membership lookup leaves out values made only of digits (dates, amounts, numeric ids), which
+were most of the ~100,000 values each export sent. Four Wikidata place names are digits ("416"); no
+column of them is a column of places.
+
+Measured locally against the production database through the Cloud SQL proxy (its round trips are slower
+than Cloud Run's): the question went from 99.7 s with no answer to 52.3 s with the right one. 23 s of that
+is SQL, 17 s of which loads the six tabs on the conversation's first question. The live scale gate
+(`tests/test_scale.py`) now serves this workbook's question, checks the totals against sums computed from
+its rows, and allows 120 s; it took 38 s.
+
+Still open: the add-on sends the whole workbook with every question (8.9 MB through Apps Script); for an
+own-data question, compose builds a world lookup and a plan that the delegate then replaces; and where a
+key links a report to its export, a reading can sum the report's totals over the export's rows.

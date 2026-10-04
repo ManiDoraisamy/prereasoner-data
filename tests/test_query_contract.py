@@ -65,6 +65,29 @@ def test_a_known_named_field_cannot_be_replaced_by_another_measure():
     assert any('requested total needs a sum' in v for v in constraint_violations('total Amount', count, graph))
 
 
+def test_the_total_of_a_field_answers_a_spelled_total_field_name():
+    """A customer's Stripe workbook, 2026-10-04: "What is the total Amount broken down by Plan and Currency?"
+    spells the report tabs' Total Amount, and the contract refused SUM(Amount) by Plan and Currency from an
+    export as leaving that field unused, so the question had no answer. "total Amount" also asks the total of
+    Amount: the aggregate its first word asks for, over the field the rest names, uses what was asked."""
+    from engine.sql_ast import Aggregate, ColumnRef, SelectItem, SelectQuery, SQLType, Star
+    graph = SchemaGraph.from_tables([
+        {"name": "NT", "columns": ["Plan", "Currency", "Amount"], "rows": [["price_a", "usd", 10]]},
+        {"name": "NT Report", "columns": ["Currency", "Total Amount"], "rows": [["usd", 10]]}], [])
+    plan, currency = ColumnRef("NT", "Plan", SQLType.TEXT), ColumnRef("NT", "Currency", SQLType.TEXT)
+    amount = ColumnRef("NT", "Amount", SQLType.INTEGER)
+    question = "What is the total Amount broken down by Plan and Currency?"
+
+    def grouped(aggregate):
+        return SelectQuery((SelectItem(plan), SelectItem(currency), SelectItem(aggregate)), "NT",
+                           group_by=(plan, currency))
+
+    assert not constraint_violations(question, grouped(Aggregate("SUM", amount)), graph)
+    # Contrast: another aggregate of Amount is not its total, and a count reads neither field.
+    assert constraint_violations(question, grouped(Aggregate("AVG", amount)), graph)
+    assert constraint_violations(question, grouped(Aggregate("COUNT", Star())), graph)
+
+
 def test_model_numeric_prediction_does_not_erase_notes_or_formula_errors():
     import numpy as np
     from engine.tables import TableQuery

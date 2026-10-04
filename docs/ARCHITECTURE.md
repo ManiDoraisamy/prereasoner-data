@@ -210,14 +210,17 @@ replay. The legacy Wikidata schema migration is still pending.
    cells and calls `/chat` and the conversation APIs server to server with the user's Firebase identity. It does not
    implement reasoning and never writes to the spreadsheet.
 4. `engine.master` validates or selects private references. `engine.relations.discover_fks()` is the canonical
-   relationship detector used here and by planning.
+   relationship detector used here and by planning. Within one request, discovery, the planner's schema and the
+   schema graph are each derived once (`engine.relations.memoized`).
 5. `engine.server` resolves the conversation id and verifies ownership before selecting its working schema.
    Uploaded data changes advance a monotonic dataset version and mark prior analyses stale. `engine.pg` hashes
    each materialized working table and leaves unchanged uploaded, private-reference, and enrichment tables in place.
 6. For named requests, `engine.analysis` validates the create/modify/inspect intent and
    `engine.conversations` reserves the engine-owned analysis id and revision. An inspect request loads an exact
    completed revision without invoking the planner.
-7. `engine.knowledge.KnowledgeReasoner` receives the complete working table set and the question.
+7. `engine.knowledge.KnowledgeReasoner` receives the complete working table set and the question. Tables that are
+   copies of one layout (an export kept per product or month) are searched as one, and the answer names the table
+   it read (`SchemaGraph.layout_copies`).
 8. `engine.routing.route()` makes the single world-composition ownership decision. A necessary world
     dependency may be owned by ComposeEngine; self-contained data remains authoritative in the typed AST,
     while selected local analytical compositions can still be lowered into the shared plan for explicit

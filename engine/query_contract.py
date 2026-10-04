@@ -25,8 +25,8 @@ def cell_words(graph):
     (2026-10-04)."""
     words = _CELL_WORDS.get(graph)
     if words is None:
-        from engine.sql_schema import canon
-        words = frozenset(canon(word) for column in graph.columns for value in column.values
+        from engine.sql_schema import canon, distinct_values
+        words = frozenset(canon(word) for column in graph.columns for value in distinct_values(column.values)
                           if value is not None for word in lexical_words(value))
         _CELL_WORDS[graph] = words
     return words
@@ -147,7 +147,7 @@ def constraint_violations(question, query, graph):
     # arbitrary strings such as spreadsheet formula errors as zero. Do not let
     # a runnable aggregate turn malformed source cells into an authoritative
     # number; counts and other numeric columns remain available.
-    from engine.sql_ast import expression_type
+    from engine.sql_ast import column_refs, expression_type
     from dataclasses import fields, is_dataclass
 
     def aggregates(value):
@@ -170,21 +170,11 @@ def constraint_violations(question, query, graph):
     # The spreadsheet importer preserves duplicate headers with their original
     # column letters. Displaying both is safe; choosing one for a calculation or
     # filter needs the user to distinguish it, rather than an arbitrary model pick.
-    def references(value):
-        if isinstance(value, ColumnRef):
-            yield value
-        elif is_dataclass(value):
-            for field in fields(value):
-                yield from references(getattr(value, field.name))
-        elif isinstance(value, (tuple, list)):
-            for item in value:
-                yield from references(item)
-
-    used = set(references(query))
+    used = set(column_refs(query))
     projected = {item.expression for item in query.select if isinstance(item.expression, ColumnRef)}
-    constrained = set(references((query.where, query.having, query.group_by, query.order_by)))
+    constrained = set(column_refs((query.where, query.having, query.group_by, query.order_by)))
     constrained.update(ref for item in query.select if not isinstance(item.expression, ColumnRef)
-                       for ref in references(item.expression))
+                       for ref in column_refs(item.expression))
     from engine.sql_schema import canon
     from engine.closed_class import closed_class_words
     question_text = ' ' + ' '.join(canon(word) for word in lexical_words(question)) + ' '
@@ -214,7 +204,7 @@ def constraint_violations(question, query, graph):
             continue
         named_fields.setdefault(label, set()).add(column.ref)
     from dataclasses import replace
-    from engine.sql_expansion import spelled_names
+    from engine.sql_expansion import AGGREGATE_CUES, spelled_names
     from engine.sql_rank import analyze_question
     roles = analyze_question(question, graph)
     # An aggregate word that only spells a field's name ("Avg. monthly searches") names that
@@ -240,7 +230,7 @@ def constraint_violations(question, query, graph):
     def aggregate_columns(value):
         found = {}
         if isinstance(value, Aggregate):
-            found.setdefault(value.function, set()).update(references(value.operand))
+            found.setdefault(value.function, set()).update(column_refs(value.operand))
         if is_dataclass(value):
             for field in fields(value):
                 for function, refs in aggregate_columns(getattr(value, field.name)).items():
@@ -278,6 +268,12 @@ def constraint_violations(question, query, graph):
                               + ' could not be computed from that field; check for nonnumeric/error cells or choose a numeric field')
             continue
         if refs & used:
+            continue
+        # "the total Amount" asks the total of Amount as well as naming a Total Amount field: a query that
+        # aggregates the field the rest of the name names, with the aggregate its first word asks for, uses
+        # what the question asked (near copies of a subscriptions export, 2026-10-04).
+        cue, _, rest = label.partition(' ')
+        if rest and cue in AGGREGATE_CUES and named_fields.get(rest, set()) & measures.get(AGGREGATE_CUES[cue], set()):
             continue
         if roles.aggregate_positions and label in recipients and label not in data_literals:
             continue

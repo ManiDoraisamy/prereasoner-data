@@ -2774,6 +2774,103 @@ def test_same_shaped_tabs_answer_a_stated_keyword():
     assert execute([orders], paris.sql) == [(30,)], paris.sql
 
 
+def _subscription_workbook(extra_si_column=False):
+    """Three subscription exports with one layout (NT, SI and FF) and a report of each, small enough to total
+    by hand: a customer's Stripe workbook, 2026-10-04. ``extra_si_column`` gives SI one more column."""
+    # A report lists each product once per currency, so no column of it is a key the exports reference.
+    exports = {
+        "NT": [("price_a", "Neartail - Startup", "usd", 10, "active"),
+               ("price_a", "Neartail - Startup", "usd", 10, "canceled"),
+               ("price_a", "Neartail - Startup", "eur", 9, "active"),
+               ("price_b", "Order Form - Basic", "eur", 7, "active"),
+               ("price_b", "Order Form - Basic", "usd", 8, "active")],
+        "SI": [("price_c", "Formesign - Pro", "usd", 20, "active"),
+               ("price_c", "Formesign - Pro", "usd", 20, "canceled"),
+               ("price_c", "Formesign - Pro", "inr", 5, "active"),
+               ("price_g", "Formesign - Team", "usd", 40, "active")],
+        "FF": [("price_d", "Payment Form - Monthly", "usd", 3, "active"),
+               ("price_d", "Payment Form - Monthly", "eur", 4, "active"),
+               ("price_e", "Payment Form - Yearly", "usd", 30, "canceled"),
+               ("price_e", "Payment Form - Yearly", "usd", 30, "active")],
+    }
+    tables = []
+    for name, rows in exports.items():
+        extra = extra_si_column and name == "SI"
+        tables.append({"name": name, "columns": ["Plan", "Product", "Currency", "Amount", "Status"] + (["Tax"] if extra else []),
+                       "rows": [list(row) + ([1] if extra else []) for row in rows]})
+        totals = {}
+        for _plan, product, currency, amount, _status in rows:
+            count, total = totals.get((product, currency), (0, 0))
+            totals[(product, currency)] = (count + 1, total + amount)
+        tables.append({"name": f"{name} Report", "columns": ["Product", "Currency", "Subscriptions", "Total Amount"],
+                       "rows": [[product, currency, count, total]
+                                for (product, currency), (count, total) in sorted(totals.items())]})
+    return tables
+
+
+def test_tabs_of_one_layout_are_read_as_one():
+    """A customer's Stripe workbook, 2026-10-04: three subscription exports with one layout and a report of each
+    left "What is the total Amount broken down by Plan and Currency?" no reading at all. "total" read as the first
+    word of the reports' Total Amount, so the exports' Amount was no mention, and each word's options were cut to
+    four across six tabs that no key joins. Copies of one layout are searched as one: the tab the question names,
+    else the first holding a value it states, else the first sent (the Sheets add-on sends the active tab first),
+    and the answer says which it read."""
+    workbook = _subscription_workbook()
+    question = "What is the total Amount broken down by Plan and Currency?"
+    answer = best(question, workbook)
+    assert answer.query.referenced_tables() == {"NT"}, answer.sql
+    assert sorted(execute(workbook, answer.sql)) == [("price_a", "eur", 9), ("price_a", "usd", 20), ("price_b", "eur", 7), ("price_b", "usd", 8)], answer.sql
+    # Same profile, another copy: the tab the question names, or the one holding the value it states.
+    named = best("What is the total Amount in SI by Plan?", workbook)
+    assert sorted(execute(workbook, named.sql)) == [("price_c", 45), ("price_g", 40)], named.sql
+    held = best("total Amount for Payment Form - Monthly by Currency", workbook)
+    assert sorted(execute(workbook, held.sql)) == [("eur", 4), ("usd", 3)], held.sql
+    # The served answer names the tab it read, and the others that could answer; not when the question names it.
+    planner = _hermetic_planner()
+    served = planner.serve(workbook, question)
+    assert sorted(map(tuple, served["result"]["rows"])) == [("price_a", "eur", 9), ("price_a", "usd", 20), ("price_b", "eur", 7), ("price_b", "usd", 8)], served["sql"]
+    assert served["layout_copies"] == {"read": ["NT"], "others": ["SI", "FF"]}, served.get("layout_copies")
+    assert "layout_copies" not in planner.serve(workbook, "What is the total Amount in SI by Plan?")
+    # The narrowed graph keeps its parent's value index for the tables it keeps.
+    graph = SchemaGraph.from_tables(workbook, [])
+    kept = [column for column in graph.columns if column.ref.table not in {"SI", "FF"}]
+    assert graph.without(frozenset({"SI", "FF"})).value_index == SchemaGraph(kept, graph.foreign_keys).value_index
+    # Negative: tables with one layout that foreign keys reference are different things (two code lookups),
+    # and so are lists of one or two columns (test_encoder_role_signal_breaks_ambiguous_column_tie).
+    main = {"name": "main", "columns": ["id", "a_code", "b_code"], "rows": [[1, "x", "p"], [2, "y", "p"]]}
+    lookups = [{"name": name, "columns": ["code", "description", "active"], "rows": rows}
+               for name, rows in (("ref_a", [["x", "Ex", 1], ["y", "Why", 1]]),
+                                  ("ref_b", [["p", "Pea", 1], ["q", "Queue", 0]]))]
+    assert SchemaGraph.from_tables([main, *lookups], []).layout_copies == (("ref_a", "ref_b"),)
+    keyed = SchemaGraph.from_tables([main, *lookups], [("main", "a_code", "ref_a", "code"),
+                                                       ("main", "b_code", "ref_b", "code")])
+    assert keyed.layout_copies == ()
+    lists = [{"name": name, "columns": ["code", "description"], "rows": [["x", "Ex"]]} for name in ("ref_a", "ref_b")]
+    assert SchemaGraph.from_tables(lists, []).layout_copies == ()
+
+
+def test_total_before_a_measure_reads_the_measure_or_the_whole_name():
+    """Near copies of a subscriptions export (SI with one more column) leave SI and NT their own layouts, both with
+    Amount, beside reports with Total Amount: "the total Amount" must still read the total of Amount, as it
+    totals the reports' Total Amount (2026-10-04: Amount was no mention, and the question had no reading). Where
+    the column the question spells whole can answer, it stays the reading."""
+    near = _subscription_workbook(extra_si_column=True)
+    answer = best("What is the total Amount broken down by Plan and Currency?", near)
+    expected = {"NT": [("price_a", "eur", 9), ("price_a", "usd", 20), ("price_b", "eur", 7), ("price_b", "usd", 8)],
+                "SI": [("price_c", "inr", 5), ("price_c", "usd", 40), ("price_g", "usd", 40)]}
+    (table,) = answer.query.referenced_tables()
+    assert table in expected and sorted(execute(near, answer.sql)) == expected[table], answer.sql
+    # Contrast: the whole name the question spells answers when it can, and the measure stays in the pool.
+    orders = {"name": "orders", "columns": ["Region", "Amount", "Customer"], "rows": [["North", 10, "a"], ["South", 5, "b"]]}
+    refunds = {"name": "refunds", "columns": ["Region", "Amount", "Reason"], "rows": [["North", 2, "late"]]}
+    summary = {"name": "summary", "columns": ["Region", "Total Amount"], "rows": [["North", 100], ["South", 50]]}
+    tables = [orders, refunds, summary]
+    pool = SQLSearcher.from_tables(tables, []).search("total amount by region")
+    assert sorted(execute(tables, pool[0].sql)) == [("North", 100), ("South", 50)], pool[0].sql
+    assert any(candidate.query.referenced_tables() == {"orders"} and 'SUM("orders"."Amount")' in candidate.sql
+               for candidate in pool), [candidate.sql for candidate in pool]
+
+
 def test_serving_preserves_repeated_source_rows_in_aggregates():
     """Repeated identical transactions are separate source observations; ingestion must not turn
     a $300 source total into $100 by dropping two identical-looking payment rows."""
@@ -4292,6 +4389,8 @@ TESTS = [
     test_a_ranking_measure_is_not_an_asked_aggregate,
     test_a_total_by_month_groups_by_the_year_month,
     test_same_shaped_tabs_answer_a_stated_keyword,
+    test_tabs_of_one_layout_are_read_as_one,
+    test_total_before_a_measure_reads_the_measure_or_the_whole_name,
     test_serving_preserves_repeated_source_rows_in_aggregates,
     test_a_listing_follows_the_order_the_question_names,
     test_by_after_a_participle_names_who_acted,

@@ -11,8 +11,48 @@ Table form: {"name": str, "columns": [str], "rows": [[val, ...], ...]} (rows ali
 """
 from __future__ import annotations
 
+import contextlib
+import contextvars
 from math import isfinite
 from engine.numeric import parse_decimal
+
+# One served question derives the same tables up to ten times (the decomposition probe, compose, the
+# delegate and its fallbacks): a 6-tab, 34,500-row subscriptions workbook spent 52 s of a request on FK
+# discovery, and built its planner schema and schema graph four times each (2026-10-04). Each is a pure
+# function of the tables' content, so within one request (`request_memo`) a repeat reuses the first result.
+_MEMO = contextvars.ContextVar("request_memo", default=None)
+_MISSING = object()
+
+
+@contextlib.contextmanager
+def request_memo():
+    """Scope `memoized` reuse to one served request."""
+    token = _MEMO.set({})
+    try:
+        yield
+    finally:
+        _MEMO.reset(token)
+
+
+def memoized(kind, key, compute):
+    """``compute()``, or within `request_memo` the result an equal ``key()`` of the same kind already
+    computed. A key that cannot be hashed (an unhashable cell) computes afresh."""
+    memo = _MEMO.get()
+    if memo is None:
+        return compute()
+    try:
+        slot = (kind, key())
+        found = memo.get(slot, _MISSING)
+    except TypeError:
+        return compute()
+    if found is _MISSING:
+        found = memo[slot] = compute()
+    return found
+
+
+def content_key(tables):
+    """The tables' names, columns and rows, hashable (normalized tables: rows are sequences)."""
+    return tuple((t["name"], tuple(t["columns"]), tuple(map(tuple, t["rows"]))) for t in tables)
 
 
 def _num(v):
@@ -60,54 +100,72 @@ def _name_boost(ax, bname, by):
     return b
 
 
-def _column_names(table):
-    return {" ".join(str(column).lower().split()) for column in table["columns"]}
-
-
-def _same_columns(a, b):
-    """Whether two tables have the same column names, ignoring case, spacing and order."""
-    return _column_names(a) == _column_names(b)
+def layout(columns):
+    """A table's layout: its column names, ignoring case, spacing and order. Tables with one layout are
+    copies of one export kept per product, month or keyword list."""
+    return frozenset(" ".join(str(column).lower().split()) for column in columns)
 
 
 def discover_fks(tables, min_incl=0.9):
+    """The tables' many-to-one foreign keys (the module's inclusion-dependency rule)."""
+    found = memoized("fks", lambda: (min_incl, content_key(tables)), lambda: _discover_fks(tables, min_incl))
+    return [dict(fk) for fk in found]
+
+
+def _discover_fks(tables, min_incl):
     keys = {}                                                  # (table, col) -> set of normalized key values
     for t in tables:
         for ci, c in enumerate(t["columns"]):
             vals = cells(t, ci)
             if is_key(vals):
                 keys[(t["name"], c)] = {_norm(v) for v in vals if _norm(v) is not None}
+    types = {}                                                 # a column's coltype, read at most once
+
+    def type_of(table, index):
+        if (id(table), index) not in types:
+            types[(id(table), index)] = coltype(cells(table, index))
+        return types[(id(table), index)]
+
     fks = []
     for A in tables:
         for axi, ax in enumerate(A["columns"]):
-            avals = [_norm(v) for v in cells(A, axi) if _norm(v) is not None]
-            if not avals:
-                continue
-            aset, at = set(avals), coltype(cells(A, axi))
-            many_to_one = len(aset) < len(avals)               # the FK column REPEATS (it is not itself unique)
-            best = None
+            # The row-free conditions first; every condition below is required, so their order changes
+            # nothing but the cost. Most columns have no candidate parent and never read their cells.
+            candidates = []
             for (bname, by), bset in keys.items():
                 if bname == A["name"]:
                     continue                                   # a join FK lives ACROSS tables, never same-table
                 B = next(t for t in tables if t["name"] == bname)
-                if _same_columns(A, B):
+                if layout(A["columns"]) == layout(B["columns"]):
                     # Tabs with the same columns are copies of one layout (monthly exports, one tab per keyword
                     # list), never parent and child: a customer's Checklist "Avg. monthly searches" was linked to
                     # Inspection's unique values of that measure on the identical name alone (2026-10-02).
                     continue
-                if at != coltype(cells(B, B["columns"].index(by))):
+                # A foreign key needs a NAME/key-name signal, not merely value inclusion. Without one, a repeating
+                # measure/flag/low-cardinality-categorical column whose distinct values happen to fall inside an
+                # unrelated unique key (qty -> warehouse.wh_id; a 0/1 flag -> a {0,1} lookup; severity -> priority.level)
+                # is faked into an FK. Require some name evidence in BOTH cases; a UNIQUE (1:1) child needs a STRONGER
+                # signal, since two independent keys overlap by chance more readily than a repeating column does.
+                nb = _name_boost(ax, bname, by)
+                if nb > 0.0:
+                    candidates.append((bname, by, bset, B, nb))
+            if not candidates:
+                continue
+            avals = [_norm(v) for v in cells(A, axi) if _norm(v) is not None]
+            if not avals:
+                continue
+            aset = set(avals)
+            many_to_one = len(aset) < len(avals)               # the FK column REPEATS (it is not itself unique)
+            best = None
+            for bname, by, bset, B, nb in candidates:
+                if not many_to_one and nb < 0.3:
                     continue
                 if len(aset) > len(bset):
                     continue                                   # FK side has <= the key's distinct cardinality
                 incl = len(aset & bset) / len(aset)
                 if incl < min_incl:
                     continue
-                nb = _name_boost(ax, bname, by)
-                # A foreign key needs a NAME/key-name signal, not merely value inclusion. Without one, a repeating
-                # measure/flag/low-cardinality-categorical column whose distinct values happen to fall inside an
-                # unrelated unique key (qty -> warehouse.wh_id; a 0/1 flag -> a {0,1} lookup; severity -> priority.level)
-                # is faked into an FK. Require some name evidence in BOTH cases; a UNIQUE (1:1) child needs a STRONGER
-                # signal, since two independent keys overlap by chance more readily than a repeating column does.
-                if nb <= 0.0 or (not many_to_one and nb < 0.3):
+                if type_of(A, axi) != type_of(B, B["columns"].index(by)):
                     continue
                 conf = min(1.0, incl * 0.6 + nb + (0.2 if many_to_one else 0.0))
                 if best is None or conf > best[2]:
