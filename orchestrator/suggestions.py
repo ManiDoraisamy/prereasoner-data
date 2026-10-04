@@ -56,22 +56,6 @@ def validate_schema(body: dict) -> dict:
     return {"sheets": clean, "active_sheet": active, "scope": list(dict.fromkeys(scope))}
 
 
-def _fallback_questions(schema: dict) -> list[str]:
-    active = schema["active_sheet"] if schema["active_sheet"] in schema["scope"] else schema["scope"][0]
-    sheet = next(s for s in schema["sheets"] if s["name"] == active)
-    table = json.dumps(sheet["name"], ensure_ascii=False)
-    columns = sheet["columns"]
-    field = json.dumps(columns[0], ensure_ascii=False)
-    questions = [f"How many records are in {table}?",
-        f"Which values are most common in {field} in {table}?"]
-    if len(columns) > 1:
-        second = json.dumps(columns[1], ensure_ascii=False)
-        questions.append(f"How does {field} vary across {second} in {table}?")
-    else:
-        questions.append(f"Show the records in {table} with the highest {field}.")
-    return questions
-
-
 def _validate_questions(questions: object, schema: dict) -> list[str]:
     if not isinstance(questions, list) or len(questions) != 3:
         raise ValueError("Expected three question prompts")
@@ -104,14 +88,10 @@ def _validate_questions(questions: object, schema: dict) -> list[str]:
 
 
 def starter_questions(schema: dict) -> dict:
-    defaults = _fallback_questions(schema)
-    try:
-        raw = llm.generate_text(system=SYSTEM, prompt=json.dumps(schema, ensure_ascii=False),
-                                max_output_tokens=1024, json_schema=OUTPUT, timeout_seconds=12)
-        result = json.loads(raw)
-        if not isinstance(result, dict) or set(result) != {"questions"}:
-            raise ValueError("Expected question prompts")
-        return {"questions": _validate_questions(result["questions"], schema), "source": "gemini",
-                "schema_only": True}
-    except (llm.LLMUnavailable, ValueError, TypeError, KeyError):
-        return {"questions": defaults, "source": "schema", "schema_only": True}
+    raw = llm.generate_text(system=SYSTEM, prompt=json.dumps(schema, ensure_ascii=False),
+                            max_output_tokens=1024, json_schema=OUTPUT, timeout_seconds=25)
+    result = json.loads(raw)
+    if not isinstance(result, dict) or set(result) != {"questions"}:
+        raise ValueError("Expected question prompts")
+    return {"questions": _validate_questions(result["questions"], schema), "source": "gemini",
+            "schema_only": True}

@@ -159,11 +159,14 @@ class H(BaseHTTPRequestHandler):
                 self._send(429, json_dumps({"error": "suggestion request budget exceeded", "reason": reason}),
                            retry_after=retry_after); return
             result = starter_questions(schema)
-            with _SUGGESTIONS_LOCK:
-                _SUGGESTIONS[key] = (time.monotonic() + 1800, result)
-                _SUGGESTIONS.move_to_end(key)
-                while len(_SUGGESTIONS) > 256:
-                    _SUGGESTIONS.popitem(last=False)
+            # Cache only validated Gemini output; a failed generation must never look cached as
+            # a personalized result on a later retry.
+            if result.get("source") == "gemini":
+                with _SUGGESTIONS_LOCK:
+                    _SUGGESTIONS[key] = (time.monotonic() + 1800, result)
+                    _SUGGESTIONS.move_to_end(key)
+                    while len(_SUGGESTIONS) > 256:
+                        _SUGGESTIONS.popitem(last=False)
             self._send(200, json_dumps(result))
         except Exception as exc:  # noqa: BLE001 - no schema/prompt logging
             print(f"suggestions failed: {type(exc).__name__}", flush=True)

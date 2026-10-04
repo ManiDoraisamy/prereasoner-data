@@ -26,27 +26,23 @@
     const current=active||metadata?.active_sheet||normalized.active_sheet;
     return {sheets,scope,active_sheet:sheets.some(t=>t.name===current)?current:sheets[0]?.name};
   }
-  function fallback(metadata){
-    const active=metadata.active_sheet;
-    const sheet=metadata.sheets.find(item=>item.name===active&&metadata.scope.includes(item.name))||
-      metadata.sheets.find(item=>metadata.scope.includes(item.name));
-    if(!sheet||!sheet.columns.length)return [];
-    const table=JSON.stringify(sheet.name),field=JSON.stringify(sheet.columns[0]);
-    const questions=[`How many records are in ${table}?`,`Which values are most common in ${field} in ${table}?`];
-    if(sheet.columns.length>1)questions.push(`How does ${JSON.stringify(sheet.columns[0])} vary across ${JSON.stringify(sheet.columns[1])} in ${table}?`);
-    else questions.push(`Show the records in ${table} with the highest ${field}.`);
-    return questions;
-  }
   function create({container,composer,request}){
     let generation=0,key='',loaded=[];
     container.classList.add('starter-questions');
     container.setAttribute('aria-label','Suggested questions');
     function clear(){generation++;key='';loaded=[];container.replaceChildren();container.hidden=true;}
-    function render(questions,pending){
+    function render(questions,pending,failed){
       container.replaceChildren();container.hidden=!pending&&!questions.length;
-      if(!pending&&!questions.length)return;
+      if(failed)container.hidden=false;
+      if(!pending&&!questions.length&&!failed)return;
       const title=document.createElement('div');title.className='starter-title';title.textContent='Questions for this sheet';container.append(title);
       if(pending){const status=document.createElement('div');status.className='starter-status';status.setAttribute('role','status');status.textContent='Finding useful questions…';container.append(status);}
+      if(failed){
+        const status=document.createElement('div');status.className='starter-status';status.setAttribute('role','status');
+        status.textContent='Couldn’t generate sheet-specific questions right now.';container.append(status);
+        const retry=document.createElement('button');retry.type='button';retry.className='starter-retry';retry.textContent='Try again';
+        retry.addEventListener('click',()=>{key='';update(failed);});container.append(retry);
+      }
       for(const question of questions){
         const button=document.createElement('button');button.type='button';button.className='starter-question';
         button.textContent=question;
@@ -70,13 +66,14 @@
       try{
         const result=await request(metadata);
         if(own!==generation)return;
-        loaded=(Array.isArray(result?.questions)?result.questions:[]).filter(q=>typeof q==='string'&&q.trim()&&q.length<=240).slice(0,3);
-        if(loaded.length<3)loaded=fallback(metadata);
+        loaded=result?.source==='gemini'&&Array.isArray(result.questions)
+          ?result.questions.filter(q=>typeof q==='string'&&q.trim()&&q.length<=240).slice(0,3):[];
+        if(loaded.length!==3){loaded=[];render([],false,metadata);return;}
         render(loaded);
-      }catch(_){if(own===generation){loaded=fallback(metadata);render(loaded);}}
+      }catch(_){if(own===generation){loaded=[];render([],false,metadata);}}
     }
     return {update,clear};
   }
-  root.PrereasonerSuggestions={create,schema,merge,header,fallback};
+  root.PrereasonerSuggestions={create,schema,merge,header};
   if(typeof module==='object'&&module.exports)module.exports=root.PrereasonerSuggestions;
 })(globalThis);

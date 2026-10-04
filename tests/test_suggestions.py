@@ -33,7 +33,7 @@ class SuggestionsTests(unittest.TestCase):
         self.assertEqual(result["questions"], [question["text"] for question in questions])
         self.assertEqual(result["source"], "gemini")
         self.assertEqual(json.loads(call.call_args.kwargs["prompt"]), self.schema)
-        self.assertEqual(call.call_args.kwargs["timeout_seconds"], 12)
+        self.assertEqual(call.call_args.kwargs["timeout_seconds"], 25)
         self.assertIn("synonyms or another language", call.call_args.kwargs["system"])
 
     def test_synonym_or_translated_wording_is_accepted_when_schema_references_are_valid(self):
@@ -43,26 +43,25 @@ class SuggestionsTests(unittest.TestCase):
         with patch("orchestrator.suggestions.llm.generate_text", return_value=json.dumps({"questions": questions})):
             self.assertEqual(starter_questions(self.schema)["source"], "gemini")
 
-    def test_outage_and_malformed_output_have_three_safe_defaults(self):
+    def test_outage_and_malformed_output_fail_closed_without_generic_questions(self):
         for failure in (LLMUnavailable("offline"), ValueError("bad json")):
             with patch("orchestrator.suggestions.llm.generate_text", side_effect=failure):
-                result = starter_questions(self.schema)
-            self.assertEqual(len(result["questions"]), 3)
-            self.assertEqual(result["source"], "schema")
+                with self.assertRaises(type(failure)):
+                    starter_questions(self.schema)
         for raw in ('null', '{"questions":null}', '{"questions": [1,2,3]}',
                     json.dumps({"questions": [
                         {"text": "invalid sheet", "sheet": 5, "columns": [0]},
                         {"text": "wrong field", "sheet": 0, "columns": [8]},
                         {"text": "bad reference", "sheet": 1, "columns": [0]}]})):
             with patch("orchestrator.suggestions.llm.generate_text", return_value=raw):
-                self.assertEqual(starter_questions(self.schema)["source"], "schema")
+                with self.assertRaises(ValueError):
+                    starter_questions(self.schema)
 
-    def test_duplicate_model_questions_use_schema_fallback(self):
+    def test_duplicate_model_questions_are_rejected(self):
         duplicate = {"text": "How many rows are in Orders?", "sheet": 0, "columns": [0]}
         with patch("orchestrator.suggestions.llm.generate_text", return_value=json.dumps({"questions": [duplicate] * 3})):
-            result = starter_questions(self.schema)
-        self.assertEqual(result["source"], "schema")
-        self.assertEqual(len(set(result["questions"])), 3)
+            with self.assertRaisesRegex(ValueError, "distinct"):
+                starter_questions(self.schema)
 
     @contextmanager
     def service(self):
@@ -81,19 +80,32 @@ class SuggestionsTests(unittest.TestCase):
             self.assertEqual(response.status_code, 401)
             generate.assert_not_called()
 
-    def test_http_cache_and_invalid_values(self):
+    def test_http_caches_only_valid_gemini_prompts_and_rejects_values(self):
         from orchestrator import server
         with server._SUGGESTIONS_LOCK:
             server._SUGGESTIONS.clear()
+        questions = [{"text": "How many orders are in Orders?", "sheet": 0, "columns": [0]},
+            {"text": "Which cities have the most orders?", "sheet": 0, "columns": [0]},
+            {"text": "How does amount vary by city?", "sheet": 0, "columns": [1, 0]}]
         with self.service() as url, patch("engine.auth.verified_identity", return_value=("suggestions-test", None)), \
-                patch("orchestrator.suggestions.llm.generate_text", side_effect=LLMUnavailable("offline")) as generate:
+                patch("orchestrator.suggestions.llm.generate_text", return_value=json.dumps({"questions": questions})) as generate:
             response = httpx.post(url, json=self.schema)
             self.assertEqual(response.status_code, 200)
-            self.assertEqual(len(response.json()["questions"]), 3)
+            self.assertEqual(response.json()["source"], "gemini")
             self.assertEqual(httpx.post(url, json=self.schema).json(), response.json())
             self.assertEqual(generate.call_count, 1)
             self.assertEqual(httpx.post(url, json=dict(self.schema, values=["private"])).status_code, 400)
             self.assertEqual(generate.call_count, 1)
+
+    def test_http_does_not_cache_gemini_failures(self):
+        from orchestrator import server
+        with server._SUGGESTIONS_LOCK:
+            server._SUGGESTIONS.clear()
+        with self.service() as url, patch("engine.auth.verified_identity", return_value=("suggestions-outage", None)), \
+                patch("orchestrator.suggestions.llm.generate_text", side_effect=LLMUnavailable("offline")) as generate:
+            self.assertEqual(httpx.post(url, json=self.schema).status_code, 503)
+            self.assertEqual(httpx.post(url, json=self.schema).status_code, 503)
+            self.assertEqual(generate.call_count, 2)
 
 
 if __name__ == "__main__":

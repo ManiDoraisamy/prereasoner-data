@@ -27,7 +27,9 @@ test('hosted shell loads three shared schema-only questions while the composer s
 test('suggestion failure never blocks reading, typing or sending a question', async ({page}) => {
   await openSidebar(page, orders, {getPrereasonerSuggestions:'Gemini unavailable'});
   await expect(page.locator('#newConversation')).toBeEnabled();
-  await expect(page.locator('#suggestions .starter-question')).toHaveCount(3);
+  await expect(page.locator('#suggestions')).toContainText('Couldn’t generate sheet-specific questions right now.');
+  await expect(page.locator('#suggestions .starter-question')).toHaveCount(0);
+  await expect(page.locator('#suggestions .starter-retry')).toHaveText('Try again');
   await page.locator('#question').fill('total amount');
   await page.locator('#question').press('Enter');
   await expect.poll(()=>page.evaluate(()=>Boolean(window.__server.pendingAsk))).toBe(true);
