@@ -9,7 +9,6 @@
         var questionEl = document.getElementById('question');
         var sendEl = document.getElementById('send');
         var newEl = document.getElementById('newConversation');
-        var scopeEl = document.getElementById('sheetScope');
         var suggestions = window.PrereasonerSuggestions.create({
           container: document.getElementById('suggestions'), composer: questionEl,
           request: function (schema) { return callServer('getPrereasonerSuggestions', schema); }
@@ -72,10 +71,9 @@
           if (workbook.skipped && workbook.skipped.length) {
             throw new Error('These visible tabs could not be included: ' + workbook.skipped.map(function (tab) {
               return typeof tab === 'string' ? tab : tab.name;
-            }).join(', ') + '. Choose Active sheet to analyze the current tab.');
+            }).join(', ') + '. Hide or close unrelated large tabs, then try again.');
           }
           state.scope = workbook.scope || (state.scope === 'auto' ? 'all' : state.scope);
-          scopeEl.value = state.scope;
           var result = window.WORKBOOK_IMPORT.convert({grids: workbook.grids}, window.XLSX, window.UPLOAD_LIMITS);
           if (!result.ok) throw new Error(result.error);
           if (!result.sheets.length) throw new Error('There are no data rows in the selected sheets. Choose a populated tab.');
@@ -207,7 +205,6 @@
           questionEl.disabled = false;
           sendEl.disabled = busy;
           newEl.disabled = busy || !state.ready;
-          scopeEl.disabled = busy;
           sendEl.textContent = busy ? '…' : '↑';
         }
 
@@ -364,16 +361,6 @@
         document.getElementById('composer').addEventListener('submit', function (event) {
           event.preventDefault();
           submit();
-        });
-        scopeEl.addEventListener('change', function () {
-          state.scope = scopeEl.value;
-          // The previous import belongs to the previous source scope. The next
-          // question reads fresh cells before syncing; suggestions use fresh metadata.
-          state.tables = [];
-          workbookSchema = null;
-          suggestions.clear();
-          readSuggestionMetadata();
-          showNote('Your next question will use ' + (state.scope === 'active' ? 'the active sheet' : 'all visible tabs') + '.');
         });
         questionEl.addEventListener('keydown', function (event) {
           if (!state.busy && event.key === 'Enter' && !event.altKey && !event.shiftKey && !event.ctrlKey && !event.metaKey) {

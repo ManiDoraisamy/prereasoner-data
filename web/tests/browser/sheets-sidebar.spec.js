@@ -12,6 +12,8 @@ test('hosted shell loads three shared schema-only questions while the composer s
   await expect(page.locator('#question')).toBeEditable();
   await page.locator('#question').fill('my draft');
   await expect(page.locator('#suggestions .starter-question')).toHaveCount(3);
+  await expect(page.locator('#suggestions')).toContainText('Questions for this sheet');
+  await expect(page.locator('#sheetScope')).toHaveCount(0);
   const [request] = await calls(page, 'getPrereasonerSuggestions');
   expect(request.arg).toEqual({sheets:[{name:'Orders',columns:['country','amount']}],active_sheet:'Orders',scope:['Orders']});
   expect(JSON.stringify(request.arg)).not.toContain('840');
@@ -25,37 +27,22 @@ test('hosted shell loads three shared schema-only questions while the composer s
 test('suggestion failure never blocks reading, typing or sending a question', async ({page}) => {
   await openSidebar(page, orders, {getPrereasonerSuggestions:'Gemini unavailable'});
   await expect(page.locator('#newConversation')).toBeEnabled();
-  await expect(page.locator('#suggestions')).toBeHidden();
+  await expect(page.locator('#suggestions .starter-question')).toHaveCount(3);
   await page.locator('#question').fill('total amount');
   await page.locator('#question').press('Enter');
   await expect.poll(()=>page.evaluate(()=>Boolean(window.__server.pendingAsk))).toBe(true);
 });
 
-test('changing source scope discards old schemas and ignores a delayed earlier scope read', async ({page}) => {
+test('suggestions receive every sheet name and column plus the active sheet without a scope picker', async ({page}) => {
   const schema={sheets:[{name:'Orders',columns:['country','amount']},{name:'Archive',columns:['id']}],
     active_sheet:'Orders',scope:['Orders','Archive']};
   const grids=[{name:'Orders',rows:orders},{name:'Archive',rows:[['id'],[1]]}];
   await openSidebar(page,orders,{}, {schema,grids});
   await expect(page.locator('#newConversation')).toBeEnabled();
   await expect(page.locator('#suggestions .starter-question')).toHaveCount(3);
-  await page.evaluate(()=>{window.__server.holdSchemas=true;});
-  await page.locator('#question').fill('keep my draft');
-  await page.locator('#sheetScope').selectOption('active');
-  await expect.poll(()=>page.evaluate(()=>window.__server.pendingSchemas.length)).toBe(1);
-  await page.evaluate(s=>window.__server.pendingSchemas[0].ok({...s,scope:['Orders']}),schema);
-  await expect.poll(async()=> (await calls(page,'getPrereasonerSuggestions')).at(-1).arg.scope).toEqual(['Orders']);
-  await page.locator('#sheetScope').selectOption('all');
-  await expect.poll(()=>page.evaluate(()=>window.__server.pendingSchemas.length)).toBe(2);
-  await page.locator('#sheetScope').selectOption('active');
-  await expect.poll(()=>page.evaluate(()=>window.__server.pendingSchemas.length)).toBe(3);
-  await page.evaluate(s=>window.__server.pendingSchemas[2].ok({...s,scope:['Orders']}),schema);
-  await expect(page.locator('#suggestions .starter-question')).toHaveCount(3);
-  const count=(await calls(page,'getPrereasonerSuggestions')).length;
-  await page.evaluate(s=>window.__server.pendingSchemas[1].ok(s),schema);
-  await page.waitForTimeout(50);
-  expect((await calls(page,'getPrereasonerSuggestions')).length).toBe(count);
-  expect((await calls(page,'getPrereasonerSuggestions')).at(-1).arg.scope).toEqual(['Orders']);
-  await expect(page.locator('#question')).toHaveValue('keep my draft');
+  await expect(page.locator('#sheetScope')).toHaveCount(0);
+  const [request] = await calls(page, 'getPrereasonerSuggestions');
+  expect(request.arg).toEqual(schema);
 });
 
 test('the Sheets sidebar renders the web rail, with live steps from the realtime trace', async ({page}) => {
@@ -141,26 +128,24 @@ test('typing while reading and answering preserves the draft even on failure', a
   await expect(page.locator('#question')).toHaveValue('and for Germany?');
 });
 
-test('the Sheets sidebar refuses an incomplete workbook from an older add-on server', async ({page}) => {
+test('the Sheets sidebar explains an incomplete import without asking users to select a scope', async ({page}) => {
   await openSidebar(page, orders, {}, {skipped: [
     {name: 'SI', reason: 'cells'}, {name: 'Log', reason: 'rows'}, {name: 'Wide', reason: 'columns'}
   ]});
   await expect(page.locator('.sheet-error')).toContainText('SI, Log, Wide');
-  await expect(page.locator('.sheet-error')).toContainText('Choose Active sheet');
+  await expect(page.locator('.sheet-error')).toContainText('Hide or close unrelated large tabs');
   await expect(page.locator('#sheetCount')).toHaveText('');
 });
 
-test('an active-sheet scope is visible and can be changed without editing the workbook', async ({page}) => {
+test('an automatically selected active-sheet scope is explained without a selectbox', async ({page}) => {
   await openSidebar(page, orders, {}, {scope:'active', availableTabs:['Orders','Archive']});
   await expect(page.locator('#newConversation')).toBeEnabled();
-  await expect(page.locator('#sheetScope')).toHaveValue('active');
   await expect(page.locator('#note')).toContainText('Using the active sheet only: Orders.');
-  await page.locator('#sheetScope').selectOption('all');
-  await expect(page.locator('#note')).toContainText('Your next question will use all visible tabs.');
+  await expect(page.locator('#sheetScope')).toHaveCount(0);
   await page.locator('#question').fill('total amount');
   await page.locator('#question').press('Enter');
   await expect.poll(async () => (await calls(page, 'getWorkbookGrids')).length).toBe(1);
-  expect((await calls(page,'getWorkbookGrids'))[0].arg).toEqual({scope:'all'});
+  expect((await calls(page,'getWorkbookGrids'))[0].arg).toEqual({scope:'active'});
 });
 
 test('the Sheets sidebar explains a multi-account refusal instead of blaming the sheet', async ({page}) => {

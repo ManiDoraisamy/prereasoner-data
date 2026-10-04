@@ -1,4 +1,4 @@
-"""Schema-only suggestion contract: no cells, no tools/SQL, bounded supported operations."""
+"""Schema-only, natural-language sheet suggestions; no cell values or formulas cross the boundary."""
 import json
 import unittest
 from unittest.mock import patch
@@ -7,7 +7,7 @@ from http.server import ThreadingHTTPServer
 import threading
 import httpx
 
-from orchestrator.suggestions import validate_schema, starter_questions, render_pick
+from orchestrator.suggestions import validate_schema, starter_questions
 from engine.llm import LLMUnavailable
 
 
@@ -24,17 +24,16 @@ class SuggestionsTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 validate_schema(body)
 
-    def test_exactly_three_questions_and_only_schema_is_sent(self):
-        picks = [{"table": 0, "column": 0, "operation": "count"},
-            {"table": 0, "column": 0, "operation": "group_count"},
-            {"table": 0, "column": 1, "operation": "sum"}]
-        with patch("orchestrator.suggestions.llm.generate_text", return_value=json.dumps({"questions": picks})) as call:
+    def test_exactly_three_natural_language_questions_and_only_schema_is_sent(self):
+        questions = ["How many orders are in Orders?", "Which cities have the most orders in Orders?",
+            "How does amount vary by city in Orders?"]
+        with patch("orchestrator.suggestions.llm.generate_text", return_value=json.dumps({"questions": questions})) as call:
             result = starter_questions(self.schema)
-        self.assertEqual(len(result["questions"]), 3)
+        self.assertEqual(result["questions"], questions)
         self.assertEqual(result["source"], "gemini")
         self.assertEqual(json.loads(call.call_args.kwargs["prompt"]), self.schema)
         self.assertEqual(call.call_args.kwargs["timeout_seconds"], 12)
-        self.assertIn('"amount"', result["questions"][2])
+        self.assertTrue(all(isinstance(question, str) for question in result["questions"]))
 
     def test_outage_and_malformed_output_have_three_safe_defaults(self):
         for failure in (LLMUnavailable("offline"), ValueError("bad json")):
@@ -42,21 +41,18 @@ class SuggestionsTests(unittest.TestCase):
                 result = starter_questions(self.schema)
             self.assertEqual(len(result["questions"]), 3)
             self.assertEqual(result["source"], "schema")
-        for raw in ('null', '{"questions":null}', '{"questions": [1,2,3]}', '{"questions": [{"sql":"DROP TABLE"}]}'):
+        for raw in ('null', '{"questions":null}', '{"questions": [1,2,3]}',
+                    '{"questions": ["off-topic question", "another question", "third question"]}'):
             with patch("orchestrator.suggestions.llm.generate_text", return_value=raw):
                 self.assertEqual(starter_questions(self.schema)["source"], "schema")
 
-    def test_unknown_fields_hidden_scope_and_unsupported_actions_are_rejected(self):
-        for pick in ({"table": 1, "column": 0, "operation": "count"},
-                     {"table": 0, "column": 99, "operation": "sum"},
-                     {"table": True, "column": 0, "operation": "list"},
-                     {"table": 0, "column": 0, "operation": "clean"}):
-            with self.assertRaises(ValueError): render_pick(pick, self.schema)
-
-    def test_duplicate_model_choices_are_filled(self):
-        pick = {"table": 0, "column": 0, "operation": "count"}
-        with patch("orchestrator.suggestions.llm.generate_text", return_value=json.dumps({"questions": [pick] * 3})):
-            self.assertEqual(len(set(starter_questions(self.schema)["questions"])), 3)
+    def test_duplicate_or_unanchored_model_questions_use_schema_fallback(self):
+        for questions in (["How many rows are in Orders?", "How many rows are in Orders?", "How many rows are in Orders?"],
+                          ["How many orders are in Orders?", "Which cities are common in Orders?", "What is the weather today?"]):
+            with patch("orchestrator.suggestions.llm.generate_text", return_value=json.dumps({"questions": questions})):
+                result = starter_questions(self.schema)
+            self.assertEqual(result["source"], "schema")
+            self.assertEqual(len(set(result["questions"])), 3)
 
     @contextmanager
     def service(self):

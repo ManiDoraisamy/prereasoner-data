@@ -26,15 +26,27 @@
     const current=active||metadata?.active_sheet||normalized.active_sheet;
     return {sheets,scope,active_sheet:sheets.some(t=>t.name===current)?current:sheets[0]?.name};
   }
+  function fallback(metadata){
+    const active=metadata.active_sheet;
+    const sheet=metadata.sheets.find(item=>item.name===active&&metadata.scope.includes(item.name))||
+      metadata.sheets.find(item=>metadata.scope.includes(item.name));
+    if(!sheet||!sheet.columns.length)return [];
+    const table=JSON.stringify(sheet.name),field=JSON.stringify(sheet.columns[0]);
+    const questions=[`How many records are in ${table}?`,`Which values are most common in ${field} in ${table}?`];
+    if(sheet.columns.length>1)questions.push(`How does ${JSON.stringify(sheet.columns[0])} vary across ${JSON.stringify(sheet.columns[1])} in ${table}?`);
+    else questions.push(`Show the records in ${table} with the highest ${field}.`);
+    return questions;
+  }
   function create({container,composer,request}){
     let generation=0,key='',loaded=[];
     container.classList.add('starter-questions');
     container.setAttribute('aria-label','Suggested questions');
     function clear(){generation++;key='';loaded=[];container.replaceChildren();container.hidden=true;}
-    function render(questions){
-      container.replaceChildren();container.hidden=!questions.length;
-      if(!questions.length)return;
-      const title=document.createElement('div');title.className='starter-title';title.textContent='Try a question';container.append(title);
+    function render(questions,pending){
+      container.replaceChildren();container.hidden=!pending&&!questions.length;
+      if(!pending&&!questions.length)return;
+      const title=document.createElement('div');title.className='starter-title';title.textContent='Questions for this sheet';container.append(title);
+      if(pending){const status=document.createElement('div');status.className='starter-status';status.setAttribute('role','status');status.textContent='Finding useful questions…';container.append(status);}
       for(const question of questions){
         const button=document.createElement('button');button.type='button';button.className='starter-question';
         button.textContent=question;
@@ -54,16 +66,17 @@
     async function update(metadata){
       if(!metadata?.sheets?.length){clear();return;}
       const next=JSON.stringify(metadata);if(next===key)return;
-      const own=++generation;key=next;loaded=[];render([]);
+      const own=++generation;key=next;loaded=[];render([],true);
       try{
         const result=await request(metadata);
         if(own!==generation)return;
-        loaded=(Array.isArray(result?.questions)?result.questions:[]).filter(q=>typeof q==='string'&&q.trim()&&q.length<=2048).slice(0,3);
+        loaded=(Array.isArray(result?.questions)?result.questions:[]).filter(q=>typeof q==='string'&&q.trim()&&q.length<=240).slice(0,3);
+        if(loaded.length<3)loaded=fallback(metadata);
         render(loaded);
-      }catch(_){if(own===generation){key='';render([]);}}
+      }catch(_){if(own===generation){loaded=fallback(metadata);render(loaded);}}
     }
     return {update,clear};
   }
-  root.PrereasonerSuggestions={create,schema,merge,header};
+  root.PrereasonerSuggestions={create,schema,merge,header,fallback};
   if(typeof module==='object'&&module.exports)module.exports=root.PrereasonerSuggestions;
 })(globalThis);
