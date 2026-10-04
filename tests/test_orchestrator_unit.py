@@ -1670,8 +1670,29 @@ def test_intent_context_has_schema_and_questions_but_no_values_or_assistant_answ
                                         'sql': 'private query', 'views': [{'rows': [[89123]]}]}) == {'status': 'answered'}
 
 
+def test_a_yes_can_accept_the_question_a_clarification_offered():
+    """A clarification ends "Try asking: “total Amount in Germany”", and the user answers "yes". The chat
+    model sees no earlier replies, so "yes" had nothing to accept (2026-10-04). The offered question,
+    read back from the engine's own clarification text, is the only reply text it now sees."""
+    from engine.answer_presentation import clarify_reply
+    offer = clarify_reply({'reason': 'I need one more detail before I can answer that.',
+                           'proposed': 'total Amount in Germany'})
+    tables = [{'name': 'orders', 'data': 'city,Amount\nprivate source city,98765\n'}]
+    asked = [{'role': 'user', 'content': 'amount for germany'}, {'role': 'assistant', 'content': offer}]
+    assert orchestrator._intent_context(asked, tables) == {
+        'recent_questions': ['amount for germany'],
+        'schema': [{'table': 'orders', 'columns': ['city', 'Amount']}],
+        'offered_question': 'total Amount in Germany'}
+    # Contrast: an answer, or an offer an earlier turn already moved past, offers nothing.
+    answered = asked + [{'role': 'user', 'content': 'yes'}, {'role': 'assistant', 'content': '98,765'}]
+    assert 'offered_question' not in orchestrator._intent_context(answered, tables)
+    assert 'offered_question' not in orchestrator._intent_context(
+        [{'role': 'assistant', 'content': 'Which Amount column should I use?'}], tables)
+
+
 TESTS = [
     test_intent_context_has_schema_and_questions_but_no_values_or_assistant_answers,
+    test_a_yes_can_accept_the_question_a_clarification_offered,
     test_rows_whose_entity_matched_nothing_reach_the_reply,
     test_a_gemini_reworded_question_is_the_turns_reading_not_part_of_the_reply,
     test_request_execution_mode_reaches_each_orchestrated_engine_call,

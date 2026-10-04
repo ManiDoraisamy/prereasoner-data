@@ -46,6 +46,16 @@ def clarify_reply(clarify: dict[str, Any]) -> str:
     return reason
 
 
+_OFFERED = re.compile(r"Try asking: “([^”]+)”\s*$")
+
+
+def offered_question(reply: Any) -> str:
+    """The question a clarification offered (`clarify_reply`), read back from its reply so a "yes" can
+    accept it: the chat model sees no earlier replies, and "yes" had nothing to accept (2026-10-04)."""
+    match = _OFFERED.search(str(reply or ""))
+    return match[1].strip() if match else ""
+
+
 def terminal_reply(shaped: dict[str, Any]) -> str:
     """Render the engine's terminal facts, without an external presentation model."""
     if shaped.get("status") == "clarify":

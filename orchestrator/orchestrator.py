@@ -23,6 +23,7 @@ import re
 import uuid
 from typing import Any
 from engine.answer_presentation import (
+    offered_question,
     terminal_reply as _terminal_fallback,
 )
 
@@ -236,7 +237,9 @@ def _system_with_catalog(catalog: list[dict[str, Any]]) -> str:
 
 
 def _intent_context(history, tables):
-    """Explicit wording context and schema, with no assistant replies or cell values."""
+    """Explicit wording context and schema, with no assistant replies or cell values. A clarification's
+    offered question is the one exception: engine text from the question and the schema names, so a
+    "yes" has something to accept."""
     import csv
     import io
     from engine.column_names import canonical_columns
@@ -257,7 +260,13 @@ def _intent_context(history, tables):
         if scope:
             entry['scope'] = scope
         schema.append(entry)
-    return {'recent_questions': questions, 'schema': schema}
+    context = {'recent_questions': questions, 'schema': schema}
+    last = (history or [None])[-1]
+    if isinstance(last, dict) and last.get('role') == 'assistant':
+        offered = offered_question(last.get('content'))
+        if offered:
+            context['offered_question'] = offered
+    return context
 
 
 def reading(shaped, question):
