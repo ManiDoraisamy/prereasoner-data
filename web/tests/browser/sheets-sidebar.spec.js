@@ -76,7 +76,9 @@ test('the Sheets sidebar renders the web rail, with live steps from the realtime
   await openSidebar(page, orders);
   await expect(page.locator('.empty')).toContainText('Ask a question about the current sheet.');
   await expect(page.locator('.data-notice')).toContainText('This data is not used to train generalized AI models.');
-  await expect(page.locator('#sheetCount')).toHaveText('1 tab: Orders');
+  await expect(page.locator('#syncStatus')).toHaveText('Synced just now');
+  await expect(page.locator('#syncStatus')).not.toContainText('Orders');
+  await expect(page.locator('#syncStatus')).not.toContainText('tabs');
   await expect(page.locator('#newConversation')).toBeEnabled();
   expect(await page.evaluate(() => window.__signedInWith)).toBe('google-token');
   const [restore] = await calls(page, 'restorePrereasonerSheetConversation');
@@ -140,7 +142,7 @@ test('messy headers warn without preventing a question', async ({page}) => {
 
 test('typing while reading and answering preserves the draft even on failure', async ({page}) => {
   await openSidebar(page, orders, {}, {contextDelay: 1500});
-  await expect(page.locator('#sheetCount')).toHaveText('Reading the sheet…');
+  await expect(page.locator('#syncStatus')).toHaveText('Reading the sheet…');
   await expect(page.locator('#question')).toBeEnabled();
   await expect(page.locator('#send')).toBeDisabled();
   await page.locator('#question').fill('total amount');
@@ -161,18 +163,43 @@ test('the Sheets sidebar explains an incomplete import without asking users to s
   ]});
   await expect(page.locator('.sheet-error')).toContainText('SI, Log, Wide');
   await expect(page.locator('.sheet-error')).toContainText('Hide or close unrelated large tabs');
-  await expect(page.locator('#sheetCount')).toHaveText('');
+  await expect(page.locator('#syncStatus')).toHaveText('Couldn’t sync');
 });
 
 test('an automatically selected active-sheet scope is explained without a selectbox', async ({page}) => {
   await openSidebar(page, orders, {}, {scope:'active', availableTabs:['Orders','Archive']});
   await expect(page.locator('#newConversation')).toBeEnabled();
-  await expect(page.locator('#note')).toContainText('Using the active sheet only: Orders.');
+  await expect(page.locator('#note')).toContainText('Using the current sheet because the whole workbook is too large');
   await expect(page.locator('#sheetScope')).toHaveCount(0);
   await page.locator('#question').fill('total amount');
   await page.locator('#question').press('Enter');
   await expect.poll(async () => (await calls(page, 'getWorkbookGrids')).length).toBe(1);
   expect((await calls(page,'getWorkbookGrids'))[0].arg).toEqual({scope:'active'});
+});
+
+test('an expired saved chat does not block a fresh question', async ({page}) => {
+  await openSidebar(page, orders, {
+    restorePrereasonerSheetConversation: 'Prereasoner: conversation expired.'
+  });
+  await expect(page.locator('#note')).toContainText('Your previous chat could not be resumed');
+  await page.locator('#question').fill('keyword volume for home inspection checklist');
+  await page.locator('#question').press('Enter');
+  await expect.poll(() => page.evaluate(() => Boolean(window.__server.pendingAsk))).toBe(true);
+  const request = await page.evaluate(() => window.__server.pendingAsk.arg);
+  expect(request.question).toBe('keyword volume for home inspection checklist');
+  expect(request.conversationId).toBeNull();
+  expect(request.history).toEqual([]);
+});
+
+test('sync status shows relative freshness and never exposes workbook tab names', async ({page}) => {
+  await page.clock.install({time: new Date('2026-10-04T10:00:00Z')});
+  await openSidebar(page, orders);
+  await expect(page.locator('#syncStatus')).toHaveText('Synced just now');
+  await page.clock.fastForward(5 * 60 * 1000);
+  await expect(page.locator('#syncStatus')).toHaveText('Updated 5 minutes ago');
+  await expect(page.locator('#syncStatus')).not.toContainText('Orders');
+  await expect(page.locator('#sheetCount')).toHaveCount(0);
+  await expect(page.locator('#sheetScope')).toHaveCount(0);
 });
 
 test('the Sheets sidebar explains a multi-account refusal instead of blaming the sheet', async ({page}) => {

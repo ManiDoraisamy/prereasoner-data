@@ -43,7 +43,7 @@ def test_restore_returns_the_mapped_sidebar_snapshot():
             text = str(statement)
             self.statements.append((text, params))
             if 'FROM "chat"."sheet_session" ss' in text:
-                self.one = (cid, json.dumps(saved), "Who?", source_hash, 3)
+                self.one = (cid, json.dumps(saved), cid, "Who?", source_hash, 3)
 
         def fetchone(self):
             return self.one
@@ -74,7 +74,7 @@ def test_restore_backfills_the_latest_exact_source_conversation_once():
             if 'FROM "chat"."sheet_session" ss' in text:
                 self.one = None
             elif 'ORDER BY c.last_active_at DESC' in text:
-                self.one = (cid, "Who has the most orders?", source_hash, 4)
+                self.one = (cid, cid, "Who has the most orders?", source_hash, 4)
             elif 'SELECT count(*) FROM "chat"."sheet_session"' in text:
                 self.one = (0,)
 
@@ -121,6 +121,38 @@ def test_excel_restore_does_not_bind_a_google_sheet_by_matching_contents():
     assert not any("ORDER BY c.last_active_at DESC" in statement for statement, _ in cursor.statements)
     insert = next(item for item in cursor.statements if item[0].startswith('INSERT INTO "chat"."sheet_session"'))
     assert insert[1][2] == "excel" and "VALUES (%s, %s, %s, NULL, %s)" in insert[0]
+
+
+def test_restore_clears_a_dangling_conversation_and_sidebar_snapshot():
+    cid = "c_" + "4" * 32
+    tables = [{"name": "Customers", "data": "id,name\n1,Nancy Drew\n"}]
+
+    class Cursor:
+        def __init__(self):
+            self.one = None
+            self.statements = []
+
+        def execute(self, statement, params=None):
+            text = str(statement)
+            self.statements.append((text, params))
+            if 'FROM "chat"."sheet_session" ss' in text:
+                self.one = (cid, json.dumps({"turns": [{"question": "old"}]}), None,
+                            "old question", "old hash", 1)
+
+        def fetchone(self):
+            return self.one
+
+    cursor = Cursor()
+    connection = _Connection(cursor)
+    with patch.object(sheet_sessions, "_pg", return_value=connection):
+        restored = sheet_sessions.restore_sheet_session("user", "sheet_orphan123", tables)
+    assert restored["conversation_id"] is None
+    assert restored["state"] is None
+    assert restored["source_changed"] is False
+    repair = next((params for statement, params in cursor.statements
+                   if "SET conversation_id = NULL, sidebar_state = NULL" in statement), None)
+    assert repair == ("user", "sheet_orphan123", "sheets")
+    assert connection.commits == 1 and connection.rollbacks == 0
 
 
 def test_save_requires_ownership_and_persists_a_bounded_snapshot():
@@ -182,6 +214,7 @@ TESTS = (
     test_restore_returns_the_mapped_sidebar_snapshot,
     test_restore_backfills_the_latest_exact_source_conversation_once,
     test_excel_restore_does_not_bind_a_google_sheet_by_matching_contents,
+    test_restore_clears_a_dangling_conversation_and_sidebar_snapshot,
     test_save_requires_ownership_and_persists_a_bounded_snapshot,
     test_clear_persists_a_blank_marker_instead_of_deleting_the_mapping,
 )

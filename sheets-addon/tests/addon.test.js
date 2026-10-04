@@ -130,7 +130,7 @@ const scopedBook = scoped.getSidebarContext().workbook;
 equal(scopedBook.scope, 'active');
 equal(scopedBook.grids.map(grid => grid.name), ['NT']);
 equal(scopedBook.availableTabs, ['NT', 'SI', 'FF']);
-assert.throws(() => scoped.getWorkbookGrids({scope:'all'}), /Choose "Active sheet"/); checks++;
+equal(scoped.getWorkbookGrids({scope:'all'}).scope, 'active', 'stale scope clients fall back to the current sheet');
 equal(scoped.getWorkbookGrids({scope:'active'}).grids.map(grid => grid.name), ['NT']);
 equal(load(book([sheet(11, 'NT', rows(30000)), sheet(12, 'SI', dense, {hidden: true}),
   sheet(14, 'FF', rows(100))])).getSidebarContext().workbook.grids.map(grid => grid.name), ['NT', 'FF'],

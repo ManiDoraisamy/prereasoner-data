@@ -5,7 +5,7 @@
         var threadEl = document.getElementById('thread');
         var scrollEl = document.getElementById('scroll');
         var noteEl = document.getElementById('note');
-        var countEl = document.getElementById('sheetCount');
+        var syncStatusEl = document.getElementById('syncStatus');
         var questionEl = document.getElementById('question');
         var sendEl = document.getElementById('send');
         var newEl = document.getElementById('newConversation');
@@ -15,6 +15,8 @@
         });
         var workbookSchema = null;
         var metadataGeneration = 0;
+        var lastSyncedAt = 0;
+        var relativeSyncTimer = null;
         function refreshSuggestions() {
           var schema = window.PrereasonerSuggestions.merge(workbookSchema, state.tables);
           if (schema) suggestions.update(schema);
@@ -81,8 +83,7 @@
             var warnings = sheet.import && sheet.import.warnings || [];
             return warnings.length ? 'Sheet "' + sheet.name + '": ' + warnings.join(' ') : '';
           }).filter(Boolean).join(' ');
-          if (state.scope === 'active') state.importNote = 'Using the active sheet only: ' +
-            result.sheets.map(function (sheet) { return sheet.name; }).join(', ') + '. ' + state.importNote;
+          if (state.scope === 'active') state.importNote = 'Using the current sheet because the whole workbook is too large to analyze at once. ' + state.importNote;
           return result.sheets.map(function (sheet) {
             return {name: sheet.name, data: sheet.csv, source: {kind: 'google-sheets-addon',
               warnings: (sheet.import && sheet.import.warnings || []).map(function (warning) { return warning.slice(0,4096); }),
@@ -192,11 +193,27 @@
           noteEl.hidden = !combined;
         }
 
-        function renderSheets() {
-          var count = state.tables.length;
-          countEl.textContent = count ? count + (count === 1 ? ' tab' : ' tabs') + ': ' +
-            state.tables.map(function (table) { return table.name; }).join(', ') : '';
-          countEl.title = countEl.textContent;
+        function relativeSyncText(ageMs) {
+          var minutes = Math.floor(ageMs / 60000);
+          if (minutes < 1) return 'Synced just now';
+          if (minutes < 60) return 'Updated ' + minutes + (minutes === 1 ? ' minute' : ' minutes') + ' ago';
+          var hours = Math.floor(minutes / 60);
+          if (hours < 24) return 'Updated ' + hours + (hours === 1 ? ' hour' : ' hours') + ' ago';
+          var days = Math.floor(hours / 24);
+          return 'Updated ' + days + (days === 1 ? ' day' : ' days') + ' ago';
+        }
+
+        function setSyncStatus(status, stateName) {
+          syncStatusEl.textContent = status;
+          syncStatusEl.dataset.state = stateName || 'synced';
+        }
+
+        function markSynced() {
+          lastSyncedAt = Date.now();
+          setSyncStatus(relativeSyncText(0), 'synced');
+          if (relativeSyncTimer === null) relativeSyncTimer = window.setInterval(function () {
+            if (lastSyncedAt) setSyncStatus(relativeSyncText(Date.now() - lastSyncedAt), 'synced');
+          }, 30000);
         }
 
         function setBusy(busy) {
@@ -284,13 +301,24 @@
         }
 
         async function restore(tables) {
-          var restored = await callServer('restorePrereasonerSheetConversation', {tables: tables});
-          state.conversationId = restored.conversationId || null;
-          state.turns = restoredTurns(restored.state);
-          state.history = restored.state && Array.isArray(restored.state.history) ? restored.state.history.slice(-24) : [];
-          state.syncedFingerprint = (restored.state && restored.state.syncedFingerprint) || '';
-          state.restored = true;
-          if (restored.stale && state.turns.length) showNote('The sheet changed since this conversation. Ask again to use the current data.');
+          try {
+            var restored = await callServer('restorePrereasonerSheetConversation', {tables: tables});
+            state.conversationId = restored.conversationId || null;
+            state.turns = restoredTurns(restored.state);
+            state.history = restored.state && Array.isArray(restored.state.history) ? restored.state.history.slice(-24) : [];
+            state.syncedFingerprint = (restored.state && restored.state.syncedFingerprint) || '';
+            state.restored = true;
+            if (restored.stale && state.turns.length) showNote('The sheet changed since this conversation. Ask again to use the current data.');
+          } catch (_) {
+            // Restoring old sidebar history is best effort; it must not gate a question over the
+            // freshly read workbook. A dangling/expired session starts a new chat automatically.
+            state.conversationId = null;
+            state.turns = [];
+            state.history = [];
+            state.syncedFingerprint = '';
+            state.restored = true;
+            showNote('Your previous chat could not be resumed. This question will start a new chat.');
+          }
         }
 
         async function submit() {
@@ -301,22 +329,31 @@
           showNote('');
           setBusy(true);
           var live = {question: question, turnId: randomId(), status: 'Reading the sheet…', steps: [], asks: [], reply: ''};
+          setSyncStatus('Syncing…', 'loading');
           state.live = live;
           render();
           var stopLive = function () {};
           try {
             var tables = importGrids(await callServer('getWorkbookGrids', {scope: state.scope}));
+            markSynced();
             showNote(state.note);
             state.sheetError = '';
             state.tables = tables;
-            renderSheets();
             refreshSuggestions();
             var print = await fingerprint(tables);
             if (!state.restored) await restore(tables);
             if (state.conversationId && state.syncedFingerprint && print !== state.syncedFingerprint) {
               live.status = 'Syncing the changed sheet…';
               renderLive();
-              await callServer('syncPrereasonerConversation', {conversationId: state.conversationId, tables: tables});
+              try {
+                await callServer('syncPrereasonerConversation', {conversationId: state.conversationId, tables: tables});
+              } catch (_) {
+                state.conversationId = null;
+                state.turns = [];
+                state.history = [];
+                state.syncedFingerprint = '';
+                showNote('Your previous chat could not be continued. This question will start a new chat with the current sheet.');
+              }
             }
             live.status = 'Understanding your question…';
             renderLive();
@@ -347,6 +384,7 @@
                 showNote('The answer was returned, but this sheet’s conversation could not be saved: ' + errorText(error));
               });
           } catch (error) {
+            setSyncStatus('Sync failed', 'error');
             state.live = null;
             state.failed = {question: question, error: errorText(error)};
             if (!questionEl.value.trim()) questionEl.value = question;
@@ -392,12 +430,12 @@
           state.signedIn.catch(function () {});
           try {
             state.tables = importGrids(context.workbook);
+            markSynced();
             showNote(state.note);
           } catch (error) {
             state.sheetError = errorText(error);
             return;
           }
-          renderSheets();
           // Independent of restore/answers. A slow or unavailable suggestion never blocks typing.
           refreshSuggestions();
           try {
@@ -407,8 +445,9 @@
           }
         }).catch(function (error) {
           state.sheetError = errorText(error);
+          setSyncStatus('Couldn’t sync', 'error');
         }).then(function () {
-          if (!state.tables.length) countEl.textContent = '';
+          if (!state.tables.length) setSyncStatus('Couldn’t sync', 'error');
           render();
           state.ready = true;
           setBusy(false);

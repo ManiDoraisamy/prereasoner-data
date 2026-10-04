@@ -95,7 +95,7 @@ def restore_sheet_session(user_id, spreadsheet_id, sheets, host="sheets"):
                         (f"prereasoner-sheet-session:{user_id}:{sid}",))
             _ensure_user(cur, user_id)
             cur.execute(
-                'SELECT ss.conversation_id, ss.sidebar_state, c.initial_prompt, c.source_hash, '
+                'SELECT ss.conversation_id, ss.sidebar_state, c.conversation_id, c.initial_prompt, c.source_hash, '
                 'c.dataset_version FROM "chat"."sheet_session" ss '
                 'LEFT JOIN "chat"."conversation" c ON c.conversation_id = ss.conversation_id '
                 'WHERE ss.user_id = %s AND ss.spreadsheet_id = %s AND ss.host = %s FOR UPDATE OF ss',
@@ -105,7 +105,7 @@ def restore_sheet_session(user_id, spreadsheet_id, sheets, host="sheets"):
             legacy = False
             if row is None and host == "sheets":
                 cur.execute(
-                    'SELECT c.conversation_id, c.initial_prompt, c.source_hash, c.dataset_version '
+                    'SELECT c.conversation_id, c.conversation_id, c.initial_prompt, c.source_hash, c.dataset_version '
                     'FROM "chat"."conversation" c '
                     'JOIN "chat"."user_conversation" uc ON uc.conversation_id = c.conversation_id '
                     'WHERE uc.user_id = %s AND c.source_hash = %s AND c.expires_at > now() '
@@ -115,10 +115,10 @@ def restore_sheet_session(user_id, spreadsheet_id, sheets, host="sheets"):
                 candidate = cur.fetchone()
                 _check_new_session_limit(cur, user_id)
                 if candidate:
-                    row = (candidate[0], None, candidate[1], candidate[2], candidate[3])
+                    row = (candidate[0], None, candidate[1], candidate[2], candidate[3], candidate[4])
                     legacy = True
                 else:
-                    row = (None, None, "", "", 0)
+                    row = (None, None, None, "", "", 0)
                 cur.execute(
                     'INSERT INTO "chat"."sheet_session" '
                     '(user_id, spreadsheet_id, host, conversation_id, expires_at) '
@@ -127,7 +127,7 @@ def restore_sheet_session(user_id, spreadsheet_id, sheets, host="sheets"):
                 )
             elif row is None:
                 _check_new_session_limit(cur, user_id)
-                row = (None, None, "", "", 0)
+                row = (None, None, None, "", "", 0)
                 cur.execute(
                     'INSERT INTO "chat"."sheet_session" '
                     '(user_id, spreadsheet_id, host, conversation_id, expires_at) '
@@ -141,7 +141,16 @@ def restore_sheet_session(user_id, spreadsheet_id, sheets, host="sheets"):
                     (_expiry(), user_id, sid, host),
                 )
 
-            conversation_id, sidebar_state, question, stored_hash, dataset_version = row
+            conversation_id, sidebar_state, joined_conversation_id, question, stored_hash, dataset_version = row
+            if conversation_id and not joined_conversation_id:
+                # Retention or an older deletion path can remove the conversation before its sheet
+                # session marker. Drop the dangling pointer so the next question starts a fresh chat.
+                cur.execute(
+                    'UPDATE "chat"."sheet_session" SET conversation_id = NULL, sidebar_state = NULL, '
+                    'state_bytes = 0, updated_at = now() WHERE user_id = %s AND spreadsheet_id = %s AND host = %s',
+                    (user_id, sid, host),
+                )
+                conversation_id, sidebar_state, question, stored_hash, dataset_version = None, None, "", "", 0
             if conversation_id:
                 cur.execute(
                     'UPDATE "chat"."conversation" SET last_active_at = now(), expires_at = %s '

@@ -232,14 +232,12 @@ function readGrids_(spreadsheet, requestedScope) {
     return sheet.getLastRow() - 1 <= GRID_LIMITS.rows && sheet.getLastColumn() <= GRID_LIMITS.columns;
   });
   var available = sheets.map(function(sheet) { return sheet.getName(); });
-  // Default to the active sheet when unrelated tabs exceed the request budget.
-  // The sidebar displays and lets the user choose this source scope explicitly.
+  // Use the whole visible workbook only when it fits the bounded read. Otherwise keep
+  // the user's question moving with the current sheet; scope is automatic in the UI.
   if (scope === 'auto') scope = allFit ? 'all' : 'active';
-  if (scope === 'all' && !allFit) {
-    throw new Error('All tabs exceed the current analysis capacity. Choose "Active sheet" to answer from the current tab, or select a smaller range of data.');
-  }
+  if (scope === 'all' && !allFit) scope = 'active';
   var fitting = scope === 'active' ? sheets.filter(function(sheet) { return sheet.getSheetId() === active.getSheetId(); }) : sheets;
-  if (!fitting.length) throw new Error('The active sheet has no data rows. Choose a populated tab or all tabs.');
+  if (!fitting.length) throw new Error('The current sheet has no data rows. Open a populated sheet and try again.');
   fitting.forEach(function(sheet) {
     var rows = sheet.getLastRow(), columns = sheet.getLastColumn();
     if (rows - 1 > GRID_LIMITS.rows) throw new Error('Sheet "' + sheet.getName() + '": each worksheet may contain at most ' + grouped_(GRID_LIMITS.rows) + ' data rows');
