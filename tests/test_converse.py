@@ -48,6 +48,14 @@ def test_reply_presents_the_computed_answer_without_external_processing():
         assert terminal_reply(wide).endswith('\n\nThe first 2 of 3 rows.')
         huge = {'status': 'answered', 'answer': {'columns': ['note'], 'rows': [['x' * 2100]] * 3}}
         assert terminal_reply(huge) == 'The answer has 3 rows, each too long to show here.'
+        # The add-ons link a reply listed in part to all its rows by this sentence (lib/turn-renderer.js).
+        import pathlib
+        import re
+        renderer = pathlib.Path(__file__).resolve().parents[1] / 'web' / 'public' / 'lib' / 'turn-renderer.js'
+        pattern = re.search(r'var PARTIAL_ROWS = /(.+)/;', renderer.read_text(encoding='utf-8'))[1]
+        many = {'status': 'answered', 'answer': {'columns': ['plan'], 'rows': [['a']] * 1160}}
+        assert re.search(pattern, terminal_reply(many))[1] == '1,160'
+        assert not re.search(pattern, terminal_reply({'status': 'answered', 'answer': {'columns': ['plan'], 'rows': rows}}))
         assert terminal_reply({'status': 'error', 'error': 'Invalid date'}) == 'Invalid date'
         assert 'again' in terminal_reply({'status': 'error', 'error': 'Engine is busy; retry shortly'})
 

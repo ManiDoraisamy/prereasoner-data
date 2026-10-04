@@ -21,6 +21,7 @@
 .reasoning-body{padding:3px 0 5px;color:#554d61}
 .analysis-open{display:inline-block;margin:2px 0 7px 21px;color:#6040dc;text-decoration:none;font-size:12px}
 .analysis-open:hover,.analysis-open:focus-visible{text-decoration:underline}
+.result-open{margin:6px 0 0;font-size:12px}
 .cotask{margin:0 0 7px 21px;padding:5px 8px;border-radius:7px;background:#f7f5fa;color:#655d70;font-size:12px;line-height:1.45}
 .reasontree{display:flex;flex-direction:column;gap:5px}
 .reasonnode{position:relative;min-width:0}

@@ -377,6 +377,18 @@
       body + '</div></details>';
   }
 
+  // An answer the reply lists in part ("The first 10 of 160 rows.", engine/answer_presentation.py) links to all
+  // of it. The add-ons have no workbook: a 160-row total by Plan and Currency read "shown in the workbook", and
+  // the full analysis sat in the collapsed reasoning panel (2026-10-05).
+  var PARTIAL_ROWS = /The first [\d,]+ of ([\d,]+) rows\./;
+  function renderResultLink(reply, analysisUrl) {
+    var match = PARTIAL_ROWS.exec(String(reply || ''));
+    var url = safeHttpUrl(analysisUrl);
+    if (!match || !url) return '';
+    return '<a class="analysis-open result-open" href="' + escapeAttribute(url) +
+      '" target="_blank" rel="noopener noreferrer">See all ' + escapeHtml(match[1]) + ' rows in Prereasoner &#8599;</a>';
+  }
+
   function renderAssistantTurn(options) {
     options = options || {};
     var answer = options.answerHtml != null
@@ -405,6 +417,7 @@
     renderMarkdown: renderMarkdown,
     renderReasoningPanel: renderReasoningPanel,
     renderReasoningTree: renderReasoningTree,
+    renderResultLink: renderResultLink,
     renderStepLink: renderStepLink,
     renderTurn: renderTurn,
     safeHttpUrl: safeHttpUrl,

@@ -183,7 +183,8 @@
           if (turn.error) return failedHtml(turn);
           var reading = R.renderAsks(turn.asks || [], turn.question);
           return R.renderTurn({question: turn.question, assistantHtml: (reading ? '<div class="turn-reading">' + reading + '</div>' : '') +
-            R.renderAssistantTurn({reasoningHtml: reasoningHtml(turn, false), reply: turn.reply || 'No answer was returned.'})});
+            R.renderAssistantTurn({reasoningHtml: reasoningHtml(turn, false), reply: turn.reply || 'No answer was returned.',
+              afterHtml: R.renderResultLink(turn.reply, analysisUrl(turn))})});
         }
 
         // Time since `since`, once it is long enough to reassure ("· 1:42"), filled in by `tick`.

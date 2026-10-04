@@ -80,7 +80,8 @@ function renderTurns() {
     const reasoningHtml = renderer.renderReasoningPanel({bodyHtml: reasoningBody, title: 'How this was calculated', analysisUrl});
     const assistantHtml = turn.error
       ? `<div class="turn-content"><div class="answer error" role="alert">${renderer.escapeHtml(turn.reply)}</div></div>`
-      : renderer.renderAssistantTurn({reply: turn.reply, reasoningHtml});
+      : renderer.renderAssistantTurn({reply: turn.reply, reasoningHtml,
+        afterHtml: renderer.renderResultLink(turn.reply, analysisUrl)});
     thread.insertAdjacentHTML('beforeend', renderer.renderTurn({question: turn.question, assistantHtml}));
   }
   thread.scrollTop = thread.scrollHeight;

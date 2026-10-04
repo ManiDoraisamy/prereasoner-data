@@ -26,6 +26,9 @@ assert.match(html, /lib\/conversation\.css/);
 assert.match(html, /class="topline-actions"/);
 assert.match(pane, /renderer\.stepsFromViews/);
 assert.match(pane, /renderer\.renderStepLink/);
+// A long answer links to all its rows in both add-ons, under the answer rather than in the collapsed panel.
+assert.match(pane, /afterHtml: renderer\.renderResultLink\(turn\.reply, analysisUrl\)/);
+assert.match(sheetsSidebar, /afterHtml: R\.renderResultLink\(turn\.reply, analysisUrl\(turn\)\)/);
 assert.match(pane, /event\.key === 'Enter' && !event\.altKey && !event\.shiftKey/);
 assert.match(sheetsSidebar, /event\.key === 'Enter' && !event\.altKey && !event\.shiftKey/);
 assert.match(sharedCss, /\.turn-answer\.answer/);
@@ -41,4 +44,4 @@ const addonSources = await Promise.all(['../sheets/sidebar.html', '../sheets/sid
 for (const [file, text] of addonSources) {
   assert.doesNotMatch(shown(text), /privacy/i, file + ' must carry no privacy link, notice or text');
 }
-console.log('Excel and shared conversation UI: 16 checks passed');
+console.log('Excel and shared conversation UI: 18 checks passed');

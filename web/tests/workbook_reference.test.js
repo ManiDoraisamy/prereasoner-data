@@ -312,6 +312,14 @@ vm.runInContext(turnRendererSource, context, {filename: 'turn-renderer.js'});
   const link = R.renderStepLink(steps[1], 1, {href: 'https://chat.prereasoner.com/reason/c_1'});
   assert(link.startsWith('<a class="steplink" href="https://chat.prereasoner.com/reason/c_1"'), link);
   assert(link.includes('<span class=idx>2</span>') && link.includes(' · from filtered') && link.includes('PY = SQL'), link);
+  // An answer the reply lists in part links to all of it (the add-ons have no workbook, 2026-10-05).
+  const partial = 'Plan: a; sum: 1\n\nThe first 10 of 1,160 rows.\n\nFrom NT. SI could answer this too.';
+  assert.strictEqual(R.renderResultLink(partial, 'https://chat.prereasoner.com/reason/c_1?analysis_id=a_1&revision=2'),
+    '<a class="analysis-open result-open" href="https://chat.prereasoner.com/reason/c_1?analysis_id=a_1&amp;revision=2"' +
+    ' target="_blank" rel="noopener noreferrer">See all 1,160 rows in Prereasoner &#8599;</a>');
+  assert.strictEqual(R.renderResultLink('1,240.00 USD', 'https://chat.prereasoner.com/reason/c_1'), '');
+  assert.strictEqual(R.renderResultLink(partial, ''), '');
+  assert.strictEqual(R.renderResultLink(partial, 'javascript:alert(1)'), '');
   const legacyLink = R.renderStepLink({title: 'Legacy step', operation: 'filter'}, 0);
   assert(legacyLink.includes('Legacy step'), legacyLink);
   assert.strictEqual(R.renderAsks(['total amount in France']), '<div class=cotask>read as &ldquo;total amount in France&rdquo;</div>');

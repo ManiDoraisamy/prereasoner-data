@@ -49,6 +49,7 @@ html, body { height: 100%; }
       .reasoning-body { padding: 1px 0 4px; color: #5f6368; }
       .analysis-open { display: inline-block; margin: 1px 0 7px 24px; color: #4f2fd0; text-decoration: none; font-size: 11px; }
       .analysis-open:hover, .analysis-open:focus { text-decoration: underline; }
+      .result-open { margin: 6px 0 0; font-size: 12px; }
       .cotask { margin: 0 0 7px 24px; color: #6c657c; font-size: 11px; line-height: 1.4; }
       .turn-reading .cotask { margin: 8px 2px 0; font-size: 12px; }
       .reasontree { display: flex; flex-direction: column; gap: 5px; }

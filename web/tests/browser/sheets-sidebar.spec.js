@@ -180,6 +180,33 @@ test('a reworded question is the turn\'s visible read-as line, and the answer is
   await expect(page.locator('.turn-reading')).toHaveCount(1);
 });
 
+test('an answer listed in part links to all its rows under the answer', async ({page}) => {
+  // The owner's sheets (2026-10-05): a 160-row total read "the result and its reasoning are shown in the
+  // workbook", and the sidebar has no workbook; the full analysis sat in the collapsed reasoning panel.
+  await openSidebar(page, orders);
+  await page.locator('#question').fill('total Amount broken down by Plan and Currency');
+  await expect(page.locator('#newConversation')).toBeEnabled();
+  await page.locator('#question').press('Enter');
+  await expect.poll(() => page.evaluate(() => Boolean(window.__server.pendingAsk))).toBe(true);
+  const reply = '- Plan: price_a; Currency: usd; sum: 6,583\n- Plan: price_b; Currency: inr; sum: 6,370\n\n' +
+    'The first 2 of 160 rows.';
+  await page.evaluate(({conversation, reply, views}) => window.__server.pendingAsk.ok({reply, conversationId: conversation,
+    history: [], traces: [{jobId: 'job-1', question: 'total Amount broken down by Plan and Currency', views}]}),
+  {conversation, reply, views});
+  const link = page.locator('.turn-content > a.result-open');
+  await expect(link).toHaveText('See all 160 rows in Prereasoner ↗');
+  await expect(link).toBeVisible();
+  await expect(link).toHaveAttribute('href', 'https://chat.prereasoner.com/reason/' + conversation);
+  // A whole answer needs no link.
+  await page.locator('#question').fill('total amount');
+  await page.locator('#question').press('Enter');
+  await expect.poll(() => page.evaluate(() => window.__server.pendingAsk.arg.question)).toBe('total amount');
+  await page.evaluate(({conversation, views}) => window.__server.pendingAsk.ok({reply: '1,860', conversationId: conversation,
+    history: [], traces: [{jobId: 'job-2', question: 'total amount', views}]}), {conversation, views});
+  await expect(page.locator('.turn-answer')).toHaveCount(2);
+  await expect(page.locator('a.result-open')).toHaveCount(1);
+});
+
 test('messy headers are read without a warning and without preventing a question', async ({page}) => {
   await openSidebar(page, [['id','amount','amount',null],[1,10,20,'note']]);
   await expect(page.locator('#newConversation')).toBeEnabled();
