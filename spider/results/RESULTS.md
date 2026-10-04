@@ -25,8 +25,10 @@ advisory run: 2 wins, 43 losses; that gap is what the hard vetoes cost. Predicti
 p90 3.10, max 14.72.
 
 None of these runs measures the served path with Gemini on. There, a refusal is reworded once and
-searched again; under this experiment an unread word would instead be served unread (for example a
-qualifier that matches nothing). Not promoted; the choice is the owner's. Output:
+searched again; under this experiment an unread word would instead be served unread. Not promoted:
+the hermetic planner suite fails 10 tests under it, among them a world question
+("total amount for restaurants in United States" on a sheet without a country) answered with every
+restaurant's total, and "total Amount for premium customers" answered unfiltered. Output:
 `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_unread-advisory-6a126c4.json`.
 
 ## The completeness check reads names, compared values and grain, at `4aa6ca6` (2026-10-04)

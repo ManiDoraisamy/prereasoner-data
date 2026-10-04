@@ -1772,10 +1772,21 @@ out, and a repeat of that request runs once its lease lapses.
 had named the conversation. The engine answers a repeated jobId only for the same input, so every
 re-send was refused 409. It now repeats the body it first sent.
 
-**Not changed, for the owner.** The check still refuses a runnable query whose question has a word it
-cannot read, then asks Gemini to reword. That widened the 2026-10-02 rule ("the fallback fires only when
-nothing runs"). Spider DEV `whole_db` with the fallback off fell from 497 strict at `60a55a3` to 241 at
-`6530bbc`, with 402 answered (`spider/results/RESULTS.md`).
+**Kept: an unread word refuses the reading.** The check still refuses a runnable query whose question
+has a word it cannot read, then asks Gemini to reword. That widened the 2026-10-02 rule ("the fallback
+fires only when nothing runs"). Spider DEV `whole_db` with the fallback off fell from 497 strict at
+`60a55a3` to 241 at `6530bbc`, with 402 answered (`spider/results/RESULTS.md`).
+
+The alternative was measured and is not promoted. In it, an unread word ranks the readings, and only a
+reading that repeats its filter's value is refused. It scored 435 strict with 894 answered on Spider DEV
+(192 wins, no losses). The planner suite then showed what Spider has no case for:
+- "total amount for restaurants in United States", on a sheet without a country, served the total of
+  every restaurant instead of leaving the country to the world join;
+- "total Amount for premium customers" served the unfiltered total.
+
+Spider holds no world questions, so its gain cannot weigh against these silent wrong answers. A word the
+search cannot read keeps refusing the reading until the check can tell a world dependency or a
+qualifier from noise wording.
 
 Decomposition leaves still skip the check. The shipped compound demos depend on that: their leaf
 wording ("units sold") is refused by the check today.
