@@ -4,6 +4,35 @@ Dated entries come newest first. Each records a run at the commit it names; the 
 entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection arbiter`) may since have
 been removed, and that commit holds the code that ran.
 
+## The completeness check reads names, compared values and grain, at `4aa6ca6` (2026-10-04)
+
+Same contract as the deployed `6530bbc` run below (`whole_db`, `served` selection, SQL backend, row
+cap 5,000, Gemini fallback off), from a clean checkout of `4aa6ca6` (`worktree_dirty=false`, tag
+`contract-4aa6ca6`). The check no longer:
+- loses a total to a field name that spells an aggregate word ("the total Avg. monthly searches");
+- treats a compared value ("No", "Not Started") as an exclusion;
+- reads "sorted by" as a requested grain.
+
+| Difficulty | n | Answered | Strict | Lenient | Scalar |
+|---|---:|---:|---:|---:|---:|
+| easy | 248 | 133 | 105 | 114 | 90/173 |
+| medium | 446 | 168 | 99 | 124 | 27/101 |
+| hard | 174 | 61 | 24 | 42 | 20/77 |
+| extra | 166 | 46 | 15 | 30 | 12/57 |
+| **all** | **1,034** | **408** | **243 (23.5%)** | **310 (30.0%)** | **149/408 (36.5%)** |
+
+| Against | strict win | strict loss | both correct | both wrong | lenient win / loss |
+|---|---:|---:|---:|---:|---:|
+| `6530bbc` (deployed, 241) | 2 | 0 | 241 | 791 | 4 / 0 |
+| `60a55a3` (497) | 10 | 264 | 233 | 527 | 16 / 309 |
+
+Answered rose from 402 to 408. Prediction seconds: median 1.29, p90 3.10, p95 3.65, max 14.24.
+
+The first version, `d5268c5`, took the grain from the search's group window. It scored 238 strict, with
+1 win and 4 losses against `6530bbc`. All four losses were "each X" questions: the window drops "id"
+from names, so both tables' `Stadium_ID` were required. `4aa6ca6` keeps the exact-label reading
+instead. Output: `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_contract-4aa6ca6.json`.
+
 ## Experiment: the completeness checks as preferences, on `6530bbc` (2026-10-04)
 
 Same contract and data as the deployed run below, from a scratch worktree of `6530bbc` with one uncommitted

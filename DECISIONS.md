@@ -1748,6 +1748,19 @@ than adding words to a list:
 - `/api/converse` answers a body of the wrong shape with 400 instead of 500.
 - Its unused Gemini rate gates are gone: the route has called no model since 2026-10-03.
 
+**A "yes" to an offered question.**
+- A clarification ends with the question the engine proposes ("Try asking: “total Amount in
+  Germany”"), and users answer "yes". The chat model sees no earlier replies, so "yes" had nothing to
+  accept.
+- The offered question is now read back from the engine's own clarification text
+  (`answer_presentation.offered_question`, beside `clarify_reply`) and given to the model as
+  `offered_question`. It is engine text from the question and the schema names; no other reply text
+  reaches the model.
+- The live orchestrator suite sends it as written.
+
+**A replay record that cannot be kept** no longer turns a computed answer into a 500. The answer goes
+out, and a repeat of that request runs once its lease lapses.
+
 **Not changed, for the owner.** The check still refuses a runnable query whose question has a word it
 cannot read, then asks Gemini to reword. That widened the 2026-10-02 rule ("the fallback fires only when
 nothing runs"). Spider DEV `whole_db` with the fallback off fell from 497 strict at `60a55a3` to 241 at
