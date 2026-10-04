@@ -200,7 +200,7 @@ def run_integration(base):
     # Chrome gate, 2026-10-02 (complex-category-gaps): the engine answered in 65 s, its response was
     # lost on the way to the chat service, and the reply asked the user to send the question again.
     # The client asks once more with the same jobId; the engine answers a repeated jobId with the
-    # first request's response (engine.request_limits.ResponseReplay), so nothing runs twice.
+    # first request's response (engine.request_replay.DurableResponseReplay), so nothing runs twice.
     LOSE_FIRST_RESPONSE.add("jobLost")
     before = len(REQUESTS)
     lost = asyncio.run(engine_client.call_query("total amount in France", tables, "jobLost", base_url=base))

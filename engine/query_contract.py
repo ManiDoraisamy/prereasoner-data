@@ -145,7 +145,7 @@ def constraint_violations(question, query, graph):
             for item in value:
                 yield from aggregates(item)
 
-    for aggregate in set(aggregates(query)):
+    for aggregate in dict.fromkeys(aggregates(query)):
         if aggregate.function in {"SUM", "AVG"} and not expression_type(aggregate.operand).numeric:
             field = getattr(aggregate.operand, "name", "selected measure")
             violations.append(f"The field {field!r} contains nonnumeric or ambiguous values and cannot be totaled")
@@ -198,22 +198,17 @@ def constraint_violations(question, query, graph):
         if not label or label in table_labels or (len(label.split()) == 1 and label in noise):
             continue
         named_fields.setdefault(label, set()).add(column.ref)
+    from dataclasses import replace
+    from engine.sql_expansion import spelled_names
     from engine.sql_rank import analyze_question
-    # "Avg." at the start of a schema label (for example, "Avg. monthly searches")
-    # names the source field. Do not also feed that abbreviation to the operator
-    # detector as a request to calculate AVG over the field.
-    role_question = question
-    for column in graph.columns:
-        words = lexical_words(column.ref.name)
-        if len(words) < 2 or words[0] != "avg":
-            continue
-        tail = r"\s+".join(re.escape(word) for word in words[1:])
-        full_label = r"\bavg\.?\s+" + tail + r"\b"
-        if re.search(full_label, role_question, re.I):
-            role_question = re.sub(
-                r"\bavg\.?(?=\s+" + tail + r"\b)", " ", role_question, flags=re.I,
-            )
-    roles = analyze_question(role_question, graph)
+    roles = analyze_question(question, graph)
+    # An aggregate word that only spells a field's name ("Avg. monthly searches") names that
+    # field when no other word asks for a calculation: either reading may answer, so neither is
+    # required. Another word that does ask ("the total Avg. monthly searches") keeps its target,
+    # which the field's full name links.
+    spelled = spelled_names(roles.tokens, graph)
+    if all(position in spelled for positions in roles.aggregate_positions.values() for position in positions):
+        roles = replace(roles, aggregate_positions={}, aggregate_targets={}, count_requested=False)
     count_requested = roles.count_requested
     from engine.closed_class import recipient_classes
     recipients = {canon(word) for word in recipient_classes(question)}
@@ -280,7 +275,7 @@ def constraint_violations(question, query, graph):
             continue
         if not any(isinstance(item.expression, Star) for item in query.select):
             violations.append('The requested field is not used: '+sorted(ref.name for ref in refs)[0])
-    for ref in used:
+    for ref in sorted(used, key=lambda ref: (ref.table, ref.name)):
         match = re.fullmatch(r'(.*) \[column ([A-Z]+)\](?: \d+)?', ref.name)
         if not match:
             continue
@@ -333,7 +328,13 @@ def constraint_violations(question, query, graph):
             if not excludes_null or not excludes_blank:
                 violations.append('non-empty row counting includes missing values')
     from engine.closed_class import EXCLUSION_CUES
-    if EXCLUSION_CUES.search(question) and not re.search(r"\bnon[- ]empty\b", question, re.I):
+    # A value the query compares is data, not an instruction: "Newsletter No" and "tasks that
+    # are Not Started" filter on the cells 'No' and 'Not Started'. A cue outside those values
+    # still needs its exclusion ("tasks that are not Done").
+    cue_text = question
+    for literal in sorted(_compared_texts(actual), key=len, reverse=True):
+        cue_text = re.sub(r"(?<!\w)" + re.escape(literal) + r"(?!\w)", " ", cue_text, flags=re.I)
+    if EXCLUSION_CUES.search(cue_text) and not re.search(r"\bnon[- ]empty\b", question, re.I):
         if not any((isinstance(p, Comparison) and p.operator in {"!=", "<>", "NOT LIKE", "IS NOT"})
                    or (isinstance(p, (ExistsPredicate, InPredicate)) and p.negated) for p in actual):
             violations.append("requested exclusion is missing")
@@ -357,14 +358,25 @@ def constraint_violations(question, query, graph):
     if cutoff and (query.limit != int(cutoff[2]) or not query.order_by):
         violations.append("requested ranking cutoff is missing")
     # Explicitly named output grain must be represented, rather than just appearing
-    # somewhere in the schema. Unknown grain remains the wording assistant's job.
-    for match in re.finditer(r"\b(?:by|per|each)\s+([^?!.;]+)", question.casefold()):
-        tail = match[1]
-        named = {column.ref for column in graph.columns
-                 if " ".join(lexical_words(column.ref.name)) in " ".join(lexical_words(tail))}
-        if named and aggregates and not named <= set(query.group_by):
-            violations.append("requested output grain is missing")
+    # somewhere in the schema. The grain is the search's own reading of "by/per/each"
+    # (sql_rank.analyze_question): "sorted by average Price" orders, it does not group.
+    if roles.group_columns and aggregates and not roles.group_columns <= set(query.group_by):
+        violations.append("requested output grain is missing")
     return tuple(violations)
+
+
+def _compared_texts(predicates):
+    """The text values a query's mandatory predicates compare a column with."""
+    from engine.sql_ast import Comparison, InPredicate, Literal
+    for predicate in predicates:
+        values = ()
+        if isinstance(predicate, Comparison):
+            values = (predicate.right,)
+        elif isinstance(predicate, InPredicate) and not predicate.negated and isinstance(predicate.source, tuple):
+            values = predicate.source
+        for value in values:
+            if isinstance(value, Literal) and isinstance(value.value, str) and value.value.strip():
+                yield value.value.strip()
 
 
 def has_unread_terms(question, candidate, graph, *, calculation_satisfied=False):

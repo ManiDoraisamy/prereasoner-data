@@ -1712,3 +1712,41 @@ A review of the 2026-10-03 changes found:
   "Total, FR, 3" (a regional subtotal) or "Total, 150, USD" was counted twice without a word. A row
   led by a total label now goes to the summaries table whatever else it carries
   (`web/public/lib/workbook-import.js`, shared by uploads, Google import, Sheets and Excel).
+
+## The completeness check reads names, compared values and the search's grain (2026-10-04)
+
+The same review found the completeness check (`engine/query_contract.py`) refusing answers the previous
+release served, and in one case serving a wrong one. Each fix makes the check read the question the way
+the search reads it, rather than adding words to a list:
+
+- **A field name holding an aggregate word.** The check deleted "avg" from the question before reading
+  it. On the owner's keyword sheet, "the total Avg. monthly searches for the Keyword X" then made the
+  filter column Keyword the requested total, and every candidate was refused. The check now uses the
+  search's own reading (`sql_rank.analyze_question`, `sql_expansion.spelled_names`). An aggregate word
+  that only spells a field's name asks for nothing. Another word that asks ("total") keeps its target.
+- **A value the query compares.** "How many responses have Newsletter No?" and "How many tasks are Not
+  Started?" were refused as unmet exclusions. A value the query filters on is data, so a cue inside it
+  is ignored. "not Done" still needs its `!=`.
+- **The requested grain.** Every column named after "by" had to be a group key. "The average Price by
+  Category, sorted by average Price" refused `GROUP BY Category` and served `GROUP BY Category, Price`.
+  The grain is now the search's group window, which ends at "sorted by".
+- **Violation order.** It no longer depends on set iteration, so the same question gets the same
+  message.
+
+**Answers built from cells.**
+- A blank cell was answered with an empty reply. It now says no value was recorded.
+- A cell holding `[text](https://…)` showed as a live link. It now shows as text.
+- `/api/converse` answers a body of the wrong shape with 400 instead of 500.
+- Its unused Gemini rate gates are gone: the route has called no model since 2026-10-03.
+
+**Not changed, for the owner.** The check still refuses a runnable query whose question has a word it
+cannot read, then asks Gemini to reword. That widened the 2026-10-02 rule ("the fallback fires only when
+nothing runs"). Spider DEV `whole_db` with the fallback off fell from 497 strict at `60a55a3` to 241 at
+`6530bbc`, with 402 answered (`spider/results/RESULTS.md`).
+
+Decomposition leaves still skip the check. The shipped compound demos depend on that: their leaf
+wording ("units sold") is refused by the check today.
+
+Long headers are still cut to 63 bytes before " [column X]", so two Forms grid questions can share
+one cut name. Fixing that needs a display label separate from the SQL name, and must keep the analyses
+already saved under the cut names working.

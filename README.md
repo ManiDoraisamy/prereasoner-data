@@ -204,8 +204,8 @@ rows into the planner's table set.
 A reference table's first column is a non-empty, unique key; the other columns are attributes. The
 browser saves changed references before a query, and the query stops if that save fails.
 
-Storage is bounded and expires by inactivity: by default 100 conversations and 256 MiB of saved
-state per user, 1 MiB per browser or analysis snapshot, and 90 days of inactivity. A daily job
+Storage is bounded and expires by inactivity: by default 1,000 conversations and 256 MiB of saved
+state per user, 1 MiB per browser snapshot, 32 MiB per analysis snapshot, and 90 days of inactivity. A daily job
 removes expired conversation schemas and traces.
 
 The browser does not guess provenance from column names. The server returns one

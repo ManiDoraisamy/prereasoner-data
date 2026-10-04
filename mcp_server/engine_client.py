@@ -178,7 +178,7 @@ async def call_query(question: str, tables: list[dict], job_id: str | None = Non
                     # A response lost between the services ended a chat turn with "send the question
                     # again" although the engine had answered (Chrome gate, 2026-10-02). The engine
                     # answers a repeated jobId with the first request's response
-                    # (engine.request_limits.ResponseReplay), so asking once more never runs it twice.
+                    # (engine.request_replay.DurableResponseReplay), so asking once more never runs it twice.
                     request_timing.mark(f"engine_transport_{type(e).__name__}", time.perf_counter() - started)
                     if attempt == 2 or not job_id:
                         raise

@@ -62,22 +62,35 @@ def terminal_reply(shaped: dict[str, Any]) -> str:
     # (orchestrator.reading); appended to the answer, it was a second answer to read (2026-10-04).
     suffix = ("\n\n" + " ".join(notes)) if notes else ""
     if len(rows) == 1 and len(rows[0]) == 1:
-        if rows[0][0] is None:
+        if _blank(rows[0][0]):
             return 'No value was recorded for the matching rows.' + suffix
         currency = output_currency(shaped)
-        value = readable_value(shaped, rows[0][0])
+        value = _data_text(readable_value(shaped, rows[0][0]))
         return (f"{value} {currency}" if currency else value) + suffix
     if not rows:
         return 'No matching rows were found.' + suffix
     columns = answer.get('columns') or []
     if columns and len(rows) <= 10 and all(len(row) == len(columns) for row in rows):
         def cell(value):
-            return 'Not recorded' if value is None else re.sub(r'\s+', ' ', str(value)).strip()
+            return 'Not recorded' if _blank(value) else _data_text(value)
         preview = '\n'.join('- ' + '; '.join(f'{cell(name)}: {cell(value)}'
                             for name, value in zip(columns, row)) for row in rows)
         if len(preview) <= 2000:
             return preview + suffix
     return "I completed the calculation; the result and its reasoning are shown in the workbook." + suffix
+
+
+def _blank(value: Any) -> bool:
+    """An empty cell: serving writes a missing value as "", which answered a blank cell with an
+    empty reply (2026-10-04)."""
+    return value is None or not str(value).strip()
+
+
+def _data_text(value: Any) -> str:
+    """A cell as reply text, on one line. Replies render Markdown links, so a link written in a cell
+    ("[x](https://…)") is broken apart and shown as the text it is: a shared sheet cannot put a live
+    link in an answer."""
+    return re.sub(r"\]\s*\(", "] (", re.sub(r"\s+", " ", str(value)).strip())
 
 
 def readable_value(shaped: dict[str, Any], value: Any) -> str:

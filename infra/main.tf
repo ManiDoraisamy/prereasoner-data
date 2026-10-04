@@ -230,7 +230,7 @@ resource "google_project_iam_member" "run_rtdb" {
   member  = "serviceAccount:${google_service_account.run.email}"
 }
 
-# Gemini on Vertex AI (engine/llm.py): /api/converse, reference generation, and the selection fallback.
+# Gemini on Vertex AI (engine/llm.py): reference generation and the selection fallback.
 resource "google_project_iam_member" "run_vertex_ai" {
   count   = local.external_llm_enabled ? 1 : 0
   project = var.project_id
@@ -325,8 +325,8 @@ resource "google_cloud_run_v2_service" "api" {
         value = tostring(local.external_llm_enabled)
       }
       # Gemini on Vertex AI in this project, authorized by the service account (run_vertex_ai). With
-      # the switch off, /api/converse and /api/master/generate answer 503 and the UI falls back to
-      # local text; selection runs without its Gemini fallback.
+      # the switch off, /api/master/generate answers 503 and the UI falls back to local text;
+      # selection runs without its Gemini fallback.
       env {
         name  = "GEMINI_MODEL"
         value = var.gemini_model

@@ -135,17 +135,14 @@ MAX_GENERATE_COLS = 32
 MAX_GENERATE_CHARS = 256 * 1024
 WORLD_RATE = SlidingWindowLimiter(limit=30, window_seconds=60)
 # A /api/reason or /api/knowledge request repeated with the jobId of one that already ran is
-# answered with that request's response (engine.request_limits.ResponseReplay).
+# answered with that request's response (engine.request_replay.DurableResponseReplay).
 from engine.request_replay import DurableResponseReplay, ReplayConflict
 WORLD_REPLAY = DurableResponseReplay()
 DIM_RATE = SlidingWindowLimiter(limit=60, window_seconds=60)
 PAID_LOCAL_GATES = {
-    "converse": RequestGate(requests=6, window_seconds=60, in_flight=4),
     "master_generate": RequestGate(requests=3, window_seconds=60, in_flight=2),
 }
 PAID_BUDGET = PostgresRequestBudget(_pg, {
-    "converse": BudgetPolicy(6, 120, 2, 16, user_requests_per_day=100,
-                              global_requests_per_day=2_000),
     "master_generate": BudgetPolicy(3, 30, 1, 6, user_requests_per_day=30,
                                      global_requests_per_day=300),
 })
@@ -556,11 +553,10 @@ class H(BaseHTTPRequestHandler):
             if not sub:
                 self._send(401, json_dumps({"error": "sign in required"})); return
             from engine.answer_presentation import terminal_reply
-            shaped = {'status': 'answered' if req.get('answer') is not None else
-                      'error' if req.get('error') else 'clarify',
-                      'answer': req.get('answer'), 'clarify': req.get('clarify'),
-                      'error': req.get('error'), 'calculations': req.get('calculations') or [],
-                      'unit': req.get('unit')}
+            shaped = _converse_facts(req)
+            if shaped is None:
+                self._send(400, json_dumps({"error": "answer, clarify, error, calculations or unit has the wrong shape"}))
+                return
             text = terminal_reply(shaped)
             self._send(200, json_dumps({"reply": text}))
         except Exception as e:                               # noqa: BLE001
@@ -995,6 +991,26 @@ class H(BaseHTTPRequestHandler):
         except Exception as e:                               # noqa: BLE001
             print(f"dimension request failed: {type(e).__name__}", flush=True)
             self._send(500, json_dumps({"error": "internal server error"}))
+
+
+def _converse_facts(req):
+    """The /api/converse body as the renderer's facts, or None when a field has the wrong shape: a
+    clarify of `true`, an answer of "42" or a row of 5 raised inside the renderer as a 500."""
+    answer, clarify, error = req.get('answer'), req.get('clarify'), req.get('error')
+    calculations, unit = req.get('calculations') or [], req.get('unit')
+    rows = answer.get('rows') or [] if isinstance(answer, dict) else []
+    columns = answer.get('columns') or [] if isinstance(answer, dict) else []
+    if ((answer is not None and not (isinstance(answer, dict) and isinstance(rows, list)
+                                     and all(isinstance(row, list) for row in rows)
+                                     and isinstance(columns, list)))
+            or (clarify is not None and not isinstance(clarify, dict))
+            or (error is not None and not isinstance(error, str))
+            or not isinstance(calculations, list)
+            or (unit is not None and not isinstance(unit, str))):
+        return None
+    return {'status': 'answered' if answer is not None else 'error' if error else 'clarify',
+            'answer': answer, 'clarify': clarify, 'error': error, 'calculations': calculations,
+            'unit': unit}
 
 
 def require_current_schema():

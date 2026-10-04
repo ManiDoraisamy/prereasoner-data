@@ -76,6 +76,61 @@ def test_an_engine_failure_is_one_sentence_the_user_can_act_on():
         == 'Which amount. Try asking: “total amount”'
 
 
+def test_a_blank_answer_or_a_link_in_a_cell_is_shown_as_data():
+    """Serving writes a missing value as "", which answered a blank cell with an empty reply, and a
+    cell holding "[x](https://…)" rendered as a live link in the chat (2026-10-04)."""
+    from engine.answer_presentation import terminal_reply
+    for blank in ('', '   ', None):
+        assert terminal_reply({'status': 'answered', 'answer': {'columns': ['note'], 'rows': [[blank]]}}) \
+            == 'No value was recorded for the matching rows.'
+    rows = [['Ava', ''], ['Cleo', 'Travel']]
+    assert terminal_reply({'status': 'answered', 'answer': {'columns': ['customer', 'category'], 'rows': rows}}) \
+        == '- customer: Ava; category: Not recorded\n- customer: Cleo; category: Travel'
+    link = '[Reset your password](https://example.com/login)'
+    single = terminal_reply({'status': 'answered', 'answer': {'columns': ['note'], 'rows': [[link]]}})
+    listed = terminal_reply({'status': 'answered', 'answer': {'columns': ['customer', 'note'],
+                                                              'rows': [['Ava', link], ['Bo', 'ok']]}})
+    for reply in (single, listed):
+        assert '](' not in reply and 'Reset your password' in reply and 'https://example.com/login' in reply
+
+
+def test_a_malformed_converse_body_is_a_client_error_not_a_500():
+    """`clarify: true`, `answer: "42"` and a row of 5 raised inside the renderer, and /api/converse
+    answered 500 (review, 2026-10-04)."""
+    import threading
+    import urllib.error
+    import urllib.request
+    from http.server import ThreadingHTTPServer
+
+    from engine import server
+
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.H)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+
+    def post(body):
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{httpd.server_address[1]}/api/converse", data=json.dumps(body).encode(),
+            method="POST", headers={"Authorization": "Bearer token", "Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                return response.status, json.loads(response.read())
+        except urllib.error.HTTPError as exc:
+            return exc.code, json.loads(exc.read())
+
+    try:
+        with patch.object(server, "_verify_principal", lambda _token: ("sub-1", "uid-1")):
+            for body in ({"clarify": True}, {"answer": "42"}, {"answer": {"rows": [5]}},
+                         {"answer": {"columns": "n", "rows": [[5]]}}, {"error": ["boom"]},
+                         {"answer": {"rows": [[5]]}, "calculations": "currency"}, {"answer": None, "unit": 3}):
+                status, reply = post(body)
+                assert status == 400 and "wrong shape" in reply["error"], (body, status, reply)
+            assert post({"answer": {"columns": ["n"], "rows": [[5000]]}}) == (200, {"reply": "5,000"})
+            assert post({"clarify": {"reason": "Which Amount column should I use?"}}) \
+                == (200, {"reply": "Which Amount column should I use?"})
+    finally:
+        httpd.shutdown()
+
+
 def test_unavailable_gemini_reaches_reference_generation_as_llm_unavailable():
     with patch.dict('os.environ', {'EXTERNAL_LLM_ENABLED': 'false'}):
         try:
@@ -234,6 +289,8 @@ def test_trace_deletion_filters_by_conversation_and_supports_delete_all():
 TESTS = [
     test_reply_presents_the_computed_answer_without_external_processing,
     test_an_engine_failure_is_one_sentence_the_user_can_act_on,
+    test_a_blank_answer_or_a_link_in_a_cell_is_shown_as_data,
+    test_a_malformed_converse_body_is_a_client_error_not_a_500,
     test_unavailable_gemini_reaches_reference_generation_as_llm_unavailable,
     test_preserves_existing_and_fills_empty,
     test_preserves_by_column_name_even_if_model_reorders,

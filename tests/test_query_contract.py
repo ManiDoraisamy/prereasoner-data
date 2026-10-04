@@ -265,6 +265,73 @@ def test_named_table_scope_is_proven_by_the_ast_without_business_synonyms():
     assert not coverage('average monthly searches for home inspection checklist in an unknown table',candidate,graph).complete
 
 
+def _graph(planner, tables):
+    _, fks, sch, _ = _request(planner, tables)
+    return SchemaGraph.from_planner(sch, fks)
+
+
+def test_an_aggregate_word_spelling_a_field_name_does_not_hide_the_requested_total():
+    # The owner's keyword sheet: "Avg." opens the header. Deleting it from the question made
+    # the filter column Keyword the requested total, and every candidate was refused.
+    from engine.tables import csv_table
+    tables = [{'name': 'Checklist', 'columns': ['Keyword', 'Avg. monthly searches'],
+               'rows': [['home inspection checklist', 5000], ['forklift inspection checklist', 5000],
+                        ['roof inspection', 700]]}]
+    planner = _hermetic_planner()
+    graph = _graph(planner, tables)
+    total = 'What is the total Avg. monthly searches for the Keyword forklift inspection checklist?'
+    summed = _model_query(planner, '''SELECT SUM("Avg. monthly searches") FROM Checklist WHERE Keyword='forklift inspection checklist' ''', tables)
+    assert coverage(total, summed, graph).complete
+    named = "What is the Avg. monthly searches for the Keyword 'home inspection checklist'?"
+    for sql in ('''SELECT "Avg. monthly searches" FROM Checklist WHERE Keyword='home inspection checklist' ''',
+                '''SELECT AVG("Avg. monthly searches") FROM Checklist WHERE Keyword='home inspection checklist' '''):
+        assert coverage(named, _model_query(planner, sql, tables), graph).complete
+    # Contrast: a word outside the name still asks for its calculation.
+    listed = _model_query(planner, 'SELECT "Avg. monthly searches" FROM Checklist', tables)
+    assert not coverage('What is the average Avg. monthly searches?', listed, graph).complete
+    sheet = csv_table('Keyword,Avg. monthly searches\nhome inspection checklist,5000\n'
+                      'forklift inspection checklist,5000\nroof inspection,700', 'Checklist')
+    assert planner.serve([sheet], total)['result']['rows'] == [[5000]]
+
+
+def test_a_value_the_query_compares_is_data_not_an_exclusion_cue():
+    from engine.tables import csv_table
+    planner = _hermetic_planner()
+    forms = [{'name': 'responses', 'columns': ['Name', 'Newsletter'],
+              'rows': [['Ana', 'Yes'], ['Bo', 'No'], ['Cy', 'No'], ['Di', 'No']]}]
+    graph = _graph(planner, forms)
+    said_no = _model_query(planner, "SELECT COUNT(*) FROM responses WHERE Newsletter='No'", forms)
+    assert coverage('How many responses have Newsletter No?', said_no, graph).complete
+    # Contrast: "not" outside the compared value still needs its exclusion.
+    said_yes = _model_query(planner, "SELECT COUNT(*) FROM responses WHERE Newsletter='Yes'", forms)
+    assert 'requested exclusion is missing' in coverage(
+        'How many responses do not have Newsletter Yes?', said_yes, graph).violations
+    tasks = csv_table('Task,Status\na,Not Started\nb,Not Started\nc,Done', 'tasks')
+    assert planner.serve([tasks], 'How many tasks are Not Started?')['result']['rows'] == [[2]]
+    assert planner.serve([tasks], 'How many tasks are not Done?')['result']['rows'] == [[2]]
+    answers = csv_table('Name,Newsletter\nAna,Yes\nBo,No\nCy,No\nDi,No', 'responses')
+    assert planner.serve([answers], 'How many responses have Newsletter No?')['result']['rows'] == [[3]]
+
+
+def test_the_requested_grain_is_the_searchs_reading_of_by():
+    # "sorted by average Price" orders the groups; reading it as a second grain refused the
+    # correct plan and served GROUP BY Category, Price.
+    from engine.tables import csv_table
+    planner = _hermetic_planner()
+    tables = [{'name': 'items', 'columns': ['Item', 'Category', 'Price'],
+               'rows': [['a', 'Tools', 30], ['b', 'Tools', 10], ['c', 'Toys', 5]]}]
+    graph = _graph(planner, tables)
+    question = 'What is the average Price by Category, sorted by average Price?'
+    grouped = _model_query(planner, 'SELECT Category, AVG(Price) FROM items GROUP BY Category ORDER BY AVG(Price) DESC', tables)
+    assert coverage(question, grouped, graph).complete
+    # Contrast: a named grain the plan leaves out is still missing.
+    overall = _model_query(planner, 'SELECT AVG(Price) FROM items', tables)
+    assert 'requested output grain is missing' in coverage(
+        'What is the average Price by Category?', overall, graph).violations
+    items = csv_table('Item,Category,Price\na,Tools,30\nb,Tools,10\nc,Toys,5', 'items')
+    assert planner.serve([items], question)['result']['rows'] == [['Tools', 20], ['Toys', 5]]
+
+
 def test_own_data_adapter_preserves_calendar_proof_and_selection():
     from types import SimpleNamespace
     from engine.knowledge_tables import KnowledgeTableQuery

@@ -197,9 +197,10 @@ replay. The legacy Wikidata schema migration is still pending.
    identifier. Names that collide after canonicalization are rejected before parsing or paid inference.
 3. `engine.server` verifies the Firebase principal and parses the validated CSV payloads. A request repeated with
    the jobId of one the same principal already sent is answered with that request's response, waiting while it
-   still runs (`engine.request_limits.ResponseReplay`); the chat's engine client repeats a request once, with its
-   jobId, only when the response is lost in transport. Browser XLSX parsing is
-   isolated in `web/public/lib/xlsx-worker.js`, which uses a vendored SheetJS build with compressed, expanded,
+   still runs (`engine.request_replay.DurableResponseReplay`: one `chat.request_job` record shared by every engine
+   instance, kept ten minutes after its response and removed when the user deletes a conversation); the chat's
+   engine client repeats a request once, with its jobId, only when the response is lost in transport. Browser XLSX
+   parsing is isolated in `web/public/lib/xlsx-worker.js`, which uses a vendored SheetJS build with compressed, expanded,
    row, column, worksheet, and time limits. Host grids (the Excel add-in's and the Google Sheets add-on's cells)
    are written as the workbook those cells would export to and take the same worker, limits and layout rule, so a
    sheet reads exactly as an upload of it would. `sheets-addon/` is a read-only Apps Script add-on. Its sidebar is
@@ -483,7 +484,7 @@ historical turn always restores the workbook that produced that answer. Shared i
 remain visible while only the derived stack is switched.
 
 Defaults are 1,000 active durable conversations and 1,000 spreadsheet-session bindings per user, 256 MiB of
-serialized source and workbook state per user, 1 MiB per browser snapshot, 1 MiB per analysis revision, at most 50
+serialized source and workbook state per user, 1 MiB per browser snapshot, 32 MiB per analysis revision, at most 50
 analyses and 100 revisions per analysis, and deletion after 90 days of inactivity. Expired records stop consuming
 conversation and spreadsheet-session slots immediately; the daily cleanup removes their stored data. Configuration
 is bounded in `engine.config`; the per-analysis and spreadsheet-session limits are constants in
