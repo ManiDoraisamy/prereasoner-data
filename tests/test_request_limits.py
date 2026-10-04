@@ -826,6 +826,53 @@ def test_raw_csv_repeated_blank_and_long_headers_preserve_every_value():
     assert csv_table('id,amount,,\n1,10,,,\n2,20,,', 'orders')['columns'] == ['id','amount']
 
 
+def test_an_answer_still_goes_out_when_its_replay_record_cannot_be_kept():
+    """The replay record is written before the response, and a failed write raised out of the send,
+    so a database blip turned a computed answer into a 500 (review, 2026-10-04)."""
+    import json
+    import threading
+    import urllib.request
+    from http.server import ThreadingHTTPServer
+
+    from engine import server
+    from engine.request_replay import DurableResponseReplay
+
+    class Model:
+        def serve(self, tables, question, conversation, as_of, **_kwargs):
+            return {"question": question, "result": {"columns": ["total"], "rows": [[2]]}, "error": None}
+
+    jobs = _RequestJobs()
+
+    class Unkept(_RequestJobTransaction):
+        def execute(self, statement, params=()):
+            if statement.startswith("UPDATE chat.request_job SET response"):
+                raise OSError("server closed the connection unexpectedly")
+            return super().execute(statement, params)
+
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.H)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    body = json.dumps({"tables": [{"name": "orders", "data": "id,amount\n1,2\n"}],
+                       "question": "total amount", "jobId": "turn_1"}).encode()
+    try:
+        with (
+            patch.object(server, "_verify_principal", lambda _token: ("sub-1", "uid-1")),
+            patch.object(server, "resolve_conversation", lambda *_args: "c_" + "0" * 32),
+            patch.object(server.master, "relevant_tables", lambda *_args: {"tables": [], "warnings": []}),
+            patch.object(server, "emitter", lambda *_args: (lambda *_a, **_k: None)),
+            patch.object(server, "MODEL", Model()),
+            patch.object(server, "WORLD_REPLAY", DurableResponseReplay()),
+            patch("engine.pg._pg", lambda: Unkept(jobs)),
+        ):
+            request = urllib.request.Request(
+                f"http://127.0.0.1:{httpd.server_address[1]}/api/reason", data=body, method="POST",
+                headers={"Authorization": "Bearer token", "Content-Type": "application/json"})
+            with urllib.request.urlopen(request, timeout=30) as response:
+                assert response.status == 200
+                assert json.loads(response.read())["result"]["rows"] == [[2]]
+    finally:
+        httpd.shutdown()
+
+
 TESTS = [
     test_a_chat_on_a_deleted_conversation_answers_404_not_500,
     test_raw_csv_repeated_blank_and_long_headers_preserve_every_value,
@@ -850,6 +897,7 @@ TESTS = [
     test_distributed_paid_budget_is_atomic_and_releases_lease,
     test_a_repeated_request_id_is_answered_once_with_the_first_response,
     test_a_lost_reason_response_is_sent_again_and_the_question_runs_once,
+    test_an_answer_still_goes_out_when_its_replay_record_cannot_be_kept,
 ]
 
 

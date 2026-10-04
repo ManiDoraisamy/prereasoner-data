@@ -187,7 +187,12 @@ class H(BaseHTTPRequestHandler):
         self._status = code                              # every exit path, so the timing line reports the outcome
         replay_key, self._replay_key = getattr(self, "_replay_key", None), None
         if replay_key is not None:                       # recorded BEFORE the write: the write is what can be lost
-            WORLD_REPLAY.finish(replay_key, (code, body, ctype, retry_after))
+            try:
+                WORLD_REPLAY.finish(replay_key, (code, body, ctype, retry_after))
+            except Exception as exc:                     # noqa: BLE001
+                # The record only serves a repeat of a lost response. Failing to keep it turned a computed
+                # answer into a 500 (review, 2026-10-04); a repeat now runs once its lease lapses.
+                print(f"replay record not kept: {type(exc).__name__}", flush=True)
         b = body.encode("utf-8")
         self.send_response(code); self.send_header("Content-Type", ctype)
         self._cors()
