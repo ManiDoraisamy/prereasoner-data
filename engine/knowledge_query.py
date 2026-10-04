@@ -50,6 +50,7 @@ from engine.numeric import parse_decimal
 from engine.sql_expansion import SHARE_WORDS
 from engine.sql_schema import canon, is_surrogate_key
 from engine.query_contract import Coverage, lexical_words
+from engine import request_timing
 
 # The order a non-geo entity lookup breaks a tie in: the name's primary entity, then the lowest numeric QID.
 _ENTITY_TIE_BREAK = "is_primary IS TRUE DESC, length(qid), qid"
@@ -365,7 +366,8 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
             self._emit_typing(typing)
             return dict(routes)
         routes, typing = {}, []
-        model_routes, model_typing = self._schema_model_routes(table)
+        with request_timing.span("typing"):
+            model_routes, model_typing = self._schema_model_routes(table)
         # The learned router types columns too, so it is the OTHER source that could propose a world
         # join for an engine-internal column. Both sources are filtered by the same predicate; a
         # synthesized measure-currency column carries an ISO code, never a world entity.
@@ -376,7 +378,8 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         # This is deliberately the exact source-key helper, not ``super().route``:
         # the latter invokes the historical anchored family path. Production has one
         # learned class router; its abstentions fall back directly to source evidence.
-        source_routes = self._value_membership_routes(table)
+        with request_timing.span("membership"):
+            source_routes = self._value_membership_routes(table)
         for key, world_table in source_routes.items():
             routes.setdefault(key, world_table)
             record = next((item for item in typing

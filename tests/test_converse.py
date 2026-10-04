@@ -38,8 +38,16 @@ def test_reply_presents_the_computed_answer_without_external_processing():
         assert terminal_reply({'status': 'clarify', 'clarify': {'reason': 'Which Amount column should I use?'}}) == 'Which Amount column should I use?'
         rows = [['Ava', 'Travel'], ['Cleo', None]]
         assert terminal_reply({'status': 'answered', 'answer': {'columns': ['customer', 'category'], 'rows': rows}}) == '- customer: Ava; category: Travel\n- customer: Cleo; category: Not recorded'
+        # A long answer lists its first rows and how many there are: the Sheets sidebar has no workbook, and
+        # "shown in the workbook" left a 160-row total with no number (2026-10-05). Wide rows list fewer.
         large = {'status': 'answered', 'answer': {'columns': ['customer', 'category'], 'rows': rows * 6}}
-        assert 'shown in the workbook' in terminal_reply(large)
+        listed = terminal_reply(large)
+        assert listed.startswith('- customer: Ava; category: Travel\n- customer: Cleo; category: Not recorded\n')
+        assert listed.count('- customer: ') == 10 and listed.endswith('\n\nThe first 10 of 12 rows.'), listed
+        wide = {'status': 'answered', 'answer': {'columns': ['note'], 'rows': [['x' * 900]] * 3}}
+        assert terminal_reply(wide).endswith('\n\nThe first 2 of 3 rows.')
+        huge = {'status': 'answered', 'answer': {'columns': ['note'], 'rows': [['x' * 2100]] * 3}}
+        assert terminal_reply(huge) == 'The answer has 3 rows, each too long to show here.'
         assert terminal_reply({'status': 'error', 'error': 'Invalid date'}) == 'Invalid date'
         assert 'again' in terminal_reply({'status': 'error', 'error': 'Engine is busy; retry shortly'})
 

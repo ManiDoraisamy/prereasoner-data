@@ -88,11 +88,20 @@ def terminal_reply(shaped: dict[str, Any]) -> str:
     if not rows:
         return 'No matching rows were found.' + suffix
     columns = answer.get('columns') or []
-    if columns and len(rows) <= 10 and all(len(row) == len(columns) for row in rows):
-        preview = _listed(columns, rows, answer.get('column_provenance'), output_currency(shaped))
+    if columns and all(len(row) == len(columns) for row in rows):
+        # A long answer lists its first rows and says how many there are. "The result and its reasoning are
+        # shown in the workbook" pointed at nothing in the Sheets sidebar, which has no workbook: a total by
+        # Plan and Currency over 160 rows showed no number at all (2026-10-05).
+        shown = rows[:10]
+        preview = _listed(columns, shown, answer.get('column_provenance'), output_currency(shaped))
+        while len(preview) > 2000 and len(shown) > 1:
+            shown = shown[:-1]
+            preview = _listed(columns, shown, answer.get('column_provenance'), output_currency(shaped))
         if len(preview) <= 2000:
+            if len(shown) < len(rows):
+                preview += f"\n\nThe first {len(shown)} of {len(rows):,} rows."
             return preview + suffix
-    return "I completed the calculation; the result and its reasoning are shown in the workbook." + suffix
+    return f"The answer has {len(rows):,} rows, each too long to show here." + suffix
 
 
 def _listed(columns: list, rows: list, provenance: Any, currency: str) -> str:

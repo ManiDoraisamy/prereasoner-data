@@ -22,6 +22,7 @@ import hashlib
 import re
 import threading
 
+from engine import request_timing
 from engine.tables import qident
 from engine.dataset_semantics import is_synthetic_currency_column
 from engine.entities import WORLD_TABLE_TYPE
@@ -409,8 +410,10 @@ class ComposedKnowledgeQuery:
             if emit:                                          # lookup and stream resolving around it.
                 emit("status", "resolving")
             norm, _ = self.qw.ingest(tables)
-            world = self._world_lookup(norm, sub)
-        res = self.reason.run(tables, question, world=world)
+            with request_timing.span("world_lookup"):
+                world = self._world_lookup(norm, sub)
+        with request_timing.span("compose"):
+            res = self.reason.run(tables, question, world=world)
         from engine.deterministic.context import current_analysis_context, current_execution_record
         context = current_analysis_context()
         # route() alone decides ownership, here as in the Spider evaluator. A local composition (top-N, sort,
@@ -563,8 +566,6 @@ class ComposedKnowledgeQuery:
             from engine.decomposition import DecompositionError, compound_decomposition_required
 
             if current_analysis_context() is not None:
-                from engine import request_timing
-
                 try:
                     with request_timing.span("decompose_probe"):
                         required = compound_decomposition_required(self.qw, tables, question)
