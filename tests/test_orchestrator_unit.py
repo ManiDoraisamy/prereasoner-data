@@ -882,7 +882,6 @@ def test_a_failed_turn_promises_no_retry():
     admits a waiting one for 15 s). The replies were "Let me try that again." and "there was a hiccup on
     my end just now, let me try that again", and nothing was retried: a terminal engine outcome ends the
     turn (test_terminal_engine_status_uses_one_query_and_a_tool_disabled_presentation)."""
-    prompt = " ".join(orchestrator.SYSTEM_PROMPT.lower().split())
     assert orchestrator._terminal_fallback({"status": "error", "error": "Engine is busy; retry shortly"}) == "Engine is busy; retry shortly Please send your question again shortly."
 
 
@@ -1630,7 +1629,6 @@ def test_a_gemini_assisted_answer_is_labelled_for_the_reply():
     assert "fallback" not in orchestrator._model_feedback(nothing)
     plain = shape_reason_response({"result": {"columns": ["n"], "rows": [[3]]}}, "job")
     assert "fallback" not in orchestrator._model_feedback(plain)
-    prompt = " ".join(orchestrator.SYSTEM_PROMPT.split())
     assert "Gemini reworded the question as: total amount by city" in orchestrator._terminal_fallback(reworded)
     assert "Gemini" not in orchestrator._terminal_fallback(plain)
 
@@ -1655,7 +1653,6 @@ def test_rows_whose_entity_matched_nothing_reach_the_reply():
     assert orchestrator._grounded_presentation(
         partial, "Your US hospitals total 46 transfers; 1 of the 5 rows names a hospital I couldn't match.",
     )== "46\n\n1 of 5 source rows could not be matched and were excluded."
-    prompt = " ".join(orchestrator.SYSTEM_PROMPT.split())
     assert "excluded" not in orchestrator._terminal_fallback(whole)
 
 
