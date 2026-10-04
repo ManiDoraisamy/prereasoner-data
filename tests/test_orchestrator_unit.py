@@ -1093,7 +1093,7 @@ def test_decomposition_is_one_engine_triggered_retry_of_the_same_analysis():
         if "decomposition_required" in block.get("content", "")
     )
     assert "decomposition_required" in first_tool_result and '"rows"' not in first_tool_result
-    assert result["reply"] == '- customer: Cara; product: Beta'
+    assert result["reply"] == 'customer: Cara; product: Beta'
     assert len(result["traces"]) == 2
 
 
@@ -1266,7 +1266,7 @@ def test_an_invalid_proposal_gets_one_correction_then_a_plain_clarification():
     assert [m["id"] for m in forwarded["merges"]] == ["pairs", "gaps"]
     assert all(len(m["inputs"]) == 2 for m in forwarded["merges"])
     assert forwarded["output"] == "gaps"
-    assert result["reply"] == '- customer_name: Cara; product_name: Beta'
+    assert result["reply"] == 'customer name: Cara; product name: Beta'
 
 
 def test_an_engine_rejected_proposal_gets_one_correction_then_answers():
@@ -1366,7 +1366,7 @@ def test_an_engine_rejected_proposal_gets_one_correction_then_answers():
     assert len(engine_calls) == 3, "probe, rejected proposal, corrected proposal"
     corrected = engine_calls[2][1]["decomposition"]
     assert corrected["subquestions"][0]["question"] == "top 2 categories by total revenue"
-    assert result["reply"] == '- customer_name: Ava; category: Travel'
+    assert result["reply"] == 'customer name: Ava; category: Travel'
     # The raw engine clarify stays honest in the trace for diagnostics.
     assert result["traces"][1]["engine"].get("decomposition_rejected") is True
 
@@ -1565,7 +1565,7 @@ def test_a_split_proposed_before_the_engine_asks_is_sent_again_alone():
     repair = model_calls[1]
     assert repair["status"] == "repair_required" and repair["code"] == "decomposition_not_requested", repair
     assert engine_calls == [(question, None)], "the early split never reaches the engine"
-    assert result["reply"] == '- customer_name: Cleo; category: Home'
+    assert result["reply"] == 'customer name: Cleo; category: Home'
 
 
 def test_tool_exhaustion_never_exposes_an_internal_budget():

@@ -81,13 +81,54 @@ def terminal_reply(shaped: dict[str, Any]) -> str:
         return 'No matching rows were found.' + suffix
     columns = answer.get('columns') or []
     if columns and len(rows) <= 10 and all(len(row) == len(columns) for row in rows):
-        def cell(value):
-            return 'Not recorded' if _blank(value) else _data_text(value)
-        preview = '\n'.join('- ' + '; '.join(f'{cell(name)}: {cell(value)}'
-                            for name, value in zip(columns, row)) for row in rows)
+        preview = _listed(columns, rows, answer.get('column_provenance'), output_currency(shaped))
         if len(preview) <= 2000:
             return preview + suffix
     return "I completed the calculation; the result and its reasoning are shown in the workbook." + suffix
+
+
+def _listed(columns: list, rows: list, provenance: Any, currency: str) -> str:
+    """Rows as reply lines: one row is one line, several are a list, and a one-column answer lists
+    its values without repeating the column's name. A quantity the engine computed (provenance
+    `measure`) is written as a one-number answer writes it, to the cent in a column named for the
+    verified currency; a value taken from the data (a year, an ID) is written as it is. "which
+    country has the most deposits?" was answered "- country: Switzerland; sum: 1550" one line under
+    Switzerland's total as "1,550", and "total_usd: 3495" named neither a reader's words nor cents
+    (Chrome gate, 2026-10-04)."""
+    measures = _measures(columns, provenance)
+    labels = [_label(name, currency) for name in columns]
+
+    def cell(index, value):
+        if _blank(value):
+            return 'Not recorded'
+        if index in measures:
+            value = readable_scalar(value, bool(currency) and currency in labels[index].split())
+        return _data_text(value)
+
+    if len(columns) == 1:
+        lines = [cell(0, row[0]) for row in rows]
+    else:
+        lines = ['; '.join(f'{label}: {cell(index, value)}'
+                           for index, (label, value) in enumerate(zip(labels, row))) for row in rows]
+    return lines[0] if len(lines) == 1 else '\n'.join('- ' + line for line in lines)
+
+
+def _measures(columns: list, provenance: Any) -> frozenset[int]:
+    """The answer columns the engine computed, as its column provenance marks them. Without a record
+    for every column nothing is formatted: a year is never written as "2,026"."""
+    if not isinstance(provenance, list) or len(provenance) != len(columns):
+        return frozenset()
+    return frozenset(index for index, record in enumerate(provenance)
+                     if isinstance(record, dict) and record.get('measure') is True)
+
+
+def _label(name: Any, currency: str) -> str:
+    """A column name as a reader writes it: "customer_name" is "customer name", and the verified
+    output currency is its code ("total_usd" is "total USD")."""
+    words = str(name).replace('_', ' ').split()
+    if currency:
+        words = [currency if word.casefold() == currency.casefold() else word for word in words]
+    return _data_text(' '.join(words)) or 'value'
 
 
 def _blank(value: Any) -> bool:

@@ -1206,6 +1206,56 @@ def test_typed_calculation_clarify_supersedes_generic_coverage_clarify():
        "calculation clarification preserves prior SQL and coverage evidence")
 
 
+def test_a_clarification_about_the_data_is_not_replaced_by_the_calculation_gate():
+    """"total budget in Africa", asked in US dollars, matched no rows. The calculation gate replaced
+    that clarification with "the selected planner supplied no typed calculation evidence", and the
+    renderer showed it as the whole reply (Chrome gate, 2026-10-04)."""
+    from engine.knowledge_query import verify_nonempty
+    question = "total order amount in euros"
+    empty = verify_nonempty({
+        "question": question, "sql": 'SELECT SUM("orders"."amount") FROM "orders"',
+        "result": {"columns": ["sum"], "rows": [[None]]},
+        "computation": {"verified": True, "branches": [{"outputs": [
+            {"numeric": True, "aggregate_functions": ["SUM"]}]}]},
+    }, question)
+    reasoner = KnowledgeReasoner.__new__(KnowledgeReasoner)
+    kept = reasoner._verify_calculations(empty, (ORDERS, USD_RATES), question, (EDGE,))
+    ok(kept is empty and kept["model"] == "engine - clarify (the query matched no rows)",
+       "a filter that matched no rows stands under a currency question")
+    decomposition = {"question": question, "clarify": True,
+                     "decomposition_required": {"reason": "compound analysis"},
+                     "model": "engine - typed AST decomposition requested"}
+    ok(reasoner._verify_calculations(decomposition, (ORDERS, USD_RATES), question, (EDGE,)) is decomposition,
+       "a decomposition request reaches the orchestrator under a currency question")
+
+
+def test_a_calculation_clarification_is_a_sentence_for_the_user():
+    """The reply is the clarification's reason (engine/answer_presentation.py). The check's own
+    reason stays in `unmet`, for traces and the chat model."""
+    technical = "the selected planner supplied no typed calculation evidence"
+    usd = {"specification": "currency", "target": "USD", "status": "unmet", "reason": technical}
+    cases = {
+        "I couldn't confirm this amount in USD.": usd,
+        "USD can mean converting every amount into USD or keeping only the rows already in USD.":
+            {**usd, "status": "ambiguous"},
+        "Your data doesn't say which currency the amounts are in, so I can't convert them into USD. "
+        "Which currency are they in?": {**usd, "source_currency": {"state": "absent"}},
+        "I couldn't calculate this for each country.":
+            {**usd, "unrealized_grouping": [{"table": "orders", "column": "country"}]},
+        "I couldn't tell whether to add or subtract the commission.": {
+            "specification": "rate_application", "target": "commission", "status": "unmet", "reason": technical,
+            "attributes": {"unsupported": "the requested add-or-subtract direction is ambiguous"}},
+        "I couldn't confirm how to apply the tax rate.": {
+            "specification": "rate_application", "target": "tax", "status": "unmet", "reason": technical},
+        "I couldn't confirm the ratio this question asks for.": {
+            "specification": "ratio", "target": "ratio", "status": "unmet", "reason": technical},
+    }
+    for sentence, assessment in cases.items():
+        response = calculation_clarify("q", {"sql": "SELECT 1"}, (assessment,))
+        ok(response["reason"] == sentence, f"plain clarification: {response['reason']!r}")
+        ok(response["unmet"][0]["reason"] == technical, "the check's own reason stays in unmet")
+
+
 def test_calculation_training_corpus_is_split_safe_and_rebuildable():
     train, evaluation = build_rows()
     ok(bool(train) and bool(evaluation)
@@ -1404,6 +1454,8 @@ TESTS = [
     test_complex_and_temporally_unbound_rates_abstain,
     test_unverified_non_currency_calculation_fails_closed,
     test_typed_calculation_clarify_supersedes_generic_coverage_clarify,
+    test_a_clarification_about_the_data_is_not_replaced_by_the_calculation_gate,
+    test_a_calculation_clarification_is_a_sentence_for_the_user,
     test_calculation_training_corpus_is_split_safe_and_rebuildable,
     test_intent_thresholds_are_checkpoint_calibrated,
     test_model_promotion_is_atomic_and_marks_unpublished_candidates,

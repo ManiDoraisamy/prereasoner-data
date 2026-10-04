@@ -266,6 +266,33 @@ def attach_calculation_evidence(response: dict, assessments) -> dict:
     return response
 
 
+def _plain_reason(assessment: dict) -> str:
+    """The sentence a user reads for one unmet calculation. The assessment's own reason names the
+    check, for traces and the chat model, and stays in `unmet`: "the selected planner supplied no
+    typed calculation evidence" was a whole reply (Chrome gate, 2026-10-04)."""
+    target = str(assessment.get("target") or "").strip()
+    specification = assessment.get("specification")
+    grouping = [str(item.get("column") or "").replace("_", " ")
+                for item in assessment.get("unrealized_grouping") or () if isinstance(item, dict)]
+    if grouping:
+        return f"I couldn't calculate this for each {' or '.join(grouping)}."
+    if specification == "currency" and target:
+        if assessment.get("status") == "ambiguous":
+            return (f"{target} can mean converting every amount into {target} or keeping only the rows "
+                    f"already in {target}.")
+        if (assessment.get("source_currency") or {}).get("state") == "absent":
+            return (f"Your data doesn't say which currency the amounts are in, so I can't convert them "
+                    f"into {target}. Which currency are they in?")
+        return f"I couldn't confirm this amount in {target}."
+    if specification == "rate_application" and target:
+        if "direction" in str((assessment.get("attributes") or {}).get("unsupported") or ""):
+            return f"I couldn't tell whether to add or subtract the {target}."
+        return f"I couldn't confirm how to apply the {target} rate."
+    if specification == "ratio":
+        return "I couldn't confirm the ratio this question asks for."
+    return "I couldn't confirm the calculation this question asks for."
+
+
 def calculation_clarify(question: str, response: dict, assessments) -> dict:
     """Replace an uncertified numeric result with one structured calculation clarification."""
     failed = tuple(
@@ -285,9 +312,7 @@ def calculation_clarify(question: str, response: dict, assessments) -> dict:
         for assessment in failed
     ]
     proposals = [assessment.get("proposal") for assessment in failed if assessment.get("proposal")]
-    reason = "; ".join(dict.fromkeys(
-        assessment.get("reason", "calculation was not verified") for assessment in failed
-    ))
+    reason = " ".join(dict.fromkeys(_plain_reason(assessment) for assessment in failed))
     result = {
         "question": question,
         "as_of": response.get("as_of"),

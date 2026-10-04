@@ -96,6 +96,38 @@ def test_a_blank_answer_or_a_link_in_a_cell_is_shown_as_data():
         assert '](' not in reply and 'Reset your password' in reply and 'https://example.com/login' in reply
 
 
+def test_a_listed_answer_reads_as_a_one_number_answer_does():
+    """"which country has the most deposits?" was answered "- country: Switzerland; sum: 1550" one
+    line under Switzerland's total as "1,550", and the top US-dollar city as "total_usd: 3495"
+    (Chrome gate, 2026-10-04). A computed column is written as a one-number answer is; a value taken
+    from the data, a year or an ID, as it is."""
+    from engine.answer_presentation import terminal_reply
+    country = {'kind': 'reference', 'source': 'Wikidata', 'column': 'country'}
+    total = {'kind': 'derived', 'source': 'Prereasoner', 'operation': 'SUM', 'measure': True}
+    top = {'status': 'answered', 'answer': {'columns': ['country', 'sum'], 'rows': [['Switzerland', 1550]],
+                                            'column_provenance': [country, total]}}
+    assert terminal_reply(top) == 'country: Switzerland; sum: 1,550'
+    usd = {'specification': 'currency', 'status': 'satisfied', 'realization': 'converted', 'target': 'USD'}
+    city = {'status': 'answered', 'calculations': [usd],
+            'answer': {'columns': ['city', 'total_usd'], 'rows': [['Cleveland', 3495]],
+                       'column_provenance': [{'kind': 'input', 'source': 'upload'}, total]}}
+    assert terminal_reply(city) == 'city: Cleveland; total USD: 3,495.00'
+    year = {'kind': 'derived', 'source': 'Prereasoner', 'operation': 'DatePart'}
+    count = {'kind': 'derived', 'source': 'Prereasoner', 'operation': 'COUNT', 'measure': True}
+    average = {'kind': 'derived', 'source': 'Prereasoner', 'operation': 'AVG', 'measure': True}
+    yearly = {'status': 'answered', 'answer': {
+        'columns': ['order_year', 'count', 'avg'], 'rows': [[2026, 1200, '4.66666666666666666667'], [2025, 3, 2]],
+        'column_provenance': [year, count, average]}}
+    assert terminal_reply(yearly) == ('- order year: 2026; count: 1,200; avg: 4.67\n'
+                                      '- order year: 2025; count: 3; avg: 2')
+    products = {'status': 'answered', 'answer': {'columns': ['product_name'], 'rows': [['Delta'], ['Omega']],
+                                                 'column_provenance': [{'kind': 'input', 'source': 'upload'}]}}
+    assert terminal_reply(products) == '- Delta\n- Omega'
+    # Without a record for every column, nothing is taken for a computed number.
+    bare = {'status': 'answered', 'answer': {'columns': ['order_year', 'count'], 'rows': [[2026, 1200]]}}
+    assert terminal_reply(bare) == 'order year: 2026; count: 1200'
+
+
 def test_a_malformed_converse_body_is_a_client_error_not_a_500():
     """`clarify: true`, `answer: "42"` and a row of 5 raised inside the renderer, and /api/converse
     answered 500 (review, 2026-10-04)."""
@@ -292,6 +324,7 @@ TESTS = [
     test_reply_presents_the_computed_answer_without_external_processing,
     test_an_engine_failure_is_one_sentence_the_user_can_act_on,
     test_a_blank_answer_or_a_link_in_a_cell_is_shown_as_data,
+    test_a_listed_answer_reads_as_a_one_number_answer_does,
     test_a_malformed_converse_body_is_a_client_error_not_a_500,
     test_unavailable_gemini_reaches_reference_generation_as_llm_unavailable,
     test_preserves_existing_and_fills_empty,

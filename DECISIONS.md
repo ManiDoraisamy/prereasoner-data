@@ -1782,6 +1782,23 @@ out, and a repeat of that request runs once its lease lapses.
 had named the conversation. The engine answers a repeated jobId only for the same input, so every
 re-send was refused 409. It now repeats the body it first sent.
 
+**Replies read as answers.** Since the presentation model was removed (2026-10-03), the renderer's
+text is the whole reply.
+- An answer of several columns read "- country: Switzerland; sum: 1550", one line under the same
+  total written "1,550", and the top city in US dollars read "total_usd: 3495". A row is now one line
+  with readable names ("customer name", "total USD"). A quantity the engine computed is written as a
+  one-number answer is: thousands grouped, cents in the verified currency. Provenance marks those
+  columns (`measure: true` on aggregate and arithmetic outputs). A value taken from the data, such as
+  a year or an ID, is written as it is.
+- A clarification's `reason` is reply text. "no rows matched, so there is nothing to SUM" and "the
+  selected planner supplied no typed calculation evidence" were whole replies. Each is now a sentence;
+  the check's own reason stays in `unmet`, for traces and the chat model.
+- **The calculation gate replaces only a dropped-words clarification.** "total budget in Africa",
+  asked in US dollars, matched no rows, and the gate replaced that clarification with its own: a
+  clarification carries no typed calculation evidence. A clarification now stands unless it is about
+  words the query dropped, usually the calculation's own phrase ("in euros"). The same rule keeps a
+  decomposition request intact under a currency question.
+
 **Kept: an unread word refuses the reading.** The check still refuses a runnable query whose question
 has a word it cannot read, then asks Gemini to reword. That widened the 2026-10-02 rule ("the fallback
 fires only when nothing runs"). Spider DEV `whole_db` with the fallback off fell from 497 strict at

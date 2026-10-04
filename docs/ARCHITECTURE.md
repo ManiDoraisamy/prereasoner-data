@@ -252,7 +252,9 @@ Provenance has two inputs. Source records describe uploaded tables, selected pri
 publisher snapshots. Computation records come from the selected typed AST and name each output expression,
 operator, and qualified operand. Intermediate view records propagate those origins through the emitted operation
 stack. `column_provenance` is aligned positionally with `columns`; an absent or malformed record is not inferred by
-the browser. Provenance explains the computation that ran. It does not certify that the selected query was the
+the browser. A quantity the engine computed (an aggregate or arithmetic output) carries `measure: true`; the reply
+renderer (`engine/answer_presentation.py`) formats only those numbers and writes a value taken from the data, such
+as a year or an ID, as it is. Provenance explains the computation that ran. It does not certify that the selected query was the
 correct interpretation of the question.
 
 ## Own-Data SQL Planner

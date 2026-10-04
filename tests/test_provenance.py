@@ -124,6 +124,29 @@ def test_result_uses_typed_expression_even_when_alias_matches_input_column():
     assert record["inputs"] == ["orders.amount"]
 
 
+def test_a_computed_quantity_is_marked_and_a_derived_key_is_not():
+    """The reply formats a measure's numbers and writes a key as it is (engine/answer_presentation.py):
+    a year grouped by DatePart must never read "2,026"."""
+    context = ProvenanceContext([
+        {"name": "orders", "columns": ["ordered", "amount"], "rows": []},
+    ], uploaded_count=1)
+    amount = {"kind": "column", "table": "orders", "column": "amount"}
+    response = {
+        "computation": {"verified": True, "branches": [{"outputs": [
+            {"expression": {"kind": "DatePart"}},
+            {"expression": {"kind": "aggregate", "function": "SUM", "distinct": False, "operand": amount}},
+            {"expression": {"kind": "binary", "operator": "*", "left": amount, "right": amount}},
+            {"expression": amount},
+        ]}]},
+        "result": {"columns": ["year", "sum", "squared", "amount"], "rows": [[2026, 3, 9, 3]]},
+    }
+    records = context.decorate_response(response)["result"]["column_provenance"]
+    assert [record.get("measure", False) for record in records] == [False, True, True, False]
+    assert records[3]["kind"] == "input"
+    view = context.decorate_view({"op": "group_agg", "columns": ["amount", "total"], "rows": []})
+    assert [record.get("measure", False) for record in view["column_provenance"]] == [False, True]
+
+
 def test_trace_view_preserves_server_authored_lineage():
     view = {
         "name": "calculated", "op": "convert", "label": "calculated", "sql": "SELECT 1",
@@ -265,6 +288,7 @@ TESTS = [
     test_qualified_stage_columns_keep_the_origin_their_table_names,
     test_http_and_stream_paths_emit_the_same_provenance_shape,
     test_result_uses_typed_expression_even_when_alias_matches_input_column,
+    test_a_computed_quantity_is_marked_and_a_derived_key_is_not,
     test_trace_view_preserves_server_authored_lineage,
     test_world_join_prefers_the_registered_publisher_over_a_wikidata_fallback,
     test_asserted_currency_column_is_conversation_provenance,

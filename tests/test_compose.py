@@ -197,7 +197,9 @@ def test_aggregate_over_zero_rows_is_not_presented_as_an_answer():
     out = verify_nonempty(_agg_result([[""]]), "total budget in Africa")
     assert out.get("clarify") is True, f"an empty aggregate must not be an answer, got {out}"
     assert out.get("result") is None, f"the blank result must not survive, got {out}"
-    assert "SUM" in (out.get("reason") or ""), f"the reason must name the aggregate, got {out}"
+    # The reason is the reply a user reads: the aggregate in their words, not "SUM".
+    assert "no total" in (out.get("reason") or ""), f"the reason must name the aggregate, got {out}"
+    assert "SUM" not in out["reason"], f"the reason must be written for a reader, got {out}"
 
 
 def test_real_aggregates_and_plain_selects_are_untouched():

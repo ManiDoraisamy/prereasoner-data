@@ -16,7 +16,10 @@ _WIKIDATA_TABLES = frozenset({"city", "country", "u_s_state", "elements", "conti
 
 
 def _record(kind: str, source: str, *, table=None, column=None, release_id=None,
-            operation=None, inputs=()) -> dict:
+            operation=None, inputs=(), measure=False) -> dict:
+    """One column's origin. `measure` marks a quantity the engine computed (an aggregate or
+    arithmetic), as opposed to a value carried from a row or a key derived from one (a year, a
+    lowercased name): the reply formats a measure's numbers and writes a key as it is."""
     value = {"kind": kind, "source": source}
     for key, item in (("table", table), ("column", column), ("release_id", release_id),
                       ("operation", operation)):
@@ -24,6 +27,8 @@ def _record(kind: str, source: str, *, table=None, column=None, release_id=None,
             value[key] = item
     if inputs:
         value["inputs"] = list(dict.fromkeys(str(item) for item in inputs if item))
+    if measure:
+        value["measure"] = True
     return value
 
 
@@ -126,7 +131,8 @@ class ProvenanceContext:
         else:
             operation = kind or "expression"
         return _record("derived", "Prereasoner", column=output_column, operation=operation,
-                       inputs=self._expression_inputs(expression))
+                       inputs=self._expression_inputs(expression),
+                       measure=kind in ("aggregate", "binary"))
 
     def _computation_records(self, computation, columns) -> list[dict] | None:
         if not isinstance(computation, dict) or not computation.get("verified"):
@@ -149,7 +155,8 @@ class ProvenanceContext:
             else:
                 inputs = [value for item in alternatives for value in item.get("inputs", ())]
                 records.append(_record("derived", "Prereasoner", column=column,
-                                       operation="set operation", inputs=inputs))
+                                       operation="set operation", inputs=inputs,
+                                       measure=all(item.get("measure") for item in alternatives)))
         return records
 
     @staticmethod
@@ -204,7 +211,8 @@ class ProvenanceContext:
                 low = column.casefold()
                 if low == "converted":
                     item = _record("derived", "Prereasoner", column=column,
-                                   operation="multiply", inputs=("amount", "exchange rate"))
+                                   operation="multiply", inputs=("amount", "exchange rate"),
+                                   measure=True)
                 elif carried is not None or catalog is not None:
                     item = carried or catalog
                 elif low == "rate_published" or "rate" in low:
@@ -214,7 +222,7 @@ class ProvenanceContext:
                                            table="exchange_rate", release_id=view.get("source_release_id"))
                 else:
                     item = _record("derived", "Prereasoner", column=column,
-                                   operation="calculation", inputs=tuple(previous))
+                                   operation="calculation", inputs=tuple(previous), measure=True)
             elif op == "world_join" and carried is None:
                 item = catalog or self._reference(
                     str(view.get("source") or "Wikidata"), column,
@@ -226,7 +234,7 @@ class ProvenanceContext:
                 item = carried or catalog
                 if item is None:
                     item = _record("derived", "Prereasoner", column=column,
-                                   operation=op, inputs=tuple(previous))
+                                   operation=op, inputs=tuple(previous), measure=True)
             else:
                 item = catalog or carried
             records.append(item or _record("derived", "Prereasoner", column=column,

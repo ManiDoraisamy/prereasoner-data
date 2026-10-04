@@ -72,6 +72,13 @@ class KnowledgeReasoner:
         """Apply one route-independent gate to every registered calculation intent."""
         if not isinstance(res, dict) or res.get("error"):
             return res
+        # A clarification has no number to certify. The one it replaces is about words the query
+        # dropped, usually the calculation's own phrase ("in euros"); a filter that matched no rows,
+        # a decomposition request or an unmatched name stands. "total budget in Africa", asked in US
+        # dollars, matched no rows and was answered "the selected planner supplied no typed
+        # calculation evidence" (Chrome gate, 2026-10-04).
+        if res.get("clarify") and not res.get("dropped"):
+            return res
         if not detect_calculations(question):
             return res
         assessments = tuple(res.get("calculations") or ())
