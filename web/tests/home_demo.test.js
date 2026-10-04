@@ -134,8 +134,12 @@ const conversations = fs.readFileSync(path.join(__dirname, '..', 'public', 'lib'
 assert(conversations.includes("'/reason/'+cid+executionQuery()"),
   'conversation URLs must preserve the selected execution mode');
 const workbook = fs.readFileSync(path.join(__dirname, '..', 'public', 'lib', 'workbook.js'), 'utf8');
-assert((workbook.match(/executionRequestFields\(ONESHOT_USE\)/g) || []).length >= 3,
-  'direct and orchestrated retries must carry the selected execution mode');
+assert((workbook.match(/executionRequestFields\(ONESHOT_USE\)/g) || []).length >= 2,
+  'direct and orchestrated requests must carry the selected execution mode');
+// A direct re-send repeats its first body, execution mode included (the engine refuses another input
+// under the same jobId; tests/browser/release-flow.spec.js drives it).
+assert((workbook.match(/body:requestBody/g) || []).length >= 2,
+  'a direct re-send must repeat the body it was first sent with');
 assert(/ONESHOT_USE=null;\s*\/\/ an ordinary question/.test(workbook),
   'an ordinary question must clear the one-off backend override');
 const css = fs.readFileSync(path.join(__dirname, '..', 'public', 'styles.css'), 'utf8');

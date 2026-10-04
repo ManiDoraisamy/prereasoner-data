@@ -668,6 +668,37 @@ for(const use of ['sql','py','both']){
   }
 }
 
+// The direct path sends its job again when nothing has arrived for 90 s. The engine answers a repeated
+// jobId only for the same input, and the re-send rebuilt its body after the stream had named the new
+// conversation, so every re-send was refused 409 and the page gave up (2026-10-04).
+test('a re-sent direct question carries the body it was first sent with',async({page})=>{
+  await page.clock.install();
+  await mockAuth(page,'0');
+  const bodies=[];
+  await page.route('**/api/reason',async route=>{
+    if(route.request().method()!=='POST')return route.continue();
+    const body=route.request().postData();
+    bodies.push(body);
+    if(bodies.length===1){
+      // The first response is lost, and the stream has meanwhile named the conversation.
+      await page.evaluate(()=>setConversation('c_'+'1'.repeat(32)));
+      return route.abort();
+    }
+    if(body!==bodies[0])return route.fulfill({status:409,contentType:'application/json',
+      body:JSON.stringify({error:'This request ID belongs to a different input. Start a new request.'})});
+    return route.continue();
+  });
+  await page.goto('/?load=orders-tiers');
+  await page.locator('#q').fill('total amount');
+  await page.getByRole('button',{name:'Ask'}).click();
+  await expect.poll(()=>bodies.length).toBe(1);
+  await page.clock.runFor(91000);
+  await page.clock.runFor(5000);
+  await expect(page.locator('.wb.result tbody')).toContainText('180',{timeout:15000});
+  expect(bodies.length).toBe(2);
+  expect(bodies[1]).toBe(bodies[0]);
+});
+
 // The source chip must leave "checking" when an orchestrated (chat) turn settles, not wait for some
 // later repaint: a Google-sourced answer kept showing "Checking source data" (found in the Sheets add-on).
 test('a settled chat answer from a Google source shows the source as current',async({page})=>{

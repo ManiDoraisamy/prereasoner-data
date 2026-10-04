@@ -1204,8 +1204,11 @@ async function startRun(){
   // (1) kick off the job FIRE-AND-FORGET: on the streaming path the answer arrives via RTDB, not this
   // response. Keep the parsed-body promise so both fallbacks can await it (body reads exactly once).
   const parseBody=async r=>{ try{ if(!r)return null; const txt=await r.text(); return (r.ok&&txt.trim().charAt(0)==='{')?JSON.parse(txt):null; }catch(_){ return null; } };
+  // One body for the job and every re-send of it: the engine answers a repeated jobId only for the same
+  // input, and a re-send rebuilt after the stream had named the new conversation was refused 409 (2026-10-04).
+  const requestBody=JSON.stringify(Object.assign({tables:SHEETS,question:question,jobId:jobId,conversation_id:convId()}, executionRequestFields(ONESHOT_USE)));
   const httpPromise=fetch(ENDPOINT,{method:'POST',headers:{'content-type':'application/json','Authorization':'Bearer '+token},
-                                    body:JSON.stringify(Object.assign({tables:SHEETS,question:question,jobId:jobId,conversation_id:convId()}, executionRequestFields(ONESHOT_USE)))}).then(parseBody).catch(()=>null);
+                                    body:requestBody}).then(parseBody).catch(()=>null);
   // Persist the server-authoritative conversation_id — GUARDED to this turn (RUN===myRun) so a slow
   // earlier turn can't clobber a later one — and re-render so the follow-up send button re-enables.
   httpPromise.then(j=>{ if(RUN===myRun&&j&&j.conversation_id){ setConversation(j.conversation_id); renderRail(); } });   // setConversation (not a bare sessionStorage write) so the URL becomes /reason/<id> + a snapshot can save
@@ -1249,7 +1252,7 @@ async function startRun(){
     let j=null;
     for(let a=0;a<5&&!j&&live()&&!DONE;a++){
       try{
-        j=a===0?await httpPromise:await fetch(ENDPOINT,{method:'POST',headers:{'content-type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify(Object.assign({tables:SHEETS,question:question,jobId:jobId,conversation_id:convId()}, executionRequestFields(ONESHOT_USE)))}).then(parseBody);
+        j=a===0?await httpPromise:await fetch(ENDPOINT,{method:'POST',headers:{'content-type':'application/json','Authorization':'Bearer '+token},body:requestBody}).then(parseBody);
         if(j)break;
       }catch(_){}
       if(a<4&&live()){ STATUS=WB.warmupMsg; renderRail(); await new Promise(res=>setTimeout(res,4000)); }
