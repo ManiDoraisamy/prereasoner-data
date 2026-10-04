@@ -423,7 +423,7 @@ class TableQuery:
 
     def search_ast(self, question, sch, tables, fks, beam_size=64, max_candidates=25,
                    use_semantic_signals=True, rank_candidates=True, expand_recursive=True,
-                   expand_constraints=True, expand_extrema=True):
+                   expand_constraints=True, expand_extrema=True, graph=None):
         """Return ranked, typed SQL AST candidates from the deterministic search.
 
         Bounded typed-AST search with hand-written, inspectable ranking. This is the first half of
@@ -432,7 +432,8 @@ class TableQuery:
         carries its values and inferred types.
         """
         from engine.sql_search import SQLSearcher, SchemaGraph
-        graph = SchemaGraph.from_planner(sch, fks)
+        if graph is None:
+            graph = SchemaGraph.from_planner(sch, fks)
         searcher = SQLSearcher(graph, beam_size=beam_size, max_candidates=max_candidates)
         baseline_signals = (
             self.ast_semantic_signals(question, sch)
@@ -446,13 +447,14 @@ class TableQuery:
             expand_extrema=expand_extrema,
         )
 
-    def search_pool(self, question, norm, fks, sch):
+    def search_pool(self, question, norm, fks, sch, graph=None):
         """The deterministic search's candidates under the pool contract: ``select_query``'s
         first stage. Its top candidate is the search's structural reading of the question."""
         from engine.sql_rank import SEARCH_CANDIDATES
-        return self.search_ast(question, sch, norm, fks, max_candidates=SEARCH_CANDIDATES)
+        return self.search_ast(question, sch, norm, fks, max_candidates=SEARCH_CANDIDATES, graph=graph)
 
-    def select_query(self, question, norm, fks, sch, tablemap, searched=None, allow_fallback=True):
+    def select_query(self, question, norm, fks, sch, tablemap, searched=None, allow_fallback=True,
+                     graph=None):
         """Choose the query to serve for an own-data question; returns a ``PoolSelection``.
 
         1. The deterministic search ranks up to ``SEARCH_CANDIDATES`` typed ASTs (``search_pool``).
@@ -481,9 +483,12 @@ class TableQuery:
         from dataclasses import replace
         from engine.sql_schema import SchemaGraph
 
+        # One schema graph serves the request: building one indexes every cell value, which
+        # took seconds a build on a few thousand rows, four times a question (2026-10-04).
+        if graph is None:
+            graph = SchemaGraph.from_planner(sch, fks)
         if searched is None:
-            searched = self.search_pool(question, norm, fks, sch)
-        graph = SchemaGraph.from_planner(sch, fks)
+            searched = self.search_pool(question, norm, fks, sch, graph=graph)
         selection = self._choose(question, norm, sch, tablemap, graph, searched)
         fallback = self.question_rewriter
         selected_index = selection.selected
@@ -570,7 +575,7 @@ class TableQuery:
                 baseline = replace(selection, selected=None) if reject_baseline else selection
                 return replace(baseline, fallback=FallbackRecord("none", fallback.model, note=note))
             reread = self._choose(rewritten, norm, sch, tablemap, graph,
-                                  self.search_pool(rewritten, norm, fks, sch))
+                                  self.search_pool(rewritten, norm, fks, sch, graph=graph))
             if reread.selected is not None:
                 # Rewording may resolve a language/schema mismatch, but it may
                 # not choose between repeated source fields or reinterpret a
@@ -604,7 +609,7 @@ class TableQuery:
                 "none", fallback.model, question=rewritten,
                 note="the search found no runnable query for the rewording"))
 
-    def _serve_ast(self, question, norm, fks, sch, tablemap):
+    def _serve_ast(self, question, norm, fks, sch, tablemap, graph=None):
         """Select the own-data query (``select_query``) and execute it through this executor."""
         from engine.deterministic.context import current_analysis_context
         analysis_context = current_analysis_context()
@@ -612,7 +617,7 @@ class TableQuery:
         if analysis_context is not None:
             from engine.decomposition import compound_candidate
 
-            searched = self.search_pool(question, norm, fks, sch)
+            searched = self.search_pool(question, norm, fks, sch, graph=graph)
             compound = compound_candidate(searched)
             if compound is not None:
                 # A named compound request needs a branch proposal before it has an
@@ -620,7 +625,7 @@ class TableQuery:
                 # fragment of the question and then throw its rows away: the search's own
                 # reading asks for the decomposition (tests.test_complex_datasets).
                 return compound, None, None, tuple(searched), None
-        selection = self.select_query(question, norm, fks, sch, tablemap, searched=searched)
+        selection = self.select_query(question, norm, fks, sch, tablemap, searched=searched, graph=graph)
         candidates = selection.pool
         if not candidates:
             return None, None, "planner: no valid AST candidate", candidates, selection
@@ -628,7 +633,8 @@ class TableQuery:
         if candidate is None:
             from engine.query_contract import constraint_violations
             from engine.sql_schema import SchemaGraph
-            graph = SchemaGraph.from_planner(sch, fks)
+            if graph is None:
+                graph = SchemaGraph.from_planner(sch, fks)
             for member in candidates:
                 for violation in constraint_violations(question, member.query, graph):
                     if (violation.startswith('Which repeated field')
@@ -830,11 +836,13 @@ class TableQuery:
 
     def serve(self, tables, question, explicit_fks=()):
         """tables: [{name, columns, rows}]. Full multi-table pipeline for the web UI."""
+        from engine.sql_schema import SchemaGraph
         norm, fks = self.ingest(tables, explicit_fks=explicit_fks)
         sch, colidx, tablemap = self.schema(norm, fks)
+        graph = SchemaGraph.from_planner(sch, fks)
         try:
             candidate, result, err, candidates, selection = self._serve_ast(
-                question, norm, fks, sch, tablemap
+                question, norm, fks, sch, tablemap, graph=graph
             )
         except Exception as exc:
             candidate, result, candidates, selection = None, None, (), None
@@ -884,10 +892,9 @@ class TableQuery:
         }
         if candidate is not None:
             from engine.query_contract import coverage
-            from engine.sql_schema import SchemaGraph
             checked_question = fallback.question if fallback is not None and fallback.kind == 'rewrite' else question
             response['coverage'] = coverage(
-                checked_question, candidate, SchemaGraph.from_planner(sch, fks),
+                checked_question, candidate, graph,
                 calculation_satisfied=bool(selection is not None and selection.selected is not None
                                            and selection.calculation_satisfied[selection.selected]),
             ).record()
@@ -896,11 +903,10 @@ class TableQuery:
                 response["unit"] = "percent"         # a share of a whole: 0.3 is stated as 30%
             from engine.calculations import assess_calculations
             from engine.calculations.registry import attach_calculation_evidence
-            from engine.sql_schema import SchemaGraph
             assessments = assess_calculations(
                 answered,
                 norm,
-                SchemaGraph.from_planner(sch, fks),
+                graph,
                 computation,
             )
             attach_calculation_evidence(response, assessments)

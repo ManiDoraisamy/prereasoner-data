@@ -7,12 +7,29 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import re
+import weakref
 
 
 def lexical_words(text):
     """Keep Unicode names; punctuation in schema labels separates words."""
     return tuple(word.removesuffix("'s") for word in
                  re.findall(r"[^\W_]+(?:'[^\W_]+)?", str(text).casefold(), re.UNICODE))
+
+
+_CELL_WORDS = weakref.WeakKeyDictionary()
+
+
+def cell_words(graph):
+    """The canonical words of every observed cell, built once per schema graph. Rebuilt for
+    each candidate and each check, they cost seconds a question on a few thousand rows
+    (2026-10-04)."""
+    words = _CELL_WORDS.get(graph)
+    if words is None:
+        from engine.sql_schema import canon
+        words = frozenset(canon(word) for column in graph.columns for value in column.values
+                          if value is not None for word in lexical_words(value))
+        _CELL_WORDS[graph] = words
+    return words
 
 
 @dataclass(frozen=True)
@@ -64,9 +81,7 @@ def relational_operator_evidence(question, query, graph):
     if not instruction_words:
         return frozenset(), ()
     data_words = {canon(word) for column in graph.columns
-                  for word in lexical_words(column.ref.name)}
-    data_words.update(canon(word) for column in graph.columns for value in column.values
-                      if value is not None for word in lexical_words(value))
+                  for word in lexical_words(column.ref.name)} | cell_words(graph)
     requested_words = instruction_words - data_words
     consumed, violations = set(), []
     scope_words = requested_words & {'table', 'tables'}
@@ -212,8 +227,7 @@ def constraint_violations(question, query, graph):
     count_requested = roles.count_requested
     from engine.closed_class import recipient_classes
     recipients = {canon(word) for word in recipient_classes(question)}
-    data_literals = {canon(word) for column in graph.columns for value in column.values
-                     if value is not None for word in lexical_words(value)} if recipients else set()
+    data_literals = cell_words(graph) if recipients else frozenset()
     def aggregate_functions(value):
         found = {value.function} if isinstance(value, Aggregate) else set()
         if is_dataclass(value):
@@ -452,8 +466,7 @@ def has_unread_terms(question, candidate, graph, *, calculation_satisfied=False)
             "over", "under", "above", "below", "greater", "less", "more", "fewer",
             "than", "least", "most", "at",
         })
-    observed = {canon(word) for column in graph.columns for value in column.values
-                if value is not None for word in lexical_words(value)}
+    observed = cell_words(graph)
     ordinary_words.update(canon(word) for word in closed_class_words(question))
     ordinary_words.update(relational_operator_evidence(question, candidate.query, graph)[0])
     ordinary_words.update(canon(word) for word in action_words(question) if canon(word) not in observed)

@@ -1029,10 +1029,10 @@ def _ranked_first(planner, member):
     selection, given a pool in which a model's query outranks the search's readings."""
     select = planner.select_query
 
-    def selection(question, norm, fks, sch, tablemap, searched=None):
+    def selection(question, norm, fks, sch, tablemap, searched=None, graph=None):
         if searched is None:
-            searched = planner.search_pool(question, norm, fks, sch)
-        return select(question, norm, fks, sch, tablemap, searched=[member, *searched])
+            searched = planner.search_pool(question, norm, fks, sch, graph=graph)
+        return select(question, norm, fks, sch, tablemap, searched=[member, *searched], graph=graph)
 
     return selection
 

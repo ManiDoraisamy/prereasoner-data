@@ -1765,6 +1765,16 @@ A message made only of acknowledgment and greeting words (`orchestrator._acknowl
 set) is now answered by the model. "yes", "sure" and "go ahead" stay out, because they accept an
 offer. The live suite answers "thank you so much!" in words, with no engine call.
 
+**One schema graph per question.**
+- Problem: on the 4,521-row bank-marketing sheet, production spent 4–10 s of each question outside
+  every timed phase. Locally a question took 5.9 s; 4.5 s of it was repeated work. The schema graph,
+  which indexes every cell value, was built four times: by the search, selection, the coverage
+  record and the calculation evidence. The completeness check rebuilt the words of every cell for
+  each candidate.
+- Fix: `TableQuery.serve` now builds the graph once and passes it down. The cell words are cached
+  per graph (`query_contract.cell_words`). The same question takes 2.6 s, and the answers are
+  unchanged.
+
 **A replay record that cannot be kept** no longer turns a computed answer into a 500. The answer goes
 out, and a repeat of that request runs once its lease lapses.
 
