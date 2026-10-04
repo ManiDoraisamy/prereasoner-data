@@ -4,6 +4,18 @@ Dated entries come newest first. Each records a run at the commit it names; the 
 entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection arbiter`) may since have
 been removed, and that commit holds the code that ran.
 
+## Tabs of one layout and "the total Amount", at `ed8d280`: same answers (2026-10-05)
+
+Same contract as `bc85ccd` (Gemini off, `whole_db`, `served` selection, SQL backend, row cap 5,000), clean
+checkout of `ed8d280` (`worktree_dirty=false`, tag `layout-ed8d280`). The commit searches tables that are
+copies of one layout as one, keeps a measure named after an aggregate word ("the total Amount") as a
+mention, accepts SUM(Amount) where the question spells a Total Amount field, and derives a request's tables
+once. All 1,034 examples have the same SQL, rows and grade as `bc85ccd`: 243 strict, 310 lenient, 408
+answered. No Spider DEV database has three-column tables of one layout. Prediction seconds: median 1.24 →
+1.24, p90 2.63 → 2.34, p95 3.07 → 2.79, max 4.85 → 4.68.
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_layout-ed8d280.json`.
+
 ## One schema graph per question, at `bc85ccd`: same answers, shorter tail (2026-10-04)
 
 Same contract as `4aa6ca6` (Gemini off), clean checkout of `bc85ccd` (`worktree_dirty=false`, tag
