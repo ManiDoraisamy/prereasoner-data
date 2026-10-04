@@ -6,7 +6,9 @@ repository. Claude Code reads it automatically from the repository root.
 Do not create additional agent rule files, phase-specific rule files, or
 competing implementation plans. Amend this file when the working rules need to
 change. Do not weaken, bypass, or rewrite these rules to complete another task;
-changing this file requires an explicit user request.
+changing this file requires an explicit user request. `AGENTS.md` exists only to
+send agents that read it (Codex) here; at the owner's request it also repeats the
+add-on privacy rule below, and it holds no other rule.
 
 Architecture facts belong in `docs/ARCHITECTURE.md`, durable structural
 decisions belong in `DECISIONS.md`, and measured SQL results belong in
@@ -15,8 +17,12 @@ decisions belong in `DECISIONS.md`, and measured SQL results belong in
 ## Privacy experience rule
 
 - Do not add processor-consent modals, banners, repeated notices, or model-provider choices to the
-  user workflow. Publish one durable `/privacy` page and link it unobtrusively from user-facing
-  surfaces.
+  user workflow. Publish one durable `/privacy` page and link it unobtrusively from the web app.
+- NEVER add a privacy link, privacy notice, or any privacy text to the Google Sheets add-on sidebar
+  or the Excel task pane. Google's OAuth consent screen and the Marketplace listing already link
+  `/privacy`; an in-sidebar notice damaged the onboarding experience and was removed at the owner's
+  order (2026-10-04). This holds for every review, release and redesign: the add-on surfaces show
+  starters, the thread and the composer, nothing else.
 - Do not add per-request fields described as user consent for ordinary service processing. External
   processing is controlled by the operator's `EXTERNAL_LLM_ENABLED` deployment switch.
 - Choosing processors, maintaining a lawful basis and contracts, minimizing transferred data, and
@@ -25,7 +31,8 @@ decisions belong in `DECISIONS.md`, and measured SQL results belong in
   experiment and promotion rules below. Keep SQL construction, calculation semantics, and
   verification deterministic, and make provider migration transparent to users. The one exception
   is the labelled Gemini wording rewrite of own-data selection (`engine/question_rewrite.py`): it runs
-  only when the search finds no runnable query, the deterministic search runs again, and the answer says so.
+  only when the search finds no runnable query, the deterministic search runs again, and the turn's
+  read-as line shows the rewording (never a paragraph in the answer).
 
 ## Non-negotiable outcome
 
@@ -63,7 +70,7 @@ Extend these owners. Do not build parallel replacements.
 | Own-data AST search orchestration | `engine/sql_search.py`, called by `engine/tables.py:TableQuery.select_query` |
 | Own-data query selection (search + pool execution + grounding, then the labelled Gemini fallback only when nothing is eligible) — the ONE selection used by serving, decomposition leaves, the Spider evaluator, and the offline regression gate; the decomposition probe reads its first stage (`search_pool`) | `engine/tables.py:TableQuery.select_query` |
 | Labelled Gemini rewrite-only fallback of own-data selection; stateless request-scoped rewrite, then deterministic typed search | `engine/question_rewrite.py` + `engine/sql_prompt.py` |
-| The one LLM client (Gemini on Vertex AI) for the chat orchestrator, `/api/converse`, reference generation, and the selection fallback, gated by `EXTERNAL_LLM_ENABLED` | `engine/llm.py` |
+| The one LLM client (Gemini on Vertex AI) for the chat orchestrator, reference generation, and the selection fallback, gated by `EXTERNAL_LLM_ENABLED` | `engine/llm.py` |
 | Composition DAG, view execution, and the world-dependency record | `engine/compose.py` |
 | World/compose routing decision (the ONE shared `route()`) | `engine/routing.py` |
 | Compose serving host + world-grounding lookup | `engine/knowledge_compose.py` |

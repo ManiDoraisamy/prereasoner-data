@@ -31,4 +31,14 @@ assert.match(sheetsSidebar, /event\.key === 'Enter' && !event\.altKey && !event\
 assert.match(sharedCss, /\.turn-answer\.answer/);
 assert.match(webPage, /lib\/conversation\.css/);
 assert.match(sheetsSidebar, /lib\/conversation\.css/);
-console.log('Excel and shared conversation UI: 15 checks passed');
+// The owner's rule (CLAUDE.md, privacy experience): the add-on surfaces carry no privacy link, notice or
+// text. The install consent screen and the listing link /privacy; an in-sidebar notice hurt onboarding.
+const shown = text => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '').replace(/<!--[\s\S]*?-->/g, '');
+const addonSources = await Promise.all(['../sheets/sidebar.html', '../sheets/sidebar.js', '../sheets/boot.js',
+  '../sheets/previous.html', '../sheets/previous.js', 'taskpane.html', 'taskpane.js', '../../lib/sidebar-suggestions.js',
+  '../../../../sheets-addon/Sidebar.html', '../../../../sheets-addon/Previous.html']
+  .map(file => readFile(new URL(file, root), 'utf8').then(text => [file, text])));
+for (const [file, text] of addonSources) {
+  assert.doesNotMatch(shown(text), /privacy/i, file + ' must carry no privacy link, notice or text');
+}
+console.log('Excel and shared conversation UI: 16 checks passed');
