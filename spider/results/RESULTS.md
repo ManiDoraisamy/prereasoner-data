@@ -4,6 +4,13 @@ Dated entries come newest first. Each records a run at the commit it names; the 
 entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection arbiter`) may since have
 been removed, and that commit holds the code that ran.
 
+## One schema graph per question, at `bc85ccd`: same answers, shorter tail (2026-10-04)
+
+Same contract as `4aa6ca6` (Gemini off), clean checkout of `bc85ccd` (`worktree_dirty=false`, tag
+`perf-bc85ccd`). The commit builds the schema graph once per question and caches the cell words per
+graph. All 1,034 examples have the same SQL, rows and grade as `4aa6ca6`: 243 strict, 310 lenient, 408
+answered. Prediction seconds: median 1.29 → 1.24, p90 3.10 → 2.63, p95 3.65 → 3.07, max 14.24 → 4.85.
+
 ## The served path with Gemini on, at `13edb6a` (2026-10-04)
 
 Production runs with the operator's Gemini switch on: a question the search cannot fully read is
