@@ -441,6 +441,29 @@ def _migrate(conn, schema: str, required_tables: tuple[str, ...], migrations) ->
         cur.close()
 
 
+def pending_migrations(conn) -> list[str]:
+    """The migrations this code needs that the database has not applied, as `schema vN:name`.
+
+    The serving engine reads this before it accepts traffic (`engine/server.py`): an image whose code
+    needed chat migration 11 served a database still at 10, and every chat question failed on the
+    missing table for ten hours (2026-10-04). A ledger row whose name or checksum differs counts as
+    pending, exactly as `_migrate` treats drift."""
+    pending = []
+    cur = conn.cursor()
+    try:
+        for schema, migrations in (("chat", CHAT_MIGRATIONS), ("knowledgebase", KNOWLEDGEBASE_MIGRATIONS)):
+            cur.execute("SELECT to_regclass(%s)", (f"{schema}.schema_migration",))
+            applied = {}
+            if cur.fetchone()[0] is not None:
+                cur.execute(f'SELECT version, name, checksum FROM "{schema}"."schema_migration"')
+                applied = {int(version): (name, checksum) for version, name, checksum in cur.fetchall()}
+            pending.extend(f"{schema} v{migration.version}:{migration.name}" for migration in migrations
+                           if applied.get(migration.version) != (migration.name, migration.checksum))
+    finally:
+        cur.close()
+    return pending
+
+
 def migrate_chat(conn) -> tuple[int, ...]:
     return _migrate(conn, "chat", ("user_profile", "conversation", "user_conversation"),
                     CHAT_MIGRATIONS)

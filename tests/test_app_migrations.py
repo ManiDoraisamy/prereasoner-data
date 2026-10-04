@@ -434,8 +434,72 @@ def test_durable_retry_relation_has_explicit_serving_grants():
     assert any(m.name == "durable_request_replay" for m in CHAT_MIGRATIONS)
 
 
+def test_the_engine_refuses_a_database_missing_a_migration_it_needs():
+    """Production served code needing chat migration 11 on a database at 10, and every chat question
+    failed on the missing chat.request_job for ten hours (2026-10-04). The engine compares the
+    ledger with the code before it accepts traffic, and drift counts as missing."""
+    from db.sync.app_migrations import KNOWLEDGEBASE_MIGRATIONS, pending_migrations
+
+    class Cursor:
+        def __init__(self, ledgers):
+            self.ledgers, self.rows = ledgers, None
+
+        def execute(self, statement, params=None):
+            if statement.startswith("SELECT to_regclass"):
+                schema = params[0].split(".")[0]
+                self.rows = [(params[0] if schema in self.ledgers else None,)]
+            else:
+                schema = re.search(r'FROM "(\w+)"', statement).group(1)
+                self.rows = list(self.ledgers[schema])
+
+        def fetchone(self):
+            return self.rows[0]
+
+        def fetchall(self):
+            return self.rows
+
+        def close(self):
+            pass
+
+    class Connection:
+        def __init__(self, ledgers):
+            self.ledgers = ledgers
+
+        def cursor(self):
+            return Cursor(self.ledgers)
+
+    def ledger(migrations):
+        return [(m.version, m.name, m.checksum) for m in migrations]
+
+    current = {"chat": ledger(CHAT_MIGRATIONS), "knowledgebase": ledger(KNOWLEDGEBASE_MIGRATIONS)}
+    assert pending_migrations(Connection(current)) == []
+    at_ten = dict(current, chat=[row for row in current["chat"] if row[0] <= 10])
+    assert pending_migrations(Connection(at_ten)) == ["chat v11:durable_request_replay"]
+    drifted = dict(current, chat=[(v, n, "0" * 64 if v == 11 else c) for v, n, c in current["chat"]])
+    assert pending_migrations(Connection(drifted)) == ["chat v11:durable_request_replay"]
+    no_ledger = {"knowledgebase": current["knowledgebase"]}
+    assert len(pending_migrations(Connection(no_ledger))) == len(CHAT_MIGRATIONS)
+
+    from unittest.mock import patch
+
+    from engine import server
+    with patch("db.sync.app_migrations.pending_migrations", return_value=["chat v11:durable_request_replay"]), \
+            patch("engine.pg._pg", return_value=type("C", (), {"close": lambda self: None})()):
+        try:
+            server.require_current_schema()
+            raise AssertionError("the engine started on a database missing a migration")
+        except RuntimeError as exc:
+            assert "migrations pending" in str(exc)
+    # The serving role can read the ledgers, and the deployment turns the check on explicitly.
+    grants = pathlib.Path("db/reference_grants.py").read_text(encoding="utf-8")
+    assert 'sql.Identifier("schema_migration")' in grants
+    infra = pathlib.Path("infra/main.tf").read_text(encoding="utf-8")
+    assert 'name  = "REQUIRE_CURRENT_SCHEMA"' in infra and "var.require_current_schema" in infra
+
+
 TESTS = [
     test_durable_retry_relation_has_explicit_serving_grants,
+    test_the_engine_refuses_a_database_missing_a_migration_it_needs,
     test_chat_migration_is_admin_run_and_idempotent,
     test_knowledgebase_migration_installs_definer_functions,
     test_serving_path_has_no_direct_knowledgebase_writes,

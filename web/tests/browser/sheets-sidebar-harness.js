@@ -79,7 +79,8 @@ async function openSidebar(page, rows, failing = {}, workbookOptions = {}) {
         else ok(workbookOptions.schema || {sheets:[{name:'Orders',columns:window.__server.rows[0]}],active_sheet:'Orders',scope:['Orders']});
       },
       getPrereasonerSuggestions: (schema, ok) => ok({questions:['How many rows are in \"Orders\"?','Count rows in \"Orders\" by \"country\".','What is the total \"amount\" in \"Orders\"?'],source:'gemini',schema_only:true}),
-      restorePrereasonerSheetConversation: (_, ok) => ok({conversationId: '', state: null, stale: false}),
+      restorePrereasonerSheetConversation: (_, ok) => ok(window.__server.workbookOptions.restored ||
+        {conversationId: '', state: null, stale: false}),
       askPrereasoner: (arg, ok, fail) => { window.__server.pendingAsk = {arg, ok, fail}; },
       savePrereasonerSheetConversation: (arg, ok) => ok({saved: arg.conversationId}),
       clearPrereasonerSheetConversation: (_, ok) => ok({cleared: 'sheet-1'}),
@@ -89,7 +90,11 @@ async function openSidebar(page, rows, failing = {}, workbookOptions = {}) {
       return {withFailureHandler(fail) {
         return new Proxy({}, {get: (_, name) => arg => {
           window.__calls.push({name, arg: arg === undefined ? null : JSON.parse(JSON.stringify(arg))});
-          setTimeout(() => failing[name] ? fail({name: 'ScriptError', message: failing[name]}) : handlers[name](arg, ok, fail), name === 'getSidebarContext' ? (workbookOptions.contextDelay || 10) : 10);
+          // `failOnce` rejects only the next call to a function, as a deleted conversation does.
+          const once = window.__server.workbookOptions.failOnce || {};
+          const message = once[name] || failing[name];
+          delete once[name];
+          setTimeout(() => message ? fail({name: 'ScriptError', message}) : handlers[name](arg, ok, fail), name === 'getSidebarContext' ? (workbookOptions.contextDelay || 10) : 10);
         }});
       }};
     }}}};

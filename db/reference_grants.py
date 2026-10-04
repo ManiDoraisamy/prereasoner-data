@@ -81,6 +81,12 @@ def apply_chat_grants(cur, runtime_role: str) -> None:
         cur.execute(sql.SQL("GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE {} TO {}").format(
             table, role_id,
         ))
+    # Read-only: the engine refuses to serve while a migration its code needs is missing
+    # (db.sync.app_migrations.pending_migrations, called from engine/server.py).
+    for schema_name in ("chat", "knowledgebase"):
+        cur.execute(sql.SQL("GRANT SELECT ON TABLE {}.{} TO {}").format(
+            sql.Identifier(schema_name), sql.Identifier("schema_migration"), role_id,
+        ))
 
     cur.execute(
         "SELECT has_schema_privilege(%s, 'chat', 'USAGE'), "

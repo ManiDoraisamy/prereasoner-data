@@ -55,7 +55,18 @@ def main():
         one.finish(stale, (200, 'obsolete', 'text/plain', None))
         two.finish(stale, response)
         assert DurableResponseReplay().claim(stale, 'input_c') == (False, response)
-        print('PASS durable replay: concurrent instance, restart, changed input, transient retry, stale owner', flush=True)
+        # A finished response past its retention holds the user's rows and is never replayed: the
+        # request runs anew, even with other input (records were kept for a day, 2026-10-04).
+        conn = _pg()
+        try:
+            conn.cursor().execute("UPDATE chat.request_job SET expires_at=now()-interval '1 second' "
+                                  "WHERE subject_key=%s AND job_id='stale'", (subject,))
+            conn.commit()
+        finally:
+            conn.close()
+        assert DurableResponseReplay().claim(stale, 'input_d') == (True, None)
+        print('PASS durable replay: concurrent instance, restart, changed input, transient retry, stale owner, '
+              'expiry', flush=True)
     finally:
         conn = _pg()
         try:

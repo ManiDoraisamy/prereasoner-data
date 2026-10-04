@@ -797,6 +797,9 @@ def delete_conversation(user_id, conversation_id, *, rtdb_uid=None):
                         (conversation_id, user_id))
             cur.execute('DELETE FROM "chat"."conversation" WHERE conversation_id = %s', (conversation_id,))
             cur.execute('DROP SCHEMA IF EXISTS "%s" CASCADE' % conversation_id)   # validated c_<32hex> above
+            # Retry records hold answers' rows and are not keyed by conversation: all of the user's go.
+            from engine.request_replay import delete_subject_jobs
+            delete_subject_jobs(cur, user_id)
             conn.commit()
             return {"deleted": conversation_id, "deleted_traces": trace_count}
         except Exception:
@@ -824,6 +827,8 @@ def delete_all_conversations(user_id, *, rtdb_uid=None):
                 cur.execute('DELETE FROM "chat"."user_conversation" WHERE conversation_id = %s AND user_id = %s', (cid, user_id))
                 cur.execute('DELETE FROM "chat"."conversation" WHERE conversation_id = %s', (cid,))
                 cur.execute('DROP SCHEMA IF EXISTS "%s" CASCADE' % cid)
+            from engine.request_replay import delete_subject_jobs
+            delete_subject_jobs(cur, user_id)
             conn.commit()
             return {"deleted": len(ids), "deleted_traces": trace_count}
         except Exception:

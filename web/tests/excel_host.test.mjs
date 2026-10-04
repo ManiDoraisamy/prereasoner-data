@@ -154,7 +154,9 @@ await runWorkbook([visible,hidden]);
 const metadata=await readWorkbookSchema();
 assert.deepEqual(metadata.scope,['Orders']);
 assert.equal(metadata.active_sheet,'Orders');
-assert.deepEqual(metadata.sheets.map(s=>s.name),['Orders','Hidden']);
+// Hidden tabs' names and headers are not described (they went to the suggestion service, 2026-10-04).
+assert.deepEqual(metadata.sheets.map(s=>s.name),['Orders']);
+assert(!JSON.stringify(metadata).includes('Hidden'));
 assert.deepEqual(metadata.sheets[0].columns,['id','customer','company','date','paid']);
 assert(!JSON.stringify(metadata).includes('A, Inc'));
 await runWorkbook([sheet('Duplicate','Visible',[['Amount','Amount'],[1,2]])]);
@@ -172,4 +174,4 @@ assert.deepEqual(merged.sheets[0].columns,['Amount [column A]','Amount [column B
 assert.deepEqual(merge({...raw,sheets:[{name:'Orders',columns:['Amount','Amount']},raw.sheets[1]]},normalized),merged,
   'a late raw header read cannot overwrite normalized names');
 assert.deepEqual(header('"Column, one","Column\n two"\nPRIVATE,VALUES'),['Column, one','Column\n two']);
-console.log('Excel workbook reader and shared metadata: 26 checks passed');
+console.log('Excel workbook reader and shared metadata: 27 checks passed');

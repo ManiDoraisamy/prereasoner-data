@@ -69,10 +69,8 @@ function setBusy(busy) {
 function renderTurns() {
   const thread = $('thread');
   thread.querySelectorAll('.turn-pair,.empty').forEach(el => el.remove());
-  if (!state.turns.length) {
-    const empty = document.createElement('div'); empty.id = 'empty'; empty.className = 'empty';
-    empty.textContent = 'Ask a question about this workbook.'; thread.append(empty); return;
-  }
+  // Starter questions belong to an empty conversation only.
+  suggestions.setActive(!state.turns.length);
   for (const turn of state.turns) {
     const analysisUrl = turn.conversationId ? `https://chat.prereasoner.com/reason/${encodeURIComponent(turn.conversationId)}` : '';
     const reasoningBody = renderer.renderReasoningTree(turn.reasoning || [], {
@@ -80,7 +78,9 @@ function renderTurns() {
         analysisUrl ? {href: analysisUrl, title: 'Open this reasoning in Prereasoner'} : {})
     });
     const reasoningHtml = renderer.renderReasoningPanel({bodyHtml: reasoningBody, title: 'How this was calculated', analysisUrl});
-    const assistantHtml = renderer.renderAssistantTurn({reply: turn.reply, reasoningHtml});
+    const assistantHtml = turn.error
+      ? `<div class="turn-content"><div class="answer error" role="alert">${renderer.escapeHtml(turn.reply)}</div></div>`
+      : renderer.renderAssistantTurn({reply: turn.reply, reasoningHtml});
     thread.insertAdjacentHTML('beforeend', renderer.renderTurn({question: turn.question, assistantHtml}));
   }
   thread.scrollTop = thread.scrollHeight;
@@ -201,8 +201,15 @@ async function ask(question) {
         conversation_id: state.conversationId, turnId
       });
     } catch (error) {
-      if (error instanceof TypeError || /timed out|network|failed to fetch/i.test(error.message)) response = await streamResult.promise;
-      else { streamResult.cancel(); throw error; }
+      if (state.conversationId && /conversation not found/i.test(error.message)) {
+        // Deleted elsewhere (orchestrator/server.py answers 404): ask once more as a new chat, keeping
+        // the thread and the history the assistant reads.
+        state.conversationId = null;
+        response = await api('/chat', {message: question, tables: workbook.tables, history: baseHistory,
+          conversation_id: null, turnId});
+      } else if (error instanceof TypeError || /timed out|network|failed to fetch/i.test(error.message)) {
+        response = await streamResult.promise;
+      } else { streamResult.cancel(); throw error; }
     }
     streamResult.cancel();
     if (response.error) throw new Error(response.error);
@@ -212,17 +219,19 @@ async function ask(question) {
       conversationId: state.conversationId
     };
     state.history.push({role: 'assistant', content: response.reply || ''});
-    let saveWarning = '';
-    try { await persist(); }
-    catch (error) { saveWarning = 'The answer was returned, but workbook history could not be saved: ' + error.message; }
     renderTurns();
-    const warnings = workbook.tables.flatMap(table => (table.import?.warnings || []).map(warning => table.name + ': ' + warning));
-    notice([...warnings, saveWarning].filter(Boolean).join(' '), Boolean(saveWarning));
+    notice('');
+    // A failed save loses nothing on screen; the next answer saves the whole conversation again.
+    persist().catch(() => {});
   } catch (error) {
-    if (state.turns[state.turns.length - 1]?.pending) state.turns.pop();
+    // A failed question stays in the thread with its reason; it was dropped, and lost entirely when
+    // the user had typed a new draft meanwhile (2026-10-04).
+    const failed = {question, reply: error.message || 'Could not answer that question.', error: true};
+    if (state.turns[state.turns.length - 1]?.pending) state.turns[state.turns.length - 1] = failed;
+    else state.turns.push(failed);
     state.history = baseHistory;
     if (!$('question').value.trim()) $('question').value = question;
-    renderTurns(); notice(error.message || 'Could not answer that question.', true);
+    renderTurns(); notice('');
   } finally { setBusy(false); }
 }
 

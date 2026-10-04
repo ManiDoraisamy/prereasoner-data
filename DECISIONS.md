@@ -670,7 +670,8 @@ the embed was removed.
   its URL allowlist. `/chat` goes directly to Cloud Run for its 300-second timeout, and the steps return
   without their rows.
 - The sidebar state saves version 2 (the shared steps). Version 1 states from before still render.
-- The data-use notice the OAuth verification describes stays word for word before the first question.
+- The data-use notice the OAuth verification describes stayed word for word before the first question,
+  until the owner removed it on 2026-10-04 ("A minimal sidebar" below).
 - This supersedes the Sheets sidebar parts of `docs/EXCEL_COPILOT_PLAN.md`. The Excel add-in keeps its
   own task pane.
 
@@ -1645,3 +1646,65 @@ it exceeded that limit even though it stayed within the row limit and the parser
 Raise the shared live-grid ceiling to 1,000,000 cells in the Sheets add-on, Excel reader, and upload importer.
 Keep the per-sheet row/column limits and 8 MB/20 MB converted-text limits as separate guardrails. Regression
 coverage reads a 30,000 × 18 customer-shaped grid and still refuses an active grid above one million cells.
+
+## A minimal sidebar: starters, the thread and the composer (2026-10-04)
+
+The owner found the Sheets sidebar cluttered:
+- an intro line;
+- a data-use paragraph;
+- a "Questions for this sheet" heading over misaligned cards;
+- a sync line ("Synced just now", "Updated 4 minutes ago");
+- an import-warning box ("Unnamed columns A were kept…");
+- an error notice claiming the answer was returned when the question had failed.
+
+The cards were misaligned because Google's add-on stylesheet sets `button + button { margin-left: 12px }`.
+
+The sidebar now shows:
+- Empty: three starter questions and the composer, nothing else.
+- After a question: the thread, with "+ New chat" above it.
+- Failed: the question stays in the thread with one error sentence, and goes back into the composer.
+
+Supporting rules:
+- The hosted page no longer loads Google's stylesheet and styles itself.
+- Import warnings still travel with the tables to the engine, but are not shown.
+- An unreadable or expired earlier chat is not announced. The next question starts a new conversation,
+  keeping the turns on screen and the history the assistant reads.
+- A turn is saved for the sheet only once it belongs to a conversation, and a failed save shows nothing.
+
+The shared starter component (`web/public/lib/sidebar-suggestions.js`) has no heading, loading text or
+failure text, and each host hides it once a question is asked (`setActive`). The web conversation page
+always holds a question, so it shows no starters. The Excel task pane follows the same rules.
+
+Privacy stays on the durable `/privacy` page (Limited Use and AI/ML), which Google also links from the
+add-on's consent screen and Marketplace listing. Any OAuth re-verification must describe the sidebar
+without the in-product notice.
+
+## Failures users can act on, and a database the code can serve (2026-10-04)
+
+A review of the 2026-10-03 changes found:
+
+- **A ten-hour chat outage.** The engine image needed chat migration 11 (`chat.request_job`), which
+  production never received. Every question with a `jobId` returned 500, so every chat question failed.
+  The migration and grants were applied by hand. Now:
+  - The engine refuses to start while the database lacks a migration its code needs
+    (`engine/server.py:require_current_schema`, `db.sync.app_migrations.pending_migrations`). Cloud Run
+    then keeps traffic on the previous revision.
+  - The deployment opts in (`require_current_schema`). The grants give the serving role read access to
+    the migration ledgers.
+  - A Community upgrade runs migrations and grants even when its seed is already in place.
+- **Engine failures shown as the answer.**
+  - Users saw "internal server error", the engine's internal address, a 502 page or an exception name.
+    `engine/answer_presentation.py:error_reply` now writes one sentence per kind of failure, and passes
+    on only text the engine wrote for the user.
+  - A clarification quotes the question it proposes.
+- **A deleted conversation.** It answered 500 to every later question, and the Sheets sidebar kept
+  sending the dead id. `/chat` now answers 404 `conversation_not_found`, and the sidebar and the Excel
+  task pane ask once more as a new chat, keeping the thread and history.
+- **Retry records.** These hold an answer's rows. They were kept for a day and survived conversation
+  deletion. They are now kept for ten minutes, never replayed after that, and deleted with the user's
+  conversations.
+- **Statement timeouts.** A timeout statement sent inside an aborted transaction stopped SQLAlchemy's
+  `ROLLBACK TO SAVEPOINT`, so the Python program's SQL retry failed. A lock now waits the request's
+  budget rather than five seconds.
+- **The suggestion service.** It received hidden tabs' names and headers, and allowed one call per
+  process across all users. Now it describes visible, populated tabs only and allows four calls at once.

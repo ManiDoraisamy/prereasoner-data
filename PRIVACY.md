@@ -29,6 +29,8 @@ generated SQL, query results, and reasoning traces. Depending on deployment conf
   in user-scoped schemas.
 - Firebase Authentication processes identity and session information.
 - Firebase Realtime Database can temporarily store reasoning traces under `/runs/{uid}/{jobId}`.
+- PostgreSQL keeps each finished answer for ten minutes (`chat.request_job`) so that an answer whose
+  delivery failed can be sent again; deleting a conversation removes the user's kept answers.
 - Application logs record stable operation names, sizes, and exception classes. Request bodies,
   prompts, conversation history, generated SQL, credentials, customer rows, source values, and
   full exception messages are not logged by the serving or orchestrator request paths.

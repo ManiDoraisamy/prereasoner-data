@@ -99,10 +99,15 @@ class _TimedCursor(psycopg2.extensions.cursor):
     def execute(self, query, vars=None):
         from engine.request_deadline import remaining
         budget = remaining()
-        if budget is not None:
+        # An aborted transaction accepts only a rollback: the timeout statement sent before
+        # SQLAlchemy's ROLLBACK TO SAVEPOINT failed, so the rollback never ran and the Python
+        # program's SQL retry failed on the broken transaction (2026-10-04). A lock waits as long
+        # as any statement may: a 5-second cap answered two questions in one conversation with 500.
+        aborted = self.connection.get_transaction_status() == psycopg2.extensions.TRANSACTION_STATUS_INERROR
+        if budget is not None and not aborted:
+            milliseconds = str(max(1, int(budget * 1000)))
             super().execute("SELECT set_config('statement_timeout', %s, false), "
-                            "set_config('lock_timeout', %s, false)",
-                            (str(max(1, int(budget * 1000))), str(min(5000, max(1, int(budget * 1000))))))
+                            "set_config('lock_timeout', %s, false)", (milliseconds, milliseconds))
         started = time.perf_counter()
         with request_timing.span("sql"):                 # the span publishes its own sql_n
             result = super().execute(query, vars)

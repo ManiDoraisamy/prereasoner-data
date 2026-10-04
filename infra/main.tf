@@ -394,6 +394,12 @@ resource "google_cloud_run_v2_service" "api" {
         name  = "DEVICE"
         value = "cpu"
       }
+      # The engine refuses to start on a database missing a migration its code needs, so traffic stays
+      # on the previous revision (engine/server.py:require_current_schema).
+      env {
+        name  = "REQUIRE_CURRENT_SCHEMA"
+        value = var.require_current_schema ? "1" : "0"
+      }
       dynamic "env" {
         for_each = var.rtdb_url != "" ? [var.rtdb_url] : []
         content {

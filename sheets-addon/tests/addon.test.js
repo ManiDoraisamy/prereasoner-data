@@ -196,13 +196,27 @@ for (const script of ['https://chat.prereasoner.com/lib/turn-renderer.js', 'http
   'https://chat.prereasoner.com/vendor/xlsx-0.20.3.full.min.js', "from 'https://chat.prereasoner.com/lib/firebase-init.js'"]) {
   check(sidebar.includes(script), script);
 }
-check(sidebar.includes('https://ssl.gstatic.com/docs/script/css/add-ons1.css'), 'the add-on keeps SheetsÃ¢â‚¬â„¢ own styling');
+// Google's add-on stylesheet spaces adjacent buttons (`button + button { margin-left: 12px }`), which
+// pushed every suggested question after the first to the right; the sidebar styles itself.
+check(!sidebar.includes('add-ons1.css'), 'the sidebar does not load Google’s add-on button styles');
 check(sidebar.includes('R.stepsFromViews(') && sidebar.includes('window.subscribeTurn') && sidebar.includes('WORKBOOK_IMPORT.convert('),
   'steps, the live trace and the import come from the shared web code');
 check(!/liveStepLabel|operationLabel|liveJson|iframe/.test(sidebar), 'no second step presentation, no polling, no framed page');
-check(sidebar.includes('When you send a question, ') && sidebar.includes('the sheets selected above to produce and save ')
-  && sidebar.includes('This data is not used to train generalized AI models.'),
-  'the data-use notice describes the selected source scope and training boundary');
+// No notices in the sidebar (CLAUDE.md privacy rule: one durable /privacy page, no repeated notices).
+check(!sidebar.includes('This data is not used to train') && !sidebar.includes('Questions for this sheet'),
+  'the sidebar shows no data-use notice and no suggestion heading');
+// Suggestions describe visible, populated tabs only: a hidden tab's name and headers went to the
+// suggestion service when the sidebar opened (2026-10-04).
+const headerTab = (name, headers, hidden) => ({getName: () => name, isSheetHidden: () => hidden,
+  getLastRow: () => 3, getLastColumn: () => headers.length, getRange: () => ({getValues: () => [headers]})});
+const described = load(book([headerTab('Orders', ['id', 'amount'], false), headerTab('Payroll', ['employee', 'salary'], true)]))
+  .getWorkbookSchema({});
+check(JSON.stringify(described.sheets.map(sheet => sheet.name)) === '["Orders"]' && !JSON.stringify(described).includes('Payroll'),
+  'hidden tabs are not described for suggestions');
+// Opening a previous conversation called syncPrereasonerConversation without tables, which always
+// failed (requestTables_ throws) before the link opened (2026-10-04). The link opens directly.
+const previousPage = fs.readFileSync(path.join(root, '../web/public/office/sheets/previous.js'), 'utf8');
+check(!previousPage.includes('google.script.run'), 'opening a previous conversation makes no server call');
 
 // Read-only and bounded: no writes, no storage, no CSV conversion of its own.
 check(!/PropertiesService|setValue|setValues|valuesToCsv_|normalizeHeaders_|column_/.test(source), 'read-only, one importer');

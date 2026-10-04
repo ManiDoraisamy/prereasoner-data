@@ -412,6 +412,23 @@ def test_seed_import_rebuilds_typed_qid_projections_before_granting_access():
     ]
     assert events.index(("grant", None)) > events.index(("run", commands[-1]))
 
+    # An upgrade finds the seed ready and still applies this image's migrations and grants: returning
+    # early served new code on the old schema (2026-10-04).
+    events.clear()
+    patches[(seed_import, "_ready")] = lambda connection: True
+    originals = {key: getattr(*key) for key in patches}
+    try:
+        for (owner, name), value in patches.items():
+            setattr(owner, name, value)
+        assert seed_import.import_seed(
+            Connection(), "serving", frozenset(), "https://example.invalid/seed.dump", "a" * 64,
+        ) is False
+    finally:
+        for (owner, name), value in originals.items():
+            setattr(owner, name, value)
+    assert [event for event in events if event[0] in ("run", "grant", "restore")] == [
+        ("run", (sys.executable, "-m", "db.sync.app_migrations")), ("grant", None)]
+
 
 def test_public_deployer_has_isolated_state_and_cost_safe_defaults():
     versions = _text("infra/versions.tf")

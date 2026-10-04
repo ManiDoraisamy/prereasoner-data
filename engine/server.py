@@ -997,6 +997,24 @@ class H(BaseHTTPRequestHandler):
             self._send(500, json_dumps({"error": "internal server error"}))
 
 
+def require_current_schema():
+    """Refuse to serve a database that lacks a migration this code needs: the revision never becomes
+    ready, so Cloud Run keeps traffic on the previous one. An image needing chat migration 11 served a
+    database at 10, and every chat question failed for ten hours (2026-10-04). The deployment opts in
+    (REQUIRE_CURRENT_SCHEMA=1, infra `require_current_schema`); an install that bootstraps its database
+    after the first deploy cannot."""
+    from db.sync.app_migrations import pending_migrations
+    from engine.pg import _pg
+    conn = _pg()
+    try:
+        pending = pending_migrations(conn)
+    finally:
+        conn.close()
+    if pending:
+        print("startup refused: database migrations pending: " + ", ".join(pending), flush=True)
+        raise RuntimeError("database migrations pending")
+
+
 def main():
     global MODEL, DIM_MODEL, ENRICHMENT, DIM_LOCK
     from engine.dimension import DimensionModel
@@ -1012,6 +1030,8 @@ def main():
         print(f"startup phase ready: {name} seconds={time.monotonic() - started:.1f}", flush=True)
         return value
 
+    if os.environ.get("REQUIRE_CURRENT_SCHEMA") == "1":
+        startup_phase("database schema", require_current_schema)   # first: a stale database fails fast
     MODEL = startup_phase("world reasoner", KnowledgeReasoner)
     from engine.enrichment import (
         EnrichmentRuntime,

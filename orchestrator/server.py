@@ -31,6 +31,7 @@ from engine.numeric import json_dumps
 from engine.request_limits import (
     JSONBodyError, RequestGate, allowed_origin, parse_content_length, read_json_object,
 )
+from mcp_server import engine_client
 from orchestrator.orchestrator import run_chat
 from engine.request_validation import RequestValidationError, validate_chat_request
 
@@ -38,7 +39,18 @@ WEB_ROOT = Path(config.__file__).resolve().parent.parent / "web" / "public"
 MAX_BODY = 30 * 1024 * 1024
 CHAT_TIMEOUT_SECONDS = 240
 CHAT_GATE = RequestGate(requests=10, window_seconds=60, in_flight=8)
-SUGGESTION_GATE = RequestGate(requests=6, window_seconds=60, in_flight=1)
+# The in-flight bound is per process across all users: one let a second user's sidebar open fail
+# while any suggestion call ran (2026-10-04).
+SUGGESTION_GATE = RequestGate(requests=6, window_seconds=60, in_flight=4)
+CHAT_FAILURE = "something went wrong; try again in a moment"
+# An engine refusal a chat turn passes on, as (status, body); clients act on `code`.
+_BUSY = (503, {"error": "Prereasoner is busy; try again shortly", "code": "busy", "retryable": True})
+CHAT_REFUSALS = {
+    404: (404, {"error": "conversation not found", "code": "conversation_not_found"}),
+    401: (401, {"error": "sign in required", "code": "sign_in_required"}),
+    429: _BUSY,
+    503: _BUSY,
+}
 _SUGGESTIONS = OrderedDict()
 _SUGGESTIONS_LOCK = threading.Lock()
 
@@ -238,14 +250,24 @@ class H(BaseHTTPRequestHandler):
             if emit:
                 emit("error", "request timed out"); emit("status", "error")
             self._send(504, json_dumps({"error": "chat request timed out"}))
+        except engine_client.EngineStatusError as e:
+            # A deleted conversation answered 500 "internal server error" to every later question
+            # (2026-10-04). Its 404 tells the client to drop the id and ask again as a new chat.
+            status, body = CHAT_REFUSALS.get(e.status, CHAT_REFUSALS[503])
+            if emit:
+                try:
+                    emit("error", body["error"]); emit("status", "error")
+                except Exception:                            # noqa: BLE001
+                    pass
+            self._send(status, json_dumps(body), retry_after=5 if status == 503 else None)
         except Exception as e:  # noqa: BLE001
             if emit:
                 try:
-                    emit("error", "internal server error"); emit("status", "error")
+                    emit("error", CHAT_FAILURE); emit("status", "error")
                 except Exception:                            # noqa: BLE001
                     pass
             print(f"orchestrator chat failed: {type(e).__name__} turn={getattr(self, 'path', '-')}", flush=True)
-            self._send(500, json_dumps({"error": "internal server error"}))
+            self._send(500, json_dumps({"error": CHAT_FAILURE}))
         finally:
             if lease is not None:
                 lease.release()

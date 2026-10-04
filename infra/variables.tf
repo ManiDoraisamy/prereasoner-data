@@ -180,6 +180,17 @@ variable "deterministic_execution_mode" {
   }
 }
 
+variable "require_current_schema" {
+  description = <<-EOT
+    Refuse to start an engine revision while the database lacks an application migration its code
+    needs, so traffic stays on the previous revision. Turn it on once migrations and grants
+    (db.sync.app_migrations, db.reference_grants) run before each image change. A Community install
+    bootstraps its database after the first deploy and keeps it off.
+  EOT
+  type        = bool
+  default     = false
+}
+
 variable "deterministic_python_row_limit" {
   description = "Maximum estimated and materialized input rows allowed for generated Python execution."
   type        = number

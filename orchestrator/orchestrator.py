@@ -597,7 +597,7 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                 request_id=turn_id, client=http,
             )
             if catalog is None:
-                raise RuntimeError("analysis catalog unavailable")
+                raise engine_client.EngineStatusError(503, "analysis catalog unavailable")
         forced_analysis, forced_question = _recalculation_target(
             user_message, catalog, analysis_override,
         )
@@ -978,11 +978,6 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
             if stream_buffer is not None:
                 stream_buffer.close()             # the _emit('reply', final_text) below stays authoritative
 
-    scoped_names = sorted({name for table in tables or ()
-                           for scope in [(table.get('source') or {}).get('scope') or {}]
-                           if scope.get('mode') == 'active' for name in scope.get('included', [])})
-    if scoped_names:
-        final_text = 'Using the selected active sheet: ' + ', '.join(scoped_names) + '.\n\n' + final_text
     _emit("reply", final_text)
     _emit("status", "done")                                  # terminal — the browser stops waiting
 

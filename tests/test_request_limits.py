@@ -126,6 +126,80 @@ def test_chat_authenticates_without_a_database_and_signs_with_the_firebase_uid()
         "the engine must verify a dataset attestation against the key the chat signs with"
 
 
+def test_a_chat_on_a_deleted_conversation_answers_404_not_500():
+    """A conversation deleted on the web made every later Sheets question fail with 500 "internal
+    server error", and the sidebar kept sending the dead id (2026-10-04). The engine's 404 on the
+    analysis catalog reaches the client as 404 conversation_not_found, a busy engine as a retryable
+    503, and an unexpected failure as a sentence rather than "internal server error"."""
+    import asyncio
+    import json
+    import sys
+    import threading
+    import urllib.error
+    import urllib.request
+    from http.server import ThreadingHTTPServer
+
+    import httpx
+
+    from engine import auth
+    from mcp_server import engine_client
+    from orchestrator import server
+
+    def catalog_status(status):
+        def handler(request):
+            return httpx.Response(status, json={"error": "conversation not found"})
+        async def call():
+            async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+                return await engine_client.call_analysis_catalog("c_" + "1" * 32, base_url="http://engine",
+                                                                 token="t", client=client)
+        try:
+            asyncio.run(call())
+        except engine_client.EngineStatusError as exc:
+            return exc.status
+        return None
+    assert catalog_status(404) == 404 and catalog_status(503) == 503 and catalog_status(500) is None
+
+    class Firebase:
+        @staticmethod
+        def verify_id_token(token):
+            return {"uid": "fb-uid-1", "firebase": {"identities": {"google.com": ["google-sub-1"]}}}
+
+    raised = {}
+
+    async def run_chat(message, tables, history, **kwargs):
+        raise raised["error"]
+
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.H)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    body = json.dumps({"message": "total amount", "conversation_id": "c_" + "1" * 32,
+                       "tables": [{"name": "orders", "data": "id,amount\n1,2\n"}]}).encode()
+    request = urllib.request.Request(
+        f"http://127.0.0.1:{httpd.server_address[1]}/chat", data=body, method="POST",
+        headers={"Authorization": "Bearer id-token", "Content-Type": "application/json"})
+
+    def answer():
+        try:
+            urllib.request.urlopen(request, timeout=30)
+        except urllib.error.HTTPError as exc:
+            return exc.code, json.loads(exc.read() or b"{}")
+        raise AssertionError("the failed turn answered 200")
+    try:
+        with patch.object(auth, "_FB_AUTH", Firebase), patch.object(auth, "auth_test_sub", lambda: None), \
+                patch.dict(sys.modules, {"engine.pg": None}), \
+                patch.object(server.llm, "available", lambda: True), patch.object(server, "run_chat", run_chat):
+            raised["error"] = engine_client.EngineStatusError(404, "conversation not found")
+            assert answer() == (404, {"error": "conversation not found", "code": "conversation_not_found"})
+            raised["error"] = engine_client.EngineStatusError(503, "analysis catalog unavailable")
+            status, payload = answer()
+            assert status == 503 and payload["code"] == "busy" and payload["retryable"] is True, payload
+            raised["error"] = RuntimeError("boom")
+            status, payload = answer()
+            assert status == 500 and payload == {"error": server.CHAT_FAILURE}, payload
+            assert "internal server error" not in json.dumps(payload)
+    finally:
+        httpd.shutdown()
+
+
 def test_cors_requires_exact_configured_origin():
     assert allowed_origin("https://app.example", "https://app.example") == "https://app.example"
     assert allowed_origin("https://evil.example", "https://app.example") is None
@@ -685,6 +759,7 @@ def test_raw_csv_repeated_blank_and_long_headers_preserve_every_value():
 
 
 TESTS = [
+    test_a_chat_on_a_deleted_conversation_answers_404_not_500,
     test_raw_csv_repeated_blank_and_long_headers_preserve_every_value,
     test_messy_import_warnings_and_explicit_scope_survive_validation_and_storage,
     test_sliding_window_limiter_is_bounded_and_expires,

@@ -267,6 +267,31 @@ def test_delete_all_removes_only_owned_valid_conversations_and_user_traces():
     assert drops == [f'DROP SCHEMA IF EXISTS "{valid}" CASCADE']
     assert any(statement.startswith('DELETE FROM "chat"."sheet_session"')
                for statement, _ in cursor.statements)
+    # Retry records hold answers' result rows (engine/request_replay.py); they kept them after
+    # "delete all" (2026-10-04).
+    assert ('DELETE FROM chat.request_job WHERE subject_key=%s', ("user",)) in cursor.statements
+    assert connection.commits == 1 and connection.closed
+
+
+def test_deleting_a_conversation_removes_the_users_retry_records():
+    cid = "c_" + "e" * 32
+
+    class Cursor:
+        def __init__(self):
+            self.statements = []
+
+        def execute(self, statement, params=None):
+            self.statements.append((str(statement), params))
+
+        def fetchone(self):
+            return (10, 0)
+
+    cursor = Cursor()
+    connection = _Connection(cursor)
+    with patch.object(conversations, "_pg", return_value=connection), \
+            patch("engine.trace.delete_traces", return_value=0):
+        assert conversations.delete_conversation("user", cid, rtdb_uid="firebase-user")["deleted"] == cid
+    assert ('DELETE FROM chat.request_job WHERE subject_key=%s', ("user",)) in cursor.statements
     assert connection.commits == 1 and connection.closed
 
 
@@ -699,6 +724,7 @@ TESTS = [
     test_conversation_limit_error_tells_user_how_to_recover,
     test_source_sync_keeps_the_answer_but_marks_changed_data_stale,
     test_delete_all_removes_only_owned_valid_conversations_and_user_traces,
+    test_deleting_a_conversation_removes_the_users_retry_records,
     test_append_dataset_ops_is_bounded_and_serialized,
     test_analysis_completion_marks_changed_sources_stale_and_advances_monotonically,
     test_analysis_reservation_uses_the_effective_request_input_hash,

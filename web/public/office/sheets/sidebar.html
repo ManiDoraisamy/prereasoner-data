@@ -2,18 +2,15 @@
 <html>
   <head>
     <base target="_top">
-    <link rel="stylesheet" href="https://ssl.gstatic.com/docs/script/css/add-ons1.css">
     <link rel="stylesheet" href="https://chat.prereasoner.com/office/sheets/sidebar.css">
     <link rel="stylesheet" href="https://chat.prereasoner.com/lib/conversation.css?v=1">
     <link rel="stylesheet" href="https://chat.prereasoner.com/lib/sidebar-suggestions.css">
   </head>
   <body>
     <div class="sidebar branding-below" id="scroll">
-      <div class="topline">
+      <div class="topline" id="topline" hidden>
         <button class="new-chat" id="newConversation" type="button" disabled>+ New chat</button>
-        <span class="sync-status" id="syncStatus" role="status" aria-live="polite">Reading the sheet…</span>
       </div>
-      <div class="note" id="note" role="status" hidden></div>
       <div id="thread" aria-live="polite"></div>
       <section id="suggestions" hidden></section>
     </div>

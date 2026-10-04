@@ -184,21 +184,36 @@ async def call_query(question: str, tables: list[dict], job_id: str | None = Non
                         raise
                     await asyncio.sleep(1.0)
     except httpx.HTTPError as e:
-        return {"status": "error", "error": f"could not reach the Prereasoner engine at {base}: {e}"}
-    # The engine returns 200 for most in-band outcomes; 401/500 carry a top-level {"error": ...}.
+        return {"status": "error", "error": f"could not reach the Prereasoner engine at {base}: {e}",
+                "unreachable": True}
+    # The engine returns 200 for most in-band outcomes; 401/500 carry a top-level {"error": ...}. The
+    # status travels with the shaped error so the reply can say what the user can do about it.
     try:
         j = r.json()
     except ValueError:
-        return {"status": "error",
+        return {"status": "error", "http_status": r.status_code,
                 "error": f"engine returned non-JSON (HTTP {r.status_code}): {r.text[:200]}"}
-    return shape_reason_response(j, job_id)
+    shaped = shape_reason_response(j, job_id)
+    if r.status_code >= 400:
+        shaped["http_status"] = r.status_code
+    return shaped
+
+
+class EngineStatusError(RuntimeError):
+    """The engine refused a call the chat turn depends on: 404 (the conversation is gone), 401, or
+    429/503 (busy). The chat service answers with the same status, so a client can recover."""
+
+    def __init__(self, status: int, message: str = ""):
+        super().__init__(message or f"engine returned HTTP {status}")
+        self.status = status
 
 
 async def call_analysis_catalog(conversation_id: str, *, base_url: str | None = None,
                                 token: str | None = None, timeout: float | None = None,
                                 request_id: str | None = None,
                                 client: httpx.AsyncClient | None = None) -> list[dict[str, Any]] | None:
-    """Load the engine-owned analysis catalog used to constrain create/modify selection."""
+    """Load the engine-owned analysis catalog used to constrain create/modify selection. A refusal the
+    client can act on raises EngineStatusError; any other failure returns None."""
     base = (base_url or _engine_base_url()).rstrip("/")
     try:
         async with _http(client, timeout) as http:
@@ -211,6 +226,9 @@ async def call_analysis_catalog(conversation_id: str, *, base_url: str | None = 
             payload = response.json()
     except (httpx.HTTPError, ValueError):
         return None
+    if response.status_code in (401, 404, 429, 503):
+        raise EngineStatusError(response.status_code,
+                                str(payload.get("error") or "") if isinstance(payload, dict) else "")
     if response.status_code != 200 or not isinstance(payload, dict):
         return None
     analyses = payload.get("analyses")

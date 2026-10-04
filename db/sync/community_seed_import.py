@@ -160,7 +160,13 @@ def import_seed(connection, role: str, datasets: frozenset[str], uri: str,
     path = None
     try:
         if _ready(connection) and not force:
-            print(f"bootstrap: version {BOOTSTRAP_VERSION} is already ready", flush=True)
+            # The seed is in place, but this image's application migrations and serving grants may
+            # not be: an upgrade that returned here served new code on the old schema, and every
+            # chat question failed on a missing table (2026-10-04). Both steps are idempotent.
+            subprocess.run((sys.executable, "-m", "db.sync.app_migrations"), check=True)
+            _grant_serving_access(connection, role, datasets)
+            print(f"bootstrap: version {BOOTSTRAP_VERSION} is already ready; migrations and grants applied",
+                  flush=True)
             return False
         _mark(connection, "running")
         try:

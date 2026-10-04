@@ -88,7 +88,9 @@ function getWorkbookSchema(request) {
   var allFit = visible.length <= GRID_LIMITS.sheets && total <= GRID_LIMITS.cells && visible.every(function(sheet) {
     return sheet.getLastRow() - 1 <= GRID_LIMITS.rows && sheet.getLastColumn() <= GRID_LIMITS.columns;
   });
-  var schemas = spreadsheet.getSheets().map(function(sheet) {
+  // Visible, populated tabs only (the privacy page's promise): hidden tabs' names and headers went to
+  // the suggestion service when the sidebar opened (2026-10-04).
+  var schemas = visible.map(function(sheet) {
     var width = Math.min(sheet.getLastColumn(), GRID_LIMITS.columns);
     var headers = width ? sheet.getRange(1, 1, 1, width).getValues()[0] : [];
     var reliable = headers.length && headers.every(function(value) { return typeof value === 'string' && value.trim(); });
@@ -119,7 +121,7 @@ function restorePrereasonerSheetConversation(request) {
   var tables = requestTables_(request);
   var body = apiRequest_('post', '/api/spreadsheet/conversation/restore',
     {spreadsheet_id: activeSpreadsheet_().getId(), host: 'sheets', tables: tables},
-    'Prereasoner could not restore this sheetâ€™s conversation.');
+    'Prereasoner could not restore this sheet’s conversation.');
   return {
     conversationId: body.conversation_id || '',
     state: body.state && typeof body.state === 'object' ? body.state : null,
@@ -136,7 +138,7 @@ function savePrereasonerSheetConversation(request) {
   }
   return apiRequest_('post', '/api/spreadsheet/conversation/state',
     {spreadsheet_id: activeSpreadsheet_().getId(), host: 'sheets', conversation_id: conversationId, state: request.state},
-    'Prereasoner could not save this sheetâ€™s conversation.');
+    'Prereasoner could not save this sheet’s conversation.');
 }
 
 function clearPrereasonerSheetConversation() {

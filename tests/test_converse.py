@@ -42,6 +42,40 @@ def test_reply_presents_the_computed_answer_without_external_processing():
         assert 'again' in terminal_reply({'status': 'error', 'error': 'Engine is busy; retry shortly'})
 
 
+def test_an_engine_failure_is_one_sentence_the_user_can_act_on():
+    """A 500 reached chat users as the words "internal server error", a lost connection as the engine's
+    internal address, and a clarification's proposal as "Try: total commission_percent Which
+    interpretation should I use?" (2026-10-04)."""
+    from engine import answer_presentation as presentation
+    from engine.answer_presentation import terminal_reply
+    failures = {
+        'internal server error': {'status': 'error', 'error': 'internal server error', 'http_status': 500},
+        'unreachable': {'status': 'error', 'unreachable': True,
+                        'error': 'could not reach the Prereasoner engine at https://engine.internal: refused'},
+        'gateway page': {'status': 'error', 'http_status': 502, 'error': 'engine returned non-JSON (HTTP 502): <html>'},
+        'exception text': {'status': 'error', 'error': "KeyError: 'amount'"},
+        'payload echo': {'status': 'error', 'error': 'no CSV (need {tables:[…], question})'},
+    }
+    for name, shaped in failures.items():
+        reply = terminal_reply(shaped)
+        assert reply == presentation.UNAVAILABLE_REPLY, (name, reply)
+    assert terminal_reply({'status': 'error', 'error': 'sign in required', 'http_status': 401}) == presentation.SIGN_IN_REPLY
+    assert terminal_reply({'status': 'error', 'error': 'request rate limit exceeded', 'http_status': 429}) == presentation.BUSY_REPLY
+    assert terminal_reply({'status': 'error', 'error': 'conversation limit reached', 'http_status': 429}) \
+        == presentation.CONVERSATION_LIMIT_REPLY
+    assert terminal_reply({'status': 'error', 'error': 'conversation has too many analyses'}) \
+        == presentation.FULL_CONVERSATION_REPLY
+    # Text the engine wrote for the user still reaches them.
+    assert terminal_reply({'status': 'error', 'error': 'The interpretation could not be verified. Please retry.'}) \
+        == 'The interpretation could not be verified. Please retry.'
+    # A proposed question is quoted as one the user can send, with no interpretation prompt after it.
+    assert terminal_reply({'status': 'clarify', 'clarify': {
+        'reason': 'I need one more detail before I can answer that.', 'proposed': 'total commission_percent'}}) \
+        == 'I need one more detail before I can answer that. Try asking: “total commission_percent”'
+    assert terminal_reply({'status': 'clarify', 'clarify': {'reason': 'Which amount', 'proposed': 'total amount'}}) \
+        == 'Which amount. Try asking: “total amount”'
+
+
 def test_unavailable_gemini_reaches_reference_generation_as_llm_unavailable():
     with patch.dict('os.environ', {'EXTERNAL_LLM_ENABLED': 'false'}):
         try:
@@ -199,6 +233,7 @@ def test_trace_deletion_filters_by_conversation_and_supports_delete_all():
 
 TESTS = [
     test_reply_presents_the_computed_answer_without_external_processing,
+    test_an_engine_failure_is_one_sentence_the_user_can_act_on,
     test_unavailable_gemini_reaches_reference_generation_as_llm_unavailable,
     test_preserves_existing_and_fills_empty,
     test_preserves_by_column_name_even_if_model_reorders,

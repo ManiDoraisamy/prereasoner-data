@@ -1,11 +1,11 @@
-"""run_all.py â€” run the full Prereasoner test suite and report a single pass/fail.
+"""run_all.py — run the full Prereasoner test suite and report a single pass/fail.
 
 Runs each suite as a subprocess and aggregates exit codes. Suites self-skip when their infra isn't
 present, so this is safe to run anywhere:
   - test_mcp            always runs (in-process stub; no external deps)
   - test_orchestrator   runs iff Gemini is enabled and configured (EXTERNAL_LLM_ENABLED, GOOGLE_CLOUD_PROJECT,
                         application-default credentials; else SKIP, exit 0)
-  - test_world/geo/...  run iff KB_PG_PASSWORD is set (else SKIP, exit 0) â€” the real engine tests
+  - test_world/geo/...  run iff KB_PG_PASSWORD is set (else SKIP, exit 0) — the real engine tests
 
 The PRE-DEPLOY gate is `regress.run_regression` (offline text-to-SQL goldens + world-model-join goldens);
 its world tier reuses these engine suites. cloudbuild.yaml runs the offline tier in the built image; run
@@ -21,7 +21,7 @@ import os
 import subprocess
 import sys
 
-import engine.config  # noqa: F401 â€” autoloads repo .env so KB_PG_PASSWORD/GOOGLE_CLOUD_PROJECT reach the
+import engine.config  # noqa: F401 — autoloads repo .env so KB_PG_PASSWORD/GOOGLE_CLOUD_PROJECT reach the
 # spawned suites; without it the world suites silently SKIP (or return 1) and the gate falsely looks green.
 
 SUITES = ["tests.test_numeric_storage", "tests.test_suggestions", "tests.test_sql_ast", "tests.test_query_contract", "tests.test_llm", "tests.test_calculations", "tests.test_analysis", "tests.test_deterministic_emitters", "tests.test_decomposition", "tests.test_complex_datasets", "tests.test_routing", "tests.test_router_evidence", "tests.test_schema_decode",
@@ -34,9 +34,10 @@ SUITES = ["tests.test_numeric_storage", "tests.test_suggestions", "tests.test_sq
           "tests.test_conversations", "tests.test_sheet_sessions", "tests.test_provenance",
           "tests.test_release", "tests.test_promotion_gate", "tests.test_community_deploy",
           "tests.test_mcp", "tests.test_orchestrator_unit", "tests.test_orchestrator"]
-ENGINE_SUITES = ["tests.test_numeric_storage", "tests.test_suggestions", "tests.test_world", "tests.test_nongeo", "tests.test_world_joins",
+ENGINE_SUITES = ["tests.test_world", "tests.test_nongeo", "tests.test_world_joins",
                  "tests.test_route_wired", "tests.test_geo", "tests.test_schema_probes",
-                 "tests.test_datasets", "tests.test_question_families", "tests.test_scale", "tests.test_request_replay_live"]
+                 "tests.test_datasets", "tests.test_question_families", "tests.test_scale", "tests.test_request_replay_live",
+                 "tests.test_pg_deadline_live"]
 
 
 def suite_timeout_seconds(module):

@@ -318,6 +318,10 @@ vm.runInContext(turnRendererSource, context, {filename: 'turn-renderer.js'});
   // A decomposition sends the same question twice (probe, then proposal): it is read once.
   assert.strictEqual(R.renderAsks(['top customers by spend', 'top customers by spend']),
     '<div class=cotask>read as &ldquo;top customers by spend&rdquo;</div>');
+  // The user's own words are not a reading: "read as" the typed question said nothing (2026-10-04).
+  assert.strictEqual(R.renderAsks(['how many orders in Paris'], 'How many orders in  Paris?'), '');
+  assert.strictEqual(R.renderAsks(['total amount in Belgium in US dollars'], 'how about Belgium?'),
+    '<div class=cotask>read as &ldquo;total amount in Belgium in US dollars&rdquo;</div>');
   // Every per-row calculation is a `convert` step. Only one whose columns the server traced to the
   // exchange-rate reference is described as a currency conversion (payment-commissions, 2026-10-01).
   const commission = {op: 'convert', label: 'calculated', columns: ['payments__amount', 'aggregate_operand_1'],

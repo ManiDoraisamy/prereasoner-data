@@ -327,10 +327,17 @@
   }
 
   // The questions the assistant asked the engine this turn ("read as …").
-  function renderAsks(questions) {
-    // A decomposition sends its question twice (the probe, then the proposal); say it once.
+  function sameWords(a, b) {
+    function words(text) { return String(text || '').toLowerCase().replace(/[\s?!.]+$/, '').replace(/\s+/g, ' ').trim(); }
+    return words(a) === words(b);
+  }
+
+  // The questions the engine was asked, when they differ from what the user typed: "read as" the
+  // user's own words said nothing (2026-10-04). A decomposition sends its question twice (the probe,
+  // then the proposal); say it once.
+  function renderAsks(questions, asked) {
     var list = (questions || []).filter(function (question, index, all) {
-      return question && all.indexOf(question) === index;
+      return question && all.indexOf(question) === index && !sameWords(question, asked);
     });
     return list.length ? '<div class=cotask>read as ' + list.map(function (question) {
       return '&ldquo;' + escapeHtml(question) + '&rdquo;';

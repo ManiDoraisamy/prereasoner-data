@@ -60,8 +60,11 @@ export async function readWorkbookSchema() {
       item.header.load('values');
     }
     await context.sync();
-    const scope = used.filter(item => item.sheet.visibility === Excel.SheetVisibility.visible && !item.range.isNullObject && item.range.rowCount > 1).map(item => item.sheet.name);
-    const schemas = used.map(item => {
+    // Only visible, populated sheets are described (the privacy page's promise); hidden tabs' names and
+    // headers went to the suggestion service on open (2026-10-04).
+    const visible = used.filter(item => item.sheet.visibility === Excel.SheetVisibility.visible && !item.range.isNullObject && item.range.rowCount > 1);
+    const scope = visible.map(item => item.sheet.name);
+    const schemas = visible.map(item => {
       const row = item.header?.values?.[0] || [];
       const reliable = row.length && row.every(value => typeof value === 'string' && value.trim()) && new Set(row.map(value=>value.trim().toLowerCase())).size === row.length;
       return {name: item.sheet.name, columns: reliable ? row.map(value=>value.trim()) : []};

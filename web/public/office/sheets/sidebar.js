@@ -1,11 +1,9 @@
 (function () {
         var REASON_BASE = window.PrereasonerShell.reasonBase;
-        var PRIVACY_URL = 'https://chat.prereasoner.com/privacy';
         var R = window.PrereasonerTurnRenderer;
         var threadEl = document.getElementById('thread');
         var scrollEl = document.getElementById('scroll');
-        var noteEl = document.getElementById('note');
-        var syncStatusEl = document.getElementById('syncStatus');
+        var toplineEl = document.getElementById('topline');
         var questionEl = document.getElementById('question');
         var sendEl = document.getElementById('send');
         var newEl = document.getElementById('newConversation');
@@ -13,10 +11,9 @@
           container: document.getElementById('suggestions'), composer: questionEl,
           request: function (schema) { return callServer('getPrereasonerSuggestions', schema); }
         });
+        suggestions.setActive(false);   // until the first render knows whether a saved chat comes back
         var workbookSchema = null;
         var metadataGeneration = 0;
-        var lastSyncedAt = 0;
-        var relativeSyncTimer = null;
         function refreshSuggestions() {
           var schema = window.PrereasonerSuggestions.merge(workbookSchema, state.tables);
           if (schema) suggestions.update(schema);
@@ -30,8 +27,9 @@
           }).catch(function () {});
         }
         var state = {conversationId: null, turns: [], history: [], tables: [], syncedFingerprint: '', ready: false,
-          restored: false, sheetError: '', uid: null, signedIn: null, busy: true, live: null, failed: null,
-          importNote: '', note: '', scope: 'auto'};
+          restored: false, sheetError: '', uid: null, signedIn: null, busy: true, live: null, scope: 'auto'};
+        // The chat service's answer for a conversation deleted elsewhere (orchestrator/server.py).
+        var NOT_FOUND = /conversation not found/i;
 
         function callServer(name, arg) {
           return new Promise(function (resolve, reject) {
@@ -79,11 +77,6 @@
           var result = window.WORKBOOK_IMPORT.convert({grids: workbook.grids}, window.XLSX, window.UPLOAD_LIMITS);
           if (!result.ok) throw new Error(result.error);
           if (!result.sheets.length) throw new Error('There are no data rows in the selected sheets. Choose a populated tab.');
-          state.importNote = result.sheets.map(function (sheet) {
-            var warnings = sheet.import && sheet.import.warnings || [];
-            return warnings.length ? 'Sheet "' + sheet.name + '": ' + warnings.join(' ') : '';
-          }).filter(Boolean).join(' ');
-          if (state.scope === 'active') state.importNote = 'Using the current sheet because the whole workbook is too large to analyze at once. ' + state.importNote;
           return result.sheets.map(function (sheet) {
             return {name: sheet.name, data: sheet.csv, source: {kind: 'google-sheets-addon',
               warnings: (sheet.import && sheet.import.warnings || []).map(function (warning) { return warning.slice(0,4096); }),
@@ -132,11 +125,12 @@
           var name = turn.analysis ? R.analysisName(turn.analysis) : '';
           return R.renderReasoningPanel({
             title: name ? 'Reasoning steps for ' + name : 'Reasoning steps',
-            bodyHtml: R.renderAsks(asks) + tree, analysisUrl: url, open: !!live, className: live ? 'live-reasoning' : ''
+            bodyHtml: R.renderAsks(asks, turn.question) + tree, analysisUrl: url, open: !!live, className: live ? 'live-reasoning' : ''
           });
         }
 
         function turnHtml(turn) {
+          if (turn.error) return failedHtml(turn);
           return R.renderTurn({question: turn.question, assistantHtml: R.renderAssistantTurn({
             reasoningHtml: reasoningHtml(turn, false), reply: turn.reply || 'No answer was returned.'})});
         }
@@ -150,31 +144,36 @@
         }
 
         function failedHtml(failed) {
-          return R.renderTurn({question: failed.question,
-            assistantHtml: '<div class="turn-content"><div class="answer error" role="alert">' + R.escapeHtml(failed.error) + '</div></div>'});
-        }
-
-        function emptyHtml() {
-          if (state.sheetError) {
-            return '<div class="empty sheet-error">' + R.escapeHtml(state.sheetError) + '</div>';
-          }
-          return '<div class="empty"><div>Ask a question about the current sheet.</div><p class="data-notice">When you send a question, ' +
-            'Prereasoner securely processes your question and the sheets selected above to produce and save ' +
-            'the answer. This data is not used to train generalized AI models. <a href="' + PRIVACY_URL +
-            '" target="_blank" rel="noopener">Privacy</a></p></div>';
+          var error = '<div class="turn-content"><div class="answer error" role="alert">' + R.escapeHtml(failed.error) + '</div></div>';
+          return failed.question ? R.renderTurn({question: failed.question, assistantHtml: error}) : error;
         }
 
         function scrollToEnd() {
           window.requestAnimationFrame(function () { scrollEl.scrollTop = scrollEl.scrollHeight; });
         }
 
+        // An empty sidebar is the composer and three starter questions; nothing else.
         function render() {
           var html = state.turns.map(turnHtml).join('');
-          if (state.failed) html += failedHtml(state.failed);
           if (state.live) html += '<div id="liveTurn">' + liveHtml(state.live) + '</div>';
-          if (!html) html = emptyHtml();
+          var empty = !html;
+          if (empty && state.sheetError) html = '<div class="empty sheet-error">' + R.escapeHtml(state.sheetError) + '</div>';
           threadEl.innerHTML = html;
+          toplineEl.hidden = !state.turns.length;
+          suggestions.setActive(empty && !state.sheetError);
           scrollToEnd();
+        }
+
+        // A failed question stays in the thread, with the reason in place of an answer.
+        function keepFailed(question, error) {
+          state.turns = state.turns.concat([{question: question, error: errorText(error)}]).slice(-24);
+        }
+
+        // A chat deleted elsewhere: the next question starts a new one, and the turns on screen and the
+        // history the assistant reads stay.
+        function forgetConversation() {
+          state.conversationId = null;
+          state.syncedFingerprint = '';
         }
 
         // A live event repaints only the running turn, so earlier turns keep their open panels.
@@ -183,37 +182,6 @@
           if (!element || !state.live) return render();
           element.innerHTML = liveHtml(state.live);
           scrollToEnd();
-        }
-
-        // Describe import warnings and source scope alongside recovery messages.
-        function showNote(text) {
-          state.note = text || '';
-          var combined = [state.importNote, state.note].filter(Boolean).join(' ');
-          noteEl.textContent = combined;
-          noteEl.hidden = !combined;
-        }
-
-        function relativeSyncText(ageMs) {
-          var minutes = Math.floor(ageMs / 60000);
-          if (minutes < 1) return 'Synced just now';
-          if (minutes < 60) return 'Updated ' + minutes + (minutes === 1 ? ' minute' : ' minutes') + ' ago';
-          var hours = Math.floor(minutes / 60);
-          if (hours < 24) return 'Updated ' + hours + (hours === 1 ? ' hour' : ' hours') + ' ago';
-          var days = Math.floor(hours / 24);
-          return 'Updated ' + days + (days === 1 ? ' day' : ' days') + ' ago';
-        }
-
-        function setSyncStatus(status, stateName) {
-          syncStatusEl.textContent = status;
-          syncStatusEl.dataset.state = stateName || 'synced';
-        }
-
-        function markSynced() {
-          lastSyncedAt = Date.now();
-          setSyncStatus(relativeSyncText(0), 'synced');
-          if (relativeSyncTimer === null) relativeSyncTimer = window.setInterval(function () {
-            if (lastSyncedAt) setSyncStatus(relativeSyncText(Date.now() - lastSyncedAt), 'synced');
-          }, 30000);
         }
 
         function setBusy(busy) {
@@ -300,7 +268,10 @@
           });
         }
 
-        async function restore(tables) {
+        // The sheet's saved chat. A chat deleted elsewhere comes back empty. A failed read is tried again
+        // with the next question, which fails rather than start a new chat over one it could not read:
+        // treating a passing outage as an expired chat wiped saved conversations (2026-10-04).
+        async function restore(tables, strict) {
           try {
             var restored = await callServer('restorePrereasonerSheetConversation', {tables: tables});
             state.conversationId = restored.conversationId || null;
@@ -308,16 +279,8 @@
             state.history = restored.state && Array.isArray(restored.state.history) ? restored.state.history.slice(-24) : [];
             state.syncedFingerprint = (restored.state && restored.state.syncedFingerprint) || '';
             state.restored = true;
-            if (restored.stale && state.turns.length) showNote('The sheet changed since this conversation. Ask again to use the current data.');
-          } catch (_) {
-            // Restoring old sidebar history is best effort; it must not gate a question over the
-            // freshly read workbook. A dangling/expired session starts a new chat automatically.
-            state.conversationId = null;
-            state.turns = [];
-            state.history = [];
-            state.syncedFingerprint = '';
-            state.restored = true;
-            showNote('Your previous chat could not be resumed. This question will start a new chat.');
+          } catch (error) {
+            if (strict) throw error;
           }
         }
 
@@ -325,34 +288,25 @@
           var question = questionEl.value.trim();
           if (!question || state.busy) return;
           questionEl.value = '';
-          state.failed = null;
-          showNote('');
           setBusy(true);
           var live = {question: question, turnId: randomId(), status: 'Reading the sheet…', steps: [], asks: [], reply: ''};
-          setSyncStatus('Syncing…', 'loading');
           state.live = live;
           render();
           var stopLive = function () {};
           try {
             var tables = importGrids(await callServer('getWorkbookGrids', {scope: state.scope}));
-            markSynced();
-            showNote(state.note);
             state.sheetError = '';
             state.tables = tables;
-            refreshSuggestions();
             var print = await fingerprint(tables);
-            if (!state.restored) await restore(tables);
+            if (!state.restored) await restore(tables, true);
             if (state.conversationId && state.syncedFingerprint && print !== state.syncedFingerprint) {
               live.status = 'Syncing the changed sheet…';
               renderLive();
               try {
                 await callServer('syncPrereasonerConversation', {conversationId: state.conversationId, tables: tables});
-              } catch (_) {
-                state.conversationId = null;
-                state.turns = [];
-                state.history = [];
-                state.syncedFingerprint = '';
-                showNote('Your previous chat could not be continued. This question will start a new chat with the current sheet.');
+              } catch (error) {
+                if (!NOT_FOUND.test(errorText(error))) throw error;
+                forgetConversation();
               }
             }
             live.status = 'Understanding your question…';
@@ -360,13 +314,22 @@
             if (state.signedIn) await Promise.race([state.signedIn.catch(function () {}),
               new Promise(function (resolve) { window.setTimeout(resolve, 5000); })]);
             stopLive = startLive(live);
+            var ask = function () {
+              return callServer('askPrereasoner', {question: question, tables: tables,
+                conversationId: state.conversationId, history: state.history, turnId: live.turnId});
+            };
             var response;
             try {
-              response = await callServer('askPrereasoner', {question: question, tables: tables,
-                conversationId: state.conversationId, history: state.history, turnId: live.turnId});
+              response = await ask();
             } catch (error) {
-              if (!(live.done && live.reply)) throw error;   // the live trace already finished this turn
-              response = {reply: live.reply, conversationId: live.conversationId, history: [], traces: null};
+              if (state.conversationId && NOT_FOUND.test(errorText(error))) {
+                forgetConversation();
+                response = await ask();
+              } else if (live.done && live.reply) {   // the live trace already finished this turn
+                response = {reply: live.reply, conversationId: live.conversationId, history: [], traces: null};
+              } else {
+                throw error;
+              }
             }
             response = window.RESULT_WIRE ? window.RESULT_WIRE.decode(response) : response;
             state.conversationId = response.conversationId || live.conversationId || state.conversationId;
@@ -379,14 +342,15 @@
             state.syncedFingerprint = print;
             state.live = null;
             render();
-            callServer('savePrereasonerSheetConversation', {conversationId: state.conversationId, state: snapshot()})
-              .catch(function (error) {
-                showNote('The answer was returned, but this sheet’s conversation could not be saved: ' + errorText(error));
-              });
+            // Kept for this sheet only once the turn belongs to a conversation. A failed save loses
+            // nothing on screen; the next answer saves the whole sidebar again.
+            if (state.conversationId) {
+              callServer('savePrereasonerSheetConversation', {conversationId: state.conversationId, state: snapshot()})
+                .catch(function () {});
+            }
           } catch (error) {
-            setSyncStatus('Sync failed', 'error');
             state.live = null;
-            state.failed = {question: question, error: errorText(error)};
+            keepFailed(question, error);
             if (!questionEl.value.trim()) questionEl.value = question;
             render();
           } finally {
@@ -415,11 +379,10 @@
             state.turns = [];
             state.history = [];
             state.syncedFingerprint = '';
-            state.failed = null;
-            showNote('');
             render();
           } catch (error) {
-            showNote(errorText(error));
+            keepFailed('', error);
+            render();
           } finally {
             setBusy(false);
           }
@@ -430,24 +393,16 @@
           state.signedIn.catch(function () {});
           try {
             state.tables = importGrids(context.workbook);
-            markSynced();
-            showNote(state.note);
           } catch (error) {
             state.sheetError = errorText(error);
             return;
           }
           // Independent of restore/answers. A slow or unavailable suggestion never blocks typing.
           refreshSuggestions();
-          try {
-            await restore(state.tables);
-          } catch (error) {
-            showNote(errorText(error));
-          }
+          await restore(state.tables);
         }).catch(function (error) {
           state.sheetError = errorText(error);
-          setSyncStatus('Couldn’t sync', 'error');
         }).then(function () {
-          if (!state.tables.length) setSyncStatus('Couldn’t sync', 'error');
           render();
           state.ready = true;
           setBusy(false);

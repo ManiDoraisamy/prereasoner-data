@@ -181,8 +181,13 @@ build runs its lean contracts. Record both build IDs, tags and immutable digests
 the model fingerprint, migration version 11, current configuration, and retained
 engine/chat/Hosting rollback targets in a release manifest. Run
 `python deploy/gcp/release_gate.py <manifest.json>` before any service promotion.
-Apply migrations and `python -m db.reference_grants --role serving` as the admin,
-then run `engine.release_smoke` using the new image and the serving identity.
+Before the image change, apply migrations (`python -m db.sync.app_migrations`) and
+`python -m db.reference_grants --role serving` as the admin, then run `engine.release_smoke`
+using the new image and the serving identity. An engine image once served a database one chat
+migration behind, and every chat question failed for ten hours (2026-10-04). With
+`require_current_schema = true`, a revision whose database lacks a migration its code needs never
+becomes ready, so traffic stays on the previous revision. The grants step gives the serving role read
+access to the migration ledgers that check reads; run it before the first image that checks.
 
 Build passes do not certify a launch. After compatible backend/Hosting/Apps Script
 updates, record public version identity, all 18 `?load=` examples, ordered

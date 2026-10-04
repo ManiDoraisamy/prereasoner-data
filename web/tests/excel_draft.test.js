@@ -10,7 +10,7 @@ const element = id => {
   if(!elements.has(id))elements.set(id,{value:'',disabled:false,hidden:false,textContent:'',classList:{toggle(){}}});
   return elements.get(id);
 };
-const context = {console,crypto:require('node:crypto').webcrypto,window:{PrereasonerTurnRenderer:{},PrereasonerSuggestions:{...require('../public/lib/sidebar-suggestions.js'),create:()=>({update(){},clear(){}})}},
+const context = {console,crypto:require('node:crypto').webcrypto,window:{PrereasonerTurnRenderer:{},PrereasonerSuggestions:{...require('../public/lib/sidebar-suggestions.js'),create:()=>({update(){},clear(){},setActive(){}})}},
   document:{getElementById:element},initializeApp:()=>({}),getAuth:()=>({currentUser:{uid:'fixture'}}),
   getDatabase:()=>({}),firebaseConfig:{}};
 vm.createContext(context);
@@ -36,14 +36,17 @@ const deadline = setTimeout(()=>{console.error('Excel lifecycle did not complete
   assert.equal(element('question').value,'and for France?');
   assert.equal(context.lifecycle.state.turns.at(-1).reply,'10');
   assert.equal(context.lifecycle.state.history.at(-1).content,'10');
-  assert.match(element('notice').textContent,/storage full/);
-  assert.match(element('notice').textContent,/Repeated headers/);
+  // A failed history save and import warnings are not notices: the answer is on screen, and the
+  // next answer saves the whole conversation again.
+  assert.equal(element('notice').textContent,'');
   assert.equal(element('send').disabled,false);
   context.api=async()=>{throw new Error('Request rejected');};
   context.readWorkbook=async()=>({name:'Orders',activeSheet:'Orders',sheetNames:['Orders'],tables:[]});
   const failed=context.lifecycle.ask('second question');
   element('question').value='a newer draft'; await failed;
   assert.equal(element('question').value,'a newer draft');
+  // The failed question stays in the thread even though a newer draft took the composer.
+  assert.deepEqual({...context.lifecycle.state.turns.at(-1)},{question:'second question',reply:'Request rejected',error:true});
   await context.lifecycle.ask('retry this');
   assert.equal(element('question').value,'retry this');
   clearTimeout(deadline);

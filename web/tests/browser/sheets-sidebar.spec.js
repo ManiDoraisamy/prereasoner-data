@@ -12,7 +12,8 @@ test('hosted shell loads three shared schema-only questions while the composer s
   await expect(page.locator('#question')).toBeEditable();
   await page.locator('#question').fill('my draft');
   await expect(page.locator('#suggestions .starter-question')).toHaveCount(3);
-  await expect(page.locator('#suggestions')).toContainText('Questions for this sheet');
+  await expect(page.locator('#suggestions')).toHaveText(
+    ['How many rows are in "Orders"?', 'Count rows in "Orders" by "country".', 'What is the total "amount" in "Orders"?'].join(''));
   await expect(page.locator('#suggestions .starter-question').first()).toHaveCSS('white-space','normal');
   await expect(page.locator('#sheetScope')).toHaveCount(0);
   const [request] = await calls(page, 'getPrereasonerSuggestions');
@@ -25,12 +26,13 @@ test('hosted shell loads three shared schema-only questions while the composer s
   expect(await page.evaluate(()=>Boolean(window.__server.pendingAsk))).toBe(false);
 });
 
-test('suggestion failure never blocks reading, typing or sending a question', async ({page}) => {
+test('suggestion failure never blocks reading, typing or sending a question, and shows nothing', async ({page}) => {
   await openSidebar(page, orders, {getPrereasonerSuggestions:'Gemini unavailable'});
   await expect(page.locator('#newConversation')).toBeEnabled();
-  await expect(page.locator('#suggestions')).toContainText('Couldn’t generate sheet-specific questions right now.');
-  await expect(page.locator('#suggestions .starter-question')).toHaveCount(0);
-  await expect(page.locator('#suggestions .starter-retry')).toHaveText('Try again');
+  await expect.poll(async () => (await calls(page, 'getPrereasonerSuggestions')).length).toBeGreaterThan(0);
+  await expect(page.locator('#suggestions')).toBeHidden();
+  await expect(page.locator('#thread')).toHaveText('');
+  await expect(page.locator('#topline')).toBeHidden();
   await page.locator('#question').fill('total amount');
   await page.locator('#question').press('Enter');
   await expect.poll(()=>page.evaluate(()=>Boolean(window.__server.pendingAsk))).toBe(true);
@@ -60,6 +62,17 @@ test('long suggested questions wrap into full-height cards without overlapping',
   expect(second.top).toBeGreaterThanOrEqual(first.bottom);
 });
 
+test('suggested questions stay aligned under a host stylesheet that spaces adjacent buttons', async ({page}) => {
+  // Google's add-on stylesheet sets `button + button { margin-left: 12px }`, which pushed every
+  // card after the first to the right (2026-10-04).
+  await openSidebar(page, orders);
+  await page.addStyleTag({content: 'button + button { margin-left: 12px; }'});
+  const buttons = page.locator('#suggestions .starter-question');
+  await expect(buttons).toHaveCount(3);
+  const lefts = await buttons.evaluateAll(elements => elements.map(element => element.getBoundingClientRect().left));
+  expect(new Set(lefts).size).toBe(1);
+});
+
 test('suggestions receive every sheet name and column plus the active sheet without a scope picker', async ({page}) => {
   const schema={sheets:[{name:'Orders',columns:['country','amount']},{name:'Archive',columns:['id']}],
     active_sheet:'Orders',scope:['Orders','Archive']};
@@ -74,12 +87,13 @@ test('suggestions receive every sheet name and column plus the active sheet with
 
 test('the Sheets sidebar renders the web rail, with live steps from the realtime trace', async ({page}) => {
   await openSidebar(page, orders);
-  await expect(page.locator('.empty')).toContainText('Ask a question about the current sheet.');
-  await expect(page.locator('.data-notice')).toContainText('This data is not used to train generalized AI models.');
-  await expect(page.locator('#syncStatus')).toHaveText('Synced just now');
-  await expect(page.locator('#syncStatus')).not.toContainText('Orders');
-  await expect(page.locator('#syncStatus')).not.toContainText('tabs');
+  // Empty: the composer and three starter questions, nothing else.
   await expect(page.locator('#newConversation')).toBeEnabled();
+  await expect(page.locator('#suggestions .starter-question')).toHaveCount(3);
+  await expect(page.locator('#thread')).toHaveText('');
+  await expect(page.locator('#topline')).toBeHidden();
+  for (const removed of ['.data-notice', '#syncStatus', '#note', '.starter-title', '.empty'])
+    await expect(page.locator(removed)).toHaveCount(0);
   expect(await page.evaluate(() => window.__signedInWith)).toBe('google-token');
   const [restore] = await calls(page, 'restorePrereasonerSheetConversation');
   expect(restore.arg.tables).toEqual([{name: 'Orders', data: 'country,amount\nFrance,840\nFrance,400\nGermany,620',
@@ -88,6 +102,7 @@ test('the Sheets sidebar renders the web rail, with live steps from the realtime
   await page.locator('#question').fill('What are total sales in France?');
   await page.locator('#question').press('Enter');
   await expect.poll(() => page.evaluate(() => Boolean(window.__server.pendingAsk))).toBe(true);
+  await expect(page.locator('#suggestions')).toBeHidden();   // starters belong to an empty chat
   const ask = await page.evaluate(() => window.__server.pendingAsk.arg);
   expect(ask.question).toBe('What are total sales in France?');
   expect(ask.tables[0].data).toBe('country,amount\nFrance,840\nFrance,400\nGermany,620');
@@ -122,27 +137,30 @@ test('the Sheets sidebar renders the web rail, with live steps from the realtime
   expect(save.arg.state.turns[0].steps.map(step => step.description))
     .toEqual(['Kept only the rows where country is France.', 'Added up the values to get the total.']);
 
-  // New chat unbinds the sheet.
+  // New chat unbinds the sheet and brings the starters back.
+  await expect(page.locator('#topline')).toBeVisible();
   await page.locator('#newConversation').click();
-  await expect(page.locator('.empty')).toContainText('Ask a question about the current sheet.');
+  await expect(page.locator('#thread')).toHaveText('');
+  await expect(page.locator('#suggestions .starter-question')).toHaveCount(3);
+  await expect(page.locator('#topline')).toBeHidden();
   expect((await calls(page, 'clearPrereasonerSheetConversation')).length).toBe(1);
 });
 
-test('messy headers warn without preventing a question', async ({page}) => {
+test('messy headers are read without a warning and without preventing a question', async ({page}) => {
   await openSidebar(page, [['id','amount','amount',null],[1,10,20,'note']]);
   await expect(page.locator('#newConversation')).toBeEnabled();
   await expect(page.locator('.sheet-error')).toHaveCount(0);
-  await expect(page.locator('#note')).toContainText('Repeated headers were kept');
+  await expect(page.locator('#scroll')).not.toContainText('Repeated headers');
   await page.locator('#question').fill('How many rows are there?');
   await page.locator('#question').press('Enter');
   await expect.poll(() => page.evaluate(() => Boolean(window.__server.pendingAsk))).toBe(true);
-  expect((await page.evaluate(() => window.__server.pendingAsk.arg)).tables[0].data)
-    .toBe('id,amount [column B],amount [column C],Column D\n1,10,20,note');
+  const table = (await page.evaluate(() => window.__server.pendingAsk.arg)).tables[0];
+  expect(table.data).toBe('id,amount [column B],amount [column C],Column D\n1,10,20,note');
+  expect(table.source.warnings.join(' ')).toContain('Repeated headers were kept');   // still sent with the data
 });
 
 test('typing while reading and answering preserves the draft even on failure', async ({page}) => {
   await openSidebar(page, orders, {}, {contextDelay: 1500});
-  await expect(page.locator('#syncStatus')).toHaveText('Reading the sheet…');
   await expect(page.locator('#question')).toBeEnabled();
   await expect(page.locator('#send')).toBeDisabled();
   await page.locator('#question').fill('total amount');
@@ -154,6 +172,8 @@ test('typing while reading and answering preserves the draft even on failure', a
   await page.locator('#question').fill('and for Germany?');
   await page.evaluate(() => window.__server.pendingAsk.fail({message:'Network unavailable'}));
   await expect(page.locator('.answer.error')).toContainText('Network unavailable');
+  // The failed question stays in the thread; it is never silently dropped.
+  await expect(page.locator('.turn.user')).toHaveText('total amount');
   await expect(page.locator('#question')).toHaveValue('and for Germany?');
 });
 
@@ -163,13 +183,12 @@ test('the Sheets sidebar explains an incomplete import without asking users to s
   ]});
   await expect(page.locator('.sheet-error')).toContainText('SI, Log, Wide');
   await expect(page.locator('.sheet-error')).toContainText('Hide or close unrelated large tabs');
-  await expect(page.locator('#syncStatus')).toHaveText('Couldn’t sync');
+  await expect(page.locator('#suggestions')).toBeHidden();
 });
 
-test('an automatically selected active-sheet scope is explained without a selectbox', async ({page}) => {
+test('an automatically selected active-sheet scope reads the current sheet without a selectbox', async ({page}) => {
   await openSidebar(page, orders, {}, {scope:'active', availableTabs:['Orders','Archive']});
   await expect(page.locator('#newConversation')).toBeEnabled();
-  await expect(page.locator('#note')).toContainText('Using the current sheet because the whole workbook is too large');
   await expect(page.locator('#sheetScope')).toHaveCount(0);
   await page.locator('#question').fill('total amount');
   await page.locator('#question').press('Enter');
@@ -177,29 +196,85 @@ test('an automatically selected active-sheet scope is explained without a select
   expect((await calls(page,'getWorkbookGrids'))[0].arg).toEqual({scope:'active'});
 });
 
-test('an expired saved chat does not block a fresh question', async ({page}) => {
-  await openSidebar(page, orders, {
-    restorePrereasonerSheetConversation: 'Prereasoner: conversation expired.'
-  });
-  await expect(page.locator('#note')).toContainText('Your previous chat could not be resumed');
+test('a saved chat that cannot be read is tried again, and never replaced by a new chat', async ({page}) => {
+  // A passing outage was treated as an expired chat, which wiped the sheet's saved conversation
+  // (2026-10-04). The question fails and stays; nothing is asked over the unread chat.
+  await openSidebar(page, orders, {restorePrereasonerSheetConversation: 'Prereasoner: request failed.'});
+  await expect(page.locator('#newConversation')).toBeEnabled();
+  await expect(page.locator('#scroll')).not.toContainText('request failed');
   await page.locator('#question').fill('keyword volume for home inspection checklist');
+  await page.locator('#question').press('Enter');
+  await expect(page.locator('.answer.error')).toContainText('Prereasoner: request failed.');
+  await expect(page.locator('.turn.user')).toHaveText('keyword volume for home inspection checklist');
+  expect((await calls(page, 'restorePrereasonerSheetConversation')).length).toBe(2);
+  expect(await calls(page, 'askPrereasoner')).toEqual([]);
+});
+
+test('a question in a chat deleted elsewhere is asked once more as a new chat, keeping the thread', async ({page}) => {
+  // The chat service answered 500 to every question in a deleted conversation, and the sidebar kept
+  // sending the dead id (2026-10-04). Its 404 now drops the id, and the question runs once more.
+  const saved = {client: 'google-sheets-addon', version: 2, syncedFingerprint: '',
+    turns: [{question: 'What are total sales in France?', reply: 'Total sales in France are US$1,240.', steps: [], asks: []}],
+    history: [{role: 'user', content: 'What are total sales in France?'}, {role: 'assistant', content: 'Total sales in France are US$1,240.'}]};
+  await openSidebar(page, orders, {}, {restored: {conversationId: conversation, state: saved},
+    failOnce: {askPrereasoner: 'Prereasoner: conversation not found.'}});
+  await expect(page.locator('.turn-answer')).toHaveText('Total sales in France are US$1,240.');
+  await page.locator('#question').fill('and in Germany?');
+  await page.locator('#question').press('Enter');
+  await expect.poll(() => page.evaluate(() => Boolean(window.__server.pendingAsk))).toBe(true);
+  const asks = await calls(page, 'askPrereasoner');
+  expect(asks.map(ask => ask.arg.conversationId)).toEqual([conversation, null]);
+  expect(asks[1].arg.history).toEqual(saved.history);
+  await expect(page.locator('.answer.error')).toHaveCount(0);
+  await expect(page.locator('.turn.user').first()).toHaveText('What are total sales in France?');
+});
+
+test('a passing sync failure keeps the chat and the earlier turns', async ({page}) => {
+  const saved = {client: 'google-sheets-addon', version: 2, syncedFingerprint: 'an-older-sheet',
+    turns: [{question: 'What are total sales in France?', reply: 'Total sales in France are US$1,240.', steps: [], asks: []}],
+    history: []};
+  await openSidebar(page, orders, {}, {restored: {conversationId: conversation, state: saved},
+    failOnce: {syncPrereasonerConversation: 'Prereasoner: request failed.'}});
+  await expect(page.locator('.turn-answer')).toHaveText('Total sales in France are US$1,240.');
+  await page.locator('#question').fill('and in Germany?');
+  await page.locator('#question').press('Enter');
+  await expect(page.locator('.answer.error')).toContainText('Prereasoner: request failed.');
+  expect(await calls(page, 'askPrereasoner')).toEqual([]);
+  // Asked again, the same chat is synced and asked.
+  await page.locator('#question').fill('and in Germany?');
+  await page.locator('#question').press('Enter');
+  await expect.poll(() => page.evaluate(() => Boolean(window.__server.pendingAsk))).toBe(true);
+  expect((await calls(page, 'askPrereasoner'))[0].arg.conversationId).toBe(conversation);
+  await expect(page.locator('.turn.user')).toHaveText(['What are total sales in France?', 'and in Germany?', 'and in Germany?']);
+});
+
+test('a chat that can no longer take the changed sheet keeps its turns and history for the next question', async ({page}) => {
+  const saved = {client: 'google-sheets-addon', version: 2, syncedFingerprint: 'an-older-sheet',
+    turns: [{question: 'What are total sales in France?', reply: 'Total sales in France are US$1,240.', steps: [], asks: []}],
+    history: [{role: 'user', content: 'What are total sales in France?'}, {role: 'assistant', content: 'Total sales in France are US$1,240.'}]};
+  await openSidebar(page, orders, {syncPrereasonerConversation: 'conversation not found'}, {restored: {conversationId: conversation, state: saved}});
+  await expect(page.locator('.turn-answer')).toHaveText('Total sales in France are US$1,240.');
+  await page.locator('#question').fill('and in Germany?');
   await page.locator('#question').press('Enter');
   await expect.poll(() => page.evaluate(() => Boolean(window.__server.pendingAsk))).toBe(true);
   const request = await page.evaluate(() => window.__server.pendingAsk.arg);
-  expect(request.question).toBe('keyword volume for home inspection checklist');
   expect(request.conversationId).toBeNull();
-  expect(request.history).toEqual([]);
+  expect(request.history).toEqual(saved.history);
+  await expect(page.locator('.turn.user').first()).toHaveText('What are total sales in France?');
+  await expect(page.locator('#scroll')).not.toContainText('could not');
 });
 
-test('sync status shows relative freshness and never exposes workbook tab names', async ({page}) => {
-  await page.clock.install({time: new Date('2026-10-04T10:00:00Z')});
+test('an answer that belongs to no conversation is shown and not saved', async ({page}) => {
   await openSidebar(page, orders);
-  await expect(page.locator('#syncStatus')).toHaveText('Synced just now');
-  await page.clock.fastForward(5 * 60 * 1000);
-  await expect(page.locator('#syncStatus')).toHaveText('Updated 5 minutes ago');
-  await expect(page.locator('#syncStatus')).not.toContainText('Orders');
-  await expect(page.locator('#sheetCount')).toHaveCount(0);
-  await expect(page.locator('#sheetScope')).toHaveCount(0);
+  await page.locator('#question').fill('What are total sales in France?');
+  await expect(page.locator('#newConversation')).toBeEnabled();
+  await page.locator('#question').press('Enter');
+  await expect.poll(() => page.evaluate(() => Boolean(window.__server.pendingAsk))).toBe(true);
+  await page.evaluate(() => window.__server.pendingAsk.ok({reply: 'Prereasoner could not answer that question.',
+    conversationId: null, history: [], traces: []}));
+  await expect(page.locator('.turn-answer')).toHaveText('Prereasoner could not answer that question.');
+  expect(await calls(page, 'savePrereasonerSheetConversation')).toEqual([]);
+  await expect(page.locator('#scroll')).not.toContainText('expired');
 });
 
 test('the Sheets sidebar explains a multi-account refusal instead of blaming the sheet', async ({page}) => {
@@ -220,7 +295,7 @@ test('the Sheets sidebar explains a multi-account refusal instead of blaming the
   expect(await calls(page, 'askPrereasoner')).toEqual([]);
 });
 
-test('the Sheets sidebar keeps the answer and shows the server reason when sheet history cannot save', async ({page}) => {
+test('the Sheets sidebar keeps the answer without a notice when sheet history cannot save', async ({page}) => {
   await openSidebar(page, orders, {savePrereasonerSheetConversation: 'Prereasoner: spreadsheet session limit reached.'});
   await page.locator('#question').fill('What are total sales in France?');
   await expect(page.locator('#send')).toBeEnabled();
@@ -228,8 +303,7 @@ test('the Sheets sidebar keeps the answer and shows the server reason when sheet
   await expect.poll(() => page.evaluate(() => Boolean(window.__server.pendingAsk))).toBe(true);
   await answer(page, 'Total sales in France are **US$1,240**.', views);
   await expect(page.locator('.turn-answer')).toHaveText('Total sales in France are US$1,240.');
-  await expect(page.locator('#note')).toHaveText(
-    'The answer was returned, but this sheet’s conversation could not be saved: Prereasoner: spreadsheet session limit reached.'
-  );
+  await expect.poll(async () => (await calls(page, 'savePrereasonerSheetConversation')).length).toBe(1);
+  await expect(page.locator('#scroll')).not.toContainText('could not be saved');
   await expect(page.locator('#newConversation')).toBeEnabled();
 });

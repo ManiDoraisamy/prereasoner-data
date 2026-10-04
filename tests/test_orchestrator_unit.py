@@ -14,6 +14,7 @@ from unittest.mock import patch
 
 from engine import dataset_attestation
 from orchestrator import orchestrator
+from engine.answer_presentation import BUSY_REPLY
 
 
 def _tools_enabled(kwargs) -> bool:
@@ -583,7 +584,7 @@ def test_an_engine_clarification_is_settled_at_most_once():
     assert engine_calls == [COMMISSION_FOLLOW_UP]
     assert [call["tools"] for call in model_calls] == [True, True]
     assert len(model_calls) == 2
-    assert result["reply"] == "I need one more detail before I can answer that. Try: total commission_percent Which interpretation should I use?"
+    assert result["reply"] == "I need one more detail before I can answer that. Try asking: “total commission_percent”"
     # A second clarification is terminal.
     _result, model_calls, engine_calls = _clarified_follow_up(
         [{"question": COMMISSION_FOLLOW_UP}, {"question": "total commission for card payments"}],
@@ -592,7 +593,7 @@ def test_an_engine_clarification_is_settled_at_most_once():
     # The model may ask the user itself; that reply is the clarification and adds no number.
     result, model_calls, engine_calls = _clarified_follow_up(
         [{"question": COMMISSION_FOLLOW_UP}, ask], [COMMISSION_CLARIFY])
-    assert (len(model_calls), engine_calls, result["reply"]) == (2, [COMMISSION_FOLLOW_UP], "I need one more detail before I can answer that. Try: total commission_percent Which interpretation should I use?")
+    assert (len(model_calls), engine_calls, result["reply"]) == (2, [COMMISSION_FOLLOW_UP], "I need one more detail before I can answer that. Try asking: “total commission_percent”")
     result, _model_calls, _engine_calls = _clarified_follow_up(
         [{"question": COMMISSION_FOLLOW_UP}, "It is 9.28, as before."], [COMMISSION_CLARIFY])
     assert "9.28" not in result["reply"], result["reply"]
@@ -695,7 +696,7 @@ def test_followup_prompt_separates_geography_from_output_currency_and_executes_y
     prompt = " ".join(orchestrator.SYSTEM_PROMPT.lower().split())
     assert "never limits the rows to those already recorded in it" in prompt
     assert 'accepts the specific action your previous message offered' in prompt
-    assert orchestrator._terminal_fallback({"status": "error", "error": "Engine is busy; retry shortly"}) == "Engine is busy; retry shortly Please send your question again shortly."
+    assert orchestrator._terminal_fallback({"status": "error", "error": "Engine is busy; retry shortly"}) == BUSY_REPLY
     assert "europe" not in prompt and "£810" not in prompt
 
 
@@ -882,7 +883,7 @@ def test_a_failed_turn_promises_no_retry():
     admits a waiting one for 15 s). The replies were "Let me try that again." and "there was a hiccup on
     my end just now, let me try that again", and nothing was retried: a terminal engine outcome ends the
     turn (test_terminal_engine_status_uses_one_query_and_a_tool_disabled_presentation)."""
-    assert orchestrator._terminal_fallback({"status": "error", "error": "Engine is busy; retry shortly"}) == "Engine is busy; retry shortly Please send your question again shortly."
+    assert orchestrator._terminal_fallback({"status": "error", "error": "Engine is busy; retry shortly"}) == BUSY_REPLY
 
 
 def test_an_analysis_is_named_for_its_measure_not_its_filter():

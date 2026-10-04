@@ -4,22 +4,54 @@ import re
 from typing import Any
 
 
+UNAVAILABLE_REPLY = "Prereasoner couldn't answer that right now. Please ask again in a moment."
+BUSY_REPLY = "Prereasoner is busy right now. Please send your question again shortly."
+SIGN_IN_REPLY = "Your sign-in has expired. Reload Prereasoner, then ask again."
+CONVERSATION_LIMIT_REPLY = "Your account has reached its limit of saved conversations. Delete an old one, then ask again."
+FULL_CONVERSATION_REPLY = "This conversation is full. Start a new chat to keep asking."
+# Engine text that describes code rather than the request: an exception name, a query, a payload,
+# a status line or an address. Users see a sentence; the raw text stays in the trace.
+_TECHNICAL = re.compile(r"^[A-Za-z_.]*(?:Error|Exception)\b|Traceback|\bSQL\b|psycopg|[{}]|\bHTTP \d{3}\b|https?://",
+                        re.I)
+
+
+def error_reply(shaped: dict[str, Any]) -> str:
+    """A failed engine call as one sentence the user can act on. The engine's own text reaches the
+    user only when it was written for them; a 500, a lost connection or an exception message showed
+    as "internal server error" or the engine's internal address (2026-10-04)."""
+    error = str(shaped.get("error") or "")
+    status = shaped.get("http_status")
+    if re.search(r"\bconversation (?:storage )?limit reached\b", error, re.I):
+        return CONVERSATION_LIMIT_REPLY
+    if re.search(r"\btoo many (?:analyses|revisions)\b|\b(?:workbook|state) is too large\b", error, re.I):
+        return FULL_CONVERSATION_REPLY
+    if status in (429, 503) or re.search(r"\bbusy\b", error, re.I):
+        return BUSY_REPLY
+    if status == 401 or re.search(r"\bsign in required\b", error, re.I):
+        return SIGN_IN_REPLY
+    if shaped.get("unreachable") or (status or 0) >= 500 or not error or _TECHNICAL.search(error):
+        return UNAVAILABLE_REPLY
+    return error
+
+
+def clarify_reply(clarify: dict[str, Any]) -> str:
+    """The engine's clarification, with the question it proposes quoted as one the user can send."""
+    reason = str(clarify.get("reason") or "I need one more detail before I can answer that.").strip()
+    proposed = str(clarify.get("proposed") or "").strip()
+    if proposed:
+        sentence = reason if reason[-1:] in ".?!" else reason + "."
+        return f"{sentence} Try asking: “{proposed}”"
+    if "?" not in reason and not re.search(r"\b(?:choose|select|try asking)\b", reason, re.I):
+        reason += " Which interpretation should I use?"
+    return reason
+
+
 def terminal_reply(shaped: dict[str, Any]) -> str:
     """Render the engine's terminal facts, without an external presentation model."""
     if shaped.get("status") == "clarify":
-        clarify = shaped.get("clarify") or {}
-        reason = str(clarify.get("reason") or "I need one more detail before I can answer that.")
-        proposed = clarify.get('proposed')
-        prompt = reason + (f' Try: {proposed}' if proposed else '')
-        actionable = re.search(r'\b(?:choose|select|try asking|try:)\b', prompt, re.I)
-        if '?' not in prompt and not actionable:
-            prompt = prompt.rstrip() + ' Which interpretation should I use?'
-        return prompt
+        return clarify_reply(shaped.get("clarify") or {})
     if shaped.get("status") == "error":
-        error = str(shaped.get("error") or "I couldn't complete that data question.")
-        if re.search(r'\bbusy\b', error, re.I):
-            error += ' Please send your question again shortly.'
-        return error
+        return error_reply(shaped)
     answer = shaped.get("answer") or {}
     rows = answer.get("rows") or []
     notes = []
