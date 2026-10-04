@@ -117,6 +117,20 @@ assert.equal(regional.csv,'item,region,amount\nA,FR,2');
 assert.equal(regional.summaryCsv,'item,region,amount\nTotal,FR,3');
 assert.equal(normalize([['region','amount','currency'],['FR',100,'USD'],['DE',50,'USD'],['Total',150,'USD']]).csv,
   'region,amount,currency\nFR,100,USD\nDE,50,USD');
+// Summaries give way before a workbook is refused: five tabs with a total row each were ten tables,
+// over the limit of eight, with no picker in the Sheets sidebar (2026-10-04).
+require('../public/lib/upload-limits.js');
+const totalled=name=>({name,rows:[['item','amount'],['A',2],['B',3],['Total',5]]});
+const five=WORKBOOK_IMPORT.convert({grids:['N','S','E','W','C'].map(totalled)},XLSX,UPLOAD_LIMITS);
+assert.equal(five.ok,true,five.error);
+assert.deepEqual(five.sheets.map(sheet=>sheet.name),['N','N summaries','S','S summaries','E','E summaries','W','C']);
+assert.match(five.sheets[6].import.warnings.join(' '),/left out to avoid counting them twice/);
+assert.match(five.sheets[0].import.warnings.join(' '),/separated into a summaries table/);
+const eight=WORKBOOK_IMPORT.convert({grids:'ABCDEFGH'.split('').map(totalled)},XLSX,UPLOAD_LIMITS);
+assert.equal(eight.ok,true,eight.error);
+assert.deepEqual(eight.sheets.map(sheet=>sheet.name),'ABCDEFGH'.split(''));
+const two=WORKBOOK_IMPORT.convert({grids:['N','S'].map(totalled)},XLSX,UPLOAD_LIMITS);
+assert.deepEqual(two.sheets.map(sheet=>sheet.name),['N','N summaries','S','S summaries']);
 const [groupedGrid]=normalizeGrids([{name:'grouped',rows:[['Order','Amounts',null],['ID','Net','Tax'],[1,10,2]],
   merges:[{s:{r:0,c:1},e:{r:0,c:2}}]}]);
 assert.match(groupedGrid.csv,/"?ID"?,Amounts Net,Amounts Tax/);

@@ -199,8 +199,21 @@
           sheets.push({name:summaryName,csv:normalized.summaryCsv,import:{...normalized.import,section:'summaries',warnings:[],dataRows:normalized.summaryCsv.split('\n').length-1}});
         }
       }
-      if(sheets.length>limits.sheets)throw new Error('This workbook has more than '+limits.sheets+' data regions. Choose the sheets or regions relevant to your question.');
-      return {ok:true,sheets};
+      // A summaries table holds only the total rows set aside from its region, so summaries give way
+      // before the workbook is refused: five tabs with a total row each were ten tables, over the
+      // limit, and the Sheets sidebar has no picker to choose from (2026-10-04).
+      const summaries=sheet=>Boolean(sheet.import&&sheet.import.section==='summaries');
+      const regions=sheets.filter(sheet=>!summaries(sheet)).length;
+      if(regions>limits.sheets)throw new Error('This workbook has more than '+limits.sheets+' data regions. Choose the sheets or regions relevant to your question.');
+      let room=limits.sheets-regions,region=null;
+      const kept=[];
+      for(const sheet of sheets){
+        if(!summaries(sheet)){region=sheet;kept.push(sheet);}
+        else if(room>0){room--;kept.push(sheet);}
+        else region.import.warnings=region.import.warnings.map(warning=>/separated into a summaries table/.test(warning)?
+          'Explicit total/subtotal rows were left out to avoid counting them twice; the workbook already fills '+limits.sheets+' tables.':warning);
+      }
+      return {ok:true,sheets:kept};
     }catch(error){
       return {ok:false,error:(error&&error.message)||String(error)};
     }

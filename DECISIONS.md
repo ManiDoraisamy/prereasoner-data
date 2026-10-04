@@ -1702,7 +1702,8 @@ A review of the 2026-10-03 changes found:
   task pane ask once more as a new chat, keeping the thread and history.
 - **Retry records.** These hold an answer's rows. They were kept for a day and survived conversation
   deletion. They are now kept for ten minutes, never replayed after that, and deleted with the user's
-  conversations.
+  conversations. The in-memory `ResponseReplay` the durable record replaced (2026-10-02) is deleted. Its
+  tests now run the serving class over an in-memory stand-in for `chat.request_job`.
 - **Statement timeouts.** A timeout statement sent inside an aborted transaction stopped SQLAlchemy's
   `ROLLBACK TO SAVEPOINT`, so the Python program's SQL retry failed. A lock now waits the request's
   budget rather than five seconds.
@@ -1712,6 +1713,9 @@ A review of the 2026-10-03 changes found:
   "Total, FR, 3" (a regional subtotal) or "Total, 150, USD" was counted twice without a word. A row
   led by a total label now goes to the summaries table whatever else it carries
   (`web/public/lib/workbook-import.js`, shared by uploads, Google import, Sheets and Excel).
+  - Summaries tables give way before a workbook is refused. Five tabs with a total row each made ten
+    tables, over the eight a request may carry, and the Sheets sidebar has no picker. Every data region
+    is kept, and a region whose total rows were left out says so in its import warnings.
 
 ## The completeness check reads names, compared values and the search's grain (2026-10-04)
 
