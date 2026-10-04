@@ -486,6 +486,21 @@ def test_a_recalculation_answered_from_memory_still_reaches_the_engine():
         assert result["reply"] == (reply if user_message.startswith("thanks") else "366.02")
 
 
+def test_an_acknowledgment_is_answered_without_an_engine_query():
+    """"thank you so much" and "ok, great" were forced into an engine query and came back as
+    clarifications (2026-10-04). A message made only of acknowledgments is not forced; one that
+    accepts an offer or asks of the data still is."""
+    notice = [{"role": "user", "content": "minimum notice_days"},
+              {"role": "assistant", "content": "The shortest notice period in your data is 5 days."}]
+    for message in ("thank you so much!", "ok, great", "Got it, thanks", "that's all for now. bye"):
+        result, model_calls, engine_calls = _answered_from_memory_turn(message, notice, "You're welcome!")
+        assert (len(model_calls), len(engine_calls)) == (1, 0), message
+        assert model_calls[0].get("tool_choice") is None, message
+        assert result["reply"] == "You're welcome!", message
+    for message in ("yes", "sure", "go ahead", "how much?", "ok, how about Paris?", "thanks, total amount", "great 5"):
+        assert not orchestrator._acknowledgment(message), message
+
+
 COMMISSION_HISTORY = [
     {"role": "user", "content": "total commission amount for card payments"},
     {"role": "assistant", "content": "The commission from card payments comes to 9.28."},
@@ -1693,6 +1708,7 @@ def test_a_yes_can_accept_the_question_a_clarification_offered():
 TESTS = [
     test_intent_context_has_schema_and_questions_but_no_values_or_assistant_answers,
     test_a_yes_can_accept_the_question_a_clarification_offered,
+    test_an_acknowledgment_is_answered_without_an_engine_query,
     test_rows_whose_entity_matched_nothing_reach_the_reply,
     test_a_gemini_reworded_question_is_the_turns_reading_not_part_of_the_reply,
     test_request_execution_mode_reaches_each_orchestrated_engine_call,

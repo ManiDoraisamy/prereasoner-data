@@ -74,7 +74,7 @@ def main():
         sys.exit(0)
 
     from engine import config
-    from orchestrator.orchestrator import run_chat
+    from orchestrator.orchestrator import TOOL_EXHAUSTED_REPLY, run_chat
 
     port = 8812
     base = f"http://127.0.0.1:{port}"
@@ -203,6 +203,17 @@ def main():
         clarified_sent = [t.get("question", "") for t in clarified["traces"]]
         ok(clarified_sent == ["total amount in Germany"],
            f"yes sends the offered question as written (got {clarified_sent})")
+
+        # An acknowledgment was forced into an engine query and came back as a clarification
+        # (2026-10-04). Unforced, the model answers it in words.
+        print("[1c] an acknowledgment is answered without an engine query")
+        thanked = asyncio.run(chat("thank you so much!", history=[
+            {"role": "user", "content": "total amount in France"},
+            {"role": "assistant", "content": "270"}]))
+        ok(not thanked["traces"] and thanked["reply"].strip()
+           and thanked["reply"] != TOOL_EXHAUSTED_REPLY,
+           f"no engine call and a reply in words (calls {[t.get('question') for t in thanked['traces']]}, "
+           f"reply {thanked['reply'][:80]!r})")
 
         # Chrome pass, 2026-09-30 (formfacade-leads, fresh conversation): the complete question "total
         # budget in Africa" between the USD request and the shorthand made the rewrite drop USD, so

@@ -86,6 +86,20 @@ SETTLE_FROM_CONVERSATION = (
 TOOL_EXHAUSTED_REPLY = (
     "I couldn't complete that request. Please try one specific question about the attached data."
 )
+# A message made only of these words acknowledges or greets; it asks nothing of the data, so the
+# model is not made to call the engine. "thank you so much" and "ok, great" were sent to the engine
+# and came back as clarifications (2026-10-04). "yes", "sure" and "go ahead" are not here: they
+# accept an offer. The model may still call the engine for any message.
+_ACKNOWLEDGMENT_WORDS = frozenset({
+    "hi", "hello", "hey", "thanks", "thank", "thx", "you", "ok", "okay", "great", "cool", "awesome",
+    "perfect", "nice", "good", "wonderful", "excellent", "bye", "goodbye", "cheers", "got", "it",
+    "so", "much", "very", "a", "lot", "that", "that's", "thats", "is", "all", "for", "now",
+})
+
+
+def _acknowledgment(message: str) -> bool:
+    words = re.findall(r"[a-z']+", message.casefold())
+    return bool(words) and not re.search(r"\d", message) and all(word in _ACKNOWLEDGMENT_WORDS for word in words)
 
 # The model's tool schemas. The model supplies the question and named-workbook decision; the
 # orchestrator injects session tables and a fresh jobId (large CSVs and infrastructure IDs stay out
@@ -584,8 +598,7 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
     pending_decomposition: dict[str, Any] | None = None
     dataset_ops_repaired = False
     recalculation_requested = False
-    smalltalk = bool(re.fullmatch(r'(?:hi|hello|thanks|thank you)(?:[,!. ]+that is all)?[!. ]*',
-                                 user_message.strip(), re.I))
+    smalltalk = _acknowledgment(user_message)
     recalculation_forced = not smalltalk
     clarification_offered = False                            # the one chance to settle an engine clarify
     unsettled: dict[str, Any] | None = None                  # that clarify, while the model answers it

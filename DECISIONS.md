@@ -1758,6 +1758,13 @@ than adding words to a list:
   reaches the model.
 - The live orchestrator suite sends it as written.
 
+**An acknowledgment.** A first round that is not small talk is made to call the engine, so that an
+earlier answer is never repeated from memory. Small talk was "hi", "hello", "thanks" and "thank you".
+"thank you so much" and "ok, great" therefore became engine questions and came back as clarifications.
+A message made only of acknowledgment and greeting words (`orchestrator._acknowledgment`, a closed
+set) is now answered by the model. "yes", "sure" and "go ahead" stay out, because they accept an
+offer. The live suite answers "thank you so much!" in words, with no engine call.
+
 **A replay record that cannot be kept** no longer turns a computed answer into a 500. The answer goes
 out, and a repeat of that request runs once its lease lapses.
 
