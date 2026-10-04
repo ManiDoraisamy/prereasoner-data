@@ -1609,10 +1609,11 @@ def test_the_model_sees_the_rows_the_answer_covers():
     assert "you do not receive source cells, answer rows or sql" in prompt
 
 
-def test_a_gemini_assisted_answer_is_labelled_for_the_reply():
-    """The engine builds every query itself; only when nothing it built runs does Gemini reword the
-    question (engine/question_rewrite.py). The reply must say so, as the workbook
-    does, and must not say so for the engine's own answers."""
+def test_a_gemini_reworded_question_is_the_turns_reading_not_part_of_the_reply():
+    """The engine builds every query itself; only when its search cannot read the question does Gemini
+    reword it (engine/question_rewrite.py). The reworded question is what the engine read, so it is the
+    call's "read as" line. Appended to the answer it was a second paragraph to read under "5,000"
+    (owner, 2026-10-04)."""
     from mcp_server.engine_client import shape_reason_response
 
     reworded = shape_reason_response({
@@ -1620,17 +1621,17 @@ def test_a_gemini_assisted_answer_is_labelled_for_the_reply():
         "fallback": {"kind": "rewrite", "model": "gemini-3.8-flash",
                      "question": "total amount by city"},
     }, "job")
-    seen = orchestrator._model_feedback(reworded)
-    assert "fallback" not in seen
-    assert 'Gemini reworded the question as: total amount by city' in orchestrator._terminal_fallback(reworded)
+    assert "fallback" not in orchestrator._model_feedback(reworded)
+    assert orchestrator._terminal_fallback(reworded) == "42"
+    assert orchestrator.reading(reworded, "amounts per town") == "total amount by city"
     nothing = shape_reason_response({
         "result": {"columns": ["n"], "rows": [[3]]},
         "fallback": {"kind": "none", "model": "gemini-3.8-flash", "note": "Gemini unavailable"},
     }, "job")
     assert "fallback" not in orchestrator._model_feedback(nothing)
+    assert orchestrator.reading(nothing, "how many orders") == "how many orders"
     plain = shape_reason_response({"result": {"columns": ["n"], "rows": [[3]]}}, "job")
-    assert "fallback" not in orchestrator._model_feedback(plain)
-    assert "Gemini reworded the question as: total amount by city" in orchestrator._terminal_fallback(reworded)
+    assert orchestrator.reading(plain, "how many orders") == "how many orders"
     assert "Gemini" not in orchestrator._terminal_fallback(plain)
 
 
@@ -1672,7 +1673,7 @@ def test_intent_context_has_schema_and_questions_but_no_values_or_assistant_answ
 TESTS = [
     test_intent_context_has_schema_and_questions_but_no_values_or_assistant_answers,
     test_rows_whose_entity_matched_nothing_reach_the_reply,
-    test_a_gemini_assisted_answer_is_labelled_for_the_reply,
+    test_a_gemini_reworded_question_is_the_turns_reading_not_part_of_the_reply,
     test_request_execution_mode_reaches_each_orchestrated_engine_call,
     test_unambiguous_column_as_table_is_rebound_before_attestation,
     test_a_complete_question_reaches_the_engine_without_appended_context,

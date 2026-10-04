@@ -37,6 +37,7 @@ html, body { height: 100%; }
       .analysis-open { display: inline-block; margin: 1px 0 7px 24px; color: #4f2fd0; text-decoration: none; font-size: 11px; }
       .analysis-open:hover, .analysis-open:focus { text-decoration: underline; }
       .cotask { margin: 0 0 7px 24px; color: #6c657c; font-size: 11px; line-height: 1.4; }
+      .turn-reading .cotask { margin: 8px 2px 0; font-size: 12px; }
       .reasontree { display: flex; flex-direction: column; gap: 5px; }
       .reasonnode { position: relative; min-width: 0; }
       .branchhead { display: flex; align-items: flex-start; gap: 7px; padding: 4px 2px; color: #51486b; line-height: 1.35; }

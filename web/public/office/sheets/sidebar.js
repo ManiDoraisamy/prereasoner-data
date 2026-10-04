@@ -116,8 +116,8 @@
 
         // The web rail's reasoning panel (lib/turn-renderer.js): the same steps, sentences and backend badges.
         function reasoningHtml(turn, live) {
-          var steps = turn.steps || [], asks = turn.asks || [];
-          if (!steps.length && !asks.length) return '';
+          var steps = turn.steps || [];
+          if (!steps.length) return '';
           var url = live ? '' : analysisUrl(turn);
           var tree = R.renderReasoningTree(steps, {renderStep: function (step, index) {
             return R.renderStepLink(step, index, url ? {href: url, title: 'Open this reasoning in Prereasoner'} : {});
@@ -125,14 +125,18 @@
           var name = turn.analysis ? R.analysisName(turn.analysis) : '';
           return R.renderReasoningPanel({
             title: name ? 'Reasoning steps for ' + name : 'Reasoning steps',
-            bodyHtml: R.renderAsks(asks, turn.question) + tree, analysisUrl: url, open: !!live, className: live ? 'live-reasoning' : ''
+            bodyHtml: tree, analysisUrl: url, open: !!live, className: live ? 'live-reasoning' : ''
           });
         }
 
+        // What the engine read, when it differs from what was typed (a follow-up made whole, or a question
+        // Gemini reworded so the search could read it): the line the live "Reading as" status becomes.
+        // It was appended to the answer as "Gemini reworded the question as: ..." (2026-10-04).
         function turnHtml(turn) {
           if (turn.error) return failedHtml(turn);
-          return R.renderTurn({question: turn.question, assistantHtml: R.renderAssistantTurn({
-            reasoningHtml: reasoningHtml(turn, false), reply: turn.reply || 'No answer was returned.'})});
+          var reading = R.renderAsks(turn.asks || [], turn.question);
+          return R.renderTurn({question: turn.question, assistantHtml: (reading ? '<div class="turn-reading">' + reading + '</div>' : '') +
+            R.renderAssistantTurn({reasoningHtml: reasoningHtml(turn, false), reply: turn.reply || 'No answer was returned.'})});
         }
 
         function liveHtml(live) {

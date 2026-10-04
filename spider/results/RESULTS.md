@@ -4,6 +4,55 @@ Dated entries come newest first. Each records a run at the commit it names; the 
 entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection arbiter`) may since have
 been removed, and that commit holds the code that ran.
 
+## Experiment: the completeness checks as preferences, on `6530bbc` (2026-10-04)
+
+Same contract and data as the deployed run below, from a scratch worktree of `6530bbc` with one uncommitted
+change to `engine/tables.py` (`worktree_dirty=true`, tag `advisory-6530bbc`):
+- `constraint_violations` and `coverage` choose among runnable candidates instead of removing them;
+- an unread question word no longer cancels the selected query;
+- Gemini's rewording would run only when nothing runs.
+
+| | Strict | Answered | Lenient | Scalar |
+|---|---:|---:|---:|---:|
+| `60a55a3` (previous release) | 497 | 1,025 | 603 | 286/408 |
+| `6530bbc` (deployed) | 241 | 402 | 306 | 148/408 |
+| `6530bbc` + preferences | **476 (46.0%)** | 1,025 | 614 | 286/408 |
+
+Against the deployed run: 235 strict wins, no losses (lenient: 308 wins, no losses). Against `60a55a3`:
+20 strict wins, 41 losses, 456 both correct, 517 both wrong (lenient 36 wins, 25 losses). Prediction seconds:
+median 1.24, p90 3.09, max 10.88. The change is not in production code; promoting it needs the owner's
+decision. Output: `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_advisory-6530bbc.json`.
+
+## The deployed engine at `6530bbc`, fresh whole_db DEV run (2026-10-04)
+
+The serving-faithful contract of the `60a55a3` run below (`spider/probe/full_eval.py --config whole_db`,
+`served` selection, SQL backend, row cap 5,000, the Gemini fallback off), from a clean checkout of
+`6530bbc` (`worktree_dirty=false`, tag `deployed-6530bbc`): the commit production serves since
+2026-10-04 03:11 UTC. Selection there includes the completeness check (`engine/query_contract.py`), which
+refuses a runnable query when a question word is unread.
+
+| Difficulty | n | Answered | Strict | Lenient | Scalar |
+|---|---:|---:|---:|---:|---:|
+| easy | 248 | 133 | 105 | 114 | 90/173 |
+| medium | 446 | 165 | 97 | 122 | 27/101 |
+| hard | 174 | 60 | 24 | 41 | 19/77 |
+| extra | 166 | 44 | 15 | 29 | 12/57 |
+| **all** | **1,034** | **402** | **241 (23.3%)** | **306 (29.6%)** | **148/408 (36.3%)** |
+
+Against `60a55a3` (497):
+
+| | strict | lenient |
+|---|---:|---:|
+| win | 10 | 15 |
+| loss | 266 | 312 |
+| both correct | 231 | 291 |
+| both wrong | 527 | 416 |
+
+Of the 266 strict losses, 244 are refusals (no query served) and 22 are different answers. Among answered
+questions, 241 of 402 are strict-correct (60%), against 497 of 1,025 (48%) at `60a55a3`. Prediction seconds:
+median 1.33, p90 3.06, p95 3.79, max 15.28. Output:
+`%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_deployed-6530bbc.json`.
+
 ## Release review at `4c29cd5`, whole_db DEV (2026-10-03)
 
 Clean source `4c29cd537e1bd5e820d795c2fbb0ce6ce4f04dbe`, served selection,

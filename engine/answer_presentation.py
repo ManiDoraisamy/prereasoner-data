@@ -58,9 +58,8 @@ def terminal_reply(shaped: dict[str, Any]) -> str:
     unmatched = shaped.get("unmatched") or {}
     if unmatched.get("rows"):
         notes.append(f"{unmatched['rows']} of {unmatched.get('of', '?')} source rows could not be matched and were excluded.")
-    rewrite = shaped.get("fallback") or {}
-    if rewrite.get("kind") == "rewrite":
-        notes.append(f"Gemini reworded the question as: {rewrite.get('question', '')}")
+    # A question Gemini reworded is the turn's reading, shown on its "read as" line
+    # (orchestrator.reading); appended to the answer, it was a second answer to read (2026-10-04).
     suffix = ("\n\n" + " ".join(notes)) if notes else ""
     if len(rows) == 1 and len(rows[0]) == 1:
         if rows[0][0] is None:

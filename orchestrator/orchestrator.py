@@ -260,6 +260,15 @@ def _intent_context(history, tables):
     return {'recent_questions': questions, 'schema': schema}
 
 
+def reading(shaped, question):
+    """The question the engine answered: the one Gemini reworded when the search could not read the
+    asked one (engine/question_rewrite.py), else the asked one. It is the call's "read as" line; the
+    reply carried it as a second paragraph under the answer (2026-10-04)."""
+    rewrite = shaped.get("fallback") or {}
+    reworded = str(rewrite.get("question") or "").strip() if rewrite.get("kind") == "rewrite" else ""
+    return reworded or question
+
+
 def _model_feedback(shaped):
     """Only interpretation status goes back to Gemini; results stay in the engine/UI."""
     return {key: shaped[key] for key in ('status', 'clarify', 'error', 'analysis', 'decomposition_required')
@@ -844,7 +853,7 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                             _emit("conversation_id", conv)    # stream it NOW, mid-turn — the browser unsubscribes from the
                                                               # turn node on 'status:done' (workbook settle()), so the
                                                               # post-'done' emit below would be MISSED: no URL, no snapshot save
-                        traces.append({"jobId": job_id, "question": question, "engine": shaped})
+                        traces.append({"jobId": job_id, "question": reading(shaped, question), "engine": shaped})
                         if (shaped.get("status") == "clarify" and shaped.get("dataset_ops_rejected")
                                 and not dataset_ops_repaired):
                             # A rejected dataset op (a sheet or column the upload lacks, a code the

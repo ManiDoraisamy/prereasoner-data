@@ -146,6 +146,33 @@ test('the Sheets sidebar renders the web rail, with live steps from the realtime
   expect((await calls(page, 'clearPrereasonerSheetConversation')).length).toBe(1);
 });
 
+test('a reworded question is the turn\'s visible read-as line, and the answer is only the answer', async ({page}) => {
+  // The owner's sheet (2026-10-04): "Gemini reworded the question as: ..." sat under "5,000" in the
+  // answer. What the engine read belongs on the line the live "Reading as" status becomes.
+  const reading = "What is the Avg. monthly searches for the Keyword 'home inspection checklist'?";
+  await openSidebar(page, orders);
+  await page.locator('#question').fill('keyword volume for home inspection checklist');
+  await expect(page.locator('#newConversation')).toBeEnabled();
+  await page.locator('#question').press('Enter');
+  await expect.poll(() => page.evaluate(() => Boolean(window.__server.pendingAsk))).toBe(true);
+  await page.evaluate(({conversation, reading, views}) => window.__server.pendingAsk.ok({reply: '5,000',
+    conversationId: conversation, history: [],
+    traces: [{jobId: 'job-1', question: reading, analysis: {analysis_id: 'a_11111111111111111111111111111111', revision: 1,
+      display_name: 'keyword volume'}, views}]}), {conversation, reading, views});
+  await expect(page.locator('.turn-answer')).toHaveText('5,000');
+  await expect(page.locator('.turn-reading .cotask')).toHaveText('read as “' + reading + '”');
+  await expect(page.locator('.turn-reading .cotask')).toBeVisible();
+  await expect(page.locator('details.reasoning .cotask')).toHaveCount(0);
+  // The engine reading the typed words adds no line.
+  await page.locator('#question').fill('total amount');
+  await page.locator('#question').press('Enter');
+  await expect.poll(() => page.evaluate(() => window.__server.pendingAsk.arg.question)).toBe('total amount');
+  await page.evaluate(({conversation, views}) => window.__server.pendingAsk.ok({reply: '1,860', conversationId: conversation,
+    history: [], traces: [{jobId: 'job-2', question: 'total amount', views}]}), {conversation, views});
+  await expect(page.locator('.turn-answer')).toHaveText(['5,000', '1,860']);
+  await expect(page.locator('.turn-reading')).toHaveCount(1);
+});
+
 test('messy headers are read without a warning and without preventing a question', async ({page}) => {
   await openSidebar(page, [['id','amount','amount',null],[1,10,20,'note']]);
   await expect(page.locator('#newConversation')).toBeEnabled();
