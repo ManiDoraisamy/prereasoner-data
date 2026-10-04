@@ -9,7 +9,6 @@ from engine.request_budget import BudgetPolicy, PostgresRequestBudget
 from engine.request_limits import (
     JSONBodyError,
     RequestGate,
-    ResponseReplay,
     SlidingWindowLimiter,
     allowed_origin,
     parse_content_length,
@@ -594,53 +593,120 @@ def test_distributed_paid_budget_is_atomic_and_releases_lease():
     assert any("DELETE FROM chat.request_lease" in statement for statement, _ in released.statements)
 
 
+class _RequestJobs:
+    """`chat.request_job` in memory, for the statements engine/request_replay.py sends. One
+    transaction runs at a time (the row lock its SELECT ... FOR UPDATE takes). Times are seconds on
+    `clock`; Postgres keeps them as timestamps. The live gate (tests/test_request_replay_live.py) runs
+    the same class against PostgreSQL."""
+
+    def __init__(self):
+        import threading
+        import time
+        self.rows, self.lock, self.offset, self._time = {}, threading.Lock(), 0.0, time.monotonic
+
+    def clock(self):
+        return self._time() + self.offset
+
+    def connect(self):
+        return _RequestJobTransaction(self)
+
+
+class _RequestJobTransaction:
+    def __init__(self, store):
+        self.store, self.held, self.row = store, False, None
+
+    def cursor(self):
+        return self
+
+    def execute(self, statement, params=()):
+        import json
+        if not self.held:
+            self.store.lock.acquire()
+            self.held = True
+        now, rows, sql = self.store.clock(), self.store.rows, " ".join(statement.split())
+        if sql.startswith("INSERT INTO chat.request_job"):
+            route, subject, job, digest, owner = params
+            rows.setdefault((route, subject, job), {"payload_hash": digest, "lease_owner": owner,
+                                                    "lease_until": now + 250, "response": None,
+                                                    "expires_at": now + 86400})
+        elif sql.startswith("SELECT payload_hash"):
+            row = rows[tuple(params)]
+            self.row = (row["payload_hash"], row["lease_owner"], row["lease_until"] > now, row["response"],
+                        row["expires_at"] < now)
+        elif sql.startswith("UPDATE chat.request_job SET payload_hash"):
+            digest, owner, *key = params
+            rows[tuple(key)].update(payload_hash=digest, response=None, lease_owner=owner,
+                                    lease_until=now + 250, expires_at=now + 600)
+        elif sql.startswith("UPDATE chat.request_job SET lease_owner"):
+            owner, *key = params
+            rows[tuple(key)].update(lease_owner=owner, lease_until=now + 250)
+        elif sql.startswith("UPDATE chat.request_job SET response"):
+            body, *key, owner = params
+            row = rows.get(tuple(key))
+            if row is not None and row["lease_owner"] == owner:
+                row.update(response=None if body is None else json.loads(body), lease_until=now,
+                           expires_at=now + 600)
+        elif sql.startswith("DELETE FROM chat.request_job WHERE subject_key=%s AND expires_at"):
+            for key in [key for key, row in rows.items()
+                        if key[1] == params[0] and row["expires_at"] < now and row["lease_until"] < now]:
+                del rows[key]
+        else:
+            raise AssertionError("unexpected statement: " + sql)
+
+    def fetchone(self):
+        return self.row
+
+    def commit(self):
+        self._end()
+
+    def close(self):
+        self._end()
+
+    def _end(self):
+        if self.held:
+            self.held = False
+            self.store.lock.release()
+
+
 def test_a_repeated_request_id_is_answered_once_with_the_first_response():
-    """The guard behind a lost /api/reason response (Chrome gate, 2026-10-02): a repeat of a running
-    request waits for its response, a finished one is sent again, ids are per principal, a request
-    that ends without a response hands its id to the next caller, and finished entries expire and
-    stay bounded without ever dropping one that is still running."""
+    """The guard behind a lost /api/reason response (Chrome gate, 2026-10-02), on the serving class
+    (engine.request_replay.DurableResponseReplay): a repeat of a running request waits for its
+    response, from any instance; a finished one is sent again; ids are per principal; a request that
+    ends without a response hands its id to the next caller; another input under the same id is
+    refused; and a finished response past its retention is never sent again."""
     import threading
     import time
 
-    now = [100.0]
-    replay = ResponseReplay(ttl_seconds=60, max_entries=2, wait_seconds=5, clock=lambda: now[0])
+    from engine.request_replay import DurableResponseReplay, ReplayConflict
+
+    jobs = _RequestJobs()
     key = ("/api/reason", "sub-1", "turn_1")
     answer = (200, '{"result": 1}', "application/json", None)
-    assert replay.claim(key) == (True, None)
-    waited = []
-    repeat = threading.Thread(target=lambda: waited.append(replay.claim(key)))
-    repeat.start()
-    time.sleep(0.05)
-    assert not waited, "a repeat waits while the first request runs"
-    replay.finish(key, answer)
-    repeat.join(5)
-    assert waited == [(False, answer)]
-    assert replay.claim(key) == (False, answer)
-    assert replay.claim(("/api/reason", "sub-2", "turn_1")) == (True, None), "ids are per principal"
-    unanswered = ("/api/reason", "sub-1", "turn_2")
-    assert replay.claim(unanswered) == (True, None)
-    replay.release(unanswered)
-    assert replay.claim(unanswered) == (True, None), "an id released without a response runs again"
-    impatient = ResponseReplay(wait_seconds=0.05)
-    assert impatient.claim(key) == (True, None)
-    assert impatient.claim(key) == (False, None), "a repeat stops waiting after wait_seconds"
-    now[0] += 61
-    assert replay.claim(key) == (True, None), "a finished response expires"
-    bounded = ResponseReplay(max_entries=1, wait_seconds=0.05)
-    running, first, second = ("r", "s", "running"), ("r", "s", "first"), ("r", "s", "second")
-    for name in (running, first, second):
-        assert bounded.claim(name) == (True, None)
-    bounded.finish(first, answer)
-    bounded.finish(second, answer)
-    assert bounded.claim(first) == (True, None), "the oldest finished response is dropped first"
-    assert bounded.claim(second) == (False, answer)
-    assert bounded.claim(running) == (False, None), "a request still running is never dropped"
-    sized = ResponseReplay(max_bytes=50, wait_seconds=0.05)
-    for name, body in ((first, "x" * 20), (second, "y" * 20)):
-        assert sized.claim(name) == (True, None)
-        sized.finish(name, (200, body, "application/json", None))
-    assert sized.claim(first) == (True, None), "the kept responses are bounded by their size"
-    assert sized.claim(second) == (False, (200, "y" * 20, "application/json", None))
+    with patch("engine.pg._pg", jobs.connect):
+        first, other_instance = DurableResponseReplay(), DurableResponseReplay()
+        assert first.claim(key, "input") == (True, None)
+        waited = []
+        repeat = threading.Thread(target=lambda: waited.append(other_instance.claim(key, "input")))
+        repeat.start()
+        time.sleep(0.3)
+        assert not waited, "a repeat waits while the first request runs"
+        first.finish(key, answer)
+        repeat.join(5)
+        assert waited == [(False, answer)], waited
+        assert DurableResponseReplay().claim(key, "input") == (False, answer)
+        try:
+            DurableResponseReplay().claim(key, "other input")
+            raise AssertionError("another input under the same id was answered")
+        except ReplayConflict:
+            pass
+        assert first.claim(("/api/reason", "sub-2", "turn_1"), "input") == (True, None), "ids are per principal"
+        unanswered = ("/api/reason", "sub-1", "turn_2")
+        assert first.claim(unanswered, "input") == (True, None)
+        first.release(unanswered)
+        assert other_instance.claim(unanswered, "input") == (True, None), \
+            "an id released without a response runs again"
+        jobs.offset += 601
+        assert DurableResponseReplay().claim(key, "input") == (True, None), "a finished response expires"
 
 
 def test_a_lost_reason_response_is_sent_again_and_the_question_runs_once():
@@ -657,6 +723,7 @@ def test_a_lost_reason_response_is_sent_again_and_the_question_runs_once():
     from http.server import ThreadingHTTPServer
 
     from engine import server
+    from engine.request_replay import DurableResponseReplay
 
     served, proceed = [], threading.Event()
 
@@ -691,7 +758,8 @@ def test_a_lost_reason_response_is_sent_again_and_the_question_runs_once():
             patch.object(server.master, "relevant_tables", lambda *_args: {"tables": [], "warnings": []}),
             patch.object(server, "emitter", lambda *_args: (lambda *_a, **_k: None)),
             patch.object(server, "MODEL", Model()),
-            patch.object(server, "WORLD_REPLAY", ResponseReplay(wait_seconds=10)),
+            patch.object(server, "WORLD_REPLAY", DurableResponseReplay()),
+            patch("engine.pg._pg", _RequestJobs().connect),
         ):
             # The first request's caller is gone before the answer: its response is lost.
             payload = body("turn_1")
