@@ -4,6 +4,31 @@ Dated entries come newest first. Each records a run at the commit it names; the 
 entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection arbiter`) may since have
 been removed, and that commit holds the code that ran.
 
+## Experiment: unread words rank but refuse nothing, on `6a126c4` (2026-10-04)
+
+Same contract, from `6a126c4` with one uncommitted change to `engine/tables.py:select_query`
+(`worktree_dirty=true`, tag `unread-advisory-6a126c4`):
+- an unread question word no longer cancels the selected reading or calls Gemini;
+- a reading that only repeats its filter's values (`SELECT Keyword ... WHERE Keyword = 'x'`) is refused,
+  so "keyword volume for x" still goes to Gemini;
+- `constraint_violations` stay hard vetoes.
+
+| Run | Strict | Answered | Strict of answered | Lenient | Scalar |
+|---|---:|---:|---:|---:|---:|
+| `4aa6ca6` (shipping) | 243 | 408 | 60% | 310 | 149/408 |
+| this experiment | **435 (42.1%)** | **894** | 49% | 568 | 268/408 |
+| advisory `6530bbc` (vetoes soft too) | 476 | 1,025 | 46% | 614 | 286/408 |
+| `60a55a3` (no check) | 497 | 1,025 | 48% | 603 | 286/408 |
+
+Against `4aa6ca6`: 192 strict wins, no losses. Against `60a55a3`: 19 wins, 81 losses. Against the fully
+advisory run: 2 wins, 43 losses; that gap is what the hard vetoes cost. Prediction seconds: median 1.21,
+p90 3.10, max 14.72.
+
+None of these runs measures the served path with Gemini on. There, a refusal is reworded once and
+searched again; under this experiment an unread word would instead be served unread (for example a
+qualifier that matches nothing). Not promoted; the choice is the owner's. Output:
+`%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_unread-advisory-6a126c4.json`.
+
 ## The completeness check reads names, compared values and grain, at `4aa6ca6` (2026-10-04)
 
 Same contract as the deployed `6530bbc` run below (`whole_db`, `served` selection, SQL backend, row
