@@ -4,6 +4,29 @@ Dated entries come newest first. Each records a run at the commit it names; the 
 entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection arbiter`) may since have
 been removed, and that commit holds the code that ran.
 
+## The served path with Gemini on, at `13edb6a` (2026-10-04)
+
+Production runs with the operator's Gemini switch on: a question the search cannot fully read is
+reworded once (`engine/question_rewrite.py`, `gemini-3.8-flash`) and searched again. Same contract as
+the runs below otherwise (`whole_db`, `served` selection, SQL backend, row cap 5,000), from a clean
+checkout of `13edb6a` (`worktree_dirty=false`, tag `gemini-13edb6a`). The planner is the one measured at
+`4aa6ca6`.
+
+| Run | Strict | Answered | Strict of answered | Lenient | Scalar |
+|---|---:|---:|---:|---:|---:|
+| `4aa6ca6`, Gemini off | 243 | 408 | 60% | 310 | 149/408 |
+| **`13edb6a`, Gemini on (production)** | **338 (32.7%)** | **609** | 55% | 442 | 209/408 |
+| unread-word experiment, Gemini on | 444 (42.9%) | 911 | 49% | 581 | 272/408 |
+
+- Gemini's rewording served 201 answers. Against Gemini off: 95 strict wins, no losses (lenient 132 / 0).
+- Against `60a55a3` (no completeness check, Gemini off, 497): 45 wins, 204 losses.
+- Prediction seconds: median 4.37, p90 8.54, max 55.0.
+- The experiment (dirty worktree, tag `gemini-unread-advisory-13edb6a`, the change recorded below) wins
+  134 and loses 28 against production. It stays unpromoted for the world-routing and qualifier
+  failures recorded below.
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_gemini-13edb6a.json`.
+
 ## Experiment: unread words rank but refuse nothing, on `6a126c4` (2026-10-04)
 
 Same contract, from `6a126c4` with one uncommitted change to `engine/tables.py:select_query`
