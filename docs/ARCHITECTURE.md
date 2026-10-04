@@ -314,8 +314,9 @@ enabled Gemini (`EXTERNAL_LLM_ENABLED` plus a Vertex AI project, checked by `eng
 schema description containing table and column names, inferred types, and declared foreign keys.
 It receives no cell values, full rows, or conversation history. The rewriter checks that numbers,
 quoted text, and any source values it recognized in the question remain in its rewrite. Replies are
-not cached. The deterministic typed search alone builds candidates and SQL, and a rewritten candidate
-replaces a runnable baseline only when its reading is more specific.
+not cached. The deterministic typed search alone builds candidates and SQL. A rewritten reading is served
+only when it runs, keeps every constraint of the original question and leaves no word of the rewording
+unread.
 
 The response labels an answer served after a rewrite with `fallback.kind: rewrite`, the model name,
 and the rewritten question. Gemini cannot write SQL, choose a candidate, or provide a result. When no

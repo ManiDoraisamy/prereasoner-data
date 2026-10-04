@@ -470,8 +470,8 @@ class TableQuery:
         4. When no candidate is eligible or the selected plan leaves request words unread, and the
            operator enabled Gemini, it may reword the question once (engine/question_rewrite.py). Gemini
            sees schema names and types, never cell values or conversation history. The deterministic
-           typed search runs on that wording and replaces the baseline only when its reading is more
-           specific.
+           typed search runs on that wording; its reading is served only when it runs, keeps every
+           constraint of the original question and leaves no word of the rewording unread.
 
         This is the one own-data selection: serving, decomposition leaves, the Spider evaluator and
         the offline regression gate all call it. The decomposition probe reads only its first stage
@@ -597,12 +597,6 @@ class TableQuery:
                     return replace(baseline, fallback=FallbackRecord(
                         "none", fallback.model, question=rewritten,
                         note="the rewritten question still has unread terms"))
-                if (selection.selected is not None and not reject_baseline and
-                        not _rewrite_improves_reading(selection, reread)):
-                    baseline = replace(selection, selected=None) if reject_baseline else selection
-                    return replace(baseline, fallback=FallbackRecord(
-                        "none", fallback.model, question=rewritten,
-                        note="the deterministic search's original reading was stronger"))
                 return replace(reread, fallback=FallbackRecord(
                     "rewrite", fallback.model, question=rewritten))
             baseline = replace(selection, selected=None) if reject_baseline else selection
@@ -933,26 +927,6 @@ def _query_has_unread_terms(question, candidate, graph, *, calculation_satisfied
     from engine.query_contract import coverage
     return not coverage(question, candidate, graph,
                         calculation_satisfied=calculation_satisfied).complete
-
-
-def _rewrite_improves_reading(original, rewritten):
-    """A rewording can replace the baseline only when it makes the typed reading more specific."""
-    from engine.sql_ast import SelectQuery, SetQuery, Star, SubquerySource
-
-    def has_star(query):
-        if isinstance(query, SetQuery):
-            return has_star(query.left) or has_star(query.right)
-        if not isinstance(query, SelectQuery):
-            return False
-        if isinstance(query.from_table, SubquerySource) and has_star(query.from_table.query):
-            return True
-        return any(isinstance(item.expression, Star) for item in query.select)
-
-    old = original.candidate
-    new = rewritten.candidate
-    old_star = has_star(old.query)
-    new_star = has_star(new.query)
-    return (old_star and not new_star) or new.score > old.score
 
 
 def sch_col_of(agg, sch):
