@@ -1708,3 +1708,7 @@ A review of the 2026-10-03 changes found:
   budget rather than five seconds.
 - **The suggestion service.** It received hidden tabs' names and headers, and allowed one call per
   process across all users. Now it describes visible, populated tabs only and allows four calls at once.
+- **Total rows.** The importer kept a total row as data unless every other cell was a number, so
+  "Total, FR, 3" (a regional subtotal) or "Total, 150, USD" was counted twice without a word. A row
+  led by a total label now goes to the summaries table whatever else it carries
+  (`web/public/lib/workbook-import.js`, shared by uploads, Google import, Sheets and Excel).

@@ -110,8 +110,13 @@ assert.equal(sections.length,2);
 assert.equal(sections[0].csv,'item,amount\nA,2\nB,3');
 assert.equal(sections[1].csv,'item,amount\nTotal,5');
 assert.equal(sections[1].name,'sales summaries');
-// A product literally named Total is not a summary when other attributes exist.
-assert.match(normalize([['item','region','amount'],['A','FR',2],['Total','FR',3]]).csv,/Total,FR,3/);
+// A row led by a total label is a summary even when it carries attributes: a regional subtotal or a
+// total that names its currency was counted twice as data (2026-10-04).
+const regional=normalize([['item','region','amount'],['A','FR',2],['Total','FR',3]]);
+assert.equal(regional.csv,'item,region,amount\nA,FR,2');
+assert.equal(regional.summaryCsv,'item,region,amount\nTotal,FR,3');
+assert.equal(normalize([['region','amount','currency'],['FR',100,'USD'],['DE',50,'USD'],['Total',150,'USD']]).csv,
+  'region,amount,currency\nFR,100,USD\nDE,50,USD');
 const [groupedGrid]=normalizeGrids([{name:'grouped',rows:[['Order','Amounts',null],['ID','Net','Tax'],[1,10,2]],
   merges:[{s:{r:0,c:1},e:{r:0,c:2}}]}]);
 assert.match(groupedGrid.csv,/"?ID"?,Amounts Net,Amounts Tax/);

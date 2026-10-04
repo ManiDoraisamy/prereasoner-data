@@ -111,8 +111,10 @@
       if(!count(rows[i])){skipped.push(i+bounds.s.r+1);continue;}
       const row=rows[i];
       const values=row.filter(filled);
-      const summary=data.length&&typeof values[0]==='string'&&/^(grand total|sub[ -]?total|total)\s*:?$/i.test(values[0].trim())
-        &&values.length>1&&values.slice(1).every(v=>typeof v==='number');
+      // A row led by a total label sums rows above it, whatever else it carries ("Total, FR, 3" is
+      // France's subtotal; "Total, 150, USD" names its currency). Kept as data, it was counted twice
+      // without a word (2026-10-04).
+      const summary=data.length&&typeof values[0]==='string'&&/^(grand total|sub[ -]?total|total)\s*:?$/i.test(values[0].trim());
       const normalizedRow=keep.map(c=>row[c]).map(v=>{
         if(!(v instanceof Date))return v;
         const iso=v.toISOString();
