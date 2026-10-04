@@ -1761,6 +1761,10 @@ than adding words to a list:
 **A replay record that cannot be kept** no longer turns a computed answer into a 500. The answer goes
 out, and a repeat of that request runs once its lease lapses.
 
+**A re-sent direct question.** The web page's direct path rebuilt its 90-second re-send after the stream
+had named the conversation. The engine answers a repeated jobId only for the same input, so every
+re-send was refused 409. It now repeats the body it first sent.
+
 **Not changed, for the owner.** The check still refuses a runnable query whose question has a word it
 cannot read, then asks Gemini to reword. That widened the 2026-10-02 rule ("the fallback fires only when
 nothing runs"). Spider DEV `whole_db` with the fallback off fell from 497 strict at `60a55a3` to 241 at
