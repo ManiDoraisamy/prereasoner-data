@@ -106,9 +106,10 @@ class _HTTP:
 
 
 async def _run(status: str, *, fail_presentation=False, use=None, query_input=None,
-               user_message=None, tables=None, catalog=None, analysis_override=None, **client_options):
+               user_message=None, tables=None, catalog=None, analysis_override=None, shaped_extra=None,
+               table_names=None, **client_options):
     model_calls, engine_calls = [], []
-    shaped = {"status": status}
+    shaped = {"status": status, **(shaped_extra or {})}
     if status == "answered":
         shaped["answer"] = {"columns": ["net_amount"], "rows": [["876.50"]]}
     elif status == "clarify":
@@ -145,6 +146,7 @@ async def _run(status: str, *, fail_presentation=False, use=None, query_input=No
             principal="user-a",
             conversation_id="c_test" if catalog is not None else None,
             analysis_override=analysis_override,
+            table_names=table_names,
         )
     finally:
         orchestrator.AsyncGeminiClient = original_client
@@ -165,6 +167,26 @@ def test_terminal_engine_status_uses_one_query_and_a_tool_disabled_presentation(
         assert result["reply"] == expected
         assert "step budget" not in result["reply"]
         assert len(result["traces"]) == 1
+
+
+def test_the_reply_names_tables_as_the_user_did():
+    """The engine names tables canonically, and the six-tab Stripe workbook's answer read "From nt. si and ff
+    could answer this too" (production, 2026-10-05). The chat writes the names the request carried."""
+    from engine.request_validation import display_names
+    names = display_names([{"name": "NT", "data": ""}, {"name": "SI.csv", "data": ""},
+                           {"name": " FF Report ", "data": ""}, {"name": "", "data": ""}, "not a table"])
+    assert names == {"nt": "NT", "si": "SI", "ff_report": "FF Report"}, names
+    copies = {"read": ["nt"], "others": ["si", "ff_report"]}
+    result, _model_calls, _engine_calls = asyncio.run(_run(
+        "answered", shaped_extra={"layout_copies": copies}, table_names=names))
+    assert result["reply"] == ("876.50\n\nFrom NT. SI and FF Report could answer this too; name one in your "
+                               "question to read that one instead."), result["reply"]
+    assert all("table_names" not in trace["engine"] for trace in result["traces"])
+    # Without the request's names (the MCP tool), the canonical names read as words.
+    bare = orchestrator._terminal_fallback({"status": "answered", "answer": {"columns": ["n"], "rows": [[1]]},
+                                            "layout_copies": copies})
+    assert bare.endswith("From nt. si and ff report could answer this too; name one in your question to read "
+                         "that one instead."), bare
 
 
 def test_request_execution_mode_reaches_each_orchestrated_engine_call():
@@ -1706,6 +1728,7 @@ def test_a_yes_can_accept_the_question_a_clarification_offered():
 
 
 TESTS = [
+    test_the_reply_names_tables_as_the_user_did,
     test_intent_context_has_schema_and_questions_but_no_values_or_assistant_answers,
     test_a_yes_can_accept_the_question_a_clarification_offered,
     test_an_acknowledgment_is_answered_without_an_engine_query,

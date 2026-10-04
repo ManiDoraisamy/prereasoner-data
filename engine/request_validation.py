@@ -94,6 +94,18 @@ def canonical_table_name(name: object, index: int = 0) -> str:
     return f"{prefix}_{digest}"
 
 
+def display_names(tables: object) -> dict[str, str]:
+    """{canonical table name: the name as the request wrote it, without its file extension}, for a reply that
+    names a table: "From NT" rather than the canonical "From nt" (2026-10-05)."""
+    names: dict[str, str] = {}
+    if isinstance(tables, list):
+        for index, table in enumerate(tables):
+            name = table.get("name") if isinstance(table, dict) else None
+            if isinstance(name, str) and name.strip():
+                names[canonical_table_name(name, index)] = _KNOWN_TABLE_EXTENSIONS.sub("", name.strip())
+    return names
+
+
 def _optional_id(req: dict, name: str, *, conversation: bool = False) -> str | None:
     value = req.get(name)
     if value is None or value == "":

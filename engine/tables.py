@@ -967,7 +967,7 @@ def _unread_copies(question, query, graph):
     others = [other for other in graph.tables if other != table and (other in copies or near_copy(other))]
     if not others:
         return None
-    return {"read": [table.replace("_", " ")], "others": [other.replace("_", " ") for other in others]}
+    return {"read": [table], "others": others}
 
 
 def _query_has_unread_terms(question, candidate, graph, *, calculation_satisfied=False):

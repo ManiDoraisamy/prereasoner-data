@@ -578,7 +578,8 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                     emit=None, conversation_id: str | None = None,
                     principal: str | None = None,
                     use: str | None = None,
-                    analysis_override: dict[str, Any] | None = None) -> dict[str, Any]:
+                    analysis_override: dict[str, Any] | None = None,
+                    table_names: dict[str, str] | None = None) -> dict[str, Any]:
     """Run one chat turn. `history` is a lean transcript [{role, content:str}, ...]; `tables` is the
     session's inline CSVs. Returns {reply, traces, history, conversation_id}.
 
@@ -592,6 +593,12 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
     that trace exactly as on the direct path. The model's final text + terminal status are emitted too.
     `emit` is best-effort (a no-op when RTDB is unset) — streaming must never break the answer."""
     traces: list[dict[str, Any]] = []
+
+    def with_names(shaped):
+        """The engine's facts with the tables' names as the request wrote them ("NT Report" for the engine's
+        nt_report), for the reply's own words (answer_presentation)."""
+        return {**shaped, "table_names": table_names} if table_names and isinstance(shaped, dict) else shaped
+
     call_idx = 0                                             # per-turn engine-call counter (drives the jobIds)
     decomposition_attempted = False
     decomposition_rejections = 0
@@ -692,7 +699,7 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                     if unsettled is not None:
                         # The model asks the user instead: that is the engine's clarification,
                         # presented, and it may add no number of its own.
-                        text = _grounded_presentation(unsettled, text, asked=user_message)
+                        text = _grounded_presentation(with_names(unsettled), text, asked=user_message)
                     final_text = text if unsettled is not None or smalltalk else TOOL_EXHAUSTED_REPLY
                     break
                 if stream_buffer is not None and round_text:
@@ -999,11 +1006,11 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                     # different question. That was the production loop behind the misleading
                     # "step budget" response: five progressively weaker rewrites replaced a useful
                     # terminal result. Render facts locally from the engine result.
-                    final_text = _terminal_fallback(terminal_query)
+                    final_text = _terminal_fallback(with_names(terminal_query))
                     break
             else:
                 final_text = final_text or (
-                    _terminal_fallback(unsettled) if unsettled is not None else TOOL_EXHAUSTED_REPLY
+                    _terminal_fallback(with_names(unsettled)) if unsettled is not None else TOOL_EXHAUSTED_REPLY
                 )
         finally:
             if stream_buffer is not None:
