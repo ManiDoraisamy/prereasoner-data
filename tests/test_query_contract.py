@@ -265,6 +265,28 @@ def test_named_table_scope_is_proven_by_the_ast_without_business_synonyms():
     assert not coverage('average monthly searches for home inspection checklist in an unknown table',candidate,graph).complete
 
 
+def test_long_headers_that_differ_at_the_end_stay_two_fields():
+    """A Forms grid's items exceed PostgreSQL's 63 bytes and differ only at the end. Cut to their
+    start, they became one repeated field, and every question about either was asked "Which repeated
+    field should be used" (review, 2026-10-04). Identical long headers are still one repeated field."""
+    from engine.column_names import canonical_columns
+    from engine.sql_ast import Aggregate, ColumnRef, SelectItem, SelectQuery, SQLType
+    grid = 'How satisfied are you with the following aspects of our service? '
+    names = canonical_columns(['Name', grid + '[Speed]', grid + '[Support]', grid + '[Support]'])
+    assert all(len(name.encode('utf-8')) <= 63 for name in names)
+    assert '[Speed]' in names[1] and '[Support]' in names[2], names
+    graph = SchemaGraph.from_tables([{'name': 'responses', 'columns': names, 'rows': [['Ana', 4, 5, 3]]}], [])
+    speed = ColumnRef('responses', names[1], SQLType.INTEGER)
+    question = 'What is the average ' + grid + '[Speed]?'
+    query = SelectQuery((SelectItem(Aggregate('AVG', speed)),), 'responses')
+    assert not any('Which repeated field' in v for v in constraint_violations(question, query, graph))
+    # Contrast: the two identical [Support] headers are one repeated field, and choosing one asks which.
+    support = ColumnRef('responses', names[2], SQLType.INTEGER)
+    chosen = SelectQuery((SelectItem(Aggregate('AVG', support)),), 'responses')
+    assert any('Which repeated field' in v for v in constraint_violations(
+        'What is the average ' + grid + '[Support]?', chosen, graph))
+
+
 def _graph(planner, tables):
     _, fks, sch, _ = _request(planner, tables)
     return SchemaGraph.from_planner(sch, fks)

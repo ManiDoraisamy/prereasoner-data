@@ -83,7 +83,18 @@
     columns=columns.map(name=>name.replace(/[\uD800-\uDFFF]/gu,'\uFFFD'));
     const names=new Set(), duplicates=columns.filter((name,i)=>columns.some((other,j)=>j!==i&&other.toLowerCase()===name.toLowerCase()));
     const byteLength=value=>Array.from(value).reduce((sum,char)=>sum+(char.codePointAt(0)<128?1:char.codePointAt(0)<2048?2:char.codePointAt(0)<65536?3:4),0);
-    const shorten=(value,suffix)=>{let points=Array.from(value);while(byteLength(points.join(''))+byteLength(suffix)>63)points.pop();return points.join('')+suffix;};
+    // A name over PostgreSQL's 63 bytes keeps its start and its end around an ellipsis, as
+    // engine/column_names.py does: a Forms grid's "...service? [Speed]" and "...service? [Support]"
+    // differ only at the end, and keeping only the start made them one repeated field (2026-10-04).
+    const shorten=(value,suffix)=>{
+      const points=Array.from(value), budget=63-byteLength(suffix);
+      if(byteLength(value)<=budget)return value+suffix;
+      const tail=[];
+      for(let i=points.length-1;i>=0&&byteLength(points[i]+tail.join(''))<=16;i--)tail.unshift(points[i]);
+      const room=budget-byteLength('…')-byteLength(tail.join('')), head=[];
+      for(const point of points){if(byteLength(head.join('')+point)>room)break;head.push(point);}
+      return head.join('')+'…'+tail.join('')+suffix;
+    };
     columns=columns.map((name,c)=>{
       const suffix=' [column '+letter(c)+']';
       let candidate=duplicates.includes(name)||byteLength(name)>63?shorten(name,suffix):name;

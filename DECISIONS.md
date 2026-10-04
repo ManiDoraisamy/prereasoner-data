@@ -1780,6 +1780,13 @@ nothing runs"). Spider DEV `whole_db` with the fallback off fell from 497 strict
 Decomposition leaves still skip the check. The shipped compound demos depend on that: their leaf
 wording ("units sold") is refused by the check today.
 
-Long headers are still cut to 63 bytes before " [column X]", so two Forms grid questions can share
-one cut name. Fixing that needs a display label separate from the SQL name, and must keep the analyses
-already saved under the cut names working.
+**Long headers keep their end.** A header past PostgreSQL's 63 bytes kept only its start before
+" [column X]". A Forms grid's items ("...of our service? [Speed]" and "... [Support]") differ only at
+the end, so they became one repeated field, and every question about either was asked "Which repeated
+field should be used". A long header now keeps its start and its last 16 bytes around an ellipsis
+("How satisfied are you with the fo…service? [Speed] [column B]"). `engine/column_names.py` and
+`web/public/lib/workbook-import.js` name fields the same way, and a test holds them equal.
+
+Saved analyses are snapshots, and recalculating re-plans from the question, so neither depends on the
+old names. A conversation's currency claim on a column renamed this way stops applying and must be
+stated again; that needs a monetary column whose header is over 63 bytes.

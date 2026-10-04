@@ -136,7 +136,10 @@ const [groupedGrid]=normalizeGrids([{name:'grouped',rows:[['Order','Amounts',nul
 assert.match(groupedGrid.csv,/"?ID"?,Amounts Net,Amounts Tax/);
 // The server CSV parser and the browser importer use the same positional
 // naming contract, including UTF-8 PostgreSQL's 63-byte identifier bound.
-const headers=['amount','amount','', '東京'.repeat(40), 'x'.repeat(52)+' [column C]', 'x'.repeat(100)];
+const headers=['amount','amount','', '東京'.repeat(40), 'x'.repeat(52)+' [column C]', 'x'.repeat(100),
+  // A Forms grid's items differ only at the end, past 63 bytes (2026-10-04).
+  'How satisfied are you with the following aspects of our service? [Speed]',
+  'How satisfied are you with the following aspects of our service? [Support]'];
 const imported=normalize([headers,[1,2,3,4,5,6]]);
 const expected=JSON.parse(execFileSync('python',['-c',
   'import json,sys; from engine.column_names import canonical_columns; print(json.dumps(canonical_columns(json.loads(sys.stdin.buffer.read().decode("utf-8")))))'],
