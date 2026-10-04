@@ -4,5 +4,5 @@
 .starter-status{font:12px/1.4 Arial,sans-serif;color:#6f667a;padding:4px 2px}
 .starter-retry{align-self:flex-start;border:0;border-radius:6px;background:#f0ecfc;color:#4b32c3;padding:7px 10px;font:13px Arial,sans-serif;cursor:pointer}
 .starter-retry:hover,.starter-retry:focus-visible{background:#e4dcfb;outline:2px solid #8f7bf2}
-.starter-question{display:block;text-align:left;width:100%;min-width:0;box-sizing:border-box;border:1px solid #e6e0ef;border-radius:9px;background:#faf9ff;color:#4b4167;padding:10px 12px;font:13px/1.4 Arial,sans-serif;cursor:pointer;white-space:normal;overflow-wrap:anywhere}
+.starter-question{display:block;text-align:left;width:100%;min-width:0;height:auto!important;min-height:0;max-height:none;box-sizing:border-box;border:1px solid #e6e0ef;border-radius:9px;background:#faf9ff;color:#4b4167;padding:10px 12px;font:13px/1.4 Arial,sans-serif;cursor:pointer;white-space:normal;overflow-wrap:anywhere}
 .starter-question:hover,.starter-question:focus-visible{border-color:#8f7bf2;background:#f0ecfc;outline:2px solid transparent}

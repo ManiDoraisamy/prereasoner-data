@@ -36,6 +36,30 @@ test('suggestion failure never blocks reading, typing or sending a question', as
   await expect.poll(()=>page.evaluate(()=>Boolean(window.__server.pendingAsk))).toBe(true);
 });
 
+test('long suggested questions wrap into full-height cards without overlapping', async ({page}) => {
+  await openSidebar(page, orders);
+  await page.locator('.branding-below').evaluate(element => { element.style.width = '220px'; });
+  const buttons = page.locator('#suggestions .starter-question');
+  await expect(buttons).toHaveCount(3);
+  // Apps Script's add-on stylesheet gives buttons a compact fixed height. The shared component
+  // must override that host default for multi-line generated prompts.
+  await page.addStyleTag({content: 'button { height: 28px; max-height: 28px; }'});
+  await buttons.first().evaluate(element => {
+    element.textContent = 'What is the total amount across every customer and currency in this sheet, grouped by tier?';
+  });
+  const first = await buttons.first().evaluate(element => {
+    const rect = element.getBoundingClientRect();
+    return {height: rect.height, bottom: rect.bottom, scrollHeight: element.scrollHeight};
+  });
+  const second = await buttons.nth(1).evaluate(element => {
+    const rect = element.getBoundingClientRect();
+    return {top: rect.top};
+  });
+  expect(first.height).toBeGreaterThan(44);
+  expect(first.height).toBeGreaterThanOrEqual(first.scrollHeight - 1);
+  expect(second.top).toBeGreaterThanOrEqual(first.bottom);
+});
+
 test('suggestions receive every sheet name and column plus the active sheet without a scope picker', async ({page}) => {
   const schema={sheets:[{name:'Orders',columns:['country','amount']},{name:'Archive',columns:['id']}],
     active_sheet:'Orders',scope:['Orders','Archive']};
