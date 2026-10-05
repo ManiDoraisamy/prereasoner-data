@@ -256,20 +256,23 @@ resource "google_cloud_run_v2_service" "api" {
     service_account = google_service_account.run.email
 
     scaling {
-      min_instance_count = var.min_instances # default 1: see the variable
+      min_instance_count = var.min_instances # default 2: see the variable
       # Questions run in parallel in an instance (engine/request_state.py), and Cloud Run adds
       # instances, up to four, when those running are busy: at 60% of the request limit below or
       # 60% CPU. A new instance passes its startup probe about 70 s after it starts (2026-10-05, on
-      # 4 and on 8 vCPU), and a request Cloud Run routes to it waits that long instead of failing.
-      # Four instances of three requests hold at most 36 database connections (a request holds up
-      # to three: resolution, world query, deterministic run), within the 47 the db-g1-small
-      # instance serves beside its reserved ones.
+      # 4 and on 8 vCPU). Four instances of two requests hold at most 24 database connections (a
+      # request holds up to three: resolution, world query, deterministic run), within the 47 the
+      # db-g1-small instance serves beside its reserved ones.
       max_instance_count = 4
     }
 
-    # The requests an instance serves at once: questions, and the short catalog, master-data and
-    # health requests beside them.
-    max_instance_request_concurrency = 3
+    # The requests an instance serves at once: a question, and the short catalog, master-data and
+    # health requests beside it. Questions in one instance share its CPU and the interpreter lock:
+    # three at once on one 4-vCPU instance answered 1.14 times as many questions per minute as one at
+    # a time, each 2.3 times slower, and while one heavy question filled the CPU Cloud Run refused
+    # other requests with 429 "no available instance" (2026-10-06). Two per instance, with two warm,
+    # answered three parallel streams 94 of 94 with no 429.
+    max_instance_request_concurrency = 2
     timeout                          = "300s"
 
     volumes {

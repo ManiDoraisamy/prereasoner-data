@@ -2161,18 +2161,37 @@ rewrites that conversation's bridge tables. `tests/test_concurrent_requests.py` 
 race, and each test fails on the old code for its race; `tests/test_geo.py` section (F) asks the same question in
 two conversations at once on one planner, three rounds, against Postgres.
 
-Cloud Run now runs one to four instances of 4 vCPU / 8 GiB and sends each at most three requests at once
-(`infra/main.tf`). It adds an instance at 60% of that limit or 60% CPU, and holds a request for a starting
-instance (up to 3.5 times the startup time) instead of refusing it; when all four stay full that long it answers
-429, which the chat presents as busy. Four instances of three requests hold at most 36 database connections (a
-request holds up to three), within the 47 the `db-g1-small` instance serves beside its reserved ones.
+Cloud Run now runs two to four instances of 4 vCPU / 8 GiB and sends each at most two requests at once
+(`infra/main.tf`, `min_instances` 2). It adds an instance at 60% of that limit or 60% CPU. Four instances of two
+requests hold at most 24 database connections (a request holds up to three), within the 47 the `db-g1-small`
+instance serves beside its reserved ones.
+
+Parallel questions on Cloud Run decided those numbers (private copies of the new image, three streams of the demo
+questions and the six-tab workbook, 94 requests, each compared with the answers given one at a time). Questions in
+one process share the CPU and the interpreter lock: three at once on one instance answered 1.14 times as many per
+minute as one at a time, each 2.3 times slower (median 8.6 s against 3.75 s). While one heavy question filled that
+instance's CPU, Cloud Run refused other requests with 429 "The request was aborted because there was no available
+instance": 2 of 94 with three streams, 28 of 94 with two. With two warm instances of two requests each, the three
+streams were answered 94 of 94, all the same as one at a time, median 5.3 s, and Cloud Run started a third
+instance under the load. Capacity for users at once comes from instances, not from parallel questions in one.
+
+When no instance can take a request, Cloud Run's 429 never reached the engine. The chat's engine client asks
+again, with the same jobId, after 2, 4, 8, 16 and 30 seconds, about a minute in all, so a user waits for an
+instance instead of reading "busy" (`mcp_server/engine_client.py:_send`, every engine call). The engine's own 429
+is JSON (a principal's rate or budget) and goes back at once.
 
 4 vCPU was measured before the switch, on two private copies of the production image (b95e71b): the 91
 demo-dataset questions and follow-ups took 397 s against 387 s on 8 vCPU (median question 3.75 s against 3.53 s),
 the six-tab subscriptions workbook's three questions 41.8/20.4/38.4 s against 36.5/21.9/39.9 s, with the same
 answers on all 94. The 4-vCPU copy peaked at 3.4 GiB and 64% CPU, and both started in about 70 s (57.7 s of it
-loading the world reasoner). One warm instance costs about $230 a month at list prices instead of $460; each
-added instance bills about $0.32 an hour while it runs, and Cloud Run keeps an idle one up to 15 minutes.
+loading the world reasoner). Two warm instances cost about $460 a month at list prices, what the one 8 vCPU
+instance did; each added instance bills about $0.32 an hour while it runs, and Cloud Run keeps an idle one up to
+15 minutes.
+
+The build gates run the image in Docker at the same 4 CPUs, on a 32-core worker, and there it is about 2.5 times
+slower than at 8: the offline regression's median case took 1.6-1.7 s against 0.6-0.7 s, the six-tab question
+35 s against 16 s. The old and the new code measured alike on one machine (median 583/625 ms against 743/586 ms),
+and on Cloud Run 4 vCPU cost the 3% above, so compare build latencies only across builds of the same size.
 
 Two questions in one instance share its CPU and the Python interpreter lock, so each is slower than alone until
 Cloud Run adds an instance. A cold instance's first parallel requests may each build a lazily loaded model once.

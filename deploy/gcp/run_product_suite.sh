@@ -128,7 +128,7 @@ fi
 
 # Exercise the production HTTP entrypoint under CPU-only Cloud Run resource limits. Repeated
 # read-only world joins at concurrency 1/2/4/8 run in parallel in one process, each in its own
-# conversation; Cloud Run sends an instance at most 3 (infra/main.tf), so 4 and 8 are deliberate
+# conversation; Cloud Run sends an instance at most 2 (infra/main.tf), so 4 and 8 are deliberate
 # overload. This bounded smoke is not a sustained-load SLA.
 docker run -d --name "$server_name" --network "$network" --cpus=4 --memory=8g \
   --env KB_PG_HOST=product-db --env KB_PG_PORT=5432 --env KB_PG_DB=world \

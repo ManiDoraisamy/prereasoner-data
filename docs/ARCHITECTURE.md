@@ -552,8 +552,9 @@ planner implementation modules.
   on them: what belongs to one request (its conversation schema, connections, question text, typing evidence and
   trace stream) is request-local (`engine/request_state.py`, `engine/trace.py:request_stream`), and the shared
   tokenizer and encode cache take short locks.
-- Cloud Run sends an engine instance at most three requests at once and runs one to four instances
-  (`infra/main.tf`); a request waits for a starting instance rather than being refused.
+- Cloud Run sends an engine instance at most two requests at once and runs two to four instances
+  (`infra/main.tf`). When none can take a request it answers 429 "no available instance", and the chat's
+  engine client asks again with backoff for about a minute (`mcp_server/engine_client.py:_send`).
 - Requests on one conversation are serialized (a local lock stripe and a conversation advisory lock), because a
   request rewrites that conversation's bridge tables.
 - Database operations use bounded inputs and explicit transaction ownership.

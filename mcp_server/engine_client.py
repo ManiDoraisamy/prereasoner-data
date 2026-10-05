@@ -123,6 +123,31 @@ def shape_reason_response(engine_json: dict[str, Any], job_id: str | None) -> di
     return out
 
 
+# Cloud Run answers 429 "no available instance" when every engine instance it runs is busy and none
+# frees up while the request waits: a burst of questions, or a new instance still starting (about 70 s).
+# That request never reached the engine. Asked again a little later it lands on a free or a new instance,
+# and a repeated jobId never runs twice (engine/request_replay.py). The engine's own 429 (a principal's
+# rate or budget) is JSON and goes back to the caller at once.
+NO_INSTANCE_RETRY_SECONDS = (2.0, 4.0, 8.0, 16.0, 30.0)
+
+
+def _no_instance(response: httpx.Response) -> bool:
+    return (response.status_code == 429
+            and not response.headers.get("content-type", "").startswith("application/json"))
+
+
+async def _send(http: httpx.AsyncClient, method: str, url: str, **kwargs) -> httpx.Response:
+    """``http.request(method, url, **kwargs)``, asked again while Cloud Run has no instance for it."""
+    response = await http.request(method, url, **kwargs)
+    for delay in NO_INSTANCE_RETRY_SECONDS:
+        if not _no_instance(response):
+            break
+        request_timing.count("engine_no_instance_retry")
+        await asyncio.sleep(delay)
+        response = await http.request(method, url, **kwargs)
+    return response
+
+
 @asynccontextmanager
 async def _http(client: httpx.AsyncClient | None, timeout: float | None):
     """Yield the caller's client (connection reuse across a chat turn's calls) or a temporary one."""
@@ -165,8 +190,8 @@ async def call_conversation_source(conversation_id: str, source_hash: str, *, pr
     base = (base_url or _engine_base_url()).rstrip("/")
     try:
         async with _http(client, timeout) as http:
-            r = await http.get(f"{base}/api/conversation", params={"id": conversation_id},
-                               headers=_headers(token, request_id), timeout=timeout or DEFAULT_TIMEOUT)
+            r = await _send(http, "GET", f"{base}/api/conversation", params={"id": conversation_id},
+                            headers=_headers(token, request_id), timeout=timeout or DEFAULT_TIMEOUT)
     except httpx.HTTPError as e:
         raise StoredSourceError(502, f"could not reach the Prereasoner engine at {base}: {e}") from e
     if r.status_code == 404:
@@ -229,9 +254,9 @@ async def call_query(question: str, tables: list[dict], job_id: str | None = Non
             for attempt in (1, 2):
                 started = time.perf_counter()
                 try:
-                    r = await http.post(f"{base}/api/reason", json=body,
-                                        headers=_headers(token, request_id, dataset_attestation),
-                                        timeout=timeout or DEFAULT_TIMEOUT)
+                    r = await _send(http, "POST", f"{base}/api/reason", json=body,
+                                    headers=_headers(token, request_id, dataset_attestation),
+                                    timeout=timeout or DEFAULT_TIMEOUT)
                     break
                 except (httpx.ReadTimeout, httpx.PoolTimeout):
                     raise                            # the engine is slow, not unreachable: asking again waits again
@@ -278,7 +303,8 @@ async def call_analysis_catalog(conversation_id: str, *, base_url: str | None = 
     base = (base_url or _engine_base_url()).rstrip("/")
     try:
         async with _http(client, timeout) as http:
-            response = await http.get(
+            response = await _send(
+                http, "GET",
                 f"{base}/api/analyses",
                 params={"conversation_id": conversation_id},
                 headers=_headers(token, request_id),
@@ -315,10 +341,10 @@ async def call_describe(tables: list[dict], *, base_url: str | None = None,
             if not data.strip():
                 continue
             try:
-                r = await http.post(f"{base}/api/dimension",
-                                    json={"data": data, "table": name, "mode": "analyze"},
-                                    headers=headers,
-                                    timeout=timeout or DEFAULT_TIMEOUT)
+                r = await _send(http, "POST", f"{base}/api/dimension",
+                                json={"data": data, "table": name, "mode": "analyze"},
+                                headers=headers,
+                                timeout=timeout or DEFAULT_TIMEOUT)
                 j = r.json()
             except (httpx.HTTPError, ValueError) as e:
                 out.append({"table": name, "error": str(e)})

@@ -82,6 +82,10 @@ REQUESTS: list[dict] = []
 # jobIds (None for a request without one) whose next /api/reason response is lost: the stub closes
 # the connection instead of answering, as a response lost between the services looks to the caller.
 LOSE_FIRST_RESPONSE: set[str | None] = set()
+# jobIds whose next N /api/reason requests Cloud Run answers "no available instance" (429, not JSON:
+# the request never reaches the engine), and jobIds the engine itself refuses with its JSON 429.
+NO_INSTANCE: dict[str, int] = {}
+ENGINE_RATE_LIMITED: set[str] = set()
 
 
 class H(BaseHTTPRequestHandler):
@@ -111,6 +115,18 @@ class H(BaseHTTPRequestHandler):
             self._send(200, {"error": "bad json"}); return
         REQUESTS.append(req)
         path = self.path.rstrip("/")
+        if path in ("/api/reason", "/api/knowledge") and NO_INSTANCE.get(req.get("jobId"), 0) > 0:
+            NO_INSTANCE[req["jobId"]] -= 1
+            body = b"<html><body>Rate exceeded.</body></html>"
+            self.send_response(429)
+            self.send_header("Content-Type", "text/html; charset=UTF-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        if path in ("/api/reason", "/api/knowledge") and req.get("jobId") in ENGINE_RATE_LIMITED:
+            self._send(429, {"error": "request rate limit exceeded"})
+            return
         if path in ("/api/reason", "/api/knowledge") and req.get("jobId") in LOSE_FIRST_RESPONSE:
             LOSE_FIRST_RESPONSE.discard(req.get("jobId"))
             self.close_connection = True

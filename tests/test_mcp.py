@@ -21,7 +21,7 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 from mcp_server import engine_client
-from tests.stub_engine import AUTH_SEEN, H, LOSE_FIRST_RESPONSE, REQUESTS
+from tests.stub_engine import AUTH_SEEN, ENGINE_RATE_LIMITED, H, LOSE_FIRST_RESPONSE, NO_INSTANCE, REQUESTS
 
 P = 0
 F = 0
@@ -219,6 +219,34 @@ def run_integration(base):
     ok(unnamed["status"] == "error" and len(REQUESTS) - before == 1,
        "a request without a jobId is never sent twice")
     LOSE_FIRST_RESPONSE.discard(None)
+
+    # Cloud Run answers 429 "no available instance" while every engine instance is busy or a new one is
+    # still starting: two of 94 questions run three at a time on one instance got it (2026-10-06). That
+    # request never reached the engine; the client asks again until an instance takes it. The engine's
+    # own 429 (a principal's rate) is final.
+    retry_delays = engine_client.NO_INSTANCE_RETRY_SECONDS
+    engine_client.NO_INSTANCE_RETRY_SECONDS = (0.0, 0.0, 0.0)
+    try:
+        NO_INSTANCE["jobBusy"] = 2
+        before = len(REQUESTS)
+        busy = asyncio.run(engine_client.call_query("total amount in France", tables, "jobBusy", base_url=base))
+        ok(busy["status"] == "answered" and busy["answer"]["rows"] == [[270]],
+           f"a question Cloud Run had no instance for is asked again and answers (got {busy.get('status')})")
+        ok([request.get("jobId") for request in REQUESTS[before:]] == ["jobBusy"] * 3,
+           "it is asked again with the same jobId until an instance takes it")
+        NO_INSTANCE["jobFull"] = 4
+        full = asyncio.run(engine_client.call_query("total amount in France", tables, "jobFull", base_url=base))
+        ok(full["status"] == "error" and full.get("http_status") == 429 and NO_INSTANCE["jobFull"] == 0,
+           "past its retries the 429 reaches the caller, which presents it as busy")
+        ENGINE_RATE_LIMITED.add("jobRate")
+        before = len(REQUESTS)
+        limited = asyncio.run(engine_client.call_query("total amount in France", tables, "jobRate", base_url=base))
+        ok(limited["status"] == "error" and limited.get("http_status") == 429 and len(REQUESTS) - before == 1,
+           "the engine's own 429 is not asked again")
+    finally:
+        engine_client.NO_INSTANCE_RETRY_SECONDS = retry_delays
+        NO_INSTANCE.clear()
+        ENGINE_RATE_LIMITED.clear()
 
     # AUTH IS PER CALL, NOT PER PROCESS. The orchestrator now calls this coroutine in-process while
     # serving concurrent users, so an explicit token must win over the process-wide env fallback —

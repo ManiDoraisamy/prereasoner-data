@@ -17,7 +17,7 @@ prepares Firebase Hosting and publishes the `web/public` CDN files after the Clo
 ```
 browser ── Firebase Hosting (web/) ── /api/** rewrite ──> Cloud Run "prereasoner-api"
    │                                                        │ 8Gi / 4 vCPU, up to 4 instances
-   │                                                        │ (min_instances 1 by default, or 0)
+   │                                                        │ (min_instances 2 by default, or 0)
    ├── Firebase Auth (ID tokens, verified in-app)           │ unix socket /cloudsql/...
    └── Firebase RTDB  (live trace stream, optional) <───────┤
                                             Cloud SQL Postgres 16 (pgvector) "world"
