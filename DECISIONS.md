@@ -2056,3 +2056,25 @@ place, a world type or a world measure. "how many users wanted neartail for Grea
 lookup still runs for it. A narrower lookup for such questions (only the tables a reading uses, or only the unread
 words) is not done here. A place named in several words reaches the reading as several unread words, and a
 word-level check would wrongly skip the lookup for it.
+
+## The Sheets read sends formats per column and errors where they occur (2026-10-05)
+
+The add-on's first read of a sheet returned three grids of the same size through `google.script.run`: the values,
+a number format for every cell, and an error flag for every cell. On the synthetic six-tab Subscriptions
+workbook (three exports of 11,500 rows by 22 columns, three report tabs) that was 24.53 MB: values 9.87, formats
+10.04, flags 4.63, almost all of the flags false. A customer's eight-tab read took 120 s on its first question.
+
+`sheets-addon/Code.js:readGrids_` now sends each column's format once, with the number cells whose format
+differs (`columnFormats`, `{f, x: [[row, format]]}`), and the `[row, column]` of each cell holding a formula
+error (`errorCells`). Only a number cell's format changes what the import reads (a date, a duration, a
+percentage), so a text or blank cell's format is not sent; counting them would make a mostly blank date
+column list every dated cell. The same workbook reads 9.87 MB, 59.8% less (58.3% when blank cells carry no
+date format), and the importer's sheets and import metadata are byte-identical for both encodings. Import time
+in the sidebar is unchanged.
+
+`web/public/lib/workbook-import.js:gridWorkbook` reads both encodings. The Excel pane hands the worker the
+per-cell formats and errors Office.js returns, in the same browser with no transfer to shrink, and the
+published Sheets script v30 sends them too, so the per-cell form is not a compatibility path. The order of
+release matters: a new script with an old importer reads dates as serial numbers
+(`sheets-addon/tests/addon.test.js` fails that way), so Hosting ships the importer before the owner publishes
+the script.

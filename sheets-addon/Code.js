@@ -266,15 +266,14 @@ function readGrids_(spreadsheet, requestedScope) {
     var columnCount = sheet.getLastColumn();
     var range = sheet.getRange(1, 1, rowCount, columnCount);
     var values = range.getValues();
+    var rows = values.map(function(row) {
+      return row.map(function(value) { return gridValue_(value, timeZone); });
+    });
     return {
       name: sheet.getName(),
-      rows: values.map(function(row) {
-        return row.map(function(value) { return gridValue_(value, timeZone); });
-      }),
-      formats: range.getNumberFormats(),
-      errors: values.map(function(row) {
-        return row.map(function(value) { return typeof value === 'string' && SHEETS_ERRORS.test(value); });
-      }),
+      rows: rows,
+      columnFormats: columnFormats_(range.getNumberFormats(), rows),
+      errorCells: errorCells_(values),
       merges: range.getMergedRanges().map(function(merged) {
         return {s: {r: merged.getRow() - 1, c: merged.getColumn() - 1},
                 e: {r: merged.getLastRow() - 1, c: merged.getLastColumn() - 1}};
@@ -283,6 +282,43 @@ function readGrids_(spreadsheet, requestedScope) {
     };
   });
   return {grids: grids, scope: scope, availableTabs: available};
+}
+
+// Each column's number format once, with the rows whose format differs ({f, x: [[row, format]]}), instead of a
+// format for every cell: a six-tab export read 24.5 MB, 10 MB of it per-cell formats (2026-10-04). Only a
+// number's format changes what the import reads (a date, a duration, a percentage), so a text or blank cell's
+// format is not sent. The importer reads them back (web/public/lib/workbook-import.js gridWorkbook).
+function columnFormats_(formats, rows) {
+  var width = formats.length ? formats[0].length : 0;
+  var columns = [];
+  for (var c = 0; c < width; c++) {
+    var counts = Object.create(null);
+    var best = 'General', most = 0;
+    for (var r = 0; r < formats.length; r++) {
+      if (typeof rows[r][c] !== 'number') continue;
+      var format = formats[r][c];
+      counts[format] = (counts[format] || 0) + 1;
+      if (counts[format] > most) { most = counts[format]; best = format; }
+    }
+    var exceptions = [];
+    for (var row = 0; row < formats.length; row++) {
+      if (typeof rows[row][c] === 'number' && formats[row][c] !== best) exceptions.push([row, formats[row][c]]);
+    }
+    columns.push(exceptions.length ? {f: best, x: exceptions} : {f: best});
+  }
+  return columns;
+}
+
+// The [row, column] of every cell holding a formula error ("#DIV/0!"), instead of a flag for every cell: the
+// flags were 4.6 MB of the same read, almost all of them false.
+function errorCells_(values) {
+  var cells = [];
+  values.forEach(function(row, r) {
+    row.forEach(function(value, c) {
+      if (typeof value === 'string' && SHEETS_ERRORS.test(value)) cells.push([r, c]);
+    });
+  });
+  return cells;
 }
 
 // A count as the add-on's messages write it: 50000 is "50,000".

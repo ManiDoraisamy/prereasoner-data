@@ -228,6 +228,22 @@ test('messy headers are read without a warning and without preventing a question
   expect(table.source.warnings.join(' ')).toContain('Repeated headers were kept');   // still sent with the data
 });
 
+test('a column\'s format and a failed formula reach the upload as a date and an error', async ({page}) => {
+  // The script sends each column's format once and the cells holding an error (Code.js readGrids_); the
+  // hosted importer reads them back as per-cell formats and flags were read.
+  const rows = [['placed', 'amount', 'ratio'], [45292, 10, 0.5], [45293, 12.5, '#DIV/0!']];
+  await openSidebar(page, rows, {}, {grids: [{name: 'Orders', rows, merges: [], date1904: false,
+    columnFormats: [{f: 'yyyy-mm-dd'}, {f: '0.00', x: [[2, '0.000']]}, {f: 'General'}], errorCells: [[2, 2]]}]});
+  await page.locator('#question').fill('How many rows are there?');
+  await expect(page.locator('#newConversation')).toBeEnabled();
+  await page.locator('#question').press('Enter');
+  await expect.poll(() => page.evaluate(() => Boolean(window.__server.pendingAsk))).toBe(true);
+  const [sync] = await calls(page, 'syncPrereasonerConversation');
+  const table = sync.arg.tables[0];
+  expect(table.data).toBe('placed,amount,ratio\n2024-01-01,10,0.5\n2024-01-02,12.5,#DIV/0!');
+  expect(table.source.warnings.join(' ')).toContain('Formula results are unavailable in columns C');
+});
+
 test('typing while reading and answering preserves the draft even on failure', async ({page}) => {
   await openSidebar(page, orders, {}, {contextDelay: 1500});
   await expect(page.locator('#question')).toBeEnabled();

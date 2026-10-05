@@ -86,8 +86,9 @@ equal(grids.map(grid => grid.name), ['Notes', 'Orders'], 'the active tab first; 
 const grid = grids[1];
 equal(grid.rows[1][1], 45292, '2024-01-01 is serial 45292');
 check(Math.abs(grid.rows[1][2] - (1 + 3.5 / 24)) < 1e-9, 'a 27:30 duration is 1.1458 days');
-equal(grid.formats[1][2], '[h]:mm');
-equal(grid.errors[1], [false, false, false, true, false, false]);
+equal(grid.columnFormats[2], {f: '[h]:mm'}, 'a column format, sent once');
+equal(grid.errorCells, [[1, 3]], 'the one failed formula');
+check(!('formats' in grid) && !('errors' in grid), 'no per-cell formats or error flags');
 equal(grid.merges, [{s: {r: 0, c: 4}, e: {r: 0, c: 5}}]);
 equal(addon.getWorkbookGrids().grids[0].rows, [['note'], ['keep']]);
 
@@ -102,6 +103,27 @@ equal(normalizeGrids(clean.workbook.grids)[0].csv, 'order ID,placed,worked\n101,
 assert(normalizeGrids(grids)[1].csv.includes('Column F')); checks++; // merged headers preserve positions
 const failed = load(book([sheet(8, 'Ratios', [['id', 'ratio'], [1, '#DIV/0!']])])).getSidebarContext();
 assert(normalizeGrids(failed.workbook.grids)[0].csv.includes('#DIV/0!')); checks++;
+check(normalizeGrids(failed.workbook.grids)[0].import.warnings.some(text => text.includes('unavailable in columns B')),
+  'a failed formula is read as an error, not as text');
+// Formats travel per column, with the number cells whose format differs, and errors as the cells that hold
+// one: the import reads them exactly as the per-cell formats and flags a script published before sends.
+const mixedFormats = [['General', 'General', 'General'], ['yyyy-mm-dd', '0.00', 'General'],
+                      ['yyyy-mm-dd', '[h]:mm', 'General'], ['yyyy-mm-dd', '0.00', 'General'], ['General', '0.00', 'General']];
+const mixed = load(book([sheet(9, 'Shifts', [
+  ['day', 'hours', 'ratio'],
+  [new Date(Date.UTC(2024, 0, 1)), 1.5, 0.25],
+  [new Date(Date.UTC(2024, 0, 2)), new Date(Date.UTC(1899, 11, 31, 3, 30)), '#DIV/0!'],
+  [new Date(Date.UTC(2024, 0, 3)), 2.25, 0.5],
+  ['', '', '']
+], {formats: mixedFormats})])).getSidebarContext().workbook.grids[0];
+equal(mixed.columnFormats, [{f: 'yyyy-mm-dd'}, {f: '0.00', x: [[2, '[h]:mm']]}, {f: 'General'}],
+  'a text or blank cell sends no format');
+equal(mixed.errorCells, [[2, 2]]);
+const perCell = {name: mixed.name, rows: mixed.rows, formats: mixedFormats, merges: mixed.merges, date1904: false,
+  errors: mixed.rows.map((row, r) => row.map((_, c) => r === 2 && c === 2))};
+equal(JSON.stringify(normalizeGrids([mixed])), JSON.stringify(normalizeGrids([perCell])), 'compact and per-cell grids import alike');
+check(normalizeGrids([mixed])[0].csv.startsWith('day,hours,ratio\n2024-01-01,1.5,0.25\n2024-01-02,1.145833333,#DIV/0!'),
+  'the column format reads the dates; the row format reads the duration');
 const shifted = load(book([sheet(7, 'sales', [['order ID', 'customer', 'amount'], [1, 101, 'Holmes', 118]])])).getSidebarContext();
 assert(normalizeGrids(shifted.workbook.grids)[0].csv.startsWith('Column A,Column B,Column C,Column D')); checks++;
 

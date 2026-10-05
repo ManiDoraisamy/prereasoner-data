@@ -67,10 +67,16 @@ async function openSidebar(page, rows, failing = {}, workbookOptions = {}) {
   await page.addInitScript(({initialRows, failing, workbookOptions}) => {
     window.__calls = [];
     window.__server = {rows: initialRows, pendingAsk: null, pendingSchemas: [], holdSchemas: false, workbookOptions};
-    const grids = () => Object.assign({grids: [{name: 'Orders', rows: window.__server.rows,
-      formats: window.__server.rows.map(row => row.map(() => 'General')),
-      errors: window.__server.rows.map(row => row.map(() => false)), merges: [], date1904: false}]},
-      window.__server.workbookOptions);
+    // What Code.js:readGrids_ returns: the upload-once script sends each column's format once and the cells
+    // holding an error; a script published before it (`uploadOnce: false`) sends both for every cell.
+    const grids = () => {
+      const rows = window.__server.rows;
+      const cells = window.__server.workbookOptions.uploadOnce === false
+        ? {formats: rows.map(row => row.map(() => 'General')), errors: rows.map(row => row.map(() => false))}
+        : {columnFormats: (rows[0] || []).map(() => ({f: 'General'})), errorCells: []};
+      return Object.assign({grids: [Object.assign({name: 'Orders', rows, merges: [], date1904: false}, cells)]},
+        window.__server.workbookOptions);
+    };
     const handlers = {
       // The script that uploads a sheet once says so; `uploadOnce: false` is a script published before it.
       getSidebarContext: (_, ok) => ok({token: 'google-token', spreadsheetId: 'sheet-1', name: 'Sales', workbook: grids(),

@@ -150,19 +150,28 @@
   // file bytes: [{name, rows, formats, errors, merges, date1904}]. They are written as the .xlsx an
   // export of those cells would be, and the worker reads it like any upload, so ONE reader and ONE
   // normalize() decide headers, dates, durations, merged cells, totals and errors for every source.
+  // The Sheets script sends formats and errors compactly instead: columnFormats, each column's format
+  // once with the number cells that differ ({f, x: [[row, format]]}), and errorCells, the [row, column]
+  // of each cell holding an error. Per-cell formats and flags were 14.7 MB of a six-tab export's 24.5 MB
+  // read (2026-10-05). The Excel pane hands the worker the per-cell formats and errors Office.js reads,
+  // with no transfer to shrink, and Sheets script v30 sends them too.
   const ERROR_CODES={'#NULL!':0x00,'#DIV/0!':0x07,'#VALUE!':0x0F,'#REF!':0x17,'#NAME?':0x1D,'#NUM!':0x24,'#N/A':0x2A};
   function gridWorkbook(grids,XLSX){
     const book=XLSX.utils.book_new();
     let date1904=false;
     grids.forEach((grid,index)=>{
-      const rows=grid.rows||[],formats=grid.formats||[],errors=grid.errors||[];
+      const rows=grid.rows||[],columns=grid.columnFormats;
+      const exceptions=columns&&columns.map(column=>new Map(column&&column.x||[]));
+      const failing=grid.errorCells&&new Set(grid.errorCells.map(cell=>cell[0]+','+cell[1]));
+      const formatAt=(r,c)=>columns?(exceptions[c]?.has(r)?exceptions[c].get(r):columns[c]?.f):grid.formats?.[r]?.[c];
+      const errorAt=(r,c)=>failing?failing.has(r+','+c):Boolean(grid.errors?.[r]?.[c]);
       const sheet=XLSX.utils.aoa_to_sheet(rows.map(r=>r.map(v=>v===''?null:v)));
       rows.forEach((row,r)=>row.forEach((value,c)=>{
         const address=XLSX.utils.encode_cell({r,c});
-        if(errors[r]&&errors[r][c]){
+        if(errorAt(r,c)){
           sheet[address]={t:'e',v:ERROR_CODES[String(value)]??0x0F,w:String(value)};return;
         }
-        const format=formats[r]&&formats[r][c];
+        const format=formatAt(r,c);
         if(typeof value==='number'&&sheet[address]&&format&&format!=='General')sheet[address].z=format;
       }));
       if(Array.isArray(grid.merges)&&grid.merges.length)sheet['!merges']=grid.merges;
