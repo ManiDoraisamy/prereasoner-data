@@ -88,6 +88,25 @@ def test_the_total_of_a_field_answers_a_spelled_total_field_name():
     assert constraint_violations(question, grouped(Aggregate("COUNT", Star())), graph)
 
 
+def test_a_counted_noun_names_the_rows_when_its_field_cannot_be_reached():
+    """"How many subscriptions are there by Status?" over subscription exports and report tabs (2026-10-05): the
+    reports' Subscriptions column joins none of the exports, so counting an export's rows by Status answers the
+    question. Contrast: a Subscriptions field a key joins to the counted table must be read."""
+    from engine.sql_ast import Aggregate, ColumnRef, SelectItem, SelectQuery, SQLType, Star
+    question = "How many subscriptions are there by Status?"
+    status = ColumnRef("NT", "Status", SQLType.TEXT)
+    counted = SelectQuery((SelectItem(status), SelectItem(Aggregate("COUNT", Star()))), "NT", group_by=(status,))
+    apart = SchemaGraph.from_tables([
+        {"name": "NT", "columns": ["Plan", "Status"], "rows": [["a", "active"], ["b", "canceled"]]},
+        {"name": "NT Report", "columns": ["Product", "Subscriptions"], "rows": [["x", 2]]}], [])
+    assert not constraint_violations(question, counted, apart)
+    joined = SchemaGraph.from_tables([
+        {"name": "NT", "columns": ["Plan", "Status", "Product"], "rows": [["a", "active", "x"], ["b", "canceled", "x"]]},
+        {"name": "Products", "columns": ["Product", "Subscriptions"], "rows": [["x", 2]]}],
+        [("NT", "Product", "Products", "Product")])
+    assert any("Subscriptions" in violation for violation in constraint_violations(question, counted, joined))
+
+
 def test_model_numeric_prediction_does_not_erase_notes_or_formula_errors():
     import numpy as np
     from engine.tables import TableQuery

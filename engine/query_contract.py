@@ -249,6 +249,7 @@ def constraint_violations(question, query, graph):
     ranked_grouping = (query.limit is not None and any(
         isinstance(term.expression, Aggregate) for term in query.order_by
     ))
+    reached = graph.reachable(query.referenced_tables())
     for label, refs in named_fields.items():
         if ' '+label+' ' not in question_text:
             continue
@@ -282,6 +283,11 @@ def constraint_violations(question, query, graph):
         if counts_rows and any(ref.table == query.from_table and graph.column_map[(ref.table, ref.name)].values
             and all(value is not None and str(value).strip() for value in graph.column_map[(ref.table, ref.name)].values)
             for ref in refs):
+            continue
+        # A field that only tables the query cannot reach hold, named where the question counts rows, names
+        # the rows counted: "how many subscriptions are there by Status" counts an export's rows, and the
+        # report tabs' Subscriptions column joins none of them (2026-10-05).
+        if counts_rows and not any(ref.table in reached for ref in refs):
             continue
         if not any(isinstance(item.expression, Star) for item in query.select):
             violations.append('The requested field is not used: '+sorted(ref.name for ref in refs)[0])

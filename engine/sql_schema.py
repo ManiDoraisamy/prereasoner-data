@@ -181,6 +181,21 @@ class SchemaGraph:
                 groups.setdefault(layout(column.ref.name for column in self.by_table[table]), []).append(table)
         return tuple(tuple(group) for group in groups.values() if len(group) > 1)
 
+    def reachable(self, tables: Iterable[str]) -> set[str]:
+        """The tables the foreign keys connect to ``tables``, those included."""
+        neighbours: dict[str, set[str]] = {}
+        for fk in self.foreign_keys:
+            neighbours.setdefault(fk.from_column.table, set()).add(fk.to_column.table)
+            neighbours.setdefault(fk.to_column.table, set()).add(fk.from_column.table)
+        reached = set(tables)
+        frontier = list(reached)
+        while frontier:
+            for table in neighbours.get(frontier.pop(), ()):
+                if table not in reached:
+                    reached.add(table)
+                    frontier.append(table)
+        return reached
+
     def without(self, tables: frozenset[str]) -> "SchemaGraph":
         """This graph less ``tables`` and their foreign keys, built once per set of tables."""
         if tables not in self._without:

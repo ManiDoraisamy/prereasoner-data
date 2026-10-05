@@ -274,9 +274,12 @@ class SQLSearcher:
                         required.add(max(table_scores, key=table_scores.get) if table_scores else self.schema.tables[0])
                     root = self._preferred_root(required, table_scores, draft)
                     trees = self.schema.join_trees(required, root)
+                    # The anchors are what the question asks of the rows: its aggregates, filters, groups and order.
+                    # A column it only names beside them ("how many subscriptions by Status", where Subscriptions
+                    # is a report tab's column no key joins) is projected, so it may drop out below (2026-10-05).
                     anchors = self._required_tables(tuple(SelectItem(a) for a in draft.aggregates),
-                                                    draft.predicates, grouped, order_terms)
-                    reachable = self._reachable(anchors or {root}) if not trees and len(required) > 1 else set()
+                                                    draft.predicates, group_columns, order_terms)
+                    reachable = self.schema.reachable(anchors or {root}) if not trees and len(required) > 1 else set()
                     stray = {item.expression for item in expressions if isinstance(item.expression, ColumnRef)
                              and item.expression.table not in reachable} if reachable else set()
                     if stray and not (mentioned_tables | anchors) - reachable and len(stray) < len(expressions):
@@ -520,20 +523,6 @@ class SQLSearcher:
         except (TypeError, ValueError):
             return candidate
         return ScoredQuery(simplified, sql, candidate.score, candidate.evidence + ("simplified",))
-
-    def _reachable(self, tables: set[str]) -> set[str]:
-        """The tables the foreign keys connect to ``tables``, those included."""
-        neighbours: dict[str, set[str]] = {}
-        for fk in self.schema.foreign_keys:
-            neighbours.setdefault(fk.from_column.table, set()).add(fk.to_column.table)
-            neighbours.setdefault(fk.to_column.table, set()).add(fk.from_column.table)
-        reached, frontier = set(tables), list(tables)
-        while frontier:
-            for table in neighbours.get(frontier.pop(), ()):
-                if table not in reached:
-                    reached.add(table)
-                    frontier.append(table)
-        return reached
 
     def _column_forms(self, table: str) -> frozenset[str]:
         """The words a question may name a column of ``table`` by: its whole name run together ("makeid")
@@ -1335,6 +1324,7 @@ class SQLSearcher:
         raw = words(question)
         explicit_positions = [i for i, token in enumerate(tokens)
                               if token in {"each", "per"} or by_groups(tokens, raw, i)]
+        named_at = {option.column: option.position for mention in mentions for option in mention.options}
         options: list[tuple[tuple[ColumnRef, ...], float, tuple[str, ...]]] = []
         for position in explicit_positions:
             nearby = sorted(
@@ -1345,7 +1335,13 @@ class SQLSearcher:
                                     option.column.table, option.column.name),
             )
             for option in nearby[:3]:
-                groups = _unique_columns(projection_groups + (option.column,))
+                # A projected column no key joins to the group's table is not grouped with it: it cannot be in
+                # the same query, and grouping by it left "how many subscriptions by Status" no reading. A column
+                # named after "by" is a group the question asks for, joined or not ("by Plan and Currency").
+                reach = self.schema.reachable({option.column.table})
+                groups = _unique_columns(tuple(column for column in projection_groups
+                                               if column.table in reach or named_at.get(column, -1) > position)
+                                         + (option.column,))
                 options.append((groups, 3.0 + option.score * 0.1,
                                 (f"group:{option.column.table}.{option.column.name}",)))
             if tokens[position] in {"each", "per"} or not projection_groups:

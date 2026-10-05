@@ -2859,6 +2859,19 @@ def test_tabs_of_one_layout_are_read_as_one():
     assert SchemaGraph.from_tables(lists, []).layout_copies == ()
 
 
+def test_a_counted_noun_naming_an_unjoined_column_counts_the_rows():
+    """The owner's six-tab Stripe workbook (2026-10-05): "How many subscriptions are there by Status?" named the
+    report tabs' Subscriptions column, which no key joins to the exports' Status. Every reading grouped by both
+    and none could run, so the question had no reading. A projected column the group's table cannot reach is not
+    grouped with it and drops out; the completeness check reads the counted noun as the rows counted."""
+    workbook = _subscription_workbook()
+    question = "How many subscriptions are there by Status?"
+    answer = best(question, workbook)
+    assert sorted(execute(workbook, answer.sql)) == [("active", 4), ("canceled", 1)], answer.sql
+    served = _hermetic_planner().serve(workbook, question)
+    assert served["valid"] and sorted(map(tuple, served["result"]["rows"])) == [("active", 4), ("canceled", 1)], served
+
+
 def test_total_before_a_measure_reads_the_measure_or_the_whole_name():
     """Near copies of a subscriptions export (SI with one more column) leave SI and NT their own layouts, both with
     Amount, beside reports with Total Amount: "the total Amount" must still read the total of Amount, as it
@@ -4401,6 +4414,7 @@ TESTS = [
     test_same_shaped_tabs_answer_a_stated_keyword,
     test_tabs_of_one_layout_are_read_as_one,
     test_total_before_a_measure_reads_the_measure_or_the_whole_name,
+    test_a_counted_noun_naming_an_unjoined_column_counts_the_rows,
     test_serving_preserves_repeated_source_rows_in_aggregates,
     test_a_listing_follows_the_order_the_question_names,
     test_by_after_a_participle_names_who_acted,
