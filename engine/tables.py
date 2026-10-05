@@ -210,6 +210,27 @@ def table_from_rows(name, columns, rows):
     return {"name": name, "columns": cols, "rows": typed_rows}
 
 
+class _PoolRuns:
+    """The in-memory SQLite copy of one request's tables that ``TableQuery.select_query`` runs its pools
+    on, and whether each query it ran there finished: the rewording's pool (step 4) copies no table again
+    and reruns no query the first pool ran."""
+
+    def __init__(self, planner, tablemap, sch):
+        self._planner, self._tablemap, self._sch = planner, tablemap, sch
+        self._connection = None
+        self.outcomes = {}
+
+    def connection(self):
+        if self._connection is None:
+            self._connection = self._planner._sqlite_tables(self._tablemap, self._sch)
+        return self._connection
+
+    def close(self):
+        if self._connection is not None:
+            self._connection.close()
+            self._connection = None
+
+
 class TableQuery:
     def __init__(self, deploy_dir=DATA_DIR):
         # DEFERRED encoder: the serving closure never runs TableQuery standalone — engine.knowledge_query's
@@ -473,7 +494,9 @@ class TableQuery:
 
         1. The deterministic search ranks up to ``SEARCH_CANDIDATES`` typed ASTs (``search_pool``).
         2. Every candidate that passes the guard is run on an in-memory SQLite copy of the
-           request's tables under a fixed step budget. A query that fails cannot be chosen, and
+           request's tables, under a step budget that grows with the cells of the tables it reads
+           (engine/sql_rank.execution_op_limit); the rewording's pool shares the copy and reruns no
+           query the first pool ran. A query that fails cannot be chosen, and
            neither can one that tests a text column against a literal the column never holds
            while another column does, or one that joins two columns the foreign keys keep apart
            (engine/sql_grounding.py).
@@ -496,7 +519,6 @@ class TableQuery:
         (``search_pool``); a caller that already ran that stage passes its pool as ``searched``.
         Decomposition leaves pass ``allow_fallback=False`` (engine/decomposition.py:_leaf_readings).
         """
-        from dataclasses import replace
         from engine.sql_schema import SchemaGraph
 
         # One schema graph serves the request: building one indexes every cell value, which
@@ -505,7 +527,17 @@ class TableQuery:
             graph = SchemaGraph.from_planner(sch, fks)
         if searched is None:
             searched = self.search_pool(question, norm, fks, sch, graph=graph)
-        selection = self._choose(question, norm, sch, tablemap, graph, searched)
+        runs = _PoolRuns(self, tablemap, sch)
+        try:
+            return self._select(question, norm, fks, sch, tablemap, graph, searched, allow_fallback, runs)
+        finally:
+            runs.close()
+
+    def _select(self, question, norm, fks, sch, tablemap, graph, searched, allow_fallback, runs):
+        """Steps 2 to 4 of ``select_query`` on ``runs``, its one copy of the request's tables."""
+        from dataclasses import replace
+
+        selection = self._choose(question, norm, sch, tablemap, graph, searched, runs)
         fallback = self.question_rewriter
         selected_index = selection.selected
         calculation_satisfied = (selected_index is not None and
@@ -526,10 +558,10 @@ class TableQuery:
 
             return replace(selection, selected=None, fallback=FallbackRecord(
                 "none", fallback.model, note="Gemini unavailable"))
-        return self._fall_back(question, norm, fks, sch, tablemap, graph, selection, fallback,
+        return self._fall_back(question, norm, fks, sch, tablemap, graph, selection, fallback, runs,
                                reject_baseline=selection.selected is not None and unread)
 
-    def _choose(self, question, norm, sch, tablemap, graph, pool):
+    def _choose(self, question, norm, sch, tablemap, graph, pool, runs):
         """Run, ground and choose among one pool (steps 2 and 3 of ``select_query``)."""
         from dataclasses import replace
 
@@ -538,10 +570,10 @@ class TableQuery:
         from engine.sql_expansion import aggregates_money_column, money_total_columns
         from engine.sql_expansion import tokens as question_tokens
         from engine.sql_grounding import double_counted_members, grounded_members
-        from engine.sql_rank import EXECUTION_OP_LIMIT, PoolSelection, select_ranked_candidate
+        from engine.sql_rank import PoolSelection, select_ranked_candidate
 
         pool = tuple(pool)
-        executable = self._executable(pool, tablemap, sch, EXECUTION_OP_LIMIT)
+        executable = self._executable(pool, tablemap, runs)
         with request_timing.span("pool_grounding"):
             grounded = grounded_members(pool, tablemap, graph)
             double_counted = double_counted_members(pool, tablemap)
@@ -581,7 +613,7 @@ class TableQuery:
                                                    double_counted)
         return replace(selection, selected=selected)
 
-    def _fall_back(self, question, norm, fks, sch, tablemap, graph, selection, fallback,
+    def _fall_back(self, question, norm, fks, sch, tablemap, graph, selection, fallback, runs,
                    reject_baseline=False):
         """Step 4 of ``select_query``: one isolated rewrite, followed by the same typed search."""
         from dataclasses import replace
@@ -594,7 +626,7 @@ class TableQuery:
                 baseline = replace(selection, selected=None) if reject_baseline else selection
                 return replace(baseline, fallback=FallbackRecord("none", fallback.model, note=note))
             reread = self._choose(rewritten, norm, sch, tablemap, graph,
-                                  self.search_pool(rewritten, norm, fks, sch, graph=graph))
+                                  self.search_pool(rewritten, norm, fks, sch, graph=graph), runs)
             if reread.selected is not None:
                 # Rewording may resolve a language/schema mismatch, but it may
                 # not choose between repeated source fields or reinterpret a
@@ -733,45 +765,52 @@ class TableQuery:
                 return str(v)
             t = tablemap[tname]
             ins = f"INSERT INTO {qident(tname)} VALUES ({','.join('?' * len(cols))})"
-            for r in t["rows"]:
-                rd = dict(zip(t["columns"], r))
-                con.execute(ins, [coerce(rd.get(c["name"]), c["affinity"]) for c in cols])
+            position = {name: index for index, name in enumerate(t["columns"])}
+            fields = [(position.get(c["name"]), c["affinity"]) for c in cols]
+            con.executemany(ins, ([coerce(r[index] if index is not None and index < len(r) else None, affinity)
+                                   for index, affinity in fields] for r in t["rows"]))
         return con
 
-    def _executable(self, pool, tablemap, sch, op_limit):
-        """Which pooled queries pass the guard and run to completion within ``op_limit`` SQLite
-        VM steps on one in-memory copy of the request's tables. The step budget is deterministic
-        and machine-independent; it stops a pathological join, not a normal query. Success only
-        makes a query eligible; it is not evidence that the query answers the question."""
+    def _executable(self, pool, tablemap, runs):
+        """Which pooled queries pass the guard and run to completion within their SQLite VM step
+        budget (``engine.sql_rank.execution_op_limit``, which grows with the cells of the tables a
+        query reads) on ``runs``, the request's one in-memory copy of its tables. The step budget is
+        deterministic and machine-independent; it stops a pathological join, not a normal query.
+        Success only makes a query eligible; it is not evidence that the query answers the question.
+        A query ``runs`` already ran keeps its outcome."""
         if not pool:
             return ()
-        con = self._sqlite_tables(tablemap, sch)
         from engine.request_deadline import expired, remaining
-        steps = 0
-        interval = max(1, min(10000, int(op_limit)))
+        from engine.sql_rank import execution_op_limit
+        steps = budget = interval = 0
         def progress():
             nonlocal steps
             steps += interval
-            return int(steps >= op_limit or expired())
-        con.set_progress_handler(progress, interval)
+            return int(steps >= budget or expired())
         outcomes = []
         with request_timing.span("pool_execute"):
             for candidate in pool:
                 remaining()
-                steps = 0
-                if not self.guard(candidate.sql)[0]:
-                    outcomes.append(False)
+                if candidate.sql in runs.outcomes:
+                    outcomes.append(runs.outcomes[candidate.sql])
                     continue
-                try:
-                    # Eligibility needs completion, but not a second materialized copy
-                    # of tens of thousands of result rows for each candidate.
-                    cursor = con.execute(candidate.sql)
-                    while cursor.fetchmany(1024):
-                        remaining()
-                    outcomes.append(True)
-                except sqlite3.Error:
-                    outcomes.append(False)
-        con.close()
+                ran = False
+                if self.guard(candidate.sql)[0]:
+                    con = runs.connection()
+                    steps, budget = 0, execution_op_limit(candidate.query, tablemap)
+                    interval = max(1, min(10000, budget))
+                    con.set_progress_handler(progress, interval)
+                    try:
+                        # Eligibility needs completion, but not a second materialized copy
+                        # of tens of thousands of result rows for each candidate.
+                        cursor = con.execute(candidate.sql)
+                        while cursor.fetchmany(1024):
+                            remaining()
+                        ran = True
+                    except sqlite3.Error:
+                        ran = False
+                runs.outcomes[candidate.sql] = ran
+                outcomes.append(ran)
         return tuple(outcomes)
 
     def execute(self, tablemap, sch, sql, query=None, deterministic_plan=None):

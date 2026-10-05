@@ -71,7 +71,8 @@ question + tables + foreign keys
           |
           v
   run each candidate on an in-memory SQLite copy
-  (SELECT guard, 100,000,000 VM-step budget, EXECUTION_OP_LIMIT);
+  (SELECT guard; 20 VM steps a cell of the tables it reads, at least
+  10,000,000 and at most 100,000,000: execution_op_limit);
   failures are ineligible, and so are text literals bound to a column
   that never holds them while another column does, and joins that
   equate columns the foreign keys keep apart (sql_grounding.py)
@@ -316,7 +317,7 @@ SQL statements. Serving also retains its SELECT-only execution guard.
 | `engine/sql_constraints.py` | `HAVING`, disjunction, scalar, and membership rules. |
 | `engine/sql_extrema.py` | Extrema, top-N, and set difference. |
 | `engine/sql_parsimony.py` | Bounded projection/table variants of pooled candidates (minimal join, binding, drop/add column, operand swap, DISTINCT). |
-| `engine/sql_rank.py` | Hand-written search ranking features (`CandidateRanker`), the pool contract (`SEARCH_CANDIDATES`, `EXECUTION_OP_LIMIT`), and the selection record (`PoolSelection`, `FallbackRecord`). |
+| `engine/sql_rank.py` | Hand-written search ranking features (`CandidateRanker`), the pool contract (`SEARCH_CANDIDATES`, `execution_op_limit`), and the selection record (`PoolSelection`, `FallbackRecord`). |
 | `engine/question_rewrite.py` | The labelled, request-scoped Gemini wording rewriter; the deterministic search still owns SQL. |
 | `engine/sql_prompt.py` | The schema text and instructions Gemini reads in the fallback. |
 | `regress/sql_import.py` | SQL text importer used by offline evaluation and migration tools; not used by serving fallback. |

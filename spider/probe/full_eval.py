@@ -313,10 +313,9 @@ def ast_predict(
         # stay in the evaluator; prediction never sees them.
         import sqlite3
 
-        from engine.sql_rank import EXECUTION_OP_LIMIT
+        from engine.sql_rank import execution_op_limit
 
         connection = enc._sqlite_tables(tmap, sch)
-        connection.set_progress_handler(lambda: 1, EXECUTION_OP_LIMIT)
         pool = []
         for rank, candidate in enumerate(candidates):
             entry = {"rank": rank, "sql": candidate.sql,
@@ -334,6 +333,8 @@ def ast_predict(
             if not ok:
                 entry["error"] = f"guard: {why}"
             else:
+                # Each member under the step budget serving gives it (engine.sql_rank.execution_op_limit).
+                connection.set_progress_handler(lambda: 1, execution_op_limit(candidate.query, tmap))
                 try:
                     entry["rows"] = [list(row) for row in connection.execute(candidate.sql).fetchall()]
                 except sqlite3.Error as exc:

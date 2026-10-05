@@ -4,7 +4,7 @@
 similarities (engine/sql_search.py applies it). Every adjustment is a named feature, so model
 similarity can improve ordering without hiding why a candidate won. ``PoolSelection`` records the
 served choice: the best-ranked candidate that executes and is grounded, under the pool contract
-(``SEARCH_CANDIDATES``, ``EXECUTION_OP_LIMIT``). No model writes or scores SQL here; the labelled
+(``SEARCH_CANDIDATES``, ``execution_op_limit``). No model writes or scores SQL here; the labelled
 Gemini fallback (engine/question_rewrite.py) is recorded as ``FallbackRecord`` when it took part.
 """
 from __future__ import annotations
@@ -503,9 +503,31 @@ def _column_label(column: ColumnRef) -> str:
 # The pool contract (engine/tables.py:TableQuery.select_query): how many ranked search candidates
 # are pooled, and the SQLite VM steps a pooled query may take before it counts as not running. The
 # step budget is deterministic and machine-independent; it stops a pathological join, not a normal
-# query.
+# query. It grows with the cells of the tables a query reads (``execution_op_limit``): a query that
+# reads its tables once or twice takes a few steps a cell (all 50,000 rows of a 22-column tab, ordered,
+# take 2.3), while a join on a value most rows of two tabs share takes steps in proportion to the
+# product of their rows. Two customer subscription exports joined on their currency ran to the old
+# flat 100M steps, about 2.4 s each in production, for 110 s of one question (2026-10-05). The floor
+# covers joins that fan small tables out: the heaviest of the 14,079 readings Spider's dev questions
+# pool, cities joined to their countries' languages, takes 1.1M steps (39 a cell).
 SEARCH_CANDIDATES = 25
+EXECUTION_OPS_PER_CELL = 20
+EXECUTION_OP_FLOOR = 10_000_000
 EXECUTION_OP_LIMIT = 100_000_000
+
+
+def execution_op_limit(query, tables) -> int:
+    """The SQLite VM steps pooled ``query`` may take: ``EXECUTION_OPS_PER_CELL`` for each cell of the
+    tables it reads, at least ``EXECUTION_OP_FLOOR`` and at most ``EXECUTION_OP_LIMIT``. ``tables`` maps
+    the request's table names to {"columns", "rows"}; a query naming a table it does not hold keeps the
+    ceiling."""
+    cells = 0
+    for name in query.referenced_tables():
+        table = tables.get(name)
+        if table is None:
+            return EXECUTION_OP_LIMIT
+        cells += len(table["rows"]) * len(table["columns"])
+    return min(EXECUTION_OP_LIMIT, max(EXECUTION_OP_FLOOR, EXECUTION_OPS_PER_CELL * cells))
 
 
 @dataclass(frozen=True)
@@ -540,8 +562,8 @@ class PoolSelection:
     the offline regression gate read this record.
 
     ``pool`` is the deterministic search's candidates in its ranked order (``CandidateRanker``), or the
-    fallback's when ``fallback`` says so. ``executable`` records which members ran within
-    ``EXECUTION_OP_LIMIT`` SQLite steps and ``grounded`` which compare every text literal with a column
+    fallback's when ``fallback`` says so. ``executable`` records which members ran within their
+    SQLite step budget (``execution_op_limit``) and ``grounded`` which compare every text literal with a column
     that can hold it and join no two columns the foreign keys keep apart (engine/sql_grounding.py).
     ``ranking`` lists the eligible members, where both hold, in pool order. ``selected`` is usually
     ``ranking[0]``; a query that keeps the question's dates, counts no row twice in a SUM or AVG

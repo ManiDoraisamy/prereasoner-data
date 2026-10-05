@@ -284,7 +284,7 @@ The own-data path serves one typed SQL AST chosen from the deterministic search'
 | `engine/sql_extrema.py` | Row, aggregate, frequency, and zero-inclusive extrema |
 | `engine/sql_parsimony.py` | Bounded projection/table variants of pooled candidates (minimal join, binding, drop/add column, operand swap, DISTINCT) |
 | `engine/sql_profile_expansion.py` | Typed variants driven by predicted structural profiles |
-| `engine/sql_rank.py` | Search ranking features (`CandidateRanker`), the pool contract (`SEARCH_CANDIDATES`, `EXECUTION_OP_LIMIT`), and the selection record (`PoolSelection`, `FallbackRecord`) |
+| `engine/sql_rank.py` | Search ranking features (`CandidateRanker`), the pool contract (`SEARCH_CANDIDATES`, `execution_op_limit`), and the selection record (`PoolSelection`, `FallbackRecord`) |
 | `engine/sql_grounding.py` | Pool eligibility: text literals that fit their column, and joins the foreign keys allow; which SUM or AVG reads only rows its joins repeat (a selection preference) |
 | `engine/tables.py` | Planner facade (`select_query`), SQL guard, pool and local SQLite execution |
 | `engine/question_rewrite.py` | The labelled, stateless Gemini wording rewrite; deterministic search still owns SQL |
@@ -295,7 +295,9 @@ The own-data path serves one typed SQL AST chosen from the deterministic search'
    them with named rules; the encoder contributes table, column-role, and structural-profile
    similarities.
 2. Every candidate runs on an in-memory SQLite copy of the request's tables under the SELECT guard
-   and a fixed budget of 100,000,000 SQLite VM steps (`EXECUTION_OP_LIMIT`). A query that fails
+   and a budget of SQLite VM steps that grows with the cells of the tables it reads: 20 a cell, at
+   least 10,000,000 and at most 100,000,000 (`execution_op_limit`). The Gemini rewording's pool runs
+   on the same copy and reruns no query the first pool ran. A query that fails
    cannot be chosen. Neither can one that tests a text column against a literal the column never
    holds while another column does (`engine/sql_grounding.py`): a SQL model once wrote
    `customer_name = 'Lyon'` for "Lyon customers". Nor can one that equates two columns the foreign

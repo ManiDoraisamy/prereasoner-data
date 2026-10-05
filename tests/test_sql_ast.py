@@ -783,6 +783,75 @@ def test_select_query_never_chooses_a_query_that_does_not_run():
     assert response["error"] == "planner: no executable AST candidate"
 
 
+def test_a_join_that_multiplies_two_tables_rows_stops_at_their_cells_budget():
+    """A pooled query may take EXECUTION_OPS_PER_CELL SQLite steps for each cell of the tables it reads
+    (engine.sql_rank.execution_op_limit). Two subscription exports joined on their currency, a value
+    most of their rows share, ran to the flat 100M-step budget: about 2.4 s each, 110 s of one question
+    in production (2026-10-05). Such a join now stops at the budget its tables set and is not eligible,
+    while every row of the largest tab the add-on reads, listed in order, stays eligible."""
+    from engine.sql_rank import (EXECUTION_OP_FLOOR, EXECUTION_OP_LIMIT, EXECUTION_OPS_PER_CELL,
+                                 execution_op_limit)
+
+    planner = _hermetic_planner()
+    exports = [{"name": name, "columns": ["id", "Currency", "Amount"],
+                "rows": [[f"{name}_{i}", "usd", 10] for i in range(3000)]} for name in ("nt", "si")]
+    joined = _model_query(planner, 'SELECT COUNT(*) FROM "nt" JOIN "si" ON "nt"."Currency" = "si"."Currency"',
+                          exports)
+    counted = _model_query(planner, 'SELECT COUNT(*) FROM "nt"', exports)
+    tablemap = _request(planner, exports)[3]
+    assert execution_op_limit(joined.query, tablemap) == EXECUTION_OP_FLOOR        # 18,000 cells
+    selection = _select(planner, "how many nt rows are there", exports, searched=[joined, counted])
+    assert selection.executable == (False, True), selection.executable
+    assert selection.candidate.sql == counted.sql
+
+    # Every row of the largest tab the add-on reads (50,000), listed in order, the heaviest normal shape
+    # measured (2.3 steps a cell on a 22-column export), takes under a quarter of its budget.
+    columns = ["id", "Plan", "Status", "Amount", "Currency", "Interval", "Quantity", "Customer", "Email", "Domain",
+               "Product", "Coupon"]
+    tablemap = {"subscriptions": {"columns": columns, "rows": [
+        [f"sub_{i:06}", f"plan_{i % 40}", "active", i % 100, "usd", "month", 1, f"cus_{i % 9000}",
+         f"user{i}@example.invalid", "example.invalid", "Startup", ""] for i in range(50000)]}}
+    listed = SelectQuery(select=tuple(SelectItem(ColumnRef("subscriptions", name, SQLType.TEXT)) for name in columns),
+                         from_table="subscriptions",
+                         order_by=(OrderTerm(ColumnRef("subscriptions", "id", SQLType.TEXT)),))
+    assert execution_op_limit(listed, tablemap) == EXECUTION_OPS_PER_CELL * 600000   # above the floor
+    connection = TableQuery._sqlite_tables(None, tablemap, [
+        {"table": "subscriptions", "name": name, "affinity": "INTEGER" if name in ("Amount", "Quantity") else "TEXT"}
+        for name in columns])
+    steps = 0
+
+    def count():
+        nonlocal steps
+        steps += 1000
+    connection.set_progress_handler(count, 1000)
+    assert len(connection.execute(render_query(listed)).fetchall()) == 50000
+    connection.close()
+    assert 4 * steps < execution_op_limit(listed, tablemap), steps
+
+    wide = {"wide": {"columns": list(range(50)), "rows": range(200000)}}           # 10M cells
+    assert execution_op_limit(listed, wide) == EXECUTION_OP_LIMIT                    # a table it does not hold
+    wide_listed = SelectQuery(select=(SelectItem(ColumnRef("wide", "0", SQLType.TEXT)),), from_table="wide")
+    assert execution_op_limit(wide_listed, wide) == EXECUTION_OP_LIMIT               # the ceiling
+
+
+def test_the_rewording_pool_shares_the_tables_copy_and_reruns_no_query():
+    """select_query copies the request's tables into SQLite once and runs each distinct query once:
+    the rewording's pool (step 4) copied every table again and reran every query the first pool had
+    run, a second full copy of a large workbook on every question Gemini rewords (2026-10-05)."""
+    planner, _ = _gemini_planner(question="what is total Amount")
+    amounts = {"name": "orders", "columns": ["Amount"], "rows": [[100], [200]]}
+    candidate = _model_query(planner, 'SELECT SUM("orders"."Amount") FROM "orders"', [amounts])
+    planner.search_pool = lambda *_args, **_kwargs: [candidate]
+    copies, guarded = [], []
+    copy, guard = planner._sqlite_tables, planner.guard
+    planner._sqlite_tables = lambda *args: copies.append(args) or copy(*args)
+    planner.guard = lambda sql: guarded.append(sql) or guard(sql)
+    selection = _select(planner, "what is total turnover", [amounts], searched=[candidate])
+    assert selection.served_by == "gemini-rewrite" and selection.candidate.sql == candidate.sql
+    assert len(copies) == 1, f"{len(copies)} copies of the request's tables"
+    assert guarded == [candidate.sql], guarded
+
+
 # complex-unsold-products: 'Lyon' occurs only in purchases.city.
 PURCHASES = {
     "name": "purchases",
@@ -4507,6 +4576,8 @@ TESTS = [
     test_duplicate_named_projection_keeps_single_binding_variant_in_pool,
     test_select_query_serves_the_reading_that_keeps_the_named_date,
     test_select_query_never_chooses_a_query_that_does_not_run,
+    test_a_join_that_multiplies_two_tables_rows_stops_at_their_cells_budget,
+    test_the_rewording_pool_shares_the_tables_copy_and_reruns_no_query,
     test_literal_grounding_names_the_column_a_value_actually_occupies,
     test_select_query_never_serves_a_misgrounded_query,
     test_select_query_never_serves_a_join_the_foreign_keys_contradict,

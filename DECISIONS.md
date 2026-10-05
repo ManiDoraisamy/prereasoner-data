@@ -2078,3 +2078,28 @@ published Sheets script v30 sends them too, so the per-cell form is not a compat
 release matters: a new script with an old importer reads dates as serial numbers
 (`sheets-addon/tests/addon.test.js` fails that way), so Hosting ships the importer before the owner publishes
 the script.
+
+## A pooled reading's step budget follows the tables it reads (2026-10-05)
+
+The customer's eight-tab Subscriptions question spent 110 s executing candidate readings (`pool_execute_ms`
+110,429 over 46 readings in two pools, the search's and the Gemini rewording's). Most of them joined two exports
+on a value most of their rows share, such as Currency, so their row count is the product of the tabs' rows. Each
+ran to the flat budget of 100,000,000 SQLite VM steps before it counted as not running, about 2.4 s in production.
+
+`engine/sql_rank.execution_op_limit` now gives a pooled reading 20 steps for each cell of the tables it reads, at
+least 10,000,000 and at most 100,000,000. Measured with every pooled reading's steps recorded: the 14,079 readings
+of Spider's dev questions all run, the heaviest in 1.1M steps (cities joined to their countries' languages, 39 a
+cell, under the floor); the 440 readings of every demo dataset's prompt and follow-ups take at most 0.04M; on the
+synthetic subscription workbook at 50,000 rows a tab, the largest the add-on reads, the heaviest pooled reading
+takes 1.55M (1.4 a cell), hand-written key joins, an anti-join and a many-to-one sum at most 1.14M, and every row
+listed in order 2.5M. No reading that runs today stops. A join of two 11,500-row exports on their currency stops
+at 10.1M steps.
+
+`TableQuery.select_query` also runs both of its pools on one in-memory copy of the request's tables and runs each
+distinct query once: the rewording's pool copied every table again and reran the queries the first pool had run.
+The copy inserts each table with one `executemany`, with the same content.
+
+On this desktop, a pool of twelve such joins and the reading that answers: pool execution 10.4 s plus a 0.6 s copy
+before, 1.3 s with the copy now, at 11,500 rows a tab; 9.8 s plus 2.7 s before, 5.5 s now, at 50,000. The same
+reading is chosen. The 110 s in production should fall about tenfold for tabs of that size; the `[timing]` line
+will show it.
