@@ -264,7 +264,7 @@ def test_chat_facade_maps_tool_choice_to_function_calling_modes():
                 await stream.get_final_message()
             try:
                 await client.generate(model="", max_tokens=64, system="rules", messages=[],
-                                      thinking={"type": "adaptive"})
+                                      temperature=0.5)
             except TypeError:
                 return
             raise AssertionError("an unimplemented argument was silently dropped")
@@ -281,6 +281,26 @@ def test_chat_facade_maps_tool_choice_to_function_calling_modes():
             "prereasoner_query", "prereasoner_describe"]
     assert bare.tools is None and bare.tool_config is None
     assert {request["model"] for request in vertex.requests} == {"gemini-test"}
+
+
+def test_chat_facade_passes_the_thinking_level():
+    """The chat rounds run at LOW thinking (orchestrator.MODEL_THINKING): at the model's default a
+    round once took 34 s. A round without a level leaves the model's default."""
+    vertex = _VertexClient([_model_turn(types.Part(text="ok")) for _ in range(2)])
+
+    async def rounds():
+        async with llm.AsyncGeminiClient(model="gemini-test") as client:
+            for options in ({"thinking": "LOW"}, {}):
+                async with client.messages.stream(model="", max_tokens=64, system="rules", tools=TOOLS,
+                                                  messages=[{"role": "user", "content": "total"}],
+                                                  **options) as stream:
+                    await stream.get_final_message()
+
+    with patch("google.genai.Client", lambda **_kwargs: vertex):
+        asyncio.run(rounds())
+    low, default = (request["config"] for request in vertex.requests)
+    assert low.thinking_config.thinking_level == types.ThinkingLevel.LOW
+    assert default.thinking_config is None
 
 
 def test_external_calls_share_the_request_deadline():
@@ -303,6 +323,7 @@ TESTS = [
     test_one_client_per_process_is_created_under_a_lock,
     test_chat_facade_replays_a_function_call_with_its_thought_signature,
     test_chat_facade_maps_tool_choice_to_function_calling_modes,
+    test_chat_facade_passes_the_thinking_level,
 ]
 
 

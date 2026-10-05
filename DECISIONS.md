@@ -2176,3 +2176,25 @@ added instance bills about $0.32 an hour while it runs, and Cloud Run keeps an i
 
 Two questions in one instance share its CPU and the Python interpreter lock, so each is slower than alone until
 Cloud Run adds an instance. A cold instance's first parallel requests may each build a lazily loaded model once.
+
+## A chat turn is one Gemini call, at LOW thinking (2026-10-06)
+
+A chat turn is one Gemini call: its tool call carries the question to send, the analysis action and its slug (and
+dataset ops when the user states a fact). Of the 400 production turns logged from 2026-10-04 18:04 to 2026-10-05
+18:11 UTC, 356 (89%) made one call. 38 (9.5%) made two: the engine answered "decompose" and the model wrote the
+split, or the engine could not read a follow-up and the model had one chance to rewrite it from earlier turns.
+6 (1.5%) made three, a split rejected and corrected. Those later calls answer the engine's reply, so no first call
+could have produced them.
+
+The time went to thinking. The chat round set no thinking level, so Gemini thought at its default, and a one-call
+turn spent 5.1 s in Gemini at the median, 10.5 s at p90 and 27 s at p99. The round now asks for LOW thinking
+(`orchestrator.MODEL_THINKING`, passed through `engine/llm.py:AsyncGeminiClient.generate`). On the first round of
+the 40 demo prompts and follow-ups, LOW answered in 1.7 s at the median against 2.9 s, 2.2 s at p90 against 4.2 s,
+and 3.0 s at worst against 34.4 s. It sent the same question and action on all 40, and thought 0 tokens at the
+median against 168.
+
+The live orchestrator suite (41 checks, stub engine, live Gemini) passed three runs at each level, in 186-225 s at
+LOW against 283-313 s. One earlier run at LOW missed one check, a "yes" after an offer the model never sees: the
+intent context carries the user's questions and an engine "Try asking" offer, not the assistant's prose. That run
+sent "in GBP for the whole of Europe?". Repeated ten times, LOW sent a total in Europe in GBP 9 times; the default
+sent one 10 times, 8 of them with "including France and other European countries" appended.

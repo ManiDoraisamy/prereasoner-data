@@ -60,6 +60,11 @@ MAX_TOOL_ROUNDS = 6
 # journey. Three proposals stay well inside MAX_TOOL_ROUNDS and remain terminal.
 MAX_DECOMPOSITION_PROPOSALS = 3
 MAX_MODEL_TOKENS = 4096
+# A round decides one tool call (the question to send, the analysis action and slug), which needs
+# little reasoning. On the orchestrator's first round over the 40 demo prompts and follow-ups, the
+# model's default thinking took 2.9 s at the median, 4.2 s at p90 and once 34 s; LOW took 1.7 s,
+# 2.2 s and at most 3.0 s, with the same question and action on all 40 (2026-10-05).
+MODEL_THINKING = "LOW"
 # A message that asks again for an earlier result is a recalculation. A model that answers it from
 # an earlier reply gets this one correction, in a round that forces the query call (see _run_turn).
 RECALCULATION_NOTE = (
@@ -670,7 +675,7 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                 round_text = ""
                 round_args: dict[str, Any] = {
                     "model": model, "max_tokens": MAX_MODEL_TOKENS, "system": system_prompt,
-                    "tools": TOOLS, "messages": messages,
+                    "tools": TOOLS, "messages": messages, "thinking": MODEL_THINKING,
                 }
                 if recalculation_forced:
                     round_args["tool_choice"] = {"type": "tool", "name": "prereasoner_query"}

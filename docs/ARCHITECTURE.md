@@ -56,7 +56,9 @@ guarded execution in the conversation schema
 ```
 
 The optional `orchestrator/` service wraps this API in a conversational tool loop. `mcp_server/` exposes the same
-engine operation to MCP clients. Neither component owns data reasoning or may invent a numeric result.
+engine operation to MCP clients. Neither component owns data reasoning or may invent a numeric result. A chat turn
+is normally one Gemini call at LOW thinking, whose tool call carries the question, the analysis action and its
+slug; a second call follows only when the engine asks for a split or cannot read a follow-up.
 
 ## Execution backend boundary
 

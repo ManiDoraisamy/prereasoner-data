@@ -321,7 +321,9 @@ class AsyncGeminiClient:
 
     async def generate(self, *, model: str, max_tokens: int, system: str,
                        messages: list[dict[str, Any]], tools: list[dict[str, Any]] | None = None,
-                       tool_choice: dict[str, Any] | None = None) -> GeminiResponse:
+                       tool_choice: dict[str, Any] | None = None,
+                       thinking: str | None = None) -> GeminiResponse:
+        """``thinking`` is the model's thinking level ("LOW", "HIGH"); None leaves the model's default."""
         if self._client is None:
             raise RuntimeError("Gemini client was not entered")
         from google.genai import types
@@ -334,6 +336,8 @@ class AsyncGeminiClient:
                 max_output_tokens=max_tokens,
                 tools=[self._tools(tools)] if tools else None,
                 tool_config=self._tool_config(tool_choice),
+                thinking_config=(types.ThinkingConfig(thinking_level=thinking)
+                                 if thinking is not None else None),
             ),
         )
         return self._response(response)
