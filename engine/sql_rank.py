@@ -544,9 +544,10 @@ class PoolSelection:
     ``EXECUTION_OP_LIMIT`` SQLite steps and ``grounded`` which compare every text literal with a column
     that can hold it and join no two columns the foreign keys keep apart (engine/sql_grounding.py).
     ``ranking`` lists the eligible members, where both hold, in pool order. ``selected`` is usually
-    ``ranking[0]``; a query that keeps the question's dates, a registered calculation intent or a named
-    money total can prefer a later eligible member (``select_ranked_candidate``). The first pool member is the search's own structural reading
-    of the question (engine/decomposition.compound_candidate).
+    ``ranking[0]``; a query that keeps the question's dates, counts no row twice in a SUM or AVG
+    (``double_counted``), satisfies a registered calculation intent or totals a named money column can
+    prefer a later eligible member (``select_ranked_candidate``). The first pool member is the search's
+    own structural reading of the question (engine/decomposition.compound_candidate).
     """
     pool: tuple[ScoredQuery, ...]
     executable: tuple[bool, ...]
@@ -556,6 +557,8 @@ class PoolSelection:
     calculation_satisfied: tuple[bool, ...] = ()
     money_total: tuple[bool, ...] = ()
     date_satisfied: tuple[bool, ...] = ()
+    # Which members SUM or AVG only rows their joins repeat (engine/sql_grounding.double_counted).
+    double_counted: tuple[bool, ...] = ()
     fallback: FallbackRecord | None = None
 
     @property
@@ -614,6 +617,7 @@ class PoolSelection:
                                            and self.calculation_satisfied[self.selected]),
                 money_total=bool(self.money_total and self.money_total[self.selected]),
                 date_satisfied=bool(self.date_satisfied and self.date_satisfied[self.selected]),
+                double_counted=bool(self.double_counted and self.double_counted[self.selected]),
             )
         if self.fallback is not None:
             evidence["fallback"] = self.fallback.record()
@@ -622,18 +626,23 @@ class PoolSelection:
 
 def select_ranked_candidate(ranking: Sequence[int], calculation_satisfied: Sequence[bool],
                             money_total: Sequence[bool],
-                            date_satisfied: Sequence[bool] = ()) -> int | None:
+                            date_satisfied: Sequence[bool] = (),
+                            double_counted: Sequence[bool] = ()) -> int | None:
     """The shared post-ranking serving rule; inputs are gold-blind candidate facts.
 
     A query that keeps the dates the question names (engine/sql_dates.realizes_dates) is served
     when any does: an undated reading ranked first, and "how many contracts were signed before
-    July 10, 2026" was served undated and declined (2026-10-02). Among those, prefer a satisfied
+    July 10, 2026" was served undated and declined (2026-10-02). Among those, a query whose SUM or
+    AVG reads only rows its joins repeat (engine/sql_grounding.double_counted) is served only when
+    every one does: "the total Amount by Plan and Currency" ranked first a sum of a report's Total
+    Amount once per subscription it matched (2026-10-05). Among those, prefer a satisfied
     calculation, if any. A named money total then constrains that choice, retaining it when
     compatible or taking the first ranked total.
     """
     if not ranking:
         return None
     ranking = [i for i in ranking if date_satisfied and date_satisfied[i]] or list(ranking)
+    ranking = [i for i in ranking if not (double_counted and double_counted[i])] or ranking
     selected = next((i for i in ranking if calculation_satisfied[i]), ranking[0])
     totals = [i for i in ranking if money_total[i]]
     if totals and not money_total[selected]:

@@ -328,7 +328,8 @@ def ast_predict(
                      "eligible": chosen.executable[rank] and chosen.grounded[rank],
                      "calculation_satisfied": chosen.calculation_satisfied[rank],
                      "money_total": chosen.money_total[rank],
-                     "date_satisfied": chosen.date_satisfied[rank]}
+                     "date_satisfied": chosen.date_satisfied[rank],
+                     "double_counted": chosen.double_counted[rank]}
             ok, why = enc.guard(candidate.sql)
             if not ok:
                 entry["error"] = f"guard: {why}"
@@ -399,6 +400,7 @@ def _score_pool_oracle(record, gold_rows):
                 "calculation_satisfied": bool(entry.get("calculation_satisfied")),
                 "money_total": bool(entry.get("money_total")),
                 "date_satisfied": bool(entry.get("date_satisfied")),
+                "double_counted": bool(entry.get("double_counted")),
             }
             if "rows" in entry:
                 comparison = compare(gold_rows, entry["rows"])

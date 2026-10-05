@@ -41,12 +41,34 @@ honest answer is then whatever matches.
 Checked: every ``JOIN ... ON`` column pair and every ``=`` between two columns in a WHERE or HAVING
 clause, in every scope, with qualifiers resolved to their physical tables. Columns of derived
 tables are skipped: their lineage is computed, not uploaded.
+
+Double counting: a SUM or AVG that reads only rows its joins repeat (``double_counted``).
+
+Joined on a column that holds one value in several rows, a row of the other table appears once per
+such row: a report row joined to its subscriptions appears once per subscription. A SUM or AVG that
+reads only the repeated rows counts each of them once per match. For "what is the total Amount
+broken down by Plan and Currency" the search's best reading summed a report tab's Total Amount once
+per subscription the report row matched: 40 for a product whose subscriptions total 20
+(2026-10-05). This is not an eligibility rule: a price summed over the order lines that repeat it,
+or a station's latitude averaged over the trips that start there, reads the repeats on purpose: 49
+of the 6,953 Spider train gold queries the importer reads do, and none of the 1,026 dev ones.
+Selection serves a double-counting member only when every eligible member double counts
+(``engine/sql_rank.select_ranked_candidate``).
+
+Checked in every SELECT against its own joins: each SUM or AVG without DISTINCT whose operand reads
+only columns of tables the joins repeat. A table's rows repeat when a join, followed outward from it
+through the SELECT's joins, matches columns that hold one join value (one combination, for a
+composite key) in more than one row of the request's data. Left alone: COUNT, which counts the
+joined rows whichever column it names (COUNT(*) counts the same rows); MIN, MAX and DISTINCT
+aggregates, which repeats do not change; an operand that reads a table the joins do not repeat
+(``SUM(orders.quantity * products.price)`` is computed once per order); and the repeats a derived
+table's columns would make, whose values are computed, not uploaded.
 """
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from dataclasses import dataclass, field, fields, is_dataclass
 
 from engine.sql_ast import (
     Aggregate,
@@ -58,6 +80,7 @@ from engine.sql_ast import (
     InPredicate,
     Literal,
     ScalarSubquery,
+    SelectQuery,
     SetQuery,
     SQLType,
     SubquerySource,
@@ -67,6 +90,9 @@ from engine.sql_schema import is_surrogate_key
 
 _EQUALITY = frozenset({"=", "!=", "<>"})
 _TEXT_COLUMNS = frozenset({SQLType.TEXT, SQLType.UNKNOWN})
+# The aggregates a repeated row changes: MIN and MAX read each value whatever its repeats, and COUNT
+# counts the joined rows whichever column it names.
+_REPEAT_SENSITIVE = frozenset({"SUM", "AVG"})
 
 # (physical table, column, literal text)
 Binding = tuple[str, str, str]
@@ -87,6 +113,19 @@ def join_pairs(query) -> tuple[JoinPair, ...]:
     """Every pair of columns of two different physical tables that ``query`` equates: each
     ``JOIN ... ON`` pair and each ``=`` between two columns, in every scope."""
     return tuple(_walk(query).pairs)
+
+
+def double_counted(query, tables: Mapping[str, dict]) -> tuple[Aggregate, ...]:
+    """Every SUM or AVG in ``query`` that reads only rows its joins repeat in ``tables``
+    (name -> {"columns", "rows"}), the request's tables."""
+    return _JoinedRows(tables).double_counted(query)
+
+
+def double_counted_members(pool: Sequence, tables: Mapping[str, dict]) -> tuple[bool, ...]:
+    """Per pool member (a ``ScoredQuery``): whether any of its SUM or AVG aggregates reads only rows
+    its joins repeat in ``tables``, the request's tables."""
+    rows = _JoinedRows(tables)
+    return tuple(bool(rows.double_counted(candidate.query)) for candidate in pool)
 
 
 def grounded_members(pool: Sequence, tables: Mapping[str, dict], graph) -> tuple[bool, ...]:
@@ -190,6 +229,106 @@ def _join_value(value) -> str | None:
     except ValueError:
         return text
     return repr(number) if math.isfinite(number) else text
+
+
+class _JoinedRows:
+    """Which rows a SELECT's joins repeat, read from the request's join values."""
+
+    def __init__(self, tables: Mapping[str, dict]):
+        self._tables = tables
+        self._repeats: dict[tuple[str | None, tuple[str, ...]], bool] = {}
+
+    def double_counted(self, query) -> tuple[Aggregate, ...]:
+        found: list[Aggregate] = []
+        self._collect(query, found)
+        return tuple(dict.fromkeys(found))
+
+    def _collect(self, query, found: list[Aggregate]) -> None:
+        if isinstance(query, SetQuery):
+            self._collect(query.left, found)
+            self._collect(query.right, found)
+            return
+        for part in fields(query):
+            for inner in _within(getattr(query, part.name), (SelectQuery, SetQuery)):
+                self._collect(inner, found)
+        terms = (tuple(item.expression for item in query.select),
+                 tuple(term.expression for term in query.order_by), query.having)
+        aggregates = []
+        for aggregate in _within(terms, Aggregate):
+            columns = tuple(_within(aggregate.operand, ColumnRef))
+            if aggregate.function in _REPEAT_SENSITIVE and not aggregate.distinct and columns:
+                aggregates.append((aggregate, columns))
+        if not query.joins or not aggregates:
+            return
+        repeated = self._repeated(query)
+        found.extend(aggregate for aggregate, columns in aggregates
+                     if all(repeated(column.table) for column in columns))
+
+    def _repeated(self, query) -> Callable[[str], bool]:
+        """Whether the SELECT's joins repeat the rows of the table one of its qualifiers names."""
+        scope: dict[str, str | None] = {}
+        if isinstance(query.from_table, SubquerySource):
+            scope[query.from_table.alias] = None
+        else:
+            scope[query.from_alias or query.from_table] = query.from_table
+        for join in query.joins:
+            scope[join.alias or join.table] = join.table
+        keys: dict[tuple[str, str], list[tuple[str, str]]] = {}
+        for join in query.joins:
+            for left, right in join.predicates:
+                if left.table == right.table or left.table not in scope or right.table not in scope:
+                    continue
+                if left.table > right.table:
+                    left, right = right, left
+                keys.setdefault((left.table, right.table), []).append((left.name, right.name))
+        # qualifier -> [(the qualifier it joins, the columns of that one it matches)]
+        edges: dict[str, list[tuple[str, tuple[str, ...]]]] = {}
+        for (one, other), names in keys.items():
+            edges.setdefault(one, []).append((other, tuple(name for _, name in names)))
+            edges.setdefault(other, []).append((one, tuple(name for name, _ in names)))
+
+        def repeated(qualifier: str) -> bool:
+            # Outward only: the join a table was reached through already matched one row per row.
+            seen, frontier = {qualifier}, [qualifier]
+            while frontier:
+                for joined, names in edges.get(frontier.pop(), ()):
+                    if joined in seen:
+                        continue
+                    if self._holds_repeats(scope[joined], names):
+                        return True
+                    seen.add(joined)
+                    frontier.append(joined)
+            return False
+
+        return repeated
+
+    def _holds_repeats(self, table: str | None, names: tuple[str, ...]) -> bool:
+        """Whether columns ``names`` of ``table`` hold one join value (one combination of values) in
+        more than one row. A derived table's (None) values are computed, not uploaded: not read."""
+        key = (table, names)
+        if key not in self._repeats:
+            data = self._tables.get(table) if table is not None else None
+            repeats = False
+            if data is not None and all(name in data["columns"] for name in names):
+                indexes = [list(data["columns"]).index(name) for name in names]
+                values = [tuple(_join_value(row[index]) if index < len(row) else None for index in indexes)
+                          for row in data["rows"]]
+                values = [value for value in values if None not in value]
+                repeats = len(set(values)) < len(values)
+            self._repeats[key] = repeats
+        return self._repeats[key]
+
+
+def _within(node, kinds) -> Iterator:
+    """The nodes of ``kinds`` in ``node``, an AST node or a tuple of them, outside nested queries."""
+    if isinstance(node, kinds):
+        yield node
+    elif isinstance(node, (tuple, list)):
+        for item in node:
+            yield from _within(item, kinds)
+    elif is_dataclass(node) and not isinstance(node, (type, SelectQuery, SetQuery)):
+        for part in fields(node):
+            yield from _within(getattr(node, part.name), kinds)
 
 
 def _find(parent: dict, item):

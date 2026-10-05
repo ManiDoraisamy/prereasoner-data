@@ -475,6 +475,8 @@ class TableQuery:
            (engine/sql_grounding.py).
         3. The best-ranked eligible candidate is served. A date the question names
            (engine/sql_dates) keeps the choice to the candidates that realize it, when one does; a
+           candidate whose SUM or AVG reads only rows its joins repeat (engine/sql_grounding.py) is
+           chosen only when every one does; a
            registered calculation intent (engine/calculations) takes the best-ranked candidate that
            satisfies it, when one exists; and a money noun that names its table ("what's the sales in
            London") takes the best-ranked candidate that aggregates a money column
@@ -531,13 +533,14 @@ class TableQuery:
         from engine.sql_dates import realizes_dates, served_date_phrases
         from engine.sql_expansion import aggregates_money_column, money_total_columns
         from engine.sql_expansion import tokens as question_tokens
-        from engine.sql_grounding import grounded_members
+        from engine.sql_grounding import double_counted_members, grounded_members
         from engine.sql_rank import EXECUTION_OP_LIMIT, PoolSelection, select_ranked_candidate
 
         pool = tuple(pool)
         executable = self._executable(pool, tablemap, sch, EXECUTION_OP_LIMIT)
         with request_timing.span("pool_grounding"):
             grounded = grounded_members(pool, tablemap, graph)
+            double_counted = double_counted_members(pool, tablemap)
         ranking = tuple(index for index, (ran, sound) in enumerate(zip(executable, grounded))
                         if ran and sound)
         calculation_satisfied = [False] * len(pool)
@@ -562,14 +565,16 @@ class TableQuery:
         request_timing.count("pool", len(pool))
         selection = PoolSelection(pool, tuple(executable), tuple(grounded), ranking, None,
                                   tuple(calculation_satisfied), tuple(money_total),
-                                  tuple(date_satisfied))
-        selected = select_ranked_candidate(ranking, calculation_satisfied, money_total, date_satisfied)
+                                  tuple(date_satisfied), double_counted)
+        selected = select_ranked_candidate(ranking, calculation_satisfied, money_total, date_satisfied,
+                                           double_counted)
         if selected is not None and not coverage(question, pool[selected], graph,
                 calculation_satisfied=calculation_satisfied[selected]).complete:
             complete = tuple(index for index in ranking if coverage(question, pool[index], graph,
                 calculation_satisfied=calculation_satisfied[index]).complete)
             if complete:
-                selected = select_ranked_candidate(complete, calculation_satisfied, money_total, date_satisfied)
+                selected = select_ranked_candidate(complete, calculation_satisfied, money_total, date_satisfied,
+                                                   double_counted)
         return replace(selection, selected=selected)
 
     def _fall_back(self, question, norm, fks, sch, tablemap, graph, selection, fallback,

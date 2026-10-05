@@ -40,7 +40,7 @@ from engine.sql_ast import (
 )
 from engine import llm
 from engine.artifact_provenance import sha256_file, validate_weight_bundle
-from engine.sql_grounding import grounded_members, join_pairs, literal_bindings
+from engine.sql_grounding import double_counted, grounded_members, join_pairs, literal_bindings
 from engine.sql_rank import FallbackRecord, SemanticSignals, analyze_question
 from regress.sql_import import import_sql, normalize_decoded_sql
 from engine.sql_search import SQLSearcher, SchemaGraph, ScoredQuery
@@ -1024,6 +1024,94 @@ def test_join_grounding_reads_every_equated_column_pair():
     assert join_pairs(boss) == ()
 
 
+def test_double_counting_reads_the_rows_each_join_repeats():
+    """engine/sql_grounding.double_counted, per SELECT: a SUM or AVG whose operand reads only rows its joins
+    repeat. A customer joined to her orders appears once per order; an order joined to its customer, once."""
+    integer, real, text = SQLType.INTEGER, SQLType.REAL, SQLType.TEXT
+    customers = {"name": "customers", "columns": ["customer_id", "country", "credit"],
+                 "rows": [[1, "France", 100], [2, "Japan", 50], [3, "Japan", 70]]}
+    orders = {"name": "orders", "columns": ["order_id", "customer_id", "amount"],
+              "rows": [[10, 1, 5], [11, 1, 7], [12, 2, 3]]}
+    items = {"name": "items", "columns": ["item_id", "order_id", "product_id", "quantity"],
+             "rows": [[100, 10, 1, 1], [101, 10, 2, 2], [102, 12, 1, 4]]}
+    products = {"name": "products", "columns": ["product_id", "price"], "rows": [[1, 2.5], [2, 4.0]]}
+    profiles = {"name": "profiles", "columns": ["customer_id", "segment"],
+                "rows": [[1, "retail"], [2, "trade"], [3, "trade"]]}
+    addresses = {"name": "addresses", "columns": ["address_id", "customer_id", "city"],
+                 "rows": [[1, 1, "Lyon"], [2, 1, "Paris"], [3, 2, "Osaka"]]}
+    employees = {"name": "employees", "columns": ["employee_id", "manager_id", "salary"],
+                 "rows": [[1, None, 90], [2, 1, 60], [3, 1, 50]]}
+    tables = {table["name"]: table for table in (customers, orders, items, products, profiles, addresses, employees)}
+    graph = SchemaGraph.from_tables(list(tables.values()), [
+        ("orders", "customer_id", "customers", "customer_id"), ("items", "order_id", "orders", "order_id"),
+        ("items", "product_id", "products", "product_id"), ("profiles", "customer_id", "customers", "customer_id"),
+        ("addresses", "customer_id", "customers", "customer_id")])
+
+    def counted(query, data=tables):
+        if isinstance(query, str):
+            query = import_sql(query, graph)
+        validate_query(query)
+        return [f"{aggregate.function}({aggregate.operand.table}.{aggregate.operand.name})"
+                for aggregate in double_counted(query, data)]
+
+    join = "FROM orders JOIN customers ON orders.customer_id = customers.customer_id"
+    # Contrast: a child's measure totalled by its parent's attribute reads each order once.
+    assert counted(f"SELECT customers.country, SUM(orders.amount) {join} GROUP BY customers.country") == []
+    # The parent's own measure is read once per order, wherever the aggregate stands.
+    assert counted(f"SELECT customers.country, SUM(customers.credit) {join} GROUP BY customers.country") == [
+        "SUM(customers.credit)"]
+    assert counted(f"SELECT AVG(customers.credit) {join}") == ["AVG(customers.credit)"]
+    assert counted(f"SELECT customers.country {join} GROUP BY customers.country "
+                   "ORDER BY SUM(customers.credit) DESC") == ["SUM(customers.credit)"]
+    assert counted(f"SELECT customers.country {join} GROUP BY customers.country "
+                   "HAVING AVG(customers.credit) > 60") == ["AVG(customers.credit)"]
+    # Left alone: COUNT counts the joined rows whichever column it names; MIN, MAX and DISTINCT read values.
+    assert counted(f"SELECT COUNT(customers.country), COUNT(*), MIN(customers.credit), MAX(customers.credit), "
+                   f"COUNT(DISTINCT customers.customer_id) {join}") == []
+    # A table that holds each key once repeats nothing.
+    assert counted("SELECT SUM(customers.credit) FROM customers JOIN profiles "
+                   "ON profiles.customer_id = customers.customer_id") == []
+    # Repeats carry across joins: an order of a customer with two addresses appears twice.
+    assert counted(f"SELECT SUM(orders.amount) {join} JOIN addresses "
+                   "ON addresses.customer_id = customers.customer_id") == ["SUM(orders.amount)"]
+    # An operand that reads a table the joins do not repeat is computed once per row of that table.
+    lines = "FROM items JOIN products ON items.product_id = products.product_id"
+    assert counted(f"SELECT SUM(items.quantity * products.price) {lines}") == []
+    assert counted(f"SELECT SUM(products.price) {lines}") == ["SUM(products.price)"]
+    # A self join: a manager appears once per report, a report once.
+    bosses = "FROM employees AS e JOIN employees AS m ON e.manager_id = m.employee_id"
+    assert counted(f"SELECT SUM(m.salary) {bosses}") == ["SUM(m.salary)"]
+    assert counted(f"SELECT SUM(e.salary) {bosses}") == []
+    # Each SELECT is read against its own joins.
+    assert counted(f"SELECT customers.country FROM customers WHERE customers.credit > "
+                   f"(SELECT AVG(customers.credit) {join})") == ["AVG(customers.credit)"]
+
+    # A composite key repeats a row only when the combination repeats: each currency and each month
+    # repeats in rates, but each pair once, while payments holds ("usd", 1) twice.
+    payments = {"name": "payments", "columns": ["currency", "month", "amount"],
+                "rows": [["usd", 1, 10], ["usd", 2, 20], ["eur", 1, 30], ["usd", 1, 5]]}
+    rates = {"name": "rates", "columns": ["currency", "month", "rate"],
+             "rows": [["usd", 1, 1.0], ["usd", 2, 1.1], ["eur", 1, 0.9]]}
+
+    def converted(column):
+        return SelectQuery((SelectItem(Aggregate("SUM", column)),), "payments", joins=(Join(
+            "rates", ColumnRef("rates", "currency", text), ColumnRef("payments", "currency", text),
+            additional=((ColumnRef("rates", "month", integer), ColumnRef("payments", "month", integer)),)),))
+
+    keyed = {"payments": payments, "rates": rates}
+    assert counted(converted(ColumnRef("payments", "amount", integer)), keyed) == []
+    assert counted(converted(ColumnRef("rates", "rate", real)), keyed) == ["SUM(rates.rate)"]
+
+    # A derived table's values are computed, not read; the uploaded table joined to it still repeats it.
+    credit = ColumnRef("t", "credit", integer)
+    derived = SubquerySource(SelectQuery((SelectItem(ColumnRef("customers", "customer_id", integer)),
+                                          SelectItem(ColumnRef("customers", "credit", integer))), "customers"), "t")
+    on = Join("orders", ColumnRef("orders", "customer_id", integer), ColumnRef("t", "customer_id", integer))
+    assert counted(SelectQuery((SelectItem(Aggregate("SUM", credit)),), derived, joins=(on,))) == ["SUM(t.credit)"]
+    assert counted(SelectQuery((SelectItem(Aggregate("SUM", ColumnRef("orders", "amount", integer))),),
+                               derived, joins=(on,))) == []
+
+
 def _ranked_first(planner, member):
     """select_query over the search's own pool with ``member`` ranked ahead of it: the production
     selection, given a pool in which a model's query outranks the search's readings."""
@@ -1468,6 +1556,13 @@ def test_shared_ranking_rule_preserves_calculation_then_money_precedence():
     assert select_ranked_candidate((2, 1, 0), (False,) * 3, (False,) * 3, (True, False, False)) == 0
     assert select_ranked_candidate((2, 1, 0), (False, True, False), (False,) * 3, (True, True, False)) == 1
     assert select_ranked_candidate((2, 1, 0), (False, True, False), (False,) * 3, (False,) * 3) == 1
+    # Among those, a query whose SUM or AVG reads only rows its joins repeat gives way to one that does not, even
+    # to a satisfied calculation; when every one does, the order stands.
+    assert select_ranked_candidate((2, 1, 0), (False,) * 3, (False,) * 3, (), (False, True, True)) == 0
+    assert select_ranked_candidate((2, 1, 0), (False,) * 3, (False,) * 3, (), (True,) * 3) == 2
+    assert select_ranked_candidate((2, 1, 0), (False,) * 3, (False,) * 3, (False, False, True),
+                                   (False, False, True)) == 2
+    assert select_ranked_candidate((2, 1, 0), (False, True, False), (False,) * 3, (), (False, True, False)) == 2
 
 
 def test_sql_import_maps_numeric_arithmetic_but_refuses_nonnumeric():
@@ -2774,11 +2869,12 @@ def test_same_shaped_tabs_answer_a_stated_keyword():
     assert execute([orders], paris.sql) == [(30,)], paris.sql
 
 
-def _subscription_workbook(extra_si_column=False):
+def _subscription_workbook(extra_si_column=False, exports=None):
     """Three subscription exports with one layout (NT, SI and FF) and a report of each, small enough to total
-    by hand: a customer's Stripe workbook, 2026-10-04. ``extra_si_column`` gives SI one more column."""
+    by hand: a customer's Stripe workbook, 2026-10-04. ``extra_si_column`` gives SI one more column, and
+    ``exports`` (name -> rows) replaces the exports."""
     # A report lists each product once per currency, so no column of it is a key the exports reference.
-    exports = {
+    exports = exports or {
         "NT": [("price_a", "Neartail - Startup", "usd", 10, "active"),
                ("price_a", "Neartail - Startup", "usd", 10, "canceled"),
                ("price_a", "Neartail - Startup", "eur", 9, "active"),
@@ -2870,6 +2966,41 @@ def test_a_counted_noun_naming_an_unjoined_column_counts_the_rows():
     assert sorted(execute(workbook, answer.sql)) == [("active", 4), ("canceled", 1)], answer.sql
     served = _hermetic_planner().serve(workbook, question)
     assert served["valid"] and sorted(map(tuple, served["result"]["rows"])) == [("active", 4), ("canceled", 1)], served
+
+
+def test_a_sum_over_rows_its_joins_repeat_is_served_only_when_every_reading_is_one():
+    """Subscription exports beside reports that list each product once, in its one currency (2026-10-05):
+    discovery keys the exports' Product to a report's, and the best-ranked reading of "What is the total Amount
+    broken down by Plan and Currency?" summed the report's Total Amount over that join, once per subscription the
+    report row matched: 40 for a product whose subscriptions total 20. A SUM or AVG that reads only rows its joins
+    repeat is served only when every eligible reading does, so the exports' own Amount is served."""
+    workbook = _subscription_workbook(exports={
+        "NT": [("price_a", "Neartail - Startup", "usd", 10, "active"),
+               ("price_a", "Neartail - Startup", "usd", 10, "canceled"),
+               ("price_b", "Order Form - Basic", "eur", 7, "active")],
+        "SI": [("price_c", "Formesign - Pro", "usd", 20, "active"),
+               ("price_c", "Formesign - Pro", "usd", 20, "canceled")]})
+    question = "What is the total Amount broken down by Plan and Currency?"
+    planner = _hermetic_planner()
+    selection = _select(planner, question, workbook)
+    first = selection.ranking[0]
+    assert 'SUM("NT_Report"."Total Amount")' in selection.pool[first].sql and selection.double_counted[first], (
+        "the best-ranked eligible reading totals the report once per subscription", selection.pool[first].sql)
+    assert not selection.double_counted[selection.selected] and not selection.record()["double_counted"]
+    served = planner.serve(workbook, question)
+    assert {(row[0], row[1], row[-1]) for row in served["result"]["rows"]} == {
+        ("price_a", "usd", 20), ("price_b", "eur", 7)}, served["sql"]
+
+    # Negative: when every eligible reading reads repeats, the best-ranked is served. A course's credits
+    # summed over the classes that offer it read the repeats on purpose (Spider train, college_1).
+    course = {"name": "course", "columns": ["crs_code", "dept_code", "crs_credit"],
+              "rows": [["ACCT-211", "ACCT", 3], ["ACCT-212", "ACCT", 3], ["CIS-220", "CIS", 4]]}
+    classes = {"name": "class", "columns": ["class_code", "crs_code"],
+               "rows": [[1, "ACCT-211"], [2, "ACCT-211"], [3, "CIS-220"], [4, "ACCT-212"]]}
+    member = _model_query(planner, "SELECT course.dept_code, SUM(course.crs_credit) FROM course JOIN class "
+                                   "ON course.crs_code = class.crs_code GROUP BY course.dept_code", [course, classes])
+    only = _select(planner, "What is the total crs credit by dept code?", [course, classes], searched=[member])
+    assert only.double_counted == (True,) and only.selected == 0 and only.record()["double_counted"]
 
 
 def test_total_before_a_measure_reads_the_measure_or_the_whole_name():
@@ -4324,6 +4455,7 @@ TESTS = [
     test_select_query_serves_the_bridge_join_the_foreign_keys_state,
     test_join_grounding_leaves_joins_the_foreign_keys_do_not_contradict,
     test_join_grounding_reads_every_equated_column_pair,
+    test_double_counting_reads_the_rows_each_join_repeats,
     test_named_request_decomposes_a_compound_question_a_single_query_answers_in_part,
     test_a_compound_named_request_asks_for_decomposition_before_selection_runs,
     test_named_request_never_serves_or_decomposes_a_model_only_set_operation,
@@ -4415,6 +4547,7 @@ TESTS = [
     test_tabs_of_one_layout_are_read_as_one,
     test_total_before_a_measure_reads_the_measure_or_the_whole_name,
     test_a_counted_noun_naming_an_unjoined_column_counts_the_rows,
+    test_a_sum_over_rows_its_joins_repeat_is_served_only_when_every_reading_is_one,
     test_serving_preserves_repeated_source_rows_in_aggregates,
     test_a_listing_follows_the_order_the_question_names,
     test_by_after_a_participle_names_who_acted,
