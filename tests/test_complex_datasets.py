@@ -302,6 +302,7 @@ def test_the_serving_entry_point_carries_the_proposal_to_the_compose_layer():
         def begin_request(self): pass
         def begin_typing(self): pass
         def take_typing(self): return {}
+        def end_request(self): pass
 
     reasoner.qw = _Qw()
     proposal = {"subquestions": [], "merges": [], "output": "x", "grain": "one row"}
