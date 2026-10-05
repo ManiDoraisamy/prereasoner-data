@@ -4,6 +4,20 @@ Dated entries come newest first. Each records a run at the commit it names; the 
 entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection arbiter`) may since have
 been removed, and that commit holds the code that ran.
 
+## A pooled reading's step budget follows the tables it reads, at `c9bf407`: same answers (2026-10-05)
+
+Same contract as `090de16` (Gemini off, `whole_db`, `served` selection, SQL backend, row cap 5,000), clean
+checkout of `c9bf407` (`worktree_dirty=false`, tag `pool-c9bf407`). The commit gives a pooled reading 20 SQLite
+steps for each cell of the tables it reads (at least 10M, at most 100M) and runs both of `select_query`'s pools on
+one copy of the tables. All 1,034 examples have the same SQL and grade as `090de16`: 243 strict, 310 lenient,
+408 answered, no strict win or loss. Every pooled reading of the run had run under the old budget too: the
+heaviest of the 14,079 recorded before the change took 1.1M steps, under the 10M floor.
+
+Prediction seconds: median 1.15 → 0.92, p90 2.47 → 1.89, max 6.07 → 4.33; the `090de16` run shared this desktop
+with the repository suites.
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_pool-c9bf407.json`.
+
 ## A question the upload reads whole builds no compose plan, at `090de16`: same answers (2026-10-05)
 
 Same contract as `7b05b8b` (Gemini off, `whole_db`, `served` selection, SQL backend, row cap 5,000), clean
