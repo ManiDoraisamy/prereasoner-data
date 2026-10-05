@@ -956,12 +956,23 @@ def test_a_question_names_its_stored_sheets_and_a_changed_sheet_is_uploaded_agai
             assert first[0] == 200 and first[1]["result"]["rows"] == [[2]] and second == first, (first, second)
             assert served[0] == [("orders", [[1, 2], [2, 5]])], served
             assert len(served) == 2 and parsed == ["orders"], "the same sheets are parsed once"
-            assert reads == [True, False], "a parsed snapshot's rows are not read again"
+            # Each request checks the snapshot's hash first; its rows are read once, by the instance that has
+            # not parsed them.
+            assert reads == [False, True, False], reads
             status, body = post({**reference, "source_hash": "b" * 64})
             assert status == 409 and body["source_hash"] == "a" * 64, (status, body)
+            # A replaced snapshot does not use up its jobId: the client's one re-send, naming the hash its new
+            # upload returned, runs under the same jobId (it met the first request's recorded 409 before).
+            from engine.request_replay import DurableResponseReplay
+            jobs = _RequestJobs()
+            with patch.object(server, "WORLD_REPLAY", DurableResponseReplay()), \
+                    patch("engine.pg._pg", lambda: _RequestJobTransaction(jobs)):
+                stale = post({**reference, "source_hash": "b" * 64, "jobId": "turn_7"})
+                fresh = post({**reference, "jobId": "turn_7"})
+            assert stale[0] == 409 and fresh[0] == 200 and fresh[1]["result"]["rows"] == [[2]], (stale, fresh)
             principal["value"] = ("sub-2", "uid-2")
             assert post(reference)[0] == 404, "another user's conversation does not exist"
-            assert len(served) == 2
+            assert len(served) == 3, "the two questions and the re-send ran; the refused ones did not"
     finally:
         httpd.shutdown()
 

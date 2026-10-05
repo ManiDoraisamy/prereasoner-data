@@ -83,10 +83,13 @@ def restore_sheet_session(user_id, spreadsheet_id, sheets, host="sheets"):
     installed, an exact uploaded-source hash may bind the most recently active owned conversation.
     The heuristic runs only when no sheet-session row exists; an explicit New chat stores a null
     conversation marker and therefore never resurrects an older conversation on reload.
+
+    ``sheets`` is None from a script that uploads a sheet once: it sends no cells, so neither that
+    binding nor ``source_changed`` is computed here (the sidebar compares fingerprints).
     """
     sid = _spreadsheet_id(spreadsheet_id)
     host = _session_host(host)
-    current_hash = source_snapshot_hash(sheets)
+    current_hash = source_snapshot_hash(sheets) if sheets is not None else None
     conn = _pg()
     try:
         try:
@@ -103,7 +106,7 @@ def restore_sheet_session(user_id, spreadsheet_id, sheets, host="sheets"):
             )
             row = cur.fetchone()
             legacy = False
-            if row is None and host == "sheets":
+            if row is None and host == "sheets" and current_hash is not None:
                 cur.execute(
                     'SELECT c.conversation_id, c.conversation_id, c.initial_prompt, c.source_hash, c.dataset_version '
                     'FROM "chat"."conversation" c '
@@ -164,7 +167,8 @@ def restore_sheet_session(user_id, spreadsheet_id, sheets, host="sheets"):
                 "question": question or "",
                 "source_hash": stored_hash or "",
                 "dataset_version": int(dataset_version or 0),
-                "source_changed": bool(conversation_id and stored_hash and stored_hash != current_hash),
+                "source_changed": bool(conversation_id and stored_hash and current_hash is not None
+                                       and stored_hash != current_hash),
                 "legacy": bool(conversation_id and (legacy or sidebar_state is None)),
                 "host": host,
             }

@@ -10,7 +10,7 @@ const element = id => {
   if(!elements.has(id))elements.set(id,{value:'',disabled:false,hidden:false,textContent:'',classList:{toggle(){}}});
   return elements.get(id);
 };
-const context = {console,crypto:require('node:crypto').webcrypto,window:{PrereasonerTurnRenderer:{},PrereasonerSuggestions:{...require('../public/lib/sidebar-suggestions.js'),create:()=>({update(){},clear(){},setActive(){}})}},
+const context = {console,crypto:require('node:crypto').webcrypto,TextEncoder,window:{PrereasonerTurnRenderer:{},PrereasonerSuggestions:{...require('../public/lib/sidebar-suggestions.js'),create:()=>({update(){},clear(){},setActive(){}})}},
   document:{getElementById:element},initializeApp:()=>({}),getAuth:()=>({currentUser:{uid:'fixture'}}),
   getDatabase:()=>({}),firebaseConfig:{}};
 vm.createContext(context);
@@ -49,6 +49,21 @@ const deadline = setTimeout(()=>{console.error('Excel lifecycle did not complete
   assert.deepEqual({...context.lifecycle.state.turns.at(-1)},{question:'second question',reply:'Request rejected',error:true});
   await context.lifecycle.ask('retry this');
   assert.equal(element('question').value,'retry this');
+  // A chat deleted elsewhere: the workbook goes to a new chat first, and the question is asked there by its
+  // hash (upload once). The retry used to send every cell with no chat at all.
+  const posted=[];
+  context.readWorkbook=async()=>({name:'Orders',activeSheet:'Orders',sheetNames:['Orders'],tables:[{name:'Orders',data:'Amount\n10'}]});
+  context.api=async(path,body)=>{
+    posted.push([path,body.id??body.conversation_id,body.source_hash??null,'tables' in body]);
+    if(path==='/api/conversation/sync')return {conversation_id:body.id||'c_new',source_hash:(body.id?'a':'b').repeat(64)};
+    if(body.conversation_id==='c_old')throw new Error('conversation not found');
+    return {reply:'10',conversation_id:body.conversation_id,traces:[]};
+  };
+  Object.assign(context.lifecycle.state,{conversationId:'c_old',sourceHash:'',restored:true});
+  await context.lifecycle.ask('total amount');
+  assert.deepEqual(posted,[['/api/conversation/sync','c_old',null,true],['/chat','c_old','a'.repeat(64),false],
+    ['/api/conversation/sync','',null,true],['/chat','c_new','b'.repeat(64),false]]);
+  assert.equal(context.lifecycle.state.turns.at(-1).reply,'10');
   clearTimeout(deadline);
   console.log('Excel lifecycle: editable drafts, failure recovery and unsaved answers preserved');
 })().catch(error=>{clearTimeout(deadline);console.error(error);process.exitCode=1;});

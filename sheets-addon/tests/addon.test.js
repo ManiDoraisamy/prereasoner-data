@@ -80,6 +80,7 @@ const blank = sheet(4, 'Blank', [['only a header']]);
 const addon = load(book([orders, notes, hidden, blank], notes));
 const context = addon.getSidebarContext();
 equal([context.token, context.spreadsheetId, context.name], ['google-access-token', 'sheet-id-1', 'Sales data']);
+equal(context.uploadOnce, true, 'the hosted sidebar uploads a sheet once with this script');
 const grids = context.workbook.grids;
 equal(grids.map(grid => grid.name), ['Notes', 'Orders'], 'the active tab first; hidden and header-only tabs skipped');
 const grid = grids[1];
@@ -168,13 +169,12 @@ assert.throws(() => api.askPrereasoner({question: 'x', sourceHash: stored,
 assert.throws(() => api.askPrereasoner({question: 'x', conversationId: 'c_0123456789abcdef0123456789abcdef'}),
   /Send the sheet to Prereasoner before asking/); checks++;
 assert.throws(() => api.syncPrereasonerConversation({tables: [{name: 'Orders'}]}), /could not be read/); checks++;
-api.restorePrereasonerSheetConversation({tables});
+api.restorePrereasonerSheetConversation();
 api.savePrereasonerSheetConversation({conversationId: 'c_0123456789abcdef0123456789abcdef', state: {version: 2}});
 api.clearPrereasonerSheetConversation();
 api.syncPrereasonerConversation({conversationId: 'c_0123456789abcdef0123456789abcdef', tables});
 equal(api.fetches.filter(call => call.url.startsWith('https://chat.prereasoner.com/')).map(call => [call.url.slice('https://chat.prereasoner.com'.length), call.body]), [
-  ['/api/spreadsheet/conversation/restore', {spreadsheet_id: 'sheet-id-1', host: 'sheets', tables: [{name: 'Orders',
-    data: 'country,amount\nFrance,840', source: {kind: 'google-sheets-addon'}}]}],
+  ['/api/spreadsheet/conversation/restore', {spreadsheet_id: 'sheet-id-1', host: 'sheets'}],   // no cells
   ['/api/spreadsheet/conversation/state', {spreadsheet_id: 'sheet-id-1', host: 'sheets',
     conversation_id: 'c_0123456789abcdef0123456789abcdef', state: {version: 2}}],
   ['/api/spreadsheet/conversation/clear', {spreadsheet_id: 'sheet-id-1', host: 'sheets'}],
@@ -200,11 +200,12 @@ assert.throws(() => denied.clearPrereasonerSheetConversation(), /^Error: Prereas
 const quota = load(book([notes]), {'https://identitytoolkit.googleapis.com/': [200, {idToken: 't'}],
   'https://prereasoner-chat-271377281957.us-central1.run.app/chat': [429,
     {error: 'conversation limit reached; delete a saved chat from Chats to start another one'}]});
-assert.throws(() => quota.askPrereasoner({question: 'total', tables, turnId: 'quota-test'}),
+const named = {conversationId: 'c_0123456789abcdef0123456789abcdef', sourceHash: 'a'.repeat(64)};
+assert.throws(() => quota.askPrereasoner({question: 'total', ...named, turnId: 'quota-test'}),
   /conversation limit reached; delete a saved chat from Chats to start another one/); checks++;
 const limited = load(book([notes]), {'https://identitytoolkit.googleapis.com/': [200, {idToken: 't'}],
   'https://prereasoner-chat-271377281957.us-central1.run.app/chat': [429, {error: 'request rate limit exceeded'}]});
-assert.throws(() => limited.askPrereasoner({question: 'total', tables, turnId: 'rate-test'}),
+assert.throws(() => limited.askPrereasoner({question: 'total', ...named, turnId: 'rate-test'}),
   /too many requests; wait a moment and try again/); checks++;
 
 // The sidebar is the add-on's own UI and renders with the web's shared code: the rail component, the

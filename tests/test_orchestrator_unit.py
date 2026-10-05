@@ -107,7 +107,7 @@ class _HTTP:
 
 async def _run(status: str, *, fail_presentation=False, use=None, query_input=None,
                user_message=None, tables=None, catalog=None, analysis_override=None, shaped_extra=None,
-               table_names=None, **client_options):
+               **client_options):
     model_calls, engine_calls = [], []
     shaped = {"status": status, **(shaped_extra or {})}
     if status == "answered":
@@ -146,7 +146,6 @@ async def _run(status: str, *, fail_presentation=False, use=None, query_input=No
             principal="user-a",
             conversation_id="c_test" if catalog is not None else None,
             analysis_override=analysis_override,
-            table_names=table_names,
         )
     finally:
         orchestrator.AsyncGeminiClient = original_client
@@ -177,8 +176,10 @@ def test_the_reply_names_tables_as_the_user_did():
                            {"name": " FF Report ", "data": ""}, {"name": "", "data": ""}, "not a table"])
     assert names == {"nt": "NT", "si": "SI", "ff_report": "FF Report"}, names
     copies = {"read": ["nt"], "others": ["si", "ff_report"]}
+    # The turn reads the names from the tables it was given (inline, or the conversation's stored copy).
+    sheets = [{"name": name, "data": "tier,amount\nGold,100\n"} for name in ("NT", "SI.csv", " FF Report ")]
     result, _model_calls, _engine_calls = asyncio.run(_run(
-        "answered", shaped_extra={"layout_copies": copies}, table_names=names))
+        "answered", shaped_extra={"layout_copies": copies}, tables=sheets))
     assert result["reply"] == ("876.50\n\nFrom NT. SI and FF Report could answer this too; name one in your "
                                "question to read that one instead."), result["reply"]
     assert all("table_names" not in trace["engine"] for trace in result["traces"])

@@ -221,11 +221,11 @@ async function ask(question) {
     renderTurns();
     const streamResult = awaitStream(turnId);
     let response;
+    const chat = () => api('/chat', {
+      message: question, history: baseHistory,
+      conversation_id: state.conversationId, source_hash: state.sourceHash, turnId
+    }, [409]);
     try {
-      const chat = () => api('/chat', {
-        message: question, history: baseHistory,
-        conversation_id: state.conversationId, source_hash: state.sourceHash, turnId
-      }, [409]);
       response = await chat();
       if (response.status === 409) {                         // the stored workbook was replaced since
         await syncWorkbook(question, workbook.tables, print);
@@ -235,10 +235,11 @@ async function ask(question) {
     } catch (error) {
       if (state.conversationId && /conversation not found/i.test(error.message)) {
         // Deleted elsewhere (orchestrator/server.py answers 404): ask once more as a new chat, keeping
-        // the thread and the history the assistant reads.
+        // the thread and the history the assistant reads. The workbook goes to the new chat first.
         state.conversationId = null;
-        response = await api('/chat', {message: question, tables: workbook.tables, history: baseHistory,
-          conversation_id: null, turnId});
+        state.sourceHash = '';
+        await syncWorkbook(question, workbook.tables, print);
+        response = await chat();
       } else if (error instanceof TypeError || /timed out|network|failed to fetch/i.test(error.message)) {
         response = await streamResult.promise;
       } else { streamResult.cancel(); throw error; }

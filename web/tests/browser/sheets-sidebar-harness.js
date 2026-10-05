@@ -72,7 +72,9 @@ async function openSidebar(page, rows, failing = {}, workbookOptions = {}) {
       errors: window.__server.rows.map(row => row.map(() => false)), merges: [], date1904: false}]},
       window.__server.workbookOptions);
     const handlers = {
-      getSidebarContext: (_, ok) => ok({token: 'google-token', spreadsheetId: 'sheet-1', name: 'Sales', workbook: grids()}),
+      // The script that uploads a sheet once says so; `uploadOnce: false` is a script published before it.
+      getSidebarContext: (_, ok) => ok({token: 'google-token', spreadsheetId: 'sheet-1', name: 'Sales', workbook: grids(),
+        uploadOnce: window.__server.workbookOptions.uploadOnce !== false}),
       getWorkbookGrids: (_, ok) => ok(grids()),
       getWorkbookSchema: (arg, ok) => {
         if(window.__server.holdSchemas) window.__server.pendingSchemas.push({arg,ok});

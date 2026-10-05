@@ -96,9 +96,9 @@ test('the Sheets sidebar renders the web rail, with live steps from the realtime
   for (const removed of ['.data-notice', '#note', '.starter-title', '.empty', '.loading'])
     await expect(page.locator(removed)).toHaveCount(0);
   expect(await page.evaluate(() => window.__signedInWith)).toBe('google-token');
+  // Restoring the sheet's chat sends no cells: the sidebar compares fingerprints (upload once).
   const [restore] = await calls(page, 'restorePrereasonerSheetConversation');
-  expect(restore.arg.tables).toEqual([{name: 'Orders', data: 'country,amount\nFrance,840\nFrance,400\nGermany,620',
-    source: {kind: 'google-sheets-addon', warnings: [], scope: {mode:'all', included:['Orders'], available:['Orders']}}}]);
+  expect(restore.arg).toBeNull();
 
   await page.locator('#question').fill('What are total sales in France?');
   await page.locator('#question').press('Enter');
@@ -108,7 +108,9 @@ test('the Sheets sidebar renders the web rail, with live steps from the realtime
   expect(ask.question).toBe('What are total sales in France?');
   // Upload once: the cells travel with the sync that starts the conversation; the question names them.
   const [sync] = await calls(page, 'syncPrereasonerConversation');
-  expect(sync.arg.tables[0].data).toBe('country,amount\nFrance,840\nFrance,400\nGermany,620');
+  expect(sync.arg.tables).toEqual([{name: 'Orders', data: 'country,amount\nFrance,840\nFrance,400\nGermany,620',
+    source: {kind: 'google-sheets-addon', warnings: [], scope: {mode:'all', included:['Orders'], available:['Orders']}}}]);
+  expect(sync.arg.conversationId).toBeNull();               // the upload starts the conversation
   expect(ask.tables).toBeUndefined();
   expect(ask.sourceHash).toBe('a'.repeat(64));
   expect(ask.conversationId).toBe('c_0123456789abcdef0123456789abcdef');
@@ -220,7 +222,8 @@ test('messy headers are read without a warning and without preventing a question
   await page.locator('#question').fill('How many rows are there?');
   await page.locator('#question').press('Enter');
   await expect.poll(() => page.evaluate(() => Boolean(window.__server.pendingAsk))).toBe(true);
-  const table = (await page.evaluate(() => window.__server.pendingAsk.arg)).tables[0];
+  const [sync] = await calls(page, 'syncPrereasonerConversation');      // the cells go with the upload
+  const table = sync.arg.tables[0];
   expect(table.data).toBe('id,amount [column B],amount [column C],Column D\n1,10,20,note');
   expect(table.source.warnings.join(' ')).toContain('Repeated headers were kept');   // still sent with the data
 });
@@ -288,8 +291,10 @@ test('a question in a chat deleted elsewhere is asked once more as a new chat, k
   await page.locator('#question').fill('and in Germany?');
   await page.locator('#question').press('Enter');
   await expect.poll(() => page.evaluate(() => Boolean(window.__server.pendingAsk))).toBe(true);
+  // The dead chat is synced and asked; then the sheet goes to a new chat, which is asked by its hash.
   const asks = await calls(page, 'askPrereasoner');
-  expect(asks.map(ask => ask.arg.conversationId)).toEqual([conversation, null]);
+  expect(asks.map(ask => ask.arg.conversationId)).toEqual([conversation, 'c_0123456789abcdef0123456789abcdef']);
+  expect((await calls(page, 'syncPrereasonerConversation')).map(sync => sync.arg.conversationId)).toEqual([conversation, null]);
   expect(asks[1].arg.history).toEqual(saved.history);
   await expect(page.locator('.answer.error')).toHaveCount(0);
   await expect(page.locator('.turn.user').first()).toHaveText('What are total sales in France?');
@@ -318,24 +323,35 @@ test('a chat that can no longer take the changed sheet keeps its turns and histo
   const saved = {client: 'google-sheets-addon', version: 2, syncedFingerprint: 'an-older-sheet',
     turns: [{question: 'What are total sales in France?', reply: 'Total sales in France are US$1,240.', steps: [], asks: []}],
     history: [{role: 'user', content: 'What are total sales in France?'}, {role: 'assistant', content: 'Total sales in France are US$1,240.'}]};
-  await openSidebar(page, orders, {syncPrereasonerConversation: 'conversation not found'}, {restored: {conversationId: conversation, state: saved}});
+  await openSidebar(page, orders, {}, {restored: {conversationId: conversation, state: saved},
+    failOnce: {syncPrereasonerConversation: 'conversation not found'}});
   await expect(page.locator('.turn-answer')).toHaveText('Total sales in France are US$1,240.');
   await page.locator('#question').fill('and in Germany?');
   await page.locator('#question').press('Enter');
   await expect.poll(() => page.evaluate(() => Boolean(window.__server.pendingAsk))).toBe(true);
+  // The sheet goes to a new chat, and the question is asked there.
+  expect((await calls(page, 'syncPrereasonerConversation')).map(sync => sync.arg.conversationId)).toEqual([conversation, null]);
   const request = await page.evaluate(() => window.__server.pendingAsk.arg);
-  expect(request.conversationId).toBeNull();
+  expect(request.conversationId).toBe('c_0123456789abcdef0123456789abcdef');
   expect(request.history).toEqual(saved.history);
   await expect(page.locator('.turn.user').first()).toHaveText('What are total sales in France?');
   await expect(page.locator('#scroll')).not.toContainText('could not');
 });
 
-test('an answer that belongs to no conversation is shown and not saved', async ({page}) => {
-  await openSidebar(page, orders);
+test('with a script published before upload once, the cells go with the restore and every question', async ({page}) => {
+  // The sidebar deploys before a script version is published: an older script gets the calls it expects.
+  await openSidebar(page, orders, {}, {uploadOnce: false});
   await page.locator('#question').fill('What are total sales in France?');
   await expect(page.locator('#newConversation')).toBeEnabled();
   await page.locator('#question').press('Enter');
   await expect.poll(() => page.evaluate(() => Boolean(window.__server.pendingAsk))).toBe(true);
+  const [restore] = await calls(page, 'restorePrereasonerSheetConversation');
+  expect(restore.arg.tables[0].data).toBe('country,amount\nFrance,840\nFrance,400\nGermany,620');
+  const ask = await page.evaluate(() => window.__server.pendingAsk.arg);
+  expect(ask.tables[0].data).toBe('country,amount\nFrance,840\nFrance,400\nGermany,620');
+  expect(ask.sourceHash).toBeUndefined();
+  expect(await calls(page, 'syncPrereasonerConversation')).toEqual([]);
+  // There an answer can belong to no conversation: it is shown and not saved.
   await page.evaluate(() => window.__server.pendingAsk.ok({reply: 'Prereasoner could not answer that question.',
     conversationId: null, history: [], traces: []}));
   await expect(page.locator('.turn-answer')).toHaveText('Prereasoner could not answer that question.');

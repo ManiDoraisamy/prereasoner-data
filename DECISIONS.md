@@ -1990,7 +1990,7 @@ conversation's first question, and with the value "home inspection checklist" in
 Inspection rather than the active Checklist tab. Checklist's added column ("shortlist") keeps it out of the other
 tabs' layout group, and words inside the value ("inspection") tip the encoder's table signal.
 
-## A sheet is uploaded once; a question names it (2026-10-02)
+## A sheet is uploaded once; a question names it (2026-10-02, shipped 2026-10-05)
 
 Every client sent every table's CSV with every question. The Sheets add-on and the Excel add-in often sent it
 twice, once to restore or sync and once to `/chat`. The chat service passed it on to each engine call, and
@@ -2015,3 +2015,21 @@ serving path: the engine always serves a conversation's stored snapshot.
 This removes the per-question transfer and parse. It does not remove the per-question planning cost: the
 planner still reads every row in memory. A sheet of millions of rows needs the per-question work to be
 bounded, a separate change to the search and selection.
+
+**Shipped 2026-10-05, after a customer's eight-tab Subscriptions workbook spent 30 to 60 s sending 9 MB of cells
+through Apps Script twice on its first question** (restore, then `/chat`; the engine call began that long after
+the sheet read), and sent them again with every later one. The branch waited three days, and in that time main moved the Sheets sidebar to the hosted
+`web/public/office/sheets/sidebar.js` and added a replay record per `jobId`. So the revival also:
+- **Ports the sidebar and gates it on the script.** Hosting deploys at once, but Marketplace installs run the
+  published Apps Script version. The sidebar uploads once only when `getSidebarContext` returns
+  `uploadOnce: true`. With an older script it restores and asks with the cells, as that script expects.
+  This compatibility path serves one consumer, the published v30 script. Remove the old branch of
+  `sidebar.js:submit`/`restore` once the Marketplace serves a script that says `uploadOnce` (the owner
+  publishes it; target 2026-10-12).
+- **Restores without cells.** The new script sends none. The sidebar trusts the conversation's stored hash only
+  when it equals the `syncedSourceHash` its saved state recorded with its last upload, so a copy another
+  sidebar replaced is uploaded again. The engine still accepts cells from the older script.
+- **Checks a named snapshot before claiming the `jobId`.** A replaced snapshot answered 409 after the replay
+  record had taken the `jobId`, so the client's one re-send with the new hash met that record and got 409
+  again, and the web app's retry had no bound. The engine now answers 404/409 first, and every client
+  retries once.

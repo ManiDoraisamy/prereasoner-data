@@ -170,9 +170,14 @@ test('an upload larger than the browser session store is the one analyzed, not t
   // A 9 MB upload went past what sessionStorage holds, and the analysis page answered its demo tables instead
   // (production, 2026-10-05). The sheets now wait in IndexedDB for the page to read.
   await mockAuth(page);
-  let sent=null;
-  await page.route('**/chat',async route=>{
+  let sent=null,asked=null;
+  // Upload once: the sheets go to the conversation, and the question names them.
+  await page.route('**/api/conversation/sync',async route=>{
     sent=route.request().postDataJSON();
+    await route.fulfill({json:{conversation_id:'c_0123456789abcdef0123456789abcdef',source_hash:'a'.repeat(64),changed:true}});
+  });
+  await page.route('**/chat',async route=>{
+    asked=route.request().postDataJSON();
     await route.fulfill({json:{reply:'Read.',conversation_id:'c_0123456789abcdef0123456789abcdef',history:[],traces:[]}});
   });
   await page.goto('/');
@@ -184,6 +189,7 @@ test('an upload larger than the browser session store is the one analyzed, not t
   await page.getByRole('button',{name:'Ask',exact:true}).click();
   await expect.poll(()=>sent&&sent.tables.map(t=>[t.name,t.data.split('\n').length]),{timeout:30000})
     .toEqual([['big',45001]]);
+  await expect.poll(()=>asked&&[asked.source_hash,'tables' in asked],{timeout:30000}).toEqual(['a'.repeat(64),false]);
   expect(await page.evaluate(()=>[SHEETS.map(s=>s.name),sessionStorage.getItem('pr_world_tables'),
     Boolean(sessionStorage.getItem('pr_world_tables:idb'))])).toEqual([['big'],null,true]);
 });

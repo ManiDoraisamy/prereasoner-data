@@ -64,7 +64,9 @@ function listPreviousConversations() {
 }
 
 // Called once when the sidebar opens: the Google token (the sidebar signs in to Firebase with it for
-// the live trace), this spreadsheet's identity, and its cells.
+// the live trace), this spreadsheet's identity, and its cells. `uploadOnce` tells the hosted sidebar that
+// this script uploads a sheet once and asks by its hash (the sidebar deploys before a script version is
+// published, and keeps the older calls for an older script).
 function getSidebarContext() {
   var spreadsheet = activeSpreadsheet_();
   return {
@@ -72,7 +74,8 @@ function getSidebarContext() {
     spreadsheetId: spreadsheet.getId(),
     name: spreadsheet.getName(),
     activeSheet: spreadsheet.getActiveSheet().getName(),
-    workbook: readGrids_(spreadsheet)
+    workbook: readGrids_(spreadsheet),
+    uploadOnce: true
   };
 }
 
@@ -117,10 +120,11 @@ function getWorkbookGrids(request) {
   return readGrids_(activeSpreadsheet_(), request && request.scope);
 }
 
-function restorePrereasonerSheetConversation(request) {
-  var tables = requestTables_(request);
+// The sheet's conversation and saved sidebar. The cells are not sent: the sidebar compares the sheet's
+// fingerprint with the saved one, and uploads the sheet only when it changed (syncPrereasonerConversation).
+function restorePrereasonerSheetConversation() {
   var body = apiRequest_('post', '/api/spreadsheet/conversation/restore',
-    {spreadsheet_id: activeSpreadsheet_().getId(), host: 'sheets', tables: tables},
+    {spreadsheet_id: activeSpreadsheet_().getId(), host: 'sheets'},
     'Prereasoner could not restore this sheet’s conversation.');
   return {
     conversationId: body.conversation_id || '',

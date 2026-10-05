@@ -58,6 +58,45 @@ def test_restore_returns_the_mapped_sidebar_snapshot():
     assert connection.commits == 1 and connection.rollbacks == 0 and connection.closed
 
 
+def test_a_restore_without_cells_returns_the_session_and_its_stored_hash():
+    """A script that uploads a sheet once restores without sending the cells (2026-10-05): the sidebar opened
+    by sending a 9 MB workbook before its first question. The session and the stored hash come back; whether
+    the sheet changed is the sidebar's fingerprint comparison, and no binding by contents runs."""
+    cid = "c_" + "5" * 32
+    saved = {"client": "google-sheets-addon", "version": 2, "syncedFingerprint": "f" * 64, "turns": []}
+
+    class Cursor:
+        def __init__(self):
+            self.one = None
+            self.statements = []
+
+        def execute(self, statement, params=None):
+            text = str(statement)
+            self.statements.append((text, params))
+            if 'FROM "chat"."sheet_session" ss' in text:
+                self.one = (cid, json.dumps(saved), cid, "Who?", "a" * 64, 2)
+
+        def fetchone(self):
+            return self.one
+
+    cursor = Cursor()
+    with patch.object(sheet_sessions, "_pg", return_value=_Connection(cursor)):
+        restored = sheet_sessions.restore_sheet_session("user", "sheet_uploadonce", None)
+    assert restored["conversation_id"] == cid and restored["state"] == saved
+    assert restored["source_hash"] == "a" * 64 and restored["source_changed"] is False
+    # Contrast: with no session yet, no conversation is bound by contents it was not sent.
+    class Fresh(Cursor):
+        def execute(self, statement, params=None):
+            self.statements.append((str(statement), params))
+            self.one = (0,) if 'SELECT count(*)' in str(statement) else None
+
+    fresh = Fresh()
+    with patch.object(sheet_sessions, "_pg", return_value=_Connection(fresh)):
+        restored = sheet_sessions.restore_sheet_session("user", "sheet_newsheet1", None)
+    assert restored["conversation_id"] is None and restored["legacy"] is False
+    assert not any('ORDER BY c.last_active_at DESC' in statement for statement, _ in fresh.statements)
+
+
 def test_restore_backfills_the_latest_exact_source_conversation_once():
     cid = "c_" + "2" * 32
     tables = [{"name": "Customers", "data": "id,name\n1,Nancy Drew\n"}]
@@ -212,6 +251,7 @@ def test_clear_persists_a_blank_marker_instead_of_deleting_the_mapping():
 
 TESTS = (
     test_restore_returns_the_mapped_sidebar_snapshot,
+    test_a_restore_without_cells_returns_the_session_and_its_stored_hash,
     test_restore_backfills_the_latest_exact_source_conversation_once,
     test_excel_restore_does_not_bind_a_google_sheet_by_matching_contents,
     test_restore_clears_a_dangling_conversation_and_sidebar_snapshot,

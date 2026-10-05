@@ -476,9 +476,13 @@ class H(BaseHTTPRequestHandler):
             host = req.get("host", "sheets")
             try:
                 if path.endswith("/restore"):
-                    tables = validate_tables(req.get("tables"))
-                    if not tables:
-                        raise ValueError("at least one source table is required")
+                    # A script that uploads a sheet once sends no cells: its sidebar compares the sheet's
+                    # fingerprint with the one the saved state holds. A script published before sends them.
+                    tables = None
+                    if req.get("tables") is not None:
+                        tables = validate_tables(req.get("tables"))
+                        if not tables:
+                            raise ValueError("at least one source table is required")
                     result = restore_sheet_session(sub, spreadsheet_id, tables, host=host)
                 elif path.endswith("/state"):
                     result = save_sheet_session(
@@ -711,6 +715,17 @@ class H(BaseHTTPRequestHandler):
             if not sub:
                 self._send(401, json_dumps({"error": "sign in required (no valid Google token)"}))
                 return
+            snapshot = req.get("source_hash")
+            if snapshot:
+                # A question that names stored sheets (upload once) is checked before it claims its jobId:
+                # a replaced snapshot answers 409, and the client's one re-send, with the new hash under the
+                # same jobId, would otherwise meet a recorded 409 for a different input.
+                try:
+                    stored_source(sub, req["conversation_id"], snapshot, tables=False)
+                except NotOwned:
+                    self._send(404, json_dumps({"error": "conversation not found"})); return
+                except SourceChanged as exc:
+                    self._send(409, json_dumps({"error": str(exc), "source_hash": exc.source_hash})); return
             if req.get("jobId"):
                 # The chat service repeats a request whose response it lost, with the same jobId.
                 # The question runs once: a repeat gets the first request's response, waiting for
@@ -737,20 +752,20 @@ class H(BaseHTTPRequestHandler):
                 self._send(429, json_dumps({"error": "request rate limit exceeded"}), retry_after=retry_after)
                 return
             sheets = req["tables"]
-            snapshot = req.get("source_hash")
             source_sheets, tabs = None, None
             if snapshot:
                 # The question names its conversation's stored sheets instead of carrying them: a
                 # client uploads once per change (/api/conversation/sync, 2026-10-02). Ownership and
-                # the snapshot are checked on every call; the rows are read only when this instance
-                # has not parsed that snapshot.
+                # the snapshot were checked above; the rows are read only when this instance has not
+                # parsed that snapshot.
                 tabs = _parsed_tables(None, snapshot)
-                try:
-                    sheets = stored_source(sub, req["conversation_id"], snapshot, tables=tabs is None)
-                except NotOwned:
-                    self._send(404, json_dumps({"error": "conversation not found"})); return
-                except SourceChanged as exc:
-                    self._send(409, json_dumps({"error": str(exc), "source_hash": exc.source_hash})); return
+                if tabs is None:
+                    try:
+                        sheets = stored_source(sub, req["conversation_id"], snapshot)
+                    except NotOwned:
+                        self._send(404, json_dumps({"error": "conversation not found"})); return
+                    except SourceChanged as exc:
+                        self._send(409, json_dumps({"error": str(exc), "source_hash": exc.source_hash})); return
             if tabs is not None:
                 pass                                         # the snapshot, parsed already
             elif sheets:

@@ -38,7 +38,10 @@
         // spent five minutes reading before each question (2026-10-04); a small sheet reads in a second
         // or two and is always read fresh.
         var READ_REUSE_MS = 15000;
+        // `uploadOnce`: the add-on's script uploads a sheet once and asks by its hash (getSidebarContext says so).
+        // `sourceHash` names the conversation's stored copy of the sheet the sidebar last uploaded.
         var state = {conversationId: null, turns: [], history: [], tables: [], syncedFingerprint: '', ready: false,
+          uploadOnce: false, sourceHash: '',
           restored: false, sheetError: '', uid: null, signedIn: null, busy: false, live: null, scope: 'auto',
           loading: null, loaded: null, print: '', readMs: 0, syncedAt: 0, syncing: false};
         // The chat service's answer for a conversation deleted elsewhere (orchestrator/server.py).
@@ -281,6 +284,7 @@
         function forgetConversation() {
           state.conversationId = null;
           state.syncedFingerprint = '';
+          state.sourceHash = '';
         }
 
         // A live event repaints only the running turn, so earlier turns keep their open panels.
@@ -362,7 +366,8 @@
 
         function snapshot() {
           return {client: 'google-sheets-addon', version: 2, turns: state.turns.slice(-24),
-            history: state.history.slice(-24), syncedFingerprint: state.syncedFingerprint};
+            history: state.history.slice(-24), syncedFingerprint: state.syncedFingerprint,
+            syncedSourceHash: state.sourceHash};
         }
 
         // Saved sidebars: version 2 keeps the shared rail's steps; version 1 (before the shared rail)
@@ -383,15 +388,41 @@
         // treating a passing outage as an expired chat wiped saved conversations (2026-10-04).
         async function restore(tables, strict) {
           try {
-            var restored = await callServer('restorePrereasonerSheetConversation', {tables: tables});
+            // A script that uploads a sheet once restores without the cells; an older one needs them.
+            var restored = await callServer('restorePrereasonerSheetConversation',
+              state.uploadOnce ? undefined : {tables: tables});
             state.conversationId = restored.conversationId || null;
             state.turns = restoredTurns(restored.state);
             state.history = restored.state && Array.isArray(restored.state.history) ? restored.state.history.slice(-24) : [];
             state.syncedFingerprint = (restored.state && restored.state.syncedFingerprint) || '';
+            // The stored sheet is the one this sidebar last uploaded only while the conversation still stores the
+            // hash saved with that upload; otherwise the next question uploads the sheet again.
+            var savedHash = restored.state && restored.state.syncedSourceHash;
+            state.sourceHash = state.uploadOnce && state.conversationId && restored.sourceHash &&
+              restored.sourceHash === savedHash ? restored.sourceHash : '';
             state.restored = true;
           } catch (error) {
             if (strict) throw error;
           }
+        }
+
+        // Upload once (2026-10-02): the sheet goes to the conversation before its first question and whenever
+        // it changed; the first upload starts the conversation. A question then names it by hash: an eight-tab
+        // workbook sent 9 MB of cells with every question (2026-10-05).
+        async function syncSheet(question, tables, print) {
+          var synced;
+          try {
+            synced = await callServer('syncPrereasonerConversation',
+              {conversationId: state.conversationId, question: question, tables: tables});
+          } catch (error) {
+            if (!state.conversationId || !NOT_FOUND.test(errorText(error))) throw error;
+            forgetConversation();                  // deleted elsewhere: the sheet starts a new chat
+            synced = await callServer('syncPrereasonerConversation',
+              {conversationId: null, question: question, tables: tables});
+          }
+          state.conversationId = synced.conversationId || state.conversationId;
+          state.sourceHash = synced.sourceHash || '';
+          state.syncedFingerprint = print;
         }
 
         async function submit() {
@@ -417,7 +448,13 @@
             var print = state.print;
             state.sheetError = '';
             if (!state.restored) await restore(tables, true);
-            if (state.conversationId && state.syncedFingerprint && print !== state.syncedFingerprint) {
+            if (state.uploadOnce) {
+              if (!state.conversationId || !state.sourceHash || print !== state.syncedFingerprint) {
+                live.status = state.conversationId ? 'Syncing the changed sheet…' : 'Sending the sheet…';
+                renderLive();
+                await syncSheet(question, tables, print);
+              }
+            } else if (state.conversationId && state.syncedFingerprint && print !== state.syncedFingerprint) {
               live.status = 'Syncing the changed sheet…';
               renderLive();
               try {
@@ -433,15 +470,24 @@
               new Promise(function (resolve) { window.setTimeout(resolve, 5000); })]);
             stopLive = startLive(live);
             var ask = function () {
-              return callServer('askPrereasoner', {question: question, tables: tables,
-                conversationId: state.conversationId, history: state.history, turnId: live.turnId});
+              return callServer('askPrereasoner', state.uploadOnce
+                ? {question: question, conversationId: state.conversationId, sourceHash: state.sourceHash,
+                   history: state.history, turnId: live.turnId}
+                : {question: question, tables: tables, conversationId: state.conversationId,
+                   history: state.history, turnId: live.turnId});
             };
             var response;
             try {
               response = await ask();
+              if (response && response.sourceChanged) {      // replaced since (another sidebar): upload it again, once
+                await syncSheet(question, tables, print);
+                response = await ask();
+                if (response && response.sourceChanged) throw new Error('The sheet keeps changing. Ask again in a moment.');
+              }
             } catch (error) {
               if (state.conversationId && NOT_FOUND.test(errorText(error))) {
                 forgetConversation();
+                if (state.uploadOnce) await syncSheet(question, tables, print);   // a new chat stores the sheet first
                 response = await ask();
               } else if (live.done && live.reply) {   // the live trace already finished this turn
                 response = {reply: live.reply, conversationId: live.conversationId, history: [], traces: null};
@@ -497,6 +543,7 @@
             state.turns = [];
             state.history = [];
             state.syncedFingerprint = '';
+            state.sourceHash = '';
             render();
           } catch (error) {
             keepFailed('', error);
@@ -527,6 +574,7 @@
         readSuggestionMetadata();            // headers only: starts before the full read
         var contextStarted = Date.now();
         state.loaded = callServer('getSidebarContext').then(async function (context) {
+          state.uploadOnce = !!context.uploadOnce;
           state.signedIn = signIn(context.token);
           state.signedIn.catch(function () {});
           state.loading.stage = 'preparing';
