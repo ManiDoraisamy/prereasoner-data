@@ -131,7 +131,7 @@ def test_emit_is_noop_without_a_buffer_and_dedups():
     # the SAME column captured twice (cache miss then a later cache hit) must appear once.
     qw = _bare_qw()
     qw._emit_typing([_REC])                                         # no buffer -> must not raise, must not capture
-    assert "_typing_run" not in qw.__dict__
+    assert qw._typing_run is None
     qw.begin_typing()
     qw._emit_typing([_REC])
     qw._emit_typing([_REC])                                         # cache-hit re-emit of the same column

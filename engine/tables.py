@@ -14,6 +14,7 @@ import csv as _csv
 import io
 import re
 import sqlite3
+import threading
 from functools import wraps
 from pathlib import Path
 
@@ -28,7 +29,8 @@ from engine.request_validation import canonical_table_name
 from engine.column_names import canonical_columns
 
 MAX_ROWS, MAX_LEN = 12, 48
-FORBID = re.compile(r"\b(insert|update|delete|drop|alter|create|attach|detach|pragma|replace|truncate|vacuum|with)\b", re.I)
+_ENCODE_CACHE_LOCK = threading.Lock()                    # TableQuery._encode: concurrent questions share the caches
+FORBID =re.compile(r"\b(insert|update|delete|drop|alter|create|attach|detach|pragma|replace|truncate|vacuum|with)\b", re.I)
 
 
 def _torch_no_grad(function):
@@ -257,17 +259,18 @@ class TableQuery:
     # invalidation by construction). Measured on the serve path before this cache existed: 49-70
     # texts per request, only 19 unique — column names encoded 5-8x within ONE turn and re-encoded
     # identically on every follow-up, at 3.5-5.4s per production request. Bounded LRU; ~hdim floats
-    # per entry. Single-request serving today (WORLD_LOCK) — a concurrency refactor must revisit
-    # this cache alongside _kb_rows.
+    # per entry. Questions run in parallel, so its reads, writes and evictions hold _ENCODE_CACHE_LOCK
+    # (one request's move_to_end raced another's eviction); the forward pass runs outside it.
     _ENCODE_CACHE_CAP = 8192
 
     @_torch_no_grad
     def _encode_batch(self, texts):
         """The raw forward pass, uncached. Callers go through `_encode`."""
         out = np.zeros((len(texts), self.hdim), np.float32)
+        from engine.encoder import tokenize
         for i in range(0, len(texts), 64):
             chunk = texts[i:i + 64]
-            enc = self.tok(chunk, return_tensors="pt", padding=True, truncation=True, max_length=MAX_LEN)
+            enc = tokenize(self.tok, chunk, MAX_LEN)
             h = self.qwen(**enc).last_hidden_state
             m = enc["attention_mask"].unsqueeze(-1).float()
             out[i:i + len(chunk)] = ((h * m).sum(1) / m.sum(1).clamp(min=1.0)).float().numpy()
@@ -282,13 +285,14 @@ class TableQuery:
         request_timing.count("encode_texts", len(texts))
         out = np.zeros((len(texts), self.hdim), np.float32)
         miss_at = []                                       # positions whose text was not cached
-        for i, t in enumerate(texts):
-            vec = cache.get(t)
-            if vec is not None:
-                cache.move_to_end(t)
-                out[i] = vec
-            else:
-                miss_at.append(i)
+        with _ENCODE_CACHE_LOCK:
+            for i, t in enumerate(texts):
+                vec = cache.get(t)
+                if vec is not None:
+                    cache.move_to_end(t)
+                    out[i] = vec
+                else:
+                    miss_at.append(i)
         if miss_at:
             uniq = list(dict.fromkeys(texts[i] for i in miss_at))   # a text may repeat WITHIN one call
             request_timing.count("encode_miss", len(uniq))
@@ -297,10 +301,11 @@ class TableQuery:
             by_text = {t: fresh[j] for j, t in enumerate(uniq)}
             for i in miss_at:
                 out[i] = by_text[texts[i]]
-            for t, vec in by_text.items():
-                cache[t] = vec.copy()                      # own copy — callers may mutate `out` rows
-            while len(cache) > self._ENCODE_CACHE_CAP:
-                cache.popitem(last=False)
+            with _ENCODE_CACHE_LOCK:
+                for t, vec in by_text.items():
+                    cache[t] = vec.copy()                  # own copy — callers may mutate `out` rows
+                while len(cache) > self._ENCODE_CACHE_CAP:
+                    cache.popitem(last=False)
         return out
 
     @_torch_no_grad

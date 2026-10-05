@@ -20,6 +20,16 @@ def _text(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
 
 
+def _engine_container_size() -> tuple[str, str]:
+    """The engine service's CPU and memory limits in infra/main.tf, as docker run limits: the build
+    gates run the image at the size production serves it."""
+    service = _text("infra/main.tf").split('resource "google_cloud_run_v2_service" "api"', 1)[1]
+    limits = service.split("limits = {", 1)[1].split("}", 1)[0]
+    cpu = re.search(r'cpu\s*=\s*"(\d+)"', limits)[1]
+    memory = re.search(r'memory\s*=\s*"(\d+)Gi"', limits)[1]
+    return f"--cpus={cpu}", f"--memory={memory}g"
+
+
 def _version(requirements: str, package: str) -> tuple[int, ...]:
     match = re.search(rf"(?m)^{re.escape(package)}==([0-9]+(?:\.[0-9]+)+)", requirements)
     assert match, f"{package} must have an exact release pin"
@@ -701,12 +711,13 @@ def test_engine_release_build_runs_the_real_server_until_health_ready():
     smoke = cloudbuild.split("  - id: runtime-server-smoke", 1)[1].split(
         "  # Exercise the full live-product suite", 1
     )[0]
-    assert "--cpus=8" in offline and "--memory=16g" in offline
+    cpus, memory = _engine_container_size()
+    assert (cpus, memory) == ("--cpus=4", "--memory=8g")
+    assert cpus in offline and memory in offline
     assert "offline_case_latency_ms" in _text("regress/run_regression.py")
     assert "offline_process_peak_rss_mb" in _text("regress/run_regression.py")
     assert "waitFor: ['regress-offline']" in smoke
-    assert "docker run -d --cpus=8 --memory=16g" in smoke
-    assert 'docker run -d --cpus=8 --memory=16g --name "$$name" "$$image"' in smoke
+    assert f'docker run -d {cpus} {memory} --name "$$name" "$$image"' in smoke
     assert "$$name" in smoke and "docker exec" in smoke
     assert "/api/healthz" in smoke
     assert "runtime_startup_seconds" in smoke
@@ -738,7 +749,7 @@ def test_hermetic_suite_build_runs_full_tests_in_the_pinned_cpu_image():
     cloudbuild = _text("cloudbuild.hermetic.yaml")
     suite_runner = _text("deploy/gcp/run_hermetic_suite.sh")
     assert "engine@sha256:d45af36701221f603d5b2cdefacb3aac91014ef9fd10fc20f22b3f48db005aaa" in cloudbuild
-    assert "docker run --rm --cpus=8 --memory=16g" in cloudbuild
+    assert "docker run --rm {} {}".format(*_engine_container_size()) in cloudbuild
     assert "--volume /workspace:/workspace:ro" in cloudbuild
     assert "cp -a /workspace/. /app/" in suite_runner
     assert "requirements-ci.lock.txt" in suite_runner and "--require-hashes" in suite_runner
@@ -803,7 +814,7 @@ def test_live_product_gate_uses_disposable_postgres_and_pinned_public_seed():
     assert "|| suite_status=$?" in runner
     assert 'exit "$suite_status"' in runner
     assert "docker update --memory=2g --memory-swap=2g" in runner
-    assert "--cpus=8 --memory=16g" in runner and "/api/reason" in runner
+    assert " ".join(_engine_container_size()) in runner and "/api/reason" in runner
     assert 'float(rows[0][0]) != 270.0' in runner and "docker stats --no-stream" in runner
     assert 'cpu_api_reason_world_join_ms=' in runner
     assert 'cpu_api_reason_world_join_load=' in runner

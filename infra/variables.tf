@@ -241,18 +241,18 @@ variable "enrichment_active_datasets" {
 variable "min_instances" {
   description = <<-EOT
     Minimum warm engine instances. 1 is the production default: a cold start pulls the image and
-    loads the model stacks, 71 s from instance start to a passing startup probe on 8 vCPU, image
-    pull not included (prereasoner-api-00136-srv, 2026-10-02; 3-5 minutes while the retired 7B SQL
-    proposer loaded). With 0, the first question after an idle period waits for that start. The
-    engine runs with CPU always allocated (instance-based billing), so one warm 8-CPU/16Gi instance
-    costs about $450 a month at list prices. Use 0 for disposable dev environments. The service
-    runs at most one instance (see main.tf).
+    loads the model stacks, about 70 s from instance start to a passing startup probe, image pull
+    not included (2026-10-05, on 4 and on 8 vCPU; 3-5 minutes while the retired 7B SQL proposer
+    loaded). With 0, the first question after an idle period waits for that start. The engine runs
+    with CPU always allocated (instance-based billing), so each warm 4-CPU/8Gi instance costs about
+    $230 a month at list prices. Use 0 for disposable dev environments. The service grows to at
+    most four instances (see main.tf).
   EOT
   type        = number
   default     = 1
 
   validation {
-    condition     = var.min_instances >= 0 && var.min_instances <= 1
-    error_message = "min_instances must be 0 or 1: the engine service runs at most one instance."
+    condition     = var.min_instances >= 0 && var.min_instances <= 4
+    error_message = "min_instances must be 0 to 4: the engine service runs at most four instances (main.tf)."
   }
 }

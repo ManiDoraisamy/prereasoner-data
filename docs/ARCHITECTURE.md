@@ -546,8 +546,14 @@ planner implementation modules.
 
 ## Concurrency And Failure Behavior
 
-- Model instances are loaded once per service process and shared by the serving stack.
-- World-sensitive operations are serialized where shared mutable database state requires it.
+- Model instances are loaded once per service process and shared by the serving stack. Questions run in parallel
+  on them: what belongs to one request (its conversation schema, connections, question text, typing evidence and
+  trace stream) is request-local (`engine/request_state.py`, `engine/trace.py:request_stream`), and the shared
+  tokenizer and encode cache take short locks.
+- Cloud Run sends an engine instance at most three requests at once and runs one to four instances
+  (`infra/main.tf`); a request waits for a starting instance rather than being refused.
+- Requests on one conversation are serialized (a local lock stripe and a conversation advisory lock), because a
+  request rewrites that conversation's bridge tables.
 - Database operations use bounded inputs and explicit transaction ownership.
 - Cross-instance conversation quotas use a per-user PostgreSQL advisory transaction lock.
 - Cross-instance source replacement and analysis revision assignment use conversation-scoped advisory locks.

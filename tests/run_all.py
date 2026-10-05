@@ -28,7 +28,7 @@ SUITES = ["tests.test_numeric_storage", "tests.test_suggestions", "tests.test_sq
           "tests.test_schema_coverage", "tests.test_compose", "tests.test_converse", "tests.test_master_ingest",
           "tests.test_enrichment", "tests.test_source_sync", "tests.test_app_migrations",
           "tests.test_request_limits", "tests.test_request_timing", "tests.test_pg_upload",
-          "tests.test_dimension_model",
+          "tests.test_dimension_model", "tests.test_concurrent_requests",
           "tests.test_kb_memo", "tests.test_encode_cache", "tests.test_stream_buffer",
           "tests.test_dataset_semantics", "tests.test_dataset_gold",
           "tests.test_conversations", "tests.test_sheet_sessions", "tests.test_provenance",

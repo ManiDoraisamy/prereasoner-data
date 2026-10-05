@@ -23,6 +23,16 @@ from engine.deterministic.emitter.sql import GeneratedSQL
 from engine.deterministic.plan import AnalysisPlan
 from engine.numeric import DECIMAL_PRECISION, canonical_decimal
 
+# A relationship emitted as one-to-one that finds several rows is a wrong plan: the generated program
+# fails rather than pick a row. The filter is installed once for the process. Set per call inside
+# warnings.catch_warnings(), it was saved and restored as the process-wide filter list, so with two
+# programs running at once the first to finish removed the other's escalation mid-run.
+warnings.filterwarnings(
+    "error",
+    message="Multiple rows returned with uselist=False.*",
+    category=SAWarning,
+)
+
 _MODULE_COUNTER = itertools.count()
 _MODULE_LOCK = threading.Lock()
 
@@ -111,7 +121,6 @@ def execute_python(
         raise ValueError("Python execution row limit must be non-negative")
     translated = bind.execution_options(schema_translate_map=dict(schema_map or {}))
     with (
-        warnings.catch_warnings(),
         localcontext() as context,
         load_generated_package(package) as loaded,
         # The service owns the transaction/savepoint boundary. Joining it in
@@ -119,11 +128,6 @@ def execute_python(
         # read-only ORM session while preserving outer rollback on failure.
         Session(bind=translated, join_transaction_mode="rollback_only") as session,
     ):
-        warnings.filterwarnings(
-            "error",
-            message="Multiple rows returned with uselist=False.*",
-            category=SAWarning,
-        )
         context.prec = DECIMAL_PRECISION
         wrapper = loaded.analysis_class()(session, row_limit=row_limit)
         method = package.manifest.get("entrypoint_method", package.manifest["slug"])

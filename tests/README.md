@@ -30,6 +30,7 @@ model-backed cases as SKIP, which is not a pass.
 | `python -m tests.test_request_timing` | One `[timing]` line per request: no double-counted nested spans, emitted on failure, unchanged results, no user data in the line |
 | `python -m tests.test_pg_upload` | Uploaded-sheet load issues page-bounded statements with byte-identical values, against a recording cursor |
 | `python -m tests.test_dimension_model` | `/api/dimension` startup and encoder sharing |
+| `python -m tests.test_concurrent_requests` | Questions served in parallel on the shared engine: each request keeps its own planner state, trace stream and connection; shared caches, tokenizer and warning escalation hold |
 | `python -m tests.test_kb_memo` | Request-scoped shared-knowledge memo dedupes identical lookups without changing answers |
 | `python -m tests.test_encode_cache` | Encoder text cache dedupes forward passes without changing any vector |
 | `python -m tests.test_stream_buffer` | Coalescing RTDB stream writer bounds writes and ends authoritatively |

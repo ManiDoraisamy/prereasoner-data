@@ -82,55 +82,48 @@ def test_dimension_standalone_loads_only_the_encoder():
     ok(model.question_rewriter is None, "dimension endpoint attaches no own-data SQL selection fallback")
 
 
-def test_dimension_waits_on_the_shared_engine_lock_with_a_bound():
-    """DIM_LOCK is WORLD_LOCK (the endpoints share the world encoder). /api/reason waits
-    QUEUE_TIMEOUT_SECONDS and answers 503; /api/dimension waited without a bound and held its
-    request thread for the whole request ahead of it (then a 7B SQL decode). It now answers the
-    same retryable 503."""
+def test_dimension_requests_run_side_by_side():
+    """The dimension route queued behind every question on one process-wide lock and answered 503
+    "busy" after 15 s. Requests now run in parallel on the shared encoder: two requests meet inside
+    the model at once, which a lock between them would make impossible."""
     import threading
     from engine import server
 
     sent = []
-    handler = object.__new__(server.H)
-    handler.headers, handler.client_address = {}, ("127.0.0.1", 0)
-    handler._read_json = lambda: {"data": "a,b\n1,2\n", "table": "t", "mode": "analyze"}
-    handler._send = lambda code, body, *args, **kwargs: sent.append((code, json.loads(body)))
-    originals = (server._verify_principal, server.DIM_RATE, server.DIM_LOCK, server.QUEUE_TIMEOUT_SECONDS,
-                 server.DIM_MODEL)
-    lock, held, release = threading.Lock(), threading.Event(), threading.Event()
+    meet = threading.Barrier(2, timeout=5)
 
-    def busy():
-        with lock:
-            held.set()
-            release.wait(5)
+    def analyze(_table):
+        meet.wait()                                   # returns only once both requests are inside
+        return {"columns": []}
 
-    worker = threading.Thread(target=busy)
-    worker.start()
-    held.wait(5)
+    def handler():
+        h = object.__new__(server.H)
+        h.headers, h.client_address = {}, ("127.0.0.1", 0)
+        h._read_json = lambda: {"data": "a,b\n1,2\n", "table": "t", "mode": "analyze"}
+        h._send = lambda code, body, *args, **kwargs: sent.append((code, json.loads(body)))
+        return h
+
+    originals = (server._verify_principal, server.DIM_RATE, server.DIM_MODEL)
     try:
         server._verify_principal = lambda _token: ("tester", "uid")
         server.DIM_RATE = SimpleNamespace(allow=lambda _key: (True, 0))
-        server.DIM_LOCK, server.QUEUE_TIMEOUT_SECONDS = lock, 0.05
-        server.DIM_MODEL = SimpleNamespace(analyze=lambda _table: {"columns": []})
-        handler._post_dimension()
-        release.set()
-        worker.join(5)
-        handler._post_dimension()
+        server.DIM_MODEL = SimpleNamespace(analyze=analyze)
+        workers = [threading.Thread(target=handler()._post_dimension) for _ in range(2)]
+        for worker in workers:
+            worker.start()
+        for worker in workers:
+            worker.join(10)
     finally:
-        release.set()
-        (server._verify_principal, server.DIM_RATE, server.DIM_LOCK, server.QUEUE_TIMEOUT_SECONDS,
-         server.DIM_MODEL) = originals
-    ok(sent[0] == (503, {"error": "Engine is busy; retry shortly", "retryable": True}),
-       f"a dimension request behind another request is a retryable 503 (got {sent[:1]})")
-    ok(sent[1:] == [(200, {"columns": []})] and not lock.locked(),
-       "once the engine is free the request is served and the lock released")
+        server._verify_principal, server.DIM_RATE, server.DIM_MODEL = originals
+    ok(sent == [(200, {"columns": []})] * 2,
+       f"two dimension requests are served at the same time (got {sent})")
 
 
 def main():
     print("[dimension] shared model startup contract")
     test_dimension_reuses_world_encoder_and_copies_thresholds()
     test_dimension_standalone_loads_only_the_encoder()
-    test_dimension_waits_on_the_shared_engine_lock_with_a_bound()
+    test_dimension_requests_run_side_by_side()
     print(f"\ntest_dimension_model: {P} passed, {F} failed")
     sys.exit(1 if F else 0)
 

@@ -14,7 +14,7 @@ PRIVACY: names, counts and durations only. Never a prompt, a cell value, a quest
 row — this line goes to ordinary container logs, which are not a place for user data.
 
 Thread-safe via contextvars: each serving thread gets its own collector, so the line stays correct
-if the engine's request lock is ever narrowed.
+while questions run in parallel.
 """
 
 from __future__ import annotations

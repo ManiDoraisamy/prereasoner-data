@@ -12,6 +12,7 @@ from engine.config import kb_model_route_enabled
 from engine.entities import TYPE_TO_FRIENDLY
 from engine.embeddings import normalize_surface
 from engine.numeric import parse_decimal
+from engine.request_state import RequestLocal
 
 
 class KnowledgeTypingMixin:
@@ -19,6 +20,9 @@ class KnowledgeTypingMixin:
 
     GROUND_FRAC = 0.8
     FREETEXT_MIN_AVGLEN = 12
+    # The serve's typing evidence: per request, as concurrent questions share this object
+    # (engine/request_state.py). None outside a serve.
+    _typing_run = RequestLocal()
 
     def _router(self):
         """Return the generalized Schema.org router, reusing the serving encoder."""
@@ -70,11 +74,12 @@ class KnowledgeTypingMixin:
 
     def take_typing(self):
         """Close the buffer and return deduplicated typing records."""
-        return self.__dict__.pop("_typing_run", None) or []
+        run, self._typing_run = self._typing_run, None
+        return run or []
 
     def _emit_typing(self, records):
         """Append records to the active buffer, deduplicated by table and column."""
-        buffer = self.__dict__.get("_typing_run")
+        buffer = self._typing_run
         if buffer is None or not records:
             return
         seen = {(record["table"], record["column"]) for record in buffer}

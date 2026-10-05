@@ -355,8 +355,9 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         # updated one and not the other would serve cached routes with stale or missing evidence, and no
         # test would notice because the routing output would be unchanged.
         cache = self.__dict__.setdefault("_route_cache", {})               # per (schema, values): router runs ONCE
-        if sig in cache:
-            routes, typing = cache[sig]
+        cached = cache.get(sig)       # one read: concurrent questions share the cache and one may clear it
+        if cached is not None:
+            routes, typing = cached
             self._emit_typing(typing)
             return dict(routes)
         routes, typing = {}, []

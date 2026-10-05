@@ -15,7 +15,7 @@ the modules, the env-var contract, and the data files the serving path opens.
 
 | module | classes / responsibility |
 |---|---|
-| `server.py` | ONE ThreadingHTTPServer. `POST /api/reason`, `POST /api/knowledge` (Firebase auth + RTDB streaming, shared `KnowledgeReasoner` + shared `WORLD_LOCK`), `POST /api/dimension` (authenticated stateless readout, own `DIM_LOCK`), `POST /api/converse` (deterministic answer rendering), `GET /healthz`. Exact-origin CORS, body/rate/row limits. |
+| `server.py` | ONE ThreadingHTTPServer. `POST /api/reason`, `POST /api/knowledge` (Firebase auth + RTDB streaming, shared `KnowledgeReasoner`), `POST /api/dimension` (authenticated stateless readout on the shared world encoder), `POST /api/converse` (deterministic answer rendering), `GET /healthz`. Exact-origin CORS, body/rate/row limits. Requests run in parallel; Cloud Run bounds how many an instance serves. |
 | `auth.py` | `_verify_principal`, `_bearer` (security-critical). Test bypass via `AUTH_TEST_SUB`. |
 | `config.py` | the ONE env-var reader (see contract below). |
 | `tables.py` | `TableQuery`; canonical `table_name`, `csv_table` / `table_from_rows`, SQL quoting and table parsing. `TableQuery.__init__` defers encoder loading (the encoder overlay supplies the model at serve time). |
@@ -107,9 +107,11 @@ layout.
    public-IP deployments.
 4. RTDB streaming is a no-op unless `RTDB_URL` is set.
 5. Server host default is `0.0.0.0:8080` (container-friendly).
-6. `/api/reason` and `/api/knowledge` share ONE `KnowledgeReasoner` and ONE lock
-   (`WORLD_LOCK`), preserving the one-request-per-model/set_ctx invariant.
-   `/api/dimension` has its own model + lock.
+6. `/api/reason` and `/api/knowledge` share ONE `KnowledgeReasoner`, and `/api/dimension` its
+   world encoder. Questions run in parallel on it: what describes one request (its conversation
+   schema, connections, question text, typing evidence, trace stream) is request-local
+   (`engine/request_state.py`, `engine/trace.py:request_stream`), and the shared tokenizer and
+   encode cache take short locks.
 7. `Router._load` device comes from `DEVICE` (default cpu).
 
 ## Open risks / follow-ups

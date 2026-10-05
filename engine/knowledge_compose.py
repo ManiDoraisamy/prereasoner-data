@@ -270,8 +270,8 @@ class ComposedKnowledgeQuery:
                                 d["country"] = country
                         geocol = col
                         # Stream ONE 'Resolving <col>' slide (this column's knowledgebase."<type>" rows) LIVE, ahead of the
-                        # view stack. Reads the persisted bridge, so it fires fresh OR cached; uses the server's emit
-                        # CONTEXT (set under its LOCK), so _world_lookup needn't thread `emit` through.
+                        # view stack. Reads the persisted bridge, so it fires fresh OR cached; uses the request's emit
+                        # CONTEXT (engine.trace.request_stream), so _world_lookup needn't thread `emit` through.
                         self._emit_resolve_slide(cur, t["name"], col, col_rows, _ridx)
                     except Exception as e:                # noqa: BLE001 — a column that won't resolve is skipped
                         print(f"world lookup skipped: {type(e).__name__}", flush=True)

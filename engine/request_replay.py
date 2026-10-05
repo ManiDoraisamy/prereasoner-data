@@ -61,7 +61,7 @@ class DurableResponseReplay:
                 conn.commit()
             finally:
                 conn.close()
-            # Waiting callers never hold a database transaction or the model mutex.
+            # Waiting callers never hold a database transaction.
             time.sleep(0.25)
 
     def finish(self, key, response):

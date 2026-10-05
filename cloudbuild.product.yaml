@@ -19,8 +19,8 @@ substitutions:
 
 options:
   # The E2_HIGHCPU_8 worker has only 8 GB host memory, less than this lane's
-  # 16 GB model-test container plus the database. Use the 32 GB worker to avoid
-  # host-level SIGKILLs while preserving the container's 8-vCPU/16-GiB serving cap.
+  # 8 GB model-test container plus the database. Use the 32 GB worker to avoid
+  # host-level SIGKILLs while preserving the container's 4-vCPU/8-GiB serving cap.
   machineType: E2_HIGHCPU_32
 
 timeout: 5400s

@@ -9,8 +9,11 @@ to the full-JSON HTTP response.
 """
 from __future__ import annotations
 
+import contextlib
+import contextvars
 import datetime
 import json
+import threading
 import time
 from decimal import Decimal
 
@@ -56,16 +59,20 @@ def rtdb_encode(value):
     return encode(rtdb_safe(value))
 
 
+_APP_LOCK = threading.Lock()                                     # requests run concurrently: one initializes the app
+
+
 def ensure_app():
     """Idempotently ensure the default firebase-admin app exists. When RTDB_URL is set the app carries the
     databaseURL (RTDB needs it); without it the app is still initialized (ADC creds) so token verification
     works. Shared by the auth path (engine.auth) and the emitter, so the one app serves both."""
     import firebase_admin
-    try:
-        firebase_admin.get_app()
-    except ValueError:
-        opts = {"databaseURL": RTDB_URL} if RTDB_URL else None
-        firebase_admin.initialize_app(options=opts)               # ADC creds (+ the RTDB url when configured)
+    with _APP_LOCK:
+        try:
+            firebase_admin.get_app()
+        except ValueError:
+            opts = {"databaseURL": RTDB_URL} if RTDB_URL else None
+            firebase_admin.initialize_app(options=opts)           # ADC creds (+ the RTDB url when configured)
 
 
 def emitter(uid, job_id):
@@ -212,7 +219,6 @@ class StreamBuffer:
     DRAIN_SECONDS = 30
 
     def __init__(self, emit, node, interval=0.1):
-        import threading
         self._emit = emit
         self._node = node
         self._interval = interval
@@ -264,18 +270,24 @@ class StreamBuffer:
 
 # --- per-request emit CONTEXT ------------------------------------------------------------------------------------
 # Lets DEEP resolution code (the bridge build, several inheritance layers down) stream the cell→qid lookup LIVE
-# without threading `emit` through every method signature. The server sets it INSIDE its request LOCK (one request
-# per model at a time), so there's no cross-request race within a process.
-_CTX = {"emit": None}
+# without threading `emit` through every method signature. Questions run concurrently, so the emitter is the
+# request's own (a ContextVar), never a process-wide slot that another request could point at its stream.
+_EMIT: contextvars.ContextVar = contextvars.ContextVar("trace_emit", default=None)
 
 
-def set_ctx(emit):
-    _CTX["emit"] = emit
+@contextlib.contextmanager
+def request_stream(emit):
+    """Send `ctx_emit` calls made while serving one request to that request's ``emit``."""
+    token = _EMIT.set(emit)
+    try:
+        yield
+    finally:
+        _EMIT.reset(token)
 
 
 def ctx_emit(node, value, merge=False):
     """Emit on the current request's stream, if any (a no-op otherwise). Best-effort — never breaks the answer."""
-    e = _CTX["emit"]
+    e = _EMIT.get()
     if e:
         try:
             e(node, value, merge)

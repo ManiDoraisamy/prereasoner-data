@@ -2131,3 +2131,48 @@ The customer's question now reads its duration and asks about its other two word
 "users" and "neartail" mean." "neartail" occurs only inside product names ("Neartail - Startup") and "users" names
 no column; reading those is a separate change. A span is a filter only: "the average subscription length" is not
 read yet. The rendered span is long (about 2,400 characters of SQL each), the cost of one text both engines run.
+
+## Questions run in parallel and the engine scales out (2026-10-06)
+
+This replaces "Production keeps one warm engine instance and never scales out" (2026-10-01). Production ran one
+8 vCPU / 16 GiB instance that answered one question at a time (`WORLD_LOCK`); a second question waited 15 s and got
+503 "busy", as 2 of the 400 production questions logged from 2026-10-04 19:31 to 2026-10-05 18:11 UTC did. That
+decision rested on the retired 7B's 3-5 minute cold start, which is now about 70 s, and on the lock.
+
+The lock guarded state the requests shared on the one planner object, and taking it out alone would have been
+unsafe: an audit found ten races, five across conversations. The conversation's Postgres schema and the world
+query's connection lived on the shared planner, so one question could upload into, compute over and close the
+connection of another conversation. Every request used one resolution connection, where one request's blocking
+advisory lock stalled the rest and its deadline set another's statement timeout. The trace stream slot sent deep
+code's events to whichever request set it last. The question's text, its claimed-span copy and the typing buffer
+were shared too. The Qwen tokenizer serves two truncation lengths (48 and 128 tokens) and rewrites its length on
+each change. The encode cache's hit and move-to-end, and the route cache's test and read, were two steps another
+request could split (KeyError). Generated programs set their escalation of "Multiple rows returned with
+uselist=False" inside `warnings.catch_warnings()`, which restores the process-wide filter list, so the first program
+to finish lifted the other's.
+
+What belongs to one request is now request-local: `engine/request_state.py:RequestLocal` keeps those planner
+attributes in a ContextVar, `KnowledgeReasoner.serve` opens a fresh scope per request and closes the request's own
+resolution connection when it ends, and `engine/trace.py:request_stream` scopes the trace emitter. The tokenizer
+call (`engine/encoder.py:tokenize`) and the encode cache take short locks, the route cache is read once, the
+escalation is installed once for the process, and the firebase app is initialized under a lock. Requests on one
+conversation still run one at a time (a local lock stripe and a conversation advisory lock), because a request
+rewrites that conversation's bridge tables. `tests/test_concurrent_requests.py` runs two requests at once for each
+race, and each test fails on the old code for its race; `tests/test_geo.py` section (F) asks the same question in
+two conversations at once on one planner, three rounds, against Postgres.
+
+Cloud Run now runs one to four instances of 4 vCPU / 8 GiB and sends each at most three requests at once
+(`infra/main.tf`). It adds an instance at 60% of that limit or 60% CPU, and holds a request for a starting
+instance (up to 3.5 times the startup time) instead of refusing it; when all four stay full that long it answers
+429, which the chat presents as busy. Four instances of three requests hold at most 36 database connections (a
+request holds up to three), within the 47 the `db-g1-small` instance serves beside its reserved ones.
+
+4 vCPU was measured before the switch, on two private copies of the production image (b95e71b): the 91
+demo-dataset questions and follow-ups took 397 s against 387 s on 8 vCPU (median question 3.75 s against 3.53 s),
+the six-tab subscriptions workbook's three questions 41.8/20.4/38.4 s against 36.5/21.9/39.9 s, with the same
+answers on all 94. The 4-vCPU copy peaked at 3.4 GiB and 64% CPU, and both started in about 70 s (57.7 s of it
+loading the world reasoner). One warm instance costs about $230 a month at list prices instead of $460; each
+added instance bills about $0.32 an hour while it runs, and Cloud Run keeps an idle one up to 15 minutes.
+
+Two questions in one instance share its CPU and the Python interpreter lock, so each is slower than alone until
+Cloud Run adds an instance. A cold instance's first parallel requests may each build a lazily loaded model once.

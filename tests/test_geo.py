@@ -435,19 +435,16 @@ def main():
     # A KNOWLEDGEBASE-rate conversion (no uploaded fx sheet — the live demo shape) carries the
     # FULL derivation trail: joined rows, world-filtered rows, the per-row conversion, then the
     # total the Result overlays — one sheet per step. The resolution slides stream alongside.
-    from engine.trace import set_ctx
+    from engine.trace import request_stream
     slides = []
 
     def capture(node, value, merge=False):
         slides.append((node, value))
 
     # As engine/server.py serves: the trace context and serve's emit are the same stream.
-    set_ctx(capture)
-    try:
+    with request_stream(capture):
         rtrail = _retry(lambda: served(sub, qc.serve, [_FX_CUSTOMERS, _FX_ORDERS],
                                          "total amount in France in US dollars", sub, emit=capture))
-    finally:
-        set_ctx(None)
     trail_value = (((rtrail or {}).get("result") or {}).get("rows") or [[None]])[0][0]
     ok("fx+world: knowledgebase-rate France total converts (ECB rate), no clarify",
        bool(rtrail) and not rtrail.get("clarify") and not rtrail.get("error")
@@ -683,12 +680,38 @@ def main():
     new_idle = [(p, q) for p, q in cur.fetchall() if p not in base_pids]
     ok("concurrency: no NEW connection left 'idle in transaction' (autocommit holds no locks)", not new_idle,
        f"new_idle_in_transaction={new_idle}")
-    for c in (getattr(qc_b.qw, "_rcn", None),):                # release instance B's pooled connection
+
+    # ============================================================ (F) CONCURRENCY — one planner, two conversations
+    # Questions run in parallel on the ONE KnowledgeReasoner the server loads (DECISIONS.md, "Questions run in parallel
+    # and the engine scales out"). Two conversations upload a table of the same name with different rows and ask the
+    # same question at the same moment, three times: each must get its own total. With the conversation schema on the
+    # shared planner, one request uploaded into, and computed over, the other's conversation.
+    print("\n== (F) concurrency: one planner, two conversations at once ==", flush=True)
+    sub_b = live_schema("GEO_TEST_SUB_B").name
+    CUST_B = {"name": "customers", "columns": ["name", "city", "amount"],
+              "rows": [["Ines", "Paris", 7], ["Jon", "Marseille", 5], ["Kai", "Munich", 30]]}
+    totals, failures = {"A": [], "B": []}, {}
+    meet = threading.Barrier(2, timeout=120)
+
+    def _ask(tag, schema, table):
         try:
-            if c:
-                c.close()
-        except Exception:                                       # noqa: BLE001
-            pass
+            for _ in range(3):
+                meet.wait()                                     # both questions start together, every round
+                r = served(schema, wr.serve, [table], "total amount in France", schema)
+                totals[tag].append((((r.get("result") or {}).get("rows") or [[None]])[0] or [None])[0])
+        except Exception as e:                                   # noqa: BLE001
+            failures[tag] = repr(e)
+
+    th = [threading.Thread(target=_ask, args=("A", sub, CUST), daemon=True),
+          threading.Thread(target=_ask, args=("B", sub_b, CUST_B), daemon=True)]
+    for t in th:
+        t.start()
+    for t in th:
+        t.join(timeout=600)
+    ok("one planner, two conversations: both completed", not [t for t in th if t.is_alive()] and not failures,
+       f"failures={failures}")
+    ok("one planner, two conversations: each got its own France total every round (180 and 12)",
+       totals["A"] == [180] * 3 and totals["B"] == [12] * 3, f"totals={totals}")
 
     cn.close()
     print(f"\n{P}/{P + F} passed" + ("" if not F else f"  ({F} FAILED)")

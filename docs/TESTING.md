@@ -147,6 +147,7 @@ onward run last, after the orchestrator suites, unless `RUN_ENGINE_TESTS=0`:
 | `tests.test_request_timing` | One `[timing]` line per request: no double-counted nested spans, emitted on failure, unchanged results, no user data in the line |
 | `tests.test_pg_upload` | Uploaded-sheet load issues page-bounded statements with byte-identical values, against a recording cursor |
 | `tests.test_dimension_model` | `/api/dimension` startup and encoder sharing |
+| `tests.test_concurrent_requests` | Questions served in parallel on the shared engine: each request keeps its own planner state, trace stream and connection; shared caches, tokenizer and warning escalation hold |
 | `tests.test_kb_memo` | Request-scoped shared-knowledge memo dedupes identical lookups without changing answers |
 | `tests.test_encode_cache` | Encoder text cache dedupes forward passes without changing any vector |
 | `tests.test_stream_buffer` | Coalescing RTDB stream writer bounds writes and ends authoritatively |

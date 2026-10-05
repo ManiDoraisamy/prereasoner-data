@@ -23,6 +23,7 @@ from engine import request_timing
 from engine.config import DATA_DIR
 from engine.resolve_base import RoutedQuery
 from engine.pg import _pg
+from engine.request_state import RequestLocal
 from engine.knowledge_tables import qident, qlit
 from engine.dataset_semantics import is_synthetic_currency_column
 from engine.embeddings import Embedder, demonym_stems, pgvector_literal, normalize_surface
@@ -58,13 +59,13 @@ WORLD_TABLE_TYPE = {"city": "city", "country": "country", "u_s_state": "state",
                     "Elements in the World": "element"}
 TYPE_TO_FRIENDLY = {v: k for k, v in WORLD_TABLE_TYPE.items()}   # state -> u_s_state; element -> friendly view
 VALUE_ROUTE_MIN = 0.80   # a column routes to a world table when >= this fraction of its cells resolve to that type
-# The cached resolution connection is checked with one round trip before reuse once it has been idle
-# this long. It lives for hours, and the managed Cloud SQL connection drops it between requests: all
-# five production failures (`world request failed: OperationalError`, 2026-08-30..09-25) came 5-57 s
-# after the connector refreshed its certificate (cloudsql.instances.connect), 8 s to 41 min after the
-# connection's last successful use. psycopg2 reports a connection closed only after a statement fails
-# on it, and that statement was the first one of a user's request. So each request's first use is
-# checked, while statements within a request, milliseconds apart, are not.
+# A request's resolution connection is checked with one round trip before reuse once it has been idle
+# this long. The managed Cloud SQL connection drops idle connections: all five production failures
+# (`world request failed: OperationalError`, 2026-08-30..09-25) came 5-57 s after the connector
+# refreshed its certificate (cloudsql.instances.connect), 8 s to 41 min after the connection's last
+# successful use, when one connection served every request. psycopg2 reports a connection closed only
+# after a statement fails on it. A request idle for longer than this (a Gemini rewording, a long pool
+# run) is checked, while statements milliseconds apart are not.
 RCONN_IDLE_CHECK_S = 1.0
 
 
@@ -74,11 +75,17 @@ class EntityQuery(RoutedQuery):
     THRESH = 0.80            # prompt-side fuzzy-fallback floor; exact altLabel match handles conventional aliases
     FUZZY_THRESH = 0.88      # cell-side TYPO floor (tight): aliases come from altLabel DATA, not loose fuzzy
 
+    # Per request, as concurrent questions share this object (engine/request_state.py): the request's
+    # resolution connection, when _rconn last handed it out (the idle clock for its liveness check), its
+    # shared-knowledge memo and its question as typed.
+    _rcn = RequestLocal()
+    _rcn_used = RequestLocal()
+    _kb_memo = RequestLocal()
+    _q_orig = RequestLocal()
+
     def __init__(self, deploy_dir=DATA_DIR):
         super().__init__(deploy_dir)
         self._nlp = None
-        self._rcn = None     # cached resolution connection (1 per instance)
-        self._rcn_used = None  # monotonic time _rconn last handed it out (the idle clock for its liveness check)
 
     # ---- helpers ----
     def _spacy(self):
@@ -88,7 +95,7 @@ class EntityQuery(RoutedQuery):
         return self._nlp
 
     def _rconn(self):
-        # AUTOCOMMIT: this cached connection issues many independent read SELECTs (resolution / routing / grounding)
+        # AUTOCOMMIT: the request's connection issues many independent read SELECTs (resolution / routing / grounding)
         # interleaved with idempotent bridge writes. Without autocommit psycopg2 opens an implicit transaction on the
         # first statement and leaves it "idle in transaction" until an explicit commit — holding read locks on
         # knowledgebase."words"/the bridge tables. Two service instances serving the SAME per-user sub then wedge each other
@@ -115,6 +122,12 @@ class EntityQuery(RoutedQuery):
     def _open_rconn(self):
         self._rcn = _pg()
         self._rcn.autocommit = True
+
+    def end_request(self):
+        """Close the resolution connection this request opened. Its session advisory locks go with it."""
+        connection, self._rcn = self._rcn, None
+        if connection is not None and not connection.closed:
+            connection.close()
 
     # ---- request-scoped memo for shared-knowledge reads ----
     def begin_request(self):

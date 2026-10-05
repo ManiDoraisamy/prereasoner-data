@@ -23,6 +23,7 @@ from engine.calculations.registry import attach_calculation_evidence
 from engine.knowledge_compose import ComposedKnowledgeQuery
 from engine.pg import _pg
 from engine.relations import request_memo
+from engine.request_state import request_scope
 from engine.sql_schema import SchemaGraph
 
 NEAR = re.compile(r"\b(near(?:est|by)?|closest|around|close to)\b", re.I)
@@ -39,9 +40,14 @@ class KnowledgeReasoner:
 
     def serve(self, tables, question, sub, as_of=None, emit=None, explicit_fks=(), dataset_semantics=(),
               decomposition=None):
-        with request_memo():                # the request's paths derive its tables once (relations.memoized)
-            return self._serve(tables, question, sub, as_of=as_of, emit=emit, explicit_fks=explicit_fks,
-                               dataset_semantics=dataset_semantics, decomposition=decomposition)
+        # Questions run concurrently on this one object: the request gets its own schema, connections and
+        # question text (engine/request_state.py), and its paths derive its tables once (relations.memoized).
+        with request_scope(), request_memo():
+            try:
+                return self._serve(tables, question, sub, as_of=as_of, emit=emit, explicit_fks=explicit_fks,
+                                   dataset_semantics=dataset_semantics, decomposition=decomposition)
+            finally:
+                self.qw.end_request()       # close the resolution connection this request opened
 
     def _serve(self, tables, question, sub, as_of=None, emit=None, explicit_fks=(), dataset_semantics=(),
                decomposition=None):

@@ -32,6 +32,7 @@ from engine.config import (
 )
 from engine.knowledge_tables import KnowledgeTableQuery
 from engine.numeric import parse_decimal, wire_decimal
+from engine.request_state import RequestLocal
 from engine.sql_ast import render_query
 from engine.tables import TableQuery, qident
 
@@ -265,7 +266,7 @@ class _PgCon:
 class _TableQueryPg(TableQuery):
     postgres_row_identity = True
     """Own-data path executor → Postgres (so uploads persist in the user schema and answers are consistent)."""
-    _pg_schema = None
+    _pg_schema = RequestLocal()                   # the conversation's schema (engine/request_state.py)
 
     def execute(self, tablemap, sch, sql, query=None, deterministic_plan=None):
         conn = _pg(); cur = conn.cursor()
@@ -354,6 +355,11 @@ class _TableQueryPg(TableQuery):
 class PgQuery(KnowledgeTableQuery):
     """KnowledgeTableQuery planner + Postgres execution, scoped to a per-request verified schema."""
 
+    # The request's conversation schema and its world-query connection: per request, as concurrent
+    # questions share this object (engine/request_state.py).
+    _pg_schema = RequestLocal()
+    _con = RequestLocal()
+
     @staticmethod
     def _numeric_aggregate(function, operand):
         return f"{function.upper()}( {operand} )"
@@ -369,8 +375,6 @@ class PgQuery(KnowledgeTableQuery):
     def __init__(self, deploy_dir):
         super().__init__(deploy_dir)
         self.q11.__class__ = _TableQueryPg       # rebless the shared TableQuery (same loaded model) -> PG own-data path
-        self._pg_schema = None
-        self._con = None
 
     def serve(self, tables, question, as_of=None, schema=None, explicit_fks=(), dataset_semantics=()):
         if not schema:

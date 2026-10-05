@@ -256,18 +256,20 @@ resource "google_cloud_run_v2_service" "api" {
     service_account = google_service_account.run.email
 
     scaling {
-      min_instance_count = var.min_instances # default 1: see the variable — cold start is 3-5 min
-      # One instance. A new engine instance needs 3-5 minutes to load its models, and Cloud Run
-      # holds a request for an instance it is starting: on 2026-10-01 a question waited 3.5
-      # minutes for a new instance while three were ready, and the chat gave up at 180 s. An
-      # instance answers one question at a time (WORLD_LOCK), so a second question gets "busy"
-      # after the engine's admission window instead of waiting on a cold start.
-      max_instance_count = 1
+      min_instance_count = var.min_instances # default 1: see the variable
+      # Questions run in parallel in an instance (engine/request_state.py), and Cloud Run adds
+      # instances, up to four, when those running are busy: at 60% of the request limit below or
+      # 60% CPU. A new instance passes its startup probe about 70 s after it starts (2026-10-05, on
+      # 4 and on 8 vCPU), and a request Cloud Run routes to it waits that long instead of failing.
+      # Four instances of three requests hold at most 36 database connections (a request holds up
+      # to three: resolution, world query, deterministic run), within the 47 the db-g1-small
+      # instance serves beside its reserved ones.
+      max_instance_count = 4
     }
 
-    # The world/reason paths serialize on one in-process model lock. The other requests (the
-    # analysis catalog, master data, health checks) are short and share the instance.
-    max_instance_request_concurrency = 8
+    # The requests an instance serves at once: questions, and the short catalog, master-data and
+    # health requests beside them.
+    max_instance_request_concurrency = 3
     timeout                          = "300s"
 
     volumes {
@@ -280,15 +282,16 @@ resource "google_cloud_run_v2_service" "api" {
     containers {
       image = local.image
 
-      # Sizing: 8 vCPU / 16Gi was set for the in-engine SQL proposers (2026-09-23), removed on
-      # 2026-10-02 (DECISIONS.md). The encoder stack ran on 4 vCPU / 8Gi before them; downsizing is
-      # the operator's cost decision.
+      # Sizing: 4 vCPU / 8Gi. 8 vCPU / 16Gi was set for the in-engine SQL proposers (2026-09-23),
+      # removed on 2026-10-02 (DECISIONS.md); without them an instance holds 3-3.5 GiB. On the 91
+      # demo-dataset questions and the six-tab workbook, 4 vCPU answered within 3% of 8 vCPU in
+      # total (+5% on the median question) with the same answers, peaking at 3.4 GiB (2026-10-05).
       # Leave memory headroom for request-time tensors, 10 MB request bodies, and the in-memory
-      # SQLite copies of uploaded sheets.
+      # SQLite copies of uploaded sheets, for three requests at once.
       resources {
         limits = {
-          cpu    = "8"
-          memory = "16Gi"
+          cpu    = "4"
+          memory = "8Gi"
         }
         startup_cpu_boost = true # model load is CPU-bound; boost cuts cold-start time
       }

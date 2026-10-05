@@ -5,12 +5,26 @@ Used by BOTH training and serving (engine.router). It deliberately imports only 
 column routing — bundles cleanly without dragging the offline training stack.
 """
 from __future__ import annotations
+import threading
 from pathlib import Path
 
 import torch
 import torch.nn as nn
 
 from engine.config import BASE_MODEL_ID as MODEL_ID, BASE_MODEL_REVISION as MODEL_REVISION
+
+# One Qwen tokenizer serves every encoder in the process: TableQuery reads cells at 48 tokens and the
+# schema interpreter reads table summaries at 128. A fast tokenizer keeps its truncation length as state
+# and rewrites it when a call asks for another, so with questions running in parallel one request could
+# tokenize at the other's length, and cache those vectors, or fail "Already borrowed". Tokenizing takes
+# about a millisecond; the forward pass runs outside the lock.
+_TOKENIZER_LOCK = threading.Lock()
+
+
+def tokenize(tok, texts, max_length):
+    """``texts`` as one padded, truncated batch of torch tensors, one tokenizer call at a time."""
+    with _TOKENIZER_LOCK:
+        return tok(texts, return_tensors="pt", padding=True, truncation=True, max_length=max_length)
 
 
 class LiveQwen(nn.Module):
@@ -55,8 +69,7 @@ class LiveQwen(nn.Module):
         ctx = torch.enable_grad() if grad else torch.no_grad()
         outs = []
         for i in range(0, len(texts), bs):
-            enc = self.tok(texts[i:i + bs], return_tensors="pt", padding=True, truncation=True,
-                           max_length=max_len).to(self.dev)
+            enc = tokenize(self.tok, texts[i:i + bs], max_len).to(self.dev)
             with ctx, torch.autocast(self.dev.type, dtype=torch.bfloat16, enabled=(self.dev.type == "cuda")):
                 h = self.qwen(**enc).last_hidden_state
             m = enc["attention_mask"].unsqueeze(-1).float()

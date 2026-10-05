@@ -98,18 +98,13 @@ from engine.request_validation import (
 )
 from engine.sheet_sessions import clear_sheet_session, restore_sheet_session, save_sheet_session
 from engine.tables import csv_table, normalize_tables, table_name
-from engine.trace import emitter, set_ctx, stream_final
+from engine.trace import emitter, request_stream, stream_final
 
+# Questions run in parallel on these shared objects: each request's own state is request-local
+# (engine/request_state.py), and Cloud Run bounds the requests an instance serves at once (infra/main.tf).
 MODEL = None                       # the ONE KnowledgeReasoner, shared by /api/reason and /api/knowledge
 DIM_MODEL = None                   # the ONE DimensionModel for /api/dimension
 ENRICHMENT = None                  # request-local enrichment; registry activation remains authoritative
-WORLD_LOCK = threading.Lock()      # one request at a time through the shared world model (set_ctx is per-request)
-DIM_LOCK = threading.Lock()        # one request at a time through the dimension model
-QUEUE_TIMEOUT_SECONDS = 15.0       # how long a request waits for the engine before 503 {retryable: true}
-
-
-class EngineBusy(RuntimeError):
-    """The engine did not admit a request within QUEUE_TIMEOUT_SECONDS."""
 
 
 def _start_spacy_warmup(model):
@@ -902,45 +897,33 @@ class H(BaseHTTPRequestHandler):
                 emit("analysis", analysis)
             emit("conversation_id", conv)                    # stream it EARLY so the browser gets it even if the HTTP body is lost to a proxy timeout
             emit("status", "running")
-            # lock_wait is measured SEPARATELY from serve: the global lock serializes the engine, so
-            # queueing behind another request and doing the work are different problems with different
-            # fixes, and one line has to tell them apart.
-            with request_timing.span("lock_wait"):
-                if not WORLD_LOCK.acquire(timeout=QUEUE_TIMEOUT_SECONDS):
-                    raise EngineBusy("Engine is busy; retry shortly")
-            try:
-                set_ctx(emit)                                # so the DEEP bridge build streams the cell→qid lookup live
-                try:
-                    serve_kwargs = {"emit": emit}
-                    if req.get("decomposition") is not None:
-                        serve_kwargs["decomposition"] = req["decomposition"]
-                    if enrichment is not None and enrichment.used:
-                        serve_kwargs["explicit_fks"] = enrichment.explicit_fks
-                    from engine.deterministic.context import (
-                        analysis_execution_context, enforce_execution_response,
+            with request_stream(emit):                       # so the DEEP bridge build streams the cell→qid lookup live
+                serve_kwargs = {"emit": emit}
+                if req.get("decomposition") is not None:
+                    serve_kwargs["decomposition"] = req["decomposition"]
+                if enrichment is not None and enrichment.used:
+                    serve_kwargs["explicit_fks"] = enrichment.explicit_fks
+                from engine.deterministic.context import (
+                    analysis_execution_context, enforce_execution_response,
+                )
+                with analysis_execution_context(
+                    analysis, conv, execution_mode=req.get("use")
+                ), request_timing.span("serve"):
+                    res = MODEL.serve(
+                        tabs, req.get("question", ""), conv, req.get("as_of"),
+                        dataset_semantics=semantics, **serve_kwargs
                     )
-                    with analysis_execution_context(
-                        analysis, conv, execution_mode=req.get("use")
-                    ), request_timing.span("serve"):
-                        res = MODEL.serve(
-                            tabs, req.get("question", ""), conv, req.get("as_of"),
-                            dataset_semantics=semantics, **serve_kwargs
-                        )
-                        res = enforce_execution_response(res, req.get("use"))
-                    # Python-by-default retreating to SQL must not be silent. Carry only the
-                    # exception CLASS onto the request's one timing line; the rest of the
-                    # reason can quote user data and stays in the response envelope.
-                    reason = ((res or {}).get("execution") or {}).get("fallback_reason") \
-                        if isinstance(res, dict) else None
-                    if reason:
-                        self._py_fallback = str(reason).split(":", 1)[0].strip()
-                    if isinstance(res, dict) and res.get("deterministic"):
-                        for index, view in enumerate(res.get("views") or ()):
-                            emit(f"views/{index}", view)
-                finally:
-                    set_ctx(None)
-            finally:
-                WORLD_LOCK.release()
+                    res = enforce_execution_response(res, req.get("use"))
+                # Python-by-default retreating to SQL must not be silent. Carry only the
+                # exception CLASS onto the request's one timing line; the rest of the
+                # reason can quote user data and stays in the response envelope.
+                reason = ((res or {}).get("execution") or {}).get("fallback_reason") \
+                    if isinstance(res, dict) else None
+                if reason:
+                    self._py_fallback = str(reason).split(":", 1)[0].strip()
+                if isinstance(res, dict) and res.get("deterministic"):
+                    for index, view in enumerate(res.get("views") or ()):
+                        emit(f"views/{index}", view)
             res = provenance_context.decorate_response(res)
             if isinstance(res, dict):
                 res["conversation_id"] = conv                # so the browser persists it for follow-up turns
@@ -998,12 +981,6 @@ class H(BaseHTTPRequestHandler):
                         discard_analysis()
             stream_final(emit, res)                          # terminal state -> RTDB (decoupled from this response)
             self._send(200, json_dumps(res, default=_json_safe))
-        except EngineBusy as exc:
-            discard_analysis()
-            if emit is not None:
-                emit("error", str(exc))
-                emit("status", "error")
-            self._send(503, json_dumps({"error": str(exc), "retryable": True}))
         except request_deadline.RequestTimedOut as exc:
             cleanup_token = request_deadline.begin(10)
             try:
@@ -1060,16 +1037,7 @@ class H(BaseHTTPRequestHandler):
             row_error = upload_row_limit_error([tbl])
             if row_error:
                 self._send(413, json_dumps({"error": row_error})); return
-            # DIM_LOCK is WORLD_LOCK: the dimension model shares the world encoder, so it queues behind a
-            # /api/reason request. Wait as long as /api/reason does, then answer 503 like it — an unbounded
-            # wait held a request thread for the whole request.
-            if not DIM_LOCK.acquire(timeout=QUEUE_TIMEOUT_SECONDS):
-                self._send(503, json_dumps({"error": "Engine is busy; retry shortly", "retryable": True}))
-                return
-            try:
-                res = DIM_MODEL.analyze(tbl)
-            finally:
-                DIM_LOCK.release()
+            res = DIM_MODEL.analyze(tbl)                     # runs beside questions on the shared world encoder
             self._send(200, json_dumps(res))
         except Exception as e:                               # noqa: BLE001
             print(f"dimension request failed: {type(e).__name__}", flush=True)
@@ -1115,7 +1083,7 @@ def require_current_schema():
 
 
 def main():
-    global MODEL, DIM_MODEL, ENRICHMENT, DIM_LOCK
+    global MODEL, DIM_MODEL, ENRICHMENT
     from engine.dimension import DimensionModel
     from engine.knowledge import KnowledgeReasoner
     def startup_phase(name, fn):
@@ -1149,9 +1117,6 @@ def main():
         print(f"startup warmup note: {type(e).__name__}", flush=True)
     DIM_MODEL = startup_phase("dimension model (shared world encoder)",
                               lambda: DimensionModel(shared_encoder=MODEL.qw))
-    # Both APIs now execute on the same Qwen/LoRA instance; keep calls serialized
-    # across endpoints rather than protecting one shared model with two locks.
-    DIM_LOCK = WORLD_LOCK
     # spaCy is lazy and is only needed by entity extraction on a subset of queries.
     # It is not part of model readiness: loading it synchronously here can consume
     # the last seconds of Cloud Run's startup-probe budget after the Qwen encoder and

@@ -34,7 +34,7 @@ docker run --rm --volume "$node_volume:/node" node:22-bookworm-slim@sha256:43ac6
 # The focused offline planner gate is not a substitute for the complete hermetic
 # source suite. Run it on the candidate's Python/model image, adding CI-only tools
 # in this disposable container; the shipped runtime stays unchanged.
-docker run --rm --cpus=8 --memory=16g \
+docker run --rm --cpus=4 --memory=8g \
   --volume "$node_volume:/opt/node:ro" --volume /workspace:/workspace:ro \
   --workdir /app \
   --env PATH=/opt/node:/opt/venv/bin:/usr/local/bin:/usr/bin:/bin \
@@ -109,7 +109,7 @@ docker update --memory=2g --memory-swap=2g "$db_name" >/dev/null
 # and model bundle. RUN_ENGINE_TESTS=1 is deliberate: any skipped live suite is a failed gate.
 suite_status=0
 if [[ "${RUN_PRODUCT_SUITES:-1}" == "1" ]]; then
-  docker run --rm --network "$network" --cpus=8 --memory=16g \
+  docker run --rm --network "$network" --cpus=4 --memory=8g \
     --volume "$node_volume:/opt/node:ro" --volume /workspace:/workspace:ro \
     --workdir /app \
     --env PATH=/opt/node:/opt/venv/bin:/usr/local/bin:/usr/bin:/bin \
@@ -127,9 +127,10 @@ else
 fi
 
 # Exercise the production HTTP entrypoint under CPU-only Cloud Run resource limits. Repeated
-# read-only world joins at concurrency 1/2/4/8 match the configured per-instance concurrency cap;
-# this bounded smoke is not a sustained-load SLA.
-docker run -d --name "$server_name" --network "$network" --cpus=8 --memory=16g \
+# read-only world joins at concurrency 1/2/4/8 run in parallel in one process, each in its own
+# conversation; Cloud Run sends an instance at most 3 (infra/main.tf), so 4 and 8 are deliberate
+# overload. This bounded smoke is not a sustained-load SLA.
+docker run -d --name "$server_name" --network "$network" --cpus=4 --memory=8g \
   --env KB_PG_HOST=product-db --env KB_PG_PORT=5432 --env KB_PG_DB=world \
   --env KB_PG_USER=serving --env "KB_PG_PASSWORD=$role_password" --env KB_PG_SSLMODE=disable \
   --env APP_ENV=development --env AUTH_TEST_SUB=localdev --env DEVICE=cpu \
@@ -193,8 +194,8 @@ load = {}
 for workers in (2, 4, 8):
     latencies = []
     # The endpoint intentionally limits each verified principal to 30 requests/minute.
-    # Earlier levels send 3 + 6 + 12 = 21 calls, so one eight-request burst reaches the
-    # configured concurrency cap without turning this smoke into a rate-limit test.
+    # Earlier levels send 3 + 6 + 12 = 21 calls, so one eight-request burst stays under it
+    # without turning this smoke into a rate-limit test.
     rounds = 1 if workers == 8 else 3
     for _ in range(rounds):
         with ThreadPoolExecutor(max_workers=workers) as executor:

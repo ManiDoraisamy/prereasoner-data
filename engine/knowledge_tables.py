@@ -23,6 +23,7 @@ from engine.currency_intent import (
 )
 from engine.dataset_semantics import is_synthetic_currency_column
 from engine.numeric import coerce_numeric, register_sqlite_decimal, sqlite_numeric, wire_rows
+from engine.request_state import RequestLocal
 from engine.sql_ast import Aggregate, render_scalar_expression
 from engine.sql_schema import is_surrogate_key
 from engine.tables import (  # noqa: F401  (csv_table re-exported)
@@ -116,6 +117,10 @@ def load_word_tables():
 
 
 class KnowledgeTableQuery:
+    # The question with the spans another reading claimed removed, which the entities layer resolves
+    # values from: per request, as concurrent questions share this object (engine/request_state.py).
+    _q_meaning = RequestLocal()
+
     @staticmethod
     def _numeric_aggregate(function, operand):
         rendered = {
