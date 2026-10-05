@@ -9,6 +9,8 @@ BUSY_REPLY = "Prereasoner is busy right now. Please send your question again sho
 SIGN_IN_REPLY = "Your sign-in has expired. Reload Prereasoner, then ask again."
 CONVERSATION_LIMIT_REPLY = "Your account has reached its limit of saved conversations. Delete an old one, then ask again."
 FULL_CONVERSATION_REPLY = "This conversation is full. Start a new chat to keep asking."
+UNREAD_REPLY = ("I couldn't find a way to answer that from your sheets. Try asking again with the column "
+                "names as they appear in the sheet.")
 # Engine text that describes code rather than the request: an exception name, a query, a payload,
 # a status line or an address. Users see a sentence; the raw text stays in the trace.
 _TECHNICAL = re.compile(r"^[A-Za-z_.]*(?:Error|Exception)\b|Traceback|\bSQL\b|psycopg|[{}]|\bHTTP \d{3}\b|https?://",
@@ -25,6 +27,10 @@ def error_reply(shaped: dict[str, Any]) -> str:
         return CONVERSATION_LIMIT_REPLY
     if re.search(r"\btoo many (?:analyses|revisions)\b|\b(?:workbook|state) is too large\b", error, re.I):
         return FULL_CONVERSATION_REPLY
+    if re.match(r"planner:", error):
+        # The search read no query from the question ("planner: no valid AST candidate"): the words reached a
+        # Sheets user as the whole reply (2026-10-05). Asking again unchanged would not help.
+        return UNREAD_REPLY
     if status in (429, 503) or re.search(r"\bbusy\b", error, re.I):
         return BUSY_REPLY
     if status == 401 or re.search(r"\bsign in required\b", error, re.I):

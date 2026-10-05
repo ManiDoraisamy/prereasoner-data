@@ -78,6 +78,10 @@ def test_an_engine_failure_is_one_sentence_the_user_can_act_on():
         reply = terminal_reply(shaped)
         assert reply == presentation.UNAVAILABLE_REPLY, (name, reply)
     assert terminal_reply({'status': 'error', 'error': 'sign in required', 'http_status': 401}) == presentation.SIGN_IN_REPLY
+    # A question the search read no query from is the user's to reword, not a passing failure (2026-10-05).
+    for error in ('planner: no valid AST candidate', 'planner: no executable AST candidate',
+                  'planner: no single-query AST candidate'):
+        assert terminal_reply({'status': 'error', 'error': error}) == presentation.UNREAD_REPLY, error
     assert terminal_reply({'status': 'error', 'error': 'request rate limit exceeded', 'http_status': 429}) == presentation.BUSY_REPLY
     assert terminal_reply({'status': 'error', 'error': 'conversation limit reached', 'http_status': 429}) \
         == presentation.CONVERSATION_LIMIT_REPLY
