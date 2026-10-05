@@ -251,6 +251,9 @@ The AST, validator, renderer, and search rules support:
   `DatePart('month')`, and a dated phrase ("after August 10, 2026") compares the date itself;
 - grouping by a column, or by the year-month of a date column (`DatePart('year_month')`, '2026-08'):
   "total amount by month", "monthly", "per month", "which month" (`sql_dates.period_grouping`);
+- durations (`engine/sql_durations.py`): "more than 6 months", "at least 2 weeks", "over a year ago" compare
+  `DateSpan`, the days from a row's start date to its end date, or to the question's date while it has none,
+  over the unit's length (a month is 30.4375 days, a year 365.25);
 - grouping, `HAVING`, ordering, and limits;
 - direct and multi-hop foreign-key joins;
 - aliases and self-joins;
@@ -295,6 +298,7 @@ Before rendering, recursive validation checks:
 - grouped projection and ordering rules;
 - compound-query compatibility;
 - `DatePart` reads a `DATE` column, and its part is `month` or `year_month`;
+- `DateSpan` reads `DATE` columns, its unit is a day, week, month or year, and it runs until an ISO date;
 - a `GROUP BY` term is a column or a `DatePart`;
 - `with_ties` needs `ORDER BY`, a `LIMIT`, and named projections (no `SELECT *`);
 - invalid aggregate forms such as `COUNT(DISTINCT *)`.
@@ -308,6 +312,7 @@ SQL statements. Serving also retains its SELECT-only execution guard.
 |---|---|
 | `engine/sql_ast.py` | Immutable AST, validation, and rendering. |
 | `engine/sql_dates.py` | Calendar phrases of a question as typed date comparisons; the month words a query realized. |
+| `engine/sql_durations.py` | Duration phrases of a question, the date columns a span runs between, and the duration words a query realized. |
 | `engine/sql_grounding.py` | Pool eligibility: text literals that fit their column and joins the foreign keys allow; which SUM or AVG reads only rows its joins repeat (a selection preference). |
 | `engine/sql_schema.py` | Typed schema and join-path search. |
 | `engine/sql_search.py` | `SQLSearcher`: base beam, capability ordering, and candidate assembly. |

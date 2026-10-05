@@ -28,12 +28,13 @@ from engine.deterministic.plan import (
     ProjectedView,
     ReducedView,
     SortedView,
+    SpanValue,
     Value,
     ViewValue,
     WindowView,
 )
 from engine.numeric import DIVISION_SCALE
-from engine.sql_ast import month_of_date_sql, year_month_of_date_sql
+from engine.sql_ast import date_span_sql, month_of_date_sql, year_month_of_date_sql
 
 
 def _function(function: str, operand: str) -> str:
@@ -458,6 +459,9 @@ class SQLEmitter:
     def _value(self, value: Value, tables: set[str], values: set[str]) -> str:
         if isinstance(value, FunctionValue):
             return _function(value.function, self._value(value.operand, tables, values))
+        if isinstance(value, SpanValue):
+            end = None if value.end is None else self._value(value.end, tables, values)
+            return date_span_sql(self._value(value.start, tables, values), end, value.unit, value.until)
         if isinstance(value, LiteralValue):
             return _literal(value.value)
         if isinstance(value, ViewValue):
@@ -487,6 +491,8 @@ class SQLEmitter:
                 return resolve(item)
             if isinstance(item, FunctionValue):
                 return _function(item.function, value(item.operand))
+            if isinstance(item, SpanValue):
+                raise TypeError("a span is not a join value")
             if isinstance(item, BinaryValue):
                 left = value(item.left)
                 right = value(item.right)

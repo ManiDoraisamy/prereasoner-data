@@ -11,6 +11,7 @@ from decimal import Decimal
 from enum import Enum
 import math
 from numbers import Real
+import re
 from typing import Any, Iterable, Sequence, TypeAlias
 
 
@@ -119,12 +120,44 @@ class Lower:
         return self.operand.name
 
 
-ScalarExpr: TypeAlias = ColumnRef | Star | Literal | Aggregate | ScalarSubquery | BinaryExpr | DatePart | Lower
+# The length of each unit a span is read in, in days: a month is a twelfth of a year of 365.25 days.
+DAYS_PER_UNIT = {"day": 1.0, "week": 7.0, "month": 30.4375, "year": 365.25}
+ISO_DAY = re.compile(r"\d{4}-\d{2}-\d{2}")
+
+
+@dataclass(frozen=True)
+class DateSpan:
+    """How long a row lasted, in ``unit``s: the days from ``start``'s date to ``end``'s, or to ``until`` (the
+    date the question is asked) when ``end`` is empty or not given, over the unit's length in days.
+
+    "How many users wanted neartail for greater than 6 months" asked how long each subscription lasted, and the
+    search read "6 months" as a billing interval of 'month' and a quantity above 6 (2026-10-05). A span compares
+    the days from each subscription's start to its end, or to today while it runs, with 6 months of 30.4375 days.
+    The days come from each date's ISO digits by the Julian day number formula in integer arithmetic
+    (day_number_sql), which SQLite, PostgreSQL and the Python program compute alike, so no engine's calendar
+    arithmetic decides how long a month is. It names its start column's table and name for the rewrites that
+    group a query's comparisons by column."""
+    start: ColumnRef
+    end: ColumnRef | None
+    unit: str
+    until: str
+
+    @property
+    def table(self) -> str:
+        return self.start.table
+
+    @property
+    def name(self) -> str:
+        return self.start.name
+
+
+ScalarExpr: TypeAlias = (ColumnRef | Star | Literal | Aggregate | ScalarSubquery | BinaryExpr | DatePart | Lower
+                         | DateSpan)
 
 
 @dataclass(frozen=True)
 class Comparison:
-    left: ColumnRef | Aggregate | ScalarSubquery | DatePart | Lower
+    left: ColumnRef | Aggregate | ScalarSubquery | DatePart | Lower | DateSpan
     operator: str
     right: ColumnRef | Literal | Aggregate | ScalarSubquery
 
@@ -287,6 +320,38 @@ def date_part_sql(part: str, operand: str) -> str:
     return year_month_of_date_sql(operand) if part == "year_month" else month_of_date_sql(operand)
 
 
+def day_number(text: str) -> int:
+    """The Julian day number of an ISO date's first ten characters, by the integer formula day_number_sql
+    renders: '2026-10-05' -> 2461319."""
+    year, month, day = int(text[0:4]), int(text[5:7]), int(text[8:10])
+    shift = (14 - month) // 12
+    years, months = year + 4800 - shift, month + 12 * shift - 3
+    return day + (153 * months + 2) // 5 + 365 * years + years // 4 - years // 100 + years // 400 - 32045
+
+
+def day_number_sql(operand: str) -> str:
+    """The Julian day number of an ISO date's first ten characters as one SQL expression SQLite and PostgreSQL
+    both run, in integer arithmetic over its digits; NULL for an empty or missing date. Every operand is
+    positive for a year after 1, so both engines' integer division agrees with day_number's."""
+    text = f"NULLIF(SUBSTR(CAST({operand} AS TEXT), 1, 10), '')"
+    year, month, day = (f"CAST(SUBSTR({text}, {start}, {width}) AS INTEGER)"
+                        for start, width in ((1, 4), (6, 2), (9, 2)))
+    shift = f"((14 - {month}) / 12)"
+    years, months = f"({year} + 4800 - {shift})", f"({month} + 12 * {shift} - 3)"
+    return (f"({day} + (153 * {months} + 2) / 5 + 365 * {years} + {years} / 4 - {years} / 100"
+            f" + {years} / 400 - 32045)")
+
+
+def date_span_sql(start: str, end: str | None, unit: str, until: str) -> str:
+    """A DateSpan's SQL: the days from ``start``'s date to ``end``'s, or to ``until`` when ``end`` is empty or
+    not given, over the unit's length in days. The typed AST and the deterministic SQL emitter render a span
+    with it."""
+    finish = str(day_number(until))
+    if end is not None:
+        finish = f"COALESCE({day_number_sql(end)}, {finish})"
+    return f"(({finish} - {day_number_sql(start)}) / {DAYS_PER_UNIT[unit]!r})"
+
+
 def expression_type(expr: ScalarExpr) -> SQLType:
     if isinstance(expr, ColumnRef):
         return expr.type
@@ -294,6 +359,8 @@ def expression_type(expr: ScalarExpr) -> SQLType:
         return SQLType.TEXT if expr.part == "year_month" else SQLType.INTEGER
     if isinstance(expr, Lower):
         return SQLType.TEXT
+    if isinstance(expr, DateSpan):
+        return SQLType.REAL
     if isinstance(expr, Literal):
         return expr.type
     if isinstance(expr, Aggregate):
@@ -644,6 +711,18 @@ def _validate_expr(expr: ScalarExpr, visible: frozenset[str]) -> None:
             raise ASTValidationError("LOWER reads a column")
         _validate_expr(expr.operand, visible)
         return
+    if isinstance(expr, DateSpan):
+        if expr.unit not in DAYS_PER_UNIT:
+            raise ASTValidationError(f"unsupported span unit: {expr.unit}")
+        if not ISO_DAY.fullmatch(expr.until or ""):
+            raise ASTValidationError("a span runs until an ISO date")
+        for column in (expr.start, expr.end):
+            if column is None:
+                continue
+            if not isinstance(column, ColumnRef) or column.type != SQLType.DATE:
+                raise ASTValidationError("a span reads date columns")
+            _validate_expr(column, visible)
+        return
     if isinstance(expr, ScalarSubquery):
         _validate_query(expr.query, visible)
         if _output_arity(expr.query) != 1:
@@ -783,6 +862,9 @@ def _render_expr(expr: ScalarExpr, dialect: str = "standard") -> str:
         return date_part_sql(expr.part, _render_expr(expr.operand, dialect))
     if isinstance(expr, Lower):
         return f"LOWER({_render_expr(expr.operand, dialect)})"
+    if isinstance(expr, DateSpan):
+        return date_span_sql(_render_expr(expr.start, dialect),
+                             None if expr.end is None else _render_expr(expr.end, dialect), expr.unit, expr.until)
     raise TypeError(f"unsupported expression: {type(expr).__name__}")
 
 
@@ -878,6 +960,8 @@ def _expr_tables(expr: ScalarExpr) -> set[str]:
         return _expr_tables(expr.operand)
     if isinstance(expr, BinaryExpr):
         return _expr_tables(expr.left) | _expr_tables(expr.right)
+    if isinstance(expr, DateSpan):
+        return {column.table for column in (expr.start, expr.end) if column is not None}
     return set()
 
 

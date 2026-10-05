@@ -800,8 +800,10 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
             # A month the query compares a date column with is realized: "how many transfers were signed
             # in August" (engine/sql_dates.py).
             from engine.sql_dates import realized_month_words
-            months = realized_month_words(question, sql or "")
-            content = [word for word in content if word not in months]
+            from engine.sql_durations import realized_duration_words
+            # So is a duration the query compares a span by: "users who stayed for more than 6 months".
+            realized = realized_month_words(question, sql or "") | realized_duration_words(question, sql or "")
+            content = [word for word in content if word not in realized]
         if content and _re.search(r'\bcount\s*\(', sqll):
             # The noun a count cue governs is what COUNT counts: the head of the words after 'how many' /
             # 'number of', up to the first grammar word. 'how many leads from Europe' was declined because

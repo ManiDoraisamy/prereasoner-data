@@ -15,7 +15,7 @@ from datetime import date
 from decimal import Decimal
 from typing import TypeAlias
 
-from engine.sql_ast import SQLType
+from engine.sql_ast import DAYS_PER_UNIT, ISO_DAY, SQLType
 
 _SCHEMAS = frozenset({"conversation", "knowledgebase", "public"})
 _AGGREGATES = frozenset({"SUM", "MAX", "MIN", "COUNT", "AVG"})
@@ -201,6 +201,23 @@ class FunctionValue:
 
 
 @dataclass(frozen=True)
+class SpanValue:
+    """How long a row lasted in ``unit``s (engine.sql_ast.DateSpan): the days from ``start``'s date to ``end``'s,
+    or to ``until`` when ``end`` is empty or not given, over the unit's length in days."""
+
+    start: Value
+    end: Value | None
+    unit: str
+    until: str
+
+    def __post_init__(self) -> None:
+        if self.unit not in DAYS_PER_UNIT:
+            raise ValueError(f"unsupported span unit: {self.unit}")
+        if not ISO_DAY.fullmatch(self.until or ""):
+            raise ValueError("a span runs until an ISO date")
+
+
+@dataclass(frozen=True)
 class JunctionValue:
     operator: str
     predicates: tuple[PredicateValue | JunctionValue, ...]
@@ -224,7 +241,7 @@ class PredicateValue:
         object.__setattr__(self, "operator", operator)
 
 
-Value: TypeAlias = ColumnValue | LiteralValue | ViewValue | BinaryValue | FunctionValue
+Value: TypeAlias = ColumnValue | LiteralValue | ViewValue | BinaryValue | FunctionValue | SpanValue
 
 
 @dataclass(frozen=True)
@@ -1087,6 +1104,11 @@ class AnalysisPlan:
             return
         if isinstance(value, FunctionValue):
             self._validate_value(value.operand, tables, values)
+            return
+        if isinstance(value, SpanValue):
+            self._validate_value(value.start, tables, values)
+            if value.end is not None:
+                self._validate_value(value.end, tables, values)
             return
         raise TypeError(f"unsupported value: {type(value).__name__}")
 

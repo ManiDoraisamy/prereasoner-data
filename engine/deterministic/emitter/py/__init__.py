@@ -33,6 +33,7 @@ from engine.deterministic.plan import (
     ProjectedView,
     ReducedView,
     SortedView,
+    SpanValue,
     TableSpec,
     Value,
     ViewValue,
@@ -1157,6 +1158,10 @@ class PythonEmitter:
     ) -> str:
         if isinstance(value, FunctionValue):
             return f"{value.function}({self._python_value(plan, value.operand, row, tables, values)})"
+        if isinstance(value, SpanValue):
+            end = "None" if value.end is None else self._python_value(plan, value.end, row, tables, values)
+            start = self._python_value(plan, value.start, row, tables, values)
+            return f"SPAN({start}, {end}, {value.until!r}, {value.unit!r})"
         if isinstance(value, LiteralValue):
             return _python_literal(value.value)
         if isinstance(value, ViewValue):
@@ -1237,6 +1242,11 @@ def _operator_imports(plan: AnalysisPlan) -> tuple[str, ...]:
         if isinstance(value, FunctionValue):
             names.add(value.function)
             add_value(value.operand)
+        if isinstance(value, SpanValue):
+            names.add("SPAN")
+            add_value(value.start)
+            if value.end is not None:
+                add_value(value.end)
         if isinstance(value, BinaryValue):
             names.add(_BINARY_FUNCTION[value.operator])
             add_value(value.left)
@@ -1279,6 +1289,8 @@ def _orm_value(plan, value):
     if isinstance(value, ColumnValue):
         table = plan.table(value.table)
         return f"{table.class_name}.{table.scalar_attribute(value.column)}"
+    if isinstance(value, SpanValue):
+        raise TypeError("a span is not a join value")
     if isinstance(value, FunctionValue):
         operand = _orm_value(plan, value.operand)
         if value.function in {"MONTH", "YEAR_MONTH"}:
@@ -1324,6 +1336,8 @@ def _predicate_columns(predicate):
             return {value}
         if isinstance(value, FunctionValue):
             return columns(value.operand)
+        if isinstance(value, SpanValue):
+            return columns(value.start) | (set() if value.end is None else columns(value.end))
         if isinstance(value, BinaryValue):
             return columns(value.left) | columns(value.right)
         return set()

@@ -2103,3 +2103,31 @@ On this desktop, a pool of twelve such joins and the reading that answers: pool 
 before, 1.3 s with the copy now, at 11,500 rows a tab; 9.8 s plus 2.7 s before, 5.5 s now, at 50,000. The same
 reading is chosen. The 110 s in production should fall about tenfold for tabs of that size; the `[timing]` line
 will show it.
+
+## A duration compares how long rows lasted (2026-10-05)
+
+"how many users wanted neartail for greater than 6 months" read "6 months" as the Interval value 'month' and the
+number 6 as a threshold on Quantity, and "how many subscriptions lasted more than 6 months" counted the products
+with more than 6 monthly subscriptions (`WHERE Interval = 'month' GROUP BY Product HAVING COUNT(*) > 6`): no rows,
+where three subscriptions lasted longer. The search had no notion of how long a row lasted.
+
+A comparison word, a whole number and a unit ("more than 6 months", "over a year", "at least 2 weeks", "less than
+30 days", "6 months or more", "6+ months") is now a duration (`engine/sql_durations.py`). It claims its words, so
+its number is no threshold and its unit no value, and it compares `DateSpan` (`engine/sql_ast.py`): the days from a
+row's start date to its end date, or to the date the question is asked while the row has none, over the unit's
+length. A span runs from a column whose name says it starts to the column of the same table whose name says it
+ends and carries the same other words ("Start Date" to "Ended At", "Trial Start" to "Trial End"); a table without
+an end column, or a phrase that ends in "ago", runs to the question's date. A window ("in the last 6 months") is no
+duration.
+
+The days come from each date's ISO digits by the Julian day number formula in integer arithmetic, one SQL text
+SQLite and PostgreSQL both run and the Python program computes alike (`SpanValue`, `SPAN`), so no engine's calendar
+arithmetic decides how long a month is: SQLite shifts Aug 31 by six months to Mar 3, PostgreSQL and Python's
+dateutil to Feb 28. A month is 30.4375 days and a year 365.25. Only columns whose every value is a calendar date take part,
+so the PostgreSQL rendering has no cast that can fail. A query that does not compare the span a question states
+violates its constraints (`engine/query_contract.py`), and the coverage gate covers a duration the SQL compares.
+
+The customer's question now reads its duration and asks about its other two words: "I couldn't tell which column
+"users" and "neartail" mean." "neartail" occurs only inside product names ("Neartail - Startup") and "users" names
+no column; reading those is a separate change. A span is a filter only: "the average subscription length" is not
+read yet. The rendered span is long (about 2,400 characters of SQL each), the cost of one text both engines run.

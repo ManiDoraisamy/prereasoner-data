@@ -78,7 +78,8 @@ an adverb ("which item sold the most units") is covered, because it says what th
 verb's participle ("made"), the rows an aggregate is taken over ("the average score of the leads") and an
 adjective an ordering grades ("the most expensive event"); other participles, words the data holds as values,
 and the payment and listing states are still checked. A month word is covered when the SQL compares a date
-column with that month or date (`engine/sql_dates.py:realized_month_words`).
+column with that month or date (`engine/sql_dates.py:realized_month_words`), and a duration's words when the SQL
+compares a span by them (`engine/sql_durations.py:realized_duration_words`).
 
 The own-data `TableQuery._serve_ast` winner, world planner's grounded slots, and selected
 ComposeEngine primitive records have separate lowering adapters under `engine/deterministic/`.
@@ -279,6 +280,7 @@ The own-data path serves one typed SQL AST chosen from the deterministic search'
 | `engine/sql_schema.py` | Typed schema graph and deterministic join-tree enumeration |
 | `engine/sql_search.py` | Projection, filter, aggregate, grouping, order, limit, and base candidate expansion |
 | `engine/sql_dates.py` | Calendar phrases ("in August", "after August 10, 2026") as typed comparisons on a date column |
+| `engine/sql_durations.py` | Duration phrases ("more than 6 months") as comparisons of how long each row lasted (`DateSpan`) |
 | `engine/sql_recursive.py` | Subqueries, `EXISTS`/`IN`, set operations, and self-join shapes |
 | `engine/sql_constraints.py` | HAVING, disjunction, and relationship constraints |
 | `engine/sql_extrema.py` | Row, aggregate, frequency, and zero-inclusive extrema |

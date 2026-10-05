@@ -43,6 +43,7 @@ from engine.sql_ast import (
 from engine.numeric import parse_decimal
 from engine.sql_candidate import ScoredQuery
 from engine.sql_dates import period_grouping, served_date_phrases
+from engine.sql_durations import duration_phrases, question_date, span_comparisons
 from engine.sql_expansion import (
     AGGREGATE_CUES,
     FUNCTION_WORDS,
@@ -926,11 +927,16 @@ class SQLSearcher:
         # to compare, "in May" stays a value of a text month column.
         phrases = served_date_phrases(question, tokens, self.schema)
         claimed = {index for phrase in phrases for index in range(phrase.start, phrase.end)}
+        # A duration claims its words too: "for greater than 6 months" is how long a row lasted, not a quantity
+        # above 6 and a billing interval of 'month' (engine/sql_durations.py).
+        durations = duration_phrases(question, tokens)
+        claimed |= {index for phrase in durations for index in range(phrase.start, phrase.end)}
         substrings, held = self._substring_groups(tokens, mentions, question, claimed)
         claimed = claimed | held
         groups.extend(substrings)
         groups.extend(self._value_predicate_groups(tokens, mentions, claimed, question))
         groups.extend(self._date_phrase_groups(phrases, mentions))
+        groups.extend(self._duration_groups(durations))
         groups.extend(self._numeric_predicate_groups(tokens, mentions, claimed))
         if not groups:
             return [((), 0.0, ())]
@@ -1167,6 +1173,21 @@ class SQLSearcher:
             options = [(phrase.comparisons(target), 5.0,
                         f"date:{target.table}.{target.name}:{phrase.cue or 'in'}:{label}")
                        for target in targets[:4] if phrase.comparisons(target)]
+            if options:
+                groups.append(options)
+        return groups
+
+    def _duration_groups(self, durations) -> list[list[tuple[tuple[Comparison, ...], float, str]]]:
+        """One group per duration phrase: its span comparison over each pair of date columns it may run
+        between, the surest pair scored highest (engine/sql_durations.span_pairs)."""
+        groups = []
+        until = question_date()
+        for phrase in durations:
+            options = [((comparison,), 5.0 - 0.1 * rank,
+                        f"span:{comparison.left.table}.{comparison.left.start.name}"
+                        f"..{comparison.left.end.name if comparison.left.end else comparison.left.until}:"
+                        f"{phrase.operator}{phrase.amount}{phrase.unit}")
+                       for rank, comparison in enumerate(span_comparisons(self.schema.columns, phrase, until))]
             if options:
                 groups.append(options)
         return groups

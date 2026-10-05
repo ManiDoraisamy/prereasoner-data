@@ -852,6 +852,65 @@ def test_the_rewording_pool_shares_the_tables_copy_and_reruns_no_query():
     assert guarded == [candidate.sql], guarded
 
 
+def test_a_duration_is_how_long_rows_lasted_not_a_quantity_and_an_interval():
+    """"how many users wanted neartail for greater than 6 months" read "6 months" as Interval = 'month' and
+    Quantity > 6 (2026-10-05). A comparison word, a number and a unit compare how long each row lasted: the days
+    from its start date to its end date, or to the question's date while it runs (engine/sql_durations.py)."""
+    from datetime import date
+    from engine.sql_ast import DateSpan
+    from engine.sql_durations import duration_phrases
+    from engine.sql_expansion import tokens
+
+    subscriptions = {"name": "subscriptions", "columns": [
+        "id", "Customer ID", "Product", "Interval", "Quantity", "Start Date (UTC)", "Canceled At (UTC)",
+        "Ended At (UTC)"], "rows": [
+        [1, "cus_a", "Neartail - Startup", "month", 1, "2025-01-10 09:00", "2025-09-01 10:00", "2025-09-01 10:00"],
+        [2, "cus_b", "Neartail - Business", "month", 1, "2025-03-01 12:00", "2025-05-15 08:00", "2025-05-15 08:00"],
+        [3, "cus_c", "Neartail - Startup", "year", 1, "2025-11-20 00:00", "", ""],
+        [4, "cus_d", "Order Form - Basic", "month", 7, "2026-08-01 00:00", "", ""],
+        [5, "cus_e", "Neartail - Enterprise", "month", 1, "2024-12-01 00:00", "", ""],
+        [6, "cus_f", "Order Form - Premium", "month", 1, "2026-01-01 00:00", "2026-03-01 00:00", "2026-03-01 00:00"]]}
+    today = date(2026, 10, 5)
+
+    def lasted(row, end=7):
+        stop = date.fromisoformat(row[end][:10]) if row[end] else today
+        return (stop - date.fromisoformat(row[5][:10])).days
+
+    planner = _hermetic_planner()
+    typed = planner.schema
+
+    def schema(tables, fks):                       # blank cells are no evidence against a date, as in production
+        columns, extra, tablemap = typed(tables, fks)
+        for column in columns:
+            filled = [value for value in column["values"] if value not in ("", None)]
+            column["is_date"] = bool(filled) and all(re.match(r"\d{4}-\d{2}-\d{2}", str(v)) for v in filled)
+        return columns, extra, tablemap
+    planner.schema = schema
+
+    with patch("engine.sql_durations.question_date", return_value=today.isoformat()):
+        longer = planner.serve([subscriptions], "how many subscriptions lasted more than 6 months")
+        assert longer["result"]["rows"] == [[sum(lasted(row) / 30.4375 > 6 for row in subscriptions["rows"])]] == [[3]]
+        selection = _select(planner, "how many subscriptions lasted more than 6 months", [subscriptions])
+        span = selection.candidate.query.where.left
+        assert isinstance(span, DateSpan) and (span.start.name, span.end.name, span.unit) == (
+            "Start Date (UTC)", "Ended At (UTC)", "month"), selection.candidate.sql
+        # "ago" runs from the date to the question's date, whatever the row's end.
+        older = planner.serve([subscriptions], "how many subscriptions started more than a year ago")
+        assert older["result"]["rows"] == [[sum((today - date.fromisoformat(row[5][:10])).days / 365.25 > 1
+                                                 for row in subscriptions["rows"])]] == [[3]]
+        # Same profile, no unit: a quantity is still a quantity.
+        quantity = _select(planner, "how many subscriptions with quantity more than 6", [subscriptions])
+        assert quantity.candidate.sql.endswith('WHERE "subscriptions"."Quantity" > 6'), quantity.candidate.sql
+        # The customer's question reads its duration and asks about the words it cannot read.
+        asked = planner.serve([subscriptions], "how many users wanted neartail for Greater than 6 months")
+        assert asked.get("clarify") and asked["dropped"] == ["users", "neartail"], asked
+        # A window is no duration, and a table without dates answers no duration with a quantity.
+        assert duration_phrases("orders in the last 6 months", tokens("orders in the last 6 months")) == ()
+        undated = {"name": "plans", "columns": ["id", "Interval", "Quantity"],
+                   "rows": [[1, "month", 7], [2, "year", 1]]}
+        assert _select(planner, "how many plans lasted more than 6 months", [undated]).candidate is None
+
+
 # complex-unsold-products: 'Lyon' occurs only in purchases.city.
 PURCHASES = {
     "name": "purchases",
@@ -4578,6 +4637,7 @@ TESTS = [
     test_select_query_never_chooses_a_query_that_does_not_run,
     test_a_join_that_multiplies_two_tables_rows_stops_at_their_cells_budget,
     test_the_rewording_pool_shares_the_tables_copy_and_reruns_no_query,
+    test_a_duration_is_how_long_rows_lasted_not_a_quantity_and_an_interval,
     test_literal_grounding_names_the_column_a_value_actually_occupies,
     test_select_query_never_serves_a_misgrounded_query,
     test_select_query_never_serves_a_join_the_foreign_keys_contradict,

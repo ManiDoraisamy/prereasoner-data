@@ -1198,6 +1198,52 @@ def test_a_month_comparison_runs_in_both_programs():
     assert labels["filtered"] == "where month(signed) >= 7 and month(signed) <= 9", labels
 
 
+def test_a_span_comparison_runs_in_both_programs():
+    # "how many users wanted neartail for greater than 6 months" (2026-10-05): the days from each subscription's
+    # start to its end, or to the question's date while it runs, over a month of 30.4375 days, read from the
+    # dates' ISO digits alike by the SQL program and the Python program.
+    from engine.sql_ast import DateSpan
+
+    started = ColumnRef("subscriptions", "started", SQLType.DATE)
+    ended = ColumnRef("subscriptions", "ended", SQLType.DATE)
+    schema = [{"table": "subscriptions", "name": "id", "affinity": "INTEGER", "values": [1, 2, 3, 4, 5]},
+              {"table": "subscriptions", "name": "started", "affinity": "TEXT", "is_date": True,
+               "values": ["2026-01-01", "2026-01-01 09:30", "2026-01-01", "2026-06-01", None]},
+              {"table": "subscriptions", "name": "ended", "affinity": "TEXT", "is_date": True,
+               "values": ["2026-08-01", "2026-07-02 18:00", None, "", "2026-12-01"]}]
+    rows = [
+        "CREATE TABLE conversation.subscriptions (id INTEGER, started DATE, ended DATE)",
+        "INSERT INTO conversation.subscriptions VALUES "
+        "(1, '2026-01-01', '2026-08-01'), "              # 212 days: 6.97 months
+        "(2, '2026-01-01 09:30', '2026-07-02 18:00'), "  # 182 days: 5.98 months
+        "(3, '2026-01-01', NULL), "                      # running: 277 days to 2026-10-05
+        "(4, '2026-06-01', ''), "                        # running: 126 days
+        "(5, NULL, '2026-12-01')",                       # no start: no span
+    ]
+
+    def count(name, span, operator, threshold):
+        query = SelectQuery((SelectItem(Aggregate("COUNT", Star()), "subscriptions"),), "subscriptions",
+                            where=Comparison(span, operator, Literal(threshold, SQLType.INTEGER)))
+        result = _execute_fixture(lower_select_query(name, query, schema, ()), rows, estimated_rows=5)
+        assert result.mode.value == "verify"                   # both programs ran and agreed
+        labels = {view["logical_name"]: view["label"] for view in result.record()["views"]}
+        return [tuple(row.values()) for row in result.rows], labels["filtered"]
+
+    assert count("long", DateSpan(started, ended, "month", "2026-10-05"), ">", 6) == (
+        [(2,)], "where months from started to ended or 2026-10-05 > 6")
+    # Exactly 14 days is not more than two weeks, and is at least two.
+    fortnight = DateSpan(started, ended, "week", "2026-01-15")
+    rows[1:] = ["INSERT INTO conversation.subscriptions VALUES (1, '2026-01-01', '2026-01-15'), "
+                "(2, '2026-01-01', '2026-01-14'), (3, '2026-01-01', NULL)"]
+    assert count("over_fortnight", fortnight, ">", 2)[0] == [(0,)]
+    assert count("fortnight", fortnight, ">=", 2)[0] == [(2,)]
+    # Without an end column the span runs to the question's date: signed up more than a year ago.
+    rows[1:] = ["INSERT INTO conversation.subscriptions VALUES (1, '2025-12-01', NULL), "   # 405 days
+                "(2, '2026-02-01', '2026-03-01'), (3, '2026-01-09', NULL)"]                # 343, 366 days
+    assert count("old", DateSpan(started, None, "year", "2027-01-10"), ">", 1) == (
+        [(2,)], "where years from started to 2027-01-10 > 1")
+
+
 def test_a_total_by_month_groups_by_the_year_month_in_both_programs():
     # "total amount by month" was one ungrouped total (2026-10-02). The year-month of each date is the group key,
     # read from its ISO text by the SQL program and from the date by the Python program, and August 2025 and

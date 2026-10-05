@@ -141,6 +141,7 @@ def relational_operator_evidence(question, query, graph):
 def constraint_violations(question, query, graph):
     from engine.sql_ast import Aggregate, ColumnRef, Comparison, DatePart, ExistsPredicate, InPredicate, SelectQuery, SetQuery, Star
     from engine.sql_dates import realizes_dates, served_date_phrases
+    from engine.sql_durations import duration_phrases, realizes_durations
     from engine.sql_expansion import ExpansionSupport, tokens
     from engine.sql_candidate import ScoredQuery
 
@@ -328,7 +329,10 @@ def constraint_violations(question, query, graph):
                           for p in mandatory_predicates(query.where) if isinstance(p, Comparison)}
         if named_dates and not named_dates & filtered_dates:
             violations.append("the calendar filter uses a different date column")
-    date_positions = frozenset(i for phrase in phrases for i in range(phrase.start, phrase.end))
+    durations = duration_phrases(question, question_tokens)
+    if durations and not realizes_durations(query, durations):
+        violations.append("requested duration is missing or changed")
+    date_positions = frozenset(i for phrase in (*phrases, *durations) for i in range(phrase.start, phrase.end))
     requested = ExpansionSupport(graph).numeric_comparisons(question_tokens, date_positions)
     if any(item.operator != "=" for item in requested):
         from engine.sql_ast import render_query
@@ -443,6 +447,7 @@ def read_question(question, candidate, graph, *, calculation_satisfied=False):
     from engine.sql_schema import canon
     from engine.closed_class import action_words, closed_class_words, measure_participles
     from engine.sql_dates import served_date_phrases, realizes_dates
+    from engine.sql_durations import duration_phrases, realizes_durations
     from engine.sql_expansion import tokens
 
     recognized_question = str(question)
@@ -458,7 +463,11 @@ def read_question(question, candidate, graph, *, calculation_satisfied=False):
     phrases = served_date_phrases(question, tokens(question), graph)
     realized_dates = bool(phrases) and realizes_dates(candidate.query, phrases)
     date_words = {word for phrase in phrases for word in tokens(question)[phrase.start:phrase.end]} if realized_dates else set()
-    spelled = tuple(word for word in lexical_words(recognized_question) if word not in date_words)
+    durations = duration_phrases(question, tokens(question))
+    duration_words = ({word for phrase in durations for word in tokens(question)[phrase.start:phrase.end]}
+                      if durations and realizes_durations(candidate.query, durations) else set())
+    spelled = tuple(word for word in lexical_words(recognized_question)
+                    if word not in date_words and canon(word) not in duration_words)
     words = tuple(canon(word) for word in spelled)
     schema_words = {
         canon(word)
@@ -524,6 +533,10 @@ def read_question(question, candidate, graph, *, calculation_satisfied=False):
                                  if word not in schema_words | sql_literals | ordinary_words))
     named = tuple(dict.fromkeys(said for said, word in zip(spelled, words)
                                 if word in schema_words | sql_literals and word not in ordinary_words))
+    # A duration the query compares names the dates its span runs between: "how many users wanted neartail for
+    # greater than 6 months" names data, and is asked about its other words, not read as another language.
+    named += tuple(dict.fromkeys(word for word in lexical_words(recognized_question)
+                                 if canon(word) in duration_words and word not in ordinary_words))
     def has_star(query):
         if isinstance(query, SetQuery):
             return has_star(query.left) or has_star(query.right)

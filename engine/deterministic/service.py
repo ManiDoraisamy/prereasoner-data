@@ -27,6 +27,7 @@ from engine.deterministic.plan import (
     JunctionValue,
     LiteralValue,
     SortedView,
+    SpanValue,
     ViewValue,
 )
 from engine.deterministic.runtime import (
@@ -103,6 +104,9 @@ def _term(value, labels):
         return f"({_term(value.left, labels)} {value.operator} {_term(value.right, labels)})"
     if isinstance(value, FunctionValue):
         return f"{value.function.lower()}({_term(value.operand, labels)})"
+    if isinstance(value, SpanValue):
+        until = value.until if value.end is None else f"{_term(value.end, labels)} or {value.until}"
+        return f"{value.unit}s from {_term(value.start, labels)} to {until}"
     return str(value)
 
 

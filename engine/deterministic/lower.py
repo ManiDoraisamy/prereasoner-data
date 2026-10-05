@@ -30,6 +30,7 @@ from engine.deterministic.plan import (
     SelectedValue,
     SortedView,
     SortValue,
+    SpanValue,
     TableSpec,
     Value,
     ViewValue,
@@ -42,6 +43,7 @@ from engine.sql_ast import (
     ColumnRef,
     Comparison,
     DatePart,
+    DateSpan,
     Lower,
     Literal,
     SelectItem,
@@ -508,6 +510,9 @@ def _value(value) -> Value:
         return FunctionValue("YEAR_MONTH" if value.part == "year_month" else "MONTH", _value(value.operand))
     if isinstance(value, Lower):
         return FunctionValue("LOWER", _value(value.operand))
+    if isinstance(value, DateSpan):
+        return SpanValue(_value(value.start), None if value.end is None else _value(value.end), value.unit,
+                         value.until)
     raise UnsupportedDeterministicPlan(
         f"expression {type(value).__name__} is not supported"
     )

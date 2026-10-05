@@ -11,6 +11,7 @@ import re
 from typing import Generic, TypeVar
 
 from engine.numeric import DECIMAL_PRECISION, DIVISION_SCALE
+from engine.sql_ast import DAYS_PER_UNIT, day_number
 
 T = TypeVar("T")
 U = TypeVar("U")
@@ -318,6 +319,25 @@ def YEAR_MONTH(value):
         return None
     text = value.isoformat() if isinstance(value, date) else str(value)
     return text[:7]
+
+
+def SPAN(start, end, until, unit):
+    """How long a row lasted in ``unit``s, as the SQL program computes it (engine.sql_ast.date_span_sql): the
+    days from ``start``'s date to ``end``'s, or to ``until`` when ``end`` is empty or missing, over the unit's
+    length in days; None when the start is empty or missing."""
+    first = _day(start)
+    if first is None:
+        return None
+    last = _day(end)
+    return ((day_number(until) if last is None else last) - first) / DAYS_PER_UNIT[unit]
+
+
+def _day(value):
+    """The Julian day number of a date or of its ISO text's first ten characters; None for an empty one."""
+    if value is None:
+        return None
+    text = (value.isoformat() if isinstance(value, date) else str(value))[:10]
+    return day_number(text) if text else None
 
 
 def AND(*values):
