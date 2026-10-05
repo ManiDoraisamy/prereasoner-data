@@ -4,6 +4,24 @@ Dated entries come newest first. Each records a run at the commit it names; the 
 entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection arbiter`) may since have
 been removed, and that commit holds the code that ran.
 
+## A question the upload reads whole builds no compose plan, at `090de16`: same answers (2026-10-05)
+
+Same contract as `7b05b8b` (Gemini off, `whole_db`, `served` selection, SQL backend, row cap 5,000), clean
+checkout of `090de16` (`worktree_dirty=false`, tag `routing-090de16`). It covers every commit since `7b05b8b`:
+`f8a8821` (a word the search cannot read is asked about, and a quantity word reads as a numeric column; it shipped
+without its own run), the upload-once commits (no planner change), and `090de16`, which asks
+`routing.reads_upload_whole` before building a compose plan, in serving and in this evaluator. All 1,034 examples
+have the same SQL and grade as `7b05b8b`: 243 strict, 310 lenient, 408 answered, no strict win or loss. Compose
+owns no Spider question either way (`routed: {'ast': 1034}`).
+
+Prediction seconds: median 0.92 → 1.15, p90 1.73 → 2.47, p95 2.06 → 2.96, max 3.61 → 6.07. Two causes. Encoding,
+the same work in both runs, took 16% longer: the repository suites ran on this desktop at the same time. And the
+time outside the timed spans grew from 168 s to 352 s across the run, because the evaluator now runs the search
+probe for each question the depth gate fires on. Serving already ran that probe for the compound-question check,
+so the probe costs evaluator time only.
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_routing-090de16.json`.
+
 ## A total over rows its joins repeat gives way, at `7b05b8b`: same totals (2026-10-05)
 
 Same contract as `bc85ccd` (Gemini off, `whole_db`, `served` selection, SQL backend, row cap 5,000), clean
