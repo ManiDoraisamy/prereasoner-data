@@ -4,6 +4,18 @@ Dated entries come newest first. Each records a run at the commit it names; the 
 entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection arbiter`) may since have
 been removed, and that commit holds the code that ran.
 
+## Questions run in parallel, at `d9ea249`: same answers (2026-10-06)
+
+Same contract as `1b5c6ae` (Gemini off, `whole_db`, `served` selection, SQL backend, row cap 5,000), clean
+checkout of `d9ea249` (`worktree_dirty=false`, tag `parallel-d9ea249`). `289dbe8` takes out the engine's
+process-wide question lock: what belongs to one request is request-local, and the shared tokenizer and encode cache
+take short locks. `d9ea249` sets the chat's Gemini thinking, which this path does not call, and `04d339e` changes a
+test only. All 1,034 examples have the same SQL and grade as `1b5c6ae`: 243 strict, 310 lenient, 408 answered.
+Prediction seconds: median 0.90 → 1.16, p90 1.85 → 2.53, max 4.13 → 5.76; this run shared the desktop with the
+repository's live suites.
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_parallel-d9ea249.json`.
+
 ## A duration compares how long rows lasted, at `1b5c6ae`: same answers (2026-10-05)
 
 Same contract as `c9bf407` (Gemini off, `whole_db`, `served` selection, SQL backend, row cap 5,000), clean
