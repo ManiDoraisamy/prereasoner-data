@@ -6,7 +6,7 @@ import json
 import keyword
 import re
 from collections import Counter
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from itertools import chain
 from typing import TYPE_CHECKING, Any
 
@@ -302,22 +302,35 @@ def leaf_candidates(selection, node_id: str, question: str, feeds_cross: bool):
     return readings
 
 
-def compound_decomposition_required(planner, tables, question) -> dict[str, Any] | None:
-    """Execution-free probe: does the search read the question as compound?
+@dataclass(frozen=True)
+class SearchProbe:
+    """The search's reading of a question over a request's tables, without execution (``search_probe``):
+    whether it is compound, its pool, and the schema graph that pool was searched on."""
+    decomposition_required: dict[str, Any] | None
+    pool: tuple
+    graph: Any
 
-    This is the same predicate the own-data serve path applies (``compound_candidate``: the
+
+def search_probe(planner, tables, question) -> SearchProbe:
+    """Execution-free probe: does the search read the question as compound, and how?
+
+    Compound is the same predicate the own-data serve path applies (``compound_candidate``: the
     search's top candidate is a set operation). The compose path must consult it BEFORE
     building a composition: a multi-goal question's surface ("top ...") can satisfy the
     compose gate, and a composed top-N would then answer one fragment of the question.
     Compound structure is the search's reading alone, so the probe runs only the search stage
     of the one own-data selection (``search_pool``): no execution, no fallback. A
-    failed probe must not authorize a partial composed answer.
+    failed probe must not authorize a partial composed answer. Its pool also tells routing
+    whether the upload reads the question whole (``engine.routing.reads_upload_whole``).
     """
+    from engine.sql_schema import SchemaGraph
+
     try:
         norm, inferred_fks = planner.ingest(tables)
         schema, _, _ = planner.schema(norm, inferred_fks)
-        searched = planner.search_pool(question, norm, inferred_fks, schema)
-        return selected_decomposition_required(compound_candidate(searched))
+        graph = SchemaGraph.from_planner(schema, inferred_fks)
+        searched = tuple(planner.search_pool(question, norm, inferred_fks, schema, graph=graph))
+        return SearchProbe(selected_decomposition_required(compound_candidate(searched)), searched, graph)
     except Exception as exc:
         raise DecompositionError(
             "could not check the selected query for decomposition"

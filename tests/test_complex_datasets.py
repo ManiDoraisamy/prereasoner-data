@@ -248,7 +248,7 @@ def test_compose_surface_does_not_swallow_a_compound_question():
     so the live path built a partial top-N and answered it — the delegate's compound
     trigger (one layer down) never ran. The compose arm must consult the same
     execution-free probe before composing."""
-    from engine.decomposition import compound_decomposition_required
+    from engine.decomposition import search_probe
 
     planner = EncoderQuery()
     for name in COMPLEX_DATASETS:
@@ -259,16 +259,16 @@ def test_compose_surface_does_not_swallow_a_compound_question():
             "execute",
             side_effect=AssertionError("the compound probe executed a query"),
         ):
-            required = compound_decomposition_required(planner, _tables(directory), question)
+            required = search_probe(planner, _tables(directory), question).decomposition_required
         assert required is not None, name
         assert "compound" in required["reason"], name
     # A genuinely simple question must NOT trigger the probe, or every composed
     # top-N would bounce to Gemini for a pointless proposal.
-    simple = compound_decomposition_required(
+    simple = search_probe(
         planner, _tables(DATASET_DIR / "complex-promotions"),
         "total quantity by product name",
     )
-    assert simple is None
+    assert simple.decomposition_required is None
 
 
 def test_the_serving_entry_point_carries_the_proposal_to_the_compose_layer():

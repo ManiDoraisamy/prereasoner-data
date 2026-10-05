@@ -2033,3 +2033,26 @@ the sheet read), and sent them again with every later one. The branch waited thr
   record had taken the `jobId`, so the client's one re-send with the new hash met that record and got 409
   again, and the web app's retry had no bound. The engine now answers 404/409 first, and every client
   retries once.
+
+## A question the upload reads whole needs no world lookup (2026-10-05)
+
+When the learned compose gate fires on an own-data question (a grouping, a top-N, a sort), the compose host
+builds a compose plan first, and that plan starts by looking the upload up in the world: every text column of
+every tab is typed and its values checked against the knowledgebase. Production timing on a customer's
+eight-tab workbook: `world_lookup_ms` 32,212 (typing 14,390, membership 14,802); 8,643 on a four-tab one. For
+an own-data question compose cannot own the plan anyway: `compose_owns` needs a NECESSARY world dependency, a
+world attribute or value the upload lacks.
+
+So the host asks first. The search probe it already runs for compound questions
+(`decomposition.search_probe`, no execution) now also returns its pool. If some reading in that pool reads every
+word of the question from the upload (`routing.reads_upload_whole`, the completeness check's
+`query_contract.read_question`), no word can create a world dependency, and the question goes to the delegate
+with no compose plan and no world lookup. The `[timing]` line counts `world_lookup_skipped`. The Spider evaluator
+asks the same predicate before its compose attempt; Spider tables hold no world facts, so its scores cannot
+change.
+
+A question with a word the upload does not read still builds the compose plan, because that word may name a
+place, a world type or a world measure. "how many users wanted neartail for Greater than 6 months" is one: the
+lookup still runs for it. A narrower lookup for such questions (only the tables a reading uses, or only the unread
+words) is not done here. A place named in several words reaches the reading as several unread words, and a
+word-level check would wrongly skip the lookup for it.

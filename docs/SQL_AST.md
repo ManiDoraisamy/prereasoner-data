@@ -143,8 +143,9 @@ describes the data Gemini receives and the answer labels.
 Live serving goes through `engine/tables.py`. `TableQuery.serve(tables, question)` runs the
 full own-data pipeline (ingest → schema → `_serve_ast` → guard → execute) and returns the
 answer plus the winning candidate. `_serve_ast` calls `select_query`, the one own-data selection
-also used by decomposition leaves, the Spider evaluator, and the offline regression gate. The
-decomposition probe reads only its first stage, `search_pool`:
+also used by decomposition leaves, the Spider evaluator, and the offline regression gate. The compose
+host's search probe (`engine/decomposition.search_probe`) reads only its first stage, `search_pool`: whether
+the question is compound, and whether the upload reads it whole (`engine/routing.reads_upload_whole`):
 
 ```python
 from engine.encoder_overlay import EncoderQuery

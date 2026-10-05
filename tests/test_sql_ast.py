@@ -1133,7 +1133,7 @@ def test_named_request_decomposes_a_compound_question_a_single_query_answers_in_
     serves selection's choice. A named product request must instead ask for decomposition and
     execute nothing: a single query cannot answer a compound question."""
 
-    from engine.decomposition import compound_decomposition_required
+    from engine.decomposition import search_probe
     from engine.deterministic.context import analysis_execution_context
     from tests.test_datasets import DATASET_DIR, _tables
 
@@ -1158,7 +1158,7 @@ def test_named_request_decomposes_a_compound_question_a_single_query_answers_in_
 
     # The compose path's probe asks the same question of the search alone: no selection runs.
     with patch.object(planner, "select_query", side_effect=AssertionError("the probe ran selection")):
-        assert compound_decomposition_required(planner, tables, question)
+        assert search_probe(planner, tables, question).decomposition_required
 
 
 def test_a_compound_named_request_asks_for_decomposition_before_selection_runs():
@@ -1195,7 +1195,7 @@ def test_named_request_never_serves_or_decomposes_a_model_only_set_operation():
     search's reading: a named request neither decomposes nor serves that set operation, it serves
     the best-ranked single query. Evaluation still serves selection's choice."""
 
-    from engine.decomposition import compound_decomposition_required
+    from engine.decomposition import search_probe
     from engine.deterministic.context import analysis_execution_context
     from tests.test_datasets import DATASET_DIR, _tables
 
@@ -1210,7 +1210,7 @@ def test_named_request_never_serves_or_decomposes_a_model_only_set_operation():
     assert isinstance(searched[0].query, SelectQuery), "the search reads one goal"
     selection = _select(planner, question, tables, searched=[invented, *searched])
     assert selection.candidate is None, "invented values do not realize the requested country"
-    assert not compound_decomposition_required(planner, tables, question)
+    assert not search_probe(planner, tables, question).decomposition_required
     with analysis_execution_context({"slug": "catering", "revision": 1}, "c_" + "8" * 32):
         named = planner.serve(tables, question)
     assert not named.get("decomposition_required"), named

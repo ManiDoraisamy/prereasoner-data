@@ -563,12 +563,14 @@ class ComposedKnowledgeQuery:
             # predicate the delegate applies (engine/decomposition.py) before composing; the probe
             # selects but never executes.
             from engine.deterministic.context import current_analysis_context
-            from engine.decomposition import DecompositionError, compound_decomposition_required
+            from engine.decomposition import DecompositionError, search_probe
+            from engine.routing import reads_upload_whole
 
+            own_data = False
             if current_analysis_context() is not None:
                 try:
                     with request_timing.span("decompose_probe"):
-                        required = compound_decomposition_required(self.qw, tables, question)
+                        probe = search_probe(self.qw, tables, question)
                 except DecompositionError:
                     return {
                         "question": question,
@@ -577,36 +579,41 @@ class ComposedKnowledgeQuery:
                         "reason": "I couldn't reliably plan this combined analysis. Please try again.",
                         "model": "engine - query planning unavailable",
                     }
-                if required is not None:
+                if probe.decomposition_required is not None:
                     return {
                         "question": question,
                         "as_of": as_of,
                         "clarify": True,
-                        "decomposition_required": required,
+                        "decomposition_required": probe.decomposition_required,
                         "model": "engine - typed AST decomposition requested",
                     }
-            if emit:
-                emit("status", "resolving")
-            try:
-                er = self._run_engine(
-                    tables,
-                    question,
-                    sub,
-                    as_of,
-                    emit=emit,
-                    world=None,
-                    dataset_semantics=dataset_semantics,
-                )
-                if er.get("deterministic") or compose_owns(
-                    er.get("views"),
-                    er.get("world_dependency"),
-                    (er.get("result") or {}).get("rows"),
-                    required_ops(question),
-                ):
-                    self._emit_response_views(emit, er)
-                    return er
-            except Exception as e:                    # noqa: BLE001 — never hard-fail; fall back to delegate
-                print(f"composed serve failed, delegating: {type(e).__name__}", flush=True)
+                # A question the upload reads whole builds no compose plan, so it needs no world lookup.
+                own_data = reads_upload_whole(question, probe.pool, probe.graph)
+                if own_data:
+                    request_timing.count("world_lookup_skipped")
+            if not own_data:
+                if emit:
+                    emit("status", "resolving")
+                try:
+                    er = self._run_engine(
+                        tables,
+                        question,
+                        sub,
+                        as_of,
+                        emit=emit,
+                        world=None,
+                        dataset_semantics=dataset_semantics,
+                    )
+                    if er.get("deterministic") or compose_owns(
+                        er.get("views"),
+                        er.get("world_dependency"),
+                        (er.get("result") or {}).get("rows"),
+                        required_ops(question),
+                    ):
+                        self._emit_response_views(emit, er)
+                        return er
+                except Exception as e:                # noqa: BLE001 — never hard-fail; fall back to delegate
+                    print(f"composed serve failed, delegating: {type(e).__name__}", flush=True)
             deleg = (self.qw.serve(tables, question, as_of=as_of, schema=sub,
                                    explicit_fks=explicit_fks, dataset_semantics=dataset_semantics)
                      if explicit_fks else self.qw.serve(tables, question, as_of=as_of, schema=sub,

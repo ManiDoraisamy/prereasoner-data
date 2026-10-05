@@ -495,6 +495,16 @@ def predict(enc, eng, reader, tabs, question, schema_fks=None,
         except Exception:                        # noqa: BLE001
             depth = False
         if depth:
+            # As serving does: a question some search reading reads whole from the upload builds no compose
+            # plan (engine.routing.reads_upload_whole).
+            from engine.decomposition import search_probe
+            from engine.routing import reads_upload_whole
+            try:
+                probe = search_probe(enc, tabs, question)
+                depth = not reads_upload_whole(question, probe.pool, probe.graph)
+            except Exception:                    # noqa: BLE001 — serving declines a failed probe; compose runs
+                pass
+        if depth:
             try:
                 r = compose_predict(eng, tabs, question)
                 # AUTHORITY: a NECESSARY grounded world dependency (world_dependency is None on Spider -> AST).

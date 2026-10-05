@@ -390,6 +390,40 @@ def test_a_learned_ranking_needs_a_ranking_word():
         assert steps[-1]["op"] == "topn" and steps[0].get("by") == ["customer"], (question, steps)
 
 
+def test_a_question_the_upload_reads_whole_skips_the_world_lookup():
+    """An eight-tab workbook (2026-10-05): an own-data question that tripped the compose gate (a grouping, a
+    top-N) first looked the upload up in the world, typing every text column of every tab, for 32 s; compose
+    then could not own the plan. A question some search reading reads whole from the upload goes straight to
+    the delegate (engine.routing.reads_upload_whole). One with a word the upload does not read still builds
+    the compose plan, world lookup included."""
+    from unittest.mock import Mock
+
+    from engine.deterministic.context import analysis_execution_context
+    from engine.knowledge_compose import ComposedKnowledgeQuery
+    from tests.test_sql_ast import _hermetic_planner
+
+    orders = {"name": "orders", "columns": ["city", "plan", "amount"],
+              "rows": [["Paris", "basic", 10], ["Lyon", "pro", 20], ["Paris", "pro", 5]]}
+    served = {"question": "q", "result": {"columns": ["plan", "total"], "rows": [["basic", 10], ["pro", 25]]}}
+    host = ComposedKnowledgeQuery.__new__(ComposedKnowledgeQuery)
+    host.qw = _hermetic_planner()
+    host.qw.serve = Mock(return_value=served)
+    host._composed = Mock(return_value=True)
+    host._world_lookup = Mock(return_value=None)
+    host._emit_response_views = Mock()
+    host.reason = Mock()
+    host.reason.run.return_value = {"views": [], "world_dependency": None, "plan": [], "primitives": [],
+                                    "bindings": {}, "answer": {"columns": [], "rows": []}}
+    sub = "c_" + "5" * 32
+    with analysis_execution_context({"slug": "totals", "revision": 1}, sub):
+        assert host._serve_locked([orders], "total amount by plan", sub) is served
+        host._world_lookup.assert_not_called()
+        host.reason.run.assert_not_called()
+        # Contrast: "continent" is no column or value of the upload, so the world may hold it.
+        host._serve_locked([orders], "total amount by continent", sub)
+        host._world_lookup.assert_called_once()
+
+
 def test_serving_hands_an_own_data_composition_to_the_planner():
     """The compose host let compose own any plan with a composition op whenever a request carried an analysis
     context, which every served request does; the Spider evaluator asks route() alone. On Spider DEV that
@@ -513,6 +547,7 @@ TESTS = [
     test_the_table_name_is_not_a_grouping_column,
     test_a_learned_ranking_needs_a_ranking_word,
     test_serving_hands_an_own_data_composition_to_the_planner,
+    test_a_question_the_upload_reads_whole_skips_the_world_lookup,
     test_a_threshold_on_an_aggregate_compares_numbers,
     test_named_input_value_filters_directly_without_world_model,
     test_named_input_value_filters_even_when_world_available,

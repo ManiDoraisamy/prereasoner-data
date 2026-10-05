@@ -39,6 +39,8 @@ engine/knowledge.py
         |  one serving entry point
         v
 engine/routing.py
+        |  a question the search reads whole from the upload builds no compose plan and needs no
+        |  world lookup (reads_upload_whole, asked of the search probe's pool)
         |
         +-- DELEGATE --> own-data typed AST, local composition, or ordinary world lookup
         |

@@ -9,9 +9,9 @@ from engine.decomposition import (
     DecompositionError,
     _bind_merge_keys,
     build_decomposed_plan,
-    compound_decomposition_required,
     leaf_measure_rejection,
     ranked_leaf_grain_rejection,
+    search_probe,
     unstated_cutoff_rejection,
     validate_decomposition,
 )
@@ -541,7 +541,7 @@ def test_an_answer_grain_cannot_repeat_one_physical_dimension():
 def test_failed_compound_probe_cannot_authorize_a_partial_composed_answer():
     planner = Mock()
     planner.ingest.side_effect = RuntimeError("planner unavailable")
-    _reject(lambda: compound_decomposition_required(planner, [], "question"))
+    _reject(lambda: search_probe(planner, [], "question"))
     host = ComposedKnowledgeQuery.__new__(ComposedKnowledgeQuery)
     host.qw = planner
     host._composed = Mock(return_value=True)
@@ -549,7 +549,7 @@ def test_failed_compound_probe_cannot_authorize_a_partial_composed_answer():
     with (
         analysis_execution_context(None, "c_" + "7" * 32),
         patch(
-            "engine.decomposition.compound_decomposition_required",
+            "engine.decomposition.search_probe",
             side_effect=DecompositionError("internal planner failure"),
         ),
     ):

@@ -43,6 +43,21 @@ class Route(enum.Enum):
     #                        the AST-vs-KnowledgeQuery split is made downstream by the delegate, not here.
 
 
+def reads_upload_whole(question, pool, graph) -> bool:
+    """Whether some reading in the search's ``pool`` reads every word of ``question`` from the upload
+    (``engine.query_contract.read_question``). Such a question builds no compose plan: compose stands only on a
+    NECESSARY world dependency (``compose_owns``), and a word the upload reads creates none. Building the plan
+    first looked the upload up in the world, typing every text column of every tab, for 32 s on an eight-tab
+    workbook (2026-10-05). Serving and the Spider evaluator both ask this before compose."""
+    from engine.query_contract import read_question
+
+    for candidate in pool:
+        reading = read_question(question, candidate, graph)
+        if not reading.unread and not reading.wildcard:
+            return True
+    return False
+
+
 def _ops(plan):
     """Normalize a plan to a list of op strings. Accepts built view dicts (``{'op': ...}``, the serving shape)
     or a flat list of op strings (the eval's ``res['plan']``)."""
