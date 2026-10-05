@@ -19,8 +19,9 @@ Given a question, tables, and foreign keys, the planner:
 5. Runs up to 25 ranked candidates on an in-memory copy of the tables. A query that fails, compares
    a text column with a value it never holds while another column does, or joins columns the foreign
    keys keep apart is ineligible.
-6. Serves the best-ranked eligible candidate. Calculation intents, a named money total, and the
-   decomposition leaf contract constrain that ranking; they never rescore it.
+6. Serves the best-ranked eligible candidate. Named dates, a SUM or AVG that reads only rows its joins
+   repeat (served only when every eligible candidate does), calculation intents, a named money total,
+   and the decomposition leaf contract constrain that ranking; they never rescore it.
 7. Only when no candidate is eligible and Gemini is enabled, runs the labelled fallback.
 8. Renders only validated ASTs to SQL. A served top-1 ranking keeps every row tied with its first
    row (`sql_ast.keep_ties`, rendered with `RANK() OVER`); a larger `LIMIT` keeps exactly that many rows.
@@ -77,7 +78,8 @@ question + tables + foreign keys
           |
           v
   serve the best-ranked eligible candidate          served_by: search
-  (a calculation intent or a named money total may
+  (named dates, a total that counts no row twice,
+   a calculation intent or a named money total may
    prefer a later eligible one)
           |
           |   none eligible, and the operator enabled Gemini
@@ -96,7 +98,8 @@ The search's construction and ranking rules are hand-written; the frozen encoder
 schema similarities to them. Each candidate carries its named ranking features and evidence
 (`ScoredQuery.features`, `ScoredQuery.evidence`), so its place in the order can be explained term by
 term. Selection adds no score of its own: it walks the ranking and serves the first eligible member,
-subject to the calculation and money-total preferences (`engine/sql_rank.py:select_ranked_candidate`).
+subject to the date, double-counting, calculation and money-total preferences
+(`engine/sql_rank.py:select_ranked_candidate`).
 `PoolSelection.record()` reports the decision:
 
 | Selection field | Meaning |
@@ -109,6 +112,7 @@ subject to the calculation and money-total preferences (`engine/sql_rank.py:sele
 | `rank` | The served member's place among the eligible members (0 is the best ranked) |
 | `score` | The served member's search score |
 | `calculation_satisfied`, `money_total` | Whether a calculation intent or a named money total chose it |
+| `date_satisfied`, `double_counted` | Whether it keeps the dates the question names, and whether a SUM or AVG of it reads only rows its joins repeat |
 | `served_by` | `search` or `gemini-rewrite` |
 | `fallback` | Present when the rewriter ran: `kind`, `model`, the rewording, and why nothing was served |
 
@@ -302,7 +306,7 @@ SQL statements. Serving also retains its SELECT-only execution guard.
 |---|---|
 | `engine/sql_ast.py` | Immutable AST, validation, and rendering. |
 | `engine/sql_dates.py` | Calendar phrases of a question as typed date comparisons; the month words a query realized. |
-| `engine/sql_grounding.py` | Pool eligibility: text literals that fit their column and joins the foreign keys allow. |
+| `engine/sql_grounding.py` | Pool eligibility: text literals that fit their column and joins the foreign keys allow; which SUM or AVG reads only rows its joins repeat (a selection preference). |
 | `engine/sql_schema.py` | Typed schema and join-path search. |
 | `engine/sql_search.py` | `SQLSearcher`: base beam, capability ordering, and candidate assembly. |
 | `engine/sql_candidate.py` | Scored-candidate container and evidence. |

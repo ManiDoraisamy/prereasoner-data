@@ -98,9 +98,12 @@ a different question.
 
 ## Stage 5 — serve the best-ranked eligible candidate
 
-The served query is the best-ranked eligible candidate. Nothing rescores the pool. Two registered
-preferences can pick a later eligible candidate instead: a calculation intent takes the best-ranked
-candidate that realizes it (`engine/calculations`), and a money noun that names its table ("what's the
+The served query is the best-ranked eligible candidate. Nothing rescores the pool. Preferences can pick
+a later eligible candidate instead: a date the question names keeps the choice to the candidates that
+realize it; a candidate whose SUM or AVG reads only rows its joins repeat, such as a report's Total Amount
+summed once per subscription the report row matched, is served only when every eligible candidate does
+([`engine/sql_grounding.py`](../engine/sql_grounding.py)); a calculation intent takes the best-ranked
+candidate that realizes it (`engine/calculations`); and a money noun that names its table ("what's the
 sales in London") takes the best-ranked candidate that aggregates a money column. The response's
 `planner.selection` records the pool counts (how many ran, how many were grounded), the served member's
 rank and search score, and `served_by: search`. The winner's own `evidence` and `features` show which

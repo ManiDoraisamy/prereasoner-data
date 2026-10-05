@@ -277,7 +277,7 @@ The own-data path serves one typed SQL AST chosen from the deterministic search'
 | `engine/sql_parsimony.py` | Bounded projection/table variants of pooled candidates (minimal join, binding, drop/add column, operand swap, DISTINCT) |
 | `engine/sql_profile_expansion.py` | Typed variants driven by predicted structural profiles |
 | `engine/sql_rank.py` | Search ranking features (`CandidateRanker`), the pool contract (`SEARCH_CANDIDATES`, `EXECUTION_OP_LIMIT`), and the selection record (`PoolSelection`, `FallbackRecord`) |
-| `engine/sql_grounding.py` | Pool eligibility: text literals that fit their column, and joins the foreign keys allow |
+| `engine/sql_grounding.py` | Pool eligibility: text literals that fit their column, and joins the foreign keys allow; which SUM or AVG reads only rows its joins repeat (a selection preference) |
 | `engine/tables.py` | Planner facade (`select_query`), SQL guard, pool and local SQLite execution |
 | `engine/question_rewrite.py` | The labelled, stateless Gemini wording rewrite; deterministic search still owns SQL |
 | `engine/sql_prompt.py` | The schema text and rewrite prompt sent to Gemini |
@@ -295,10 +295,15 @@ The own-data path serves one typed SQL AST chosen from the deterministic search'
    and a column that shares no value with it. A SQL model once joined
    `orders.order_id = products.product_id`, skipping the `order_items` bridge; the query ran and
    matched no row. Eligibility is not evidence that the query answers the question.
-3. The best-ranked eligible candidate is served. A registered calculation intent
-   (`engine/calculations`) takes the best-ranked eligible candidate that satisfies it, and a money
-   noun that names its table ("what's the sales in London") takes the best-ranked eligible candidate
-   that aggregates a money column (`engine/sql_expansion.money_total_columns`). These preferences,
+3. The best-ranked eligible candidate is served. A date the question names keeps the choice to
+   the candidates that realize it, when one does (`engine/sql_dates`). A candidate whose SUM or AVG
+   reads only rows its joins repeat is served only when every eligible candidate does
+   (`engine/sql_grounding.double_counted`): the best-ranked reading of "the total Amount by Plan and
+   Currency" once summed a report's Total Amount once per subscription the report row matched. A
+   registered calculation intent (`engine/calculations`) takes the best-ranked eligible candidate
+   that satisfies it, and a money noun that names its table ("what's the sales in London") takes the
+   best-ranked eligible candidate that aggregates a money column
+   (`engine/sql_expansion.money_total_columns`). These preferences,
    the single-branch serving contract, and the decomposition leaf contract filter the ranking; none
    rescores it. A served top-1 ranking keeps every row tied with its first row (`sql_ast.keep_ties`,
    rendered with `RANK() OVER`).
@@ -308,7 +313,7 @@ The own-data path serves one typed SQL AST chosen from the deterministic search'
 
 The response's `planner.selection` records the pool counts (`pool_size`, `executable`,
 `misgrounded`, `eligible`), the served member's place among the eligible ones and its search score,
-whether a calculation or money-total preference chose it, and `served_by`. The winning AST then
+whether a date, double-counting, calculation or money-total preference chose it, and `served_by`. The winning AST then
 executes against the conversation schema through the shared SQL/Python plan.
 
 ### Labelled Gemini fallback

@@ -1891,9 +1891,10 @@ is SQL, 17 s of which loads the six tabs on the conversation's first question. T
 (`tests/test_scale.py`) now serves this workbook's question, checks the totals against sums computed from
 its rows, and allows 120 s; it took 38 s.
 
-Still open: the add-on sends the whole workbook with every question (8.9 MB through Apps Script); for an
-own-data question, compose builds a world lookup and a plan that the delegate then replaces; and where a
-key links a report to its export, a reading can sum the report's totals over the export's rows.
+Still open: the add-on sends the whole workbook with every question (8.9 MB through Apps Script), and for an
+own-data question, compose builds a world lookup and a plan that the delegate then replaces. Where a key links
+a report to its export, a reading could sum the report's totals over the export's rows; that is addressed in "A
+total over rows its joins repeat is served only when every reading is one" below.
 
 **Testing the six-tab workbook in production (2026-10-05) found four more defects:**
 - **The note named tabs canonically**: "From nt. si and ff could answer this too". The engine sees only canonical
@@ -1921,3 +1922,32 @@ ran 242 s on the previous engine (the six-tab total, 98 s of it executing readin
 questions asked behind it got "busy". The same question now takes about 50 s on its first ask. Running questions
 concurrently (a second warm instance, a longer admission wait, or lifting the lock for own-data questions) is
 the owner's cost and capacity decision; nothing in that configuration changed.
+
+## A total over rows its joins repeat is served only when every reading is one (2026-10-05)
+
+Where a report tab lists each product once, discovery keys the exports' Product to the report's, and the
+best-ranked reading of "What is the total Amount broken down by Plan and Currency?" summed the report's Total
+Amount over that join. Each report row appears once per subscription it matches, so a product whose
+subscriptions total 20 read 40. Joined on a column that holds one value in several rows, a row of the other
+table repeats, and a SUM or AVG that reads only repeated rows counts each of them once per match
+(`engine/sql_grounding.double_counted`). It is read per SELECT from the request's join values, so it needs no
+key direction: a composite key is one combination, aliases resolve to their tables, and repeats carry outward
+through the join tree.
+
+**A preference, not an eligibility rule** (`sql_rank.select_ranked_candidate`, after the date preference):
+such a member is served only when every eligible member is one. Summing a parent's column over its children is
+sometimes the question, as with a course's credits over the classes that offer it, or a station's latitude
+averaged over the trips that start there. 49 of the 6,953 Spider train gold queries the importer reads do it
+(none of the 1,026 dev ones), so a veto would turn such answers into refusals. A ranking penalty would need a
+weight above every other feature, since the report reading led the right one by 10.3 points.
+
+**COUNT, MIN, MAX and DISTINCT are left alone.** Over one join, COUNT of any column counts the joined rows
+COUNT(*) counts, so preferring another COUNT changes no number; 6 train gold queries count child rows that way.
+MIN, MAX and DISTINCT aggregates do not change with repeats.
+
+**Measured.** Spider dev (`whole_db`, Gemini off, clean checkout of `7b05b8b`): 243 strict, 310 lenient and 408
+answered, as before, and 1,031 of 1,034 examples have the same SQL. Two of the three changes average the cities'
+population a question names instead of each country's once per city (one gains lenient credit); one loses lenient
+credit ("How many paragraphs in total?" now counts templates, as no eligible reading counts paragraphs without
+summing a template's version number once per paragraph). The planner suite's regression test serves the report
+workbook's totals from the exports' Amount: 20 and 7, where the report reading gave 40.

@@ -4,6 +4,31 @@ Dated entries come newest first. Each records a run at the commit it names; the 
 entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection arbiter`) may since have
 been removed, and that commit holds the code that ran.
 
+## A total over rows its joins repeat gives way, at `7b05b8b`: same totals (2026-10-05)
+
+Same contract as `bc85ccd` (Gemini off, `whole_db`, `served` selection, SQL backend, row cap 5,000), clean
+checkout of `7b05b8b` (`worktree_dirty=false`, tag `doublecount-7b05b8b`). The commit serves a member whose SUM
+or AVG reads only rows its joins repeat (`sql_grounding.double_counted`) only when every eligible member does.
+243 strict, 310 lenient, 408 answered, as at `70022e3`: no strict win or loss, and 1,031 of 1,034 examples
+have the same SQL. Five served members double counted before; three changed and two stay, each the only
+eligible member (#4, #424).
+
+| # | Difficulty | Before | After | Change |
+|---|---|---|---|---|
+| 357 | easy | lenient | answered | "How many paragraphs in total?": the two best-ranked readings count the paragraphs over Templates, Documents and Paragraphs and sum each template's Version_Number once per paragraph; the served one counts templates. All three eligible readings are wrong (gold counts Paragraphs), and the completeness check accepts one that never reads Paragraphs. |
+| 794 | extra | lenient | lenient | Averages the cities' population the question names, not each country's once per city. |
+| 795 | extra | answered | lenient | The same. |
+
+Prediction seconds (the evaluator's summary): median 1.090 → 0.923, p90 2.217 → 1.730, p95 2.583 → 2.061, max
+4.755 → 3.615. The commit adds a scan of each pool's join columns and removes no work, so the difference is this
+desktop's load between runs.
+
+Spider train gold, read by the same importer: 49 of 6,953 queries SUM or AVG rows their joins repeat (dev: 0
+of 1,026), mostly on purpose (credits over the classes that offer a course, latitudes averaged over trips), so
+the rule is a preference, not an eligibility rule.
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_doublecount-7b05b8b.json`.
+
 ## A counted noun whose column no key reaches, at `70022e3`: same answers (2026-10-05)
 
 Same contract as `bc85ccd` (Gemini off, `whole_db`, `served` selection, SQL backend, row cap 5,000), clean
