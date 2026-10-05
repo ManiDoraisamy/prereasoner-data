@@ -4,6 +4,16 @@ Dated entries come newest first. Each records a run at the commit it names; the 
 entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection arbiter`) may since have
 been removed, and that commit holds the code that ran.
 
+## A duration compares how long rows lasted, at `1b5c6ae`: same answers (2026-10-05)
+
+Same contract as `c9bf407` (Gemini off, `whole_db`, `served` selection, SQL backend, row cap 5,000), clean
+checkout of `1b5c6ae` (`worktree_dirty=false`, tag `durations-1b5c6ae`). The commit reads "more than 6 months" and
+its kin as a comparison of how long each row lasted (`DateSpan`). No dev question holds a duration phrase, and all
+1,034 examples have the same SQL and grade as `c9bf407`: 243 strict, 310 lenient, 408 answered. Prediction seconds:
+median 0.92 → 0.90, p90 1.89 → 1.85, max 4.33 → 4.13.
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_durations-1b5c6ae.json`.
+
 ## A pooled reading's step budget follows the tables it reads, at `c9bf407`: same answers (2026-10-05)
 
 Same contract as `090de16` (Gemini off, `whole_db`, `served` selection, SQL backend, row cap 5,000), clean
