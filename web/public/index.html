@@ -208,17 +208,22 @@ async function openExamples(){
 }
 function closeExamples(){hideModal('examples','exbackdrop');}
 $('morex').addEventListener('click',openExamples);
-try{                                                       // returning from /picker: attach the imported Google Sheet + restore the prompt
-  const pend=sessionStorage.getItem(SS.PENDING_SHEETS);
-  if(pend){ const t=JSON.parse(pend); if(t&&t.length){ SHEETS=t; isSample=false; } sessionStorage.removeItem(SS.PENDING_SHEETS); sessionStorage.removeItem(SS.HOME_DRAFT); }
-  else if(sessionStorage.getItem(SS.AUTH_ACTION)){
-    const draft=JSON.parse(sessionStorage.getItem(SS.HOME_DRAFT)||'[]');
-    if(Array.isArray(draft)&&draft.length){SHEETS=draft;isSample=draft.every(s=>s&&s.source&&s.source.kind==='example');}
-  }
-  const pq=sessionStorage.getItem(SS.PENDING_Q);
-  if(pq!=null){ $('q').value=pq; sessionStorage.removeItem(SS.PENDING_Q); }
-}catch(_){}
-renderChips();
+// Returning from /picker attaches the imported Google Sheet, returning from sign-in restores the draft, and
+// both restore the prompt. The sheets may wait in IndexedDB (SHEET_HANDOFF), so this finishes after load.
+const RESTORED=(async()=>{
+  try{
+    const picked=await SHEET_HANDOFF.get(SS.PENDING_SHEETS);
+    if(picked){
+      if(picked.length){ SHEETS=picked; isSample=false; }
+      await SHEET_HANDOFF.clear(SS.PENDING_SHEETS); await SHEET_HANDOFF.clear(SS.HOME_DRAFT);
+    }else if(sessionStorage.getItem(SS.AUTH_ACTION)){
+      const draft=await SHEET_HANDOFF.get(SS.HOME_DRAFT)||[];
+      if(draft.length){SHEETS=draft;isSample=draft.every(s=>s&&s.source&&s.source.kind==='example');}
+    }
+  }catch(_){}
+  try{ const pq=sessionStorage.getItem(SS.PENDING_Q); if(pq!=null){ $('q').value=pq; sessionStorage.removeItem(SS.PENDING_Q); } }catch(_){}
+  renderChips();
+})();
 function baseName(n){return (n||'').replace(/\.(csv|tsv|txt|xlsx|xlsm|xls)$/i,'');}
 function addSheet(name,data,kind){if(isSample){SHEETS=[];isSample=false;clearDemoQuestion();}SHEETS.push({name:name,data:data,source:{kind:kind||'csv'}});}
 $('file').addEventListener('change',async function(e){     // CSV/TSV read as text; .xlsx/.xls parsed client-side -> ONE table per worksheet (FK-joinable like multi-CSV)
@@ -256,6 +261,7 @@ $('file').addEventListener('change',async function(e){     // CSV/TSV read as te
 $('q').addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();$('f').requestSubmit();}});  // Enter sends, Shift+Enter newline
 $('f').addEventListener('submit',async function(e){
   e.preventDefault();
+  await RESTORED;                                            // a picked or drafted sheet, not the demo
   if(UPLOAD_PENDING||UPLOAD_ERROR){$('err').textContent=UPLOAD_ERROR||'Wait for the upload to finish.';return;}
   const q=$('q').value.trim();
   if(isSample){ try{ await DEMO_LOAD; }catch(_){} }        // a fast Ask must not race the demo fetch
@@ -264,16 +270,19 @@ $('f').addEventListener('submit',async function(e){
   if(!valid.length){$('err').textContent='Attach at least one CSV or Excel file with a header row and a data row.';return;}
   if(!q){$('err').textContent='Type a question about your table.';return;}
   try{                          // ALL sheets -> /reason (view-stacking composition; delegates plain/world queries to the world path)
-    sessionStorage.setItem(SS.TABLES,JSON.stringify(valid));
-    sessionStorage.setItem(SS.CSV,valid[0].data); sessionStorage.setItem(SS.NAME,valid[0].name);
+    await SHEET_HANDOFF.put(SS.TABLES,valid);
+    await SHEET_HANDOFF.put(SS.HOME_DRAFT,valid);
+  }catch(_){
+    // Never continue without them: the analysis page would answer its demo tables instead (2026-10-05).
+    $('err').textContent='This browser could not hold the attached sheets for the analysis. Try again in a regular (not private) window.';
+    return;
+  }
+  try{
     sessionStorage.setItem(SS.Q,q);
     // A query from home starts a NEW conversation: clear ALL conversation-scoped state, exactly like
     // newConversation() does. Leaving pr_orch_history behind leaked every prior conversation's transcript
     // into the new one's /chat body until it crossed the server's history cap -> 413 on every submit.
     ['pr_conversation_id','pr_orch_history','pr_conv_state'].forEach(k=>sessionStorage.removeItem(k));
-  }catch(_){}
-  try{
-    sessionStorage.setItem(SS.HOME_DRAFT,JSON.stringify(valid));
     sessionStorage.setItem(SS.PENDING_Q,q);
     sessionStorage.setItem(SS.ENTRY_ROUTE,location.pathname||'/');
   }catch(_){}
@@ -282,11 +291,11 @@ $('f').addEventListener('submit',async function(e){
 // Data-source entry: the button is a bare "+" everywhere. On "/" it opens the source menu
 // (Google Sheets / Excel / CSV); on the /sheets, /excel and /csv single-source landings it
 // triggers that source directly, no menu. One addSource() owns every path.
-function addSource(kind){
+async function addSource(kind){
   if(kind==='sheets'){
     try{ sessionStorage.setItem(SS.PENDING_Q,$('q').value);              // preserve the typed prompt across auth + picker
-         sessionStorage.setItem(SS.HOME_DRAFT,JSON.stringify(SHEETS));
-         sessionStorage.setItem(SS.ENTRY_ROUTE,location.pathname||'/'); }catch(_){}
+         sessionStorage.setItem(SS.ENTRY_ROUTE,location.pathname||'/');
+         await SHEET_HANDOFF.put(SS.HOME_DRAFT,SHEETS); }catch(_){}
     window.requireHomeAuthAction('google-sheets');             // / and /sheets both authenticate at the Google source choice
   } else {
     $('file').setAttribute('accept', kind==='excel'
@@ -382,10 +391,11 @@ function showSignedIn(user){
   const email=document.createElement('span');email.textContent=user.email||'';
   identity.append(strong,email);
 }
-function completeAction(action){
+async function completeAction(action){
   sessionStorage.removeItem(SS.AUTH_ACTION);
   if(action==='ask'){
-    sessionStorage.removeItem(SS.HOME_DRAFT); sessionStorage.removeItem(SS.PENDING_Q);
+    try{ await SHEET_HANDOFF.clear(SS.HOME_DRAFT); }catch(_){}
+    sessionStorage.removeItem(SS.PENDING_Q);
     location.href='reason'+executionQuery(); return;
   }
   if(action==='google-sheets'){
@@ -398,11 +408,11 @@ async function requireHomeAuthAction(action){
   try{sessionStorage.setItem(SS.AUTH_ACTION,action);}catch(_){}
   // The Picker owns the one Google redirect for Sheets because it must request drive.file as
   // well as establish the app session. Routing there now avoids two consecutive sign-ins.
-  if(action==='google-sheets'){completeAction(action);return true;}
+  if(action==='google-sheets'){await completeAction(action);return true;}
   try{
     const uid=await ensureSignedIn();
     if(!uid)return false;
-    showSignedIn(auth.currentUser); completeAction(action); return true;
+    showSignedIn(auth.currentUser); await completeAction(action); return true;
   }catch(error){
     document.getElementById('err').textContent=(error&&error.message)||'Sign-in failed. Please try again.';
     return false;

@@ -166,6 +166,28 @@ for(const malformed of [false,true])test('partial streams reconcile without dupl
   expect(errors).toEqual([]);
 });
 
+test('an upload larger than the browser session store is the one analyzed, not the demo',async({page})=>{
+  // A 9 MB upload went past what sessionStorage holds, and the analysis page answered its demo tables instead
+  // (production, 2026-10-05). The sheets now wait in IndexedDB for the page to read.
+  await mockAuth(page);
+  let sent=null;
+  await page.route('**/chat',async route=>{
+    sent=route.request().postDataJSON();
+    await route.fulfill({json:{reply:'Read.',conversation_id:'c_0123456789abcdef0123456789abcdef',history:[],traces:[]}});
+  });
+  await page.goto('/');
+  const rows=['id,note,amount'];
+  for(let i=0;i<45000;i++)rows.push('r'+i+','+'n'.repeat(150)+','+(i%97));
+  await page.locator('#file').setInputFiles({name:'big.csv',mimeType:'text/csv',buffer:Buffer.from(rows.join('\n'))});
+  await expect(page.locator('#chips .nm')).toHaveText(['big'],{timeout:30000});
+  await page.locator('#q').fill('total amount');
+  await page.getByRole('button',{name:'Ask',exact:true}).click();
+  await expect.poll(()=>sent&&sent.tables.map(t=>[t.name,t.data.split('\n').length]),{timeout:30000})
+    .toEqual([['big',45001]]);
+  expect(await page.evaluate(()=>[SHEETS.map(s=>s.name),sessionStorage.getItem('pr_world_tables'),
+    Boolean(sessionStorage.getItem('pr_world_tables:idb'))])).toEqual([['big'],null,true]);
+});
+
 const firebaseApp='export function initializeApp(){return {}}';
 const firebaseAuth=`
   const currentUser={displayName:'Test User',email:'test@example.com'};

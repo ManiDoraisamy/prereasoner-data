@@ -49,7 +49,7 @@ async function openConversation(id){                          // re-hydrate a pa
     const j=await r.json();
     sessionStorage.removeItem('pr_orch_history');            // a different conversation -> fresh context
     sessionStorage.setItem('pr_conversation_id', j.conversation_id);
-    sessionStorage.setItem(SS.TABLES, JSON.stringify(j.tables||[]));
+    await SHEET_HANDOFF.put(SS.TABLES, j.tables||[]);
     sessionStorage.setItem(SS.Q, j.question||'');
     rememberConversationSource(j);
     try{ if(j.state) sessionStorage.setItem('pr_conv_state', JSON.stringify(j.state)); else sessionStorage.removeItem('pr_conv_state'); }catch(_){}   // restore the snapshot (else run() re-runs)
@@ -58,8 +58,9 @@ async function openConversation(id){                          // re-hydrate a pa
 }
 function newConversation(){
   let route='/';try{const saved=sessionStorage.getItem(SS.ENTRY_ROUTE)||'/';if(/^\/(sheets|excel|csv)?\/?$/.test(saved))route=saved.replace(/\/$/,'')||'/';
-    ['pr_conversation_id','pr_orch_history','pr_conv_state',SS.TABLES,SS.Q,SS.CSV,SS.NAME,SS.SOURCE_INFO].forEach(k=>k&&sessionStorage.removeItem(k));
-  }catch(_){}location.href=route+executionQuery();
+    ['pr_conversation_id','pr_orch_history','pr_conv_state',SS.Q,SS.SOURCE_INFO].forEach(k=>k&&sessionStorage.removeItem(k));
+  }catch(_){}
+  SHEET_HANDOFF.clear(SS.TABLES).catch(()=>{}).finally(()=>{location.href=route+executionQuery();});
 }
 function setDrawer(open){
   open=!!open;const drawer=$('drawer'),back=$('drawerback');if(!drawer)return;

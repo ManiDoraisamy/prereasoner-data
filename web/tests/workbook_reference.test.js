@@ -44,6 +44,8 @@ const context = {
   sessionStorage: {getItem: key => storage.get(key) || null, setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key)},
   localStorage: {getItem: key => storage.get('local:' + key) || null, setItem: (key, value) => storage.set('local:' + key, value)},
   SS: {TABLES: 'tables', Q: 'question'},
+  // lib/shared.js's handoff, with nothing waiting in IndexedDB (the browser specs cover the large path).
+  SHEET_HANDOFF: {waiting: () => false, get: async () => null, put: async () => {}, clear: async () => {}},
   API_BASE: '',
   slug: (name, index) => name || ('t' + index),
   parseCSV: () => ({cols: [], rows: []}),

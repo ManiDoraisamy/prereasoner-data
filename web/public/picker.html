@@ -94,7 +94,7 @@ async function onPick(token, data){
     // ONE selected-file export, not one read per tab. All tabs normalize or none
     // are attached; the same bounded worker handles Google Sheets and local Excel.
     const tables = await GOOGLE_SHEETS_IMPORT.read(token, id, title);
-    sessionStorage.setItem(SS.PENDING_SHEETS, JSON.stringify(tables));   // hand the sheet back to the home page as an attachment
+    await SHEET_HANDOFF.put(SS.PENDING_SHEETS, tables);       // hand the sheet back to the home page as an attachment
     location.href = returnPath();                            // home shows it as a chip; user edits the prompt, then clicks the arrow
   }catch(e){ fail("Could not read the sheet: " + ((e && e.message) || e)); }
 }

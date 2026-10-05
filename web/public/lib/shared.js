@@ -37,8 +37,6 @@ function executionRequestFields(override){ const use=override||EXECUTION_USE; re
 // sessionStorage keys — the only state handed between pages (tables, question, clarify payload).
 const SS = {
   TABLES: 'pr_world_tables',          // JSON [{name,data}] — every attached sheet, CSV text
-  CSV: 'pr_world_csv',                // legacy single-table fallback (first sheet's CSV)
-  NAME: 'pr_world_name',              // legacy single-table fallback (first sheet's name)
   Q: 'pr_world_q',                    // the question being asked
   PENDING_SHEETS: 'pr_pending_sheets',// JSON [{name,data}] — Google Sheets import -> home
   PENDING_Q: 'pr_pending_q',          // the typed prompt preserved across the Sheets picker round-trip
@@ -48,6 +46,72 @@ const SS = {
   ENTRY_ROUTE: 'pr_entry_route',      // landing route New chat returns to
   SOURCE_INFO: 'pr_source_info'       // source hash/kind for the result freshness control
 };
+
+// The attached sheets (SS.TABLES, SS.HOME_DRAFT, SS.PENDING_SHEETS) travel between this tab's pages in
+// sessionStorage when they fit. It holds about 5 MB, and a 9 MB upload was answered with the demo tables
+// instead (2026-10-05). Sheets that do not fit wait in IndexedDB under this tab's key; sessionStorage keeps
+// the key as `<name>:idb`. A day-old entry is removed on the next store.
+const SHEET_HANDOFF = (() => {
+  const DB = 'prereasoner-handoff', STORE = 'sheets', DAY_MS = 24 * 3600 * 1000;
+  const marker = name => name + ':idb';
+  function quota(error){ return !!error && (error.name === 'QuotaExceededError' || error.code === 22 || error.code === 1014); }
+  function open(){
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(DB, 1);
+      request.onupgradeneeded = () => request.result.createObjectStore(STORE);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
+  async function transact(mode, work){
+    const db = await open();
+    try {
+      return await new Promise((resolve, reject) => {
+        const transaction = db.transaction(STORE, mode), request = work(transaction.objectStore(STORE));
+        transaction.oncomplete = () => resolve(request && request.result);
+        transaction.onerror = transaction.onabort = () => reject(transaction.error);
+      });
+    } finally { db.close(); }
+  }
+  function tabKey(name){
+    let tab = sessionStorage.getItem('pr_tab_id');
+    if (!tab) { tab = Date.now().toString(36) + Math.random().toString(36).slice(2); sessionStorage.setItem('pr_tab_id', tab); }
+    return tab + ':' + name;
+  }
+  async function clear(name){
+    const key = sessionStorage.getItem(marker(name));
+    sessionStorage.removeItem(name); sessionStorage.removeItem(marker(name));
+    if (key) await transact('readwrite', store => store.delete(key));
+  }
+  async function put(name, tables){
+    await clear(name);
+    try { sessionStorage.setItem(name, JSON.stringify(tables)); return; }
+    catch (error) { if (!quota(error)) throw error; }
+    const key = tabKey(name), now = Date.now();
+    await transact('readwrite', store => {
+      store.openCursor().onsuccess = event => {
+        const cursor = event.target.result;
+        if (!cursor) return;
+        if (!cursor.value || !(now - cursor.value.at < DAY_MS)) cursor.delete();
+        cursor.continue();
+      };
+      return store.put({tables, at: now}, key);
+    });
+    sessionStorage.setItem(marker(name), key);
+  }
+  // The stored sheets, or null when none were handed over.
+  async function get(name){
+    const raw = sessionStorage.getItem(name);
+    if (raw) { try { const tables = JSON.parse(raw); if (Array.isArray(tables)) return tables; } catch (_) {} }
+    const key = sessionStorage.getItem(marker(name));
+    if (!key) return null;
+    const value = await transact('readonly', store => store.get(key));
+    return value && Array.isArray(value.tables) ? value.tables : null;
+  }
+  // Whether sheets wait in IndexedDB (read them with `get`).
+  function waiting(name){ return !sessionStorage.getItem(name) && !!sessionStorage.getItem(marker(name)); }
+  return {put, get, clear, waiting};
+})();
 
 // HTML-escape for TEXT NODES (& < >). NOT safe inside an attribute value — use escAttr there.
 function esc(s){return (s==null?'':s+'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}

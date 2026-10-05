@@ -26,6 +26,7 @@ const $=id=>document.getElementById(id);
 // the same the Google Sheets add-on renders.
 const {stepLabel,stepDescription:stepDesc,stepStatus}=window.PrereasonerTurnRenderer;
 function getSheets(){
+  if(SHEET_HANDOFF.waiting(SS.TABLES))return [];             // too large for sessionStorage: run() reads them
   try{const t=sessionStorage.getItem(SS.TABLES);if(t){const a=JSON.parse(t);if(a&&a.length)return a;}}catch(_){}
   return WB.demoTables;
 }
@@ -881,7 +882,7 @@ function csvCell(v){ v=v==null?'':String(v); return /[",\n]/.test(v)?'"'+v.repla
 function syncInputsToSheets(){                                // serialize edited input sheets back to SHEETS (+ persist) before a run
   BOOK.filter(s=>s.cls==='input').forEach(s=>{ if(s.si!=null&&SHEETS[s.si])
     SHEETS[s.si].data=[s.cols.map(csvCell).join(',')].concat((s.rows||[]).map(r=>r.map(csvCell).join(','))).join('\n'); });
-  try{ sessionStorage.setItem(SS.TABLES, JSON.stringify(SHEETS)); }catch(_){}
+  SHEET_HANDOFF.put(SS.TABLES, SHEETS).catch(()=>{});
 }
 function showRecalc(on){ if(on){const info=sourceStatusInfo();info.stale=true;writeSourceInfo(info);} renderSourceStatus(); }
 function recalc(){                                            // re-run the last question on the edited data (auto-composed; no retyping)
@@ -1314,13 +1315,20 @@ async function run(){
       const r=await fetch(API_BASE+'/api/conversation?id='+encodeURIComponent(ucid),{headers:{Authorization:'Bearer '+tk}});
       if(r.ok){ const j=await r.json();
         sessionStorage.setItem('pr_conversation_id', j.conversation_id);
-        sessionStorage.setItem(SS.TABLES, JSON.stringify(j.tables||[]));
+        await SHEET_HANDOFF.put(SS.TABLES, j.tables||[]);
         sessionStorage.setItem(SS.Q, j.question||'');
         if(typeof rememberConversationSource==='function')rememberConversationSource(j);
         try{ if(j.state) sessionStorage.setItem('pr_conv_state', JSON.stringify(j.state)); else sessionStorage.removeItem('pr_conv_state'); }catch(_){}
         location.reload(); return;
       }
     }catch(_){}
+  }
+  // Sheets too large for sessionStorage wait in IndexedDB (SHEET_HANDOFF). A 9 MB upload was answered with
+  // the demo tables when they could not be read (2026-10-05); without them there is nothing to analyze.
+  if(SHEET_HANDOFF.waiting(SS.TABLES)){
+    const handed=await SHEET_HANDOFF.get(SS.TABLES).catch(()=>null);
+    if(!handed||!handed.length){ fail('Your sheets could not be read in this browser. Attach them again from the home page.'); return; }
+    SHEETS.push(...handed); TABNAMES.push(...handed.map((s,i)=>slug(s.name,i)));
   }
   // restore ORCH context ONLY when resuming an existing conversation (same guard the snapshot restore uses
   // below) — a fresh conversation must never inherit another conversation's transcript.
