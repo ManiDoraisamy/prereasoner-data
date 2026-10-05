@@ -13,6 +13,12 @@ from engine.sql_prompt import REWRITE_SCHEMA, REWRITE_SYSTEM, rewrite_prompt
 
 MAX_QUESTION_CHARS = 500
 UNAVAILABLE = "Gemini unavailable"
+# Rewording one question needs little reasoning. At the model's default thinking (about 1,200 thought tokens)
+# "keyword volume for home inspection checklist" took 12-14 s and, once, the whole 30 s client timeout, so a
+# Sheets user waited a minute for no answer (2026-10-05). LOW thinking (about 560 tokens; the model rejects
+# MINIMAL) answered in 6-14 s, and the call stops at 20 s.
+REWRITE_THINKING = "LOW"
+REWRITE_TIMEOUT_SECONDS = 20.0
 
 
 class QuestionRewriter:
@@ -35,7 +41,8 @@ class QuestionRewriter:
         request_timing.count("fallback_rewrite_calls")
         try:
             raw = self._llm.generate_text(system=REWRITE_SYSTEM, prompt=prompt, max_output_tokens=4096,
-                                          json_schema=REWRITE_SCHEMA)
+                                          json_schema=REWRITE_SCHEMA, thinking=REWRITE_THINKING,
+                                          timeout_seconds=REWRITE_TIMEOUT_SECONDS)
         except self._llm.LLMUnavailable:
             return None, UNAVAILABLE
         try:

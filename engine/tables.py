@@ -96,6 +96,10 @@ def affinity(struct):
 
 
 DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}([ T].+)?$")      # ISO dates (sort + substr-year safe as TEXT)
+# The planner's reply when no runnable reading reads the whole question (engine/answer_presentation.UNREAD_REPLY).
+NO_EXECUTABLE_CANDIDATE = "planner: no executable AST candidate"
+# A year in a column name marks a dated copy of a measure ("Searches: Oct 2025").
+_YEAR_IN_NAME = re.compile(r"(?<!\d)(?:19|20)\d{2}(?!\d)")
 
 
 def name_words(name):
@@ -656,7 +660,7 @@ class TableQuery:
                             or violation.startswith('The field ')
                             or violation.startswith('The requested total for ')):
                         return None, None, violation, candidates, selection
-            return None, None, "planner: no executable AST candidate", candidates, selection
+            return None, None, NO_EXECUTABLE_CANDIDATE, candidates, selection
         deterministic_plan = None
         if analysis_context is not None:
             from engine.decomposition import single_branch
@@ -862,6 +866,11 @@ class TableQuery:
         except Exception as exc:
             candidate, result, candidates, selection = None, None, (), None
             err = f"{type(exc).__name__}: {exc}"
+        clarification = None
+        if candidate is None and err == NO_EXECUTABLE_CANDIDATE and selection is not None and selection.ranking:
+            clarification = unread_clarification(question, selection.pool[selection.ranking[0]], graph)
+            if clarification is not None:
+                err = None
         fallback = selection.fallback if selection is not None else None
         served_by = selection.served_by if selection is not None else "search"
         # The question the served query answers: Gemini's rewording when the search answered that.
@@ -905,6 +914,8 @@ class TableQuery:
             "fallback": fallback.record() if fallback is not None else None,
             "model": model,
         }
+        if clarification is not None:
+            response.update(clarification)
         if candidate is not None:
             from engine.query_contract import coverage
             checked_question = fallback.question if fallback is not None and fallback.kind == 'rewrite' else question
@@ -973,6 +984,35 @@ def _unread_copies(question, query, graph):
     if not others:
         return None
     return {"read": [table], "others": others}
+
+
+def unread_clarification(question, candidate, graph):
+    """The clarification for a question no runnable reading reads whole, from ``candidate``, the best-ranked
+    one: the words it leaves unread and the columns of its tables it does not read that could be what they
+    mean (``clarify``, ``reason``, ``dropped``). None when it reads every word, or none of the question's tables,
+    columns or values, as for a question in another language.
+
+    "keyword volume for home inspection checklist" read Keyword and the keyword but not "volume", and the reply
+    asked "Which interpretation should I use?" with nothing to choose (2026-10-05). A quantity word ("volume",
+    "amount") asks for a number, so it is offered numeric columns; a dated copy of a measure ("Searches: Oct
+    2025") only when no undated one is left."""
+    from engine.answer_presentation import unread_words_reply
+    from engine.query_contract import QUANTITY_WORDS, read_question
+    from engine.sql_ast import column_refs
+    from engine.sql_schema import is_surrogate_key
+
+    reading = read_question(question, candidate, graph)
+    if not reading.unread or not reading.named:
+        return None
+    tables = candidate.query.referenced_tables()
+    read = {(column.table, column.name) for column in column_refs(candidate.query)}
+    numeric = any(word in QUANTITY_WORDS for word in reading.unread)
+    options = [column.ref.name for column in graph.columns
+               if column.ref.table in tables and (column.ref.table, column.ref.name) not in read
+               and not is_surrogate_key(column.ref.name) and (column.ref.type.numeric or not numeric)]
+    undated = [name for name in options if not _YEAR_IN_NAME.search(name)]
+    options = list(dict.fromkeys(undated or options))[:4]
+    return {"clarify": True, "reason": unread_words_reply(reading.unread, options), "dropped": list(reading.unread)}
 
 
 def _query_has_unread_terms(question, candidate, graph, *, calculation_satisfied=False):

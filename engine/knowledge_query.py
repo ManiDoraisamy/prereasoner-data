@@ -49,7 +49,7 @@ from engine.calculations import calculation_clarify
 from engine.numeric import parse_decimal
 from engine.sql_expansion import SHARE_WORDS
 from engine.sql_schema import canon, is_surrogate_key
-from engine.query_contract import Coverage, lexical_words
+from engine.query_contract import QUANTITY_WORDS, Coverage, lexical_words
 from engine import request_timing
 
 # The order a non-geo entity lookup breaks a tie in: the name's primary entity, then the lowest numeric QID.
@@ -239,12 +239,6 @@ _QUERY_WORDS = _OPERATOR_WORDS | frozenset({
     "calculation", "calculations", "step", "steps", "reasoning", "analysis", "breakdown",
 })
 
-
-# Nouns that say how much of a measure there is: "search volume", "order value". After a word of the
-# tables' names they name that measure's amount (KnowledgeQuery._uncovered).
-_QUANTITY_WORDS = frozenset({
-    "volume", "volumes", "quantity", "quantities", "amount", "amounts", "value", "values", "level", "levels",
-})
 
 # Words that ask for a share of a total. Only a division realizes one.
 _SHARE_WORDS = SHARE_WORDS | {"percentages", "shares", "proportions", "fractions"}   # unstemmed words
@@ -833,7 +827,7 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
             # volume" sums "Avg. monthly searches" and was declined over 'volume' (customer report,
             # 2026-10-02). After any other word ("shipping volume") it is still checked.
             spoken = _re.findall(r"[a-z]+", question.lower())
-            quantities = {after for before, after in zip(spoken, spoken[1:]) if after in _QUANTITY_WORDS
+            quantities = {after for before, after in zip(spoken, spoken[1:]) if after in QUANTITY_WORDS
                           and (before in sch_words or canon(before) in sch_words)}
             content = [word for word in content if word not in quantities]
         if content and has_agg:
@@ -1074,7 +1068,10 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
                 "decomposition_required": res["decomposition_required"],
                 "model": "engine - typed AST decomposition requested",
             }
-        if isinstance(res, dict) and res.get("clarify"):
+        if isinstance(res, dict) and (res.get("clarify") or res.get("error")):
+            # Neither has a query whose wording the coverage gate below could check. Read against no SQL, every
+            # word of "keyword volume for home inspection checklist" was dropped, and the planner's error became a
+            # clarification asking "Which interpretation should I use?" with nothing to choose (2026-10-05).
             return res
         calculations = tuple((res or {}).get("calculations") or ()) if isinstance(res, dict) else ()
         if calculations and any(row.get("status") != "satisfied" for row in calculations):

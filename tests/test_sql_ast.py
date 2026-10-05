@@ -714,6 +714,7 @@ class FakeGemini:
         self.enabled = enabled
         self.outage = outage
         self.calls = []
+        self.requests = []
 
     def available(self):
         return self.enabled
@@ -725,6 +726,7 @@ class FakeGemini:
         inspect.signature(llm.generate_text).bind(**request)   # the call engine/llm.py accepts
         field = next(iter(request["json_schema"]["properties"]))
         self.calls.append((field, request["prompt"]))
+        self.requests.append(request)
         if self.outage:
             raise self.LLMUnavailable("Gemini call failed (TimeoutError)")
         reply = self.replies[field]
@@ -3003,6 +3005,62 @@ def test_a_sum_over_rows_its_joins_repeat_is_served_only_when_every_reading_is_o
     assert only.double_counted == (True,) and only.selected == 0 and only.record()["double_counted"]
 
 
+def _keyword_planner_tabs():
+    """Three Google Ads Keyword Planner exports, the first with a column its owner added: a customer's Keyword Stats
+    workbook (2026-10-05). The values are made up."""
+    columns = ["Keyword", "Currency", "Avg. monthly searches", "Three month change", "Competition",
+               "Competition (indexed value)", "Top of page bid (low range)", "Top of page bid (high range)",
+               "Searches: Sep 2026"]
+
+    def rows(keywords):
+        return [[keyword, "USD", volume, "0%", "Low", index, 0.5 + index, 2.0 + index, volume]
+                for index, (keyword, volume) in enumerate(keywords)]
+
+    checklist = rows([("fire extinguisher audit checklist", 5000), ("home inspection checklist", 5000),
+                      ("balcony inspection checklist", 500)])
+    return [{"name": "Checklist", "columns": [columns[0], "shortlist", *columns[1:]],
+             "rows": [[row[0], "Yes" if index == 1 else None, *row[1:]] for index, row in enumerate(checklist)]},
+            {"name": "Forklift", "columns": columns,
+             "rows": rows([("forklift inspection checklist", 500), ("forklift daily checklist", 50)])},
+            {"name": "Inspection", "columns": columns,
+             "rows": rows([("home inspection", 50000), ("home inspection checklist", 5000), ("roof inspection", 5000)])}]
+
+
+def test_a_question_no_reading_reads_whole_is_asked_about_the_word_it_could_not_read():
+    """A customer's Keyword Stats workbook (2026-10-05): "keyword volume for home inspection checklist" read Keyword and
+    the keyword but not "volume". Nothing was served, and the reply asked "Which interpretation should I use?" with
+    nothing to choose. The reply names the word and offers the columns of the reading's table it could mean: numeric
+    ones for a quantity word, undated before dated copies of a measure."""
+    tabs = _keyword_planner_tabs()
+    planner = _hermetic_planner()
+    served = planner.serve(tabs, "keyword volume for home inspection checklist")
+    assert served["clarify"] is True and served["error"] is None and served["dropped"] == ["volume"], served
+    assert served["reason"] == ("I couldn't tell which column “volume” means. Did you mean Avg. monthly searches, "
+                                "Competition (indexed value), Top of page bid (low range) or Top of page bid (high "
+                                "range)?"), served["reason"]
+    # Contrast: the column's own name answers.
+    named = planner.serve(tabs, "avg. monthly searches for home inspection checklist")
+    assert named["result"]["rows"] == [[5000]] and "clarify" not in named, named
+    # A word that asks for no number is offered every column the reading does not read.
+    trend = planner.serve(tabs, "keyword trend for home inspection checklist")
+    assert trend["reason"] == ("I couldn't tell which column “trend” means. Did you mean shortlist, Currency, Avg. "
+                               "monthly searches or Three month change?"), trend["reason"]
+    # Negative: a reading that reads none of the question's tables, columns or values is not asked about.
+    assert planner.serve([PEOPLE], JAPANESE_FRANCE)["error"] == "planner: no executable AST candidate"
+
+
+def test_the_rewrite_asks_for_low_thinking_and_stops_at_twenty_seconds():
+    """The same question with Gemini on (2026-10-05): at the model's default thinking the rewording took 12 to 30 s,
+    and in production the 30 s client timeout passed with no answer, a minute after the question. The rewrite asks
+    for LOW thinking (6 to 14 s measured) and stops at 20 s; the search reads the rewording."""
+    rewording = "What is the Avg. monthly searches for the Keyword 'home inspection checklist'?"
+    planner, gemini = _gemini_planner(question=rewording)
+    served = planner.serve(_keyword_planner_tabs(), "keyword volume for home inspection checklist")
+    assert served["result"]["rows"] == [[5000]] and served["fallback"]["kind"] == "rewrite", served
+    (request,) = gemini.requests
+    assert request["thinking"] == "LOW" and request["timeout_seconds"] == 20.0, request
+
+
 def test_total_before_a_measure_reads_the_measure_or_the_whole_name():
     """Near copies of a subscriptions export (SI with one more column) leave SI and NT their own layouts, both with
     Amount, beside reports with Total Amount: "the total Amount" must still read the total of Amount, as it
@@ -4548,6 +4606,8 @@ TESTS = [
     test_total_before_a_measure_reads_the_measure_or_the_whole_name,
     test_a_counted_noun_naming_an_unjoined_column_counts_the_rows,
     test_a_sum_over_rows_its_joins_repeat_is_served_only_when_every_reading_is_one,
+    test_a_question_no_reading_reads_whole_is_asked_about_the_word_it_could_not_read,
+    test_the_rewrite_asks_for_low_thinking_and_stops_at_twenty_seconds,
     test_serving_preserves_repeated_source_rows_in_aggregates,
     test_a_listing_follows_the_order_the_question_names,
     test_by_after_a_participle_names_who_acted,

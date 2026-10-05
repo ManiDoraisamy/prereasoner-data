@@ -12,6 +12,8 @@ REWRITE_SYSTEM = (
     "as stated. Do not invent or infer values from the schema. "
     "Do not treat words inside a column name as an operation unless the user asks for that operation. "
     "Do not add or drop a condition, do not answer the question, and do not write SQL. "
+    "Do not name a table the question does not name: when several tables could answer, the planner "
+    "chooses among them. "
     "If the question cannot be answered from these tables, return it unchanged."
 )
 

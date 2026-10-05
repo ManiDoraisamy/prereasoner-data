@@ -432,6 +432,42 @@ def test_own_data_adapter_preserves_calendar_proof_and_selection():
     assert 'coverage' not in adapter.serve(tables,question), 'an absent proof cannot be manufactured'
 
 
+
+def test_the_coverage_gate_passes_an_error_through():
+    """Production, 2026-10-05: the planner served nothing for "keyword volume for home inspection checklist", and
+    the coverage gate read its error against no SQL. Every word was dropped, one named a world entity, and the reply
+    became "Which interpretation should I use?" with nothing to choose. An error has no query to check."""
+    from unittest.mock import patch
+    from engine.entities import EntityQuery
+    from engine.knowledge_query import KnowledgeQuery
+    question = 'keyword volume for home inspection checklist'
+    error = {'question': question, 'sql': None, 'result': None, 'error': 'planner: no executable AST candidate'}
+    tables = [{'name': 'Checklist', 'columns': ['Keyword', 'Avg. monthly searches'],
+               'rows': [['home inspection checklist', 5000]]}]
+    owner = object.__new__(KnowledgeQuery)
+    with patch.object(owner, 'ingest', return_value=(tables, [])),             patch.object(owner, 'schema', return_value=([{'table': 'Checklist', 'name': 'Keyword'}], {}, {})),             patch.object(owner, 'read_op_all', return_value=('SUM', 'Checklist', 'Avg. monthly searches')),             patch.object(owner, '_nongeo_plan', return_value=None),             patch.object(EntityQuery, 'serve', return_value=dict(error)),             patch.object(owner, '_uncovered', return_value=['volume']),             patch.object(owner, '_clarify', return_value=None),             patch.object(owner, '_word_qid', return_value='Q39297'):
+        served = owner.serve(tables, question, schema='conversation')
+    assert served == error, served
+
+
+def test_the_own_data_adapter_carries_a_clarification():
+    """The planner's clarification (engine/tables.py unread_clarification) reaches the reply through the own-data
+    branch of KnowledgeTableQuery.serve, which copies the planner's keys it knows."""
+    from types import SimpleNamespace
+    from engine.knowledge_tables import KnowledgeTableQuery
+    asked = {'sql': None, 'result': None, 'error': None, 'clarify': True, 'dropped': ['volume'],
+             'reason': "I couldn't tell which column “volume” means. Did you mean Avg. monthly searches?"}
+    adapter = KnowledgeTableQuery.__new__(KnowledgeTableQuery)
+    adapter.q11 = SimpleNamespace(ingest=lambda t: (t, []), schema=lambda n, f: ([], {}, {}), serve=lambda *a: asked)
+    adapter.route = lambda t: {}; adapter.column_dims = lambda s, n: {}; adapter.read_op_all = lambda q, s: None
+    adapter._currency_conversion_binding = lambda *a: None; adapter._world_rate_binding = lambda *a: None
+    adapter._own_value_matches = lambda *a: []; adapter.meaning_filter = lambda *a: None
+    adapter.world_target = lambda *a: None; adapter._debug_input = lambda *a: {}
+    served = adapter.serve([{'name': 'Checklist', 'columns': ['Keyword'], 'rows': []}],
+                           'keyword volume for home inspection checklist')
+    assert {key: served.get(key) for key in ('clarify', 'reason', 'dropped', 'error')} == {
+        key: asked[key] for key in ('clarify', 'reason', 'dropped', 'error')}, served
+
 TESTS = [value for name, value in globals().copy().items() if name.startswith('test_') and callable(value)]
 
 if __name__ == '__main__':

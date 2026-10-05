@@ -25,6 +25,22 @@ def _gen(chunks, columns, rows, instruction=None, emit=None):
         return converse.generate_master("series", columns, rows, instruction=instruction, emit=emit), cap
 
 
+
+def test_a_clarification_without_a_reason_names_the_words_it_could_not_read():
+    """"keyword volume for home inspection checklist" was answered "I need one more detail before I can answer that.
+    Which interpretation should I use?", with nothing to choose (2026-10-05). A clarification with no reason and no
+    proposed question names the words the engine dropped."""
+    from engine.answer_presentation import terminal_reply
+    assert terminal_reply({'status': 'clarify', 'clarify': {'dropped': ['volume']}}) == (
+        "I couldn't tell what “volume” means in your sheets. Ask again with the column's name as the sheet spells it.")
+    assert terminal_reply({'status': 'clarify', 'clarify': {'dropped': ['volume', 'trend']}}).startswith(
+        "I couldn't tell what “volume” and “trend” mean in your sheets.")
+    # The engine's own reason and its proposal stay the reply.
+    reason = "I couldn't tell which column “volume” means. Did you mean Avg. monthly searches?"
+    assert terminal_reply({'status': 'clarify', 'clarify': {'reason': reason, 'dropped': ['volume']}}) == reason
+    assert terminal_reply({'status': 'clarify', 'clarify': {'proposed': 'total amount', 'dropped': ['sales']}}) == (
+        'I need one more detail before I can answer that. Try asking: “total amount”')
+
 def test_reply_presents_the_computed_answer_without_external_processing():
     from engine.answer_presentation import terminal_reply
     with patch.object(llm, 'generate_text', side_effect=AssertionError('Results must not reach Gemini')):
@@ -357,6 +373,7 @@ def test_trace_deletion_filters_by_conversation_and_supports_delete_all():
 
 
 TESTS = [
+    test_a_clarification_without_a_reason_names_the_words_it_could_not_read,
     test_reply_presents_the_computed_answer_without_external_processing,
     test_an_engine_failure_is_one_sentence_the_user_can_act_on,
     test_a_blank_answer_or_a_link_in_a_cell_is_shown_as_data,

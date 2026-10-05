@@ -1951,3 +1951,41 @@ population a question names instead of each country's once per city (one gains l
 credit ("How many paragraphs in total?" now counts templates, as no eligible reading counts paragraphs without
 summing a template's version number once per paragraph). The planner suite's regression test serves the report
 workbook's totals from the exports' Amount: 20 and 7, where the report reading gave 40.
+
+## A word the search cannot read is asked about, and the rewrite answers in seconds (2026-10-05)
+
+A customer asked the Sheets add-on "keyword volume for home inspection checklist" over four Keyword Planner tabs.
+The answer is one cell, 5,000 average monthly searches. The add-on replied after more than a minute with "I need one
+more detail before I can answer that. Which interpretation should I use?", offering nothing to choose. Production
+timing: 57.1 s in the chat service, 52.5 s of it in the engine, and 30.6 s of that in the selection's Gemini
+fallback. Three causes, each fixed in its owner:
+
+- **The rewrite thought until it timed out.** The search links words to columns by their names, so "volume" read
+  no column, and selection asked Gemini to reword the question. Gemini's rewording was right ("What is the Avg.
+  monthly searches for the Keyword 'home inspection checklist'?"), but at the model's default thinking (about
+  1,200 thought tokens) it took 12 to 14 s locally and outlasted the 30 s client timeout in production. The
+  rewrite now asks for LOW thinking, the model's least (about 560 tokens; MINIMAL is refused), and stops at 20 s
+  (`question_rewrite.REWRITE_THINKING`, `REWRITE_TIMEOUT_SECONDS`, `llm.generate_text(thinking=...)`). Measured
+  on a synthetic copy of the workbook, the question is answered in 9 s, 6 s of it Gemini's. The rewording is
+  also told not to name a table the question does not name. It had added "in the Inspection table", so the
+  planner's own choice among tabs never applied.
+- **The coverage gate turned the planner's error into a clarification.** After the rewrite failed, the planner
+  returned "no executable AST candidate". `KnowledgeQuery.serve` then checked its words against no SQL, found
+  "volume" dropped and naming a Wikidata item, and returned a clarification with no reason and no proposal. A
+  clarification or an error now leaves the gate as it came.
+- **A clarification with nothing to choose.** When no runnable reading reads the whole question, and the
+  best-ranked one reads some of its tables, columns or values, the reply names the words it left unread and
+  offers the columns of its tables they could mean: "I couldn't tell which column “volume” means. Did you mean
+  Avg. monthly searches, Competition (indexed value), Top of page bid (low range) or Top of page bid (high
+  range)?" (`tables.unread_clarification`, `query_contract.read_question`). A quantity word (`QUANTITY_WORDS`,
+  now shared by the gate and the planner) is offered numeric columns, and dated copies of a measure ("Searches:
+  Oct 2025") only when no undated one is left. A question none of whose tables, columns or values were read,
+  such as one in another language, keeps the generic reply. The renderer names the dropped words of any other
+  clarification that has neither a reason nor a proposal.
+
+Not changed: the search still cannot read "volume" without Gemini. The encoder's column vectors put "volume"
+nearest Currency (0.43), and "search volume" nearest a dated Searches column. A synonym list would be the
+question-specific patch this repository refuses. Still open: about 20 s pass in the engine before selection on a
+conversation's first question, and with the value "home inspection checklist" in two tabs the reading came from
+Inspection rather than the active Checklist tab. Checklist's added column ("shortlist") keeps it out of the other
+tabs' layout group, and words inside the value ("inspection") tip the encoder's table signal.

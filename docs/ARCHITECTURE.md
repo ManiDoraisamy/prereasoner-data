@@ -322,16 +322,20 @@ When no candidate is eligible or the selected plan leaves request wording unreso
 enabled Gemini (`EXTERNAL_LLM_ENABLED` plus a Vertex AI project, checked by `engine/llm.py`),
 `select_query` may call `engine/question_rewrite.py` once. Gemini receives the current question and a
 schema description containing table and column names, inferred types, and declared foreign keys.
-It receives no cell values, full rows, or conversation history. The rewriter checks that numbers,
-quoted text, and any source values it recognized in the question remain in its rewrite. Replies are
-not cached. The deterministic typed search alone builds candidates and SQL. A rewritten reading is served
+It receives no cell values, full rows, or conversation history, and it is told not to name a table the question
+does not name. The call asks for LOW thinking and stops after 20 s: at the model's default thinking a rewording
+once outlasted the 30 s client timeout. The rewriter checks that numbers, quoted text, and any source values it
+recognized in the question remain in its rewrite. Replies are not cached. The deterministic typed search alone builds candidates and SQL. A rewritten reading is served
 only when it runs, keeps every constraint of the original question and leaves no word of the rewording
 unread.
 
 The response labels an answer served after a rewrite with `fallback.kind: rewrite`, the model name,
 and the rewritten question. Gemini cannot write SQL, choose a candidate, or provide a result. When no
 eligible candidate is found after rewriting, a rewrite is unsafe, or Gemini is unavailable for an
-unreadable baseline, no query is served. Decomposition leaves continue to use `allow_fallback=False`.
+unreadable baseline, no query is served. If the best-ranked runnable reading reads some of the question's
+tables, columns or values, the reply names the words it left unread and offers the columns of its tables they
+could mean, numeric ones for a quantity word such as "volume" (`engine/tables.py:unread_clarification`).
+Decomposition leaves continue to use `allow_fallback=False`.
 
 `EXTERNAL_LLM_ENABLED` defaults to off, and with it off selection is deterministic and no model
 writes SQL. The guided Community deployment turns Gemini on together with chat, so its engine has

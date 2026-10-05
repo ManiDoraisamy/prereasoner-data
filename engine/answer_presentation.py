@@ -40,10 +40,25 @@ def error_reply(shaped: dict[str, Any]) -> str:
     return error
 
 
+def unread_words_reply(words, options=()) -> str:
+    """A reply naming question words no reading of the sheets reads, and the columns they could mean."""
+    quoted = " and ".join(f"“{word}”" for word in words)
+    verb = "means" if len(words) == 1 else "mean"
+    if options:
+        listed = options[0] if len(options) == 1 else ", ".join(options[:-1]) + " or " + options[-1]
+        return f"I couldn't tell which column {quoted} {verb}. Did you mean {listed}?"
+    return f"I couldn't tell what {quoted} {verb} in your sheets. Ask again with the column's name as the sheet spells it."
+
+
 def clarify_reply(clarify: dict[str, Any]) -> str:
-    """The engine's clarification, with the question it proposes quoted as one the user can send."""
-    reason = str(clarify.get("reason") or "I need one more detail before I can answer that.").strip()
+    """The engine's clarification, with the question it proposes quoted as one the user can send. One without a
+    reason or a proposal names the words it could not read: "Which interpretation should I use?" with nothing
+    to choose from was the whole reply to "keyword volume for home inspection checklist" (2026-10-05)."""
     proposed = str(clarify.get("proposed") or "").strip()
+    dropped = [str(word).strip() for word in clarify.get("dropped") or () if str(word).strip()]
+    if not clarify.get("reason") and not proposed and dropped:
+        return unread_words_reply(dropped)
+    reason = str(clarify.get("reason") or "I need one more detail before I can answer that.").strip()
     if proposed:
         sentence = reason if reason[-1:] in ".?!" else reason + "."
         return f"{sentence} Try asking: “{proposed}”"

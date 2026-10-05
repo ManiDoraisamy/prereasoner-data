@@ -16,6 +16,14 @@ def lexical_words(text):
                  re.findall(r"[^\W_]+(?:'[^\W_]+)?", str(text).casefold(), re.UNICODE))
 
 
+# Nouns that say how much of a measure there is: "search volume", "order value". After a word of the tables'
+# names they name that measure's amount (KnowledgeQuery._uncovered); a question the search cannot read that
+# asks one of them is offered the numeric columns (engine/tables.py, unread_clarification).
+QUANTITY_WORDS = frozenset({
+    "volume", "volumes", "quantity", "quantities", "amount", "amounts", "value", "values", "level", "levels",
+})
+
+
 _CELL_WORDS = weakref.WeakKeyDictionary()
 
 
@@ -417,6 +425,20 @@ def has_unread_terms(question, candidate, graph, *, calculation_satisfied=False)
     """
     if candidate is None:
         return True
+    reading = read_question(question, candidate, graph, calculation_satisfied=calculation_satisfied)
+    return bool(reading.unread) or reading.wildcard
+
+
+@dataclass(frozen=True)
+class Reading:
+    """What one candidate makes of the question's words, lower case as the question spells them."""
+    unread: tuple[str, ...]     # the words it does not read
+    named: tuple[str, ...]      # the words it reads as a table, a column or a compared value
+    wildcard: bool              # it returns every field where the question names one
+
+
+def read_question(question, candidate, graph, *, calculation_satisfied=False):
+    """The ``Reading`` of ``question`` by ``candidate``, a runnable pool member."""
     from engine.sql_ast import Aggregate, SelectQuery, SetQuery, Star, SubquerySource, share_aggregate
     from engine.sql_schema import canon
     from engine.closed_class import action_words, closed_class_words, measure_participles
@@ -436,7 +458,8 @@ def has_unread_terms(question, candidate, graph, *, calculation_satisfied=False)
     phrases = served_date_phrases(question, tokens(question), graph)
     realized_dates = bool(phrases) and realizes_dates(candidate.query, phrases)
     date_words = {word for phrase in phrases for word in tokens(question)[phrase.start:phrase.end]} if realized_dates else set()
-    words = tuple(canon(word) for word in lexical_words(recognized_question) if word not in date_words)
+    spelled = tuple(word for word in lexical_words(recognized_question) if word not in date_words)
+    words = tuple(canon(word) for word in spelled)
     schema_words = {
         canon(word)
         for column in graph.columns
@@ -497,8 +520,10 @@ def has_unread_terms(question, candidate, graph, *, calculation_satisfied=False)
     # tested by the query. It cannot stand in for an omitted state column or value.
     if re.search(r"\b(?:named|called)\s+", question, re.I) and sql_literals:
         ordinary_words.update({"named", "called"})
-    if any(word not in schema_words | sql_literals | ordinary_words for word in words):
-        return True
+    unread = tuple(dict.fromkeys(said for said, word in zip(spelled, words)
+                                 if word not in schema_words | sql_literals | ordinary_words))
+    named = tuple(dict.fromkeys(said for said, word in zip(spelled, words)
+                                if word in schema_words | sql_literals and word not in ordinary_words))
     def has_star(query):
         if isinstance(query, SetQuery):
             return has_star(query.left) or has_star(query.right)
@@ -512,7 +537,8 @@ def has_unread_terms(question, candidate, graph, *, calculation_satisfied=False)
     requested_fields = set(words) & (schema_words - table_words)
     from engine.sql_expansion import complete_projection_requested
     explicitly_all_fields = complete_projection_requested(question)
-    return has_star(candidate.query) and bool(requested_fields) and not explicitly_all_fields
+    return Reading(unread, named,
+                   has_star(candidate.query) and bool(requested_fields) and not explicitly_all_fields)
 
 
 def realizes_numeric_comparisons(question, candidate, graph, *, exclude_positions=frozenset()):

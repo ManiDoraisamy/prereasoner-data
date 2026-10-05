@@ -59,7 +59,7 @@ def _client():
 
 
 def _config(system: str, max_output_tokens: int, timeout_seconds: float,
-            json_schema: dict | None = None):
+            json_schema: dict | None = None, thinking: str | None = None):
     from google.genai import types
     from engine.request_deadline import remaining
 
@@ -69,6 +69,8 @@ def _config(system: str, max_output_tokens: int, timeout_seconds: float,
 
     json_mode = ({"response_mime_type": "application/json", "response_json_schema": json_schema}
                  if json_schema is not None else {})
+    thinking_mode = ({"thinking_config": types.ThinkingConfig(thinking_level=thinking)}
+                     if thinking is not None else {})
     return types.GenerateContentConfig(
         system_instruction=system,
         max_output_tokens=max_output_tokens,
@@ -76,20 +78,23 @@ def _config(system: str, max_output_tokens: int, timeout_seconds: float,
         seed=0,
         http_options=types.HttpOptions(timeout=int(timeout_seconds * 1000)),
         **json_mode,
+        **thinking_mode,
     )
 
 
 def generate_text(*, system: str, prompt: str, max_output_tokens: int,
-                  json_schema: dict | None = None, timeout_seconds: float = 30.0) -> str:
+                  json_schema: dict | None = None, timeout_seconds: float = 30.0,
+                  thinking: str | None = None) -> str:
     """Gemini's reply to ``prompt``: a JSON document of ``json_schema``'s shape when one is given.
 
-    ``timeout_seconds`` bounds the call. Raises ``LLMUnavailable`` and nothing else."""
+    ``timeout_seconds`` bounds the call. ``thinking`` is the model's thinking level ("LOW", "HIGH");
+    None leaves the model's default. Raises ``LLMUnavailable`` and nothing else."""
     if not available():
         raise LLMUnavailable("Gemini is not enabled for this deployment")
     try:
         response = _client().models.generate_content(
             model=model_id(), contents=prompt,
-            config=_config(system, max_output_tokens, timeout_seconds, json_schema),
+            config=_config(system, max_output_tokens, timeout_seconds, json_schema, thinking),
         )
         text = response.text
     except Exception as exc:  # noqa: BLE001 — client, credential, API, and timeout failures are one outage to callers
