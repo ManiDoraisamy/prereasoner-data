@@ -4,6 +4,17 @@ Dated entries come newest first. Each records a run at the commit it names; the 
 entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection arbiter`) may since have
 been removed, and that commit holds the code that ran.
 
+## A counted noun whose column no key reaches, at `70022e3`: same answers (2026-10-05)
+
+Same contract as `bc85ccd` (Gemini off, `whole_db`, `served` selection, SQL backend, row cap 5,000), clean
+checkout of `70022e3` (`worktree_dirty=false`, tag `counted-70022e3`). The commit stops grouping a projected
+column that no key joins to the group's table (unless the question names it after "by"), anchors the search on
+what the question asks of the rows, and lets the completeness check read a counted noun as the rows counted
+when only unreachable tables hold the field it names. All 1,034 examples have the same SQL, rows and grade as
+`bc85ccd`: 243 strict, 310 lenient, 408 answered. Prediction seconds: median 1.09, p90 2.22, p95 2.58, max 4.76.
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_counted-70022e3.json`.
+
 ## Tabs of one layout and "the total Amount", at `ed8d280`: same answers (2026-10-05)
 
 Same contract as `bc85ccd` (Gemini off, `whole_db`, `served` selection, SQL backend, row cap 5,000), clean

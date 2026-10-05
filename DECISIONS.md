@@ -1894,3 +1894,30 @@ its rows, and allows 120 s; it took 38 s.
 Still open: the add-on sends the whole workbook with every question (8.9 MB through Apps Script); for an
 own-data question, compose builds a world lookup and a plan that the delegate then replaces; and where a
 key links a report to its export, a reading can sum the report's totals over the export's rows.
+
+**Testing the six-tab workbook in production (2026-10-05) found four more defects:**
+- **The note named tabs canonically**: "From nt. si and ff could answer this too". The engine sees only canonical
+  table names. It now reports them in `layout_copies`, and the chat service writes each one as the request named
+  it (`request_validation.display_names`, beside `canonical_table_name`). The names reach only the reply, so the
+  model feedback, the traces and the conversation's source hash are unchanged.
+- **An unreadable question replied with the planner's words**, "planner: no valid AST candidate". Every
+  `planner:` error now reads "I couldn't find a way to answer that from your sheets. Try asking again with the
+  column names as they appear in the sheet." It is not the busy reply; asking again unchanged would not help.
+- **A web upload over about 5 MB answered the demo.** The home page hands the sheets to the analysis page in
+  sessionStorage, which holds about 5 MB, and the failed write was swallowed, so the analysis page ran its demo
+  tables and demo question. Sheets that do not fit now wait in IndexedDB under the tab's key
+  (`lib/shared.js` `SHEET_HANDOFF`): the home page, the Google Sheets picker, the analysis page and reopening a
+  conversation. When they cannot be read, the page says so instead of analyzing the demo.
+- **"How many subscriptions are there by Status?" had no reading.** "subscriptions" named the report tabs'
+  Subscriptions column, which no key joins to the exports' Status, and every grouping took both. A projected
+  column no key joins to a group's table is no longer grouped with it unless the question names it after "by";
+  the search anchors on what the question asks of the rows, so such a column drops out; and the completeness
+  check reads a counted noun as the rows counted when only unreachable tables hold the field it names
+  (`SchemaGraph.reachable` serves both).
+
+**Why "Prereasoner is busy right now".** Production runs one engine instance, and it answers one question at a
+time (`WORLD_LOCK`); a question that waits 15 s gets the busy reply. At 23:19:45 UTC on 2026-10-04 a question
+ran 242 s on the previous engine (the six-tab total, 98 s of it executing readings no key joined), and the
+questions asked behind it got "busy". The same question now takes about 50 s on its first ask. Running questions
+concurrently (a second warm instance, a longer admission wait, or lifting the lock for own-data questions) is
+the owner's cost and capacity decision; nothing in that configuration changed.
