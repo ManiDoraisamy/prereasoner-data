@@ -85,7 +85,9 @@ git diff --check
 
 These cover typed AST behavior, deterministic routing, private-reference selection and validation, workbook
 reference state, JavaScript syntax, and Python syntax. The platform locks generated from
-`requirements-ci.txt` are intentionally independent of the model stack. The remaining locks target Linux
+`requirements-ci.txt` are intentionally independent of the model stack, except spaCy and its `en_core_web_md`
+pipeline: the completeness check reads the tagger on every served selection, so the planner suites run it and
+skip nothing for it. The remaining locks target Linux
 containers. The `python-hermetic` GitHub Actions job audits them on Linux; auditing them from Windows asks
 pip to resolve Windows-only transitive dependencies and is not a valid check of the release image. Live engine suites still
 require the serving container, model artifacts, and PostgreSQL.

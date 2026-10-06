@@ -29,7 +29,8 @@ CI installs `requirements-ci.lock.txt`, the Linux lock generated from the same i
 same Python boundary, correctness-critical Ruff checks over every tracked Python package, the real-XLSX
 Playwright journey, PostgreSQL numeric parity, Terraform format/validation, container builds, SBOM generation,
 critical-vulnerability scans, and a full-history Gitleaks scan. The typed planner does not need PyTorch at import time; model libraries are
-loaded only by model-backed methods.
+loaded only by model-backed methods. Its completeness check does need spaCy's `en_core_web_md` tagger, which both
+CI locks install.
 
 ## External Artifacts
 

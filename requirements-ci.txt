@@ -1,5 +1,7 @@
 # Lightweight dependencies for hermetic tests and static checks.
-# The model stack in requirements.txt is required only for live engine/model suites.
+# The model stack in requirements.txt is required only for live engine/model suites, except spaCy's tagger:
+# the completeness check (engine/closed_class.py) reads it on every served selection, so the hermetic planner
+# suites need it too.
 httpx>=0.27,<1
 mcp==1.29.1
 numpy==1.26.4
@@ -10,6 +12,9 @@ sqlglot==30.18.0
 google-genai==1.75.0            # tests/test_llm.py checks engine/llm.py's requests against the real SDK types
 requests>=2.31,<3
 defusedxml>=0.7,<1
+spacy==3.8.13                   # the engine's tagger (requirements.txt pins the same version and model)
+click>=8.1,<9                   # spaCy 3.8's package init imports its CLI (spacy.cli), which needs click at runtime
+en_core_web_md @ https://github.com/explosion/spacy-models/releases/download/en_core_web_md-3.8.0/en_core_web_md-3.8.0-py3-none-any.whl
 bandit==1.9.4
 pip-audit==2.10.1
 ruff==0.16.3

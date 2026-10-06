@@ -295,11 +295,6 @@ def test_the_coverage_gate_reads_a_place_as_one_name():
     resolving one word of a place on its own: 'united' of 'the United Kingdom' surfaced another country,
     'north' of 'North American' a town called North, 'European' Germany. A span that names a qid the SQL
     filters on covers its words, and a demonym is its place plus '-n'/'-an'."""
-    from tests import spacy_model_installed
-
-    if not spacy_model_installed():
-        print("  SKIP  test_the_coverage_gate_reads_a_place_as_one_name: needs spaCy's en_core_web_md (the engine image installs it)")
-        return
     from unittest.mock import patch
 
     import numpy as np
@@ -349,11 +344,6 @@ def test_the_coverage_gate_reads_a_measure_named_in_other_words():
     and was declined as having dropped 'search' and 'volume', which sat near places. 'search' is the column's
     'searches' (one plural rule, sql_schema.canon), and a quantity noun after a word of the tables' names
     ('search volume', 'sales volume') is that measure's amount. After any other word it is still checked."""
-    from tests import spacy_model_installed
-
-    if not spacy_model_installed():
-        print("  SKIP  test_the_coverage_gate_reads_a_measure_named_in_other_words: needs spaCy's en_core_web_md (the engine image installs it)")
-        return
     from unittest.mock import patch
 
     import numpy as np

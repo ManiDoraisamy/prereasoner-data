@@ -5,8 +5,8 @@ Run commands from the repository root.
 ## Hermetic Suites
 
 These need no PostgreSQL or network, and run in this order in `tests/run_all.py`. Install
-`requirements-ci.txt`. Without the runtime bundle, `tests.test_complex_datasets` reports its
-model-backed cases as SKIP, which is not a pass.
+`requirements-ci.txt`; it includes spaCy's `en_core_web_md` tagger, which every served selection reads. Without the
+runtime bundle, `tests.test_complex_datasets` reports its model-backed cases as SKIP, which is not a pass.
 
 | Command | Covers |
 |---|---|

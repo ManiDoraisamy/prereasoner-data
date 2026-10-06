@@ -30,14 +30,14 @@
     },
     "requirements-ci-windows.lock.txt": {
       "input": "requirements-ci.txt",
-      "input_sha256": "efd6c53c1fe2579847681588842e2e345ff92d3fc71e9a674673d32282756bf3",
-      "lock_sha256": "63caef0557db1f67d36d1f95b7074c2c9855a84242dd5500cfc8e605f629e7dd",
+      "input_sha256": "2e6d32e7ba00cafafbc17e5d3152497e231e8cc49498732814fc54a39898768b",
+      "lock_sha256": "50de7d7b7c9b8731bcb0170848aaba2b8bc1364822d7729a7c6aaa4ac16617ac",
       "target": "windows-x86_64-python3.11"
     },
     "requirements-ci.lock.txt": {
       "input": "requirements-ci.txt",
-      "input_sha256": "efd6c53c1fe2579847681588842e2e345ff92d3fc71e9a674673d32282756bf3",
-      "lock_sha256": "ea12ebfb6d0aac62b6b714ba5890092a65e5e40a00510a310f166be3131ac7a1",
+      "input_sha256": "2e6d32e7ba00cafafbc17e5d3152497e231e8cc49498732814fc54a39898768b",
+      "lock_sha256": "92b01079966ac7068b3deb87c9b1727d418805581979b567ff07fc39d3f34469",
       "target": "linux-x86_64-python3.11"
     },
     "requirements.lock.txt": {
