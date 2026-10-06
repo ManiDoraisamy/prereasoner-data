@@ -313,7 +313,7 @@ class SchemaGraph:
         for column in self.columns:
             seen = set()
             for value in distinct_values(column.values):
-                normalized = _normalize_value(value)
+                normalized = normalize_value(value)
                 if not normalized or normalized in seen or _NUMBER_RE.match(normalized):
                     continue
                 seen.add(normalized)
@@ -448,7 +448,8 @@ def is_surrogate_key(name: str) -> bool:
     return bool(words) and (words[-1] in SURROGATE_KEY_WORDS or words == ("index",))
 
 
-def _normalize_value(value: Any) -> str:
+def normalize_value(value: Any) -> str:
+    """A cell's comparable words, the form ``value_index`` keys and the search's text filters read."""
     if value is None:
         return ""
     return " ".join(canon(token) for token in _WORD_RE.findall(str(value).lower()))

@@ -320,6 +320,12 @@ def constraint_violations(question, query, graph):
             violations.append('showing all rows must preserve every source column')
         if query.limit is not None:
             violations.append('showing all rows must not impose an unstated row cutoff')
+    # A text the question asks values to hold is a LIKE, not one value: a rewording that turned "all
+    # inspection checklist" into the keyword 'inspection checklist' answered for one of 38 (2026-10-06).
+    from engine.sql_search import realizes_substring, substring_requests
+    for request in substring_requests(question, graph):
+        if not realizes_substring(query, request.text, request.subject):
+            violations.append(f"the values holding {request.text!r} are not the ones compared")
     if phrases and not realizes_dates(query, phrases):
         violations.append("requested calendar constraint is missing or changed")
     elif phrases:
@@ -503,6 +509,11 @@ def read_question(question, candidate, graph, *, calculation_satisfied=False):
     observed = cell_words(graph)
     ordinary_words.update(canon(word) for word in closed_class_words(question))
     ordinary_words.update(relational_operator_evidence(question, candidate.query, graph)[0])
+    # "contain", "substring" or "all" asked for the text a LIKE compares: read once the query compares it.
+    from engine.sql_search import realizes_substring, substring_requests
+    ordinary_words.update(cue for request in substring_requests(question, graph)
+                          if realizes_substring(candidate.query, request.text, request.subject)
+                          for cue in request.cues)
     ordinary_words.update(canon(word) for word in action_words(question) if canon(word) not in observed)
     has_aggregate = any(isinstance(item.expression, Aggregate)
                         for item in getattr(candidate.query, 'select', ()))

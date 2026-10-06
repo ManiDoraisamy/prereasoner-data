@@ -468,6 +468,77 @@ def test_the_own_data_adapter_carries_a_clarification():
     assert {key: served.get(key) for key in ('clarify', 'reason', 'dropped', 'error')} == {
         key: asked[key] for key in ('clarify', 'reason', 'dropped', 'error')}, served
 
+
+def _held_inside(graph):
+    """SUM("Avg. monthly searches") over the keywords holding 'inspection checklist', as the search builds it."""
+    from engine.sql_ast import Aggregate, Comparison, Literal, Lower, SelectItem, SelectQuery, render_query
+    from engine.sql_candidate import ScoredQuery
+    searches, keyword = (graph.column_map[('Checklist', name)].ref for name in ('Avg. monthly searches', 'Keyword'))
+    query = SelectQuery((SelectItem(Aggregate('SUM', searches)),), 'Checklist',
+                        where=Comparison(Lower(keyword), 'LIKE', Literal('%inspection checklist%', keyword.type)))
+    return ScoredQuery(query, render_query(query), 0.0, ())
+
+
+def test_a_keyword_volume_total_is_not_a_total_of_the_keyword_column():
+    # The owner's keyword sheet (2026-10-06): "total keyword volume for all inspection checklist" took Keyword
+    # for what "total" totals, so the sum Gemini's rewording found was refused with "The requested total for
+    # 'Keyword' could not be computed from that field", and so was every other reading.
+    from tests.test_sql_ast import KEYWORDS
+    planner = _hermetic_planner()
+    graph = _graph(planner, [KEYWORDS])
+    summed = _held_inside(graph)
+    assert not constraint_violations('total keyword volume for all inspection checklist', summed.query, graph)
+    # Contrast: a total the question takes of the Keyword column itself still asks for that column.
+    assert any('Keyword' in violation for violation in constraint_violations(
+        'total Keyword for all inspection checklist', summed.query, graph))
+
+
+def test_values_asked_to_hold_a_text_are_compared_with_like():
+    # The same sheet: "all inspection checklist" and "containing 'inspection checklist'" ask for every keyword
+    # holding the phrase. A reading, or a rewording's reading, that compares the one keyword 'inspection
+    # checklist' answers for one of four; the words that asked are read once the query holds the LIKE.
+    from tests.test_sql_ast import KEYWORDS
+    planner = _hermetic_planner()
+    graph = _graph(planner, [KEYWORDS])
+    held = _held_inside(graph)
+    one = _model_query(planner, '''SELECT SUM("Avg. monthly searches") FROM Checklist
+                                   WHERE Keyword = 'inspection checklist' ''', [KEYWORDS])
+    for question in ('total Avg. monthly searches for all inspection checklist',
+                     "total Avg. monthly searches for every Keyword containing 'inspection checklist'",
+                     'total Avg. monthly searches for keywords containing inspection checklist'):
+        assert coverage(question, held, graph).complete, (question, coverage(question, held, graph).record())
+        assert "the values holding 'inspection checklist' are not the ones compared" in \
+            constraint_violations(question, one.query, graph), question
+    # Contrast: without "all" or "containing" the phrase may be the one keyword.
+    assert coverage('total Avg. monthly searches for inspection checklist', one, graph).complete
+    # Negative: "all" over a value many rows hold asks for no LIKE.
+    orders = {'name': 'orders', 'columns': ['City', 'Amount'],
+              'rows': [['Paris', 10], ['Paris', 20], ['Paris Nord', 7]]}
+    paris = _model_query(planner, "SELECT SUM(Amount) FROM orders WHERE City = 'Paris'", [orders])
+    assert coverage('total Amount for all Paris orders', paris, _graph(planner, [orders])).complete
+    # The column named before "containing" is the one the text is in. Spider DEV 970 served a reading that
+    # searched the street for "a city containing the substring 'West'", once the cue was read (2026-10-06).
+    from engine.sql_ast import Comparison, Literal, Lower, SelectItem, SelectQuery, render_query
+    from engine.sql_candidate import ScoredQuery
+    staff = {'name': 'professionals', 'columns': ['role', 'street', 'city'],
+             'rows': [['vet', 'West Road', 'Paris'], ['nurse', 'Main Street', 'West Haven']]}
+    graph = _graph(planner, [staff])
+    role, street, city = (graph.column_map[('professionals', name)].ref for name in ('role', 'street', 'city'))
+
+    def searched_in(column):
+        query = SelectQuery((SelectItem(role), SelectItem(street), SelectItem(city)), 'professionals',
+                            where=Comparison(Lower(column), 'LIKE', Literal('%west%', column.type)))
+        return ScoredQuery(query, render_query(query), 0.0, ())
+
+    question = "Which professionals live in a city containing the substring 'West'? List their role, street and city."
+    assert coverage(question, searched_in(city), graph).complete
+    assert "the values holding 'west' are not the ones compared" in constraint_violations(
+        question, searched_in(street).query, graph)
+    # Contrast: on a street containing it, the street is searched.
+    on_street = "Which professionals live on a street containing the substring 'West'? List their role, street and city."
+    assert coverage(on_street, searched_in(street), graph).complete
+    assert not coverage(on_street, searched_in(city), graph).complete
+
 TESTS = [value for name, value in globals().copy().items() if name.startswith('test_') and callable(value)]
 
 if __name__ == '__main__':

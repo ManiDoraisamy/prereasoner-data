@@ -2247,3 +2247,75 @@ Measured on a fresh Python 3.11 venv from `requirements-ci-windows.lock.txt`, on
   not in the engine lock.
 - The pip that Python 3.11.0 bundles (22.3) refuses the lock's `google-auth[requests]` extra under
   `--require-hashes`, before and after this change; pip 25.2 and CI's install it.
+
+## "All inspection checklist" is every keyword holding it, and a keyword volume's total is a volume's (2026-10-06)
+
+The customer whose keyword sheet failed on 2026-10-05 reported it still did not work reliably. In the Sheets add-on,
+over four Keyword Planner tabs:
+
+1. "keyword volume for home inspection checklist" answered 5,000, which is right.
+2. "All inspection checklist?" was read as "What is the Avg. monthly searches for the Keyword 'inspection checklist'?"
+   and answered 500, for the one keyword that is the phrase rather than the keywords that hold it.
+3. "total" answered "The requested total for 'Keyword' could not be computed from that field; check for
+   nonnumeric/error cells or choose a numeric field".
+
+The conversation was replayed on a synthetic copy of the sheet (the four tabs' layout and the screenshot's visible
+rows; the owner's sheet was not read) through the chat orchestrator and a local engine with live Gemini. Six causes,
+each fixed in its owner:
+
+- **The chat dropped "All"** (`orchestrator/system_prompt.py`, rule 4). It sent "keyword volume for inspection
+  checklist" in 7 of 24 samples. Rule 4 now says a word the follow-up adds is part of the change and stays. 12 of 12
+  samples kept it, and the live orchestrator suite checks it.
+- **"all" before a value meant nothing to the search** (`engine/sql_search.py`). A whole value after "all" or
+  "every" that one row holds while other values hold it inside them now reads as LIKE '%value%'. "all" over a
+  single row is the sign that a wider set is meant. "all Paris orders", where Paris is several rows' city, stays an
+  equality.
+- **A whole value right after "contain" was still one value.** In "the keywords containing 'inspection checklist'",
+  the text is now one that values hold, quoted or not, compared as the sheet writes it. Spider's "the documents that
+  contain the paragraph text 'Brazil'" keeps its equality, because a column's words stand between the two.
+- **"containing" left every substring reading unread** (`engine/query_contract.py`). The completeness check counted
+  the asking word as unread, so no LIKE reading the search has built since 2026-10-02 was ever served: the 11 Spider
+  DEV questions that say "contain", "include" or "substring" all went unanswered. The words that ask for a text
+  (`sql_search.substring_requests`, the search's own reading) are read once the query compares it. The contract
+  now requires each asked text to be compared with LIKE, so a rewording that drops "all" is refused, not served.
+  The text must be compared in the column the question names right before "contain" or "include" ("a city
+  containing the substring 'West'", "the state whose name contains", "all Keyword containing"), or in the
+  column whose value "all" quantified. Without that rule, reading the cue served Spider DEV 970 a reading that
+  searched the street for "a city containing the substring 'West'"; its four candidate columns had scored alike,
+  and the first is now scored above the rest.
+- **Gemini reworded what the search had already read** (`engine/sql_prompt.py:prompt_question`). Seeing only names,
+  over tabs named Inspection and Checklist, Gemini reworded "keyword volume for all inspection checklist" into keywords
+  of the Inspection tab containing 'checklist' (5 of 5). With the phrase quoted, it wrote keywords "matching" it or
+  the one keyword (8 of 8), both refused by the contract. The prompt now quotes the phrases the search reads as values
+  and spells one it reads as held inside a column's values as "Keyword containing 'inspection checklist'": 8 of 8
+  kept it. The spelling uses only the user's words, so Gemini still receives no cell value the question does not state.
+- **"total keyword volume" totaled the Keyword column** (`engine/sql_rank.py:analyze_question`). The aggregate's
+  target was the nearest column named after "total", so every reading was refused, and so was Gemini's right
+  rewording ("the sum of Avg. monthly searches for all Keyword containing 'inspection checklist'"). A text column is
+  now an aggregate's operand only where its name ends the phrase the aggregate word begins ("the total of the
+  Amount"). "keyword volume" totals a volume, and "average student age" averages ages.
+- **"Avg." in a column name averaged 38 keywords** (`engine/sql_expansion.py:asked_cues`, now shared by the search
+  and the ranker). The rewording "What is the Avg. monthly searches for all Keyword containing ..." averaged the
+  keywords' averages: 1,115.79. An average a spelled column name holds never asks for one by itself, because an
+  average of rows' averages is not their average. A spelled total, maximum or minimum still asks when no other word
+  does ("the total amount in Paris").
+
+Measured:
+- **The conversation.** Before the change, the local replay answered 5,000, then a clarification, then the same
+  error. On the final code, 5 replays answered 15 of 15 turns as expected: 5,000, then the 38 keywords holding the
+  phrase, then 42,400. Two of those replays sent the plural "inspection checklists".
+- **Spider DEV** (`whole_db`, Gemini off). Strict 243 → 247 (4 wins, no loss), lenient 310 → 315, answered
+  408 → 414. One newly answered question is wrong (944, an extra column; see `spider/results/RESULTS.md`).
+- **Suites.** The hermetic suites, the live orchestrator suite (42 checks) and the 11 live engine suites pass. In
+  `tests.test_datasets`, every dataset prompt and standalone follow-up passes; its 14 `chat:` follow-ups are left to
+  the browser gate.
+
+Not changed:
+- The search still cannot read "volume" without Gemini.
+- The list "All inspection checklist?" returns names no keyword unless the rewording asks for one. Adding the filter
+  column to every substring listing would change Spider's projections.
+- A conversation's first question still spends 10 to 17 s in world lookup and typing before selection: a word the
+  upload does not read ("volume") still builds the compose plan (see "A question the upload reads whole needs no
+  world lookup").
+- With 'home inspection checklist' in two tabs, the reading may still come from Inspection rather than the active
+  Checklist tab.

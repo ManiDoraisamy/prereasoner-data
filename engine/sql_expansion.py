@@ -988,6 +988,20 @@ def spelled_names(question_tokens: tuple[str, ...], schema: Any) -> frozenset[in
                      for index in range(start, start + len(words)))
 
 
+def asked_cues(cues: list[tuple[str, int]], question_tokens: tuple[str, ...],
+               schema: Any) -> list[tuple[str, int]]:
+    """The aggregate cues (function, position) that ask for their aggregate, as the search and the ranker read
+    them. A cue inside a several-word column name the question spells (``spelled_names``) names that column: it
+    asks only when no other cue does, and an average never does, since an average of rows' averages is not
+    their average: "the Avg. monthly searches for all Keyword containing 'inspection checklist'" lists the 38
+    keywords' searches rather than averaging them (a customer's keyword sheet, 2026-10-06). The total, maximum
+    or minimum of rows' totals, maxima or minima is theirs: "the total amount in Paris" sums Total Amount."""
+    spelled = spelled_names(question_tokens, schema)
+    if any(position not in spelled for _, position in cues):
+        return [(function, position) for function, position in cues if position not in spelled]
+    return [(function, position) for function, position in cues if function != "AVG"]
+
+
 # A "%" standing alone is the word "percent" ("what % of the total amount comes from Paris" served the
 # Paris total, 2026-10-02); after a number ("over 50%") it is the number's unit, and inside a word or
 # quotes ("names like 'A%'") a pattern's wildcard.

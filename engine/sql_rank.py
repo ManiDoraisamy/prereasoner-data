@@ -19,7 +19,7 @@ from engine.sql_ast import (
     share_aggregate,
 )
 from engine.sql_dates import period_grouping
-from engine.sql_expansion import by_groups, share_cue, share_requested, spelled_names, words
+from engine.sql_expansion import FUNCTION_WORDS, asked_cues, by_groups, share_cue, share_requested, words
 from engine.sql_candidate import ScoredQuery
 from engine.sql_schema import SchemaGraph, canon, is_surrogate_key
 
@@ -335,12 +335,12 @@ def analyze_question(question: str, schema: SchemaGraph) -> QuestionRoles:
             aggregate_positions["MIN"].append(i)
         elif token in {"maximum", "max"}:
             aggregate_positions["MAX"].append(i)
-    # A spelled column name's aggregate word asks an aggregate only when no other word does, as the search
-    # reads it: "the total of the avg. monthly searches" asks no average.
-    spelled = spelled_names(tokens, schema)
-    if any(position not in spelled for positions in aggregate_positions.values() for position in positions):
-        aggregate_positions = {function: [position for position in positions if position not in spelled]
-                               for function, positions in aggregate_positions.items()}
+    # A spelled column name's aggregate word asks as the search reads it (sql_expansion.asked_cues): "the total of
+    # the avg. monthly searches" asks no average.
+    asked = set(asked_cues([(function, position) for function, positions in aggregate_positions.items()
+                            for position in positions], tokens, schema))
+    aggregate_positions = {function: [position for position in positions if (function, position) in asked]
+                           for function, positions in aggregate_positions.items()}
 
     if not any(aggregate_positions.values()) and (share := share_cue(tokens, schema)):
         aggregate_positions[share[0]].append(share[1])            # the search reads the same cue
@@ -393,6 +393,8 @@ def analyze_question(question: str, schema: SchemaGraph) -> QuestionRoles:
             hits = [i for i, token in enumerate(tokens) if token in name_tokens]
             if not name_tokens or not set(name_tokens) <= set(tokens):
                 continue
+            if not column.ref.type.numeric and not _heads_phrase(tokens, name_tokens, positions):
+                continue
             distance = min((max(hit - position, 0) for position in positions for hit in hits if hit >= position),
                            default=999)
             candidates.append((distance, column.ref))
@@ -423,6 +425,41 @@ def analyze_question(question: str, schema: SchemaGraph) -> QuestionRoles:
         projection_columns=frozenset(projection_columns),
         id_instead_of_name=id_instead,
     )
+
+
+# Words that end a noun phrase: grammar words, and the words that open a clause, a comparison, a grouping or an
+# ordering. Any other word after a column's name continues the phrase that name begins. "column" and "field" end
+# it too: "the Name column" is the Name.
+_PHRASE_BREAKS = frozenset(canon(word) for word in FUNCTION_WORDS | {
+    "all", "any", "each", "every", "per", "group", "these", "those", "some", "no", "not", "nor", "but",
+    "who", "whom", "whose", "which", "where", "when", "why", "how", "what", "there",
+    "has", "have", "had", "do", "does", "did", "can", "could", "will", "would", "should", "shall", "may", "might",
+    "having", "order", "ordered", "sort", "sorted", "top", "bottom", "after", "before", "between", "during",
+    "since", "until", "within", "without", "across", "over", "under", "above", "below", "among", "through",
+    "versus", "vs", "more", "less", "fewer", "greater", "than", "excluding", "except", "including",
+    "containing", "use", "using", "used", "column", "field",
+})
+# Words an aggregate's own phrase may open with: "the total of the Amount".
+_PHRASE_OPENERS = frozenset({"of", "the", "a", "an"})
+
+
+def _heads_phrase(tokens: tuple[str, ...], name_tokens: tuple[str, ...], positions: Sequence[int]) -> bool:
+    """Whether a column's name ends the phrase an aggregate word at one of ``positions`` begins: "the total
+    Amount", "the total of the Amount". A text column named elsewhere is no aggregate's operand: before another
+    word of the phrase it only says whose ("total keyword volume" totals a volume, "average student age"
+    averages ages), and after "for" it names the rows ("...for all inspection checklist keywords"). A
+    customer's keyword sheet (2026-10-06): every reading of "total keyword volume for all inspection checklist
+    keywords" was refused for not totaling Keyword."""
+    for position in positions:
+        start = position + 1
+        while start < len(tokens) and tokens[start] in _PHRASE_OPENERS:
+            start += 1
+        end = start
+        while end < len(tokens) and tokens[end].isalpha() and tokens[end] not in _PHRASE_BREAKS:
+            end += 1
+        if end > start and tokens[end - 1] == name_tokens[-1]:
+            return True
+    return False
 
 
 def _columns_in_windows(schema: SchemaGraph, tokens: tuple[str, ...], windows: Sequence[tuple[int, int]]) -> set[ColumnRef]:

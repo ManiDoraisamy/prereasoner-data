@@ -131,7 +131,9 @@ deterministic search then builds, runs, and grounds candidates as usual:
    (`engine/sql_prompt.py:REWRITE_SYSTEM`). A rewording equal to the question, ignoring case and
    spacing, is discarded. The search runs on the rewording, so the SQL is still the search's.
 The prompt carries the question and schema text from `engine/sql_prompt.py`: table and column names,
-inferred types, and foreign keys. It carries no cell values, conversation history, or full rows.
+inferred types, and foreign keys. In the question, the phrases the search reads as cell values are quoted, and one
+it reads as held inside a column's values ("all inspection checklist") is spelled as that column containing the
+value (`sql_prompt.prompt_question`). It carries no other cell value, no conversation history, and no rows.
 Replies are JSON objects of a fixed shape and bounded in length. Recognized source values, quoted
 text, and numbers from the question must remain in the rewrite; the reply is not cached.
 [ARCHITECTURE.md](ARCHITECTURE.md#labelled-gemini-fallback)
@@ -246,7 +248,18 @@ The AST, validator, renderer, and search rules support:
 - `COUNT`, `SUM`, `AVG`, `MIN`, and `MAX`;
 - typed `+`, `-`, `*`, and real-valued `/` expressions, including aggregates over expressions;
 - typed comparisons, ranges, dates, categorical values, `AND`, and `OR`;
-- substring filters: `LOWER(column) LIKE '%text%'` (`Lower`);
+- substring filters: `LOWER(column) LIKE '%text%'` (`Lower`), for the texts a question asks values to hold
+  (`sql_search.substring_requests`): a quoted text or the word after "substring", "letter" or "word"; a
+  text right after "contain" or "include", whole value or not ("keywords containing 'inspection checklist'"),
+  while a column's words between them keep a whole value one value ("contain the paragraph text 'Brazil'");
+  and a whole value after "all" or "every" that one row holds while other values hold it ("all inspection
+  checklist", not "all Paris orders"). The completeness check requires each such text compared with LIKE, in
+  the column the question names right before "contain" or "include" when it names one ("a city containing",
+  "the state whose name contains") or in the column whose value "all" quantified, and reads the words that
+  asked for it once it is;
+- aggregate operands: a text column is an aggregate's operand only where its name ends the phrase the
+  aggregate word begins ("the total of the Amount"; "total keyword volume" totals a volume), and an average a
+  spelled column name holds ("Avg. monthly searches") asks for none by itself (`sql_expansion.asked_cues`);
 - calendar phrases on a date column (`engine/sql_dates.py`): a month without a year compares
   `DatePart('month')`, and a dated phrase ("after August 10, 2026") compares the date itself;
 - grouping by a column, or by the year-month of a date column (`DatePart('year_month')`, '2026-08'):

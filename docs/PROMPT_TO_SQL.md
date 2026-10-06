@@ -147,9 +147,10 @@ bounded rewrite request:
 The deterministic search then builds SQL from the rewrite; there is no SQL proposal step. Before the
 rewrite is searched, the engine checks that recognized source values, quoted text, and numbers from
 the user question remain. Gemini sees table and column names, inferred types, and foreign keys from
-[`engine/sql_prompt.py`](../engine/sql_prompt.py). It receives no cell values, conversation history, or
-full rows, and it never writes SQL or a number. `served_by` is `gemini-rewrite`, and the response's
-`fallback` record holds the rewording. Rewrites are not cached. See
+[`engine/sql_prompt.py`](../engine/sql_prompt.py), and the question with the values it states quoted. It
+receives no other cell value, no conversation history, and no rows, and it never writes SQL or a number.
+`served_by` is `gemini-rewrite`, and the response's `fallback` record holds the rewording. Rewrites are not
+cached. See
 [`docs/ARCHITECTURE.md`](ARCHITECTURE.md#labelled-gemini-fallback) for the checks that apply to each case.
 
 ## The one caveat in this example: world queries

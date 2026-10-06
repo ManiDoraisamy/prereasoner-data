@@ -1452,6 +1452,154 @@ def test_schema_rewrite_can_resolve_a_synonym_without_changing_the_sql_reading()
     assert [step for step, _ in gemini.calls] == ["question"]
 
 
+# A customer's keyword-planner tab (2026-10-06), cut down: 'inspection checklist' is one keyword, and three others
+# hold it inside them (10,550 searches in all).
+KEYWORDS = {"name": "Checklist", "columns": ["Keyword", "Avg. monthly searches", "Competition"], "rows": [
+    ["inspection checklist", 500, "Low"], ["home inspection checklist", 5000, "Low"],
+    ["house inspection checklist", 5000, "High"], ["roof inspection checklist", 50, "Low"],
+    ["fire extinguisher inspection list", 5000, "High"], ["forklift training", 500, "Medium"]]}
+HELD_INSIDE = "WHERE LOWER(\"Checklist\".\"Keyword\") LIKE '%inspection checklist%'"
+
+
+def test_a_text_column_is_an_aggregate_operand_only_where_it_ends_the_aggregate_phrase():
+    """A customer's keyword sheet (2026-10-06): "total keyword volume for all inspection checklist keywords" made
+    the Keyword column what "total" totals, so every reading, and Gemini's right rewording, was refused with "The
+    requested total for 'Keyword' could not be computed from that field". "keyword" only says whose volume, and
+    "keywords" after "for" names the rows. A text column is an aggregate's operand only where its name ends the
+    phrase the aggregate word begins ("the total of the Amount", where error cells make Amount text and the
+    message asks to check them); a numeric column keeps the nearest-name reading."""
+    planner = _hermetic_planner()
+    people = {"name": "students", "columns": ["Student", "Age"], "rows": [["Ann", 20], ["Bob", 30]]}
+    orders = {"name": "orders", "columns": ["City", "Amount"], "rows": [["Paris", 10], ["Lyon", 5]]}
+
+    def targets(question, table):
+        norm, fks, sch, _ = _request(planner, [table])
+        roles = analyze_question(question, SchemaGraph.from_planner(sch, fks))
+        return {function: sorted(ref.name for ref in refs) for function, refs in roles.aggregate_targets.items()}
+
+    assert targets("total keyword volume for all inspection checklist", KEYWORDS) == {}
+    assert targets("total keyword volume for all inspection checklist keywords", KEYWORDS) == {}
+    assert targets("total keyword count", KEYWORDS) == {}
+    assert targets("average student age", people) == {"AVG": ["Age"]}
+    # Contrast, the same sheets: the column that ends the aggregate's phrase is the operand.
+    assert targets("total Avg. monthly searches for the Keyword home inspection checklist", KEYWORDS) == {
+        "SUM": ["Avg. monthly searches"]}
+    assert targets("average Age of students", people) == {"AVG": ["Age"]}
+    assert targets("maximum Keyword for Low competition", KEYWORDS) == {"MAX": ["Keyword"]}
+    assert targets("the maximum of the Keyword column", KEYWORDS) == {"MAX": ["Keyword"]}
+    errors = {"name": "orders", "columns": ["City", "Amount"], "rows": [["Paris", "10"], ["Lyon", "#N/A"]]}
+    assert targets("total of the Amount for Paris", errors) == {"SUM": ["Amount"]}
+    # Negative: a numeric column keeps its place before a quantity word ("the Amount value" is the Amount).
+    assert targets("total Amount value for Paris", orders) == {"SUM": ["Amount"]}
+
+
+def test_a_text_right_after_contain_or_all_is_compared_inside_values():
+    """A customer's keyword sheet (2026-10-06): "...for all inspection checklist" and "...containing
+    'inspection checklist'" both meant every keyword holding the phrase, but 'inspection checklist' is also one
+    keyword, so both compared that one value (500 of 10,550 here). Right after "contain" or "include", a text is
+    one that values hold, whole value or not; after "all" or "every", a value only one row holds while others
+    hold it inside them is too. The words that ask are read once the query compares the text: "containing"
+    had left every substring reading unread, so Spider's "names contain the substring 'Al'" went unanswered."""
+    planner = _hermetic_planner()
+    for question in ("What is the sum of Avg. monthly searches for all Keyword containing 'inspection checklist'?",
+                     "total Avg. monthly searches for keywords containing inspection checklist",
+                     "total Avg. monthly searches for all inspection checklist",
+                     "total Avg. monthly searches for all inspection checklists",
+                     "total Avg. monthly searches for every inspection checklist"):
+        served = planner.serve([KEYWORDS], question)
+        assert served["valid"] and served["sql"].endswith(HELD_INSIDE), (question, served)
+        assert served["result"]["rows"] == [[10550]], (question, served)
+    # Contrast, the same sheet: the phrase named as the one keyword, without "all", is that keyword.
+    for question in ("total Avg. monthly searches for the Keyword 'inspection checklist'",
+                     "total Avg. monthly searches for inspection checklist"):
+        served = planner.serve([KEYWORDS], question)
+        assert served["result"]["rows"] == [[500]] and "LIKE" not in served["sql"], (question, served)
+    # Negative: "all" over a value many rows hold is those rows ('Paris Nord' is another city), and a column's
+    # words between "contain" and a whole value keep it one value (Spider's "contain the paragraph text").
+    orders = {"name": "orders", "columns": ["City", "Amount"],
+              "rows": [["Paris", 10], ["Paris", 20], ["Lyon", 5], ["Paris Nord", 7]]}
+    served = planner.serve([orders], "total Amount for all Paris orders")
+    assert served["result"]["rows"] == [[30]] and "LIKE" not in served["sql"], served
+    paragraphs = {"name": "paragraphs", "columns": ["document_id", "paragraph_text"],
+                  "rows": [[1, "Brazil"], [2, "Brazil and Chile"], [3, "Ireland"]]}
+    served = planner.serve([paragraphs], "What are the ids of documents that contain the paragraph text 'Brazil'?")
+    assert served["result"]["rows"] == [[1]] and "LIKE" not in served["sql"], served
+    contestants = {"name": "contestants", "columns": ["contestant_name", "votes"],
+                   "rows": [["Alice", 3], ["Bob", 4], ["Kaleb", 5]]}
+    for question in ("Return the names of the contestants whose names contain the substring 'Al'.",
+                     "Which contestants have names containing 'Al'?"):
+        served = planner.serve([contestants], question)
+        assert sorted(served["result"]["rows"]) == [["Alice"], ["Kaleb"]], (question, served)
+
+
+def test_an_average_a_column_name_spells_is_the_column():
+    """A customer's keyword sheet (2026-10-06): Gemini reworded "keyword volume for all inspection checklist" as
+    "What is the Avg. monthly searches for all Keyword containing 'inspection checklist'?", and "Avg." in the
+    column's name averaged the 38 keywords' searches: 1,115.79, an average of averages nobody asked for. An
+    average a spelled column name holds never asks for one by itself; another word that asks still does, and a
+    spelled total still totals ("the total amount in Paris")."""
+    planner = _hermetic_planner()
+    served = planner.serve([KEYWORDS], "What is the Avg. monthly searches for Low competition?")
+    assert "AVG(" not in served["sql"] and sorted(served["result"]["rows"]) == [[50], [500], [5000]], served
+    served = planner.serve([KEYWORDS], "What is the Avg. monthly searches for all Keyword containing 'inspection checklist'?")
+    assert "AVG(" not in served["sql"] and served["sql"].endswith(HELD_INSIDE), served
+    assert sorted(row[-1] for row in served["result"]["rows"]) == [50, 500, 5000, 5000], served
+    served = planner.serve([KEYWORDS], "What is the Avg. monthly searches for the Keyword 'home inspection checklist'?")
+    assert served["result"]["rows"] == [[5000]], served
+    # Contrast: a word outside the name asks for the average.
+    served = planner.serve(
+        [KEYWORDS], "What is the average Avg. monthly searches for all Keyword containing 'inspection checklist'?")
+    assert "AVG(" in served["sql"] and float(served["result"]["rows"][0][0]) == 2637.5, served
+    # Negative: a spelled total still totals.
+    orders = {"name": "orders", "columns": ["City", "Total Amount"],
+              "rows": [["Paris", 10], ["Paris", 20], ["Lyon", 5]]}
+    assert planner.serve([orders], "What is the total amount in Paris?")["result"]["rows"] == [[30]]
+
+
+def test_the_rewording_of_a_keyword_volume_keeps_every_keyword_holding_the_phrase():
+    """The conversation that failed (2026-10-06). The search cannot read "volume" without Gemini, which sees
+    names, not cells: with tabs named Inspection and Checklist it reworded "keyword volume for all inspection
+    checklist" into keywords of the Inspection tab containing 'checklist', every time; the literal check
+    refused that, and the user was asked which column "volume" means. Production's rewording dropped "all"
+    ("the Keyword 'inspection checklist'") and answered 500 for one keyword; and the right rewording of "total
+    keyword volume for all inspection checklist" was refused against the question's Keyword total. Gemini now
+    sees the question's own value quoted, and one the search reads as held inside a column's values spelled as
+    that column containing it; a rewording that compares one keyword is refused, and the right one is served."""
+    listed = "What is the Avg. monthly searches for each Keyword containing 'inspection checklist'?"
+    planner, gemini = _gemini_planner(question=listed)
+    selection = _select(planner, "keyword volume for all inspection checklist", [KEYWORDS])
+    assert selection.served_by == "gemini-rewrite" and HELD_INSIDE in selection.candidate.sql, selection.record()
+    prompt = gemini.calls[0][1]
+    assert prompt.endswith("Question:\nkeyword volume for all Keyword containing 'inspection checklist'"), prompt
+    assert "home inspection checklist" not in prompt and "5000" not in prompt
+    # The prompt keeps the user's own words; a plural names the keyword all the same, and is compared as the
+    # sheet writes it (LIKE '%inspection checklists%' would hold no keyword).
+    plural = "What is the Avg. monthly searches for all Keyword containing 'inspection checklists'?"
+    planner, gemini = _gemini_planner(question=plural)
+    selection = _select(planner, "keyword volume for all inspection checklists", [KEYWORDS])
+    assert gemini.calls[0][1].endswith(
+        "Question:\nkeyword volume for all Keyword containing 'inspection checklists'"), gemini.calls
+    assert selection.served_by == "gemini-rewrite" and HELD_INSIDE in selection.candidate.sql, selection.record()
+    # Contrast: the one keyword, asked without "all", is only quoted.
+    planner, gemini = _gemini_planner(question=listed)
+    _select(planner, "keyword volume for inspection checklist", [KEYWORDS])
+    assert gemini.calls[0][1].endswith("Question:\nkeyword volume for 'inspection checklist'"), gemini.calls
+    served = planner.serve([KEYWORDS], "keyword volume for all inspection checklist")
+    assert sorted(row[-1] for row in served["result"]["rows"]) == [50, 500, 5000, 5000], served
+    # The rewording production served compares the one keyword: not all of them.
+    planner, _ = _gemini_planner(question="What is the Avg. monthly searches for the Keyword 'inspection checklist'?")
+    selection = _select(planner, "keyword volume for all inspection checklist", [KEYWORDS])
+    assert selection.candidate is None and selection.fallback.kind == "none", selection.record()
+    # "total" after it: the right rewording is served, and totals every keyword holding the phrase.
+    total = "What is the sum of Avg. monthly searches for all Keyword containing 'inspection checklist'?"
+    planner, _ = _gemini_planner(question=total)
+    for question in ("total keyword volume for all inspection checklist",
+                     "total keyword volume for all inspection checklist keywords"):
+        served = planner.serve([KEYWORDS], question)
+        assert served["valid"] and served["result"]["rows"] == [[10550]], (question, served)
+        assert served["sql"].endswith(HELD_INSIDE) and served["fallback"]["question"] == total
+
+
 def test_unread_check_accepts_a_threshold_only_when_the_ast_realizes_it():
     from engine.tables import _query_has_unread_terms
 
@@ -4660,6 +4808,10 @@ TESTS = [
     test_the_fallback_is_stateless_across_repeated_requests,
     test_rewriter_recovers_when_a_runnable_plan_ignores_part_of_the_question,
     test_schema_rewrite_can_resolve_a_synonym_without_changing_the_sql_reading,
+    test_a_text_column_is_an_aggregate_operand_only_where_it_ends_the_aggregate_phrase,
+    test_a_text_right_after_contain_or_all_is_compared_inside_values,
+    test_an_average_a_column_name_spells_is_the_column,
+    test_the_rewording_of_a_keyword_volume_keeps_every_keyword_holding_the_phrase,
     test_unread_check_accepts_a_threshold_only_when_the_ast_realizes_it,
     test_unread_check_treats_sheet_scope_words_as_context_not_filters,
     test_gemini_reads_schema_names_but_not_cell_values,

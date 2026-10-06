@@ -335,10 +335,13 @@ executes against the conversation schema through the shared SQL/Python plan.
 When no candidate is eligible or the selected plan leaves request wording unresolved, and the operator
 enabled Gemini (`EXTERNAL_LLM_ENABLED` plus a Vertex AI project, checked by `engine/llm.py`),
 `select_query` may call `engine/question_rewrite.py` once. Gemini receives the current question and a
-schema description containing table and column names, inferred types, and declared foreign keys.
-It receives no cell values, full rows, or conversation history, and it is told not to name a table the question
-does not name. The call asks for LOW thinking and stops after 20 s: at the model's default thinking a rewording
-once outlasted the 30 s client timeout. The rewriter checks that numbers, quoted text, and any source values it
+schema description containing table and column names, inferred types, and declared foreign keys. In the
+question, the phrases the search reads as cell values are quoted, and one it reads as held inside a column's
+values ("all inspection checklist") is spelled as that column containing the value
+(`engine/sql_prompt.py:prompt_question`): with only names to go on, Gemini read tabs named Inspection and
+Checklist into "all inspection checklist". It receives no other cell value, no full rows and no conversation
+history, and it is told not to name a table the question does not name. The call asks for LOW thinking and
+stops after 20 s: at the model's default thinking a rewording once outlasted the 30 s client timeout. The rewriter checks that numbers, quoted text, and any source values it
 recognized in the question remain in its rewrite. Replies are not cached. The deterministic typed search alone builds candidates and SQL. A rewritten reading is served
 only when it runs, keeps every constraint of the original question and leaves no word of the rewording
 unread.

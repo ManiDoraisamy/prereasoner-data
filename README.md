@@ -56,9 +56,10 @@ that chose it.
 
 **Gemini can clarify wording for the search.** When the operator has switched on Gemini (Vertex AI),
 it may reword a question once if no candidate runs or the selected plan leaves request wording
-unresolved. Gemini receives the table and column names, types, and relationships, but no cell values
-or conversation history. It does not write SQL or select a query. The deterministic typed search
-builds and checks SQL from the rewrite; the response labels when that rewrite supplied the wording.
+unresolved. Gemini receives the table and column names, types, and relationships, and the question with
+the values it states quoted, but no other cell values and no conversation history. It does not write SQL
+or select a query. The deterministic typed search builds and checks SQL from the rewrite; the response
+labels when that rewrite supplied the wording.
 The rewrite is not cached between requests.
 
 The optional chat service uses Gemini to make follow-up wording explicit and request engine operations.

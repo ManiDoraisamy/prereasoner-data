@@ -152,6 +152,20 @@ def main():
         ok("total or a rate" not in r1f["reply"].lower(),
            "an established metric cannot be reopened as a metric-choice clarification")
 
+        # A customer's keyword sheet (2026-10-06): after one keyword's volume, "All inspection checklist?" went to
+        # the engine as "keyword volume for inspection checklist", the one keyword again, in 7 of 24 samples.
+        print("[1c] a follow-up's 'all' stays in the rewrite")
+        keywords = [{"name": "Checklist", "data": "Keyword,Avg. monthly searches\ninspection checklist,500\n"
+                                                  "home inspection checklist,5000\nroof inspection checklist,50\n"}]
+        r1k = asyncio.run(chat("All inspection checklist?", tables=keywords, history=[
+            {"role": "user", "content": "keyword volume for home inspection checklist"},
+            {"role": "assistant", "content": "5,000"},
+        ]))
+        sent_k = [t.get("question", "") for t in r1k["traces"]]
+        ok(len(sent_k) == 1 and re.search(r"\b(?:all|every)\b", sent_k[0], re.I)
+           and "inspection checklist" in sent_k[0].lower(),
+           f"the follow-up's 'all' reaches the engine with its inherited measure (got {sent_k})")
+
         # Customer-orders Chrome report: "in GBP for the whole of Europe?" must change the
         # geographic scope and output unit, not select only source rows already denominated in GBP.
         print("[1c] European geography and GBP output units remain separate")

@@ -11,6 +11,7 @@ pool without changing its grammar.
 from __future__ import annotations
 
 import re
+import weakref
 from dataclasses import dataclass, replace
 from typing import Any, Sequence
 
@@ -47,6 +48,7 @@ from engine.sql_durations import duration_phrases, question_date, span_compariso
 from engine.sql_expansion import (
     AGGREGATE_CUES,
     FUNCTION_WORDS,
+    asked_cues,
     by_groups,
     implicit_sum_measures,
     measure_words_after,
@@ -62,7 +64,7 @@ from engine.sql_expansion import (
     words,
 )
 from engine.sql_profile_expansion import ProfileSearchConfig
-from engine.sql_schema import SchemaGraph, canon, is_surrogate_key
+from engine.sql_schema import SchemaGraph, canon, is_surrogate_key, normalize_value
 
 _NUMBER_RE = re.compile(r"^-?(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d+)?$")
 _PROJECTION_CUES = frozenset({"show", "list", "display", "select", "give", "find", "which", "what"})
@@ -80,6 +82,9 @@ _ID_WORDS = frozenset({"id", "identifier", "code", "key"})
 # 'Korea'" are those texts, so a whole value of the data stays an equality after them.
 _SUBSTRING_CUES = frozenset({"substring", "letter"})
 _INCLUDE_CUES = frozenset({"contain", "containing", "include", "including"})
+# Words that ask for every value of a kind: "all inspection checklist", "every roof inspection".
+_QUANTIFIERS = frozenset({"all", "every"})
+_ARTICLES = frozenset({"the", "a", "an"})
 # Comparatives and the operator each makes with the number after "than"; the measure some describe.
 _COMPARATIVES = {
     "greater": ">", "higher": ">", "bigger": ">", "larger": ">", "older": ">", "heavier": ">", "taller": ">",
@@ -724,9 +729,9 @@ class SQLSearcher:
             if tokens[i:i + 2] == ("how", "many"):
                 cues.append(("COUNT", i))
         cues = list(dict.fromkeys(cues))
-        # A several-word column name the question spells names the column: its aggregate word asks an aggregate
-        # only when no other word does. "The total of the avg. monthly searches" sums them, with no stray
-        # average (a customer's keyword tabs, 2026-10-02); "the total amount in Paris" still totals Total Amount.
+        # A several-word column name the question spells names the column (sql_expansion.asked_cues): "the total
+        # of the avg. monthly searches" sums them, with no stray average (a customer's keyword tabs, 2026-10-02),
+        # and "the total amount in Paris" still totals Total Amount. Before "column" or "field" it asks nothing.
         spelled = spelled_names(tokens, self.schema)
         explicit_field_cues = {
             position for _function, position in cues
@@ -736,8 +741,7 @@ class SQLSearcher:
         if explicit_field_cues:
             cues = [(function, position) for function, position in cues
                     if position not in explicit_field_cues]
-        if any(position not in spelled for _, position in cues):
-            cues = [(function, position) for function, position in cues if position not in spelled]
+        cues = asked_cues(cues, tokens, self.schema)
         # "count the number" and "average mean" are reinforcing paraphrases, not requests for duplicate
         # The base search supports several different aggregates in one query; repeated functions
         # collapse to their earliest cue until argument-scope parsing becomes more precise.
@@ -951,51 +955,127 @@ class SQLSearcher:
 
     def _substring_groups(self, tokens: tuple[str, ...], mentions: tuple[_Mention, ...], question: str,
                           claimed: set[int]) -> tuple[list[list[tuple[tuple[Comparison, ...], float, str]]], set[int]]:
-        """A text that a value contains: "the contestants whose names contain the substring 'Al'", "a song
-        having 'Hey' in its name", "the documents that contain the letter w in their description" compare
-        LOWER(column) LIKE '%al%' (Spider DEV, 2026-10-02: no reading had a substring filter). The text is
-        quoted, or the word after "substring", "letter" or "word"; a whole value of the data stays an
-        equality. The column is the text column the question names nearest the text, or one whose values
-        hold it."""
-        named = re.search(r"\b(?:substring|letter|word)\s+(?:the\s+)?['\"]?([\w-]+)", question, re.I)
-        # "substring", "letter" or "the word X" ask for a text inside values even where the text is also a
-        # whole value ("the substring 'Al'" beside a state code 'AL'); "contain", "include" and "'Hey' in its
-        # name" only where it is not.
-        explicit = bool(set(tokens) & _SUBSTRING_CUES) or named is not None
-        if (not explicit and not set(tokens) & _INCLUDE_CUES
-                and not re.search(r"\bin (?:its|their|the)\b", question, re.I)):
-            return [], set()
-        texts = [text.strip() for text in _QUOTED_TEXT.findall(question)]
-        if named and not texts:
-            texts = [named.group(1)]
+        """The filter options of each text the question asks values to hold (``substring_requests``):
+        LOWER(column) LIKE '%al%' (Spider DEV, 2026-10-02: no reading had a substring filter). The column
+        is one the question says the text is in or whose whole value it quantified, else the text column the
+        question names nearest the text whose values hold it, else one whose values hold it, else the nearest
+        named text column (the text may be missing from the data)."""
         groups, held = [], set()
-        for text in texts:
-            wanted = _tokens(text)
-            if not wanted or (not explicit and self.schema.value_index.get(" ".join(wanted))):
-                continue
-            start = next((index for index in range(len(tokens) - len(wanted) + 1)
-                          if tokens[index:index + len(wanted)] == wanted and index not in claimed), None)
-            if start is None:
-                continue
-            folded = text.lower()
+        for request in self._substring_requests(tokens, question, claimed):
+            folded = request.text
             holders = [column.ref for column in self.schema.columns
                        if column.ref.type == SQLType.TEXT
                        and any(folded in str(value).lower() for value in column.values if value is not None)]
             near = sorted((option for mention in mentions for option in mention.options
                            if option.column.type == SQLType.TEXT),
-                          key=lambda option: (abs(option.position - start), -option.score,
+                          key=lambda option: (abs(option.position - request.start), -option.score,
                                               option.column.table, option.column.name))
-            # A column whose values hold the text is the one compared, the nearest named first; without
-            # one, the nearest named text column (the text may be missing from the data).
-            targets = _unique_columns(tuple(option.column for option in near if option.column in holders)
+            targets = _unique_columns(request.subject + request.columns
+                                      + tuple(option.column for option in near if option.column in holders)
                                       + tuple(holders)) or _unique_columns(tuple(option.column for option in near))
-            options = [((Comparison(Lower(column), "LIKE", Literal(f"%{folded}%", SQLType.TEXT)),), 5.0,
-                        f"substring:{column.table}.{column.name}")
-                       for column in targets[:4]]
+            # The first target is the likeliest, and scores so: with four alike, "a city containing the substring
+            # 'West'" ranked a reading that searched the street first (Spider DEV 970, 2026-10-06).
+            options = [((Comparison(Lower(column), "LIKE", Literal(f"%{folded}%", SQLType.TEXT)),),
+                        5.0 - 0.5 * rank, f"substring:{column.table}.{column.name}")
+                       for rank, column in enumerate(targets[:4])]
             if options:
                 groups.append(options)
-                held.update(range(start, start + len(wanted)))
+                held.update(range(request.start, request.end))
         return groups, held
+
+    def _substring_requests(self, tokens: tuple[str, ...], question: str,
+                            claimed: set[int] | frozenset[int]) -> tuple["SubstringRequest", ...]:
+        """The texts the question asks values to hold, in question order:
+
+        - a quoted text, or the word after "substring", "letter" or "word": "the contestants whose names
+          contain the substring 'Al'", "a song having 'Hey' in its name", "the documents that contain the
+          letter w in their description". "substring", "letter" and "the word X" ask for a text inside values
+          even where it is also a whole value ("the substring 'Al'" beside a state code 'AL'). After "contain",
+          "include" or "in its", a whole value of the data stays an equality where words stand between them:
+          "the documents that contain the paragraph text 'Brazil'" are that paragraph's. Right after the word,
+          it is the text values hold: "the keywords containing 'inspection checklist'" (a customer's keyword
+          sheet, 2026-10-06), quoted or not.
+        - a whole value after "all" or "every" that only one row holds while other values hold it inside
+          them: "the volume for all inspection checklist" asks for every keyword holding the phrase, not the
+          one keyword that is the phrase (the same sheet). "all Paris orders", where Paris is many rows'
+          city, stays an equality.
+        """
+        named = re.search(r"\b(?:substring|letter|word)\s+(?:the\s+)?['\"]?([\w-]+)", question, re.I)
+        explicit = bool(set(tokens) & _SUBSTRING_CUES) or named is not None
+        cue_words = frozenset(token for token in tokens if token in _SUBSTRING_CUES | _INCLUDE_CUES)
+        cue_words |= frozenset({"word"}) if named and named.group(0).lower().startswith("word") else frozenset()
+        requests, taken = [], set(claimed)
+        if explicit or set(tokens) & _INCLUDE_CUES or re.search(r"\bin (?:its|their|the)\b", question, re.I):
+            texts = [text.strip() for text in _QUOTED_TEXT.findall(question)]
+            if named and not texts:
+                texts = [named.group(1)]
+            for text in texts:
+                wanted = _tokens(text)
+                start = next((index for index in range(len(tokens) - len(wanted) + 1)
+                              if tokens[index:index + len(wanted)] == wanted and index not in taken), None)
+                if not wanted or start is None:
+                    continue
+                whole = self.schema.value_index.get(" ".join(wanted))
+                if not explicit and whole and not _follows(tokens, start, _INCLUDE_CUES):
+                    continue
+                # A text that names a whole value is compared as the data writes it: "containing 'inspection
+                # checklists'" holds the keyword 'inspection checklist'.
+                compared = str(whole[0][1]).lower() if whole and not explicit else text.lower()
+                requests.append(SubstringRequest(start, start + len(wanted), compared, cue_words,
+                                                 subject=self._text_subject(tokens, start)))
+                taken.update(range(start, start + len(wanted)))
+        quoted = _quoted_positions(question)
+        matches, _ = self._value_matches(tokens, frozenset(taken), question)
+        for start, end, _phrase, options in matches:
+            if set(range(start, end)) & quoted:
+                continue
+            texts = [(column, value) for column, value in options if column.type == SQLType.TEXT]
+            if texts and _follows(tokens, start, _INCLUDE_CUES):
+                requests.append(SubstringRequest(start, end, str(texts[0][1]).lower(), cue_words,
+                                                 subject=self._text_subject(tokens, start)))
+            elif texts and _follows(tokens, start, _QUANTIFIERS):
+                texts = [(column, value) for column, value in texts if self._held_inside_others(column, value)]
+                quantifier = tokens[start - 1] if tokens[start - 1] in _QUANTIFIERS else tokens[start - 2]
+                if texts:
+                    columns = _unique_columns(tuple(column for column, _ in texts))
+                    requests.append(SubstringRequest(start, end, str(texts[0][1]).lower(), frozenset({quantifier}),
+                                                     columns, columns))
+        return tuple(sorted(requests, key=lambda request: request.start))
+
+    def _text_subject(self, tokens: tuple[str, ...], start: int) -> tuple[ColumnRef, ...]:
+        """The text columns the question says a text at ``start`` is in, named right before the "contain" or
+        "include" that asks for it: "a city containing the substring 'West'" and "keywords that contain
+        'inspection checklist'" name the city and the keywords; "the state whose name contains 'North'" names
+        the state, and "contestants whose names contain 'Al'" their names. None where no such word stands
+        there ("documents that contain the letter w in their description")."""
+        cue = start - 1
+        while cue >= 0 and tokens[cue] in _ARTICLES | _SUBSTRING_CUES | {"word", "text"}:
+            cue -= 1
+        if cue < 1 or tokens[cue] not in _INCLUDE_CUES:
+            return ()
+        before = cue - 1
+        if tokens[before] in {"that", "which"} and before > 0:
+            before -= 1
+
+        def named(word: str) -> tuple[ColumnRef, ...]:
+            return tuple(column.ref for column in self.schema.columns if column.ref.type == SQLType.TEXT
+                         and canon(_name_words(column.ref.name)[-1]) == word)
+
+        if tokens[before] == "name" and before >= 2 and tokens[before - 1] == "whose":
+            return named(tokens[before - 2]) or named("name")
+        return named(tokens[before])
+
+    def _held_inside_others(self, column: ColumnRef, value: Any) -> bool:
+        """Whether one row of ``column`` holds ``value`` and another of its values holds it inside, word for
+        word."""
+        counts: dict[str, int] = {}
+        for cell in self.schema.column_map[(column.table, column.name)].values:
+            if cell is not None:
+                normalized = normalize_value(cell)
+                counts[normalized] = counts.get(normalized, 0) + 1
+        target = normalize_value(value)
+        return counts.get(target) == 1 and any(
+            other != target and f" {target} " in f" {other} " for other in counts)
 
     def _value_matches(self, tokens: tuple[str, ...], claimed: set[int] | frozenset[int],
                        question: str) -> tuple[list[tuple[int, int, str, tuple[tuple[ColumnRef, Any], ...]]], set[int]]:
@@ -1720,6 +1800,71 @@ def _quoted_positions(question: str) -> frozenset[int]:
     quoted = [match.span(1) for match in _QUOTED_TEXT.finditer(question.lower())]
     return frozenset(index for index, (start, end) in enumerate(word_spans(question))
                      if any(left <= start and end <= right for left, right in quoted))
+
+
+def _follows(tokens: tuple[str, ...], start: int, cues: frozenset[str]) -> bool:
+    """Whether the word before ``start``, or the one before an article there, is one of ``cues``."""
+    before = start - 1
+    if before >= 0 and tokens[before] in _ARTICLES:
+        before -= 1
+    return before >= 0 and tokens[before] in cues
+
+
+@dataclass(frozen=True)
+class SubstringRequest:
+    """A text the question asks values to hold (``SQLSearcher._substring_requests``): where it stands in the
+    question's words, the lower-case text a LIKE compares, the words that ask for it, the columns whose whole
+    value it quantified ("all inspection checklist"), when it did, and the columns the question says the text
+    is in, when it says: those, or the city of "a city containing" (``SQLSearcher._text_subject``)."""
+    start: int
+    end: int
+    text: str
+    cues: frozenset[str]
+    columns: tuple[ColumnRef, ...] = ()
+    subject: tuple[ColumnRef, ...] = ()
+
+
+_REQUESTS: "weakref.WeakKeyDictionary[SchemaGraph, dict[str, tuple[SubstringRequest, ...]]]" = \
+    weakref.WeakKeyDictionary()
+
+
+def substring_requests(question: str, schema: SchemaGraph) -> tuple[SubstringRequest, ...]:
+    """The texts ``question`` asks values to hold, as the search reads them: the completeness check
+    (engine/query_contract.py) requires each and reads the words that ask for one it compares. Read once per
+    question and schema graph."""
+    by_question = _REQUESTS.setdefault(schema, {})
+    requests = by_question.get(question)
+    if requests is None:
+        tokens = _tokens(question)
+        claimed = {index for phrase in (*served_date_phrases(question, tokens, schema),
+                                        *duration_phrases(question, tokens))
+                   for index in range(phrase.start, phrase.end)}
+        requests = SQLSearcher(schema)._substring_requests(tokens, question, claimed) if tokens else ()
+        by_question[question] = requests
+    return requests
+
+
+def realizes_substring(query: Any, text: str, columns: Sequence[ColumnRef] = ()) -> bool:
+    """Whether ``query`` compares a column with LIKE '%text%', anywhere in it, and one of ``columns`` when
+    any are given."""
+    from dataclasses import fields, is_dataclass
+
+    pattern = f"%{text}%"
+    named = {(column.table, column.name) for column in columns}
+
+    def found(node: Any) -> bool:
+        if isinstance(node, Comparison) and node.operator == "LIKE" and isinstance(node.right, Literal):
+            compared = node.left.operand if isinstance(node.left, Lower) else node.left
+            if str(node.right.value).lower() == pattern and (
+                    not named or (getattr(compared, "table", None), getattr(compared, "name", None)) in named):
+                return True
+        if is_dataclass(node) and not isinstance(node, type):
+            return any(found(getattr(node, field.name)) for field in fields(node))
+        if isinstance(node, (tuple, list)):
+            return any(found(item) for item in node)
+        return False
+
+    return found(query)
 
 
 def _capitalized(question: str) -> frozenset[str]:

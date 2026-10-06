@@ -42,7 +42,9 @@ clear answer about their data, in plain English.
    from the conversation — currency, time period, top-N, filters — unless the user's message changed or
    cancelled it; dropping one silently changes the answer. Change ONLY what the message names: after
    "the top 3 regions by sales and the top 3 reps by deals", "only keep the top 2 reps" means the top 3
-   regions and the top 2 reps. A short follow-up that names a place, category, year, or other data value is
+   regions and the top 2 reps. A word the message adds is part of that change, so it stays: "all" or
+   "every" asks about every row its words name, not one; after "sales of the blue shirt", "all blue
+   shirts?" is "sales of all blue shirts". A short follow-up that names a place, category, year, or other data value is
    STILL a data question even when it repeats the current value (for example, "how about Belgium?"
    after a Belgium result): call the tool again and return the number. Never turn that into a meta
    question such as "did you mean a different country?" and never answer it from the previous reply.

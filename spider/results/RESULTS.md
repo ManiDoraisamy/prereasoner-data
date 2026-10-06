@@ -4,6 +4,31 @@ Dated entries come newest first. Each records a run at the commit it names; the 
 entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection arbiter`) may since have
 been removed, and that commit holds the code that ran.
 
+## Texts values hold, and aggregate operands, on `c0b1f31`: 4 strict wins, no loss (2026-10-06)
+
+Same contract as `d9ea249` (Gemini off, `whole_db`, `served` selection, SQL backend, row cap 5,000), on a worktree
+of `c0b1f31` with the change applied (`worktree_dirty=true`, tag `substrings-c0b1f31-dirty`; the JSON records each
+engine file's hash, and `engine/sql_search.py` has changed since in one docstring only). `c0b1f31` changes no planner
+code after `d9ea249`. The change:
+- reads "contain", "include", "substring" and a whole value after "all" as a text values hold, requires it compared
+  with LIKE in the column the question names, and reads the words that asked once it is;
+- takes a text column as an aggregate's operand only where its name ends the aggregate's phrase;
+- asks no average from a spelled column name.
+
+Strict 243 → 247: 4 wins (301, 302, 531, 701, all substring questions unanswered before because "contain",
+"letter" or "substring" was left unread) and no loss. Lenient 310 → 315: those four, and 970 with its columns in
+another order. Answered 408 → 414.
+
+Six examples changed SQL, all unanswered before. The sixth, 944 ("the professionals who have done treatment with cost
+below average"), is answered and wrong: the right professionals with each treated dog's name added. Before, the
+average's operand included "first name", a text column, so every reading was refused. Substring questions 506, 507,
+971, 972 and 973 stay unanswered; 362 and 380 keep their whole-value readings.
+
+Prediction seconds: median 1.16 → 1.08, p90 2.53 → 2.30, max 5.76 → 5.41. The hermetic suites ran on this desktop
+during part of the run.
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_substrings-c0b1f31-dirty.json`.
+
 ## Questions run in parallel, at `d9ea249`: same answers (2026-10-06)
 
 Same contract as `1b5c6ae` (Gemini off, `whole_db`, `served` selection, SQL backend, row cap 5,000), clean
