@@ -69,7 +69,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, fields, is_dataclass
 
-from engine.relations import join_value
+from engine.relations import join_keys
 from engine.sql_ast import (
     Aggregate,
     BinaryExpr,
@@ -208,9 +208,8 @@ class _ForeignKeyClasses:
             if table is not None and column[1] in table["columns"]:
                 index = list(table["columns"]).index(column[1])
                 values = frozenset(
-                    value for value in (join_value(row[index]) for row in table["rows"]
-                                        if index < len(row))
-                    if value is not None
+                    key for key in join_keys([row[index] if index < len(row) else None for row in table["rows"]])
+                    if key is not None
                 )
             self._values[column] = values
         return self._values[column]
@@ -296,8 +295,9 @@ class _JoinedRows:
             repeats = False
             if data is not None and all(name in data["columns"] for name in names):
                 indexes = [list(data["columns"]).index(name) for name in names]
-                values = [tuple(join_value(row[index]) if index < len(row) else None for index in indexes)
-                          for row in data["rows"]]
+                columns = [join_keys([row[index] if index < len(row) else None for row in data["rows"]])
+                           for index in indexes]
+                values = list(zip(*columns))
                 values = [value for value in values if None not in value]
                 repeats = len(set(values)) < len(values)
             self._repeats[key] = repeats

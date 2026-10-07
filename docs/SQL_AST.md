@@ -247,12 +247,17 @@ The AST, validator, renderer, and search rules support:
 - multiple projections and `DISTINCT`;
 - `COUNT`, `SUM`, `AVG`, `MIN`, and `MAX`;
 - typed `+`, `-`, `*`, and real-valued `/` expressions, including aggregates over expressions;
-- typed comparisons, ranges, dates, categorical values, `AND`, and `OR`;
+- typed comparisons, ranges, dates, categorical values, `AND`, and `OR`; a number in a question is one value
+  however it is written (`numeric.NUMBER_WORD`): "over 1,000" compares with 1000 and "over 2.5" with 2.5, never
+  with 1, 000, 2 or 5;
 - value exclusions: "not", "except", "excluding" or "without" excludes (`!=`) the first value named after it,
   within three words, and each value "and", "or" or "nor" joins to that one ("orders not Done or Cancelled");
   a value named after another value is kept ("orders not Done in France"), and a negation word inside a value
   is the value's ("Not Started"). The completeness check refuses a query that excludes a value the question
-  keeps or keeps one it excludes (`sql_search.value_polarity`, read by `query_contract.constraint_violations`);
+  keeps, keeps one it excludes, or leaves an excluded value unexcluded (`sql_search.value_polarity`, read by
+  `query_contract.constraint_violations`), whether the column is compared bare or through `LOWER`, on either
+  side, or in an `IN`/`NOT IN` list; a negated subquery ("customers who never bought X") makes its exclusion
+  inside the subquery;
 - substring filters: `LOWER(column) LIKE '%text%'` (`Lower`), for the texts a question asks values to hold
   (`sql_search.substring_requests`): a quoted text or the word after "substring", "letter" or "word"; a
   text right after "contain" or "include", whole value or not ("keywords containing 'inspection checklist'"),

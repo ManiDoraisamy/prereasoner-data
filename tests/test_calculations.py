@@ -842,6 +842,27 @@ def test_rate_application_supports_percent_and_fraction_units():
        "explicit yearly simple-financing terminology maps to the interest rule")
 
 
+def test_a_percentage_cell_applies_the_percent_it_shows():
+    # The upload importer writes a percentage-formatted cell as the percent the sheet shows, "20%", where it
+    # wrote the stored fraction 0.2, and "total price including tax" came to 150.24 for 173.75 (release
+    # review, revision 2, 2026-10-07; web/tests/workbook_import.test.js checks the importer's side).
+    from engine.tables import csv_table
+
+    sales = csv_table("item,price,tax_percent\nA,100,20%\nB,50,7.5%\n", "sales")
+    ok([row[2] for row in sales["rows"]] == [20, Decimal("7.5")], "a percentage cell reads as its percent")
+    graph, candidate, assessments, _ = _run_calculation("total price including tax", (sales,), ())
+    ok(assessments[0]["status"] == "satisfied" and assessments[0]["rule"] == "tax_add_percent",
+       "a percent-named rate column is applied as a percent")
+    schema = [{
+        "table": column.ref.table,
+        "name": column.ref.name,
+        "affinity": ("INTEGER" if column.ref.type == SQLType.INTEGER else
+                     "REAL" if column.ref.type == SQLType.REAL else "TEXT"),
+    } for column in graph.columns]
+    _columns, rows = TableQuery().execute({"sales": sales}, schema, candidate.sql, query=candidate.query)
+    ok(rows == [(173.75,)], f"20% and 7.5% are applied as shown, not as 0.2% and 0.075%: {rows}")
+
+
 def test_joined_discount_and_currency_compose_as_one_typed_calculation():
     orders = {
         "name": "orders",
@@ -1435,6 +1456,7 @@ TESTS = [
     test_ratio_uses_composite_keys_and_derives_units,
     test_learned_operand_signal_orders_only_typed_eligible_plans,
     test_rate_application_supports_percent_and_fraction_units,
+    test_a_percentage_cell_applies_the_percent_it_shows,
     test_joined_discount_and_currency_compose_as_one_typed_calculation,
     test_temporal_rate_requires_and_accepts_composite_alignment,
     test_a_calculation_at_the_wrong_grain_is_not_satisfied,

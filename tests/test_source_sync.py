@@ -236,12 +236,26 @@ def test_exchange_rate_builder_carries_active_series_past_build_day():
     by = {(code, day): (rates, source_day) for code, day, rates, source_day in rows}
 
     assert ("GBP", date(2026, 8, 19)) in by, "the day AFTER the build must be covered"
-    assert ("GBP", date(2026, 8, 18 + CARRY_FORWARD_DAYS)) in by, "the whole window is covered"
-    assert ("GBP", date(2026, 8, 19 + CARRY_FORWARD_DAYS)) not in by,         "past the window it declines, never converts at an arbitrarily old rate"
+    assert ("GBP", date(2026, 8, 17 + CARRY_FORWARD_DAYS)) in by, "the window past the last print is covered"
+    assert ("GBP", date(2026, 8, 18 + CARRY_FORWARD_DAYS)) not in by,         "past the window it declines, never converts at an arbitrarily old rate"
     carried, source_day = by[("GBP", date(2026, 8, 19))]
     assert carried["USD"] == Decimal("1.20") / Decimal("0.87"), "carried rate is the true last print"
     assert source_day == date(2026, 8, 17), "updated_at keeps the TRUE publication date"
     assert ("CYP", date(2026, 8, 19)) not in by, "retired series never fabricate past their last print"
+
+
+def test_rebuilding_a_stale_feed_does_not_make_its_rates_current():
+    # A release review (2026-10-07): the window ran from the BUILD day, so rebuilding a feed whose last print
+    # was January 1 on February 1 made that rate valid through February 8, 38 days after it was published.
+    # A foreign rate carries the window past its own last print; EUR's identity rows still lead the build.
+    history = [(date(2026, 1, 1), "USD", Decimal("2"))]
+    rows, _ = build_rows(history, today=date(2026, 2, 1))
+    by = {(code, day): (rates, source_day) for code, day, rates, source_day in rows}
+    assert ("USD", date(2026, 1, 1 + CARRY_FORWARD_DAYS)) in by
+    assert ("USD", date(2026, 1, 2 + CARRY_FORWARD_DAYS)) not in by, "no USD rate past its window"
+    assert ("USD", date(2026, 2, 8)) not in by
+    eur, _ = by[("EUR", date(2026, 2, 8))]
+    assert eur["EUR"] == Decimal("1") and eur.get("USD") is None, eur
 
 
 class _CatalogCursor:
@@ -640,6 +654,7 @@ TESTS = [
     test_exchange_rate_builder_uses_the_active_release_ledger,
     test_exchange_rate_builder_upgrades_bootstrap_spine_before_insert,
     test_exchange_rate_builder_carries_active_series_past_build_day,
+    test_rebuilding_a_stale_feed_does_not_make_its_rates_current,
     test_wikipedia_build_never_drops_a_leaf_named_by_its_own_exact_label,
     test_wikipedia_build_preserves_an_existing_alias_table,
     test_wikipedia_build_disambiguates_a_label_owned_by_another_leafs_mirror,

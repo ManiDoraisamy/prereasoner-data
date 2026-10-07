@@ -153,4 +153,17 @@ const csvText=WORKBOOK_IMPORT.convert({buffer:Buffer.from('id,amount\n1,"1,50"\n
   XLSX,UPLOAD_LIMITS);
 assert.equal(csvText.ok,true,csvText.error);
 assert.equal(csvText.sheets[0].csv,'id,amount\n1,"1,50"\n2,"1.234,56"\n3,"1,234.56"\n4,"12,34,567"\n5,-5');
-console.log('workbook layout: 34 checks passed (including 3 downloaded originals, 3 timezones, 2 date systems and host grids)');
+// A percentage cell is the percent the sheet shows (0.2 under 0% is 20%), through a file and a host grid
+// alike: the stored fraction went in, and a "tax percent" column applied 20% as 0.2% (release review,
+// revision 2, 2026-10-07). The same fraction without a percentage format stays the fraction.
+const rates=[['item','tax_percent','discount'],['A',0.2,0.2],['B',0.075,-0.05],['C',-0.05,0.333]];
+const rateFormats=[[],['General','0%','General'],['General','0.0%','General'],['General','0%','General']];
+const rateSheet=XLSX.utils.aoa_to_sheet(rates);
+rateFormats.forEach((row,r)=>row.forEach((z,c)=>{if(z!=='General')rateSheet[XLSX.utils.encode_cell({r,c})].z=z;}));
+const rateBook=XLSX.utils.book_new();XLSX.utils.book_append_sheet(rateBook,rateSheet,'Rates');
+const rateFile=WORKBOOK_IMPORT.convert({buffer:Buffer.from(XLSX.write(rateBook,{type:'array',bookType:'xlsx'}))},XLSX,UPLOAD_LIMITS);
+assert.equal(rateFile.ok,true,rateFile.error);
+assert.equal(rateFile.sheets[0].csv,'item,tax_percent,discount\nA,20%,0.2\nB,7.5%,-0.05\nC,-5%,0.333');
+const [rateGrid]=normalizeGrids([{name:'Rates',rows:rates,formats:rateFormats}]);
+assert.equal(rateGrid.csv,rateFile.sheets[0].csv,'a host grid reads percentages like a file');
+console.log('workbook layout: 37 checks passed (including 3 downloaded originals, 3 timezones, 2 date systems and host grids)');

@@ -126,6 +126,48 @@ def test_spider_results_fingerprint_every_source_file_a_run_executes():
     assert fingerprint_paths(paths) == fingerprint_paths(full_eval._source_paths(ROOT))
 
 
+def test_spider_results_fingerprint_the_databases_they_read_and_the_model_bundle():
+    """A checkpoint stayed valid when a Spider database row changed, and the contract hashed two encoder
+    files but not the rest of the model bundle, such as the anchor thresholds (release review, revision 2,
+    2026-10-07). Moving byte-identical data elsewhere keeps the contract."""
+    import shutil
+    import sqlite3
+
+    from engine.artifact_provenance import fingerprint_paths, validate_weight_bundle
+    from engine.config import DATA_DIR
+    from spider.probe import full_eval
+
+    with tempfile.TemporaryDirectory() as tmp:
+        here = Path(tmp, "a")
+        (here / "dbs").mkdir(parents=True)
+        for name in ("dev.json", "tables.json"):
+            (here / name).write_text("[]", encoding="utf-8")
+        def run(path, *statements):
+            connection = sqlite3.connect(path)
+            try:
+                for statement in statements:
+                    connection.execute(statement)
+                connection.commit()
+            finally:
+                connection.close()
+
+        for db_id in ("shop", "zoo"):
+            run(here / "dbs" / f"{db_id}.sqlite", "CREATE TABLE t (v)", "INSERT INTO t VALUES (1)")
+
+        def fingerprint(root, db_ids=("shop",)):
+            return fingerprint_paths(full_eval._input_paths(root, root / "dbs", db_ids))
+
+        before = fingerprint(here)
+        assert "dbs/shop.sqlite" in before and "dbs/zoo.sqlite" not in before
+        moved = Path(tmp, "b")
+        shutil.copytree(here, moved)
+        assert fingerprint(moved) == before
+        run(here / "dbs" / "shop.sqlite", "UPDATE t SET v = 2")
+        assert fingerprint(here)["dbs/shop.sqlite"] != before["dbs/shop.sqlite"]
+    assert validate_weight_bundle(DATA_DIR) is not None
+    assert '"weight_bundle": validate_weight_bundle(DATA_DIR)' in _text("spider/probe/full_eval.py")
+
+
 def test_public_weight_bundle_is_manifested_and_documented():
     manifest = json.loads(_text("engine/data/weights_manifest.json"))
     assert manifest["repository"] == "prereasoner/prereasoner-weights"
@@ -1130,6 +1172,7 @@ TESTS = [
     test_vendored_xlsx_parser_has_the_reviewed_identity,
     test_spider_evaluator_supports_module_invocation,
     test_spider_results_fingerprint_every_source_file_a_run_executes,
+    test_spider_results_fingerprint_the_databases_they_read_and_the_model_bundle,
     test_public_weight_bundle_is_manifested_and_documented,
     test_fresh_weight_fetch_stages_committed_artifacts,
     test_weight_fetch_paths_follow_manifest_and_reject_path_escape,

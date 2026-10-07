@@ -2467,3 +2467,128 @@ Measured:
   example's SQL changed (`spider/results/RESULTS.md`).
 - **Not run.** `tests.test_datasets` and `tests.test_geo` need the live database, and its proxy was not running.
   They run at release, with the Chrome gate.
+
+## Release review, revision 2: mixed keys, percentage cells, cut references and whole numbers (2026-10-07)
+
+Revision 2 of the release review rechecked `5f8c57c`. It found B02 and B13 fixed and reported seven new
+findings (N01–N07): three where the B04, B07 and B11 fixes did not cover the whole failure, and four new ones.
+Each was checked against the code and reproduced. All seven can give a wrong answer or a wrong record with nothing
+to say so, so they are fixed here. So are seven findings the first entry scheduled, each a contained fix in its
+owner: B08, B09, B12, B14, B17, B18 and B19.
+
+- **N01: a key column holding numbers and text.** Discovery read each cell on its own, so orders keyed `1.0, 1.0,
+  2.0, ABC` were linked to customers keyed `1, 2, ABC`. A column holding any text is stored as text, so the join
+  compared '1.0' with '1' and kept 1 of the 4 orders. Keys are now read a column at a time, as the schema stores
+  the column (`relations.join_keys`, through `numeric.stored_as_numbers`, which `TableQuery._schema` also uses):
+  by exact magnitude when every filled cell is a number, otherwise by each cell's exact text. A column of numbers
+  never matches a text column. `relations.join_value` is removed; join grounding reads keys the same way.
+- **N02: a percentage cell was read as its stored fraction.** Excel stores 20% as 0.2, and the importer wrote 0.2.
+  The rate rule divides a percent-named column by 100, so "total price including tax" applied 20% as 0.2%. A
+  numeric cell with a percentage format is now written as the percent it shows ("20%", "7.5%", "-5%"), from a file
+  and from a Sheets or Excel grid alike (`NUMBER_FORMAT.isPercent`). The engine reads "20%" as 20. The same
+  fraction without a percentage format stays a fraction.
+- **N03: the place lookup still took questions it could not answer.** Its word check read ASCII letters only, so
+  "売上 near Paris" had no words before "near" and went to the settlement lookup. It also let through kinds and
+  orders of place its query does not select ("capitals near Paris", "the smallest towns near Lyon"). Words of
+  every script now count, and only the place nouns and size words the query honours pass
+  (`knowledge.PLACE_QUESTION_WORDS`).
+- **N04: an exclusion read through LOWER escaped the polarity check.** The check read only a bare column compared
+  with a literal on its right, so `LOWER(status) = 'done'` passed for "orders not Done in France". It now reads a
+  column bare or through LOWER, on either side of the comparison, and in literal IN and NOT IN lists
+  (`query_contract._value_comparisons`). It also refuses a query that leaves an excluded value in, unless a negated
+  subquery makes the exclusion. For this, `sql_search.value_polarity` returns one set of readings per excluded
+  value.
+- **N05: an evaluator checkpoint ignored the databases and most of the model bundle.** A changed Spider database or
+  threshold file kept a `--resume` checkpoint valid. The contract now hashes each database the picked examples read
+  and the whole validated bundle (`full_eval._input_paths`, `artifact_provenance.validate_weight_bundle`).
+- **N06: a number in a question was split.** The word splitters of questions, cells and the completeness check cut
+  "1,000" into 1 and 000 and "2.5" into 2 and 5, so "orders over 1,000" found no query. A number is now one word
+  (`numeric.NUMBER_WORD`), and a grouped number compares as its value (`sql_schema.canon`,
+  `sql_expansion.parse_number`).
+- **N07: a saved reference was cut to a key-order prefix.** A request reads at most 5,000 rows of a reference,
+  which may hold 50,000. Discovery saw only the first 5,000 keys, and the table kept only those rows. With 5,001
+  products, and orders naming the first 100 and the last, "total amount by category" lost the last product's 2
+  orders without a warning. Discovery now reads every saved key. A reference over the budget keeps every row the
+  working tables name, then fills the budget in key order, and a warning says how many rows it left out. A
+  reference naming more rows than the budget is not used, and a warning says so (`master._request_rows`).
+- **B08: a rebuild made an old FX rate current.** The carry window ran from the build day, so a January 1 rate
+  rebuilt on February 1 stayed valid through February 8. A foreign rate now carries 7 days past its own last
+  print. EUR identity rows still lead the build day.
+- **B09: an old answer was saved as current.** `save_state` replaced a snapshot's `sourceHash` with the
+  conversation's newest hash. An answer computed before another tab's upload therefore looked current. The
+  snapshot keeps its own hash, the response returns it as `answer_hash`, and the browser marks the answer stale
+  when it differs from the conversation's.
+- **B12: one division, two roundings.** SQLite's decimal helpers rounded half to even and left AVG unrounded, while
+  DIVIDE rounded half up, so 1/2097152 differed in the last place. Every division now goes through
+  `numeric.decimal_divide`.
+- **B14: a question naming a non-Latin column read as chat.** The pre-gate split questions and names into ASCII
+  words, so "売上の合計" over a 売上 column was answered as conversation. Words of every script count now, and a
+  non-ASCII column name counts wherever the question contains it, since such scripts are written without spaces.
+- **B17: connect retries ignored the shrinking budget.** The connect timeout was read once, so three attempts on a
+  2-second budget could each wait 2 seconds. Each attempt now reads what is left, and no backoff starts past it.
+- **B18: a local runtime identity hashed no files.** It scanned `engine/engine`, so without `K_REVISION` or
+  `GIT_COMMIT` it was the hash of an empty map. It now scans the engine package and raises if it finds no source.
+- **B19: an explicit zero FK confidence became 1.0.** Only an absent confidence defaults to 1.0 now.
+
+Agreed and scheduled, not in this release:
+- **B01, B03, B05 and B06**, for the first entry's reasons: each changes selection or the values of every upload,
+  so each needs its own measured change.
+- **B10** (the gap between the upload lock and execution) needs execution bound to the upload's transaction, and
+  tests that interleave real PostgreSQL transactions. **B16** (the workbook identity of an unsaved Excel document)
+  needs a real Office host. **B20** (atomic bundle replacement) and **B21** (a release gate bound to full
+  identities) change installation and release tooling, not answers.
+- **P01–P11** will be taken in order of measured cost. N07 adds to P10: discovery now reads every saved key.
+- A column named as a fraction but formatted as a percentage now reads 20 for 20%, and the rate rule, which
+  trusts the name, applies it as 20. The engine does not yet take a unit from "%" cells; that belongs with B01's
+  typing by column role.
+
+Not a blocker for this release:
+- **B15** (a row named Total set aside as a summary). The importer moves a row starting with Total, Subtotal or
+  Grand total below the data into a summary table, and a warning says so. Real totals rows are far more common than
+  an entity named Total, and keeping them as data would double every sum. Formula evidence would sharpen the rule;
+  that is the importer change scheduled in the first entry.
+
+Measured:
+- **Tests.** Each fix has a regression test that fails on `5f8c57c`. The failures match the reported defects:
+  - N01: `test_join_keys_are_read_as_the_executed_join_compares_them`. `5f8c57c` links orders keyed 1.0 and ABC
+    to customers keyed 1 and ABC.
+  - N02: `web/tests/workbook_import.test.js` (0.2 on `5f8c57c`), with
+    `test_a_percentage_cell_applies_the_percent_it_shows` for the computed amount: 173.75, where the 0.2 cells
+    give 150.24.
+  - N03: `test_a_nearness_word_reaches_the_place_lookup_only_for_places`.
+  - N04: `test_the_excluded_value_is_excluded_whatever_wraps_its_column`.
+  - N05: `test_spider_results_fingerprint_the_databases_they_read_and_the_model_bundle`.
+  - N06: `test_a_number_in_a_question_is_one_word_however_it_is_written`.
+  - N07: `test_a_reference_over_the_row_budget_keeps_every_row_the_request_names`, with
+    `test_a_reference_naming_more_rows_than_the_budget_is_not_used_and_says_so` and
+    `test_a_chain_through_a_cut_reference_reads_the_rows_its_kept_rows_name`. `5f8c57c` totals 200 of 202 orders.
+  - B08: `test_rebuilding_a_stale_feed_does_not_make_its_rates_current`.
+  - B09: `test_a_saved_answer_keeps_the_source_it_read`, plus the saved-answer check in
+    `web/tests/workbook_reference.test.js`.
+  - B12: `test_one_division_rounds_the_same_in_both_backends`.
+  - B14: `test_a_question_naming_a_column_in_any_script_is_about_the_data`.
+  - B17: `test_postgres_connect_retries_wait_only_for_the_budget_left`.
+  - B18: `test_runtime_identity_without_a_deployment_names_the_engine_sources`.
+  - B19: `test_an_explicit_zero_foreign_key_confidence_stays_zero`.
+- **N07 served end to end** (the production selection over a mocked store, then the planner):
+  - With the last key named, 202 of 202 orders are totalled (`5f8c57c`: 200).
+  - With only keys past the prefix named, all 202 orders are totalled (`5f8c57c`: 200).
+  - With a rare tail key named 80 times, 100 of 100 orders are totalled (`5f8c57c`: 20).
+  - With a 50,000-row reference, it is used and 202 of 202 orders are totalled. `5f8c57c` drops the reference
+    and returns no rows.
+  - Selection over the 50,000-row reference takes 0.27 s (median of 5, mocked store), against 0.02 s on
+    `5f8c57c`, which dropped the reference without loading it. The real catalog read now carries up to 50,000
+    keys of a reference instead of 5,000.
+- **Unchanged elsewhere.** On the six multi-table demo datasets, discovery finds the same 9 foreign keys. The 9
+  shipped demo workbooks import byte-identically.
+- **Suites.** The hermetic `tests.run_all` passes 37 of 38 suites, among them `tests.test_sql_ast` (201),
+  `tests.test_query_contract` (36), `tests.test_calculations` (175), `tests.test_compose` (30),
+  `tests.test_master_ingest` (16), `tests.test_numeric_storage` (6), `tests.test_enrichment` (37),
+  `tests.test_source_sync` (29), `tests.test_conversations` (24) and `tests.test_request_limits` (26). The
+  exception is `tests.test_release` (41 of 42): its link check reads every Markdown file under the root, and the
+  untracked `release-review/.md` links to absolute paths. `npm run test:web`, ruff, bandit, the dependency
+  locks, compileall and `git diff --check` pass.
+- **Spider DEV** (`whole_db`, Gemini off). Same answers: 247 strict, 315 lenient and 414 answered, and no
+  example's SQL changed (`spider/results/RESULTS.md`).
+- **Not run.** `tests.test_datasets` and `tests.test_geo` need the live database. The reference store's real
+  PostgreSQL reads were mocked; the catalog's only change is its row limit.

@@ -14,8 +14,7 @@ from __future__ import annotations
 import contextlib
 import contextvars
 from math import isfinite
-import re
-from engine.numeric import canonical_decimal, parse_decimal
+from engine.numeric import parse_decimal, stored_as_numbers
 
 # One served question derives the same tables up to ten times (the decomposition probe, compose, the
 # delegate and its fallbacks): a 6-tab, 34,500-row subscriptions workbook spent 52 s of a request on FK
@@ -74,32 +73,22 @@ def cells(t, ci):
     return [row[ci] if ci < len(row) else None for row in t["rows"]]
 
 
-# Text an equi-join reads as a number: SQLite gives a text operand numeric affinity when it is a numeric
-# literal ("1001", "-2.5", "1e3"), never when it holds a comma or a currency sign.
-_NUMERIC_LITERAL = re.compile(r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?")
-
-
-def join_value(value):
-    """A cell as the executed equi-join compares it: a number by its exact magnitude (1001, '1001' and
-    1001.0 are one value; 2**53 and 2**53 + 1 are two), text by its exact characters, and a blank cell as no
-    value. Foreign-key discovery and join grounding (engine/sql_grounding.py) read keys this way: keys
-    compared without case claimed a foreign key whose join matched no row, and float magnitudes merged
-    distinct large integers (release review, 2026-10-07)."""
-    if value is None:
-        return None
-    if type(value) is int:
-        return str(value)
-    if isinstance(value, str):
-        text = value.strip()
-        if not text:
-            return None
-        if not _NUMERIC_LITERAL.fullmatch(text):
-            return value
-        value = text
-    try:
-        return canonical_decimal(parse_decimal(value, enforce_input_bounds=False))
-    except ValueError:
-        return str(value)
+def join_keys(values):
+    """A column's cells as the executed equi-join compares them, None for a blank cell. A column is stored
+    the way all its filled cells allow (numeric.stored_as_numbers): a column of numbers joins by exact
+    magnitude (1001, '1001' and 1001.0 are one key; 2**53 and 2**53 + 1 are two), and any other column joins
+    on each cell's exact text, so in a column that also holds 'ABC', '1.0' and '1' are two keys and 'Abc' is
+    not 'abc'. Number keys are Decimals and text keys strings, so a column of numbers never matches a text
+    column: PostgreSQL cannot compare BIGINT with TEXT, and the Python emitter does not equate them.
+    Foreign-key discovery, reference selection and join grounding (engine/sql_grounding.py) read keys only
+    this way: case-folded keys claimed a foreign key whose join matched no row, float magnitudes merged
+    distinct integers, and numbers read cell by cell matched '1.0' to '1' in text columns, where the join
+    dropped the rows (release reviews, 2026-10-07)."""
+    def blank(value):
+        return value is None or str(value).strip() == ""
+    if stored_as_numbers(values):
+        return [None if blank(value) else parse_decimal(value, enforce_input_bounds=False) for value in values]
+    return [None if blank(value) else str(value) for value in values]
 
 
 def is_key(values):
@@ -107,8 +96,12 @@ def is_key(values):
     # an FK target, so a fact row matched multiple parent rows and the join fanned out (inflating SUM/COUNT/AVG).
     # This strict uniqueness rule is the one both paths use: engine.joins.discover_fks (the compose/SQLite
     # path) delegates here, so the planner and the compose panel share this exact key test.
-    nn = [key for key in map(join_value, values) if key is not None]
-    return len(nn) >= 2 and len(nn) == len(values) and len(set(nn)) == len(nn)   # unique (exact), no nulls
+    return _unique(join_keys(values))
+
+
+def _unique(keys):
+    nn = [key for key in keys if key is not None]
+    return len(nn) >= 2 and len(nn) == len(keys) and len(set(nn)) == len(nn)     # unique (exact), no nulls
 
 
 def _name_boost(ax, bname, by):
@@ -138,12 +131,18 @@ def discover_fks(tables, min_incl=0.9):
 
 
 def _discover_fks(tables, min_incl):
-    keys = {}                                                  # (table, col) -> set of its join values
+    keys = {}                                                  # (table, col) -> set of its join keys
+    column_keys = {}                                           # a column's join keys, read at most once
+
+    def keys_of(table, index):
+        if (id(table), index) not in column_keys:
+            column_keys[(id(table), index)] = join_keys(cells(table, index))
+        return column_keys[(id(table), index)]
+
     for t in tables:
         for ci, c in enumerate(t["columns"]):
-            vals = cells(t, ci)
-            if is_key(vals):
-                keys[(t["name"], c)] = {key for key in map(join_value, vals) if key is not None}
+            if _unique(keys_of(t, ci)):
+                keys[(t["name"], c)] = {key for key in keys_of(t, ci) if key is not None}
     types = {}                                                 # a column's coltype, read at most once
 
     def type_of(table, index):
@@ -176,7 +175,7 @@ def _discover_fks(tables, min_incl):
                     candidates.append((bname, by, bset, B, nb))
             if not candidates:
                 continue
-            avals = [key for key in map(join_value, cells(A, axi)) if key is not None]
+            avals = [key for key in keys_of(A, axi) if key is not None]
             if not avals:
                 continue
             aset = set(avals)

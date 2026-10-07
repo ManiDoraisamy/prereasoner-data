@@ -9,11 +9,13 @@ from dataclasses import dataclass
 import re
 import weakref
 
+from engine.numeric import NUMBER_WORD
+
 
 def lexical_words(text):
     """Keep Unicode names; punctuation in schema labels separates words."""
     return tuple(word.removesuffix("'s") for word in
-                 re.findall(r"[^\W_]+(?:'[^\W_]+)?", str(text).casefold(), re.UNICODE))
+                 re.findall(NUMBER_WORD + r"|[^\W_]+(?:'[^\W_]+)?", str(text).casefold(), re.UNICODE))
 
 
 # Nouns that say how much of a measure there is: "search volume", "order value". After a word of the tables'
@@ -136,6 +138,33 @@ def relational_operator_evidence(question, query, graph):
             if named and actual not in named:
                 violations.append('requested ordering uses a different field')
     return frozenset(consumed), tuple(violations)
+
+
+def _value_comparisons(predicates):
+    """(column, value, folded, excludes) for each value the mandatory ``predicates`` compare a column with:
+    column = value or column != value in either order, the column bare or read through LOWER (folded,
+    so the value matches without case), and each literal of a column IN or NOT IN list."""
+    from engine.sql_ast import ColumnRef, Comparison, InPredicate, Literal, Lower
+
+    def column_of(expression):
+        if isinstance(expression, ColumnRef):
+            return expression, False
+        if isinstance(expression, Lower) and isinstance(expression.operand, ColumnRef):
+            return expression.operand, True
+        return None, False
+
+    for p in predicates:
+        if isinstance(p, Comparison) and p.operator in {"=", "!=", "<>"}:
+            left, right = (p.right, p.left) if isinstance(p.left, Literal) else (p.left, p.right)
+            column, folded = column_of(left)
+            if column is not None and isinstance(right, Literal):
+                yield column, right.value, folded, p.operator != "="
+        elif isinstance(p, InPredicate) and isinstance(p.source, tuple):
+            column, folded = column_of(p.left)
+            if column is not None:
+                for item in p.source:
+                    if isinstance(item, Literal):
+                        yield column, item.value, folded, p.negated
 
 
 def constraint_violations(question, query, graph):
@@ -374,18 +403,30 @@ def constraint_violations(question, query, graph):
             violations.append("requested exclusion is missing")
     # An exclusion is the one the question makes: in "orders not Done in France", status != 'Done' with
     # country = 'France', and neither another field's exclusion nor the excluded value kept stands for it
-    # (sql_search.value_polarity; a release review, 2026-10-07).
-    from engine.sql_ast import Literal
+    # (sql_search.value_polarity; a release review, 2026-10-07). A column is read through LOWER, whose
+    # value matches without case, and on either side of the comparison; a literal IN or NOT IN list
+    # keeps or excludes each value. A query that excludes through a negated subquery ("customers who
+    # never bought X") makes its exclusion inside that subquery.
     from engine.sql_search import value_polarity
-    kept, excluded = value_polarity(question, graph)
-    for p in actual:
-        if not (isinstance(p, Comparison) and isinstance(p.left, ColumnRef) and isinstance(p.right, Literal)):
-            continue
-        reading = (p.left.table, p.left.name, p.right.value)
-        if p.operator in {"!=", "<>"} and reading in kept and reading not in excluded:
-            violations.append(f"the query excludes {p.right.value!r}, which the question keeps")
-        elif p.operator == "=" and reading in excluded and reading not in kept:
-            violations.append(f"the query keeps only {p.right.value!r}, which the question excludes")
+    kept, excluded_groups = value_polarity(question, graph)
+    excluded = frozenset().union(*excluded_groups)
+    made = set()
+    for column, value, folded, excludes in _value_comparisons(actual):
+        def held(readings):
+            return any(table == column.table and name == column.name
+                       and (str(stated).casefold() == str(value).casefold() if folded else stated == value)
+                       for table, name, stated in readings)
+        if excludes:
+            made |= {reading for reading in excluded if held((reading,))}
+        if excludes and held(kept) and not held(excluded):
+            violations.append(f"the query excludes {value!r}, which the question keeps")
+        elif not excludes and held(excluded) and not held(kept):
+            violations.append(f"the query keeps only {value!r}, which the question excludes")
+    by_subquery = any(p.negated and (isinstance(p, ExistsPredicate) or not isinstance(p.source, tuple))
+                      for p in actual if isinstance(p, (ExistsPredicate, InPredicate)))
+    for group in () if by_subquery else excluded_groups:
+        if not group & made:
+            violations.append(f"the query does not exclude {sorted(group)[0][2]!r}, which the question excludes")
     text = " ".join(lexical_words(question))
     for column in sorted(graph.columns, key=lambda c: -len(c.ref.name)):
         label = " ".join(lexical_words(column.ref.name))

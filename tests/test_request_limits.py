@@ -263,6 +263,41 @@ def test_postgres_connect_retries_transport_errors_but_not_authentication():
         sleep.assert_not_called()
 
 
+def test_postgres_connect_retries_wait_only_for_the_budget_left():
+    """The connect retry read the request's budget once: with 2.9 seconds left every attempt was
+    given a 2-second connect timeout, and the waits between them ran past the budget (release review,
+    2026-10-07). Each attempt now waits for what is left, and no retry starts without time for it."""
+    import psycopg2
+
+    from engine import pg
+
+    transient = psycopg2.OperationalError("connection timed out")
+    left = iter([2.9, 2.6, 1.7, 0.4])      # the second pause (0.5 s) no longer fits
+    with patch.object(pg, "kb_pg_password", return_value="secret"), \
+            patch("engine.request_deadline.remaining", side_effect=lambda: next(left)), \
+            patch.object(pg.time, "sleep") as sleep, \
+            patch.object(pg.psycopg2, "connect", side_effect=transient) as connect:
+        try:
+            pg._pg()
+            raise AssertionError("the third failure is raised")
+        except psycopg2.OperationalError:
+            pass
+    assert [call.kwargs["connect_timeout"] for call in connect.call_args_list] == [2, 1], connect.call_args_list
+    assert [call.args[0] for call in sleep.call_args_list] == [0.25], sleep.call_args_list
+
+    short = iter([1.4, 0.2])                     # less left than the pause before a retry
+    with patch.object(pg, "kb_pg_password", return_value="secret"), \
+            patch("engine.request_deadline.remaining", side_effect=lambda: next(short)), \
+            patch.object(pg.time, "sleep") as sleep, \
+            patch.object(pg.psycopg2, "connect", side_effect=transient) as connect:
+        try:
+            pg._pg()
+            raise AssertionError("no retry without time for it")
+        except psycopg2.OperationalError:
+            pass
+    assert connect.call_count == 1 and not sleep.called
+
+
 def test_cached_connection_dropped_between_requests_is_replaced_before_use():
     """2026-09-25 15:44 UTC (the Sheets add-on; five times since 08-30): the engine's one
     cross-request connection was dropped between requests, `_rconn()` handed it back, and the
@@ -989,6 +1024,7 @@ TESTS = [
     test_conversation_lifecycle_limits_are_bounded_and_configurable,
     test_admin_access_fails_closed_without_an_explicit_allowlist,
     test_postgres_connect_retries_transport_errors_but_not_authentication,
+    test_postgres_connect_retries_wait_only_for_the_budget_left,
     test_cached_connection_dropped_between_requests_is_replaced_before_use,
     test_chat_validation_normalizes_and_bounds_inputs,
     test_a_long_conversation_keeps_its_most_recent_history_window,

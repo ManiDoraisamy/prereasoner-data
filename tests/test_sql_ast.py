@@ -1710,7 +1710,8 @@ def test_join_keys_are_read_as_the_executed_join_compares_them():
     total over their payments was read as double counted. Both now read a key as the join does."""
     from decimal import Decimal
 
-    from engine.relations import discover_fks, join_value
+    from engine.relations import discover_fks, join_keys
+    from engine.tables import csv_table
     planner = _hermetic_planner()
     orders = {"name": "orders", "columns": ["order_id", "customer_id", "amount"],
               "rows": [[1, "ABC", 10], [2, "ABC", 20], [3, "DEF", 30]]}
@@ -1727,11 +1728,22 @@ def test_join_keys_are_read_as_the_executed_join_compares_them():
     assert answer(customers(("abc", "Ann"), ("def", "Bo"))) == ([], None)
     assert answer(customers(("ABC", "Ann"), ("DEF", "Bo"))) == (linked, [("Ann", 30), ("Bo", 30)])
     assert answer(customers(("ABC", "Ann"), ("abc", "Cy"), ("DEF", "Bo"))) == (linked, [("Ann", 30), ("Bo", 30)])
-    # A number is one key by its exact magnitude whatever its type, and distinct however large or precise.
-    assert join_value(1001) == join_value("1001") == join_value(1001.0) == join_value(Decimal("1001.00")) == "1001"
-    assert len({join_value(value) for value in (2**53, 2**53 + 1, 10**37, 10**37 + 1, Decimal("0.1"),
-                                                Decimal("0.10000000000000001"))}) == 6
-    assert join_value("1,001") == "1,001" and join_value("Abc") != join_value("abc") and join_value("  ") is None
+    # In a column of numbers a key is its exact magnitude whatever its type, distinct however large or precise.
+    assert len(set(join_keys([1001, "1001", 1001.0, Decimal("1001.00")]))) == 1
+    assert len(set(join_keys([2**53, 2**53 + 1, 10**37, 10**37 + 1, Decimal("0.1"),
+                              Decimal("0.10000000000000001")]))) == 6
+    # In a column that holds text, every cell is stored as its text and joins on it (revision 2 of the review):
+    # orders keyed 1.0, 1.0, 2.0 and ABC were linked to customers keyed 1, 2 and ABC, and the join kept only ABC.
+    assert join_keys(["1.0", "1", "Abc", "abc", "  ", None]) == ["1.0", "1", "Abc", "abc", None, None]
+    assert join_keys([1, "ABC"]) == ["1", "ABC"] and join_keys([1, 2]) != join_keys(["1", "2", "x"])[:2]
+    mixed_orders = csv_table("customer_id,amount\n1.0,10\n1.0,20\n2.0,30\nABC,40\n", "orders")
+    for keys, expected in (("1,Alice\n2,Bob\nABC,Chris", None),
+                           ("1.0,Alice\n2.0,Bob\nABC,Chris", [("Alice", 30), ("Bob", 30), ("Chris", 40)])):
+        mixed_customers = csv_table("customer_id,name\n" + keys + "\n", "customers")
+        edges = discover_fks([mixed_orders, mixed_customers])
+        result = planner.serve([mixed_orders, mixed_customers], "total amount by customer name").get("result")
+        assert bool(edges) == bool(expected) and (sorted(map(tuple, result["rows"])) if result else None) == expected, (
+            keys, edges, result)
     accounts = {"name": "accounts", "columns": ["account_id", "owner"], "rows": [[2**53, "Ann"], [2**53 + 1, "Bo"]]}
     payments = {"name": "payments", "columns": ["payment_id", "account_id", "amount"],
                 "rows": [[1, 2**53, 5], [2, 2**53 + 1, 7], [3, 2**53, 1]]}
@@ -1742,6 +1754,43 @@ def test_join_keys_are_read_as_the_executed_join_compares_them():
     # Contrast: an account listed twice does repeat each payment the join matches to it.
     twice = {**accounts, "rows": accounts["rows"] + [[2**53, "Ann"]]}
     assert len(double_counted(total, {"accounts": twice, "payments": payments})) == 1
+
+
+def test_a_number_in_a_question_is_one_word_however_it_is_written():
+    """Revision 2 of a release review (2026-10-07): the question splitter cut "1,000" into 1 and 000 and "2.5"
+    into 2 and 5, so "orders with Amount over 1,000" and "over 2.5" found no query while "over 1000" did. A
+    number is one word, grouped or decimal, in the question, the cells and the completeness check alike."""
+    planner = _hermetic_planner()
+    orders = {"name": "orders", "columns": ["order_id", "Amount", "product"],
+              "rows": [[1, 2, "Kit 2.0"], [2, 999, "Kit 1.5"], [3, 1001, "Kit 2.0"], [4, 2000, "Pad"],
+                       [5, 150000, "Pad"]]}
+
+    def answer(question):
+        out = planner.serve([orders], question)
+        return out.get("sql"), sorted(map(tuple, out["result"]["rows"])) if out.get("result") else None
+
+    plain = answer("orders with Amount over 1000")
+    assert plain[1] == [(1001,), (2000,), (150000,)], plain
+    assert answer("orders with Amount over 1,000") == plain
+    assert answer("how many orders with Amount over 1,000?")[1] == [(3,)]
+    assert answer("how many orders with Amount over 1,00,000?")[1] == [(1,)]        # Indian grouping
+    assert answer("how many orders with Amount below 2.5?")[1] == [(1,)]
+    assert answer("how many orders of Kit 2.0")[1] == [(2,)]                      # a value holding a decimal
+    # Negative: a comma that does not group digits names no number.
+    assert answer("orders with Amount over 1,00")[1] is None
+
+
+def test_an_explicit_zero_foreign_key_confidence_stays_zero():
+    """`conf or 1.0` read an explicit confidence of 0.0 as full confidence (release review, 2026-10-07).
+    Only an absent confidence defaults to 1.0."""
+    tables = [{"name": "a", "columns": ["id", "b_id"], "rows": [[1, 1], [2, 1]]},
+              {"name": "b", "columns": ["id"], "rows": [[1]]}]
+
+    def confidence(**stated):
+        edge = {"from_table": "a", "from_col": "b_id", "to_table": "b", "to_col": "id", **stated}
+        return SchemaGraph.from_tables(tables, [edge]).foreign_keys[0].confidence
+
+    assert confidence(conf=0.0) == 0.0 and confidence(confidence=0.4) == 0.4 and confidence() == 1.0
 
 
 def test_unread_check_accepts_a_threshold_only_when_the_ast_realizes_it():
@@ -4960,6 +5009,8 @@ TESTS = [
     test_a_negation_excludes_the_value_after_it_and_the_values_listed_with_it,
     test_a_decimal_comma_amount_is_not_totalled_as_hundreds,
     test_join_keys_are_read_as_the_executed_join_compares_them,
+    test_an_explicit_zero_foreign_key_confidence_stays_zero,
+    test_a_number_in_a_question_is_one_word_however_it_is_written,
     test_unread_check_accepts_a_threshold_only_when_the_ast_realizes_it,
     test_unread_check_treats_sheet_scope_words_as_context_not_filters,
     test_gemini_reads_schema_names_but_not_cell_values,

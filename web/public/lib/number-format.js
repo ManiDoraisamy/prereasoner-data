@@ -18,5 +18,7 @@
     const c=codes(format);
     return !ELAPSED.test(c)&&/[ydhms]/.test(c)&&/[ymd]/.test(c);
   }
-  root.NUMBER_FORMAT={codes,isElapsed,isDate};
+  // 0%, 0.00%: Excel stores the fraction (0.2) and shows the percent (20%).
+  function isPercent(format){return codes(format).includes('%');}
+  root.NUMBER_FORMAT={codes,isElapsed,isDate,isPercent};
 })(typeof window==='undefined'?globalThis:window);

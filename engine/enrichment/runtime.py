@@ -44,10 +44,14 @@ class RuntimeIdentity:
             if manifest else "sha256:" + hashlib.sha256(b"unmanifested-model").hexdigest()
         )
         engine_root = Path(__file__).resolve().parents[1]
+        # The engine package's own sources. This scanned engine/engine, which does not exist, so a run
+        # without K_REVISION or GIT_COMMIT identified itself by the hash of no files at all.
         source_identity = {
             path.relative_to(engine_root).as_posix(): sha256_file(path)
-            for path in sorted((engine_root / "engine").rglob("*.py"))
+            for path in sorted(engine_root.rglob("*.py")) if "__pycache__" not in path.parts
         }
+        if not source_identity:
+            raise RuntimeError(f"no engine sources under {engine_root}")
         build = (os.environ.get("K_REVISION") or os.environ.get("GIT_COMMIT")
                  or "source-sha256:" + canonical_json_sha256(source_identity))
         return cls(

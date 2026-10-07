@@ -562,6 +562,51 @@ def test_an_exclusion_is_the_one_the_question_makes():
     started = _model_query(planner, "SELECT * FROM orders WHERE status = 'Not Started' AND country = 'Spain'", orders)
     assert not constraint_violations('orders Not Started in Spain', started.query, graph)
 
+
+def test_the_excluded_value_is_excluded_whatever_wraps_its_column():
+    # A release review, revision 2 (2026-10-07): the polarity check read only a bare column, so LOWER(status) =
+    # 'done' kept the excluded value and passed, and any unrelated exclusion (Amount != 0) stood for the one asked.
+    planner = _hermetic_planner()
+    orders = [{'name': 'orders', 'columns': ['status', 'country', 'Amount'],
+               'rows': [['Done', 'France', 10], ['Open', 'France', 15], ['Done', 'Spain', 30],
+                        ['Cancelled', 'France', 7], ['Not Started', 'Spain', 9]]}]
+    graph = _graph(planner, orders)
+
+    from dataclasses import replace
+
+    from engine.sql_ast import BooleanExpr, ColumnRef, Lower
+
+    def lowered(predicate):          # status = 'done' read as LOWER(status) = 'done'
+        if isinstance(predicate, BooleanExpr):
+            return replace(predicate, terms=tuple(lowered(term) for term in predicate.terms))
+        if isinstance(predicate.left, ColumnRef) and predicate.left.name == 'status':
+            return replace(predicate, left=Lower(predicate.left))
+        return predicate
+
+    def refused(question, sql, lower=False):
+        query = _model_query(planner, sql, orders).query
+        if lower:
+            query = replace(query, where=lowered(query.where))
+        return constraint_violations(question, query, graph)
+
+    question = 'orders not Done in France'
+    assert refused(question, "SELECT * FROM orders WHERE status = 'done' AND country = 'France' AND Amount != 0",
+                   lower=True)
+    for sql in ("SELECT * FROM orders WHERE country = 'France' AND Amount != 0",
+                "SELECT * FROM orders WHERE 'Done' = status AND country = 'France'"):
+        assert refused(question, sql), sql
+    assert not refused(question, "SELECT * FROM orders WHERE status != 'done' AND country = 'France'", lower=True)
+    for sql in ("SELECT * FROM orders WHERE 'Done' != status AND country = 'France'",
+                "SELECT * FROM orders WHERE status NOT IN ('Done') AND country = 'France'"):
+        assert not refused(question, sql), sql
+    # Both listed values are excluded, or the query is refused.
+    assert not refused('orders not Done or Cancelled', "SELECT * FROM orders WHERE status NOT IN ('Done', 'Cancelled')")
+    assert refused('orders not Done or Cancelled', "SELECT * FROM orders WHERE status NOT IN ('Done')")
+    # Contrast: an exclusion made inside a negated subquery is the question's.
+    assert not refused('orders not Done in France',
+                       "SELECT * FROM orders WHERE country = 'France' AND status NOT IN "
+                       "(SELECT status FROM orders WHERE status = 'Done')")
+
 TESTS = [value for name, value in globals().copy().items() if name.startswith('test_') and callable(value)]
 
 if __name__ == '__main__':

@@ -138,10 +138,15 @@ class ComposedKnowledgeQuery:
             ql = (question or "").lower()
             if re.search(r"\bhow\s+(?:many|much)\b", ql):
                 return True                                       # 'how many/much' is a data intent (not 'how does…')
-            toks = set(re.findall(r"[a-z]+", ql))
+            # Words of every script: an ASCII-only reading saw no words in "売上の合計" and called a question
+            # naming the sheet's 売上 column a chat (release review, revision 2). A script written without
+            # spaces runs a column's name into the words around it, so a name outside ASCII also counts
+            # where the question contains it.
+            toks = set(re.findall(r"[^\W\d_]+", ql))
             if toks & self._DATA_INTENT:
                 return True
-            if toks & self._schema_tokens(tables):
+            schema = self._schema_tokens(tables)
+            if toks & schema or any(not part.isascii() and part in ql for part in schema):
                 return True
             content = [w for w in toks if len(w) > 2 and w not in self._META_STOP]
             if content and self.qw._best_world_entity(content):
@@ -151,12 +156,13 @@ class ComposedKnowledgeQuery:
             return True
 
     def _schema_tokens(self, tables):
-        """The set of lowercased word-parts of every table/column name (plus a naive de-pluralized form)."""
+        """The set of lowercased word-parts, in any script, of every table/column name (plus a naive
+        de-pluralized form)."""
         schw = set()
         for t in (tables or []):
             cols = t.get("columns") or [c.strip() for c in (str(t.get("data", "")).splitlines() or [""])[0].split(",")]
             for nm in [t.get("name", "")] + list(cols):
-                for part in re.split(r"[^a-z0-9]+", str(nm).lower()):
+                for part in re.split(r"[\W_]+", str(nm).lower()):
                     if len(part) > 1:
                         schw.add(part); schw.add(part.rstrip("s"))
         return schw

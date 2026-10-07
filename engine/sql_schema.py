@@ -9,12 +9,12 @@ from numbers import Real
 import re
 from typing import Any, Iterable, Sequence
 
-from engine.numeric import NUMBER_TEXT, parse_decimal
+from engine.numeric import NUMBER_TEXT, NUMBER_WORD, parse_decimal
 from engine.relations import layout
 from engine.sql_ast import ColumnRef, Join, SQLType
 
 
-_WORD_RE = re.compile(r"[^\W_]+(?:'[^\W_]+)?", re.UNICODE)
+_WORD_RE = re.compile(NUMBER_WORD + r"|[^\W_]+(?:'[^\W_]+)?", re.UNICODE)
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}(?:[ T].*)?$")
 _NAME_WORDS = frozenset({"name", "title", "label"})
 
@@ -336,7 +336,9 @@ def _foreign_key(
         from_table, to_table = str(raw["from_table"]), str(raw["to_table"])
         from_columns = raw.get("from_cols", (raw["from_col"],) if "from_col" in raw else ())
         to_columns = raw.get("to_cols", (raw["to_col"],) if "to_col" in raw else ())
-        confidence = float(raw.get("conf", raw.get("confidence", 1.0)) or 1.0)
+        # Only an absent confidence defaults to 1.0: `or 1.0` turned an explicit 0.0 into full confidence.
+        stated = raw.get("conf", raw.get("confidence"))
+        confidence = 1.0 if stated is None else float(stated)
     else:
         from_table, from_column, to_table, to_column = map(str, raw[:4])
         from_columns, to_columns = (from_column,), (to_column,)
@@ -462,6 +464,8 @@ def canon(word: str) -> str:
     "cours", "matches" "matche" and "finishes" "finishe", so a question saying "course", "match" or
     "finish" named no Courses, matches or best_finish."""
     word = word.lower().strip()
+    if "," in word and NUMBER_TEXT.match(word):
+        return word.replace(",", "")                      # "1,000" is the number 1000 a query compares
     if word == "handed":
         return "hand"
     if word == "ids":

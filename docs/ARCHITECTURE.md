@@ -127,11 +127,14 @@ The PostgreSQL deployment uses five distinct scopes:
 The verified Firebase subject determines the user scope. A client-supplied conversation id is accepted only after
 an ownership check. Client input never selects a user schema directly.
 
-Private references are not added wholesale to a SQL `search_path`. `engine.master.relevant_tables()` loads a
-bounded set, applies the production foreign-key detector to uploaded and saved tables, and selects only references
-connected to the request. Selection runs to a fixed point, so a valid multi-hop chain can be included. Selected
-references then become ordinary typed planner tables; there is no reference-specific SQL generator. The detector
-compares keys as the executed join does (`engine.relations.join_value`: text exactly, numbers by exact magnitude),
+Private references are not added wholesale to a SQL `search_path`. `engine.master.relevant_tables()` reads every
+saved key, applies the production foreign-key detector to uploaded and saved tables, and selects only references
+connected to the request. Selection runs to a fixed point, so a valid multi-hop chain can be included. A selected
+reference larger than the request's row budget (`engine.server.MAX_REFERENCE_ROWS`) keeps every row whose key the
+working tables name, fills the budget with the others in key order, and says in a warning what it left out; one
+naming more rows than the budget is not used, and a warning says so. Selected references then become ordinary typed
+planner tables; there is no reference-specific SQL generator. The detector compares keys as the executed join does
+(`engine.relations.join_keys`: a column of numbers by exact magnitude, any other column by each cell's exact text),
 so a reference the uploads match only when case is ignored is not joined; the same detector over case-folded copies
 names it in a warning.
 
@@ -224,8 +227,8 @@ replay. The legacy Wikidata schema migration is still pending.
    cells and calls `/chat` and the conversation APIs server to server with the user's Firebase identity. It does not
    implement reasoning and never writes to the spreadsheet.
 4. `engine.master` validates or selects private references. `engine.relations.discover_fks()` is the canonical
-   relationship detector used here and by planning, and `engine.relations.join_value` is how it and join grounding
-   (`engine/sql_grounding.py`) read a key. Within one request, discovery, the planner's schema and the schema graph
+   relationship detector used here and by planning, and `engine.relations.join_keys` is how it and join grounding
+   (`engine/sql_grounding.py`) read a column's keys. Within one request, discovery, the planner's schema and the schema graph
    are each derived once (`engine.relations.memoized`).
 5. `engine.server` resolves the conversation id and verifies ownership before selecting its working schema.
    Uploaded data changes advance a monotonic dataset version and mark prior analyses stale. `engine.pg` hashes

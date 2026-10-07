@@ -17,7 +17,7 @@ import hashlib
 import logging
 
 from engine.pg import _pg
-from engine.relations import discover_fks
+from engine.relations import cells, discover_fks, join_keys
 from engine.tables import table_from_rows, table_name
 
 MAX_COLS = 64
@@ -174,10 +174,10 @@ def load_master_tables(user_id, row_limit=MAX_ROWS):
         conn.close()
 
 
-def load_master_catalog(user_id, row_limit=MAX_ROWS):
-    """Load table shape plus join-key values, never every cell, for request-time selection."""
+def load_master_catalog(user_id):
+    """Load table shape plus every join-key value, never every cell, for request-time selection: discovery
+    must see the whole key column, since a request's keys can lie anywhere in it."""
     sch = master_schema(user_id)
-    limit = max(0, min(int(row_limit), MAX_ROWS))
     connection = _pg()
     try:
         cursor = connection.cursor()
@@ -188,7 +188,7 @@ def load_master_catalog(user_id, row_limit=MAX_ROWS):
             if not columns:
                 continue
             cursor.execute('SELECT %s FROM "%s".%s ORDER BY %s LIMIT %%s' %
-                           (_qi(columns[0]), sch, _qi(name), _qi(columns[0])), (limit,))
+                           (_qi(columns[0]), sch, _qi(name), _qi(columns[0])), (MAX_ROWS,))
             keys = [["" if row[0] is None else str(row[0])] + [None] * (len(columns) - 1)
                     for row in cursor.fetchall()]
             stored.append({"name": name, "columns": columns, "rows": keys})
@@ -209,18 +209,59 @@ def _case_folded(table):
                               for row in table["rows"]]}
 
 
+def _named_keys(edges, working, candidate):
+    """The reference keys the working tables name: their values in every column linked to its key."""
+    tables = {table["name"]: table for table in working}
+    named = set()
+    for edge in edges:
+        if edge["from_table"] in tables and edge["to_table"] == candidate["name"] \
+                and edge["to_col"] == candidate["columns"][0]:
+            table = tables[edge["from_table"]]
+            named.update(join_keys(cells(table, table["columns"].index(edge["from_col"]))))
+    named.discard(None)
+    return named
+
+
+def _request_rows(stored_name, name, full, named, row_limit):
+    """The saved rows one request reads, and the warning that says what it left out.
+
+    A reference larger than the request budget keeps every row whose key the working tables name, the rows
+    a join to it can match, then fills the budget with the others in key order. A key-order prefix dropped
+    named rows, and the inner join silently dropped the source rows naming them from every total (release
+    review, revision 2, 2026-10-07). A reference naming more rows than the budget is not used at all: a
+    partial join would present a partial total as the whole.
+    """
+    rows = full["rows"]
+    if len(rows) <= row_limit:
+        return table_from_rows(name, full["columns"], rows), None
+    keys = join_keys(cells(table_from_rows(name, full["columns"][:1], [row[:1] for row in rows]), 0))
+    matched = [index for index, key in enumerate(keys) if key in named]
+    if len(matched) > row_limit:
+        return None, (f'Saved reference "{stored_name}" was not used: your data names {len(matched):,} of its '
+                      f'rows and a request reads at most {row_limit:,}.')
+    chosen = set(matched)
+    chosen.update([index for index in range(len(rows)) if index not in chosen][:row_limit - len(matched)])
+    table = table_from_rows(name, full["columns"], [rows[index] for index in sorted(chosen)])
+    left = len(rows) - row_limit
+    return table, (f'Saved reference "{stored_name}" has {len(rows):,} rows and a request reads {row_limit:,}: '
+                   f'this answer read every row your data names and left out {left:,} other '
+                   f'row{"" if left == 1 else "s"}.')
+
+
 def relevant_tables(user_id, source_tables, limit, row_limit):
     """Return saved references that the production FK graph can join to this request.
 
     Selection delegates relationship inference to ``discover_fks``, which compares keys as the emitted SQL
     equality join does (case-sensitive for text). A reference the uploads match only when case is ignored
-    is named in a warning, found by the same discovery over case-folded copies of the tables. Store
-    failures are reported as warnings so an answer is never silently presented as reference-aware.
+    is named in a warning, found by the same discovery over case-folded copies of the tables. Discovery
+    reads every saved key; a reference over the ``row_limit`` budget then keeps the rows the request names
+    (``_request_rows``) and says what it left out. Store failures are reported as warnings so an answer is
+    never silently presented as reference-aware.
     """
     if limit <= 0:
         return {"tables": [], "warnings": ["Saved references were not used because the request reached the table limit."]}
     try:
-        stored = load_master_catalog(user_id, row_limit)
+        stored = load_master_catalog(user_id)
     except Exception:                                        # noqa: BLE001 - degrade to uploaded data, but disclose it
         LOG.exception("saved reference data could not be loaded")
         return {"tables": [], "warnings": ["Saved reference data was unavailable; the answer used uploaded tables only."]}
@@ -235,7 +276,7 @@ def relevant_tables(user_id, source_tables, limit, row_limit):
             continue
         if len(full.get("columns") or []) < 2 or not full.get("rows"):
             continue
-        candidate = table_from_rows(name, full["columns"], full["rows"][:row_limit])
+        candidate = table_from_rows(name, full["columns"], full["rows"])
         used_names.add(name)
         candidates.append((full["name"], candidate))
 
@@ -246,7 +287,8 @@ def relevant_tables(user_id, source_tables, limit, row_limit):
         working_names = {table["name"] for table in working}
         added, unjoined = [], []
         for stored_name, candidate in remaining:
-            if not _joined(discover_fks([*working, candidate]), working_names, candidate):
+            edges = discover_fks([*working, candidate])
+            if not _joined(edges, working_names, candidate):
                 unjoined.append((stored_name, candidate))
                 continue
             try:
@@ -259,8 +301,14 @@ def relevant_tables(user_id, source_tables, limit, row_limit):
                 continue
             if full is None:
                 continue
-            selected.append(table_from_rows(candidate["name"], full["columns"], full["rows"][:row_limit]))
+            table, warning = _request_rows(stored_name, candidate["name"], full,
+                                           _named_keys(edges, working, candidate), row_limit)
+            if warning:
+                warnings.append(warning)
             added.append(candidate["name"])
+            if table is None:
+                continue
+            selected.append(table)
             if len(selected) >= limit:
                 break
         if not added:

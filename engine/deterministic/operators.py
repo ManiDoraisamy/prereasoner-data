@@ -5,12 +5,12 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import date, datetime
-from decimal import ROUND_HALF_UP, Decimal, localcontext
+from decimal import Decimal
 from functools import cmp_to_key
 import re
 from typing import Generic, TypeVar
 
-from engine.numeric import DECIMAL_PRECISION, DIVISION_SCALE
+from engine.numeric import decimal_divide
 from engine.sql_ast import DAYS_PER_UNIT, day_number
 
 T = TypeVar("T")
@@ -256,12 +256,7 @@ def MULTIPLY(left, right):
 def DIVIDE(left, right):
     if left is None or right in (None, 0):
         return None
-    with localcontext() as context:
-        context.prec = DECIMAL_PRECISION
-        return (Decimal(str(left)) / Decimal(str(right))).quantize(
-            Decimal(1).scaleb(-DIVISION_SCALE),
-            rounding=ROUND_HALF_UP,
-        )
+    return decimal_divide(Decimal(str(left)), Decimal(str(right)))
 
 
 def _comparable(left, right):

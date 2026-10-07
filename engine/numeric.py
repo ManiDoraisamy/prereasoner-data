@@ -8,7 +8,7 @@ wire as canonical decimal strings; integral results remain JSON integers.
 """
 from __future__ import annotations
 
-from decimal import Decimal, DivisionByZero, InvalidOperation, localcontext
+from decimal import ROUND_HALF_UP, Decimal, DivisionByZero, InvalidOperation, localcontext
 import math
 import re
 import sqlite3
@@ -31,6 +31,12 @@ GROUPED_DIGITS = r"[1-9]\d{0,2}(?:,\d{3})+|[1-9]\d?(?:,\d{2})+,\d{3}"
 # A plain decimal as a question or a cell writes it: a minus sign, digits (grouped or not), a fraction.
 NUMBER_TEXT = re.compile(rf"^-?(?:\d+|{GROUPED_DIGITS})(?:\.\d+)?$")
 _GROUPED_NUMBER = re.compile(rf"[+-]?(?:{GROUPED_DIGITS})(?:\.\d*)?")
+# A number as one word of a question or a cell: digits, grouped or not, and a decimal fraction, not inside
+# a longer word or number ("1,000" and "2.5"; not the "1" of "1st" or of "1.2.3"). The word splitters of
+# questions, cells and the completeness check (sql_expansion.words, sql_schema.normalize_value,
+# query_contract.lexical_words) keep it whole: "over 1,000" and "over 2.5" were read as 1 then 000 and 2
+# then 5, and no query was found (release review, revision 2, 2026-10-07).
+NUMBER_WORD = rf"(?<![\w.,])(?:{GROUPED_DIGITS}|\d+)(?:\.\d+)?(?!\w|[.,]\d)"
 
 
 def wire_document(value: Any) -> Any:
@@ -48,6 +54,21 @@ def wire_document(value: Any) -> Any:
 
 def json_dumps(value: Any, **kwargs) -> str:
     return json.dumps(wire_document(value), **kwargs)
+
+
+def stored_as_numbers(values: Iterable[Any]) -> bool:
+    """Whether a column is stored as numbers: it has a filled cell and every filled one is a number (a blank
+    is None or whitespace). Any other column is stored as text, cell by cell as str(value). The planner's
+    schema (TableQuery._schema) stores columns this way, and join keys (relations.join_keys) are read by it."""
+    filled = [value for value in values if value is not None and str(value).strip() != ""]
+    if not filled:
+        return False
+    for value in filled:
+        try:
+            parse_decimal(value)
+        except (TypeError, ValueError):
+            return False
+    return True
 
 
 def observed_numeric_affinity(values: Iterable[Any]) -> str:
@@ -168,6 +189,16 @@ def wire_rows(rows: Iterable[Iterable[Any]]) -> list[list[Any]]:
     return [["" if value is None else wire_value(value) for value in row] for row in rows]
 
 
+def decimal_divide(left: Decimal, right: Decimal) -> Decimal:
+    """The one exact division: the quotient rounded half up to DIVISION_SCALE places. SQLite's
+    decimal_div and decimal_avg and the Python emitter's DIVIDE and AVG all divide here. SQLite rounded
+    half to even and left an average unrounded, so the two backends differed in the last place:
+    1 / 2097152 was ...0312 in one and ...0313 in the other (release review, 2026-10-07)."""
+    with localcontext() as context:
+        context.prec = DECIMAL_PRECISION
+        return (left / right).quantize(Decimal(1).scaleb(-DIVISION_SCALE), rounding=ROUND_HALF_UP)
+
+
 def _decimal_arg(value: Any) -> Decimal | None:
     if value is None:
         return None
@@ -185,7 +216,7 @@ def _binary(operator: str, left: Any, right: Any) -> str | None:
         with localcontext() as context:
             context.prec = DECIMAL_PRECISION
             if operator == "/":
-                result = (a / b).quantize(Decimal(1).scaleb(-DIVISION_SCALE))
+                result = decimal_divide(a, b)
             else:
                 result = {
                     "+": lambda: a + b,
@@ -223,7 +254,7 @@ class _DecimalAggregate:
             if self.mode == "sum":
                 result = sum(self.values, Decimal(0))
             elif self.mode == "avg":
-                result = sum(self.values, Decimal(0)) / len(self.values)
+                result = decimal_divide(sum(self.values, Decimal(0)), Decimal(len(self.values)))
             elif self.mode == "min":
                 result = min(self.values)
             else:

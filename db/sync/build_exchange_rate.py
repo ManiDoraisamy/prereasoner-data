@@ -85,18 +85,22 @@ def _row_stream(history, today=None, carry_forward_days=CARRY_FORWARD_DAYS):
     days = sorted(by_day)
     first, last = days[0], days[-1]
     today = today or datetime.date.today()
-    # Horizon must lead TODAY, not equal it: a table built on Tuesday was empty for Wednesday's
-    # as_of, so every row missed its (currency, date) join and the demo declined the morning after
-    # each build. Leading by the carry-forward window makes the table correct until the next sync.
-    horizon = max(last, today + datetime.timedelta(days=carry_forward_days))
+    # A foreign rate carries the window past its own last print, which covers the days after a build
+    # from a current feed (a table built Tuesday from Monday's print answers Wednesday). It never
+    # carries from the build day: rebuilding a stale feed gave a January 1 rate validity on February 8
+    # (release review, 2026-10-07). EUR is its own unit, so its identity rows lead the build day.
+    window = datetime.timedelta(days=carry_forward_days)
+    horizon = max(last, today) + window
     codes = sorted({code for units in by_day.values() for code in units} | {"EUR"})
     last_seen: dict[str, datetime.date] = {}
     for day in days:
         for code in by_day[day]:
             last_seen[code] = day
     for code in codes:
-        if code == "EUR" or last_seen.get(code) == last:
-            last_seen[code] = horizon                       # active series carry forward
+        if code == "EUR":
+            last_seen[code] = horizon
+        elif last_seen.get(code) == last:
+            last_seen[code] = last + window                 # active series carry forward
 
     def generate():
         carried: dict[str, Decimal] = {}

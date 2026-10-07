@@ -938,7 +938,10 @@ def save_state(user_id, conversation_id, state):
             # compact UTF-8 JSON, without Python's default ASCII expansion or spaces.
             source_hash = owned[2] if len(owned) > 2 else ""
             stored_state = dict(state) if isinstance(state, dict) else state
-            if isinstance(stored_state, dict) and source_hash:
+            # The snapshot keeps the hash of the source its answer read; only one without a hash takes
+            # the conversation's current one. Replacing it made an answer computed before another tab's
+            # upload look current (release review, 2026-10-07).
+            if isinstance(stored_state, dict) and source_hash and not stored_state.get("sourceHash"):
                 stored_state["sourceHash"] = source_hash
             encoded = json.dumps(stored_state, ensure_ascii=False, separators=(",", ":"))
             state_bytes = len(encoded.encode("utf-8"))
@@ -952,6 +955,8 @@ def save_state(user_id, conversation_id, state):
             result = {"saved": conversation_id}
             if source_hash:
                 result["source_hash"] = source_hash
+            if isinstance(stored_state, dict) and stored_state.get("sourceHash"):
+                result["answer_hash"] = stored_state["sourceHash"]
             return result
         except Exception:
             try:

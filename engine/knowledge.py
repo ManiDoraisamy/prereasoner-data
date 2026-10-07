@@ -30,13 +30,13 @@ from engine.sql_schema import SchemaGraph
 NEAR = re.compile(r"\b(near(?:est|by)?|closest|around|close to)\b", re.I)
 STOP = {"cities", "city", "towns", "town", "places", "show", "find", "list", "me", "the", "biggest", "big",
         "largest", "major", "to", "of", "in", "which", "what", "are", "is", "by", "with", "and"}
-# The words a question about places may put before its nearness word: the nouns of places, and words that
-# only ask for, count or size them ("show me the 3 biggest towns near Lyon"). Any other word there names what
-# the question is about ("orders near Paris", "how many cities are near Paris"), which a list of places is not.
+# The words a question about places may put before its nearness word: the nouns of the places the lookup
+# returns, and words that only ask for, count or size them the way its query does ("show me the 3 biggest
+# towns near Lyon": a limit and the big-city population floor). Any other word there names something the
+# lookup cannot give: what the question is about ("orders near Paris", "how many cities are near Paris") or a
+# kind or order of place its query does not select ("capitals near Paris", "the smallest towns near Lyon").
 PLACE_QUESTION_WORDS = frozenset(STOP | FUNCTION_WORDS | {
-    "place", "village", "villages", "settlement", "settlements", "capital", "capitals",
-    "top", "all", "some", "few", "main", "other", "most", "populous", "large", "larger", "bigger",
-    "small", "smaller", "smallest"})
+    "place", "settlement", "settlements", "top", "some", "few", "other", "large"})
 HAVERSINE = ("6371*acos(greatest(-1,least(1, cos(radians(%s))*cos(radians(p.lat))*cos(radians(p.lng)-radians(%s))"
              "+sin(radians(%s))*sin(radians(p.lat)))))")
 
@@ -155,8 +155,11 @@ class KnowledgeReasoner:
         cities near Paris, and "sales around Christmas" looked Christmas up as a place (release review,
         2026-10-07). A question about anything else goes on to the composed path, which answers it or says
         why not."""
+        # Every script's words count: "売上 near Paris" read as no words at all before (release review,
+        # revision 2). Only a stray ASCII letter ("what's") is not a word.
         before = (question or "")[:NEAR.search(question or "").start()]
-        return all(len(word) < 2 or word in PLACE_QUESTION_WORDS for word in re.findall(r"[a-z]+", before.lower()))
+        return all((len(word) < 2 and word.isascii()) or word in PLACE_QUESTION_WORDS
+                   for word in re.findall(r"[^\W\d_]+", before.lower()))
 
     def _ref_and_limit(self, question):
         q = question or ""

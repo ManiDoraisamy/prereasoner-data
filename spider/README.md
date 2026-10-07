@@ -259,6 +259,7 @@ python -m spider.probe.typing_probe --dbs spider/data/dbs   # Probe C
 Each per-example record carries `served_by` (`search` or `gemini-rewrite`) beside the
 selection record. The run's contract and summary carry `fallback` (`enabled`, `model`), and
 `--resume` refuses a checkpoint written under a different setting. The contract also hashes every Python file under
-`engine/` and `spider/probe/`, the data and the model files, so a checkpoint written by other code is refused too. A headline run shows
+`engine/` and `spider/probe/`, the questions and schemas, each database the run reads, and the whole validated model
+bundle, so a checkpoint written by other code, data or models is refused too. A headline run shows
 `fallback.enabled: false`, so every example is `served_by: search`. A run with the fallback on is a
 separate measurement and must be reported as one.

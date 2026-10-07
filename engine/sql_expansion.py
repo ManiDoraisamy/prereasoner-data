@@ -29,7 +29,7 @@ from engine.sql_ast import (
     and_predicates,
     render_query,
 )
-from engine.numeric import parse_decimal
+from engine.numeric import NUMBER_TEXT, NUMBER_WORD, parse_decimal
 from engine.sql_candidate import ScoredQuery
 from engine.sql_schema import SchemaGraph, canon, is_surrogate_key
 
@@ -577,7 +577,8 @@ def explicit_order(question_tokens: tuple[str, ...]) -> bool:
 def parse_number(token: str):
     if token in WORD_NUMBERS:
         return WORD_NUMBERS[token]
-    if re.fullmatch(r"-?\d+(?:\.\d+)?", token):
+    if NUMBER_TEXT.match(token):
+        token = token.replace(",", "")
         return parse_decimal(token) if "." in token else int(token)
     return None
 
@@ -1005,7 +1006,7 @@ def asked_cues(cues: list[tuple[str, int]], question_tokens: tuple[str, ...],
 # A "%" standing alone is the word "percent" ("what % of the total amount comes from Paris" served the
 # Paris total, 2026-10-02); after a number ("over 50%") it is the number's unit, and inside a word or
 # quotes ("names like 'A%'") a pattern's wildcard.
-_QUESTION_WORD = re.compile(r"[^\W_]+(?:'[^\W_]+)?|(?<![\w%'\"])(?<!\d\s)%(?![\w'\"])", re.UNICODE)
+_QUESTION_WORD = re.compile(NUMBER_WORD + r"|[^\W_]+(?:'[^\W_]+)?|(?<![\w%'\"])(?<!\d\s)%(?![\w'\"])", re.UNICODE)
 
 
 def words(text: str) -> list[str]:

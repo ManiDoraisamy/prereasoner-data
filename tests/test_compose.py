@@ -502,8 +502,11 @@ def test_a_nearness_word_reaches_the_place_lookup_only_for_places():
     orders = {"name": "orders", "columns": ["order_id", "city", "amount"], "rows": [[1, "Paris", 10], [2, "Lyon", 5]]}
     places = ["big cities near Paris", "what's near Lyon", "show me the 3 closest towns to Lyon",
               "nearest cities to Madrid"]
+    # Revision 2 of the review: a subject in another script ("売上", sales) read as no words at all, and a
+    # kind or order of place the settlement query does not select (capitals, villages, smallest) still went in.
     others = ["orders near Paris", "total amount of orders around Paris", "sales around Christmas",
-              "orders from cities near Paris", "how many cities are near Paris"]
+              "orders from cities near Paris", "how many cities are near Paris", "売上 near Paris",
+              "订单 near Paris", "capitals near Paris", "villages near Lyon", "the smallest towns near Lyon"]
     for question in places + others:
         model = reasoner._serve([orders], question, "s")["model"]
         assert model == ("own data" if question in others else "engine - geo nearby (lat/lng haversine)"), (question, model)
@@ -538,6 +541,25 @@ def test_a_nearness_word_reaches_the_place_lookup_only_for_places():
     assert "lng IS NOT NULL" in reference[0] and reference[0].endswith("NULLS LAST, qid LIMIT 1"), reference
     assert nearest[0].endswith("ORDER BY distance ASC, qid ASC, name ASC LIMIT %s"), nearest[0]
     assert nearest[1] == (48.85, 2.35, 48.85, 1, "Paris", "Q90", 5) and len(rows) == 2, nearest[1]
+
+
+def test_a_question_naming_a_column_in_any_script_is_about_the_data():
+    """The conversational pre-gate read questions and column names as ASCII words, so "売上の合計" (total of
+    the 売上 sales column) had no words at all and was answered as a chat, never reaching the planner or the
+    rewrite fallback (release review, revision 2, 2026-10-07). A chat in that script is still a chat."""
+    from unittest.mock import Mock
+
+    from engine.knowledge_compose import ComposedKnowledgeQuery
+
+    host = ComposedKnowledgeQuery.__new__(ComposedKnowledgeQuery)
+    host.qw = Mock()
+    host.qw._best_world_entity.return_value = None
+    sales = [{"name": "注文", "columns": ["地域", "売上"], "rows": [["東京", 10]]}]
+    assert host._has_data_signal("売上の合計", sales)
+    assert host._has_data_signal("地域ごとの売上", sales)
+    assert not host._has_data_signal("これはどう動くの？", sales)
+    assert not host._has_data_signal("how does this work?", sales)
+    assert host._has_data_signal("total sales", [{"name": "orders", "columns": ["region", "sales"], "rows": []}])
 
 
 def test_a_threshold_on_an_aggregate_compares_numbers():
@@ -626,6 +648,7 @@ TESTS = [
     test_a_learned_ranking_needs_a_ranking_word,
     test_serving_hands_an_own_data_composition_to_the_planner,
     test_a_nearness_word_reaches_the_place_lookup_only_for_places,
+    test_a_question_naming_a_column_in_any_script_is_about_the_data,
     test_a_question_the_upload_reads_whole_skips_the_world_lookup,
     test_a_threshold_on_an_aggregate_compares_numbers,
     test_named_input_value_filters_directly_without_world_model,

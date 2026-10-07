@@ -138,13 +138,15 @@ def _pg():
     kw = dict(host=KB_PG_HOST, dbname=KB_PG_DB, user=KB_PG_USER,
               password=kb_pg_password(), connect_timeout=30, cursor_factory=_TimedCursor)
     from engine.request_deadline import remaining
-    budget = remaining()
-    if budget is not None:
-        kw['connect_timeout'] = max(1, min(30, int(budget)))
     if not KB_PG_HOST.startswith("/"):
         kw["port"] = KB_PG_PORT
         kw["sslmode"] = KB_PG_SSLMODE
     for attempt in range(_CONNECT_ATTEMPTS):
+        # Each attempt waits only for what is left of the request's budget: the budget was read once,
+        # so three attempts of a 2-second budget could each wait 2 seconds (release review, 2026-10-07).
+        budget = remaining()                              # raises once the budget is spent
+        if budget is not None:
+            kw['connect_timeout'] = max(1, min(30, int(budget)))
         try:
             with request_timing.span("pg_connect"):      # the span publishes its own pg_connect_n
                 return psycopg2.connect(**kw)
@@ -152,9 +154,11 @@ def _pg():
             message = str(exc).lower()
             if any(marker in message for marker in _NON_RETRYABLE_CONNECT_ERRORS):
                 raise
-            if attempt + 1 == _CONNECT_ATTEMPTS:
+            pause = 0.25 * (2 ** attempt)
+            budget = remaining()
+            if attempt + 1 == _CONNECT_ATTEMPTS or (budget is not None and budget <= pause):
                 raise
-            time.sleep(0.25 * (2 ** attempt))
+            time.sleep(pause)
     raise AssertionError("unreachable")
 
 

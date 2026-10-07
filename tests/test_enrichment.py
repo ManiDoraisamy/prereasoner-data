@@ -896,8 +896,24 @@ def test_table_versions_hash_decimal_cells_exactly():
         pass
 
 
+def test_runtime_identity_without_a_deployment_names_the_engine_sources():
+    """Without K_REVISION or GIT_COMMIT the engine identified itself by its sources, but it scanned
+    engine/engine, which does not exist, and every such run had the hash of no files (release review,
+    2026-10-07). It now hashes the engine package, so an edit to any engine source changes it."""
+    import os
+    from unittest.mock import patch
+
+    from engine.artifact_provenance import canonical_json_sha256
+
+    environment = {key: value for key, value in os.environ.items() if key not in {"K_REVISION", "GIT_COMMIT"}}
+    with patch.dict(os.environ, environment, clear=True):
+        build = RuntimeIdentity.current().engine_build
+    assert build.startswith("source-sha256:") and build != "source-sha256:" + canonical_json_sha256({}), build
+
+
 TESTS = [
     test_table_versions_hash_decimal_cells_exactly,
+    test_runtime_identity_without_a_deployment_names_the_engine_sources,
     test_registry_validates_and_pins,
     test_snapshot_and_registry_ids_are_content_complete,
     test_eligibility_required_optional_disqualifying,

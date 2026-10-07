@@ -60,9 +60,8 @@ class _patched_store:
     def __enter__(self):
         self.saved_catalog = master.load_master_catalog
         self.saved_get = master.get_master
-        master.load_master_catalog = lambda user_id, row_limit: [
-            {**table, "rows": [[row[0]] + [None] * (len(table["columns"]) - 1)
-                               for row in table["rows"][:row_limit]]}
+        master.load_master_catalog = lambda user_id: [
+            {**table, "rows": [[row[0]] + [None] * (len(table["columns"]) - 1) for row in table["rows"]]}
             for table in self.store.values()
         ]
         master.get_master = lambda user_id, name: self.store.get(name)
@@ -140,6 +139,85 @@ def test_caps_reference_rows_and_table_count():
                        limit=1, row_limit=7)
     assert len(result["tables"]) == 1
     assert len(result["tables"][0]["rows"]) == 7
+    assert result["warnings"] == ['Saved reference "ordered" has 105 rows and a request reads 7: this answer '
+                                  'read every row your data names and left out 98 other rows.'], result
+
+
+def _products(count, tail):
+    """``count`` saved product keys K00000..., the first ``count - len(tail)`` in category "included" and the
+    keys in ``tail`` in category "tail"."""
+    keys = [f"K{index:05d}" for index in range(count)]
+    return {"product": {"name": "product", "columns": ["product", "category"],
+                        "rows": [[key, "tail" if key in tail else "included"] for key in keys]}}
+
+
+def _orders(keys):
+    return csv_table("order,product,amount\n" + "".join(
+        f"{index},{key},1\n" for index, key in enumerate(key for key in keys for _ in range(2))), "orders")
+
+
+def _totals(orders, reference):
+    """Total amount by category over the inner join the planner emits, and the order rows it kept."""
+    category = {row[0]: row[1] for row in reference["rows"]}
+    kept = [row for row in orders["rows"] if row[1] in category]
+    totals = {}
+    for row in kept:
+        totals[category[row[1]]] = totals.get(category[row[1]], 0) + row[2]
+    return sorted(totals.items()), len(kept)
+
+
+def test_a_reference_over_the_row_budget_keeps_every_row_the_request_names():
+    # 5,001 saved products; orders name the first 100 and the last. A request reads 5,000 reference rows: the
+    # key-order prefix lost K05000, so the inner join dropped its 2 orders from every total, unannounced
+    # (release review, revision 2, N07, 2026-10-07).
+    store = _products(5001, {"K05000"})
+    orders = _orders([f"K{index:05d}" for index in range(100)] + ["K05000"])
+    result = _selected(store, [orders], row_limit=5000)
+    [reference] = result["tables"]
+    assert len(reference["rows"]) == 5000, len(reference["rows"])
+    assert _totals(orders, reference) == ([("included", 200), ("tail", 2)], 202), _totals(orders, reference)
+    assert result["warnings"] == ['Saved reference "product" has 5,001 rows and a request reads 5,000: this '
+                                  'answer read every row your data names and left out 1 other row.'], result
+    assert any(edge["from_table"] == "orders" and edge["to_table"] == "product"
+               for edge in discover_fks([orders, reference])), "the kept rows still join"
+    # Contrast: orders naming only keys past the prefix. Discovery reads every saved key, so the reference
+    # is still found, and the rows it keeps are the ones the orders name.
+    tail_only = _orders([f"K{index:05d}" for index in range(4950, 5001)])
+    result = _selected(_products(5001, {f"K{index:05d}" for index in range(4950, 5001)}), [tail_only],
+                       row_limit=60)
+    [reference] = result["tables"]
+    assert _totals(tail_only, reference) == ([("tail", 102)], 102), _totals(tail_only, reference)
+    # Negative: a reference within the budget is read whole and says nothing.
+    small = _orders([f"K{index:05d}" for index in range(10)])
+    result = _selected(_products(40, set()), [small], row_limit=40)
+    assert len(result["tables"][0]["rows"]) == 40 and result["warnings"] == [], result
+
+
+def test_a_reference_naming_more_rows_than_the_budget_is_not_used_and_says_so():
+    # A join to a part of the named rows would answer a partial total as the whole.
+    orders = _orders([f"K{index:05d}" for index in range(30)])
+    result = _selected(_products(100, set()), [orders], row_limit=20)
+    assert result["tables"] == [], result
+    assert result["warnings"] == ['Saved reference "product" was not used: your data names 30 of its rows and '
+                                  'a request reads at most 20.'], result
+
+
+def test_a_chain_through_a_cut_reference_reads_the_rows_its_kept_rows_name():
+    # orders -> product (cut to the budget) -> supplier: the supplier rows kept are the ones the kept product
+    # rows name, so the chain loses no order.
+    products = [[f"K{index:05d}", f"S{index % 50:03d}" if index < 40 else f"S{index:03d}"]
+                for index in range(300)]
+    store = {"product": {"name": "product", "columns": ["product", "supplier"], "rows": products},
+             "supplier": {"name": "supplier", "columns": ["supplier", "country"],
+                          "rows": [[f"S{index:03d}", "far" if index >= 290 else "near"] for index in range(300)]}}
+    orders = _orders([f"K{index:05d}" for index in range(40)] + ["K00295"])
+    result = _selected(store, [orders], row_limit=45)
+    product, supplier = result["tables"]
+    supplier_of = {row[0]: row[1] for row in product["rows"]}
+    country_of = {row[0]: row[1] for row in supplier["rows"]}
+    countries = [country_of.get(supplier_of.get(row[1])) for row in orders["rows"]]
+    assert None not in countries, "every order reaches a supplier"
+    assert countries.count("far") == 2 and countries.count("near") == 80, countries
 
 
 def test_selects_multi_hop_reference_chains_to_a_fixed_point():
@@ -160,7 +238,7 @@ def test_store_failure_is_visible_instead_of_silent():
     saved = master.load_master_catalog
     saved_log = master.LOG.exception
     try:
-        def _boom(user_id, row_limit):
+        def _boom(user_id):
             raise RuntimeError("store down")
         master.load_master_catalog = _boom
         master.LOG.exception = lambda *args, **kwargs: None
@@ -213,6 +291,9 @@ TESTS = [
     test_table_from_rows_unquotes_cells_like_a_csv_upload,
     test_selects_a_reference_whose_stored_values_carry_wrapping_quotes,
     test_caps_reference_rows_and_table_count,
+    test_a_reference_over_the_row_budget_keeps_every_row_the_request_names,
+    test_a_reference_naming_more_rows_than_the_budget_is_not_used_and_says_so,
+    test_a_chain_through_a_cut_reference_reads_the_rows_its_kept_rows_name,
     test_selects_multi_hop_reference_chains_to_a_fixed_point,
     test_store_failure_is_visible_instead_of_silent,
     test_table_names_have_one_canonical_owner,

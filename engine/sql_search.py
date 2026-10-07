@@ -1903,15 +1903,15 @@ def _negated_matches(tokens: tuple[str, ...], selected) -> frozenset[int]:
     return frozenset(negated)
 
 
-_POLARITY: "weakref.WeakKeyDictionary[SchemaGraph, dict[str, tuple[frozenset, frozenset]]]" = \
+_POLARITY: "weakref.WeakKeyDictionary[SchemaGraph, dict[str, tuple[frozenset, tuple[frozenset, ...]]]]" = \
     weakref.WeakKeyDictionary()
 
 
-def value_polarity(question: str, schema: SchemaGraph) -> tuple[frozenset, frozenset]:
-    """The (table, column, value) readings of the values ``question`` states, split into those it keeps and
-    those a negation excludes (``_negated_matches``), as the search compares them: the completeness check
-    (engine/query_contract.py) refuses a query that excludes a kept value or keeps an excluded one. Read once
-    per question and schema graph."""
+def value_polarity(question: str, schema: SchemaGraph) -> tuple[frozenset, tuple[frozenset, ...]]:
+    """The (table, column, value) readings of the values ``question`` states: the set it keeps, and for each
+    value a negation excludes (``_negated_matches``) the set of its readings, as the search compares them.
+    The completeness check (engine/query_contract.py) refuses a query that excludes a kept value, keeps an
+    excluded one, or leaves an excluded value in. Read once per question and schema graph."""
     by_question = _POLARITY.setdefault(schema, {})
     found = by_question.get(question)
     if found is None:
@@ -1923,11 +1923,14 @@ def value_polarity(question: str, schema: SchemaGraph) -> tuple[frozenset, froze
                     for index in range(request.start, request.end)}
         selected, _ = SQLSearcher(schema)._value_matches(tokens, claimed, question) if tokens else ([], set())
         negated = _negated_matches(tokens, selected)
-        kept, excluded = set(), set()
+        kept, excluded = set(), []
         for index, (_start, _end, _phrase, options) in enumerate(selected):
-            (excluded if index in negated else kept).update(
-                (column.table, column.name, value) for column, value in options)
-        found = by_question[question] = (frozenset(kept), frozenset(excluded))
+            readings = frozenset((column.table, column.name, value) for column, value in options)
+            if index in negated:
+                excluded.append(readings)
+            else:
+                kept |= readings
+        found = by_question[question] = (frozenset(kept), tuple(excluded))
     return found
 
 

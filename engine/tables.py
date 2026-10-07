@@ -23,7 +23,8 @@ import numpy as np
 from engine import request_timing
 from engine.config import DATA_DIR, BASE_MODEL_ID as MODEL_ID  # noqa: F401 - public compatibility export
 from engine.fk_edges import edges
-from engine.numeric import parse_decimal, register_sqlite_decimal, sqlite_numeric, wire_decimal, observed_numeric_affinity
+from engine.numeric import (parse_decimal, register_sqlite_decimal, sqlite_numeric, wire_decimal,
+                           observed_numeric_affinity, stored_as_numbers)
 from engine.relations import relate
 from engine.request_validation import canonical_table_name
 from engine.column_names import canonical_columns
@@ -112,13 +113,6 @@ def wmatch(tok, w):
     """plural-insensitive word match: emails->email, countries->country, cities->city."""
     return (tok == w or tok == w + "s" or (tok.endswith("s") and tok[:-1] == w)
             or (tok.endswith("ies") and w.endswith("y") and tok[:-3] == w[:-1]))
-
-
-def _num_str(v):
-    try:
-        parse_decimal(v); return True
-    except (TypeError, ValueError):
-        return False
 
 
 # ---------- CSV parsing + dim labels (shared readout helpers) ----------
@@ -372,7 +366,7 @@ class TableQuery:
                              key=lambda z: -z[1])
                 vals = [rd.get(c) for rd in rowdicts]
                 ne = [v for v in vals if v is not None and str(v).strip() != ""]
-                if ne and all(_num_str(v) for v in ne):
+                if stored_as_numbers(ne):
                     aff = observed_numeric_affinity(ne)
                 elif ne and not all(isinstance(v, bool) for v in ne):
                     # A learned numeric label cannot turn notes or formula errors

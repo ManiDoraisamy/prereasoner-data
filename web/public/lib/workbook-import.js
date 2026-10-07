@@ -30,6 +30,11 @@
         formulaWarnings.add(XLSX.utils.encode_col(c+bounds.s.c));
       }else if(cell&&cell.f&&cell.v==null){
         row[c]='#UNAVAILABLE!';formulaWarnings.add(XLSX.utils.encode_col(c+bounds.s.c));
+      }else if(cell&&cell.t==='n'&&typeof value==='number'&&root.NUMBER_FORMAT.isPercent(cell.z)){
+        // A percentage cell is the percent the sheet shows, as a CSV export of it reads: 0.2 under 0%
+        // is 20%. The stored fraction went in as 0.2, and a "tax percent" column applied 20% as 0.2%
+        // (release review, revision 2, 2026-10-07). toPrecision(15) drops the binary error of the * 100.
+        row[c]=Number((value*100).toPrecision(15))+'%';
       }else if(cell&&cell.t==='n'&&!cell.z&&typeof cell.w==='string'&&cell.w.includes(',')){
         // A workbook whose bytes are CSV text: SheetJS drops every comma of a number it reads there, so
         // "1,50" came through as 150 and "1.234,56" as 1.23456 (release review, 2026-10-07). Keep the text;

@@ -258,8 +258,10 @@ function saveConvState(){                                     // persist the sna
       const response=await fetch(API_BASE+'/api/conversation/state',{method:'POST',
         headers:{'content-type':'application/json','Authorization':'Bearer '+tk}, body});
       if(!response.ok) conversationSaveError('This chat view was not saved (HTTP '+response.status+'). Your answer is still available. Download it or retry saving.');
-      else{const saved=await response.json();if(saved.source_hash){const info=currentSourceInfo();info.sourceHash=saved.source_hash;info.answerHash=saved.source_hash;info.stale=false;
-        try{sessionStorage.setItem(SS.SOURCE_INFO,JSON.stringify(info));full.sourceHash=saved.source_hash;sessionStorage.setItem('pr_conv_state',JSON.stringify(full));}catch(_){}
+      // The saved answer keeps the hash of the source it read (answer_hash); it is stale when another tab
+      // has uploaded since. Marking it current with the newest hash hid that (release review, 2026-10-07).
+      else{const saved=await response.json();if(saved.source_hash){const info=currentSourceInfo();info.sourceHash=saved.source_hash;info.answerHash=saved.answer_hash||saved.source_hash;info.stale=info.answerHash!==info.sourceHash;
+        try{sessionStorage.setItem(SS.SOURCE_INFO,JSON.stringify(info));full.sourceHash=info.answerHash;sessionStorage.setItem('pr_conv_state',JSON.stringify(full));}catch(_){}
         if(typeof renderSourceStatus==='function')renderSourceStatus();}}
     }catch(error){conversationSaveError('This chat view was not saved. Check your connection and retry saving.');}
   }, 700);

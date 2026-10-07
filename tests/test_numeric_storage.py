@@ -51,6 +51,30 @@ class NumericStorageTests(unittest.TestCase):
         # A column mixing the formats is text: its grouped cells are not summed without the others.
         self.assertEqual(observed_numeric_affinity([1234, "1,50"]), "TEXT")
 
+    def test_one_division_rounds_the_same_in_both_backends(self):
+        """SQLite's decimal_div rounded half to even and decimal_avg left its mean unrounded, while the
+        Python emitter rounds half up at DIVISION_SCALE places: 1 / 2097152 ended ...0312 in one and
+        ...0313 in the other (release review, 2026-10-07). Both now divide with numeric.decimal_divide."""
+        import sqlite3
+
+        from engine.deterministic.operators import AVG, DIVIDE, FINALIZE_AVG, AverageState
+        from engine.numeric import register_sqlite_decimal
+
+        connection = sqlite3.connect(":memory:")
+        register_sqlite_decimal(connection)
+        self.assertEqual(connection.execute("SELECT decimal_div('1', '2097152')").fetchone()[0],
+                         "0.00000047683715820313")
+        for left, right in (("1", "2097152"), ("-1", "2097152"), ("2", "3"), ("10", "4")):
+            stored = connection.execute("SELECT decimal_div(?, ?)", (left, right)).fetchone()[0]
+            self.assertEqual(Decimal(stored), DIVIDE(Decimal(left), Decimal(right)), (left, right))
+        connection.execute("CREATE TABLE t (v TEXT)")
+        connection.executemany("INSERT INTO t VALUES (?)", [("1",), ("2",), ("2",)])
+        state = AverageState()
+        for value in (1, 2, 2):
+            state = AVG(state, value)
+        self.assertEqual(Decimal(connection.execute("SELECT decimal_avg(v) FROM t").fetchone()[0]),
+                         FINALIZE_AVG(state))
+
     def test_large_numeric_identifier_does_not_block_unrelated_measure(self):
         rows = [[str(10**30), "1e-3"], [str(10**30+1), "2e-3"]]
         schema = [{"table": "ledger", "name": name, "affinity": observed_numeric_affinity([r[i] for r in rows])}

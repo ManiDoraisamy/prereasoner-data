@@ -157,6 +157,24 @@ def _source_paths(root):
     return paths
 
 
+def _input_paths(data, dbs, db_ids):
+    """Every file a run reads apart from the model bundle, which validate_weight_bundle fingerprints whole:
+    the questions and schemas, the databases the picked examples read, the encoder and every source file.
+    The databases were left out, so a changed row kept a --resume checkpoint valid (release review,
+    revision 2, 2026-10-07). Keys are names, not locations: byte-identical data moved elsewhere still
+    resumes."""
+    from engine.config import DATA_DIR
+
+    return {
+        "dev": os.path.join(data, "dev.json"),
+        "tables": os.path.join(data, "tables.json"),
+        "encoder": DATA_DIR / "encoder.pt",
+        "encoder_meta": DATA_DIR / "encoder_meta.pt",
+        **{f"dbs/{db_id}.sqlite": os.path.join(dbs, db_id + ".sqlite") for db_id in db_ids},
+        **_source_paths(ROOT),
+    }
+
+
 def _git_provenance(root):
     """Record the source commit + whether the worktree is dirty, so every result traces to an exact tree
     (CLAUDE.md requires both). Best-effort: returns None/False if git is unavailable."""
@@ -621,24 +639,20 @@ def main():
         "timeout": args.timeout,
     }
     from engine import llm
-    from engine.artifact_provenance import adapter_sha256, fingerprint_paths
+    from engine.artifact_provenance import adapter_sha256, fingerprint_paths, validate_weight_bundle
     from engine.config import DATA_DIR
 
     # The labelled Gemini fallback runs only when the operator enabled Gemini. The headline is the
     # engine alone (EXTERNAL_LLM_ENABLED unset); a run with the fallback says so and names its model.
     checkpoint_contract["fallback"] = {"enabled": llm.available(), "model": llm.model_id()}
 
-    # Fingerprint every source file the run can execute (_source_paths) with the data and model files:
-    # any edit must invalidate a --resume checkpoint, or stale predictions get silently reused.
+    # Fingerprint every input the run reads (_input_paths) and the whole validated model bundle, whose
+    # thresholds (anchor_assignment.npz) change answers without touching the encoder: any edit must
+    # invalidate a --resume checkpoint, or stale predictions get silently reused.
     checkpoint_contract["artifacts"] = {
-        **fingerprint_paths({
-            "dev": os.path.join(args.data, "dev.json"),
-            "tables": os.path.join(args.data, "tables.json"),
-            "encoder": DATA_DIR / "encoder.pt",
-            "encoder_meta": DATA_DIR / "encoder_meta.pt",
-            **_source_paths(ROOT),
-        }),
+        **fingerprint_paths(_input_paths(args.data, args.dbs, sorted({dev[i]["db_id"] for i in picked}))),
         "encoder_adapter": adapter_sha256(DATA_DIR / "qwen_lora"),
+        "weight_bundle": validate_weight_bundle(DATA_DIR),
         **_git_provenance(ROOT),   # source_commit + worktree_dirty: a run traces to an exact tree; a dirty
     }                              # tree (or a different commit) invalidates a --resume checkpoint.
     completed = {}

@@ -57,6 +57,7 @@ vm.createContext(context);
 
 const checks = `
 (async function () {
+  const realSaveConvState = saveConvState;     // later checks stub it
   try {
     if (!hasCellValue(0)) throw new Error('numeric zero must be a real reference value');
     // Upload once (2026-10-02): the sheets go to the conversation when they change, and a question names
@@ -302,6 +303,24 @@ const checks = `
     if (REPLY !== 'Your restaurant total comes to 9,600.' || CONV !== null || resaved !== 1)
       throw new Error('an unsettled turn was saved before it finished');
     saveConvState = keepSave; renderRail = keepRender;
+
+    // A saved answer keeps the source it read. The server names the conversation's newest source and the
+    // answer's own; the answer is stale when another tab has uploaded since. It was marked current with the
+    // newest hash (release review, 2026-10-07).
+    const keepFetch = fetch, cid = 'c_' + '7'.repeat(32);
+    sessionStorage.setItem('pr_conversation_id', cid);
+    CHAT = [{q: 'total amount', reply: '10'}]; SETTLED = false; BOOK = [];
+    for (const [answer, stale] of [['a'.repeat(64), true], ['b'.repeat(64), false]]) {
+      sessionStorage.setItem('source_info', JSON.stringify({sourceHash: 'a'.repeat(64), answerHash: 'a'.repeat(64)}));
+      fetch = async () => ({ok: true, status: 200,
+        json: async () => ({saved: cid, source_hash: 'b'.repeat(64), answer_hash: answer})});
+      realSaveConvState();
+      await new Promise(resolve => setTimeout(resolve, 760));      // the save is debounced by 700 ms
+      const info = currentSourceInfo();
+      if (info.sourceHash !== 'b'.repeat(64) || info.answerHash !== answer || info.stale !== stale)
+        throw new Error('a saved answer did not keep the source it read: ' + JSON.stringify(info));
+    }
+    fetch = keepFetch;
     __finish();
   } catch (error) { __finish(error); }
 }());`;

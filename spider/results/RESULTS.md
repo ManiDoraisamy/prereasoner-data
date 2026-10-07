@@ -4,6 +4,30 @@ Dated entries come newest first. Each records a run at the commit it names; the 
 entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection arbiter`) may since have
 been removed, and that commit holds the code that ran.
 
+## Revision-2 review fixes, on `5f8c57c`: same answers (2026-10-07)
+
+Same contract as `review-106aefc-dirty` (Gemini off, `whole_db`, `served` selection, SQL backend, row cap 5,000), on
+`5f8c57c` with the change applied (`worktree_dirty=true`, tag `review2-5f8c57c-dirty`). The change (`DECISIONS.md`,
+"Release review, revision 2"):
+- join keys are read a column at a time, as the schema stores the column (`relations.join_keys`);
+- a number in a question is one word, "1,000" and "2.5" included (`numeric.NUMBER_WORD`);
+- the polarity check reads a column through LOWER, on either side and in IN lists, and refuses a query that leaves
+  an excluded value in;
+- both backends divide through one rounding (`numeric.decimal_divide`), AVG included;
+- an explicit zero foreign-key confidence stays zero.
+
+From this run on, a result's `artifacts` also hash each database the run reads (`dbs/<db_id>.sqlite`, 20 here) and
+the whole validated model bundle (`weight_bundle`, `b11056f8ce8bf16a…`). All 116 source files the run hashes match
+the tree described here.
+
+All 1,034 examples have the same SQL and grade as `review-106aefc-dirty`: 247 strict, 315 lenient, 414 answered, with
+no wins and no losses. No Spider DEV question holds a decimal or grouped number, so the question-number fix cannot
+show here. These fixes are correctness hardening, not an accuracy gain. Prediction seconds: median 1.08 → 1.39, p90
+2.39 → 2.94, max 5.58 → 6.88. The first ~500 examples shared the desktop with the hermetic suites and ran 1.4–1.7×
+slower; over examples 500–1,033 the median is 1.04 against 1.07.
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_review2-5f8c57c-dirty.json`.
+
 ## A result records every source file it ran (2026-10-07)
 
 From this change on, a result's `artifacts` hash every Python file under `engine/` and `spider/probe/`, keyed by
