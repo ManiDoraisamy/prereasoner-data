@@ -2313,9 +2313,53 @@ Measured:
 Not changed:
 - The search still cannot read "volume" without Gemini.
 - The list "All inspection checklist?" returns names no keyword unless the rewording asks for one. Adding the filter
-  column to every substring listing would change Spider's projections.
+  column to every substring listing would change Spider's projections. (Changed the same day for listings of numbers
+  alone: see "A listing of numbers names the rows its text filter picked".)
 - A conversation's first question still spends 10 to 17 s in world lookup and typing before selection: a word the
   upload does not read ("volume") still builds the compose plan (see "A question the upload reads whole needs no
   world lookup").
 - With 'home inspection checklist' in two tabs, the reading may still come from Inspection rather than the active
   Checklist tab.
+
+## A listing of numbers names the rows its text filter picked (2026-10-06)
+
+On production `bc216ff`, the customer's keyword conversation answered every turn right on a synthetic copy of the
+sheet. "All inspection checklist?" returned the right 38 rows, but the reply read "- 5000", "- 5000", ... "The first
+10 of 38 rows." The search listed the Avg. monthly searches alone, because a listing drops the column it filters on
+(30 Spider readings had listed the column they filtered, 2026-10-02). When a filter keeps several values of a text
+column, those values are what tell the rows apart.
+
+- **The rule** (`engine/sql_search.py:_rows_named`). A listing that shows only numbers (numeric columns other than keys,
+  or row arithmetic) shows first the text column its filter keeps several values of. That filter is a LIKE pattern, NOT
+  LIKE, `!=`, IN over two or more values or NOT IN, or an OR of one column's values. "the Avg. monthly searches for all
+  Keyword containing 'inspection checklist'" now lists each keyword beside its searches. So do "... for home
+  inspection checklist or roof inspection checklist", "amounts for orders not from Paris" and a top 2.
+- **What stays.** These are unchanged:
+  - a filter on one value, which every row holds, so it names no row;
+  - a listing that already shows a text or key column;
+  - aggregates, groups, DISTINCT and a single row (LIMIT 1);
+  - numeric filters and set operations.
+- **After the ranking, inside the search.** The ranker scores the question's words, and the label is not one of them,
+  so adding it after the ranking changes no choice. The label is part of the readings `select_query` chooses from, so
+  serving, decomposition leaves and the Spider evaluator see the same query. The reply renderer
+  (`engine/answer_presentation.py`) could not do this: it renders the rows the engine returns, and those held no
+  keyword.
+- **Why only these listings.** The `bc216ff` entry left this list unlabeled because adding the filter column to every
+  substring listing would change Spider's projections. That holds for listings of names: all 14 Spider DEV
+  listings under LIKE show a text column. Spider DEV's gold holds 21 listings of numbers alone under a text filter.
+  Every one filters on one value ("the flight numbers of flights leaving from APG"), and none uses a filter that keeps
+  several values. "Avg. monthly searches for Low competition" still lists bare numbers: the column that would name
+  those rows is one the question never mentions, and Spider asks for such lists bare.
+- **The "X or Y" average** (`engine/sql_constraints.py`). The constraint expansion's direct OR readings took their
+  aggregate from the raw words. So "Avg. monthly searches for home inspection checklist or roof inspection checklist"
+  averaged the two keywords (2,525): the spelled-name rule of `bc216ff` had not reached that path. It now reads
+  `sql_expansion.asked_cues`, as the search and the ranker do. "total ..." still sums (5,050) and "average ..."
+  still averages.
+
+Measured:
+- **Tests.** `test_a_listing_of_numbers_names_the_rows_its_text_filter_picked` fails on `bc216ff` because the list has
+  only the number column. The extended `test_an_average_a_column_name_spells_is_the_column` fails there with the "or"
+  question's AVG. Both pass now, as do `tests.test_sql_ast` (196) and the hermetic `tests.run_all` (38 suites).
+- **Spider DEV** (`whole_db`, Gemini off). Same answers: 247 strict, 315 lenient, 414 answered, and no example's SQL
+  changed (`spider/results/RESULTS.md`).
+- **Not run.** The live demo-dataset suite and the Chrome gate run at release.

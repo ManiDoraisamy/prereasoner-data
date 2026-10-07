@@ -385,7 +385,7 @@ class SQLSearcher:
         named_here = {table for table in named_tables if table_scores.get(table, 0.0) >= 2.5}
         pool = _merge_candidates([], [self._simplified(candidate, named_here) for candidate in pool])
         if not rank_candidates:
-            return pool[:self.max_candidates]
+            return _rows_named(pool[:self.max_candidates])
         from engine.sql_rank import CandidateRanker
         ranked = CandidateRanker(self.schema, semantic_signals).rank(
             question, pool
@@ -398,7 +398,7 @@ class SQLSearcher:
             )
             ranked = [fallback] + [candidate for candidate in ranked if candidate.sql != fallback.sql]
             ranked = ranked[:self.max_candidates]
-        return ranked
+        return _rows_named(ranked)
 
     def _unasked_copies(self, tokens: tuple[str, ...], question: str) -> frozenset[str]:
         """The tables the search leaves out as copies of another's layout (`SchemaGraph.layout_copies`): each
@@ -1758,6 +1758,81 @@ def _and_terms(predicate: Any) -> list[Any]:
     if isinstance(predicate, BooleanExpr) and predicate.operator == "AND":
         return [term for child in predicate.terms for term in _and_terms(child)]
     return [] if predicate is None else [predicate]
+
+
+def _rows_named(candidates: Sequence[ScoredQuery]) -> list[ScoredQuery]:
+    """``candidates`` with each listing of numbers alone showing first the text column its filter keeps
+    several values of. "the Avg. monthly searches for all Keyword containing 'inspection checklist'" listed 38
+    numbers, and nothing said which keyword each was (a customer's keyword sheet, 2026-10-06). A listing that
+    shows a text or key column already names its rows, one value filtered on names none, and an aggregate, a
+    group, DISTINCT or a single row asks for values, not rows: those stay as they are. It runs after the
+    ranking, which reads the question's words; the column is what the answer shows, not what it was asked."""
+    named: dict[str, ScoredQuery] = {}
+    for candidate in candidates:
+        query = candidate.query
+        if (isinstance(query, SelectQuery) and query.select and not query.group_by and query.having is None
+                and not query.distinct and query.limit != 1
+                and all(_a_number(item.expression) for item in query.select)):
+            picked = tuple(dict.fromkeys(column for term in _and_terms(query.where)
+                                         if (column := _several_values(term)) is not None))
+            if picked:
+                labelled = replace(query, select=tuple(SelectItem(column) for column in picked) + query.select)
+                try:
+                    validate_query(labelled)
+                    candidate = replace(candidate, query=labelled, sql=render_query(labelled),
+                                        evidence=candidate.evidence + ("rows named",))
+                except (TypeError, ValueError):
+                    pass
+        named.setdefault(candidate.sql, candidate)
+    return list(named.values())
+
+
+def _a_number(expression: Any) -> bool:
+    """Whether a listed ``expression`` is a number that names no row: a numeric column other than a key, or
+    arithmetic over a row's numbers."""
+    if isinstance(expression, ColumnRef):
+        return expression.type.numeric and not is_surrogate_key(expression.name)
+    return isinstance(expression, BinaryExpr) and not _has_aggregate(expression)
+
+
+def _has_aggregate(expression: Any) -> bool:
+    if isinstance(expression, Aggregate):
+        return True
+    return isinstance(expression, BinaryExpr) and (_has_aggregate(expression.left) or _has_aggregate(expression.right))
+
+
+def _several_values(term: Any) -> ColumnRef | None:
+    """The text column a filter ``term`` keeps more than one value of, if any: a LIKE pattern with a
+    wildcard, NOT LIKE, !=, IN over two or more values or NOT IN, or an OR of such comparisons on one
+    column. An equality keeps one value, and a numeric column's values name no row."""
+    if isinstance(term, BooleanExpr) and term.operator == "OR":
+        alternatives = [_compared_text(alternative) for alternative in term.terms]
+        columns = {column for column, _ in alternatives}
+        if None in columns or len(columns) != 1 or len(term.terms) < 2:
+            return None
+        if any(several for _, several in alternatives) or len({repr(alternative) for alternative in term.terms}) > 1:
+            return columns.pop()
+        return None
+    column, several = _compared_text(term)
+    return column if several else None
+
+
+def _compared_text(term: Any) -> tuple[ColumnRef | None, bool]:
+    """The text column ``term`` compares with values, and whether it keeps more than one of them."""
+    if isinstance(term, InPredicate) and isinstance(term.source, tuple) and isinstance(term.left, ColumnRef):
+        if term.left.type != SQLType.TEXT or not all(isinstance(value, Literal) for value in term.source):
+            return None, False
+        return term.left, term.negated or len({repr(value) for value in term.source}) > 1
+    if not isinstance(term, Comparison) or not isinstance(term.right, Literal):
+        return None, False
+    column = term.left.operand if isinstance(term.left, Lower) else term.left
+    if not isinstance(column, ColumnRef) or column.type != SQLType.TEXT:
+        return None, False
+    if term.operator in {"!=", "<>", "NOT LIKE"}:
+        return column, True
+    if term.operator == "LIKE":
+        return column, bool(re.search(r"[%_]", str(term.right.value)))
+    return (column, False) if term.operator == "=" else (None, False)
 
 
 def _comparisons(predicate: Any) -> list[Comparison]:

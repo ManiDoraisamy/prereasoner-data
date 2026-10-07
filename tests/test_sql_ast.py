@@ -1537,7 +1537,7 @@ def test_an_average_a_column_name_spells_is_the_column():
     "What is the Avg. monthly searches for all Keyword containing 'inspection checklist'?", and "Avg." in the
     column's name averaged the 38 keywords' searches: 1,115.79, an average of averages nobody asked for. An
     average a spelled column name holds never asks for one by itself; another word that asks still does, and a
-    spelled total still totals ("the total amount in Paris")."""
+    spelled total still totals ("the total amount in Paris"), in every reading the search builds."""
     planner = _hermetic_planner()
     served = planner.serve([KEYWORDS], "What is the Avg. monthly searches for Low competition?")
     assert "AVG(" not in served["sql"] and sorted(served["result"]["rows"]) == [[50], [500], [5000]], served
@@ -1546,10 +1546,16 @@ def test_an_average_a_column_name_spells_is_the_column():
     assert sorted(row[-1] for row in served["result"]["rows"]) == [50, 500, 5000, 5000], served
     served = planner.serve([KEYWORDS], "What is the Avg. monthly searches for the Keyword 'home inspection checklist'?")
     assert served["result"]["rows"] == [[5000]], served
+    # Two keywords joined by "or" are read by the constraint expansion, which averaged them too.
+    either = "home inspection checklist or roof inspection checklist"
+    served = planner.serve([KEYWORDS], f"Avg. monthly searches for {either}")
+    assert "AVG(" not in served["sql"] and sorted(row[-1] for row in served["result"]["rows"]) == [50, 5000], served
     # Contrast: a word outside the name asks for the average.
     served = planner.serve(
         [KEYWORDS], "What is the average Avg. monthly searches for all Keyword containing 'inspection checklist'?")
     assert "AVG(" in served["sql"] and float(served["result"]["rows"][0][0]) == 2637.5, served
+    assert planner.serve([KEYWORDS], f"average Avg. monthly searches for {either}")["result"]["rows"] == [[2525]]
+    assert planner.serve([KEYWORDS], f"total Avg. monthly searches for {either}")["result"]["rows"] == [[5050]]
     # Negative: a spelled total still totals.
     orders = {"name": "orders", "columns": ["City", "Total Amount"],
               "rows": [["Paris", 10], ["Paris", 20], ["Lyon", 5]]}
@@ -1598,6 +1604,61 @@ def test_the_rewording_of_a_keyword_volume_keeps_every_keyword_holding_the_phras
         served = planner.serve([KEYWORDS], question)
         assert served["valid"] and served["result"]["rows"] == [[10550]], (question, served)
         assert served["sql"].endswith(HELD_INSIDE) and served["fallback"]["question"] == total
+
+
+def test_a_listing_of_numbers_names_the_rows_its_text_filter_picked():
+    """A customer's keyword sheet (2026-10-06): "All inspection checklist?" was served as the Avg. monthly searches
+    of every keyword containing 'inspection checklist', and the reply listed 38 numbers ("- 5000", "- 5000", ...)
+    with nothing to say which keyword each was. A listing of numbers alone whose rows a text filter picked with more
+    than one value (a pattern, values joined by "or" or "and", a value excluded) shows that column first; a filter
+    on one value, a listing that already names its rows, a total, DISTINCT and a single row stay as they are."""
+    from engine.answer_presentation import terminal_reply
+
+    planner = _hermetic_planner()
+    holding = [["inspection checklist", 500], ["home inspection checklist", 5000],
+               ["house inspection checklist", 5000], ["roof inspection checklist", 50]]
+    for question in ("What is the Avg. monthly searches for all Keyword containing 'inspection checklist'?",
+                     "Avg. monthly searches for keywords containing inspection checklist"):
+        served = planner.serve([KEYWORDS], question)
+        assert served["sql"].endswith(HELD_INSIDE), (question, served)
+        assert served["result"]["columns"] == ["Keyword", "Avg. monthly searches"], (question, served)
+        assert served["result"]["rows"] == holding, (question, served)
+    reply = terminal_reply({"status": "answered", "answer": served["result"]})
+    assert reply.splitlines()[1] == "- Keyword: home inspection checklist; Avg. monthly searches: 5000", reply
+    for joined in ("and", "or"):
+        served = planner.serve(
+            [KEYWORDS], f"Avg. monthly searches for home inspection checklist {joined} roof inspection checklist")
+        assert served["result"]["rows"] == [
+            ["home inspection checklist", 5000], ["roof inspection checklist", 50]], (joined, served)
+    served = planner.serve([KEYWORDS], "Avg. monthly searches for keywords except inspection checklist")
+    assert served["result"]["columns"][0] == "Keyword" and len(served["result"]["rows"]) == 5, served
+    served = planner.serve([KEYWORDS], "top 2 Avg. monthly searches for keywords containing 'inspection checklist'")
+    assert served["result"]["rows"] == [
+        ["home inspection checklist", 5000], ["house inspection checklist", 5000]], served
+    orders = {"name": "orders", "columns": ["City", "Amount", "Year"],
+              "rows": [["Paris", 10, 2024], ["Paris Nord", 20, 2025], ["Lyon", 5, 2024], ["Nice", 7, 2025]]}
+    assert planner.serve([orders], "amounts for cities containing 'Paris'")["result"]["rows"] == [
+        ["Paris", 10], ["Paris Nord", 20]]
+    assert planner.serve([orders], "amounts for orders not from Paris")["result"]["rows"] == [
+        ["Paris Nord", 20], ["Lyon", 5], ["Nice", 7]]
+    # Contrast, the same sheets: one value filtered on names no row, and a listing that names its rows keeps them.
+    for question, columns in (
+            ("Avg. monthly searches for the Keyword 'home inspection checklist'", ["Avg. monthly searches"]),
+            ("Avg. monthly searches for Low competition", ["Avg. monthly searches"]),
+            ("keywords containing 'inspection checklist'", ["Keyword"]),
+            ("Keyword and Avg. monthly searches for keywords containing 'inspection checklist'",
+             ["Keyword", "Avg. monthly searches"]),
+            ("the different Avg. monthly searches for keywords containing 'inspection checklist'",
+             ["Avg. monthly searches"])):
+        served = planner.serve([KEYWORDS], question)
+        assert served["result"]["columns"] == columns, (question, served)
+    # Negative: a total, the one highest value and a numeric filter ask for values, not rows.
+    assert planner.serve([KEYWORDS], "total Avg. monthly searches for all inspection checklist")["result"]["rows"] == [
+        [10550]]
+    served = planner.serve(
+        [KEYWORDS], "the highest Avg. monthly searches for keywords containing 'inspection checklist'")
+    assert served["result"]["columns"] == ["Avg. monthly searches"], served
+    assert planner.serve([orders], "Amount for orders with Amount above 6")["result"]["columns"] == ["Amount"]
 
 
 def test_unread_check_accepts_a_threshold_only_when_the_ast_realizes_it():
@@ -4812,6 +4873,7 @@ TESTS = [
     test_a_text_right_after_contain_or_all_is_compared_inside_values,
     test_an_average_a_column_name_spells_is_the_column,
     test_the_rewording_of_a_keyword_volume_keeps_every_keyword_holding_the_phrase,
+    test_a_listing_of_numbers_names_the_rows_its_text_filter_picked,
     test_unread_check_accepts_a_threshold_only_when_the_ast_realizes_it,
     test_unread_check_treats_sheet_scope_words_as_context_not_filters,
     test_gemini_reads_schema_names_but_not_cell_values,

@@ -259,7 +259,14 @@ The AST, validator, renderer, and search rules support:
   asked for it once it is;
 - aggregate operands: a text column is an aggregate's operand only where its name ends the phrase the
   aggregate word begins ("the total of the Amount"; "total keyword volume" totals a volume), and an average a
-  spelled column name holds ("Avg. monthly searches") asks for none by itself (`sql_expansion.asked_cues`);
+  spelled column name holds ("Avg. monthly searches") asks for none by itself (`sql_expansion.asked_cues`, which
+  the search, the ranker and the constraint expansion's "X or Y" readings all read);
+- rows a listing names: a listing of numbers alone shows first the text column its filter keeps several values
+  of (a LIKE pattern, `NOT LIKE`, `!=`, `IN` over two or more values or `NOT IN`, or an `OR` of one column's
+  values), so "the Avg. monthly searches for all Keyword containing 'inspection checklist'" lists each keyword
+  beside its searches (`sql_search._rows_named`, applied after the ranking). A filter on one value, a listing
+  that shows a text or key column, a total or other aggregate, a group, `DISTINCT` and a single row are
+  unchanged;
 - calendar phrases on a date column (`engine/sql_dates.py`): a month without a year compares
   `DatePart('month')`, and a dated phrase ("after August 10, 2026") compares the date itself;
 - grouping by a column, or by the year-month of a date column (`DatePart('year_month')`, '2026-08'):

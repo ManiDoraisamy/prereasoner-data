@@ -29,9 +29,11 @@ from engine.sql_ast import (
 )
 from engine.sql_dates import date_phrases
 from engine.sql_expansion import (
+    AGGREGATE_CUES,
     CountThreshold,
     ExpansionSupport,
     and_terms as _and_terms,
+    asked_cues,
     build_candidate as _candidate,
     column_matches as _column_matches,
     column_requested_as_output as _column_requested_as_output,
@@ -854,16 +856,14 @@ class ConstraintQueryExpander(ExpansionSupport):
         select_options = []
         if _count_requested(tokens):
             select_options.append(((SelectItem(Aggregate("COUNT", Star())),), 4.0))
-        function = None
-        if set(tokens) & {"maximum", "max"}:
-            function = "MAX"
-        elif set(tokens) & {"minimum", "min"}:
-            function = "MIN"
-        elif set(tokens) & {"average", "avg", "mean"}:
-            function = "AVG"
-        elif set(tokens) & {"sum", "total"}:
-            # "the total amount from Paris or Lyon" listed the amounts (probe, 2026-10-02).
-            function = "SUM"
+        # The aggregate words that ask, as the search reads them: "the Avg. monthly searches for home inspection
+        # checklist or roof inspection checklist" averaged the two keywords' searches when "Avg." only spells the
+        # column (a customer's keyword sheet, 2026-10-06). "the total amount from Paris or Lyon" totals them
+        # (probe, 2026-10-02).
+        asked = {function for function, _ in asked_cues(
+            [(AGGREGATE_CUES[token], position) for position, token in enumerate(tokens) if token in AGGREGATE_CUES],
+            tokens, self.schema)}
+        function = next((name for name in ("MAX", "MIN", "AVG", "SUM") if name in asked), None)
         if function is not None:
             projection_tokens = {token for _, token in _projection_window(tokens)}
             for schema_column in self.schema.columns:

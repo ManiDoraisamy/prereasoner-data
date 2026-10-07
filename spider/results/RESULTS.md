@@ -4,6 +4,23 @@ Dated entries come newest first. Each records a run at the commit it names; the 
 entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection arbiter`) may since have
 been removed, and that commit holds the code that ran.
 
+## Listings of numbers name their rows, on `bc216ff`: same answers (2026-10-06)
+
+Same contract as `substrings-c0b1f31-dirty` (Gemini off, `whole_db`, `served` selection, SQL backend, row cap
+5,000), on a worktree of `bc216ff` with the change applied (`worktree_dirty=true`, tag `labels-bc216ff-dirty`; the
+JSON records each engine file's hash). The change:
+- a listing of numbers alone shows first the text column its filter keeps several values of
+  (`sql_search._rows_named`, applied after the ranking);
+- the constraint expansion's "X or Y" readings read aggregate words through `sql_expansion.asked_cues`, so "Avg." in
+  a column name no longer averages them.
+
+All 1,034 examples have the same SQL and grade as `substrings-c0b1f31-dirty`: 247 strict, 315 lenient, 414
+answered. Spider DEV's gold holds 21 listings of numbers alone under a
+text filter, and every one compares a single value, which the rule leaves alone. Prediction seconds: median 1.08 →
+1.18, p90 2.30 → 2.45, max 5.41 → 5.96; the hermetic suites ran on this desktop during the run.
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_labels-bc216ff-dirty.json`.
+
 ## Texts values hold, and aggregate operands, on `c0b1f31`: 4 strict wins, no loss (2026-10-06)
 
 Same contract as `d9ea249` (Gemini off, `whole_db`, `served` selection, SQL backend, row cap 5,000), on a worktree
