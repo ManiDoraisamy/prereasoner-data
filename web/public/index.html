@@ -135,7 +135,8 @@ function clearDemoQuestion(){ if($('q').value===DEMO_Q){ $('q').value=''; $('q')
 let SHEETS=[], isSample=true;                              // first real upload replaces the demo
 let UPLOAD_PENDING=false, UPLOAD_ERROR='', UPLOAD_BATCH=0;
 let suggestionsReady=false;
-const homeSuggestions=window.PrereasonerSuggestions.create({container:$('suggestions'),composer:$('q'),
+const homeSuggestions=window.PrereasonerSuggestions.create({container:$('suggestions'),
+  ask:question=>{$('q').value=question;$('f').requestSubmit();},
   request:async schema=>{
     const response=await fetch('/chat/suggestions',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+await window.ensureToken()},body:JSON.stringify(schema)});
     if(!response.ok)throw new Error('Suggestions unavailable');return response.json();

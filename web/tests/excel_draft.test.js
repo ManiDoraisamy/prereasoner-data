@@ -47,8 +47,14 @@ const deadline = setTimeout(()=>{console.error('Excel lifecycle did not complete
   assert.equal(element('question').value,'a newer draft');
   // The failed question stays in the thread even though a newer draft took the composer.
   assert.deepEqual({...context.lifecycle.state.turns.at(-1)},{question:'second question',reply:'Request rejected',error:true});
+  // A typed question leaves the composer as it is sent (the submit handler empties it); a failure puts it back.
+  element('question').value='';
   await context.lifecycle.ask('retry this');
   assert.equal(element('question').value,'retry this');
+  // A starter question is asked without emptying the composer: a draft there stays (2026-10-08).
+  element('question').value='my own draft';
+  await context.lifecycle.ask('a starter question');
+  assert.equal(element('question').value,'my own draft');
   // A chat deleted elsewhere: the workbook goes to a new chat first, and the question is asked there by its
   // hash (upload once). The retry used to send every cell with no chat at all.
   const posted=[];

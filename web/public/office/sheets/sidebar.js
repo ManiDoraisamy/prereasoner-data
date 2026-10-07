@@ -12,8 +12,9 @@
         // chat that comes back replaces them. They waited for the whole read, ten minutes on a six-tab
         // workbook (2026-10-04).
         var suggestions = window.PrereasonerSuggestions.create({
-          container: document.getElementById('suggestions'), composer: questionEl,
-          request: function (schema) { return callServer('getPrereasonerSuggestions', schema); }
+          container: document.getElementById('suggestions'),
+          request: function (schema) { return callServer('getPrereasonerSuggestions', schema); },
+          ask: function (question) { submit(question); }
         });
         var workbookSchema = null;
         var metadataGeneration = 0;
@@ -425,10 +426,11 @@
           state.syncedFingerprint = print;
         }
 
-        async function submit() {
-          var question = questionEl.value.trim();
+        // `asked`: a starter question, asked without taking the draft out of the composer.
+        async function submit(asked) {
+          var question = (asked || questionEl.value).trim();
           if (!question || state.busy) return;
-          questionEl.value = '';
+          if (!asked) questionEl.value = '';
           setBusy(true);
           var live = {question: question, turnId: randomId(), startedAt: Date.now(), steps: [], asks: [], reply: '',
             status: state.loading ? 'Waiting for the sheet to finish reading…' : 'Reading the sheet…'};

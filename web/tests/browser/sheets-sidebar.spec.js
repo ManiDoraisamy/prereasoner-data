@@ -19,11 +19,14 @@ test('hosted shell loads three shared schema-only questions while the composer s
   const [request] = await calls(page, 'getPrereasonerSuggestions');
   expect(request.arg).toEqual({sheets:[{name:'Orders',columns:['country','amount']}],active_sheet:'Orders',scope:['Orders']});
   expect(JSON.stringify(request.arg)).not.toContain('840');
+  // A click asks the starter at once and leaves the draft in the composer; it only filled the composer, and
+  // the user had to press send too (2026-10-08).
   await page.locator('#suggestions .starter-question').first().click();
+  await expect.poll(()=>page.evaluate(()=>window.__server.pendingAsk && window.__server.pendingAsk.arg.question))
+    .toBe('How many rows are in "Orders"?');
+  await expect(page.locator('.turn.user')).toHaveText('How many rows are in "Orders"?');
   await expect(page.locator('#question')).toHaveValue('my draft');
-  await page.getByRole('button',{name:'Replace my draft with this question',exact:true}).click();
-  await expect(page.locator('#question')).toHaveValue('How many rows are in "Orders"?');
-  expect(await page.evaluate(()=>Boolean(window.__server.pendingAsk))).toBe(false);
+  await expect(page.locator('#suggestions')).toBeHidden();
 });
 
 test('suggestion failure never blocks reading, typing or sending a question, and shows nothing', async ({page}) => {

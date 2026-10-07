@@ -13,8 +13,9 @@ const database = getDatabase(app);
 const $ = id => document.getElementById(id);
 const renderer = window.PrereasonerTurnRenderer;
 const state = {conversationId: null, history: [], turns: [], tables: [], workbookId: null, nextPage: null};
-const suggestions = window.PrereasonerSuggestions.create({container: $('suggestions'), composer: $('question'),
-  request: schema => api('/chat/suggestions', schema)});
+const suggestions = window.PrereasonerSuggestions.create({container: $('suggestions'),
+  request: schema => api('/chat/suggestions', schema),
+  ask: question => { if (auth.currentUser && !state.busy) ask(question).catch(error => notice(error.message, true)); }});
 let activeDialog = null;
 let pendingWorkbookRead = null;
 let workbookSchema = null;
@@ -202,7 +203,6 @@ function awaitStream(turnId) {
 
 async function ask(question) {
   setBusy(true);
-  $('question').value = '';
   let baseHistory = state.history.slice();
   try {
     const workbook = await currentWorkbook();
@@ -399,6 +399,7 @@ async function init() {
   $('composer').addEventListener('submit', event => {
     event.preventDefault(); const question = $('question').value.trim();
     if (!question || !auth.currentUser || state.busy) return;
+    $('question').value = '';
     ask(question).catch(error => notice(error.message, true));
   });
   $('question').addEventListener('keydown', event => {

@@ -27,8 +27,10 @@
     return {sheets,scope,active_sheet:sheets.some(t=>t.name===current)?current:sheets[0]?.name};
   }
   // Three starter questions for an empty conversation, and nothing else: no heading, no loading or
-  // failure text. The host hides them once a question is asked (setActive).
-  function create({container,composer,request}){
+  // failure text. A click asks the question (the host's `ask`), leaving any draft in the composer; it only
+  // filled the composer, and the user had to press send as well (2026-10-08). The host hides the starters
+  // once a question is asked (setActive).
+  function create({container,request,ask}){
     let generation=0,key='',loaded=[],active=true;
     container.classList.add('starter-questions');
     container.setAttribute('aria-label','Suggested questions');
@@ -38,16 +40,7 @@
       for(const question of questions){
         const button=document.createElement('button');button.type='button';button.className='starter-question';
         button.textContent=question;
-        button.addEventListener('click',()=>{
-          // A click offers wording; it never executes or replaces a different draft without a choice.
-          if(composer.value.trim()&&composer.value.trim()!==question){
-            const insert=document.createElement('button');insert.type='button';insert.className='starter-question';
-            insert.textContent='Replace my draft with this question';
-            insert.addEventListener('click',()=>{composer.value=question;composer.dispatchEvent(new Event('input',{bubbles:true}));composer.focus();render(loaded);});
-            container.replaceChildren(button,insert);return;
-          }
-          composer.value=question;composer.dispatchEvent(new Event('input',{bubbles:true}));composer.focus();
-        });
+        button.addEventListener('click',()=>ask(question));
         container.append(button);
       }
     }
