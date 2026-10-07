@@ -32,6 +32,7 @@ import argparse
 import collections
 import json
 import os
+from pathlib import Path
 import sys
 import time
 import warnings
@@ -140,6 +141,20 @@ def _execute_python_candidate(plan, tables, schema, estimated_rows, row_limit):
         return [list(row.values()) for row in result.rows]
     finally:
         engine.dispose()
+
+
+def _source_paths(root):
+    """Every first-party Python file a run can execute, keyed by its repository path: the whole engine
+    package and this harness's directory. A hand-kept list missed engine/relations.py, numeric.py and
+    sql_dates.py, so editing them changed neither a result nor the resume check (2026-10-07). Serving
+    also imports many modules inside its functions, so the modules loaded before a run starts would
+    miss them too."""
+    paths = {}
+    for directory in ("engine", os.path.join("spider", "probe")):
+        for path in sorted(Path(root, directory).rglob("*.py")):
+            if "__pycache__" not in path.parts:
+                paths[path.relative_to(root).as_posix()] = path
+    return paths
 
 
 def _git_provenance(root):
@@ -613,40 +628,15 @@ def main():
     # engine alone (EXTERNAL_LLM_ENABLED unset); a run with the fallback says so and names its model.
     checkpoint_contract["fallback"] = {"enabled": llm.available(), "model": llm.model_id()}
 
-    # Fingerprint the FULL serving path, not just the planner core — a routing or semantic-signal change
-    # (tables.py / knowledge_compose.py / primitive_head.py / compose.py / encoder_overlay.py) or an edit to
-    # this harness must invalidate a --resume checkpoint, or stale predictions get silently reused.
-    engine_code = ("routing.py", "tables.py", "sql_search.py", "sql_rank.py", "sql_ast.py", "sql_candidate.py",
-                   "sql_schema.py", "sql_expansion.py", "sql_constraints.py", "sql_extrema.py",
-                   "sql_recursive.py", "sql_parsimony.py", "sql_profile.py", "sql_profile_expansion.py",
-                   "question_rewrite.py", "sql_prompt.py", "query_contract.py", "request_deadline.py", "sql_grounding.py", "llm.py",
-                   "model_revisions.py",
-                   "decomposition.py",
-                   "knowledge_compose.py", "primitive_head.py", "compose.py", "encoder_overlay.py",
-                   "calculations/core.py", "calculations/registry.py",
-                   "calculations/search.py", "calculations/specifications.py")
-    deterministic_code = (
-        "deterministic/context.py",
-        "deterministic/lower.py",
-        "deterministic/operators.py",
-        "deterministic/plan.py",
-        "deterministic/runtime.py",
-        "deterministic/service.py",
-        "deterministic/emitter/py/__init__.py",
-        "deterministic/emitter/sql/__init__.py",
-    )
+    # Fingerprint every source file the run can execute (_source_paths) with the data and model files:
+    # any edit must invalidate a --resume checkpoint, or stale predictions get silently reused.
     checkpoint_contract["artifacts"] = {
         **fingerprint_paths({
             "dev": os.path.join(args.data, "dev.json"),
             "tables": os.path.join(args.data, "tables.json"),
             "encoder": DATA_DIR / "encoder.pt",
             "encoder_meta": DATA_DIR / "encoder_meta.pt",
-            "eval_harness": os.path.join(ROOT, "spider", "probe", "full_eval.py"),
-            **{f"engine/{name}": os.path.join(ROOT, "engine", name) for name in engine_code},
-            **{
-                f"engine/{name}": os.path.join(ROOT, "engine", *name.split("/"))
-                for name in deterministic_code
-            },
+            **_source_paths(ROOT),
         }),
         "encoder_adapter": adapter_sha256(DATA_DIR / "qwen_lora"),
         **_git_provenance(ROOT),   # source_commit + worktree_dirty: a run traces to an exact tree; a dirty

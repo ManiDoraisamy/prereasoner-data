@@ -4,6 +4,14 @@ Dated entries come newest first. Each records a run at the commit it names; the 
 entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection arbiter`) may since have
 been removed, and that commit holds the code that ran.
 
+## A result records every source file it ran (2026-10-07)
+
+From this change on, a result's `artifacts` hash every Python file under `engine/` and `spider/probe/`, keyed by
+its repository path (`spider/probe/full_eval.py` replaces the `eval_harness` key). Results and checkpoints written
+before it hash only a hand-kept list of 38 engine files and the harness itself. That list left out, among others,
+`engine/relations.py`, `engine/numeric.py`, `engine/sql_dates.py` and the harness's `evalutil.py`, so an edit to one
+of them changed neither the record nor the `--resume` check. No answers change.
+
 ## Release-review fixes, on `106aefc`: same answers (2026-10-07)
 
 Same contract as `labels-bc216ff-dirty` (Gemini off, `whole_db`, `served` selection, SQL backend, row cap 5,000), on

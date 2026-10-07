@@ -100,7 +100,30 @@ def test_spider_evaluator_supports_module_invocation():
     source = _text("spider/probe/full_eval.py")
     assert "json.dump(" not in source
     assert source.count("_write_json_atomic(") >= 6
-    assert "sql_grounding.py" in source, "grounding must invalidate Spider resume checkpoints"
+
+
+def test_spider_results_fingerprint_every_source_file_a_run_executes():
+    """Spider results and resume checkpoints hashed a hand-kept list of engine files. It missed
+    engine/relations.py and engine/numeric.py, so a change to either left the record and the checkpoint
+    unchanged (2026-10-07). Every engine and harness module the evaluator loads is fingerprinted."""
+    import engine.deterministic  # noqa: F401 - the evaluator imports these inside its functions
+    import engine.tables  # noqa: F401
+    from engine.artifact_provenance import fingerprint_paths
+    from spider.probe import full_eval
+
+    paths = full_eval._source_paths(ROOT)
+    for name in ("engine/relations.py", "engine/numeric.py", "engine/sql_dates.py", "engine/sql_grounding.py",
+                 "engine/deterministic/emitter/sql/__init__.py", "spider/probe/full_eval.py",
+                 "spider/probe/evalutil.py", "spider/probe/spider_eval.py"):
+        assert name in paths, name
+    fingerprinted = {Path(path).resolve() for path in paths.values()}
+    homes = (ROOT / "engine", ROOT / "spider" / "probe")
+    loaded = {Path(module.__file__).resolve() for module in list(sys.modules.values())
+              if getattr(module, "__file__", None) and str(module.__file__).endswith(".py")}
+    loaded = {path for path in loaded if any(home in path.parents for home in homes)}
+    assert len(loaded) >= 20 and loaded <= fingerprinted, (len(loaded), sorted(map(str, loaded - fingerprinted)))
+    # An unchanged tree yields the same contract, so --resume still matches.
+    assert fingerprint_paths(paths) == fingerprint_paths(full_eval._source_paths(ROOT))
 
 
 def test_public_weight_bundle_is_manifested_and_documented():
@@ -1106,6 +1129,7 @@ TESTS = [
     test_spacy_warmup_does_not_block_model_readiness,
     test_vendored_xlsx_parser_has_the_reviewed_identity,
     test_spider_evaluator_supports_module_invocation,
+    test_spider_results_fingerprint_every_source_file_a_run_executes,
     test_public_weight_bundle_is_manifested_and_documented,
     test_fresh_weight_fetch_stages_committed_artifacts,
     test_weight_fetch_paths_follow_manifest_and_reject_path_escape,
