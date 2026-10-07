@@ -361,7 +361,10 @@ test('with a script published before upload once, the cells go with the restore 
   await expect(page.locator('#newConversation')).toBeEnabled();
   await page.locator('#question').press('Enter');
   await expect.poll(() => page.evaluate(() => Boolean(window.__server.pendingAsk))).toBe(true);
-  const [restore] = await calls(page, 'restorePrereasonerSheetConversation');
+  // The restore asked for when the sidebar opens goes without the cells, which this script refuses; the
+  // restore after the read carries them.
+  const [early, restore] = await calls(page, 'restorePrereasonerSheetConversation');
+  expect(early.arg).toBeNull();
   expect(restore.arg.tables[0].data).toBe('country,amount\nFrance,840\nFrance,400\nGermany,620');
   const ask = await page.evaluate(() => window.__server.pendingAsk.arg);
   expect(ask.tables[0].data).toBe('country,amount\nFrance,840\nFrance,400\nGermany,620');
@@ -424,6 +427,39 @@ test('a slow sheet read shows what the sidebar is doing from the first moment, w
   await expect(page.locator('#thread')).toHaveText('');
   await expect(page.locator('#suggestions .starter-question')).toHaveCount(3);
   await expect(page.locator('#newConversation')).toBeEnabled();
+});
+
+test('a saved chat shows at once while a slow sheet is read, the read being the header\'s Syncing…', async ({page}) => {
+  // The sheet's chat waited for the whole read: "Reading 6 tabs… 1:27" in place of the conversation
+  // (2026-10-07). It is restored when the sidebar opens, without the cells, and the read goes on in the header.
+  const saved = {client: 'google-sheets-addon', version: 2, syncedFingerprint: '', syncedSourceHash: 'a'.repeat(64),
+    turns: [{question: 'What are total sales in France?', reply: 'Total sales in France are US$1,240.', steps: [], asks: []}],
+    history: [{role: 'user', content: 'What are total sales in France?'}, {role: 'assistant', content: 'Total sales in France are US$1,240.'}]};
+  await page.clock.install();
+  await openSidebar(page, orders, {}, {contextDelay: 120000,
+    restored: {conversationId: conversation, state: saved, stale: false, sourceHash: 'a'.repeat(64)}});
+  await expect(page.locator('.turn-answer')).toHaveText('Total sales in France are US$1,240.');
+  await expect(page.locator('#thread .loading')).toHaveCount(0);
+  await expect(page.locator('#topline')).toBeVisible();
+  await expect(page.locator('#syncStatus')).toHaveText('Syncing…');
+  await expect(page.locator('#newConversation')).toBeEnabled();
+  // The header keeps its space above the first question, the composer sits on the panel's own surface, and
+  // send is an icon (2026-10-07: the header sat on the bubble, a white band read as a patch, and send was "↑").
+  const gap = await page.evaluate(() => document.querySelector('.turn.user').getBoundingClientRect().top -
+    document.querySelector('#newConversation').getBoundingClientRect().bottom);
+  expect(gap).toBeGreaterThanOrEqual(10);
+  await expect(page.locator('.sidebar.bottom')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await expect(page.locator('#send .send-icon')).toBeVisible();
+  await expect(page.locator('#send')).not.toContainText('↑');
+  const [restore] = await calls(page, 'restorePrereasonerSheetConversation');
+  expect(restore.arg).toBeNull();
+  await page.clock.fastForward(121000);
+  await expect(page.locator('#syncStatus')).toHaveText('Synced just now');
+  expect((await calls(page, 'restorePrereasonerSheetConversation')).length).toBe(1);
+  // Contrast: a sheet with no saved chat shows the reading status in the thread, under no header.
+  await openSidebar(page, orders, {}, {contextDelay: 120000});
+  await expect(page.locator('#thread .loading')).toContainText('Reading 1 tab…');
+  await expect(page.locator('#topline')).toBeHidden();
 });
 
 test('a slow sheet is read once: a question asked while it is read waits, and later ones reuse that read', async ({page}) => {

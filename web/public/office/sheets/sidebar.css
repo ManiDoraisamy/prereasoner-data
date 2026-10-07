@@ -2,7 +2,9 @@ html, body { height: 100%; }
       body { margin: 0; color: #202124; font: 13px Arial, sans-serif; }
       .sidebar { position: absolute; width: 100%; box-sizing: border-box; }
       .branding-below { bottom: 58px; top: 0; overflow-y: auto; padding: 0 16px 16px; box-sizing: border-box; }
-      .topline { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 10px 0 2px; }
+      /* The shared rail's .turn-pair has no top margin, so the header holds the space above the first question
+         (it sat on the question's bubble, 2026-10-07). */
+      .topline { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 10px 0 14px; }
       .sync-status {
         display: inline-flex; align-items: center; height: auto; min-width: 0; margin: 0; padding: 2px 0; border: 0;
         background: none; color: #5f6368; font: 12px/16px Arial, sans-serif; white-space: nowrap; cursor: pointer;
@@ -73,13 +75,21 @@ html, body { height: 100%; }
       .steplin { color: #8b829e; font-size: 11px; }
       .stepbackend { margin-left: 2px; padding: 1px 5px; border-radius: 4px; color: #5d33fb; background: #f0ecfd; font: 600 9px/1.5 Consolas, monospace; white-space: nowrap; flex: 0 0 auto; }
       .live-reasoning .steplink { opacity: .9; }
-      .bottom { position: fixed; left: 0; right: 0; bottom: 0; box-sizing: border-box; padding: 8px 12px 10px; background: #fff; border-top: 1px solid #dadce0; }
+      /* The composer sits on the side panel's own surface; a white band behind it read as a patch (2026-10-07). */
+      .bottom { position: fixed; left: 0; right: 0; bottom: 0; box-sizing: border-box; padding: 8px 12px 10px; background: transparent; }
       .composer { display: flex; gap: 8px; align-items: flex-end; }
       .composer textarea {
         min-height: 36px; max-height: 112px; flex: 1; resize: vertical; box-sizing: border-box;
         border: 1px solid #d9d4df; border-radius: 8px; padding: 8px 9px; font: 13px Arial, sans-serif;
       }
       .composer textarea:focus { outline: none; border-color: #8f7bf2; box-shadow: 0 0 0 2px #ede8fd; }
-      #send { border: 0; width: 34px; min-width: 34px; max-width: 34px; height: 34px; margin: 0; border-radius: 50%; background: #5d33fb; color: #fff; padding: 0; cursor: pointer; font-size: 18px; line-height: 34px; }
+      #send {
+        display: inline-flex; align-items: center; justify-content: center; border: 0; width: 34px; min-width: 34px;
+        max-width: 34px; height: 34px; margin: 0; border-radius: 50%; background: #5d33fb; color: #fff; padding: 0; cursor: pointer;
+      }
       #send:disabled { opacity: .45; cursor: default; }
+      #send .send-icon { width: 17px; height: 17px; margin-left: 2px; fill: currentColor; }
+      #send .send-busy { display: none; border-color: rgba(255, 255, 255, .35); border-top-color: #fff; }
+      #send[aria-busy="true"] .send-icon { display: none; }
+      #send[aria-busy="true"] .send-busy { display: inline-block; }
       .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }

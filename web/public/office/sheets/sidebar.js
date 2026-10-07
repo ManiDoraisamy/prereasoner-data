@@ -43,7 +43,7 @@
         var state = {conversationId: null, turns: [], history: [], tables: [], syncedFingerprint: '', ready: false,
           uploadOnce: false, sourceHash: '',
           restored: false, sheetError: '', uid: null, signedIn: null, busy: false, live: null, scope: 'auto',
-          loading: null, loaded: null, print: '', readMs: 0, syncedAt: 0, syncing: false};
+          loading: null, loaded: null, restoring: null, print: '', readMs: 0, syncedAt: 0, syncing: false};
         // The chat service's answer for a conversation deleted elsewhere (orchestrator/server.py).
         var NOT_FOUND = /conversation not found/i;
 
@@ -303,7 +303,7 @@
           questionEl.disabled = false;
           sendEl.disabled = busy;
           newEl.disabled = busy || !state.ready;
-          sendEl.textContent = busy ? '…' : '↑';
+          sendEl.setAttribute('aria-busy', busy ? 'true' : 'false');   // the send icon becomes a spinner
           renderSync();
         }
 
@@ -385,20 +385,20 @@
 
         // The sheet's saved chat. A chat deleted elsewhere comes back empty. A failed read is tried again
         // with the next question, which fails rather than start a new chat over one it could not read:
-        // treating a passing outage as an expired chat wiped saved conversations (2026-10-04).
+        // treating a passing outage as an expired chat wiped saved conversations (2026-10-04). A script
+        // that uploads a sheet once restores without the cells (`tables` null); an older one needs them.
         async function restore(tables, strict) {
           try {
-            // A script that uploads a sheet once restores without the cells; an older one needs them.
-            var restored = await callServer('restorePrereasonerSheetConversation',
-              state.uploadOnce ? undefined : {tables: tables});
+            var restored = await callServer('restorePrereasonerSheetConversation', tables ? {tables: tables} : undefined);
             state.conversationId = restored.conversationId || null;
             state.turns = restoredTurns(restored.state);
             state.history = restored.state && Array.isArray(restored.state.history) ? restored.state.history.slice(-24) : [];
             state.syncedFingerprint = (restored.state && restored.state.syncedFingerprint) || '';
             // The stored sheet is the one this sidebar last uploaded only while the conversation still stores the
-            // hash saved with that upload; otherwise the next question uploads the sheet again.
+            // hash saved with that upload; otherwise the next question uploads the sheet again. Only a script that
+            // uploads once restores without the cells, before the sidebar knows which script it runs.
             var savedHash = restored.state && restored.state.syncedSourceHash;
-            state.sourceHash = state.uploadOnce && state.conversationId && restored.sourceHash &&
+            state.sourceHash = !tables && state.conversationId && restored.sourceHash &&
               restored.sourceHash === savedHash ? restored.sourceHash : '';
             state.restored = true;
           } catch (error) {
@@ -447,7 +447,8 @@
             }
             var print = state.print;
             state.sheetError = '';
-            if (!state.restored) await restore(tables, true);
+            if (state.restoring) await state.restoring;     // the chat asked for when the sidebar opened
+            if (!state.restored) await restore(state.uploadOnce ? null : tables, true);
             if (state.uploadOnce) {
               if (!state.conversationId || !state.sourceHash || print !== state.syncedFingerprint) {
                 live.status = state.conversationId ? 'Syncing the changed sheet…' : 'Sending the sheet…';
@@ -564,13 +565,23 @@
           render();
         });
 
-        // Opening: the reading status at once, the starters as soon as the headers are read, and the cells,
-        // the sign-in and this sheet's saved chat after them.
+        // Opening: the reading status at once, this sheet's saved chat as soon as it comes back, the starters
+        // as soon as the headers are read, and the cells and the sign-in after them. A saved chat waited for
+        // the whole read, a minute and a half on a six-tab workbook (2026-10-07); it now shows at once, the
+        // read going on as the header's "Syncing…". A script published before upload once refuses a restore
+        // without the cells, and restores after the read as before.
         setBusy(false);
         state.loading = {stage: 'reading', startedAt: Date.now(), tabs: 0};
         state.syncing = true;
         render();
         window.setInterval(function () { tick(); renderSync(); }, 1000);
+        state.restoring = restore(null).then(function () {
+          state.restoring = null;
+          if (!state.restored) return;
+          state.ready = true;                // a new chat needs no cells
+          render();
+          setBusy(state.busy);
+        });
         readSuggestionMetadata();            // headers only: starts before the full read
         var contextStarted = Date.now();
         state.loaded = callServer('getSidebarContext').then(async function (context) {
@@ -587,6 +598,9 @@
           }
           // Independent of restore/answers. A slow or unavailable suggestion never blocks typing.
           refreshSuggestions();
+          if (state.uploadOnce) return;      // its chat was asked for when the sidebar opened
+          if (state.restoring) await state.restoring;
+          if (state.restored) return;
           state.loading.stage = 'restoring';
           render();
           await restore(state.tables);

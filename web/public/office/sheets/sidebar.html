@@ -20,7 +20,10 @@
       <form class="composer" id="composer">
         <label class="sr-only" for="question">Ask about this spreadsheet</label>
         <textarea id="question" placeholder="Ask about this spreadsheet…" rows="1"></textarea>
-        <button id="send" type="submit" aria-label="Send" disabled>↑</button>
+        <button id="send" type="submit" aria-label="Send" aria-busy="false" disabled>
+          <svg class="send-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.01 21 23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+          <span class="send-busy spin" aria-hidden="true"></span>
+        </button>
       </form>
     </div>
 
