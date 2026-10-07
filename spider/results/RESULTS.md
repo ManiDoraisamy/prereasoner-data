@@ -4,6 +4,75 @@ Dated entries come newest first. Each records a run at the commit it names; the 
 entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection arbiter`) may since have
 been removed, and that commit holds the code that ran.
 
+## The selection's rewording answered by three hosted models, on `e55ab00` (2026-10-07)
+
+Production runs with the operator's Gemini switch on: a question the typed search cannot answer is reworded once
+(`engine/question_rewrite.py`) and searched again. This measures that served path with three models answering the
+rewording. Same contract as `review2-5f8c57c-dirty` otherwise (`whole_db`, `served` selection, SQL backend, row cap
+5,000), on `e55ab00` (tags `rewrite-<model>-e55ab00`; the three ran in parallel on one desktop). Only the model
+behind `engine.llm.generate_text` changed, through a scratch wrapper around `full_eval.py`. The prompt
+(`sql_prompt.REWRITE_SYSTEM`, `rewrite_prompt`), the check that a rewording keeps every stated value, and the
+second search are production code. Each model ran at its least thinking: Gemini at LOW (production); Haiku 5.5
+with thinking off (by default it thinks about 300 tokens per rewording); Sonnet 5.5 at its default, which did not
+think. The rewording fires on the 620 questions the search alone leaves unanswered.
+
+| | Engine alone | **gemini-3.8-flash** | Sonnet 5.5 | Haiku 5.5 |
+|---|---:|---:|---:|---:|
+| Strict | 247 | **341 (+94)** | 336 (+89) | 289 (+42) |
+| Lenient | 315 | **446** | 432 | 371 |
+| Answered | 414 | **604** | 575 | 493 |
+| Strict wins / losses against the engine alone | | 94 / 0 | 89 / 0 | 42 / 0 |
+| Rewording calls (failed) | | 620 (3) | 620 (0) | 620 (0) |
+| Rewording seconds, median / p90 / max | | 1.96 / 2.86 / 17.5 | 1.50 / 2.04 / 7.4 | 0.65 / 0.90 / 3.2 |
+| Tokens in / out, thinking included | | 320,372 / 19,112 | 475,049 / 38,563 | 474,429 / 20,803 |
+| Cost of the 620 rewordings | | $0.31 | $1.34 | $0.06 |
+
+- Prices per million input/output tokens, list prices read 2026-10-07: gemini-3.8-flash $0.75 / $3.75 (thinking
+  billed as output), Sonnet 5.5 $2 / $10, Haiku 5.5 $0.10 / $0.50 (prompts up to 100K tokens).
+- Gemini answers the most questions correctly, at a quarter of Sonnet's cost; Haiku without thinking rescues fewer
+  than half as many. Haiku at its default thinking was not measured.
+- Gemini used 64 thinking tokens across all 620 calls at LOW here, against about 565 per call on the keyword
+  prompt measured 2026-10-05 (6 to 14 s then, 1.96 s median here).
+- The earlier Gemini-on run at `13edb6a` reached 338 strict / 609 answered on an older planner.
+- The runs' prediction seconds were measured three to a desktop and are not comparable with the runs below.
+
+Outputs: `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_rewrite-<model>-e55ab00.json`. The
+per-call logs stayed in the session's scratchpad.
+
+## Hosted models writing the SQL themselves: about 3.4 times the engine's strict count (2026-10-07)
+
+A measurement beside the engine, never served: no model writes SQL in the product (CLAUDE.md). It shows what that
+rule costs on Spider. Each model answered the same 1,034 DEV questions, on the same capped databases
+(`evalutil.load_capped`, row cap 5,000, `build_mem_db`), with gold run the same way and graded by the same
+`spider_eval.compare` and `record_integrated_result` as `review2-5f8c57c-dirty`. One zero-shot request per
+question gave every table of the question's database (`whole_db`) as `CREATE TABLE` statements with 3 example rows
+each, plus Spider's declared foreign keys, which `full_eval.py` also gives the engine. The instruction was "Write
+one SQLite query that answers the question… Reply with the SQL query only". The Claude 5.5 models refuse a
+temperature and ran at their defaults, without thinking; Gemini ran at temperature 0 and LOW thinking (about 25
+thinking tokens a question). Calls went 8 at a time from a desktop, and latency is each call's round trip. The
+engine's seconds are the half of its run that had the desktop alone.
+
+| | Engine | Haiku 5.5 | Sonnet 5.5 | **gemini-3.8-flash** |
+|---|---:|---:|---:|---:|
+| Strict | 247 (23.9%) | 828 (80.1%) | 840 (81.2%) | **872 (84.3%)** |
+| Lenient | 315 | 871 | 897 | **904** |
+| Answered | 414 | 1,029 | 1,023 | **1,034** |
+| Scalar | 149/408 | 373/408 | 373/408 | **390/408** |
+| Strict: easy / medium / hard / extra | 105 / 103 / 24 / 15 | 236 / 346 / 143 / 103 | 223 / 355 / 151 / 111 | 239 / 364 / 149 / 120 |
+| Seconds, median / p90 / max | 1.04 / 2.52 / 6.9 | **0.71 / 1.63 / 5.8** | 1.22 / 1.85 / 8.5 | 1.49 / 2.25 / 34.5 |
+| Cost of the run | no per-question fee | **$0.18** | $3.06 | $0.83 |
+
+- Strict-correct for the engine and wrong for the model: 13 (Haiku), 10 (Sonnet), 7 (Gemini). The other way: 594,
+  603 and 632.
+- On the 414 questions the engine answers, the engine is strict-correct on 247; Haiku on 338, Sonnet on 349 and
+  Gemini on 356.
+- Spider has been public since 2018 and is very likely in all three models' training data, so their scores are
+  probably inflated. The engine's search rules were also built against Spider DEV failures.
+- Consistent with the removed 7B proposer's 866 strict (2026-10-01).
+
+The harness and its per-question records stayed in the session's scratchpad; neither is committed, since the tree
+keeps one evaluator.
+
 ## Revision-2 review fixes, on `5f8c57c`: same answers (2026-10-07)
 
 Same contract as `review-106aefc-dirty` (Gemini off, `whole_db`, `served` selection, SQL backend, row cap 5,000), on

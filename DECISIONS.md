@@ -2592,3 +2592,72 @@ Measured:
   example's SQL changed (`spider/results/RESULTS.md`).
 - **Not run.** `tests.test_datasets` and `tests.test_geo` need the live database. The reference store's real
   PostgreSQL reads were mocked; the catalog's only change is its row limit.
+
+## Where a served question's time goes (2026-10-08)
+
+A baseline for the performance work (P01–P11 of the release review), from production's own `[timing]` lines
+(`engine/request_timing.py`; chat and engine) for 2026-10-06 and 07: 816 engine requests and 737 chat turns, the
+Chrome gate's included. Each engine line partitions its total into spans' self times. Medians are over the
+requests in which a step ran.
+
+The chat turn: median 9.0 s, p90 16.1 s.
+
+| Step | Median | p90 | Runs in |
+|---|---:|---:|---|
+| Chat model (Gemini): the standalone question and the engine call | 2.0 s | 5.0 s | every turn; 89% need one call |
+| Engine request (network to it 0.02 s) | 5.0 s | 12.3 s | every turn |
+| Reply rendering and save | 0.15 s | 0.2 s | every turn |
+
+The engine request, in execution order (own-data questions; median 4.4 s):
+
+| Step | Span | Median | Share | Runs in |
+|---|---|---:|---:|---|
+| Request handling: auth, parse, response | unattributed | 0.28 s | 6% | all |
+| Postgres connect | `pg_connect` | 0.46 s | 8% | all |
+| Sheet upload into Postgres | `upload` | 0.01 s | <1% | 89% |
+| Column typing, first sight of a sheet | `typing` | 2.1 s | 7% | 18% |
+| Encoding: tokenizing and the encoder | `encode` | 1.2 s | 22% | 73%; the rest hit the cache |
+| Compound probe, compose, world lookup | `decompose_probe`, `compose`, `world_lookup` | <0.1 s | ~1% | 30–40% |
+| Typed AST search, ranking and SQL construction | `serve` self | 0.56 s (p90 6.5 s) | 27% | all |
+| Candidate execution and grounding on SQLite | `pool_execute`, `pool_grounding` | <0.1 s | <1% | 66% |
+| Rewrite fallback: Gemini and the second search | `fallback` | 5.6 s (p90 9.4 s) | 1% | 1.3% |
+| Postgres statements: final query, upload, typing, world (about 66 a request) | `sql` | 0.7 s | 19% | all |
+| Python parity check of the answer | `deterministic_python` | 0.03 s | 1% | 89% |
+| Progress streaming to the browser (Firebase) | `rtdb` | 0.46 s | 9% | all |
+
+- A question needing world data takes 10.9 s median, 5.1 s of it in the search step.
+- A sheet's first question takes 8.6 s median, against 4.1 s for later ones. Typing (2.2 s) runs only then, and
+  encoding takes 1.67 s against 0.78 s (19 texts missing from the cache against 5).
+- Encoding a sheet's column names when it syncs would save about 0.9 s, and typing it then about 2.2 s, on that
+  sheet's first question only. Both caches live in one engine instance's memory, and production runs 2 to 4
+  instances, so the saving needs the results stored with the sheet in Postgres. Syncing when the sidebar opens
+  would also start a conversation for every opening. A later question's encoding is its own phrases, which
+  nothing can compute before the question.
+- Not yet split out: tokenizing from encoding, the search from ranking and SQL construction (`serve` self), and the
+  final query from the other Postgres statements. The rewrite span holds Gemini's call and the second search
+  together.
+
+Decision: the next performance work, in order of measured cost per question:
+1. Reuse Postgres connections: 0.46 s on every request.
+2. Stream progress without blocking the request: 0.46 s on every request.
+3. Send fewer Postgres statements, including the timeout setting sent before each: about 66 a request (P02).
+4. Split `serve` into search, ranking and construction spans before optimizing it.
+
+Pre-computing the encoding and typing waits until the sheet's results can be shared across instances.
+
+## A saved chat shows when the Sheets sidebar opens, and a starter asks itself (2026-10-08)
+
+- **The chat waited for the whole read.** The sidebar asked for the sheet's saved chat only after
+  `getSidebarContext` had read every cell, so "Reading 6 tabs… 1:27" stood in for the conversation. The upload-once
+  script (v31) restores without the cells, so the sidebar now asks when it opens, alongside the read. The header
+  shows "Syncing…" until the read finishes. The v30 script refuses a restore without cells and keeps the restore
+  after the read, the compatibility path recorded on 2026-10-05.
+  - Measured in Sheets on a 4-tab sheet, from the menu click: the chat showed at 7.5 s, against 15 to 17 s before.
+    About 4 to 5 s of that is Google loading the add-on frame.
+- **Layout.**
+  - The header keeps 14 px above the first question; the shared rail's turn has no top margin.
+  - The composer sits on the side panel's own surface, not on a white band.
+  - Send is an icon that turns into a spinner while busy, in place of the "↑" character.
+- **A starter asks itself.** A starter question only filled the composer, and the user had to press send too. The
+  shared component (`lib/sidebar-suggestions.js`) now calls its host's `ask`, in the Sheets sidebar, the Excel task
+  pane and the web home page alike. A draft in the composer stays there.
