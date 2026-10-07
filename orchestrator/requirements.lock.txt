@@ -364,9 +364,9 @@ distro==1.9.0 \
     --hash=sha256:2fa77c6fd8940f116ee1d6b94a2f90b13b5ea8d019b98bc8bafdcabcdd9bdbed \
     --hash=sha256:7bffd925d65168f85027d8da9af6bddab658135b840670a223589bc0c8ef02b2
     # via google-genai
-firebase-admin==6.9.0 \
-    --hash=sha256:06496c3d1380a8f69e3817045b244ce8578d8ad19af3f85c510ac4d8fe0433ca \
-    --hash=sha256:75c261c074dcf33a2bcc8366b94ad96255da3fe24079c30220186d489d553ad5
+firebase-admin==7.7.0 \
+    --hash=sha256:0a341ebbd1f80301fa11034f5e86ab0d0f00dde19253d2ee50cf98be2a7a2f33 \
+    --hash=sha256:2e823cc1d2c8b74f41346fb33298b2e01fc8ad208ea144cd099938c32367f169
     # via -r orchestrator/requirements.txt
 google-api-core==2.36.0 \
     --hash=sha256:32779307b52e64c9a9592a3621de6281676ecaeea299fe8524e4637ab7ac2531 \
