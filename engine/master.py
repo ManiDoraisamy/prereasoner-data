@@ -198,17 +198,24 @@ def load_master_catalog(user_id, row_limit=MAX_ROWS):
         connection.close()
 
 
-def _execution_values(table, column):
-    index = table["columns"].index(column)
-    return {row[index] for row in table["rows"] if index < len(row) and row[index] not in (None, "")}
+def _joined(edges, working_names, candidate):
+    """Whether ``edges`` link a working table to the reference's key, its first column."""
+    return any(edge["from_table"] in working_names and edge["to_table"] == candidate["name"]
+               and edge["to_col"] == candidate["columns"][0] for edge in edges)
+
+
+def _case_folded(table):
+    return {**table, "rows": [[value.casefold() if isinstance(value, str) else value for value in row]
+                              for row in table["rows"]]}
 
 
 def relevant_tables(user_id, source_tables, limit, row_limit):
     """Return saved references that the production FK graph can join to this request.
 
-    Selection intentionally delegates relationship inference to ``discover_fks``. An additional exact-value
-    check keeps selection consistent with the emitted SQL equality join, which is case-sensitive for text.
-    Store failures are reported as warnings so an answer is never silently presented as reference-aware.
+    Selection delegates relationship inference to ``discover_fks``, which compares keys as the emitted SQL
+    equality join does (case-sensitive for text). A reference the uploads match only when case is ignored
+    is named in a warning, found by the same discovery over case-folded copies of the tables. Store
+    failures are reported as warnings so an answer is never silently presented as reference-aware.
     """
     if limit <= 0:
         return {"tables": [], "warnings": ["Saved references were not used because the request reached the table limit."]}
@@ -233,48 +240,41 @@ def relevant_tables(user_id, source_tables, limit, row_limit):
         candidates.append((full["name"], candidate))
 
     remaining = candidates
-    normalized_only = set()
+    unjoined = []                                            # references no edge reached in the last round
     while remaining and len(selected) < limit:
         working = [*source_tables, *selected]
         working_names = {table["name"] for table in working}
-        added = []
+        added, unjoined = [], []
         for stored_name, candidate in remaining:
-            edges = [edge for edge in discover_fks([*working, candidate])
-                     if edge["from_table"] in working_names and edge["to_table"] == candidate["name"]
-                     and edge["to_col"] == candidate["columns"][0]]
-            exact = False
-            for edge in edges:
-                source = next(table for table in working if table["name"] == edge["from_table"])
-                child = _execution_values(source, edge["from_col"])
-                parent = _execution_values(candidate, edge["to_col"])
-                if child and len(child & parent) / len(child) >= 0.9:
-                    exact = True
-                    break
-            if exact:
-                try:
-                    full = get_master(user_id, stored_name)
-                except Exception:  # noqa: BLE001 - preserve own-data answer and disclose omission
-                    LOG.exception("selected reference table could not be loaded")
-                    warnings.append(
-                        f'Saved reference "{stored_name}" was selected but could not be loaded.'
-                    )
-                    continue
-                if full is None:
-                    continue
-                selected.append(table_from_rows(candidate["name"], full["columns"], full["rows"][:row_limit]))
-                added.append(candidate["name"])
-                normalized_only.discard(stored_name)
-                if len(selected) >= limit:
-                    break
-            elif edges:
-                normalized_only.add(stored_name)
+            if not _joined(discover_fks([*working, candidate]), working_names, candidate):
+                unjoined.append((stored_name, candidate))
+                continue
+            try:
+                full = get_master(user_id, stored_name)
+            except Exception:  # noqa: BLE001 - preserve own-data answer and disclose omission
+                LOG.exception("selected reference table could not be loaded")
+                warnings.append(
+                    f'Saved reference "{stored_name}" was selected but could not be loaded.'
+                )
+                continue
+            if full is None:
+                continue
+            selected.append(table_from_rows(candidate["name"], full["columns"], full["rows"][:row_limit]))
+            added.append(candidate["name"])
+            if len(selected) >= limit:
+                break
         if not added:
             break
         remaining = [(stored_name, candidate) for stored_name, candidate in remaining
                      if candidate["name"] not in added]
 
-    for stored_name in sorted(normalized_only):
-        warnings.append(f'Saved reference "{stored_name}" matched only after text normalization and was not used.')
+    if unjoined:
+        working = [*source_tables, *selected]
+        working_names = {table["name"] for table in working}
+        folded = discover_fks([*map(_case_folded, working), *(_case_folded(candidate) for _, candidate in unjoined)])
+        for stored_name, candidate in sorted(unjoined, key=lambda item: item[0]):
+            if _joined(folded, working_names, candidate):
+                warnings.append(f'Saved reference "{stored_name}" matched only after text normalization and was not used.')
     return {"tables": selected, "warnings": warnings}
 
 

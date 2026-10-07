@@ -2392,3 +2392,78 @@ Measured:
   `tests.test_orchestrator_unit` passes (48). The live `tests.test_orchestrator` passes 44 of 44, including the new
   pair: the total after a re-asked total, and the average right after the averages.
 - **Not run.** The Chrome gate's existing pass, which found the miss, runs at release.
+
+## A release review: negation scope, nearness, decimal commas and join keys (2026-10-07)
+
+A release review of `106aefc` listed 21 behavior findings (B01–B21), 10 performance findings (P01–P10) and 3 on
+accuracy evidence (A01–A03). Each was checked against the code. Five give a wrong answer, with nothing to say so,
+on an ordinary question or upload; they are fixed here. The rest are agreed and scheduled below.
+
+- **B04: a negation reached past a value.** "orders not Done in France" was served as `status != 'Done' AND
+  country != 'France'`, because a negation word excluded any value within the three words after it, even past
+  another value. Now it excludes the first value after it and each value that "and", "or" or "nor" joins to that
+  one (`sql_search._negated_matches`). A negation word inside a value belongs to the value ("Not Started"). The
+  completeness check refuses a query that excludes a value the question keeps, or keeps one it excludes
+  (`sql_search.value_polarity`, read by `query_contract.constraint_violations`).
+- **B11: a nearness word took the question away from the upload.** Any "near", "around" or "closest" sent the
+  question to the settlement lookup before the upload was read, and whatever that returned became the answer.
+  "orders near Paris" over an orders sheet came back as the cities near Paris. The lookup now takes only a
+  question that asks for places: every word before the nearness word must be a place noun or a word that asks
+  for, counts or sizes places (`KnowledgeReasoner._asks_for_places`). Every other question goes to the composed
+  path. The lookup's answer passes the calculation gate like any other route's. A reference place with no
+  longitude is skipped. Places at the same rounded distance are ordered by exact distance, then QID.
+- **B02: a decimal comma read 100 times too large.** `parse_decimal` dropped every comma, so CSV cells "1,50",
+  "12,34" and "2,00" totalled 1,584. A comma is now read only where it groups digits, in threes or in Indian
+  lakh and crore pairs (`numeric.GROUPED_DIGITS`). Any other comma leaves the cell as text, and a text column is
+  not summed. `sql_schema` and `sql_search` each kept a copy of the number pattern; both now import
+  `numeric.NUMBER_TEXT`. The compose threshold reads its number with the same grouping, so "over 1,000, by
+  city" still compares 1,000. The browser importer had the same flaw when a workbook's bytes are CSV text:
+  SheetJS drops the commas, so "1.234,56" became 1.23456. The importer now keeps the text and leaves it to the
+  engine's parser.
+- **B07 and B13: join keys were read differently from the join.** Foreign-key discovery ignored case, while the
+  join it planned compares keys exactly. Orders keyed ABC were linked to customers keyed abc with confidence
+  1.0, and "total amount by customer name" came back with no rows. Join grounding read keys through float, so
+  2^53 and 2^53 + 1 counted as one key, and a total over their payments looked double counted. Both now read a
+  key with `relations.join_value`: text exactly, numbers by exact magnitude. A customers column holding both ABC
+  and abc is now a key, so each order joins its own customer. Saved-reference selection no longer needs its own
+  exact-value check, because discovery does that now. Its warning, for a reference that matches only when case
+  is ignored, comes from running the same discovery over case-folded copies of the tables.
+
+Agreed and scheduled, not in this release:
+- **B01** (leading zeros and literal quotes lost at parse) needs typing that knows each column's role, in the
+  ingestion owner. It changes the values of every upload, so it needs its own measured change.
+- **B03 and B05** are gaps in the completeness check: it accepts `Amount > 10` for "equals 10", and an ascending
+  order for "top 2". The search builds the right comparison and direction for these questions. A stricter check
+  changes selection, so it needs its own Spider measurement.
+- **B06** (a literal `%` or `_` in a substring becomes a wildcard) needs escaping in the AST, in both emitters
+  and in the coverage check. **B15** (a real row named Total is set aside as a summary) needs structural
+  evidence in the importer.
+- **B08–B10, B12, B14 and B16–B21** cover FX carry after a stale feed, answer provenance on save, the snapshot
+  gap after the upload lock, half-even division rounding, non-Latin mentions in the pre-gate, Office workbook
+  identity, retry budgets, build and install identity, and release evidence. **B19** turns an explicit
+  `conf=0.0` into 1.0; nothing passes zero today. **P01–P10** will be taken in order of measured cost. The
+  evidence practice of **A01–A03** (a fresh `whole_db` run with per-example transitions) is followed here.
+
+Measured:
+- **Tests.** Each fix has a regression test that fails on `106aefc` for the reported reason:
+  - B04: `test_a_negation_excludes_the_value_after_it_and_the_values_listed_with_it` and
+    `test_an_exclusion_is_the_one_the_question_makes`.
+  - B11: `test_a_nearness_word_reaches_the_place_lookup_only_for_places`. On `106aefc`, "orders near Paris" is
+    answered by the settlement lookup.
+  - B02: `test_a_comma_is_read_only_where_it_groups_digits` and
+    `test_a_decimal_comma_amount_is_not_totalled_as_hundreds`. On `106aefc` the total is 1,584. The importer
+    check in `web/tests/workbook_import.test.js` gets 150 and 1.23456 on `106aefc`.
+  - B07 and B13: `test_join_keys_are_read_as_the_executed_join_compares_them`. It fails on `106aefc` with
+    either the released discovery or the released grounding.
+- **Suites.** These pass: `tests.test_sql_ast` (199), `tests.test_query_contract` (35), `tests.test_compose` (29),
+  `tests.test_master_ingest` (13), `tests.test_numeric_storage` (5), `tests.test_enrichment` (36), `npm run test:web`,
+  ruff, bandit and the dependency locks. The hermetic `tests.run_all` passes 37 of 38 suites. The exception is
+  `tests.test_release`, whose link check reads every Markdown file under the root: an untracked review file there
+  links to absolute paths. Over the tracked Markdown, the same check finds no missing link.
+- **Unchanged elsewhere.** On the six multi-table demo datasets, discovery finds the same 9 foreign keys. No cell
+  in the shipped demo CSVs or in Spider's 160 databases reads differently. Discovery on a 37,000-row three-table
+  workbook takes 0.18 s, against 0.21 s on `106aefc`.
+- **Spider DEV** (`whole_db`, Gemini off). Same answers: 247 strict, 315 lenient and 414 answered, and no
+  example's SQL changed (`spider/results/RESULTS.md`).
+- **Not run.** `tests.test_datasets` and `tests.test_geo` need the live database, and its proxy was not running.
+  They run at release, with the Chrome gate.

@@ -81,22 +81,23 @@ def oracle_nearby(cur, ref, big, limit=5):
     then the haversine-ordered nearest `limit` settlements with population > (150000 if big else 1), excluding the
     exact ref name. -> (ref_name, ref_qid, [(name, country, population, km_float)]) or (None, None, [])."""
     cur.execute("SELECT name,lat,lng,qid FROM public.settlement WHERE lower(name)=lower(%s) "
-                "AND lat IS NOT NULL ORDER BY population DESC NULLS LAST LIMIT 1", (ref,))
+                "AND lat IS NOT NULL AND lng IS NOT NULL ORDER BY population DESC NULLS LAST, qid LIMIT 1", (ref,))
     row = cur.fetchone()
     if not row:
         return None, None, []
     name, lat, lng, qid = row
     minpop = 150000 if big else 1
     # MIRROR KnowledgeReasoner._nearby exactly (incl. the bugfix exclusions): drop the reference's own administrative
-    # subdivisions (admin_qid = ref qid) + arrondissement-named rows + QID-string/null names, so the oracle and the
-    # served result stay byte-identical.
-    sql = (f"SELECT p.name, p.country, p.population, round(({HAVERSINE})::numeric,0) AS km "
+    # subdivisions (admin_qid = ref qid) + arrondissement-named rows + QID-string/null names, and order by the exact
+    # distance then the entity, so the oracle and the served result stay byte-identical.
+    sql = (f"SELECT name, country, population, round(distance::numeric, 0) AS km FROM ("
+           f"SELECT p.name, p.country, p.population, p.qid, {HAVERSINE} AS distance "
            f"FROM public.settlement p WHERE p.lat IS NOT NULL AND p.lng IS NOT NULL "
            f"AND p.population > %s AND lower(p.name) <> lower(%s) "
            f"AND p.name IS NOT NULL AND p.name !~ '^Q[0-9]+$' "
            f"AND p.name !~* 'arrondissement' "
-           f"AND (p.admin_qid IS NULL OR p.admin_qid <> %s) "
-           f"ORDER BY km ASC LIMIT %s")
+           f"AND (p.admin_qid IS NULL OR p.admin_qid <> %s)) nearby "
+           f"ORDER BY distance ASC, qid ASC, name ASC LIMIT %s")
     cur.execute(sql, (lat, lng, lat, minpop, name, qid, limit))
     rows = [(r[0], r[1], r[2], float(r[3])) for r in cur.fetchall()]
     return name, qid, rows

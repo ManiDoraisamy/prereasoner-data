@@ -30,6 +30,11 @@
         formulaWarnings.add(XLSX.utils.encode_col(c+bounds.s.c));
       }else if(cell&&cell.f&&cell.v==null){
         row[c]='#UNAVAILABLE!';formulaWarnings.add(XLSX.utils.encode_col(c+bounds.s.c));
+      }else if(cell&&cell.t==='n'&&!cell.z&&typeof cell.w==='string'&&cell.w.includes(',')){
+        // A workbook whose bytes are CSV text: SheetJS drops every comma of a number it reads there, so
+        // "1,50" came through as 150 and "1.234,56" as 1.23456 (release review, 2026-10-07). Keep the text;
+        // the engine's one parser (engine/numeric.py) reads a comma only where it groups digits.
+        row[c]=cell.w;
       }
     }));
     raw.forEach((r,i)=>r.forEach((v,c)=>{

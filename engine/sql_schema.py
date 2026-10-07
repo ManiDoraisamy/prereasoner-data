@@ -9,13 +9,12 @@ from numbers import Real
 import re
 from typing import Any, Iterable, Sequence
 
-from engine.numeric import parse_decimal
+from engine.numeric import NUMBER_TEXT, parse_decimal
 from engine.relations import layout
 from engine.sql_ast import ColumnRef, Join, SQLType
 
 
 _WORD_RE = re.compile(r"[^\W_]+(?:'[^\W_]+)?", re.UNICODE)
-_NUMBER_RE = re.compile(r"^-?(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d+)?$")
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}(?:[ T].*)?$")
 _NAME_WORDS = frozenset({"name", "title", "label"})
 
@@ -314,7 +313,7 @@ class SchemaGraph:
             seen = set()
             for value in distinct_values(column.values):
                 normalized = normalize_value(value)
-                if not normalized or normalized in seen or _NUMBER_RE.match(normalized):
+                if not normalized or normalized in seen or NUMBER_TEXT.match(normalized):
                     continue
                 seen.add(normalized)
                 values.setdefault(normalized, []).append((column.ref, value))
@@ -394,7 +393,7 @@ def _infer_type(name: str, values: Sequence[Any]) -> SQLType:
     populated = [value for value in values if value is not None and str(value).strip()]
     if populated and all(_DATE_RE.match(str(value).strip()) for value in populated):
         return SQLType.DATE
-    if populated and all(_NUMBER_RE.match(str(value).strip()) for value in populated):
+    if populated and all(NUMBER_TEXT.match(str(value).strip()) for value in populated):
         return SQLType.REAL if any("." in str(value) for value in populated) else SQLType.INTEGER
     if set(_name_words(name)) & {"date", "datetime", "timestamp"}:
         return SQLType.DATE
@@ -408,7 +407,7 @@ def _coerce_value(value: Any, value_type: SQLType) -> Any:
         if isinstance(value, bool):
             return None
         text = str(value).strip()
-        if not isinstance(value, Real) and not _NUMBER_RE.fullmatch(text):
+        if not isinstance(value, Real) and not NUMBER_TEXT.fullmatch(text):
             return None
         try:
             numeric = parse_decimal(value)

@@ -200,8 +200,8 @@ def csv_table(csv_text, name):
 def table_from_rows(name, columns, rows):
     """Build a planner table from structured rows using the SAME cell typing as CSV uploads (parse_rows):
     _unquote then _typed. Without this, a saved-reference cell keeps any wrapping quotes while the same value
-    uploaded as CSV is unquoted, so master.relevant_tables' case-sensitive value-inclusion guard would drop the
-    reference. Kept byte-identical so a master table is just another own-data table to the planner."""
+    uploaded as CSV is unquoted, so foreign-key discovery, which compares keys exactly as the join does, would
+    drop the reference. Kept byte-identical so a master table is just another own-data table to the planner."""
     cols = canonical_columns([_unquote(None if column is None else str(column)) for column in columns or []])
     width = len(cols)
     typed_rows = []

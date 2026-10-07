@@ -27,7 +27,7 @@ from engine.primitives import (q, filter_view, group_agg_view, yoy_view, topn_vi
                                divide_view, running_view, join_view, world_join_view)
 from engine.closed_class import EXCLUSION_CUES
 from engine.joins import discover_fks, join_plan
-from engine.numeric import parse_decimal, register_sqlite_decimal, sqlite_numeric, wire_decimal
+from engine.numeric import GROUPED_DIGITS, parse_decimal, register_sqlite_decimal, sqlite_numeric, wire_decimal
 from engine.sql_schema import is_surrogate_key
 
 MEASURE_WORDS = {"amount", "revenue", "sales", "spend", "cost", "price", "value", "quantity", "qty", "margin",
@@ -272,8 +272,10 @@ class ComposeEngine:
         for pattern, strict, inclusive in (
                 (r"over|above|more than|greater than|exceed(?:s|ing)?|at least", ">", "at least"),
                 (r"under|below|less than|fewer than|at most", "<", "at most")):
-            m = re.search(r"\b(" + pattern + r")\s*\$?(\d[\d,]*(?:\.\d+)?)(?:\s+(thousand|million|billion|trillion)\b)?",
-                          low)
+            # The value is a number as numeric.py reads one: "over 1,000, by city" compares 1,000, and
+            # "over 1,5" names no number to compare.
+            m = re.search(r"\b(" + pattern + r")\s*\$?((?:" + GROUPED_DIGITS + r"|\d+)(?:\.\d+)?)(?!,?\d)"
+                          r"(?:\s+(thousand|million|billion|trillion)\b)?", low)
             if m:
                 break
         else:

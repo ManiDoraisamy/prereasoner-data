@@ -41,7 +41,7 @@ from engine.sql_ast import (
     share_of,
     validate_query,
 )
-from engine.numeric import parse_decimal
+from engine.numeric import NUMBER_TEXT, parse_decimal
 from engine.sql_candidate import ScoredQuery
 from engine.sql_dates import period_grouping, served_date_phrases
 from engine.sql_durations import duration_phrases, question_date, span_comparisons
@@ -66,7 +66,6 @@ from engine.sql_expansion import (
 from engine.sql_profile_expansion import ProfileSearchConfig
 from engine.sql_schema import SchemaGraph, canon, is_surrogate_key, normalize_value
 
-_NUMBER_RE = re.compile(r"^-?(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d+)?$")
 _PROJECTION_CUES = frozenset({"show", "list", "display", "select", "give", "find", "which", "what"})
 # A text the question quotes: 'Al', "Sky Radio".
 _QUOTED_TEXT = re.compile(r"(?<![\w])['\"]([^'\"]+)['\"](?![\w])")
@@ -1119,7 +1118,7 @@ class SQLSearcher:
         spans = [(start, end, {column for column, _ in options}, True) for start, end, _, options in selected]
         numeric = {column.ref for column in self.schema.columns
                    if column.ref.type.numeric or column.ref.type == SQLType.DATE}
-        spans += [(index, index + 1, numeric, False) for index, token in enumerate(tokens) if _NUMBER_RE.match(token)]
+        spans += [(index, index + 1, numeric, False) for index, token in enumerate(tokens) if NUMBER_TEXT.match(token)]
         return frozenset(position for start, end, columns, data_value in spans
                          for position in _introducers(tokens, start, end, columns, data_value))
 
@@ -1127,9 +1126,10 @@ class SQLSearcher:
                                 claimed: set[int] = frozenset(),
                                 question: str = "") -> list[list[tuple[tuple[Comparison, ...], float, str]]]:
         selected, occupied = self._value_matches(tokens, claimed, question)
+        negated = _negated_matches(tokens, selected)
         groups = []
-        for start, end, phrase, options in selected:
-            operator = "!=" if set(tokens[max(0, start - 3):start]) & {"not", "except", "excluding", "without"} else "="
+        for index, (start, end, phrase, options) in enumerate(selected):
+            operator = "!=" if index in negated else "="
             # The column whose words introduce the value is the one it names: "left / L hand" is a hand,
             # not a first name 'L' (Spider wta_1, 2026-10-02).
             introduced = {column for column, _ in options if _introducers(tokens, start, end, {column}, True)}
@@ -1279,7 +1279,7 @@ class SQLSearcher:
         for i, token in enumerate(tokens):
             if token != "between" or i in claimed:              # "between July 1 and July 10, 2026" is dates
                 continue
-            found = [(j, _number(tokens[j])) for j in range(i + 1, min(len(tokens), i + 7)) if _NUMBER_RE.match(tokens[j])]
+            found = [(j, _number(tokens[j])) for j in range(i + 1, min(len(tokens), i + 7)) if NUMBER_TEXT.match(tokens[j])]
             if len(found) < 2:
                 continue
             targets = self._numeric_targets(mentions, i)
@@ -1306,7 +1306,7 @@ class SQLSearcher:
                 if tokens[i:i + size] != cue or i in claimed:
                     continue
                 number_index = next((j for j in range(i + size, min(len(tokens), i + size + 5))
-                                     if j not in used_numbers and _NUMBER_RE.match(tokens[j])), None)
+                                     if j not in used_numbers and NUMBER_TEXT.match(tokens[j])), None)
                 if number_index is None:
                     continue
                 value = _number(tokens[number_index])
@@ -1349,7 +1349,7 @@ class SQLSearcher:
             if than is None:
                 continue
             number_index = next((j for j in range(than + 1, min(len(tokens), than + 3))
-                                 if j not in used_numbers and _NUMBER_RE.match(tokens[j])), None)
+                                 if j not in used_numbers and NUMBER_TEXT.match(tokens[j])), None)
             if number_index is None:
                 continue
             value = _number(tokens[number_index])
@@ -1519,7 +1519,7 @@ class SQLSearcher:
         for i, token in enumerate(tokens):
             if token in {"top", "bottom", "first", "last"} and not _names_a_part(tokens, i):
                 limit = next((int(_number(tokens[j])) for j in range(i + 1, min(len(tokens), i + 4))
-                              if _NUMBER_RE.match(tokens[j]) and int(_number(tokens[j])) > 0), None)
+                              if NUMBER_TEXT.match(tokens[j]) and int(_number(tokens[j])) > 0), None)
                 limit = limit or 1
                 break
         if limit is None and token_set & {"most", "least", "highest", "lowest", "largest", "smallest"}:
@@ -1844,7 +1844,7 @@ def _comparisons(predicate: Any) -> list[Comparison]:
 def _times_stated(value: Any, tokens: tuple[str, ...]) -> int:
     """How many times the question states ``value``: a number as a number, a text as its words."""
     if isinstance(value, float):
-        return sum(1 for token in tokens if _NUMBER_RE.match(token) and float(_number(token)) == value)
+        return sum(1 for token in tokens if NUMBER_TEXT.match(token) and float(_number(token)) == value)
     wanted = _tokens(str(value))
     if not wanted:
         return 0
@@ -1875,6 +1875,60 @@ def _quoted_positions(question: str) -> frozenset[int]:
     quoted = [match.span(1) for match in _QUOTED_TEXT.finditer(question.lower())]
     return frozenset(index for index, (start, end) in enumerate(word_spans(question))
                      if any(left <= start and end <= right for left, right in quoted))
+
+
+# The words that exclude the value after them ("orders not Done", "every order except refunds"), and the ones
+# that join a value to the one before it into one list ("not Done or Cancelled").
+_NEGATION_CUES = frozenset({"not", "except", "excluding", "without"})
+_LIST_JOINERS = frozenset({"and", "or", "nor"}) | _ARTICLES
+
+
+def _negated_matches(tokens: tuple[str, ...], selected) -> frozenset[int]:
+    """The indexes of the value matches (``start``, ``end``, ...; in order) a negation excludes. A negation cue
+    excludes the first value within three words after it, and each value "and", "or" or "nor" joins to an
+    excluded one: "orders not Done or Cancelled", "excluding Paris, Lyon and Nice". Another value between the
+    cue and a value ends the exclusion: in "orders not Done in France", France is where the orders are, and the
+    search compared country != 'France' (a release review, 2026-10-07). A cue inside a value belongs to the
+    value ("tasks that are Not Started")."""
+    inside = {position for start, end, *_ in selected for position in range(start, end)}
+    cues = [position for position, token in enumerate(tokens) if token in _NEGATION_CUES and position not in inside]
+    negated: set[int] = set()
+    for index, (start, _end, *_) in enumerate(selected):
+        if index - 1 in negated and all(token in _LIST_JOINERS for token in tokens[selected[index - 1][1]:start]):
+            negated.add(index)
+            continue
+        cue = max((position for position in cues if start - 3 <= position < start), default=None)
+        if cue is not None and not any(cue < other[0] < start for other in selected):
+            negated.add(index)
+    return frozenset(negated)
+
+
+_POLARITY: "weakref.WeakKeyDictionary[SchemaGraph, dict[str, tuple[frozenset, frozenset]]]" = \
+    weakref.WeakKeyDictionary()
+
+
+def value_polarity(question: str, schema: SchemaGraph) -> tuple[frozenset, frozenset]:
+    """The (table, column, value) readings of the values ``question`` states, split into those it keeps and
+    those a negation excludes (``_negated_matches``), as the search compares them: the completeness check
+    (engine/query_contract.py) refuses a query that excludes a kept value or keeps an excluded one. Read once
+    per question and schema graph."""
+    by_question = _POLARITY.setdefault(schema, {})
+    found = by_question.get(question)
+    if found is None:
+        tokens = _tokens(question)
+        claimed = {index for phrase in (*served_date_phrases(question, tokens, schema),
+                                        *duration_phrases(question, tokens))
+                   for index in range(phrase.start, phrase.end)}
+        claimed |= {index for request in substring_requests(question, schema)
+                    for index in range(request.start, request.end)}
+        selected, _ = SQLSearcher(schema)._value_matches(tokens, claimed, question) if tokens else ([], set())
+        negated = _negated_matches(tokens, selected)
+        kept, excluded = set(), set()
+        for index, (_start, _end, _phrase, options) in enumerate(selected):
+            (excluded if index in negated else kept).update(
+                (column.table, column.name, value) for column, value in options)
+        found = by_question[question] = (frozenset(kept), frozenset(excluded))
+    return found
 
 
 def _follows(tokens: tuple[str, ...], start: int, cues: frozenset[str]) -> bool:

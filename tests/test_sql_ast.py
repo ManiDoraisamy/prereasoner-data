@@ -1661,6 +1661,89 @@ def test_a_listing_of_numbers_names_the_rows_its_text_filter_picked():
     assert planner.serve([orders], "Amount for orders with Amount above 6")["result"]["columns"] == ["Amount"]
 
 
+def test_a_negation_excludes_the_value_after_it_and_the_values_listed_with_it():
+    """A release review (2026-10-07): "orders not Done in France" was served as the orders outside France that are
+    not Done. A negation word within three words before a value excluded it, past another value between them. A
+    negation excludes the first value after it and each value "and", "or" or "nor" joins to that one; a negation
+    word inside a value is the value's ("Not Started")."""
+    planner = _hermetic_planner()
+    orders = {"name": "orders", "columns": ["order_id", "status", "country", "Amount"],
+              "rows": [[1, "Done", "France", 10], [2, "Open", "France", 15], [3, "Done", "Spain", 30],
+                       [4, "Open", "Italy", 5], [5, "Cancelled", "France", 7], [6, "Not Started", "Spain", 9]]}
+
+    def rows(question):
+        return sorted(map(tuple, planner.serve([orders], question)["result"]["rows"]))
+
+    assert rows("orders not Done in France") == [(2, "Open", "France", 15), (5, "Cancelled", "France", 7)]
+    assert rows("orders not Done or Cancelled") == [
+        (2, "Open", "France", 15), (4, "Open", "Italy", 5), (6, "Not Started", "Spain", 9)]
+    assert rows("orders excluding France and Spain") == [(4, "Open", "Italy", 5)]
+    # Contrast: the same filters in the other order.
+    assert rows("how many orders in France are not Done") == [(2,)]
+    # Negative: the value's own negation word is the value.
+    assert rows("orders Not Started in Spain") == [(6, "Not Started", "Spain", 9)]
+
+
+def test_a_decimal_comma_amount_is_not_totalled_as_hundreds():
+    """A release review (2026-10-07): ingestion dropped every comma, so amounts written "1,50", "12,34" and
+    "2,00" totalled 1584 instead of 15.84. A comma is read only where it groups digits, so such a column stays
+    text and is not summed; amounts grouped in thousands, or in Indian lakhs, still total."""
+    from engine.tables import csv_table
+    planner = _hermetic_planner()
+
+    def total(csv):
+        result = planner.serve([csv_table(csv, "sales")], "total amount").get("result")
+        return result and result["rows"]
+
+    assert not total('item,amount\nA,"1,50"\nB,"12,34"\nC,"2,00"\n')
+    assert total('item,amount\nA,"1,500"\nB,"12,340"\nC,"2,000"\n') == [[15840]]
+    assert total('item,amount\nA,"1,23,456"\nB,"12,34,567"\n') == [[1358023]]
+    # A column mixing the formats is not totalled from its grouped cells alone.
+    assert not total('item,amount\nA,"1,234"\nB,"1,50"\n')
+
+
+def test_join_keys_are_read_as_the_executed_join_compares_them():
+    """A release review (2026-10-07). Foreign-key discovery compared keys without case, while the join it planned
+    compares them exactly: orders keyed ABC, ABC, DEF were linked to customers keyed abc and def, and "total
+    amount by customer name" was served as no rows. Customers keyed ABC and abc, two keys to the join, were no
+    key at all. Join grounding read keys through float, so accounts 2**53 and 2**53 + 1 were one key and a
+    total over their payments was read as double counted. Both now read a key as the join does."""
+    from decimal import Decimal
+
+    from engine.relations import discover_fks, join_value
+    planner = _hermetic_planner()
+    orders = {"name": "orders", "columns": ["order_id", "customer_id", "amount"],
+              "rows": [[1, "ABC", 10], [2, "ABC", 20], [3, "DEF", 30]]}
+
+    def customers(*rows):
+        return {"name": "customers", "columns": ["customer_id", "name"], "rows": [list(row) for row in rows]}
+
+    def answer(table):
+        edges = [(e["from_table"], e["from_col"], e["to_table"], e["to_col"]) for e in discover_fks([orders, table])]
+        result = planner.serve([orders, table], "total amount by customer name").get("result")
+        return edges, sorted(map(tuple, result["rows"])) if result else None
+
+    linked = [("orders", "customer_id", "customers", "customer_id")]
+    assert answer(customers(("abc", "Ann"), ("def", "Bo"))) == ([], None)
+    assert answer(customers(("ABC", "Ann"), ("DEF", "Bo"))) == (linked, [("Ann", 30), ("Bo", 30)])
+    assert answer(customers(("ABC", "Ann"), ("abc", "Cy"), ("DEF", "Bo"))) == (linked, [("Ann", 30), ("Bo", 30)])
+    # A number is one key by its exact magnitude whatever its type, and distinct however large or precise.
+    assert join_value(1001) == join_value("1001") == join_value(1001.0) == join_value(Decimal("1001.00")) == "1001"
+    assert len({join_value(value) for value in (2**53, 2**53 + 1, 10**37, 10**37 + 1, Decimal("0.1"),
+                                                Decimal("0.10000000000000001"))}) == 6
+    assert join_value("1,001") == "1,001" and join_value("Abc") != join_value("abc") and join_value("  ") is None
+    accounts = {"name": "accounts", "columns": ["account_id", "owner"], "rows": [[2**53, "Ann"], [2**53 + 1, "Bo"]]}
+    payments = {"name": "payments", "columns": ["payment_id", "account_id", "amount"],
+                "rows": [[1, 2**53, 5], [2, 2**53 + 1, 7], [3, 2**53, 1]]}
+    graph = SchemaGraph.from_tables([accounts, payments], [("payments", "account_id", "accounts", "account_id")])
+    total = import_sql("SELECT accounts.owner, SUM(payments.amount) FROM payments JOIN accounts "
+                       "ON payments.account_id = accounts.account_id GROUP BY accounts.owner", graph)
+    assert double_counted(total, {"accounts": accounts, "payments": payments}) == ()
+    # Contrast: an account listed twice does repeat each payment the join matches to it.
+    twice = {**accounts, "rows": accounts["rows"] + [[2**53, "Ann"]]}
+    assert len(double_counted(total, {"accounts": twice, "payments": payments})) == 1
+
+
 def test_unread_check_accepts_a_threshold_only_when_the_ast_realizes_it():
     from engine.tables import _query_has_unread_terms
 
@@ -4874,6 +4957,9 @@ TESTS = [
     test_an_average_a_column_name_spells_is_the_column,
     test_the_rewording_of_a_keyword_volume_keeps_every_keyword_holding_the_phrase,
     test_a_listing_of_numbers_names_the_rows_its_text_filter_picked,
+    test_a_negation_excludes_the_value_after_it_and_the_values_listed_with_it,
+    test_a_decimal_comma_amount_is_not_totalled_as_hundreds,
+    test_join_keys_are_read_as_the_executed_join_compares_them,
     test_unread_check_accepts_a_threshold_only_when_the_ast_realizes_it,
     test_unread_check_treats_sheet_scope_words_as_context_not_filters,
     test_gemini_reads_schema_names_but_not_cell_values,

@@ -130,7 +130,10 @@ an ownership check. Client input never selects a user schema directly.
 Private references are not added wholesale to a SQL `search_path`. `engine.master.relevant_tables()` loads a
 bounded set, applies the production foreign-key detector to uploaded and saved tables, and selects only references
 connected to the request. Selection runs to a fixed point, so a valid multi-hop chain can be included. Selected
-references then become ordinary typed planner tables; there is no reference-specific SQL generator.
+references then become ordinary typed planner tables; there is no reference-specific SQL generator. The detector
+compares keys as the executed join does (`engine.relations.join_value`: text exactly, numbers by exact magnitude),
+so a reference the uploads match only when case is ignored is not joined; the same detector over case-folded copies
+names it in a warning.
 
 ## Semantic Contract: Vocabulary, Observations, And Facts
 
@@ -221,8 +224,9 @@ replay. The legacy Wikidata schema migration is still pending.
    cells and calls `/chat` and the conversation APIs server to server with the user's Firebase identity. It does not
    implement reasoning and never writes to the spreadsheet.
 4. `engine.master` validates or selects private references. `engine.relations.discover_fks()` is the canonical
-   relationship detector used here and by planning. Within one request, discovery, the planner's schema and the
-   schema graph are each derived once (`engine.relations.memoized`).
+   relationship detector used here and by planning, and `engine.relations.join_value` is how it and join grounding
+   (`engine/sql_grounding.py`) read a key. Within one request, discovery, the planner's schema and the schema graph
+   are each derived once (`engine.relations.memoized`).
 5. `engine.server` resolves the conversation id and verifies ownership before selecting its working schema.
    Uploaded data changes advance a monotonic dataset version and mark prior analyses stale. `engine.pg` hashes
    each materialized working table and leaves unchanged uploaded, private-reference, and enrichment tables in place.

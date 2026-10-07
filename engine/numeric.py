@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from decimal import Decimal, DivisionByZero, InvalidOperation, localcontext
 import math
+import re
 import sqlite3
 import json
 from typing import Any, Iterable
@@ -22,6 +23,14 @@ DIVISION_SCALE = 20
 MIN_STORAGE_INTEGER = -(2**63)
 MAX_STORAGE_INTEGER = 2**63 - 1
 MAX_JSON_SAFE_INTEGER = 2**53 - 1
+# A comma inside a number groups its digits: in threes ("1,234,567"), or in pairs above the last three as
+# Indian lakhs and crores are written ("12,34,567"); a group never starts with 0. Any other comma is not
+# grouping: "1,50" and "1.234,56" use it as the decimal point, and dropping every comma read them as 150
+# and 1.23456 (release review, 2026-10-07). Such a value is not a number until its format is known.
+GROUPED_DIGITS = r"[1-9]\d{0,2}(?:,\d{3})+|[1-9]\d?(?:,\d{2})+,\d{3}"
+# A plain decimal as a question or a cell writes it: a minus sign, digits (grouped or not), a fraction.
+NUMBER_TEXT = re.compile(rf"^-?(?:\d+|{GROUPED_DIGITS})(?:\.\d+)?$")
+_GROUPED_NUMBER = re.compile(rf"[+-]?(?:{GROUPED_DIGITS})(?:\.\d*)?")
 
 
 def wire_document(value: Any) -> Any:
@@ -78,11 +87,15 @@ def parse_decimal(value: Any, *, enforce_input_bounds: bool = True) -> Decimal:
             raise ValueError("numeric values must be finite")
         result = Decimal(str(value))
     else:
-        text = str(value).strip().replace(",", "")
+        text = str(value).strip()
         if text.startswith("$"):
-            text = text[1:]
+            text = text[1:].strip()
         if text.endswith("%"):
-            text = text[:-1]
+            text = text[:-1].strip()
+        if "," in text:
+            if not _GROUPED_NUMBER.fullmatch(text):
+                raise ValueError(f"invalid numeric value: {value!r} (its comma does not group digits)")
+            text = text.replace(",", "")
         try:
             result = Decimal(text)
         except InvalidOperation as exc:

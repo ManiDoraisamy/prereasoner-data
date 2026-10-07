@@ -372,6 +372,20 @@ def constraint_violations(question, query, graph):
         if not any((isinstance(p, Comparison) and p.operator in {"!=", "<>", "NOT LIKE", "IS NOT"})
                    or (isinstance(p, (ExistsPredicate, InPredicate)) and p.negated) for p in actual):
             violations.append("requested exclusion is missing")
+    # An exclusion is the one the question makes: in "orders not Done in France", status != 'Done' with
+    # country = 'France', and neither another field's exclusion nor the excluded value kept stands for it
+    # (sql_search.value_polarity; a release review, 2026-10-07).
+    from engine.sql_ast import Literal
+    from engine.sql_search import value_polarity
+    kept, excluded = value_polarity(question, graph)
+    for p in actual:
+        if not (isinstance(p, Comparison) and isinstance(p.left, ColumnRef) and isinstance(p.right, Literal)):
+            continue
+        reading = (p.left.table, p.left.name, p.right.value)
+        if p.operator in {"!=", "<>"} and reading in kept and reading not in excluded:
+            violations.append(f"the query excludes {p.right.value!r}, which the question keeps")
+        elif p.operator == "=" and reading in excluded and reading not in kept:
+            violations.append(f"the query keeps only {p.right.value!r}, which the question excludes")
     text = " ".join(lexical_words(question))
     for column in sorted(graph.columns, key=lambda c: -len(c.ref.name)):
         label = " ".join(lexical_words(column.ref.name))

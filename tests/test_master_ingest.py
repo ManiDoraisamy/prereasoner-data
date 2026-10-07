@@ -117,7 +117,7 @@ def test_does_not_select_a_case_insensitive_join_that_sql_cannot_execute():
 
 def test_table_from_rows_unquotes_cells_like_a_csv_upload():
     # A saved-reference cell with literal wrapping quotes must normalize the SAME as the identical value uploaded
-    # as CSV, or relevant_tables' case-sensitive value-inclusion guard silently drops the reference.
+    # as CSV, or foreign-key discovery, which compares keys exactly as the join does, silently drops the reference.
     built = table_from_rows("cities", ['"city"'], [['"Paris"'], ["Lyon"]])
     csv = csv_table('"""city"""\n"""Paris"""\nLyon\n', "cities")
     assert built["columns"] == csv["columns"] == ["city"], (built["columns"], csv["columns"])

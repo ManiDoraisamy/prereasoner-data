@@ -32,6 +32,25 @@ class NumericStorageTests(unittest.TestCase):
         for values in (["not recorded"], ["#DIV/0!"], ["1e100"], ["0.0000000000000000000001"]):
             self.assertEqual(observed_numeric_affinity(values), "TEXT")
 
+    def test_a_comma_is_read_only_where_it_groups_digits(self):
+        """Every comma was dropped, so a decimal comma read 100 times too large: "1,50" was 150, "12,34"
+        1234 and "1.234,56" 123456 (release review, 2026-10-07). A comma that does not group digits leaves
+        the cell text, and a column holding one is not a number column."""
+        from engine.numeric import parse_decimal
+        from engine.tables import csv_table
+        for text, value in (("1,234", 1234), ("-1,234.56", Decimal("-1234.56")), ("12,34,567", 1234567),
+                            ("$ 1,234", 1234), ("1,234%", 1234), ("+1,000,000", 1000000), ("1,000.", 1000)):
+            self.assertEqual(parse_decimal(text), value, text)
+        for text in ("1,50", "12,34", "1.234,56", "0,123", "1,2345", "1,,234", ",123", "1 234,56"):
+            with self.assertRaises(ValueError, msg=text):
+                parse_decimal(text)
+        table = csv_table('item,amount,total\nA,"1,50","1,234"\nB,"12,34","2,500"\nC,"1.234,56","12,34,567"\n', "t")
+        self.assertEqual(table["rows"], [["A", "1,50", 1234], ["B", "12,34", 2500], ["C", "1.234,56", 1234567]])
+        self.assertEqual(observed_numeric_affinity([row[1] for row in table["rows"]]), "TEXT")
+        self.assertEqual(observed_numeric_affinity([row[2] for row in table["rows"]]), "INTEGER")
+        # A column mixing the formats is text: its grouped cells are not summed without the others.
+        self.assertEqual(observed_numeric_affinity([1234, "1,50"]), "TEXT")
+
     def test_large_numeric_identifier_does_not_block_unrelated_measure(self):
         rows = [[str(10**30), "1e-3"], [str(10**30+1), "2e-3"]]
         schema = [{"table": "ledger", "name": name, "affinity": observed_numeric_affinity([r[i] for r in rows])}

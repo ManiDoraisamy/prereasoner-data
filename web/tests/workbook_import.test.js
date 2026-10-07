@@ -146,4 +146,11 @@ const expected=JSON.parse(execFileSync('python',['-c',
   {input:JSON.stringify(headers),encoding:'utf8'}));
 assert.deepEqual(imported.import.columnBindings.map(binding=>binding.name),expected);
 assert(expected.every(name=>Buffer.byteLength(name,'utf8')<=63));
-console.log('workbook layout: 32 checks passed (including 3 downloaded originals, 3 timezones, 2 date systems and host grids)');
+// A workbook whose bytes are CSV text keeps each number's text, for the engine's one parser to read:
+// SheetJS dropped every comma, so "1,50" came through as 150 and "1.234,56" as 1.23456 (release
+// review, 2026-10-07). A number a real workbook formats with grouping still arrives as its value (above).
+const csvText=WORKBOOK_IMPORT.convert({buffer:Buffer.from('id,amount\n1,"1,50"\n2,"1.234,56"\n3,"1,234.56"\n4,"12,34,567"\n5,-5\n')},
+  XLSX,UPLOAD_LIMITS);
+assert.equal(csvText.ok,true,csvText.error);
+assert.equal(csvText.sheets[0].csv,'id,amount\n1,"1,50"\n2,"1.234,56"\n3,"1,234.56"\n4,"12,34,567"\n5,-5');
+console.log('workbook layout: 34 checks passed (including 3 downloaded originals, 3 timezones, 2 date systems and host grids)');

@@ -24,11 +24,19 @@ from engine.knowledge_compose import ComposedKnowledgeQuery
 from engine.pg import _pg
 from engine.relations import request_memo
 from engine.request_state import request_scope
+from engine.sql_expansion import FUNCTION_WORDS
 from engine.sql_schema import SchemaGraph
 
 NEAR = re.compile(r"\b(near(?:est|by)?|closest|around|close to)\b", re.I)
 STOP = {"cities", "city", "towns", "town", "places", "show", "find", "list", "me", "the", "biggest", "big",
         "largest", "major", "to", "of", "in", "which", "what", "are", "is", "by", "with", "and"}
+# The words a question about places may put before its nearness word: the nouns of places, and words that
+# only ask for, count or size them ("show me the 3 biggest towns near Lyon"). Any other word there names what
+# the question is about ("orders near Paris", "how many cities are near Paris"), which a list of places is not.
+PLACE_QUESTION_WORDS = frozenset(STOP | FUNCTION_WORDS | {
+    "place", "village", "villages", "settlement", "settlements", "capital", "capitals",
+    "top", "all", "some", "few", "main", "other", "most", "populous", "large", "larger", "bigger",
+    "small", "smaller", "smallest"})
 HAVERSINE = ("6371*acos(greatest(-1,least(1, cos(radians(%s))*cos(radians(p.lat))*cos(radians(p.lng)-radians(%s))"
              "+sin(radians(%s))*sin(radians(p.lat)))))")
 
@@ -52,10 +60,11 @@ class KnowledgeReasoner:
     def _serve(self, tables, question, sub, as_of=None, emit=None, explicit_fks=(), dataset_semantics=(),
                decomposition=None):
         self.qw.begin_request()             # fresh request-scoped memo for shared-knowledge lookups
-        if NEAR.search(question or ""):
+        if NEAR.search(question or "") and self._asks_for_places(question):
             r = self._nearby(question)
-            if r:
-                return self._tag_present(r, question, tables)               # geo nearby handled (server emits its result)
+            if r:                                                           # geo nearby handled (server emits its result)
+                r = self._tag_present(r, question, tables)
+                return self._verify_calculations(r, tables, question, explicit_fks)
         # COVERAGE PRE-GATE: a question with no data-intent, no schema mention, and no resolvable entity is
         # conversational ("how does this work?"), not a query. Short-circuit BEFORE reasoning (nothing garbage
         # streams) with low_confidence -> the UI answers it in-chat via the Gemini fallback. Best-effort.
@@ -138,6 +147,17 @@ class KnowledgeReasoner:
             print(f"present flag skipped: {type(e).__name__}", flush=True)
         return res
 
+    @staticmethod
+    def _asks_for_places(question):
+        """Whether a question with a nearness word asks for the places near a place, the one thing the
+        settlement lookup answers ("big cities near Paris", "what is near Lyon"). Any nearness word used to send
+        a question there before the upload was read: "orders near Paris" over an orders sheet came back as the
+        cities near Paris, and "sales around Christmas" looked Christmas up as a place (release review,
+        2026-10-07). A question about anything else goes on to the composed path, which answers it or says
+        why not."""
+        before = (question or "")[:NEAR.search(question or "").start()]
+        return all(len(word) < 2 or word in PLACE_QUESTION_WORDS for word in re.findall(r"[a-z]+", before.lower()))
+
     def _ref_and_limit(self, question):
         q = question or ""
         m = NEAR.search(q)
@@ -155,7 +175,8 @@ class KnowledgeReasoner:
         cn = _pg(); cur = cn.cursor()
         try:
             cur.execute("SELECT name,lat,lng,qid FROM public.settlement WHERE lower(name)=lower(%s) "
-                        "AND lat IS NOT NULL ORDER BY population DESC NULLS LAST LIMIT 1", (ref,))
+                        "AND lat IS NOT NULL AND lng IS NOT NULL ORDER BY population DESC NULLS LAST, qid LIMIT 1",
+                        (ref,))
             row = cur.fetchone()
             if not row:
                 return None
@@ -169,13 +190,16 @@ class KnowledgeReasoner:
             #    Ghent, Brussels…). The 'arrondissement' name token is belt-and-suspenders for the literal symptom.
             #  - name !~ '^Q[0-9]+$' (and NOT NULL): some settlement rows have a raw QID as their name
             #    (e.g. Q122687396 near Tokyo) — never show a QID string as a city.
-            sql = (f'SELECT p.name, p.country, p.population, round(({HAVERSINE})::numeric,0) AS km '
+            # The order is the exact distance, then the entity: places the same whole number of km away were
+            # cut at LIMIT in no stated order when it was the rounded km (release review, 2026-10-07).
+            sql = (f'SELECT name, country, population, round(distance::numeric, 0) AS km FROM ('
+                   f'SELECT p.name, p.country, p.population, p.qid, {HAVERSINE} AS distance '
                    f'FROM public.settlement p WHERE p.lat IS NOT NULL AND p.lng IS NOT NULL '
                    f'AND p.population > %s AND lower(p.name) <> lower(%s) '
                    f"AND p.name IS NOT NULL AND p.name !~ '^Q[0-9]+$' "
                    f"AND p.name !~* 'arrondissement' "
-                   f'AND (p.admin_qid IS NULL OR p.admin_qid <> %s) '
-                   f'ORDER BY km ASC LIMIT %s')
+                   f'AND (p.admin_qid IS NULL OR p.admin_qid <> %s)) nearby '
+                   f'ORDER BY distance ASC, qid ASC, name ASC LIMIT %s')
             cur.execute(sql, (lat, lng, lat, minpop, name, qid, limit))
             rows = cur.fetchall()
             disp = (f"SELECT name, country, population, round(distance_km) FROM world cities "

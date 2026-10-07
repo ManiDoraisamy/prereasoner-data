@@ -66,10 +66,10 @@ table's columns would make, whose values are computed, not uploaded.
 """
 from __future__ import annotations
 
-import math
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, fields, is_dataclass
 
+from engine.relations import join_value
 from engine.sql_ast import (
     Aggregate,
     BinaryExpr,
@@ -208,27 +208,12 @@ class _ForeignKeyClasses:
             if table is not None and column[1] in table["columns"]:
                 index = list(table["columns"]).index(column[1])
                 values = frozenset(
-                    value for value in (_join_value(row[index]) for row in table["rows"]
+                    value for value in (join_value(row[index]) for row in table["rows"]
                                         if index < len(row))
                     if value is not None
                 )
             self._values[column] = values
         return self._values[column]
-
-
-def _join_value(value) -> str | None:
-    """A value as an equi-join compares it: case and spacing folded, numbers by magnitude, so
-    1001, '1001' and 1001.0 are one value."""
-    if value is None:
-        return None
-    text = _fold(value)
-    if not text:
-        return None
-    try:
-        number = float(text)
-    except ValueError:
-        return text
-    return repr(number) if math.isfinite(number) else text
 
 
 class _JoinedRows:
@@ -311,7 +296,7 @@ class _JoinedRows:
             repeats = False
             if data is not None and all(name in data["columns"] for name in names):
                 indexes = [list(data["columns"]).index(name) for name in names]
-                values = [tuple(_join_value(row[index]) if index < len(row) else None for index in indexes)
+                values = [tuple(join_value(row[index]) if index < len(row) else None for index in indexes)
                           for row in data["rows"]]
                 values = [value for value in values if None not in value]
                 repeats = len(set(values)) < len(values)

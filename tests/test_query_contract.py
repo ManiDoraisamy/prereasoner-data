@@ -539,6 +539,29 @@ def test_values_asked_to_hold_a_text_are_compared_with_like():
     assert coverage(on_street, searched_in(street), graph).complete
     assert not coverage(on_street, searched_in(city), graph).complete
 
+
+def test_an_exclusion_is_the_one_the_question_makes():
+    # A release review (2026-10-07): "orders not Done in France" was served as status != 'Done' AND country !=
+    # 'France', the orders outside France, and the check passed it, as it passed any exclusion at all (status =
+    # 'Done' AND country != 'France' too). A negation excludes the value after it and the values listed with it.
+    planner = _hermetic_planner()
+    orders = [{'name': 'orders', 'columns': ['status', 'country', 'Amount'],
+               'rows': [['Done', 'France', 10], ['Open', 'France', 15], ['Done', 'Spain', 30],
+                        ['Cancelled', 'France', 7], ['Not Started', 'Spain', 9]]}]
+    graph = _graph(planner, orders)
+    question = 'orders not Done in France'
+    right = _model_query(planner, "SELECT * FROM orders WHERE status != 'Done' AND country = 'France'", orders)
+    assert not constraint_violations(question, right.query, graph)
+    for sql in ("SELECT * FROM orders WHERE status != 'Done' AND country != 'France'",
+                "SELECT * FROM orders WHERE status = 'Done' AND country != 'France'"):
+        assert constraint_violations(question, _model_query(planner, sql, orders).query, graph), sql
+    # Contrast: a value listed with the excluded one is excluded too.
+    both = _model_query(planner, "SELECT * FROM orders WHERE status != 'Done' AND status != 'Cancelled'", orders)
+    assert not constraint_violations('orders not Done or Cancelled', both.query, graph)
+    # Negative: a negation word inside a value is the value's.
+    started = _model_query(planner, "SELECT * FROM orders WHERE status = 'Not Started' AND country = 'Spain'", orders)
+    assert not constraint_violations('orders Not Started in Spain', started.query, graph)
+
 TESTS = [value for name, value in globals().copy().items() if name.startswith('test_') and callable(value)]
 
 if __name__ == '__main__':

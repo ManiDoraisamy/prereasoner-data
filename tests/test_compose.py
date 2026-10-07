@@ -462,6 +462,84 @@ def test_serving_hands_an_own_data_composition_to_the_planner():
             raise AssertionError("a world composite that route() gives compose was not lowered")
 
 
+def test_a_nearness_word_reaches_the_place_lookup_only_for_places():
+    """Any near/around/closest word sent a question to the settlement lookup before the upload was read, and
+    whatever it found was the answer: "orders near Paris" over an orders sheet came back as the cities near
+    Paris (release review, 2026-10-07). Only a question asking for the places near a place reaches it now;
+    its answer still passes the calculation gate, and places the same whole number of km away keep an order."""
+    from engine import knowledge
+    from engine.knowledge import KnowledgeReasoner
+
+    class Composed:
+        def _has_data_signal(self, question, tables):
+            return True
+
+        def _human_tone(self, question, tables):
+            return False
+
+        def serve(self, tables, question, sub, **kwargs):
+            served.append(question)
+            return {"question": question, "result": {"columns": ["n"], "rows": [[1]]}, "model": "own data"}
+
+    class World:
+        def begin_request(self):
+            pass
+
+        def begin_typing(self):
+            pass
+
+        def take_typing(self):
+            return None
+
+    def nearby(question):
+        looked_up.append(question)
+        return {"question": question, "model": "engine - geo nearby (lat/lng haversine)",
+                "result": {"columns": ["name", "country", "population", "km"], "rows": [["Reims", "France", 1, 130]]}}
+
+    looked_up, served = [], []
+    reasoner = KnowledgeReasoner.__new__(KnowledgeReasoner)
+    reasoner.composed, reasoner.qw, reasoner._nearby = Composed(), World(), nearby
+    orders = {"name": "orders", "columns": ["order_id", "city", "amount"], "rows": [[1, "Paris", 10], [2, "Lyon", 5]]}
+    places = ["big cities near Paris", "what's near Lyon", "show me the 3 closest towns to Lyon",
+              "nearest cities to Madrid"]
+    others = ["orders near Paris", "total amount of orders around Paris", "sales around Christmas",
+              "orders from cities near Paris", "how many cities are near Paris"]
+    for question in places + others:
+        model = reasoner._serve([orders], question, "s")["model"]
+        assert model == ("own data" if question in others else "engine - geo nearby (lat/lng haversine)"), (question, model)
+    assert looked_up == places and served == others, (looked_up, served)
+    priced = reasoner._serve([orders], "cities near Paris in euros", "s")
+    assert priced["model"] == "engine - clarify (typed calculation semantics not satisfied)", priced
+
+    class Cursor:
+        def execute(self, sql, params):
+            executed.append((sql, params))
+
+        def fetchone(self):
+            return ("Paris", 48.85, 2.35, "Q90")
+
+        def fetchall(self):
+            return [("Reims", "France", 180000, 130), ("Rouen", "France", 110000, 130)]
+
+    class Connection:
+        def cursor(self):
+            return Cursor()
+
+        def close(self):
+            pass
+
+    executed = []
+    real_pg, knowledge._pg = knowledge._pg, Connection
+    try:
+        rows = KnowledgeReasoner.__new__(KnowledgeReasoner)._nearby("cities near Paris")["result"]["rows"]
+    finally:
+        knowledge._pg = real_pg
+    reference, nearest = executed
+    assert "lng IS NOT NULL" in reference[0] and reference[0].endswith("NULLS LAST, qid LIMIT 1"), reference
+    assert nearest[0].endswith("ORDER BY distance ASC, qid ASC, name ASC LIMIT %s"), nearest[0]
+    assert nearest[1] == (48.85, 2.35, 48.85, 1, "Paris", "Q90", 5) and len(rows) == 2, nearest[1]
+
+
 def test_a_threshold_on_an_aggregate_compares_numbers():
     # Compose's SQLite candidate kept every city for 'cities with total sales over 100' and none for 'under 50': a
     # view's decimal_sum is TEXT with no affinity, and SQLite orders every TEXT above every number (2026-09-28).
@@ -547,6 +625,7 @@ TESTS = [
     test_the_table_name_is_not_a_grouping_column,
     test_a_learned_ranking_needs_a_ranking_word,
     test_serving_hands_an_own_data_composition_to_the_planner,
+    test_a_nearness_word_reaches_the_place_lookup_only_for_places,
     test_a_question_the_upload_reads_whole_skips_the_world_lookup,
     test_a_threshold_on_an_aggregate_compares_numbers,
     test_named_input_value_filters_directly_without_world_model,

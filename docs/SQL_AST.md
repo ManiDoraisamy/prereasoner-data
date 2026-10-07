@@ -248,6 +248,11 @@ The AST, validator, renderer, and search rules support:
 - `COUNT`, `SUM`, `AVG`, `MIN`, and `MAX`;
 - typed `+`, `-`, `*`, and real-valued `/` expressions, including aggregates over expressions;
 - typed comparisons, ranges, dates, categorical values, `AND`, and `OR`;
+- value exclusions: "not", "except", "excluding" or "without" excludes (`!=`) the first value named after it,
+  within three words, and each value "and", "or" or "nor" joins to that one ("orders not Done or Cancelled");
+  a value named after another value is kept ("orders not Done in France"), and a negation word inside a value
+  is the value's ("Not Started"). The completeness check refuses a query that excludes a value the question
+  keeps or keeps one it excludes (`sql_search.value_polarity`, read by `query_contract.constraint_violations`);
 - substring filters: `LOWER(column) LIKE '%text%'` (`Lower`), for the texts a question asks values to hold
   (`sql_search.substring_requests`): a quoted text or the word after "substring", "letter" or "word"; a
   text right after "contain" or "include", whole value or not ("keywords containing 'inspection checklist'"),

@@ -4,6 +4,30 @@ Dated entries come newest first. Each records a run at the commit it names; the 
 entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection arbiter`) may since have
 been removed, and that commit holds the code that ran.
 
+## Release-review fixes, on `106aefc`: same answers (2026-10-07)
+
+Same contract as `labels-bc216ff-dirty` (Gemini off, `whole_db`, `served` selection, SQL backend, row cap 5,000), on
+`106aefc` with the change applied (`worktree_dirty=true`, tag `review-106aefc-dirty`). The baseline's code is the
+engine of `576e1ad`, and `106aefc` changes only the chat. The change (`DECISIONS.md`, "A release review"):
+- a negation excludes the first value after it and the values joined to it, and the completeness check refuses a
+  query that excludes a kept value or keeps an excluded one;
+- a comma is part of a number only where it groups digits (`numeric.GROUPED_DIGITS`), and `sql_schema` and
+  `sql_search` share `numeric.NUMBER_TEXT` instead of keeping their own copies;
+- foreign-key discovery and join grounding read a key with `relations.join_value`: text exactly, numbers by
+  exact magnitude.
+
+The nearness gate and the browser importer are not on the evaluator's path. The evaluator passes Spider's declared
+foreign keys, so the discovery change can reach these results only through grounding. The evaluator's fingerprint
+list leaves out `engine/relations.py` and `engine/numeric.py`; for this run their SHA-256 values begin
+`95261bbffe134d32` and `a3f62b10188e2999`.
+
+All 1,034 examples have the same SQL and grade as `labels-bc216ff-dirty`: 247 strict, 315 lenient, 414 answered, with
+no wins and no losses. These fixes are correctness hardening, not an accuracy gain. Prediction seconds: median
+1.18 → 1.08, p90 2.45 → 2.39, max 5.96 → 5.58. The baseline shared this desktop with the hermetic suites; this run
+had it alone except for a brief browser check.
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_review-106aefc-dirty.json`.
+
 ## Listings of numbers name their rows, on `bc216ff`: same answers (2026-10-06)
 
 Same contract as `substrings-c0b1f31-dirty` (Gemini off, `whole_db`, `served` selection, SQL backend, row cap
