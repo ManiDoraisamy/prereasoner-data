@@ -258,7 +258,13 @@ def _system_with_catalog(catalog: list[dict[str, Any]]) -> str:
 def _intent_context(history, tables):
     """Explicit wording context and schema, with no assistant replies or cell values. A clarification's
     offered question is the one exception: engine text from the question and the schema names, so a
-    "yes" has something to accept."""
+    "yes" has something to accept.
+
+    The last two questions are named by when they were asked. As an unnamed list, the model continued the
+    earlier one: in the Chrome gate's long customer-orders conversation, "in GBP for the whole of Europe?"
+    right after a re-asked "total amount in France in US dollars" went to the engine as "average amount in
+    Europe in GBP", from the question before it ("which country has the highest average amount in US
+    dollars?"), in four gates and 21 of 22 replays; named, 10 of 10 replays asked for the total (2026-10-07)."""
     import csv
     import io
     from engine.column_names import canonical_columns
@@ -279,7 +285,12 @@ def _intent_context(history, tables):
         if scope:
             entry['scope'] = scope
         schema.append(entry)
-    context = {'recent_questions': questions, 'schema': schema}
+    context = {}
+    if len(questions) == 2:
+        context['question_before_latest'] = questions[0]
+    if questions:
+        context['latest_question'] = questions[-1]
+    context['schema'] = schema
     last = (history or [None])[-1]
     if isinstance(last, dict) and last.get('role') == 'assistant':
         offered = offered_question(last.get('content'))

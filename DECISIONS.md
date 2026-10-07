@@ -2363,3 +2363,32 @@ Measured:
 - **Spider DEV** (`whole_db`, Gemini off). Same answers: 247 strict, 315 lenient, 414 answered, and no example's SQL
   changed (`spider/results/RESULTS.md`).
 - **Not run.** The live demo-dataset suite and the Chrome gate run at release.
+
+## A shorthand continues the latest question, not the one before it (2026-10-07)
+
+The Chrome gate's existing-conversation pass missed one turn the same way in four gates (gx11, gx15, gx16, gx17). It
+passed once, in gx13 on `4c54f37`. In the long customer-orders conversation, the gate re-asks "total amount in France
+in US dollars" and then sends "in GBP for the whole of Europe?". The chat sent "average amount in Europe in GBP", and
+the reply was the average, 146.67 GBP, instead of the total of about 1,917. A fresh conversation answers the total.
+
+- **Cause** (`orchestrator/orchestrator.py:_intent_context`). The chat model sees no transcript. Each turn it gets the
+  analysis catalog and the last two user questions, which were sent as an unnamed list. Here the list was ["which
+  country has the highest average amount in US dollars?", "total amount in France in US dollars"], and the model
+  continued the first.
+- **How it was found.** The conversation was rebuilt from the gate captures: the demo dataset, the turns and replies,
+  and the catalog in the engine's order. The chat turn then ran with live Gemini against a stubbed engine that
+  records the question the chat sends. The average was sent in 21 of 22 samples.
+- **What did not fix it.** Two prompt changes did not help: rule 4 without its "highest average rating" example gave
+  the total in 0 of 12 samples, and rule 4 naming "the user's latest question" gave it in 1 of 12. Sending only the
+  latest question gave the total in 8 of 8, but it would lose a currency an earlier question set: formfacade-leads'
+  "How about all of Europe?" needs the "Whats in USD" turn before it.
+- **The fix.** The two questions are named `question_before_latest` and `latest_question`, on the same turns as
+  before. On the rebuilt conversation, the total was sent in 10 of 10 samples. Where the latest question is the
+  ranking of averages, the average is still sent in 10 of 10, as rule 4 asks. The leads follow-up still carries USD
+  in 10 of 10, and a fresh conversation still gets the total in 10 of 10.
+
+Measured:
+- **Tests.** `test_the_intent_context_names_which_question_came_last` pins the named context, and
+  `tests.test_orchestrator_unit` passes (48). The live `tests.test_orchestrator` passes 44 of 44, including the new
+  pair: the total after a re-asked total, and the average right after the averages.
+- **Not run.** The Chrome gate's existing pass, which found the miss, runs at release.

@@ -1702,10 +1702,27 @@ def test_intent_context_has_schema_and_questions_but_no_values_or_assistant_answ
         {'role': 'assistant', 'content': 'secret previous result 89123'},
         {'role': 'user', 'content': 'how about Germany?'}],
         [{'name': 'orders', 'data': 'city,Amount\nprivate source city,98765\n'}])
-    assert context == {'recent_questions': ['total Amount in France', 'how about Germany?'],
+    assert context == {'question_before_latest': 'total Amount in France', 'latest_question': 'how about Germany?',
                        'schema': [{'table': 'orders', 'columns': ['city', 'Amount']}]}
     assert orchestrator._model_feedback({'status': 'answered', 'answer': {'rows': [[98765]]},
                                         'sql': 'private query', 'views': [{'rows': [[89123]]}]}) == {'status': 'answered'}
+
+
+def test_the_intent_context_names_which_question_came_last():
+    """Chrome gate, existing customer-orders conversation (four gates up to 2026-10-06): after "which country has
+    the highest average amount in US dollars?" and a re-asked "total amount in France in US dollars", the shorthand
+    "in GBP for the whole of Europe?" went to the engine as an average. The two questions reached the model as an
+    unnamed list, and it continued the earlier one. The last two questions are sent, each named by when it came."""
+    history = []
+    for question, reply in (("average amount in US dollars", "414.26 USD"),
+                            ("which country has the highest average amount in US dollars?", "country: United States"),
+                            ("total amount in France in US dollars", "1,093.09 USD")):
+        history += [{'role': 'user', 'content': question}, {'role': 'assistant', 'content': reply}]
+    context = orchestrator._intent_context(history, [{'name': 'orders', 'data': 'city,amount\nParis,10\n'}])
+    assert context == {'question_before_latest': 'which country has the highest average amount in US dollars?',
+                       'latest_question': 'total amount in France in US dollars',
+                       'schema': [{'table': 'orders', 'columns': ['city', 'amount']}]}, context
+    assert orchestrator._intent_context([], []) == {'schema': []}
 
 
 def test_a_yes_can_accept_the_question_a_clarification_offered():
@@ -1718,7 +1735,7 @@ def test_a_yes_can_accept_the_question_a_clarification_offered():
     tables = [{'name': 'orders', 'data': 'city,Amount\nprivate source city,98765\n'}]
     asked = [{'role': 'user', 'content': 'amount for germany'}, {'role': 'assistant', 'content': offer}]
     assert orchestrator._intent_context(asked, tables) == {
-        'recent_questions': ['amount for germany'],
+        'latest_question': 'amount for germany',
         'schema': [{'table': 'orders', 'columns': ['city', 'Amount']}],
         'offered_question': 'total Amount in Germany'}
     # Contrast: an answer, or an offer an earlier turn already moved past, offers nothing.
@@ -1812,6 +1829,7 @@ def test_the_engine_client_names_stored_sheets_and_caches_them_per_user():
 TESTS = [
     test_the_reply_names_tables_as_the_user_did,
     test_intent_context_has_schema_and_questions_but_no_values_or_assistant_answers,
+    test_the_intent_context_names_which_question_came_last,
     test_a_yes_can_accept_the_question_a_clarification_offered,
     test_an_acknowledgment_is_answered_without_an_engine_query,
     test_rows_whose_entity_matched_nothing_reach_the_reply,

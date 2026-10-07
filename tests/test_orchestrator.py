@@ -182,6 +182,53 @@ def main():
            and "where currency is gbp" not in europe_sent[0].lower(),
            f"the follow-up requests an all-Europe amount in GBP, not a source-currency filter (got {europe_sent})")
 
+        # Chrome gate, existing customer-orders conversation (four gates up to 2026-10-06): after the averages
+        # and a re-asked France total, the same shorthand went to the engine as "average amount in Europe in
+        # GBP" in 21 of 22 replays. It continues the latest question; right after the ranking of averages,
+        # rule 4 reads it as their average.
+        print("[1c] a shorthand continues the latest question, not the one before it")
+        averages = [
+            {"role": "user", "content": "average amount in US dollars"},
+            {"role": "assistant", "content": "414.26 USD"},
+            {"role": "user", "content": "which country has the highest average amount in US dollars?"},
+            {"role": "assistant", "content": "country: United States; average USD: 876.00"},
+        ]
+        analyses = {
+            "total_amount": "total amount in Belgium in US dollars",
+            "orders_count": "how many orders in GBP",
+            "highest_total_amount_by_city": "which city has the highest total amount in US dollars?",
+            "average_amount": "average amount in US dollars",
+            "highest_average_amount_by_country": "which country has the highest average amount in US dollars?",
+        }
+
+        def whole_of_europe(history, updated_last=None):
+            rows = [{"analysis_id": "a_" + str(index) * 32, "slug": slug, "latest_question": asked,
+                     "revision": 1, "stale": False} for index, (slug, asked) in enumerate(analyses.items(), 1)]
+            if updated_last:
+                row = next(row for row in rows if row["slug"] == updated_last[0])
+                rows = [other for other in rows if other is not row] + [{**row, "latest_question": updated_last[1]}]
+
+            async def catalog(*_args, **_kwargs):
+                return rows
+
+            with patch("orchestrator.orchestrator.engine_client.call_analysis_catalog", catalog):
+                turn = asyncio.run(run_chat(
+                    "in GBP for the whole of Europe?", TABLES, history, engine_base_url=base, bearer_token=None,
+                    model=config.llm_model(), project=config.GOOGLE_CLOUD_PROJECT,
+                    location=config.GEMINI_LOCATION, conversation_id="c_" + "6" * 32))
+            return [t.get("question", "").lower() for t in turn["traces"]]
+
+        france = "total amount in France in US dollars"
+        latest = whole_of_europe(averages + [{"role": "user", "content": france},
+                                             {"role": "assistant", "content": "1,093.09 USD"}],
+                                 updated_last=("total_amount", france))
+        ok(len(latest) == 1 and "europe" in latest[0] and "gbp" in latest[0] and "average" not in latest[0]
+           and any(term in latest[0] for term in ("total", "sum")),
+           f"after a re-asked total, the shorthand asks for the Europe total in GBP (got {latest})")
+        after_averages = whole_of_europe(averages)
+        ok(len(after_averages) == 1 and "europe" in after_averages[0] and "average" in after_averages[0],
+           f"right after the ranking of averages, it asks for the Europe average (got {after_averages})")
+
         # Exact failure conversation from the reported bug: after the assistant offers to include
         # every European country and convert the result, "yes" executes that offered calculation.
         print("[1c] yes accepts the specific Europe-to-GBP offer")
