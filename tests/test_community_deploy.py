@@ -796,6 +796,40 @@ def test_cloud_build_steps_stay_within_the_argument_limit():
     assert invocations[0].strip().endswith("node deploy/gcp/hosting_release.js")
 
 
+def test_a_first_install_selects_the_web_app_it_just_created():
+    """Regression for an OBSERVED first-install failure (2026-10-08, the v0.3.1 launch test on a brand-new
+    project): the hosting step looked the Web app up with one script, and after creating the app with a
+    second copy that wrote a boolean, so node threw ERR_INVALID_ARG_TYPE and the release failed after every
+    other stage had deployed. One lookup runs before and after creating the app, and prints the id from
+    `firebase apps:list WEB --json`."""
+    import json
+    import shutil
+    import subprocess
+
+    import yaml
+
+    script = yaml.safe_load(_text("cloudbuild.hosting.yaml"))["steps"][0]["args"][-1]
+    assert script.count("function findApp") == 1, "one Web app lookup, not a copy per path"
+    assert script.count('web_app_id="$(find_web_app)"') == 2, "the lookup runs before and after creating the app"
+    source = script.split("find_web_app() {", 1)[1].split("node <<'NODE'\n", 1)[1].split("\nNODE\n", 1)[0]
+    node = shutil.which("node")
+    assert node, "node runs the hosting step's lookup"
+    created = {"platform": "WEB", "appId": "1:109248176822:web:656a39ede1b44f1e4dfc17",
+               "displayName": "Prereasoner Web", "state": "ACTIVE"}
+    with tempfile.TemporaryDirectory() as directory:
+        listing = Path(directory, "firebase-web-apps.json")
+        program = source.replace("/tmp/firebase-web-apps.json", listing.as_posix())
+
+        def lookup(value):
+            listing.write_text(json.dumps(value), encoding="utf-8")
+            return subprocess.run([node, "-e", program], capture_output=True, text=True, check=True).stdout
+
+        assert lookup({"status": "success", "result": [created]}) == created["appId"]
+        assert lookup({"status": "success", "result": []}) == "", "no app yet: the step creates one"
+        android = {"platform": "ANDROID", "appId": "1:109248176822:android:0123"}
+        assert lookup({"status": "success", "result": [android, created]}) == created["appId"]
+
+
 def test_marketing_button_opens_the_pinned_public_walkthrough():
     button = _text("deploy/gcp/button.html")
     start = button.index('href="') + len('href="')
@@ -836,6 +870,7 @@ TESTS = [
     test_first_install_waits_for_the_bootstrap_identity_to_resolve,
     test_hosting_release_authorizes_its_own_sign_in_domains,
     test_cloud_build_steps_stay_within_the_argument_limit,
+    test_a_first_install_selects_the_web_app_it_just_created,
     test_marketing_button_opens_the_pinned_public_walkthrough,
 ]
 

@@ -43,9 +43,12 @@ steps:
           firebase hosting:sites:create "${_HOSTING_SITE}" --project="${PROJECT_ID}" --non-interactive
         fi
 
+        # The Web app's id in `firebase apps:list WEB --json`, read by ONE lookup before and after creating
+        # the app. A second copy for the after-create path wrote a boolean instead of the id, so a
+        # first install on a brand-new project failed here after everything else was deployed (2026-10-08).
         firebase_apps="/tmp/firebase-web-apps.json"
-        firebase apps:list WEB --project="${PROJECT_ID}" --non-interactive --json > "$firebase_apps"
-        web_app_id="$(TARGET_PROJECT="${PROJECT_ID}" node <<'NODE'
+        find_web_app() {
+          node <<'NODE'
         const fs = require("fs");
         const value = JSON.parse(fs.readFileSync("/tmp/firebase-web-apps.json", "utf8"));
         function findApp(item) {
@@ -67,32 +70,13 @@ steps:
         }
         process.stdout.write(findApp(value));
         NODE
-        )"
+        }
+        firebase apps:list WEB --project="${PROJECT_ID}" --non-interactive --json > "$firebase_apps"
+        web_app_id="$(find_web_app)"
         if [[ -z "$web_app_id" ]]; then
           firebase apps:create WEB "Prereasoner Web" --project="${PROJECT_ID}" --non-interactive
           firebase apps:list WEB --project="${PROJECT_ID}" --non-interactive --json > "$firebase_apps"
-          web_app_id="$(node <<'NODE'
-        const fs = require("fs");
-        const value = JSON.parse(fs.readFileSync("/tmp/firebase-web-apps.json", "utf8"));
-        function findApp(item) {
-          if (Array.isArray(item)) {
-            for (const child of item) {
-              const found = findApp(child);
-              if (found) { process.stdout.write(found); return true; }
-            }
-            return false;
-          }
-          if (!item || typeof item !== "object") return false;
-          if (typeof item.appId === "string" &&
-              (!item.platform || String(item.platform).toUpperCase() === "WEB")) {
-            process.stdout.write(item.appId);
-            return true;
-          }
-          return Object.values(item).some(findApp);
-        }
-        findApp(value);
-        NODE
-          )"
+          web_app_id="$(find_web_app)"
         fi
         [[ -n "$web_app_id" ]] || { echo "Firebase Web app could not be created or selected" >&2; exit 1; }
 
