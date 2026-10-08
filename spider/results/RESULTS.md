@@ -4,6 +4,37 @@ Dated entries come newest first. Each records a run at the commit it names; the 
 entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection arbiter`) may since have
 been removed, and that commit holds the code that ran.
 
+## The review's F1-F5 fixed, released as `0733eef`: 314 strict (2026-10-08)
+
+Same contract as `planted-8b8a7ee-dirty` (Gemini off, `whole_db`, `served` selection, SQL backend, row cap 5,000),
+tag `release-0733eef`; the 113 source files the run hashes are `0733eef`'s (three differ only in this checkout's CRLF
+line endings), and the dirty flag is this file. The change (`DECISIONS.md`, "The review of the messy-data fixes"): a
+named aggregate operand that is not numeric is refused whatever its share of bad cells (F1); compose's refusal is
+`routing.route`'s answer in serving and here (F5); "alphabetical" needs a text order in the direction asked, and the
+search builds it for "in alphabetical order" (F2); a spelled number is read in its role (F3); a participle is read
+only when its value relates to the rows one way, or the relating column carries its travel direction (F4).
+
+| | `planted-8b8a7ee-dirty` | **`0733eef`** |
+|---|---:|---:|
+| Strict | 315 (30.5%) | **314 (30.4%)** |
+| Lenient | 381 | **380** |
+| Answered | 524 | **523** |
+| Strict of answered | 60.1% | **60.0%** |
+| Strict: easy / medium / hard / extra | 127 / 140 / 30 / 18 | 128 / 139 / 29 / 18 |
+| Prediction seconds, median / p90 | 1.35 / 2.96 | 1.13 / 2.37 |
+
+- 2 wins, both F2: DEV 528 ("in reverse alphabetical order") and 585 ("in alphabetical order"), refused before.
+- 3 losses, all F4, now refused: DEV 103 and 145 ("cars produced in/after 1980": one car's Weight is also 1980, so
+  the value is held by two columns) and 957 ("owners living in Virginia"). A first F4 that refused every value held
+  twice, and every number, lost 20; the travel reading, numbers and same-row columns recovered 17 of them.
+- F1 and F3 change no Spider answer.
+- The intermediate `bfa30ba` (tag `reviewfix2-30a8cb1-dirty`) scored the same 314, but compose refused DEV 945
+  ("...costs less than the average? Give me the name") as an average of the text `name` column: the operand
+  phrase ran across the sentence boundary. `0733eef` reads an aggregate phrase within its sentence; 945 now reaches
+  the typed search, which finds no runnable query, and every served SQL is identical to `bfa30ba`'s.
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_release-0733eef.json`.
+
 ## Independent review replay on `30a8cb1`: completeness gain confirmed (2026-10-08)
 
 Fresh full DEV run through `spider/probe/full_eval.py`: all 1,034 questions, `whole_db`, `served`, SQL backend,
