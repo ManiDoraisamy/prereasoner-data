@@ -15,7 +15,7 @@ manage IAM, build images, create Cloud Run and Cloud SQL resources, and administ
 ## Authenticate this temporary shell
 
 Google deliberately withholds account credentials from third-party Open-in-Cloud-Shell repositories.
-Review [`deploy/gcp/deploy.sh`](https://github.com/ManiDoraisamy/prereasoner-data/blob/v0.2.23/deploy/gcp/deploy.sh),
+Review [`deploy/gcp/deploy.sh`](https://github.com/ManiDoraisamy/prereasoner-data/blob/v0.3.1/deploy/gcp/deploy.sh),
 then authorize this shell explicitly:
 
 ```bash
@@ -74,8 +74,8 @@ create for a project outside an organization — it cannot be automated, and thi
 hand you console homework instead.
 
 External model processing uses Vertex AI Gemini in this project through the Cloud Run service
-accounts: the required chat service, and the engine's presentation replies, reference generation,
-and query fallback. Gemini is billed per request. The guided profile activates only the reviewed IANA country dataset; other reference
+accounts: the required chat service, and the engine's reference generation and selection fallback.
+Answers are written by the engine, not by the model. Gemini is billed per request. The guided profile activates only the reviewed IANA country dataset; other reference
 datasets remain disabled until the operator adds the required source data, grants, and allowlist entry.
 
 Adding Firebase to a brand-new project succeeded without any Terms prompt when this was last verified

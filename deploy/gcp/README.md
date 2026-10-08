@@ -59,7 +59,7 @@ project, and sufficient IAM permissions.
 
 ```bash
 gcloud auth login --update-adc
-git clone --branch v0.2.23 --depth 1 https://github.com/ManiDoraisamy/prereasoner-data.git
+git clone --branch v0.3.1 --depth 1 https://github.com/ManiDoraisamy/prereasoner-data.git
 cd prereasoner-data
 bash deploy/gcp/deploy.sh --project <PROJECT_ID>
 ```
@@ -75,7 +75,7 @@ Options:
 ```
 
 The Community profile uses Zonal Cloud SQL `db-custom-2-7680` and `min_instances=0`. Its required chat
-service and the engine (`/api/converse`, reference generation, the selection fallback) use Vertex AI
+service and the engine (reference generation and the selection fallback) use Vertex AI
 `gemini-3.8-flash` in this project; Terraform enables the Vertex AI API and grants both service accounts
 `roles/aiplatform.user`, so no model key is collected or written to Secret Manager.
 It keeps deletion protection on, activates only the reviewed `iana_country` enrichment dataset, and
