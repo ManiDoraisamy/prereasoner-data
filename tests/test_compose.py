@@ -693,6 +693,27 @@ def test_a_named_measure_with_a_cell_that_is_no_number_is_never_replaced():
     # Negative: a question naming a world attribute still totals it; the bad amount is not asked for.
     population = _run("total population of the orders in Europe", world=ORDERS_WORLD, tables=(bad,))
     assert not population.get("clarify") and "population" in population["answer"]["columns"], population
+    # Its review (2026-10-08): with most or all amounts malformed the guard stopped firing, because a share of bad
+    # cells decided whether the column was a measure, and the populations were totaled again. The question names
+    # the operand, so any bad cell among the rows it keeps refuses: a minority, exactly half, a majority, all.
+    for malformed in (1, 6, 11, 12, 23):
+        sheet = _orders_sheet()
+        amount = sheet["columns"].index("amount")
+        for row in sheet["rows"][:malformed]:
+            row[amount] = "not-a-number"
+        run = _run(question, world=ORDERS_WORLD, tables=(sheet,))
+        assert run.get("clarify") and run["answer"] is None, (malformed, run.get("answer"))
+        assert run["reason"].startswith("The amount column has "), run["reason"]
+    # A malformed amount outside the rows the question keeps (a Burbank order) takes no part.
+    sheet = _orders_sheet()
+    for row in sheet["rows"]:
+        if row[0] == "111":
+            row[sheet["columns"].index("amount")] = "n/a"
+    assert _run(question, world=ORDERS_WORLD, tables=(sheet,))["answer"]["rows"] == [[810]]
+    # A count of the same rows asks no amount, and a text grouping is no operand.
+    assert _run("how many GBP orders in Europe", world=ORDERS_WORLD, tables=(bad,))["answer"]["rows"] == [[5]]
+    by_tier = _run("total amount in Europe by tier", world=ORDERS_WORLD, tables=(_orders_sheet(),))
+    assert by_tier["answer"]["columns"] == ["tier", "amount"], by_tier["answer"]
 
 
 def test_a_city_the_knowledgebase_does_not_know_is_said_to_be_left_out():

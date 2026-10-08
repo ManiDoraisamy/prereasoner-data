@@ -40,6 +40,11 @@ def complete_projection_requested(question: str) -> bool:
                           question, re.I))
 
 
+# "in alphabetical order", "alphabetically": a text field ordered A to Z; with a reversing word, Z to A.
+ALPHABETICAL_WORDS = frozenset({"alphabetical", "alphabetically"})
+REVERSE_ORDER_WORDS = frozenset({"reverse", "reversed", "descending", "desc"})
+
+
 def ordering_requested(question: str) -> bool:
     """An order instruction, not a business noun.
 
@@ -51,7 +56,7 @@ def ordering_requested(question: str) -> bool:
     """
     text = " ".join(question.split())
     if re.search(
-        r'\b(?:sort|sorted|alphabetically)\b'
+        r'\b(?:sort|sorted|alphabetical|alphabetically)\b'
         r'|\b(?:ascending|descending)\s+order\b'
         r'|\border\s+by\b',
         text, re.IGNORECASE,

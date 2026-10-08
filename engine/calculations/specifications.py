@@ -330,13 +330,13 @@ class CurrencySpecification:
         unreadable = None
         if not measure_columns:
             from engine.query_contract import unreadable_cells
-            asked = set(_words(intent.attributes.get("_question", intent.phrase)))
-            for schema_column in graph.columns:
-                named = set(_words(schema_column.ref.name))
-                cells = unreadable_cells(schema_column.values) if named and named <= asked else None
-                if cells:
-                    unreadable = {"column": schema_column.ref.name, "cells": cells}
-                    break
+            from engine.sql_rank import aggregate_operand
+            text_columns = {column.ref.name: column for column in graph.columns if not column.ref.type.numeric}
+            operand = (aggregate_operand(intent.attributes.get("_question", intent.phrase), sorted(text_columns), "SUM")
+                       or aggregate_operand(intent.attributes.get("_question", intent.phrase), sorted(text_columns), "AVG"))
+            cells = unreadable_cells(text_columns[operand].values) if operand else None
+            if cells:
+                unreadable = {"column": operand, "cells": cells}
         available = _available_currency_targets(graph, measure_columns)
         proposal_target = next((code for code in available if code != target), "")
         original_question = intent.attributes.get("_question", intent.phrase)

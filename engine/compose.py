@@ -29,6 +29,7 @@ from engine.closed_class import EXCLUSION_CUES, counted_rows, measured_rows
 from engine.joins import discover_fks, join_plan
 from engine.numeric import GROUPED_DIGITS, parse_decimal, register_sqlite_decimal, sqlite_numeric, wire_decimal
 from engine.query_contract import unreadable_cells, unreadable_measure_reason
+from engine.sql_rank import aggregate_operand
 from engine.sql_schema import is_surrogate_key
 
 MEASURE_WORDS = {"amount", "revenue", "sales", "spend", "cost", "price", "value", "quantity", "qty", "margin",
@@ -389,15 +390,16 @@ class ComposeEngine:
         measure = bound if aggregated else self._pick_measure(
             unbound, [c for c in numeric if c != bound or self._names_attribute(c, unbound)] or numeric, question)
         intent = self._intent(low, table, question)
-        # A measure the question names with cells that are not numbers cannot be aggregated, and no other column
-        # stands in for it: one '118 (accounting says 11800)' amount once made "the total amount of GBP orders in
-        # Europe" a sum of the cities' populations (planted-text test, 2026-10-08).
-        if intent in ("SUM", "AVG") and not any(self._names_attribute(c, unbound) for c in numeric):
-            for c in texts:
-                cells = (unreadable_cells([r[cols.index(c)] for r in rows])
-                         if self._names_attribute(c, unbound) else None)
-                if cells:
-                    raise UnreadableMeasure(unreadable_measure_reason(c, cells, intent))
+        # The column the aggregate phrase names is its operand (sql_rank.aggregate_operand). When its cells are not
+        # all numbers it cannot be aggregated, and no other column stands in for it: one '118 (accounting says
+        # 11800)' amount, and later a column of mostly malformed amounts, made "the total amount of GBP orders in
+        # Europe" a sum of the cities' populations (planted-text test and its review, 2026-10-08). The rows typed
+        # here are the ones the question keeps, so a bad amount outside them takes no part.
+        if intent in ("SUM", "AVG"):
+            operand = aggregate_operand(question, texts, intent)
+            cells = unreadable_cells([r[cols.index(operand)] for r in rows]) if operand else None
+            if cells:
+                raise UnreadableMeasure(unreadable_measure_reason(operand, cells, intent))
         op = intent or "SUM"            # group_agg still needs an aggregator (e.g. SUM within a YoY pre-agg)
         row_threshold = (threshold if bound is not None and not aggregated and (op == "COUNT" or bound != measure)
                          else None)

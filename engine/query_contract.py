@@ -43,27 +43,31 @@ def cell_words(graph):
 
 
 def unreadable_cells(values):
-    """The distinct cells of a measure column that are not numbers, in row order, when most of its filled cells
-    are: one "118 (accounting says 11800)" among the amounts keeps the column text, and the amounts cannot be
-    totaled. None when every cell is a number, or when most are not (then the column is no measure)."""
+    """The filled cells of a column the question totals or averages that are not numbers, one entry per cell in row
+    order, or None when every one is. How many there are does not matter: the operand is the column the question names
+    (sql_rank.aggregate_operand), and a mostly malformed amount column was once replaced by a sum of populations
+    because a share of bad cells decided whether it was a measure (planted-text review, 2026-10-08)."""
     from engine.numeric import parse_decimal
 
-    filled = [str(value).strip() for value in values if value is not None and str(value).strip()]
     bad = []
-    for value in filled:
+    for value in values:
+        text = str(value).strip() if value is not None else ""
+        if not text:
+            continue
         try:
-            parse_decimal(value)
+            parse_decimal(text)
         except (TypeError, ValueError):
-            bad.append(value)
-    if not bad or 2 * len(bad) >= len(filled):
-        return None
-    return list(dict.fromkeys(bad))
+            bad.append(text)
+    return bad or None
 
 
 def unreadable_measure_reason(column, cells, function="SUM"):
-    """The reply when the measure a question names has cells that are not numbers (``unreadable_cells``). Compose,
-    the named-field check below and the currency check all say it in these words, naming the cells."""
-    shown = ", ".join(repr(cell) for cell in cells[:3]) + (f" and {len(cells) - 3} more" if len(cells) > 3 else "")
+    """The reply when the measure a question names has cells that are not numbers (``unreadable_cells``, one entry
+    per cell). Compose, the named-field check below and the currency check all say it in these words: how many cells,
+    and the first distinct ones."""
+    distinct = list(dict.fromkeys(cells))
+    shown = ", ".join(repr(cell) for cell in distinct[:3]) + (f" and {len(distinct) - 3} more"
+                                                              if len(distinct) > 3 else "")
     held = "a value that isn't a number" if len(cells) == 1 else f"{len(cells)} values that aren't numbers"
     done = "averaged" if function == "AVG" else "totaled"
     return f"The {column} column has {held} ({shown}), so it can't be {done}."
@@ -73,19 +77,14 @@ def unreadable_measure_violation(question, graph):
     """The refusal for a question that totals or averages a column it names whose cells are not all numbers
     (``unreadable_cells``), or None. A sheet whose only amounts are text has no query to total them at all, and the
     reply said "no valid AST candidate" (planted-text test, 2026-10-08)."""
-    from engine.sql_rank import analyze_question
-    from engine.sql_schema import canon
+    from engine.sql_rank import aggregate_operand
 
-    positions = analyze_question(question, graph).aggregate_positions
-    function = next((name for name in ("SUM", "AVG") if positions.get(name)), None)
-    if function is None:
-        return None
-    asked = {canon(word) for word in lexical_words(question)}
-    for column in graph.columns:
-        named = _name_vocabulary([column.ref.name])
-        cells = unreadable_cells(column.values) if named and named <= asked else None
+    text_columns = {column.ref.name: column for column in graph.columns if not column.ref.type.numeric}
+    for function in ("SUM", "AVG"):
+        operand = aggregate_operand(question, sorted(text_columns), function)
+        cells = unreadable_cells(text_columns[operand].values) if operand else None
         if cells:
-            return unreadable_measure_reason(column.ref.name, cells, function)
+            return unreadable_measure_reason(operand, cells, function)
     return None
 
 
@@ -560,9 +559,9 @@ def _name_vocabulary(names):
     return {canon(word) for name in names for word in (*lexical_words(name), *name_words(name))}
 
 
-# The words of an instruction to order the rows ("in alphabetical order", "sorted by", "descending").
-_ORDERING_WORDS = frozenset({"order", "ordered", "sort", "sorted", "alphabetical", "alphabetically",
-                             "ascending", "descending"})
+# The words of an instruction to order the rows ("sorted by", "in descending order"); "alphabetical" says more and is
+# read apart (_orders_alphabetically).
+_ORDERING_WORDS = frozenset({"order", "ordered", "sort", "sorted", "ascending", "descending"})
 
 
 def _orders_rows(query):
@@ -571,6 +570,103 @@ def _orders_rows(query):
     if isinstance(query, SetQuery):
         return _orders_rows(query.left) or _orders_rows(query.right)
     return bool(getattr(query, "order_by", ()))
+
+
+# Words that rank the rows, so a spelled number beside them is a cutoff: "the top three", "the two largest".
+_RANKING_WORDS = frozenset({"top", "bottom", "first", "last", "most", "least", "highest", "lowest", "largest",
+                            "smallest"})
+
+
+def _compared_numbers(node):
+    """The numbers ``node``'s comparisons test a column against, subqueries included (``Literal`` operands)."""
+    from dataclasses import fields, is_dataclass
+    from engine.sql_ast import Comparison, Literal
+    found = set()
+    if isinstance(node, Comparison):
+        for side in (node.left, node.right):
+            if isinstance(side, Literal) and isinstance(side.value, (int, float)) and not isinstance(side.value, bool):
+                found.add(float(side.value))
+    if is_dataclass(node):
+        for field in fields(node):
+            found |= _compared_numbers(getattr(node, field.name))
+    elif isinstance(node, (tuple, list)):
+        for item in node:
+            found |= _compared_numbers(item)
+    return found
+
+
+def _number_read(question_tokens, index, value, query, ranked):
+    """Whether ``query`` realizes the spelled number at ``question_tokens[index]`` in its role. After a comparison cue
+    ("more than two", "at least three") it is a threshold, read by a comparison with that number; in a question that
+    ranks ("the two oldest", "top three") it is the cutoff, read by the query's own LIMIT; otherwise either reads it.
+    Any number anywhere in the SQL once read it, so "the two people with the largest Age, excluding Person_ID 2" was
+    complete over a query keeping three rows (review, 2026-10-08)."""
+    from engine.sql_expansion import nearby_operator
+    before = tuple(question_tokens[max(0, index - 2):index])
+    threshold = (nearby_operator(question_tokens, index) != "="
+                 or before in {("at", "least"), ("at", "most")} or before[-1:] == ("exactly",))
+    compared = float(value) in _compared_numbers(query)
+    limited = getattr(query, "limit", None) == value
+    if threshold:
+        return compared
+    return limited if ranked else (compared or limited)
+
+
+def _one_relationship(query, graph, value_words):
+    """Whether each value ``query`` compares that the participle's object names (``value_words``) has one way to
+    relate to the rows: no other column of the query's tables holds it, and no second foreign key joins its table to
+    another table the query reads. "flights departing from APG" read DestAirport = 'APG' as well as SourceAirport,
+    since APG is in both (review, 2026-10-08); where the value holds two places, only the participle says which, and
+    no rule here proves it. False when no compared value is named."""
+    from engine.sql_ast import Comparison, ColumnRef, Literal
+    from engine.sql_schema import distinct_values
+
+    tables = query.referenced_tables()
+    found = False
+    stack = [query]
+    while stack:
+        node = stack.pop()
+        if isinstance(node, Comparison):
+            sides = (node.left, node.right)
+            column = next((side for side in sides if isinstance(side, ColumnRef)), None)
+            literal = next((side for side in sides if isinstance(side, Literal) and isinstance(side.value, str)), None)
+            if column is not None and literal is not None and value_words & {
+                    _canon_word(word) for word in lexical_words(literal.value)}:
+                found = True
+                wanted = literal.value.strip().casefold()
+                holders = [held.ref for held in graph.columns if held.ref.table in tables
+                           and any(str(value).strip().casefold() == wanted
+                                   for value in distinct_values(held.values) if value is not None)]
+                if len(holders) > 1:
+                    return False
+                for other in tables - {column.table}:
+                    keys = [key for key in graph.foreign_keys
+                            if {pair[0].table for pair in key.column_pairs} | {pair[1].table for pair in key.column_pairs}
+                            == {column.table, other}]
+                    if len(keys) > 1:
+                        return False
+        if hasattr(node, "__dataclass_fields__"):
+            stack.extend(getattr(node, name) for name in node.__dataclass_fields__)
+        elif isinstance(node, (tuple, list)):
+            stack.extend(node)
+    return found
+
+
+def _canon_word(word):
+    from engine.sql_schema import canon
+    return canon(word)
+
+
+def _orders_alphabetically(query, reverse):
+    """Whether ``query`` orders its rows first by a text column, A to Z, or Z to A when ``reverse``. Any ordering once
+    read "in alphabetical order": a list of names ordered by age, or descending (review, 2026-10-08)."""
+    from engine.sql_ast import ColumnRef, SQLType
+    terms = getattr(query, "order_by", ())
+    if not terms:
+        return False
+    first = terms[0]
+    return (isinstance(first.expression, ColumnRef) and first.expression.type == SQLType.TEXT
+            and first.direction == ("DESC" if reverse else "ASC"))
 
 
 @dataclass(frozen=True)
@@ -586,11 +682,11 @@ def read_question(question, candidate, graph, *, calculation_satisfied=False):
     from engine.sql_ast import Aggregate, SelectQuery, SetQuery, Star, SubquerySource, column_refs, share_aggregate
     from engine.sql_schema import canon
     from engine.closed_class import (
-        action_words, closed_class_words, measure_participles, number_words, value_participles,
+        action_words, closed_class_words, degree_words, measure_participles, number_words, value_participles,
     )
     from engine.sql_dates import served_date_phrases, realizes_dates
     from engine.sql_durations import duration_phrases, realizes_durations
-    from engine.sql_expansion import WORD_NUMBERS, tokens
+    from engine.sql_expansion import ALPHABETICAL_WORDS, REVERSE_ORDER_WORDS, WORD_NUMBERS, tokens
 
     recognized_question = str(question)
     if calculation_satisfied:
@@ -691,12 +787,23 @@ def read_question(question, candidate, graph, *, calculation_satisfied=False):
     # A name the question spells as two words: "high schoolers" is the Highschooler table it reads.
     ordinary_words.update(word for left, right in zip(words, words[1:]) if canon(left + right) in read_names
                           for word in (left, right))
-    # A spelled number the query states: "the two oldest" keeps two rows.
-    ordinary_words.update(canon(word) for word in number_words(question)
-                          if word in WORD_NUMBERS and canon(str(WORD_NUMBERS[word])) in sql_literals)
-    # The words of an order instruction are read by a query that orders its rows: "in alphabetical order".
+    # A spelled number the query realizes in its role (_number_read): "the two oldest" keeps two rows, "at least
+    # two votes" compares with 2. Every place the question says it must be realized.
+    question_tokens = tokens(question)
+    ranked = bool(set(question_tokens) & _RANKING_WORDS or degree_words(question))
+    for word in number_words(question):
+        places = [index for index, token in enumerate(question_tokens) if token == canon(word)]
+        if word in WORD_NUMBERS and places and all(
+                _number_read(question_tokens, index, WORD_NUMBERS[word], candidate.query, ranked) for index in places):
+            ordinary_words.add(canon(word))
+    # The words of an order instruction are read by a query that orders its rows: "sorted", "in descending order".
+    # "Alphabetical" is read only by an order on a text field, in the direction asked: "in reverse alphabetical order"
+    # is Z to A.
     if _orders_rows(candidate.query):
         ordinary_words.update(_ORDERING_WORDS)
+        reverse = bool(set(words) & REVERSE_ORDER_WORDS)
+        if set(words) & ALPHABETICAL_WORDS and _orders_alphabetically(candidate.query, reverse):
+            ordinary_words.update(ALPHABETICAL_WORDS | (REVERSE_ORDER_WORDS if reverse else frozenset()))
     # A participle relating the rows to a value the query compares says how they relate: "flights departing from
     # APG" compares the source airport with 'APG' (Spider flight_2, 2026-10-08). Its object names a compared value
     # and nothing the query leaves out: "staff working for the museums" is unread over a query that averages the
@@ -705,7 +812,8 @@ def read_question(question, candidate, graph, *, calculation_satisfied=False):
     for participle, target in value_participles(question):
         objects = {canon(word) for word in target} - ordinary_words
         if (objects & sql_literals and objects <= read_names | sql_literals
-                and canon(participle) not in observed and canon(participle) not in schema_words):
+                and canon(participle) not in observed and canon(participle) not in schema_words
+                and _one_relationship(candidate.query, graph, objects & sql_literals)):
             ordinary_words.add(canon(participle))
     unread = tuple(dict.fromkeys(said for said, word in zip(spelled, words)
                                  if word not in read_names | sql_literals | ordinary_words))

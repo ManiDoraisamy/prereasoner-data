@@ -47,6 +47,8 @@ from engine.sql_dates import period_grouping, served_date_phrases
 from engine.sql_durations import duration_phrases, question_date, span_comparisons
 from engine.sql_expansion import (
     AGGREGATE_CUES,
+    ALPHABETICAL_WORDS,
+    REVERSE_ORDER_WORDS,
     FUNCTION_WORDS,
     asked_cues,
     by_groups,
@@ -1488,6 +1490,10 @@ class SQLSearcher:
                      or ordering_requested(question))
         if not order_cue:
             return [((), None, 0.0, ())]
+        # "in alphabetical order" and "alphabetically" order a text field A to Z, Z to A when reversed.
+        alphabetical = bool(token_set & ALPHABETICAL_WORDS)
+        if alphabetical:
+            direction = "DESC" if token_set & REVERSE_ORDER_WORDS else "ASC"
         direction = direction or ("DESC" if draft.aggregates else "ASC")
         # A date column ordered by a word of time takes that word's direction.
         directions: dict[ColumnRef, str] = {}
@@ -1501,8 +1507,8 @@ class SQLSearcher:
             nearby = self._target_columns(mentions, by_position, numeric=False)
             expressions.extend((option.column, 2.0 - 0.1 * abs(option.position - by_position))
                                for option in nearby[:4])
-        if not expressions and "alphabetically" in token_set:
-            # "names ordered alphabetically" has no `by` target. Order the
+        if not expressions and alphabetical:
+            # "names ordered alphabetically" and "names in alphabetical order" have no `by` target. Order the
             # requested text projection, not an unrelated numeric fallback.
             expressions.extend(
                 (column, 2.0)

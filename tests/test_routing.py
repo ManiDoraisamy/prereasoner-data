@@ -241,7 +241,35 @@ def test_cross_process_sql_repeatability():
     print(f"  PASS  cross-process SQL byte-identical: {outs[0]}")
 
 
+def test_a_compose_refusal_is_the_answer_in_serving_and_evaluation_alike():
+    """Review of the messy-data fixes (2026-10-08): serving answered compose's refusal of a measure it cannot
+    aggregate, while the Spider evaluator dropped the refusal and handed the question to the AST planner. route()
+    decides it for both: Route.CLARIFY, ahead of every other route."""
+    from types import SimpleNamespace
+
+    from engine.compose import ComposeEngine
+    from spider.probe import full_eval
+    from tests.test_sql_ast import _hermetic_planner
+
+    assert route(_views("world_join", "topn"), _NECESSARY, refusal="The amount column ...") is Route.CLARIFY
+    assert route(_views("world_join", "topn"), _NECESSARY, refusal=None) is Route.COMPOSE
+    # The evaluator follows the same decision through the production compose engine.
+    sheet = {"name": "orders", "columns": ["city", "amount"],
+             "rows": [["Paris", "not-a-number"], ["Lyon", "310"], ["Paris", "95"]]}
+    reader = SimpleNamespace(present=lambda question: {"GROUP"})
+    record = full_eval.predict(_hermetic_planner(), ComposeEngine(reader=None), reader, [sheet],
+                               "total amount by city in Europe")
+    assert record["stage"] == "compose_clarify" and record["ok"] is False, record
+    assert record["error"].startswith("The amount column has a value that isn't a number"), record["error"]
+    # Contrast: a clean amount column is not refused by compose.
+    clean = {**sheet, "rows": [["Paris", "120"], ["Lyon", "310"], ["Paris", "95"]]}
+    record = full_eval.predict(_hermetic_planner(), ComposeEngine(reader=None), reader, [clean],
+                               "total amount by city in Europe")
+    assert record.get("stage") != "compose_clarify", record
+
+
 TESTS = [
+    test_a_compose_refusal_is_the_answer_in_serving_and_evaluation_alike,
     test_own_data_composition_routes_to_ast,
     test_necessary_world_composite_stands,
     test_redundant_world_join_is_own_data,

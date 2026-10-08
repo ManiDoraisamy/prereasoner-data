@@ -4,6 +4,47 @@ Dated entries come newest first. Each records a run at the commit it names; the 
 entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection arbiter`) may since have
 been removed, and that commit holds the code that ran.
 
+## Independent review replay on `30a8cb1`: completeness gain confirmed (2026-10-08)
+
+Fresh full DEV run through `spider/probe/full_eval.py`: all 1,034 questions, `whole_db`, `served`, SQL backend,
+compose routing enabled, row cap 5,000, 12-second soft budget, external rewriting off, no resumed predictions.
+Commit `30a8cb106db074fde1fd7f307eec3da872f7431d`, `worktree_dirty=true` (the existing untracked review directory);
+no production code or model changes during the review. All 137 source/input fingerprints were rechecked after
+completion with no changes; bundle `b11056f8ce8bf16a44da69bf76fea238149df439d7fde52d5e1f4747a5f536c7`.
+
+| Metric | Fresh result |
+|---|---:|
+| Strict | **315/1,034 (30.5%)** |
+| Lenient | **381/1,034 (36.8%)** |
+| Answered | **524/1,034 (50.7%)** |
+| Strict / lenient among answered | **60.1% / 72.7%** |
+| Legacy scalar-gold metric | **185/408 (45.3%)** |
+| Strict: easy / medium / hard / extra | **127 / 140 / 30 / 18** |
+| Prediction seconds: median / p90 / p95 / max | **1.408 / 3.138 / 3.955 / 7.852** |
+
+Against `review2-5f8c57c-dirty` / the inspected October 7 frozen engine baseline: 69 strict wins, 1 loss
+(DEV 990), 246 unchanged correct, 718 unchanged incorrect; net +68 strict answers (+6.6 percentage points).
+There are 120 newly answered questions (68 strict-correct) and 10 newly refused (one previously strict-correct).
+Every SQL and grade matches `accuracy3-97ac4ff-dirty`. Three raw averages differ by approximately 10^-14,
+without a grade change. Input/source hashes match `planted-8b8a7ee-dirty` except for the source-commit marker.
+No gold execution errors or over-budget predictions. All 1,034 route to AST.
+
+Of the 510 refusals, 379 have a recorded executable-and-grounded eligible member, 122 have no eligible member,
+and 9 have no pool. This is pre-completeness eligibility, not proof the candidate fulfills the request. 209
+served answers fail strict scoring. A fresh pool-oracle run was not performed. The desktop ran focused tests
+and review probes during parts of the run; these latency figures do not isolate a code performance change.
+
+The review passed eight focused suites (557 registered checks) and Python compilation, but reproduced remaining
+semantic defects: mostly malformed requested amounts can still be replaced with world population; alphabetical
+order, spelled ranking cutoffs, and participle relationships have incomplete acceptance checks. Live world
+validation could not reach the configured PostgreSQL host. The existing evaluator also omits serving's compose
+clarification gate, as its module documentation states: this is the established served-AST benchmark contract,
+not a deployed HTTP/world-data correctness measurement. Detailed findings are in
+`release-review/claude-fixes-review.md`; production sources and weights were kept unchanged for this replay.
+
+Outputs: `%LOCALAPPDATA%/Temp/prereasoner-spider-review-30a8cb1-20261008/full_eval_review-30a8cb1.json`,
+`full_eval_per_example_review-30a8cb1.json`, and `review-analysis.json` (paired ledger and rechecked provenance).
+
 ## Messy-data fixes, on `8b8a7ee`: same answers (2026-10-08)
 
 Same contract as `accuracy3-97ac4ff-dirty` (Gemini off, `whole_db`, `served` selection, SQL backend, row cap 5,000),

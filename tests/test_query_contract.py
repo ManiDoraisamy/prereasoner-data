@@ -721,10 +721,15 @@ def test_a_named_amount_with_a_cell_that_is_no_number_is_refused_naming_the_cell
     # Contrast: a clean amount column is totaled.
     clean = csv_table("id,currency,amount\n101,GBP,118\n102,GBP,95\n103,GBP,72", "orders")
     assert _hermetic_planner().serve([clean], "total amount of GBP orders")["result"]["rows"] == [[285]]
-    # Negative: a column whose cells are mostly text is no measure, so nothing names a cell.
+    # Every cell that is not a number counts, however many there are (the planted-text review, 2026-10-08: a
+    # threshold on their share once let a mostly malformed amount be replaced by another column).
     from engine.query_contract import unreadable_cells
-    assert unreadable_cells(["n/a", "pending", "12"]) is None
-    assert unreadable_cells(["118 (accounting says 11800)", "95", "72"]) == ["118 (accounting says 11800)"]
+    assert unreadable_cells(["n/a", "pending", "12", ""]) == ["n/a", "pending"]
+    assert unreadable_cells(["118", "95", None]) is None
+    # Negative: a text column the question groups by is no operand (sql_rank.aggregate_operand).
+    from engine.sql_rank import aggregate_operand
+    assert aggregate_operand("total amount by status", ["status"], "SUM") is None
+    assert aggregate_operand("the total order amount by status", ["amount", "status"], "SUM") == "amount"
 
 
 PEOPLE_TABLE = {"name": "people", "columns": ["Person_ID", "Name", "Country", "Age"],

@@ -37,6 +37,7 @@ COMPOSITION_OPS = frozenset({"yoy", "running", "share", "divide", "having", "top
 
 
 class Route(enum.Enum):
+    CLARIFY = "clarify"    # compose refused the question (a named measure it cannot aggregate) -> its reason replies
     COMPOSE = "compose"    # a NECESSARY world-grounded composite -> the ComposeEngine hosts it
     DELEGATE = "delegate"  # everything else -> hand to the delegate, which owns own-data (typed-AST planner) vs
     #                        an ordinary world lookup (KnowledgeQuery). route() is a compose-ownership decision;
@@ -93,7 +94,7 @@ def required_ops(question) -> frozenset:
     return frozenset({"convert"}) if currency_conversion_target(str(question or "")) else frozenset()
 
 
-def route(plan, world_dependency=None, result_rows=None, required=frozenset()) -> Route:
+def route(plan, world_dependency=None, result_rows=None, required=frozenset(), refusal=None) -> Route:
     """THE routing decision — the single pure function BOTH serving and the Spider eval call.
 
     ``plan``             the built compose view stack (list of dicts) or flat op list (the eval's res['plan']).
@@ -101,6 +102,9 @@ def route(plan, world_dependency=None, result_rows=None, required=frozenset()) -
     ``result_rows``      the engine's result rows (confirms a world group-by produced a real breakdown).
     ``required``         ops the question explicitly demands (see ``required_ops``); a plan missing any of
                          them cannot own the query, no matter how well it grounds or composes.
+    ``refusal``          ComposeEngine.run's reason when it refused the question (``compose.UnreadableMeasure``):
+                         Route.CLARIFY, in serving and evaluation alike. Serving alone once acted on it, and
+                         the evaluator handed the same question to the AST planner (review, 2026-10-08).
 
     Returns Route.COMPOSE iff the plan realizes every required op, grounds a NECESSARY world dependency,
     AND composes over it. Otherwise Route.DELEGATE — hand off to the delegate, which owns own-data (the
@@ -111,6 +115,8 @@ def route(plan, world_dependency=None, result_rows=None, required=frozenset()) -
     A comparison on a world attribute the upload lacks ('cities with population over 1,000,000', recorded as
     ``world_dependency['world_threshold']``) composes: the delegate's world path binds equality filters only,
     so it declined those questions or answered them without the comparison (2026-09-28)."""
+    if refusal:
+        return Route.CLARIFY                                  # the question names a measure nothing can aggregate
     if required and not set(required) <= set(_ops(plan)):
         return Route.DELEGATE                                 # an explicit requirement the plan cannot realize
     if not (world_dependency and world_dependency.get("is_necessary")):

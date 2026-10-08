@@ -67,10 +67,10 @@ except ImportError:  # direct `python full_eval.py` from spider/probe remains su
 DIFFS = ["easy", "medium", "hard", "extra"]
 # Routing is NOT mirrored here — it is IMPORTED from the ONE shared router (engine.routing), the same module
 # live serving uses, so the eval can never drift from production. DEPTH_PRIMS is the primitive-head EVIDENCE to
-# build a compose plan; compose_owns is the AUTHORITY (a grounded world dependency). Spider tables are world-less,
-# so compose_owns is always False here -> every question routes to the typed-AST planner.
+# build a compose plan; route() is the AUTHORITY (a grounded world dependency, or compose's refusal). Spider tables
+# are world-less, so no question composes here: each routes to the typed-AST planner unless compose refuses it.
 from engine.artifact_provenance import json_artifact_bytes
-from engine.routing import DEPTH_PRIMS, compose_owns, required_ops
+from engine.routing import DEPTH_PRIMS, Route, required_ops, route
 
 
 class _DeterministicCandidateError(RuntimeError):
@@ -510,16 +510,18 @@ def compose_predict(eng, tabs, question):
     return {"ok": True, "sql": (res["views"][-1]["sql"] if res.get("views") else None),
             "rows": ans["rows"] if ans else None, "path": "compose",
             "plan": res.get("plan"), "primitives": res.get("primitives"),
-            "world_dependency": res.get("world_dependency")}   # None on Spider (world=None) -> router picks AST
+            "world_dependency": res.get("world_dependency"),  # None on Spider (world=None) -> router picks AST
+            "refusal": res.get("reason") if res.get("clarify") else None}
 
 
 def predict(enc, eng, reader, tabs, question, schema_fks=None,
             ast_schema_cache=None, selection="served", use_compose=True,
             execution_backend="sql", python_row_limit=10_000):
     """Route exactly like live serving, via the SHARED router (engine.routing): primitive-head depth cues are
-    EVIDENCE to build a compose plan; the AUTHORITY to stand on it is a grounded world dependency (compose_owns).
-    Spider tables are world-less, so compose_owns is always False and every question routes to the typed-AST
-    planner. Any unrecovered exception is caught and attributed to a stage.
+    EVIDENCE to build a compose plan; the AUTHORITY is route(): a grounded world dependency composes, and compose's
+    refusal of a measure nothing can aggregate is the answer, as in serving. Spider tables are world-less, so no
+    question composes and every other one routes to the typed-AST planner. Any unrecovered exception is caught and
+    attributed to a stage.
 
     use_compose gates compose routing (ablation only; serving is always True). use_compose=False isolates
     the own-data planner."""
@@ -541,9 +543,14 @@ def predict(enc, eng, reader, tabs, question, schema_fks=None,
         if depth:
             try:
                 r = compose_predict(eng, tabs, question)
-                # AUTHORITY: a NECESSARY grounded world dependency (world_dependency is None on Spider -> AST).
-                if compose_owns(r.get("plan"), r.get("world_dependency"), r.get("rows"),
-                                required_ops(question)):
+                # AUTHORITY: a NECESSARY grounded world dependency (world_dependency is None on Spider -> AST), or
+                # compose's refusal of a measure nothing can aggregate, which serving replies with too.
+                decision = route(r.get("plan"), r.get("world_dependency"), r.get("rows"), required_ops(question),
+                                 refusal=r.get("refusal"))
+                if decision is Route.CLARIFY:
+                    return {"ok": False, "error": r["refusal"], "stage": "compose_clarify", "path": "compose",
+                            "plan": r.get("plan")}
+                if decision is Route.COMPOSE:
                     return r
             except Exception:  # noqa: BLE001, S110 — live serve() delegates on engine error
                 pass

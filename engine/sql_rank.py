@@ -313,9 +313,9 @@ def analyze_question(question: str, schema: SchemaGraph) -> QuestionRoles:
             or (token == "how" and i + 1 < len(tokens) and tokens[i + 1] == "many")
         ):
             aggregate_positions["COUNT"].append(i)
-        elif token in {"sum", "total"}:
+        elif token in AGGREGATE_CUE_WORDS["SUM"]:
             aggregate_positions["SUM"].append(i)
-        elif token in {"average", "avg", "mean"}:
+        elif token in AGGREGATE_CUE_WORDS["AVG"]:
             aggregate_positions["AVG"].append(i)
         elif token in {"minimum", "min"}:
             aggregate_positions["MIN"].append(i)
@@ -420,11 +420,21 @@ _PHRASE_BREAKS = frozenset(canon(word) for word in FUNCTION_WORDS | {
     "all", "any", "each", "every", "per", "group", "these", "those", "some", "no", "not", "nor", "but",
     "who", "whom", "whose", "which", "where", "when", "why", "how", "what", "there",
     "has", "have", "had", "do", "does", "did", "can", "could", "will", "would", "should", "shall", "may", "might",
-    "having", "order", "ordered", "sort", "sorted", "top", "bottom", "after", "before", "between", "during",
+    "having", "ordered", "sort", "sorted", "top", "bottom", "after", "before", "between", "during",
     "since", "until", "within", "without", "across", "over", "under", "above", "below", "among", "through",
     "versus", "vs", "more", "less", "fewer", "greater", "than", "excluding", "except", "including",
     "containing", "use", "using", "used", "column", "field",
 })
+
+
+def _ends_phrase(tokens: tuple[str, ...], index: int) -> bool:
+    """Whether ``tokens[index]`` ends the noun phrase it follows: a word of ``_PHRASE_BREAKS``, or "order" opening an
+    ordering ("order by"). Before another noun "order" is part of the phrase: "the total order amount" totals the
+    amount (planted-text review, 2026-10-08)."""
+    word = tokens[index]
+    if word == "order":
+        return index + 1 < len(tokens) and tokens[index + 1] == "by"
+    return word in _PHRASE_BREAKS
 # Words an aggregate's own phrase may open with: "the total of the Amount".
 _PHRASE_OPENERS = frozenset({"of", "the", "a", "an"})
 
@@ -441,11 +451,31 @@ def _heads_phrase(tokens: tuple[str, ...], name_tokens: tuple[str, ...], positio
         while start < len(tokens) and tokens[start] in _PHRASE_OPENERS:
             start += 1
         end = start
-        while end < len(tokens) and tokens[end].isalpha() and tokens[end] not in _PHRASE_BREAKS:
+        while end < len(tokens) and tokens[end].isalpha() and not _ends_phrase(tokens, end):
             end += 1
         if end > start and tokens[end - 1] == name_tokens[-1]:
             return True
     return False
+
+
+# The words that ask a total or an average, as analyze_question reads them.
+AGGREGATE_CUE_WORDS = {"SUM": frozenset({"sum", "total"}), "AVG": frozenset({"average", "avg", "mean"})}
+
+
+def aggregate_operand(question: str, names: Sequence[str], function: str) -> str | None:
+    """The one of ``names`` (column names) that ends the phrase a ``function`` word begins: "the total amount of GBP
+    orders" totals amount. This is the operand the question names, whatever the column holds (``_heads_phrase``), so a
+    column that cannot be totaled is refused, never replaced by another (planted-text review, 2026-10-08). None when
+    the question names none."""
+    tokens = _tokens(question)
+    positions = [index for index, token in enumerate(tokens) if token in AGGREGATE_CUE_WORDS.get(function, ())]
+    if not positions:
+        return None
+    for name in names:
+        name_tokens = _schema_tokens(name)
+        if name_tokens and set(name_tokens) <= set(tokens) and _heads_phrase(tokens, name_tokens, positions):
+            return name
+    return None
 
 
 def _columns_in_windows(schema: SchemaGraph, tokens: tuple[str, ...], windows: Sequence[tuple[int, int]]) -> set[ColumnRef]:

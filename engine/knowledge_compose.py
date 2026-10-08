@@ -32,8 +32,10 @@ from engine.compose import ComposeEngine
 from engine.routing import (
     DEPTH_PRIMS,
     WORLD_MEASURES,
+    Route,
     compose_owns,
     required_ops,
+    route,
 )
 from engine.numeric import parse_decimal
 
@@ -568,7 +570,7 @@ class ComposedKnowledgeQuery:
                                  explicit_fks=explicit_fks, dataset_semantics=dataset_semantics)
         if self._composed(tables, question):
             # _composed is EVIDENCE (primitive-head / world-measure cue) that a compose plan is worth building.
-            # Ownership goes through engine.routing.compose_owns alone, as in evaluation; a plan it accepts is
+            # Ownership goes through engine.routing.route alone, as in evaluation; a plan it accepts is
             # lowered through the shared deterministic plan.
             #
             # A compound question can also carry compose surface ("top 3 ... and top 2 ..."), and a
@@ -617,12 +619,13 @@ class ComposedKnowledgeQuery:
                         world=None,
                         dataset_semantics=dataset_semantics,
                     )
-                    if er.get("deterministic") or er.get("clarify") or compose_owns(
+                    if er.get("deterministic") or route(
                         er.get("views"),
                         er.get("world_dependency"),
                         (er.get("result") or {}).get("rows"),
                         required_ops(question),
-                    ):
+                        refusal=er.get("reason") if er.get("clarify") else None,
+                    ) in (Route.COMPOSE, Route.CLARIFY):
                         self._emit_response_views(emit, er)
                         return er
                 except Exception as e:                # noqa: BLE001 — never hard-fail; fall back to delegate
