@@ -466,15 +466,17 @@ def aggregate_operand(question: str, names: Sequence[str], function: str) -> str
     """The one of ``names`` (column names) that ends the phrase a ``function`` word begins: "the total amount of GBP
     orders" totals amount. This is the operand the question names, whatever the column holds (``_heads_phrase``), so a
     column that cannot be totaled is refused, never replaced by another (planted-text review, 2026-10-08). None when
-    the question names none."""
-    tokens = _tokens(question)
-    positions = [index for index, token in enumerate(tokens) if token in AGGREGATE_CUE_WORDS.get(function, ())]
-    if not positions:
-        return None
-    for name in names:
-        name_tokens = _schema_tokens(name)
-        if name_tokens and set(name_tokens) <= set(tokens) and _heads_phrase(tokens, name_tokens, positions):
-            return name
+    the question names none. A phrase ends with its sentence: "costs less than the average? Give me their first
+    names" averages no name (Spider DEV 945, 2026-10-08)."""
+    for sentence in re.split(r"[.?!;]+", str(question)):
+        tokens = _tokens(sentence)
+        positions = [index for index, token in enumerate(tokens) if token in AGGREGATE_CUE_WORDS.get(function, ())]
+        if not positions:
+            continue
+        for name in names:
+            name_tokens = _schema_tokens(name)
+            if name_tokens and set(name_tokens) <= set(tokens) and _heads_phrase(tokens, name_tokens, positions):
+                return name
     return None
 
 

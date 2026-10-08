@@ -784,6 +784,11 @@ def test_a_named_amount_with_a_cell_that_is_no_number_is_refused_naming_the_cell
     from engine.sql_rank import aggregate_operand
     assert aggregate_operand("total amount by status", ["status"], "SUM") is None
     assert aggregate_operand("the total order amount by status", ["amount", "status"], "SUM") == "amount"
+    # A phrase ends with its sentence (Spider DEV 945, 2026-10-08): the next sentence's "first names" was read as the
+    # average's operand, and the question was refused for the names not being numbers.
+    asked = ("Which professionals have operated a treatment that costs less than the average? "
+             "Give me their first names and last names.")
+    assert aggregate_operand(asked, ["first_name", "last_name"], "AVG") is None
 
 
 PEOPLE_TABLE = {"name": "people", "columns": ["Person_ID", "Name", "Country", "Age"],
