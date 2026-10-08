@@ -334,6 +334,9 @@ class AsyncGeminiClient:
             config=types.GenerateContentConfig(
                 system_instruction=system,
                 max_output_tokens=max_tokens,
+                # As every call (the module doc): the chat's turns repeat, so a gate rerun compares replies.
+                temperature=0.0,
+                seed=0,
                 tools=[self._tools(tools)] if tools else None,
                 tool_config=self._tool_config(tool_choice),
                 thinking_config=(types.ThinkingConfig(thinking_level=thinking)

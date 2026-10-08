@@ -677,20 +677,22 @@ class TableQuery:
                 return compound, None, None, tuple(searched), None
         selection = self.select_query(question, norm, fks, sch, tablemap, searched=searched, graph=graph)
         candidates = selection.pool
-        if not candidates:
-            return None, None, "planner: no valid AST candidate", candidates, selection
         candidate = selection.candidate
         if candidate is None:
-            from engine.query_contract import constraint_violations
+            from engine.query_contract import constraint_violations, explains_refusal, unreadable_measure_violation
             from engine.sql_schema import SchemaGraph
             if graph is None:
                 graph = SchemaGraph.from_planner(sch, fks)
             for member in candidates:
                 for violation in constraint_violations(question, member.query, graph):
-                    if (violation.startswith('Which repeated field')
-                            or violation.startswith('The field ')
-                            or violation.startswith('The requested total for ')):
+                    if explains_refusal(violation):
                         return None, None, violation, candidates, selection
+            # A measure the question names with cells that are not numbers explains a refusal with no candidate.
+            unreadable = unreadable_measure_violation(question, graph)
+            if unreadable:
+                return None, None, unreadable, candidates, selection
+            if not candidates:
+                return None, None, "planner: no valid AST candidate", candidates, selection
             return None, None, NO_EXECUTABLE_CANDIDATE, candidates, selection
         deterministic_plan = None
         if analysis_context is not None:

@@ -1266,6 +1266,25 @@ def test_an_empty_total_says_which_calculation_could_not_be_made():
        "an empty total with its calculations made says no rows matched")
 
 
+def test_an_amount_that_is_no_number_is_the_reason_a_conversion_fails():
+    """Planted-text test (2026-10-08): order 101's amount became "118 (accounting says 11800)", and "total amount in US
+    dollars" was declined with "Your data doesn't say which currency the amounts are in" though the currency column
+    was full. The amount is why: it cannot be totaled, and the reply names the cell."""
+    question = "convert the total order amount to US dollars"
+    bad = {"name": "orders", "columns": ["currency", "amount"],
+           "rows": [["EUR", "310"], ["GBP", "118 (accounting says 11800)"], ["USD", "95"]]}
+    candidate, assessment = _assessment(question, (bad, USD_RATES))
+    reply = calculation_clarify(question, {"sql": candidate.sql if candidate else None}, (assessment,))["reason"]
+    ok(reply == "The amount column has a value that isn't a number ('118 (accounting says 11800)'), so it can't "
+                "be totaled.", f"the unreadable amount is the reason: {reply}")
+    # Contrast: a sheet that really has no currency still says so.
+    no_currency = {"name": "orders", "columns": ["region", "amount"], "rows": [["EU", 310], ["UK", 118], ["US", 95]]}
+    candidate, assessment = _assessment(question, (no_currency, USD_RATES), ())
+    reply = calculation_clarify(question, {"sql": candidate.sql if candidate else None}, (assessment,))["reason"]
+    ok(reply.startswith("Your data doesn't say which currency the amounts are in"),
+       f"a missing currency column is still the reason: {reply}")
+
+
 def test_a_calculation_clarification_is_a_sentence_for_the_user():
     """The reply is the clarification's reason (engine/answer_presentation.py). The check's own
     reason stays in `unmet`, for traces and the chat model."""
@@ -1494,6 +1513,7 @@ TESTS = [
     test_typed_calculation_clarify_supersedes_generic_coverage_clarify,
     test_a_clarification_about_the_data_is_not_replaced_by_the_calculation_gate,
     test_an_empty_total_says_which_calculation_could_not_be_made,
+    test_an_amount_that_is_no_number_is_the_reason_a_conversion_fails,
     test_a_calculation_clarification_is_a_sentence_for_the_user,
     test_calculation_training_corpus_is_split_safe_and_rebuildable,
     test_intent_thresholds_are_checkpoint_calibrated,

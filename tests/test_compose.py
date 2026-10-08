@@ -633,7 +633,93 @@ def test_numeric_filter_preserves_decimal_boundary_and_large_integer():
             "values_to_filter", [("amount", ">", 9223372036854775810)])).fetchall()
 
 
+def _orders_sheet(name="orders", city_of_106=None, amount_of_101=None):
+    """web/public/dataset/customer-orders/orders.csv, named ``name``, with the planted-text test's edits."""
+    import csv
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[1] / "web" / "public" / "dataset" / "customer-orders" / "orders.csv"
+    header, *body = list(csv.reader(path.read_text(encoding="utf-8").splitlines()))
+    rows = []
+    for row in body:
+        row = list(row)
+        row[header.index("amount")] = float(row[header.index("amount")])
+        if row[0] == "106" and city_of_106 is not None:
+            row[header.index("city")] = city_of_106
+        if row[0] == "101" and amount_of_101 is not None:
+            row[header.index("amount")] = amount_of_101
+        rows.append(row)
+    return {"name": name, "columns": header, "rows": rows}
+
+
+# The orders' cities as the knowledgebase lookup supplies them.
+ORDERS_WORLD = {"name": "knowledgebase facts", "columns": ["city", "country", "continent", "population"], "rows": [
+    ["London", "United Kingdom", "Europe", 8799728], ["Brussels", "Belgium", "Europe", 1222637],
+    ["Paris", "France", "Europe", 2102650], ["Burbank", "United States", "North America", 105451],
+    ["Toledo", "United States", "North America", 270871], ["Cleveland", "United States", "North America", 362656],
+    ["Kolkata", "India", "Asia", 4496694]]}
+
+
+def test_the_rows_a_question_totals_are_no_grouping_whatever_the_sheet_is_called():
+    """Planted-text test (2026-10-08): "total amount of GBP orders in Europe" was 810 on a sheet named orders and five
+    per-product totals on any other name. "orders" names the rows the amount is totaled over; only the sheet's own
+    name was claimed, so on Sheet1 "orders" loose-matched the `ordered` column and grouped by it. The five GBP orders
+    are all in London: 118 + 95 + 72 + 340 + 185 = 810."""
+    question = "total amount of GBP orders in Europe"
+    for name in ("orders", "Sheet1", "data", "orders_assistant_answer_e_adf166ad"):
+        run = _run(question, world=ORDERS_WORLD, tables=(_orders_sheet(name),))
+        assert run["answer"]["rows"] == [[810]], (name, run["answer"])
+    # Contrast: a column the question names outright still groups.
+    by_item = _run("total amount of GBP orders in Europe by ordered item", world=ORDERS_WORLD,
+                   tables=(_orders_sheet("Sheet1"),))
+    assert by_item["answer"]["columns"][0] == "ordered" and len(by_item["answer"]["rows"]) == 5, by_item["answer"]
+    # Negative: a sheet named for the grouping word does not hide the grouping the question asks for.
+    by_city = _run("total amount in Europe by city", world=ORDERS_WORLD, tables=(_orders_sheet("city"),))
+    assert sorted(row[0] for row in by_city["answer"]["rows"]) == ["Brussels", "London", "Paris"], by_city["answer"]
+
+
+def test_a_named_measure_with_a_cell_that_is_no_number_is_never_replaced():
+    """Planted-text test (2026-10-08): order 101's amount became "118 (accounting says 11800)", the amount column
+    stayed text, and "total amount of GBP orders in Europe" summed the cities' populations grouped by amount. The
+    measure the question names cannot be totaled, and the reply names the cell."""
+    question = "total amount of GBP orders in Europe"
+    bad = _orders_sheet(amount_of_101="118 (accounting says 11800)")
+    run = _run(question, world=ORDERS_WORLD, tables=(bad,))
+    assert run.get("clarify") and run["answer"] is None, run
+    assert run["reason"] == ("The amount column has a value that isn't a number ('118 (accounting says 11800)'), "
+                             "so it can't be totaled."), run["reason"]
+    # Contrast: a clean amount column is totaled.
+    assert _run(question, world=ORDERS_WORLD, tables=(_orders_sheet(),))["answer"]["rows"] == [[810]]
+    # Negative: a question naming a world attribute still totals it; the bad amount is not asked for.
+    population = _run("total population of the orders in Europe", world=ORDERS_WORLD, tables=(bad,))
+    assert not population.get("clarify") and "population" in population["answer"]["columns"], population
+
+
+def test_a_city_the_knowledgebase_does_not_know_is_said_to_be_left_out():
+    """Planted-text test (2026-10-08): order 106's city became "Brussels (a city in Germany)", and "total amount in
+    Belgium" lost it without a word: 284 instead of 322 (38 + 64 + 220). The answer names the row it left out, an
+    ordinary typo or a foreign spelling alike, and declines when most rows matched nothing."""
+    for city in ("Brussels (a city in Germany)", "Brusels", "Bruxelles"):
+        run = _run("total amount in Belgium", world=ORDERS_WORLD, tables=(_orders_sheet(city_of_106=city),))
+        assert run["answer"]["rows"] == [[284]], (city, run["answer"])
+        assert (run["unmatched"]["rows"], run["unmatched"]["of"], run["unmatched"]["names"]) == (1, 23, [city]), run
+    # Contrast: every city matches, nothing to disclose.
+    whole = _run("total amount in Belgium", world=ORDERS_WORLD, tables=(_orders_sheet(),))
+    assert whole["answer"]["rows"] == [[322]] and whole["unmatched"] is None, whole
+    # Negative: when most cities match nothing, compose finds no world link and claims nothing, so serving hands the
+    # question to the delegate, which declines (knowledge_query.unmatched_clarification).
+    sheet = _orders_sheet()
+    city = sheet["columns"].index("city")
+    for row in sheet["rows"][:13]:
+        row[city] = f"Nowhere {row[0]}"
+    unlinked = _run("total amount in Belgium", world=ORDERS_WORLD, tables=(sheet,))
+    assert "world_join" not in unlinked["plan"] and unlinked["world_dependency"] is None, unlinked["plan"]
+
+
 TESTS = [
+    test_the_rows_a_question_totals_are_no_grouping_whatever_the_sheet_is_called,
+    test_a_named_measure_with_a_cell_that_is_no_number_is_never_replaced,
+    test_a_city_the_knowledgebase_does_not_know_is_said_to_be_left_out,
     test_numeric_filter_preserves_decimal_boundary_and_large_integer,
     test_aggregate_over_zero_rows_is_not_presented_as_an_answer,
     test_real_aggregates_and_plain_selects_are_untouched,

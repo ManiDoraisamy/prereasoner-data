@@ -1692,7 +1692,7 @@ def test_rows_whose_entity_matched_nothing_reach_the_reply():
     # The reply states the total and the count; the grounding check keeps prose that states the value.
     assert orchestrator._grounded_presentation(
         partial, "Your US hospitals total 46 transfers; 1 of the 5 rows names a hospital I couldn't match.",
-    )== "46\n\n1 of 5 source rows could not be matched and were excluded."
+    )== "46\n\n1 of 5 source rows could not be matched (Xqzv Kpltr) and were excluded."
     assert "excluded" not in orchestrator._terminal_fallback(whole)
 
 

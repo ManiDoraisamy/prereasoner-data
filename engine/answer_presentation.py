@@ -77,6 +77,12 @@ def offered_question(reply: Any) -> str:
     return match[1].strip() if match else ""
 
 
+def unmatched_names(unmatched):
+    """The names an unmatched-rows disclosure lists, as a sentence writes them."""
+    shown = ", ".join(unmatched["names"])
+    return f"{shown} and {unmatched['more']} more" if unmatched["more"] else shown
+
+
 def terminal_reply(shaped: dict[str, Any]) -> str:
     """Render the engine's terminal facts, without an external presentation model."""
     if shaped.get("status") == "clarify":
@@ -88,7 +94,11 @@ def terminal_reply(shaped: dict[str, Any]) -> str:
     notes = []
     unmatched = shaped.get("unmatched") or {}
     if unmatched.get("rows"):
-        notes.append(f"{unmatched['rows']} of {unmatched.get('of', '?')} source rows could not be matched and were excluded.")
+        # The names say which rows: "1 of 23 source rows could not be matched (Brussels (a city in Germany)) and
+        # were excluded" (planted-text test, 2026-10-08).
+        named = f" ({unmatched_names(unmatched)})" if unmatched.get("names") else ""
+        notes.append(f"{unmatched['rows']} of {unmatched.get('of', '?')} source rows could not be matched{named} "
+                     "and were excluded.")
     copies = shaped.get("layout_copies") or {}
     if isinstance(copies, dict) and copies.get("read") and copies.get("others"):
         # One of several tables that could answer did: say which, so the answer is not taken for all of

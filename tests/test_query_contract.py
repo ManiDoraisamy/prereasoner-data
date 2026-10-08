@@ -708,6 +708,25 @@ def test_a_counted_noun_reads_as_the_rows_counted_only_when_it_names_a_field():
                     "SELECT COUNT(*) FROM city WHERE District = 'Gelderland'") == (True, ())
 
 
+def test_a_named_amount_with_a_cell_that_is_no_number_is_refused_naming_the_cell():
+    """Planted-text test (2026-10-08): with one amount "118 (accounting says 11800)" the amount column is text. The
+    own-data planner already refused to total another field; the refusal now names the cell, in the words compose and
+    the currency check use (query_contract.unreadable_measure_reason)."""
+    from engine.tables import csv_table
+    orders = csv_table("id,currency,amount\n101,GBP,118 (accounting says 11800)\n102,GBP,95\n103,GBP,72", "orders")
+    served = _hermetic_planner().serve([orders], "total amount of GBP orders")
+    assert served["valid"] is False and served.get("result") is None, served
+    assert served["error"] == ("The amount column has a value that isn't a number ('118 (accounting says 11800)'), "
+                               "so it can't be totaled."), served["error"]
+    # Contrast: a clean amount column is totaled.
+    clean = csv_table("id,currency,amount\n101,GBP,118\n102,GBP,95\n103,GBP,72", "orders")
+    assert _hermetic_planner().serve([clean], "total amount of GBP orders")["result"]["rows"] == [[285]]
+    # Negative: a column whose cells are mostly text is no measure, so nothing names a cell.
+    from engine.query_contract import unreadable_cells
+    assert unreadable_cells(["n/a", "pending", "12"]) is None
+    assert unreadable_cells(["118 (accounting says 11800)", "95", "72"]) == ["118 (accounting says 11800)"]
+
+
 PEOPLE_TABLE = {"name": "people", "columns": ["Person_ID", "Name", "Country", "Age"],
                 "rows": [[1, "Alice", "France", 30], [2, "Bob", "France", 20], [3, "Cara", "Spain", 40]]}
 

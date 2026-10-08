@@ -2709,3 +2709,28 @@ France in US dollars", answered "No rows in your data match this question".
 - **A new account's first requests.** The master lookup and the conversation sync both insert the account's
   principal; the second collided on `principal_id`, which `ON CONFLICT (firebase_uid)` does not absorb, and answered
   500. The insert absorbs a conflict on either key.
+
+## Messy data changes no answer silently (2026-10-08)
+
+A planted-text test (instruction-like text planted in the cells, headers and sheet name of the customer-orders
+sheet) found no planted instruction obeyed, and five ways ordinary messy data changed an answer or its reason.
+- **An unknown city is said to be left out.** "Brussels (a city in Germany)" resolved to no city, and "total amount
+  in Belgium in USD" lost the order with complete coverage and no warning. Both world joins now count the rows whose
+  place matched nothing through the one owner, `knowledge_query.unmatched_rows`: the composed world join
+  (`compose.py`) and the place joins of the conversion path (`knowledge_tables.py`, from the values its meaning join
+  keeps). The reply names them ("1 of 23 source rows could not be matched (Brussels (a city in Germany)) and were
+  excluded"), and `unmatched_clarification` declines when they are most of the rows, the rule of 2026-10-02.
+  Resolving the cell to Belgium was rejected: its own words say Germany.
+- **A named measure is never replaced.** One amount "118 (accounting says 11800)" keeps the column text (the typing
+  rule stands), and compose then summed the cities' populations for "total amount of GBP orders in Europe". Compose
+  now refuses a total or average of a column the question names whose cells are not all numbers, and the reply
+  names the cells (`query_contract.unreadable_measure_reason`), as the own-data planner and the currency check do.
+  The currency check had blamed a missing currency column.
+- **The rows a question totals are no grouping.** On a sheet not named "orders", "orders" loose-matched the `ordered`
+  column and the GBP total became five per-product totals. The noun a question measures or counts
+  (`closed_class.measured_rows`, `counted_rows`) is claimed like the sheet's own name.
+- **A row with no amount needs no exchange rate.** An empty row declined "which city has the highest total amount in
+  US dollars" as 1 of 24 rows without a rate; the rate coverage counts only rows whose measure is filled.
+- The chat's Gemini turns run at temperature 0 with seed 0, as the module documents for every call.
+- Not done: recording how each place was matched (exact, alias or embedding with its score). It changes the
+  persisted bridge's columns and every reader of them, and needs the live database to verify.

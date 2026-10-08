@@ -276,6 +276,10 @@ def _plain_reason(assessment: dict) -> str:
                 for item in assessment.get("unrealized_grouping") or () if isinstance(item, dict)]
     if grouping:
         return f"I couldn't calculate this for each {' or '.join(grouping)}."
+    unreadable = assessment.get("unreadable_measure")
+    if unreadable:
+        from engine.query_contract import unreadable_measure_reason
+        return unreadable_measure_reason(unreadable["column"], unreadable["cells"])
     if specification == "currency" and target:
         if assessment.get("status") == "ambiguous":
             return (f"{target} can mean converting every amount into {target} or keeping only the rows "

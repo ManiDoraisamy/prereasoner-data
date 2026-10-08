@@ -4,6 +4,18 @@ Dated entries come newest first. Each records a run at the commit it names; the 
 entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection arbiter`) may since have
 been removed, and that commit holds the code that ran.
 
+## Messy-data fixes, on `8b8a7ee`: same answers (2026-10-08)
+
+Same contract as `accuracy3-97ac4ff-dirty` (Gemini off, `whole_db`, `served` selection, SQL backend, row cap 5,000),
+on `8b8a7ee` with the change applied (`worktree_dirty=true`, tag `planted-8b8a7ee-dirty`). The change (`DECISIONS.md`,
+"Messy data changes no answer silently"): compose claims the rows a question measures or counts before grouping,
+refuses to total a named column whose cells are not all numbers, and discloses rows whose place matched nothing;
+the planner names such cells when it refuses. All 1,034 examples have the same SQL and grade as
+`accuracy3-97ac4ff-dirty`: 315 strict, 381 lenient, 524 answered, no wins and no losses. These fixes are correctness
+hardening, not an accuracy gain.
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_planted-8b8a7ee-dirty.json`.
+
 ## The completeness check reads the words of the tables the query reads, on `97ac4ff` (2026-10-08)
 
 The change (`DECISIONS.md`, "A question word is read from the tables the query reads"), from the SQL-accuracy review

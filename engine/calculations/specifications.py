@@ -324,6 +324,19 @@ class CurrencySpecification:
             }
         ))
         source = _source_profile(tables, measure_columns)
+        # With no measure to convert, a column the question names whose cells are not all numbers is why: one
+        # "118 (accounting says 11800)" amount was answered "your data doesn't say which currency the amounts are
+        # in" though the currency column was full (planted-text test, 2026-10-08).
+        unreadable = None
+        if not measure_columns:
+            from engine.query_contract import unreadable_cells
+            asked = set(_words(intent.attributes.get("_question", intent.phrase)))
+            for schema_column in graph.columns:
+                named = set(_words(schema_column.ref.name))
+                cells = unreadable_cells(schema_column.values) if named and named <= asked else None
+                if cells:
+                    unreadable = {"column": schema_column.ref.name, "cells": cells}
+                    break
         available = _available_currency_targets(graph, measure_columns)
         proposal_target = next((code for code in available if code != target), "")
         original_question = intent.attributes.get("_question", intent.phrase)
@@ -331,6 +344,7 @@ class CurrencySpecification:
         common = {
             **base,
             "source_currency": source,
+            **({"unreadable_measure": unreadable} if unreadable else {}),
             "available_targets": list(available),
             "proposal": proposal or "",
             "bindings": [

@@ -29,6 +29,7 @@ import re
 
 import numpy as np
 
+from engine.answer_presentation import unmatched_names
 from engine.config import DATA_DIR, kb_model_route_enabled
 from engine.entities import EntityQuery, PLACE_TYPES, WORLD_TABLE_TYPE
 from engine.dataset_semantics import is_synthetic_currency_column
@@ -84,10 +85,18 @@ def unmatched_rows(table, column, rows, matched, own_filters, entity):
             "names": names[:UNMATCHED_NAMES_SHOWN], "more": len(names) - len(names[:UNMATCHED_NAMES_SHOWN])}
 
 
-def unmatched_names(unmatched):
-    """The names an unmatched-rows disclosure lists, as a sentence writes them."""
-    shown = ", ".join(unmatched["names"])
-    return f"{shown} and {unmatched['more']} more" if unmatched["more"] else shown
+def unmatched_clarification(question, unmatched, label):
+    """The decline when most of the rows an answer could count named no knowledgebase entity
+    (``unmatched_rows``; DECISIONS.md, 2026-10-02), or None when most matched. The non-geo lookup and the composed
+    world join both decline in these words."""
+    if not unmatched or 2 * unmatched["rows"] <= unmatched["of"]:
+        return None
+    return {"question": question, "as_of": None, "clarify": True, "result": None, "error": None,
+            "reason": (f"{unmatched['rows']} of the {unmatched['of']} {label} names in your sheet could "
+                       f"not be matched to a known {label} ({unmatched_names(unmatched)}), so an answer "
+                       "would leave most of them out"),
+            "unmatched": unmatched,
+            "model": "engine - clarify (most names matched no knowledgebase entity)"}
 
 
 def _cos(a, b):
@@ -635,13 +644,9 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         # names them; when they are most of the rows it could count it declines (DECISIONS.md, 2026-10-02).
         # A US hospital the lookup missed used to lower "total transfers to US hospitals" without a word.
         unmatched = unmatched_rows(t, plan["col"], named, matched, own_filters, label)
-        if unmatched and 2 * unmatched["rows"] > unmatched["of"]:
-            return {"question": question, "as_of": None, "clarify": True, "result": None, "error": None,
-                    "reason": (f"{unmatched['rows']} of the {unmatched['of']} {label} names in your sheet could "
-                               f"not be matched to a known {label} ({unmatched_names(unmatched)}), so an answer "
-                               "would leave most of them out"),
-                    "unmatched": unmatched,
-                    "model": "engine - clarify (most names matched no knowledgebase entity)"}
+        declined = unmatched_clarification(question, unmatched, label)
+        if declined:
+            return declined
         model = f'engine - non-geo world join (pre-synchronized knowledgebase."{wl}")'
         from engine.deterministic.context import current_analysis_context, current_execution_record
         context = current_analysis_context()

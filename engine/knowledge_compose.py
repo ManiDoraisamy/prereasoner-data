@@ -420,6 +420,13 @@ class ComposedKnowledgeQuery:
                 world = self._world_lookup(norm, sub)
         with request_timing.span("compose"):
             res = self.reason.run(tables, question, world=world)
+        if res.get("clarify"):
+            # The measure the question names cannot be aggregated (engine/compose.UnreadableMeasure): the reply
+            # says which cells, and no other column is totaled in its place.
+            return {"question": question, "as_of": as_of, "clarify": True, "reason": res["reason"],
+                    "result": None, "error": None, "unmatched": res.get("unmatched"),
+                    "model": ("engine - clarify (most names matched no knowledgebase entity)" if res.get("unmatched")
+                              else "engine - clarify (the named measure is not numeric)")}
         from engine.deterministic.context import current_analysis_context, current_execution_record
         context = current_analysis_context()
         # route() alone decides ownership, here as in the Spider evaluator. A local composition (top-N, sort,
@@ -451,7 +458,7 @@ class ComposedKnowledgeQuery:
                         "model": "engine - composed view stack", "plan": res["plan"],
                         "primitives": res["primitives"], "world_dependency": res["world_dependency"],
                         "deterministic": record, "views": record["views"], "sql": record["final_sql"],
-                        "result": {"columns": columns, "rows": wire_rows(rows)}}
+                        "result": {"columns": columns, "rows": wire_rows(rows)}, "unmatched": res.get("unmatched")}
             finally:
                 connection.close()
                 self.qw._con = None
@@ -466,7 +473,7 @@ class ComposedKnowledgeQuery:
                 "plan": res["plan"], "primitives": res["primitives"], "views": views,
                 "world_dependency": res.get("world_dependency"),
                 "sql": final["sql"] if final else None,
-                "result": res["answer"]}
+                "result": res["answer"], "unmatched": res.get("unmatched")}
 
     @staticmethod
     def _emit_response_views(emit, resp):
@@ -610,7 +617,7 @@ class ComposedKnowledgeQuery:
                         world=None,
                         dataset_semantics=dataset_semantics,
                     )
-                    if er.get("deterministic") or compose_owns(
+                    if er.get("deterministic") or er.get("clarify") or compose_owns(
                         er.get("views"),
                         er.get("world_dependency"),
                         (er.get("result") or {}).get("rows"),

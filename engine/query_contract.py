@@ -42,6 +42,63 @@ def cell_words(graph):
     return words
 
 
+def unreadable_cells(values):
+    """The distinct cells of a measure column that are not numbers, in row order, when most of its filled cells
+    are: one "118 (accounting says 11800)" among the amounts keeps the column text, and the amounts cannot be
+    totaled. None when every cell is a number, or when most are not (then the column is no measure)."""
+    from engine.numeric import parse_decimal
+
+    filled = [str(value).strip() for value in values if value is not None and str(value).strip()]
+    bad = []
+    for value in filled:
+        try:
+            parse_decimal(value)
+        except (TypeError, ValueError):
+            bad.append(value)
+    if not bad or 2 * len(bad) >= len(filled):
+        return None
+    return list(dict.fromkeys(bad))
+
+
+def unreadable_measure_reason(column, cells, function="SUM"):
+    """The reply when the measure a question names has cells that are not numbers (``unreadable_cells``). Compose,
+    the named-field check below and the currency check all say it in these words, naming the cells."""
+    shown = ", ".join(repr(cell) for cell in cells[:3]) + (f" and {len(cells) - 3} more" if len(cells) > 3 else "")
+    held = "a value that isn't a number" if len(cells) == 1 else f"{len(cells)} values that aren't numbers"
+    done = "averaged" if function == "AVG" else "totaled"
+    return f"The {column} column has {held} ({shown}), so it can't be {done}."
+
+
+def unreadable_measure_violation(question, graph):
+    """The refusal for a question that totals or averages a column it names whose cells are not all numbers
+    (``unreadable_cells``), or None. A sheet whose only amounts are text has no query to total them at all, and the
+    reply said "no valid AST candidate" (planted-text test, 2026-10-08)."""
+    from engine.sql_rank import analyze_question
+    from engine.sql_schema import canon
+
+    positions = analyze_question(question, graph).aggregate_positions
+    function = next((name for name in ("SUM", "AVG") if positions.get(name)), None)
+    if function is None:
+        return None
+    asked = {canon(word) for word in lexical_words(question)}
+    for column in graph.columns:
+        named = _name_vocabulary([column.ref.name])
+        cells = unreadable_cells(column.values) if named and named <= asked else None
+        if cells:
+            return unreadable_measure_reason(column.ref.name, cells, function)
+    return None
+
+
+_UNREADABLE_MEASURE = re.compile(r"The .+ column has .+, so it can't be (?:totaled|averaged)\.")
+
+
+def explains_refusal(violation):
+    """Whether a ``constraint_violations`` entry is written for the user, so a refusal can be its reply: a repeated
+    field to choose, a field that cannot be computed, or a measure with cells that are not numbers."""
+    return (violation.startswith(("Which repeated field", "The field ", "The requested total for "))
+            or bool(_UNREADABLE_MEASURE.fullmatch(violation)))
+
+
 @dataclass(frozen=True)
 class Coverage:
     complete: bool
@@ -302,8 +359,10 @@ def constraint_violations(question, query, graph):
         mismatched = [function for function, targets in requested_targets.items()
                       if refs & targets and not refs & measures.get(function, set())]
         if mismatched:
-            violations.append('The requested total for '
-                              + repr(sorted(ref.name for ref in refs)[0])
+            named = sorted(refs, key=lambda ref: (ref.table, ref.name))[0]
+            cells = unreadable_cells(next((column.values for column in graph.columns if column.ref == named), ()))
+            violations.append(unreadable_measure_reason(named.name, cells, mismatched[0]) if cells else
+                              'The requested total for ' + repr(sorted(ref.name for ref in refs)[0])
                               + ' could not be computed from that field; check for nonnumeric/error cells or choose a numeric field')
             continue
         if refs & used:

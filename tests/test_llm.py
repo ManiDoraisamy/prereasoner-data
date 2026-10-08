@@ -243,6 +243,10 @@ def test_chat_facade_replays_a_function_call_with_its_thought_signature():
     assert answer.parts[0].function_response.response == {"result": '{"tables": 2}'}
     assert note.role == "user" and [part.text for part in note.parts] == ["Answer on its own."]
     assert vertex.closed == ["async", "sync"]
+    # The chat's turns run at temperature 0 with seed 0, as the module documents for every call (the planted-text
+    # test, 2026-10-08, found the async client setting neither).
+    for request in vertex.requests:
+        assert request["config"].temperature == 0.0 and request["config"].seed == 0
 
 
 def test_chat_facade_maps_tool_choice_to_function_calling_modes():

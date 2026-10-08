@@ -25,13 +25,18 @@ import numpy as np
 
 from engine.primitives import (q, filter_view, group_agg_view, yoy_view, topn_view, share_view,
                                divide_view, running_view, join_view, world_join_view)
-from engine.closed_class import EXCLUSION_CUES
+from engine.closed_class import EXCLUSION_CUES, counted_rows, measured_rows
 from engine.joins import discover_fks, join_plan
 from engine.numeric import GROUPED_DIGITS, parse_decimal, register_sqlite_decimal, sqlite_numeric, wire_decimal
+from engine.query_contract import unreadable_cells, unreadable_measure_reason
 from engine.sql_schema import is_surrogate_key
 
 MEASURE_WORDS = {"amount", "revenue", "sales", "spend", "cost", "price", "value", "quantity", "qty", "margin",
                  "profit", "income", "turnover"}   # encoder-FREE FALLBACK ONLY — with an encoder the measure is cosine
+
+
+class UnreadableMeasure(ValueError):
+    """The measure the question names has cells that are not numbers; its message is the reply."""
 
 
 class ComposeEngine:
@@ -178,13 +183,15 @@ class ComposeEngine:
                     best = (c, v, len(vl))
         return (best[0], best[1]) if best else None
 
-    def _dims(self, low, texts, table_names=()):
-        """Text columns the question mentions: each one a grouping candidate. An uploaded table's own name names
-        the rows being aggregated, so it is claimed before the loose stem match — 'total amount of GBP orders in
-        Europe' grouped the `ordered` column because 'ordered'[:5] == 'order' (2026-09-30). A column the question
-        names outright ('by product' over a 'products' table) still groups."""
+    def _dims(self, low, texts, table_names=(), row_nouns=()):
+        """Text columns the question mentions: each one a grouping candidate. The rows being aggregated are named
+        by an uploaded table's own name or by the noun the question measures or counts ('the total amount of GBP
+        orders'), and either is claimed before the loose stem match: 'total amount of GBP orders in Europe'
+        grouped the `ordered` column because 'ordered'[:5] == 'order' (2026-09-30), and again on any sheet not
+        named orders (Sheet1, 2026-10-08). A column the question names outright ('by product' over a 'products'
+        table, 'by ordered item') still groups."""
         claimed = low
-        for table_name in table_names:
+        for table_name in (*table_names, *row_nouns):
             name = " ".join(re.findall(r"[a-z0-9]+", str(table_name).lower()))
             if not name:
                 continue
@@ -382,6 +389,15 @@ class ComposeEngine:
         measure = bound if aggregated else self._pick_measure(
             unbound, [c for c in numeric if c != bound or self._names_attribute(c, unbound)] or numeric, question)
         intent = self._intent(low, table, question)
+        # A measure the question names with cells that are not numbers cannot be aggregated, and no other column
+        # stands in for it: one '118 (accounting says 11800)' amount once made "the total amount of GBP orders in
+        # Europe" a sum of the cities' populations (planted-text test, 2026-10-08).
+        if intent in ("SUM", "AVG") and not any(self._names_attribute(c, unbound) for c in numeric):
+            for c in texts:
+                cells = (unreadable_cells([r[cols.index(c)] for r in rows])
+                         if self._names_attribute(c, unbound) else None)
+                if cells:
+                    raise UnreadableMeasure(unreadable_measure_reason(c, cells, intent))
         op = intent or "SUM"            # group_agg still needs an aggregator (e.g. SUM within a YoY pre-agg)
         row_threshold = (threshold if bound is not None and not aggregated and (op == "COUNT" or bound != measure)
                          else None)
@@ -396,7 +412,9 @@ class ComposeEngine:
         # mention used to group, so those questions were served as per-city tables (2026-09-28). A question that
         # asks for no aggregate ('which cities have a population over ...') lists the noun, and a threshold on
         # each group's aggregate needs the groups, so both keep it.
-        dims = [c for c in self._dims(low, texts, table.get("sources") or [table["name"]])
+        row_nouns = measured_rows(question, frozenset(word for c in cols for word in re.findall(r"[a-z]+", c.lower())))
+        dims = [c for c in self._dims(low, texts, table.get("sources") or [table["name"]],
+                                      row_nouns | counted_rows(question))
                 if not (excl_val and c == excl_val[0])
                 and not (intent and having_pred is None
                          and self._aggregated_over(c, low, span[0] if row_threshold else None))]
@@ -631,11 +649,21 @@ class ComposeEngine:
                                         "filter", f"where {vf[0]} = {vf[1]!r}")
                 base.append(cur)
             world_grounding = None                           # (supplied_attrs, own_columns, wcol, value, world_filtered)
+            unmatched = None
             if world is not None:                            # base B: world-meaning join (+ optional filter on a world dim)
                 own_cols = {str(c).lower() for c in cur["columns"]}   # what the UPLOAD already provides, PRE world join
                 wf = self._world_link(low, cur, world)
                 if wf:
                     link, wkey, keep, wcol, value = wf
+                    # A row whose link value is no world entity gets no world attribute, so a world filter leaves it
+                    # out: "Brussels (a city in Germany)" dropped an order from "total amount in Belgium" without a
+                    # word (planted-text test, 2026-10-08). The answer says so. A link needs most of its values
+                    # known (_world_link), so declining when most are unknown is the delegate's (KnowledgeQuery).
+                    from engine.knowledge_query import unmatched_rows
+                    li = cur["columns"].index(link)
+                    known = {str(r[0]) for r in world["rows"] if r and r[0] is not None}
+                    named = [r for r in cur["rows"] if li < len(r) and r[li] is not None and str(r[li]).strip()]
+                    unmatched = unmatched_rows(cur, link, named, [str(r[li]) in known for r in named], [], link)
                     cur = self._materialize(con, self._vname("world_join", used), world_join_view(cur["name"], link, world["name"], wkey, keep),
                                             "world_join", f"join {cur['name']} to the world on {link}")
                     base.append(cur)
@@ -649,7 +677,15 @@ class ComposeEngine:
             table = {"name": cur["name"], "columns": cur["columns"], "rows": cur["rows"],
                      "sources": [t["name"] for t in tables]}   # the uploaded sheets under the view stack
             prims = self.reader.present(question) if self.reader else None   # learned readout (or None=heuristic)
-            steps = self.plan(question, table, prims, used)
+            try:
+                steps = self.plan(question, table, prims, used)
+            except UnreadableMeasure as refusal:
+                return {"question": question, "n_steps": len(base), "plan": [v["op"] for v in base],
+                        "primitives": sorted(prims) if prims is not None else None, "answer": None,
+                        "clarify": True, "reason": str(refusal),
+                        "bindings": {"uploaded_join": jp, "value_filter": vf, "world_join": wf,
+                                     "base_table": table, "steps": []},
+                        "views": list(base), "world_dependency": None}
             views = list(base)
             for s in steps:
                 views.append(self._materialize(con, s["out"], self._sql(s), s["op"], s.get("label")))
@@ -697,4 +733,4 @@ class ComposeEngine:
                 "answer": ({"columns": final["columns"], "rows": final["rows"]} if final else None),
                 "bindings": {"uploaded_join": jp, "value_filter": vf, "world_join": wf,
                              "base_table": table, "steps": steps},
-                "views": views, "world_dependency": world_dependency}
+                "views": views, "world_dependency": world_dependency, "unmatched": unmatched}

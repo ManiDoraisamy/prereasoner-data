@@ -956,6 +956,7 @@ class KnowledgeTableQuery:
             fw, disamb, warnings = self._world_joins(upfrom, joins, sch, norm, mtab, route_col, as_of, mf)
         else:
             fw, disamb, warnings = upfrom, None, []          # conversion-only: no meaning joins to walk
+        fw_joined = fw                                       # the meaning joins alone: the rows they keep
         fw_no_rate = fw
         if world_rate:
             # The knowledgebase table joins like any other table in the conversation: by VALUE on the
@@ -984,9 +985,11 @@ class KnowledgeTableQuery:
                 "source": self.words[ft].get("source"), "as_of": as_of}
         sql = f'SELECT {proj} {fw}{query_tail}'
 
+        from engine.knowledge_query import unmatched_clarification, unmatched_rows   # it imports this module
         ok, why = self.q11.guard(sql)
         result, err = None, None
         coverage_gap = None
+        unmatched = None
         deterministic_record = None
         if ok:
             try:
@@ -1051,9 +1054,27 @@ class KnowledgeTableQuery:
                         f'SELECT source_release_id FROM {qident("exchange_rate")} LIMIT 1'
                     ).fetchone()
                     prov["release_id"] = release_row[0] if release_row else None
-                    base_n = con.execute(f'SELECT COUNT(*) {fw_no_rate}').fetchone()[0]
-                    conv_n = con.execute(f'SELECT COUNT(*) {fw}').fetchone()[0]
+                    # Only a row with an amount needs a rate: a row whose measure is empty adds nothing, and an empty
+                    # row once declined "which city has the highest total amount in US dollars" as 1 of 24 rows
+                    # without a rate (planted-text test, 2026-10-08).
+                    filled = (f' {"AND" if conds else "WHERE"} '
+                              f'{qident(selected_measure[0])}.{qident(selected_measure[1])} IS NOT NULL'
+                              if selected_measure else "")
+                    base_n = con.execute(f'SELECT COUNT(*) {fw_no_rate}{filled}').fetchone()[0]
+                    conv_n = con.execute(f'SELECT COUNT(*) {fw}{filled}').fetchone()[0]
                     coverage_gap = (base_n - conv_n, base_n) if conv_n < base_n else None
+                if joins and result is not None:
+                    # A row whose place resolved to no knowledgebase entity falls out of the meaning join: "Brussels
+                    # (a city in Germany)" left "total amount in Belgium in USD" one order short without a word
+                    # (planted-text test, 2026-10-08). The answer names it, and declines when it is most rows.
+                    kept = {str(value) for (value,) in con.execute(
+                        f'SELECT DISTINCT {qident(mtab)}.{qident(route_col)} {fw_joined}').fetchall()}
+                    routed = next(t for t in norm if t["name"] == mtab)
+                    at = routed["columns"].index(route_col)
+                    named = [row for row in routed["rows"]
+                             if at < len(row) and row[at] is not None and str(row[at]).strip()]
+                    unmatched = unmatched_rows(routed, route_col, named, [str(row[at]) in kept for row in named],
+                                               own_filters, route_col)
             except Exception as e:
                 err = f"{type(e).__name__}: {e}"
         else:
@@ -1075,6 +1096,11 @@ class KnowledgeTableQuery:
         if deterministic_record is not None:
             response.update(deterministic=deterministic_record,
                             views=deterministic_record["views"], sql=deterministic_record["final_sql"])
+        declined = unmatched_clarification(question, unmatched, route_col)
+        if declined:
+            return declined
+        if unmatched:
+            response["unmatched"] = unmatched
         from engine.sql_ast import BinaryExpr
         graph = calculation_graph
         expression = None
