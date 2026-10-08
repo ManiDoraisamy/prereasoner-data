@@ -612,49 +612,67 @@ def _number_read(question_tokens, index, value, query, ranked):
     return limited if ranked else (compared or limited)
 
 
-def _one_relationship(query, graph, value_words):
-    """Whether each value ``query`` compares that the participle's object names (``value_words``) has one way to
-    relate to the rows: no other column of the query's tables holds it, and no second foreign key joins its table to
-    another table the query reads. "flights departing from APG" read DestAirport = 'APG' as well as SourceAirport,
-    since APG is in both (review, 2026-10-08); where the value holds two places, only the participle says which, and
-    no rule here proves it. False when no compared value is named."""
-    from engine.sql_ast import Comparison, ColumnRef, Literal
-    from engine.sql_schema import distinct_values
+def _one_relationship(query, graph, value_words, participle):
+    """Whether each value ``query`` compares that the participle's object names (``value_words``) relates to the rows
+    the way the participle says. A value has one relationship when the rows it selects are the same whichever column
+    of the query's tables holds it, and no second foreign key joins its table to another table the query reads. With
+    more than one, the ranker's travel reading decides (sql_rank.travel_direction: "departing" is the source): the
+    compared column, or the key the query joins its table through, must carry the participle's direction. "flights
+    departing from APG" read DestAirport = 'APG' as well as SourceAirport, since APG is in both (review, 2026-10-08).
+    False when no compared value is named."""
+    from engine.sql_ast import Comparison, ColumnRef, Join, Literal
+    from engine.sql_rank import travel_column_role, travel_direction
+    from engine.sql_schema import canon
 
     tables = query.referenced_tables()
-    found = False
-    stack = [query]
+    direction = travel_direction((canon(participle),))
+    joins, comparisons, stack = [], [], [query]
     while stack:
         node = stack.pop()
+        if isinstance(node, Join):
+            joins.append(node)
         if isinstance(node, Comparison):
-            sides = (node.left, node.right)
-            column = next((side for side in sides if isinstance(side, ColumnRef)), None)
-            literal = next((side for side in sides if isinstance(side, Literal) and isinstance(side.value, str)), None)
-            if column is not None and literal is not None and value_words & {
-                    _canon_word(word) for word in lexical_words(literal.value)}:
-                found = True
-                wanted = literal.value.strip().casefold()
-                holders = [held.ref for held in graph.columns if held.ref.table in tables
-                           and any(str(value).strip().casefold() == wanted
-                                   for value in distinct_values(held.values) if value is not None)]
-                if len(holders) > 1:
-                    return False
-                for other in tables - {column.table}:
-                    keys = [key for key in graph.foreign_keys
-                            if {pair[0].table for pair in key.column_pairs} | {pair[1].table for pair in key.column_pairs}
-                            == {column.table, other}]
-                    if len(keys) > 1:
-                        return False
+            comparisons.append(node)
         if hasattr(node, "__dataclass_fields__"):
             stack.extend(getattr(node, name) for name in node.__dataclass_fields__)
         elif isinstance(node, (tuple, list)):
             stack.extend(node)
+
+    def held(value):
+        """(table, rows) for each column of the query's tables holding ``value``: the rows it selects there."""
+        wanted = str(value).strip().casefold()
+        places = {}
+        for column in graph.columns:
+            if column.ref.table in tables:
+                rows = frozenset(index for index, cell in enumerate(column.values)
+                                 if cell is not None and str(cell).strip().casefold() == wanted)
+                if rows:
+                    places[column.ref] = (column.ref.table, rows)
+        return places
+
+    found = False
+    for comparison in comparisons:
+        sides = (comparison.left, comparison.right)
+        column = next((side for side in sides if isinstance(side, ColumnRef)), None)
+        literal = next((side for side in sides if isinstance(side, Literal) and isinstance(side.value, (str, int, float))
+                        and not isinstance(side.value, bool)), None)
+        if column is None or literal is None or not value_words & {
+                canon(word) for word in lexical_words(str(literal.value))}:
+            continue
+        found = True
+        selections = set(held(literal.value).values())
+        keyed = any(len([key for key in graph.foreign_keys
+                         if {table for pair in key.column_pairs for table in (pair[0].table, pair[1].table)}
+                         == {column.table, other}]) > 1
+                    for other in tables - {column.table})
+        if len(selections) <= 1 and not keyed:
+            continue
+        relating = {column} | {side for join in joins for pair in join.predicates for side in pair
+                               if column.table in {pair[0].table, pair[1].table} and side.table != column.table}
+        roles = {travel_column_role(ref) for ref in relating} - {None}
+        if direction is None or roles != {direction}:
+            return False
     return found
-
-
-def _canon_word(word):
-    from engine.sql_schema import canon
-    return canon(word)
 
 
 def _orders_alphabetically(query, reverse):
@@ -813,7 +831,7 @@ def read_question(question, candidate, graph, *, calculation_satisfied=False):
         objects = {canon(word) for word in target} - ordinary_words
         if (objects & sql_literals and objects <= read_names | sql_literals
                 and canon(participle) not in observed and canon(participle) not in schema_words
-                and _one_relationship(candidate.query, graph, objects & sql_literals)):
+                and _one_relationship(candidate.query, graph, objects & sql_literals, participle)):
             ordinary_words.add(canon(participle))
     unread = tuple(dict.fromkeys(said for said, word in zip(spelled, words)
                                  if word not in read_names | sql_literals | ordinary_words))

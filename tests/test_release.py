@@ -401,7 +401,9 @@ def test_wikidata_precreator_is_non_destructive():
 
 def test_local_documentation_links_resolve():
     missing = []
-    ignored_parts = {".git", ".terraform", ".venv", "venv", "node_modules", "site-packages"}
+    # release-review/ keeps review reports as their authors wrote them, linking to the author's own checkout and
+    # artifacts (C:/work/..., a temp folder): records of a review, not documents to navigate.
+    ignored_parts = {".git", ".terraform", ".venv", "venv", "node_modules", "site-packages", "release-review"}
     for document in ROOT.rglob("*.md"):
         if any(part.lower() in ignored_parts for part in document.parts):
             continue

@@ -658,17 +658,40 @@ def test_a_name_the_question_spells_in_two_words_is_read():
 
 
 def test_a_spelled_number_is_read_when_the_query_keeps_that_many():
-    """Spider DEV, 2026-10-08: "the two" was unread over a query keeping two rows."""
+    """Spider DEV, 2026-10-08: "the two" was unread over a query keeping two rows. Its review: the number must be read
+    in its role, not wherever the SQL holds it. A cutoff in a question that ranks is the query's LIMIT, so a 2 in a
+    predicate does not read "the two" over a query keeping three rows; after "more than" it is a comparison."""
     question = "List the names of the two people with the largest Age."
     assert _reading([PEOPLE_TABLE], question, "SELECT Name FROM people ORDER BY Age DESC LIMIT 2") == (True, ())
     assert _reading([PEOPLE_TABLE], question, "SELECT Name FROM people ORDER BY Age DESC LIMIT 3") == (False, ("two",))
+    excluding = "List the names of the two people with the largest Age, excluding Person_ID 2."
+    assert _reading([PEOPLE_TABLE], excluding,
+                    "SELECT Name FROM people WHERE Person_ID != 2 ORDER BY Age DESC LIMIT 3") == (False, ("two",))
+    assert _reading([PEOPLE_TABLE], excluding,
+                    "SELECT Name FROM people WHERE Person_ID != 2 ORDER BY Age DESC LIMIT 2") == (True, ())
+    threshold = "List the names of people with an Age of more than two."
+    assert _reading([PEOPLE_TABLE], threshold, "SELECT Name FROM people WHERE Age > 2") == (True, ())
+    assert _reading([PEOPLE_TABLE], threshold, "SELECT Name FROM people WHERE Age > 3 LIMIT 2") == (False, ("two",))
 
 
 def test_order_words_are_read_by_a_query_that_orders_its_rows():
-    """Spider DEV, 2026-10-08: "in alphabetical order" was unread over a query ordering by the name."""
+    """Spider DEV, 2026-10-08: "in alphabetical order" was unread over a query ordering by the name. Its review: any
+    ordering read it, by age or Z to A. "Alphabetical" is read by an order on a text field in the direction asked,
+    and the search builds that order for "in alphabetical order" as for "alphabetically"."""
     question = "List the names in alphabetical order."
     assert _reading([PEOPLE_TABLE], question, "SELECT Name FROM people ORDER BY Name") == (True, ())
     assert _reading([PEOPLE_TABLE], question, "SELECT Name FROM people") == (False, ("alphabetical", "order"))
+    assert _reading([PEOPLE_TABLE], question, "SELECT Name FROM people ORDER BY Age") == (False, ("alphabetical",))
+    assert _reading([PEOPLE_TABLE], question, "SELECT Name FROM people ORDER BY Name DESC") == (False, ("alphabetical",))
+    reverse = "List the names in reverse alphabetical order."
+    assert _reading([PEOPLE_TABLE], reverse, "SELECT Name FROM people ORDER BY Name DESC") == (True, ())
+    assert _reading([PEOPLE_TABLE], reverse, "SELECT Name FROM people ORDER BY Name")[0] is False
+    # Served: both forms order the names A to Z, and the reversed one Z to A.
+    for asked, expected in (("List the names in alphabetical order.", ["Alice", "Bob", "Cara"]),
+                            ("List the names ordered alphabetically.", ["Alice", "Bob", "Cara"]),
+                            ("List the names in reverse alphabetical order.", ["Cara", "Bob", "Alice"])):
+        served = _hermetic_planner().serve([PEOPLE_TABLE], asked)
+        assert [row[0] for row in served["result"]["rows"]] == expected, (asked, served.get("sql"))
 
 
 def test_a_participle_relating_rows_to_a_compared_value_is_read():
@@ -676,11 +699,42 @@ def test_a_participle_relating_rows_to_a_compared_value_is_read():
     airport with 'APG'. A participle the data holds as a value is a filter: "orders returned by Alice" over a
     status holding 'Returned' still asks for the returned ones."""
     flights = [{"name": "flights", "columns": ["Airline", "FlightNo", "SourceAirport", "DestAirport"],
-                "rows": [[1, 28, "APG", "ASY"], [1, 29, "ASY", "APG"]]}]
+                "rows": [[1, 28, "APG", "ASY"], [1, 29, "CVO", "ASY"]]}]
     question = "List the flight numbers of flights departing from APG."
     assert _reading(flights, question, "SELECT FlightNo FROM flights WHERE SourceAirport = 'APG'") == (True, ())
     # Contrast: no compared value, nothing read.
     assert _reading(flights, question, "SELECT FlightNo FROM flights") == (False, ("departing", "apg"))
+    # Its review: with APG a departure and an arrival, the value no longer says which column the relationship is,
+    # and DestAirport = 'APG' (arrivals) was read as departures. The ranker's travel reading says which
+    # (sql_rank.travel_direction): "departing" is the source, so only SourceAirport reads it.
+    both_ways = [{**flights[0], "rows": [[1, 28, "APG", "ASY"], [1, 29, "ASY", "APG"]]}]
+    assert _reading(both_ways, question, "SELECT FlightNo FROM flights WHERE SourceAirport = 'APG'") == (True, ())
+    assert _reading(both_ways, question, "SELECT FlightNo FROM flights WHERE DestAirport = 'APG'") == (
+        False, ("departing",))
+    # The same through a second key between the tables: departing from a city is the join on the source.
+    airports = {"name": "airports", "columns": ["AirportCode", "City"], "rows": [["APG", "Aberdeen"], ["ASY", "Ashley"]]}
+    routed = [{**flights[0], "rows": [[1, 28, "APG", "ASY"]]}, airports]
+    keys = [{"from_table": "flights", "from_col": "SourceAirport", "to_table": "airports", "to_col": "AirportCode"},
+            {"from_table": "flights", "from_col": "DestAirport", "to_table": "airports", "to_col": "AirportCode"}]
+    planner = _hermetic_planner()
+    graph = SchemaGraph.from_tables(routed, keys)
+    from engine.query_contract import read_question
+    asked = "List the flight numbers of flights departing from Aberdeen."
+    for column, unread in (("DestAirport", True), ("SourceAirport", False)):
+        candidate = _model_query(planner, f"SELECT FlightNo FROM flights JOIN airports ON flights.{column} = "
+                                          "airports.AirportCode WHERE airports.City = 'Aberdeen'", routed)
+        assert ("departing" in read_question(asked, candidate, graph).unread) is unread, column
+    # A participle with no such reading cannot choose between two columns that select different rows.
+    shipped = [{"name": "orders", "columns": ["id", "billing_city", "shipping_city"],
+                "rows": [[1, "Paris", "Lyon"], [2, "Lyon", "Paris"]]}]
+    assert _reading(shipped, "List the ids of orders shipped to Paris.",
+                    "SELECT id FROM orders WHERE billing_city = 'Paris'") == (False, ("shipped",))
+    # One value in two columns of the same row is one relationship: a country's Name and LocalName.
+    languages = [{"name": "country", "columns": ["Code", "Name", "LocalName"], "rows": [["ABW", "Aruba", "Aruba"]]},
+                 {"name": "countrylanguage", "columns": ["CountryCode", "Language"], "rows": [["ABW", "Dutch"]]}]
+    assert _reading(languages, "What languages are spoken in Aruba?",
+                    "SELECT Language FROM countrylanguage JOIN country ON countrylanguage.CountryCode = country.Code "
+                    "WHERE country.Name = 'Aruba'") == (True, ())
     orders = [{"name": "orders", "columns": ["customer", "status", "amount"],
                "rows": [["Alice", "Returned", 10], ["Alice", "Shipped", 20]]}]
     assert _reading(orders, "List the amounts of orders returned by Alice.",

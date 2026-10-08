@@ -332,12 +332,19 @@ The own-data path serves one typed SQL AST chosen from the deterministic search'
    Otherwise one dual-emitter branch serves the request: the best-ranked eligible single query.
 
 A candidate reads a question word (`engine/query_contract.py:read_question`) when the word names a table
-the query reads or a column of one, with names split as the search splits them ("LifeExpectancy" is "life
-expectancy", `engine/sql_schema.name_words`), or spells such a name in two words ("high schoolers"); when it
-is a value the query compares, a spelled number the query keeps ("the two oldest"), an order word in a
-query that orders its rows, or a participle relating the rows to a compared value ("departing from APG")
-that the data holds as no value; or when it is grammar, a counted noun naming the rows counted, or one of
-the closed lists the check keeps. A word that names only some other table's column is unread.
+the query reads or a column of one, with the tables and the columns it uses split as the search splits names
+("LifeExpectancy" is "life expectancy", `engine/sql_schema.name_words`), or spells such a name in two words
+("high schoolers"); when it is a value the query compares; a spelled number realized in its role (a cutoff in a
+question that ranks is the query's LIMIT, "the two oldest"; after a comparison cue it is a compared number); an
+order word in a query that orders its rows, and "alphabetical" only over an order on a text field, A to Z
+unless reversed; a participle relating the rows to a compared value ("departing from APG") when the data holds
+the participle as no value and the value has one relationship to the rows, or, with several (a departure and
+an arrival airport), when the column relating it carries the participle's travel direction
+(`engine/sql_rank.travel_direction`); or when it is grammar, a counted noun naming the rows counted, or one of the closed lists
+the check keeps. A word that names only some other table's column is unread. The column an aggregate phrase
+names ("the total amount") is its operand (`engine/sql_rank.aggregate_operand`); when its cells are not all
+numbers the question is refused naming them, by compose, the planner and the currency check alike, and
+`engine/routing.route` makes compose's refusal the answer in serving and the Spider evaluator.
 
 The response's `planner.selection` records the pool counts (`pool_size`, `executable`,
 `misgrounded`, `eligible`), the served member's place among the eligible ones and its search score,

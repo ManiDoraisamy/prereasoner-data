@@ -2734,3 +2734,27 @@ sheet) found no planted instruction obeyed, and five ways ordinary messy data ch
 - The chat's Gemini turns run at temperature 0 with seed 0, as the module documents for every call.
 - Not done: recording how each place was matched (exact, alias or embedding with its score). It changes the
   persisted bridge's columns and every reader of them, and needs the live database to verify.
+
+## The review of the messy-data fixes: operands, roles and relationships are bound (2026-10-08)
+
+An independent review of 8b8a7ee and 30a8cb1 found the new acceptance rules too permissive, and reproduced each case
+on the production owners.
+- **F1, a measure replaced again.** The guard against totaling another column fired only when most of the named
+  column's cells were numbers, counted among the rows the question keeps; with most amounts malformed, compose summed
+  populations again. The operand is now the column the aggregate phrase names (`sql_rank.aggregate_operand`, built
+  on the phrase test `analyze_question` uses), and any cell of it that is not a number refuses, however many there
+  are. "order" before a noun no longer ends that phrase ("the total order amount"); "order by" still does.
+- **F5, one decision.** Serving answered compose's refusal while the Spider evaluator handed the question to the AST
+  planner. `routing.route` now returns `Route.CLARIFY` for a refusal, and both call it.
+- **F2, alphabetical.** Any ordering read "in alphabetical order", by age or Z to A. It is read only by an order on a
+  text field, A to Z unless the question reverses it, and the search builds that order for "in alphabetical order"
+  as it did for "alphabetically" (`sql_expansion.ALPHABETICAL_WORDS`).
+- **F3, spelled numbers.** Any equal number in the SQL read "the two", so a 2 in an excluded ID read it over a query
+  keeping three rows. In a question that ranks the number is the query's LIMIT; after a comparison cue, a compared
+  number.
+- **F4, participles.** A compared value read "departing from APG" whichever column compared it. A value has one
+  relationship to the rows when it selects the same rows whichever column of the query's tables holds it (a
+  country's Name and LocalName), and no second foreign key joins its table to another the query reads. With more
+  than one, the ranker's travel reading decides (`sql_rank.travel_direction`, `travel_column_role`, now shared):
+  "departing" is read only over the source column or the join on it. A participle with no such reading ("orders
+  shipped to Paris" over billing and shipping cities) stays unread, and the question is refused or reworded.

@@ -222,8 +222,8 @@ class CandidateRanker:
         from engine.calculations.registry import calculation_rank_features
         features.extend(calculation_rank_features(roles.question, query, self.schema, self.signals))
 
-        travel_direction = _travel_direction(roles.tokens)
-        if travel_direction:
+        direction = travel_direction(roles.tokens)
+        if direction:
             role_columns = {
                 column
                 for comparison in _comparisons(query.where)
@@ -234,14 +234,14 @@ class CandidateRanker:
                 column for join in query.joins for pair in join.predicates for column in pair
             )
             directional_columns = [
-                column for column in role_columns if _travel_column_role(column) is not None
+                column for column in role_columns if travel_column_role(column) is not None
             ]
             if directional_columns:
                 aligned = any(
-                    _travel_column_role(column) == travel_direction
+                    travel_column_role(column) == direction
                     for column in directional_columns
                 )
-                features.append((f"travel_direction:{travel_direction}", 3.0 if aligned else -3.0))
+                features.append((f"travel_direction:{direction}", 3.0 if aligned else -3.0))
 
         features.extend(self._model_features(query))
         return tuple(features)
@@ -523,7 +523,7 @@ def _schema_tokens(name: str) -> tuple[str, ...]:
 
 
 
-def _travel_direction(tokens: tuple[str, ...]) -> str | None:
+def travel_direction(tokens: tuple[str, ...]) -> str | None:
     token_set = set(tokens)
     if token_set & {"leave", "leaving", "depart", "departing", "departure", "origin", "source"}:
         return "source"
@@ -532,7 +532,7 @@ def _travel_direction(tokens: tuple[str, ...]) -> str | None:
     return None
 
 
-def _travel_column_role(column: ColumnRef) -> str | None:
+def travel_column_role(column: ColumnRef) -> str | None:
     words = set(_schema_tokens(column.name))
     if words & {"source", "origin", "departure", "depart", "from"}:
         return "source"

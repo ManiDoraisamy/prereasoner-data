@@ -416,6 +416,14 @@ def main():
     ok("text amount: a conversion is refused for the amount, not for a missing currency",
        response.get("clarify") and response.get("reason") == unreadable,
        f"reason={response.get('reason')}")
+    # The fixes' review: with most amounts malformed the guard stopped firing and populations were totaled again.
+    mostly = {"name": "sales", "columns": rows[0], "rows": [list(row) for row in rows[1:]]}
+    for row in mostly["rows"][:12]:
+        row[rows[0].index("amount")] = "not-a-number"
+    response = served(sub, wr.serve, [mostly], gbp, sub)
+    ok("text amount: mostly malformed amounts are refused too, never another column's total",
+       response.get("clarify") and str(response.get("reason") or "").startswith("The amount column has ")
+       and not rows_of(response), f"reason={response.get('reason')} rows={rows_of(response)}")
 
     print(f"\n{P}/{P+F} passed" + ("" if not F else f"  ({F} FAILED)"))
     sys.exit(1 if F else 0)
