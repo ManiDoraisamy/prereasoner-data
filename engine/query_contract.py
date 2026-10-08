@@ -494,6 +494,26 @@ def has_unread_terms(question, candidate, graph, *, calculation_satisfied=False)
     return bool(reading.unread) or reading.wildcard
 
 
+def _name_vocabulary(names):
+    """The canonical words of schema ``names``, as the question spells them and as the search splits them:
+    "LifeExpectancy" is "life" and "expectancy" (engine/sql_schema.name_words)."""
+    from engine.sql_schema import canon, name_words
+    return {canon(word) for name in names for word in (*lexical_words(name), *name_words(name))}
+
+
+# The words of an instruction to order the rows ("in alphabetical order", "sorted by", "descending").
+_ORDERING_WORDS = frozenset({"order", "ordered", "sort", "sorted", "alphabetical", "alphabetically",
+                             "ascending", "descending"})
+
+
+def _orders_rows(query):
+    """Whether ``query`` orders the rows it returns."""
+    from engine.sql_ast import SetQuery
+    if isinstance(query, SetQuery):
+        return _orders_rows(query.left) or _orders_rows(query.right)
+    return bool(getattr(query, "order_by", ()))
+
+
 @dataclass(frozen=True)
 class Reading:
     """What one candidate makes of the question's words, lower case as the question spells them."""
@@ -504,12 +524,14 @@ class Reading:
 
 def read_question(question, candidate, graph, *, calculation_satisfied=False):
     """The ``Reading`` of ``question`` by ``candidate``, a runnable pool member."""
-    from engine.sql_ast import Aggregate, SelectQuery, SetQuery, Star, SubquerySource, share_aggregate
+    from engine.sql_ast import Aggregate, SelectQuery, SetQuery, Star, SubquerySource, column_refs, share_aggregate
     from engine.sql_schema import canon
-    from engine.closed_class import action_words, closed_class_words, measure_participles
+    from engine.closed_class import (
+        action_words, closed_class_words, measure_participles, number_words, value_participles,
+    )
     from engine.sql_dates import served_date_phrases, realizes_dates
     from engine.sql_durations import duration_phrases, realizes_durations
-    from engine.sql_expansion import tokens
+    from engine.sql_expansion import WORD_NUMBERS, tokens
 
     recognized_question = str(question)
     if calculation_satisfied:
@@ -530,11 +552,17 @@ def read_question(question, candidate, graph, *, calculation_satisfied=False):
     spelled = tuple(word for word in lexical_words(recognized_question)
                     if word not in date_words and canon(word) not in duration_words)
     words = tuple(canon(word) for word in spelled)
-    schema_words = {
-        canon(word)
-        for column in graph.columns
-        for word in lexical_words(f"{column.ref.table} {column.ref.name}")
-    }
+    schema_words = _name_vocabulary(name for column in graph.columns for name in (column.ref.table, column.ref.name))
+    # A schema word is read when it names a table the query reads or a column of one. Any table's columns once
+    # counted, so a word was read because an unrelated table had a column of that name, while "the life
+    # expectancy" was unread over the LifeExpectancy column the query read (Spider DEV, 2026-10-08). The tables
+    # and the columns the query uses are read in the words the search splits their names into; the other columns
+    # of its tables only in the words they are written with, so "official languages" is unread by a count that
+    # leaves IsOfficial out.
+    read_tables = candidate.query.referenced_tables()
+    read_names = _name_vocabulary((*read_tables, *(column.name for column in column_refs(candidate.query))))
+    read_names.update(canon(word) for column in graph.columns if column.ref.table in read_tables
+                      for word in lexical_words(column.ref.name))
     sql_literals = {
         canon(word)
         for literal in re.findall(r"'((?:[^']|'')*)'", candidate.sql)
@@ -572,11 +600,17 @@ def read_question(question, candidate, graph, *, calculation_satisfied=False):
     ordinary_words.update(canon(word) for word in action_words(question) if canon(word) not in observed)
     has_aggregate = any(isinstance(item.expression, Aggregate)
                         for item in getattr(candidate.query, 'select', ()))
-    if len(graph.tables) == 1 and any(isinstance(item.expression, Aggregate) and item.expression.function == 'COUNT'
-                                    for item in getattr(candidate.query, 'select', ())):
+    if any(isinstance(item.expression, Aggregate) and item.expression.function == 'COUNT'
+           for item in getattr(candidate.query, 'select', ())):
+        # The noun a count counts names the rows counted, on one table. With several, only a field's name that
+        # names none of the tables: "how many subscriptions by Status" counts the exports' rows, though a report
+        # has a Subscriptions column. "How many people live in Gelderland" names no field, and a count of cities
+        # is not its answer (Spider DEV 728, 2026-10-08).
         from engine.closed_class import counted_rows
+        fields_named = _name_vocabulary(column.ref.name for column in graph.columns) - _name_vocabulary(graph.tables)
         ordinary_words.update(canon(word) for word in counted_rows(question)
-                              if canon(word) not in observed)
+                              if canon(word) not in observed
+                              and (len(graph.tables) == 1 or canon(word) in fields_named))
     if has_aggregate:
         ordinary_words.update(canon(word) for word in measure_participles(question, frozenset(schema_words))
                               if canon(word) not in observed)
@@ -595,10 +629,29 @@ def read_question(question, candidate, graph, *, calculation_satisfied=False):
     # tested by the query. It cannot stand in for an omitted state column or value.
     if re.search(r"\b(?:named|called)\s+", question, re.I) and sql_literals:
         ordinary_words.update({"named", "called"})
+    # A name the question spells as two words: "high schoolers" is the Highschooler table it reads.
+    ordinary_words.update(word for left, right in zip(words, words[1:]) if canon(left + right) in read_names
+                          for word in (left, right))
+    # A spelled number the query states: "the two oldest" keeps two rows.
+    ordinary_words.update(canon(word) for word in number_words(question)
+                          if word in WORD_NUMBERS and canon(str(WORD_NUMBERS[word])) in sql_literals)
+    # The words of an order instruction are read by a query that orders its rows: "in alphabetical order".
+    if _orders_rows(candidate.query):
+        ordinary_words.update(_ORDERING_WORDS)
+    # A participle relating the rows to a value the query compares says how they relate: "flights departing from
+    # APG" compares the source airport with 'APG' (Spider flight_2, 2026-10-08). Its object names a compared value
+    # and nothing the query leaves out: "staff working for the museums" is unread over a query that averages the
+    # opening year. One the data holds as a value ("orders returned by Alice" over a status holding 'Returned')
+    # or names as a field is still to be read.
+    for participle, target in value_participles(question):
+        objects = {canon(word) for word in target} - ordinary_words
+        if (objects & sql_literals and objects <= read_names | sql_literals
+                and canon(participle) not in observed and canon(participle) not in schema_words):
+            ordinary_words.add(canon(participle))
     unread = tuple(dict.fromkeys(said for said, word in zip(spelled, words)
-                                 if word not in schema_words | sql_literals | ordinary_words))
+                                 if word not in read_names | sql_literals | ordinary_words))
     named = tuple(dict.fromkeys(said for said, word in zip(spelled, words)
-                                if word in schema_words | sql_literals and word not in ordinary_words))
+                                if word in read_names | sql_literals and word not in ordinary_words))
     # A duration the query compares names the dates its span runs between: "how many users wanted neartail for
     # greater than 6 months" names data, and is asked about its other words, not read as another language.
     named += tuple(dict.fromkeys(word for word in lexical_words(recognized_question)
@@ -612,7 +665,7 @@ def read_question(question, candidate, graph, *, calculation_satisfied=False):
             return True
         return any(isinstance(item.expression, Star) for item in query.select)
 
-    table_words = {canon(word) for table in graph.tables for word in lexical_words(table)}
+    table_words = _name_vocabulary(graph.tables)
     requested_fields = set(words) & (schema_words - table_words)
     from engine.sql_expansion import complete_projection_requested
     explicitly_all_fields = complete_projection_requested(question)

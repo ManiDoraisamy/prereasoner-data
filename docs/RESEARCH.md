@@ -165,8 +165,8 @@ higher on Spider than the search alone; those runs are history in `spider/result
 Removing that model trades recall for answers whose every step the engine builds. Without it the engine
 alone scored 497/1,034 strict on Spider DEV, against 866 with a 7B SQL-writing model, and the search
 already pooled a correct query for 544 questions (2026-10-02). A completeness check added since refuses
-a question whose wording it cannot read rather than answer a different one: 408 answered and 243 strict
-on 2026-10-04 (`spider/results/RESULTS.md`).
+a question whose wording it cannot read rather than answer a different one: 524 answered and 315 strict
+on 2026-10-08 (`spider/results/RESULTS.md`).
 
 **Versus post-hoc probing / SAEs.** The standard interpretability move trains a *separate*
 linear probe (or a sparse autoencoder) on a frozen model's activations *after* training, then

@@ -549,7 +549,6 @@ question + authorized private tables
 | Explicit edge validation | `engine/relations.py` | `relate(tables, explicit_fks=())` validates and merges trusted tuple edges |
 | Planner ingestion | `engine/tables.py:TableQuery.ingest` | explicit internal argument only; client table payloads cannot declare edges |
 | Tuple FK and SQL join | `engine/sql_schema.py`, `engine/sql_ast.py` | one logical FK with ordered column pairs; render one atomic `ON ... AND ...` clause |
-| AST profile expansion | `engine/sql_profile_expansion.py` | consume domain role/profile evidence without a second planner |
 | Serving orchestration | `engine/server.py:_post_world` | private references -> guarded enrichment -> `MODEL.serve`; attaches provenance only when used |
 | Replay identity | `engine/enrichment/registry.py:ExecutionManifest` | full SHA-256 identity in `provenance.enrichment` |
 | Offline evaluation | `regress/enrichment.py` | selection, role, candidate-pool, and top-1 metrics |

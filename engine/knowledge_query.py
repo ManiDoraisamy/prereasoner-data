@@ -148,6 +148,12 @@ def verify_nonempty(res, question):
                for out in (branch.get("outputs") or ())]
     if not outputs or not all(out.get("aggregate_functions") for out in outputs):
         return res                      # no typed proof this is an aggregate -> never second-guess it
+    # An unmet calculation explains the empty aggregate: with no exchange rate for the day, a conversion to US
+    # dollars drops every row, and "No rows in your data match" hid the reason (Community launch test, 2026-10-08).
+    unmet = [row for row in res.get("calculations") or () if row.get("status") != "satisfied"]
+    if unmet:
+        from engine.calculations import calculation_clarify
+        return calculation_clarify(question, res, unmet)
     # The reason is the reply a user reads (engine/answer_presentation.py), so it names the aggregate
     # in their words: "no rows matched, so there is nothing to SUM" was the whole answer (2026-10-04).
     named = " or ".join(dict.fromkeys(

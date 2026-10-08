@@ -1240,6 +1240,32 @@ def test_a_clarification_about_the_data_is_not_replaced_by_the_calculation_gate(
        "a decomposition request reaches the orchestrator under a currency question")
 
 
+def test_an_empty_total_says_which_calculation_could_not_be_made():
+    """The Community launch test (2026-10-08): with no exchange rate for the day, converting the France orders to
+    US dollars dropped every row, and the reply was "No rows in your data match this question" though the rows
+    matched. The unmet conversion is the reason the total is empty, so it is the reply."""
+    from engine.knowledge_query import verify_nonempty
+    question = "total amount in France in US dollars"
+    computation = {"verified": True, "branches": [{"outputs": [{"numeric": True, "aggregate_functions": ["SUM"]}]}]}
+    gap = {"specification": "currency", "target": "USD", "status": "unmet", "realization": None,
+           "reason": "5 of 5 rows have no ECB reference rate for their (currency, date) - outside published coverage",
+           "proposal": ""}
+    unconverted = verify_nonempty({
+        "question": question, "sql": 'SELECT SUM("orders"."amount" * "exchange_rate"."rate") FROM "orders"',
+        "result": {"columns": ["total_usd"], "rows": [[None]]}, "computation": computation,
+        "calculations": [gap]}, question)
+    ok(unconverted["clarify"] and "No rows in your data match" not in unconverted["reason"]
+       and unconverted["unmet"][0]["reason"] == gap["reason"],
+       "an empty total names the conversion it could not make")
+    # Contrast: an empty total with every calculation made is still "no rows matched".
+    matched_none = verify_nonempty({
+        "question": question, "sql": 'SELECT SUM("orders"."amount") FROM "orders"',
+        "result": {"columns": ["total_usd"], "rows": [[None]]}, "computation": computation,
+        "calculations": [{**gap, "status": "satisfied"}]}, question)
+    ok(matched_none["model"] == "engine - clarify (the query matched no rows)",
+       "an empty total with its calculations made says no rows matched")
+
+
 def test_a_calculation_clarification_is_a_sentence_for_the_user():
     """The reply is the clarification's reason (engine/answer_presentation.py). The check's own
     reason stays in `unmet`, for traces and the chat model."""
@@ -1467,6 +1493,7 @@ TESTS = [
     test_unverified_non_currency_calculation_fails_closed,
     test_typed_calculation_clarify_supersedes_generic_coverage_clarify,
     test_a_clarification_about_the_data_is_not_replaced_by_the_calculation_gate,
+    test_an_empty_total_says_which_calculation_could_not_be_made,
     test_a_calculation_clarification_is_a_sentence_for_the_user,
     test_calculation_training_corpus_is_split_safe_and_rebuildable,
     test_intent_thresholds_are_checkpoint_calibrated,

@@ -70,9 +70,12 @@ def _storage_principal(firebase_uid, google_sub):
     conn = _pg()
     try:
         cur = conn.cursor()
+        # Without a conflict target every unique key absorbs the insert: a new account's first two requests
+        # (the master lookup and the conversation sync) once raced, and the second collided on principal_id,
+        # which a target of firebase_uid alone does not cover, and answered 500 (2026-10-08).
         cur.execute(
             'INSERT INTO "chat"."auth_principal" (firebase_uid, principal_id) '
-            'VALUES (%s, %s) ON CONFLICT (firebase_uid) DO NOTHING',
+            'VALUES (%s, %s) ON CONFLICT DO NOTHING',
             (firebase_uid, fallback),
         )
         cur.execute(

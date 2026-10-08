@@ -210,7 +210,7 @@ class SchemaGraph:
     def display_columns(self, table: str) -> tuple[ColumnRef, ...]:
         columns = list(self.by_table.get(table, ()))
         columns.sort(key=lambda column: (
-            0 if set(_name_words(column.ref.name)) & _NAME_WORDS else 1,
+            0 if set(name_words(column.ref.name)) & _NAME_WORDS else 1,
             0 if column.ref.type == SQLType.TEXT else 1,
             1 if is_surrogate_key(column.ref.name) else 0,
             column.index,
@@ -397,7 +397,7 @@ def _infer_type(name: str, values: Sequence[Any]) -> SQLType:
         return SQLType.DATE
     if populated and all(NUMBER_TEXT.match(str(value).strip()) for value in populated):
         return SQLType.REAL if any("." in str(value) for value in populated) else SQLType.INTEGER
-    if set(_name_words(name)) & {"date", "datetime", "timestamp"}:
+    if set(name_words(name)) & {"date", "datetime", "timestamp"}:
         return SQLType.DATE
     return SQLType.TEXT
 
@@ -431,7 +431,7 @@ def _row_value(row: Any, index: int, name: str) -> Any:
     return row[index] if index < len(row) else None
 
 
-def _name_words(name: str) -> tuple[str, ...]:
+def name_words(name: str) -> tuple[str, ...]:
     spaced = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", str(name))
     return tuple(word.lower() for word in re.findall(r"[^\W_]+", spaced, re.UNICODE))
 
@@ -445,7 +445,7 @@ SURROGATE_KEY_WORDS = frozenset({"id", "ids", "uid", "uuid", "guid", "identifier
 def is_surrogate_key(name: str) -> bool:
     """'order ID', 'customer_id', 'OrderID' and 'index' are keys; 'orders', 'idea', 'paid' and 'price index'
     are not."""
-    words = _name_words(re.sub(r' \[column [A-Z]+\](?: \d+)?$', '', name))
+    words = name_words(re.sub(r' \[column [A-Z]+\](?: \d+)?$', '', name))
     return bool(words) and (words[-1] in SURROGATE_KEY_WORDS or words == ("index",))
 
 

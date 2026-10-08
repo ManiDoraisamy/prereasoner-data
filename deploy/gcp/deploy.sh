@@ -430,6 +430,11 @@ if ((!SKIP_BOOTSTRAP)); then
     --command=python --args=-m,db.sync.community_seed_import,--role,"$serving_role",--datasets,iana_country \
     --tasks=1 --max-retries=0 --task-timeout=7200s --cpu=4 --memory=8Gi
   gcloud run jobs execute "$BOOTSTRAP_JOB" --project="$PROJECT_ID" --region="$REGION" --wait
+  # The seed's exchange rates end a week after it was built (db/sync/build_exchange_rate.py,
+  # CARRY_FORWARD_DAYS) and the daily refresh first runs at 16:30 UTC, so until then a fresh install
+  # converts no currency: "total amount in France in US dollars" found no rows (2026-10-08). The
+  # deployment's one refresh job runs once here.
+  gcloud run jobs execute "${SERVICE_NAME}-ecb-rates-refresh" --project="$PROJECT_ID" --region="$REGION" --wait
 
   runtime_sa="$(terraform -chdir="$ROOT/infra" output -raw runtime_service_account)"
   [[ "$runtime_sa" == *@*.gserviceaccount.com ]] || die "Terraform did not return the runtime service account"

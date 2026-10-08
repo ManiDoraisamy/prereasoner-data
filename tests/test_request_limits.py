@@ -1012,7 +1012,61 @@ def test_a_question_names_its_stored_sheets_and_a_changed_sheet_is_uploaded_agai
         httpd.shutdown()
 
 
+def test_a_new_accounts_concurrent_first_requests_share_one_principal():
+    """Regression for an OBSERVED 500 (2026-10-08, the Community launch test on a new account): the master
+    lookup and the conversation sync both inserted the account's principal. The second collided on principal_id,
+    which `ON CONFLICT (firebase_uid)` does not absorb, and raised UniqueViolation. The fake models PostgreSQL:
+    a conflict target names the only unique key it absorbs."""
+    from unittest.mock import patch
+
+    import engine.pg as pg
+    from engine import auth
+
+    class UniqueViolation(Exception):
+        pass
+
+    rows = {"fb-uid-1": "google-sub-1"}   # the concurrent first request already inserted this row
+
+    class Cursor:
+        def __init__(self):
+            self.found = None
+
+        def execute(self, sql, params):
+            if sql.startswith("INSERT"):
+                uid, principal = params
+                target = sql.split("ON CONFLICT", 1)[1]
+                if "(firebase_uid)" in target and principal in rows.values() and uid in rows:
+                    # PostgreSQL waits for the other insert, then checks principal_id: not the arbiter.
+                    raise UniqueViolation('auth_principal_principal_id_key')
+                rows.setdefault(uid, principal)
+            else:
+                self.found = (rows[params[0]],) if params[0] in rows else None
+
+        def fetchone(self):
+            return self.found
+
+    class Connection:
+        def cursor(self):
+            return Cursor()
+
+        def commit(self):
+            pass
+
+        def rollback(self):
+            pass
+
+        def close(self):
+            pass
+
+    with patch.object(pg, "_pg", lambda: Connection()):
+        assert auth._storage_principal("fb-uid-1", "google-sub-1") == "google-sub-1"
+        # A brand-new account maps to its own subject, and a Firebase-only account to its uid.
+        assert auth._storage_principal("fb-uid-2", "google-sub-2") == "google-sub-2"
+        assert auth._storage_principal("fb-uid-3", None) == "fb-uid-3"
+
+
 TESTS = [
+    test_a_new_accounts_concurrent_first_requests_share_one_principal,
     test_a_chat_on_a_deleted_conversation_answers_404_not_500,
     test_raw_csv_repeated_blank_and_long_headers_preserve_every_value,
     test_messy_import_warnings_and_explicit_scope_survive_validation_and_storage,

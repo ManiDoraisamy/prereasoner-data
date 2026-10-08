@@ -512,6 +512,22 @@ def test_public_deployer_has_isolated_state_and_cost_safe_defaults():
     assert 'zz_ci_override.tf' not in ci
 
 
+def test_a_fresh_install_refreshes_exchange_rates_after_the_seed():
+    """Regression for an OBSERVED launch-test failure (2026-10-08, v0.3.2 on a brand-new project): the seed's
+    exchange rates end CARRY_FORWARD_DAYS after it was built, and the daily refresh first runs at 16:30 UTC, so
+    "total amount in France in US dollars" found no rows on install day. The installer runs the deployment's one
+    refresh job (infra/main.tf) once, after the seed import and before the install smoke."""
+    deploy = _text("deploy/gcp/deploy.sh")
+    infra = _text("infra/main.tf")
+    assert 'name                = "${var.service_name}-ecb-rates-refresh"' in infra
+    assert '"-var=service_name=${SERVICE_NAME}"' in deploy
+    refresh = 'gcloud run jobs execute "${SERVICE_NAME}-ecb-rates-refresh" --project="$PROJECT_ID" --region="$REGION" --wait'
+    bootstrap = 'gcloud run jobs execute "$BOOTSTRAP_JOB"'
+    smoke = 'gcloud run jobs execute "$SMOKE_JOB"'
+    assert deploy.count(refresh) == 1
+    assert deploy.index(bootstrap) < deploy.index(refresh) < deploy.index(smoke)
+
+
 def test_release_smoke_rejects_a_non_reasoning_or_wrong_numeric_answer():
     from engine.release_smoke import _assert_reasoning_result
 
@@ -857,6 +873,7 @@ TESTS = [
     test_bootstrap_records_failure_and_rejects_privileged_serving_role,
     test_seed_import_rebuilds_typed_qid_projections_before_granting_access,
     test_public_deployer_has_isolated_state_and_cost_safe_defaults,
+    test_a_fresh_install_refreshes_exchange_rates_after_the_seed,
     test_release_smoke_rejects_a_non_reasoning_or_wrong_numeric_answer,
     test_release_smoke_checks_current_chat_migration,
     test_serving_identity_cannot_read_the_admin_database_secret,

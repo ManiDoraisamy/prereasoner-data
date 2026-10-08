@@ -607,7 +607,111 @@ def test_the_excluded_value_is_excluded_whatever_wraps_its_column():
                        "SELECT * FROM orders WHERE country = 'France' AND status NOT IN "
                        "(SELECT status FROM orders WHERE status = 'Done')")
 
-TESTS = [value for name, value in globals().copy().items() if name.startswith('test_') and callable(value)]
+
+def _reading(tables, question, sql):
+    """The production completeness reading of ``question`` by the imported ``sql``: (complete, unread)."""
+    from engine.query_contract import read_question
+    planner = _hermetic_planner()
+    graph = _graph(planner, tables)
+    candidate = _model_query(planner, sql, tables)
+    return coverage(question, candidate, graph).complete, read_question(question, candidate, graph).unread
+
+
+def test_a_schema_word_is_read_from_the_tables_the_query_reads():
+    """Spider DEV, 2026-10-08. Every column's words once counted as read, whatever table the query read: an
+    answer over the students' ages was complete for "the average weight of pets", because the pets table has a
+    weight column. And a name was read as one word, so "the life expectancy of Angola" was unread over the
+    LifeExpectancy column the query read: the search splits names at their capitals, and the check now does."""
+    pets = [{"name": "students", "columns": ["StuID", "LName", "Age"], "rows": [[1, "Smith", 20]]},
+            {"name": "pets", "columns": ["PetID", "PetType", "weight"], "rows": [[1, "cat", 12.0]]}]
+    assert _reading(pets, "Find the average weight of pets.", "SELECT AVG(Age) FROM students") == (
+        False, ("weight", "pets"))
+    assert _reading(pets, "Find the average weight of pets.", "SELECT AVG(weight) FROM pets") == (True, ())
+    world = [{"name": "country", "columns": ["Code", "Name", "LifeExpectancy"],
+              "rows": [["AGO", "Angola", 38.3], ["ABW", "Aruba", 78.4]]},
+             {"name": "city", "columns": ["ID", "Name", "CountryCode"], "rows": [[1, "Luanda", "AGO"]]}]
+    question = "What is the life expectancy of Angola?"
+    assert _reading(world, question, "SELECT LifeExpectancy FROM country WHERE Name = 'Angola'") == (True, ())
+    # Negative: a word no table the query reads names stays unread.
+    assert _reading(world, "What is the literacy rate of Angola?",
+                    "SELECT LifeExpectancy FROM country WHERE Name = 'Angola'") == (False, ("literacy", "rate"))
+    # Spider DEV 738: a word that names only an unused column of a table the query reads, once the name is split
+    # ("IsOfficial"), is a qualifier the query left out.
+    languages = [{"name": "country", "columns": ["Code", "Name"], "rows": [["AFG", "Afghanistan"]]},
+                 {"name": "countrylanguage", "columns": ["CountryCode", "Language", "IsOfficial"],
+                  "rows": [["AFG", "Pashto", "T"], ["AFG", "Uzbek", "F"]]}]
+    question = "How many official languages does Afghanistan have?"
+    join = ('FROM countrylanguage JOIN country ON countrylanguage.CountryCode = country.Code '
+            "WHERE country.Name = 'Afghanistan'")
+    assert _reading(languages, question, "SELECT COUNT(Language) " + join) == (False, ("official",))
+    assert _reading(languages, question, "SELECT COUNT(Language) " + join + " AND IsOfficial = 'T'") == (True, ())
+
+
+def test_a_name_the_question_spells_in_two_words_is_read():
+    """Spider network_1: "high schoolers" names the Highschooler table the query reads (2026-10-08)."""
+    school = [{"name": "Highschooler", "columns": ["ID", "name", "grade"], "rows": [[1, "Jordan", 9], [2, "Ana", 10]]},
+              {"name": "Likes", "columns": ["student_id", "liked_id"], "rows": [[1, 2]]}]
+    sql = "SELECT name FROM Highschooler WHERE grade = 9"
+    assert _reading(school, "List the names of high schoolers in grade 9.", sql) == (True, ())
+    # Contrast: two words that join into no name the query reads stay unread.
+    assert _reading(school, "List the names of high achievers in grade 9.", sql) == (False, ("high", "achievers"))
+
+
+def test_a_spelled_number_is_read_when_the_query_keeps_that_many():
+    """Spider DEV, 2026-10-08: "the two" was unread over a query keeping two rows."""
+    question = "List the names of the two people with the largest Age."
+    assert _reading([PEOPLE_TABLE], question, "SELECT Name FROM people ORDER BY Age DESC LIMIT 2") == (True, ())
+    assert _reading([PEOPLE_TABLE], question, "SELECT Name FROM people ORDER BY Age DESC LIMIT 3") == (False, ("two",))
+
+
+def test_order_words_are_read_by_a_query_that_orders_its_rows():
+    """Spider DEV, 2026-10-08: "in alphabetical order" was unread over a query ordering by the name."""
+    question = "List the names in alphabetical order."
+    assert _reading([PEOPLE_TABLE], question, "SELECT Name FROM people ORDER BY Name") == (True, ())
+    assert _reading([PEOPLE_TABLE], question, "SELECT Name FROM people") == (False, ("alphabetical", "order"))
+
+
+def test_a_participle_relating_rows_to_a_compared_value_is_read():
+    """Spider flight_2, 2026-10-08: "flights departing from APG" was unread over a query comparing the source
+    airport with 'APG'. A participle the data holds as a value is a filter: "orders returned by Alice" over a
+    status holding 'Returned' still asks for the returned ones."""
+    flights = [{"name": "flights", "columns": ["Airline", "FlightNo", "SourceAirport", "DestAirport"],
+                "rows": [[1, 28, "APG", "ASY"], [1, 29, "ASY", "APG"]]}]
+    question = "List the flight numbers of flights departing from APG."
+    assert _reading(flights, question, "SELECT FlightNo FROM flights WHERE SourceAirport = 'APG'") == (True, ())
+    # Contrast: no compared value, nothing read.
+    assert _reading(flights, question, "SELECT FlightNo FROM flights") == (False, ("departing", "apg"))
+    orders = [{"name": "orders", "columns": ["customer", "status", "amount"],
+               "rows": [["Alice", "Returned", 10], ["Alice", "Shipped", 20]]}]
+    assert _reading(orders, "List the amounts of orders returned by Alice.",
+                    "SELECT amount FROM orders WHERE customer = 'Alice'") == (False, ("returned",))
+    # Spider DEV 416: the participle's object is its own noun phrase, not the clause attached to it. "the museums"
+    # is no compared value, so "working" stays unread over a query averaging the opening year.
+    museums = [{"name": "museum", "columns": ["Museum_ID", "Name", "Num_of_Staff", "Open_Year"],
+                "rows": [[1, "Plaza", 62, 2000], [2, "Capital", 25, 2012]]}]
+    _complete, unread = _reading(museums,
+                                 "Find the average number of staff working for the museums that were opened before 2009.",
+                                 "SELECT AVG(Open_Year) FROM museum WHERE Open_Year < 2009")
+    assert "working" in unread
+
+
+def test_a_counted_noun_reads_as_the_rows_counted_only_when_it_names_a_field():
+    """Spider DEV 728 (2026-10-08): "How many people live in Gelderland district?" over cities and countries was
+    served as a count of the district's cities. Across several tables a counted noun names the rows counted only
+    when it is a field's name ("how many subscriptions by Status", test_sql_ast); "people" names none."""
+    world = [{"name": "city", "columns": ["ID", "Name", "District", "Population"],
+              "rows": [[1, "Arnhem", "Gelderland", 138020], [2, "Nijmegen", "Gelderland", 152463]]},
+             {"name": "country", "columns": ["Code", "Name"], "rows": [["NLD", "Netherlands"]]}]
+    question = "How many people live in Gelderland district?"
+    assert _reading(world, question, "SELECT COUNT(*) FROM city WHERE District = 'Gelderland'")[1] == ("people",)
+    assert _reading(world, "How many names are in Gelderland district?",
+                    "SELECT COUNT(*) FROM city WHERE District = 'Gelderland'") == (True, ())
+
+
+PEOPLE_TABLE = {"name": "people", "columns": ["Person_ID", "Name", "Country", "Age"],
+                "rows": [[1, "Alice", "France", 30], [2, "Bob", "France", 20], [3, "Cara", "Spain", 40]]}
+
+TESTS =[value for name, value in globals().copy().items() if name.startswith('test_') and callable(value)]
 
 if __name__ == '__main__':
     for test in TESTS:

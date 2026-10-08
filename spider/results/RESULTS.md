@@ -4,6 +4,53 @@ Dated entries come newest first. Each records a run at the commit it names; the 
 entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection arbiter`) may since have
 been removed, and that commit holds the code that ran.
 
+## The completeness check reads the words of the tables the query reads, on `97ac4ff` (2026-10-08)
+
+The change (`DECISIONS.md`, "A question word is read from the tables the query reads"), from the SQL-accuracy review
+of 2026-10-08 (W04): `engine/query_contract.py:read_question` counted a word as read when any
+column of any table carried it, and read names only as written ("LifeExpectancy" was one word). It now reads:
+- the words of the tables the query reads and of the columns it uses, split as the search splits names, plus the
+  other columns of those tables as written; a name spelled in two words ("high schoolers");
+- a spelled number the query keeps, order words in a query that orders, and a participle whose own noun phrase
+  names a compared value ("departing from APG");
+- a counted noun across several tables only when it is a field's name.
+
+Two runs, same contract as `review2-5f8c57c-dirty` (`whole_db`, `served` selection, SQL backend, row cap 5,000),
+from `97ac4ff` with the change applied (`worktree_dirty=true`; the 113 source files each run hashes match the tree
+described here, bundle `b11056f8ce8bf16a…`). The baseline for the engine alone is `profile-removal-97ac4ff-dirty`, the
+same tree without this change (identical to `review2-5f8c57c-dirty` in every example's SQL and grade). The baseline
+with Gemini on is `rewrite-gemini-3.8-flash-e55ab00`, run through the same wrapper (the same production rewrite path).
+
+| | Engine alone before | **Engine alone** | Gemini on before | **Gemini on** |
+|---|---:|---:|---:|---:|
+| Strict | 247 (23.9%) | **315 (30.5%)** | 341 (33.0%) | **386 (37.3%)** |
+| Lenient | 315 | **381** | 446 | **482** |
+| Answered | 414 | **524** | 604 | **671** |
+| Strict of answered | 59.7% | **60.1%** | 56.5% | **57.5%** |
+| Scalar | 149/408 | **185/408** | 209/408 | **233/408** |
+| Strict: easy / medium / hard / extra | 105 / 103 / 24 / 15 | 127 / 140 / 30 / 18 | 141 / 143 / 31 / 26 | 155 / 167 / 37 / 27 |
+| Strict wins / losses | | **69 / 1** | | **52 / 7** |
+| Rewording calls (failed), cost | | | 620 (3), $0.31 | 510 (3), $0.27 |
+| Prediction seconds, median / p90 | 1.42 / 3.23 | 1.35 / 2.96 | 3.55 / 6.75 | 2.78 / 5.68 |
+
+- Engine alone: 120 questions are newly answered, 68 of them right; 10 are newly refused, one of them right (DEV 990,
+  "how much does each charge type costs": "costs" named only another table's column).
+- Gemini on: one loss is the change's (DEV 199: the engine now serves its own wrong self-join for "the airport name
+  for airport 'AKO'" instead of rewording it). The other six are the rewording's run-to-run variance: one failed
+  call and five different rewordings. The engine answers 110 more questions itself, so Gemini is called less.
+- A loss ledger of every question (evaluation only, in the session's scratchpad) located the gap: before the change
+  a strict-correct eligible candidate existed for 550 of 1,034, the completeness gate refused 489 questions with an
+  eligible candidate, and 194 of those refused candidates were right. Each reading rule was simulated on it before
+  being written; a rule reading graded adjectives ("youngest", "greatest") let through 27 wrong answers for 19 right
+  ones and was left out.
+- Not changed: 15 served answers differ from gold only in column order, because a grouped answer lists its groups
+  first (`sql_search`, a product choice); the aggregate cue that is also a column name ("average" and a column
+  Average, DEV 4, 5, 17) was tried and left out: it needs projection and grouping changes for at most 3 questions.
+- Prediction seconds were measured with an unrelated test harness running on the same desktop for both new runs.
+
+Outputs: `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_accuracy3-97ac4ff-dirty.json` and
+`full_eval_accuracy3-gemini-97ac4ff-dirty.json`.
+
 ## The selection's rewording answered by three hosted models, on `e55ab00` (2026-10-07)
 
 Production runs with the operator's Gemini switch on: a question the typed search cannot answer is reworded once

@@ -341,12 +341,12 @@ Determinism does not remove ambiguity, incomplete schema linking, candidate-sear
 errors, missing world data, or wrong relationship inference. Accuracy work is split into measured
 stages: routing, table selection, candidate-pool recall, top-1 ranking, execution, and evaluation.
 
-With no model writing SQL and the Gemini fallback off, the engine alone answers **408 of 1,034** Spider DEV
-questions (`whole_db`, gold-blind) and gets **243 strict (23.5%)** right, 60% of those it answers, measured
-2026-10-04 at `4aa6ca6`. It refuses a question whose wording it cannot read rather than answer a different
+With no model writing SQL and the Gemini fallback off, the engine alone answers **524 of 1,034** Spider DEV
+questions (`whole_db`, gold-blind) and gets **315 strict (30.5%)** right, 60% of those it answers, measured
+2026-10-08. It refuses a question whose wording it cannot read rather than answer a different
 one. Before that completeness check, at `60a55a3`, it answered 1,025 and got 497 right (48.1%). With the
 operator's Gemini switch on, as production runs, a question the search cannot read is reworded once and
-searched again: 609 answered and **338 strict (32.7%)**, with no answer lost to the rewording. With a 7B
+searched again: 671 answered and **386 strict (37.3%)**, with no answer lost to the rewording. With a 7B
 SQL-writing model the engine scored 866. That gap is the cost of
 interpretability the project chose: every query is built by the search, and accuracy grows by search and
 ranking rules. Records and history are in

@@ -38,7 +38,7 @@ from engine.sql_ast import (
 from engine.sql_candidate import ScoredQuery
 from engine.sql_expansion import ExpansionSupport, tokens
 
-# Matches the profile-expansion generation_penalty scale (ProfileSearchConfig).
+# The prior penalty a variant pays against the candidate it was derived from.
 _PARSIMONY_PENALTY = 5.0
 # Variant fan-out bounds: at most this many duplicate-name groups per candidate, and at most
 # this many single-binding choices per group, keep the expansion pool-sized, not exponential.

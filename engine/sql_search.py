@@ -63,8 +63,7 @@ from engine.sql_expansion import (
     word_spans,
     words,
 )
-from engine.sql_profile_expansion import ProfileSearchConfig
-from engine.sql_schema import SchemaGraph, canon, is_surrogate_key, normalize_value
+from engine.sql_schema import SchemaGraph, canon, is_surrogate_key, name_words, normalize_value
 
 _PROJECTION_CUES = frozenset({"show", "list", "display", "select", "give", "find", "which", "what"})
 # A text the question quotes: 'Al', "Sky Radio".
@@ -148,19 +147,7 @@ class SQLSearcher:
 
     def search(self, question: str, semantic_signals=None, rank_candidates: bool = True,
                expand_recursive: bool = True, expand_constraints: bool = True,
-               expand_extrema: bool = True, expand_parsimony: bool = True,
-               profile_max_candidates: int = 32,
-               profile_per_profile: int = 4,
-               profile_generation_penalty: float = 5.0,
-               profile_binding_quality_weight: float = 2.0,
-               profile_preserve_baseline_top: bool = True,
-               profile_config: ProfileSearchConfig | None = None) -> list[ScoredQuery]:
-        if profile_config is not None:
-            profile_max_candidates = profile_config.max_candidates
-            profile_per_profile = profile_config.per_profile
-            profile_generation_penalty = profile_config.generation_penalty
-            profile_binding_quality_weight = profile_config.binding_quality_weight
-            profile_preserve_baseline_top = profile_config.preserve_baseline_top
+               expand_extrema: bool = True, expand_parsimony: bool = True) -> list[ScoredQuery]:
         tokens = _tokens(question)
         if not tokens:
             return []
@@ -168,9 +155,7 @@ class SQLSearcher:
         if copies:
             return SQLSearcher(self.schema.without(copies), self.beam_size, self.max_candidates).search(
                 question, semantic_signals, rank_candidates, expand_recursive, expand_constraints,
-                expand_extrema, expand_parsimony, profile_max_candidates, profile_per_profile,
-                profile_generation_penalty, profile_binding_quality_weight, profile_preserve_baseline_top,
-                profile_config)
+                expand_extrema, expand_parsimony)
         # The words of a several-word value the question states are the value's: "the avg. monthly searches for
         # forklift inspection" names the keyword 'forklift inspection', not the Forklift and Inspection tabs,
         # which no key joins (a customer's three keyword tabs, 2026-10-02: no reading at all).
@@ -216,9 +201,9 @@ class SQLSearcher:
         # multiplying the counted rows. A table named so still scores, for the root and its display.
         # A column word that names another table names that table: "TV Channel" is TV_Channel, not
         # TV_series' first word before its Channel column.
-        table_words = {table: {canon(word) for word in _name_words(table)} for table in self.schema.tables}
+        table_words = {table: {canon(word) for word in name_words(table)} for table in self.schema.tables}
         named_tables = {table for table in self.schema.tables
-                        if _names_together(unvalued, [canon(word) for word in _name_words(table)],
+                        if _names_together(unvalued, [canon(word) for word in name_words(table)],
                                            self._column_forms(table).difference(
                                                *(words for other, words in table_words.items() if other != table)))}
         aggregate_choices = self._aggregate_choices(tokens, mentions)
@@ -323,7 +308,7 @@ class SQLSearcher:
                                                     draft.score + group_score + order_score + join_score,
                                                     evidence))
 
-        column_words = {canon(word) for column in self.schema.columns for word in _name_words(column.ref.name)}
+        column_words = {canon(word) for column in self.schema.columns for word in name_words(column.ref.name)}
         if share_requested(tokens, column_words):
             complete.extend(self._share_candidates(complete))
         dedup: dict[str, ScoredQuery] = {}
@@ -356,24 +341,6 @@ class SQLSearcher:
             pool,
             CalculationQueryExpander(self.schema, pool_size, semantic_signals).expand(question, pool),
         )
-        profile_baseline = tuple(pool)
-        profile_requested = bool(
-            profile_config is not None
-            and semantic_signals is not None
-            and semantic_signals.sketch_profiles
-        )
-        if profile_requested:
-            from engine.sql_profile_expansion import ProfileQueryExpander
-
-            generated = ProfileQueryExpander(
-                self.schema,
-                semantic_signals,
-                min(pool_size, max(1, profile_max_candidates)),
-                max(1, profile_per_profile),
-                max(0.0, profile_generation_penalty),
-                max(0.0, profile_binding_quality_weight),
-            ).expand(question, pool)
-            pool = _merge_candidates(pool, generated)
         # The expansions read a conjunction of one column's values as either value or both
         # (engine/sql_constraints.py, engine/sql_recursive.py); the conjunction itself matches no row.
         pool = [candidate for candidate in pool if not contradictory(candidate.query)]
@@ -389,14 +356,6 @@ class SQLSearcher:
         ranked = CandidateRanker(self.schema, semantic_signals).rank(
             question, pool
         )[:self.max_candidates]
-        if profile_requested and profile_preserve_baseline_top and profile_baseline:
-            fallback = CandidateRanker(self.schema).rank(question, profile_baseline)[0]
-            fallback = replace(
-                fallback,
-                evidence=fallback.evidence + ("profile:fallback-top",),
-            )
-            ranked = [fallback] + [candidate for candidate in ranked if candidate.sql != fallback.sql]
-            ranked = ranked[:self.max_candidates]
         return _rows_named(ranked)
 
     def _unasked_copies(self, tokens: tuple[str, ...], question: str) -> frozenset[str]:
@@ -416,7 +375,7 @@ class SQLSearcher:
         left_out: set[str] = set()
         for group in groups:
             named = [table for table in group if table_scores[table] >= 2.5
-                     and _names_together(unvalued, [canon(word) for word in _name_words(table)])]
+                     and _names_together(unvalued, [canon(word) for word in name_words(table)])]
             kept = named or [table for table in group if table in holding][:1] or [group[0]]
             left_out.update(table for table in group if table not in kept)
         return frozenset(left_out)
@@ -535,7 +494,7 @@ class SQLSearcher:
         forms = set()
         for column in self.schema.columns:
             if column.ref.table == table:
-                words = [canon(word) for word in _name_words(column.ref.name)]
+                words = [canon(word) for word in name_words(column.ref.name)]
                 forms.add("".join(words))
                 forms.update(words)
         return frozenset(forms)
@@ -547,13 +506,13 @@ class SQLSearcher:
         template ids"). Spider cre_Doc_Template_Mgt, 2026-10-02: such readings listed the key beside the
         names."""
         return {child for foreign_key in self.schema.foreign_keys for child, parent in foreign_key.column_pairs
-                if set(_column_link_words(child, False)) <= {canon(word) for word in _name_words(parent.table)}}
+                if set(_column_link_words(child, False)) <= {canon(word) for word in name_words(parent.table)}}
 
     def _table_scores(self, tokens: tuple[str, ...]) -> dict[str, float]:
         scores = {}
         token_set = set(tokens)
         for table in self.schema.tables:
-            words = _name_words(table)
+            words = name_words(table)
             coverage = sum(1 for word in words if canon(word) in token_set)
             plural = any(canon(token) == canon(word) for token in tokens for word in words)
             scores[table] = (3.0 if coverage == len(words) and words else 0.0) + (1.0 if plural else 0.0)
@@ -666,13 +625,13 @@ class SQLSearcher:
                 continue
             target_tables = {
                 option.column.table for option in right.options
-                if set(_name_words(option.column.name)) & display_names
+                if set(name_words(option.column.name)) & display_names
             }
             if not target_tables:
                 continue
             qualifier = tokens[left.position]
             if not any(
-                qualifier in {canon(word) for word in _name_words(target)}
+                qualifier in {canon(word) for word in name_words(target)}
                 for target in target_tables
             ):
                 continue
@@ -697,8 +656,8 @@ class SQLSearcher:
                         and any(
                             "number" in _column_link_words(option.column, True)
                             and tokens[i - 1] in {
-                                *(canon(word) for word in _name_words(option.column.table)),
-                                *(canon(word) for word in _name_words(option.column.name)
+                                *(canon(word) for word in name_words(option.column.table)),
+                                *(canon(word) for word in name_words(option.column.name)
                                   if word.lower() != "no"),
                             }
                             for option in mention.options
@@ -762,12 +721,12 @@ class SQLSearcher:
             # many sales", "list the sales"). Otherwise the table's name is its money
             # total ("what's the sales in London"). A participle always asserts the sum.
             table_words = {
-                canon(word) for table in self.schema.tables for word in _name_words(table)
+                canon(word) for table in self.schema.tables for word in name_words(table)
             }
             mention_words = {
                 canon(word)
                 for mention in mentions for option in mention.options
-                for word in _name_words(option.column.name)
+                for word in name_words(option.column.name)
             }
             money_total = money_total_position(tokens, table_words)
             for measure in implicit_sum_measures(tokens):
@@ -827,7 +786,7 @@ class SQLSearcher:
                             # vocabulary when any do.
                             matching = [
                                 option for option in targets
-                                if {canon(word) for word in _name_words(option.column.name)}
+                                if {canon(word) for word in name_words(option.column.name)}
                                 & preferred_words
                             ]
                             targets = matching or targets
@@ -856,7 +815,7 @@ class SQLSearcher:
             return []
         noun = tokens[distinct_at + 1]
         named = [column.ref for column in self.schema.columns
-                 if noun in {canon(word) for word in _name_words(column.ref.name)}]
+                 if noun in {canon(word) for word in name_words(column.ref.name)}]
         return sorted(named, key=lambda column: (column.table, column.name))[:4]
 
     def _counted_entity_identities(
@@ -877,15 +836,15 @@ class SQLSearcher:
         matches = []
         for schema_column in self.schema.columns:
             column = schema_column.ref
-            words = tuple(canon(word) for word in _name_words(column.name))
+            words = tuple(canon(word) for word in name_words(column.name))
             if not words or words[-1] not in {"id", "identifier", "key", "name"}:
                 continue
             role = set(words[:-1])
-            table_role = {canon(word) for word in _name_words(column.table)}
+            table_role = {canon(word) for word in name_words(column.table)}
             if (role and role & subject) or (not role and table_role & subject):
                 matches.append(column)
         return sorted(matches, key=lambda column: (
-            0 if _name_words(column.name)[-1].lower() == "name" else 1,
+            0 if name_words(column.name)[-1].lower() == "name" else 1,
             column.table,
             column.name,
         ))[:4]
@@ -911,7 +870,7 @@ class SQLSearcher:
         the question keeps its current interpretation.
         """
         def carries(column: ColumnRef) -> bool:
-            return bool({canon(word) for word in _name_words(column.name)} & column_words)
+            return bool({canon(word) for word in name_words(column.name)} & column_words)
 
         preferred = [option for option in self._target_columns(mentions, position, numeric=True)
                      if carries(option.column)]
@@ -1058,7 +1017,7 @@ class SQLSearcher:
 
         def named(word: str) -> tuple[ColumnRef, ...]:
             return tuple(column.ref for column in self.schema.columns if column.ref.type == SQLType.TEXT
-                         and canon(_name_words(column.ref.name)[-1]) == word)
+                         and canon(name_words(column.ref.name)[-1]) == word)
 
         if tokens[before] == "name" and before >= 2 and tokens[before - 1] == "whose":
             return named(tokens[before - 2]) or named("name")
@@ -1358,7 +1317,7 @@ class SQLSearcher:
             described = _COMPARATIVE_COLUMNS.get(token, frozenset())
             implied = tuple(column.ref for column in self.schema.columns
                             if column.ref.type.numeric and not is_surrogate_key(column.ref.name)
-                            and described & {canon(word) for word in _name_words(column.ref.name)})
+                            and described & {canon(word) for word in name_words(column.ref.name)})
             targets = [column for column in _unique_columns(implied + tuple(self._numeric_targets(mentions, i)))
                        if not is_surrogate_key(column.name)]
             options = [((Comparison(target, operator, Literal(value, target.type)),), 4.5,
@@ -1372,7 +1331,7 @@ class SQLSearcher:
             if i in used_numbers or not re.fullmatch(r"(?:19|20)\d{2}", token):
                 continue
             year_columns = [c.ref for c in self.schema.columns
-                            if c.ref.type == SQLType.DATE or "year" in _name_words(c.ref.name)]
+                            if c.ref.type == SQLType.DATE or "year" in name_words(c.ref.name)]
             if not year_columns:
                 continue
             options = []
@@ -1401,7 +1360,7 @@ class SQLSearcher:
     def _date_targets(self, mentions: tuple[_Mention, ...], position: int) -> list[ColumnRef]:
         options = [
             option for mention in mentions for option in mention.options
-            if option.column.type == SQLType.DATE or "year" in _name_words(option.column.name)
+            if option.column.type == SQLType.DATE or "year" in name_words(option.column.name)
         ]
         options.sort(key=lambda option: (
             abs(option.position - position), -option.score,
@@ -1412,7 +1371,7 @@ class SQLSearcher:
             return list(refs)
         return [
             column.ref for column in self.schema.columns
-            if column.ref.type == SQLType.DATE or "year" in _name_words(column.ref.name)
+            if column.ref.type == SQLType.DATE or "year" in name_words(column.ref.name)
         ]
 
     def _group_choices(self, tokens: tuple[str, ...], mentions: tuple[_Mention, ...],
@@ -1448,7 +1407,7 @@ class SQLSearcher:
             if tokens[position] in {"each", "per"} or not projection_groups:
                 table_positions = {
                     table: min((i for i, token in enumerate(tokens)
-                                if token in {canon(w) for w in _name_words(table)}), default=len(tokens) + 5)
+                                if token in {canon(w) for w in name_words(table)}), default=len(tokens) + 5)
                     for table in self.schema.tables
                 }
                 for table, score in sorted(table_scores.items(), key=lambda item: (-item[1], item[0])):
@@ -1681,7 +1640,7 @@ def _names_together(tokens: tuple[str, ...], words: list[str], column_forms: fro
 def _says(tokens: tuple[str, ...], column: ColumnRef) -> bool:
     """Whether the question says the column's whole name: its words together ("template id") or its last
     word first ("the ids of the documents")."""
-    words = tuple(canon(word) for word in _name_words(column.name))
+    words = tuple(canon(word) for word in name_words(column.name))
     if any(tokens[start:start + len(words)] == words for start in range(len(tokens) - len(words) + 1)):
         return True
     for start in range(len(tokens) - 1):
@@ -1700,7 +1659,7 @@ def _named_at(tokens: tuple[str, ...], column: ColumnRef) -> int:
     said ("template type codes"); at the last word of its name, or a modifier said just before it ("the
     first and last name"); at another word of its name ("the role" of role_code); at its table's word."""
     end = len(tokens)
-    name = tuple(canon(word) for word in _name_words(column.name))
+    name = tuple(canon(word) for word in name_words(column.name))
     size = len(name)
     said = next((start for start in range(end - size + 1) if tokens[start:start + size] == name), None)
     if said is not None:
@@ -1710,7 +1669,7 @@ def _named_at(tokens: tuple[str, ...], column: ColumnRef) -> int:
         first = next((index for index in range(last - 1, max(-1, last - 5), -1)
                       if size > 1 and tokens[index] == name[0]), None)
         return last if first is None else first
-    for named in (set(name), {canon(word) for word in _name_words(column.table)}):
+    for named in (set(name), {canon(word) for word in name_words(column.table)}):
         found = next((index for index, token in enumerate(tokens) if token in named), None)
         if found is not None:
             return found
@@ -2017,17 +1976,12 @@ def _tokens(question: str) -> tuple[str, ...]:
     return tuple(canon(token) for token in words(question))
 
 
-def _name_words(name: str) -> tuple[str, ...]:
-    spaced = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", str(name))
-    return tuple(word.lower() for word in re.findall(r"[^\W_]+", spaced, re.UNICODE))
-
-
 
 
 def _column_link_words(column: ColumnRef, id_requested: bool) -> tuple[str, ...]:
     words = tuple("number" if word.lower() == "no" else canon(word)
-                  for word in _name_words(column.name))
-    table_words = {canon(word) for word in _name_words(column.table)}
+                  for word in name_words(column.name))
+    table_words = {canon(word) for word in name_words(column.table)}
     meaningful = tuple(
         word for word in words
         if word != "id" and word not in table_words
@@ -2045,11 +1999,11 @@ def _column_link_positions(
 ) -> list[int]:
     positions = [i for i, token in enumerate(tokens) if token in link_words]
     if link_words == ("number",) and "no" in {
-        word.lower() for word in _name_words(column.name)
+        word.lower() for word in name_words(column.name)
     }:
         entity_words = {
             canon(word)
-            for word in _name_words(column.table) + _name_words(column.name)
+            for word in name_words(column.table) + name_words(column.name)
             if word.lower() != "no"
         }
         positions = [
@@ -2065,15 +2019,15 @@ def _column_link_positions(
         return positions
 
     column_entities = {
-        canon(word) for word in _name_words(column.table)
+        canon(word) for word in name_words(column.table)
     } | {
-        canon(word) for word in _name_words(column.name)
+        canon(word) for word in name_words(column.name)
         if canon(word) not in {"name", "id", "identifier", "key"}
     }
     schema_entities = {
         canon(word)
         for schema_column in schema.columns
-        for word in _name_words(schema_column.ref.table) + _name_words(schema_column.ref.name)[:-1]
+        for word in name_words(schema_column.ref.table) + name_words(schema_column.ref.name)[:-1]
         if canon(word) not in {"name", "id", "identifier", "key"}
     }
     # A several-word name the question spells names the column whatever precedes it: "of the avg. monthly
@@ -2102,7 +2056,7 @@ def _column_link_positions(
         if set(link_words) == {"name"}:
             context_tables = {
                 table for table in schema.tables
-                if set(map(canon, _name_words(table))) <= entity_context
+                if set(map(canon, name_words(table))) <= entity_context
             }
             if any(
                 foreign_key.from_column.table in context_tables

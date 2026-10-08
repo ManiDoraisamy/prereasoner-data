@@ -44,7 +44,6 @@ from engine.sql_grounding import double_counted, grounded_members, join_pairs, l
 from engine.sql_rank import FallbackRecord, SemanticSignals, analyze_question
 from regress.sql_import import import_sql, normalize_decoded_sql
 from engine.sql_search import SQLSearcher, SchemaGraph, ScoredQuery
-from engine.sql_profile_expansion import ProfileQueryExpander, ProfileSearchConfig
 from spider.probe.evalutil import run_with_budget
 from engine.tables import TableQuery
 from spider.probe.spider_eval import (
@@ -54,13 +53,6 @@ from spider.probe.spider_eval import (
     spider_foreign_keys,
 )
 from spider.probe.evalutil import _score as score_spider_candidates
-from spider.probe.ast_profile import (
-    CandidateAssessment,
-    SQLProfile,
-    diagnose_pool,
-    profile_query,
-    profile_spider_sql,
-)
 
 
 PEOPLE = {
@@ -4090,135 +4082,6 @@ def test_encoder_role_signal_breaks_ambiguous_column_tie():
     assert any(name == "model_projection" for name, _ in candidates[0].features)
 
 
-def test_profile_beam_expands_missing_projection_binding():
-    schema = SQLSearcher.from_tables([PEOPLE], []).schema
-    age = next(column.ref for column in schema.columns if column.ref.name == "Age")
-    target = SelectQuery((SelectItem(age),), "people")
-    signals = SemanticSignals(
-        {"projection": {("people", "Age"): 1.0, ("people", "Name"): 0.1}},
-        {"people": 1.0},
-        (profile_query(target).sketch_map,),
-    )
-    candidates = SQLSearcher(schema, max_candidates=25).search(
-        "show people details", semantic_signals=signals, expand_recursive=False,
-        expand_constraints=False, expand_extrema=False,
-        profile_config=ProfileSearchConfig(),
-    )
-    assert any(candidate.query == target for candidate in candidates)
-    assert any("profile-expand:1" in candidate.evidence for candidate in candidates)
-
-
-def test_profile_beam_instantiates_grouped_frequency_shape():
-    schema = SQLSearcher.from_tables([PEOPLE], []).schema
-    name = next(column.ref for column in schema.columns if column.ref.name == "Name")
-    desired = SelectQuery(
-        (SelectItem(name), SelectItem(Aggregate("COUNT", Star()))),
-        "people",
-        group_by=(name,),
-        order_by=(OrderTerm(Aggregate("COUNT", Star()), "DESC"),),
-        limit=1,
-    )
-    profile = profile_query(desired).sketch_map
-    signals = SemanticSignals(
-        {
-            "projection": {("people", "Name"): 1.0},
-            "aggregate": {("people", "Age"): 0.8},
-            "group": {("people", "Name"): 1.0},
-            "order": {("people", "Age"): 0.7},
-        },
-        {"people": 1.0},
-        (profile,),
-    )
-    candidates = SQLSearcher(schema, max_candidates=40).search(
-        "show people details", semantic_signals=signals, expand_recursive=False,
-        expand_constraints=False, expand_extrema=False,
-        profile_config=ProfileSearchConfig(),
-    )
-    expanded = [candidate for candidate in candidates if "profile-expand:1" in candidate.evidence]
-    assert expanded
-    assert all(profile_query(candidate.query).sketch_map == profile for candidate in expanded)
-    assert any(candidate.query == desired for candidate in expanded)
-
-
-def test_profile_expansion_caps_variants_and_penalizes_transformation():
-    schema = SQLSearcher.from_tables([PEOPLE], []).schema
-    name = next(column.ref for column in schema.columns if column.ref.name == "Name")
-    age = next(column.ref for column in schema.columns if column.ref.name == "Age")
-    base_query = SelectQuery((SelectItem(name),), "people")
-    scaffold = ScoredQuery(base_query, render_query(base_query), 10.0, ("base",))
-    signals = SemanticSignals(
-        {"projection": {("people", "Age"): 1.0, ("people", "Name"): 0.5}},
-        {"people": 1.0},
-        (profile_query(SelectQuery((SelectItem(age),), "people")).sketch_map,),
-    )
-    expanded = ProfileQueryExpander(
-        schema, signals, max_candidates=2, per_profile=2, generation_penalty=4.0,
-        binding_quality_weight=2.0,
-    ).expand("show people details", [scaffold])
-    assert 0 < len(expanded) <= 2
-    assert all(candidate.score <= scaffold.score - 2.0 for candidate in expanded)
-    assert all("profile_binding_quality" in dict(candidate.features) for candidate in expanded)
-    best_quality = max(dict(candidate.features)["profile_binding_quality"] for candidate in expanded)
-    best_score = max(candidate.score for candidate in expanded)
-    assert best_score == scaffold.score - 4.0 + 2.0 * best_quality
-
-
-def test_profile_expansion_preserves_hand_ranked_fallback_top():
-    searcher = SQLSearcher.from_tables([PEOPLE], [], max_candidates=25)
-    baseline = searcher.search("show people details")
-    age = next(column.ref for column in searcher.schema.columns if column.ref.name == "Age")
-    signals = SemanticSignals(
-        {"projection": {("people", "Age"): 1.0}},
-        {"people": 1.0},
-        (profile_query(SelectQuery((SelectItem(age),), "people")).sketch_map,),
-    )
-    expanded = searcher.search(
-        "show people details", semantic_signals=signals,
-        profile_config=ProfileSearchConfig(),
-    )
-    assert expanded[0].sql == baseline[0].sql
-    assert "profile:fallback-top" in expanded[0].evidence
-
-
-def test_profile_fallback_applies_when_no_compatible_variant_exists():
-    searcher = SQLSearcher.from_tables([PEOPLE], [], max_candidates=25)
-    baseline = searcher.search("show people details")
-    impossible = profile_query(SetQuery(
-        SelectQuery((SelectItem(next(iter(searcher.schema.columns)).ref),), "people"),
-        "UNION",
-        SelectQuery((SelectItem(next(iter(searcher.schema.columns)).ref),), "people"),
-    )).sketch_map
-    signals = SemanticSignals({"projection": {}}, {"people": 1.0}, (impossible,))
-    expanded = searcher.search(
-        "show people details", semantic_signals=signals,
-        profile_config=ProfileSearchConfig(),
-    )
-    assert expanded[0].sql == baseline[0].sql
-    assert "profile:fallback-top" in expanded[0].evidence
-
-
-
-def test_profile_generation_requires_explicit_configuration():
-    searcher = SQLSearcher.from_tables([PEOPLE], [], max_candidates=25)
-    age = next(column.ref for column in searcher.schema.columns if column.ref.name == "Age")
-    signals = SemanticSignals(
-        {"projection": {("people", "Age"): 1.0}},
-        {"people": 1.0},
-        (profile_query(SelectQuery((SelectItem(age),), "people")).sketch_map,),
-    )
-    roles_only = searcher.search("show people details", semantic_signals=signals)
-    expanded = searcher.search(
-        "show people details",
-        semantic_signals=signals,
-        profile_config=ProfileSearchConfig(),
-    )
-    assert not any("profile-expand:" in evidence for candidate in roles_only
-                   for evidence in candidate.evidence)
-    assert any("profile-expand:" in evidence for candidate in expanded
-               for evidence in candidate.evidence)
-
-
-
 def test_soft_prediction_budget_does_not_abandon_work():
     import time
 
@@ -4864,111 +4727,6 @@ def test_spider_evaluator_does_not_count_all_errors_as_answered():
     assert integrated["scalar_correct"] == 0
 
 
-def test_ast_failure_profiles_share_structural_and_schema_vocabulary():
-    metadata = {
-        "table_names_original": ["people"],
-        "column_names_original": [[-1, "*"], [0, "Name"]],
-    }
-    spider_sql = {
-        "select": [False, [[3, [0, [0, 1, False], None]]]],
-        "from": {"table_units": [["table_unit", 0]], "conds": []},
-        "where": [],
-        "groupBy": [],
-        "having": [],
-        "orderBy": [],
-        "limit": None,
-        "intersect": None,
-        "union": None,
-        "except": None,
-    }
-    name = ColumnRef("people", "Name", SQLType.TEXT)
-    query = SelectQuery((SelectItem(Aggregate("COUNT", name)),), "people")
-    gold = profile_spider_sql(spider_sql, metadata)
-    candidate = profile_query(query)
-    assert gold.sketch == candidate.sketch
-    assert gold.tables == candidate.tables == ("people",)
-    assert gold.role_map == candidate.role_map == {
-        "projection": ("people.name",),
-        "aggregate": ("people.name",),
-    }
-
-
-def test_ast_failure_profiles_align_spider_and_typed_joins():
-    metadata = {
-        "table_names_original": ["parent", "child"],
-        "column_names_original": [
-            [-1, "*"], [0, "id"], [1, "parent_id"],
-        ],
-    }
-    spider_sql = {
-        "select": [False, [[0, [0, [0, 1, False], None]]]],
-        "from": {
-            "table_units": [["table_unit", 1], ["table_unit", 0]],
-            "conds": [[
-                False, 2, [0, [0, 2, False], None], [0, 1, False], None,
-            ]],
-        },
-        "where": [],
-        "groupBy": [],
-        "having": [],
-        "orderBy": [],
-        "limit": None,
-        "intersect": None,
-        "union": None,
-        "except": None,
-    }
-    parent_id = ColumnRef("parent", "id", SQLType.INTEGER)
-    child_parent_id = ColumnRef("child", "parent_id", SQLType.INTEGER)
-    query = SelectQuery(
-        (SelectItem(parent_id),),
-        "child",
-        joins=(Join("parent", child_parent_id, parent_id),),
-    )
-    assert profile_spider_sql(spider_sql, metadata) == profile_query(query)
-
-
-def test_ast_failure_diagnosis_separates_recall_and_linking_bottlenecks():
-    gold = SQLProfile.build(
-        {"blocks": 1, "select_items": 2},
-        ["items"],
-        {"projection": ["items.a", "items.b"]},
-    )
-
-    def assessed(rank, profile, *, strict=False, lenient=False):
-        return CandidateAssessment(
-            rank, f"candidate-{rank}", profile, strict=strict, lenient=lenient
-        )
-
-    wrong_sketch = SQLProfile.build(
-        {"blocks": 1, "select_items": 1},
-        ["items"],
-        {"projection": ["items.a"]},
-    )
-    assert diagnose_pool(gold, [assessed(0, wrong_sketch)])["bottleneck"] == "missing_sketch"
-
-    wrong_column = SQLProfile.build(
-        {"blocks": 1, "select_items": 2},
-        ["items"],
-        {"projection": ["items.a", "items.c"]},
-    )
-    diagnosis = diagnose_pool(gold, [assessed(0, wrong_column)])
-    assert diagnosis["bottleneck"] == "missing_column_link"
-    assert diagnosis["missing_role_columns"] == {"projection": ["items.b"]}
-
-    complementary = SQLProfile.build(
-        {"blocks": 1, "select_items": 2},
-        ["items"],
-        {"projection": ["items.b", "items.c"]},
-    )
-    assert diagnose_pool(
-        gold, [assessed(0, wrong_column), assessed(1, complementary)]
-    )["bottleneck"] == "missing_composition"
-
-    exact = assessed(1, gold, strict=True, lenient=True)
-    assert diagnose_pool(gold, [assessed(0, wrong_column), exact])["status"] == "strict_in_pool"
-    assert diagnose_pool(gold, [assessed(0, gold)])["bottleneck"] == "value_or_semantic_mismatch"
-
-
 TESTS = [
     test_shared_ranking_rule_preserves_calculation_then_money_precedence,
     test_pool_oracle_counts_only_eligible_denotation_hits_and_validates_checkpoints,
@@ -5126,12 +4884,6 @@ TESTS = [
     test_literal_measure_column_keeps_raw_interpretation,
     test_search_is_deterministic,
     test_encoder_role_signal_breaks_ambiguous_column_tie,
-    test_profile_beam_expands_missing_projection_binding,
-    test_profile_beam_instantiates_grouped_frequency_shape,
-    test_profile_expansion_caps_variants_and_penalizes_transformation,
-    test_profile_expansion_preserves_hand_ranked_fallback_top,
-    test_profile_fallback_applies_when_no_compatible_variant_exists,
-    test_profile_generation_requires_explicit_configuration,
     test_soft_prediction_budget_does_not_abandon_work,
     test_recursive_ast_scalar_subquery_executes,
     test_recursive_ast_correlated_exists_executes,
@@ -5168,9 +4920,6 @@ TESTS = [
     test_world_target_uses_the_synced_iso_currency_column,
     test_schema_graph_resolves_normalized_foreign_key_names,
     test_spider_evaluator_does_not_count_all_errors_as_answered,
-    test_ast_failure_profiles_share_structural_and_schema_vocabulary,
-    test_ast_failure_profiles_align_spider_and_typed_joins,
-    test_ast_failure_diagnosis_separates_recall_and_linking_bottlenecks,
 ]
 
 

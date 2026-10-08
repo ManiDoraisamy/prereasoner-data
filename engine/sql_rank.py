@@ -10,7 +10,6 @@ Gemini fallback (engine/question_rewrite.py) is recorded as ``FallbackRecord`` w
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-import math
 import re
 from typing import Mapping, Sequence
 
@@ -33,13 +32,12 @@ class SemanticSignals:
 
     column_roles: Mapping[str, Mapping[ColumnKey, float]]
     table_global: Mapping[str, float]
-    sketch_profiles: tuple[Mapping[str, int], ...] = ()
     calculation_intents: Mapping[str, float] = field(default_factory=dict)
     calculation_operands: Mapping[str, Mapping[ColumnKey, float]] = field(default_factory=dict)
 
     @classmethod
     def empty(cls) -> "SemanticSignals":
-        return cls({}, {}, (), {}, {})
+        return cls({}, {}, {}, {})
 
 
 @dataclass(frozen=True)
@@ -129,7 +127,6 @@ class CandidateRanker:
             right = self._semantic_features(query.right, roles)
             return (
                 (f"set_operator:{query.operator.lower()}", 6.0 if aligned else -5.0),
-                *self._sketch_model_features(query),
                 *((f"left:{name}", 0.5 * value) for name, value in left),
                 *((f"right:{name}", 0.5 * value) for name, value in right),
             )
@@ -268,7 +265,7 @@ class CandidateRanker:
         return False
 
     def _model_features(self, query: SelectQuery) -> list[tuple[str, float]]:
-        features = list(self._sketch_model_features(query))
+        features: list[tuple[str, float]] = []
         role_columns: dict[str, list[ColumnRef]] = {
             "projection": [item.expression for item in query.select if isinstance(item.expression, ColumnRef)],
             "aggregate": [item.expression.operand for item in query.select
@@ -295,17 +292,6 @@ class CandidateRanker:
             value = sum(float(self.signals.table_global.get(table, 0.0)) for table in referenced) / len(referenced)
             features.append(("model_tables", 0.75 * value))
         return features
-
-    def _sketch_model_features(self, query: Query) -> tuple[tuple[str, float], ...]:
-        if not self.signals.sketch_profiles:
-            return ()
-        from engine.sql_profile import profile_query
-
-        actual = profile_query(query).sketch_map
-        for rank, expected in enumerate(self.signals.sketch_profiles):
-            if actual == dict(expected):
-                return ((f"model_sketch_profile:{rank + 1}", 4.0 / math.sqrt(rank + 1)),)
-        return ()
 
 
 def analyze_question(question: str, schema: SchemaGraph) -> QuestionRoles:

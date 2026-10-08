@@ -22,7 +22,9 @@ The deployer uses:
 - the Cloud Build Firebase Hosting release for the canonical `web/public` source, which also
   provisions sign-in (see below); and
 - `db.sync.community_seed_import` in a short-lived Cloud Run Job, restoring the versioned
-  `community-seed-v4.dump` artifact and applying the current application migrations/grants.
+  `community-seed-v4.dump` artifact and applying the current application migrations/grants; then one run
+  of the deployment's ECB exchange-rate refresh job, because the seed's rates end a week after it was built
+  and the daily refresh first runs at 16:30 UTC.
 
 ## Sign-in Is Provisioned, Not Delegated
 

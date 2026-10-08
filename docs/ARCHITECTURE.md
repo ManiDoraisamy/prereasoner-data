@@ -294,7 +294,6 @@ The own-data path serves one typed SQL AST chosen from the deterministic search'
 | `engine/sql_constraints.py` | HAVING, disjunction, and relationship constraints |
 | `engine/sql_extrema.py` | Row, aggregate, frequency, and zero-inclusive extrema |
 | `engine/sql_parsimony.py` | Bounded projection/table variants of pooled candidates (minimal join, binding, drop/add column, operand swap, DISTINCT) |
-| `engine/sql_profile_expansion.py` | Typed variants driven by predicted structural profiles |
 | `engine/sql_rank.py` | Search ranking features (`CandidateRanker`), the pool contract (`SEARCH_CANDIDATES`, `execution_op_limit`), and the selection record (`PoolSelection`, `FallbackRecord`) |
 | `engine/sql_grounding.py` | Pool eligibility: text literals that fit their column, and joins the foreign keys allow; which SUM or AVG reads only rows its joins repeat (a selection preference) |
 | `engine/tables.py` | Planner facade (`select_query`), SQL guard, pool and local SQLite execution |
@@ -331,6 +330,14 @@ The own-data path serves one typed SQL AST chosen from the deterministic search'
 4. For a named request, the search's top candidate is read first, before any candidate runs: a
    set operation (a compound question) requests decomposition instead of executing a single query.
    Otherwise one dual-emitter branch serves the request: the best-ranked eligible single query.
+
+A candidate reads a question word (`engine/query_contract.py:read_question`) when the word names a table
+the query reads or a column of one, with names split as the search splits them ("LifeExpectancy" is "life
+expectancy", `engine/sql_schema.name_words`), or spells such a name in two words ("high schoolers"); when it
+is a value the query compares, a spelled number the query keeps ("the two oldest"), an order word in a
+query that orders its rows, or a participle relating the rows to a compared value ("departing from APG")
+that the data holds as no value; or when it is grammar, a counted noun naming the rows counted, or one of
+the closed lists the check keeps. A word that names only some other table's column is unread.
 
 The response's `planner.selection` records the pool counts (`pool_size`, `executable`,
 `misgrounded`, `eligible`), the served member's place among the eligible ones and its search score,

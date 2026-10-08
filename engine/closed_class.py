@@ -141,6 +141,53 @@ def recipient_classes(text):
 
 
 @lru_cache(maxsize=1024)
+def value_participles(text):
+    """The participles ``text`` relates its rows to a value with, each with the words of its prepositional
+    object's own noun phrase: ("departing", ("apg",)) in "flights departing from APG", ("used", ("document",
+    "with", "the", "name", "data", "base")) in "used by a document with the name Data base". A clause attached
+    to the object is not part of it: in "staff working for the museums that were opened before 2009" the object
+    is "the museums". Exclusion cues ("excluding France") are never one."""
+    found = []
+    for token in spacy_model()(text or ""):
+        if token.tag_ not in {"VBN", "VBG"} or EXCLUSION_CUES.fullmatch(token.text):
+            continue
+        for preposition in token.children:
+            if preposition.dep_ not in {"prep", "agent"}:
+                continue
+            for target in preposition.children:
+                if target.dep_ == "pobj":
+                    found.append((token.text.lower(), tuple(part.text.lower() for part in _noun_phrase(target)
+                                                            if not part.is_punct)))
+    return tuple(found)
+
+
+# The attachments that start a clause of their own, or another conjunct, outside the noun phrase they attach to.
+_ATTACHED = frozenset({"relcl", "advcl", "conj", "cc", "punct"})
+
+
+def _noun_phrase(token):
+    """``token`` and its own modifiers, in order: its determiners, adjectives, compounds, appositions,
+    participles and prepositional phrases, not a relative or adverbial clause attached to it."""
+    phrase = []
+    for child in token.lefts:
+        if child.dep_ not in _ATTACHED:
+            phrase.extend(_noun_phrase(child))
+    phrase.append(token)
+    for child in token.rights:
+        if child.dep_ not in _ATTACHED:
+            phrase.extend(_noun_phrase(child))
+    return phrase
+
+
+@lru_cache(maxsize=1024)
+def number_words(text):
+    """The lowercased words the tagger reads as a spelled number somewhere in ``text``: "two" in "the two
+    oldest", never "single" in "single customers"."""
+    return frozenset(token.text.lower() for token in spacy_model()(text or "")
+                     if token.pos_ == "NUM" and token.text.isalpha())
+
+
+@lru_cache(maxsize=1024)
 def closed_class_words(text):
     """The lowercased words the tagger reads as closed-class somewhere in ``text``, except exclusion cues.
 

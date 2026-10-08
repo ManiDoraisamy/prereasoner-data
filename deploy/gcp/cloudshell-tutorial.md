@@ -44,7 +44,8 @@ It shows one cost confirmation, then:
 5. builds and regression-tests immutable engine and chat images in Cloud Build;
 6. applies the Zonal, scale-to-zero Community Terraform profile with chat enabled;
 7. downloads `community-seed-v4.dump`, verifies its pinned SHA-256, restores the public world/reference
-   schemas, and installs least-privilege serving grants;
+   schemas, installs least-privilege serving grants, and fetches today's ECB exchange rates (the seed's
+   rates end a week after it was built, and the daily refresh first runs at 16:30 UTC);
 8. prepares Firebase Hosting and the Firebase Web app, **enables anonymous sign-in, authorizes this
    deployment's Hosting domains**, and publishes web/public through the same Cloud Build release; and
 9. removes the temporary database-bootstrap identity and temporary Firebase setup grant.

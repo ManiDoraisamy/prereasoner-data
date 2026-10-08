@@ -222,24 +222,6 @@ The own-data `/api/knowledge` response keeps its existing SQL and result fields 
 above). A fallback answer also carries the top-level `fallback` record, and its `model` string names
 the Gemini model.
 
-## Deterministic candidate expansion
-
-`SQLSearcher.search` accepts an optional `profile_config` (`ProfileSearchConfig`,
-`engine/sql_profile_expansion.py`) that turns on **deterministic** exact-profile candidate
-expansion — an extra search knob that widens the candidate pool from structural AST profiles
-(`engine/sql_profile.py`). The expansion algorithm is deterministic and may consume profiles
-supplied through semantic signals; every variant still passes AST validation and is ranked by
-the same named features. Serving leaves this optional knob off. It is not tied to any reproducible
-accuracy gain in the current tree — do not attribute a specific pool-recall number to it.
-
-| Setting | Default | Meaning |
-|---|---:|---|
-| `max_candidates` | 32 | Maximum expanded profile candidates. |
-| `per_profile` | 4 | Maximum retained bindings for one profile. |
-| `generation_penalty` | 5.0 | Prior penalty applied to expanded variants. |
-| `binding_quality_weight` | 2.0 | Weight for role-binding quality. |
-| `preserve_baseline_top` | `True` | Keep the hand-ranked winner at the top. |
-
 ## Supported SQL
 
 The AST, validator, renderer, and search rules support:
@@ -361,8 +343,6 @@ SQL statements. Serving also retains its SELECT-only execution guard.
 | `engine/calculations/search.py` | Calculation-plan expansion into validated AST candidates. |
 | `engine/calculations/registry.py` | Shared selection, verification, ranking features, and clarify policy. |
 | `engine/currency_intent.py` | Currency syntax and canonical rate-column rules used by the currency specification. |
-| `engine/sql_profile.py` | Structural AST profiles. |
-| `engine/sql_profile_expansion.py` | Deterministic exact-profile candidate expansion (`ProfileSearchConfig`). |
 | `engine/deterministic/plan.py` | Immutable topologically ordered plan shared by both source emitters. |
 | `engine/deterministic/lower.py` | Strict lowering from the supported typed-AST subset; unsupported shapes remain on SQL. |
 | `engine/deterministic/emitter/` | Deterministic SQL view-stack and readable SQLAlchemy/Python source emitters. |

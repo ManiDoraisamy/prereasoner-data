@@ -2661,3 +2661,51 @@ Pre-computing the encoding and typing waits until the sheet's results can be sha
 - **A starter asks itself.** A starter question only filled the composer, and the user had to press send too. The
   shared component (`lib/sidebar-suggestions.js`) now calls its host's `ask`, in the Sheets sidebar, the Excel task
   pane and the web home page alike. A draft in the composer stays there.
+
+## A question word is read from the tables the query reads (2026-10-08)
+
+From the SQL-accuracy review of 2026-10-08 (W04). A loss ledger of every Spider DEV question showed
+the completeness check refusing 489 questions that had a runnable, grounded candidate, 194 of them right. The check
+(`engine/query_contract.py:read_question`) and the search had read the schema differently.
+
+- **Scope.** Any column of any table counted as read, so an answer over the students' ages was complete for "the
+  average weight of pets", because the pets table has a weight column. A word is now read when it names a table the
+  query reads or a column of one. The tables and the columns the query uses are read in the words the search splits
+  their names into (`engine/sql_schema.name_words`, now the one splitter): "LifeExpectancy" is "life expectancy".
+  The other columns of those tables count only as written, so "official languages" is unread by a count that leaves
+  IsOfficial out.
+- **Families read by the query's structure.** A name spelled in two words ("high schoolers", Highschooler); a spelled
+  number the query keeps ("the two oldest"); order words in a query that orders its rows; a participle whose own noun
+  phrase names a compared value ("flights departing from APG"), unless the data holds the participle as a value
+  ("orders returned by Alice" over a status holding 'Returned'). The object stops at a relative clause: "staff
+  working for the museums that were opened before 2009" is unread over a query averaging the opening year.
+- **Counted nouns.** Across several tables a counted noun reads as the rows counted only when it is a field's name
+  ("how many subscriptions by Status"). "How many people live in Gelderland" was served as a count of cities when
+  any noun counted.
+- **Not done.** Reading graded adjectives ("youngest") when a query orders: simulated on the ledger, 19 right and 27
+  wrong answers. A cue word that is also a column ("average" and a column Average): it needs projection and grouping
+  changes for at most three Spider questions. Grouped answers keep their groups first, though Spider's gold often
+  lists the aggregate first; that is a product choice, not a defect.
+- Measured (`spider/results/RESULTS.md`): engine alone 247 → 315 strict (69 wins, 1 loss), the share of answers that
+  are right 59.7% → 60.1%; with Gemini on 341 → 386 (52 wins, 7 losses, six of them the rewording's run-to-run
+  variance), and 110 fewer rewording calls.
+
+The dormant structural-profile search path was removed in the same change: `engine/sql_profile_expansion.py`,
+`engine/sql_profile.py`, `spider/probe/ast_profile.py`, `SemanticSignals.sketch_profiles` and the search's
+`profile_*` parameters. Serving never passed a profile, so every served query was unchanged (Spider: all 1,034
+examples identical).
+
+## The Community install converts currency on its first day (2026-10-08)
+
+The v0.3.2 launch test (CE-GCP-001, a brand-new project) installed cleanly, and the default question, "total amount in
+France in US dollars", answered "No rows in your data match this question".
+- **Exchange rates.** The seed's ECB rates end a week after it was built (`build_exchange_rate.CARRY_FORWARD_DAYS`),
+  and the deployment's daily refresh first runs at 16:30 UTC. A conversion joins rates on today's date, so every row
+  dropped. Since installs moved to the seed (`5f10512`, 2026-09-15) every fresh install did this until its first
+  refresh; v0.2.23 passed because its seed was a day old. The installer now runs the deployment's one refresh job
+  once after the seed import. Running it by hand on the test install gave 1,084.17 USD.
+- **The reply hid the reason.** An empty total whose calculation is unmet now says which calculation could not be
+  made (`knowledge_query.verify_nonempty`), not that no rows matched.
+- **A new account's first requests.** The master lookup and the conversation sync both insert the account's
+  principal; the second collided on `principal_id`, which `ON CONFLICT (firebase_uid)` does not absorb, and answered
+  500. The insert absorbs a conflict on either key.
