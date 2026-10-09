@@ -2758,3 +2758,29 @@ on the production owners.
   than one, the ranker's travel reading decides (`sql_rank.travel_direction`, `travel_column_role`, now shared):
   "departing" is read only over the source column or the join on it. A participle with no such reading ("orders
   shipped to Paris" over billing and shipping cities) stays unread, and the question is refused or reworded.
+
+## A named measure that is no number is refused on every route (2026-10-09)
+
+The planted-text test, repeated in the browser on the owner's account, failed where the local runs had passed. With
+order 101's amount "118 (accounting says 11800)", "total amount in France in US dollars" answered 223.47 and "which
+city has the highest total amount in US dollars" Toledo. The account holds a saved reference `ordered` with a numeric
+`estimated amount`; the world path's measure reading (`read_op_all`) took it when the uploaded `amount` was text, and
+summed it unconverted (the reference has no currency column, so USD read as its unit). The own-data search did the
+same for "which city has the highest total amount", keeping `amount` as a grouping column beside a total of the
+estimated amounts, which the requested-total check passed as a ranked grouping. Without a reference the world path
+counted the rows: "total amount in France" was 5.
+- **One rule.** `query_contract.unreadable_operand` names the column a total or average names most fully
+  (`sql_rank.aggregate_operand` over every column, longest names first, so "the total estimated amount" still totals
+  `estimated amount`) when every column of that name is text and one holds a cell that is no number. The planner's
+  `constraint_violations` rejects every candidate for such a question, `KnowledgeQuery.serve` refuses before either
+  world route reads a measure, and the currency check calls the rule instead of its own copy, so an average says
+  "averaged".
+- **Not stricter than before.** The rule fires only where no route can total the named column, so the refusal
+  replaces a row count or another column's total, never an answer from that column. Compose keeps its rule over
+  the rows the question keeps; the planner and the world routes read the whole column, as the currency check did.
+- **The reply.** The refusal sentence and its matcher moved to `engine/answer_presentation.py`, which the chat image
+  ships, and a refusal naming cells no longer ends "Which interpretation should I use?". One unmatched row "was"
+  excluded ("1 of 23 source rows ... were excluded" before).
+- Spider DEV whole_db is unchanged: 314 strict / 380 lenient / 523 answered, every served SQL and refusal reason
+  identical (`spider/results/RESULTS.md`). The live world suite checks the four browser questions and three
+  without a currency, beside a saved reference and alone (`tests/test_world.py`, P).

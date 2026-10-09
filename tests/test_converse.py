@@ -52,6 +52,10 @@ def test_reply_presents_the_computed_answer_without_external_processing():
         assert terminal_reply({'status': 'clarify', 'clarify': {'reason': reason}}) == reason + '. Which interpretation should I use?'
         assert terminal_reply({'status': 'clarify', 'clarify': {'reason': reason + '.'}}) == reason + '. Which interpretation should I use?'
         assert terminal_reply({'status': 'clarify', 'clarify': {'reason': 'Which Amount column should I use?'}}) == 'Which Amount column should I use?'
+        # A refusal naming cells that are not numbers asks nothing: it ended "Which interpretation should I use?"
+        # with nothing to choose (the planted-text test in the browser, 2026-10-09).
+        unreadable = "The amount column has a value that isn't a number ('118 (accounting says 11800)'), so it can't be totaled."
+        assert terminal_reply({'status': 'clarify', 'clarify': {'reason': unreadable}}) == unreadable
         rows = [['Ava', 'Travel'], ['Cleo', None]]
         assert terminal_reply({'status': 'answered', 'answer': {'columns': ['customer', 'category'], 'rows': rows}}) == '- customer: Ava; category: Travel\n- customer: Cleo; category: Not recorded'
         # A long answer lists its first rows and how many there are: the Sheets sidebar has no workbook, and

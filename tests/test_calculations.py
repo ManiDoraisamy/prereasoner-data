@@ -1277,6 +1277,11 @@ def test_an_amount_that_is_no_number_is_the_reason_a_conversion_fails():
     reply = calculation_clarify(question, {"sql": candidate.sql if candidate else None}, (assessment,))["reason"]
     ok(reply == "The amount column has a value that isn't a number ('118 (accounting says 11800)'), so it can't "
                 "be totaled.", f"the unreadable amount is the reason: {reply}")
+    # An average says so (2026-10-09: the currency check named every refusal a total).
+    question = "convert the average order amount to US dollars"
+    candidate, assessment = _assessment(question, (bad, USD_RATES))
+    reply = calculation_clarify(question, {"sql": candidate.sql if candidate else None}, (assessment,))["reason"]
+    ok(reply.endswith("so it can't be averaged."), f"an average is not called a total: {reply}")
     # Contrast: a sheet that really has no currency still says so.
     no_currency = {"name": "orders", "columns": ["region", "amount"], "rows": [["EU", 310], ["UK", 118], ["US", 95]]}
     candidate, assessment = _assessment(question, (no_currency, USD_RATES), ())

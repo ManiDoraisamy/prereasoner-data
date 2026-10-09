@@ -765,7 +765,7 @@ def test_a_counted_noun_reads_as_the_rows_counted_only_when_it_names_a_field():
 def test_a_named_amount_with_a_cell_that_is_no_number_is_refused_naming_the_cell():
     """Planted-text test (2026-10-08): with one amount "118 (accounting says 11800)" the amount column is text. The
     own-data planner already refused to total another field; the refusal now names the cell, in the words compose and
-    the currency check use (query_contract.unreadable_measure_reason)."""
+    the currency check use (answer_presentation.unreadable_measure_reason)."""
     from engine.tables import csv_table
     orders = csv_table("id,currency,amount\n101,GBP,118 (accounting says 11800)\n102,GBP,95\n103,GBP,72", "orders")
     served = _hermetic_planner().serve([orders], "total amount of GBP orders")
@@ -789,6 +789,52 @@ def test_a_named_amount_with_a_cell_that_is_no_number_is_refused_naming_the_cell
     asked = ("Which professionals have operated a treatment that costs less than the average? "
              "Give me their first names and last names.")
     assert aggregate_operand(asked, ["first_name", "last_name"], "AVG") is None
+
+
+def test_a_named_amount_that_is_no_number_is_never_replaced_by_a_saved_reference_column():
+    """The planted-text test in the browser (2026-10-09): beside the owner's saved reference `ordered`, whose
+    `estimated amount` is numeric, a malformed amount made "which city has the highest total amount" rank the cities by
+    the reference's estimated amounts. The amount the question names cannot be totaled; nothing stands in for it."""
+    from engine.tables import csv_table, table_from_rows
+
+    def orders(amount_of_101):
+        return csv_table("id,city,ordered,currency,amount\n"
+                         f"101,London,Pipe,GBP,{amount_of_101}\n102,London,Cap,GBP,95\n103,Paris,Hat,EUR,180\n"
+                         "104,Cleveland,Van,USD,3400\n105,Cleveland,Snacks,USD,35", "orders")
+
+    ordered = table_from_rows("ordered", ["ordered", "category", "estimated amount"],
+                              [["Pipe", "Accessory", 18.5], ["Cap", "Apparel", 29.99], ["Hat", "Apparel", 32],
+                               ["Van", "Vehicle", 15000], ["Snacks", "Snack", 5.99]])
+    bad = orders("118 (accounting says 11800)")
+    reason = "The amount column has a value that isn't a number ('118 (accounting says 11800)'), so it can't be totaled."
+    for question in ("which city has the highest total amount?", "total amount by city", "total amount"):
+        served = _hermetic_planner().serve([dict(bad), dict(ordered)], question)
+        assert served["valid"] is False and served.get("result") is None, (question, served.get("sql"))
+        assert served["error"] == reason, (question, served["error"])
+    # The reading the live search served: the amount kept as a grouping column beside a total of the estimated
+    # amounts, which the requested-total check passed as a ranked grouping. Selection may not serve it.
+    planner, tables = _hermetic_planner(), [dict(bad), dict(ordered)]
+    swapped = _model_query(planner, 'SELECT "orders"."city", "orders"."amount", SUM("ordered"."estimated amount") '
+                                    'FROM "orders" JOIN "ordered" ON "ordered"."ordered" = "orders"."ordered" '
+                                    'GROUP BY "orders"."city", "orders"."amount" '
+                                    'ORDER BY SUM("ordered"."estimated amount") DESC LIMIT 1', tables)
+    _, fks, sch, _ = _request(planner, tables)
+    question = "which city has the highest total amount?"
+    assert reason in constraint_violations(question, swapped.query, SchemaGraph.from_planner(sch, fks))
+    assert _select(planner, question, tables, searched=[swapped]).candidate is None
+    # Contrast: a clean amount is totaled beside the same reference.
+    clean = _hermetic_planner().serve([orders("118"), dict(ordered)], "which city has the highest total amount?")
+    assert clean["result"]["rows"][0][0] == "Cleveland", clean["result"]
+    # Negative: a count asks no amount, and a question naming the reference's column more fully asks for that column.
+    assert _hermetic_planner().serve([dict(bad), dict(ordered)], "how many orders")["result"]["rows"] == [[5]]
+    estimated = _hermetic_planner().serve([dict(bad), dict(ordered)], "which city has the highest total estimated amount?")
+    assert estimated["result"]["rows"][0][0] == "Cleveland" and "estimated amount" in estimated["sql"], estimated
+    from engine.query_contract import unreadable_operand
+    graph = SchemaGraph.from_tables([bad, ordered], ())
+    assert unreadable_operand("total amount by city", graph) == ("amount", ["118 (accounting says 11800)"], "SUM")
+    assert unreadable_operand("the average amount", graph)[2] == "AVG"
+    assert unreadable_operand("total estimated amount by city", graph) is None
+    assert unreadable_operand("how many orders", graph) is None
 
 
 PEOPLE_TABLE = {"name": "people", "columns": ["Person_ID", "Name", "Country", "Age"],

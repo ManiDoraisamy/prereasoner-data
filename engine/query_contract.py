@@ -9,6 +9,7 @@ from dataclasses import dataclass
 import re
 import weakref
 
+from engine.answer_presentation import is_unreadable_measure_reason, unreadable_measure_reason
 from engine.numeric import NUMBER_WORD
 
 
@@ -61,41 +62,56 @@ def unreadable_cells(values):
     return bad or None
 
 
-def unreadable_measure_reason(column, cells, function="SUM"):
-    """The reply when the measure a question names has cells that are not numbers (``unreadable_cells``, one entry
-    per cell). Compose, the named-field check below and the currency check all say it in these words: how many cells,
-    and the first distinct ones."""
-    distinct = list(dict.fromkeys(cells))
-    shown = ", ".join(repr(cell) for cell in distinct[:3]) + (f" and {len(distinct) - 3} more"
-                                                              if len(distinct) > 3 else "")
-    held = "a value that isn't a number" if len(cells) == 1 else f"{len(cells)} values that aren't numbers"
-    done = "averaged" if function == "AVG" else "totaled"
-    return f"The {column} column has {held} ({shown}), so it can't be {done}."
+_UNREADABLE_OPERANDS = weakref.WeakKeyDictionary()
+
+
+def unreadable_operand(question, graph):
+    """The column a total or average names whose cells are not all numbers, as ``(name, cells, function)``, or None.
+    The operand is the most fully named column ending the aggregate phrase (sql_rank.aggregate_operand): "the total
+    estimated amount" totals a numeric `estimated amount` beside an `amount` holding a malformed cell. It is reported
+    only when every column of that name is text and one holds a cell that is no number, so no route can total it, and
+    none may total another column or count the rows in its place: beside a saved reference "total amount in France in
+    US dollars" totaled the reference's `estimated amount`, and without one the world path counted the orders (the
+    planted-text test in the browser, 2026-10-09). Read once per question and graph: the planner asks it of every
+    candidate."""
+    memo = _UNREADABLE_OPERANDS.setdefault(graph, {})
+    if question in memo:
+        return memo[question]
+    from engine.sql_rank import aggregate_operand
+
+    columns = {}
+    for column in graph.columns:
+        columns.setdefault(column.ref.name, []).append(column)
+    names = sorted(columns, key=lambda name: (-len(_name_vocabulary([name])), name))
+    found = None
+    for function in ("SUM", "AVG"):
+        operand = aggregate_operand(question, names, function)
+        if operand is None or any(column.ref.type.numeric for column in columns[operand]):
+            continue
+        cells = next(filter(None, (unreadable_cells(column.values) for column in columns[operand])), None)
+        if cells:
+            found = (operand, cells, function)
+            break
+    memo[question] = found
+    return found
 
 
 def unreadable_measure_violation(question, graph):
-    """The refusal for a question that totals or averages a column it names whose cells are not all numbers
-    (``unreadable_cells``), or None. A sheet whose only amounts are text has no query to total them at all, and the
-    reply said "no valid AST candidate" (planted-text test, 2026-10-08)."""
-    from engine.sql_rank import aggregate_operand
-
-    text_columns = {column.ref.name: column for column in graph.columns if not column.ref.type.numeric}
-    for function in ("SUM", "AVG"):
-        operand = aggregate_operand(question, sorted(text_columns), function)
-        cells = unreadable_cells(text_columns[operand].values) if operand else None
-        if cells:
-            return unreadable_measure_reason(operand, cells, function)
-    return None
+    """The refusal for ``unreadable_operand``, or None. A sheet whose only amounts are text has no query to total them
+    at all, and the reply said "no valid AST candidate" (planted-text test, 2026-10-08)."""
+    found = unreadable_operand(question, graph)
+    return unreadable_measure_reason(*found) if found else None
 
 
-_UNREADABLE_MEASURE = re.compile(r"The .+ column has .+, so it can't be (?:totaled|averaged)\.")
+# The model label of a reply refusing ``unreadable_operand``, on the composed and world routes alike.
+UNREADABLE_MEASURE_MODEL = "engine - clarify (the named measure is not numeric)"
 
 
 def explains_refusal(violation):
     """Whether a ``constraint_violations`` entry is written for the user, so a refusal can be its reply: a repeated
     field to choose, a field that cannot be computed, or a measure with cells that are not numbers."""
     return (violation.startswith(("Which repeated field", "The field ", "The requested total for "))
-            or bool(_UNREADABLE_MEASURE.fullmatch(violation)))
+            or is_unreadable_measure_reason(violation))
 
 
 @dataclass(frozen=True)
@@ -258,6 +274,12 @@ def constraint_violations(question, query, graph):
         if aggregate.function in {"SUM", "AVG"} and not expression_type(aggregate.operand).numeric:
             field = getattr(aggregate.operand, "name", "selected measure")
             violations.append(f"The field {field!r} contains nonnumeric or ambiguous values and cannot be totaled")
+    # Nor does a query answer a total of a named column that cannot be totaled by totaling another column or counting
+    # the rows: beside a saved reference, "which city has the highest total amount" ranked the reference's estimated
+    # amounts (unreadable_operand).
+    unreadable = unreadable_measure_violation(question, graph)
+    if unreadable:
+        violations.append(unreadable)
     question_tokens = tokens(question)
     phrases = served_date_phrases(question, question_tokens, graph)
     violations.extend(relational_operator_evidence(question, query, graph)[1])

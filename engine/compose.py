@@ -28,7 +28,8 @@ from engine.primitives import (q, filter_view, group_agg_view, yoy_view, topn_vi
 from engine.closed_class import EXCLUSION_CUES, counted_rows, measured_rows
 from engine.joins import discover_fks, join_plan
 from engine.numeric import GROUPED_DIGITS, parse_decimal, register_sqlite_decimal, sqlite_numeric, wire_decimal
-from engine.query_contract import unreadable_cells, unreadable_measure_reason
+from engine.answer_presentation import unreadable_measure_reason
+from engine.query_contract import unreadable_cells
 from engine.sql_rank import aggregate_operand
 from engine.sql_schema import is_surrogate_key
 

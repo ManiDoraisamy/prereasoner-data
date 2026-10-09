@@ -49,8 +49,9 @@ from engine.currency_intent import (
 from engine.calculations import calculation_clarify
 from engine.numeric import parse_decimal
 from engine.sql_expansion import SHARE_WORDS
-from engine.sql_schema import canon, is_surrogate_key
-from engine.query_contract import QUANTITY_WORDS, Coverage, lexical_words
+from engine.sql_schema import SchemaGraph, canon, is_surrogate_key
+from engine.query_contract import (QUANTITY_WORDS, UNREADABLE_MEASURE_MODEL, Coverage, lexical_words,
+                                   unreadable_measure_violation)
 from engine import request_timing
 
 # The order a non-geo entity lookup breaks a tie in: the name's primary entity, then the lowest numeric QID.
@@ -1029,6 +1030,14 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         operator via read_op_all). Any hybrid error falls back to EntityQuery so the world path never hard-fails."""
         norm, fks = self.ingest(tables, explicit_fks=explicit_fks)
         sch, _, _ = self.schema(norm, fks)
+        # A total or average of a column the question names whose cells are not all numbers is refused naming the
+        # cells, as the own-data planner refuses it (query_contract.unreadable_operand). Both world routes read their
+        # measure with read_op_all, which counted the rows when the named column was text ("total amount in France"
+        # was 5 orders) and totaled a saved reference's `estimated amount` beside it (2026-10-09).
+        unreadable = unreadable_measure_violation(question, SchemaGraph.from_planner(sch, fks))
+        if unreadable:
+            return {"question": question, "as_of": as_of, "clarify": True, "reason": unreadable,
+                    "result": None, "error": None, "model": UNREADABLE_MEASURE_MODEL}
         is_agg = self.read_op_all(question, sch) is not None
         if is_agg and schema:                                         # NON-GEO world join over synchronized facts
             ngp = None

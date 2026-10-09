@@ -4,6 +4,28 @@ Dated entries come newest first. Each records a run at the commit it names; the 
 entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection arbiter`) may since have
 been removed, and that commit holds the code that ran.
 
+## A named measure that is no number is refused on every route: 314 strict, unchanged (2026-10-09)
+
+Same contract as `release-0733eef` (Gemini off, `whole_db`, `served` selection, SQL backend, row cap 5,000), tag
+`unreadable-f495890-dirty`: source `f495890` (`0733eef` plus this file) with the change of `DECISIONS.md` "A named
+measure that is no number is refused on every route" in the worktree. The rule (`query_contract.unreadable_operand`)
+rejects the planner's candidates for a total or average whose most fully named column is text with a cell that is no
+number. The run predates only moving the refusal sentence to `engine/answer_presentation.py` and the reply's wording;
+selection is the same code.
+
+| | `release-0733eef` | **`unreadable-f495890-dirty`** |
+|---|---:|---:|
+| Strict | 314 (30.4%) | **314 (30.4%)** |
+| Lenient | 380 | **380** |
+| Answered | 523 | **523** |
+| Strict: easy / medium / hard / extra | 128 / 139 / 29 / 18 | 128 / 139 / 29 / 18 |
+| Prediction seconds, median / p90 | 1.13 / 2.37 | 1.03 / 2.31 |
+
+- 0 wins, 0 losses; all 1,034 served SQL and all 511 refusal reasons identical. No DEV question names a text
+  column with a cell that is no number, so the rule never fires: it is a correctness hardening, not an accuracy gain.
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_unreadable-f495890-dirty.json`.
+
 ## The review's F1-F5 fixed, released as `0733eef`: 314 strict (2026-10-08)
 
 Same contract as `planted-8b8a7ee-dirty` (Gemini off, `whole_db`, `served` selection, SQL backend, row cap 5,000),

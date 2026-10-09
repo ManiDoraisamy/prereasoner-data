@@ -40,6 +40,27 @@ def error_reply(shaped: dict[str, Any]) -> str:
     return error
 
 
+def unreadable_measure_reason(column, cells, function="SUM"):
+    """The reply when the measure a question names has cells that are not numbers (one entry per cell, as
+    engine/query_contract.unreadable_cells lists them). Compose, the planner, the world routes and the currency check
+    all say it in these words: how many cells, and the first distinct ones."""
+    distinct = list(dict.fromkeys(cells))
+    shown = ", ".join(repr(cell) for cell in distinct[:3]) + (f" and {len(distinct) - 3} more"
+                                                              if len(distinct) > 3 else "")
+    held = "a value that isn't a number" if len(cells) == 1 else f"{len(cells)} values that aren't numbers"
+    done = "averaged" if function == "AVG" else "totaled"
+    return f"The {column} column has {held} ({shown}), so it can't be {done}."
+
+
+_UNREADABLE_MEASURE = re.compile(r"The .+ column has .+, so it can't be (?:totaled|averaged)\.")
+
+
+def is_unreadable_measure_reason(text):
+    """Whether ``text`` is ``unreadable_measure_reason``'s sentence. It says why there is no answer and asks nothing,
+    so the reply asks no interpretation after it (``clarify_reply``)."""
+    return bool(_UNREADABLE_MEASURE.fullmatch(str(text or "").strip()))
+
+
 def unread_words_reply(words, options=()) -> str:
     """A reply naming question words no reading of the sheets reads, and the columns they could mean."""
     quoted = " and ".join(f"“{word}”" for word in words)
@@ -53,7 +74,9 @@ def unread_words_reply(words, options=()) -> str:
 def clarify_reply(clarify: dict[str, Any]) -> str:
     """The engine's clarification, with the question it proposes quoted as one the user can send. One without a
     reason or a proposal names the words it could not read: "Which interpretation should I use?" with nothing
-    to choose from was the whole reply to "keyword volume for home inspection checklist" (2026-10-05)."""
+    to choose from was the whole reply to "keyword volume for home inspection checklist" (2026-10-05). A refusal
+    naming cells that are not numbers says why there is no answer and asks nothing: it ended "so it can't be
+    totaled. Which interpretation should I use?" (the planted-text test in the browser, 2026-10-09)."""
     proposed = str(clarify.get("proposed") or "").strip()
     dropped = [str(word).strip() for word in clarify.get("dropped") or () if str(word).strip()]
     if not clarify.get("reason") and not proposed and dropped:
@@ -62,7 +85,8 @@ def clarify_reply(clarify: dict[str, Any]) -> str:
     if proposed:
         sentence = reason if reason[-1:] in ".?!" else reason + "."
         return f"{sentence} Try asking: “{proposed}”"
-    if "?" not in reason and not re.search(r"\b(?:choose|select|try asking)\b", reason, re.I):
+    if ("?" not in reason and not re.search(r"\b(?:choose|select|try asking)\b", reason, re.I)
+            and not is_unreadable_measure_reason(reason)):
         reason = (reason if reason[-1:] in ".!" else reason + ".") + " Which interpretation should I use?"
     return reason
 
@@ -95,10 +119,10 @@ def terminal_reply(shaped: dict[str, Any]) -> str:
     unmatched = shaped.get("unmatched") or {}
     if unmatched.get("rows"):
         # The names say which rows: "1 of 23 source rows could not be matched (Brussels (a city in Germany)) and
-        # were excluded" (planted-text test, 2026-10-08).
+        # was excluded" (planted-text test, 2026-10-08; one row "were excluded" until 2026-10-09).
         named = f" ({unmatched_names(unmatched)})" if unmatched.get("names") else ""
         notes.append(f"{unmatched['rows']} of {unmatched.get('of', '?')} source rows could not be matched{named} "
-                     "and were excluded.")
+                     f"and {'was' if unmatched['rows'] == 1 else 'were'} excluded.")
     copies = shaped.get("layout_copies") or {}
     if isinstance(copies, dict) and copies.get("read") and copies.get("others"):
         # One of several tables that could answer did: say which, so the answer is not taken for all of

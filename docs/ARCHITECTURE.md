@@ -342,9 +342,12 @@ the participle as no value and the value has one relationship to the rows, or, w
 an arrival airport), when the column relating it carries the participle's travel direction
 (`engine/sql_rank.travel_direction`); or when it is grammar, a counted noun naming the rows counted, or one of the closed lists
 the check keeps. A word that names only some other table's column is unread. The column an aggregate phrase
-names ("the total amount") is its operand (`engine/sql_rank.aggregate_operand`); when its cells are not all
-numbers the question is refused naming them, by compose, the planner and the currency check alike, and
-`engine/routing.route` makes compose's refusal the answer in serving and the Spider evaluator.
+names most fully ("the total amount", "the total estimated amount") is its operand
+(`engine/sql_rank.aggregate_operand`); when it is text and its cells are not all numbers the question is
+refused naming them (`engine/query_contract.unreadable_operand`), by compose, the planner, both world routes
+(`KnowledgeQuery.serve`) and the currency check alike, and no other column, a saved reference's included,
+nor a row count stands in for it. `engine/routing.route` makes compose's refusal the answer in serving and
+the Spider evaluator.
 
 The response's `planner.selection` records the pool counts (`pool_size`, `executable`,
 `misgrounded`, `eligible`), the served member's place among the eligible ones and its search score,

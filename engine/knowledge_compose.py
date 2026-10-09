@@ -38,6 +38,7 @@ from engine.routing import (
     route,
 )
 from engine.numeric import parse_decimal
+from engine.query_contract import UNREADABLE_MEASURE_MODEL
 
 
 _TRACE_VIEW_FIELDS = (
@@ -428,7 +429,7 @@ class ComposedKnowledgeQuery:
             return {"question": question, "as_of": as_of, "clarify": True, "reason": res["reason"],
                     "result": None, "error": None, "unmatched": res.get("unmatched"),
                     "model": ("engine - clarify (most names matched no knowledgebase entity)" if res.get("unmatched")
-                              else "engine - clarify (the named measure is not numeric)")}
+                              else UNREADABLE_MEASURE_MODEL)}
         from engine.deterministic.context import current_analysis_context, current_execution_record
         context = current_analysis_context()
         # route() alone decides ownership, here as in the Spider evaluator. A local composition (top-N, sort,

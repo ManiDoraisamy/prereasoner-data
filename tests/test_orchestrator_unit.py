@@ -1692,8 +1692,13 @@ def test_rows_whose_entity_matched_nothing_reach_the_reply():
     # The reply states the total and the count; the grounding check keeps prose that states the value.
     assert orchestrator._grounded_presentation(
         partial, "Your US hospitals total 46 transfers; 1 of the 5 rows names a hospital I couldn't match.",
-    )== "46\n\n1 of 5 source rows could not be matched (Xqzv Kpltr) and were excluded."
+    )== "46\n\n1 of 5 source rows could not be matched (Xqzv Kpltr) and was excluded."
     assert "excluded" not in orchestrator._terminal_fallback(whole)
+    # One row "was" excluded, two "were" ("1 ... and were excluded" until 2026-10-09).
+    two = shape_reason_response({"result": {"columns": ["sum"], "rows": [[46]]},
+                                 "unmatched": {**unmatched, "rows": 2, "names": ["Xqzv Kpltr", "Qq"]}}, "job")
+    assert orchestrator._terminal_fallback(two).endswith("2 of 5 source rows could not be matched (Xqzv Kpltr, Qq) "
+                                                         "and were excluded."), orchestrator._terminal_fallback(two)
 
 
 def test_intent_context_has_schema_and_questions_but_no_values_or_assistant_answers():

@@ -424,6 +424,32 @@ def main():
     ok("text amount: mostly malformed amounts are refused too, never another column's total",
        response.get("clarify") and str(response.get("reason") or "").startswith("The amount column has ")
        and not rows_of(response), f"reason={response.get('reason')} rows={rows_of(response)}")
+    # The planted-text test in the browser (2026-10-09): beside the owner's saved reference `ordered` (a numeric
+    # `estimated amount` per item) the malformed amount made France 223.47 (the estimated amounts, unconverted) and
+    # Toledo the top city; without one, "total amount in France" counted the orders (5). The reference arrives as one
+    # more table, as engine/master.relevant_tables adds it.
+    from engine.tables import table_from_rows
+    items = sorted({row[rows[0].index("ordered")] for row in rows[1:]})
+    ordered = table_from_rows("ordered", ["ordered", "category", "estimated amount"],
+                              [[item, "Gear", 10 + index + 0.5] for index, item in enumerate(items)])
+    averaged = unreadable.replace("totaled", "averaged")
+    for question in ("total amount in France in US dollars", "total amount in Belgium in USD",
+                     "which city has the highest total amount in US dollars?", gbp, "total amount in France",
+                     "total amount in Europe", "average amount in France"):
+        expected = averaged if question.startswith("average") else unreadable
+        for label, tables in (("beside a saved reference", [bad, ordered]), ("alone", [bad])):
+            response = served(sub, wr.serve, tables, question, sub)
+            ok(f"text amount {label}: {question!r} is refused naming the cell",
+               response.get("clarify") and response.get("reason") == expected and not rows_of(response),
+               f"reason={response.get('reason')} rows={rows_of(response)} sql={response.get('sql')}")
+    # Contrast: a clean amount beside the reference answers as it does alone. Negative: a count asks no amount.
+    for question in ("total amount in France in US dollars", "total amount in France"):
+        alone = first(served(sub, wr.serve, [edited()], question, sub))
+        beside = first(served(sub, wr.serve, [edited(), ordered], question, sub))
+        ok(f"saved reference: {question!r} is the same total beside it",
+           alone is not None and beside is not None and float(alone) == float(beside), f"alone={alone} beside={beside}")
+    count = first(served(sub, wr.serve, [bad, ordered], "how many orders in GBP", sub))
+    ok("text amount beside a saved reference: a count of the GBP orders is still 5", str(count) == "5", f"count={count}")
 
     print(f"\n{P}/{P+F} passed" + ("" if not F else f"  ({F} FAILED)"))
     sys.exit(1 if F else 0)
