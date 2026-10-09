@@ -2771,13 +2771,17 @@ estimated amounts, which the requested-total check passed as a ranked grouping. 
 counted the rows: "total amount in France" was 5.
 - **One rule.** `query_contract.unreadable_operand` names the column a total or average names most fully
   (`sql_rank.aggregate_operand` over every column, longest names first, so "the total estimated amount" still totals
-  `estimated amount`) when every column of that name is text and one holds a cell that is no number. The planner's
+  `estimated amount`) when every column of that name is text and holds numbers and a cell that is no number. A
+  column with no number at all (dates, a Yes/No status) is no measure: the release's dataset gate refused "total
+  transfers signed in August" for the dates of `signed`, its participle read as the operand. The planner's
   `constraint_violations` rejects every candidate for such a question, `KnowledgeQuery.serve` refuses before either
   world route reads a measure, and the currency check calls the rule instead of its own copy, so an average says
   "averaged".
 - **Not stricter than before.** The rule fires only where no route can total the named column, so the refusal
   replaces a row count or another column's total, never an answer from that column. Compose keeps its rule over
   the rows the question keeps; the planner and the world routes read the whole column, as the currency check did.
+  An amount column with no number left in it is no longer refused by name on those routes (compose still refuses
+  it); the price of reading no participle's dates or statuses as a malformed measure.
 - **The reply.** The refusal sentence and its matcher moved to `engine/answer_presentation.py`, which the chat image
   ships, and a refusal naming cells no longer ends "Which interpretation should I use?". One unmatched row "was"
   excluded ("1 of 23 source rows ... were excluded" before).

@@ -835,6 +835,14 @@ def test_a_named_amount_that_is_no_number_is_never_replaced_by_a_saved_reference
     assert unreadable_operand("the average amount", graph)[2] == "AVG"
     assert unreadable_operand("total estimated amount by city", graph) is None
     assert unreadable_operand("how many orders", graph) is None
+    # A column with no number at all is no measure: the release's dataset gate (2026-10-09) refused "total transfers
+    # signed in August" for the dates of `signed`, read as the operand after the participle; a Yes/No `paid` alike.
+    transfers = csv_table("hospital,signed,paid,transfers\nMayo Clinic,2026-08-04,Yes,14\n"
+                          "Toronto General,2026-08-06,No,8\nMount Sinai,2026-07-30,Yes,9", "transfers")
+    sheet = SchemaGraph.from_tables([transfers], ())
+    assert unreadable_operand("total transfers signed in August", sheet) is None
+    assert unreadable_operand("total transfers paid", sheet) is None
+    assert unreadable_operand("total amount", SchemaGraph.from_tables([orders("n/a")], ()))[1] == ["n/a"]
 
 
 PEOPLE_TABLE = {"name": "people", "columns": ["Person_ID", "Name", "Country", "Age"],

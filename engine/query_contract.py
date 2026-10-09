@@ -72,8 +72,10 @@ def unreadable_operand(question, graph):
     only when every column of that name is text and one holds a cell that is no number, so no route can total it, and
     none may total another column or count the rows in its place: beside a saved reference "total amount in France in
     US dollars" totaled the reference's `estimated amount`, and without one the world path counted the orders (the
-    planted-text test in the browser, 2026-10-09). Read once per question and graph: the planner asks it of every
-    candidate."""
+    planted-text test in the browser, 2026-10-09). The column must hold numbers: one with no number at all (dates, a
+    Yes/No status) is no measure a question can mean, and its name after the measure is a participle, not the
+    operand ("total transfers signed in August" read the dates of `signed`; the release's dataset gate, 2026-10-09).
+    Read once per question and graph: the planner asks it of every candidate."""
     memo = _UNREADABLE_OPERANDS.setdefault(graph, {})
     if question in memo:
         return memo[question]
@@ -88,9 +90,13 @@ def unreadable_operand(question, graph):
         operand = aggregate_operand(question, names, function)
         if operand is None or any(column.ref.type.numeric for column in columns[operand]):
             continue
-        cells = next(filter(None, (unreadable_cells(column.values) for column in columns[operand])), None)
-        if cells:
-            found = (operand, cells, function)
+        for column in columns[operand]:
+            filled = [value for value in column.values if value is not None and str(value).strip()]
+            cells = unreadable_cells(filled)
+            if cells and len(cells) < len(filled):
+                found = (operand, cells, function)
+                break
+        if found:
             break
     memo[question] = found
     return found
