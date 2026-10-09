@@ -4,7 +4,7 @@ Dated entries come newest first. Each records a run at the commit it names; the 
 entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection arbiter`) may since have
 been removed, and that commit holds the code that ran.
 
-## A named measure that is no number is refused on every route: 314 strict, unchanged (2026-10-09)
+## A named measure that is no number is refused on every route, released as `7d2410a`: 314 strict, unchanged (2026-10-09)
 
 Same contract as `release-0733eef` (Gemini off, `whole_db`, `served` selection, SQL backend, row cap 5,000), tag
 `unreadable-f495890-dirty`: source `f495890` (`0733eef` plus this file) with the change of `DECISIONS.md` "A named
@@ -24,7 +24,13 @@ selection is the same code.
 - 0 wins, 0 losses; all 1,034 served SQL and all 511 refusal reasons identical. No DEV question names a text
   column with a cell that is no number, so the rule never fires: it is a correctness hardening, not an accuracy gain.
 
-Output: `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_unreadable-f495890-dirty.json`.
+- The released `7d2410a` (tag `column-7d2410a`, clean worktree) reports only a column holding numbers and a cell that
+  is no number, after the release build's dataset gate caught "total transfers signed in August" refused for the
+  dates of `signed`. Same contract, same result: 314 / 380 / 523, every served SQL and refusal reason identical,
+  median / p90 0.91 / 1.79 s.
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_unreadable-f495890-dirty.json` and
+`full_eval_column-7d2410a.json`.
 
 ## The review's F1-F5 fixed, released as `0733eef`: 314 strict (2026-10-08)
 
