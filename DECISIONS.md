@@ -2788,3 +2788,34 @@ counted the rows: "total amount in France" was 5.
 - Spider DEV whole_db is unchanged: 314 strict / 380 lenient / 523 answered, every served SQL and refusal reason
   identical (`spider/results/RESULTS.md`). The live world suite checks the four browser questions and three
   without a currency, beside a saved reference and alone (`tests/test_world.py`, P).
+
+## A non-geo name takes its nearest only when the spelling agrees (2026-10-09)
+
+A non-geo name with no exact match (a bank, university, hospital, school...) resolved to the nearest
+`knowledgebase.words` name of its type at cosine 0.85. That threshold lets an embedding match a name the
+knowledgebase does not hold to a different entity. A read-only sample from production (banks, universities and
+hospitals, every row embedded, 400 entities each) found the following:
+
+- Of 1,200 labels whose own entity was held out, 557 still matched another entity at 0.85.
+- Hospitals, the one type that had embeddings, did so in production for 163 of 300 such names.
+- 735 of 1,167 one-letter typos matched their own entity, and 44 matched another.
+
+A nearest name now also has to be spelled alike: difflib's ratio of the two normalized names at least 0.9
+(`knowledge_query.nearest_name_matches`). In the same sample all 735 correct typo matches stay, no typo matches
+another entity, and 50 of the 1,200 held-out labels still match, names one letter apart from another entity. A
+shortened name no longer matches its longer one: 62 of 922 do, against 681 before. It is disclosed as unmatched
+(`unmatched_rows`), not counted as whatever entity is nearest. The owner chose this rule over the looser one
+(2026-10-09).
+
+On the demo sheets, "Mayo Clinic" took "Mayo Clinic Health System" (cosine 0.91, spelling 0.62). It is now
+disclosed, and the hospital-transfers prompt's US total is 32, not 46. "Toronto General Hospital" still takes
+"Toronto East General Hospital" (spelling 0.92), a different hospital in the same city, so the rule does not
+remove every wrong match.
+
+366,582 `words` rows, all non-geo labels, had no embedding: banks, universities, schools, taxa and more,
+registered in bulk outside this repository, since every repository writer embeds its rows. So no misspelled bank or
+university name could resolve. `db/sync/build_words.py --embed-missing` embeds them in committed batches,
+idempotently. It runs only after this rule is in production; under the 0.85 rule alone, 118 of 300 sampled bank
+names and 143 of 300 university names the knowledgebase lacks would have matched another entity. The backfill
+does not affect city lookups: for 1,460 sampled city typos the nearest city stays among the 40 nearest names of
+the whole index, which the type-filtered HNSW scan reads.

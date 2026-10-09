@@ -138,16 +138,36 @@ def test_an_entity_resolves_to_the_exact_nearest_of_its_type():
     calls = []
     q = knowledge_query.KnowledgeQuery.__new__(knowledge_query.KnowledgeQuery)
     q._kb_rows = lambda sql, params: calls.append((sql, params)) or (
-        [("hospital",)] if "types" in sql else [] if "norm=%s" in sql else [("Q30280159", 0.91)])
+        [("hospital",)] if "types" in sql else [] if "norm=%s" in sql
+        else [("Q1472068", 0.93, "johnshopkinshospital")])
     original = knowledge_query.Embedder
     knowledge_query.Embedder = type("E", (), {"get": staticmethod(lambda: _Embedder())})
     try:
-        assert q._resolve_world_qid("Mayo Clinic", "hospital", "Q16917") == "Q30280159"
+        assert q._resolve_world_qid("Johns Hopkns Hospital", "hospital", "Q16917") == "Q1472068"
     finally:
         knowledge_query.Embedder = original
     sql = calls[-1][0]
     assert "ORDER BY (embedding <=> %s::vector) + 0" in sql and "embedding IS NOT NULL" in sql, sql
     assert calls[-1][1][1] == "hospital"
+
+
+def test_a_nearest_name_matches_only_when_its_spelling_agrees():
+    """The embedding alone matched names the knowledgebase does not hold to another entity: in a read-only
+    sample of banks, universities and hospitals (2026-10-09), 557 of 1,200 such names matched a different
+    entity at cosine 0.85, and 163 of 300 hospital names did in production. A nearest name now also has to be
+    spelled alike: a typo still matches (all 735 sampled typo matches stayed), a different entity with a
+    similar embedding does not, and a shortened name is disclosed as unmatched instead of counted as whatever
+    is nearest ("Mayo Clinic" took "Mayo Clinic Health System")."""
+    from engine.embeddings import normalize_surface
+    from engine.knowledge_query import nearest_name_matches
+
+    def matches(name, nearest, cosine):
+        return nearest_name_matches(normalize_surface(name), normalize_surface(nearest), cosine)
+
+    assert matches("Johns Hopkns Hospital", "Johns Hopkins Hospital", 0.93)          # a typo
+    assert not matches("Bank of Kyoto", "Bank of Nagoya", 0.92)                     # another bank
+    assert not matches("Mayo Clinic", "Mayo Clinic Health System", 0.911)            # a shortened name
+    assert not matches("Johns Hopkns Hospital", "Johns Hopkins Hospital", 0.80)      # the embedding disagrees
 
 
 def test_a_shared_name_resolves_the_same_way_every_time():
@@ -259,6 +279,7 @@ TESTS = [
     test_production_entry_opens_the_request,
     test_value_membership_routing_is_one_lookup_per_table,
     test_an_entity_resolves_to_the_exact_nearest_of_its_type,
+    test_a_nearest_name_matches_only_when_its_spelling_agrees,
     test_a_shared_name_resolves_the_same_way_every_time,
     test_rows_whose_entity_matched_nothing_are_disclosed,
     test_a_request_derives_its_tables_once,

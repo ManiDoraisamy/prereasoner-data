@@ -98,8 +98,8 @@ EXPECTED = {
     ),  # continent filter + four-currency ECB conversion to USD
     "formesign-hospital-transfers": (
         "world",
-        46,
-    ),  # hospital entity join, filtered to US hospitals
+        32,
+    ),  # hospital entity join, filtered to US hospitals; "Mayo Clinic" (14) matches no hospital and is disclosed
     "neartail-catering": (
         "world",
         9600,

@@ -46,7 +46,8 @@ CATALOG: tuple[Maintained, ...] = (
     Maintained("country", "wikidata", None, None,
                "QID projection rebuilt offline by db/sync/build_qid_world.py from public.country."),
     Maintained("words", "wikidata", None, None,
-               "The pgvector resolution index (db/sync/build_words.py); rebuilt with the snapshot."),
+               "The pgvector resolution index (db/sync/build_words.py); rebuilt with the snapshot. "
+               "`build_words.py --embed-missing` embeds the rows inserted without an embedding."),
     Maintained("types", "wikidata", None, None,
                "Taxonomy leaves (db/sync/sync_types.py); rebuilt with the snapshot."),
     Maintained("Cities", "wikidata", None, None,

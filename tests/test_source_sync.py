@@ -644,7 +644,53 @@ def test_sync_connection_credentials_override_serving_credentials():
     }
 
 
+def test_embed_missing_embeds_only_the_rows_without_an_embedding():
+    """366,582 knowledgebase."words" rows (non-geo labels: banks, universities, schools and more) had no
+    embedding, so a misspelled or shortened name never resolved by nearest neighbour (2026-10). The backfill
+    embeds exactly those rows, in id order and a committed batch at a time, leaves embedded and empty rows as
+    they are, and does nothing when run again."""
+    from db.sync import build_words
+
+    table = {1: ["Bank of Kyoto", None], 2: ["Mayo Clinic", "[0.5]"], 3: ["", None], 4: ["Kiraboshi Bank", None],
+             5: ["Harvard University", None], 6: [None, None]}
+    commits = []
+
+    class Cursor:
+        def execute(self, sql, params):
+            assert sql.startswith('SELECT id, surface FROM knowledgebase."words" WHERE embedding IS NULL'), sql
+            last, batch = params
+            self.rows = sorted((key, surface) for key, (surface, vector) in table.items()
+                               if vector is None and surface and key > last)[:batch]
+
+        def fetchall(self):
+            return self.rows
+
+    class Connection:
+        def cursor(self):
+            return Cursor()
+
+        def commit(self):
+            commits.append(sorted(key for key, (_surface, vector) in table.items() if vector is not None))
+
+    class Embedder:
+        def encode(self, texts):
+            return [[float(len(text))] for text in texts]
+
+    def update(_cursor, sql, data):
+        assert "WHERE w.id = v.id AND w.embedding IS NULL" in sql, sql
+        for key, vector in data:
+            if table[key][1] is None:
+                table[key][1] = vector
+
+    with patch.object(build_words, "execute_values", update), contextlib.redirect_stdout(io.StringIO()):
+        assert build_words.embed_missing(Connection(), Embedder(), batch=2) == 3
+        assert commits == [[1, 2, 4], [1, 2, 4, 5]], commits
+        assert table[2][1] == "[0.5]" and table[3][1] is None and table[6][1] is None
+        assert build_words.embed_missing(Connection(), Embedder(), batch=2) == 0
+
+
 TESTS = [
+    test_embed_missing_embeds_only_the_rows_without_an_embedding,
     test_source_downloads_require_absolute_https_urls,
     test_iana_parser_preserves_source_boundaries,
     test_iana_parser_rejects_unknown_zone,

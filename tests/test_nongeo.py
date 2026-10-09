@@ -169,7 +169,9 @@ def main():
          ["world_join", "world_join", "filter", "group_agg"]),
         ([CATERING], "which country spent the most on catering?", [["United States", "9600"]],
          ["world_join", "group_agg", "topn"]),
-        ([TRANSFERS], "which country has the most transfers?", [["United States", "46"]],
+        # "Mayo Clinic" is no hospital's name: its nearest, "Mayo Clinic Health System", is spelled
+        # differently, so it is disclosed as unmatched, not counted (DECISIONS.md, 2026-10-09).
+        ([TRANSFERS], "which country has the most transfers?", [["United States", "32"]],
          ["world_join", "group_agg", "topn"]),
         ([TRANSFERS], "how many transfers in Canada?", [["8"]], ["world_join", "filter", "group_agg"]),
         # Contrastive, same sheet: the hospitals are counted when the question counts hospitals.
@@ -182,6 +184,9 @@ def main():
         if got != expected or trail != ops or response.get("clarify") or response.get("error"):
             fails.append(f"{question!r}: expected {expected} over {ops}, got {got} over {trail} "
                          f"(clarify={response.get('clarify')}, error={response.get('error')})")
+    most = served(schema, Q.serve, [TRANSFERS], "which country has the most transfers?", schema=schema)
+    if (most.get("unmatched") or {}).get("names") != ["Mayo Clinic"]:
+        fails.append(f"Mayo Clinic is not disclosed as unmatched: {most.get('unmatched')}")
     by_country = served(schema, Q.serve, [BANKS], "total deposits by country", schema=schema)
     grouped = sorted(rows_of(by_country))
     print(f"total deposits by country -> {grouped}")

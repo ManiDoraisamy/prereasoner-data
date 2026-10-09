@@ -14,6 +14,11 @@ Phases (all in one run):
      (enables the qid-keyed cell bridge + same-name disambiguation)
   4. city altLabels from Wikidata for cities with population >= 100k (--city-aliases; 'Bombay' -> Mumbai)
 
+Every row carries an embedding. `--embed-missing` embeds, alone and without rebuilding anything, the rows that
+were inserted without one: in 2026-10 that was 366,582 non-geo labels (taxa, schools, banks, universities,
+hospitals and more), registered in bulk outside this repository, so a misspelled or shortened bank or
+university name never resolved by nearest neighbour.
+
 Requires: db/init.sql applied; sync_wikidata.py + build_world.py run first; torch+transformers
 installed (bge-small-en-v1.5 downloads on first use); network for query.wikidata.org.
 
@@ -21,6 +26,7 @@ Run:
   export KB_PG_HOST=... KB_PG_PASSWORD=...        # see db/sync/_conn.py
   python db/sync/build_words.py --cities --city-aliases  # full index (~200k city labels; minutes on CPU)
   python db/sync/build_words.py --cities                 # minimal seed (skip the alias crawl)
+  python db/sync/build_words.py --embed-missing          # embed the rows inserted without an embedding
 """
 from __future__ import annotations
 import argparse
@@ -77,6 +83,29 @@ def _insert(cur, emb, rows, chunk=2000):
         if len(rows) > chunk:
             print(f"      {n}/{len(rows)}")
     return n
+
+
+def embed_missing(cn, emb, batch=2000):
+    """Embed every row whose embedding is NULL, in id order, a committed batch at a time. Idempotent and
+    resumable: a row that has an embedding is never read or rewritten, so a rerun continues where it stopped.
+    Each update adds its row to the HNSW index in place, so serving keeps its index throughout. A row with no
+    surface stays as it is. Returns the number of rows embedded."""
+    cur = cn.cursor()
+    done, last = 0, 0
+    while True:
+        cur.execute('SELECT id, surface FROM knowledgebase."words" WHERE embedding IS NULL AND id > %s '
+                    "AND surface IS NOT NULL AND surface <> '' ORDER BY id LIMIT %s", (last, batch))
+        rows = cur.fetchall()
+        if not rows:
+            return done
+        vecs = emb.encode([surface for _id, surface in rows])
+        execute_values(cur, 'UPDATE knowledgebase."words" w SET embedding = v.embedding::vector '
+                            'FROM (VALUES %s) v(id, embedding) WHERE w.id = v.id AND w.embedding IS NULL',
+                       [(row_id, pgvector_literal(vec)) for (row_id, _surface), vec in zip(rows, vecs)])
+        cn.commit()
+        done += len(rows)
+        last = rows[-1][0]
+        print(f"      embedded {done} rows (through id {last})", flush=True)
 
 
 def canonical_rows(cur, type_, table, label_col):
@@ -147,9 +176,16 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--cities", action="store_true", help="also embed all city canonical labels (~200k full sync)")
     ap.add_argument("--city-aliases", action="store_true", help="also crawl Wikidata altLabels for pop>=100k cities")
+    ap.add_argument("--embed-missing", action="store_true",
+                    help="only embed the rows inserted without an embedding; rebuilds nothing")
     a = ap.parse_args()
 
     emb = Embedder.get()
+    if a.embed_missing:
+        cn = connect()
+        print(f"  embedded rows inserted without one: {embed_missing(cn, emb)}")
+        cn.close()
+        return
     cn = connect(); cur = cn.cursor()
     # rebuild from scratch; drop the HNSW index during the bulk load (recreate after — much faster)
     cur.execute('TRUNCATE knowledgebase."words"')

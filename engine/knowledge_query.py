@@ -58,6 +58,24 @@ from engine import request_timing
 _ENTITY_TIE_BREAK = "is_primary IS TRUE DESC, length(qid), qid"
 # How many of the names a non-geo answer could not match it lists.
 UNMATCHED_NAMES_SHOWN = 5
+# A name with no exact match takes its type's nearest name only when both the embedding and the spelling agree.
+_NEAREST_MIN_COSINE = 0.85
+_NEAREST_MIN_SPELLING = 0.9
+
+
+def nearest_name_matches(norm, nearest_norm, cosine):
+    """Whether a name with no exact match is the nearest knowledgebase name of its type: their embeddings are at
+    least _NEAREST_MIN_COSINE alike AND their normalized spellings at least _NEAREST_MIN_SPELLING (difflib's
+    ratio). The embedding alone matched names the knowledgebase does not hold to another entity: in a read-only
+    sample of banks, universities and hospitals (2026-10-09), 557 of 1,200 such names matched a different
+    entity at cosine 0.85. With the spelling check 50 did, and every one of 735 correct typo matches stayed. A
+    shortened name ("Mayo Clinic" for "Mayo Clinic Health System") no longer matches; it is disclosed as
+    unmatched (unmatched_rows) instead of being counted as whatever entity is nearest."""
+    import difflib
+
+    if cosine < _NEAREST_MIN_COSINE or not norm or not nearest_norm:
+        return False
+    return difflib.SequenceMatcher(None, norm, nearest_norm).ratio() >= _NEAREST_MIN_SPELLING
 
 
 def unmatched_rows(table, column, rows, matched, own_filters, entity):
@@ -445,11 +463,11 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         # builds and on whether the planner picks it: on the 2026-10-02 build's fresh seed "Mayo Clinic"
         # stayed unresolved, and the US hospitals totalled 32 instead of 46.
         rows = self._kb_rows(
-            'SELECT qid, 1-(embedding <=> %s::vector) FROM knowledgebase."words" '
+            'SELECT qid, 1-(embedding <=> %s::vector), norm FROM knowledgebase."words" '
             'WHERE type=%s AND qid IS NOT NULL AND embedding IS NOT NULL '
             f'ORDER BY (embedding <=> %s::vector) + 0, {_ENTITY_TIE_BREAK} LIMIT 1', (vec, wl, vec))
         row = rows[0] if rows else None
-        if row and row[1] is not None and row[1] >= 0.85:
+        if row and row[1] is not None and nearest_name_matches(n, row[2], row[1]):
             return row[0]
         return None
 
