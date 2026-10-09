@@ -2819,3 +2819,10 @@ idempotently. It runs only after this rule is in production; under the 0.85 rule
 names and 143 of 300 university names the knowledgebase lacks would have matched another entity. The backfill
 does not affect city lookups: for 1,460 sampled city typos the nearest city stays among the 40 nearest names of
 the whole index, which the type-filtered HNSW scan reads.
+
+The backfill ran on 2026-10-09, after this rule was released (engine `prereasoner-api-00163-f52`). It embedded all
+366,582 rows in about 11 hours (10:09 to 21:20 UTC). The HNSW index grew from 443 MB to 1,110 MB and the table from
+1,314 MB to 2,438 MB, more than the `db-g1-small` instance keeps in memory, so later batches waited on disk reads.
+Warm lookups are unchanged: a city typo takes 120 to 315 ms and a non-geo nearest name 120 to 470 ms. The first
+lookup of a large type after its pages are evicted is slow, though: 12 s for schools (46,231 rows) and 10 s for
+hospitals. The live non-geo suite and the hospital, bank and catering demos pass on the backfilled data.
