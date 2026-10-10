@@ -25,6 +25,8 @@ def lexical_words(text):
 QUANTITY_WORDS = frozenset({
     "volume", "volumes", "quantity", "quantities", "amount", "amounts", "value", "values", "level", "levels",
 })
+# An aggregate word right before a field's name, in lexical_words form: "by total amount" ranks by a measure.
+_MEASURE_WORDS = r" (?:total|sum of|average|avg|mean|maximum|max|minimum|min|number of|count of) "
 
 
 _CELL_WORDS = weakref.WeakKeyDictionary()
@@ -620,7 +622,10 @@ def _select_violations(question, query, graph, whole):
     # Explicitly named output grain must be represented, rather than just appearing
     # somewhere in the schema: a field named in full after "by/per/each", up to the clause's
     # end. "sorted by average Price" orders the groups and asks for no grain of its own, and a
-    # name shared by two tables (a join key) is met by grouping either one.
+    # name shared by two tables (a join key) is met by grouping either one. A field an aggregate
+    # word takes is the measure the groups are ranked by, not a grain: "top 2 cities by total
+    # amount" groups the cities, and only the queries also grouped by amount met it (an owner's
+    # replay, 2026-10-10: "Lyon 200, Lyon 160" for Lyon 470, Paris 270).
     lowered = question.casefold()
     grouped = set(query.group_by)
     for match in re.finditer(r"\b(?:by|per|each)\s+([^?!.;,]+)", lowered):
@@ -632,7 +637,8 @@ def _select_violations(question, query, graph, whole):
         labels = {}
         for column in graph.columns:
             label = " ".join(lexical_words(column.ref.name))
-            if label and " " + label + " " in tail_words:
+            if label and " " + label + " " in tail_words and not re.search(
+                    _MEASURE_WORDS + re.escape(label) + " ", tail_words):
                 labels.setdefault(label, set()).add(column.ref)
         if aggregates and any(not refs & grouped for refs in labels.values()):
             violations.append("requested output grain is missing")

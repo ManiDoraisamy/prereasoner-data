@@ -49,8 +49,10 @@ from engine.closed_class import COMPARATIVE_COLUMNS, COMPARATIVES
 from engine.sql_expansion import (
     AGGREGATE_CUES,
     ALPHABETICAL_WORDS,
+    COPULAS,
     REVERSE_ORDER_WORDS,
     FUNCTION_WORDS,
+    MONEY_MEASURE_COLUMN_WORDS,
     asked_cues,
     by_groups,
     entity_groups,
@@ -1300,8 +1302,10 @@ class SQLSearcher:
                         options.append(((Comparison(target, date_operator, literal),), 5.0,
                                         f"date:{target.table}.{target.name}{date_operator}{literal.value}"))
                 else:
-                    targets = self._numeric_targets(mentions, i)
-                    options = [((Comparison(target, operator, Literal(value, target.type)),), 4.5,
+                    values = self._row_values(tokens, mentions, i)
+                    targets = sorted(self._numeric_targets(mentions, i), key=lambda target: target not in values)
+                    options = [((Comparison(target, operator, Literal(value, target.type)),),
+                                5.0 if target in values else 4.5,
                                 f"comparison:{target.table}.{target.name}{operator}{value}")
                                for target in targets[:4]]
                 if options:
@@ -1368,6 +1372,23 @@ class SQLSearcher:
             return list(refs)
         return [c.ref for c in self.schema.columns if c.ref.type.numeric and not is_surrogate_key(c.ref.name)]
 
+    def _row_values(self, tokens: tuple[str, ...], mentions: tuple[_Mention, ...],
+                    position: int) -> frozenset[ColumnRef]:
+        """The money measures (amount, total, value) of the table whose rows the noun before a comparison cue names,
+        when the question names no numeric column: "orders over 20" and "orders are over 20" are those whose amount
+        is, not their unit price, which the model's reading of the bare number preferred by a tenth (an owner's
+        replay, 2026-10-10). A noun of a table without one ("availability equals 1") prefers nothing."""
+        if any(option.column.type.numeric for mention in mentions for option in mention.options):
+            return frozenset()
+        subject = position - (2 if position > 1 and tokens[position - 1] in COPULAS else 1)
+        if subject < 0:
+            return frozenset()
+        named = {table for table in self.schema.tables
+                 if tokens[subject] in {canon(word) for word in name_words(table)}}
+        return frozenset(c.ref for c in self.schema.columns
+                         if c.ref.table in named and c.ref.type.numeric and not is_surrogate_key(c.ref.name)
+                         and set(name_tokens(c.ref.name)) & MONEY_MEASURE_COLUMN_WORDS)
+
     def _date_targets(self, mentions: tuple[_Mention, ...], position: int) -> list[ColumnRef]:
         options = [
             option for mention in mentions for option in mention.options
@@ -1423,6 +1444,14 @@ class SQLSearcher:
                 }
                 for table, score in sorted(table_scores.items(), key=lambda item: (-item[1], item[0])):
                     if score <= 0:
+                        continue
+                    # "average amount per order" over a table of orders: each row is one order, and the average
+                    # is over them. It was grouped by the orders' first named column, an average per customer
+                    # (an owner's replay, 2026-10-10). A total per order keeps its group: it sums each order.
+                    if (tokens[position] in {"each", "per"} and position < table_positions[table] <= position + 2
+                            and targets and all(column.table == table for column in targets)
+                            and all(a.function in {"AVG", "MIN", "MAX"} for a in draft.aggregates)):
+                        options.append((projection_groups, 4.3 + score * 0.1, (f"group:rows-of:{table}",)))
                         continue
                     displays = self.schema.display_columns(table)
                     if displays:

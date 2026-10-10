@@ -58,7 +58,9 @@ guarded execution in the conversation schema
 The optional `orchestrator/` service wraps this API in a conversational tool loop. `mcp_server/` exposes the same
 engine operation to MCP clients. Neither component owns data reasoning or may invent a numeric result. A chat turn
 is normally one Gemini call at LOW thinking, whose tool call carries the question, the analysis action and its
-slug; a second call follows only when the engine asks for a split or cannot read a follow-up.
+slug; a second call follows only when the engine asks for a split or cannot read a follow-up. Each call waits at
+most 20 s and is sent once more after a timeout, a 429 or a 5xx (`engine/llm.py`): Vertex's shared pool holds a
+single request for a minute or two now and then while its median stays under 2 s.
 
 ## Execution backend boundary
 
@@ -307,7 +309,10 @@ The own-data path serves one typed SQL AST chosen from the deterministic search'
    their own key too (`engine/sql_expansion.entity_groups`; in the search only beside the name of a
    table the question says, so a shared job title stays one group), and a table holding two keys to one
    other table is read from its owner's key (`engine/sql_rank.relation_sides`): "high schoolers who
-   have 3 friends" own the Friend rows, and the two named Jordan count apart.
+   have 3 friends" own the Friend rows, and the two named Jordan count apart. An average per the rows'
+   own noun ("average amount per order" over a table of orders) averages the rows, and a number the
+   question names no field for, after a noun naming a table, compares that table's money measure
+   ("orders over 20": amount, not unit price).
 2. Every candidate runs on an in-memory SQLite copy of the request's tables under the SELECT guard
    and a budget of SQLite VM steps that grows with the cells of the tables it reads: 20 a cell, at
    least 10,000,000 and at most 100,000,000 (`execution_op_limit`). The Gemini rewording's pool runs
@@ -352,7 +357,9 @@ least age or the latest birth date); or when it is grammar, a counted noun namin
 the check keeps. A word that names only some other table's column is unread.
 
 The constraint check (`engine/query_contract.constraint_violations`) judges a set query branch by branch for the
-result's shape (aggregates, projection, ordering, grain) and as a whole for what the question asks of the rows: a
+result's shape (aggregates, projection, ordering, grain; a field an aggregate word takes, as in "top 2 cities by
+total amount", is the measure the groups are ranked by and asks no grain) and as a whole for what the question asks
+of the rows: a
 comparison may sit in either branch of an INTERSECT, in an OR or a UNION only of alternatives the question offers, in
 a HAVING COUNT for a threshold on counted rows, or in an IN or EXISTS subquery, and never counts from a scalar
 subquery, which filters no returned row. An EXCEPT makes an exclusion, its subtracted branch keeping the values

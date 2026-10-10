@@ -35,6 +35,14 @@ class LLMUnavailable(RuntimeError):
 _CLIENT = None
 _CLIENT_LOCK = threading.Lock()
 
+# A chat round waits this long for Gemini, then sends the round once more. Vertex's shared pool held single requests
+# for 50-120 s while its median stayed under 2 s (2026-10-10: 6 of 362 turns, every call answered 200), and the
+# round had no timeout, so the turn waited them out. A 429 or 5xx is sent again on the same budget. The SDK retries a
+# timeout raised by httpx, the chat image's transport (orchestrator/requirements.lock.txt holds no aiohttp).
+CHAT_ROUND_TIMEOUT_SECONDS = 20
+CHAT_ROUND_ATTEMPTS = 2
+CHAT_RETRY_STATUS_CODES = (408, 429, 500, 502, 503, 504)
+
 
 def model_id() -> str:
     """The configured Gemini model id (GEMINI_MODEL)."""
@@ -341,6 +349,11 @@ class AsyncGeminiClient:
                 tool_config=self._tool_config(tool_choice),
                 thinking_config=(types.ThinkingConfig(thinking_level=thinking)
                                  if thinking is not None else None),
+                http_options=types.HttpOptions(
+                    timeout=CHAT_ROUND_TIMEOUT_SECONDS * 1000,
+                    retry_options=types.HttpRetryOptions(attempts=CHAT_ROUND_ATTEMPTS,
+                                                         http_status_codes=list(CHAT_RETRY_STATUS_CODES)),
+                ),
             ),
         )
         return self._response(response)

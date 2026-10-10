@@ -307,6 +307,26 @@ def test_chat_facade_passes_the_thinking_level():
     assert default.thinking_config is None
 
 
+
+def test_chat_rounds_are_bounded_and_sent_once_more():
+    """Vertex's shared pool held single chat rounds for 50-120 s while its median stayed under 2 s (2026-10-10), and
+    the rounds had no timeout. Each round now waits CHAT_ROUND_TIMEOUT_SECONDS and is sent once more after a
+    timeout, a 429 or a 5xx."""
+    vertex = _VertexClient([_model_turn(types.Part(text="ok"))])
+
+    async def one_round():
+        async with llm.AsyncGeminiClient(model="gemini-test") as client:
+            async with client.messages.stream(model="", max_tokens=64, system="rules",
+                                              messages=[{"role": "user", "content": "total"}]) as stream:
+                await stream.get_final_message()
+
+    with patch("google.genai.Client", lambda **_kwargs: vertex):
+        asyncio.run(one_round())
+    options = vertex.requests[0]["config"].http_options
+    assert options.timeout == llm.CHAT_ROUND_TIMEOUT_SECONDS * 1000 == 20_000
+    assert options.retry_options.attempts == 2
+    assert {429, 503, 504} <= set(options.retry_options.http_status_codes)
+
 def test_external_calls_share_the_request_deadline():
     from engine import request_deadline
     token = request_deadline.begin(2)
@@ -328,6 +348,7 @@ TESTS = [
     test_chat_facade_replays_a_function_call_with_its_thought_signature,
     test_chat_facade_maps_tool_choice_to_function_calling_modes,
     test_chat_facade_passes_the_thinking_level,
+    test_chat_rounds_are_bounded_and_sent_once_more,
 ]
 
 

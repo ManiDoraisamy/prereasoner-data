@@ -2929,3 +2929,39 @@ with the same rewordings, 452 → 466 (14 wins, 0 losses). On 1,000 Spider train
 work, this change and the two before it take the engine from 215 to 246 strict (33 wins, 2 losses: Spider groups one
 question by a name that repeats, and one exclusion now joins through two tables the question does not name). A first
 cut lost DEV 758 (the repeated key) and DEV 369 (a listed key that lost its group score); both are regression cases.
+
+## The owner's questions are read as asked: a ranked measure is no grain, a per-row average averages the rows (2026-10-10)
+
+Replaying the owner's own 96 questions from 48 conversations through the production entry point, engine alone, gave
+the same answer on `de0cfba` and `eed8d9d` for every one of them: the Spider changes above do not touch the owner's single-table
+sheets. The replay found six questions answered wrongly with confidence, which production had answered right before the
+SQL-writing model was removed (`12059f1`, 2026-10-02) and the Gemini fallback cannot rescue, since it runs only when
+nothing is eligible:
+
+- `query_contract.constraint_violations`: a field an aggregate word takes after "by" ("top 2 cities by total amount")
+  is the measure the groups are ranked by, not a grain. The grain check refused every query grouped by city alone and
+  served one grouped by city and amount ("Lyon 200, Lyon 160" for Lyon 470, Paris 270). A field after a bare "by"
+  ("total amount by city") is still a grain.
+- `SQLSearcher._group_choices`: "average amount per order" over a table of orders averages its rows; the search grouped
+  by the table's first named column (an average per customer). This holds for AVG, MIN and MAX of the named table's own
+  fields; a total per order keeps its groups.
+- `ConstraintQueryExpander._count_having_candidates`: "how many orders are over 20" says the number of the orders, as
+  "orders over 20" already did, and is no longer customers with more than 20 orders.
+- `SQLSearcher._row_values`: a number the question names no numeric field for, after a noun that names a table
+  ("orders over 20", "orders are over 20"), compares that table's money measure (`MONEY_MEASURE_COLUMN_WORDS`:
+  amount, total, value...), not the unit price the model preferred by a tenth. A first cut preferred any table's money
+  measure and turned held-out train 289 ("products whose availability equals to 1") into `amount_payable = 1`; a noun
+  of a table without one now prefers nothing. `sql_expansion.COPULAS` is the one list of the forms of "to be" both
+  rules skip.
+- `sql_expansion.money_total_position`: a number before a money noun counts it. "Customers that have over 2 sales"
+  was the sales' total amount.
+
+The chat's Gemini rounds (`engine/llm.py`, `AsyncGeminiClient.generate`) had no timeout. On 2026-10-10, 6 of 362 turns
+waited 50-120 s while Vertex's own latency metric for the shared pool showed a median under 2 s and only 200
+responses: single requests were held. Each round now waits 20 s and is sent once more after a timeout, a 429 or a 5xx.
+
+Measured (`spider/results/RESULTS.md`, 2026-10-10): Spider DEV 384 strict engine alone and 466 with Gemini's cached
+rewordings, held out 246, before and after, with no served query changed. On the owner's 96 questions, 9 answers go
+from wrong to right and none get worse; 32 are still refused by the engine alone, 30 of them for "volume" or "monthly
+searches" (the "keyword volume" questions asked since 2026-10-06 were answered in production by the Gemini
+rewording) and 2 for "the most leads".

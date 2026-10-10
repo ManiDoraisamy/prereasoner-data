@@ -30,6 +30,7 @@ from engine.sql_ast import (
 from engine.sql_dates import date_phrases
 from engine.sql_expansion import (
     AGGREGATE_CUES,
+    COPULAS,
     CountThreshold,
     ExpansionSupport,
     and_terms as _and_terms,
@@ -95,13 +96,16 @@ class ConstraintQueryExpander(ExpansionSupport):
             if self.threshold_targets_column(tokens, threshold):
                 continue
             counted = tokens[threshold.end] if threshold.end < len(tokens) else None
-            if (tokens[threshold.start] == "over" and threshold.start > 0
-                    and tokens[threshold.start - 1] in table_words
+            subject = threshold.start - (2 if threshold.start > 1 and tokens[threshold.start - 1] in COPULAS else 1)
+            if (tokens[threshold.start] == "over" and subject >= 0
+                    and tokens[subject] in table_words
                     and counted != "time" and counted not in table_words):
                 # "the total amount of orders over 50" compares each order, as every Spider question
                 # with a plural noun before "over <n>" does ("students over 20 years old"); it was
                 # read as "more than 50 orders" and lost its total (probe, 2026-10-02). "Orders over 2
-                # times" still counts them (review, 2026-10-02).
+                # times" still counts them (review, 2026-10-02). "How many orders are over 20" says
+                # it of the orders too; it counted customers with more than 20 orders (an owner's
+                # replay, 2026-10-10).
                 continue
             entity_options = self.entity_tables(tokens, threshold)
             for entity_table, entity_score in entity_options[:2]:

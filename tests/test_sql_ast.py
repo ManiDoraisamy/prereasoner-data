@@ -40,6 +40,7 @@ from engine.sql_ast import (
 )
 from engine import llm
 from engine.artifact_provenance import sha256_file, validate_weight_bundle
+from engine.query_contract import constraint_violations
 from engine.sql_grounding import double_counted, grounded_members, join_pairs, literal_bindings
 from engine.sql_rank import CandidateRanker, FallbackRecord, SemanticSignals, analyze_question, relation_sides
 from regress.sql_import import import_sql, normalize_decoded_sql
@@ -4577,6 +4578,79 @@ def test_a_group_is_told_apart_only_by_a_key_of_its_own_rows():
         counted["sql"])
 
 
+
+SHOP_ORDERS = {"name": "orders", "columns": ["order ID", "customer", "item", "quantity", "unit price", "amount", "city"],
+               "rows": [[1, "Ann", "Tart", 2, 6, 12, "Paris"], [2, "Ben", "Cake", 1, 30, 30, "Lyon"],
+                        [3, "Ann", "Pie", 3, 9, 27, "Paris"], [4, "Cy", "Bun", 4, 2, 8, "Nice"],
+                        [5, "Dee", "Cake", 1, 25, 25, "Lyon"], [6, "Ben", "Tart", 2, 6, 12, "Paris"]]}
+
+
+def test_a_field_an_aggregate_word_takes_ranks_the_groups_and_asks_no_grain():
+    """An owner's replay, 2026-10-10: "top 2 cities by total amount" failed the grain contract for every query that
+    grouped the cities alone, and the one grouped by city and amount answered "Lyon 200, Lyon 160". The field after
+    "by total" is the measure; a field after a bare "by" is still a grain the query must keep."""
+    planner = _hermetic_planner()
+    ranked = planner.serve([SHOP_ORDERS], "top 2 cities by total amount")
+    assert [tuple(row) for row in ranked["result"]["rows"]] == [("Lyon", 55), ("Paris", 51)], ranked["sql"]
+    graph = SchemaGraph.from_tables([SHOP_ORDERS], [])
+    city, amount = ColumnRef("orders", "city", SQLType.TEXT), ColumnRef("orders", "amount", SQLType.INTEGER)
+    by_city = SelectQuery((SelectItem(city), SelectItem(Aggregate("SUM", amount))), "orders", group_by=(city,))
+    ungrouped = SelectQuery((SelectItem(Aggregate("SUM", amount)),), "orders")
+    assert "requested output grain is missing" not in constraint_violations(
+        "top 2 cities by total amount", by_city, graph)
+    assert "requested output grain is missing" in constraint_violations("total amount by city", ungrouped, graph)
+    assert "requested output grain is missing" in constraint_violations("average amount by quantity", by_city, graph)
+
+
+def test_an_average_per_row_noun_averages_the_rows():
+    """An owner's replay, 2026-10-10: "average amount per order" over a table of orders was an average per
+    customer, the orders' first named column. Each row is an order, so the average is over the rows; a column
+    named after "per" is still the group ("average amount per city"), and a total per order is not averaged."""
+    planner = _hermetic_planner()
+    per_order = planner.serve([SHOP_ORDERS], "average amount per order")
+    assert [float(row[0]) for row in per_order["result"]["rows"]] == [19.0], per_order["sql"]
+    in_lyon = planner.serve([SHOP_ORDERS], "average amount per order in Lyon")
+    assert [float(row[0]) for row in in_lyon["result"]["rows"]] == [27.5], in_lyon["sql"]
+    per_city = planner.serve([SHOP_ORDERS], "average amount per city")
+    assert sorted((row[0], float(row[1])) for row in per_city["result"]["rows"]) == [
+        ("Lyon", 27.5), ("Nice", 8.0), ("Paris", 17.0)], per_city["sql"]
+
+
+def test_rows_said_to_be_over_a_number_are_compared_by_their_money_measure():
+    """An owner's replay, 2026-10-10: "how many orders are over 20?" counted customers with more than 20 orders, and
+    "list the orders over 20" compared unit price. A noun, a form of "to be" and "over <n>" compare each row, as the
+    noun right before "over" already did; a number no field is named for compares the rows' money measure. A named
+    field keeps its comparison, and "customers that have over 2 sales" counts the sales, which the money noun's
+    total read as SUM(amount) WHERE amount > 2."""
+    planner = _hermetic_planner()
+    counted = planner.serve([SHOP_ORDERS], "how many orders are over 20?")
+    assert [tuple(row) for row in counted["result"]["rows"]] == [(3,)], counted["sql"]
+    listed = planner.serve([SHOP_ORDERS], "list the orders over 20")
+    assert len(listed["result"]["rows"]) == 3 and '"amount" > 20' in listed["sql"], listed["sql"]
+    named = planner.serve([SHOP_ORDERS], "how many orders have a unit price over 20?")
+    assert [tuple(row) for row in named["result"]["rows"]] == [(2,)], named["sql"]
+    customers = {"name": "customers", "columns": ["customer_id", "name"], "rows": [[1, "Ann"], [2, "Ben"], [3, "Cy"]]}
+    sales = {"name": "sales", "columns": ["sale_id", "customer_id", "amount"],
+             "rows": [[1, 1, 5], [2, 1, 7], [3, 2, 9], [4, 1, 3], [5, 3, 4], [6, 3, 2]]}
+    repeat = planner.serve([customers, sales], "which customers have over 2 sales?",
+                           explicit_fks=[{"from_table": "sales", "from_col": "customer_id",
+                                          "to_table": "customers", "to_col": "customer_id", "conf": 1.0}])
+    assert [row[0] for row in repeat["result"]["rows"]] == ["Ann"], repeat["sql"]
+    # The money measure is the named rows' own: a noun of a table without one prefers nothing (held-out train 289,
+    # "products whose availability equals 1", compared Bookings.amount_payable under a first cut of the rule).
+    products = {"name": "products", "columns": ["product_id", "product_name"], "rows": [[1, "Tent"], [2, "Kayak"]]}
+    availability = {"name": "availability", "columns": ["product_id", "available_yn"], "rows": [[1, 1], [2, 0]]}
+    bookings = {"name": "bookings", "columns": ["booking_id", "product_id", "amount_payable"],
+                "rows": [[1, 1, 30], [2, 2, 1]]}
+    flagged = planner.serve([products, availability, bookings],
+                            "What are the names of products whose availability equals to 1?",
+                            explicit_fks=[{"from_table": "availability", "from_col": "product_id",
+                                           "to_table": "products", "to_col": "product_id", "conf": 1.0},
+                                          {"from_table": "bookings", "from_col": "product_id",
+                                           "to_table": "products", "to_col": "product_id", "conf": 1.0}])
+    assert "amount_payable" not in (flagged.get("sql") or ""), flagged.get("sql")
+
+
 def test_a_relation_names_the_side_its_participle_asks_for():
     """The other key of a relation table (Likes.liked_id) is the side "liked by" asks for, and the owner's side
     (student_id) the one "who have likes" does. Two keys named for neither side (a flight's source and destination
@@ -5047,6 +5121,9 @@ TESTS = [
     test_a_relation_is_read_from_its_owner_and_named_rows_are_grouped_apart,
     test_a_relation_names_the_side_its_participle_asks_for,
     test_a_group_is_told_apart_only_by_a_key_of_its_own_rows,
+    test_a_field_an_aggregate_word_takes_ranks_the_groups_and_asks_no_grain,
+    test_an_average_per_row_noun_averages_the_rows,
+    test_rows_said_to_be_over_a_number_are_compared_by_their_money_measure,
     test_extrema_expansion_guards_multi_aggregate_and_can_be_disabled,
     test_shared_spider_evaluation_contract,
     test_live_table_query_ast_mode_executes_typed_candidate,

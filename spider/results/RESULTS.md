@@ -4,6 +4,36 @@ Dated entries come newest first. Each records a run at the commit it names; the 
 entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection arbiter`) may since have
 been removed, and that commit holds the code that ran.
 
+## Spreadsheet wording read as asked: Spider unchanged at 384 strict, Gemini on 466, held out 246 (2026-10-10)
+
+Same contract as the entry below. The change (`DECISIONS.md` "The owner's questions are read as asked: a ranked
+measure is no grain, a per-row average averages the rows") fixes six wrong answers an owner's own spreadsheet
+questions found; it was measured for what it costs Spider. The runs `own2-dirty`, `own2-gemini-dirty` and
+`heldout-own2-dirty` are a worktree of `e4713ae` with this change, against `step5c-dirty`, `step5c-gemini-dirty`
+and `heldout-step5c-dirty` (`eed8d9d`'s code). Gemini on replays the rewordings `step4-gemini-dirty` cached: 441
+calls, none live.
+
+| | Previous change | **This change** | Previous, Gemini on | **This change, Gemini on** |
+|---|---:|---:|---:|---:|
+| Strict | 384 (37.1%) | **384 (37.1%)** | 466 (45.1%) | **466 (45.1%)** |
+| Lenient | 442 | 442 | 543 | 543 |
+| Answered | 593 | 593 | 745 | 745 |
+| Served SQL changed | | **0 of 1,034** | | **0 of 1,034** |
+
+- Held out (1,000 train questions): 246 strict, 302 lenient, 484 answered before and after; no served SQL changed.
+  A first cut of the money-measure rule, which preferred any table's money field, changed two held-out queries and
+  turned train 289 ("products whose availability equals to 1") into `amount_payable = 1`, lenient 302 → 301; the
+  rule now reads only the money field of the table the noun names, and train 289 is a regression case.
+- The owner's 96 questions from 48 conversations, replayed through the production entry point (engine alone, live
+  PostgreSQL), against the expected answers computed from the sheets: 9 answers go from wrong to right ("top 3
+  cities by total amount" in four conversations, "top 2 cities by total amount", "average amount per order", "average
+  amount per order in Lyon", "how many orders are over 20?", "list the orders over 20"), 87 are unchanged, 0 get
+  worse. 32 are still refused by the engine alone (31 clarifications, 1 error): 30 ask for a "volume" or "monthly
+  searches" (27 of them "keyword volume"; production's Gemini rewording answered every one asked since 2026-10-06), and 2 ask
+  for "the most leads" (rows the sheet calls responses).
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_{own2,own2-gemini,heldout-own2}-dirty.json`.
+
 ## A relation read from its owner, named rows grouped by their key: 371 → 384 strict, Gemini on 452 → 466; held out 215 → 246 (2026-10-10)
 
 Same contract as the entries below. The change runs `step5b-dirty` and `step5b-gemini-dirty` are a worktree of

@@ -777,6 +777,8 @@ MONEY_MEASURE_COLUMN_WORDS = frozenset({
 # "what's the sales in France", "total sales in Asia". It stays the entity when the question asks to
 # count it ("how many sales", "number of sales") or to list it ("list the sales in France").
 ROW_LISTING_COMMANDS = frozenset({"list", "show", "display"})
+# A form of "to be" between a noun and a comparison says it of that noun's rows: "orders are over 20".
+COPULAS = frozenset({"is", "are", "was", "were"})
 
 
 def money_total_position(question_tokens: Sequence[str], table_words: Iterable[str]) -> int | None:
@@ -790,8 +792,10 @@ def money_total_position(question_tokens: Sequence[str], table_words: Iterable[s
     if count_requested(question_tokens) or ROW_LISTING_COMMANDS & set(question_tokens):
         return None
     names = set(table_words)
+    # A number before the noun counts it: "customers with over 2 sales" totalled the sales' amount (2026-10-10).
     return next((index for index, token in enumerate(question_tokens)
-                 if token in MONEY_MEASURE_NOUNS and token in names), None)
+                 if token in MONEY_MEASURE_NOUNS and token in names
+                 and not (index and parse_number(question_tokens[index - 1]) is not None)), None)
 
 
 def money_total_columns(question: str, sch: Sequence[dict]) -> tuple[str, list[dict]] | None:
