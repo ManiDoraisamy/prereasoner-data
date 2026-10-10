@@ -279,12 +279,14 @@ class SQLSearcher:
                         root = self._preferred_root(required, table_scores, draft)
                         trees = self.schema.join_trees(required, root)
                     for tree in trees:
-                        # Rows grouped by their name are grouped by what they are: "the names of the high schoolers
-                        # and how many friends each has" keeps two Jordans apart (entity_groups). A category ("by
-                        # country") is no name and stays one group.
-                        named = {column.table for column in grouped if isinstance(column, ColumnRef)}
-                        group_by = (entity_groups(self.schema, next(iter(named)), tree.joins, grouped)
-                                    if draft.aggregates and tree.joins and len(named) == 1
+                        # Rows grouped by their name, of a table the question names, are grouped by what they are:
+                        # "the names of the high schoolers and how many friends each has" keeps two Jordans apart
+                        # (entity_groups). A category stays one group per value: "by country", and "total revenue by
+                        # title", whose Title is a job title the employees share (regress fk_relationship_named_group_slot).
+                        grouped_tables = {column.table for column in grouped if isinstance(column, ColumnRef)}
+                        group_by = (entity_groups(self.schema, next(iter(grouped_tables)), tree.joins, grouped)
+                                    if draft.aggregates and tree.joins and len(grouped_tables) == 1
+                                    and _says_table(tokens, next(iter(grouped_tables)))
                                     and all(isinstance(column, ColumnRef) and is_name_column(column.name)
                                             for column in grouped) else grouped)
                         query = SelectQuery(
@@ -1677,6 +1679,16 @@ def _names_together(tokens: tuple[str, ...], words: list[str], column_forms: fro
         return True
     return any(token == words[0] and canon_tokens[index + 1] in column_forms
                for index, token in enumerate(canon_tokens[:-1]))
+
+
+def _says_table(tokens: tuple[str, ...], table: str) -> bool:
+    """Whether the question says the table's own name: its words together ("car makers"), or a one-word name
+    spelled as two ("high schoolers" for Highschooler, as the completeness check reads it)."""
+    words = tuple(canon(word) for word in name_words(table))
+    said = tuple(canon(token) for token in tokens)
+    if any(said[start:start + len(words)] == words for start in range(len(said) - len(words) + 1)):
+        return True
+    return len(words) == 1 and any(canon(left + right) == words[0] for left, right in zip(tokens, tokens[1:]))
 
 
 def _says(tokens: tuple[str, ...], column: ColumnRef) -> bool:

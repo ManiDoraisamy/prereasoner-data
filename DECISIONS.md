@@ -2918,8 +2918,10 @@ by name merged the two students named Jordan.
   not tell them apart, joined to the rows they count, are grouped by their key too, when that key is unique in its
   table (`SchemaGraph.repeats`, decided once per set of columns, as the search asks it of every grouped candidate). A
   key that repeats belongs to another table ("countrylanguage"."CountryCode" for "languages spoken by only one
-  country"), and the search adds the key only beside a name (`sql_schema.is_name_column`, which the ranker now reads
-  instead of its own copy), so "by grade" stays one group per grade.
+  country"), and the search adds the key only beside the name of a table the question says (`sql_search._says_table`,
+  "high schoolers" for Highschooler; `sql_schema.is_name_column`, which the ranker now reads instead of its own
+  copy), so "by grade" and "total revenue by title" (a job title the employees share; the release build's offline
+  regression case caught a first cut that grouped it by employee) stay one group per value.
 - `CandidateRanker` scores no group role for a key the answer does not list beside its table's other groups.
 
 Measured (`spider/results/RESULTS.md`, 2026-10-10): engine alone 371 → 384 strict (13 wins, 0 losses); Gemini on,

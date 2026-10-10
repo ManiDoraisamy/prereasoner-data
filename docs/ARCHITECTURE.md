@@ -304,7 +304,8 @@ The own-data path serves one typed SQL AST chosen from the deterministic search'
 1. The deterministic search builds up to 25 validated candidates (`SEARCH_CANDIDATES`) and orders
    them with named rules; the encoder contributes table, column-role, and structural-profile
    similarities. Rows grouped by columns that repeat, joined to the rows they count, are grouped by
-   their own key too (`engine/sql_expansion.entity_groups`), and a table holding two keys to one
+   their own key too (`engine/sql_expansion.entity_groups`; in the search only beside the name of a
+   table the question says, so a shared job title stays one group), and a table holding two keys to one
    other table is read from its owner's key (`engine/sql_rank.relation_sides`): "high schoolers who
    have 3 friends" own the Friend rows, and the two named Jordan count apart.
 2. Every candidate runs on an in-memory SQLite copy of the request's tables under the SELECT guard

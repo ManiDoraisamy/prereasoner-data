@@ -4536,6 +4536,17 @@ def test_a_relation_is_read_from_its_owner_and_named_rows_are_grouped_apart():
     graded = planner.serve(HIGHSCHOOLERS, "How many friends do the high schoolers in each grade have?",
                            explicit_fks=HIGHSCHOOLER_KEYS)
     assert sorted(tuple(row) for row in graded["result"]["rows"]) == [(9, 3), (10, 1), (11, 3)], graded["sql"]
+    # Contrast: a "Title" the employees share is a job title when the question names no employees, and "total revenue
+    # by title" keeps one group per title (the release build's regress fk_relationship_named_group_slot, 2026-10-10).
+    stores = {"name": "stores", "columns": ["Store_ID", "Region", "Manager_ID", "Revenue"],
+              "rows": [["S1", "West", "E1", 5000], ["S2", "East", "E2", 7000], ["S3", "West", "E1", 4000],
+                       ["S4", "East", "E3", 9000]]}
+    employees = {"name": "employees", "columns": ["Employee_ID", "Employee_Name", "Title"],
+                 "rows": [["E1", "Alice", "Sr Mgr"], ["E2", "Bob", "Mgr"], ["E3", "Carol", "Mgr"]]}
+    titled = planner.serve([stores, employees], "total revenue by title",
+                           explicit_fks=[{"from_table": "stores", "from_col": "Manager_ID", "to_table": "employees",
+                                          "to_col": "Employee_ID", "conf": 1.0}])
+    assert sorted(tuple(row) for row in titled["result"]["rows"]) == [("Mgr", 16000), ("Sr Mgr", 9000)], titled["sql"]
 
 
 def test_a_group_is_told_apart_only_by_a_key_of_its_own_rows():
