@@ -355,34 +355,47 @@ def test_the_first_upload_starts_a_conversation():
     assert calls == [("user", None, "total amount", tables)], "the first question names the conversation"
 
 
-def test_delete_all_removes_only_owned_valid_conversations_and_user_traces():
-    valid = "c_" + "f" * 32
+def test_admin_deletion_drops_one_conversation_schema_per_transaction():
+    """2026-10-10: the web app's bulk delete dropped every schema of an account of 694 conversations in one
+    transaction, held a lock on each of their tables, and Postgres ran out of lock slots ("out of shared memory").
+    The admin dashboard's user deletion and orphan sweep dropped schemas the same way; each now commits per schema."""
+    from engine import admin
+
+    owned = ["c_" + f"{index:032x}" for index in range(4)]
+
+    class LockTableFull(Exception):
+        pass
+
+    class Connection(_Connection):
+        def commit(self):
+            super().commit()
+            self.cursor_value.held = 0
 
     class Cursor:
         def __init__(self):
-            self.statements = []
+            self.held, self.dropped = 0, []
 
         def execute(self, statement, params=None):
-            self.statements.append((str(statement), params))
+            if str(statement).startswith("DROP SCHEMA"):
+                self.held += 1
+                if self.held > 1:
+                    raise LockTableFull("one transaction holds the locks of two schemas")
+                self.dropped.append(str(statement).split('"')[1])
 
         def fetchall(self):
-            return [(valid,), ("not_a_schema",)]
+            return [(cid,) for cid in owned]
 
-    cursor = Cursor()
-    connection = _Connection(cursor)
-    with patch.object(conversations, "_pg", return_value=connection), \
-            patch("engine.trace.delete_traces", return_value=7) as delete_traces:
-        result = conversations.delete_all_conversations("user", rtdb_uid="firebase-user")
-    assert result == {"deleted": 1, "deleted_traces": 7}
-    delete_traces.assert_called_once_with("firebase-user")
-    drops = [statement for statement, _ in cursor.statements if statement.startswith("DROP SCHEMA")]
-    assert drops == [f'DROP SCHEMA IF EXISTS "{valid}" CASCADE']
-    assert any(statement.startswith('DELETE FROM "chat"."sheet_session"')
-               for statement, _ in cursor.statements)
-    # Retry records hold answers' result rows (engine/request_replay.py); they kept them after
-    # "delete all" (2026-10-04).
-    assert ('DELETE FROM chat.request_job WHERE subject_key=%s', ("user",)) in cursor.statements
-    assert connection.commits == 1 and connection.closed
+    connection = Connection(Cursor())
+    with patch.object(admin, "_pg", return_value=connection):
+        result = admin.delete_user("user")
+    assert result["dropped_schemas"] == owned and connection.cursor_value.dropped == owned
+    assert connection.closed
+
+    connection = Connection(Cursor())
+    with patch.object(admin, "_pg", return_value=connection), \
+            patch.object(admin, "list_orphans", return_value=[{"schema": cid} for cid in owned]):
+        assert admin.delete_orphans() == {"dropped_schemas": owned, "count": 4}
+    assert connection.cursor_value.dropped == owned and connection.closed
 
 
 def test_deleting_a_conversation_removes_the_users_retry_records():
@@ -839,7 +852,7 @@ TESTS = [
     test_an_unchanged_source_is_not_stored_again,
     test_a_question_names_its_stored_sheets_by_hash,
     test_the_first_upload_starts_a_conversation,
-    test_delete_all_removes_only_owned_valid_conversations_and_user_traces,
+    test_admin_deletion_drops_one_conversation_schema_per_transaction,
     test_deleting_a_conversation_removes_the_users_retry_records,
     test_append_dataset_ops_is_bounded_and_serialized,
     test_analysis_completion_marks_changed_sources_stale_and_advances_monotonically,

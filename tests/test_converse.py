@@ -323,7 +323,7 @@ def test_external_llm_requires_deployment_authorization():
             os.environ["EXTERNAL_LLM_ENABLED"] = previous
 
 
-def test_trace_deletion_filters_by_conversation_and_supports_delete_all():
+def test_trace_deletion_filters_by_conversation():
     import engine.trace as trace
 
     records = {
@@ -365,8 +365,6 @@ def test_trace_deletion_filters_by_conversation_and_supports_delete_all():
         trace.ensure_app = lambda: None
         assert trace.delete_traces("uid", "c_" + "a" * 32) == 1
         assert set(records) == {"job-b"}
-        assert trace.delete_traces("uid") == 1
-        assert not records
     finally:
         trace.RTDB_URL = previous_url
         trace.ensure_app = previous_ensure
@@ -396,7 +394,7 @@ TESTS = [
     test_fallback_handles_a_code_fence,
     test_no_entities_returns_empty_without_calling_the_model,
     test_external_llm_requires_deployment_authorization,
-    test_trace_deletion_filters_by_conversation_and_supports_delete_all,
+    test_trace_deletion_filters_by_conversation,
 ]
 
 

@@ -63,7 +63,6 @@ from engine.conversations import (
     cancel_analysis,
     complete_analysis,
     conversation_page,
-    delete_all_conversations,
     delete_conversation,
     fail_analysis,
     get_analysis_revision,
@@ -498,8 +497,9 @@ class H(BaseHTTPRequestHandler):
             print(f"spreadsheet session failed: {type(exc).__name__}", flush=True)
             self._send(500, json_dumps({"error": "internal server error"}))
 
-    def _post_conv_delete(self, path):
-        """POST /api/conversation/delete {id} -> drop one conversation; /delete-all -> drop them all. uid-scoped."""
+    def _post_conv_delete(self):
+        """POST /api/conversation/delete {id} -> drop one conversation the caller owns. "Clear all" in the web app
+        deletes them with this call, one at a time (web/public/lib/workbook-conversations.js)."""
         try:
             req = self._read_json()
             if req is None:
@@ -507,8 +507,6 @@ class H(BaseHTTPRequestHandler):
             sub, uid = _verify_principal(_bearer(self.headers, req))
             if not sub:
                 self._send(401, json_dumps({"error": "sign in required"})); return
-            if path == "/api/conversation/delete-all":
-                self._send(200, json_dumps(delete_all_conversations(sub, rtdb_uid=uid))); return
             try:
                 self._send(200, json_dumps(
                     delete_conversation(sub, req.get("id", ""), rtdb_uid=uid)
@@ -531,8 +529,8 @@ class H(BaseHTTPRequestHandler):
             self._post_master_generate()
         elif path in ("/api/master", "/api/master/delete"):
             self._post_master(path)
-        elif path in ("/api/conversation/delete", "/api/conversation/delete-all"):
-            self._post_conv_delete(path)
+        elif path == "/api/conversation/delete":
+            self._post_conv_delete()
         elif path == "/api/conversation/state":
             self._post_conv_state()
         elif path == "/api/conversation/sync":

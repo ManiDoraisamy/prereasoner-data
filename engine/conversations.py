@@ -834,35 +834,6 @@ def delete_conversation(user_id, conversation_id, *, rtdb_uid=None):
         conn.close()
 
 
-def delete_all_conversations(user_id, *, rtdb_uid=None):
-    """Delete ALL of a user's conversations (bulk cleanup). Only touches rows owned by user_id."""
-    conn = _pg()
-    try:
-        try:
-            cur = conn.cursor()
-            cur.execute('SELECT conversation_id FROM "chat"."user_conversation" WHERE user_id = %s', (user_id,))
-            ids = [r[0] for r in cur.fetchall() if _ID_RE.match(r[0] or "")]
-            from engine.trace import delete_traces
-            trace_count = delete_traces(rtdb_uid)
-            cur.execute('DELETE FROM "chat"."sheet_session" WHERE user_id = %s', (user_id,))
-            for cid in ids:
-                cur.execute('DELETE FROM "chat"."user_conversation" WHERE conversation_id = %s AND user_id = %s', (cid, user_id))
-                cur.execute('DELETE FROM "chat"."conversation" WHERE conversation_id = %s', (cid,))
-                cur.execute('DROP SCHEMA IF EXISTS "%s" CASCADE' % cid)
-            from engine.request_replay import delete_subject_jobs
-            delete_subject_jobs(cur, user_id)
-            conn.commit()
-            return {"deleted": len(ids), "deleted_traces": trace_count}
-        except Exception:
-            try:
-                conn.rollback()
-            except Exception:                                  # noqa: BLE001
-                pass
-            raise
-    finally:
-        conn.close()
-
-
 def stored_source(user_id, conversation_id, source_hash, *, tables=True):
     """The sheets an owned conversation stores, when they are still the snapshot ``source_hash`` names.
 

@@ -208,7 +208,11 @@ def delete_conversation(cid):
 
 def delete_user(user_id, also_auth=False):
     """Delete a user: drop every one of their conversation schemas, remove their metadata + profile, and
-    (optionally) delete the Firebase auth account so the identity is fully gone."""
+    (optionally) delete the Firebase auth account so the identity is fully gone.
+
+    Each conversation commits on its own: one transaction dropping every schema holds a lock on each of their tables
+    until it commits, and the web app's bulk delete ran Postgres out of lock slots that way for an account of 694
+    conversations (2026-10-10). A failure keeps those already dropped; deleting the user again drops the rest."""
     conn = _pg()
     dropped = []
     try:
@@ -221,6 +225,7 @@ def delete_user(user_id, also_auth=False):
                 dropped.append(cid)
             cur.execute('DELETE FROM "chat"."user_conversation" WHERE conversation_id = %s', (cid,))
             cur.execute('DELETE FROM "chat"."conversation" WHERE conversation_id = %s', (cid,))
+            conn.commit()
         cur.execute('DELETE FROM "chat"."user_profile" WHERE user_id = %s', (user_id,))
         conn.commit()
     finally:
@@ -241,14 +246,14 @@ def delete_user(user_id, also_auth=False):
 
 
 def delete_orphans():
-    """Sweep every orphan c_* schema (no conversation row)."""
+    """Sweep every orphan c_* schema (no conversation row), one schema per transaction as delete_user does."""
     orphans = [o["schema"] for o in list_orphans()]
     conn = _pg()
     try:
         cur = conn.cursor()
         for s in orphans:
             _drop_schema(cur, s)
-        conn.commit()
+            conn.commit()
     finally:
         conn.close()
     return {"dropped_schemas": orphans, "count": len(orphans)}

@@ -147,8 +147,9 @@ def cleanup_expired_traces(uid=None, *, now=None, max_jobs=2000):
     return deleted
 
 
-def delete_traces(uid, conversation_id=None):
-    """Delete one conversation's indexed traces, or every trace for the verified Firebase uid.
+def delete_traces(uid, conversation_id):
+    """Delete one conversation's indexed traces for the verified Firebase uid. "Clear all" in the web app
+    deletes conversations one at a time, each with its traces; a trace indexed to no conversation expires.
 
     Unlike streaming writes, deletion is not best-effort: callers must not report a successful
     privacy deletion while a configured RTDB store still retains the matching records.
@@ -160,10 +161,6 @@ def delete_traces(uid, conversation_id=None):
     ensure_app()
     from firebase_admin import db
     base = db.reference(f"runs/{uid}")
-    if conversation_id is None:
-        existing = base.get(shallow=True) or {}
-        base.delete()
-        return len(existing)
     matches = base.order_by_child("conversation_id").equal_to(conversation_id).get() or {}
     for job_id in matches:
         base.child(str(job_id)).delete()

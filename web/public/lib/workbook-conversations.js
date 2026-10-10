@@ -116,10 +116,19 @@ async function renderDrawer(){
   list.innerHTML='';
   showConversationQuota(list);
   if(!convs.length){ list.innerHTML='<div class=convempty>Your previous chats will appear here.</div>'; return; }
+  appendConversationItems(list,convs);
+  if(page.next_cursor){ let cursor=page.next_cursor; const more=document.createElement('button'); more.className='convclear'; more.textContent='Load older conversations';
+    more.onclick=async()=>{more.disabled=true;const next=await listConversations(cursor);if(next.error){conversationListError(next.error);more.disabled=false;return;}appendConversationItems(list,next.conversations,more);
+      cursor=next.next_cursor;if(cursor)more.disabled=false;else more.remove();}; list.appendChild(more); }
+  const clr=document.createElement('button'); clr.className='convclear'; clr.dataset.clearAll='1';
+  clr.textContent=clearingConversations?'Deleting chats…':'Clear all conversations'; clr.disabled=clearingConversations; clr.onclick=clearAllConvs;
+  list.appendChild(clr);
+}
+// Build with the DOM API (dataset + textContent), never string-concatenated HTML — the conversation
+// id/question come from the server and must not be interpolated into markup or an inline handler.
+function appendConversationItems(list,items,before=null){
   const cur=convId();
-  // Build with the DOM API (dataset + textContent), never string-concatenated HTML — the conversation
-  // id/question come from the server and must not be interpolated into markup or an inline handler.
-  const appendItems=(items,before=null)=>items.forEach(c=>{
+  items.forEach(c=>{
     const b=document.createElement('div'); b.className='convitem'+(c.id===cur?' on':''); b.dataset.cid=c.id;
     const q=document.createElement('div'); q.className='cq'; q.textContent=c.question||'(untitled)'; b.appendChild(q);
     if(c.ts){ const t=document.createElement('div'); t.className='ct'; t.textContent=prettyTs(c.ts); b.appendChild(t); }
@@ -133,12 +142,6 @@ async function renderDrawer(){
     icon.appendChild(path); x.appendChild(icon); b.appendChild(x);
     list.insertBefore(b,before);
   });
-  appendItems(convs);
-  if(page.next_cursor){ let cursor=page.next_cursor; const more=document.createElement('button'); more.className='convclear'; more.textContent='Load older conversations';
-    more.onclick=async()=>{more.disabled=true;const next=await listConversations(cursor);if(next.error){conversationListError(next.error);more.disabled=false;return;}appendItems(next.conversations,more);
-      cursor=next.next_cursor;if(cursor)more.disabled=false;else more.remove();}; list.appendChild(more); }
-  const clr=document.createElement('button'); clr.className='convclear'; clr.textContent='Clear all conversations'; clr.onclick=clearAllConvs;
-  list.appendChild(clr);
 }
 async function showConversationQuota(list){
   try{const tk=await window.ensureToken();const r=await fetch(API_BASE+'/api/conversation/quota',{headers:{Authorization:'Bearer '+tk}});if(!r.ok)return;
@@ -155,24 +158,65 @@ function bindConversationList(){
     const del=e.target.closest('.convdel'); if(del){ e.stopPropagation(); deleteConv(del.dataset.del); return; }
     const it=e.target.closest('.convitem'); if(it&&it.dataset.cid) openConversation(it.dataset.cid); });
 }
+async function deleteConversationRequest(id){
+  const tk=await window.ensureToken();
+  const r=await fetch(API_BASE+'/api/conversation/delete',{method:'POST',headers:{'content-type':'application/json','Authorization':'Bearer '+tk},body:JSON.stringify({id})});
+  if(!r.ok)throw new Error('Chat was not deleted (HTTP '+r.status+'). Please retry.');
+}
+function setItemPending(it,pending){
+  if(!it)return;
+  if(pending){it.dataset.pending='1';it.style.opacity='.4';}else{delete it.dataset.pending;it.style.opacity='';}
+  it.querySelectorAll('button').forEach(b=>b.disabled=pending);
+}
 async function deleteConv(id){
   const it=document.querySelector('.convitem[data-cid="'+id+'"]');
-  if(it&&it.dataset.pending)return;
-  if(it){it.dataset.pending='1';it.style.opacity='.4';it.querySelectorAll('button').forEach(b=>b.disabled=true);}
-  try{ const tk=await window.ensureToken();
-    const r=await fetch(API_BASE+'/api/conversation/delete',{method:'POST',headers:{'content-type':'application/json','Authorization':'Bearer '+tk},body:JSON.stringify({id})});
-    if(!r.ok)throw new Error('Chat was not deleted (HTTP '+r.status+'). Please retry.');
-  }catch(error){conversationListError(error.message||'Chat was not deleted. Check your connection and retry.');return;}
-  finally{if(it){delete it.dataset.pending;it.style.opacity='';it.querySelectorAll('button').forEach(b=>b.disabled=false);}}
+  if(clearingConversations||(it&&it.dataset.pending))return;
+  setItemPending(it,true);
+  try{ await deleteConversationRequest(id); }
+  catch(error){conversationListError(error.message||'Chat was not deleted. Check your connection and retry.');return;}
+  finally{setItemPending(it,false);}
   if(id===convId()) newConversation(); else renderDrawer();   // deleting the open one -> start fresh
 }
+// "Clear all" deletes the chats one at a time with each chat's own delete call, newest first, and each leaves the
+// list as its deletion lands. One request that deleted every chat held a database lock on all of their tables at
+// once, and an account of 694 chats was refused on every attempt (2026-10-10). A failure stops the run and keeps
+// the chats not yet deleted; clearing again continues.
+let clearingConversations=false;
 async function clearAllConvs(){
-  if(!confirm('Delete ALL your conversations? This cannot be undone.'))return;
-  try{ const tk=await window.ensureToken();
-    const r=await fetch(API_BASE+'/api/conversation/delete-all',{method:'POST',headers:{'content-type':'application/json','Authorization':'Bearer '+tk},body:'{}'});
-    if(!r.ok)throw new Error('Chats were not deleted (HTTP '+r.status+'). Please retry.');
-  }catch(error){conversationListError(error.message||'Chats were not deleted. Check your connection and retry.');return;}
-  newConversation();
+  if(clearingConversations||!confirm('Delete ALL your conversations? This cannot be undone.'))return;
+  clearingConversations=true;
+  const open=convId(),done=new Set();
+  const list=()=>$('convlist');
+  const progress=text=>{const b=list()&&list().querySelector('[data-clear-all]');if(b){b.textContent=text;b.disabled=clearingConversations;}};
+  const older=list()&&list().querySelector('.convclear:not([data-clear-all])');if(older)older.remove();
+  progress('Deleting chats…');
+  try{
+    for(;;){
+      const page=await listConversations();
+      if(page.error)throw new Error(page.error);
+      const pending=page.conversations.filter(c=>!done.has(c.id));
+      if(!pending.length){
+        if(page.conversations.length)throw new Error('Chats were listed again after they were deleted. Please retry.');
+        break;
+      }
+      const item=c=>list()&&list().querySelector('.convitem[data-cid="'+c.id+'"]');
+      if(list())appendConversationItems(list(),pending.filter(c=>!item(c)),list().querySelector('.convclear'));
+      for(const c of pending){
+        const it=item(c);if(!it)throw new Error('The chat list closed. Clear all again to continue.');
+        setItemPending(it,true);
+        try{await deleteConversationRequest(c.id);}catch(error){setItemPending(it,false);throw error;}
+        it.remove();done.add(c.id);
+        progress('Deleting chats… '+done.size+' deleted');
+      }
+    }
+  }catch(error){
+    clearingConversations=false;progress('Clear all conversations');
+    conversationListError((error.message||'Chats were not deleted. Check your connection and retry.')
+      +(done.size?' '+done.size+' deleted before this one.':''));
+    return;
+  }
+  clearingConversations=false;
+  if(open&&done.has(open)) newConversation(); else renderDrawer();   // the open chat is gone -> start fresh
 }
 
 function conversationListError(message){

@@ -16,6 +16,53 @@ for(const status of [401,403,429,500,'network'])test('failed deletion preserves 
   const state=await page.request.get('/__state');expect((await state.json()).deleted).toBe(false);
 });
 
+// "Clear all" answered 500 for an account of 694 chats (2026-10-10): one request deleted every chat in one database
+// transaction and ran out of locks. It now deletes them one at a time with each chat's own delete call, and the
+// sidebar shows every page it clears and loses each chat as its deletion lands.
+async function clearAllFixture(page,count,failAt){
+  const ids=Array.from({length:count},(_,i)=>'c_'+i.toString(16).padStart(32,'0'));
+  const run={ids,remaining:[...ids],deleted:[],shownAtDelete:[],inFlight:0,maxInFlight:0,bulk:false};
+  await page.route('**/api/conversations?*',route=>route.fulfill({json:{
+    conversations:run.remaining.slice(0,50).map(id=>({id,question:'chat '+id.slice(-3),ts:'2026-10-10T12:00:00Z'})),
+    next_cursor:run.remaining.length>50?'older':null}}));
+  await page.route('**/api/conversation/delete',async route=>{
+    const {id}=route.request().postDataJSON();run.inFlight+=1;run.maxInFlight=Math.max(run.maxInFlight,run.inFlight);
+    run.shownAtDelete.push(await page.locator('.convitem').count());
+    await new Promise(resolve=>setTimeout(resolve,10));run.inFlight-=1;
+    if(run.deleted.length===failAt)return route.fulfill({status:500,json:{error:'internal server error'}});
+    run.remaining=run.remaining.filter(other=>other!==id);run.deleted.push(id);
+    return route.fulfill({json:{deleted:id}});
+  });
+  page.on('request',request=>{if(/delete-all/.test(request.url()))run.bulk=true;});
+  page.on('dialog',dialog=>dialog.accept());
+  await mockAuth(page);await page.goto('/');await page.getByRole('button',{name:'Login',exact:true}).click();
+  await page.getByRole('button',{name:'Conversations',exact:true}).click();
+  await expect(page.locator('.convitem')).toHaveCount(50);
+  return run;
+}
+
+test('clear all deletes each chat with its own delete call and the list empties as it goes',async({page})=>{
+  const run=await clearAllFixture(page,55);
+  await page.getByRole('button',{name:'Clear all conversations',exact:true}).click();
+  await expect(page.locator('.convitem')).toHaveCount(0);
+  await expect(page.locator('.convempty')).toContainText('Your previous chats will appear here.');
+  expect(run.deleted).toEqual(run.ids);
+  expect(run.maxInFlight).toBe(1);
+  expect(run.bulk).toBe(false);
+  // Fifty chats leave the first page one by one; the five older ones are shown, then leave one by one.
+  expect(run.shownAtDelete).toEqual([...Array.from({length:50},(_,i)=>50-i),5,4,3,2,1]);
+});
+
+test('a failed deletion stops clear all and keeps the chats not yet deleted',async({page})=>{
+  const run=await clearAllFixture(page,55,2);
+  await page.getByRole('button',{name:'Clear all conversations',exact:true}).click();
+  await expect(page.locator('.converror')).toContainText('Chat was not deleted (HTTP 500)');
+  await expect(page.locator('.converror')).toContainText('2 deleted before this one.');
+  await expect(page.locator('.convitem')).toHaveCount(48);
+  expect(run.deleted).toEqual(run.ids.slice(0,2));
+  await expect(page.getByRole('button',{name:'Clear all conversations',exact:true})).toBeEnabled();
+});
+
 test('history failure is visible and preserves loaded chats',async({page})=>{
   await mockAuth(page);await page.goto('/');await page.getByRole('button',{name:'Login',exact:true}).click();
   await page.getByRole('button',{name:'Conversations',exact:true}).click();await expect(page.locator('.convitem')).toHaveCount(1);

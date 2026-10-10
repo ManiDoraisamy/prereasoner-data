@@ -122,9 +122,10 @@ analysis snapshot is limited to 32 MiB. These limits bound application
 storage; PostgreSQL backups follow the operator's separately configured backup policy.
 
 Conversation deletion removes owned PostgreSQL metadata, its per-conversation schema, and RTDB jobs
-indexed to that conversation. Delete-all removes the verified Firebase user's conversations and
-entire `/runs/{uid}` subtree. A configured RTDB deletion failure aborts the operation rather than
-reporting privacy deletion as successful.
+indexed to that conversation. "Clear all conversations" in the web app deletes each of the user's
+conversations this way, one request at a time, and stops at the first failure; an RTDB job indexed to no
+conversation expires with the other traces. A configured RTDB deletion failure aborts the operation rather
+than reporting privacy deletion as successful.
 
 When RTDB is enabled, new trace jobs carry a seven-day expiry by default
 (`RTDB_TRACE_RETENTION_DAYS`, bounded to 1-365 days). Terraform creates one daily Cloud Run retention
