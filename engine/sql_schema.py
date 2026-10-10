@@ -110,6 +110,7 @@ class SchemaGraph:
         }
         self.value_index = self._build_value_index() if value_index is None else value_index
         self._without: dict[frozenset[str], SchemaGraph] = {}
+        self._repeats: dict[tuple[tuple[str, str], ...], bool] = {}
 
     @classmethod
     def from_tables(cls, tables: Sequence[dict], fks: Sequence[dict | tuple]) -> "SchemaGraph":
@@ -206,6 +207,19 @@ class SchemaGraph:
             self._without[tables] = SchemaGraph(
                 (column for column in self.columns if column.ref.table not in tables), self.foreign_keys, index)
         return self._without[tables]
+
+    def repeats(self, columns: Iterable[ColumnRef]) -> bool:
+        """Whether two rows share every value of ``columns``, or whether that is unknown (a column without values),
+        decided once per set of columns: the search asks it of every grouped candidate."""
+        key = tuple((column.table, column.name) for column in columns)
+        if key not in self._repeats:
+            schema_columns = [self.column_map.get(pair) for pair in key]
+            if not schema_columns or any(column is None or not column.values for column in schema_columns):
+                self._repeats[key] = True
+            else:
+                rows = list(zip(*(map(repr, column.values) for column in schema_columns)))
+                self._repeats[key] = len(rows) != len(set(rows))
+        return self._repeats[key]
 
     def identifies(self, columns: Iterable[ColumnRef]) -> bool:
         """Whether one of ``columns`` names entities: it holds no value twice in its table, or it refers by a foreign
@@ -458,6 +472,11 @@ def _row_value(row: Any, index: int, name: str) -> Any:
 def name_words(name: str) -> tuple[str, ...]:
     spaced = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", str(name))
     return tuple(word.lower() for word in re.findall(r"[^\W_]+", spaced, re.UNICODE))
+
+
+def is_name_column(name: str) -> bool:
+    """Whether a column named ``name`` names its rows ("name", "Song_Name", "title", "label")."""
+    return bool({canon(word) for word in name_words(name)} & _NAME_WORDS)
 
 
 # A column is a surrogate key (a primary or foreign key, never a measure) when the last word of its name is

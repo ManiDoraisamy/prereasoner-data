@@ -2899,3 +2899,31 @@ DEV before it was kept, with Gemini's rewordings replayed from one cache so that
 Measured (`spider/results/RESULTS.md`, 2026-10-10): engine alone 369 → 371 strict (2 wins, 0 losses); Gemini on, with
 the same rewordings, 448 → 452 (4 wins, 0 losses). DEV 911 is now answered and still wrong: it reads the friendship
 from the friend's side, which the next change addresses.
+
+## A relation is read from its owner, and rows grouped by a name that repeats are grouped by their key (2026-10-10)
+
+A served-path ledger of DEV's wrong answers after the previous change found one table's questions wrong for one
+reason: in `network_1`, Friend(student_id, friend_id) and Likes(student_id, liked_id) both key Highschooler twice,
+"high schoolers who have at least 3 friends" tied between the two keys and took friend_id by name order, and grouping
+by name merged the two students named Jordan.
+
+- `sql_rank.relation_sides`: a table holding exactly two keys to one other table relates an owner to the rows its name
+  names: the key named for the relation ("friend_id" in Friend, "liked_id" in Likes, "friend" in PersonFriend) is the
+  other side, the remaining key the owner. `CandidateRanker` reads such a table from its owner's key (feature
+  `relation_side`, -1.0 otherwise), or from the other key when the question says its participle ("liked by"). Two
+  keys named for neither side (a flight's source and destination airports) relate no owner; `travel_direction` reads
+  those.
+- `sql_expansion.entity_groups`, now shared by the search, the HAVING expansion (`group_options` and its count
+  groups) and the frequency superlatives (which had the rule as `_frequency_groups`): rows grouped by columns that do
+  not tell them apart, joined to the rows they count, are grouped by their key too, when that key is unique in its
+  table (`SchemaGraph.repeats`, decided once per set of columns, as the search asks it of every grouped candidate). A
+  key that repeats belongs to another table ("countrylanguage"."CountryCode" for "languages spoken by only one
+  country"), and the search adds the key only beside a name (`sql_schema.is_name_column`, which the ranker now reads
+  instead of its own copy), so "by grade" stays one group per grade.
+- `CandidateRanker` scores no group role for a key the answer does not list beside its table's other groups.
+
+Measured (`spider/results/RESULTS.md`, 2026-10-10): engine alone 371 → 384 strict (13 wins, 0 losses); Gemini on,
+with the same rewordings, 452 → 466 (14 wins, 0 losses). On 1,000 Spider train questions held out from all of this
+work, this change and the two before it take the engine from 215 to 246 strict (33 wins, 2 losses: Spider groups one
+question by a name that repeats, and one exclusion now joins through two tables the question does not name). A first
+cut lost DEV 758 (the repeated key) and DEV 369 (a listed key that lost its group score); both are regression cases.

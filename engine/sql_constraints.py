@@ -38,6 +38,7 @@ from engine.sql_expansion import (
     column_matches as _column_matches,
     column_requested_as_output as _column_requested_as_output,
     count_requested as _count_requested,
+    entity_groups as _entity_groups,
     entity_join_key as _entity_join_key,
     explicit_order as _explicit_order,
     expression_table as _expression_table,
@@ -158,7 +159,8 @@ class ConstraintQueryExpander(ExpansionSupport):
                                     item.expression for item in select
                                     if isinstance(item.expression, ColumnRef)
                                 )
-                                groups = raw if any(
+                                groups = (_entity_groups(self.schema, entity_table, joins, raw)
+                                          if entity_table != counted_table else raw) if any(
                                     isinstance(item.expression, Aggregate) for item in select
                                 ) and raw else group_options[0]
                                 query = SelectQuery(

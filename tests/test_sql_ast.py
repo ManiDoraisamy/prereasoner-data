@@ -41,7 +41,7 @@ from engine.sql_ast import (
 from engine import llm
 from engine.artifact_provenance import sha256_file, validate_weight_bundle
 from engine.sql_grounding import double_counted, grounded_members, join_pairs, literal_bindings
-from engine.sql_rank import FallbackRecord, SemanticSignals, analyze_question
+from engine.sql_rank import CandidateRanker, FallbackRecord, SemanticSignals, analyze_question, relation_sides
 from regress.sql_import import import_sql, normalize_decoded_sql
 from engine.sql_search import SQLSearcher, SchemaGraph, ScoredQuery
 from spider.probe.evalutil import run_with_budget
@@ -4506,6 +4506,92 @@ def test_one_aggregate_word_over_two_coordinated_fields_takes_both():
     assert one["sql"].startswith('SELECT AVG("flight"."distance") FROM'), one["sql"]
 
 
+HIGHSCHOOLERS = [
+    {"name": "Highschooler", "columns": ["ID", "name", "grade"],
+     "rows": [[1, "Jordan", 9], [2, "Jordan", 10], [3, "Kyle", 11], [4, "Ann", 9]]},
+    {"name": "Friend", "columns": ["student_id", "friend_id"],
+     "rows": [[1, 3], [2, 3], [3, 1], [3, 2], [3, 4], [4, 3], [4, 1]]},
+    {"name": "Likes", "columns": ["student_id", "liked_id"], "rows": [[1, 3], [2, 3], [4, 3], [3, 1], [4, 1]]},
+]
+HIGHSCHOOLER_KEYS = [{"from_table": table, "from_col": column, "to_table": "Highschooler", "to_col": "ID", "conf": 1.0}
+                     for table, column in (("Friend", "student_id"), ("Friend", "friend_id"),
+                                           ("Likes", "student_id"), ("Likes", "liked_id"))]
+
+
+def test_a_relation_is_read_from_its_owner_and_named_rows_are_grouped_apart():
+    """Spider DEV 885-911, 2026-10-10: "high schoolers who have at least 2 friends" joined Friend on friend_id, the
+    friends' side (both readings tied and friend_id came first by name), and grouped by name, so the two students named
+    Jordan counted their friends together. A table relating rows of one table reads from its owner's key, and rows
+    grouped by a name that repeats are grouped by their key too. From the friends' side the answer is Jordan and Kyle;
+    by name alone the Jordans' one friend each makes two."""
+    planner = _hermetic_planner()
+    served = planner.serve(HIGHSCHOOLERS, "Show the names of high schoolers who have at least 2 friends.",
+                           explicit_fks=HIGHSCHOOLER_KEYS)
+    assert sorted(row[0] for row in served["result"]["rows"]) == ["Ann", "Kyle"], served["sql"]
+    each = planner.serve(HIGHSCHOOLERS, "What are the names of the high schoolers and how many friends does each have?",
+                         explicit_fks=HIGHSCHOOLER_KEYS)
+    assert sorted(tuple(row) for row in each["result"]["rows"]) == [
+        ("Ann", 2), ("Jordan", 1), ("Jordan", 1), ("Kyle", 3)], each["sql"]
+    # Contrast: a category is no name, and its rows stay one group per value.
+    graded = planner.serve(HIGHSCHOOLERS, "How many friends do the high schoolers in each grade have?",
+                           explicit_fks=HIGHSCHOOLER_KEYS)
+    assert sorted(tuple(row) for row in graded["result"]["rows"]) == [(9, 3), (10, 1), (11, 3)], graded["sql"]
+
+
+def test_a_group_is_told_apart_only_by_a_key_of_its_own_rows():
+    """Spider DEV 758 and 369, 2026-10-10, against the first cut of grouping named rows by their key: "languages spoken
+    by only one country" grouped each language with countrylanguage.CountryCode, a key of the countries, so every
+    language counted one country; and "document ids, names and the number of paragraphs" lost the ids it asked for,
+    their group no longer scored as asked. A key repeated in its table tells no group apart, and a key the answer
+    lists is a group it asks for."""
+    country = {"name": "country", "columns": ["Code", "Name", "GovernmentForm"],
+               "rows": [["FRA", "France", "Republic"], ["BEL", "Belgium", "Monarchy"], ["ITA", "Italy", "Republic"],
+                        ["PER", "Peru", "Republic"]]}
+    language = {"name": "countrylanguage", "columns": ["CountryCode", "Language", "Percentage"],
+                "rows": [["FRA", "French", 90.0], ["BEL", "French", 30.0], ["ITA", "Italian", 95.0],
+                         ["FRA", "Italian", 1.0], ["PER", "Quechua", 20.0], ["BEL", "Dutch", 60.0]]}
+    planner = _hermetic_planner()
+    spoken = planner.serve([country, language], "Which languages are spoken by only one country in republic governments?",
+                           explicit_fks=[{"from_table": "countrylanguage", "from_col": "CountryCode",
+                                          "to_table": "country", "to_col": "Code", "conf": 1.0}])
+    assert sorted(row[0] for row in spoken["result"]["rows"]) == ["French", "Quechua"], spoken["sql"]
+    documents = {"name": "Documents", "columns": ["Document_ID", "Document_Name"], "rows": [[1, "Plan"], [2, "Plan"], [3, "Memo"]]}
+    paragraphs = {"name": "Paragraphs", "columns": ["Paragraph_ID", "Document_ID", "Paragraph_Text"],
+                  "rows": [[10, 1, "a"], [11, 1, "b"], [12, 2, "c"], [13, 3, "d"]]}
+    counted = planner.serve([documents, paragraphs],
+                            "Show all document ids, names and the number of paragraphs in each document.",
+                            explicit_fks=[{"from_table": "Paragraphs", "from_col": "Document_ID",
+                                           "to_table": "Documents", "to_col": "Document_ID", "conf": 1.0}])
+    assert sorted(tuple(row) for row in counted["result"]["rows"]) == [(1, "Plan", 2), (2, "Plan", 1), (3, "Memo", 1)], (
+        counted["sql"])
+
+
+def test_a_relation_names_the_side_its_participle_asks_for():
+    """The other key of a relation table (Likes.liked_id) is the side "liked by" asks for, and the owner's side
+    (student_id) the one "who have likes" does. Two keys named for neither side (a flight's source and destination
+    airports) relate no owner, and travel_direction reads them."""
+    graph = SchemaGraph.from_tables(HIGHSCHOOLERS, HIGHSCHOOLER_KEYS)
+    assert {relation: (owner.from_column.name, other.from_column.name, participle)
+            for relation, (owner, other, participle) in relation_sides(graph).items()} == {
+        "Friend": ("student_id", "friend_id", None), "Likes": ("student_id", "liked_id", "liked")}
+
+    def joined(column):
+        query = SelectQuery((SelectItem(ColumnRef("Highschooler", "name", SQLType.TEXT)),), "Likes", (
+            Join("Highschooler", ColumnRef("Likes", column, SQLType.INTEGER),
+                 ColumnRef("Highschooler", "ID", SQLType.INTEGER)),))
+        return ScoredQuery(query, render_query(query), 0.0, ())
+
+    ranker = CandidateRanker(graph)
+    candidates = [joined("liked_id"), joined("student_id")]
+    assert '"liked_id"' in ranker.rank("Show the names of high schoolers who are liked by someone.", candidates)[0].sql
+    assert '"student_id"' in ranker.rank("Show the names of high schoolers who have likes.", candidates)[0].sql
+    airports = {"name": "airports", "columns": ["code", "name"], "rows": [["A", "Alpha"], ["B", "Beta"]]}
+    flights = {"name": "flights", "columns": ["flno", "source_airport", "dest_airport"], "rows": [[1, "A", "B"]]}
+    keys = [{"from_table": "flights", "from_col": column, "to_table": "airports", "to_col": "code", "conf": 1.0}
+            for column in ("source_airport", "dest_airport")]
+    assert relation_sides(SchemaGraph.from_tables([airports, flights], keys)) == {}
+
+
 def test_extrema_expansion_guards_multi_aggregate_and_can_be_disabled():
     aggregate = best("What are the minimum and maximum age of people?", [PEOPLE])
     assert aggregate.sql == 'SELECT MIN("people"."Age"), MAX("people"."Age") FROM "people"'
@@ -4947,6 +5033,9 @@ TESTS = [
     test_extrema_expansion_searches_set_difference,
     test_a_difference_subtracts_entities_by_what_tells_them_apart,
     test_one_aggregate_word_over_two_coordinated_fields_takes_both,
+    test_a_relation_is_read_from_its_owner_and_named_rows_are_grouped_apart,
+    test_a_relation_names_the_side_its_participle_asks_for,
+    test_a_group_is_told_apart_only_by_a_key_of_its_own_rows,
     test_extrema_expansion_guards_multi_aggregate_and_can_be_disabled,
     test_shared_spider_evaluation_contract,
     test_live_table_query_ast_mode_executes_typed_candidate,

@@ -292,6 +292,8 @@ class ExpansionSupport:
             item.expression for item in projection if isinstance(item.expression, ColumnRef)
         )
         if projected:
+            if entity_table != counted_table:
+                return [entity_groups(self.schema, entity_table, joins, tuple(dict.fromkeys(projected)))]
             return [tuple(dict.fromkeys(projected))]
         if entity_table != counted_table:
             key = join_key(joins, entity_table)
@@ -480,6 +482,19 @@ def join_key(joins: tuple[Join, ...], table: str) -> ColumnRef | None:
     return sorted(
         set(columns), key=lambda column: (0 if is_surrogate_key(column.name) else 1, column.name)
     )[0] if columns else None
+
+
+def entity_groups(schema, entity_table: str, joins: tuple[Join, ...],
+                  columns: tuple[ColumnRef, ...]) -> tuple[ColumnRef, ...]:
+    """The groups that ``columns`` of ``entity_table`` make of its rows joined to others: the columns, and the
+    entity's join key when their values do not tell its rows apart and the key does. Grouped by name alone, the two
+    high schoolers named Jordan counted their friends together (Spider DEV 885, 888, 2026-10-10); a key that repeats
+    is another table's ("countrylanguage"."CountryCode"), and the language is the group."""
+    key = (join_key(joins, entity_table)
+           if all(column.table == entity_table for column in columns) and schema.repeats(columns) else None)
+    if key is not None and schema.repeats((key,)):
+        key = None
+    return tuple(dict.fromkeys((*columns, key) if key is not None else columns))
 
 
 # Words after which "by" sorts ("ordered by age"); the noun "orders by city" groups.

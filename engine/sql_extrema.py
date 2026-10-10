@@ -29,6 +29,7 @@ from engine.sql_expansion import (
     build_candidate as _candidate,
     column_matches as _column_matches,
     count_requested as _count_requested,
+    entity_groups as _entity_groups,
     join_key as _join_key,
     linker_noise as _linker_noise,
     ordering_requested,
@@ -448,9 +449,8 @@ class ExtremaQueryExpander(ExpansionSupport):
                         )
                         if not columns:
                             continue
-                        groups = self._frequency_groups(
-                            entity_table, counted_table, joins, columns
-                        )
+                        groups = (_entity_groups(self.schema, entity_table, joins, columns)
+                                  if entity_table != counted_table else tuple(dict.fromkeys(columns)))
                         count = Aggregate("COUNT", count_operand)
                         select = projection
                         if _frequency_count_output(tokens):
@@ -682,30 +682,6 @@ class ExtremaQueryExpander(ExpansionSupport):
             if any(_target_extrema_predicate(term, target.column) for term in _and_terms(query.where)):
                 return True
         return False
-
-    def _frequency_groups(
-        self, entity_table: str, counted_table: str, joins, columns: tuple[ColumnRef, ...]
-    ) -> tuple[ColumnRef, ...]:
-        entity_key = (
-            _join_key(joins, entity_table)
-            if entity_table != counted_table and self._projection_has_duplicates(columns)
-            else None
-        )
-        return tuple(dict.fromkeys((*columns, entity_key) if entity_key is not None else columns))
-
-    def _projection_has_duplicates(self, columns: tuple[ColumnRef, ...]) -> bool:
-        schema_columns = [
-            self.schema.column_map.get((column.table, column.name))
-            for column in columns
-        ]
-        if not schema_columns or any(column is None or not column.values for column in schema_columns):
-            return True
-        row_count = min(len(column.values) for column in schema_columns if column is not None)
-        rows = [
-            tuple(repr(column.values[index]) for column in schema_columns if column is not None)
-            for index in range(row_count)
-        ]
-        return len(rows) != len(set(rows))
 
 
 

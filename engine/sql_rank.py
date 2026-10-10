@@ -20,7 +20,7 @@ from engine.sql_ast import (
 from engine.sql_dates import period_grouping
 from engine.sql_expansion import FUNCTION_WORDS, asked_cues, by_groups, share_cue, share_requested, words
 from engine.sql_candidate import ScoredQuery
-from engine.sql_schema import SchemaGraph, canon, is_surrogate_key
+from engine.sql_schema import SURROGATE_KEY_WORDS, SchemaGraph, canon, is_name_column, is_surrogate_key, name_words
 
 
 ColumnKey = tuple[str, str]
@@ -103,6 +103,7 @@ class CandidateRanker:
         self.signals = signals or SemanticSignals.empty()
         self.column_words = frozenset(
             token for column in schema.columns for token in _schema_tokens(column.ref.name))
+        self.relations = relation_sides(schema)
 
     def rank(self, question: str, candidates: Sequence[ScoredQuery]) -> list[ScoredQuery]:
         roles = analyze_question(question, self.schema)
@@ -173,11 +174,15 @@ class CandidateRanker:
                 for aggregate in count_aggregates
                 if aggregate.distinct
                 and isinstance(aggregate.operand, ColumnRef)
-                and (is_surrogate_key(aggregate.operand.name) or _is_name(aggregate.operand.name))
+                and (is_surrogate_key(aggregate.operand.name) or is_name_column(aggregate.operand.name))
             ]
             features.append(("count_distinct_entity", 4.0 if distinct_identities else 0.0))
 
         for column in group_columns:
+            if (isinstance(column, ColumnRef) and is_surrogate_key(column.name) and column not in select_columns
+                    and any(isinstance(other, ColumnRef) and other.table == column.table and other != column
+                            for other in group_columns)):
+                continue    # an unlisted key beside its table's other groups tells their rows apart (entity_groups)
             alignment = self._group_alignment(column, roles) or (
                 count_ranked and any(
                     selected == column or selected.table == column.table
@@ -211,7 +216,7 @@ class CandidateRanker:
 
         if roles.id_instead_of_name:
             id_columns = [column for column in select_columns + group_columns if is_surrogate_key(column.name)]
-            name_columns = [column for column in select_columns + group_columns if _is_name(column.name)]
+            name_columns = [column for column in select_columns + group_columns if is_name_column(column.name)]
             features.append(("requested_id", 4.0 if id_columns else -3.0))
             features.append(("rejected_name", -6.0 if name_columns else 1.0))
 
@@ -254,6 +259,17 @@ class CandidateRanker:
                     for column in directional_columns
                 )
                 features.append((f"travel_direction:{direction}", 3.0 if aligned else -3.0))
+
+        # A table relating rows of one table to others of it reads from its owner's key: "high schoolers who have 3
+        # friends" own the Friend rows (student_id), the friend_id side being the friends (Spider DEV 885-911,
+        # 2026-10-10: the two readings tied and the friend's side came first by name). The question saying the
+        # other key's participle ("liked by Kyle") asks for that side.
+        joined = {frozenset(pair) for join in query.joins for pair in join.predicates}
+        for relation, (owner, other, participle) in sorted(self.relations.items()):
+            used = [key for key in (owner, other) if frozenset((key.from_column, key.to_column)) in joined]
+            if len(used) == 1:
+                wanted = other if participle is not None and participle in roles.tokens else owner
+                features.append((f"relation_side:{relation}", 0.0 if used[0] == wanted else -1.0))
 
         features.extend(self._model_features(query))
         return tuple(features)
@@ -537,6 +553,34 @@ def _schema_tokens(name: str) -> tuple[str, ...]:
 
 
 
+def relation_sides(schema: SchemaGraph) -> dict[str, tuple]:
+    """Each table holding exactly two keys to one other table, as (owner key, other key, the other's participle or
+    None): the other key is named for the relation ("Friend"."friend_id", "Likes"."liked_id", "PersonFriend"."friend"),
+    the owner is the remaining one ("student_id"). A table whose keys neither or both name it relates no owner."""
+    pairs: dict[tuple[str, str], list] = {}
+    for key in schema.foreign_keys:
+        if key.from_column.table != key.to_column.table and not key.additional_columns:
+            pairs.setdefault((key.from_column.table, key.to_column.table), []).append(key)
+    sides = {}
+    for (relation, _), keys in sorted(pairs.items()):
+        if len(keys) != 2:
+            continue
+        relation_words = {canon(word) for word in name_words(relation)}
+
+        def role(key):
+            words = [word for word in name_words(key.from_column.name) if word not in SURROGATE_KEY_WORDS]
+            return next((word for word in words if canon(word) in relation_words
+                         or (word.endswith("ed") and {word[:-1], word[:-2]} & relation_words)), None)
+
+        named = [(key, role(key)) for key in keys]
+        others = [(key, word) for key, word in named if word is not None]
+        if len(others) == 1:
+            other, word = others[0]
+            owner = next(key for key, _ in named if key is not other)
+            sides[relation] = (owner, other, word if word.endswith("ed") else None)
+    return sides
+
+
 def travel_direction(tokens: tuple[str, ...]) -> str | None:
     token_set = set(tokens)
     if token_set & {"leave", "leaving", "depart", "departing", "departure", "origin", "source"}:
@@ -553,10 +597,6 @@ def travel_column_role(column: ColumnRef) -> str | None:
     if words & {"destination", "dest", "arrival", "arrive", "landing", "to"}:
         return "destination"
     return None
-
-
-def _is_name(name: str) -> bool:
-    return bool(set(_schema_tokens(name)) & {"name", "title", "label"})
 
 
 def _column_label(column: ColumnRef) -> str:

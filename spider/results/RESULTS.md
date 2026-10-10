@@ -4,6 +4,57 @@ Dated entries come newest first. Each records a run at the commit it names; the 
 entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection arbiter`) may since have
 been removed, and that commit holds the code that ran.
 
+## A relation read from its owner, named rows grouped by their key: 371 → 384 strict, Gemini on 452 → 466; held out 215 → 246 (2026-10-10)
+
+Same contract as the entries below. The change runs `step5b-dirty` and `step5b-gemini-dirty` are a worktree of
+`29a97c3` with the previous change and this one (`DECISIONS.md` "A relation is read from its owner, and rows grouped
+by a name that repeats are grouped by their key"); the committed code differs only by `SchemaGraph.repeats` caching
+the same test per set of columns. Gemini on replays the rewordings `step4-gemini-dirty` cached: 441 calls, none live.
+
+| | Previous change | **This change** | Previous, Gemini on | **This change, Gemini on** |
+|---|---:|---:|---:|---:|
+| Strict | 371 (35.9%) | **384 (37.1%)** | 452 (43.7%) | **466 (45.1%)** |
+| Lenient | 433 | 442 | 535 | 543 |
+| Answered | 593 | 593 | 745 | 745 |
+| Strict of answered | 62.6% | **64.8%** | 60.7% | **62.6%** |
+| Scalar | 209/408 | 214/408 | 251/408 | 256/408 |
+| Strict: easy / medium / hard / extra | 133 / 165 / 48 / 25 | 133 / 172 / 53 / 26 | 161 / 200 / 56 / 35 | 161 / 207 / 61 / 37 |
+| Strict wins / losses | | **13 / 0** | | **14 / 0** |
+| Prediction seconds, median / p90 (five runs sharing the machine) | 1.57 / 3.57 | 2.48 / 6.01 | 2.90 / 6.56 | 2.79 / 6.52 |
+
+- Twelve of the thirteen wins are `network_1` (DEV 885, 886, 888, 889, 894, 897, 904, 905, 908, 909, 910, 911): the
+  friendship and the like read from the owner's key, and the two Jordans grouped apart; the thirteenth is DEV 605
+  (`tvshow`). DEV 906 now reads the right side and misses only on ties: it keeps every student tied for the most
+  likes, where Spider's `LIMIT 1` keeps one. A first cut also lost DEV 758 and 369; the corrected rules
+  (`DECISIONS.md`) keep both right.
+- Since `de0cfba` (`plan-base-de0cfba`, the engine alone): 314 → 384 strict, 70 wins and 0 losses; Gemini on, the
+  rewordings controlled since `29a97c3`: 448 → 466, 18 wins and 0 losses.
+- Held out: 1,000 Spider train questions (`random.Random(0).sample` of `train_spider.json`, 1,000 questions over
+  their own databases), none read while these three changes were written; one frequency count (coordinated
+  aggregates, 41 of 7,000) scanned all of train's questions. `de0cfba`'s code against this change's, the engine alone:
+
+| Held out | `de0cfba` | **These three changes** |
+|---|---:|---:|
+| Strict | 215 (21.5%) | **246 (24.6%)** |
+| Lenient | 266 | 302 |
+| Answered | 419 | 484 |
+| Strict of answered | 51.3% | 50.8% |
+| Strict: easy / medium / hard / extra | 87 / 81 / 31 / 16 | 91 / 94 / 42 / 19 |
+| Strict wins / losses | | **33 / 2** |
+
+  The gain carries to unseen databases at about half DEV's rate (+3.1 points against +6.8), and strict of answered
+  stays level. The two losses: train 133 (Spider groups characteristics by a name two of them share; the key keeps
+  them apart) and train 742 (an exclusion that now joins Lessons to Staff through Customers and Addresses, tables
+  the question does not name; the previous change's check reads only a joined leaf).
+- Served-path ledger (`step5b-dirty` joined with an evaluation-only census of every pool member of every question):
+  384 served right; 62 served wrong while a right candidate was eligible (ranking); 26 served wrong while a check
+  refused the right candidate; 121 served wrong with no right candidate built; 199 refused while a right candidate
+  was built; 242 refused with none built. Where a check refused a right candidate, an unread word did it 162 times
+  ("used", "name", "first", "high", "nations"), a constraint violation 63 (32 of them "the requested field is not
+  used"). A right candidate is in the pool for 671 questions (666 before) and violation-free for 618 (618).
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_{step5b,step5b-gemini,heldout-*}-*.json`.
+
 ## An exclusion subtracts the entities it names: 369 → 371 strict, Gemini on 448 → 452 with the same rewordings (2026-10-10)
 
 Same contract as the entry below (`whole_db`, `served` selection, SQL backend, row cap 5,000, no resumed predictions,

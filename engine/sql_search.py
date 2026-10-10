@@ -53,6 +53,7 @@ from engine.sql_expansion import (
     FUNCTION_WORDS,
     asked_cues,
     by_groups,
+    entity_groups,
     implicit_sum_measures,
     measure_words_after,
     money_total_position,
@@ -66,7 +67,7 @@ from engine.sql_expansion import (
     word_spans,
     words,
 )
-from engine.sql_schema import SchemaGraph, canon, is_surrogate_key, name_words, normalize_value
+from engine.sql_schema import SchemaGraph, canon, is_name_column, is_surrogate_key, name_words, normalize_value
 
 _PROJECTION_CUES = frozenset({"show", "list", "display", "select", "give", "find", "which", "what"})
 # A text the question quotes: 'Al', "Sky Radio".
@@ -278,12 +279,20 @@ class SQLSearcher:
                         root = self._preferred_root(required, table_scores, draft)
                         trees = self.schema.join_trees(required, root)
                     for tree in trees:
+                        # Rows grouped by their name are grouped by what they are: "the names of the high schoolers
+                        # and how many friends each has" keeps two Jordans apart (entity_groups). A category ("by
+                        # country") is no name and stays one group.
+                        named = {column.table for column in grouped if isinstance(column, ColumnRef)}
+                        group_by = (entity_groups(self.schema, next(iter(named)), tree.joins, grouped)
+                                    if draft.aggregates and tree.joins and len(named) == 1
+                                    and all(isinstance(column, ColumnRef) and is_name_column(column.name)
+                                            for column in grouped) else grouped)
                         query = SelectQuery(
                             select=expressions,
                             from_table=tree.root,
                             joins=tree.joins,
                             where=and_predicates(draft.predicates),
-                            group_by=grouped,
+                            group_by=group_by,
                             order_by=order_terms,
                             limit=limit,
                             distinct=bool({"distinct", "different", "unique"} & set(tokens)) and not draft.aggregates,
