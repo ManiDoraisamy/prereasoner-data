@@ -4473,6 +4473,39 @@ def test_extrema_expansion_searches_set_difference():
     assert execute([STADIUM, CONCERT], candidate.sql) == [("Gamma",)]
 
 
+def test_a_difference_subtracts_entities_by_what_tells_them_apart():
+    """Spider DEV 61, 2026-10-10: "the major and age of students who do not have a cat" was served as an EXCEPT of
+    (major, age), which removed a student sharing both with a cat owner. A difference subtracts entities by a column
+    that tells them apart: the projected values when they do, else the entity's key, kept NOT IN the related rows."""
+    student = {"name": "Student", "columns": ["StuID", "Name", "Major", "Age"],
+               "rows": [[1, "Ann", 600, 19], [2, "Bo", 600, 19], [3, "Cy", 520, 20]]}
+    pets = {"name": "Pets", "columns": ["PetID", "PetType"], "rows": [[10, "cat"], [11, "dog"]]}
+    has_pet = {"name": "Has_Pet", "columns": ["StuID", "PetID"], "rows": [[1, 10], [3, 11]]}
+    planner = _hermetic_planner()
+    served = planner.serve([student, pets, has_pet], "Find the major and age of students who do not have a cat pet.")
+    assert sorted(tuple(row) for row in served["result"]["rows"]) == [(520, 20), (600, 19)], served.get("sql")
+    assert " NOT IN " in served["sql"], served["sql"]
+    # Contrast: names no two students share tell them apart, and their difference is the answer.
+    served = planner.serve([student, pets, has_pet], "Find the names of students who do not have a cat pet.")
+    assert sorted(row[0] for row in served["result"]["rows"]) == ["Bo", "Cy"], served.get("sql")
+
+
+def test_one_aggregate_word_over_two_coordinated_fields_takes_both():
+    """Spider train (41 of 7,000 questions; DEV 4): "the average distance and price" asks for two averages, and the
+    search kept one aggregate per word, so the price was dropped. The fields the aggregate word's phrase coordinates
+    each take it; a coordinated filter value is no second field."""
+    flight = {"name": "flight", "columns": ["flno", "origin", "distance", "price"],
+              "rows": [[1, "Los Angeles", 100, 50.0], [2, "Los Angeles", 300, 70.0], [3, "Chicago", 900, 200.0]]}
+    planner = _hermetic_planner()
+    both = planner.serve([flight], "What is the average distance and price for flights from Los Angeles?")
+    assert both["sql"] == ('SELECT AVG("flight"."distance"), AVG("flight"."price") FROM "flight" '
+                           """WHERE "flight"."origin" = 'Los Angeles'"""), both["sql"]
+    assert [list(row) for row in both["result"]["rows"]] == [[200, 60]]
+    # Contrast: two cities coordinated in a filter keep one average.
+    one = planner.serve([flight], "What is the average distance for flights from Los Angeles and Chicago?")
+    assert one["sql"].startswith('SELECT AVG("flight"."distance") FROM'), one["sql"]
+
+
 def test_extrema_expansion_guards_multi_aggregate_and_can_be_disabled():
     aggregate = best("What are the minimum and maximum age of people?", [PEOPLE])
     assert aggregate.sql == 'SELECT MIN("people"."Age"), MAX("people"."Age") FROM "people"'
@@ -4912,6 +4945,8 @@ TESTS = [
     test_extrema_frequency_argmin_includes_zero_related_entities,
     test_extrema_expansion_returns_dual_lexical_extrema,
     test_extrema_expansion_searches_set_difference,
+    test_a_difference_subtracts_entities_by_what_tells_them_apart,
+    test_one_aggregate_word_over_two_coordinated_fields_takes_both,
     test_extrema_expansion_guards_multi_aggregate_and_can_be_disabled,
     test_shared_spider_evaluation_contract,
     test_live_table_query_ast_mode_executes_typed_candidate,

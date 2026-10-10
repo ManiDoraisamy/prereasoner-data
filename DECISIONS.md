@@ -2877,3 +2877,25 @@ Measured (`spider/results/RESULTS.md`, 2026-10-10): engine alone 314 → 369 str
 hidden (a HAVING COUNT over the wrong table, a relationship read from its other side, "fewest" counting groups with
 none). Left as they were: column order (a product choice), a LEFT JOIN for "fewest", and the 369 questions with no
 right candidate built, where the review's shared reading of operator, operand and population would apply.
+
+## An exclusion subtracts the entities it names, and one aggregate word takes the fields it coordinates (2026-10-10)
+
+The step-1 review's next package: identity-safe exclusion and repeated aggregates. Each rule was measured on Spider
+DEV before it was kept, with Gemini's rewordings replayed from one cache so that a run's difference is the engine's.
+
+- `sql_extrema`: a set difference whose projected fields name no entity ("the major and age of students who do not
+  have a cat") keeps the entity's key NOT IN the related rows' keys (`extrema:anti-member`); an EXCEPT of (major, age)
+  removed a student sharing both with a cat owner (DEV 61). `SchemaGraph.identifies` decides it: a column holding no
+  value twice, or a foreign key to one. `sql_recursive` builds its anti-membership EXCEPT only on such columns.
+- `query_contract.constraint_violations`: a table joined inside an exclusion only to filter (no column read outside
+  the joins, joined to one other table) that the question does not name narrows what the exclusion removes, and is a
+  violation. "Templates not used in any documents" subtracted only documents with paragraphs (DEV 316); "employees who
+  never received any evaluation" subtracted only those also hired (DEV 282).
+- `sql_expansion.numeric_comparisons`: a comparison continuing the one before inherits its field only when no noun
+  follows its number; "a grade of over 5 and 2 or more friends" compares friends, not the grade (DEV 911).
+- `sql_search`: one aggregate word over two fields its phrase coordinates takes both ("the average distance and
+  price"; 41 of 7,000 Spider train questions, 4 DEV); a coordinated filter value is no second field.
+
+Measured (`spider/results/RESULTS.md`, 2026-10-10): engine alone 369 → 371 strict (2 wins, 0 losses); Gemini on, with
+the same rewordings, 448 → 452 (4 wins, 0 losses). DEV 911 is now answered and still wrong: it reads the friendship
+from the friend's side, which the next change addresses.

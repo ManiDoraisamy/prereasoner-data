@@ -9,6 +9,7 @@ from engine.sql_ast import (
     Aggregate,
     ColumnRef,
     Comparison,
+    InPredicate,
     Literal,
     OrderTerm,
     Predicate,
@@ -40,7 +41,7 @@ from engine.sql_expansion import (
     unique_predicates as _unique_predicates,
 )
 from engine.sql_candidate import ScoredQuery
-from engine.sql_schema import is_surrogate_key
+from engine.sql_schema import canon, is_surrogate_key, name_words
 from engine.numeric import parse_decimal
 
 
@@ -536,10 +537,25 @@ class ExtremaQueryExpander(ExpansionSupport):
                             where=and_predicates(right_terms),
                             distinct=False,
                         )
+                        # A difference of values is the answer when the values are what the question asks for ("the
+                        # countries that are not playing cartoons written by Todd Casey"). When it asks for fields of
+                        # the entities it excludes ("the major and age of students who do not have a cat") and those
+                        # fields name no entity, the values two students share would leave together: the entity's key
+                        # is kept NOT IN the related rows' (Spider DEV 61, 2026-10-10).
+                        key = self.schema.identifying_column(entity_table)
+                        if (key is not None and _describes_rows(tokens, entity_table)
+                                and not self.schema.identifies(item.expression for item in projection
+                                                               if isinstance(item.expression, ColumnRef))):
+                            related = replace(right, select=(SelectItem(key),))
+                            difference = replace(left, where=and_predicates(
+                                [*left_terms, InPredicate(key, related, negated=True)]))
+                            label = "extrema:anti-member"
+                        else:
+                            difference, label = SetQuery(left, "EXCEPT", right), "extrema:set-except"
                         built = _candidate(
-                            SetQuery(left, "EXCEPT", right),
+                            difference,
                             51.0 + entity_score + relation_score + structure_score,
-                            ("extrema:set-except",),
+                            (label,),
                         )
                         if built is not None:
                             out.append(built)
@@ -825,6 +841,20 @@ def _target_extrema_predicate(predicate: Predicate, target: ColumnRef) -> bool:
 def _target_requested_in_projection(target: ColumnRef, tokens: tuple[str, ...]) -> bool:
     projection_tokens = {token for _, token in _projection_window(tokens)}
     return _column_matches(target.name, projection_tokens)
+
+
+def _describes_rows(tokens: tuple[str, ...], table: str) -> bool:
+    """Whether the question asks for fields of ``table``'s rows that a clause then selects: its name after "of" and
+    before "who", "that", "which" or "whose", as "the major and age of students who do not have a cat"."""
+    label = [canon(word) for word in name_words(table)]
+    said = [canon(token) for token in tokens]
+    for index, word in enumerate(said):
+        if word != "of":
+            continue
+        rest = [token for token in said[index + 1:index + 4 + len(label)] if token not in {"the", "all", "every"}]
+        if rest[:len(label)] == label and rest[len(label):len(label) + 1] in (["who"], ["that"], ["which"], ["whose"]):
+            return True
+    return False
 
 
 def _explicit_distinct(tokens: tuple[str, ...]) -> bool:

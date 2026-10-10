@@ -562,6 +562,13 @@ def _select_violations(question, query, graph, whole):
                 (isinstance(p, Comparison) and p.operator in {"!=", "<>", "NOT LIKE", "IS NOT"})
                 or (isinstance(p, (ExistsPredicate, InPredicate)) and p.negated) for p in every):
             violations.append("requested exclusion is missing")
+    # The rows an exclusion removes are the ones the question names: a table joined to them that the question never
+    # names, reads nothing from and connects nothing narrows them, and its rows' absence keeps what should go. "Templates
+    # that are not used in any documents" subtracted only documents that have paragraphs (Spider DEV 316, 2026-10-10).
+    question_words = {canon(word) for word in lexical_words(question)}
+    for branch, scope in _select_queries(whole):
+        if scope.negated and (table := _dangling_unnamed_join(branch, question_words)) is not None:
+            violations.append(f"the exclusion is narrowed by {table}, which the question does not name")
     # An exclusion is the one the question makes: in "orders not Done in France", status != 'Done' with
     # country = 'France', and neither another field's exclusion nor the excluded value kept stands for it
     # (sql_search.value_polarity; a release review, 2026-10-07). A column is read through LOWER, whose
@@ -1031,6 +1038,28 @@ def _select_queries(query, scope=_Scope()):
             for nested, scalar, negated in _tested_subqueries(predicate):
                 yield from _select_queries(nested, replace(scope, negated=scope.negated != negated,
                                                            scalar=scope.scalar or scalar))
+
+
+def _dangling_unnamed_join(query, question_words):
+    """A table ``query`` joins only to filter that the question does not name: no column of it is read outside the
+    joins, it is joined to one other table (a leaf, connecting nothing), and no word of its name is in
+    ``question_words``. None when every joined table is named, read or a bridge."""
+    from engine.sql_ast import column_refs
+    from engine.sql_schema import canon, name_words
+    joins = getattr(query, "joins", ())
+    if not joins:
+        return None
+    pairs = [(join.left, join.right) for join in joins] + [pair for join in joins for pair in join.additional]
+    outside = {ref.table for ref in column_refs((query.select, query.where, query.group_by, query.having,
+                                                 query.order_by))}
+    for join in joins:
+        table = join.table
+        neighbours = {side.table for left, right in pairs if table in {left.table, right.table}
+                      for side in (left, right)} - {table}
+        if (table not in outside and len(neighbours) == 1 and isinstance(table, str)
+                and not {canon(word) for word in name_words(table)} & question_words):
+            return table
+    return None
 
 
 def _scoped_match(scope, operator, wanted, *, alternatives, negated):

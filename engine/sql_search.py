@@ -740,7 +740,7 @@ class SQLSearcher:
 
         beam: list[tuple[tuple[Aggregate, ...], float, tuple[str, ...]]] = [((), 0.0, ())]
         for function, position in sorted(cues, key=lambda item: item[1]):
-            options: list[tuple[Aggregate, float, str]] = []
+            options: list[tuple[Aggregate | tuple[Aggregate, ...], float, str]] = []
             if function == "COUNT":
                 options.append((Aggregate("COUNT", Star()), 4.0, "aggregate:COUNT(*)"))
                 for option in self._target_columns(mentions, position, numeric=False)[:3]:
@@ -788,12 +788,20 @@ class SQLSearcher:
                         continue
                     options.append((Aggregate(function, option.column), base_score + option.score * 0.1,
                                     f"aggregate:{function}({option.column.table}.{option.column.name}){cue_note}"))
+                # One aggregate word over two fields it coordinates takes both: "the average latitude and longitude"
+                # averages each (Spider train, 41 of 7,000 questions; one field was averaged and the other dropped).
+                pair = _coordinated_targets(tokens, position, targets, numeric=function in {"SUM", "AVG"})
+                if pair:
+                    options.append((tuple(Aggregate(function, option.column) for option in pair),
+                                    base_score + sum(option.score for option in pair) * 0.1 + 0.5,
+                                    f"aggregate:{function}:coordinated"))
             expanded = []
             for aggregates, score, evidence in beam:
                 for aggregate, option_score, reason in options:
-                    if aggregate in aggregates:
+                    added = aggregate if isinstance(aggregate, tuple) else (aggregate,)
+                    if set(added) & set(aggregates):
                         continue
-                    expanded.append((aggregates + (aggregate,), score + option_score, evidence + (reason,)))
+                    expanded.append((aggregates + added, score + option_score, evidence + (reason,)))
             beam = sorted(expanded, key=lambda item: (-item[1], repr(item[0])))[:self.beam_size]
         return [(aggregates, score, evidence) for aggregates, score, evidence in beam]
 
@@ -1562,6 +1570,28 @@ class SQLSearcher:
         if count_tables:
             return count_tables[0]
         return sorted(required, key=lambda table: (-table_scores.get(table, 0.0), table))[0]
+
+
+def _coordinated_targets(tokens: tuple[str, ...], position: int, targets: Sequence[_ColumnOption],
+                         numeric: bool) -> tuple[_ColumnOption, _ColumnOption] | None:
+    """The two fields the phrase an aggregate word at ``position`` begins coordinates, the first two it names after
+    the word, joined by "and" with nothing but articles between: "the average latitude and longitude", "total cost
+    and price". None when the phrase names one."""
+    after = sorted((option for option in targets if option.position > position
+                    and (not numeric or option.column.type.numeric)), key=lambda option: (option.position, -option.score))
+    first = next(iter(after), None)
+    if first is None:
+        return None
+    second = next((option for option in after if option.position > first.position
+                   and option.column != first.column), None)
+    if second is None:
+        return None
+    between = tokens[first.position + 1:second.position]
+    if "and" not in between or set(between) - {"and", "the", "its", "their", "a", "an"}:
+        return None
+    if set(tokens[position + 1:first.position]) & {"and", "by", "of", "for", "per", "where", "with"}:
+        return None
+    return first, second
 
 
 def _merge_candidates(

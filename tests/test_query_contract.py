@@ -891,6 +891,10 @@ def test_a_comparison_counts_only_where_it_filters_the_rows_returned():
     both = "List names of people whose age is above 35 and below 50."
     assert [(c.operator, c.right.value) for c in ExpansionSupport(graph).numeric_comparisons(tokens(both))] == [
         (">", 35), ("<", 50)]
+    # Contrast: a number a noun follows compares that noun, not the field before it (DEV 911).
+    friends = "List names of people whose age is over 5 and who have 2 or more friends."
+    assert [(c.operator, c.right.value) for c in ExpansionSupport(graph).numeric_comparisons(tokens(friends))] == [
+        (">", 5)]
     for sql in ("SELECT Name FROM people WHERE Age > 35 AND Age < 50",
                 "SELECT Name FROM people WHERE Age > 35 INTERSECT SELECT Name FROM people WHERE Age < 50"):
         assert complete(both, sql), sql
@@ -913,6 +917,26 @@ def test_a_comparison_counts_only_where_it_filters_the_rows_returned():
     assert _violations(tables, "Show countries where a person above age 35 and a person below age 25 are from.",
                        "SELECT Country FROM people WHERE Age > 35 "
                        "INTERSECT SELECT Country FROM people WHERE Age < 25") == ()
+
+
+def test_an_exclusion_removes_the_rows_the_question_names():
+    """Spider DEV 316, 2026-10-10: "templates that are not used in any documents" subtracted the templates of documents
+    that have paragraphs, a table the question never names, so a template whose documents have none stayed. A table
+    joined inside an exclusion only to filter, which the question does not name, narrows what it removes."""
+    templates = [{"name": "Templates", "columns": ["Template_ID", "Template_Type_Code"], "rows": [[1, "PP"], [2, "BK"]]},
+                 {"name": "Documents", "columns": ["Document_ID", "Template_ID"], "rows": [[10, 1]]},
+                 {"name": "Paragraphs", "columns": ["Paragraph_ID", "Document_ID"], "rows": []}]
+    asked = "Show ids for all templates not used by any document."
+    used = " FROM Documents JOIN Templates ON Documents.Template_ID = Templates.Template_ID"
+    assert _violations(templates, asked, "SELECT Template_ID FROM Templates EXCEPT SELECT Templates.Template_ID"
+                                         + used) == ()
+    assert _violations(templates, asked, "SELECT Template_ID FROM Templates EXCEPT SELECT Templates.Template_ID"
+                                         + used + " JOIN Paragraphs ON Paragraphs.Document_ID = Documents.Document_ID") == (
+        "the exclusion is narrowed by Paragraphs, which the question does not name",)
+    # Contrast: a table the question names may narrow it ("documents with paragraphs").
+    assert _violations(templates, "Show ids for all templates not used by any document with paragraphs.",
+                       "SELECT Template_ID FROM Templates EXCEPT SELECT Templates.Template_ID" + used
+                       + " JOIN Paragraphs ON Paragraphs.Document_ID = Documents.Document_ID") == ()
 
 
 def test_alternatives_counted_thresholds_and_subqueries_realize_comparisons():

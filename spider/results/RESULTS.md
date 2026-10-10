@@ -4,6 +4,36 @@ Dated entries come newest first. Each records a run at the commit it names; the 
 entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection arbiter`) may since have
 been removed, and that commit holds the code that ran.
 
+## An exclusion subtracts the entities it names: 369 → 371 strict, Gemini on 448 → 452 with the same rewordings (2026-10-10)
+
+Same contract as the entry below (`whole_db`, `served` selection, SQL backend, row cap 5,000, no resumed predictions,
+bundle `b11056f8ce8bf16a…`). Engine alone: baseline `scoped-dirty` (the code of `29a97c3`), change `step4-dirty` (a
+worktree of `847e913` with `29a97c3`'s code and the change of `DECISIONS.md` "An exclusion subtracts the entities it
+names, and one aggregate word takes the fields it coordinates"; its 167 engine, evaluator and test files the ones
+committed, line endings aside). Gemini on: the wrapper now replays rewordings from a cache keyed by the system prompt
+and prompt, so both runs reword each question alike. `step4-gemini-dirty` made the cache (441 rewordings, 0 failed);
+`replay-gemini-29a97c3` (a clean `29a97c3` worktree) read it, with 1 live call.
+
+| | `29a97c3` | **This change** | `29a97c3`, Gemini on | **This change, Gemini on** |
+|---|---:|---:|---:|---:|
+| Strict | 369 (35.7%) | **371 (35.9%)** | 448 (43.3%) | **452 (43.7%)** |
+| Lenient | 433 | 433 | 536 | 535 |
+| Answered | 592 | 593 | 745 | 745 |
+| Strict of answered | 62.3% | 62.6% | 60.1% | 60.7% |
+| Strict: easy / medium / hard / extra | 133 / 165 / 47 / 24 | 133 / 165 / 48 / 25 | 161 / 200 / 54 / 33 | 161 / 200 / 56 / 35 |
+| Strict wins / losses | | **2 / 0** | | **4 / 0** |
+| Prediction seconds, median / p90 (a shared machine) | 1.44 / 3.26 | 1.57 / 3.57 | 2.36 / 5.01 | 2.90 / 6.56 |
+
+- Engine alone: DEV 61 ("the major and age of students who do not have a cat", the key NOT IN) and DEV 282 ("employees
+  who never received any evaluation", the exclusion no longer narrowed by `hiring`) are won. Nine served queries
+  changed; the exclusions of DEV 29, 855 and 925 lost a join the question does not name and stayed as graded. DEV 911
+  is answered and still wrong (the friendship read from the friend's side).
+- Gemini on, the rewordings uncontrolled (`scoped-gemini-dirty` against `step4-gemini-dirty`): 452 → 452, 4 wins and 4
+  losses, the losses all newly refused questions that the rewording, not the engine, changed (DEV 203, 414, 712, 739).
+  With the same rewordings the change wins 4 and loses none: run-to-run rewording moves Gemini-on strict by about ±4.
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_{step4,replay-gemini-29a97c3,step4-gemini}-*.json`.
+
 ## Constraints met by the whole query, graded words read in their direction: 314 → 369 strict, Gemini on 385 → 452 (2026-10-10)
 
 Four runs, same contract as `release-0733eef` (`whole_db`, `served` selection, SQL backend, row cap 5,000, no resumed

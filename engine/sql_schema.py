@@ -207,6 +207,30 @@ class SchemaGraph:
                 (column for column in self.columns if column.ref.table not in tables), self.foreign_keys, index)
         return self._without[tables]
 
+    def identifies(self, columns: Iterable[ColumnRef]) -> bool:
+        """Whether one of ``columns`` names entities: it holds no value twice in its table, or it refers by a foreign
+        key to a column that holds none twice ("purchases"."product_name" names products). A set difference matches
+        rows by their values, so rows sharing values that name nothing leave or stay together."""
+        def unique(ref):
+            schema_column = self.column_map.get((ref.table, ref.name))
+            values = [value for value in schema_column.values if value is not None] if schema_column else []
+            return bool(values) and len(set(values)) == len(values)
+
+        for column in columns:
+            if unique(column) or any(
+                    unique(other) for key in self.foreign_keys for left, right in key.column_pairs
+                    for mine, other in ((left, right), (right, left))
+                    if (mine.table, mine.name) == (column.table, column.name)):
+                return True
+        return False
+
+    def identifying_column(self, table: str) -> ColumnRef | None:
+        """The column telling ``table``'s rows apart, its key first (``is_surrogate_key``), else the first column holding
+        no value twice; None when no column does."""
+        columns = sorted(self.by_table.get(table, ()), key=lambda column: (
+            0 if is_surrogate_key(column.ref.name) else 1, column.index))
+        return next((column.ref for column in columns if self.identifies((column.ref,))), None)
+
     def display_columns(self, table: str) -> tuple[ColumnRef, ...]:
         columns = list(self.by_table.get(table, ()))
         columns.sort(key=lambda column: (

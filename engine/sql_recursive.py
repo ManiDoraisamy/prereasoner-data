@@ -223,7 +223,11 @@ class RecursiveQueryExpander:
             if built is not None:
                 out.append(built)
 
-            if not any(isinstance(item.expression, (Aggregate, Star)) for item in entity_select):
+            # An EXCEPT subtracts rows by the projected values, so it excludes the entities only when they tell the
+            # entities apart; the NOT IN of the key above always does. "The major and age of students who do not
+            # have a cat" as an EXCEPT removed a student sharing both with a cat owner (Spider DEV 61, 2026-10-10).
+            if (not any(isinstance(item.expression, (Aggregate, Star)) for item in entity_select)
+                    and self.schema.identifies(item.expression for item in entity_select)):
                 right = replace(membership, select=entity_select)
                 difference = SetQuery(
                     SelectQuery(entity_select, entity_table, distinct=query.distinct),

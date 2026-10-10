@@ -353,7 +353,10 @@ comparison may sit in either branch of an INTERSECT, in an OR or a UNION only of
 a HAVING COUNT for a threshold on counted rows, or in an IN or EXISTS subquery, and never counts from a scalar
 subquery, which filters no returned row. An EXCEPT makes an exclusion, its subtracted branch keeping the values
 excluded; a comparison there, or in a NOT IN or NOT EXISTS, realizes its complement, or itself when the question
-negates before it (`query_contract._select_queries`, `_scoped_match`).
+negates before it (`query_contract._select_queries`, `_scoped_match`). An exclusion removes the rows the question
+names: a table joined inside it only to filter, which the question does not name, narrows it and is refused
+(`query_contract._dangling_unnamed_join`). A set difference subtracts entities by a column that tells them apart
+(`SchemaGraph.identifies`): the projected values when they do, else the entity's key NOT IN the related rows'.
 A field's name inside a longer field's name the question also says ("the name of the song" is `Song_Name`) or
 inside a table's name the query reads ("car makers") asks for that longer field or table. The column an aggregate phrase
 names most fully ("the total amount", "the total estimated amount") is its operand

@@ -351,9 +351,16 @@ class ExpansionSupport:
                 targets = [column for position, column in nearby if abs(position - index) <= 4][:3]
             operator = nearby_operator(question_tokens, index)
             # A comparison that continues the one before ("age above 35 and below 50") compares the same field, however
-            # far its name is: "below 50" once compared nothing, so a set difference of the two was complete.
+            # far its name is: "below 50" once compared nothing, so a set difference of the two was complete. One whose
+            # number a noun follows compares that noun: "a grade of over 5 and 2 or more friends" (Spider DEV 911).
+            following = question_tokens[index + 1:index + 4]
+            if following[:2] in {("or", "more"), ("or", "fewer"), ("or", "less"), ("or", "above"), ("or", "below"),
+                                 ("or", "greater"), ("or", "higher"), ("or", "lower")}:
+                following = following[2:]
+            following = following[:1]
             if (not targets and operator != "=" and previous is not None and index - previous[0] <= 4
-                    and set(question_tokens[previous[0] + 1:index]) & {"and", "or", "but"}):
+                    and set(question_tokens[previous[0] + 1:index]) & {"and", "or", "but"}
+                    and (not following or following[0] in FUNCTION_WORDS or not following[0].isalpha())):
                 targets = previous[1]
             if targets:
                 previous = (index, targets)
