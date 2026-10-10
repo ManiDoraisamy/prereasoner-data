@@ -2978,3 +2978,10 @@ lands, and the first failure stops the run with the rest kept. `trace.delete_tra
 traces only; a trace indexed to no conversation expires with the others (`RTDB_TRACE_RETENTION_DAYS`). The admin
 dashboard's user deletion and orphan sweep (`engine/admin.py`), which dropped schemas the same way, commit per
 schema.
+
+## Starter questions belong to an empty add-in chat, not the web home page (2026-10-10)
+
+The web home page asked `/chat/suggestions` for three starter questions under its composer once signed in. At the
+owner's order they appear only in the Google Sheets sidebar and the Excel task pane, while their chat is empty
+(`web/public/lib/sidebar-suggestions.js`, loaded by `office/sheets/sidebar.html` and `office/excel/taskpane.html`);
+`index.html` no longer loads the module or asks for them.

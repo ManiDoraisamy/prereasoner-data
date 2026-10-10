@@ -63,6 +63,19 @@ test('a failed deletion stops clear all and keeps the chats not yet deleted',asy
   await expect(page.getByRole('button',{name:'Clear all conversations',exact:true})).toBeEnabled();
 });
 
+test('the home page shows no starter questions and asks for none',async({page})=>{
+  // Starters belong to the Sheets and Excel chat panels while their chat is empty, not to the web home page
+  // (owner, 2026-10-10).
+  let asked=0;
+  await page.route('**/chat/suggestions',route=>{asked+=1;return route.fulfill({json:{questions:['a starter question']}});});
+  await mockAuth(page);await page.goto('/');await page.getByRole('button',{name:'Login',exact:true}).click();
+  await expect(page.locator('#chips .chip').first()).toBeVisible();
+  await page.waitForTimeout(500);
+  await expect(page.locator('#suggestions')).toHaveCount(0);
+  await expect(page.locator('.starter-question')).toHaveCount(0);
+  expect(asked).toBe(0);
+});
+
 test('history failure is visible and preserves loaded chats',async({page})=>{
   await mockAuth(page);await page.goto('/');await page.getByRole('button',{name:'Login',exact:true}).click();
   await page.getByRole('button',{name:'Conversations',exact:true}).click();await expect(page.locator('.convitem')).toHaveCount(1);
