@@ -8,8 +8,12 @@ been removed, and that commit holds the code that ran.
 
 Same contract as the entries below. The change runs `step5b-dirty` and `step5b-gemini-dirty` are a worktree of
 `29a97c3` with the previous change and this one (`DECISIONS.md` "A relation is read from its owner, and rows grouped
-by a name that repeats are grouped by their key"); the committed code differs only by `SchemaGraph.repeats` caching
-the same test per set of columns. Gemini on replays the rewordings `step4-gemini-dirty` cached: 441 calls, none live.
+by a name that repeats are grouped by their key"). The released code, `eed8d9d`, adds `SchemaGraph.repeats` (the same
+test, cached) and narrows the search's grouping to tables the question names, after the release build's offline
+regression gate failed `f9c9d10` on "total revenue by title"; its runs `step5c-dirty`, `step5c-gemini-dirty` and
+`heldout-step5c-dirty` (a worktree whose 178 engine, evaluator, regression and test files are `eed8d9d`'s) serve the
+same query for every DEV and held-out question as the `step5b` runs. Gemini on replays the rewordings
+`step4-gemini-dirty` cached: 441 calls, none live.
 
 | | Previous change | **This change** | Previous, Gemini on | **This change, Gemini on** |
 |---|---:|---:|---:|---:|
