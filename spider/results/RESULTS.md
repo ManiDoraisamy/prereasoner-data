@@ -4,6 +4,58 @@ Dated entries come newest first. Each records a run at the commit it names; the 
 entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection arbiter`) may since have
 been removed, and that commit holds the code that ran.
 
+## Constraints met by the whole query, graded words read in their direction: 314 → 369 strict, Gemini on 385 → 452 (2026-10-10)
+
+Four runs, same contract as `release-0733eef` (`whole_db`, `served` selection, SQL backend, row cap 5,000, no resumed
+predictions, bundle `b11056f8ce8bf16a…`). The baselines are `plan-base-de0cfba` (engine alone) and
+`plan-base-gemini-de0cfba` (Gemini on, through the scratchpad wrapper that times production's rewrite path), both from
+`847e913`, whose code is `de0cfba`'s (it adds a `DECISIONS.md` note), clean worktree. The change runs are
+`scoped-dirty` and `scoped-gemini-dirty`: `847e913` with the change of `DECISIONS.md` "Constraints are met by the whole
+query, and a graded word is read in its direction" in the worktree, its 113 source files the ones committed.
+
+| | Engine alone before | **Engine alone** | Gemini on before | **Gemini on** |
+|---|---:|---:|---:|---:|
+| Strict | 314 (30.4%) | **369 (35.7%)** | 385 (37.2%) | **452 (43.7%)** |
+| Lenient | 380 | **433** | 483 | **540** |
+| Answered | 523 | **592** | 668 | **750** |
+| Strict of answered | 60.0% | **62.3%** | 57.6% | **60.3%** |
+| Scalar | 184/408 | **209/408** | 230/408 | **255/408** |
+| Strict: easy / medium / hard / extra | 128 / 139 / 29 / 18 | 133 / 165 / 47 / 24 | 156 / 166 / 35 / 28 | 162 / 202 / 54 / 34 |
+| Strict wins / losses | | **56 / 1** | | **75 / 8** |
+| Refusals: gate / constraints / no candidate | 511 in one label | 366 / 67 / 9 | 366 in one label | 219 / 56 / 9 |
+| Rewording calls (failed) | | | 511 (0) | 442 (0) |
+| Prediction seconds, median / p90 (a shared machine) | 1.62 / 3.45 | 1.44 / 3.26 | 3.02 / 5.96 | 2.79 / 6.46 |
+
+- An earlier pair of runs of this change (`plan-final-dirty`, `plan-final-gemini-dirty`) scored the same 369 and 452. A
+  review then showed its first whole-query check accept a UNION and an EXCEPT for "above 35 and below 50", a scalar
+  subquery comparing ids for "people above 35", and refuse "not older than 35"; the fixed check (`DECISIONS.md`)
+  changes no Spider answer but one: DEV 911, served wrong, is now refused.
+
+- Expected before the work (`DECISIONS.md`, from an offline replay of selection over every candidate of every DEV
+  question): +40 to +50 strict for the engine alone, +20 to +35 with Gemini on. Measured: +55 and +67. With Gemini on
+  the reworded question's own candidates pass the corrected checks too, and the engine answers 70 more questions
+  itself, so it rewords 70 fewer.
+- Engine alone: 70 newly answered, 38 of them right; 18 answered wrong are now right; one wrong answer newly refused
+  (DEV 911). The one loss is DEV 61 ("the major and age of students who do not have a cat"): an EXCEPT of (major, age)
+  now passes the exclusion check and ranks first, and it collapses students sharing both, which the NOT IN reading kept.
+- Gemini on: 91 newly answered (49 right), 9 newly refused (3 of them right before). The 8 losses: DEV 61 and 62 (that
+  EXCEPT); DEV 316 (an EXCEPT whose subtracted branch joins Paragraphs, which the question never names, replaced the
+  rewording's NOT IN); DEV 988 and 989 ("the age of the oldest dog" is now the engine's own earliest birth date, which
+  this data's ages contradict, where the rewording took the largest age); DEV 114 (its rewording's search now chooses
+  COUNT(*), which the original question's check refuses for not using Maker); DEV 261 and 567 (the rewording itself
+  differed between runs, as DEV 979's did in the earlier pair).
+- Candidate-pool recall, from an evaluation-only census of every pool member (strict-correct, graded after
+  prediction): a correct candidate is eligible for 618 of 1,034 questions (550 before); one is in the pool for 666
+  (665). The work changed which built candidates are served, not which are built.
+- 32 newly answered questions are wrong, most of them construction defects the gate used to hide: HAVING COUNT over
+  the wrong counted table (DEV 149, 150, 642), the friendship read from the other side (886, 906), "the oldest player"
+  read from a match's winner age (453, 454), "the fewest flights" from a LEFT JOIN counting airports with none (227,
+  231, 376; Spider counts only those with some).
+- Not changed: the 366 questions refused with an eligible candidate and the 369 with no correct candidate built;
+  column order (a grouped answer lists its group first, a product choice); ties (`RANK()` keeps every tied row).
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_{plan-base,scoped}{,-gemini}-*.json`.
+
 ## A named measure that is no number is refused on every route, released as `7d2410a`: 314 strict, unchanged (2026-10-09)
 
 Same contract as `release-0733eef` (Gemini off, `whole_db`, `served` selection, SQL backend, row cap 5,000), tag

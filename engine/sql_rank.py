@@ -197,6 +197,18 @@ class CandidateRanker:
                 value = -1.25 if aggregates else 0.0
             features.append((f"projection_role:{_column_label(column)}", value))
 
+        # A field's name the question says once binds one field: "the name of the employee who got the highest one
+        # time bonus" is the employee's Name, not also the Name of a shop joined for nothing else (Spider DEV 279,
+        # 2026-10-10: the employee's and the shop's names ranked first).
+        said = [canon(token) for token in roles.tokens]
+        bound: dict[str, set[str]] = {}
+        for column in select_columns:
+            bound.setdefault(column.name.casefold(), set()).add(column.table)
+        for name, tables in sorted(bound.items()):
+            head = canon((_schema_tokens(name) or (name,))[-1])
+            if len(tables) > 1 and said.count(head) < len(tables):
+                features.append((f"one_binding:{name}", -6.0))
+
         if roles.id_instead_of_name:
             id_columns = [column for column in select_columns + group_columns if is_surrogate_key(column.name)]
             name_columns = [column for column in select_columns + group_columns if _is_name(column.name)]

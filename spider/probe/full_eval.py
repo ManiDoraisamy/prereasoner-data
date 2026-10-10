@@ -381,8 +381,16 @@ def ast_predict(
         return result
     candidate = chosen.candidate
     if candidate is None:
-        return {"ok": False, "error": "no executable candidate",
-                "stage": "ast_search", "path": "ast", **evidence}
+        # Why nothing is served: no candidate ran, none ran within the question's constraints
+        # (query_contract.constraint_violations), or the eligible one leaves question words unread
+        # (the completeness gate). All three read "no executable candidate" once (review, 2026-10-09).
+        if chosen.ranking:
+            error, stage = "the eligible candidate leaves question words unread", "completeness"
+        elif any(chosen.executable):
+            error, stage = "no candidate meets the question's constraints", "constraints"
+        else:
+            error, stage = "no executable candidate", "ast_search"
+        return {"ok": False, "error": error, "stage": stage, "path": "ast", **evidence}
     try:
         rows, backend = execute_selected(candidate)
     except _DeterministicCandidateError as exc:

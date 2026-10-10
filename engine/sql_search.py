@@ -45,6 +45,7 @@ from engine.numeric import NUMBER_TEXT, parse_decimal
 from engine.sql_candidate import ScoredQuery
 from engine.sql_dates import period_grouping, served_date_phrases
 from engine.sql_durations import duration_phrases, question_date, span_comparisons
+from engine.closed_class import COMPARATIVE_COLUMNS, COMPARATIVES
 from engine.sql_expansion import (
     AGGREGATE_CUES,
     ALPHABETICAL_WORDS,
@@ -85,17 +86,6 @@ _INCLUDE_CUES = frozenset({"contain", "containing", "include", "including"})
 # Words that ask for every value of a kind: "all inspection checklist", "every roof inspection".
 _QUANTIFIERS = frozenset({"all", "every"})
 _ARTICLES = frozenset({"the", "a", "an"})
-# Comparatives and the operator each makes with the number after "than"; the measure some describe.
-_COMPARATIVES = {
-    "greater": ">", "higher": ">", "bigger": ">", "larger": ">", "older": ">", "heavier": ">", "taller": ">",
-    "longer": ">", "later": ">", "lower": "<", "smaller": "<", "younger": "<", "lighter": "<", "shorter": "<",
-    "cheaper": "<", "earlier": "<",
-}
-_COMPARATIVE_COLUMNS = {
-    "older": frozenset({"age"}), "younger": frozenset({"age"}), "heavier": frozenset({"weight"}),
-    "lighter": frozenset({"weight"}), "taller": frozenset({"height"}), "shorter": frozenset({"height", "length"}),
-    "longer": frozenset({"length", "duration"}), "cheaper": frozenset({"price", "cost"}),
-}
 # Words between a column's name and the value it introduces (canon() forms): "the year 2014", "the state of
 # Hawaii", "earnings above 300000", "a population between 160000 and 900000".
 _VALUE_BRIDGE_WORDS = frozenset({
@@ -1303,7 +1293,7 @@ class SQLSearcher:
         # 10", "every pet who is older than 1", "a greater weight than 10" (Spider pets_1, 2026-10-02: no
         # cue matched, and the filter was dropped).
         for i, token in enumerate(tokens):
-            operator = _COMPARATIVES.get(token)
+            operator = COMPARATIVES.get(token)
             if operator is None or i in claimed:
                 continue
             than = next((j for j in range(i + 1, min(len(tokens), i + 4)) if tokens[j] == "than"), None)
@@ -1316,7 +1306,7 @@ class SQLSearcher:
             value = _number(tokens[number_index])
             # The measure the word implies comes first ("older": an age column, mentioned or not); no
             # comparative compares an identifier.
-            described = _COMPARATIVE_COLUMNS.get(token, frozenset())
+            described = COMPARATIVE_COLUMNS.get(token, frozenset())
             implied = tuple(column.ref for column in self.schema.columns
                             if column.ref.type.numeric and not is_surrogate_key(column.ref.name)
                             and described & {canon(word) for word in name_words(column.ref.name)})
@@ -1532,6 +1522,11 @@ class SQLSearcher:
                     expressions.append((column, 1.5 - 0.1 * rank))
                     directions[column] = temporal[0]
             expressions.extend((column, 0.5) for column in typed[:4])
+        # An age grade orders each field in its own direction (sql_extrema.superlative_direction): "from the oldest
+        # to the youngest" is an age descending and a birth date ascending. "Oldest" was ascending on every field,
+        # so no candidate ordered singers by age from the oldest (Spider DEV 2, 2026-10-10).
+        from engine.sql_extrema import superlative_direction
+        graded = next((token for token in tokens if token in {"youngest", "oldest"}), None)
         out = []
         seen = set()
         for expression, expression_score in expressions:
@@ -1539,6 +1534,8 @@ class SQLSearcher:
                 continue
             seen.add(expression)
             ordered = directions.get(expression, direction)
+            if graded and isinstance(expression, ColumnRef) and expression not in directions:
+                ordered = superlative_direction(graded, expression)
             out.append(((OrderTerm(expression, ordered),), limit, 3.0 + expression_score,
                         (f"order:{_expr_label(expression)}:{ordered}",)))
         return sorted(out, key=lambda item: (-item[2], repr(item[0])))[:6] or [

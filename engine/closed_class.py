@@ -28,9 +28,29 @@ LIGHT_VERB_PARTICIPLES = frozenset({"made", "done", "had", "taken", "given", "go
 # Degree words: "the most expensive event", "the least popular workshop", "more expensive than 4000".
 DEGREE_MODIFIERS = frozenset({"most", "least", "more", "less"})
 
+# Comparatives and the operator each makes with the number after "than"; the measure some describe. The quantity
+# comparatives compare a count or an amount ("more than 3 models"). sql_expansion.comparative_operator reads both, and
+# the search builds a comparison for each of COMPARATIVES (sql_search).
+QUANTITY_COMPARATIVES = {"more": ">", "less": "<", "fewer": "<"}
+COMPARATIVES = {
+    "greater": ">", "higher": ">", "bigger": ">", "larger": ">", "older": ">", "heavier": ">", "taller": ">",
+    "longer": ">", "later": ">", "lower": "<", "smaller": "<", "younger": "<", "lighter": "<", "shorter": "<",
+    "cheaper": "<", "earlier": "<",
+}
+COMPARATIVE_COLUMNS = {
+    "older": frozenset({"age"}), "younger": frozenset({"age"}), "heavier": frozenset({"weight"}),
+    "lighter": frozenset({"weight"}), "taller": frozenset({"height"}), "shorter": frozenset({"height", "length"}),
+    "longer": frozenset({"length", "duration"}), "cheaper": frozenset({"price", "cost"}),
+}
+
 # Negation and exclusion cues. Compose's exclusion detector reads this pattern, and a semantic search never
-# answers a question that uses one: similarity and word matching cannot express 'without a trench coat'.
-EXCLUSION_CUES = re.compile(r'exclud\w*|without|\bno\b|\bnot\b|ignoring|not counting', re.I)
+# answers a question that uses one: similarity and word matching cannot express 'without a trench coat'. A negated
+# comparative is a bound, not an exclusion: "weighing no less than 3000 and no more than 4000" is between them
+# (Spider DEV 153, 2026-10-10: it asked for an exclusion, and a set difference was served), and so is any comparative
+# the comparison parser reads ("not older than 35" was refused for a missing exclusion while "not higher than 35"
+# passed: a second list missed half of them, review of 2026-10-10).
+_BOUND = r'(?!\s+(?:' + '|'.join(sorted({**QUANTITY_COMPARATIVES, **COMPARATIVES})) + r')\s+than\b)'
+EXCLUSION_CUES = re.compile(r'exclud\w*|without|\bno\b' + _BOUND + r'|\bnot\b' + _BOUND + r'|ignoring|not counting', re.I)
 
 _MODEL = None
 _LOCK = threading.Lock()

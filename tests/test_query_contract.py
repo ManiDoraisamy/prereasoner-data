@@ -845,6 +845,203 @@ def test_a_named_amount_that_is_no_number_is_never_replaced_by_a_saved_reference
     assert unreadable_operand("total amount", SchemaGraph.from_tables([orders("n/a")], ()))[1] == ["n/a"]
 
 
+def _violations(tables, question, sql):
+    planner = _hermetic_planner()
+    return constraint_violations(question, _model_query(planner, sql, tables).query, _graph(planner, tables))
+
+
+def test_a_set_query_meets_the_questions_constraints_as_a_whole():
+    """Spider DEV, 2026-10-10: each branch of a set query answered for the whole question, so an INTERSECT of "before
+    1945" and "after 1955" missed a comparison in each branch, and an EXCEPT of the poker players missed the
+    exclusion of "people who do not play poker": every set-query answer to such a question was refused."""
+    tables = [PEOPLE_TABLE]
+    both = "Show countries where a person above age 35 and a person below age 25 are from."
+    assert _violations(tables, both, "SELECT Country FROM people WHERE Age > 35 "
+                                     "INTERSECT SELECT Country FROM people WHERE Age < 25") == ()
+    # Contrast: one branch alone, or the second comparison reversed, still misses it.
+    for sql in ("SELECT Country FROM people WHERE Age > 35",
+                "SELECT Country FROM people WHERE Age > 35 INTERSECT SELECT Country FROM people WHERE Age > 25"):
+        assert _violations(tables, both, sql) == ("requested comparison direction, value or operand is missing",), sql
+    # An EXCEPT excludes what its subtracted branch keeps.
+    excluded = "List the names of people who are not from France."
+    assert _violations(tables, excluded, "SELECT Name FROM people EXCEPT SELECT Name FROM people "
+                                         "WHERE Country = 'France'") == ()
+    # Negative: subtracting another value does not exclude France, and keeping France excludes nothing.
+    assert _violations(tables, excluded, "SELECT Name FROM people EXCEPT SELECT Name FROM people "
+                                         "WHERE Country = 'Spain'") == (
+        "the query does not exclude 'France', which the question excludes",)
+    assert "requested exclusion is missing" in _violations(
+        tables, excluded, "SELECT Name FROM people WHERE Country = 'France'")
+
+
+def test_a_comparison_counts_only_where_it_filters_the_rows_returned():
+    """Review of 2026-10-10: the whole-query check found each comparison anywhere in the query, so "above 35 and below
+    50" was met by a UNION (everybody) and by an EXCEPT (the person aged 60) of the two comparisons, and "people above
+    35" by a scalar subquery comparing their ids, which filters no person by age. "Below 50" also compared nothing,
+    six words after "age"."""
+    from engine.sql_expansion import ExpansionSupport, tokens
+    planner = _hermetic_planner()
+    tables = [{"name": "people", "columns": ["ID", "Name", "Country", "Age"],
+               "rows": [[1, "Ann", "France", 20], [2, "Bo", "Spain", 40], [3, "Cy", "France", 60]]}]
+    graph = _graph(planner, tables)
+
+    def complete(question, sql):
+        return coverage(question, _model_query(planner, sql, tables), graph).complete
+
+    both = "List names of people whose age is above 35 and below 50."
+    assert [(c.operator, c.right.value) for c in ExpansionSupport(graph).numeric_comparisons(tokens(both))] == [
+        (">", 35), ("<", 50)]
+    for sql in ("SELECT Name FROM people WHERE Age > 35 AND Age < 50",
+                "SELECT Name FROM people WHERE Age > 35 INTERSECT SELECT Name FROM people WHERE Age < 50"):
+        assert complete(both, sql), sql
+    for operator in ("UNION", "EXCEPT"):
+        assert not complete(both, f"SELECT Name FROM people WHERE Age > 35 {operator} "
+                                  "SELECT Name FROM people WHERE Age < 50"), operator
+    assert not complete(both, "SELECT Name FROM people WHERE Age > 35")
+    # Contrast: alternatives the question offers are a UNION's branches.
+    assert complete("List names of people whose age is above 50 or below 25.",
+                    "SELECT Name FROM people WHERE Age > 50 UNION SELECT Name FROM people WHERE Age < 25")
+    # A comparison in a scalar subquery filters no returned row; one in an IN subquery filters them by membership.
+    above = "List names of people whose age is above 35."
+    assert not complete(above, "SELECT Name FROM people WHERE ID > (SELECT MIN(ID) FROM people WHERE Age > 35)")
+    assert complete(above, "SELECT Name FROM people WHERE ID IN (SELECT ID FROM people WHERE Age > 35)")
+    # A subtracted comparison is its complement: everyone EXCEPT those over 35 are those not older than 35.
+    assert complete("List names of people who are not older than 35.",
+                    "SELECT Name FROM people EXCEPT SELECT Name FROM people WHERE Age > 35")
+    # Contrast: one country with a person above 35 and another below 25 is an INTERSECT of the countries, not one
+    # person meeting both.
+    assert _violations(tables, "Show countries where a person above age 35 and a person below age 25 are from.",
+                       "SELECT Country FROM people WHERE Age > 35 "
+                       "INTERSECT SELECT Country FROM people WHERE Age < 25") == ()
+
+
+def test_alternatives_counted_thresholds_and_subqueries_realize_comparisons():
+    """Spider DEV, 2026-10-10: "opened after 2013 or before 2008" was unrealized by an OR of the two comparisons,
+    "more than 2 car makers" by a HAVING COUNT(*) > 2, and "did not visit any museum opened after 2010" by the
+    comparison inside its NOT IN; each read only the conjunction at the top of the query."""
+    tables = [PEOPLE_TABLE]
+    alternatives = "SELECT COUNT(*) FROM people WHERE Age > 35 OR Age < 25"
+    assert _violations(tables, "How many people are above age 35 or below age 25?", alternatives) == ()
+    # Contrast: a conjunction the question asks for is not realized by an OR.
+    assert _violations(tables, "How many people are above age 35 and below age 25?", alternatives) == (
+        "requested comparison direction, value or operand is missing",)
+    cars = [{"name": "countries", "columns": ["CountryId", "CountryName"], "rows": [[1, "usa"], [2, "japan"]]},
+            {"name": "car_makers", "columns": ["Id", "Maker", "FullName", "Country"],
+             "rows": [[1, "ford", "Ford", 1], [2, "gm", "GM", 1], [3, "toyota", "Toyota", 2]]}]
+    asked = "How many countries have more than 1 car maker?"
+    assert _violations(cars, asked, "SELECT COUNT(*) FROM car_makers GROUP BY Country HAVING COUNT(*) > 1") == ()
+    # Negative: another threshold is not the one asked.
+    assert _violations(cars, asked, "SELECT COUNT(*) FROM car_makers GROUP BY Country HAVING COUNT(*) > 2") == (
+        "requested comparison direction, value or operand is missing",)
+    visits = [{"name": "museum", "columns": ["Museum_ID", "Name", "Open_Year"],
+               "rows": [[1, "Louvre", 2009], [2, "Tate", 2012]]},
+              {"name": "visitor", "columns": ["ID", "Name"], "rows": [[1, "Ann"], [2, "Bo"]]},
+              {"name": "visit", "columns": ["Museum_ID", "visitor_ID"], "rows": [[2, 1]]}]
+    asked = "How many visitors did not visit any museum opened after 2010?"
+    assert _violations(visits, asked, "SELECT COUNT(*) FROM visitor WHERE ID NOT IN (SELECT visit.visitor_ID FROM "
+                       "visit JOIN museum ON visit.Museum_ID = museum.Museum_ID WHERE museum.Open_Year > 2010)") == ()
+
+
+def test_a_negated_comparative_is_a_bound_and_the_nearest_cue_sets_a_comparison():
+    """Spider DEV 153 and 1028, 2026-10-10: "weighing no less than 3000 and no more than 4000" read "no" as an
+    exclusion and "no less than 3000" as less, and in "before 1945 and after 1955" 1955 was before: the first cue
+    in a fixed order set every number's comparison."""
+    from engine.closed_class import EXCLUSION_CUES
+    from engine.sql_expansion import nearby_operator, tokens
+    bounded = tokens("cars weighing no less than 3000 and no more than 4000")
+    assert [nearby_operator(bounded, bounded.index(n)) for n in ("3000", "4000")] == [">=", "<="]
+    assert not EXCLUSION_CUES.search("cars weighing no less than 3000 and no more than 4000")
+    ranged = tokens("singers with birth year before 1945 and after 1955")
+    assert [nearby_operator(ranged, ranged.index(n)) for n in ("1945", "1955")] == ["<", ">"]
+    # Negative: a negation that is no bound is still an exclusion.
+    for asked in ("people who do not play poker", "semesters with no students enrolled", "has no more pets"):
+        assert EXCLUSION_CUES.search(asked), asked
+    # DEV 413: any comparative is negated, and "not higher than 4" is at most 4, read only by a query keeping that.
+    level = tokens("visitors whose membership level is not higher than 4")
+    assert nearby_operator(level, level.index("4")) == "<="
+    asked = "What is the average age of people whose age is not higher than 30?"
+    assert _reading([PEOPLE_TABLE], asked, "SELECT AVG(Age) FROM people WHERE Age <= 30") == (True, ())
+    assert _reading([PEOPLE_TABLE], asked, "SELECT AVG(Age) FROM people WHERE Age > 30") == (False, ("higher",))
+    # Review of 2026-10-10: the exclusion cue kept its own list of comparatives, so "not older than 35" asked for an
+    # exclusion while "not higher than 35" did not. Every comparative the parser reads is a bound.
+    for word, operator in (("higher", "<="), ("greater", "<="), ("older", "<="), ("younger", ">="), ("taller", "<="),
+                           ("cheaper", ">="), ("more", "<="), ("fewer", ">=")):
+        assert not EXCLUSION_CUES.search(f"people not {word} than 35"), word
+        said = tokens(f"people whose age is not {word} than 35")
+        assert nearby_operator(said, said.index("35")) == operator, word
+    for word, operator in (("older", "<="), ("younger", ">=")):
+        asked = f"What is the average age of people whose age is not {word} than 30?"
+        assert _reading([PEOPLE_TABLE], asked, f"SELECT AVG(Age) FROM people WHERE Age {operator} 30") == (True, ())
+
+
+def test_a_field_named_inside_a_longer_name_is_the_longer_one():
+    """Spider DEV 6, 12 and 108, 2026-10-10: "the name and the release year of the song" asked for a Name and a Year
+    over Song_Name and Song_release_year; "the most car makers" asked for a Maker field of the car_makers table it
+    counts; and a stadium's "Average" column made "singers above the average age" a request to total it."""
+    singer = [{"name": "singer", "columns": ["Singer_ID", "Name", "Song_Name", "Song_release_year", "Age"],
+               "rows": [[1, "Joe", "Hey", 2001, 30], [2, "Ann", "Yo", 2010, 20]]},
+              {"name": "stadium", "columns": ["Stadium_ID", "Name", "Average", "Capacity"],
+               "rows": [[1, "Park", 1000, 5000]]}]
+    songs = "SELECT Song_Name, Song_release_year FROM singer"
+    assert _violations(singer, "Show the name and the release year of the song by each singer.", songs) == ()
+    # Contrast: without "song", the name asked is the singer's.
+    assert _violations(singer, "Show the name of each singer and the release year.", songs) == (
+        "The requested field is not used: Name",)
+    above = "List all song names by singers above the average age."
+    assert _violations(singer, above, "SELECT Song_Name FROM singer WHERE Age > "
+                                      "(SELECT AVG(Age) FROM singer)") == ()
+    # Negative: an average still has to be taken.
+    assert _violations(singer, above, "SELECT Song_Name FROM singer WHERE Age > 25")
+    cars = [{"name": "countries", "columns": ["CountryId", "CountryName"], "rows": [[1, "usa"], [2, "japan"]]},
+            {"name": "car_makers", "columns": ["Id", "Maker", "FullName", "Country"],
+             "rows": [[1, "ford", "Ford", 1], [2, "gm", "GM", 1], [3, "toyota", "Toyota", 2]]}]
+    most = ("SELECT countries.CountryName FROM car_makers JOIN countries ON car_makers.Country = countries.CountryId "
+            "GROUP BY countries.CountryName ORDER BY COUNT(*) DESC LIMIT 1")
+    assert _violations(cars, "What is the name of the country with the most car makers?", most) == ()
+    # Contrast: the name of the stadiums is the stadiums' Name, though "concerts" is said later (DEV 41).
+    shows = [{"name": "stadium", "columns": ["Stadium_ID", "Name", "Location"], "rows": [[1, "Park", "Leeds"]]},
+             {"name": "concert", "columns": ["concert_ID", "concert_Name", "Stadium_ID", "Year"],
+              "rows": [[1, "Gala", 1, 2014]]}]
+    asked = "Find the name and location of the stadiums which some concerts happened in 2014."
+    joined = " FROM concert JOIN stadium ON concert.Stadium_ID = stadium.Stadium_ID WHERE concert.Year = 2014"
+    assert _violations(shows, asked, "SELECT stadium.Name, stadium.Location" + joined) == ()
+    assert _violations(shows, asked, "SELECT concert.concert_Name, stadium.Location" + joined) == (
+        "The requested field is not used: Name",)
+    # Contrast: "makers" alone is not the table's name, and names the Maker field.
+    assert _violations(cars, "What is the name of the country with the most makers?", most) == (
+        "The requested field is not used: Maker",)
+
+
+def test_a_graded_word_is_read_in_its_direction_on_a_field_of_its_kind():
+    """Spider DEV, 2026-10-10: "youngest", "older" and "most common" were unread over queries realizing them. A rule
+    reading graded words without their direction served 27 wrong answers for 19 right (2026-10-08), so a grade is read
+    only in its direction, on a field it can grade."""
+    tables = [PEOPLE_TABLE]
+    youngest = "What is the name of the youngest person?"
+    assert _reading(tables, youngest, "SELECT Name FROM people ORDER BY Age LIMIT 1") == (True, ())
+    # Contrast: the other direction, or another field, leaves it unread.
+    for sql in ("SELECT Name FROM people ORDER BY Age DESC LIMIT 1", "SELECT Name FROM people ORDER BY Name LIMIT 1"):
+        assert _reading(tables, youngest, sql) == (False, ("youngest",)), sql
+    assert _reading(tables, "What is the age of the youngest person?", "SELECT MIN(Age) FROM people") == (True, ())
+    assert _reading(tables, "What is the age of the youngest person?", "SELECT MAX(Age) FROM people")[0] is False
+    ranged = "List the names ordered from the oldest to the youngest."
+    assert _reading(tables, ranged, "SELECT Name FROM people ORDER BY Age DESC") == (True, ())
+    assert _reading(tables, ranged, "SELECT Name FROM people ORDER BY Age") == (False, ("oldest", "youngest"))
+    older = "List the names of people older than 25."
+    assert _reading(tables, older, "SELECT Name FROM people WHERE Age > 25") == (True, ())
+    for sql in ("SELECT Name FROM people WHERE Age < 25", "SELECT Name FROM people WHERE Person_ID > 25"):
+        assert _reading(tables, older, sql) == (False, ("older",)), sql
+    common = "What is the most common country?"
+    assert _reading(tables, common, "SELECT Country FROM people GROUP BY Country ORDER BY COUNT(*) DESC LIMIT 1") == (
+        True, ())
+    assert _reading(tables, common, "SELECT Country FROM people GROUP BY Country ORDER BY COUNT(*) LIMIT 1") == (
+        False, ("common",))
+    # Served: the search orders an age from the oldest (sql_extrema.superlative_direction), where "oldest" was
+    # ascending on every field.
+    served = _hermetic_planner().serve(tables, "List the names ordered by age from the oldest to the youngest.")
+    assert [row[0] for row in served["result"]["rows"]] == ["Cara", "Alice", "Bob"], served.get("sql")
+
+
 PEOPLE_TABLE = {"name": "people", "columns": ["Person_ID", "Name", "Country", "Age"],
                 "rows": [[1, "Alice", "France", 30], [2, "Bob", "France", 20], [3, "Cara", "Spain", 40]]}
 

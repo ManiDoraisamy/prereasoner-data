@@ -29,6 +29,7 @@ from engine.sql_ast import (
     and_predicates,
     render_query,
 )
+from engine.closed_class import COMPARATIVES, QUANTITY_COMPARATIVES
 from engine.numeric import NUMBER_TEXT, NUMBER_WORD, parse_decimal
 from engine.sql_candidate import ScoredQuery
 from engine.sql_schema import SchemaGraph, canon, is_surrogate_key
@@ -329,6 +330,7 @@ class ExpansionSupport:
     ) -> list[Comparison]:
         out = []
         mentions = self.mentioned_columns(question_tokens, numeric=True)
+        previous = None     # (index, targets) of the last number compared
         for index, token in enumerate(question_tokens):
             if index in exclude_positions:
                 continue
@@ -348,6 +350,13 @@ class ExpansionSupport:
                 )
                 targets = [column for position, column in nearby if abs(position - index) <= 4][:3]
             operator = nearby_operator(question_tokens, index)
+            # A comparison that continues the one before ("age above 35 and below 50") compares the same field, however
+            # far its name is: "below 50" once compared nothing, so a set difference of the two was complete.
+            if (not targets and operator != "=" and previous is not None and index - previous[0] <= 4
+                    and set(question_tokens[previous[0] + 1:index]) & {"and", "or", "but"}):
+                targets = previous[1]
+            if targets:
+                previous = (index, targets)
             for target in dict.fromkeys(targets):
                 if target.type == SQLType.DATE and isinstance(value, int):
                     if operator == ">":
@@ -527,25 +536,37 @@ def unique_predicates(predicates: Iterable[Predicate]) -> list[Predicate]:
     return out
 
 
+# The single words that set the comparison of the number after them, and the operator each sets.
+_COMPARISON_CUES = {"before": "<", "under": "<", "below": "<", "after": ">", "over": ">", "above": ">", "since": ">="}
+# A negated comparison's operator: "not higher than 4" is at most 4, and rows not over 4 are at most 4.
+COMPLEMENTS = {">": "<=", "<": ">=", ">=": "<", "<=": ">"}
+
+
+def comparative_operator(question_tokens: tuple[str, ...], index: int) -> str | None:
+    """The operator the comparative at ``index`` makes ("more", "fewer" or one of ``COMPARATIVES``), its complement
+    when "not" or "no" negates it: "no more than 4000" is at most 4000, "a membership level not higher than 4" at most
+    4. None for any other word."""
+    operator = {**QUANTITY_COMPARATIVES, **COMPARATIVES}.get(question_tokens[index])
+    if operator is None:
+        return None
+    before = question_tokens[max(0, index - 2):index]
+    return COMPLEMENTS[operator] if "not" in before or before[-1:] == ("no",) else operator
+
+
 def nearby_operator(question_tokens: tuple[str, ...], index: int) -> str:
+    """The comparison the words around the number at ``index`` ask for, '=' when none does. A comparative before "than"
+    just before it sets it (``comparative_operator``); otherwise the cue nearest the number does, so in "before 1945
+    and after 1955" 1955 is after. Only six comparatives and the cue first in a fixed order once set it: 1955 was
+    before, "no less than 3000" less, and "not higher than 4" equal (Spider DEV 1028, 153 and 413, 2026-10-10)."""
     before = question_tokens[max(0, index - 4):index]
     after = question_tokens[index + 1:index + 3]
-    if "not" in before and len(before) >= 2 and before[-2:] == ("more", "than"):
-        return "<="
-    if "before" in before or "under" in before or "below" in before:
-        return "<"
-    if "after" in before or "over" in before or "above" in before:
-        return ">"
-    if "since" in before:
-        return ">="
-    if len(before) >= 2 and before[-2:] in {
-        ("longer", "than"), ("more", "than"), ("greater", "than")
-    }:
-        return ">"
-    if len(before) >= 2 and before[-2:] in {
-        ("shorter", "than"), ("less", "than"), ("fewer", "than")
-    }:
-        return "<"
+    if before[-1:] == ("than",) and len(before) >= 2:
+        operator = comparative_operator(question_tokens, index - 2)
+        if operator is not None:
+            return operator
+    cue = next((_COMPARISON_CUES[word] for word in reversed(before) if word in _COMPARISON_CUES), None)
+    if cue is not None:
+        return cue
     if after == ("or", "more") or after in {("or", "after"), ("or", "later")}:
         return ">="
     if after in {("or", "before"), ("or", "earlier")}:

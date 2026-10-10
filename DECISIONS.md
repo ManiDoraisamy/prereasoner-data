@@ -2826,3 +2826,54 @@ The backfill ran on 2026-10-09, after this rule was released (engine `prereasone
 Warm lookups are unchanged: a city typo takes 120 to 315 ms and a non-geo nearest name 120 to 470 ms. The first
 lookup of a large type after its pages are evicted is slow, though: 12 s for schools (46,231 rows) and 10 s for
 hospitals. The live non-geo suite and the hospital, bank and catering demos pass on the backfilled data.
+
+## Constraints are met by the whole query, and a graded word is read in its direction (2026-10-10)
+
+A review (2026-10-09) found unanswered Spider questions mixed false refusals with missing plans. An evaluation-only
+census of every pool member of every DEV question located them on `de0cfba`: 324 served right (graded on the raw
+SQL), 173 with a right candidate the completeness gate refused, 115 with one the constraint check excluded, 53
+ranked below a wrong one, and 369 with none built. Relaxing a check or reading a word blindly would serve far more
+wrong answers than right ones (every word read: 129 right, 245 wrong; the gate's unread signal is real), so each
+rule below was replayed on the census before it was written, and kept only for at least two right answers per new
+wrong one.
+
+- `query_contract.constraint_violations` judges a set query branch by branch for the result's shape and as a whole
+  for what the question asks of the rows. Each branch once answered for the whole question, so an INTERSECT of
+  "before 1945" and "after 1955", and an EXCEPT of the poker players for "people who do not play poker", were always
+  refused. An EXCEPT makes an exclusion, its subtracted branch keeping the values excluded; a comparison is realized
+  in an OR of alternatives the question offers, by a HAVING COUNT for a threshold on counted rows ("more than 2 car
+  makers"), and inside IN, EXISTS and scalar subqueries.
+- `sql_expansion.nearby_operator`: the cue nearest the number sets its comparison ("before 1945 and after 1955"), and
+  every comparative before "than" sets it (`comparative_operator`), negated ones their complement ("no less than
+  3000" is at least, "not higher than 4" at most), and a comparison continuing the one before ("age above 35 and below
+  50") compares the same field. `COMPARATIVES`, `QUANTITY_COMPARATIVES` and `COMPARATIVE_COLUMNS` moved from
+  `sql_search` to `closed_class`, the lowest layer, which `closed_class.EXCLUSION_CUES` (no longer reading any negated
+  comparative as an exclusion), `sql_expansion` and the search all read; the search builds the corrected comparisons
+  too.
+- A comparison keeps where it sits (`query_contract._select_queries`, `_scoped_match`): an OR or a UNION realizes
+  only alternatives the question offers, a scalar subquery filters no returned row, and a subtracted one (an EXCEPT's
+  right branch, NOT IN, NOT EXISTS) realizes its complement, or itself when the question negates before it. A review
+  the same day showed the first whole-query check accept a UNION and an EXCEPT for "above 35 and below 50", a scalar
+  subquery comparing ids for "people above 35", and refuse "not older than 35" for a missing exclusion; each is now a
+  regression case.
+- `query_contract.read_question` reads a graded word only when the query realizes it in its direction on a field of
+  its kind (`_realizes_grade`), from `sql_extrema`'s superlative cues, `superlative_direction` and `frequency_cue`
+  (made public) and `sql_expansion`'s comparatives. A rule reading such words without direction had served 27 wrong
+  answers for 19 right (2026-10-08). The search orders an age from the oldest by `superlative_direction`: "oldest"
+  was ascending on every field, the date sense.
+- The field check: a field's name inside a longer field's name the question also says ("the name of the song" is
+  `Song_Name`), unless a table the question names and the query reads holds the field itself ("the name of the
+  stadiums"), or inside the name of a table the query reads ("car makers"); and an aggregate word that is also a
+  column's name ("Average") is the aggregate when its phrase names another field the query aggregates
+  (`sql_rank.aggregate_operand`).
+- `sql_rank.CandidateRanker`: a name the question says once binds one field (`one_binding`), so "the name of the
+  employee" is not also a shop's name.
+- `spider/probe/full_eval.py` labels a refusal by its cause: the completeness gate, the constraints, or no
+  candidate. All three once read "no executable candidate".
+
+Measured (`spider/results/RESULTS.md`, 2026-10-10): engine alone 314 → 369 strict (56 wins, 1 loss), Gemini on
+385 → 452 (75 wins, 8 losses); expected beforehand +40 to +50 and +20 to +35. Strict of answered rose (60.0% →
+62.3%, 57.6% → 60.3%), yet 32 newly answered questions are wrong, most from construction defects the gate had
+hidden (a HAVING COUNT over the wrong table, a relationship read from its other side, "fewest" counting groups with
+none). Left as they were: column order (a product choice), a LEFT JOIN for "fewest", and the 369 questions with no
+right candidate built, where the review's shared reading of operator, operand and population would apply.

@@ -340,8 +340,22 @@ order word in a query that orders its rows, and "alphabetical" only over an orde
 unless reversed; a participle relating the rows to a compared value ("departing from APG") when the data holds
 the participle as no value and the value has one relationship to the rows, or, with several (a departure and
 an arrival airport), when the column relating it carries the participle's travel direction
-(`engine/sql_rank.travel_direction`); or when it is grammar, a counted noun naming the rows counted, or one of the closed lists
-the check keeps. A word that names only some other table's column is unread. The column an aggregate phrase
+(`engine/sql_rank.travel_direction`); a graded word the query realizes in its direction on a field of its kind
+(a comparative before "than" is a comparison with its operator, complemented when negated,
+`engine/sql_expansion.comparative_operator`; "the most common" orders groups by their count; any other superlative
+orders by, or takes the extreme of, a field in `engine/sql_extrema.superlative_direction`, so "the youngest" is the
+least age or the latest birth date); or when it is grammar, a counted noun naming the rows counted, or one of the closed lists
+the check keeps. A word that names only some other table's column is unread.
+
+The constraint check (`engine/query_contract.constraint_violations`) judges a set query branch by branch for the
+result's shape (aggregates, projection, ordering, grain) and as a whole for what the question asks of the rows: a
+comparison may sit in either branch of an INTERSECT, in an OR or a UNION only of alternatives the question offers, in
+a HAVING COUNT for a threshold on counted rows, or in an IN or EXISTS subquery, and never counts from a scalar
+subquery, which filters no returned row. An EXCEPT makes an exclusion, its subtracted branch keeping the values
+excluded; a comparison there, or in a NOT IN or NOT EXISTS, realizes its complement, or itself when the question
+negates before it (`query_contract._select_queries`, `_scoped_match`).
+A field's name inside a longer field's name the question also says ("the name of the song" is `Song_Name`) or
+inside a table's name the query reads ("car makers") asks for that longer field or table. The column an aggregate phrase
 names most fully ("the total amount", "the total estimated amount") is its operand
 (`engine/sql_rank.aggregate_operand`); when it is text and its cells are not all numbers the question is
 refused naming them (`engine/query_contract.unreadable_operand`), by compose, the planner, both world routes

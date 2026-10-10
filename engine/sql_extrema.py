@@ -44,11 +44,11 @@ from engine.sql_schema import is_surrogate_key
 from engine.numeric import parse_decimal
 
 
-_MAX_CUES = frozenset({
+MAX_CUES = frozenset({
     "biggest", "commonest", "greatest", "highest", "largest", "latest",
     "longest", "max", "maximum", "most", "oldest", "youngest",
 })
-_MIN_CUES = frozenset({
+MIN_CUES = frozenset({
     "earliest", "fewest", "least", "lowest", "min", "minimum", "rarest",
     "shortest", "smallest",
 })
@@ -123,7 +123,7 @@ class ExtremaQueryExpander(ExpansionSupport):
         ]
         if not targets:
             return []
-        frequency = _frequency_cue(tokens)
+        frequency = frequency_cue(tokens)
         if frequency is not None and frequency.explicit_number:
             relation_words = _frequency_relation_words(tokens, frequency.position)
             if not any(
@@ -211,7 +211,7 @@ class ExtremaQueryExpander(ExpansionSupport):
             return []
         if token_set & {"average", "avg", "mean", "sum", "total"}:
             return []
-        frequency = _frequency_cue(tokens)
+        frequency = frequency_cue(tokens)
         if frequency is not None and frequency.explicit_number:
             return []
         # Explicit MIN/MAX are already handled by the base aggregate planner.
@@ -220,11 +220,11 @@ class ExtremaQueryExpander(ExpansionSupport):
 
         max_position = min(
             index for index, token in enumerate(tokens)
-            if token in _MAX_CUES and _valid_superlative_cue(tokens, index)
+            if token in MAX_CUES and _valid_superlative_cue(tokens, index)
         )
         min_position = min(
             index for index, token in enumerate(tokens)
-            if token in _MIN_CUES and _valid_superlative_cue(tokens, index)
+            if token in MIN_CUES and _valid_superlative_cue(tokens, index)
         )
         linked_targets = self._superlative_targets(tokens)
         if not linked_targets:
@@ -364,7 +364,7 @@ class ExtremaQueryExpander(ExpansionSupport):
         self, question: str, candidates: Sequence[ScoredQuery]
     ) -> list[ScoredQuery]:
         tokens = _tokens(question)
-        cue = _frequency_cue(tokens)
+        cue = frequency_cue(tokens)
         if cue is None:
             return []
         targets = self._superlative_targets(tokens)
@@ -548,7 +548,7 @@ class ExtremaQueryExpander(ExpansionSupport):
     def _superlative_targets(self, tokens: tuple[str, ...]) -> list[SuperlativeTarget]:
         cue_positions = [
             (index, token) for index, token in enumerate(tokens)
-            if (token in _MAX_CUES or token in _MIN_CUES)
+            if (token in MAX_CUES or token in MIN_CUES)
             and _valid_superlative_cue(tokens, index)
         ]
         if not cue_positions:
@@ -602,7 +602,7 @@ class ExtremaQueryExpander(ExpansionSupport):
                     score += 2.5
                 if inferred_mpg:
                     score += 2.0
-                direction = _superlative_direction(cue, column)
+                direction = superlative_direction(cue, column)
                 option = SuperlativeTarget(column, direction, cue_position, score, position)
                 if best is None or option.score > best.score:
                     best = option
@@ -710,17 +710,17 @@ def _measure_extreme(query: SelectQuery, target, where, tokens: tuple[str, ...])
 
 def _has_dual_extrema(tokens: tuple[str, ...]) -> bool:
     has_maximum = any(
-        token in _MAX_CUES and _valid_superlative_cue(tokens, index)
+        token in MAX_CUES and _valid_superlative_cue(tokens, index)
         for index, token in enumerate(tokens)
     )
     has_minimum = any(
-        token in _MIN_CUES and _valid_superlative_cue(tokens, index)
+        token in MIN_CUES and _valid_superlative_cue(tokens, index)
         for index, token in enumerate(tokens)
     )
     return has_maximum and has_minimum
 
 
-def _frequency_cue(tokens: tuple[str, ...]) -> FrequencyCue | None:
+def frequency_cue(tokens: tuple[str, ...]) -> FrequencyCue | None:
     normalized = " ".join(tokens)
     explicit_patterns = (
         r"\b(most|fewest|greatest|largest|highest|least|smallest|lowest) number of\b",
@@ -795,14 +795,14 @@ def _observed_numeric(values: Sequence[object]) -> bool:
     return numeric / len(observed) >= 0.8
 
 
-def _superlative_direction(cue: str, column: ColumnRef) -> str:
+def superlative_direction(cue: str, column: ColumnRef) -> str:
     semantic = set(_semantic_tokens(column.name))
     birth_like = "birth" in semantic or ({"date", "year"} & semantic and "age" not in semantic)
     if cue == "youngest":
         return "DESC" if birth_like else "ASC"
     if cue == "oldest":
         return "ASC" if birth_like else "DESC"
-    return "ASC" if cue in _MIN_CUES else "DESC"
+    return "ASC" if cue in MIN_CUES else "DESC"
 
 
 def _requested_limit(tokens: tuple[str, ...], cue_position: int) -> tuple[int, int | None]:
