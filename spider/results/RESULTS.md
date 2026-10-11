@@ -66,7 +66,7 @@ grade changed. Gemini here generates SQL as a benchmark reference, distinct from
   systems; these two apparent engine wins are not semantic improvements.
 
 Review, remaining defects, tests, provenance and per-example links:
-[spider-review-20261011.md](../../release-review/spider-review-20261011.md).
+`release-review/spider-review-20261011.md`.
 Artifacts: `%LOCALAPPDATA%/Temp/prereasoner-spider-review-3817b34-isolated-20261011/`
 (`full_eval_review-3817b34-isolated.json`, per-example predictions, paired comparison and final provenance check).
 Reference summaries/per-example files are in `%LOCALAPPDATA%/Temp/prereasoner-spider-review-3817b34-20261011/`;
