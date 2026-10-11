@@ -23,6 +23,7 @@ from engine.sql_ast import (
 )
 from engine.sql_expansion import (
     AGGREGATE_CUES,
+    FUNCTION_WORDS,
     CountThreshold,
     ExpansionSupport,
     and_terms as _and_terms,
@@ -38,6 +39,7 @@ from engine.sql_expansion import (
     positive_predicate as _positive_predicate,
     projection_window as _projection_window,
     semantic_tokens as _semantic_tokens,
+    threshold_number as _threshold_number,
     tokens as _tokens,
     unique_predicates as _unique_predicates,
 )
@@ -135,7 +137,7 @@ class ExtremaQueryExpander(ExpansionSupport):
             ):
                 return []
 
-        limit, limit_position = _requested_limit(tokens, targets[0].cue_position)
+        limit, limit_position = ranking_cutoff(tokens, (targets[0].cue_position, *_leading_ranks(tokens)))
         out = []
         for target in targets[:3]:
             for candidate in candidates[: self.max_candidates * 3]:
@@ -382,7 +384,7 @@ class ExtremaQueryExpander(ExpansionSupport):
             return []
 
         pseudo = CountThreshold((("=", 1),), cue.position, cue.position + 1, 0.0)
-        limit, limit_position = _requested_limit(tokens, cue.position)
+        limit, limit_position = ranking_cutoff(tokens, (cue.position, *_leading_ranks(tokens)))
         out = []
         for entity_table, entity_score in self.entity_tables(tokens, pseudo)[:3]:
             projections = self.projection_options(question, entity_table, None)
@@ -797,13 +799,66 @@ def superlative_direction(cue: str, column: ColumnRef) -> str:
     return "ASC" if cue in MIN_CUES else "DESC"
 
 
-def _requested_limit(tokens: tuple[str, ...], cue_position: int) -> tuple[int, int | None]:
-    for index, token in enumerate(tokens):
-        value = _parse_number(token)
-        if isinstance(value, int) and 1 <= value <= 100:
-            if abs(index - cue_position) <= 2 or (index > 0 and tokens[index - 1] in {"top", "bottom"}):
+# Words that rank from the start of a list, the number of rows after them: "the top 3", "the first two".
+LEADING_RANKS = frozenset({"top", "bottom", "first", "last"})
+# Words joining a ranked noun to the superlative that ranks it: "the two people with the largest age".
+_RANK_LINKS = frozenset({"with", "having", "who", "that", "which", "whose", "has", "have", "had"})
+
+
+def _leading_ranks(tokens: tuple[str, ...]) -> tuple[int, ...]:
+    """Where "top" or "bottom" ranks rows; "first" and "last" are read only where the base search reads them."""
+    return tuple(index for index, token in enumerate(tokens) if token in {"top", "bottom"})
+
+
+def ranking_cutoff(tokens: tuple[str, ...], cue_positions: Sequence[int]) -> tuple[int, int | None]:
+    """How many rows the ranking whose cues stand at ``cue_positions`` keeps, and where the question says it: a
+    number up to three words after "top", "bottom", "first" or "last" ("the top 3 cities"), beside a superlative
+    ("the 3 oldest", "the oldest three"), or before the noun a superlative's phrase ranks ("the two people with the
+    largest age"); 1 and None when it says none. A number a comparison takes ("more than 2", "at least 3") keeps no
+    rows. The search and the question contract read the cutoff here: the search kept one row of "the two people with
+    the largest age", which the contract refused (review F5, 2026-10-11)."""
+    for cue in sorted(cue_positions):
+        for index, token in enumerate(tokens):
+            value = _parse_number(token)
+            if not isinstance(value, int) or not 1 <= value <= 100 or _threshold_number(tokens, index):
+                continue
+            if ((tokens[cue] in LEADING_RANKS and cue < index <= cue + 3) or abs(index - cue) <= 2
+                    or (index < cue and _ranks_its_noun(tokens, index, cue))):
                 return value, index
     return 1, None
+
+
+def _ranks_its_noun(tokens: tuple[str, ...], index: int, cue: int) -> bool:
+    """Whether the number at ``index`` counts the noun the superlative at ``cue`` ranks: one to three words of a noun
+    after it, a joining word, and nothing but "the" or "have" before the superlative ("the two people with the
+    largest age", "which 2 products have the highest price"). "Line 2 of the address with the most students" names a
+    field, and "cars with 4 cylinders, which model has the largest" ranks the models, not 4 of anything (Spider DEV
+    562, 165)."""
+    end = index + 1
+    while end < cue and tokens[end] not in _RANK_LINKS and tokens[end] not in FUNCTION_WORDS \
+            and _parse_number(tokens[end]) is None:
+        end += 1
+    return (1 <= end - index - 1 <= 3 and end < cue and tokens[end] in _RANK_LINKS
+            and set(tokens[end + 1:cue]) <= {"the", "a", "an", "has", "have", "had", "their", "its"})
+
+
+def ranked_table(tokens: tuple[str, ...], tables: Sequence[str]) -> tuple[str, int] | None:
+    """(the table whose rows a ranking keeps, where its cutoff is said) when the question names it within three words
+    after the number: "top 2 products by price", "the two people with the largest age", "the 3 oldest people". A
+    query answering one shows its rows, not only the field that ranks them: "top 2 products by price" listed two
+    prices (review F5, 2026-10-11). None when the question gives no number or names no table there."""
+    ranks = tuple(index for index, token in enumerate(tokens) if token in {"top", "bottom"} | MAX_CUES | MIN_CUES)
+    if not ranks:
+        return None
+    _, said = ranking_cutoff(tokens, ranks)
+    if said is None:
+        return None
+    for start in range(said + 1, min(len(tokens), said + 4)):
+        for table in sorted(tables):
+            name = tuple(canon(word) for word in name_words(table))
+            if name and tokens[start:start + len(name)] == name:
+                return table, said
+    return None
 
 
 def _target_extrema_predicate(predicate: Predicate, target: ColumnRef) -> bool:

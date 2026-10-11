@@ -222,28 +222,22 @@ class SchemaGraph:
         return self._repeats[key]
 
     def identifies(self, columns: Iterable[ColumnRef]) -> bool:
-        """Whether one of ``columns`` names entities: it holds no value twice in its table, or it refers by a foreign
-        key to a column that holds none twice ("purchases"."product_name" names products). A set difference matches
-        rows by their values, so rows sharing values that name nothing leave or stay together."""
-        def unique(ref):
-            schema_column = self.column_map.get((ref.table, ref.name))
-            values = [value for value in schema_column.values if value is not None] if schema_column else []
-            return bool(values) and len(set(values)) == len(values)
-
-        for column in columns:
-            if unique(column) or any(
-                    unique(other) for key in self.foreign_keys for left, right in key.column_pairs
-                    for mine, other in ((left, right), (right, left))
-                    if (mine.table, mine.name) == (column.table, column.name)):
-                return True
-        return False
+        """Whether ``columns`` together tell their table's rows apart: they are one table's, and no two of its rows share
+        every value of them (``repeats``), a missing value included. A set difference matches rows by their values,
+        missing ones too, so rows sharing values that name nothing leave or stay together. A column referring to a key
+        that holds no value twice names the referred rows, not its own: two students of one major share it, and a
+        difference by (major, age) removed one for the other's cat (the review of 2026-10-11)."""
+        refs = tuple(dict.fromkeys(columns))
+        return bool(refs) and len({ref.table for ref in refs}) == 1 and not self.repeats(refs)
 
     def identifying_column(self, table: str) -> ColumnRef | None:
         """The column telling ``table``'s rows apart, its key first (``is_surrogate_key``), else the first column holding
-        no value twice; None when no column does."""
+        no value twice; None when no column does. It holds a value in every row: a NOT IN of a key the related rows
+        miss in one row keeps no row at all, and a row without one is never kept."""
         columns = sorted(self.by_table.get(table, ()), key=lambda column: (
             0 if is_surrogate_key(column.ref.name) else 1, column.index))
-        return next((column.ref for column in columns if self.identifies((column.ref,))), None)
+        return next((column.ref for column in columns
+                     if None not in column.values and self.identifies((column.ref,))), None)
 
     def display_columns(self, table: str) -> tuple[ColumnRef, ...]:
         columns = list(self.by_table.get(table, ()))

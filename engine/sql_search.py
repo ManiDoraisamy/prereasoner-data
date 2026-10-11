@@ -10,6 +10,7 @@ pool without changing its grammar.
 """
 from __future__ import annotations
 
+from collections import Counter
 import re
 import weakref
 from dataclasses import dataclass, replace
@@ -50,6 +51,7 @@ from engine.sql_expansion import (
     AGGREGATE_CUES,
     ALPHABETICAL_WORDS,
     COPULAS,
+    EXCLUDING_WORDS,
     REVERSE_ORDER_WORDS,
     FUNCTION_WORDS,
     MONEY_MEASURE_COLUMN_WORDS,
@@ -602,7 +604,15 @@ class SQLSearcher:
                         expanded.append((chosen, score + option.score,
                                          evidence + (f"column:{option.column.table}.{option.column.name}",)))
                 beam = sorted(expanded, key=lambda item: (-item[1], repr(item[0])))[:self.beam_size]
-            return [(columns, score, evidence) for columns, score, evidence in beam]
+            # The rows a ranking keeps are shown by their name beside the fields named (sql_extrema.ranked_table):
+            # "top 2 products by price" listed two prices (review F5, 2026-10-11).
+            from engine.sql_extrema import ranked_table
+            ranked = ranked_table(tokens, self.schema.tables)
+            displays = self.schema.display_columns(ranked[0]) if ranked is not None else ()
+            named = [(_unique_columns((displays[0],) + columns), score,
+                      evidence + (f"entity-display:{displays[0].table}.{displays[0].name}",))
+                     for columns, score, evidence in beam[:2] if displays and displays[0] not in columns]
+            return [(columns, score, evidence) for columns, score, evidence in beam] + named
 
         if _PROJECTION_CUES & set(tokens):
             table_options = sorted(table_scores.items(), key=lambda item: (-item[1], item[0]))
@@ -706,15 +716,32 @@ class SQLSearcher:
                     if position not in explicit_field_cues]
         cues = asked_cues(cues, tokens, self.schema)
         # "count the number" and "average mean" are reinforcing paraphrases, not requests for duplicate
-        # The base search supports several different aggregates in one query; repeated functions
-        # collapse to their earliest cue until argument-scope parsing becomes more precise.
+        # aggregates: a repeated function collapses to its earliest cue. One that "and" coordinates with the phrase
+        # before it, or that follows a field the phrase before it named (a comma between them), is another
+        # occurrence over its own field: "the average distance, average price and average time" averages each
+        # (review F4, 2026-10-11: the second was dropped and the question refused). A count is asked again in other
+        # words: "how many countries does each continent have? List ... and the number of countries" (DEV 89).
+        field_words = [(option.position, {canon(word) for word in name_words(option.column.name)})
+                       for mention in mentions for option in mention.options]
+        def operand_word(position):
+            following = [token for token in tokens[position + 1:position + 4] if token not in {"the", "a", "an", "of"}]
+            return following[0] if following else None
+
         seen_functions = set()
         unique_cues = []
         for function, position in sorted(cues, key=lambda item: item[1]):
-            if function not in seen_functions:
+            coordinated = function != "COUNT" and position >= 2 and (tokens[position - 1] == "and" or (
+                tokens[position - 2] == "and" and tokens[position - 1] in {"the", "a", "an", "its", "their"})
+                or any(start < position and tokens[position - 1] in words for start, words in field_words))
+            # The same word over the same field twice asks for it once: "the average price and average price".
+            repeated = any(kept == function and operand_word(at) == operand_word(position) for kept, at in unique_cues)
+            if function not in seen_functions or (coordinated and not repeated):
                 unique_cues.append((function, position))
                 seen_functions.add(function)
         cues = unique_cues
+        # Each occurrence of a repeated function takes the field it stands before first, so the answer keeps the
+        # question's order: "the average distance, average price and average time".
+        occurrences = Counter(function for function, _ in cues)
         implicit_measures: dict[int, frozenset[str]] = {}
         if not cues:
             # "top 3 products by units sold" and "customers by revenue" imply SUM over
@@ -796,10 +823,11 @@ class SQLSearcher:
                             ]
                             targets = matching or targets
                         targets = targets[:4]
-                for option in targets[:4]:
+                for rank, option in enumerate(targets[:4]):
                     if function in {"SUM", "AVG"} and not option.column.type.numeric:
                         continue
-                    options.append((Aggregate(function, option.column), base_score + option.score * 0.1,
+                    nearness = 0.05 * rank if occurrences[function] > 1 else 0.0
+                    options.append((Aggregate(function, option.column), base_score + option.score * 0.1 - nearness,
                                     f"aggregate:{function}({option.column.table}.{option.column.name}){cue_note}"))
                 # One aggregate word over two fields it coordinates takes both: "the average latitude and longitude"
                 # averages each (Spider train, 41 of 7,000 questions; one field was averaged and the other dropped).
@@ -1271,6 +1299,7 @@ class SQLSearcher:
             (("over",), ">"), (("above",), ">"), (("under",), "<"), (("below",), "<"),
             (("after",), ">"), (("before",), "<"), (("since",), ">="),
             (("equal", "to"), "="), (("equals",), "="), (("exactly",), "="),
+            *(((word,), "!=") for word in sorted(EXCLUDING_WORDS)), (("other", "than"), "!="),
         ]
         for cue, operator in patterns:
             size = len(cue)
@@ -1302,8 +1331,12 @@ class SQLSearcher:
                         options.append(((Comparison(target, date_operator, literal),), 5.0,
                                         f"date:{target.table}.{target.name}{date_operator}{literal.value}"))
                 else:
+                    # A field named between the cue and the number is the one compared: "excluding Person_ID 2".
+                    between = {option.column for mention in mentions for option in mention.options
+                               if i < option.position < number_index}
                     values = self._row_values(tokens, mentions, i)
-                    targets = sorted(self._numeric_targets(mentions, i), key=lambda target: target not in values)
+                    targets = sorted(self._numeric_targets(mentions, i),
+                                     key=lambda target: (target not in between, target not in values))
                     options = [((Comparison(target, operator, Literal(value, target.type)),),
                                 5.0 if target in values else 4.5,
                                 f"comparison:{target.table}.{target.name}{operator}{value}")
@@ -1514,15 +1547,14 @@ class SQLSearcher:
         temporal = next(((("ASC" if token in _EARLY_WORDS else "DESC"), i) for i, token in enumerate(tokens)
                          if token in _EARLY_WORDS | _LATE_WORDS and not _names_a_part(tokens, i)), None)
 
-        limit = None
-        for i, token in enumerate(tokens):
-            if token in {"top", "bottom", "first", "last"} and not _names_a_part(tokens, i):
-                limit = next((int(_number(tokens[j])) for j in range(i + 1, min(len(tokens), i + 4))
-                              if NUMBER_TEXT.match(tokens[j]) and int(_number(tokens[j])) > 0), None)
-                limit = limit or 1
-                break
-        if limit is None and token_set & {"most", "least", "highest", "lowest", "largest", "smallest"}:
-            limit = 1
+        # The rows a ranking keeps (sql_extrema.ranking_cutoff): "the top 3", "the two people with the largest age".
+        from engine.sql_extrema import LEADING_RANKS, ranking_cutoff
+        leading = next((i for i, token in enumerate(tokens) if token in LEADING_RANKS and not _names_a_part(tokens, i)),
+                       None)
+        superlatives = tuple(i for i, token in enumerate(tokens)
+                             if token in {"most", "least", "highest", "lowest", "largest", "smallest"})
+        cues = ((leading,) if leading is not None else ()) + superlatives
+        limit = ranking_cutoff(tokens, cues)[0] if cues else None
 
         order_cue = (direction is not None or limit is not None or temporal is not None
                      or ordering_requested(question))

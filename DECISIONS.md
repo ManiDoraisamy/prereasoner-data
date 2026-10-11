@@ -2999,3 +2999,60 @@ most" is still ranked by its values, and with two tables an unknown noun is stil
 A listed row without a name field keeps its first text field as its display: "list the orders over 20" lists the
 orders' customers. Among Spider's "list/show the X" questions over tables without a name field (DEV and train), gold
 projects the first text field 104 times and the table's key 76 times, so the display rule stays.
+
+## The review of 2026-10-11: counts of the groups that qualify, an entity's own identity, bound subqueries, every aggregate word, one cutoff reading (2026-10-11)
+
+An outside review (`release-review/spider-review-20261011.md`) reproduced 384 strict on Spider DEV and found five
+defects, two of them wrong answers served as complete. Each is fixed in its owner, with the gaps the measurement then
+showed:
+
+- F2, `ConstraintQueryExpander.qualifying_count` and `query_contract.constraint_violations`: "how many countries have
+  more than 1 car maker" was a COUNT(*) grouped by country, the car makers of each qualifying country; "how many
+  customers have more than 2 orders" answered 3, one customer's orders. "How many" answered by groups a HAVING keeps,
+  without "each", "per", "by" or "for different" (`sql_expansion.groups_requested`), now counts those groups, each
+  by the entity's key where that tells them apart, as a COUNT over the grouped query; a count in each group is a
+  violation. Among Spider's DEV and train questions only DEV 161 and 162 and train 6852 have such gold without that
+  cue, and all three answer something else than the count asked.
+  - A threshold stated on an aggregate a thing has (`ExpansionSupport.aggregate_thresholds`: a holding word such as
+    "with" or "whose", the aggregate word, the field, the comparison: "customers with a total amount over 10") is met
+    only on that aggregate, not by each row's field; "the total amount of orders over 10" and "total Amount greater
+    than 100" still compare each row. `_aggregate_threshold_candidates` builds it over an entity's related table,
+    which the search grouped by nothing, and the contract reads an aggregate a HAVING or a FROM subquery computes as
+    computed.
+  - A number the name of a table follows ("more than 1 car maker") is met only by a count of that table's rows, not by
+    its Country key above 1. A number said right after a field whose cells are not all numbers ("cars with horsepower
+    more than 150", Spider's text Horsepower) is compared with that field and no other
+    (`query_contract._compares_another_field`): once the count per group was refused, the cylinders over 150 answered
+    it. "How many different countries" is met by the count of groups.
+  - Entities with no related rows ("countries with fewer than 2 car makers", one with none) are counted as "which"
+    lists them, through the inner join; Spider's gold does the same for every "fewer than" count.
+- F1, `SchemaGraph.identifies` and `identifying_column`: a column referring to a unique key elsewhere was taken to tell
+  its own rows apart (with a Majors table, "the major and age of students who do not have a cat" subtracted (major,
+  age) and removed a student with another's cat), and missing values were dropped before testing uniqueness. Fields
+  tell an entity's rows apart only together and in their own table, a missing value counting as a value
+  (`repeats`, memoized per set of columns); the key kept NOT IN holds a value in every row.
+- F3, `query_contract._binds`: a comparison inside IN or EXISTS realized the question's wherever it sat, so "people
+  whose age is above 35" was met by an uncorrelated EXISTS and by IDs IN a list of ages. It filters the returned rows
+  only when the IN compares values of one kind (the same column, a foreign-key pair, a word of their names shared)
+  and the EXISTS refers to the outer row; otherwise its scope is `unbound`, like a scalar subquery's.
+- F4, `SQLSearcher._aggregate_choices`: a repeated aggregate word collapsed to its first, so "the average distance and
+  average price" was refused, with a reply blaming nonnumeric price cells. A repeated word "and" or a list
+  coordinates takes the field it stands before, in the question's order; the same word over the same field is asked
+  once, and a count asked again in other words ("how many ... the number of") is one count (DEV 89 split it). A
+  numeric field the query does not aggregate is "requested aggregate is missing", not a field to repair.
+- F5, `sql_extrema.ranking_cutoff`: the search kept one row of "the two people with the largest age" while the
+  contract read two. Both read the cutoff here: a number after "top", "bottom", "first" or "last", beside a
+  superlative, or before the noun a superlative's phrase ranks (a noun, a joining word, then the superlative: "line 2
+  of the address with the most students" names a field, and lost DEV 562 in a first cut).
+  - "Excluding Person_ID 5" excludes that row: `nearby_operator` reads "excluding", "except" and "other than" as !=,
+    and a key is a number's field where its name introduces the number. No Spider question has either.
+  - A ranking whose number names a table shows its rows, not only the field that ranks them: "top 2 products by
+    price" listed two prices (`sql_extrema.ranked_table`, in the search's projections and the contract).
+  - A field named after its table's name is that table's: "the three accounts with the highest savings balances"
+    were ranked by their checking balance once the cutoff was built (held-out train 829).
+
+Measured (`spider/results/RESULTS.md`, 2026-10-11): engine alone 384 → 382 strict (0 wins; the losses are DEV 161 and
+162, whose gold counts the car makers in each country); Gemini on, with the same cached rewordings, 466 → 465 (1 win,
+the same 2 losses); held out 246 → 249 (3 wins, 0 losses). Not fixed: "the names of items" over items without a name
+field lists another table's names (held-out train 789, newly answered); binding "the names of X" to X would refuse
+every answer whose names sit in a linked table.

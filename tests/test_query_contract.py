@@ -59,7 +59,8 @@ def test_a_known_named_field_cannot_be_replaced_by_another_measure():
     from engine.sql_ast import Aggregate, ColumnRef, SelectItem, SelectQuery, SQLType
     graph = SchemaGraph.from_tables([{"name": "orders", "columns": ["Amount", "Units"], "rows": [[10, 99]]}], [])
     query = SelectQuery((SelectItem(Aggregate("SUM", ColumnRef('orders','Units',SQLType.INTEGER))),), 'orders')
-    assert any("total for 'Amount'" in v for v in constraint_violations('total Amount', query, graph))
+    # Amount holds numbers: the total is missing, not a field with cells to repair (review F4, 2026-10-11).
+    assert "requested aggregate is missing: SUM of Amount" in constraint_violations('total Amount', query, graph)
     assert not constraint_violations('total Units', query, graph)
     count = SelectQuery((SelectItem(Aggregate('COUNT', ColumnRef('orders','Amount',SQLType.INTEGER))),), 'orders')
     assert any('requested total needs a sum' in v for v in constraint_violations('total Amount', count, graph))
@@ -952,10 +953,10 @@ def test_alternatives_counted_thresholds_and_subqueries_realize_comparisons():
     cars = [{"name": "countries", "columns": ["CountryId", "CountryName"], "rows": [[1, "usa"], [2, "japan"]]},
             {"name": "car_makers", "columns": ["Id", "Maker", "FullName", "Country"],
              "rows": [[1, "ford", "Ford", 1], [2, "gm", "GM", 1], [3, "toyota", "Toyota", 2]]}]
-    asked = "How many countries have more than 1 car maker?"
-    assert _violations(cars, asked, "SELECT COUNT(*) FROM car_makers GROUP BY Country HAVING COUNT(*) > 1") == ()
+    asked = "Which countries have more than 1 car maker?"
+    assert _violations(cars, asked, "SELECT Country FROM car_makers GROUP BY Country HAVING COUNT(*) > 1") == ()
     # Negative: another threshold is not the one asked.
-    assert _violations(cars, asked, "SELECT COUNT(*) FROM car_makers GROUP BY Country HAVING COUNT(*) > 2") == (
+    assert _violations(cars, asked, "SELECT Country FROM car_makers GROUP BY Country HAVING COUNT(*) > 2") == (
         "requested comparison direction, value or operand is missing",)
     visits = [{"name": "museum", "columns": ["Museum_ID", "Name", "Open_Year"],
                "rows": [[1, "Louvre", 2009], [2, "Tate", 2012]]},
@@ -964,6 +965,126 @@ def test_alternatives_counted_thresholds_and_subqueries_realize_comparisons():
     asked = "How many visitors did not visit any museum opened after 2010?"
     assert _violations(visits, asked, "SELECT COUNT(*) FROM visitor WHERE ID NOT IN (SELECT visit.visitor_ID FROM "
                        "visit JOIN museum ON visit.Museum_ID = museum.Museum_ID WHERE museum.Open_Year > 2010)") == ()
+
+
+def test_a_count_of_qualifying_groups_is_one_number_and_a_stated_total_is_compared_as_one():
+    """The review of 2026-10-11 (F2): "how many countries have more than 1 car maker" was met by a COUNT(*) grouped by
+    country, the car makers of each; "more than 1 car maker" by a car maker's Country key above 1; and a total stated
+    over a number ("customers with a total amount over 10") by each order's amount over 10."""
+    cars = [{"name": "countries", "columns": ["CountryId", "CountryName"], "rows": [[1, "usa"], [2, "japan"]]},
+            {"name": "car_makers", "columns": ["Id", "Maker", "FullName", "Country"],
+             "rows": [[1, "ford", "Ford", 1], [2, "gm", "GM", 1], [3, "toyota", "Toyota", 2]]}]
+    asked = "How many countries have more than 1 car maker?"
+    per_group = "SELECT COUNT(*) FROM car_makers GROUP BY Country HAVING COUNT(*) > 1"
+    from engine.sql_ast import Aggregate, ColumnRef, Comparison, Literal, SelectItem, SelectQuery, SQLType, Star
+    from engine.sql_ast import SubquerySource
+    assert _violations(cars, asked, per_group) == ("the question counts the groups that qualify, not the rows in each",)
+    country = ColumnRef("car_makers", "Country", SQLType.INTEGER)
+    count = Aggregate("COUNT", Star())
+    qualifying = SelectQuery((SelectItem(country),), "car_makers", group_by=(country,),
+                             having=Comparison(count, ">", Literal(1, SQLType.INTEGER)))
+    counted = SelectQuery((SelectItem(count),), SubquerySource(qualifying, "qualifying"))
+    assert constraint_violations(asked, counted, _graph(_hermetic_planner(), cars)) == ()
+    # Contrast: a question that asks for groups counts in each.
+    assert _violations(cars, "How many car makers does each country have, among countries with more than 1 car maker?",
+                       "SELECT Country, COUNT(*) FROM car_makers GROUP BY Country HAVING COUNT(*) > 1") == ()
+    assert _violations(cars, asked, "SELECT COUNT(DISTINCT Country) FROM car_makers WHERE Country > 1") == (
+        "requested comparison direction, value or operand is missing",)
+    orders = [{"name": "orders", "columns": ["Customer", "Amount"],
+               "rows": [["Ann", 5], ["Ann", 6], ["Ann", 7], ["Bo", 8], ["Bo", 9], ["Cy", 1]]}]
+    asked = "Which customers have a total amount over 10?"
+    assert _violations(orders, asked, "SELECT Customer, SUM(Amount) FROM orders GROUP BY Customer "
+                                      "HAVING SUM(Amount) > 10") == ()
+    assert _violations(orders, asked, "SELECT Customer, SUM(Amount) FROM orders WHERE Amount > 10 "
+                                      "GROUP BY Customer") == (
+        "requested comparison direction, value or operand is missing",)
+    # Contrast: the total amount of the orders over 7 compares each order.
+    assert _violations(orders, "What is the total amount of orders over 7?",
+                       "SELECT SUM(Amount) FROM orders WHERE Amount > 7") == ()
+    # Spider DEV 125: a number said after a field whose cells are not all numbers compares that field, and the
+    # cylinders over 150 answer another question once the per-group count was refused.
+    cars = [{"name": "cars_data", "columns": ["Id", "Cylinders", "Horsepower"],
+             "rows": [[1, 8, "160"], [2, 4, "null"], [3, 6, "95"]]}]
+    asked = "What is the number of the cars with horsepower more than 150?"
+    assert _violations(cars, asked, "SELECT COUNT(Horsepower) FROM cars_data WHERE Cylinders > 150") == (
+        "requested comparison direction, value or operand is missing",)
+    assert _violations(cars, asked, "SELECT COUNT(*) FROM cars_data WHERE Horsepower > 150") == ()
+
+
+def test_a_condition_inside_a_membership_test_filters_only_the_rows_it_binds():
+    """The review of 2026-10-11 (F3): "people whose age is above 35" was met by an uncorrelated EXISTS (every person
+    while someone is over 35) and by person IDs IN a list of ages. A comparison inside IN filters the returned rows
+    only when the IN compares values of one kind, and inside EXISTS only when it refers to the outer row."""
+    from engine.sql_ast import (
+        ColumnRef, Comparison, ExistsPredicate, InPredicate, Literal, SelectItem, SelectQuery, SQLType, and_predicates,
+    )
+    people = [{"name": "people", "columns": ["ID", "Name", "Age"], "rows": [[1, "Ann", 20], [2, "Bo", 40], [3, "Cy", 60]]}]
+    asked = "List names of people whose age is above 35."
+    assert _violations(people, asked, "SELECT Name FROM people WHERE ID IN (SELECT ID FROM people WHERE Age > 35)") == ()
+    missing = ("requested comparison direction, value or operand is missing",)
+    assert _violations(people, asked, "SELECT Name FROM people WHERE ID IN (SELECT Age FROM people WHERE Age > 35)") \
+        == missing
+    assert _violations(people, asked, "SELECT Name FROM people WHERE EXISTS (SELECT ID FROM people WHERE Age > 35)") \
+        == missing
+    # A comparison in a scalar subquery filters no row either.
+    assert _violations(people, asked, "SELECT Name FROM people WHERE Age >= (SELECT MIN(Age) FROM people "
+                                      "WHERE Age > 35)") == missing
+    # An EXISTS that refers to the outer row binds it; one that does not keeps every row or none.
+    tables = [{"name": "owners", "columns": ["ID", "Name"], "rows": [[1, "Ann"], [2, "Bo"]]},
+              {"name": "pets", "columns": ["PetID", "OwnerID", "PetAge"], "rows": [[10, 1, 2], [11, 2, 5]]}]
+    graph = SchemaGraph.from_tables(tables, [{"from_table": "pets", "from_col": "OwnerID",
+                                              "to_table": "owners", "to_col": "ID"}])
+    integer = SQLType.INTEGER
+    owner, pet_owner = ColumnRef("owners", "ID", integer), ColumnRef("pets", "OwnerID", integer)
+    older = Comparison(ColumnRef("pets", "PetAge", integer), ">", Literal(3, integer))
+    names = (SelectItem(ColumnRef("owners", "Name", SQLType.TEXT)),)
+    asked = "List the names of owners who have a pet with PetAge above 3."
+    correlated = SelectQuery(names, "owners", where=ExistsPredicate(SelectQuery(
+        (SelectItem(ColumnRef("pets", "PetID", integer)),), "pets",
+        where=and_predicates((Comparison(pet_owner, "=", owner), older)))))
+    assert constraint_violations(asked, correlated, graph) == ()
+    uncorrelated = SelectQuery(names, "owners", where=ExistsPredicate(SelectQuery(
+        (SelectItem(ColumnRef("pets", "PetID", integer)),), "pets", where=older)))
+    assert constraint_violations(asked, uncorrelated, graph) == missing
+    # A foreign key pairs the outer key with the inner one: the owners IN the pets' owners over 3 are bound.
+    member = SelectQuery(names, "owners", where=InPredicate(owner, SelectQuery((SelectItem(pet_owner),), "pets",
+                                                                             where=older)))
+    assert constraint_violations(asked, member, graph) == ()
+    unrelated = SelectQuery(names, "owners", where=InPredicate(owner, SelectQuery(
+        (SelectItem(ColumnRef("pets", "PetAge", integer)),), "pets", where=older)))
+    assert constraint_violations(asked, unrelated, graph) == missing
+
+
+def test_a_ranking_keeps_its_said_number_of_rows_and_shows_them():
+    """The review of 2026-10-11 (F5): the contract read a cutoff only after "top" or "bottom"; "the 2 people with the
+    largest Age" kept one row, and "top 2 products by price" listed two prices."""
+    people = [{"name": "people", "columns": ["Person_ID", "Name", "Age"],
+               "rows": [[1, "Ann", 30], [2, "Bo", 20], [3, "Cy", 40]]}]
+    asked = "List the names of the 2 people with the largest Age."
+    assert _violations(people, asked, "SELECT Name FROM people ORDER BY Age DESC LIMIT 2") == ()
+    assert "requested ranking cutoff is missing" in _violations(
+        people, asked, "SELECT Name FROM people ORDER BY Age DESC LIMIT 1")
+    products = [{"name": "products", "columns": ["product_id", "product_name", "price"],
+                 "rows": [[1, "Alpha", 10], [2, "Beta", 30], [3, "Gamma", 20]]}]
+    asked = "top 2 products by price"
+    assert _violations(products, asked, "SELECT price FROM products ORDER BY price DESC LIMIT 2") == (
+        "the ranked products are not shown, only the field that ranks them",)
+    assert _violations(products, asked, "SELECT product_name, price FROM products ORDER BY price DESC LIMIT 2") == ()
+    # Contrast: the field asked for before the cutoff is the answer.
+    assert _violations(products, "What are the prices of the top 2 products?",
+                       "SELECT price FROM products ORDER BY price DESC LIMIT 2") == ()
+    # A field named after its table's name is that table's: "the highest savings balances" are not the checking ones
+    # (held-out Spider train, 2026-10-11, newly answered once the cutoff was built).
+    bank = [{"name": "ACCOUNTS", "columns": ["custid", "name"], "rows": [[1, "Ann"], [2, "Bo"]]},
+            {"name": "SAVINGS", "columns": ["custid", "balance"], "rows": [[1, 50], [2, 90]]},
+            {"name": "CHECKING", "columns": ["custid", "balance"], "rows": [[1, 70], [2, 10]]}]
+    asked = "What are the names and savings balances of the two accounts with the highest savings balances?"
+    joined = (" FROM ACCOUNTS JOIN SAVINGS ON SAVINGS.custid = ACCOUNTS.custid"
+              " JOIN CHECKING ON CHECKING.custid = ACCOUNTS.custid")
+    assert _violations(bank, asked, "SELECT ACCOUNTS.name, SAVINGS.balance" + joined
+                       + " ORDER BY CHECKING.balance DESC LIMIT 2") == ("the balance asked is SAVINGS's, not CHECKING's",)
+    assert _violations(bank, asked, "SELECT ACCOUNTS.name, SAVINGS.balance FROM ACCOUNTS JOIN SAVINGS ON "
+                       "SAVINGS.custid = ACCOUNTS.custid ORDER BY SAVINGS.balance DESC LIMIT 2") == ()
 
 
 def test_a_negated_comparative_is_a_bound_and_the_nearest_cue_sets_a_comparison():

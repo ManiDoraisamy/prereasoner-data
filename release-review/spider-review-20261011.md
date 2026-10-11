@@ -1,5 +1,9 @@
 # Claude fix review and matched Spider comparison — 2026-10-11
 
+**Status (2026-10-11, later):** F1–F5 are fixed in their owners with regression tests; see `DECISIONS.md` "The review
+of 2026-10-11" and the measured entry at the top of `spider/results/RESULTS.md` (DEV 382 strict, losing only
+DEV 161/162 as predicted below; held out 246 → 249).
+
 **Fresh full run verified:** 384/1,034 strict (37.1%), 442/1,034 lenient (42.7%), and 593/1,034 answered (57.4%). All 141 recorded artifact/provenance fields stayed unchanged. Claude's fixes improve the benchmark, but five implementation findings remain below.
 
 ## Scope and assessment

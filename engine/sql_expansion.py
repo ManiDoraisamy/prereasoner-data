@@ -118,6 +118,17 @@ class CountThreshold:
         return frozenset(value for _, value in self.predicates)
 
 
+@dataclass(frozen=True)
+class AggregateThreshold:
+    """A threshold stated on an aggregate something has: "customers with a total amount over 10" is SUM(amount) > 10,
+    its aggregate word at ``position``."""
+    function: str
+    column: ColumnRef
+    operator: str
+    value: Any
+    position: int
+
+
 class ExpansionSupport:
     """Reusable schema-linking operations shared by independent expanders."""
 
@@ -389,6 +400,36 @@ class ExpansionSupport:
                 out.append(Comparison(target, operator, Literal(value, target.type)))
         return out
 
+    def aggregate_thresholds(self, question_tokens: tuple[str, ...]) -> list[AggregateThreshold]:
+        """Each threshold the question states on an aggregate something has rather than on each row: "customers with a
+        total amount over 10" compares each customer's SUM of amount, "students whose average grade is above 80" an
+        AVG. The holding word, the aggregate word, the field's name, a copula and the comparison come in that order
+        with nothing else between them: "the total amount of orders over 10" totals the orders over 10, and "total
+        Amount greater than 100" the amounts greater than 100."""
+        out = []
+        for index, token in enumerate(question_tokens):
+            value = parse_number(token)
+            operator = nearby_operator(question_tokens, index) if value is not None else "="
+            if operator == "=":
+                continue
+            end = index
+            while end > 0 and question_tokens[end - 1] in THRESHOLD_WORDS:
+                end -= 1
+            while end > 0 and question_tokens[end - 1] in COPULAS:
+                end -= 1
+            for schema_column in self.schema.columns:
+                phrase = name_tokens(schema_column.ref.name)
+                start = end - len(phrase)
+                function = AGGREGATE_CUES.get(question_tokens[start - 1]) if phrase and start > 0 else None
+                if function is None or question_tokens[start:end] != phrase:
+                    continue
+                holder = start - 2
+                while holder >= 0 and question_tokens[holder] in {"a", "an", "the", "their", "its"}:
+                    holder -= 1
+                if holder >= 0 and question_tokens[holder] in _HOLDING_WORDS:
+                    out.append(AggregateThreshold(function, schema_column.ref, operator, value, start - 1))
+        return out
+
     def threshold_targets_column(
         self, question_tokens: tuple[str, ...], threshold: CountThreshold
     ) -> bool:
@@ -418,7 +459,15 @@ class ExpansionSupport:
         out = []
         for schema_column in self.schema.columns:
             column = schema_column.ref
-            if numeric and (not column.type.numeric or is_surrogate_key(column.name)):
+            if numeric and not column.type.numeric:
+                continue
+            if numeric and is_surrogate_key(column.name):
+                # A key is compared only where its name introduces the number: "excluding Person_ID 2" (review F5,
+                # 2026-10-11, where the 2 was compared with the age named before it).
+                phrase = name_tokens(column.name)
+                out.extend((start + len(phrase) - 1, column) for start in range(len(question_tokens) - len(phrase))
+                           if question_tokens[start:start + len(phrase)] == phrase
+                           and parse_number(question_tokens[start + len(phrase)]) is not None)
                 continue
             words = set(semantic_tokens(column.name))
             for index, token in enumerate(question_tokens):
@@ -563,6 +612,8 @@ def unique_predicates(predicates: Iterable[Predicate]) -> list[Predicate]:
     return out
 
 
+# The words that exclude the row holding the number after them: "excluding Person_ID 2".
+EXCLUDING_WORDS = frozenset({"excluding", "except"})
 # The single words that set the comparison of the number after them, and the operator each sets.
 _COMPARISON_CUES = {"before": "<", "under": "<", "below": "<", "after": ">", "over": ">", "above": ">", "since": ">="}
 # A negated comparison's operator: "not higher than 4" is at most 4, and rows not over 4 are at most 4.
@@ -598,7 +649,19 @@ def nearby_operator(question_tokens: tuple[str, ...], index: int) -> str:
         return ">="
     if after in {("or", "before"), ("or", "earlier")}:
         return "<="
+    # "excluding Person_ID 2", "other than ID 3": every row but the one holding it (review F5, 2026-10-11, where the
+    # 2 was read as an age).
+    if set(before) & EXCLUDING_WORDS or any(pair == ("other", "than") for pair in zip(before, before[1:])):
+        return "!="
     return "="
+
+
+def threshold_number(question_tokens: tuple[str, ...], index: int) -> bool:
+    """Whether the number at ``index`` is a threshold a comparison takes ("more than two", "at least 3", "exactly
+    2"), not a count of rows to keep."""
+    before = tuple(question_tokens[max(0, index - 2):index])
+    return (nearby_operator(question_tokens, index) != "=" or before in {("at", "least"), ("at", "most")}
+            or before[-1:] == ("exactly",))
 
 
 def column_requested_as_output(column: ColumnRef, question: str) -> bool:
@@ -616,6 +679,16 @@ def top_level_count(question_tokens: tuple[str, ...]) -> bool:
     normalized = " ".join(question_tokens[:8])
     return normalized.startswith("how many") or normalized.startswith("what is the number") \
         or normalized.startswith("what are the number")
+
+
+def groups_requested(question: str) -> bool:
+    """Whether the question asks for a value in each group: "each", "per", "every", a "by" that groups
+    (``by_groups``), or "for different" ("the numbers of wines for different grapes"). "How many countries have
+    more than 2 car makers" asks for none: it counts the countries that qualify."""
+    question_tokens, raw = tokens(question), words(question)
+    return any(token in {"each", "per", "every"} or by_groups(question_tokens, raw, index)
+               or (token == "different" and index > 0 and question_tokens[index - 1] in {"for", "in", "across"})
+               for index, token in enumerate(question_tokens))
 
 
 def count_requested(question_tokens: tuple[str, ...]) -> bool:
@@ -784,6 +857,12 @@ MONEY_MEASURE_COLUMN_WORDS = frozenset({
 ROW_LISTING_COMMANDS = frozenset({"list", "show", "display"})
 # A form of "to be" between a noun and a comparison says it of that noun's rows: "orders are over 20".
 COPULAS = frozenset({"is", "are", "was", "were"})
+# The words between a field's name and the number it is compared with: "a total amount of more than 10", "an
+# average grade no less than 80", "at least 5".
+THRESHOLD_WORDS = frozenset({"than", "of", "over", "above", "under", "below", "at", "least", "most", "no", "not",
+                              "exceeding", "exceeds", "or", "equal", "to", *QUANTITY_COMPARATIVES, *COMPARATIVES})
+# The words before an aggregate a thing has: "customers with a total amount over 10", "whose average grade".
+_HOLDING_WORDS = frozenset({"with", "have", "has", "had", "having", "whose", "where"})
 
 
 def money_total_position(question_tokens: Sequence[str], table_words: Iterable[str]) -> int | None:

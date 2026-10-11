@@ -159,7 +159,7 @@ def relational_operator_evidence(question, query, graph):
     value named ``Unique``/``Descending`` remains data. Missing or reversed
     operations must not be accepted merely by adding words to a noise list.
     """
-    from engine.sql_ast import Aggregate, ColumnRef, SelectQuery
+    from engine.sql_ast import Aggregate, ColumnRef, SelectQuery, SubquerySource
     from engine.sql_expansion import ExpansionSupport, ordering_requested, tokens
     from engine.sql_schema import canon
 
@@ -196,7 +196,12 @@ def relational_operator_evidence(question, query, graph):
         grouped_projection = (bool(query.group_by) and bool(projected)
                               and all(isinstance(item, ColumnRef) and item in query.group_by
                                       for item in projected))
-        if query.distinct or (counted and all(item.distinct for item in counted)) or grouped_projection:
+        # A count of the groups a FROM subquery keeps counts each group once: "how many different countries have
+        # more than 1 car maker".
+        counted_groups = bool(counted) and isinstance(query.from_table, SubquerySource) and bool(
+            query.from_table.query.group_by)
+        if (query.distinct or (counted and all(item.distinct for item in counted)) or grouped_projection
+                or counted_groups):
             consumed.update(distinct_words)
         else:
             violations.append('requested distinct results are missing')
@@ -293,7 +298,9 @@ def constraint_violations(question, query, graph):
 def _select_violations(question, query, graph, whole):
     """``constraint_violations`` for the select ``query``, one branch of the query ``whole`` (``query`` itself when
     it is not a set query)."""
-    from engine.sql_ast import Aggregate, ColumnRef, Comparison, DatePart, ExistsPredicate, InPredicate, Star
+    from engine.sql_ast import (
+        Aggregate, ColumnRef, Comparison, DatePart, ExistsPredicate, InPredicate, SelectQuery, Star, SubquerySource,
+    )
     from engine.sql_dates import realizes_dates, served_date_phrases
     from engine.sql_durations import duration_phrases, realizes_durations
     from engine.sql_expansion import ExpansionSupport, tokens
@@ -404,7 +411,15 @@ def _select_violations(question, query, graph, whole):
                 for function, refs in aggregate_columns(item).items():
                     found.setdefault(function, set()).update(refs)
         return found
-    measures = aggregate_columns(query.select)
+    # What the query computes: its answer, and the aggregates it compares to keep groups, in it or in the query it
+    # reads FROM. "How many customers have a total amount over 10" totals the amounts in the HAVING its count reads
+    # (the review of 2026-10-11).
+    computed = []
+    source = query
+    while isinstance(source, SelectQuery):
+        computed.extend((source.select, source.having))
+        source = source.from_table.query if isinstance(source.from_table, SubquerySource) else None
+    measures = aggregate_columns(computed)
     if roles.aggregate_positions.get('SUM') and not count_requested and 'SUM' not in aggregate_functions(query.select):
         violations.append('A requested total needs a sum of values, not a row count or projection')
     counts_rows = count_requested and any(isinstance(item.expression, Aggregate)
@@ -446,9 +461,17 @@ def _select_violations(question, query, graph, whole):
         if mismatched:
             named = sorted(refs, key=lambda ref: (ref.table, ref.name))[0]
             cells = unreadable_cells(next((column.values for column in graph.columns if column.ref == named), ()))
-            violations.append(unreadable_measure_reason(named.name, cells, mismatched[0]) if cells else
-                              'The requested total for ' + repr(sorted(ref.name for ref in refs)[0])
-                              + ' could not be computed from that field; check for nonnumeric/error cells or choose a numeric field')
+            if cells:
+                violations.append(unreadable_measure_reason(named.name, cells, mismatched[0]))
+            elif named.type.numeric:
+                # A numeric field the query does not aggregate is a reading the search did not build, not a field to
+                # repair: "the average distance and average price" was refused for nonnumeric price cells, all of them
+                # numbers (review F4, 2026-10-11).
+                violations.append(f"requested aggregate is missing: {mismatched[0]} of {named.name}")
+            else:
+                violations.append('The requested total for ' + repr(sorted(ref.name for ref in refs)[0])
+                                  + ' could not be computed from that field; check for nonnumeric/error cells or '
+                                  'choose a numeric field')
             continue
         if refs & used:
             continue
@@ -486,6 +509,18 @@ def _select_violations(question, query, graph, whole):
             continue
         if not any(isinstance(item.expression, Star) for item in query.select):
             violations.append('The requested field is not used: '+sorted(ref.name for ref in refs)[0])
+    # A field named after its table's name ("the highest savings balances") is that table's field: another table's
+    # field of that name, from a table the question does not name, is not the one asked. Ordering accounts by their
+    # checking balance answered "the three accounts with the highest savings balances" (held-out Spider train,
+    # 2026-10-11).
+    for label, refs in named_fields.items():
+        said_with = {ref for ref in refs if ' ' + ' '.join(canon(word) for word in lexical_words(ref.table)) + ' '
+                     + label + ' ' in question_text}
+        others = {ref for ref in (refs & used) - said_with
+                  if not set(canon(word) for word in lexical_words(ref.table)) <= question_words}
+        if said_with and others:
+            violations.append(f"the {label} asked is {sorted(said_with)[0].table}'s, not "
+                              f"{sorted(others)[0].table}'s")
     for ref in sorted(used, key=lambda ref: (ref.table, ref.name)):
         match = re.fullmatch(r'(.*) \[column ([A-Z]+)\](?: \d+)?', ref.name)
         if not match:
@@ -531,6 +566,8 @@ def _select_violations(question, query, graph, whole):
         member = ScoredQuery(whole, render_query(whole), 0.0, ())
         if not realizes_numeric_comparisons(question, member, graph, exclude_positions=date_positions):
             violations.append("requested comparison direction, value or operand is missing")
+    elif _compares_another_field(question_tokens, whole, graph, date_positions):
+        violations.append("requested comparison direction, value or operand is missing")
     actual = tuple(mandatory_predicates(query.where)) + tuple(mandatory_predicates(query.having))
     if re.search(r"\bnon[- ]empty\b", question, re.I):
         named = {column for _, column in ExpansionSupport(graph).mentioned_columns(question_tokens, False)}
@@ -568,7 +605,7 @@ def _select_violations(question, query, graph, whole):
     # names, reads nothing from and connects nothing narrows them, and its rows' absence keeps what should go. "Templates
     # that are not used in any documents" subtracted only documents that have paragraphs (Spider DEV 316, 2026-10-10).
     question_words = {canon(word) for word in lexical_words(question)}
-    for branch, scope in _select_queries(whole):
+    for branch, scope in _select_queries(whole, graph=graph):
         if scope.negated and (table := _dangling_unnamed_join(branch, question_words)) is not None:
             violations.append(f"the exclusion is narrowed by {table}, which the question does not name")
     # An exclusion is the one the question makes: in "orders not Done in France", status != 'Done' with
@@ -609,16 +646,41 @@ def _select_violations(question, query, graph, whole):
     aggregates = {item.expression.function for item in query.select if isinstance(item.expression, Aggregate)}
     for pattern, function in ((r"\b(?:maximum|max)\b", "MAX"), (r"\b(?:minimum|min)\b", "MIN"),
                               (r"\b(?:average|avg|mean)\b", "AVG")):
-        if re.search(pattern, text) and function not in aggregates:
+        if re.search(pattern, text) and function not in aggregates and function not in measures:
             violations.append("requested aggregate is missing: " + function)
     for pattern, function, direction in ((r"\b(?:highest|largest)\b", "MAX", "DESC"),
                                          (r"\b(?:lowest|smallest)\b", "MIN", "ASC")):
         if re.search(pattern, text) and function not in aggregates:
             if not query.order_by or query.order_by[0].direction != direction:
                 violations.append("requested extremum or ordering is missing")
-    cutoff = re.search(r"\b(top|bottom)\s+(\d+)\b", text)
-    if cutoff and (query.limit != int(cutoff[2]) or not query.order_by):
+    # The rows a ranking keeps are read where the search reads them (sql_extrema.ranking_cutoff): "the top 3", "the two
+    # people with the largest age".
+    from engine.sql_extrema import MAX_CUES, MIN_CUES, ranking_cutoff
+    ranks = tuple(index for index, token in enumerate(question_tokens)
+                  if token in {"top", "bottom"} | MAX_CUES | MIN_CUES and index not in date_positions)
+    cutoff, said = ranking_cutoff(question_tokens, ranks) if ranks else (1, None)
+    if said is not None and said not in date_positions and (query.limit != cutoff or not query.order_by):
         violations.append("requested ranking cutoff is missing")
+    # The rows a ranking keeps are shown, not only the field that ranks them: "top 2 products by price" listed two
+    # prices. A field the question asks for before its cutoff is shown as asked ("the ages of the 3 oldest people").
+    from engine.sql_extrema import ranked_table
+    from engine.sql_expansion import semantic_tokens
+    ranked = ranked_table(question_tokens, graph.tables)
+    if ranked is not None:
+        shown = [item.expression for item in query.select]
+        ordered = {term.expression for term in query.order_by}
+        asked = set(question_tokens[:ranked[1]])
+        if shown and all(expression in ordered for expression in shown) and not any(
+                set(semantic_tokens(ref.name)) & asked for ref in column_refs(tuple(shown))):
+            violations.append(f"the ranked {ranked[0]} are not shown, only the field that ranks them")
+    # "How many countries have more than 2 car makers" counts the countries a HAVING keeps: one number, not a count
+    # in each country (the review of 2026-10-11: "how many customers have more than 2 orders" answered 3, one
+    # customer's orders). A question asking for groups ("each", "per", "by", "for different") counts in each, and a
+    # ranking keeps the groups it ranks.
+    from engine.sql_expansion import groups_requested, top_level_count
+    if (top_level_count(question_tokens) and query.group_by and query.having is not None and query.limit is None
+            and not groups_requested(question)):
+        violations.append("the question counts the groups that qualify, not the rows in each")
     # Explicitly named output grain must be represented, rather than just appearing
     # somewhere in the schema: a field named in full after "by/per/each", up to the clause's
     # end. "sorted by average Price" orders the groups and asks for no grain of its own, and a
@@ -643,6 +705,35 @@ def _select_violations(question, query, graph, whole):
         if aggregates and any(not refs & grouped for refs in labels.values()):
             violations.append("requested output grain is missing")
     return tuple(dict.fromkeys(violations))
+
+
+def _compares_another_field(question_tokens, query, graph, skipped):
+    """Whether ``query`` compares a number the question compares with a field it names just before, whose cells are not
+    all numbers, with another field: "cars with horsepower more than 150" over Spider's text Horsepower was answered
+    with the cylinders over 150 (Spider DEV 125, 2026-10-11). ``ExpansionSupport.numeric_comparisons`` reads only
+    numeric fields, so such a comparison was not checked at all."""
+    from engine.sql_ast import Aggregate, Literal
+    from engine.sql_expansion import COPULAS, THRESHOLD_WORDS, ExpansionSupport, nearby_operator, parse_number
+    named = ExpansionSupport(graph).mentioned_columns(question_tokens, numeric=False)
+    for index, token in enumerate(question_tokens):
+        value = parse_number(token)
+        if value is None or index in skipped or nearby_operator(question_tokens, index) == "=":
+            continue
+        # The field's name ends where the comparison's words begin: "horsepower more than 150", not "customers have
+        # more than 2 orders".
+        end = index
+        while end > 0 and question_tokens[end - 1] in THRESHOLD_WORDS | COPULAS:
+            end -= 1
+        said = {column for position, column in named if position == end - 1}
+        if not said or any(column.type.numeric for column in said):
+            continue
+        for select, _ in _select_queries(query, graph=graph):
+            for comparison in (*_comparisons(select.where, True), *_comparisons(select.having, True)):
+                left = comparison.left.operand if isinstance(comparison.left, Aggregate) else comparison.left
+                if (isinstance(comparison.right, Literal) and comparison.right.value == value
+                        and left not in said):
+                    return True
+    return False
 
 
 def _compared_texts(predicates):
@@ -720,13 +811,10 @@ def _number_read(question_tokens, index, value, query, ranked):
     ranks ("the two oldest", "top three") it is the cutoff, read by the query's own LIMIT; otherwise either reads it.
     Any number anywhere in the SQL once read it, so "the two people with the largest Age, excluding Person_ID 2" was
     complete over a query keeping three rows (review, 2026-10-08)."""
-    from engine.sql_expansion import nearby_operator
-    before = tuple(question_tokens[max(0, index - 2):index])
-    threshold = (nearby_operator(question_tokens, index) != "="
-                 or before in {("at", "least"), ("at", "most")} or before[-1:] == ("exactly",))
+    from engine.sql_expansion import threshold_number
     compared = float(value) in _compared_numbers(query)
     limited = getattr(query, "limit", None) == value
-    if threshold:
+    if threshold_number(question_tokens, index):
         return compared
     return limited if ranked else (compared or limited)
 
@@ -949,7 +1037,7 @@ def read_question(question, candidate, graph, *, calculation_satisfied=False):
     from engine.closed_class import COMPARATIVES
     for word in (set(question_tokens) & (MAX_CUES | MIN_CUES | set(COMPARATIVES) | _FREQUENCY_WORDS)) - ordinary_words:
         places = [index for index, token in enumerate(question_tokens) if token == word]
-        if all(_realizes_grade(question_tokens, index, candidate.query) for index in places):
+        if all(_realizes_grade(question_tokens, index, candidate.query, graph) for index in places):
             ordinary_words.add(canon(word))
     # A participle relating the rows to a value the query compares says how they relate: "flights departing from
     # APG" compares the source airport with 'APG' (Spider flight_2, 2026-10-08). Its object names a compared value
@@ -1003,30 +1091,57 @@ class _Scope:
     """Where a select query sits in the query it is part of. ``alternative``: in a UNION branch, so its rows are one
     alternative of the answer; ``negated``: subtracted (the right of an EXCEPT, a NOT IN or NOT EXISTS subquery, an
     odd number of times), so its rows are the ones excluded; ``scalar``: in a scalar subquery, which computes a value
-    and keeps no row."""
+    and keeps no row; ``unbound``: in a membership test that ties no outer row to its rows (``_binds``), which keeps
+    every row or none whatever each row holds."""
     alternative: bool = False
     negated: bool = False
     scalar: bool = False
+    unbound: bool = False
 
 
 def _tested_subqueries(predicate):
-    """(query, scalar, negated) for each query a predicate tests rows against: IN and EXISTS test membership, negated
-    as NOT IN and NOT EXISTS; a scalar subquery computes a value."""
+    """(query, scalar, negated, operand) for each query a predicate tests rows against: IN and EXISTS test membership,
+    negated as NOT IN and NOT EXISTS, IN of its ``operand`` (None for EXISTS and a scalar subquery); a scalar subquery
+    computes a value."""
     from engine.sql_ast import BooleanExpr, Comparison, ExistsPredicate, InPredicate, ScalarSubquery
     if isinstance(predicate, BooleanExpr):
         for term in predicate.terms:
             yield from _tested_subqueries(term)
     elif isinstance(predicate, InPredicate) and not isinstance(predicate.source, tuple):
-        yield predicate.source, False, predicate.negated
+        yield predicate.source, False, predicate.negated, predicate.left
     elif isinstance(predicate, ExistsPredicate):
-        yield predicate.query, False, predicate.negated
+        yield predicate.query, False, predicate.negated, None
     elif isinstance(predicate, Comparison):
         for side in (predicate.left, predicate.right):
             if isinstance(side, ScalarSubquery):
-                yield side.query, True, False
+                yield side.query, True, False, None
 
 
-def _select_queries(query, scope=_Scope()):
+def _binds(operand, inner, graph):
+    """Whether a membership test ties the outer row to ``inner``'s rows: an IN compares its ``operand`` with values of
+    its own kind (the same column, one a foreign key pairs with it, or one sharing a word of its name), and an EXISTS
+    (``operand`` None) refers to the outer row. "People whose ID is IN the ages over 35" and "people such that someone
+    is over 35" keep rows whatever their own age, and both were read as "people whose age is above 35" (review F3,
+    2026-10-11)."""
+    from engine.sql_ast import ColumnRef, SelectQuery, column_refs
+    from engine.sql_schema import canon, name_words
+    if not isinstance(inner, SelectQuery):
+        return True
+    if operand is None:
+        own = {inner.from_alias, inner.from_table if isinstance(inner.from_table, str) else None} | {
+            name for join in inner.joins for name in (join.alias, join.table)}
+        return any(ref.table not in own for ref in column_refs((inner.where, inner.having)))
+    projected = inner.select[0].expression if len(inner.select) == 1 else None
+    if not isinstance(operand, ColumnRef) or not isinstance(projected, ColumnRef):
+        return True
+    pair = {(operand.table, operand.name), (projected.table, projected.name)}
+    if len(pair) == 1 or any(pair == {(left.table, left.name), (right.table, right.name)}
+                             for key in getattr(graph, "foreign_keys", ()) for left, right in key.column_pairs):
+        return True
+    return bool({canon(word) for word in name_words(operand.name)} & {canon(word) for word in name_words(projected.name)})
+
+
+def _select_queries(query, scope=_Scope(), graph=None):
     """(select query, ``_Scope``) for every select query in ``query``: set branches, FROM subqueries and the
     subqueries its predicates test, so "visitors who did not visit any museum opened after 2010" is realized inside
     its NOT IN. Each keeps where it sits: a comparison anywhere in the query once realized the question's, so "above
@@ -1036,16 +1151,19 @@ def _select_queries(query, scope=_Scope()):
     from engine.sql_ast import SelectQuery, SetQuery, SubquerySource
     if isinstance(query, SetQuery):
         branch = replace(scope, alternative=scope.alternative or query.operator == "UNION")
-        yield from _select_queries(query.left, branch)
-        yield from _select_queries(query.right, replace(branch, negated=branch.negated != (query.operator == "EXCEPT")))
+        yield from _select_queries(query.left, branch, graph)
+        yield from _select_queries(query.right, replace(branch, negated=branch.negated != (query.operator == "EXCEPT")),
+                                   graph)
     elif isinstance(query, SelectQuery):
         yield query, scope
         if isinstance(query.from_table, SubquerySource):
-            yield from _select_queries(query.from_table.query, scope)
+            yield from _select_queries(query.from_table.query, scope, graph)
         for predicate in (query.where, query.having):
-            for nested, scalar, negated in _tested_subqueries(predicate):
+            for nested, scalar, negated, operand in _tested_subqueries(predicate):
+                unbound = not scalar and not _binds(operand, nested, graph)
                 yield from _select_queries(nested, replace(scope, negated=scope.negated != negated,
-                                                           scalar=scope.scalar or scalar))
+                                                           scalar=scope.scalar or scalar,
+                                                           unbound=scope.unbound or unbound), graph)
 
 
 def _dangling_unnamed_join(query, question_words):
@@ -1077,7 +1195,7 @@ def _scoped_match(scope, operator, wanted, *, alternatives, negated):
     35), or the operator itself when the question ``negated`` it before ("visitors who did not visit any museum opened
     after 2010" are the visitors NOT IN those visits)."""
     from engine.sql_expansion import COMPLEMENTS
-    if scope.scalar or (scope.alternative and not alternatives):
+    if scope.scalar or scope.unbound or (scope.alternative and not alternatives):
         return False
     if scope.negated:
         return COMPLEMENTS.get(operator) == wanted or (negated and operator == wanted)
@@ -1088,7 +1206,7 @@ def _scoped_match(scope, operator, wanted, *, alternatives, negated):
 _FREQUENCY_WORDS = frozenset({"common", "frequent", "frequently"})
 
 
-def _realizes_grade(question_tokens, index, query):
+def _realizes_grade(question_tokens, index, query, graph=None):
     """Whether ``query`` realizes the graded word at ``question_tokens[index]`` in its direction, on a field of the
     kind it grades. A comparative before "than" is a comparison with its operator (sql_expansion.comparative_operator,
     so "not higher than 4" is at most 4), on the measure it describes when it names one ("pets older than 1" compares
@@ -1110,13 +1228,13 @@ def _realizes_grade(question_tokens, index, query):
         start = next((position for position in range(index - 1, -1, -1) if question_tokens[position] in graded
                       and "from" in question_tokens[max(0, position - 2):position]), None)
         if start is not None:
-            return _realizes_grade(question_tokens, start, query)
+            return _realizes_grade(question_tokens, start, query, graph)
     from engine.closed_class import EXCLUSION_CUES
     alternatives = bool({"or", "either"} & set(question_tokens))
     # A negation before the word's own ("did not have any pet older than 3") makes a subtracted scope the one asked;
     # one beside it ("not older than 35") is the comparative's own complement (comparative_operator).
     negated = bool(EXCLUSION_CUES.search(" ".join(question_tokens[:max(0, index - 2)])))
-    scoped = tuple(_select_queries(query))
+    scoped = tuple(_select_queries(query, graph=graph))
     if word in COMPARATIVES and "than" in question_tokens[index + 1:index + 4]:
         operator = comparative_operator(question_tokens, index)
         described = COMPARATIVE_COLUMNS.get(word, frozenset())
@@ -1128,9 +1246,11 @@ def _realizes_grade(question_tokens, index, query):
             for select, scope in scoped for comparison in (*_comparisons(select.where, alternatives),
                                                            *_comparisons(select.having, alternatives)))
     # A superlative may be computed in a scalar subquery ("the car with the largest horsepower"), but not in rows the
-    # query excludes or offers as one alternative, unless the question does.
+    # query excludes or offers as one alternative, unless the question does, nor in a membership test that binds no
+    # returned row.
     selects = tuple(select for select, scope in scoped
-                    if (not scope.negated or negated) and (not scope.alternative or alternatives))
+                    if (not scope.negated or negated) and (not scope.alternative or alternatives)
+                    and not scope.unbound)
     cue = frequency_cue(question_tokens)
     if cue is not None and (index == cue.position or (index == cue.position + 1 and word in _FREQUENCY_WORDS)):
         return any(select.order_by and isinstance(select.order_by[0].expression, Aggregate)
@@ -1190,7 +1310,7 @@ def realizes_numeric_comparisons(question, candidate, graph, *, exclude_position
         return set()
 
     actual = []     # (comparison, the tables its query reads, whether it tests groups, where it sits)
-    for query, scope in _select_queries(candidate.query):
+    for query, scope in _select_queries(candidate.query, graph=graph):
         tables = query.referenced_tables()
         actual.extend((item, tables, False, scope) for item in _comparisons(query.where, alternatives))
         actual.extend((item, tables, True, scope) for item in _comparisons(query.having, alternatives))
@@ -1219,6 +1339,26 @@ def realizes_numeric_comparisons(question, candidate, graph, *, exclude_position
         return False
     from engine.closed_class import EXCLUSION_CUES
     question_tokens = tokens(question)
+    # A threshold stated on a total or an average ("customers with a total amount over 10") compares that aggregate,
+    # not each row's field: a WHERE amount > 10 once answered it (the review of 2026-10-11).
+    aggregated = {}
+    for stated in ExpansionSupport(graph).aggregate_thresholds(question_tokens):
+        aggregated.setdefault((stated.operator, number(stated.value)), set()).add((stated.function, stated.column))
+
+    # A number the name of a table follows counts that table's rows: "countries with more than 1 car maker" is met by a
+    # HAVING COUNT, not by a car maker's Country key compared with 1 (the review of 2026-10-11).
+    from engine.sql_expansion import name_tokens, nearby_operator, parse_number
+    table_names = {name for name in (name_tokens(table) for table in graph.tables) if name}
+    counted_values = {(nearby_operator(question_tokens, index), number(parse_number(token)))
+                      for index, token in enumerate(question_tokens)
+                      if parse_number(token) is not None
+                      and any(question_tokens[index + 1:index + 1 + len(name)] == name for name in table_names)}
+
+    def compares_as_asked(item, operator, value, tables, grouped_rows, targets):
+        wanted = aggregated.get((operator, value))
+        if (operator, value) in counted_values and not counted(item, tables, grouped_rows, targets):
+            return False
+        return wanted is None or (isinstance(item.left, Aggregate) and (item.left.function, item.left.operand) in wanted)
 
     def negated_before(value):
         """Whether the question negates before it says ``value`` ("did not visit any museum opened after 2010")."""
@@ -1231,6 +1371,7 @@ def realizes_numeric_comparisons(question, candidate, graph, *, exclude_position
             _scoped_match(scope, item.operator, operator, alternatives=alternatives, negated=negated)
             and number(getattr(item.right, "value", None)) == value
             and (bool(refs(item.left) & targets) or counted(item, tables, grouped_rows, targets))
+            and compares_as_asked(item, operator, value, tables, grouped_rows, targets)
             for item, tables, grouped_rows, scope in actual
         ):
             return False

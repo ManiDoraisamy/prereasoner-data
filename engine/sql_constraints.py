@@ -23,6 +23,7 @@ from engine.sql_ast import (
     SelectItem,
     SelectQuery,
     Star,
+    SubquerySource,
     and_predicates,
     conjunction,
     equality_conflicts,
@@ -43,12 +44,15 @@ from engine.sql_expansion import (
     entity_join_key as _entity_join_key,
     explicit_order as _explicit_order,
     expression_table as _expression_table,
+    groups_requested as _groups_requested,
+    join_key as _join_key,
     linker_noise as _linker_noise,
     parse_number as _parse_number,
     physical_tables as _physical_tables,
     projection_window as _projection_window,
     semantic_tokens as _semantic_tokens,
     tokens as _tokens,
+    top_level_count as _top_level_count,
     unique_predicates as _unique_predicates,
 )
 from engine.sql_candidate import ScoredQuery
@@ -68,6 +72,7 @@ class ConstraintQueryExpander(ExpansionSupport):
         generated: list[ScoredQuery] = []
         generated.extend(self._count_having_candidates(question, candidates))
         generated.extend(self._aggregate_having_candidates(question, candidates))
+        generated.extend(self._aggregate_threshold_candidates(question, candidates))
         generated.extend(self._or_candidates(question, candidates))
         generated.extend(self._union_candidates(question, candidates))
         generated.extend(self._scalar_aggregate_candidates(question, candidates))
@@ -92,6 +97,7 @@ class ConstraintQueryExpander(ExpansionSupport):
             return []
         out = []
         table_words = {word for table in self.schema.tables for word in _semantic_tokens(table)}
+        counts_qualifying = _top_level_count(tokens) and not _groups_requested(question)
         for threshold in thresholds:
             if self.threshold_targets_column(tokens, threshold):
                 continue
@@ -175,6 +181,9 @@ class ConstraintQueryExpander(ExpansionSupport):
                                     group_by=groups,
                                     having=having,
                                 )
+                                if counts_qualifying and not raw:
+                                    query = self.qualifying_count(query, _join_key(joins, entity_table)
+                                                                  if entity_table != counted_table else None)
                                 score = (
                                     42.0 + threshold.strength + entity_score + relation_score
                                     + structure_score + select_bonus + where_bonus
@@ -206,6 +215,57 @@ class ConstraintQueryExpander(ExpansionSupport):
                                     out.append(built)
         return out
 
+    def qualifying_count(self, grouped: SelectQuery, key: ColumnRef | None = None) -> SelectQuery:
+        """The number of groups ``grouped`` keeps: "how many countries have more than 2 car makers" counts the
+        countries its HAVING keeps, each by its ``key`` where that tells them apart, and a COUNT(*) grouped like them
+        counted the car makers in each (the review of 2026-10-11: "how many customers have more than 2 orders"
+        answered 3, one customer's orders)."""
+        identity = (key,) if key is not None and self.schema.identifies((key,)) else grouped.group_by
+        qualifying = replace(grouped, select=tuple(SelectItem(column) for column in identity), group_by=identity)
+        return SelectQuery(select=(SelectItem(Aggregate("COUNT", Star())),),
+                           from_table=SubquerySource(qualifying, "qualifying"))
+
+    def _aggregate_threshold_candidates(
+        self, question: str, candidates: Sequence[ScoredQuery]
+    ) -> list[ScoredQuery]:
+        """The entities whose aggregate of a related table's field passes a threshold stated on it
+        (``aggregate_thresholds``): "customers with a total amount over 10" groups each customer's orders and keeps
+        those whose SUM(amount) is over 10, and "how many customers have ..." counts them (``qualifying_count``).
+        The HAVING expansion below moves a comparison into a grouped candidate's HAVING; over two tables the search
+        built none to move it into, and the question was refused (review F2, 2026-10-11)."""
+        question_tokens = _tokens(question)
+        stated = self.aggregate_thresholds(question_tokens)
+        if not stated:
+            return []
+        counts_qualifying = _top_level_count(question_tokens) and not _groups_requested(question)
+        out = []
+        for threshold in stated:
+            measure = Aggregate(threshold.function, threshold.column)
+            having = Comparison(measure, threshold.operator, Literal(threshold.value, threshold.column.type))
+            pseudo = CountThreshold((("=", 1),), threshold.position, threshold.position + 1, 0.0)
+            for entity_table, entity_score in self.entity_tables(question_tokens, pseudo)[:2]:
+                if entity_table == threshold.column.table:
+                    continue
+                structures = self.having_structures(candidates, entity_table, threshold.column.table, pseudo)
+                for source, joins, where, structure_score in structures[:4]:
+                    kept = and_predicates(term for term in _and_terms(where)
+                                          if not (isinstance(term, Comparison) and term.left == threshold.column))
+                    projection = self.projection_options(question, entity_table, kept)[0]
+                    shown = tuple(item.expression for item in projection if isinstance(item.expression, ColumnRef))
+                    grouped = SelectQuery(select=projection, from_table=source, joins=joins, where=kept,
+                                          group_by=_entity_groups(self.schema, entity_table, joins, shown),
+                                          having=having)
+                    if counts_qualifying:
+                        options = [(self.qualifying_count(grouped, _join_key(joins, entity_table)), 0.0)]
+                    else:
+                        options = [(replace(grouped, select=projection + (SelectItem(measure),)), 0.5), (grouped, 0.0)]
+                    for query, bonus in options:
+                        built = _candidate(query, 44.0 + entity_score + structure_score + bonus,
+                                           ("constraint:having:aggregate-threshold",))
+                        if built is not None:
+                            out.append(built)
+        return out
+
     def _aggregate_having_candidates(
         self, question: str, candidates: Sequence[ScoredQuery]
     ) -> list[ScoredQuery]:
@@ -218,6 +278,7 @@ class ConstraintQueryExpander(ExpansionSupport):
             requested.add("SUM")
         if not requested:
             return []
+        counts_qualifying = _top_level_count(question_tokens) and not _groups_requested(question)
         out = []
         for candidate in candidates:
             query = candidate.query
@@ -267,6 +328,14 @@ class ConstraintQueryExpander(ExpansionSupport):
                     )
                     if built is not None:
                         out.append(built)
+                    if counts_qualifying:
+                        built = _candidate(
+                            self.qualifying_count(transformed),
+                            candidate.score + 24.0,
+                            candidate.evidence + (f"constraint:having:{aggregate.function.lower()}:qualifying",),
+                        )
+                        if built is not None:
+                            out.append(built)
                     sanitized = _sanitized_having_query(
                         transformed, aggregate, question
                     )

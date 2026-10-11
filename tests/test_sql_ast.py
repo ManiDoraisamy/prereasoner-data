@@ -4507,6 +4507,49 @@ def test_one_aggregate_word_over_two_coordinated_fields_takes_both():
     assert one["sql"].startswith('SELECT AVG("flight"."distance") FROM'), one["sql"]
 
 
+def test_each_coordinated_aggregate_word_takes_its_own_field():
+    """The review of 2026-10-11 (F4): "the average distance and average price" was refused, the second "average"
+    collapsed into the first, and the refusal blamed nonnumeric price cells, all of them numbers. Each aggregate word
+    "and" or a list coordinates takes the field it stands before, in the question's order; the same word over the same
+    field is asked once, and "count the number" is still one count."""
+    flight = {"name": "flight", "columns": ["flno", "origin", "distance", "price", "duration"],
+              "rows": [[1, "Los Angeles", 100, 50, 2], [2, "Los Angeles", 300, 70, 4], [3, "Chicago", 900, 200, 9]]}
+    planner = _hermetic_planner()
+
+    def answer(question):
+        served = planner.serve([flight], question)
+        assert served.get("valid"), (question, served.get("error"), served.get("sql"))
+        return served["sql"], [list(row) for row in served["result"]["rows"]]
+
+    sql, rows = answer("What is the average distance and average price for flights from Los Angeles?")
+    assert rows == [[200, 60]], sql
+    sql, rows = answer("What is the average distance, average price and average duration of flights from Los Angeles?")
+    assert rows == [[200, 60, 3]], sql
+    sql, rows = answer("What is the total distance and total price of flights from Chicago?")
+    assert rows == [[900, 200]], sql
+    sql, rows = answer("What is the average distance and maximum price for flights from Los Angeles?")
+    assert rows == [[200, 70]], sql
+    sql, _ = answer("What is the average price and average price of flights?")
+    assert sql == 'SELECT AVG("flight"."price") FROM "flight"', sql
+    sql, rows = answer("Count the number of flights from Los Angeles.")
+    assert sql.startswith('SELECT COUNT(*) FROM') and rows == [[2]], sql
+    # A count asked again in other words is one count (Spider DEV 89).
+    continents = {"name": "continents", "columns": ["ContId", "Continent"], "rows": [[1, "america"], [2, "asia"]]}
+    countries = {"name": "countries", "columns": ["CountryId", "CountryName", "Continent"],
+                 "rows": [[1, "usa", 1], [2, "japan", 2], [3, "korea", 2]]}
+    served = planner.serve([continents, countries], "How many countries does each continent have? List the continent "
+                           "name and the number of countries.",
+                           [{"from_table": "countries", "from_col": "Continent", "to_table": "continents",
+                             "to_col": "ContId"}])
+    assert served["sql"].count("COUNT(") == 1, served.get("sql")
+    # A numeric field the query leaves out is a missing aggregate, not a field with cells to repair.
+    graph = SchemaGraph.from_tables([flight], [])
+    distance = ColumnRef("flight", "distance", SQLType.INTEGER)
+    partial = SelectQuery((SelectItem(Aggregate("AVG", distance)),), "flight")
+    assert "requested aggregate is missing: AVG of price" in constraint_violations(
+        "What is the average distance and average price of flights?", partial, graph)
+
+
 HIGHSCHOOLERS = [
     {"name": "Highschooler", "columns": ["ID", "name", "grade"],
      "rows": [[1, "Jordan", 9], [2, "Jordan", 10], [3, "Kyle", 11], [4, "Ann", 9]]},
@@ -4676,6 +4719,137 @@ def test_the_most_of_a_one_table_workbooks_rows_counts_them_per_group():
                         explicit_fks=[{"from_table": "responses", "from_col": "country_code",
                                        "to_table": "countries", "to_col": "country_code", "conf": 1.0}])
     assert two.get("clarify") and "leads" in two["reason"], two.get("sql")
+
+
+CAR_COUNTRIES = {"name": "countries", "columns": ["CountryId", "CountryName"],
+                 "rows": [[1, "usa"], [2, "japan"], [3, "korea"], [4, "korea"], [5, "germany"]]}
+CAR_MAKERS = {"name": "car_makers", "columns": ["Id", "Maker", "FullName", "Country"],
+              "rows": [[1, "ford", "Ford", 1], [2, "gm", "GM", 1], [3, "tesla", "Tesla", 1],
+                       [4, "toyota", "Toyota", 2], [5, "kia", "Kia", 3], [6, "daewoo", "Daewoo", 4]]}
+CAR_MAKER_KEYS = [{"from_table": "car_makers", "from_col": "Country", "to_table": "countries", "to_col": "CountryId"}]
+
+
+def test_how_many_entities_with_a_count_threshold_counts_the_ones_that_qualify():
+    """The review of 2026-10-11 (F2): "how many countries have more than 1 car maker" was served as a COUNT(*) grouped by
+    country with HAVING COUNT(*) > 1, the car makers in each country that qualifies, not the countries; "how many
+    customers have more than 2 orders" answered 3, one customer's orders. The answer counts the groups the HAVING keeps,
+    each country by its key (two named korea are two countries), and is the number of rows "which" lists; "each" asks for
+    a count in every country. A threshold on a total or an average is that aggregate's, counted the same way."""
+    planner = _hermetic_planner()
+    tables = [CAR_COUNTRIES, CAR_MAKERS]
+
+    def answer(question, sheets=tables, keys=CAR_MAKER_KEYS):
+        served = planner.serve(sheets, question, keys)
+        assert served.get("valid"), (question, served.get("error"), served.get("sql"))
+        return [list(row) for row in served["result"]["rows"]]
+
+    assert answer("How many countries have more than 1 car maker?") == [[1]]
+    assert answer("What is the number of countries with more than 1 car maker?") == [[1]]
+    assert answer("How many different countries have more than 1 car maker?") == [[1]]
+    assert answer("Which countries have more than 1 car maker?") == [["usa"]]
+    # None qualify: the answer is 0, not no rows; several qualify, the two named korea among them.
+    assert answer("How many countries have more than 5 car makers?") == [[0]]
+    assert answer("How many countries have at least 1 car maker?") == [[4]]
+    # Contrast: "each" asks for the count in every country.
+    each = answer("How many car makers does each country have?")
+    assert sorted(row[-1] for row in each) == [1, 1, 1, 3], each
+    orders = {"name": "orders", "columns": ["Order ID", "Customer", "Amount"],
+              "rows": [[10, "Ann", 5], [11, "Ann", 6], [12, "Ann", 7], [13, "Bo", 8], [14, "Bo", 9], [15, "Cy", 1]]}
+    assert answer("How many customers have more than 2 orders?", [orders], []) == [[1]]
+    assert answer("How many customers have more than 1 order?", [orders], []) == [[2]]
+    assert sorted(answer("Which customers have more than 1 order?", [orders], [])) == [["Ann"], ["Bo"]]
+    assert answer("How many orders does each customer have?", [orders], []) == [["Ann", 3], ["Bo", 2], ["Cy", 1]]
+    # Totals 18, 17 and 1; averages 6, 8.5 and 1.
+    assert answer("How many customers have a total amount over 10?", [orders], []) == [[2]]
+    assert answer("How many customers have an average amount above 7?", [orders], []) == [[1]]
+    # The same over a customers table and its orders, which the search grouped by nothing.
+    customers = {"name": "customers", "columns": ["Customer_ID", "Name"], "rows": [[1, "Ann"], [2, "Bo"], [3, "Cy"]]}
+    placed = {"name": "orders", "columns": ["Order_ID", "Customer_ID", "Amount"],
+              "rows": [[10, 1, 5], [11, 1, 6], [12, 1, 7], [13, 2, 8], [14, 2, 9], [15, 3, 1]]}
+    keys = [{"from_table": "orders", "from_col": "Customer_ID", "to_table": "customers", "to_col": "Customer_ID"}]
+    assert answer("How many customers have a total amount over 10?", [customers, placed], keys) == [[2]]
+    assert sorted(answer("Which customers have a total amount over 10?", [customers, placed], keys)) == [
+        ["Ann", 18], ["Bo", 17]]
+
+
+def test_identity_for_an_exclusion_is_the_entitys_own():
+    """The review of 2026-10-11 (F1): a column referring to a key that holds no value twice was taken to tell its own
+    rows apart, so with a Majors table "the major and age of students who do not have a cat" subtracted (major, age)
+    and removed Bo with Ann, who shares both; a column whose values were missing in two rows was unique once those were
+    dropped. Fields tell an entity's rows apart only together and in its own table, a missing value counting as one."""
+    student = {"name": "Student", "columns": ["StuID", "Name", "Major", "Age"],
+               "rows": [[1, "Ann", 600, 19], [2, "Bo", 600, 19], [3, "Cy", 520, 20]]}
+    pets = {"name": "Pets", "columns": ["PetID", "PetType"], "rows": [[10, "cat"], [11, "dog"]]}
+    has_pet = {"name": "Has_Pet", "columns": ["StuID", "PetID"], "rows": [[1, 10], [3, 11]]}
+    majors = {"name": "Majors", "columns": ["MajorID", "Title"], "rows": [[600, "Math"], [520, "Art"]]}
+    keys = [{"from_table": "Has_Pet", "from_col": "StuID", "to_table": "Student", "to_col": "StuID"},
+            {"from_table": "Has_Pet", "from_col": "PetID", "to_table": "Pets", "to_col": "PetID"},
+            {"from_table": "Student", "from_col": "Major", "to_table": "Majors", "to_col": "MajorID"}]
+    asked = "Find the major and age of students who do not have a cat pet."
+    planner = _hermetic_planner()
+    served = planner.serve([student, pets, has_pet, majors], asked, keys)
+    assert sorted(tuple(row) for row in served["result"]["rows"]) == [(520, 20), (600, 19)], served.get("sql")
+    missing = dict(student, rows=[[1, "Ann", None, 19], [2, "Bo", None, 19], [3, "Cy", 520, 20]])
+    served = planner.serve([missing, pets, has_pet], asked)
+    assert sorted(row[1] for row in served["result"]["rows"]) == [19, 20], served.get("sql")
+
+    graph = SchemaGraph.from_tables([student, pets, has_pet, majors], keys)
+    ref = {column.ref.name: column.ref for column in graph.by_table["Student"]}
+    assert not graph.identifies((ref["Major"],)) and not graph.identifies((ref["Major"], ref["Age"]))
+    assert graph.identifies((ref["StuID"],)) and graph.identifies((ref["Name"],))
+    # Together: two fields neither of which tells the rows apart alone.
+    assert graph.identifies((ref["Major"], ref["Name"]))
+    # Fields of two tables tell no one table's rows apart.
+    assert not graph.identifies((ref["Name"], graph.by_table["Majors"][1].ref))
+    blanks = SchemaGraph.from_tables([missing], [])
+    major = blanks.by_table["Student"][2].ref
+    assert not blanks.identifies((major,)) and blanks.identifying_column("Student").name == "StuID"
+    # A key a row leaves empty is no key for a NOT IN: the next column that holds a value in every row is.
+    keyless = {"name": "Student", "columns": ["StuID", "Name"], "rows": [[1, "Ann"], [None, "Bo"]]}
+    assert SchemaGraph.from_tables([keyless], []).identifying_column("Student").name == "Name"
+
+
+def test_a_ranking_keeps_the_rows_its_number_says_and_shows_them():
+    """The review of 2026-10-11 (F5): "the names of the two people with the largest Age" was refused: the search kept
+    one row unless the number stood beside "largest" or after "top", while the question contract read "two" as the
+    cutoff. "Excluding Person_ID 5" compared the age with 5, and "top 2 products by price" listed two prices. The
+    search and the contract read the cutoff in one place (sql_extrema.ranking_cutoff), an exclusion word before a
+    key and its number excludes that row, and a ranking shows the rows it keeps."""
+    from engine.sql_expansion import tokens
+    from engine.sql_extrema import ranking_cutoff
+    people = {"name": "people", "columns": ["Person_ID", "Name", "Country", "Age"],
+              "rows": [[1, "Ann", "France", 30], [2, "Bo", "Spain", 20], [3, "Cy", "Spain", 40],
+                       [4, "Dan", "Italy", 50], [5, "Eve", "France", 60]]}
+    planner = _hermetic_planner()
+
+    def answer(question, tables=(people,)):
+        served = planner.serve(list(tables), question)
+        assert served.get("valid"), (question, served.get("error"), served.get("sql"))
+        return [list(row) for row in served["result"]["rows"]]
+
+    assert answer("List the names of the two people with the largest Age.") == [["Eve"], ["Dan"]]
+    assert answer("List the names of the 2 people with the largest Age.") == [["Eve"], ["Dan"]]
+    assert answer("List the names of the three people with the smallest Age.") == [["Bo"], ["Ann"], ["Cy"]]
+    # The cutoff and an excluded row's number, different and the same.
+    assert answer("List the names of the two people with the largest Age, excluding Person_ID 5.") == [["Dan"], ["Cy"]]
+    assert answer("List the names of the two people with the largest Age, excluding Person_ID 2.") == [["Eve"], ["Dan"]]
+    assert answer("List the names of the two people with the largest Age who are not from Spain.") == [["Eve"], ["Dan"]]
+    assert answer("Show the top 3 people by Age") == [["Eve", 60], ["Dan", 50], ["Cy", 40]]
+    # Contrast: a field asked for before the cutoff is the answer, and a threshold's number keeps no rows.
+    assert answer("What are the ages of the 3 oldest people?") == [[60], [50], [40]]
+    question = tokens("the people older than 30 with the largest age")
+    assert ranking_cutoff(question, (question.index("largest"),)) == (1, None)
+    # A number in a field's name, or a filter's, counts no rows kept (Spider DEV 562 and 165).
+    for said, cue in (("What is the id, line 1, and line 2 of the address with the most students?", "most"),
+                      ("For the cars with 4 cylinders, which model has the largest horsepower?", "largest")):
+        question = tokens(said)
+        assert ranking_cutoff(question, (question.index(cue),)) == (1, None), said
+    products = {"name": "products", "columns": ["product_id", "product_name", "category", "price"],
+                "rows": [[1, "Alpha", "A", 10], [2, "Beta", "A", 30], [3, "Gamma", "B", 20], [4, "Delta", "B", 5]]}
+    assert answer("top 2 products by price", [products]) == [["Beta", 30], ["Gamma", 20]]
+    assert answer("Which 2 products have the highest price?", [products]) == [["Beta", 30], ["Gamma", 20]]
+    assert answer("bottom 2 products by price", [products]) == [["Delta", 5], ["Alpha", 10]]
+
 
 def test_a_relation_names_the_side_its_participle_asks_for():
     """The other key of a relation table (Likes.liked_id) is the side "liked by" asks for, and the owner's side
@@ -5151,6 +5325,10 @@ TESTS = [
     test_an_average_per_row_noun_averages_the_rows,
     test_rows_said_to_be_over_a_number_are_compared_by_their_money_measure,
     test_the_most_of_a_one_table_workbooks_rows_counts_them_per_group,
+    test_how_many_entities_with_a_count_threshold_counts_the_ones_that_qualify,
+    test_identity_for_an_exclusion_is_the_entitys_own,
+    test_a_ranking_keeps_the_rows_its_number_says_and_shows_them,
+    test_each_coordinated_aggregate_word_takes_its_own_field,
     test_extrema_expansion_guards_multi_aggregate_and_can_be_disabled,
     test_shared_spider_evaluation_contract,
     test_live_table_query_ast_mode_executes_typed_candidate,

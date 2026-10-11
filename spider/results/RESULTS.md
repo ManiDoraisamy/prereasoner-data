@@ -4,6 +4,35 @@ Dated entries come newest first. Each records a run at the commit it names; the 
 entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection arbiter`) may since have
 been removed, and that commit holds the code that ran.
 
+## The review's five defects fixed: 384 → 382 strict (DEV 161/162's gold counts per country), Gemini on 466 → 465, held out 246 → 249 (2026-10-11)
+
+Same contract as the entries below: `whole_db`, `served`, SQL backend, row cap 5,000, 12 s budget, runtime bundle
+unchanged, external rewriting off except where Gemini is on. The change is `DECISIONS.md` "The review of 2026-10-11".
+Runs `final-dirty`, `final-gemini-dirty` and `heldout-final-dirty` are a worktree of `d8d81ab` with the change,
+against `leads-dirty`, `leads-gemini-dirty` and `heldout-leads-dirty` (the engine production serves, `a0e4efb`).
+Gemini on replays the same cached rewordings: 443 calls, none live.
+
+- DEV, engine alone: 384 → 382 strict, 442 → 440 lenient, 593 → 591 answered; 0 wins, 2 losses, 5 queries
+  changed. The losses are DEV 161 and 162, "how many countries have more than 2 car makers": their gold counts the
+  car makers in each qualifying country (`[4], [4], [3], [5]`), and the engine now answers the number of countries,
+  as the review predicted. DEV 125 and 126 ("cars with horsepower more than 150") were answered wrongly with a count
+  per group and are now refused: Spider's Horsepower is text, and the queries left compared another field with 150.
+  DEV 175 changed and stays wrong.
+- Gemini on: 466 → 465 strict, 543 → 544 lenient; 1 win (DEV 616, "the 3 most highly rated episodes ... and their
+  ratings", which needed the cutoff before its noun), 2 losses (161, 162); wrong answers 279 → 278, as DEV 102, 125
+  and 126 are refused.
+- Held out (1,000 train questions): 246 → 249 strict (3 wins, 0 losses): train 710 (maximum, minimum and minimum of
+  three fields), 829 ("the three accounts with the highest savings balances") and 951 ("the 3 counties with the
+  smallest population"). Train 789 is newly answered and wrong: "the names of items" lists reviewers' names, as the
+  items have no name field. Five per-group counts over a spurious HAVING (327, 373, 435, 623, 958) became counts of
+  the groups that qualify and stay wrong.
+- F1 and F2 alone (`f12-dirty`): 382 strict, the same two losses. Two later cuts were caught here and fixed before the
+  final runs: "line 2 of the address with the most students" read the 2 as a cutoff (lost DEV 562), "how many
+  countries ... and the number of countries" asked two counts (DEV 89 answered wrongly), and held out, 829 first
+  ranked the accounts by their checking balance.
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_{final,final-gemini,heldout-final,f12}-dirty.json`.
+
 ## Independent review: 384 strict reproduced; matched Sonnet/Gemini reference regrading (2026-10-11)
 
 Fresh predictions through `spider/probe/full_eval.py`, clean isolated commit
