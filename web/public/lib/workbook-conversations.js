@@ -179,7 +179,7 @@ async function deleteConv(id){
 }
 // "Clear all" deletes the chats one at a time with each chat's own delete call, newest first, and each leaves the
 // list as its deletion lands. One request that deleted every chat held a database lock on all of their tables at
-// once, and an account of 694 chats was refused on every attempt (2026-10-10). A failure stops the run and keeps
+// once, and an account of about 790 chats was refused on every attempt (2026-10-10). A failure stops the run and keeps
 // the chats not yet deleted; clearing again continues.
 let clearingConversations=false;
 async function clearAllConvs(){

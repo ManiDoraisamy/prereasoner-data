@@ -356,7 +356,7 @@ def test_the_first_upload_starts_a_conversation():
 
 
 def test_admin_deletion_drops_one_conversation_schema_per_transaction():
-    """2026-10-10: the web app's bulk delete dropped every schema of an account of 694 conversations in one
+    """2026-10-10: the web app's bulk delete dropped every schema of an account of about 790 conversations in one
     transaction, held a lock on each of their tables, and Postgres ran out of lock slots ("out of shared memory").
     The admin dashboard's user deletion and orphan sweep dropped schemas the same way; each now commits per schema."""
     from engine import admin

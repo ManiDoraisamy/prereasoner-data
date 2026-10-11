@@ -2968,10 +2968,10 @@ rewording) and 2 for "the most leads".
 
 ## "Clear all conversations" deletes them one at a time (2026-10-10)
 
-`POST /api/conversation/delete-all` answered 500 on every attempt for an account of 694 conversations: it dropped
-every conversation schema in one transaction, which held a lock on each of their 1,983 tables and views until it
-committed, and Postgres ran out of lock slots (`max_locks_per_transaction` 64 for 50 connections; psycopg2
-`OutOfMemory`, "out of shared memory"). The route and `conversations.delete_all_conversations` are removed. The web
+`POST /api/conversation/delete-all` answered 500 on every attempt for the owner's account of about 790
+conversations: it dropped every conversation schema in one transaction, which held a lock on every table and view
+in them until it committed, and Postgres ran out of lock slots (`max_locks_per_transaction` 64 for 50
+connections; psycopg2 `OutOfMemory`, "out of shared memory"). The route and `conversations.delete_all_conversations` are removed. The web
 app's "Clear all conversations" (`web/public/lib/workbook-conversations.js`) lists the newest chats, shows them, and
 deletes them one at a time with each chat's own `POST /api/conversation/delete`; each leaves the list as its deletion
 lands, and the first failure stops the run with the rest kept. `trace.delete_traces` deletes one conversation's

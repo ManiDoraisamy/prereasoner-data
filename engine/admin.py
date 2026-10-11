@@ -211,7 +211,7 @@ def delete_user(user_id, also_auth=False):
     (optionally) delete the Firebase auth account so the identity is fully gone.
 
     Each conversation commits on its own: one transaction dropping every schema holds a lock on each of their tables
-    until it commits, and the web app's bulk delete ran Postgres out of lock slots that way for an account of 694
+    until it commits, and the web app's bulk delete ran Postgres out of lock slots that way for an account of about 790
     conversations (2026-10-10). A failure keeps those already dropped; deleting the user again drops the rest."""
     conn = _pg()
     dropped = []

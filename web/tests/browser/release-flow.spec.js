@@ -16,7 +16,7 @@ for(const status of [401,403,429,500,'network'])test('failed deletion preserves 
   const state=await page.request.get('/__state');expect((await state.json()).deleted).toBe(false);
 });
 
-// "Clear all" answered 500 for an account of 694 chats (2026-10-10): one request deleted every chat in one database
+// "Clear all" answered 500 for an account of about 790 chats (2026-10-10): one request deleted every chat in one database
 // transaction and ran out of locks. It now deletes them one at a time with each chat's own delete call, and the
 // sidebar shows every page it clears and loses each chat as its deletion lands.
 async function clearAllFixture(page,count,failAt){
