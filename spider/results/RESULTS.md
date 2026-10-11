@@ -4,6 +4,47 @@ Dated entries come newest first. Each records a run at the commit it names; the 
 entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection arbiter`) may since have
 been removed, and that commit holds the code that ran.
 
+## Independent review: 384 strict reproduced; matched Sonnet/Gemini reference regrading (2026-10-11)
+
+Fresh predictions through `spider/probe/full_eval.py`, clean isolated commit
+`3817b34378d0133e272d75619d53bfe66a2e8e2c`: all 1,034 DEV questions, `whole_db`, `served`, SQL backend,
+compose enabled, row cap 5,000/table, 12 s soft prediction budget, `EXTERNAL_LLM_ENABLED=0`, runtime bundle
+`b11056f8ce8bf16a44da69bf76fea238149df439d7fde52d5e1f4747a5f536c7`.
+Final verification: all 141 artifact/provenance fields unchanged; 1,034 unique indices; source worktree clean.
+
+| System, same DEV questions/capped execution inputs/shared scorer | Strict | Lenient | Answered |
+|---|---:|---:|---:|
+| **Deterministic engine, fresh run, rewriting off** | **384/1,034 (37.1%)** | **442/1,034 (42.7%)** | **593/1,034 (57.4%)** |
+| Sonnet 5.5, saved October 7 SQL re-executed | 840/1,034 (81.2%) | 897/1,034 (86.8%) | 1,023/1,034 (98.9%) |
+| Gemini 3.8 **Flash**, saved October 7 SQL re-executed | 872/1,034 (84.3%) | 904/1,034 (87.4%) | 1,034/1,034 (100.0%) |
+
+No new hosted generation/model API calls. The references received DDL/FKs and three sample rows per table;
+the engine inspects capped tables. This matches task, execution data, and scorer, not identical prompt
+presentation or inference budgets. All saved question/database/gold identities match current DEV; no reference
+grade changed. Gemini here generates SQL as a benchmark reference, distinct from the production rewrite fallback.
+
+- Against `own2-dirty`: zero selected-SQL or grade changes on all 1,034 questions. Against `plan-base-de0cfba`:
+  314 -> 384 strict, 70 wins, 0 losses, 314 unchanged correct, 650 unchanged wrong, 127 SQL changes.
+- Paired strict (both / engine only / reference only / neither): Sonnet 355 / 29 / 485 / 165;
+  Gemini Flash 362 / 22 / 510 / 140.
+- Same 593 engine-answered questions: engine 384/593 (64.8%), Sonnet 495/593 (83.5%), Gemini 506/593 (85.3%) strict.
+- Engine failures: 441 unanswered (365 completeness, 67 constraints, 9 AST search), plus 209 answered strict-wrong
+  (77 lenient-only, 132 wrong under both). Nineteen strict-correct empty-gold cases are lenient-false.
+- Engine median/p90/max prediction latency 2.667 / 5.329 / 9.229 s; no soft-budget exceedances. Concurrent jobs
+  shared the CPU, so this is not a controlled speed comparison.
+- Label caveat: DEV 161/162 ask for a country count, while gold returns maker counts `[4,4,3,5]`. Gemini returns
+  the requested country count `[4]` and is marked strict-wrong. The headline keeps the same gold/scorer for all
+  systems; these two apparent engine wins are not semantic improvements.
+
+Review, remaining defects, tests, provenance and per-example links:
+[spider-review-20261011.md](../../release-review/spider-review-20261011.md).
+Artifacts: `%LOCALAPPDATA%/Temp/prereasoner-spider-review-3817b34-isolated-20261011/`
+(`full_eval_review-3817b34-isolated.json`, per-example predictions, paired comparison and final provenance check).
+Reference summaries/per-example files are in `%LOCALAPPDATA%/Temp/prereasoner-spider-review-3817b34-20261011/`;
+each records clean scoring commit, dataset/database/scorer/executor hashes and source prediction hash.
+The first shared-checkout engine run was stopped after source edits and is explicitly marked aborted; its
+partial predictions are excluded. A separate 25-question CPU-thread probe is also excluded from headline totals.
+
 ## The most of a one-table workbook's rows: Spider unchanged at 384 strict, Gemini on 466, held out 246 (2026-10-11)
 
 Same contract as the entry below. The change (`DECISIONS.md` "\"The most\" of a one-table workbook's rows counts them
