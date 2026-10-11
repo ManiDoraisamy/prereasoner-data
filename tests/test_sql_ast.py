@@ -4651,6 +4651,32 @@ def test_rows_said_to_be_over_a_number_are_compared_by_their_money_measure():
     assert "amount_payable" not in (flagged.get("sql") or ""), flagged.get("sql")
 
 
+
+def test_the_most_of_a_one_table_workbooks_rows_counts_them_per_group():
+    """An owner's question, 2026-10-01: "which country has the most leads?" over one sheet named responses was asked
+    what "leads" means, while "how many leads per country" was answered. In a workbook of one table a count counts its
+    rows whatever the question calls them, and the noun after "the most" names them; a field after "the most" is still
+    ranked by its values, and with two tables an unknown noun is still asked about."""
+    responses = {"name": "responses", "columns": ["submitted", "name", "company", "country", "employees", "budget"],
+                 "rows": [["2026-09-01", "Ann", "Acme", "Germany", 50, 10000],
+                          ["2026-09-02", "Ben", "Bolt", "Germany", 20, 5000],
+                          ["2026-09-03", "Cy", "Cog", "France", 900, 30000],
+                          ["2026-09-04", "Dee", "Dot", "Japan", 10, 2000]]}
+    planner = _hermetic_planner()
+    most = planner.serve([responses], "which country has the most leads?")
+    assert [row[0] for row in most["result"]["rows"]] == ["Germany"] and "COUNT(*)" in most["sql"], most.get("sql")
+    fewest = planner.serve([responses], "which country has the fewest leads?")
+    assert sorted(row[0] for row in fewest["result"]["rows"]) == ["France", "Japan"], fewest.get("sql")
+    ranked = planner.serve([responses], "which country has the most employees?")
+    assert [row[0] for row in ranked["result"]["rows"]] == ["France"] and "COUNT" not in ranked["sql"], ranked["sql"]
+    coded = {"name": "responses", "columns": ["response_id", "company", "country_code", "score"],
+             "rows": [[1, "Acme", "DE", 70], [2, "Bolt", "DE", 90], [3, "Cog", "FR", 85]]}
+    countries = {"name": "countries", "columns": ["country_code", "country"], "rows": [["DE", "Germany"], ["FR", "France"]]}
+    two = planner.serve([coded, countries], "which country has the most leads?",
+                        explicit_fks=[{"from_table": "responses", "from_col": "country_code",
+                                       "to_table": "countries", "to_col": "country_code", "conf": 1.0}])
+    assert two.get("clarify") and "leads" in two["reason"], two.get("sql")
+
 def test_a_relation_names_the_side_its_participle_asks_for():
     """The other key of a relation table (Likes.liked_id) is the side "liked by" asks for, and the owner's side
     (student_id) the one "who have likes" does. Two keys named for neither side (a flight's source and destination
@@ -5124,6 +5150,7 @@ TESTS = [
     test_a_field_an_aggregate_word_takes_ranks_the_groups_and_asks_no_grain,
     test_an_average_per_row_noun_averages_the_rows,
     test_rows_said_to_be_over_a_number_are_compared_by_their_money_measure,
+    test_the_most_of_a_one_table_workbooks_rows_counts_them_per_group,
     test_extrema_expansion_guards_multi_aggregate_and_can_be_disabled,
     test_shared_spider_evaluation_contract,
     test_live_table_query_ast_mode_executes_typed_candidate,

@@ -4,6 +4,21 @@ Dated entries come newest first. Each records a run at the commit it names; the 
 entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection arbiter`) may since have
 been removed, and that commit holds the code that ran.
 
+## The most of a one-table workbook's rows: Spider unchanged at 384 strict, Gemini on 466, held out 246 (2026-10-11)
+
+Same contract as the entry below. The change (`DECISIONS.md` "\"The most\" of a one-table workbook's rows counts them
+per group") answers "which country has the most leads?" over one sheet; it was measured for what it costs Spider. The
+runs `leads-dirty`, `leads-gemini-dirty` and `heldout-leads-dirty` are a worktree of `3817b34` with this change,
+against `own2-dirty`, `own2-gemini-dirty` and `heldout-own2-dirty`. Gemini on replays the same cached rewordings: 441
+calls, none live.
+
+- Strict, lenient and answered are unchanged on DEV (384 / 442 / 593), with Gemini on (466 / 543 / 745) and held out
+  (246 / 302 / 484). One DEV query changed and stays right: DEV 277 ("the employee who was awarded the most times")
+  counts the evaluation rows without the spurious join to hiring. Held out, train 752's query differs only by
+  today's date constant (the run crossed midnight).
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_{leads,leads-gemini,heldout-leads}-dirty.json`.
+
 ## Spreadsheet wording read as asked: Spider unchanged at 384 strict, Gemini on 466, held out 246 (2026-10-10)
 
 Same contract as the entry below. The change (`DECISIONS.md` "The owner's questions are read as asked: a ranked

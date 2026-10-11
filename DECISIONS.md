@@ -2985,3 +2985,17 @@ The web home page asked `/chat/suggestions` for three starter questions under it
 owner's order they appear only in the Google Sheets sidebar and the Excel task pane, while their chat is empty
 (`web/public/lib/sidebar-suggestions.js`, loaded by `office/sheets/sidebar.html` and `office/excel/taskpane.html`);
 `index.html` no longer loads the module or asks for them.
+
+## "The most" of a one-table workbook's rows counts them per group (2026-10-11)
+
+"Which country has the most leads?" over one sheet named responses was asked what "leads" means, while "how many leads
+per country" was answered (an owner's question, 2026-10-01). In a workbook of one table a count counts its rows
+whatever the question calls them: `ExpansionSupport.counted_tables` gives the sole table a counted reading, so the
+frequency superlative builds `GROUP BY country ORDER BY COUNT(*)`, and the completeness check reads the noun after
+"the most" or "the fewest" (`closed_class.counted_rows`, when a noun follows directly; "the most expensive leads"
+grades) as the counted rows of a count that orders the groups as well as one that is answered. A field after "the
+most" is still ranked by its values, and with two tables an unknown noun is still asked about.
+
+A listed row without a name field keeps its first text field as its display: "list the orders over 20" lists the
+orders' customers. Among Spider's "list/show the X" questions over tables without a name field (DEV and train), gold
+projects the first text field 104 times and the table's key 76 times, so the display rule stays.

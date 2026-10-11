@@ -312,7 +312,8 @@ The own-data path serves one typed SQL AST chosen from the deterministic search'
    have 3 friends" own the Friend rows, and the two named Jordan count apart. An average per the rows'
    own noun ("average amount per order" over a table of orders) averages the rows, and a number the
    question names no field for, after a noun naming a table, compares that table's money measure
-   ("orders over 20": amount, not unit price).
+   ("orders over 20": amount, not unit price). In a workbook of one table a count counts its rows
+   whatever the question calls them ("which country has the most leads").
 2. Every candidate runs on an in-memory SQLite copy of the request's tables under the SELECT guard
    and a budget of SQLite VM steps that grows with the cells of the tables it reads: 20 a cell, at
    least 10,000,000 and at most 100,000,000 (`execution_op_limit`). The Gemini rewording's pool runs

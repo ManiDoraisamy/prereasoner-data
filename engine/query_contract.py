@@ -892,9 +892,11 @@ def read_question(question, candidate, graph, *, calculation_satisfied=False):
     ordinary_words.update(canon(word) for word in action_words(question) if canon(word) not in observed)
     has_aggregate = any(isinstance(item.expression, Aggregate)
                         for item in getattr(candidate.query, 'select', ()))
-    if any(isinstance(item.expression, Aggregate) and item.expression.function == 'COUNT'
-           for item in getattr(candidate.query, 'select', ())):
-        # The noun a count counts names the rows counted, on one table. With several, only a field's name that
+    if any(isinstance(expression, Aggregate) and expression.function == 'COUNT'
+           for expression in ([item.expression for item in getattr(candidate.query, 'select', ())]
+                              + [term.expression for term in getattr(candidate.query, 'order_by', ())])):
+        # The noun a count counts names the rows counted, on one table, whether the count is answered or orders
+        # the groups ("which country has the most leads"). With several, only a field's name that
         # names none of the tables: "how many subscriptions by Status" counts the exports' rows, though a report
         # has a Subscriptions column. "How many people live in Gelderland" names no field, and a count of cities
         # is not its answer (Spider DEV 728, 2026-10-08).

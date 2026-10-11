@@ -159,6 +159,11 @@ class ExpansionSupport:
             score = 3.0 * overlap
             if table != entity_table and overlap:
                 score += 0.75
+            # A workbook of one table counts its own rows whatever the question calls them: "which country has
+            # the most leads" over a sheet named responses was refused (an owner's question, 2026-10-01), while
+            # "how many leads per country" was answered.
+            if len(self.schema.tables) == 1:
+                score = max(score, 1.0)
             scored.append((table, score))
         return sorted(scored, key=lambda item: (-item[1], item[0]))
 

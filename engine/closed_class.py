@@ -104,12 +104,15 @@ def counted_rows(text):
     closed = closed_class_words(text)
     nouns = noun_words(text)
     heads = set()
-    for cue in re.finditer(r'\b(?:how many|number of|count)\s+', low):
+    for cue in re.finditer(r'\b(?:how many|number of|count|(?P<most>most|fewest))\s+', low):
         phrase = []
         for word in re.findall(r'[^\W_]+|[.,;:!?]', low[cue.end():], re.UNICODE):
             if word in closed or not word.isalpha() or len(phrase) == 4:
                 break
             phrase.append(word)
+        # "the most leads" counts leads; "the most expensive leads" grades them and counts nothing.
+        if phrase and cue.group('most') and phrase[0] not in nouns:
+            continue
         if phrase:
             head = [word for word in phrase if word in nouns]
             heads.add(head[-1] if head else phrase[-1])
