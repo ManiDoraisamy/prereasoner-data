@@ -4750,6 +4750,20 @@ def test_how_many_entities_with_a_count_threshold_counts_the_ones_that_qualify()
     # None qualify: the answer is 0, not no rows; several qualify, the two named korea among them.
     assert answer("How many countries have more than 5 car makers?") == [[0]]
     assert answer("How many countries have at least 1 car maker?") == [[4]]
+    # The review of 2026-10-11 (R1): a count that admits none keeps germany, which has no car maker; an inner join
+    # of the two tables left it out, and "exactly 0" compared a car maker's Country key with 0.
+    assert answer("How many countries have fewer than 2 car makers?") == [[4]]
+    assert sorted(answer("Which countries have fewer than 2 car makers?")) == [["germany"], ["japan"], ["korea"],
+                                                                                ["korea"]]
+    assert answer("How many countries have exactly 0 car makers?") == [[1]]
+    assert answer("How many countries have at most 1 car maker?") == [[4]]
+    assert answer("How many countries have exactly 3 car makers?") == [[1]]
+    # The counted rows' own filter stays with them: usa has one electric maker, japan and germany none.
+    kinds = dict(CAR_MAKERS, columns=["Id", "Maker", "Kind", "Country"],
+                 rows=[[1, "ford", "petrol", 1], [2, "gm", "petrol", 1], [3, "tesla", "electric", 1],
+                       [4, "toyota", "petrol", 2], [5, "kia", "electric", 3], [6, "daewoo", "electric", 3]])
+    assert sorted(answer("Which countries have fewer than 2 electric car makers?", [CAR_COUNTRIES, kinds])) == [
+        ["germany"], ["japan"], ["korea"], ["usa"]]
     # Contrast: "each" asks for the count in every country.
     each = answer("How many car makers does each country have?")
     assert sorted(row[-1] for row in each) == [1, 1, 1, 3], each
@@ -4839,9 +4853,16 @@ def test_a_ranking_keeps_the_rows_its_number_says_and_shows_them():
     assert answer("What are the ages of the 3 oldest people?") == [[60], [50], [40]]
     question = tokens("the people older than 30 with the largest age")
     assert ranking_cutoff(question, (question.index("largest"),)) == (1, None)
+    # The review of 2026-10-11 (R3): a cutoff over 100 is a cutoff; one capped at 100 refused "top 101".
+    many = {"name": "people", "columns": ["Person_ID", "Name", "Age"],
+            "rows": [[index, f"P{index}", 1000 - index] for index in range(1, 151)]}
+    for asked, kept in (("top 100 people by Age", 100), ("top 101 people by Age", 101),
+                        ("List the names of the 120 oldest people.", 120)):
+        assert len(answer(asked, [many])) == kept, asked
     # A number in a field's name, or a filter's, counts no rows kept (Spider DEV 562 and 165).
     for said, cue in (("What is the id, line 1, and line 2 of the address with the most students?", "most"),
-                      ("For the cars with 4 cylinders, which model has the largest horsepower?", "largest")):
+                      ("For the cars with 4 cylinders, which model has the largest horsepower?", "largest"),
+                      ("What is the id of the patient who stayed in room 111 most recently?", "most")):
         question = tokens(said)
         assert ranking_cutoff(question, (question.index(cue),)) == (1, None), said
     products = {"name": "products", "columns": ["product_id", "product_name", "category", "price"],

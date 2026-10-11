@@ -1,6 +1,141 @@
 # Claude fix review and matched Spider comparison — 2026-10-11
 
-**Status (2026-10-11, later):** F1–F5 are fixed in their owners with regression tests; see `DECISIONS.md` "The review
+## Latest independent review: committed fix `3ef82c4`
+
+**Fresh full result:** **382/1,034 strict (36.9%), 440/1,034 lenient (42.6%), 591/1,034 answered (57.2%)**. All 141 recorded provenance fields stayed unchanged, with 1,034 unique questions and a clean source checkout. This independently reproduces Claude's `final-dirty` predictions: no selected-SQL or correctness-label changes across the full set.
+
+**Assessment:** the original F1–F5 counterexamples are addressed, but the implementation is not fully correct. The broader review reproduces a zero-related-row count error, incomplete membership binding checks, and a new top-N regression above 100. Passing the new regressions is evidence that the original examples are fixed; it does not close those entire semantic families.
+
+Reviewed commit: `3ef82c4066141f44300a14bda775c0a1358aece2`. Claude committed the initially uncommitted changes while this review started; the full evaluation and focused tests used an isolated checkout of that resulting commit. This task changes review/results documentation only and preserves the measured implementation and promoted bundle.
+
+### Current apples-to-apples comparison
+
+All systems are scored on the **same 1,034 Spider DEV questions**, matching database identities, the same capped execution rows, independently executed gold SQL, and the unchanged repository comparator. Engine settings are `whole_db`, `served`, SQL backend, compose enabled, cap 5,000/table, 12-second soft prediction budget, external rewriting disabled.
+
+| System | Strict / all 1,034 | Lenient / all 1,034 | Answered / all 1,034 |
+|---|---:|---:|---:|
+| **Deterministic engine, fresh run** | **382 (36.9%)** | **440 (42.6%)** | **591 (57.2%)** |
+| Claude Sonnet 5.5 | 840 (81.2%) | 897 (86.8%) | 1,023 (98.9%) |
+| Gemini 3.8 **Flash** | 872 (84.3%) | 904 (87.4%) | 1,034 (100.0%) |
+
+Sonnet and Gemini are saved October 7 SQL predictions re-executed and regraded during this review. Neither reference's grades changed. No new model API calls occurred. Gemini is Flash, not Pro, and these references generate SQL rather than rewrite the engine's question.
+
+This matches the task, execution data, and scorer. It does not impose identical input presentation or inference budgets: the references received DDL, foreign keys, and three sample rows per table; the engine inspects capped tables. Sonnet used the saved non-thinking configuration; Gemini used temperature 0 and LOW thinking. The counts measure those configurations, not a provider-wide maximum.
+
+The strict gaps are **458 answers / 44.3 percentage points to Sonnet** and **490 / 47.4 points to Gemini Flash**.
+
+| Paired strict outcome | Engine vs Sonnet | Engine vs Gemini Flash |
+|---|---:|---:|
+| Both correct | 355 | 362 |
+| Only engine correct | 27 | 20 |
+| Only reference correct | 485 | 510 |
+| Neither correct | 167 | 142 |
+
+Among the engine's 591 answered questions, correctness is **382/591 (64.6%) strict** and **440/591 (74.5%) lenient**. On those **same 591 questions**, Sonnet is strict-correct on **495 (83.8%)**, Gemini on **505 (85.4%)**. On the 443 engine-unanswered questions, Sonnet is correct on 345 and Gemini on 367. Coverage still accounts for about three quarters of the net gap, while returned-answer quality also needs improvement.
+
+### What changed in the measured run
+
+Relative to the independently reviewed `3817b34` baseline: **384 → 382 strict, 442 → 440 lenient, 593 → 591 answered; 0 strict wins, 2 losses, 382 unchanged-correct, 650 unchanged-wrong**. Six selected-SQL records change: DEV **125, 126, 161, 162, 175, 277**. Claude's five-query count uses the intervening leads baseline; six is the comparison against the earlier independent review.
+
+- **161/162:** the engine now correctly counts four qualifying countries as `[[4]]`. Gold instead returns maker counts inside countries, `[[4],[4],[3],[5]]`; the frozen scorer marks the corrected country count wrong under both metrics. These are the only strict losses. Keep the common gold/scorer unchanged and report semantic adjudication separately.
+- **125/126:** wrong counts over unrelated grouping/fields are now refused at the constraint stage. This improves refusal behavior, but does not recover a correct answer. Their Horsepower data is text, so numeric interpretation still needs an explicit, validated data policy.
+- **175:** SQL changes and remains incorrect; multiple counted populations and output fields are still unresolved.
+- **277:** an unrequested hiring join disappears while the answer stays strict-correct.
+
+The disjoint partition is **382 strict-correct, 77 answered lenient-only, 132 answered incorrect under both, 443 unanswered**. There are 209 strict-wrong returned answers. The unanswered stages are **365 completeness, 69 constraints, 9 AST search**. No soft-budget exceedances occurred. Nineteen strict-correct empty-gold answers remain lenient-false, so lenient-incorrect is not a clean semantic failure bucket.
+
+| Difficulty | Questions | Strict correct | Answered |
+|---|---:|---:|---:|
+| Easy | 248 | 133 (53.6%) | 161 |
+| Medium | 446 | 170 (38.1%) | 260 |
+| Hard | 174 | 53 (30.5%) | 101 |
+| Extra hard | 166 | 26 (15.7%) | 69 |
+
+### Verification of the original fixes
+
+| Original finding | Independent replay outcome | Remaining qualification |
+|---|---|---|
+| F1: exclusion identity | Repeated local FK and repeated missing-major fixtures retain the student without a cat | This verifies the entity population; mixed-type/missing cells still follow existing ingestion normalization |
+| F2: qualifying-entity count | The two-country fixture returns one qualifying country, not two makers | Zero-related entities remain wrong; see R1 |
+| F3: membership scope | Basic ID-to-age IN and uncorrelated EXISTS are rejected; correct ID-to-ID IN passes | Different ID roles and computed/set projections still bypass the proof; see R2 |
+| F4: repeated aggregates | Both the one-cue and repeated-cue distance/price fixtures return `[[200,60]]` | This does not establish full multiword-operand or separate-population support |
+| F5: ranked cardinality | New registered serving tests pass for spelled/digit cutoffs, exclusions, and ranked display | A previously supported cutoff above 100 now refuses; see R3 |
+
+### R1 — High: countries with zero makers are omitted, and an exact-zero count can compare the wrong field
+
+**Owner:** [ConstraintQueryExpander._count_having_candidates](C:/work/prereasoner-data/engine/sql_constraints.py:122), its shared structures in `sql_expansion.py`, and the count/number contract.
+
+The new fixture contains USA with three makers, Japan with one, two distinct countries named Korea with one each, and Germany with **zero**. Ordinary serving answers:
+
+- `How many countries have fewer than 2 car makers?` → **3**, expected **4**.
+- `Which countries have fewer than 2 car makers?` → Japan/Korea/Korea, omitting Germany.
+- `How many countries have exactly 0 car makers?` → **0**, expected **1**; the selected SQL compares `car_makers.Country = 0` rather than counting makers per country.
+- Positive contrast: `more than 1 car maker` correctly returns **1**.
+
+The first two queries use an inner join rooted in makers; no later outer count can restore countries already dropped from that population. The exact-zero case additionally lacks a witness binding the number to a maker count. All three wrong answers are reported valid and coverage-complete.
+
+**Repair:** construct the country population before evaluating related counts. When zero satisfies the requested threshold, retain countries with no matches using a typed left relation and `COUNT` of a matched child key, or an equivalent correctly correlated count. Do not use `COUNT(*)` to count the synthetic empty left-join row. Preserve child filters at the proper scope so countries with zero *qualifying* children are also handled correctly. Verify exact/equality count thresholds against the counted entity, not an unrelated numeric foreign key.
+
+**Tests:** zero/one/several children; `<`, `<=`, `= 0`, positive `>` thresholds; repeated parent labels; explicit nonzero qualifications; child filters; nullable child attributes; and ordinary `which` versus `how many` agreement. Derive expectations independently. The decision's observation that Spider gold uses inner joins is not sufficient justification for excluding zero-child entities from a general engine.
+
+Evidence: [extended ordinary-serving reproductions](C:/Users/manid/AppData/Local/Temp/prereasoner-spider-fix-review-3ef82c4-20261011/extended-reproductions.json).
+
+### R2 — Medium: membership binding still accepts a shared name token or an unproved projection
+
+**Owner:** [query_contract._binds](C:/work/prereasoner-data/engine/query_contract.py:1120).
+
+For people Ann/20, Bo/40, Cy/60, the question is `List names of people whose age is above 35.` The correct ID membership returns Bo and Cy. Three wrong typed candidates also pass the production completeness checker:
+
+| Inner projection tested against outer `Person_ID` | Actual rows | Why the proof fails |
+|---|---|---|
+| `Manager_ID` with inner `Age > 35` | Ann | The names share `ID`, but identify different roles |
+| `Age - 39` with inner `Age > 35` | Ann | Non-column projection takes the helper's unconditional-true branch |
+| An INTERSECT of two `SELECT Age ...` branches | Empty | Non-SelectQuery source takes the unconditional-true branch |
+
+The helper returns true for unfamiliar shapes and treats any common name word as sufficient binding evidence. The positive Person_ID INTERSECT control passes and returns Bo/Cy. The wrong UNION control is rejected by existing alternative-scope handling, so this report does not claim that all set-query cases are accepted.
+
+**Repair:** carry an explicit outer-operand to inner-projection/entity mapping, with aliases and quantifier scope. A shared word such as `ID` is evidence for schema linking, not proof of the requested relation. Unknown expression/set forms need an explicit supported witness rather than automatic acceptance; validate each relevant set branch and preserve correctly justified computed membership. A declared FK must still be aligned with the question's requested role.
+
+**Tests:** Person_ID versus Manager_ID, same-type unrelated keys, real FK membership, aliased/self relations, legitimate calculated membership, wrong arithmetic projection, and correct/wrong INTERSECT/UNION/EXCEPT mappings. These probes inject human-authored typed counterexamples into the existing checker; they establish a verification defect, not that ordinary search selects all these bad candidates.
+
+Evidence: [membership probes](C:/Users/manid/AppData/Local/Temp/prereasoner-spider-fix-review-3ef82c4-20261011/extended-reproductions.json), [set-membership contrasts](C:/Users/manid/AppData/Local/Temp/prereasoner-spider-fix-review-3ef82c4-20261011/set-membership-reproductions.json).
+
+### R3 — Medium: shared ranking parser regresses cutoffs above 100
+
+**Owner:** [sql_extrema.ranking_cutoff](C:/work/prereasoner-data/engine/sql_extrema.py:823), shared with base search and the contract.
+
+On 150 people with distinct ages, `top 100` serves 100 rows. `top 101` was served as `LIMIT 101` by the previous engine, but now refuses with `I couldn't tell what “101” means in your sheets`. The new shared parser discards every cutoff above 100; the formerly broader base ordering path now inherits that bound.
+
+**Repair:** read the stated positive integer independently of resource admission. Use the existing execution/output budget to enforce any actual supported limit, and report that limit explicitly if exceeded. Do not silently turn a valid cardinality into unknown wording. Preserve the distinction between a ranking cutoff, a numeric filter, and a number in a field name.
+
+**Tests:** 100, 101, and larger bounded fixtures; explicit output-budget refusal; spelled counts; unrelated filter value 101; and field-name numbers. This is a reproduced coverage regression outside the current Spider questions, not a measured DEV strict loss.
+
+Evidence: [previous engine](C:/Users/manid/AppData/Local/Temp/prereasoner-spider-fix-review-3ef82c4-20261011/topn-before.json), [reviewed engine](C:/Users/manid/AppData/Local/Temp/prereasoner-spider-fix-review-3ef82c4-20261011/further-reproductions.json).
+
+### Remaining work and validation limits
+
+Close the zero-count and membership-proof gaps before broad refusal relaxation, then recover complete, correct refused plans and missing construction families through the same planner. The old candidate census is still a diagnostic starting point; it was not refreshed in this review, and its raw eligibility/finalization caveats still apply.
+
+Exploratory multiword-aggregate probes (`average engine temperature and average engine speed`) also refuse, but the corresponding one-cue control refuses too. Their cause was not isolated; they are not presented as a new regression caused by this fix. Add a schema/operand-binding diagnosis rather than another lexical exception. The [existing improvement guide](C:/work/prereasoner-data/release-review/sql-accuracy.md) remains the one implementation plan.
+
+**Tests run on this commit:** SQL AST **205**, query contract **54**, compose **33**, enrichment **37**, deterministic emitters **64**, LLM client **10**: **403 passed, zero failures**. Python compilation and diff checks pass. Original and extended production-owner probes provide the semantic evidence above. This is not the full repository/live Postgres/deployed Chrome release gate, and the fresh headline uses the SQL backend rather than a complete Python-backend parity census.
+
+Prediction latency: median **0.861 s**, p90 **1.863 s**, p95 **2.290 s**, maximum **5.296 s**. Workload conditions differ from the earlier review, and brief focused tests shared the machine; these numbers do not establish a controlled speedup.
+
+### Reproducibility and evidence
+
+Artifact directory: `C:/Users/manid/AppData/Local/Temp/prereasoner-spider-fix-review-3ef82c4-20261011`. The isolated checkout remains available for this review's evidence; no production code, weights, generation, promotion, commit, or deployment was performed by this task.
+
+- [Fresh full summary](C:/Users/manid/AppData/Local/Temp/prereasoner-spider-fix-review-3ef82c4-20261011/full_eval_review-3ef82c4.json) and [all per-question predictions](C:/Users/manid/AppData/Local/Temp/prereasoner-spider-fix-review-3ef82c4-20261011/full_eval_per_example_review-3ef82c4.json).
+- [Final artifact verification](C:/Users/manid/AppData/Local/Temp/prereasoner-spider-fix-review-3ef82c4-20261011/final-provenance-verification.json), [paired comparison](C:/Users/manid/AppData/Local/Temp/prereasoner-spider-fix-review-3ef82c4-20261011/paired-comparison.json), and [changed-query analysis](C:/Users/manid/AppData/Local/Temp/prereasoner-spider-fix-review-3ef82c4-20261011/review-analysis.json).
+- [Sonnet regrading provenance](C:/Users/manid/AppData/Local/Temp/prereasoner-spider-fix-review-3ef82c4-20261011/claude-sonnet-5-5-regraded.json) and [Gemini regrading provenance](C:/Users/manid/AppData/Local/Temp/prereasoner-spider-fix-review-3ef82c4-20261011/gemini-3.8-flash-regraded.json).
+- [Original-case replay](C:/Users/manid/AppData/Local/Temp/prereasoner-spider-fix-review-3ef82c4-20261011/review-reproductions.json).
+
+Runtime bundle SHA-256: `b11056f8ce8bf16a44da69bf76fea238149df439d7fde52d5e1f4747a5f536c7`; DEV SHA-256: `30d64a3fccde493226df79687aed9e4a1c0129525baf44f29c0573d914d758a4`. Complete database/source/schema/scorer fingerprints are in the saved summaries. All 1,034 reference question/database/gold identities match the current DEV inputs.
+
+## Historical independent review of `3817b34`
+
+**Status (2026-10-11, later):** The original F1–F5 counterexamples are fixed in their owners with regression tests; the broader follow-up above records remaining gaps. See `DECISIONS.md` "The review
 of 2026-10-11" and the measured entry at the top of `spider/results/RESULTS.md` (DEV 382 strict, losing only
 DEV 161/162 as predicted below; held out 246 → 249).
 

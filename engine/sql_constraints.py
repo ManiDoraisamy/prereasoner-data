@@ -25,6 +25,7 @@ from engine.sql_ast import (
     Star,
     SubquerySource,
     and_predicates,
+    column_refs,
     conjunction,
     equality_conflicts,
 )
@@ -39,7 +40,11 @@ from engine.sql_expansion import (
     build_candidate as _candidate,
     column_matches as _column_matches,
     column_requested_as_output as _column_requested_as_output,
+    COMPLEMENTS as _COMPLEMENTS,
+    count_admits as _count_admits,
     count_requested as _count_requested,
+    count_thresholds as _count_thresholds,
+    counted_thresholds as _counted_thresholds,
     entity_groups as _entity_groups,
     entity_join_key as _entity_join_key,
     explicit_order as _explicit_order,
@@ -56,13 +61,6 @@ from engine.sql_expansion import (
     unique_predicates as _unique_predicates,
 )
 from engine.sql_candidate import ScoredQuery
-
-
-_COUNT_RELATION_CUES = frozenset({
-    "contain", "contains", "conduct", "conducted", "design", "designed", "enroll", "enrolled",
-    "has", "have", "having", "make", "operate", "perform", "performed", "produce", "shared",
-    "teach", "used", "visit", "visited", "with",
-})
 
 
 class ConstraintQueryExpander(ExpansionSupport):
@@ -98,8 +96,11 @@ class ConstraintQueryExpander(ExpansionSupport):
         out = []
         table_words = {word for table in self.schema.tables for word in _semantic_tokens(table)}
         counts_qualifying = _top_level_count(tokens) and not _groups_requested(question)
+        # A number a table's name follows counts that table's rows, whatever field a word near it names: "countries
+        # with exactly 0 car makers" (the review of 2026-10-11, R1; "countries" named car_makers.Country).
+        counts_a_table = _counted_thresholds(tokens, self.schema.tables)
         for threshold in thresholds:
-            if self.threshold_targets_column(tokens, threshold):
+            if self.threshold_targets_column(tokens, threshold) and threshold.predicates not in counts_a_table:
                 continue
             counted = tokens[threshold.end] if threshold.end < len(tokens) else None
             subject = threshold.start - (2 if threshold.start > 1 and tokens[threshold.start - 1] in COPULAS else 1)
@@ -173,7 +174,7 @@ class ConstraintQueryExpander(ExpansionSupport):
                                           if entity_table != counted_table else raw) if any(
                                     isinstance(item.expression, Aggregate) for item in select
                                 ) and raw else group_options[0]
-                                query = SelectQuery(
+                                grouped = SelectQuery(
                                     select=select,
                                     from_table=source,
                                     joins=joins,
@@ -181,9 +182,9 @@ class ConstraintQueryExpander(ExpansionSupport):
                                     group_by=groups,
                                     having=having,
                                 )
-                                if counts_qualifying and not raw:
-                                    query = self.qualifying_count(query, _join_key(joins, entity_table)
-                                                                  if entity_table != counted_table else None)
+                                key = _join_key(joins, entity_table) if entity_table != counted_table else None
+                                counts_groups = counts_qualifying and not raw
+                                query = self.qualifying_count(grouped, key) if counts_groups else grouped
                                 score = (
                                     42.0 + threshold.strength + entity_score + relation_score
                                     + structure_score + select_bonus + where_bonus
@@ -193,6 +194,13 @@ class ConstraintQueryExpander(ExpansionSupport):
                                     score,
                                     ("constraint:having:count",),
                                 )
+                                if built is not None:
+                                    out.append(built)
+                                with_none = (self.without_failing_groups(grouped, entity_table, key, threshold.predicates)
+                                             if key is not None and (counts_groups or not any(
+                                                 isinstance(item.expression, Aggregate) for item in select)) else None)
+                                built = _candidate(with_none, score + 0.5, ("constraint:having:count-with-none",)) \
+                                    if with_none is not None else None
                                 if built is not None:
                                     out.append(built)
                         # Single-table questions can group by a category other than the projection.
@@ -214,6 +222,32 @@ class ConstraintQueryExpander(ExpansionSupport):
                                 if built is not None:
                                     out.append(built)
         return out
+
+    def without_failing_groups(self, grouped: SelectQuery, entity_table: str, key: ColumnRef,
+                               predicates: tuple[tuple[str, int], ...]) -> SelectQuery | None:
+        """The entities whose related rows number as ``predicates`` ask, when that includes none: "countries with fewer
+        than 2 car makers" are the countries NOT IN those with at least 2, which keeps the countries without car
+        makers that ``grouped``'s inner join leaves out (the review of 2026-10-11, R1). ``grouped`` answers the
+        question over the entities with rows; its select is kept, a count of the rows it would list stays a count.
+        The entity's own filters stay outside the NOT IN, the counted rows' inside it. None when no count of none
+        is asked or ``key`` does not tell the entities apart in every row."""
+        if not all(_count_admits(operator, value, 0) for operator, value in predicates):
+            return None
+        schema_column = self.schema.column_map.get((key.table, key.name))
+        if schema_column is None or None in schema_column.values or not self.schema.identifies((key,)):
+            return None
+        complements = {**_COMPLEMENTS, "=": "!="}
+        failing = tuple(Comparison(Aggregate("COUNT", Star()), complements[operator], Literal(value, SQLType.INTEGER))
+                        for operator, value in predicates)
+        outside = [term for term in _and_terms(grouped.where)
+                   if all(ref.table == entity_table for ref in column_refs(term))]
+        inside = [term for term in _and_terms(grouped.where) if term not in outside]
+        inner = replace(grouped, select=(SelectItem(key),), where=and_predicates(inside), group_by=(key,),
+                        having=failing[0] if len(failing) == 1 else BooleanExpr("OR", failing))
+        select = grouped.select if any(isinstance(item.expression, ColumnRef) for item in grouped.select) else (
+            SelectItem(Aggregate("COUNT", Star())),)
+        return SelectQuery(select=select, from_table=entity_table,
+                           where=and_predicates([*outside, InPredicate(key, inner, negated=True)]))
 
     def qualifying_count(self, grouped: SelectQuery, key: ColumnRef | None = None) -> SelectQuery:
         """The number of groups ``grouped`` keeps: "how many countries have more than 2 car makers" counts the
@@ -1112,49 +1146,6 @@ def _needs_distinct_for_relation(
     )
 
 
-def _count_thresholds(tokens: tuple[str, ...]) -> list[CountThreshold]:
-    out = []
-    for index in range(len(tokens)):
-        if tokens[index:index + 2] == ("between", "one"):
-            pass
-        if tokens[index] == "between" and index + 3 < len(tokens):
-            low = _parse_number(tokens[index + 1])
-            high = _parse_number(tokens[index + 3]) if tokens[index + 2] in {"and", "to"} else None
-            if low is not None and high is not None:
-                out.append(CountThreshold(((">=", int(low)), ("<=", int(high))), index, index + 4, 4.0))
-        patterns = [
-            (("at", "least"), ">=", 3.5), (("at", "most"), "<=", 3.5),
-            (("more", "than"), ">", 3.0), (("greater", "than"), ">", 3.0),
-            (("fewer", "than"), "<", 3.0), (("less", "than"), "<", 3.0),
-            (("no", "more", "than"), "<=", 3.5), (("exactly",), "=", 3.0),
-            (("only",), "=", 2.5), (("over",), ">", 2.0),
-        ]
-        for cue, operator, strength in patterns:
-            if tokens[index:index + len(cue)] != cue:
-                continue
-            number_index = index + len(cue)
-            if number_index >= len(tokens):
-                continue
-            number = _parse_number(tokens[number_index])
-            if number is not None:
-                out.append(CountThreshold(((operator, int(number)),), index, number_index + 1, strength))
-        number = _parse_number(tokens[index])
-        if number is not None and tokens[index + 1:index + 3] == ("or", "more"):
-            out.append(CountThreshold(((">=", int(number)),), index, index + 3, 3.5))
-        if number is not None and tokens[index + 1:index + 3] == ("or", "fewer"):
-            out.append(CountThreshold((("<=", int(number)),), index, index + 3, 3.5))
-        if number is not None:
-            context = set(tokens[max(0, index - 3):index])
-            explicit = context & {"at", "least", "most", "more", "greater", "fewer", "less", "than", "over", "only", "exactly"}
-            if context & _COUNT_RELATION_CUES and not explicit:
-                out.append(CountThreshold((("=", int(number)),), index, index + 1, 1.0))
-    dedup = {}
-    for threshold in out:
-        key = threshold.predicates
-        old = dedup.get(key)
-        if old is None or threshold.strength > old.strength:
-            dedup[key] = threshold
-    return sorted(dedup.values(), key=lambda item: (-item.strength, item.start))[:4]
 
 
 def _scalar_aggregate_operator(function: str, normalized: str) -> str | None:

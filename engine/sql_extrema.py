@@ -224,11 +224,11 @@ class ExtremaQueryExpander(ExpansionSupport):
 
         max_position = min(
             index for index, token in enumerate(tokens)
-            if token in MAX_CUES and _valid_superlative_cue(tokens, index)
+            if token in MAX_CUES and valid_superlative_cue(tokens, index)
         )
         min_position = min(
             index for index, token in enumerate(tokens)
-            if token in MIN_CUES and _valid_superlative_cue(tokens, index)
+            if token in MIN_CUES and valid_superlative_cue(tokens, index)
         )
         linked_targets = self._superlative_targets(tokens)
         if not linked_targets:
@@ -567,7 +567,7 @@ class ExtremaQueryExpander(ExpansionSupport):
         cue_positions = [
             (index, token) for index, token in enumerate(tokens)
             if (token in MAX_CUES or token in MIN_CUES)
-            and _valid_superlative_cue(tokens, index)
+            and valid_superlative_cue(tokens, index)
         ]
         if not cue_positions:
             return []
@@ -704,11 +704,11 @@ def _measure_extreme(query: SelectQuery, target, where, tokens: tuple[str, ...])
 
 def _has_dual_extrema(tokens: tuple[str, ...]) -> bool:
     has_maximum = any(
-        token in MAX_CUES and _valid_superlative_cue(tokens, index)
+        token in MAX_CUES and valid_superlative_cue(tokens, index)
         for index, token in enumerate(tokens)
     )
     has_minimum = any(
-        token in MIN_CUES and _valid_superlative_cue(tokens, index)
+        token in MIN_CUES and valid_superlative_cue(tokens, index)
         for index, token in enumerate(tokens)
     )
     return has_maximum and has_minimum
@@ -731,6 +731,8 @@ def frequency_cue(tokens: tuple[str, ...]) -> FrequencyCue | None:
                 True,
             )
     for index, token in enumerate(tokens):
+        if not valid_superlative_cue(tokens, index):
+            continue        # "at most 1 car maker" bounds a count (the review of 2026-10-11)
         if token in {"commonest", "rarest"}:
             return FrequencyCue(index, "ASC" if token == "rarest" else "DESC", False)
         if token in {"most", "least"} and index + 1 < len(tokens) and tokens[index + 1] in {
@@ -742,7 +744,7 @@ def frequency_cue(tokens: tuple[str, ...]) -> FrequencyCue | None:
     return None
 
 
-def _valid_superlative_cue(tokens: tuple[str, ...], index: int) -> bool:
+def valid_superlative_cue(tokens: tuple[str, ...], index: int) -> bool:
     token = tokens[index]
     before = tokens[max(0, index - 2):index]
     if token in {"least", "most"} and before and before[-1] == "at":
@@ -820,12 +822,31 @@ def ranking_cutoff(tokens: tuple[str, ...], cue_positions: Sequence[int]) -> tup
     for cue in sorted(cue_positions):
         for index, token in enumerate(tokens):
             value = _parse_number(token)
-            if not isinstance(value, int) or not 1 <= value <= 100 or _threshold_number(tokens, index):
+            if not isinstance(value, int) or value < 1 or _threshold_number(tokens, index):
                 continue
-            if ((tokens[cue] in LEADING_RANKS and cue < index <= cue + 3) or abs(index - cue) <= 2
-                    or (index < cue and _ranks_its_noun(tokens, index, cue))):
+            # Any count after "top" is the cutoff ("the top 101"; one capped at 100 refused it, the review of
+            # 2026-10-11); beside a superlative a year is not ("the highest 2014 score").
+            if tokens[cue] in LEADING_RANKS and cue < index <= cue + 3:
+                return value, index
+            if not 1000 <= value <= 2999 and (_beside(tokens, index, cue)
+                                              or (index < cue and _ranks_its_noun(tokens, index, cue))):
                 return value, index
     return 1, None
+
+
+def _beside(tokens: tuple[str, ...], index: int, cue: int) -> bool:
+    """Whether the number at ``index`` stands beside the superlative at ``cue`` as its count: right after it ("the
+    oldest 3"), or right before it with no noun of its own ("the 3 oldest", "show 3 most expensive"). "The patient who
+    stayed in room 111 most recently" names a room (held-out Spider train 212, once cutoffs over 100 were read)."""
+    if index == cue + 1:
+        return True
+    before = tokens[index - 1] if index else None
+    return index == cue - 1 and (before is None or before in _RANK_LEADS)
+
+
+# Words a ranking's count follows: "the 3 oldest", "show 3 most expensive", "which 2 largest".
+_RANK_LEADS = frozenset({"the", "these", "those", "all", "its", "their", "which", "what", "list", "show", "find",
+                         "give", "return", "get", "of", "are", "is", "top", "bottom"})
 
 
 def _ranks_its_noun(tokens: tuple[str, ...], index: int, cue: int) -> bool:

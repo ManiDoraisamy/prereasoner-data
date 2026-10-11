@@ -2,6 +2,8 @@
 
 **Updated:** 2026-10-11. This updates the existing guide after the independent fix review and full Spider evaluation. It supersedes the October 8 baseline and ordering of work in this document.
 
+**Later follow-up at `3ef82c4`:** [the latest independent review](C:/work/prereasoner-data/release-review/spider-review-20261011.md) verifies **382/1,034 strict (36.9%), 440/1,034 lenient (42.6%), 591/1,034 answered (57.2%)** and 403 passing focused checks. The original F1–F5 examples below are repaired; broader zero-related-count and membership-proof gaps remain, and top-N above 100 regresses. The two strict losses versus this guide's starting baseline correct country-count gold-label defects. Treat the detailed `3817b34` numbers below as historical baseline evidence, and use the follow-up for current measurements. The implementation objective and single-owner plan remain in force.
+
 **Measured source:** `3817b34378d0133e272d75619d53bfe66a2e8e2c`, in an isolated, clean checkout. Additional edits in the primary checkout are outside this measurement.
 
 **Scope:** improve the existing deterministic, interpretable own-data engine. This update changes documentation only. Implementation, training, promotion, paid model generation, and deployment were not performed for this plan. Repository rules remain in [CLAUDE.md](C:/work/prereasoner-data/CLAUDE.md); architecture facts and decisions retain their existing owners.

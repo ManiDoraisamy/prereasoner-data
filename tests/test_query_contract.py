@@ -990,6 +990,35 @@ def test_a_count_of_qualifying_groups_is_one_number_and_a_stated_total_is_compar
                        "SELECT Country, COUNT(*) FROM car_makers GROUP BY Country HAVING COUNT(*) > 1") == ()
     assert _violations(cars, asked, "SELECT COUNT(DISTINCT Country) FROM car_makers WHERE Country > 1") == (
         "requested comparison direction, value or operand is missing",)
+    # The review of 2026-10-11 (R1): a count that admits none is met by the countries NOT IN those failing it, or by
+    # the car makers grouped alone, not by an inner join that leaves out the countries without one; and "exactly 0
+    # car makers" not by a Country key equal to 0.
+    joined = " FROM car_makers JOIN countries ON car_makers.Country = countries.CountryId"
+    fewer = "Which countries have fewer than 2 car makers?"
+    missing = ("requested comparison direction, value or operand is missing",)
+    assert _violations(cars, fewer, "SELECT countries.CountryName" + joined
+                       + " GROUP BY countries.CountryName, countries.CountryId HAVING COUNT(*) < 2") == missing
+    assert _violations(cars, fewer, "SELECT CountryName FROM countries WHERE CountryId NOT IN (SELECT "
+                       "countries.CountryId" + joined + " GROUP BY countries.CountryId HAVING COUNT(*) >= 2)") == ()
+    # Contrast: a NOT IN of the groups with at most 1 is not "more than 1": it keeps the countries without one.
+    assert _violations(cars, "Which countries have more than 1 car maker?", "SELECT CountryName FROM countries WHERE "
+                       "CountryId NOT IN (SELECT countries.CountryId" + joined + " GROUP BY countries.CountryId "
+                       "HAVING COUNT(*) <= 1)") == ("requested comparison direction, value or operand is missing",)
+    assert _violations(cars, "How many countries have exactly 0 car makers?",
+                       "SELECT COUNT(DISTINCT Country) FROM car_makers WHERE Country = 0") == (
+        "requested comparison direction, value or operand is missing",)
+    # A count over a join to a table the question does not name counts that table's rows too: the appointments
+    # joined to their nurses (held-out Spider train 47, newly answered once counts were checked).
+    clinic = [{"name": "Patient", "columns": ["SSN", "Name"], "rows": [[1, "Ann"], [2, "Bo"]]},
+              {"name": "Nurse", "columns": ["EmployeeID", "Name"], "rows": [[7, "Cy"], [8, "Di"]]},
+              {"name": "Appointment", "columns": ["AppointmentID", "Patient", "PrepNurse"],
+               "rows": [[1, 1, 7], [2, 1, 8], [3, 2, 7]]}]
+    asked = "Which patients made more than one appointment?"
+    via = " FROM Appointment JOIN Patient ON Appointment.Patient = Patient.SSN"
+    assert _violations(clinic, asked, "SELECT Patient.Name" + via + " JOIN Nurse ON Appointment.PrepNurse = "
+                       "Nurse.EmployeeID GROUP BY Patient.Name, Patient.SSN HAVING COUNT(*) > 1") == missing
+    assert _violations(clinic, asked, "SELECT Patient.Name" + via
+                       + " GROUP BY Patient.Name, Patient.SSN HAVING COUNT(*) > 1") == ()
     orders = [{"name": "orders", "columns": ["Customer", "Amount"],
                "rows": [["Ann", 5], ["Ann", 6], ["Ann", 7], ["Bo", 8], ["Bo", 9], ["Cy", 1]]}]
     asked = "Which customers have a total amount over 10?"
@@ -1029,6 +1058,18 @@ def test_a_condition_inside_a_membership_test_filters_only_the_rows_it_binds():
     # A comparison in a scalar subquery filters no row either.
     assert _violations(people, asked, "SELECT Name FROM people WHERE Age >= (SELECT MIN(Age) FROM people "
                                       "WHERE Age > 35)") == missing
+    # The review of 2026-10-11 (R2): a shared word is no binding (a manager's ID is not the person's), nor a computed
+    # value, and a set of queries binds only when each branch does.
+    staff = [{"name": "people", "columns": ["Person_ID", "Name", "Age", "Manager_ID"],
+              "rows": [[1, "Ann", 20, 3], [2, "Bo", 40, 1], [3, "Cy", 60, 1]]}]
+    assert _violations(staff, asked, "SELECT Name FROM people WHERE Person_ID IN (SELECT Manager_ID FROM people "
+                                     "WHERE Age > 35)") == missing
+    assert _violations(staff, asked, "SELECT Name FROM people WHERE Person_ID IN (SELECT Age - 39 FROM people "
+                                     "WHERE Age > 35)") == missing
+    assert _violations(staff, asked, "SELECT Name FROM people WHERE Person_ID IN (SELECT Age FROM people WHERE "
+                                     "Age > 35 INTERSECT SELECT Age FROM people WHERE Age > 30)") == missing
+    assert _violations(staff, asked, "SELECT Name FROM people WHERE Person_ID IN (SELECT Person_ID FROM people "
+                                     "WHERE Age > 35 INTERSECT SELECT Person_ID FROM people WHERE Age > 30)") == ()
     # An EXISTS that refers to the outer row binds it; one that does not keeps every row or none.
     tables = [{"name": "owners", "columns": ["ID", "Name"], "rows": [[1, "Ann"], [2, "Bo"]]},
               {"name": "pets", "columns": ["PetID", "OwnerID", "PetAge"], "rows": [[10, 1, 2], [11, 2, 5]]}]

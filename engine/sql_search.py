@@ -1535,7 +1535,10 @@ class SQLSearcher:
 
     def _order_choices(self, tokens: tuple[str, ...], mentions: tuple[_Mention, ...],
                        draft: _Draft, question: str) -> list[tuple[tuple[OrderTerm, ...], int | None, float, tuple[str, ...]]]:
-        token_set = set(tokens)
+        from engine.sql_extrema import LEADING_RANKS, ranking_cutoff, valid_superlative_cue
+        # "At most 1 car maker" and "at least 2" bound a count; they rank nothing.
+        token_set = {token for i, token in enumerate(tokens)
+                     if token not in {"most", "least"} or valid_superlative_cue(tokens, i)}
         direction = None
         if token_set & {"descending", "desc", "highest", "largest", "biggest", "most", "latest", "newest", "top"}:
             direction = "DESC"
@@ -1548,11 +1551,11 @@ class SQLSearcher:
                          if token in _EARLY_WORDS | _LATE_WORDS and not _names_a_part(tokens, i)), None)
 
         # The rows a ranking keeps (sql_extrema.ranking_cutoff): "the top 3", "the two people with the largest age".
-        from engine.sql_extrema import LEADING_RANKS, ranking_cutoff
         leading = next((i for i, token in enumerate(tokens) if token in LEADING_RANKS and not _names_a_part(tokens, i)),
                        None)
         superlatives = tuple(i for i, token in enumerate(tokens)
-                             if token in {"most", "least", "highest", "lowest", "largest", "smallest"})
+                             if token in {"most", "least", "highest", "lowest", "largest", "smallest"}
+                             and valid_superlative_cue(tokens, i))
         cues = ((leading,) if leading is not None else ()) + superlatives
         limit = ranking_cutoff(tokens, cues)[0] if cues else None
 

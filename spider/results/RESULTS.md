@@ -4,6 +4,42 @@ Dated entries come newest first. Each records a run at the commit it names; the 
 entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection arbiter`) may since have
 been removed, and that commit holds the code that ran.
 
+## Independent follow-up: 382 strict reproduced at `3ef82c4`; matched reference regrading and remaining semantic gaps (2026-10-11)
+
+Fresh serving-faithful predictions from clean isolated commit `3ef82c4066141f44300a14bda775c0a1358aece2`:
+all 1,034 DEV questions, `whole_db`, `served`, SQL backend, compose enabled, cap 5,000/table,
+12 s soft budget, `EXTERNAL_LLM_ENABLED=0`, unchanged bundle `b11056f8ce8bf16a…`.
+Final verification: all 141 recorded provenance fields unchanged, 1,034 unique indices, source clean.
+
+| System, same DEV questions/execution rows/scorer | Strict | Lenient | Answered |
+|---|---:|---:|---:|
+| **Engine, fresh predictions** | **382/1,034 (36.9%)** | **440/1,034 (42.6%)** | **591/1,034 (57.2%)** |
+| Sonnet 5.5, saved SQL re-executed | 840/1,034 (81.2%) | 897/1,034 (86.8%) | 1,023/1,034 (98.9%) |
+| Gemini 3.8 **Flash**, saved SQL re-executed | 872/1,034 (84.3%) | 904/1,034 (87.4%) | 1,034/1,034 (100.0%) |
+
+No new hosted generation; no reference grades changed. References received DDL/FKs and three sample rows/table;
+the engine inspects capped tables. Task/execution/scoring match; input presentation and inference budgets differ.
+
+- Exact reproduction of Claude's `final-dirty`: no SQL/grade changes across 1,034 questions.
+- Versus the earlier independent `3817b34` run: 0 strict wins, 2 losses (161/162), 382 unchanged correct,
+  650 unchanged wrong; six SQL records differ (125,126,161,162,175,277). The country-count losses correct a gold
+  unit error: engine returns `[4]` countries, gold returns makers per country `[4,4,3,5]`. The scorer remains unchanged.
+- 125/126 move from wrong answers to constraint refusals; 175 stays wrong; 277 removes an unrequested hiring join
+  without changing its correct answer.
+- Paired strict (both / engine only / reference only / neither): Sonnet 355 / 27 / 485 / 167;
+  Gemini Flash 362 / 20 / 510 / 142. Same 591 engine-answered questions: 382 / 495 / 505 strict-correct.
+- Partition: 382 strict-correct, 77 lenient-only, 132 wrong under both, 443 unanswered. Refusal stages:
+  365 completeness, 69 constraints, 9 AST search. Nineteen strict-correct empty-gold cases remain lenient-false.
+- 403 focused checks pass. Broader probes still reproduce zero-related-count errors and unsound membership bindings;
+  top-101 additionally regresses to a refusal. Original F1–F5 examples passing does not establish full-family correctness.
+- Median/p90/p95/max prediction seconds: 0.861 / 1.863 / 2.290 / 5.296; no soft-budget exceedances.
+  Workload conditions differ from the earlier run, so this is not a controlled speed comparison.
+
+Details: [current independent review](../../release-review/spider-review-20261011.md).
+Artifacts: `%LOCALAPPDATA%/Temp/prereasoner-spider-fix-review-3ef82c4-20261011/`, with complete summary,
+per-question predictions, paired/changed-query analysis, provenance verification, reference regradings and probes.
+Production code and bundle unchanged by the independent review; full live release suites were not run.
+
 ## The review's five defects fixed: 384 → 382 strict (DEV 161/162's gold counts per country), Gemini on 466 → 465, held out 246 → 249 (2026-10-11)
 
 Same contract as the entries below: `whole_db`, `served`, SQL backend, row cap 5,000, 12 s budget, runtime bundle

@@ -656,6 +656,81 @@ def nearby_operator(question_tokens: tuple[str, ...], index: int) -> str:
     return "="
 
 
+def count_admits(operator: str, bound: Any, count: int) -> bool:
+    """Whether a number of rows ``count`` meets ``operator`` ``bound``: "fewer than 2" admits 0 and 1."""
+    return {"<": count < bound, "<=": count <= bound, ">": count > bound, ">=": count >= bound,
+            "=": count == bound, "!=": count != bound}.get(operator, False)
+
+
+# Words before a bare number that make it a count of related rows: "students who have 2 pets".
+_COUNT_RELATION_CUES = frozenset({
+    "contain", "contains", "conduct", "conducted", "design", "designed", "enroll", "enrolled",
+    "has", "have", "having", "make", "operate", "perform", "performed", "produce", "shared",
+    "teach", "used", "visit", "visited", "with",
+})
+
+
+def count_thresholds(tokens: tuple[str, ...]) -> list[CountThreshold]:
+    """The thresholds the question states on a number of rows: "more than 2", "at most 3", "between 2 and 4", "2 or
+    more", "exactly 0", a bare number after "has" or "with"; the strongest four, the counted noun at ``end``."""
+    out = []
+    for index in range(len(tokens)):
+        if tokens[index] == "between" and index + 3 < len(tokens):
+            low = parse_number(tokens[index + 1])
+            high = parse_number(tokens[index + 3]) if tokens[index + 2] in {"and", "to"} else None
+            if low is not None and high is not None:
+                out.append(CountThreshold(((">=", int(low)), ("<=", int(high))), index, index + 4, 4.0))
+        patterns = [
+            (("at", "least"), ">=", 3.5), (("at", "most"), "<=", 3.5),
+            (("more", "than"), ">", 3.0), (("greater", "than"), ">", 3.0),
+            (("fewer", "than"), "<", 3.0), (("less", "than"), "<", 3.0),
+            (("no", "more", "than"), "<=", 3.5), (("exactly",), "=", 3.0),
+            (("only",), "=", 2.5), (("over",), ">", 2.0),
+        ]
+        for cue, operator, strength in patterns:
+            if tokens[index:index + len(cue)] != cue:
+                continue
+            number_index = index + len(cue)
+            if number_index >= len(tokens):
+                continue
+            number = parse_number(tokens[number_index])
+            if number is not None:
+                out.append(CountThreshold(((operator, int(number)),), index, number_index + 1, strength))
+        number = parse_number(tokens[index])
+        if number is not None and tokens[index + 1:index + 3] == ("or", "more"):
+            out.append(CountThreshold(((">=", int(number)),), index, index + 3, 3.5))
+        if number is not None and tokens[index + 1:index + 3] == ("or", "fewer"):
+            out.append(CountThreshold((("<=", int(number)),), index, index + 3, 3.5))
+        if number is not None:
+            context = set(tokens[max(0, index - 3):index])
+            explicit = context & {"at", "least", "most", "more", "greater", "fewer", "less", "than", "over", "only", "exactly"}
+            if context & _COUNT_RELATION_CUES and not explicit:
+                out.append(CountThreshold((("=", int(number)),), index, index + 1, 1.0))
+    dedup = {}
+    for threshold in out:
+        key = threshold.predicates
+        old = dedup.get(key)
+        if old is None or threshold.strength > old.strength:
+            dedup[key] = threshold
+    return sorted(dedup.values(), key=lambda item: (-item.strength, item.start))[:4]
+
+
+def counted_thresholds(question_tokens: tuple[str, ...], tables: Iterable[str]) -> dict[tuple, str]:
+    """{the threshold's predicates: table} for each threshold on a number of rows a table's name then names:
+    "countries with fewer than 2 car makers" counts car_makers' rows, and "exactly 0 car makers" too, which was
+    answered by a car maker's Country key equal to 0 (the review of 2026-10-11, R1). Of the readings of one number
+    ("no more than 3" also says "more than 3") the strongest is kept."""
+    names = sorted(((name_tokens(table), table) for table in tables), key=lambda item: -len(item[0]))
+    by_end: dict[int, tuple[CountThreshold, str]] = {}
+    for threshold in count_thresholds(question_tokens):
+        table = next((table for name, table in names
+                      if name and question_tokens[threshold.end:threshold.end + len(name)] == name), None)
+        held = by_end.get(threshold.end)
+        if table is not None and (held is None or threshold.strength > held[0].strength):
+            by_end[threshold.end] = (threshold, table)
+    return {threshold.predicates: table for threshold, table in by_end.values()}
+
+
 def threshold_number(question_tokens: tuple[str, ...], index: int) -> bool:
     """Whether the number at ``index`` is a threshold a comparison takes ("more than two", "at least 3", "exactly
     2"), not a count of rows to keep."""
