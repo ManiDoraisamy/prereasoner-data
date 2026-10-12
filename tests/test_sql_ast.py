@@ -3634,6 +3634,36 @@ def test_number_used_as_a_column_label_is_not_a_count_request():
     assert "COUNT(" not in ranked[0].sql
 
 
+def test_a_number_that_ends_a_fields_name_asks_for_the_field():
+    """Held-out Spider train 47 (2026-10-11): "Which patients made more than one appointment? Tell me the name and phone
+    number of these patients" showed each patient's count of appointments beside the name and phone, since any
+    "number" asked for a count. A "number" that ends the name of a field asks for the field; an owner's ("each
+    patient's number of appointments") and a quantity's ("the total number") still count."""
+    from engine.sql_expansion import count_requested, field_numbers
+    planner = _hermetic_planner()
+    patients = {"name": "patients", "columns": ["SSN", "Name", "Phone"],
+                "rows": [[1, "Ann", "555-01"], [2, "Bo", "555-02"], [3, "Cy", "555-03"]]}
+    visits = {"name": "appointments", "columns": ["Appointment_ID", "Patient", "Day"],
+              "rows": [[10, 1, "mon"], [11, 1, "tue"], [12, 2, "wed"], [13, 3, "thu"], [14, 3, "fri"]]}
+    keys = [{"from_table": "appointments", "from_col": "Patient", "to_table": "patients", "to_col": "SSN"}]
+
+    def answer(question):
+        served = planner.serve([patients, visits], question, keys)
+        assert served.get("valid"), (question, served.get("error"), served.get("sql"))
+        return sorted(list(row) for row in served["result"]["rows"])
+
+    assert answer("Which patients made more than one appointment? Tell me the name and phone number of these "
+                  "patients.") == [["Ann", "555-01"], ["Cy", "555-03"]]
+    # Contrast: the number of those patients is a count.
+    assert answer("What is the number of patients with more than one appointment?") == [[2]]
+    names = ("SSN", "Name", "Phone", "Appointment_ID", "Patient", "Day")
+    assert field_numbers("the phone number of these patients", names) == {2}
+    assert not count_requested("Give the name and phone numbers of the patients.", names)
+    # Negative: an owner's number and a quantity's count, though Patient and Total end fields' names.
+    assert count_requested("List each patient's number of appointments.", names)
+    assert count_requested("What is the total number of appointments?", names + ("Total",))
+
+
 def test_abbreviated_number_column_is_not_a_count_request():
     flights = {
         "name": "flights",
@@ -4757,6 +4787,12 @@ def test_how_many_entities_with_a_count_threshold_counts_the_ones_that_qualify()
                                                                                 ["korea"]]
     assert answer("How many countries have exactly 0 car makers?") == [[1]]
     assert answer("How many countries have at most 1 car maker?") == [[4]]
+    # The review of 6263502 (S1): a range that admits none keeps germany too; the car makers grouped alone listed
+    # the country ids that have one, and the countries NOT IN those with fewer than 0 or more than 2 were refused.
+    assert answer("How many countries have between 0 and 2 car makers?") == [[4]]
+    assert sorted(answer("Which countries have between 0 and 2 car makers?")) == [["germany"], ["japan"], ["korea"],
+                                                                                   ["korea"]]
+    assert sorted(answer("Which countries have between 1 and 2 car makers?")) == [["japan"], ["korea"], ["korea"]]
     assert answer("How many countries have exactly 3 car makers?") == [[1]]
     # The counted rows' own filter stays with them: usa has one electric maker, japan and germany none.
     kinds = dict(CAR_MAKERS, columns=["Id", "Maker", "Kind", "Country"],
@@ -4859,6 +4895,14 @@ def test_a_ranking_keeps_the_rows_its_number_says_and_shows_them():
     for asked, kept in (("top 100 people by Age", 100), ("top 101 people by Age", 101),
                         ("List the names of the 120 oldest people.", 120)):
         assert len(answer(asked, [many])) == kept, asked
+    # The review of 6263502 (S6): a number a year could be counts the rows right before the superlative ("the 1200
+    # oldest", refused while every such number was a year), and after it is the year it names.
+    assert len(answer("List the names of the 1200 oldest people.", [many])) == 150
+    for said, cue, cutoff in (("the 1200 oldest people", "oldest", (1200, 1)),
+                              ("the highest 2014 score", "highest", (1, None)),
+                              ("which 2014 films have the highest gross", "highest", (1, None))):
+        question = tokens(said)
+        assert ranking_cutoff(question, (question.index(cue),)) == cutoff, said
     # A number in a field's name, or a filter's, counts no rows kept (Spider DEV 562 and 165).
     for said, cue in (("What is the id, line 1, and line 2 of the address with the most students?", "most"),
                       ("For the cars with 4 cylinders, which model has the largest horsepower?", "largest"),
@@ -5280,6 +5324,7 @@ TESTS = [
     test_repeated_count_paraphrase_is_one_aggregate,
     test_total_number_of_entities_is_a_scalar_count,
     test_number_used_as_a_column_label_is_not_a_count_request,
+    test_a_number_that_ends_a_fields_name_asks_for_the_field,
     test_abbreviated_number_column_is_not_a_count_request,
     test_travel_direction_disambiguates_parallel_airport_foreign_keys,
     test_scalar_count_keeps_qualified_one_letter_category_filter,

@@ -18,7 +18,9 @@ from engine.sql_ast import (
     share_aggregate,
 )
 from engine.sql_dates import period_grouping
-from engine.sql_expansion import FUNCTION_WORDS, asked_cues, by_groups, share_cue, share_requested, words
+from engine.sql_expansion import (
+    FUNCTION_WORDS, asked_cues, by_groups, field_numbers, share_cue, share_requested, words,
+)
 from engine.sql_candidate import ScoredQuery
 from engine.sql_schema import SURROGATE_KEY_WORDS, SchemaGraph, canon, is_name_column, is_surrogate_key, name_words
 
@@ -325,19 +327,12 @@ class CandidateRanker:
 def analyze_question(question: str, schema: SchemaGraph) -> QuestionRoles:
     tokens = _tokens(question)
     aggregate_positions: dict[str, list[int]] = {fn: [] for fn in ("COUNT", "SUM", "AVG", "MIN", "MAX")}
+    labels = field_numbers(question, (column.ref.name for column in schema.columns))
     for i, token in enumerate(tokens):
-        number_is_column_label = (
-            token == "number"
-            and i > 0
-            and any(
-                tokens[i - 1] in _schema_tokens(column.ref.name)
-                for column in schema.columns
-            )
-        )
         if (
             token == "count"
             or (token == "number" and i + 1 < len(tokens)
-                and tokens[i + 1] == "of" and not number_is_column_label)
+                and tokens[i + 1] == "of" and i not in labels)
             or (token == "how" and i + 1 < len(tokens) and tokens[i + 1] == "many")
         ):
             aggregate_positions["COUNT"].append(i)

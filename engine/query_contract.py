@@ -329,6 +329,8 @@ def _select_violations(question, query, graph, whole):
         if aggregate.function in {"SUM", "AVG"} and not expression_type(aggregate.operand).numeric:
             field = getattr(aggregate.operand, "name", "selected measure")
             violations.append(f"The field {field!r} contains nonnumeric or ambiguous values and cannot be totaled")
+    counts_groups = any(aggregate.function == "COUNT"
+                        for aggregate in aggregates((query.select, query.order_by, query.having)))
     # Nor does a query answer a total of a named column that cannot be totaled by totaling another column or counting
     # the rows: beside a saved reference, "which city has the highest total amount" ranked the reference's estimated
     # amounts (unreadable_operand).
@@ -682,6 +684,17 @@ def _select_violations(question, query, graph, whole):
     if (top_level_count(question_tokens) and query.group_by and query.having is not None and query.limit is None
             and not groups_requested(question)):
         violations.append("the question counts the groups that qualify, not the rows in each")
+    # A count grouped by the key of the one table it reads counts one row in each group, while the tables whose foreign
+    # keys refer to that key hold its occurrences: "the transaction type code that occurs the most frequently" counted
+    # each type's own row, and every type tied at 1 (held-out Spider train 370, 2026-10-11).
+    if (not query.joins and isinstance(query.from_table, str) and query.group_by
+            and all(isinstance(group, ColumnRef) and group.table == query.from_table for group in query.group_by)
+            and graph.identifies(query.group_by) and counts_groups):
+        keys = {(group.table, group.name) for group in query.group_by}
+        if any((mine.table, mine.name) in keys and other.table != query.from_table
+               for key in graph.foreign_keys for left, right in key.column_pairs
+               for mine, other in ((left, right), (right, left))):
+            violations.append(f"each group counts one {query.from_table} row, not the rows its key joins")
     # Explicitly named output grain must be represented, rather than just appearing
     # somewhere in the schema: a field named in full after "by/per/each", up to the clause's
     # end. "sorted by average Price" orders the groups and asks for no grain of its own, and a
@@ -1118,18 +1131,21 @@ def _tested_subqueries(predicate):
                 yield side.query, True, False, None
 
 
-def _binds(operand, inner, graph):
+def _binds(operand, inner, graph, extremum=False):
     """Whether a membership test ties the outer row to ``inner``'s rows: an IN compares its ``operand`` with values of
     its own kind, and an EXISTS (``operand`` None) refers to the outer row. "People whose ID is IN the ages over 35" and
     "people such that someone is over 35" keep rows whatever their own age, and both were read as "people whose age is
     above 35" (review F3, 2026-10-11). Values of the operand's kind are its own column, one a foreign key pairs with
     it, one of the same name, or one named for the operand's table and the operand ("visitor_ID" for
     "visitor"."ID"); a shared word alone is not ("Manager_ID" for "Person_ID"), nor a computed value ("Age - 39"). A
-    set of queries binds when each of its branches does (the review of 2026-10-11, R2)."""
+    set of queries binds when each of its branches does (the review of 2026-10-11, R2). A largest or smallest value
+    keeps one row of each group: it binds the rows it keeps only where the question asks for an extremum
+    (``extremum``) or each group is one row; "people whose age is above 35" kept only the one with the largest id
+    (the review of 6263502, S4)."""
     from engine.sql_ast import Aggregate, ColumnRef, SelectQuery, SetQuery, column_refs
     from engine.sql_schema import canon, name_words
     if isinstance(inner, SetQuery):
-        return _binds(operand, inner.left, graph) and _binds(operand, inner.right, graph)
+        return _binds(operand, inner.left, graph, extremum) and _binds(operand, inner.right, graph, extremum)
     if not isinstance(inner, SelectQuery):
         return False
     if operand is None:
@@ -1138,6 +1154,9 @@ def _binds(operand, inner, graph):
         return any(ref.table not in own for ref in column_refs((inner.where, inner.having)))
     projected = inner.select[0].expression if len(inner.select) == 1 else None
     if isinstance(projected, Aggregate) and projected.function in {"MAX", "MIN"}:
+        if not extremum and not (inner.group_by and all(isinstance(group, ColumnRef) for group in inner.group_by)
+                                 and graph is not None and graph.identifies(inner.group_by)):
+            return False
         projected = projected.operand
     if not isinstance(operand, ColumnRef) or not isinstance(projected, ColumnRef):
         return False
@@ -1153,29 +1172,29 @@ def _binds(operand, inner, graph):
                    for mine, other in ((projected, operand), (operand, projected))))
 
 
-def _select_queries(query, scope=_Scope(), graph=None):
+def _select_queries(query, scope=_Scope(), graph=None, extremum=False):
     """(select query, ``_Scope``) for every select query in ``query``: set branches, FROM subqueries and the
     subqueries its predicates test, so "visitors who did not visit any museum opened after 2010" is realized inside
     its NOT IN. Each keeps where it sits: a comparison anywhere in the query once realized the question's, so "above
     35 and below 50" was met by a UNION and by an EXCEPT of the two, and "people above 35" by a scalar subquery
-    comparing their ids (review of 2026-10-10)."""
+    comparing their ids (review of 2026-10-10). ``extremum``: the question asks for one (``_binds``)."""
     from dataclasses import replace
     from engine.sql_ast import SelectQuery, SetQuery, SubquerySource
     if isinstance(query, SetQuery):
         branch = replace(scope, alternative=scope.alternative or query.operator == "UNION")
-        yield from _select_queries(query.left, branch, graph)
+        yield from _select_queries(query.left, branch, graph, extremum)
         yield from _select_queries(query.right, replace(branch, negated=branch.negated != (query.operator == "EXCEPT")),
-                                   graph)
+                                   graph, extremum)
     elif isinstance(query, SelectQuery):
         yield query, scope
         if isinstance(query.from_table, SubquerySource):
-            yield from _select_queries(query.from_table.query, scope, graph)
+            yield from _select_queries(query.from_table.query, scope, graph, extremum)
         for predicate in (query.where, query.having):
             for nested, scalar, negated, operand in _tested_subqueries(predicate):
-                unbound = not scalar and not _binds(operand, nested, graph)
+                unbound = not scalar and not _binds(operand, nested, graph, extremum)
                 yield from _select_queries(nested, replace(scope, negated=scope.negated != negated,
                                                            scalar=scope.scalar or scalar,
-                                                           unbound=scope.unbound or unbound), graph)
+                                                           unbound=scope.unbound or unbound), graph, extremum)
 
 
 def _dangling_unnamed_join(query, question_words):
@@ -1246,7 +1265,7 @@ def _realizes_grade(question_tokens, index, query, graph=None):
     # A negation before the word's own ("did not have any pet older than 3") makes a subtracted scope the one asked;
     # one beside it ("not older than 35") is the comparative's own complement (comparative_operator).
     negated = bool(EXCLUSION_CUES.search(" ".join(question_tokens[:max(0, index - 2)])))
-    scoped = tuple(_select_queries(query, graph=graph))
+    scoped = tuple(_select_queries(query, graph=graph, extremum=bool(set(question_tokens) & graded)))
     if word in COMPARATIVES and "than" in question_tokens[index + 1:index + 4]:
         operator = comparative_operator(question_tokens, index)
         described = COMPARATIVE_COLUMNS.get(word, frozenset())
@@ -1292,17 +1311,32 @@ def _realizes_grade(question_tokens, index, query, graph=None):
     return False
 
 
+def _groups_the_counted_rows(query, counted_here, table, graph):
+    """Whether ``query``'s groups include the key of the rows it counts, or a key referring to the counted ``table``'s:
+    each group is then about one row. "Which countries have at least 3 cities" grouped by each city's id, and
+    "employees who had two or more jobs" by each job's (held-out Spider train 296, 220, 2026-10-11)."""
+    keys = {graph.identifying_column(read) for read in counted_here | {table} if read in graph.by_table} - {None}
+    referring = {(mine.table, mine.name) for key in graph.foreign_keys for left, right in key.column_pairs
+                 for mine, other in ((left, right), (right, left))
+                 if any((other.table, other.name) == (ref.table, ref.name) for ref in keys)}
+    return any(getattr(group, "table", None) in counted_here | {table}
+               and ((group.table, group.name) in referring or any(
+                   (group.table, group.name) == (ref.table, ref.name) for ref in keys))
+               for group in query.group_by)
+
+
 def _multiplies(query, counted, question_words, graph):
-    """Whether ``query`` counts ``counted``'s rows over a join that repeats them: it reads a table the question does not
-    name and the tables it names do not need to meet. "Patients who made more than one appointment" counted the
-    appointments joined to nurses, prescriptions, stays, rooms and procedures (held-out Spider train 47, 2026-10-11)."""
+    """Whether ``query`` counts the ``counted`` tables' rows over a join that repeats them: it reads a table the
+    question does not name and the tables it names do not need to meet. "Patients who made more than one appointment"
+    counted the appointments joined to nurses, prescriptions, stays, rooms and procedures (held-out Spider train 47,
+    2026-10-11)."""
     from engine.sql_ast import column_refs
     from engine.sql_schema import canon, name_words
     tables = {table for table in query.referenced_tables() if isinstance(table, str)}
     # Named in the question, two words of it spelling one name ("high schoolers"), or read as the answer's own rows.
     shown = {ref.table for ref in column_refs((query.select, query.group_by))}
-    named = {table for table in tables if {canon(word) for word in name_words(table)} <= question_words} | shown | {
-        counted}
+    named = {table for table in tables if {canon(word) for word in name_words(table)} <= question_words} | shown | set(
+        counted)
     trees = graph.join_trees(named, limit=1) if len(named) > 1 else ()
     needed = ({trees[0].root, *(join.table for join in trees[0].joins)} if trees else set()) | named
     return bool(tables - needed)
@@ -1315,8 +1349,10 @@ def realizes_numeric_comparisons(question, candidate, graph, *, exclude_position
     same operator/value against a matching column (including an aggregate over that column). This
     prevents ``over`` from forcing Gemini while still rejecting a query that reverses it to ``under``.
     """
-    from engine.sql_ast import Aggregate, BinaryExpr, ColumnRef, DatePart
+    import math
+    from engine.sql_ast import Aggregate, BinaryExpr, BooleanExpr, ColumnRef, Comparison, DatePart, Star
     from engine.sql_expansion import ExpansionSupport, count_admits, counted_thresholds, tokens
+    from engine.sql_extrema import MAX_CUES, MIN_CUES
     from engine.sql_search import _number
 
     question_tokens = tokens(question)
@@ -1340,7 +1376,8 @@ def realizes_numeric_comparisons(question, candidate, graph, *, exclude_position
         return set()
 
     actual = []     # (comparison, the tables its query reads, whether it tests groups, where it sits)
-    scoped = tuple(_select_queries(candidate.query, graph=graph))
+    scoped = tuple(_select_queries(candidate.query, graph=graph,
+                                   extremum=bool(set(question_tokens) & (MAX_CUES | MIN_CUES))))
     for query, scope in scoped:
         tables = query.referenced_tables()
         actual.extend((item, tables, False, scope) for item in _comparisons(query.where, alternatives))
@@ -1361,7 +1398,7 @@ def realizes_numeric_comparisons(question, candidate, graph, *, exclude_position
     # A number the name of a table follows counts that table's rows (``counted_thresholds``): "countries with more than
     # 1 car maker" is met by a HAVING COUNT, not by a car maker's Country key compared with 1, and "exactly 0 car
     # makers" not by the key equal to 0 (the review of 2026-10-11).
-    counted_numbers = {(operator, value) for predicates in counts_asked for operator, value in predicates}
+    counted_numbers = {(operator, value) for threshold, _ in counts_asked for operator, value in threshold.predicates}
     grouped = {}
     for comparison in requested:
         value = number(comparison.right.value)
@@ -1384,31 +1421,91 @@ def realizes_numeric_comparisons(question, candidate, graph, *, exclude_position
         wanted = aggregated.get((operator, value))
         return wanted is None or (isinstance(item.left, Aggregate) and (item.left.function, item.left.operand) in wanted)
 
+    def count_formula(predicate, witnesses):
+        """(the numbers of rows ``predicate`` keeps a group with, as a test; the bounds it compares them with; the
+        counts it reads) for a HAVING read on the counts ``witnesses`` accepts: their comparisons with a number, and AND
+        and OR of those. A conjunct on anything else constrains something else and is left out. None when it says
+        nothing of such a count, or an OR joins one to anything else: "fewer than 0 or more than 2", which subtracts
+        what "between 0 and 2" leaves out, was dropped, so the subtraction was refused (the review of 6263502, S1)."""
+        if isinstance(predicate, Comparison):
+            value = number(getattr(predicate.right, "value", None))
+            if not witnesses(predicate.left) or value is None or isinstance(value, str):
+                return None
+            return (lambda rows: count_admits(predicate.operator, value, rows)), [value], [predicate.left]
+        if isinstance(predicate, BooleanExpr):
+            parts = [count_formula(term, witnesses) for term in predicate.terms]
+            if predicate.operator == "OR" and None in parts:
+                return None
+            parts = [part for part in parts if part is not None]
+            if not parts:
+                return None
+            combine = all if predicate.operator == "AND" else any
+            return ((lambda rows: combine(test(rows) for test, _, _ in parts)),
+                    [bound for _, bounds, _ in parts for bound in bounds], [read for _, _, reads in parts for read in reads])
+        return None
+
+    def boundary_counts(bounds):
+        """The numbers of rows at which a comparison with one of ``bounds`` can change, and one past them all: between
+        them the comparisons keep the same groups, so these are the counts to try however large a number the question
+        says. Every count up to it was tried, two seconds for a million (the review of 6263502, S5)."""
+        edges = {0}
+        for bound in bounds:
+            low, high = math.floor(bound), math.ceil(bound)
+            edges |= {low - 1, low, low + 1, high, high + 1}
+        return sorted(edge for edge in edges | {max(edges) + 1} if edge >= 0)
+
     def counts_as_asked(predicates, table, query, scope):
         """Whether the select ``query`` where ``scope`` says counts ``table``'s rows per group as ``predicates`` ask: its
         HAVING admits the same numbers of rows ("fewer than 2" is COUNT < 2 or COUNT <= 1), or, subtracted (NOT IN),
         admits the others and leaves out only groups with rows ("fewer than 2" is NOT IN the groups with at least 2,
         which keeps those with none). A count that admits none kept groups only when the groups keep rows without one:
-        the counted table grouped alone, or joined LEFT with its own column counted; an inner join leaves out the
-        countries without car makers (the review of 2026-10-11, R1)."""
+        the counted table grouped alone where no other table holds what it groups by, or joined LEFT with its own
+        column counted; an inner join leaves out the countries without car makers (the review of 2026-10-11, R1), and
+        the car makers grouped alone beside a countries table enumerate only the countries that have one (the review
+        of 6263502, S1)."""
         if scope.scalar or scope.unbound or (scope.alternative and not alternatives):
             return False
-        counts = [item for item in _comparisons(query.having) if isinstance(item.left, Aggregate)
-                  and item.left.function == "COUNT" and number(getattr(item.right, "value", None)) is not None]
-        if not counts or table not in query.referenced_tables() or _multiplies(query, table, question_words, graph):
+        read = {name for name in query.referenced_tables() if isinstance(name, str)}
+        # The rows counted are the table's, or, where the query does not read it, a table's whose name extends it:
+        # "employees who had two or more jobs" counts their job_history rows (held-out Spider train 220). Beside the
+        # templates, Ref_Template_Types holds the types they are grouped by, not templates (Spider DEV 333).
+        counted_here = {table} & read or {name for name in read
+                                          if _name_vocabulary((table,)) <= _name_vocabulary((name,))}
+        if not counted_here or _multiplies(query, counted_here, question_words, graph) \
+                or _groups_the_counted_rows(query, counted_here, table, graph):
             return False
-        bounds = [value for _, value in predicates] + [number(item.right.value) for item in counts]
-        for rows in range(0, int(max(bounds)) + 3):
-            kept = all(count_admits(item.operator, number(item.right.value), rows) for item in counts)
+        # The count is of the counted rows: COUNT(*), or of a column of theirs, a distinct one telling them apart. A
+        # count of distinct countries is no count of car makers (S2), and COUNT(*) over car makers joined to the
+        # airports another threshold counts counts pairs of them (S3).
+        others = {other for _, other in counts_asked if other != table} & read
+
+        def witnesses(expression):
+            if not isinstance(expression, Aggregate) or expression.function != "COUNT":
+                return False
+            if isinstance(expression.operand, Star):
+                return not others
+            return (isinstance(expression.operand, ColumnRef) and expression.operand.table in counted_here
+                    and (not expression.distinct or graph.identifies((expression.operand,))))
+
+        formula = count_formula(query.having, witnesses)
+        if formula is None:
+            return False
+        kept_by, bounds, counts = formula
+        for rows in boundary_counts([value for _, value in predicates] + bounds):
+            kept = kept_by(rows)
             if scope.negated:
                 kept = rows == 0 or not kept
             if kept != all(count_admits(operator, value, rows) for operator, value in predicates):
                 return False
         if scope.negated or not all(count_admits(operator, value, 0) for operator, value in predicates):
             return True
-        return query.referenced_tables() == {table} or all(
-            isinstance(item.left.operand, ColumnRef) and item.left.operand.table == table for item in counts) and all(
-            join.kind == "LEFT" for join in query.joins) and query.from_table != table
+        if read == {table}:
+            return not any((group.table, group.name) == (mine.table, mine.name) and other.table != table
+                           for group in query.group_by if isinstance(group, ColumnRef)
+                           for key in graph.foreign_keys for left, right in key.column_pairs
+                           for mine, other in ((left, right), (right, left)))
+        return (query.from_table != table and all(join.kind == "LEFT" for join in query.joins)
+                and all(isinstance(count.operand, ColumnRef) and count.operand.table == table for count in counts))
 
     def negated_before(value):
         """Whether the question negates before it says ``value`` ("did not visit any museum opened after 2010")."""
@@ -1425,8 +1522,8 @@ def realizes_numeric_comparisons(question, candidate, graph, *, exclude_position
             for item, tables, grouped_rows, scope in actual
         ):
             return False
-    for predicates, table in counts_asked.items():
-        if not any(counts_as_asked(predicates, table, query, scope) for query, scope in scoped):
+    for threshold, table in counts_asked:
+        if not any(counts_as_asked(threshold.predicates, table, query, scope) for query, scope in scoped):
             return False
     return True
 

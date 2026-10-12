@@ -4,6 +4,73 @@ Dated entries come newest first. Each records a run at the commit it names; the 
 entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection arbiter`) may since have
 been removed, and that commit holds the code that ran.
 
+## Two reviews' count and membership gaps fixed: 382 → 386 strict, Gemini on 465 → 471, held out 249 → 255 (2026-10-12)
+
+Same contract as the entries below: `whole_db`, `served`, SQL backend, row cap 5,000, 12 s budget, runtime bundle
+unchanged (`b11056f8…`), external rewriting off except where Gemini is on, which replays the cached rewordings with no
+live call. The change is `DECISIONS.md` "The second review of 2026-10-11" (R1-R3, committed in part as `6263502`) and
+"The review of 6263502" (S1-S6, held-out train 370 and 47). Runs `r126-dirty`, `r126-gemini-dirty` and
+`heldout-r126-dirty` are a worktree of `6263502` with the rest of the change, against `final-dirty`,
+`final-gemini-dirty` and `heldout-final-dirty` (the engine of `8164601`, which production serves).
+
+- DEV, engine alone: 382 → 386 strict, 440 → 444 lenient, 591 → 590 answered; 4 wins, 0 losses (333 and 334,
+  template types with fewer than 3 templates; 477 and 478, country codes by player counts); wrong answers 209 → 204;
+  30 queries changed. Against `6263502` alone (`r123-dirty`, which the independent review reproduced exactly) nothing
+  changes correctness: 328, 418 and 694 no longer show a count the question does not ask (a "number" that names a
+  field) and stay wrong; 331 and 332 now count the templates rather than each type's own row and stay wrong, as their
+  gold keeps one of two tied types.
+- Gemini on: 465 → 471 strict, 544 → 550 lenient; 6 wins, 0 losses; wrong answers 278 → 269.
+- Held out (1,000 train questions): 249 → 255 strict, 305 → 311 lenient; 7 wins (47, 180, 402, 527, 594, 687,
+  742), 1 loss; wrong answers 239 → 232. The loss, train 585 ("the customer who made the most orders"), returns the
+  two customers tied at 3 orders where gold keeps one. Train 370, lost by `6263502`'s preference for fewer joins (it
+  counted each transaction type's own row), is back. Train 102 is newly answered and wrong: "the total number of
+  degrees granted between 1998 and 2002" compares the years with the Degrees field; a field named "TotalEnrollment_AY"
+  in another table had made "total number" a field's name and refused it. Train 822, 943 and 961, wrong before, are
+  refused.
+- A first final run (`r125-dirty`) lost DEV 333 and 334 (386 → 384): grouping the templates alone no longer stood
+  for every type (S1), and the NOT IN of the types read Ref_Template_Types as counted templates, its name holding
+  the word. Fixed before `r126`, with a regression test.
+- Soft-budget exceedances: none on DEV; 40 of 1,000 held out (41 to 42 in every earlier held-out run).
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_{r126,r126-gemini,heldout-r126,r125,r123}-dirty.json`.
+
+## Independent follow-up: 386 strict at `6263502`, four wins and no strict losses (2026-10-11)
+
+Fresh full serving-faithful evaluation from clean isolated commit `6263502f7cdd3c0639208f13e49daa4563bfaae0`:
+all 1,034 DEV questions, `whole_db`, `served`, SQL backend, compose enabled, cap 5,000/table,
+12 s soft budget, external rewriting off, unchanged runtime bundle `b11056f8ce8bf16a…`.
+All 141 recorded provenance fields remained unchanged; all question indices are unique.
+
+| System, identical questions/execution data/scorer | Strict | Lenient | Answered |
+|---|---:|---:|---:|
+| **Engine, fresh run** | **386/1,034 (37.3%)** | **444/1,034 (42.9%)** | **590/1,034 (57.1%)** |
+| Sonnet 5.5, saved SQL re-executed | 840/1,034 (81.2%) | 897/1,034 (86.8%) | 1,023/1,034 (98.9%) |
+| Gemini 3.8 **Flash**, saved SQL re-executed | 872/1,034 (84.3%) | 904/1,034 (87.4%) | 1,034/1,034 (100.0%) |
+
+October 7 hosted predictions were regraded with no changed grades and no new API generation. Input presentation
+and inference budgets differ: reference DDL/FKs + three sample rows/table, engine capped-table inspection.
+
+- Exact reproduction of Claude's `r123-dirty`: zero SQL, strict, lenient or answered-status differences.
+  Runtime fingerprints match; its pre-commit source/dirty provenance fields differ from the clean reviewed commit.
+- Versus `3ef82c4`: 4 strict wins (333/334 template counts, 477/478 player counts), 0 losses,
+  382 unchanged correct, 648 unchanged wrong; 17 SQL records change. The four gains are two easy-question pairs.
+- 334 becomes answered/correct; 175 and 526 move from wrong answers to refusals. Coverage falls by one;
+  returned strict-wrong answers fall from 209 to 204. Country-count gold defects 161/162 remain separate caveats.
+- Paired strict (both / engine only / reference only / neither): Sonnet 359 / 27 / 481 / 167;
+  Gemini Flash 366 / 20 / 506 / 142. On the same 590 engine-answered questions: 386 / 496 / 505 strict-correct.
+- Partition: 386 strict-correct, 77 lenient-only, 127 wrong under both, 444 unanswered.
+  Stages: 362 completeness, 73 constraints, 9 AST search; 19 strict-correct empty-gold cases remain lenient-false.
+- 403 focused tests pass. Prior R1/R2/R3 examples pass, but the broader review reproduces a zero-inclusive range
+  wrong answer, count-operand/duplicate-bound/membership-cardinality proof gaps, literal-sized count-proof work,
+  and a year-like ranking cutoff refusal. Details: `release-review/spider-review-20261011.md`.
+- Prediction median/p90/p95/max: 1.646 / 3.696 / 4.484 / 9.769 s; zero soft-budget exceedances.
+  Concurrent workload differs, so no controlled speedup or slowdown claim.
+
+Artifacts: `%LOCALAPPDATA%/Temp/prereasoner-spider-fix-review-6263502-20261011/`: full summary/predictions,
+reference regrading, paired transitions, provenance, test logs and reproduced counterexamples.
+This independent task changes documentation; production code and bundle remain the reviewed Claude implementation.
+Full live release suites, Python parity and a fresh candidate-pool census were not run.
+
 ## Independent follow-up: 382 strict reproduced at `3ef82c4`; matched reference regrading and remaining semantic gaps (2026-10-11)
 
 Fresh serving-faithful predictions from clean isolated commit `3ef82c4066141f44300a14bda775c0a1358aece2`:
@@ -35,7 +102,7 @@ the engine inspects capped tables. Task/execution/scoring match; input presentat
 - Median/p90/p95/max prediction seconds: 0.861 / 1.863 / 2.290 / 5.296; no soft-budget exceedances.
   Workload conditions differ from the earlier run, so this is not a controlled speed comparison.
 
-Details: [current independent review](../../release-review/spider-review-20261011.md).
+Details: the current independent review, `release-review/spider-review-20261011.md`.
 Artifacts: `%LOCALAPPDATA%/Temp/prereasoner-spider-fix-review-3ef82c4-20261011/`, with complete summary,
 per-question predictions, paired/changed-query analysis, provenance verification, reference regradings and probes.
 Production code and bundle unchanged by the independent review; full live release suites were not run.

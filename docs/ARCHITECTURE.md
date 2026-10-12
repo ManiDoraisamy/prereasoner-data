@@ -363,9 +363,19 @@ total amount", is the measure the groups are ranked by and asks no grain) and as
 of the rows: a
 comparison may sit in either branch of an INTERSECT, in an OR or a UNION only of alternatives the question offers, in
 a HAVING COUNT for a threshold on counted rows (the only place a number the name of a table follows is met: "more
-than 1 car maker"), or in an IN or EXISTS subquery that binds the returned rows (an IN of values of its operand's
-kind, an EXISTS that refers to the outer row, `query_contract._binds`), and never counts from a scalar subquery or an
-unbound one, which filter no returned row. A threshold on an aggregate a thing has ("customers with a total amount
+than 1 car maker", `sql_expansion.counted_thresholds`, each threshold stated needing its own count; the HAVING is
+read as a formula, AND and OR, of the counts of the counted rows, COUNT(*) or a column of theirs, a distinct one
+telling them apart, and must admit the same numbers of rows, tried at the boundaries its bounds make, over the
+counted table without joins that repeat its rows or groups that hold its key; one admitting none, "fewer than 2",
+only as a NOT IN of the groups failing it, which keeps the entities without rows, or the counted table grouped alone
+where no other table holds what it groups by), or in an IN or EXISTS subquery
+that binds the returned rows (an IN of the operand's own column, a foreign-key pair, a same-named column or one named
+for its table and itself, never a computed value, and a largest or smallest value only where the question asks for
+an extremum; an EXISTS that refers to the outer row, `query_contract._binds`),
+and never counts from a scalar subquery or an unbound one, which filter no returned row. A count grouped by the key
+of the one table it reads, which other tables refer to, counts one row in each group and is refused. A "number"
+ending a field's name ("the phone number") asks for the field, not a count (`sql_expansion.field_numbers`, read by
+`count_requested`, the search's aggregate cues and the ranker's question roles). A threshold on an aggregate a thing has ("customers with a total amount
 over 10", `ExpansionSupport.aggregate_thresholds`) is met only on that aggregate. A number said right after a field
 whose cells are not all numbers ("horsepower more than 150") is compared with that field and no other
 (`query_contract._compares_another_field`), and a field named after its table's name ("the highest savings

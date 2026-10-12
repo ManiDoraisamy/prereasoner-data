@@ -3056,3 +3056,62 @@ Measured (`spider/results/RESULTS.md`, 2026-10-11): engine alone 384 → 382 str
 the same 2 losses); held out 246 → 249 (3 wins, 0 losses). Not fixed: "the names of items" over items without a name
 field lists another table's names (held-out train 789, newly answered); binding "the names of X" to X would refuse
 every answer whose names sit in a linked table.
+
+## The second review of 2026-10-11: counts that admit none, bound memberships, cutoffs past 100 (2026-10-11)
+
+The review of the released `3ef82c4` (`release-review/spider-review-20261011.md`, R1-R3) reproduced 382 strict and
+found three gaps, each fixed in its owner:
+
+- R1, `ConstraintQueryExpander.without_failing_groups` and `query_contract.realizes_numeric_comparisons`: "countries with
+  fewer than 2 car makers" left out the countries with none, because an inner join of the two tables keeps no such
+  country; "exactly 0 car makers" compared a car maker's Country key with 0. A count that admits none is now answered
+  as the entities NOT IN those failing it ("fewer than 2" is NOT IN those with at least 2), the counted rows' own
+  filters inside the NOT IN and the entity's outside. The question contract reads every count threshold a table's
+  name follows (`sql_expansion.counted_thresholds`, over `count_thresholds`, moved from `sql_constraints` so both
+  read "at most", "between", "or more" alike) and meets it only by a COUNT of that table's rows (or of a table whose
+  name extends the noun: jobs held are job_history rows) that admits the same numbers of rows, a NOT IN of the
+  others included; one that admits none is not met over an inner join. Two shapes the review's census then showed
+  are not met either: a count over joins to tables the question does not name, which repeat the rows counted
+  (`_multiplies`: appointments joined to nurses and prescriptions), and groups that include the counted rows' own
+  key (`_groups_the_counted_rows`: countries grouped by each city's id). The HAVING expansion now prefers the join
+  tree of the tables it counts over a candidate's longer joins that carry no filter. "At most 1" no longer reads as
+  "the most" (`sql_extrema.valid_superlative_cue` in the frequency cue and the base search's ordering).
+- R2, `query_contract._binds`: a membership test binds the outer row only when the subquery returns the operand's own
+  column, one a foreign key pairs with it, one of the same name, or one named for its table and itself
+  ("visitor_ID" for "visitor"."ID"); a shared word ("Manager_ID" for "Person_ID"), a computed value ("Age - 39") or
+  an unknown form binds nothing, and a set of queries binds when each branch does.
+- R3, `sql_extrema.ranking_cutoff`: the cutoff reader capped counts at 100, so "top 101" was refused. A number after
+  "top" or "bottom" is the cutoff whatever its size; beside a superlative it must stand as its count ("the 3 oldest",
+  "the oldest 3", `_beside`), not a field's value ("room 111 most recently" named a room once the cap was gone).
+
+The release build of `3ef82c4` failed `tests.test_release` because RESULTS.md linked into `release-review/`, which
+the release context omits; the link test now treats such a link as broken locally too.
+
+## The review of 6263502: one count per population, read as a formula; a "number" that names a field (2026-10-11)
+
+The independent review of `6263502` (`release-review/spider-review-20261011.md`, S1-S6) reproduced 386 strict and
+found the count check still read a HAVING as the comparisons of its conjunction, each COUNT taken for the rows asked.
+`query_contract.realizes_numeric_comparisons` now reads the HAVING as a formula of the counts that count the asked
+rows (`count_formula`: AND and OR of their comparisons; an OR joining one to anything else says nothing of it), and
+tries a count only at the boundaries its bounds make (`boundary_counts`), so the work no longer grows with the number
+said (S5: two seconds for a million). A count is of the asked rows only as COUNT(*), or of a column of theirs, a
+distinct one telling them apart (S2: a count of distinct countries is no count of car makers); `counted_thresholds`
+returns each threshold the question states, two alike being two (S3: "more than 1 car maker and more than 1
+airport"), each needing its own count, and COUNT(*) counts neither of two populations it joins. A count admitting none
+is met by the counted table grouped alone only where no other table holds what it groups by (S1: the car makers
+grouped alone list the countries with one), else by the NOT IN of the groups failing it, whose OR the formula now
+reads. A table whose name extends the counted noun stands for it only where the query does not read the counted
+table: beside the templates, Ref_Template_Types holds the types they are grouped by, and the NOT IN answering
+"template types with fewer than 3 templates" was refused as grouping templates by their own key (Spider DEV 333/334,
+found by this batch's DEV run). A largest or smallest value in a membership test binds the rows it keeps only where the question asks for an
+extremum or each group is one row (S4, `_binds`). `sql_extrema.ranking_cutoff` reads a number a year could be as a
+count right before the superlative ("the 1200 oldest", S6), and as the year after it or before a noun.
+
+Two families the held-out sample showed in the same batch: a count grouped by the key of the one table it reads, which
+other tables' foreign keys refer to, counts one row in each group ("the transaction type code that occurs the most
+frequently" tied every type at 1, held-out train 370; a contract violation in `_select_violations`); and any
+"number" asked for a count, so "the name and phone number of these patients" showed each patient's count (held-out
+train 47). `sql_expansion.field_numbers` reads a "number" that ends a field's name ("phone number", "flight
+numbers", "the staff number") as the field; `count_requested` takes the field names and leaves those out, and the
+search's aggregate cues and the ranker's question roles read the same positions, replacing their two separate
+readings (encoder mentions before the number, and any word of any field's name).

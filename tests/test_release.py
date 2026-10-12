@@ -412,7 +412,10 @@ def test_local_documentation_links_resolve():
             if target.startswith(("http://", "https://", "mailto:", "#")):
                 continue
             target = target.split("#", 1)[0].split(' "', 1)[0]
-            if target and not (document.parent / unquote(target)).exists():
+            # release-review/ is no part of the release build context, so a link into it resolves here and fails
+            # inside the engine build (3ef82c4's build, 2026-10-11): name the report as a path instead.
+            into_reviews = "release-review" in {part.lower() for part in (document.parent / unquote(target)).resolve().parts}
+            if target and (into_reviews or not (document.parent / unquote(target)).exists()):
                 missing.append(f"{document.relative_to(ROOT)} -> {target}")
     assert not missing, "missing local documentation links:\n" + "\n".join(missing)
 

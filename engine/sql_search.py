@@ -57,7 +57,9 @@ from engine.sql_expansion import (
     MONEY_MEASURE_COLUMN_WORDS,
     asked_cues,
     by_groups,
+    count_requested,
     entity_groups,
+    field_numbers,
     implicit_sum_measures,
     measure_words_after,
     money_total_position,
@@ -203,7 +205,7 @@ class SQLSearcher:
                         if _names_together(unvalued, [canon(word) for word in name_words(table)],
                                            self._column_forms(table).difference(
                                                *(words for other, words in table_words.items() if other != table)))}
-        aggregate_choices = self._aggregate_choices(tokens, mentions)
+        aggregate_choices = self._aggregate_choices(tokens, mentions, question)
         predicate_choices = self._predicate_choices(tokens, mentions, question)
 
         drafts = [_Draft()]
@@ -658,34 +660,16 @@ class SQLSearcher:
                 suppressed.add(left.position)
         return tuple(mention for mention in mentions if mention.position not in suppressed)
 
-    def _aggregate_choices(self, tokens: tuple[str, ...], mentions: tuple[_Mention, ...]) -> list[tuple[tuple, float, tuple[str, ...]]]:
+    def _aggregate_choices(self, tokens: tuple[str, ...], mentions: tuple[_Mention, ...],
+                           question: str) -> list[tuple[tuple, float, tuple[str, ...]]]:
         cues: list[tuple[str, int]] = []
+        labels = field_numbers(question, (column.ref.name for column in self.schema.columns))
         for i, token in enumerate(tokens):
-            number_is_column_label = (
-                token == "number"
-                and any(
-                    mention.position == i - 1
-                    or (
-                        mention.position == i
-                        and i > 0
-                        and any(
-                            "number" in _column_link_words(option.column, True)
-                            and tokens[i - 1] in {
-                                *(canon(word) for word in name_words(option.column.table)),
-                                *(canon(word) for word in name_words(option.column.name)
-                                  if word.lower() != "no"),
-                            }
-                            for option in mention.options
-                        )
-                    )
-                    for mention in mentions
-                )
-            )
             if token in {"count", "counts"} or (
                 token == "number"
                 and i + 1 < len(tokens)
                 and tokens[i + 1] == "of"
-                and not number_is_column_label
+                and i not in labels
             ):
                 cues.append(("COUNT", i))
             elif token in {"sum", "total"}:
@@ -760,7 +744,8 @@ class SQLSearcher:
                 for mention in mentions for option in mention.options
                 for word in name_words(option.column.name)
             }
-            money_total = money_total_position(tokens, table_words)
+            money_total = money_total_position(
+                tokens, table_words, count_requested(question, (column.ref.name for column in self.schema.columns)))
             for measure in implicit_sum_measures(tokens):
                 word = tokens[measure.position]
                 if not measure.participle and (

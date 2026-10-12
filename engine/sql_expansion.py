@@ -194,6 +194,10 @@ class ExpansionSupport:
             inferred = self.inferred_entity_join(entity_table, counted_table)
             if inferred is not None:
                 structures.append((counted_table, (inferred,), None, -0.25))
+        # A candidate's joins beyond the fewest that meet the tables carry its filters, or else only repeat the rows
+        # counted: "countries with at least 3 cities" counted each city's addresses (held-out Spider train 296,
+        # 2026-10-11), and the join tree of the two tables fell out of the pool below them.
+        fewest = min((len(tree.joins) for tree in join_trees), default=None)
         for candidate in candidates:
             query = candidate.query
             if not isinstance(query, SelectQuery) or not isinstance(query.from_table, str):
@@ -202,6 +206,8 @@ class ExpansionSupport:
                 continue
             where = clean_threshold_where(query.where, threshold.values)
             score = 0.5 + 0.2 * len(and_terms(where)) if where else 0.5
+            if where is None and fewest is not None:
+                score -= 0.8 * max(0, len(query.joins) - fewest)
             structures.append((query.from_table, query.joins, where, score))
         dedup = {}
         for structure in structures:
@@ -325,16 +331,15 @@ class ExpansionSupport:
         options = [(column,) for column in dict.fromkeys(ordered)]
         return options or [tuple(self.schema.display_columns(entity_table)[:1])]
 
-    @staticmethod
     def having_select_options(
-        question: str, projection_options: list[tuple[SelectItem, ...]]
+        self, question: str, projection_options: list[tuple[SelectItem, ...]]
     ) -> list[tuple[tuple[SelectItem, ...], float]]:
         question_tokens = tokens(question)
         projection = projection_options[0]
         if top_level_count(question_tokens):
             return [((SelectItem(Aggregate("COUNT", Star())),), 3.0)]
         out = [(projection, 2.0)]
-        if count_requested(question_tokens):
+        if count_requested(question, (column.ref.name for column in self.schema.columns)):
             count = SelectItem(Aggregate("COUNT", Star()))
             out.append(((count,) + projection, 4.0))
             out.append((projection + (count,), 3.5))
@@ -659,7 +664,7 @@ def nearby_operator(question_tokens: tuple[str, ...], index: int) -> str:
 def count_admits(operator: str, bound: Any, count: int) -> bool:
     """Whether a number of rows ``count`` meets ``operator`` ``bound``: "fewer than 2" admits 0 and 1."""
     return {"<": count < bound, "<=": count <= bound, ">": count > bound, ">=": count >= bound,
-            "=": count == bound, "!=": count != bound}.get(operator, False)
+            "=": count == bound, "!=": count != bound, "<>": count != bound}.get(operator, False)
 
 
 # Words before a bare number that make it a count of related rows: "students who have 2 pets".
@@ -706,20 +711,24 @@ def count_thresholds(tokens: tuple[str, ...]) -> list[CountThreshold]:
             explicit = context & {"at", "least", "most", "more", "greater", "fewer", "less", "than", "over", "only", "exactly"}
             if context & _COUNT_RELATION_CUES and not explicit:
                 out.append(CountThreshold((("=", int(number)),), index, index + 1, 1.0))
+    # One reading of each number: "more than 1 car maker and more than 1 airport" states two, which were one (the
+    # review of 6263502, S3).
     dedup = {}
     for threshold in out:
-        key = threshold.predicates
+        key = (threshold.predicates, threshold.end)
         old = dedup.get(key)
         if old is None or threshold.strength > old.strength:
             dedup[key] = threshold
     return sorted(dedup.values(), key=lambda item: (-item.strength, item.start))[:4]
 
 
-def counted_thresholds(question_tokens: tuple[str, ...], tables: Iterable[str]) -> dict[tuple, str]:
-    """{the threshold's predicates: table} for each threshold on a number of rows a table's name then names:
-    "countries with fewer than 2 car makers" counts car_makers' rows, and "exactly 0 car makers" too, which was
-    answered by a car maker's Country key equal to 0 (the review of 2026-10-11, R1). Of the readings of one number
-    ("no more than 3" also says "more than 3") the strongest is kept."""
+def counted_thresholds(question_tokens: tuple[str, ...],
+                       tables: Iterable[str]) -> tuple[tuple[CountThreshold, str], ...]:
+    """(threshold, table) for each threshold on a number of rows a table's name then names: "countries with fewer
+    than 2 car makers" counts car_makers' rows, and "exactly 0 car makers" too, which was answered by a car maker's
+    Country key equal to 0 (the review of 2026-10-11, R1). Of the readings of one number ("no more than 3" also says
+    "more than 3") the strongest is kept; two numbers alike are two thresholds ("more than 1 car maker and more than 1
+    airport", the review of 6263502, S3)."""
     names = sorted(((name_tokens(table), table) for table in tables), key=lambda item: -len(item[0]))
     by_end: dict[int, tuple[CountThreshold, str]] = {}
     for threshold in count_thresholds(question_tokens):
@@ -728,7 +737,7 @@ def counted_thresholds(question_tokens: tuple[str, ...], tables: Iterable[str]) 
         held = by_end.get(threshold.end)
         if table is not None and (held is None or threshold.strength > held[0].strength):
             by_end[threshold.end] = (threshold, table)
-    return {threshold.predicates: table for threshold, table in by_end.values()}
+    return tuple(sorted(by_end.values(), key=lambda item: item[0].start))
 
 
 def threshold_number(question_tokens: tuple[str, ...], index: int) -> bool:
@@ -766,9 +775,37 @@ def groups_requested(question: str) -> bool:
                for index, token in enumerate(question_tokens))
 
 
-def count_requested(question_tokens: tuple[str, ...]) -> bool:
-    return bool(set(question_tokens) & {"count", "number"}) \
-        or "how many" in " ".join(question_tokens)
+def field_numbers(question: str, field_names: Iterable[str]) -> frozenset[int]:
+    """The positions in ``tokens(question)`` of a "number" that ends the name of a field: the word before it ends
+    the field's name, or comes before the name's own last word "number" ("the phone number" of Phone, "flight
+    numbers" of flight_number, "the staff number" of Num_of_Staff). It asks for the field, not for a count: "the
+    name and phone number of these patients" showed each patient's count of appointments (held-out Spider train 47,
+    2026-10-11). An owner's number ("each customer's number of orders") and a quantity's ("the total number", "the
+    largest number") count."""
+    from engine.closed_class import DEGREE_MODIFIERS
+    from engine.sql_extrema import MAX_CUES, MIN_CUES
+    quantities = FUNCTION_WORDS | DEGREE_MODIFIERS | MAX_CUES | MIN_CUES | {"total", "sum", "average", "avg", "mean",
+                                                                              "count"}
+    ends = set()
+    for name in field_names:
+        name_words = name_tokens(name)
+        if len(name_words) > 1 and name_words[-1] in {"number", "no", "num"}:
+            ends.add(name_words[-2])
+        elif name_words:
+            ends.add(name_words[-1])
+    raw, question_tokens = words(question), tokens(question)
+    return frozenset(index for index, token in enumerate(question_tokens)
+                     if token == "number" and index and question_tokens[index - 1] in ends - quantities
+                     and not raw[index - 1].endswith("'s"))
+
+
+def count_requested(question: str, field_names: Iterable[str]) -> bool:
+    """Whether the question asks for a count: "count", "how many", or a "number" that does not end the name of one of
+    the ``field_names`` (``field_numbers``)."""
+    question_tokens = tokens(question)
+    labels = field_numbers(question, field_names)
+    return "count" in question_tokens or "how many" in " ".join(question_tokens) or any(
+        token == "number" and index not in labels for index, token in enumerate(question_tokens))
 
 
 def explicit_order(question_tokens: tuple[str, ...]) -> bool:
@@ -940,15 +977,16 @@ THRESHOLD_WORDS = frozenset({"than", "of", "over", "above", "under", "below", "a
 _HOLDING_WORDS = frozenset({"with", "have", "has", "had", "having", "whose", "where"})
 
 
-def money_total_position(question_tokens: Sequence[str], table_words: Iterable[str]) -> int | None:
+def money_total_position(question_tokens: Sequence[str], table_words: Iterable[str], count_asked: bool) -> int | None:
     """Position of a money noun that names a table and asks for its money total, else None.
 
-    Tokens and table words are canon() forms. Both planners apply this one rule, the own-data
-    search (sql_search) and the world-join operand choice (encoder_overlay.read_op_all); each still
-    requires a money measure column in that table, without which the noun keeps its entity reading.
+    Tokens and table words are canon() forms; ``count_asked`` is the question's ``count_requested``. Both planners
+    apply this one rule, the own-data search (sql_search) and the world-join operand choice
+    (encoder_overlay.read_op_all); each still requires a money measure column in that table, without which the noun
+    keeps its entity reading.
     """
     question_tokens = tuple(question_tokens)
-    if count_requested(question_tokens) or ROW_LISTING_COMMANDS & set(question_tokens):
+    if count_asked or ROW_LISTING_COMMANDS & set(question_tokens):
         return None
     names = set(table_words)
     # A number before the noun counts it: "customers with over 2 sales" totalled the sales' amount (2026-10-10).
@@ -965,7 +1003,8 @@ def money_total_columns(question: str, sch: Sequence[dict]) -> tuple[str, list[d
     """
     question_tokens = tokens(question)
     table_of = {word: entry["table"] for entry in sch for word in name_tokens(entry["table"])}
-    position = money_total_position(question_tokens, table_of)
+    position = money_total_position(question_tokens, table_of,
+                                    count_requested(question, (entry["name"] for entry in sch)))
     if position is None:
         return None
     table = table_of[question_tokens[position]]

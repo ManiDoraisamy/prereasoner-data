@@ -98,9 +98,9 @@ class ConstraintQueryExpander(ExpansionSupport):
         counts_qualifying = _top_level_count(tokens) and not _groups_requested(question)
         # A number a table's name follows counts that table's rows, whatever field a word near it names: "countries
         # with exactly 0 car makers" (the review of 2026-10-11, R1; "countries" named car_makers.Country).
-        counts_a_table = _counted_thresholds(tokens, self.schema.tables)
+        counts_a_table = {counted for counted, _ in _counted_thresholds(tokens, self.schema.tables)}
         for threshold in thresholds:
-            if self.threshold_targets_column(tokens, threshold) and threshold.predicates not in counts_a_table:
+            if self.threshold_targets_column(tokens, threshold) and threshold not in counts_a_table:
                 continue
             counted = tokens[threshold.end] if threshold.end < len(tokens) else None
             subject = threshold.start - (2 if threshold.start > 1 and tokens[threshold.start - 1] in COPULAS else 1)
@@ -683,7 +683,8 @@ class ConstraintQueryExpander(ExpansionSupport):
                         order_by=(OrderTerm(target, direction),),
                         limit=1,
                     )
-                    select = (SelectItem(Aggregate("COUNT", Star())),) if _count_requested(tokens) else (
+                    select = (SelectItem(Aggregate("COUNT", Star())),) if _count_requested(
+                        question, (column.ref.name for column in self.schema.columns)) else (
                         SelectItem(self.schema.display_columns(table)[0]),
                     )
                     outer = SelectQuery(
@@ -897,7 +898,7 @@ class ConstraintQueryExpander(ExpansionSupport):
             item.expression for item in query.select if isinstance(item.expression, Aggregate)
         ]
         if aggregates:
-            if _count_requested(tokens):
+            if _count_requested(question, (column.ref.name for column in self.schema.columns)):
                 count = next((aggregate for aggregate in aggregates if aggregate.function == "COUNT"), None)
                 return [((SelectItem(count or Aggregate("COUNT", Star())),), 3.0)]
             function_cues = {
@@ -963,7 +964,7 @@ class ConstraintQueryExpander(ExpansionSupport):
             return []
 
         select_options = []
-        if _count_requested(tokens):
+        if _count_requested(question, (column.ref.name for column in self.schema.columns)):
             select_options.append(((SelectItem(Aggregate("COUNT", Star())),), 4.0))
         # The aggregate words that ask, as the search reads them: "the Avg. monthly searches for home inspection
         # checklist or roof inspection checklist" averaged the two keywords' searches when "Avg." only spells the

@@ -490,7 +490,7 @@ class ExtremaQueryExpander(ExpansionSupport):
         # pet" asks an aggregate of those rows, which an EXCEPT of their values cannot carry (it would average
         # distinct ages): the anti-join that keeps the aggregate answers it (engine/sql_recursive.py). Spider
         # DEV, 2026-10-02: 17 of the 40 differences that won over gold dropped such an aggregate.
-        if _count_requested(tokens) or _asks_aggregate(tokens):
+        if _count_requested(question, (column.ref.name for column in self.schema.columns)) or _asks_aggregate(tokens):
             return []
         # A row's own value the question denies is an inequality, not a difference: "the teachers whose
         # hometown is not Little Lever Urban District", "the tv channels that do not use English" (Spider
@@ -825,11 +825,15 @@ def ranking_cutoff(tokens: tuple[str, ...], cue_positions: Sequence[int]) -> tup
             if not isinstance(value, int) or value < 1 or _threshold_number(tokens, index):
                 continue
             # Any count after "top" is the cutoff ("the top 101"; one capped at 100 refused it, the review of
-            # 2026-10-11); beside a superlative a year is not ("the highest 2014 score").
+            # 2026-10-11). A number a year could be is one after a superlative ("the highest 2014 score") or before
+            # a noun ("2014 films with the highest gross"), and a count only right before it ("the 1200 oldest",
+            # refused while every such number was a year, the review of 6263502, S6).
+            yearlike = 1000 <= value <= 2999
             if tokens[cue] in LEADING_RANKS and cue < index <= cue + 3:
                 return value, index
-            if not 1000 <= value <= 2999 and (_beside(tokens, index, cue)
-                                              or (index < cue and _ranks_its_noun(tokens, index, cue))):
+            if _beside(tokens, index, cue) and (not yearlike or index == cue - 1):
+                return value, index
+            if not yearlike and index < cue and _ranks_its_noun(tokens, index, cue):
                 return value, index
     return 1, None
 

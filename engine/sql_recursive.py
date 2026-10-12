@@ -33,7 +33,7 @@ from engine.sql_ast import (
 )
 from engine.numeric import parse_decimal
 from engine.sql_candidate import ScoredQuery
-from engine.sql_expansion import positive_predicate, words
+from engine.sql_expansion import count_requested, positive_predicate, words
 from engine.sql_schema import ForeignKey, SchemaGraph, canon, is_surrogate_key
 
 
@@ -316,7 +316,7 @@ class RecursiveQueryExpander:
             and not is_surrogate_key(column.ref.name)
             and set(_name_tokens(column.ref.name)) <= tokens
         ]
-        count_requested = bool(tokens & {"count", "number"}) or "how many" in " ".join(_tokens(question))
+        asks_count = count_requested(question, (column.ref.name for column in self.schema.columns))
         out = []
         for target in targets:
             for fk in self.schema.foreign_keys:
@@ -336,7 +336,7 @@ class RecursiveQueryExpander:
                     order_by=(OrderTerm(target, direction),),
                     limit=1,
                 )
-                if count_requested:
+                if asks_count:
                     select = (SelectItem(Aggregate("COUNT", Star())),)
                 else:
                     displays = self.schema.display_columns(outer_key.table)
@@ -458,8 +458,7 @@ class RecursiveQueryExpander:
                         destination_fk,
                         source_value,
                         destination_value,
-                        count_requested=bool(token_set & {"count", "number"})
-                        or "how many" in " ".join(tokens),
+                        count_requested=count_requested(question, (column.ref.name for column in self.schema.columns)),
                         schema=self.schema,
                     )
                     built = _candidate(query, 46.0, ("recursive:self-join:route",))

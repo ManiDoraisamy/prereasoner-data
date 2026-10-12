@@ -1019,6 +1019,23 @@ def test_a_count_of_qualifying_groups_is_one_number_and_a_stated_total_is_compar
                        "Nurse.EmployeeID GROUP BY Patient.Name, Patient.SSN HAVING COUNT(*) > 1") == missing
     assert _violations(clinic, asked, "SELECT Patient.Name" + via
                        + " GROUP BY Patient.Name, Patient.SSN HAVING COUNT(*) > 1") == ()
+    # Groups that include the counted rows' own key are about one row each (held-out Spider train 296), and the rows
+    # counted may be a table whose name extends the noun: jobs held are job_history rows (held-out train 220).
+    world = [{"name": "country", "columns": ["country_id", "country"], "rows": [[1, "France"], [2, "Peru"]]},
+             {"name": "city", "columns": ["city_id", "city", "country_id"],
+              "rows": [[1, "Paris", 1], [2, "Lyon", 1], [3, "Nice", 1], [4, "Lima", 2]]}]
+    asked = "Which countries have at least 3 cities?"
+    pair = " FROM city JOIN country ON city.country_id = country.country_id"
+    assert _violations(world, asked, "SELECT country.country" + pair + " GROUP BY country.country, city.city_id "
+                                     "HAVING COUNT(*) >= 3") == missing
+    assert _violations(world, asked, "SELECT country.country" + pair + " GROUP BY country.country HAVING COUNT(*) >= 3") \
+        == ()
+    staffing = [{"name": "employees", "columns": ["EMPLOYEE_ID", "NAME"], "rows": [[1, "Ann"], [2, "Bo"]]},
+                {"name": "jobs", "columns": ["JOB_ID", "TITLE"], "rows": [["A", "Clerk"], ["B", "Lead"]]},
+                {"name": "job_history", "columns": ["EMPLOYEE_ID", "JOB_ID"], "rows": [[1, "A"], [1, "B"], [2, "A"]]}]
+    asked = "What are the employee ids for those who had two or more jobs?"
+    assert _violations(staffing, asked, "SELECT EMPLOYEE_ID FROM job_history GROUP BY EMPLOYEE_ID "
+                                        "HAVING COUNT(*) >= 2") == ()
     orders = [{"name": "orders", "columns": ["Customer", "Amount"],
                "rows": [["Ann", 5], ["Ann", 6], ["Ann", 7], ["Bo", 8], ["Bo", 9], ["Cy", 1]]}]
     asked = "Which customers have a total amount over 10?"
@@ -1070,6 +1087,14 @@ def test_a_condition_inside_a_membership_test_filters_only_the_rows_it_binds():
                                      "Age > 35 INTERSECT SELECT Age FROM people WHERE Age > 30)") == missing
     assert _violations(staff, asked, "SELECT Name FROM people WHERE Person_ID IN (SELECT Person_ID FROM people "
                                      "WHERE Age > 35 INTERSECT SELECT Person_ID FROM people WHERE Age > 30)") == ()
+    # The review of 6263502 (S4): the largest id of the people above 35 keeps one of them; it binds the rows it keeps
+    # when the question asks for an extremum, or each group is one person.
+    largest = "SELECT Name FROM people WHERE Person_ID IN (SELECT MAX(Person_ID) FROM people WHERE Age > 35{})"
+    assert _violations(staff, asked, largest.format("")) == missing
+    assert _violations(staff, asked, largest.format(" GROUP BY Person_ID")) == ()
+    assert "requested comparison direction, value or operand is missing" not in _violations(
+        staff, "List the name of the person with the highest Person_ID among people whose age is above 35.",
+        largest.format(""))
     # An EXISTS that refers to the outer row binds it; one that does not keeps every row or none.
     tables = [{"name": "owners", "columns": ["ID", "Name"], "rows": [[1, "Ann"], [2, "Bo"]]},
               {"name": "pets", "columns": ["PetID", "OwnerID", "PetAge"], "rows": [[10, 1, 2], [11, 2, 5]]}]
@@ -1126,6 +1151,104 @@ def test_a_ranking_keeps_its_said_number_of_rows_and_shows_them():
                        + " ORDER BY CHECKING.balance DESC LIMIT 2") == ("the balance asked is SAVINGS's, not CHECKING's",)
     assert _violations(bank, asked, "SELECT ACCOUNTS.name, SAVINGS.balance FROM ACCOUNTS JOIN SAVINGS ON "
                        "SAVINGS.custid = ACCOUNTS.custid ORDER BY SAVINGS.balance DESC LIMIT 2") == ()
+
+
+def test_each_count_the_question_states_is_met_by_a_count_of_its_own_rows():
+    """The review of 6263502: a HAVING was read only as the comparisons of its conjunction, each COUNT taken for the rows
+    asked. "More than 1 car maker" was met by a count of distinct countries (S2); "more than 1 car maker and more than
+    1 airport" was one threshold, met by the car makers' count alone (S3); the subtraction of "between 0 and 2"
+    (fewer than 0 or more than 2) was refused while the car makers grouped alone, which list only the countries that
+    have one, were taken for every country (S1); and each count up to the number said was tried (S5)."""
+    import engine.sql_expansion as expansion
+    cars = [{"name": "countries", "columns": ["CountryId", "CountryName"],
+             "rows": [[1, "usa"], [2, "japan"], [3, "chile"], [4, "peru"]]},
+            {"name": "car_makers", "columns": ["Id", "Maker", "Country"],
+             "rows": [[1, "ford", 1], [2, "gm", 1], [3, "tesla", 1], [4, "toyota", 2], [5, "cmc", 3], [6, "zz", 3]]},
+            {"name": "airports", "columns": ["AirportId", "Code", "Country"],
+             "rows": [[1, "JFK", 1], [2, "HND", 2], [3, "NRT", 2], [4, "SCL", 3], [5, "PMC", 3]]}]
+    missing = ("requested comparison direction, value or operand is missing",)
+    joined = " FROM car_makers JOIN countries ON car_makers.Country = countries.CountryId"
+    grouped = " GROUP BY countries.CountryId, countries.CountryName HAVING "
+    more = "Which countries have more than 1 car maker?"
+    assert _violations(cars[:2], more, "SELECT countries.CountryName" + joined + grouped
+                       + "COUNT(DISTINCT countries.CountryId) > 1") == missing
+    assert _violations(cars[:2], more, "SELECT countries.CountryName" + joined + grouped + "COUNT(*) > 1") == ()
+    assert _violations(cars[:2], more, "SELECT countries.CountryName" + joined + grouped
+                       + "COUNT(DISTINCT car_makers.Id) > 1") == ()
+    both = "Which countries have more than 1 car maker and more than 1 airport?"
+    airports = joined + " JOIN airports ON airports.Country = countries.CountryId"
+    assert _violations(cars, both, "SELECT countries.CountryName" + airports + grouped
+                       + "COUNT(DISTINCT car_makers.Id) > 1") == missing
+    assert _violations(cars, both, "SELECT countries.CountryName" + airports + grouped + "COUNT(*) > 1") == missing
+    assert _violations(cars, both, "SELECT countries.CountryName" + airports + grouped
+                       + "COUNT(DISTINCT car_makers.Id) > 1 AND COUNT(DISTINCT airports.AirportId) > 1") == ()
+    ranged = "Which countries have between 0 and 2 car makers?"
+    assert _violations(cars[:2], ranged, "SELECT Country FROM car_makers GROUP BY Country HAVING COUNT(*) >= 0 "
+                       "AND COUNT(*) <= 2") == missing
+    assert _violations(cars[:2], ranged, "SELECT CountryName FROM countries WHERE CountryId NOT IN (SELECT "
+                       "car_makers.Country FROM car_makers GROUP BY car_makers.Country HAVING COUNT(*) < 0 OR "
+                       "COUNT(*) > 2)") == ()
+    # Negative: an OR of the count with anything else says nothing of the count, and one sheet's groups are all its
+    # entities.
+    assert _violations(cars[:2], ranged, "SELECT CountryName FROM countries WHERE CountryId NOT IN (SELECT "
+                       "car_makers.Country FROM car_makers GROUP BY car_makers.Country HAVING COUNT(*) > 2 OR "
+                       "MAX(car_makers.Id) > 4)") == missing
+    orders = [{"name": "orders", "columns": ["Order ID", "Customer", "Amount"],
+               "rows": [[10, "Ann", 5], [11, "Ann", 6], [12, "Bo", 7]]}]
+    assert _violations(orders, "Which customers have fewer than 2 orders?",
+                       "SELECT Customer FROM orders GROUP BY Customer HAVING COUNT(*) < 2") == ()
+    # A table whose name extends the counted noun stands for it only where the query does not read it: beside the
+    # templates, the template types are what they are grouped by. The subtraction was refused as grouping templates by
+    # their own key once the templates grouped alone no longer stood for every type (Spider DEV 333 and 334).
+    templates = [{"name": "Ref_Template_Types", "columns": ["Template_Type_Code", "Template_Type_Description"],
+                  "rows": [["PPT", "Presentation"], ["CV", "Resume"], ["AD", "Advertisement"]]},
+                 {"name": "Templates", "columns": ["Template_ID", "Template_Type_Code"],
+                  "rows": [[1, "PPT"], [2, "PPT"], [3, "PPT"], [4, "CV"], [5, "CV"]]}]
+    asked = "Show all template type codes with less than three templates."
+    assert _violations(templates, asked, "SELECT Template_Type_Code FROM Ref_Template_Types WHERE Template_Type_Code "
+                       "NOT IN (SELECT Ref_Template_Types.Template_Type_Code FROM Templates JOIN Ref_Template_Types ON "
+                       "Templates.Template_Type_Code = Ref_Template_Types.Template_Type_Code GROUP BY "
+                       "Ref_Template_Types.Template_Type_Code HAVING COUNT(*) >= 3)") == ()
+    served = _hermetic_planner().serve(templates, asked, [
+        {"from_table": "Templates", "from_col": "Template_Type_Code", "to_table": "Ref_Template_Types",
+         "to_col": "Template_Type_Code"}])
+    assert served.get("valid") and sorted(list(row) for row in served["result"]["rows"]) == [["AD"], ["CV"]], served
+    # The work is the bounds', not the number's: a count is tried at the numbers where a comparison can change.
+    calls = []
+    admits = expansion.count_admits
+    expansion.count_admits = lambda *args: calls.append(args) or admits(*args)
+    try:
+        assert _violations(cars[:2], "Which countries have more than 1000000000000 car makers?",
+                           "SELECT countries.CountryName" + joined + grouped + "COUNT(*) > 1000000000000") == ()
+    finally:
+        expansion.count_admits = admits
+    assert 0 < len(calls) < 100, len(calls)
+
+
+def test_a_count_grouped_by_the_key_of_its_one_table_counts_the_rows_that_refer_to_it():
+    """Held-out Spider train 370 (2026-10-11): "the transaction type code that occurs the most frequently" was met by the
+    transaction types grouped by their own code, one row in each, so every type tied at 1; the transactions referring
+    to the types hold the occurrences."""
+    types = {"name": "Ref_Transaction_Types", "columns": ["transaction_type_code", "transaction_type_description"],
+             "rows": [["SALE", "Sale"], ["PUR", "Purchase"]]}
+    trades = {"name": "Transactions", "columns": ["transaction_id", "transaction_type_code", "amount"],
+              "rows": [[1, "SALE", 10], [2, "PUR", 20], [3, "PUR", 30]]}
+    asked = "Show the transaction type code that occurs the most frequently."
+    ranked = " GROUP BY transaction_type_code ORDER BY COUNT(*) DESC LIMIT 1"
+    assert _violations([types, trades], asked, "SELECT transaction_type_code FROM Ref_Transaction_Types" + ranked) == (
+        "each group counts one Ref_Transaction_Types row, not the rows its key joins",)
+    # Contrast: the transactions grouped by their code, alone or joined to the types, count the occurrences.
+    assert _violations([types, trades], asked, "SELECT transaction_type_code FROM Transactions" + ranked) == ()
+    assert _violations([types, trades], asked, "SELECT Ref_Transaction_Types.transaction_type_code FROM Transactions "
+                       "JOIN Ref_Transaction_Types ON Transactions.transaction_type_code = "
+                       "Ref_Transaction_Types.transaction_type_code GROUP BY Ref_Transaction_Types.transaction_type_code "
+                       "ORDER BY COUNT(*) DESC LIMIT 1") == ()
+    # Negative: a sheet no other sheet refers to counts its own rows, each value once.
+    assert _violations([types], asked, "SELECT transaction_type_code FROM Ref_Transaction_Types" + ranked) == ()
+    served = _hermetic_planner().serve([types, trades], asked, [
+        {"from_table": "Transactions", "from_col": "transaction_type_code", "to_table": "Ref_Transaction_Types",
+         "to_col": "transaction_type_code"}])
+    assert served.get("valid") and [list(row) for row in served["result"]["rows"]] == [["PUR"]], served
 
 
 def test_a_negated_comparative_is_a_bound_and_the_nearest_cue_sets_a_comparison():

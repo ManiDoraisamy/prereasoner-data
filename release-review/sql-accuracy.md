@@ -2,11 +2,77 @@
 
 **Updated:** 2026-10-11. This updates the existing guide after the independent fix review and full Spider evaluation. It supersedes the October 8 baseline and ordering of work in this document.
 
-**Later follow-up at `3ef82c4`:** [the latest independent review](C:/work/prereasoner-data/release-review/spider-review-20261011.md) verifies **382/1,034 strict (36.9%), 440/1,034 lenient (42.6%), 591/1,034 answered (57.2%)** and 403 passing focused checks. The original F1–F5 examples below are repaired; broader zero-related-count and membership-proof gaps remain, and top-N above 100 regresses. The two strict losses versus this guide's starting baseline correct country-count gold-label defects. Treat the detailed `3817b34` numbers below as historical baseline evidence, and use the follow-up for current measurements. The implementation objective and single-owner plan remain in force.
+**Latest follow-up at `6263502`:** [the current independent review](C:/work/prereasoner-data/release-review/spider-review-20261011.md) verifies **386/1,034 strict (37.3%), 444/1,034 lenient (42.9%), 590/1,034 answered (57.1%)**, with 403 passing focused tests and all 141 provenance fields unchanged. Versus `3ef82c4`, there are four strict wins and zero losses; the original F1–F5 and later R1/R2/R3 counterexamples are repaired. Six broader count/scope/performance/ranking findings remain in the latest review. The two earlier country-count gold-label losses remain separately documented. Treat the detailed `3817b34` measurements below as historical baseline evidence; current measurements and open work are here and in the latest review.
 
-**Measured source:** `3817b34378d0133e272d75619d53bfe66a2e8e2c`, in an isolated, clean checkout. Additional edits in the primary checkout are outside this measurement.
+**Historical measured source:** `3817b34378d0133e272d75619d53bfe66a2e8e2c`, in an isolated, clean checkout. The current independently measured source is `6263502f7cdd3c0639208f13e49daa4563bfaae0`.
 
 **Scope:** improve the existing deterministic, interpretable own-data engine. This update changes documentation only. Implementation, training, promotion, paid model generation, and deployment were not performed for this plan. Repository rules remain in [CLAUDE.md](C:/work/prereasoner-data/CLAUDE.md); architecture facts and decisions retain their existing owners.
+
+**Plan expansion, 2026-10-11:** sections 0, 5, 6, and 10 now explain the semantic-binding bottleneck and specify the internal records, first implementation slice, diagnostic experiments, conditional training objective, and acceptance gates. These are proposed changes, not shipped capabilities or new benchmark results. The current follow-up and section 10 supersede the historical first-batch ordering; repaired F/R examples remain regression controls, not defects to fix again.
+
+## Current follow-up actions at `6263502`
+
+Continue this implementation plan through the same production owners. The latest report's S1–S6 are counterexamples and repair requirements, not a second planner or a separate implementation program.
+
+1. **Make count requirements entity-bound and their proof exact and bounded (S1/S2/S3/S5).** Extend the existing `sql_expansion.CountThreshold` reading/shared helpers and their existing construction/checking callers together. Preserve each occurrence's counted entity/relation, filters, scope, grouping grain, distinctness and bounds; repeated numbers alone do not identify a requirement. In `query_contract`, prove the aggregate measures that population and validate the complete typed Boolean count formula, including complemented ranges and zero-related entities. Replace the literal-sized loop with exact integer-boundary/interval reasoning. Keep parent population/display identity separate from the child grouping key. A typed, interpretable witness must show which requirement each count satisfies.
+   Acceptance: the zero-inclusive range lists four expected country names and its scalar version returns four; parent-ID counts and missing airport counts fail; correct child counts and separate equal-bound requirements pass. Add zero/one/many, filtered children, missing values, multiplying joins, conjunction/disjunction, equal bounds/different populations, and large/fractional-bound contrasts. Bound proof work independently of literal magnitude rather than hiding the issue behind a maximum allowed threshold.
+2. **Prove membership population/cardinality, not only projected value kind (S4).** Extend the existing `_binds`/scope evidence. Plain identity projection preserves qualifying people; MAX/MIN without appropriate grouping can collapse them. Require a justified requested extremum or an identity-preserving grouping proof. Keep legitimate extrema and identity-grouped aggregates supported. Test the ordinary age population versus MAX/MIN collapse, aliases, same-name unrelated keys, computed membership, set branches, and requested-extremum controls.
+3. **Finish ranking number-role binding (S6).** Extend the existing shared `ranking_cutoff` reader. A year-like integer in a cardinality phrase remains a cardinality; a numeric field/filter remains that field/filter. Keep output admission separate from interpretation. Test 999/1000/1200/2999/3000, explicit year fields, room 111, line 2, ID 101, and actual output-budget refusal through ordinary serving.
+4. **Then prioritize safe recovery of the 444 unanswered questions.** Refresh candidate diagnostics using the existing production search/selection and evaluator. Separate missing construction, rejection of an independently correct plan, ranking, execution, and model-reading errors. Measure eligible candidate-pool recall with the existing `pool_oracle` ablation, and distinguish it from pre-contract construction recall. Recover valid refused plans before broadening admission. Track the 204 strict-wrong returned answers separately: 77 lenient-only and 127 incorrect under both metrics.
+
+For each coherent repair, freeze the baseline, keep the bundle unchanged, register positive/contrastive/negative tests against the production owner, run relevant focused suites and fresh full `whole_db` evaluation, and report wins/losses, coverage, conditional correctness, candidate recall and controlled latency. Validate SQL/Python parity for affected executable operations. Use independent fixtures/held-out questions to check generalization; gold labels remain evaluation-only. Do not relax checks to manufacture coverage or train/promote merely because the score is low.
+
+The current strict gaps to Sonnet/Gemini Flash are 454/486 answers. Approximately three quarters occur on questions the engine refuses, but even on the same 590 answered questions its strict correctness is 65.4% versus 84.1%/85.6%. The goal therefore remains safe coverage recovery plus sound interpretation and selection, preserving deterministic typed ASTs throughout.
+
+## 0. Why determinism has not produced higher accuracy
+
+### 0.1 The unresolved problem is interpretation, not SQL spelling
+
+An AST specifies a program precisely. It does not establish which program a natural-language request intended. The engine must first bind words to entities, fields, relations, populations, operators, and scopes. A perfectly deterministic renderer faithfully emits an incorrectly bound AST, just as a compiler faithfully compiles the wrong algorithm.
+
+The measured latest gain is four strict answers, representing two easy-question pairs. Medium, hard, and extra-hard strict counts did not improve. Those repairs removed harmful joins and corrected specific construction/verification behavior; they did not demonstrate a broad improvement in compositional interpretation. This is why the headline moves slowly despite useful correctness work.
+
+For this plan, distinguish three properties:
+
+| Property | What it establishes | What it does not establish |
+|---|---|---|
+| Deterministic decisions | Repeatable choices for fixed inputs, state, configuration, weights, and numerical conditions | That the selected interpretation is correct |
+| Typed construction and validation | Supported program structure, operand compatibility, scope and relationship invariants | That a human intended that particular interpretation |
+| Named evidence and witnesses | Inspectable evidence, bindings, and reasons for accepting/rejecting a candidate | Full transparency of the encoder's hidden computation or proof of human intent |
+
+Natural language can also be genuinely underspecified. A checker can establish that a program implements a chosen interpretation; it cannot manufacture missing business definitions or prove that an ambiguous question has exactly one meaning. Explicit unresolved bindings are part of a trustworthy engine.
+
+### 0.2 Probability and entropy do not imply random program execution
+
+A next-token model estimates conditional scores for the next token given the input and the preceding program. Selecting the highest-scoring token is a deterministic decision rule under fixed computation; sampling is a separate choice. Entropy describes the spread of a predicted distribution, not whether its highest-scoring answer is correct. A sharply concentrated distribution can confidently favor the wrong answer.
+
+Our encoder is learned too. Named dimensions and fixed thresholds do not eliminate uncertainty, classification errors, or missing semantic distinctions. Repeating a wrong binding deterministically is reproducibility, not accuracy.
+
+Program-sequence supervision gives a next-token model an opportunity to learn dependencies across complete examples: a projection depends on entity identity, an aggregate depends on its population, and a nested condition depends on its outer scope. Our approach can learn these dependencies through named classification/relation evidence and deterministic structured assembly instead. There is no need to generate SQL tokens to obtain richer supervision.
+
+The current system comparison does not hold training data, objectives, model capacity, or inference presentation constant. It cannot identify a pure encoder-versus-decoder architecture effect. We should not infer undisclosed Sonnet/Gemini training details or attribute the gap to entropy.
+
+### 0.3 Code evidence for the present information bottleneck
+
+The relevant current owners are linked in [CLAUDE.md](C:/work/prereasoner-data/CLAUDE.md) and [SQL_AST.md](C:/work/prereasoner-data/docs/SQL_AST.md). These observations explain what to measure; they do not prove that each unanswered example has the same cause.
+
+- `TableQuery.ast_semantic_signals` builds phrase-to-column similarities, table similarities, and calculation intent/operand evidence. `semantic_role_phrases` extracts broad role phrases using the first relevant cue, rather than representing every scoped operation occurrence.
+- `CandidateRanker._model_features` averages column similarities by role. Together with handwritten structural features, this can favor relevant fields without proving that each field has the correct entity, population, or scope.
+- `count_thresholds` deduplicates by predicate bounds; `counted_thresholds` also keys by those bounds. Distinct relationship requirements with equal bounds can collapse. This is a concrete loss of meaning, not simply a low similarity score.
+- `SQLSearcher._expand` prunes partial drafts by accumulated scores. The default search beam is 64 and the served pool limit is 25. These are bounded searches, not completeness guarantees. Instrumentation must determine whether correct partial interpretations are discarded before the decisive scope is available.
+- The checked-in property trainer optimizes named property/intent coordinates and calculation contrasts. It does not currently expose an explicit full multi-scope SQL binding objective. This observation is about the inspected training code, not a complete reconstruction of the promoted checkpoint's historical training lineage.
+
+The six current S findings expose count-population, occurrence, membership, bounded-proof, and numeric-role gaps. More cosine features or a few score-weight changes cannot supply a plan whose meaning was never represented or constructed.
+
+### 0.4 The architectural direction and its limits
+
+Preserve encoder-only program inference: the model supplies fixed-vocabulary named scores over bounded, enumerated question/schema objects; deterministic code selects coherent bindings and builds every typed AST. No autoregressive SQL/AST token head, free-form plan proposal, or model-written executable code enters this path.
+
+The proposed improvement is **structured semantic binding with deterministic composition**. It extends the existing records, relational readout, search, ranker, and contract rather than replacing them with a second engine.
+
+There is relevant research precedent, but not a ready-made accuracy guarantee. [RAT-SQL](https://aclanthology.org/2020.acl-main.677/) studies relational schema encoding/linking. [Span-based Semantic Parsing](https://aclanthology.org/2021.acl-long.74/) uses encoder-based span scores, typed composition, and constrained chart search, and reports benefits on compositional splits of GeoQuery, SCAN, and CLOSURE. RAT-SQL uses an autoregressive program decoder; the span parser has bounded search and evaluates different tasks. Borrow their representation and composition lessons, not their benchmark numbers as predictions for our engine.
+
+SQL is a favorable application because its operators and schema constraints are explicit. General-purpose code has a broader algorithm and API space, so the same approach needs a clearly stated supported language. Typed structure is an advantage for enforcing semantics that we can specify, not evidence that arbitrary code synthesis will be easier than language-model generation.
 
 ## 1. Recommendation
 
@@ -237,9 +303,110 @@ Hard-reject proven contradictions; retain bounded alternatives when the question
 
 Shared extraction can make construction and verification consistently wrong. Keep independently derived expected answers and adversarial fixtures; a construction witness is evidence, not a substitute for checking the question's intended semantics.
 
+### 5.3 Concrete internal binding contract
+
+This is a proposed internal data contract, not a new public API or a model-generated plan format. Extend the current `CountThreshold`, `QuestionRoles`, `SemanticSignals`, `Reading`, and `Coverage` responsibilities. Add a shared record only where construction and checking both need it, and migrate those callers in the same change.
+
+First implement count/membership scope. Later apply the same occurrence and scope principles to other operators when the failure ledger justifies them.
+
+| Component | Proposed information | Existing owner / consumers |
+|---|---|---|
+| Occurrence | Stable ID, original source span, kind, overlapping interpretations, lexical evidence | `sql_expansion.py` readers; `query_contract.py` obligation collection; all relevant construction/checking callers |
+| Schema binding alternative | Table/column reference, entity identity, type, relationship path, evidence source, named model score | `sql_schema.py` facts; `SemanticSignals` in `sql_rank.py`; `tables.py` integration |
+| Count requirement | Returned subject, counted entity or value, relationship, child filters, group grain, distinct policy, exact predicate formula | Extend `CountThreshold` and count readers in `sql_expansion.py`; consume in `sql_constraints.py` and `query_contract.py` |
+| Scope | Stable scope ID, parent scope, row/group/scalar purpose, entity population, filter dependencies, correlation keys | Shared obligations in `query_contract.py`; existing recursive/constraint expanders |
+| Boolean requirement | AND/OR/NOT structure over occurrence IDs, including complete range formulas | Existing typed Boolean expressions and expansion/checking owners |
+| Witness | Requirement ID, stable typed-AST path, bound population/operand, correlation and multiplicity facts, rule, outcome/reason | Existing `Reading`/`Coverage`, consumed by selection diagnostics and offline evaluator |
+
+Use original source spans, with an explicit alignment to each owner's existing normalized tokens. `question.split()` units, regex phrase tokens, and canonical schema words do not necessarily have identical indices. Do not derive occurrence identity from a lowercased word, a numeric value, or a shared `(operator, bound)` pair.
+
+Separate the following states: recognized but unresolved; supported binding alternatives; bound and witnessed; contradictory; unsupported by the supplied data. A missing learned channel is unavailable evidence, not a fabricated zero-confidence fact. Existing exact names, grammatical evidence, and similarities remain inputs to the one binding/selection flow, not separate alternative planners.
+
+Do not introduce one giant schema for all hypothetical SQL behavior. The first slice needs only count occurrences, entity/relationship bindings, Boolean thresholds, scope, and membership population. Subsequent operators extend the same responsibilities after their required semantics are specified.
+
+### 5.4 One fixture that distinguishes several meanings
+
+This is an illustrative acceptance fixture to implement and execute later, not a newly run test. Give every country, maker, and airport its own non-null key; makers/airports reference the country key. Names are display fields, not identity.
+
+| Country | Related makers | Related airports |
+|---|---:|---:|
+| A | 3 | 1 |
+| B | 1 | 3 |
+| C | 2 | 2 |
+| D | 0 | 0 |
+| E | 0 | 2 |
+
+For `Which countries have more than one maker and more than one airport?`, the binding requirements are conceptually:
+
+```text
+output: country display name
+outer population: countries, identified by country key
+count occurrence 1: makers related to each outer country; count > 1
+count occurrence 2: airports related to each outer country; count > 1
+Boolean formula: occurrence 1 AND occurrence 2
+```
+
+The correct result is C. Construction can use the existing typed membership/existence or grouped derived-table capabilities after auditing their correlation and lowering support. It must not join both child tables and count their Cartesian fan-out as independent entity populations. For C, that join produces four child pairs, although there are only two makers and two airports.
+
+The same fixture must distinguish these contrasts:
+
+- Replace AND with OR: expected A, B, C, E.
+- Ask makers between zero and two: expected B, C, D, E, including zero-maker countries.
+- Ask how many such countries: expected the one-cell scalar 4, not one maker-count row per country.
+- Ask makers greater than one only: expected A, C; the airport condition cannot be invented.
+- Ask airports greater than one only: expected B, C, E; the maker condition cannot be invented.
+- Duplicate a country's display name while retaining distinct keys: output bag/entity semantics must follow the request, not collapse distinct countries by label.
+- Add a child filter with mixed qualifying/nonqualifying makers: count only that filtered child population; preserve zero qualifying children.
+- Add NULL/unrelated child relationship values and an unrelated lookup table: neither can invent or remove a valid country membership.
+
+Register tests against actual production serving plus independently constructed wrong-AST rejection tests. The manually supplied correct AST passing is only a verifier check; the ordinary search must also construct and select it.
+
+### 5.5 Named encoder evidence without program generation
+
+The intended model interface is a bounded score table over already enumerated question spans and schema objects. Illustrative channels are `mentions_entity`, `mentions_field`, `operation_operand`, `counted_entity`, `relationship_direction`, `filter_attaches_to_scope`, `scope_parent`, and `output_entity`. These names are proposals, not existing trained runtime dimensions.
+
+The encoder may score that one span refers to a maker entity or that a filter attaches to the maker population. It cannot emit SQL, AST tokens, a complete plan, an arbitrary entity name, or an invented database relationship. SchemaGraph and deterministic rules own the available objects, valid keys, permitted relationships, and executable operators.
+
+Extend the existing request encoder/readout and `SemanticSignals` integration. Reuse context and representations within a request; do not encode every candidate SQL string or load a second model. Audit the current schema/question graph before adding another encoding pass. The existing relational attention already provides a place to incorporate question/schema relationships; a new backbone is not required for the first experiment.
+
+A deterministic structured search chooses a coherent assignment from the scored alternatives:
+
+```text
+evidence score = named span/schema factor contributions
+              + named relation/scope factor contributions
+              + explicit structural preferences
+
+feasible assignment = compatible types and keys
+                   AND consistent occurrence/scope bindings
+                   AND all required semantic obligations witnessed
+
+winner = best retained feasible assignment, with explicit stable tie-breaks
+```
+
+This is not an exhaustive-search or global-optimality claim. The current bounded search remains approximate; record losses from pruning and unresolved bindings. Higher similarity cannot compensate for a proven missing qualifier or a wrong entity population. A neutral feature cannot silently turn an unsupported requirement into a satisfied one.
+
+Interpretability means exposing which named readings contributed, which bindings were chosen, which rule composed them, and which typed node witnesses each requirement. It does not mean claiming all neural internals are understandable. Detailed benchmark traces stay offline; runtime instrumentation uses the current allowed phase/count/reason mechanism.
+
+### 5.6 Deterministic composition, bounded proof, and semantic witnesses
+
+Apply the first slice through the current production owners:
+
+1. Collect distinct count occurrences and their bound subject/child populations once per request. Preserve the entire Boolean formula, not a flattened list of comparisons from any scope.
+2. Construct a qualifying entity relation using existing `ConstraintQueryExpander`/recursive capabilities. Keep outer entity filters outside and child filters inside the appropriate scope. Prefer a membership/existence proof or an aggregate at the contribution grain when a join would multiply counted entities.
+3. For zero-inclusive counts, enumerate the parent population and use a justified zero-preserving construction. An inner child-only GROUP BY cannot witness countries with no qualifying children. Reuse existing `without_failing_groups` where its identity/NULL guarantees hold; audit `ExistsPredicate` alternatives where appropriate rather than inserting raw SQL.
+4. For an outer `how many`, reuse `qualifying_count` to count the qualifying entity relation once. For `which`, project the requested display fields with entity identity preserved internally.
+5. Check the count operand, contribution grain, filters, relationship, scope, and Boolean formula against the requirement. A COUNT of the parent key grouped by that same parent is not a count of children. A count of non-null values is not automatically a count of entities.
+6. Replace the count-sized proof loop with exact integer interval reasoning over nonnegative counts. For example, `0 <= count <= 2` has complement `count < 0 OR count > 2`; on nonnegative counts that reduces to `count > 2`. Preserve OR, conjunction, and polarity through the typed formula. Intervals belong to a specific counted-population variable: makers and airports remain distinct variables with their own filters, grain, and scope. Do not collapse a multi-population Boolean formula into one count interval. Handle fractional bounds exactly: `count < 1.5` admits 0 and 1. Bound proof work by formula size and numeric representation length rather than enumerating up to a literal; never truncate a bound without proving equivalence.
+7. Verify membership's correlated key mapping and population preservation. Plain identity projection preserves qualifying entities; unrequested MAX/MIN can collapse them. Accept legitimate requested extrema and identity-preserving grouped cases only when their witnesses establish the requested population.
+8. Carry requirement-to-AST witnesses into the existing selection record. Verify the actual serving realization, including tie transformation, instead of treating the raw draft as the final program. Constraint and completeness decisions must agree about that realization.
+
+Use canonical typed keys including scope, entity/contribution identity, filters, Boolean formula, and output semantics for memoization. Two requirements with equal numbers remain separate. Two plans returning equal rows on one database are not thereby equivalent.
+
+Early pruning is sound only for established incompatibilities. For unresolved semantic alternatives, retain diversity by counted entity, scope, and relational structure within a fixed work budget. Measure a budget change through the same search owner and never choose a budget by whether a candidate happens to match gold at runtime.
+
 ## 6. Ordered implementation packages and gates
 
-Each package extends the current owners, removes superseded logic in the same change, registers regression tests, and records measured wins/losses before proceeding. The ordering is a dependency plan, not an estimate of guaranteed score gains or calendar duration.
+Each package extends the current owners, removes superseded logic in the same change, registers regression tests, and records measured wins/losses before proceeding. The ordering is a dependency plan, not an estimate of guaranteed score gains or calendar duration. Package F becomes eligible when the first binding slice and diagnostics demonstrate a model-signal deficit; it need not wait for every construction family in E to be completed. The current concrete work queue is section 10.
 
 ### Package A — Reconcile the failure ledger with actual serving
 
@@ -252,13 +419,40 @@ Each package extends the current owners, removes superseded logic in the same ch
 5. Assign one primary lost stage with secondary reasons. Distinguish no candidate built from a correct partial interpretation pruned before completion. Grade the actually served realization and link it to the original member.
 6. Produce per-family, difficulty, database, and schema-width tables. Manually adjudicate a stratified sample of refusals, lenient-only answers, and both-incorrect answers against independent semantics.
 
+Start the manual audit with 60 existing DEV cases: 20 unanswered, 20 strict-wrong returned answers (include both lenient-only and both-wrong), and 20 strict-correct controls. Spread the cases across databases and difficulty strata, and include matching reproduced families where present. Run the independently reproduced S1–S6 fixtures separately; they are not all observed DEV serving failures. Report the sample as diagnostic, not an unbiased estimate of full-DEV performance. Expand the audit when a family lacks enough evidence to choose an intervention.
+
+Define these diagnostic counts after the same owned serving transformations:
+
+- `raw_correct`: a constructed/retained raw candidate matches the frozen comparator offline.
+- `realized_correct`: an actually realizable candidate matches after the owned finalization.
+- `admissible_correct`: a realized correct candidate satisfies the complete applicable production obligations and execution limits.
+- `served_correct`: the selected, finalized, executed answer matches.
+
+Report plans not constructed separately from plans observed and discarded. Logging a finite set of discarded drafts cannot prove that an unobserved correct plan was impossible. Keep evaluator error and gold-label conflicts as separate adjudication fields.
+
+After the shared binding record exists, run the following counterfactuals on the labeled diagnostic sample through the existing planner/evaluator only. Human/offline program annotations never enter serving or training from DEV.
+
+| Experiment | Fixed components | Changed diagnostic input | What it resolves |
+|---|---|---|---|
+| Current readings | Production code, bundle, data, budgets | None | Establish sample outcomes |
+| Correct semantic bindings | Same code, data, budgets, construction and selection rules | Independently annotated entity/operand/scope bindings | Which failures can be repaired by better readings under this search |
+| Binding ablations | Same code/data/weights/budgets | Remove one named signal channel at a time | Whether the current owner consumes useful evidence |
+| Search retention | Same readings and obligations | Predeclared bounded beam/retention settings | Which correct interpretations are lost through pruning versus missing grammar |
+| Candidate oracle | Same constructed/realized/admitted pool | Evaluator-only best-candidate scoring | Ranking headroom, not serving accuracy |
+
+Supplying correct bindings can also change enumeration/pruning, so its gain is not a pure estimate of encoder quality. Report which hypotheses it made constructible and where they still failed. If correct bindings do not permit a correct candidate, inspect construction/AST expressivity before training. If a correct candidate is rejected, repair the witness. If it is admissible but loses, repair deterministic selection.
+
 **Exit gate:** a complete per-question ledger whose counts sum to 1,034, with raw recall, finalized recall, complete-admissible recall, and top-1 separately defined. Diagnostic correctness only; do not call this an accuracy improvement. Avoid another full baseline run when the exact frozen inputs are already valid and no behavior changed.
 
 ### Package B — Repair false acceptances before widening coverage
 
-**Owners:** schema identity, constraint expansion, and query contract owners listed in section 4.
+**Owners:** `sql_expansion.py`, `sql_constraints.py`, `sql_extrema.py`, `query_contract.py`, and their existing consumers; schema identity remains in `sql_schema.py`.
 
-Implement 4.1–4.3 as coherent family changes. Add expected-answer and wrong-candidate tests before the fixes; exercise ordinary serving for identity/count cases and contract rejection for the scope counterexamples. Review every identity consumer and scope traversal branch. If correlated construction needs an AST capability not present, audit validation, traversal, renderer, and lowering before extending the existing typed representation.
+At `6263502`, preserve repaired F1–F5 and R1/R2/R3 examples as regression controls. Implement the remaining S1/S2/S3/S5 count family through sections 5.3–5.6, the S4 membership-population proof, and the S6 numeric-role fix. Do not repeat the already completed historical repairs merely because their old descriptions remain in section 4.
+
+Add independently derived expected-answer and wrong-candidate tests before the fixes. Exercise ordinary serving for count/range/ranking cases and contract rejection plus positive serving for membership cases. Migrate all count-reading callers together, including the numeric-literal classifier in `query_contract.py`; a split migration would still merge equal-bound requirements or misclassify their numbers.
+
+Review every affected scope traversal branch and identity consumer. If construction needs an AST capability not present, audit validation, traversal, renderer, and lowering before extending the existing typed representation. The current AST already has `SubquerySource`, `ScalarSubquery`, `ExistsPredicate`, and typed Boolean/membership nodes; missing construction should not be confused with a missing node.
 
 **Exit gate:** all independent positive/contrastive/negative semantics pass, with fresh whole-database transitions for each coherent behavior batch. Report newly refused wrong answers as safety improvements, not accuracy gains. Explain any frozen-gold loss from the country-count label defects explicitly. A new semantic refusal is incomplete as an accuracy fix if the correct expressible plan still needs to be constructed.
 
@@ -266,7 +460,7 @@ Implement 4.1–4.3 as coherent family changes. Add expected-answer and wrong-ca
 
 **Owners:** `query_contract.py`, `tables.py`, and existing expansion/role helpers.
 
-Work through the validated portion of the recorded 199 refused-with-correct-plan cases, and the 26 wrong-with-correct-plan-blocked cases. For each family, identify the exact unsatisfied obligation:
+Work through the validated portion of the refreshed ledger. The recorded 199 refused-with-correct-plan and 26 wrong-with-correct-plan-blocked counts are historical hypotheses, not certified current opportunities. For each family, identify the exact unsatisfied obligation:
 
 - Ordinary connective or noun wording: consume it through a structural reading that proves what it modifies; do not add it to a global ignored-word list.
 - Field appearing in the right nested relation: prove entity mapping and scope, then accept the witness. Mere presence anywhere in SQL remains insufficient.
@@ -281,7 +475,7 @@ Preserve the existing `_choose` behavior that can select a later complete candid
 
 **Owner:** `CandidateRanker`/`PoolSelection` in `sql_rank.py`, consumed by the same `TableQuery.select_query`.
 
-Validate the recorded 62 opportunities after finalization. Attach named binding/identity/population evidence to each alternative. Enforce established requirements before score-based selection; then prefer the best justified remaining interpretation with explicit stable tie-breakers. Inspect existing date, calculation, money-total, and duplication preferences together so one preference does not defeat another obligation.
+Validate selection opportunities after finalization in the refreshed ledger; the earlier count of 62 is historical. Attach named binding/identity/population evidence to each alternative. Enforce established requirements before score-based selection; then prefer the best justified remaining interpretation with explicit stable tie-breakers. Inspect existing date, calculation, money-total, and duplication preferences together so one preference does not defeat another obligation.
 
 Add contrasts where the wrong alternative executes successfully and has high lexical similarity. Do not learn an opaque selector over model-written SQL, adjust arbitrary weights to fit DEV IDs, or select whichever candidate matches gold. Test repeatability under different hash seeds and benign input permutations while respecting intentional active-source precedence.
 
@@ -291,7 +485,7 @@ Add contrasts where the wrong alternative executes successfully and has high lex
 
 **Owners:** `SQLSearcher`, `sql_expansion.py`, `sql_constraints.py`, `sql_recursive.py`, `sql_extrema.py`, and existing AST/grounding owners.
 
-Start with confirmed repeated-aggregate and ranked-cardinality repairs (4.4/4.5). Then select the largest remaining family from the 363 recorded no-correct-plan cases, rather than assuming all hard questions need one feature. Audit existing representability before adding nodes.
+Start with the current count/membership/ranking slice and remaining construction failures established by the refreshed ledger. Keep historical repeated-aggregate and ranking examples as controls where already repaired. The earlier 363 no-correct-plan cases indicate scale, not a certified current classification. Select the largest validated family rather than assuming all hard questions need one feature. Audit existing representability before adding nodes.
 
 | Family to classify | Deterministic construction direction | Required distinguishing data |
 |---|---|---|
@@ -314,11 +508,35 @@ Instrument where correct bindings or partial plans disappear. Use bounded divers
 
 First run gold-blind signal ablations with identical code/data/weights: exact schema evidence, grammatical binding evidence, and each named model signal. Determine whether correct operands/scopes are missing because a named signal is poor, because search never consumes it during enumeration, or because later code discards it. Reuse useful named evidence during bounded construction when appropriate; changing a weight cannot rescue an option never generated.
 
-If later explicitly authorized, run one controlled training experiment for a demonstrated named classification/relation deficit, such as counted entity, operation-to-operand binding, relation direction, membership polarity, or reference-population scope. Use independently labeled positives/negatives and database-disjoint evaluation; check actual separation from encoder training before calling a sample unseen. Preserve useful existing dimensions and measure downstream correctness, repeatability, latency, and memory.
+**Initial training hypothesis, if the diagnostic evidence supports it:** named occurrence-to-counted-entity and scope-binding scores, consumed by the same deterministic constructor and verifier, improve count-family correctness beyond the current broad cosine evidence. Other deficits require their own measured hypotheses; do not simultaneously change model size, every objective, and the search algorithm.
+
+Use the following experiment sequence after explicit training authorization and the repository's frozen experiment contract:
+
+1. **Label the missing information.** Begin with an annotation pilot of 200 independently specified non-DEV question/schema items covering counted entity, qualifying parent population, child-filter scope, membership population, and Boolean composition. This is a proposed pilot size, not an existing corpus or a claim of sufficient training data. Label occurrence spans, candidate schema objects, correct bindings, scope relationships, and distinguishing negatives. Independently audit answers and annotations; scale up only after auditing label quality and learning behavior.
+2. **Separate groups before generating paraphrases.** Split by source fixture/schema and composition/template provenance, provisionally 60% training, 20% calibration, 20% held-out evaluation at the group level. Record actual group/item counts and exposure to earlier training. Paraphrases, renamed schemas, and row perturbations of one fixture stay in its group. Reserve additional untouched schemas/compositions for the final generalization gate. A small or exposed holdout cannot justify a general accuracy claim.
+3. **Start with frozen representations.** Freeze the current Qwen/LoRA and existing relational encoder/readout parameters. Train only the new bounded named binding readout needed for the hypothesis. This tests whether the current representation already contains useful information; it does not expose a SQL-token vocabulary or score arbitrary SQL strings.
+4. **Use binding supervision.** Classify/rank occurrence-to-schema links and named scope relations, with matched hard negatives such as counting parent IDs instead of children, filtering the outer instead of inner population, and using the same bound over the wrong relationship. Joint binding correctness is the main offline metric, alongside per-channel metrics; AUC on individual coordinates alone is insufficient.
+5. **Test integration before increasing capacity.** Under the same code, inputs, budgets, and scorer, replace only the candidate evidence through the existing loader's explicit offline candidate directory. Compare encoder readings, construction recall, admission, and served correctness. If better readings are ignored or pruned, repair that consumer; do not train a larger model to conceal it.
+6. **Only then test representation adaptation if necessary.** If frozen-feature evidence remains weak despite sound labels and demonstrated oracle-binding headroom, preregister one separate experiment unfreezing specified LoRA/readout parameters. Retain replay and the existing property/intent/calculation gates so SQL binding cannot regress world typing, routing, or calculations. Changing backbone size is a further separate hypothesis, not part of this pilot.
+
+The proposed loss components are:
+
+```text
+frozen-readout pilot: named binding/link loss + named scope/relation loss
+
+later shared adaptation, if justified:
+    existing anchored property/intent/calculation losses
+  + weighted named binding/link loss
+  + weighted named scope/relation loss
+```
+
+Freeze loss weights, seeds, split, calibration policy, changed parameters, candidate directory, and stop conditions before a run. Choose coefficients using training/calibration data, not Spider DEV or the untouched test split. A structured contrast may penalize an incompatible combination of named bindings; it must not become an opaque learned score over complete SQL or a generator of whole ASTs.
+
+**Integration files to inspect before implementing a new channel:** `engine/encoder_model.py`, `engine/encoder_overlay.py`, `engine/sql_rank.py:SemanticSignals`, `engine/tables.py:ast_semantic_signals`, and `training/props/train_props_gpu.py`. The trainer imports `training/lib/relblock.py` and the existing packing/collation helpers under `training/train/`; audit their tensor/metadata contract too. Reuse one definition for newly shared output behavior rather than adding duplicate neural classes, loaders, or parallel training scripts. Preserve the existing promotion owner and bundle manifest.
 
 No SQL/AST token decoding or whole-plan generation. Candidate weights remain outside `engine/data/`; training and promotion each require their repository contracts and authorization. A larger model or new rewrite provider is not the first intervention.
 
-**Exit gate:** improvement on independent binding tests and integrated serving under unchanged comparison conditions. Loss reduction or DEV score alone does not justify promotion. This package is conditional, not part of the currently executed task.
+**Exit gate:** better joint bindings on the independently held-out groups, better integrated serving/candidate recall, all mandatory semantic controls and existing property/intent/calculation gates passing, and measured latency/memory within the preregistered envelope. Report absolute counts and uncertainty; loss reduction, coordinate AUC, or DEV score alone does not justify promotion. If the pilot fails, record the diagnosis and compact metrics, expire its unpromoted candidate, and choose the next measured bottleneck. This package is conditional, not part of the currently executed task.
 
 ### Package G — Demonstrate a durable advantage
 
@@ -360,7 +578,7 @@ Expected answers must be derived independently of the engine and cannot be copie
 - Search work, pool size, encode/search/check/execute timing, p50/p90/p95, memory, and machine/runtime conditions.
 - Commit, dirty state, source/input/schema/model/scorer fingerprints, flags, denominator, and complete per-question artifacts.
 
-Baseline difficulty is easy 133/248 strict, medium 172/446, hard 53/174, extra-hard 26/166. Coverage is 163, 260, 101, and 69 respectively. Improvements should report these strata so easy lexical rescues do not conceal stalled nested/entity semantics.
+The current `6263502` difficulty baseline is easy 137/248 strict, medium 170/446, hard 53/174, extra-hard 26/166. Coverage is 162, 259, 101, and 68 respectively. Improvements should report these strata so easy lexical rescues do not conceal stalled nested/entity semantics. Detailed earlier results in section 2 are explicitly historical.
 
 Mandatory semantic regressions must pass. Semantic hardening may reduce frozen-label accuracy where gold is wrong; record that honestly rather than applying an unconditional no-score-loss gate. For an accuracy package, require demonstrated net improvement on the intended independently checked family and overall transitions, with each meaningful loss investigated. A coverage-only increase or an unexplained correctness loss is not sufficient.
 
@@ -385,6 +603,24 @@ $accuracyOut = Join-Path $env:TEMP ('prereasoner-sql-accuracy-' + $accuracyTag)
 Run query-contract, numeric/calculation, deterministic-emitter, and request-budget tests when their owners change, and `tests.test_compose` for compose/routing interactions. Use the existing evaluator's `pool_oracle` only as a labeled diagnostic with its eligibility/finalization limits exposed. Use `--backend verify` on affected supported dual-emitter cases. `gold_tables` remains a labeled schema oracle, never the headline.
 
 Before repository-wide completion run the applicable `tests.run_all` checks, reporting unavailable live suites as skipped. Before a major production release run the documented live Postgres and deployed Chrome demo-dataset gates, including ordered follow-ups in both existing and fresh conversations. Planner accuracy tests do not replace those release checks.
+
+### 7.4 Proposed acceptance targets for the substantive accuracy work
+
+These targets are to make the engineering decision reviewable; they are not measurements, guaranteed gains, or authorization to train/promote. Freeze them with the actual change contract before an experiment. Do not withhold a sound correctness repair merely because it does not meet a larger accuracy target.
+
+| Gate | Proposed criterion | Interpretation |
+|---|---|---|
+| Measurement correctness | All 1,034 records reconcile; instrumentation leaves every served prediction unchanged | Diagnostics are usable, not an accuracy improvement |
+| Current semantic slice | All current S1–S6 reproductions and independent positive/contrastive/negative fixtures pass; search serves the expressible correct controls | Establish sounder reusable bindings, not just injected-AST acceptance |
+| Substantive first accuracy package | Target at least 20 net additional strict-correct answers out of 1,034, with every meaningful loss classified and independent family improvement | Approximately 1.9 percentage points; a proposed step beyond another four-answer patch, not a forecast |
+| Broadening coverage | Newly answered correct and wrong counts reported separately; qualifiers/population negatives remain rejected; reported precision has a denominator and uncertainty | No credit for coverage alone or merely passing lenient containment |
+| Construction | Higher finalized/admissible recall on the targeted missing-plan family at the same work budget, or a documented recall/resource tradeoff | Requires plans that were previously unavailable, not just reordered scores |
+| Selection | Higher capture of correct admissible plans with stable tie-breaks | Cannot repair absent plans |
+| Performance | Establish an isolated warm-request baseline first; proposed code-only envelope is p95 and peak request memory no more than 10% above it, with unchanged input/search contracts unless separately declared | A proposed budget, not a comparison against concurrent historical timing |
+| Determinism | Identical selected typed plans for identical inputs/configuration/weights under controlled numerical conditions; hash-seed and meaning-preserving perturbation controls pass | Never claim bitwise cross-hardware neural reproducibility without measuring it |
+| Durable advantage | Surpass the frozen point count and demonstrate an advantage on untouched schema/composition tests with paired uncertainty and resource reporting | DEV-driven tuning alone cannot establish superiority |
+
+Hardening that replaces a wrong answer with a refusal is valuable but contributes zero newly correct answers until construction recovers a correct plan. If the first package falls short of the substantive target, retain justified repairs and use the ledger to determine whether more construction or stronger readings are needed; do not relax obligations or tune against gold until the count rises.
 
 ## 8. Performance work that supports accuracy
 
@@ -428,14 +664,58 @@ Do not attach invented percentage gains or fixed dates to these milestones befor
 
 ## 10. First implementation batch
 
-The next coding batch should follow this concrete order:
+### 10.1 Concrete work queue at `6263502`
 
-1. Freeze the chosen source including any intended Claude edits; register the independently reproduced negatives and baseline expectations.
-2. Reconcile the existing candidate census with complete checks and serving finalization, then publish the baseline failure ledger. Known reproduced fixes need not wait for exhaustive manual adjudication of every remaining case.
-3. Correct entity identity/NULL-safe exclusion and count-unit construction in their owners; correct the misleading count-contract test.
-4. Add entity/membership correlation evidence to the existing scope verifier, preserving positive nested-scope behavior.
-5. Fix one high-yield witnessed-completeness family from that ledger; demonstrate correct rescues and preserved qualifier negatives.
-6. Repair repeated aggregate and top-N numeric-role construction using shared bindings, with ordinary serving regressions.
-7. Evaluate the coherent batch on all 1,034 questions, report paired transitions/candidate recall/resources, and choose the next family from measured remaining losses.
+This queue expands packages A–G rather than adding a competing plan. Each row is a coherent implementation/change contract; adjacent rows can be combined only when their shared caller migration requires it. No dates or effort estimates are justified before the diagnostic sample and implementation audit.
+
+| Work item | Production files/responsibility | Concrete deliverable | Completion evidence |
+|---|---|---|---|
+| 1. Freeze baseline and register failures | Existing provenance/evaluation owner; `tests/test_sql_ast.py`, `tests/test_query_contract.py` and applicable budget tests | Pin `6263502`, input/model/scorer/config hashes; turn S1–S6 into independently expected positive/contrastive/negative tests | Existing baseline artifacts verified; negatives fail for the documented reasons; no training or source behavior change |
+| 2. Fix candidate realization diagnostics | `sql_rank.py:PoolSelection`, `tables.py:select_query`, `query_contract.py`, `spider/probe/full_eval.py` | Expose the actual owned realization and complete per-candidate admission/witness states; refresh the full ledger; annotate the 60-case sample | Served outputs identical to baseline; raw/realized/admissible/served counts separated; every record reconciles |
+| 3. Preserve count occurrences and entities | `sql_expansion.py:CountThreshold/count_thresholds/counted_thresholds`; all `sql_constraints.py` and `query_contract.py` callers | Replace predicate-bound keys with occurrence/entity/scope-aware requirements; bind output subject separately from counted child | Equal-bound maker/airport requirements remain distinct; scalar/listing variants, distinct/value counts and omitted-condition negatives pass |
+| 4. Repair count construction and proof together | `sql_constraints.py`, `query_contract.py`, `sql_schema.py` facts; existing AST as needed | Parent-preserving zero-inclusive plans; exact bounded Boolean count proof; count-operand/contribution witness | S1/S2/S3/S5 pass; correct ranges constructed and served; wrong parent-key counts fail; proof work independent of threshold magnitude |
+| 5. Preserve membership populations | `query_contract.py:_binds` and recursive/constraint consumers | Correlation/key witness plus row-population preservation evidence; no unrequested aggregate collapse | S4 fails for wrong MAX/MIN collapse; identity membership, justified grouping, requested extrema and aliases remain supported |
+| 6. Bind numeric roles explicitly | `sql_extrema.py:ranking_cutoff`, base search and shared checking readers | Interpret cutoff from occurrence/field/scope evidence, including year-like values | S6 and 999/1000/1200/2999/3000 cutoff controls pass; actual year/ID/filter literals remain their proper roles |
+| 7. Run the first integrated evaluation | Existing suites and `spider/probe/full_eval.py`, same promoted bundle | Fresh full served evaluation, affected SQL/Python parity, paired transitions, recall and controlled resource measurements | No claim based on stale predictions; semantic suite passes; correct gains, hardening and performance tradeoffs separated |
+| 8. Diagnose correct-binding headroom | Existing search/readout integration and evaluator-only injection | Current-reading versus independently correct-binding runs on the annotated sample; inspect remaining no-plan cases | Classify recoverable reading deficits separately from construction, pruning, checking and ranking; do not call oracle success engine accuracy |
+| 9. Improve retention/one broader family | `SQLSearcher`, `CandidateRanker`, relevant existing expander and witnesses | Scope-diverse constrained expansion, or the highest-yield missing semantic family identified above | New realized/admissible correct candidates and served wins on both independent fixtures and full DEV; work-budget impact recorded |
+| 10. Run one named-reading experiment, only if justified and authorized | Existing encoder/readout, shared training pipeline and promotion gates in package F | Frozen-feature binding pilot; later adaptation only under a separate supported hypothesis | Holdout and integrated gates pass; candidate remains outside runtime until separately approved promotion |
+| 11. Demonstrate generalization | Existing evaluator/semantic suites and frozen reference comparison | Untouched schema/composition results, paired uncertainty, final accuracy/coverage/latency/memory report | Evidence beyond repaired DEV phrasings; no gold-informed serving or reference cherry-picking |
+
+For work item 4, benchmark count-proof inputs with the same formula shape and increasing literal magnitude, including 100, 1,000,000, and 1,000,000,000. Exact integer interval construction may have cost in the number of formula terms, but must not enumerate all possible counts up to the bound. A large literal must not monopolize Python before execution budgeting even starts.
+
+For work item 7, use the tests named in section 7.3 plus `tests.test_query_contract`, and run deterministic-emitter parity for affected supported operations. Run full repository/live gates when the change's scope requires them; the earlier 403 focused passes are not evidence for this future implementation. Documentation-only work does not rerun the expensive benchmark or claim those suites passed again.
+
+### 10.2 How the diagnostics choose the next investment
+
+```text
+No correct realized candidate:
+    independently correct bindings make one appear -> improve named readings/consumption
+    correct partial binding was observed then pruned -> repair retention within the existing search
+    correct bindings still produce no plan          -> extend deterministic construction/expressivity
+
+Correct realized candidate exists:
+    rejected for a false obligation failure         -> repair semantic witness/admission
+    fully admissible but loses                      -> repair deterministic ranking/selection
+    selected but changed incorrectly at finalization -> repair the owned transformation
+    correct plan executes incorrectly               -> repair execution/lowering and parity
+```
+
+Several causes can coexist. Label a primary loss stage and preserve secondary reasons; do not force every example into the final `completeness`/`constraints`/`ast_search` label or infer causality from that label alone. The purpose is to avoid another cycle of training an unused signal or changing weights when the right plan is missing.
+
+### 10.3 What would count as a major improvement
+
+The near-term deliverable is a reusable count/entity/scope binding and proof mechanism, followed by measured recovery and construction beyond the easy-question pairs. The medium-term deliverable is higher complete-admissible recall and selection capture across nested and multi-relation families. A model upgrade is only one possible intervention after those measurements.
+
+Track two decompositions, each with its actual denominator:
+
+```text
+strict accuracy = answered coverage × strict correctness among answered
+                = complete-admissible correct-plan recall × selection capture
+```
+
+The second equality requires the actual realized/admitted pool definition in section 9; raw pool recall is not interchangeable with it. As illustrative targets, 95% coverage at 90% answer correctness gives 85.5%, and 95% complete-admissible recall at 95% capture gives 90.25%. Neither is a predicted result. A coverage increase obtained by admitting wrong plans is not an accuracy gain; complete-admissible correct-plan recall counts only independently graded correct candidates offline. Selection cannot recover meanings the search never represents.
+
+Report progress as counts of newly correct, newly wrong, newly refused, and preserved answers, with family and difficulty strata. A major gain should include independent improvements on previously unsupported compositions, not just another collection of easy lexical rescues. The frozen reference point count of 872 requires at least 873 strict-correct answers to exceed it, followed by held-out evidence and uncertainty before claiming a broadly better system.
 
 The intended outcome is **more independently correct answers from the same interpretable deterministic engine**. Model-generated SQL, blanket refusal suppression, changed gold labels, and provider swapping would not satisfy this implementation plan.
