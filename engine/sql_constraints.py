@@ -63,12 +63,28 @@ from engine.sql_expansion import (
 from engine.sql_candidate import ScoredQuery
 
 
+def _meeting_counts(predicates: tuple[tuple[str, int], ...]) -> Predicate:
+    """The HAVING keeping the groups whose rows number as ``predicates`` ask: "more than 2" is COUNT(*) > 2."""
+    return and_predicates(tuple(Comparison(Aggregate("COUNT", Star()), operator, Literal(value, SQLType.INTEGER))
+                                for operator, value in predicates))
+
+
+def _failing_counts(predicates: tuple[tuple[str, int], ...]) -> Predicate:
+    """The HAVING keeping the groups whose rows number as ``predicates`` do not allow, which a NOT IN subtracts: "fewer
+    than 2" fails at 2 or more, "between 0 and 2" below 0 or above 2."""
+    complements = {**_COMPLEMENTS, "=": "!="}
+    failing = tuple(Comparison(Aggregate("COUNT", Star()), complements[operator], Literal(value, SQLType.INTEGER))
+                    for operator, value in predicates)
+    return failing[0] if len(failing) == 1 else BooleanExpr("OR", failing)
+
+
 class ConstraintQueryExpander(ExpansionSupport):
     """Add bounded candidates for Spider's remaining high-mass structures."""
 
     def expand(self, question: str, candidates: Sequence[ScoredQuery]) -> list[ScoredQuery]:
         generated: list[ScoredQuery] = []
         generated.extend(self._count_having_candidates(question, candidates))
+        generated.extend(self._requirement_candidates(question, candidates))
         generated.extend(self._aggregate_having_candidates(question, candidates))
         generated.extend(self._aggregate_threshold_candidates(question, candidates))
         generated.extend(self._or_candidates(question, candidates))
@@ -152,12 +168,7 @@ class ConstraintQueryExpander(ExpansionSupport):
                         group_options = self.group_options(
                             question, entity_table, counted_table, joins, projection_options[0]
                         )
-                        count = Aggregate("COUNT", Star())
-                        having_terms = tuple(
-                            Comparison(count, operator, Literal(value, SQLType.INTEGER))
-                            for operator, value in threshold.predicates
-                        )
-                        having = and_predicates(having_terms)
+                        having = _meeting_counts(threshold.predicates)
                         for selected_where, where_bonus in where_options:
                             filtered_projection = self.projection_options(
                                 question, entity_table, selected_where
@@ -233,21 +244,65 @@ class ConstraintQueryExpander(ExpansionSupport):
         is asked or ``key`` does not tell the entities apart in every row."""
         if not all(_count_admits(operator, value, 0) for operator, value in predicates):
             return None
-        schema_column = self.schema.column_map.get((key.table, key.name))
-        if schema_column is None or None in schema_column.values or not self.schema.identifies((key,)):
+        if not self.keys_every_row(key):
             return None
-        complements = {**_COMPLEMENTS, "=": "!="}
-        failing = tuple(Comparison(Aggregate("COUNT", Star()), complements[operator], Literal(value, SQLType.INTEGER))
-                        for operator, value in predicates)
         outside = [term for term in _and_terms(grouped.where)
                    if all(ref.table == entity_table for ref in column_refs(term))]
         inside = [term for term in _and_terms(grouped.where) if term not in outside]
         inner = replace(grouped, select=(SelectItem(key),), where=and_predicates(inside), group_by=(key,),
-                        having=failing[0] if len(failing) == 1 else BooleanExpr("OR", failing))
+                        having=_failing_counts(predicates))
         select = grouped.select if any(isinstance(item.expression, ColumnRef) for item in grouped.select) else (
             SelectItem(Aggregate("COUNT", Star())),)
         return SelectQuery(select=select, from_table=entity_table,
                            where=and_predicates([*outside, InPredicate(key, inner, negated=True)]))
+
+    def keys_every_row(self, key: ColumnRef) -> bool:
+        """Whether ``key`` holds a value in every row and tells the rows apart, as a NOT IN of it must."""
+        schema_column = self.schema.column_map.get((key.table, key.name))
+        return schema_column is not None and None not in schema_column.values and self.schema.identifies((key,))
+
+    def _requirement_candidates(
+        self, question: str, candidates: Sequence[ScoredQuery]
+    ) -> list[ScoredQuery]:
+        """The entities meeting every count the question requires of them, each count on its own table: "countries with
+        more than 1 car maker and more than 1 airport" are the countries IN the car makers' groups with more than 1 and
+        IN the airports' with more than 1. One grouped join of both tables counted pairs of them, and the two thresholds
+        were read as one (the review of 6263502, S3). A count admitting none keeps the entities NOT IN the groups
+        failing it. Built for an entity table every counted table refers to by a foreign key."""
+        tokens = _tokens(question)
+        requirements = _counted_thresholds(tokens, self.schema.tables)
+        if len(requirements) < 2:
+            return []
+        counts_qualifying = _top_level_count(tokens) and not _groups_requested(question)
+        out = []
+        for entity_table, entity_score in self.entity_tables(tokens, requirements[0][0])[:2]:
+            tests = []
+            for threshold, counted in requirements:
+                key = next((fk for fk in self.schema.foreign_keys if not fk.is_composite
+                            and fk.from_column.table == counted and fk.to_column.table == entity_table), None)
+                if key is None or counted == entity_table:
+                    break
+                admits_none = all(_count_admits(operator, value, 0) for operator, value in threshold.predicates)
+                if admits_none and not self.keys_every_row(key.to_column):
+                    break
+                inner = SelectQuery(select=(SelectItem(key.from_column),), from_table=counted,
+                                    group_by=(key.from_column,),
+                                    having=(_failing_counts if admits_none else _meeting_counts)(threshold.predicates))
+                tests.append(InPredicate(key.to_column, inner, negated=admits_none))
+            if len(tests) != len(requirements):
+                continue
+            projection = self.projection_options(question, entity_table, None)
+            select = (SelectItem(Aggregate("COUNT", Star())),) if counts_qualifying else (
+                projection[0] if projection else None)
+            if select is None:
+                continue
+            # It meets every requirement where a grouped candidate meets one, so it stays in the pool beside them.
+            score = 50.0 + entity_score + sum(threshold.strength for threshold, _ in requirements)
+            built = _candidate(SelectQuery(select=select, from_table=entity_table, where=and_predicates(tests)),
+                               score, ("constraint:having:count-requirements",))
+            if built is not None:
+                out.append(built)
+        return out
 
     def qualifying_count(self, grouped: SelectQuery, key: ColumnRef | None = None) -> SelectQuery:
         """The number of groups ``grouped`` keeps: "how many countries have more than 2 car makers" counts the

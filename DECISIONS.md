@@ -3115,3 +3115,22 @@ train 47). `sql_expansion.field_numbers` reads a "number" that ends a field's na
 numbers", "the staff number") as the field; `count_requested` takes the field names and leaves those out, and the
 search's aggregate cues and the ranker's question roles read the same positions, replacing their two separate
 readings (encoder mentions before the number, and any word of any field's name).
+
+## Count requirements are built as the check reads them; where correct plans are lost (2026-10-12)
+
+The check reads each count threshold the question states on its own (`counted_thresholds`), but construction built one
+threshold per candidate, so "countries with more than 1 car maker and more than 1 airport" was refused once the check
+stopped accepting one grouped join of both tables. `ConstraintQueryExpander._requirement_candidates` now builds, for an
+entity table every counted table refers to by a foreign key, one membership test per requirement: the entity's key
+IN the counted table's groups meeting it, or NOT IN the groups failing it when it admits none (`_meeting_counts`,
+`_failing_counts`, shared with `without_failing_groups` and the grouped count candidates). Each count reads only its own
+table, so no join repeats another's rows. No Spider DEV or held-out question states two count thresholds, so the
+benchmarks cannot move; the change closes the serving half of the review's S3.
+
+The review's plan (`release-review/sql-accuracy.md`, step 4) asked whether correct readings would make correct plans
+appear. An evaluation-only run with the encoder's role readings replaced by gold's (`spider/results/RESULTS.md`,
+2026-10-12) moved the choice before the completeness check 535 → 544 of 1,034 and pool recall 672 → 673: the readings
+reach only the ranker and the calculation expander, and candidate construction is lexical. The lost accuracy is in
+construction (362 questions with no strict-correct candidate) and in the completeness check (227 strict-correct
+candidates refused, 165 of them for an unread word), so the next accuracy work extends construction; a named-binding
+encoder head would pay only once construction consumes the readings it adds.

@@ -4822,6 +4822,36 @@ def test_how_many_entities_with_a_count_threshold_counts_the_ones_that_qualify()
         ["Ann", 18], ["Bo", 17]]
 
 
+def test_each_count_the_question_requires_is_met_on_its_own_rows():
+    """The review of 6263502 (S3): "countries with more than 1 car maker and more than 1 airport" read one threshold,
+    and the one grouped join of both tables counted pairs of them; once the check required a count for each, the
+    question was refused. The countries meeting both are IN the car makers' groups with more than 1 and IN the
+    airports' with more than 1, and a count admitting none subtracts the groups failing it."""
+    planner = _hermetic_planner()
+    cars = [{"name": "countries", "columns": ["CountryId", "CountryName"],
+             "rows": [[1, "usa"], [2, "japan"], [3, "chile"], [4, "peru"]]},
+            {"name": "car_makers", "columns": ["Id", "Maker", "Country"],
+             "rows": [[1, "ford", 1], [2, "gm", 1], [3, "tesla", 1], [4, "toyota", 2], [5, "cmc", 3], [6, "zz", 3]]},
+            {"name": "airports", "columns": ["AirportId", "Code", "Country"],
+             "rows": [[1, "JFK", 1], [2, "HND", 2], [3, "NRT", 2], [4, "SCL", 3], [5, "PMC", 3]]}]
+    keys = [{"from_table": "car_makers", "from_col": "Country", "to_table": "countries", "to_col": "CountryId"},
+            {"from_table": "airports", "from_col": "Country", "to_table": "countries", "to_col": "CountryId"}]
+
+    def answer(question):
+        served = planner.serve(cars, question, keys)
+        assert served.get("valid"), (question, served.get("error"), served.get("sql"))
+        return sorted(list(row) for row in served["result"]["rows"])
+
+    # usa has 3 car makers and 1 airport, japan 1 and 2, chile 2 and 2, peru none of either.
+    assert answer("Which countries have more than 1 car maker and more than 1 airport?") == [["chile"]]
+    assert answer("How many countries have more than 1 car maker and more than 1 airport?") == [[1]]
+    assert answer("Which countries have fewer than 2 car makers and more than 1 airport?") == [["japan"]]
+    assert answer("Which countries have at least 1 car maker and fewer than 2 airports?") == [["usa"]]
+    # Contrast: one requirement is met as before.
+    assert answer("Which countries have more than 1 car maker?") == [["chile"], ["usa"]]
+    assert answer("Which countries have fewer than 2 car makers?") == [["japan"], ["peru"]]
+
+
 def test_identity_for_an_exclusion_is_the_entitys_own():
     """The review of 2026-10-11 (F1): a column referring to a key that holds no value twice was taken to tell its own
     rows apart, so with a Majors table "the major and age of students who do not have a cat" subtracted (major, age)
@@ -5392,6 +5422,7 @@ TESTS = [
     test_rows_said_to_be_over_a_number_are_compared_by_their_money_measure,
     test_the_most_of_a_one_table_workbooks_rows_counts_them_per_group,
     test_how_many_entities_with_a_count_threshold_counts_the_ones_that_qualify,
+    test_each_count_the_question_requires_is_met_on_its_own_rows,
     test_identity_for_an_exclusion_is_the_entitys_own,
     test_a_ranking_keeps_the_rows_its_number_says_and_shows_them,
     test_each_coordinated_aggregate_word_takes_its_own_field,

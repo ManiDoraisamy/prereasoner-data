@@ -4,6 +4,28 @@ Dated entries come newest first. Each records a run at the commit it names; the 
 entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection arbiter`) may since have
 been removed, and that commit holds the code that ran.
 
+## Where correct plans are lost at `3563863`: pool census and gold role readings (2026-10-12)
+
+Evaluation-only, on the release commit `3563863` (clean worktree, runtime bundle `b11056f8…`, DEV 1,034, `whole_db`,
+cap 5,000): a census of every pool member (ran, grounded, violations, unread words, strict grade), joined with the
+served run `r126-dirty` (same code), and the same census with the encoder's role readings replaced by the gold SQL's.
+
+- Served-path ledger: 386 right; 59 wrong while a strict-correct candidate was eligible but ranked below; 27 wrong
+  while a strict-correct one was refused; 118 wrong with none built; 200 refused while a strict-correct one was
+  refused (165 by an unread word, 62 by a violation, some both); 244 refused with none built. A strict-correct
+  candidate is in the pool for 672 (65.0%), as the review's earlier census (671) found.
+- Of the 362 with none built, 139 are flat queries (no grouping, ordering, nesting or set operation), 125 group or
+  order, 40 nest a query and 38 are set operations.
+- Gold role readings (projection, aggregate, group, order and filter columns at 1.0, every other column 0.0; gold's
+  tables at 1.0): the choice before the completeness check is strict-correct for 535 → 544 (20 wins, 11 losses), and
+  the pool holds a strict-correct candidate for 672 → 673. The readings reach only the ranker and the calculation
+  expander; candidate construction is lexical (table scores and mentions), so perfect readings of this kind buy about
+  one point. The review's step 4 asked whether correct bindings make a correct plan appear: they do not. The
+  missing plans are construction's (362) and the completeness check's (227 refused right ones).
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/census_3563863/` and `oracle_3563863/` (with the
+evaluation-only scripts `census.py`, `oracle_bindings.py`, `served_ledger.py`, `replay.py`).
+
 ## Two reviews' count and membership gaps fixed: 382 → 386 strict, Gemini on 465 → 471, held out 249 → 255 (2026-10-12)
 
 Same contract as the entries below: `whole_db`, `served`, SQL backend, row cap 5,000, 12 s budget, runtime bundle

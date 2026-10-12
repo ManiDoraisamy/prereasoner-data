@@ -363,7 +363,8 @@ total amount", is the measure the groups are ranked by and asks no grain) and as
 of the rows: a
 comparison may sit in either branch of an INTERSECT, in an OR or a UNION only of alternatives the question offers, in
 a HAVING COUNT for a threshold on counted rows (the only place a number the name of a table follows is met: "more
-than 1 car maker", `sql_expansion.counted_thresholds`, each threshold stated needing its own count; the HAVING is
+than 1 car maker", `sql_expansion.counted_thresholds`, each threshold stated needing its own count, which
+construction builds as one membership test per requirement, `ConstraintQueryExpander._requirement_candidates`; the HAVING is
 read as a formula, AND and OR, of the counts of the counted rows, COUNT(*) or a column of theirs, a distinct one
 telling them apart, and must admit the same numbers of rows, tried at the boundaries its bounds make, over the
 counted table without joins that repeat its rows or groups that hold its key; one admitting none, "fewer than 2",
