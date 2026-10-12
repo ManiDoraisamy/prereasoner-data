@@ -4,6 +4,28 @@ Dated entries come newest first. Each records a run at the commit it names; the 
 entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection arbiter`) may since have
 been removed, and that commit holds the code that ran.
 
+## A number of a numeric field, all the information, "equal to" and "record": 493 → 497 strict, Gemini on 576 → 592, held out 324 → 335, fresh holdout 329 → 334 (2026-10-13)
+
+Same contract as below. Runs `pkgR-dirty`, `pkgR-gemini-dirty`, `heldout-pkgR-dirty` and `holdout2-pkgR-dirty` are
+`e709851` (what production serves) with this change, against the `pkgQ` runs of the entry below. The change is
+`DECISIONS.md` "A number of a numeric field, all the information, "equal to" and "record" read".
+
+- DEV, engine alone: 493 → **497 strict (48.1%)**, 543 → 546 lenient, 701 → 704 answered; 4 wins (291, 292, 657, 809), no
+  loss; wrong answers 208 → 207; 6 queries changed. All 3 newly answered are strict-correct.
+- Gemini on (313 rewordings replayed from the cache, 17 fetched live): 576 → **592 strict**, 647 → 668 lenient, 839 →
+  863 answered; 16 wins, no loss; wrong answers 263 → 271: of 24 newly answered, 15 are strict-correct. "Equal to" read
+  lets rewordings that say it through, and some answer wrongly elsewhere.
+- Held out: 324 → **335 strict**, 378 → 386 lenient, 581 → 588 answered; 11 wins (30, 79, 147, 288, 367, 598, 633, 706,
+  790, 806, 848), no loss; wrong answers 257 → 253; all 7 newly answered are strict-correct.
+- Fresh holdout: 329 → **334 strict**, 384 → 387 lenient, 587 → 591 answered; 5 wins (14, 167, 168, 427, 864), no loss
+  (167, "the top 3 prominence", lost in the change below, is back); wrong answers 258 → 257; of 4 newly answered, 2 are
+  strict-correct (531 shows an enzyme's name for the medicines' "FDA record", 824 compares a missing department number
+  where gold compares the text 'null').
+- Census replays (evaluation-only) before the full runs: DEV 508 → 512 (4 wins, no loss), held out 329 → 340 (11 wins,
+  no loss).
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_{pkgR,pkgR-gemini,heldout-pkgR,holdout2-pkgR}-dirty.json`.
+
 ## Full names, fields asked by their owner, counting words, plain-English rewordings: 471 → 493 strict, Gemini on 538 → 576, held out 304 → 324, fresh holdout 306 → 329 (2026-10-12)
 
 Same contract as below. Runs `pkgQ-dirty`, `pkgQ2-gemini-dirty`, `heldout-pkgQ-dirty` and `holdout2-pkgQ-dirty` are

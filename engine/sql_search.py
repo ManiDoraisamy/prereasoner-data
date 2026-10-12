@@ -697,7 +697,7 @@ class SQLSearcher:
     def _aggregate_choices(self, tokens: tuple[str, ...], mentions: tuple[_Mention, ...],
                            question: str) -> list[tuple[tuple, float, tuple[str, ...]]]:
         cues: list[tuple[str, int]] = []
-        labels = field_numbers(question, (column.ref.name for column in self.schema.columns))
+        labels = field_numbers(question, (column.ref for column in self.schema.columns))
         for i, token in enumerate(tokens):
             if token in {"count", "counts"} or (
                 token == "number"
@@ -779,7 +779,7 @@ class SQLSearcher:
                 for word in name_words(option.column.name)
             }
             money_total = money_total_position(
-                tokens, table_words, count_requested(question, (column.ref.name for column in self.schema.columns)))
+                tokens, table_words, count_requested(question, (column.ref for column in self.schema.columns)))
             for measure in implicit_sum_measures(tokens):
                 word = tokens[measure.position]
                 if not measure.participle and (
@@ -1405,8 +1405,12 @@ class SQLSearcher:
         # A number beside the name of a numeric field is that field's value: "the high schoolers in grade 10", "the
         # cars with 4 cylinders", "a cat that is age 3" (Spider DEV 870, 117, 83, 2026-10-12: the number went unread
         # and no reading compared it).
+        # A number a ranking word keeps rows by is its cutoff, not a value: "the mountains with the top 3 prominence"
+        # (fresh holdout of Spider train 167, 2026-10-12: Prominence was compared with 3).
         for index, token in enumerate(tokens):
             if index in used_numbers or index in claimed or not NUMBER_TEXT.match(token):
+                continue
+            if index and tokens[index - 1] in {"top", "bottom", "first", "last"}:
                 continue
             beside = _unique_columns(tuple(
                 option.column for mention in mentions for option in mention.options
@@ -1835,6 +1839,12 @@ def _named_at(tokens: tuple[str, ...], column: ColumnRef) -> int:
     end = len(tokens)
     name = name_part_words(column.name) or tuple(canon(word) for word in name_words(column.name))
     size = len(name)
+    # "The full name" holds the first name at "full" and the last at "name" (SQLSearcher._full_names), wherever else
+    # the question says a part: "the ids and full names ... with a first name that contains the letter T" listed the
+    # last name first (fresh holdout of Spider train 217, 2026-10-12).
+    full = next((index for index in range(end - 1) if tokens[index:index + 2] == ("full", "name")), None)
+    if full is not None and size == 2 and name[0] in {"first", "last"} and name[1] == "name":
+        return full if name[0] == "first" else full + 1
     said = next((start for start in range(end - size + 1) if tokens[start:start + size] == name), None)
     if said is not None:
         return said

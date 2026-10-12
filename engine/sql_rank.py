@@ -448,7 +448,7 @@ class CandidateRanker:
 def analyze_question(question: str, schema: SchemaGraph) -> QuestionRoles:
     tokens = _tokens(question)
     aggregate_positions: dict[str, list[int]] = {fn: [] for fn in ("COUNT", "SUM", "AVG", "MIN", "MAX")}
-    labels = field_numbers(question, (column.ref.name for column in schema.columns))
+    labels = field_numbers(question, (column.ref for column in schema.columns))
     for i, token in enumerate(tokens):
         if (
             token == "count"

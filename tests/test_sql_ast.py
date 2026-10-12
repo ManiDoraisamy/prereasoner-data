@@ -3831,6 +3831,9 @@ def test_a_full_name_is_a_first_and_a_last_name_unless_a_field_is_named_so():
                "rows": [[1, "Lee", "Ann", 19], [2, "Ng", "Bo", 21]]}
     listed = best("Find the first name and age of all students.", [student])
     assert execute([student], listed.sql)[0] == ("Ann", 19), listed.sql
+    # "The ids and full names" lists the first name before the last (fresh holdout of Spider train 217).
+    named = best("What are the ids and full names of employees whose first name contains the letter A?", [employee])
+    assert execute([employee], named.sql)[0][:3] == (1, "Ann", "Lee"), named.sql
 
 
 def test_groups_list_each_value_once_and_count_more_than_their_own_value():
@@ -3905,6 +3908,11 @@ def test_a_number_beside_a_field_and_an_order_of_a_field_are_read():
     # Contrast: a ranking's number stands beside no field's name and keeps that many rows.
     top = best("Show the names of the top 2 high schoolers by grade.", [students])
     assert len(execute([students], top.sql)) >= 2 and "= 2" not in top.sql, top.sql
+    # Nor is a number right after "top" beside a field's name (fresh holdout of Spider train 167).
+    mountain = {"name": "mountain", "columns": ["Mountain_ID", "Name", "Range", "Prominence"],
+                "rows": [[1, "A", "Alps", 3], [2, "B", "Andes", 900], [3, "C", "Rockies", 700], [4, "D", "Urals", 500]]}
+    ranges = best("List the distinct ranges of the mountains with the top 3 prominence.", [mountain])
+    assert "= 3" not in ranges.sql and len(execute([mountain], ranges.sql)) == 3, ranges.sql
     players ={"name": "players", "columns": ["player_id", "first_name", "birth_date"],
                "rows": [[1, "Zed", "1990-05-01"], [2, "Amy", "1985-01-02"], [3, "Bob", "2000-03-04"]]}
     ordered = best("List the first name of all players in the order of birth date.", [players])
@@ -4022,6 +4030,12 @@ def test_a_field_asked_by_its_whole_name_its_owner_or_an_alias_is_used():
         Join("Dogs", ColumnRef("Dogs", "breed_code", SQLType.TEXT), ColumnRef("Breeds", "breed_code", SQLType.TEXT)),),
         group_by=(breed_name,), order_by=(OrderTerm(Aggregate("COUNT", Star()), "DESC"),), limit=1)
     assert not unused("What is the name of the breed with the most dogs?", breed, [owners, breeds, dogs], dog_keys)
+    # Contrast: the dogs' names are not the breed's name, though the question names the breed too (DEV 954).
+    rare = Comparison(ColumnRef("Breeds", "breed_code", SQLType.TEXT), "=", Literal("BUL"))
+    by_breed = SelectQuery((SelectItem(breed_name),), "Breeds", joins=(
+        Join("Dogs", ColumnRef("Dogs", "breed_code", SQLType.TEXT), ColumnRef("Breeds", "breed_code", SQLType.TEXT)),),
+        where=rare)
+    assert unused("List the names of the dogs of the rarest breed.", by_breed, [owners, breeds, dogs], dog_keys)
     student = {"name": "Highschooler", "columns": ["ID", "name"], "rows": [[1, "Kyle"], [2, "Ann"]]}
     friend = {"name": "Friend", "columns": ["student_id", "friend_id"], "rows": [[1, 2]]}
     friends = SelectQuery((SelectItem(ColumnRef("related", "name", SQLType.TEXT)),), "Friend", from_alias="relation",
@@ -4075,6 +4089,13 @@ def test_words_saying_how_rows_are_counted_are_read_by_a_count():
 
     assert "shared" not in unread("Show the hometowns shared by at least two teachers.", shared)
     assert "records" not in unread("Show the hometown that has at least two records.", shared)
+    # "Record" after a read table's name names its rows (held-out train 598); after another word it stays unread.
+    trip = {"name": "trip", "columns": ["id", "bike_id"], "rows": [[1, 7], [2, 7], [3, 9]]}
+    bikes = SelectQuery((SelectItem(Aggregate("COUNT", ColumnRef("trip", "bike_id", SQLType.INTEGER), distinct=True)),),
+                        "trip")
+    trips = SchemaGraph.from_tables([trip], ())
+    assert "record" not in unread("From the trip record, find the number of unique bikes.", bikes, trips)
+    assert "record" in unread("From the latest record, find the number of unique bikes.", bikes, trips)
     # Contrast: no count follows "by", or the query counts nothing.
     assert "shared" in unread("Show the hometowns shared by teachers.", shared)
     listing = SelectQuery((SelectItem(hometown),), "teacher", distinct=True)
@@ -4134,6 +4155,57 @@ def test_a_question_asking_how_many_is_answered_by_a_count():
         assert uncounted not in constraint_violations(question, counted, graph), question
     # Negative: a question that opens with another word asks no count.
     assert uncounted not in constraint_violations("Countries of the friends of Kyle.", listed, graph)
+
+
+def test_a_number_of_a_numeric_field_is_the_field():
+    """Held-out Spider train 633, 30, 2026-10-12: "the average, maximum, and minimum number of floors for all
+    buildings" counted the buildings beside the aggregates of Floors, and "the crime rates of counties in ascending
+    order of number of police officers" counted counties per crime rate: a "number of" before a numeric field's whole
+    name is that field (sql_expansion.field_numbers). A text field's name ("the number of countries" beside Country)
+    and a table's ("the number of visits") are still counts."""
+    from engine.sql_expansion import count_requested, field_numbers
+    building = {"name": "building", "columns": ["building_id", "Name", "Floors"],
+                "rows": [[1, "A", 10], [2, "B", 30], [3, "C", 20]]}
+    served = _hermetic_planner().serve([building], "What are the average, maximum, and minimum number of floors for all "
+                                                   "buildings?", [])
+    assert served.get("valid"), (served.get("error"), served.get("sql"))
+    assert [list(row) for row in served["result"]["rows"]] == [[20.0, 30, 10]], served.get("sql")
+    county = {"name": "county_public_safety", "columns": ["County_ID", "Name", "Police_officers", "Crime_rate"],
+              "rows": [[1, "A", 90, 50.0], [2, "B", 10, 80.0], [3, "C", 40, 70.0]]}
+    ordered = _hermetic_planner().serve([county], "Show the crime rates of counties in ascending order of number of "
+                                                  "police officers.", [])
+    assert [list(row) for row in ordered["result"]["rows"]] == [[80.0], [70.0], [50.0]], ordered.get("sql")
+    graph = SchemaGraph.from_tables([county], ())
+    fields = [column.ref for column in graph.columns]
+    assert field_numbers("the order of number of police officers", fields) == {3}
+    assert not count_requested("in ascending order of number of police officers", fields)
+    # Contrast: a text field's name and a table's are counted; a name alone says no type.
+    country = {"name": "people", "columns": ["id", "Name", "Country"], "rows": [[1, "Ann", "France"]]}
+    people = SchemaGraph.from_tables([country], ())
+    assert count_requested("the number of countries", [column.ref for column in people.columns])
+    assert count_requested("the number of visits", [column.ref for column in graph.columns])
+    assert count_requested("the number of police officers", ["Police_officers"])
+    # A table's name counts its rows though an integer key shares it (Spider DEV 88).
+    continents = {"name": "continents", "columns": ["ContId", "Continent"], "rows": [[1, "asia"]]}
+    countries = {"name": "countries", "columns": ["CountryId", "CountryName", "Continent"], "rows": [[1, "japan", 1]]}
+    keyed = SchemaGraph.from_tables([continents, countries], [("countries", "Continent", "continents", "ContId")])
+    assert count_requested("What is the number of continents?", [column.ref for column in keyed.columns])
+
+
+def test_equal_to_is_read_by_a_comparison_for_equality():
+    """Spider DEV, 2026-10-12: "whose Country is equal to 'France'" left "equal" unread over a query comparing Country
+    with 'France', and 42 Gemini rewordings were refused for it. A query that compares nothing leaves it unread."""
+    from engine.query_contract import read_question
+    people = {"name": "people", "columns": ["id", "Name", "Country"], "rows": [[1, "Ann", "France"], [2, "Bo", "Spain"]]}
+    graph = SchemaGraph.from_tables([people], ())
+    name = SelectItem(ColumnRef("people", "Name", SQLType.TEXT))
+    french = SelectQuery((name,), "people",
+                         where=Comparison(ColumnRef("people", "Country", SQLType.TEXT), "=", Literal("France")))
+    question = "Show the Name of people whose Country is equal to 'France'."
+    assert "equal" not in read_question(question, ScoredQuery(french, render_query(french), 0.0, ()), graph).unread
+    everyone = SelectQuery((name,), "people")
+    assert "equal" in read_question("Show the Name of people whose number is equal to their rank.",
+                                    ScoredQuery(everyone, render_query(everyone), 0.0, ()), graph).unread
 
 
 def test_one_aggregate_word_over_coordinated_fields_takes_each():
@@ -5947,6 +6019,8 @@ TESTS = [
     test_words_saying_how_rows_are_counted_are_read_by_a_count,
     test_an_aggregate_said_only_in_a_condition_is_not_shown,
     test_a_question_asking_how_many_is_answered_by_a_count,
+    test_a_number_of_a_numeric_field_is_the_field,
+    test_equal_to_is_read_by_a_comparison_for_equality,
     test_one_aggregate_word_over_coordinated_fields_takes_each,
     test_by_after_a_participle_names_who_acted,
     test_multiple_aggregates_share_a_typed_operand,

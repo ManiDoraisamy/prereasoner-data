@@ -328,10 +328,12 @@ The own-data path serves one typed SQL AST chosen from the deterministic search'
    through any treatment"), a count beside a comparison with the average counts the rows on its side,
    in the groups the table's own field makes ("the number of cities in each district whose population
    is greater than the average"; `sql_expansion.average_comparison`), and a number said beside a
-   numeric field's name is that field's value ("high schoolers in grade 10", "a cat that is age 3").
+   numeric field's name is that field's value ("high schoolers in grade 10", "a cat that is age 3"),
+   unless a ranking word keeps the rows by it ("the mountains with the top 3 prominence").
    "The full name" of rows holding a first and a last name is both fields, unless a field is named
    for it (`SQLSearcher._full_names`); a name's part a field abbreviates is listed where the question
-   says its two words ("the first name and age" lists Fname first). A field the question compares
+   says its two words ("the first name and age" lists Fname first), and "the full name" lists the first name before the
+   last, wherever else the question says a part. A field the question compares
    before naming it ("projects that require between 100 and 300 hours") or picks the row by after
    "with the highest" is not shown, nor an aggregate it says only in a relative clause keeping the
    groups ("the studios whose average gross is above 4500000"), for which the search builds the
@@ -388,6 +390,9 @@ that begin the name of a table it reads are read ("the high school student" by H
 names a read field by ("gender" by Sex, `sql_expansion.column_matches`), "the full name" by a first and a last name of
 one table, and a word saying how rows are counted by a query counting them: "times" and "records" after a word of a
 count, and a verb a count follows after "by" ("the hometowns shared by at least two teachers") by one that groups them.
+"Equal to" is read by a query comparing for equality, "record" after the name of a table or field the query reads
+names its rows ("from the trip record"), and the words of a request for every field ("all the information") by a
+query showing every field of its table.
 
 The constraint check (`engine/query_contract.constraint_violations`) judges a set query branch by branch for the
 result's shape (aggregates, projection, ordering, grain; a field an aggregate word takes, as in "top 2 cities by
@@ -416,7 +421,11 @@ answers the rows the question's opening names, after a command it opens with ("w
 flights"): it shows a field of such a table, of one a foreign key joins to it, or a key referring to it
 (`query_contract._asked_tables`), so airport names do not answer for airlines. A "number"
 ending a field's name ("the phone number") asks for the field, not a count (`sql_expansion.field_numbers`, read by
-`count_requested`, the search's aggregate cues and the ranker's question roles). A threshold on an aggregate a thing has ("customers with a total amount
+`count_requested`, the search's aggregate cues and the ranker's question roles), and so does a "number of" before a
+numeric field's whole name ("the maximum number of floors", "in order of number of police officers"), the fields'
+types coming from the schema; a table's name or a text field's after it is still counted. "All the information about
+hiring", "all the details", "all columns" ask for every field (`sql_expansion.complete_projection_requested`), and a
+superlative states the cutoff such an answer may keep. A threshold on an aggregate a thing has ("customers with a total amount
 over 10", `ExpansionSupport.aggregate_thresholds`) is met only on that aggregate, and a filter moves into a HAVING
 only where the aggregate's word stands before its field's name near the number ("whose average life expectancy is
 longer than 72", not "the average weight of the cars with 4 cylinders"). An average the rows are compared with
@@ -440,8 +449,8 @@ else the entity's key, filled in every row, NOT IN the related rows'.
 A field's name inside a longer field's name the question also says ("the name of the song" is `Song_Name`) or
 inside a table's name the query reads ("car makers") asks for that longer field or table: said together and in order
 ("first name and last name") whatever other table holds the shorter name, said apart where the longer field's table
-is the one the question names as the owner after "of" ("the name of the breed", `query_contract._owner_tables`) or
-the rows it asks for; a camel-cased name split further needs one of those ("at least 2 models ... the id" is no
+is the one the question names as the owner after "of" ("the name of the breed", `query_contract._owner_tables`) or,
+where it names none, the rows it asks for; a camel-cased name split further needs one of those ("at least 2 models ... the id" is no
 ModelId). A field named as its table answers "the names of orchestras", and a self-join's shown field is its table's.
 A question opening "how many" or "count" is answered by an aggregate, never a listing. The column an aggregate phrase
 names most fully ("the total amount", "the total estimated amount") is its operand

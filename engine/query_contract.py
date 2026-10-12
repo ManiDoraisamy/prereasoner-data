@@ -535,7 +535,9 @@ def _select_violations(question, query, graph, whole):
         label_words = set(label.split())
         named_holders = {named.table for named in refs if named.table in whole.referenced_tables()
                          and ' ' + ' '.join(canon(word) for word in lexical_words(named.table)) + ' ' in question_text}
-        owners = _owner_tables(label.split(), question_tokens, graph) | asked_tables
+        # The owner the question names after "of" decides; the rows it asks for only where it names none: "the names
+        # of the dogs of the rarest breed" asks for the dogs' names, not breed_name (Spider DEV 954, 2026-10-12).
+        owners = _owner_tables(label.split(), question_tokens, graph) or asked_tables
 
         def longer(ref):
             words = _name_vocabulary((ref.name,))
@@ -607,7 +609,10 @@ def _select_violations(question, query, graph, whole):
         required = {column.ref for column in graph.columns if column.ref.table == query.from_table}
         if not any(isinstance(item.expression, Star) for item in query.select) and not required <= projected:
             violations.append('showing all rows must preserve every source column')
-        if query.limit is not None:
+        # A superlative states its cutoff: "all information on the airport that has the largest number of
+        # international passengers" keeps one row (held-out Spider train 297, 2026-10-12).
+        from engine.sql_extrema import MAX_CUES, MIN_CUES
+        if query.limit is not None and not set(question_tokens) & (MAX_CUES | MIN_CUES | {"top"}):
             violations.append('showing all rows must not impose an unstated row cutoff')
     # A text the question asks values to hold is a LIKE, not one value: a rewording that turned "all
     # inspection checklist" into the keyword 'inspection checklist' answered for one of 38 (2026-10-06).
@@ -1085,6 +1090,10 @@ def read_question(question, candidate, graph, *, calculation_satisfied=False):
             "over", "under", "above", "below", "greater", "less", "more", "fewer",
             "than", "least", "most", "at",
         })
+    # "Equal to" is read by a query comparing for equality: "whose Country is equal to 'France'" (Spider DEV,
+    # 2026-10-12: 42 of 55 Gemini rewordings refused for an unread word said "equal to").
+    if _compares_for_equality(candidate.query):
+        ordinary_words.add("equal")
     observed = cell_words(graph)
     ordinary_words.update(canon(word) for word in closed_class_words(question))
     ordinary_words.update(relational_operator_evidence(question, candidate.query, graph)[0])
@@ -1144,6 +1153,11 @@ def read_question(question, candidate, graph, *, calculation_satisfied=False):
     # The words of an order instruction are read by a query that orders its rows: "sorted", "in descending order".
     # "Alphabetical" is read only by an order on a text field, in the direction asked: "in reverse alphabetical order"
     # is Z to A.
+    # "All the information about hiring" and "all the details of employees" are read by a query showing every field
+    # of a table it reads (held-out Spider train 147, 848, 2026-10-12).
+    from engine.sql_expansion import complete_projection_requested
+    if complete_projection_requested(question) and _shows_every_field(candidate.query, graph):
+        ordinary_words.update({"information", "info", "detail", "data", "column", "field", "attribute"})
     if _orders_rows(candidate.query):
         ordinary_words.update(_ORDERING_WORDS)
         reverse = bool(set(words) & REVERSE_ORDER_WORDS)
@@ -1193,6 +1207,35 @@ def read_question(question, candidate, graph, *, calculation_satisfied=False):
     explicitly_all_fields = complete_projection_requested(question)
     return Reading(unread, named,
                    has_star(candidate.query) and bool(requested_fields) and not explicitly_all_fields)
+
+
+def _compares_for_equality(query):
+    """Whether ``query`` compares a field with "=", "!=" or "<>" anywhere."""
+    from engine.sql_ast import Comparison
+    from dataclasses import fields, is_dataclass
+
+    def found(value):
+        if isinstance(value, Comparison) and value.operator in {"=", "!=", "<>"}:
+            return True
+        if is_dataclass(value):
+            return any(found(getattr(value, field.name)) for field in fields(value))
+        if isinstance(value, (tuple, list)):
+            return any(found(item) for item in value)
+        return False
+
+    return found(query)
+
+
+def _shows_every_field(query, graph):
+    """Whether ``query`` shows every field of the table it reads first: all of them, or a star."""
+    from engine.sql_ast import ColumnRef, SelectQuery, Star
+    if not isinstance(query, SelectQuery):
+        return False
+    if any(isinstance(item.expression, Star) for item in query.select):
+        return True
+    shown = {item.expression for item in query.select if isinstance(item.expression, ColumnRef)}
+    fields = {column.ref for column in graph.columns if column.ref.table == query.from_table}
+    return bool(fields) and fields <= shown
 
 
 # The words that end the opening of a question, where it says which rows it asks for: "what are airlines | that have
@@ -1250,10 +1293,12 @@ def _witnessed_words(question, words, query, graph, observed, schema_words, alre
     - a word saying how rows are counted, by a query counting rows (``_counts_rows``): "times" and "records" after a
       word of a count ("the most times", "at least two records"), and a verb a count follows after "by" by one that
       groups the rows it counts ("the hometowns shared by at least two teachers", "the record company used by the
-      greatest number of orchestras").
+      greatest number of orchestras");
+    - "record" after the name of a table or field the query reads: "from the trip record".
 
-    Spider DEV, 2026-10-12: the last two, with two-word names (read_question), read 22 more right answers and 8 wrong
-    ones, each wrong for another reason (a field the question asks for left out, a count read as a listing).
+    Spider DEV, 2026-10-12: the stem and "one" readings, with two-word names (read_question), read 22 more right
+    answers and 8 wrong ones, each wrong for another reason (a field the question asks for left out, a count read as a
+    listing).
 
     None is read where the data holds it as a value or a field is named for it: "orders returned by Alice" over a
     status holding 'Returned' still asks for that status."""
@@ -1319,6 +1364,11 @@ def _witnessed_words(question, words, query, graph, observed, schema_words, alre
                 if places and all(list(words[place + 1:place + 2]) == ["by"]
                                   and set(words[place + 2:place + 6]) & _COUNT_WORDS for place in places):
                     out.add(word)
+    # "Record" after the name of a table or field the query reads names its rows: "from the trip record", "teams that do
+    # not have match season record" (held-out Spider train 288, 598, 806, 2026-10-12).
+    places = [index for index, said in enumerate(words) if said == "record"]
+    if places and all(place and words[place - 1] in read_names for place in places):
+        out.add("record")
     places = [index for index, said in enumerate(words) if said == "one"]
     determiners = {canon(word) for word in _PRONOUN_DETERMINERS}
     if places and all(place and words[place - 1] in determiners for place in places):

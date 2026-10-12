@@ -490,7 +490,7 @@ class ExtremaQueryExpander(ExpansionSupport):
         # pet" asks an aggregate of those rows, which an EXCEPT of their values cannot carry (it would average
         # distinct ages): the anti-join that keeps the aggregate answers it (engine/sql_recursive.py). Spider
         # DEV, 2026-10-02: 17 of the 40 differences that won over gold dropped such an aggregate.
-        if _count_requested(question, (column.ref.name for column in self.schema.columns)) or _asks_aggregate(tokens):
+        if _count_requested(question, (column.ref for column in self.schema.columns)) or _asks_aggregate(tokens):
             return []
         # A row's own value the question denies is an inequality, not a difference: "the teachers whose
         # hometown is not Little Lever Urban District", "the tv channels that do not use English" (Spider

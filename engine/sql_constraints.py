@@ -745,7 +745,7 @@ class ConstraintQueryExpander(ExpansionSupport):
                         limit=1,
                     )
                     select = (SelectItem(Aggregate("COUNT", Star())),) if _count_requested(
-                        question, (column.ref.name for column in self.schema.columns)) else (
+                        question, (column.ref for column in self.schema.columns)) else (
                         SelectItem(self.schema.display_columns(table)[0]),
                     )
                     outer = SelectQuery(
@@ -959,7 +959,7 @@ class ConstraintQueryExpander(ExpansionSupport):
             item.expression for item in query.select if isinstance(item.expression, Aggregate)
         ]
         if aggregates:
-            if _count_requested(question, (column.ref.name for column in self.schema.columns)):
+            if _count_requested(question, (column.ref for column in self.schema.columns)):
                 count = next((aggregate for aggregate in aggregates if aggregate.function == "COUNT"), None)
                 return [((SelectItem(count or Aggregate("COUNT", Star())),), 3.0)]
             function_cues = {
@@ -1025,7 +1025,7 @@ class ConstraintQueryExpander(ExpansionSupport):
             return []
 
         select_options = []
-        if _count_requested(question, (column.ref.name for column in self.schema.columns)):
+        if _count_requested(question, (column.ref for column in self.schema.columns)):
             select_options.append(((SelectItem(Aggregate("COUNT", Star())),), 4.0))
         # The aggregate words that ask, as the search reads them: "the Avg. monthly searches for home inspection
         # checklist or roof inspection checklist" averaged the two keywords' searches when "Avg." only spells the

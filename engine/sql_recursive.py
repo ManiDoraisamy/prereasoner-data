@@ -327,7 +327,7 @@ class RecursiveQueryExpander:
             and not is_surrogate_key(column.ref.name)
             and set(_name_tokens(column.ref.name)) <= tokens
         ]
-        asks_count = count_requested(question, (column.ref.name for column in self.schema.columns))
+        asks_count = count_requested(question, (column.ref for column in self.schema.columns))
         out = []
         for target in targets:
             for fk in self.schema.foreign_keys:
@@ -469,7 +469,7 @@ class RecursiveQueryExpander:
                         destination_fk,
                         source_value,
                         destination_value,
-                        count_requested=count_requested(question, (column.ref.name for column in self.schema.columns)),
+                        count_requested=count_requested(question, (column.ref for column in self.schema.columns)),
                         schema=self.schema,
                     )
                     built = _candidate(query, 46.0, ("recursive:self-join:route",))

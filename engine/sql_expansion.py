@@ -36,9 +36,13 @@ from engine.sql_schema import SchemaGraph, canon, is_surrogate_key
 
 
 def complete_projection_requested(question: str) -> bool:
-    """An explicit request to display complete records, including their fields."""
+    """An explicit request to display complete records, including their fields: "show all records", and "all the
+    information about hiring", "display all the details of employees", "return all columns of the albums" (Spider DEV
+    291, held-out Spider train 147, 297, 728, 2026-10-12: no reading showed every field; each gold is SELECT *)."""
     return bool(re.search(r'\b(?:show|list|display)\s+(?:all|every)\s+(?:rows?|records?|columns?|fields?)\b',
-                          question, re.I))
+                          question, re.I) or
+                re.search(r'\b(?:all|every)\s+(?:the\s+)?(?:information|info|details?|data|columns?|fields?|attributes?)'
+                          r'\b', question, re.I))
 
 
 # "in alphabetical order", "alphabetically": a text field ordered A to Z; with a reversing word, Z to A.
@@ -342,7 +346,7 @@ class ExpansionSupport:
         if top_level_count(question_tokens):
             return [((SelectItem(Aggregate("COUNT", Star())),), 3.0)]
         out = [(projection, 2.0)]
-        if count_requested(question, (column.ref.name for column in self.schema.columns)):
+        if count_requested(question, (column.ref for column in self.schema.columns)):
             count = SelectItem(Aggregate("COUNT", Star()))
             out.append(((count,) + projection, 4.0))
             out.append((projection + (count,), 3.5))
@@ -813,7 +817,7 @@ def average_comparison(question: str) -> str | None:
     return None
 
 
-def field_numbers(question: str, field_names: Iterable[str]) -> frozenset[int]:
+def field_numbers(question: str, fields: Iterable[Any]) -> frozenset[int]:
     """The positions in ``tokens(question)`` of a "number" that ends the name of a field: the word before it ends
     the field's name, or comes before the name's own last word "number" ("the phone number" of Phone, "flight
     numbers" of flight_number, "the staff number" of Num_of_Staff). It asks for the field, not for a count: "the
@@ -821,14 +825,31 @@ def field_numbers(question: str, field_names: Iterable[str]) -> frozenset[int]:
     2026-10-11). An owner's number ("each customer's number of orders") and a quantity's ("the total number", "the
     largest number") count. A "number" that begins a field's name, the rest of the name following it, asks for the
     field too: "the average and maximum number of tickets" of Num_of_Ticket, "the number of products" of
-    Number_products (Spider DEV 271, 424: each was counted)."""
+    Number_products (Spider DEV 271, 424: each was counted). So does a "number of" before a numeric field's whole
+    name: "in ascending order of number of police officers" of Police_officers, "the maximum number of floors" of
+    Floors (held-out Spider train 30, 633, 2026-10-12: each was counted; the gold of 5 such DEV questions and 15 of 16
+    held-out ones reads the field). A text field's name stays a count: "the number of countries" beside Country.
+
+    ``fields`` are names, column references (a name and a type) or planner schema entries ({name, affinity}); a name
+    alone says no type, so it reads no numeric field."""
     from engine.closed_class import DEGREE_MODIFIERS
     from engine.sql_extrema import MAX_CUES, MIN_CUES
     quantities = FUNCTION_WORDS | DEGREE_MODIFIERS | MAX_CUES | MIN_CUES | {"total", "sum", "average", "avg", "mean",
                                                                               "count"}
     ends = set()
     rests = set()
-    for name in field_names:
+    measures = set()
+    tables = set()
+    for field in fields:
+        if isinstance(field, dict):
+            name, numeric = field.get("name", ""), field.get("affinity") in ("INTEGER", "REAL")
+            table = field.get("table")
+        else:
+            name = getattr(field, "name", field)
+            numeric = bool(getattr(getattr(field, "type", None), "numeric", False))
+            table = getattr(field, "table", None)
+        if table:
+            tables.add(name_tokens(table)[-1:])
         name_words = name_tokens(name)
         if len(name_words) > 1 and name_words[-1] in {"number", "no", "num"}:
             ends.add(name_words[-2])
@@ -836,22 +857,33 @@ def field_numbers(question: str, field_names: Iterable[str]) -> frozenset[int]:
             ends.add(name_words[-1])
         if len(name_words) > 1 and name_words[0] in {"number", "no", "num"}:
             rests.add(tuple(word for word in name_words[1:] if word != "of"))
+        elif numeric and name_words and not is_surrogate_key(str(name)):
+            measures.add(name_words)
     raw, question_tokens = words(question), tokens(question)
 
     def begins_a_name(index):
         following = [token for token in question_tokens[index + 1:index + 6] if token not in {"of", "the"}]
         return any(rest and tuple(following[:len(rest)]) == rest for rest in rests)
 
+    def names_a_measure(index):
+        # A table's name counts its rows, whatever field shares it: "the number of continents" beside the integer key
+        # countries.Continent, "the number of airlines" beside flights.Airline (Spider DEV 88, 188).
+        if question_tokens[index + 1:index + 2] != ("of",):
+            return False
+        following = tuple(token for token in question_tokens[index + 2:index + 6] if token != "the")
+        return following[:1] not in tables and any(following[:len(measure)] == measure for measure in measures)
+
     return frozenset(index for index, token in enumerate(question_tokens)
                      if token == "number" and ((index and question_tokens[index - 1] in ends - quantities
-                                                and not raw[index - 1].endswith("'s")) or begins_a_name(index)))
+                                                and not raw[index - 1].endswith("'s")) or begins_a_name(index)
+                                               or names_a_measure(index)))
 
 
-def count_requested(question: str, field_names: Iterable[str]) -> bool:
-    """Whether the question asks for a count: "count", "how many", or a "number" that does not end the name of one of
-    the ``field_names`` (``field_numbers``)."""
+def count_requested(question: str, fields: Iterable[Any]) -> bool:
+    """Whether the question asks for a count: "count", "how many", or a "number" that names none of the ``fields``
+    (``field_numbers``)."""
     question_tokens = tokens(question)
-    labels = field_numbers(question, field_names)
+    labels = field_numbers(question, fields)
     return "count" in question_tokens or "how many" in " ".join(question_tokens) or any(
         token == "number" and index not in labels for index, token in enumerate(question_tokens))
 
@@ -1067,7 +1099,7 @@ def money_total_columns(question: str, sch: Sequence[dict]) -> tuple[str, list[d
     question_tokens = tokens(question)
     table_of = {word: entry["table"] for entry in sch for word in name_tokens(entry["table"])}
     position = money_total_position(question_tokens, table_of,
-                                    count_requested(question, (entry["name"] for entry in sch)))
+                                    count_requested(question, sch))
     if position is None:
         return None
     table = table_of[question_tokens[position]]

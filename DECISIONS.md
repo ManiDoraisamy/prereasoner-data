@@ -3300,3 +3300,32 @@ Measured on Spider (`spider/results/RESULTS.md`, same date): DEV 471 → 493 str
 wins, 1 loss, wrong answers 255 → 258), Gemini on 538 → 576 (51 wins, 13 losses, all but one a refusal of a reworded question). Of 29 newly answered fresh-holdout questions 9 are right:
 a word or field the gate now reads lets through a query wrong elsewhere (a count without its group, the direction of a
 prerequisite), so the precision of new answers stays the measure to watch.
+
+## A number of a numeric field, all the information, "equal to" and "record" read (2026-10-12)
+
+Questions the census found with no reading built, or refused for one word, in families each checked against gold
+across DEV, the held-out sample and the fresh holdout before it was built:
+
+- A "number of" before a numeric field's whole name is that field (`sql_expansion.field_numbers`, which the search,
+  the ranker's question roles and the completeness check all read, now from the fields' types): "the average,
+  maximum, and minimum number of floors" of Floors, "in ascending order of number of police officers" of
+  Police_officers. Gold reads the field in 9 of 9 DEV questions with such a phrase, 19 of 20 held out and 8 of 10 in
+  the fresh holdout; a text field's name ("the number of countries" beside Country, 28 questions) and a table's stay
+  counts.
+- "All the information about hiring", "all the details of employees", "all columns of the albums" ask for every field
+  (`sql_expansion.complete_projection_requested`; every one of 17 such questions has SELECT * as gold), and the
+  completeness check reads those words by a query showing every field; a superlative states the cutoff such an answer
+  may keep ("all information on the airport that has the largest number of international passengers").
+- "Equal to" is read by a query comparing for equality ("whose Country is equal to 'France'").
+- "Record" after the name of a table or field the query reads names its rows ("from the trip record").
+- The owner a question names after "of" decides which longer field answers a requested name; the rows its opening asks
+  for decide only where it names none: "the names of the dogs of the rarest breed" is no breed_name.
+- A number right after "top", "bottom", "first" or "last" is the cutoff a ranking keeps, not a value of the field beside
+  it: "the mountains with the top 3 prominence" compared Prominence with 3 (the fresh holdout's one loss in the change
+  before).
+- "The full name" lists the first name before the last wherever else the question says a part ("the ids and full names
+  ... with a first name that contains the letter T" listed the last name first).
+
+Measured on Spider (`spider/results/RESULTS.md`, 2026-10-13): DEV 493 → 497 strict, held out 324 → 335, the fresh
+holdout 329 → 334, with no loss on any of them, and wrong answers down on each (208 → 207, 257 → 253, 258 → 257);
+Gemini on 576 → 592 (16 wins, no loss; wrong answers 263 → 271, the rewordings "equal to" now lets through). Of 14 newly answered questions across the three, 12 are strict-correct.

@@ -29,6 +29,8 @@ A third (full names, fields asked by their owner, counting words, conditions kep
 rewordings) raised DEV 471 → 493, the held-out sample 304 → 324 with no losses on either, Gemini on 538 → 576, and the
 fresh holdout 306 → 329 against what production served; on the fresh holdout 9 of 29 newly answered questions are
 right, so the precision of new answers remains the measure to watch (`spider/results/RESULTS.md`, "Full names").
+A fourth (a number of a numeric field, all the information, "equal to" and "record") added DEV 493 → 497, held out
+324 → 335, the fresh holdout 329 → 334 and Gemini on 576 → 592, with no loss on any of them.
 
 ## October 12 assessment: what Claude implemented and what remains
 
