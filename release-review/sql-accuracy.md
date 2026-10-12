@@ -25,6 +25,10 @@ of what a query shows and groups, as `DECISIONS.md` records with the variants me
 A second package (construction of counts over exclusions and average comparisons, numbers beside fields; output kept
 to the fields the question asks) raised DEV 461 → 471 and the held-out sample 278 → 304 with no losses on either, and
 lowered the held-out wrong answers 261 → 257 (`spider/results/RESULTS.md`, "Counts over exclusions and averages").
+A third (full names, fields asked by their owner, counting words, conditions kept out of answers, plain-English Gemini
+rewordings) raised DEV 471 → 493, the held-out sample 304 → 324 with no losses on either, Gemini on 538 → 576, and the
+fresh holdout 306 → 329 against what production served; on the fresh holdout 9 of 29 newly answered questions are
+right, so the precision of new answers remains the measure to watch (`spider/results/RESULTS.md`, "Full names").
 
 ## October 12 assessment: what Claude implemented and what remains
 

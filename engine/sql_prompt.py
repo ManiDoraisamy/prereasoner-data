@@ -17,6 +17,9 @@ REWRITE_SYSTEM = (
     "Do not add or drop a condition, do not answer the question, and do not write SQL. "
     "Do not name a table the question does not name: when several tables could answer, the planner "
     "chooses among them. "
+    "Write a plain English question: say each comparison of size or order in words (more than, less than, at "
+    "least, at most, before, after), never with a symbol such as > or <, and name a column without its table "
+    "(Age, not Student.Age); the planner reads words, not SQL. "
     "If the question cannot be answered from these tables, return it unchanged."
 )
 

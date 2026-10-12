@@ -3243,3 +3243,60 @@ table's rows counts the rows where it is ("the number of likes for each student 
 
 Measured on Spider (`spider/results/RESULTS.md`, same date): DEV 461 → 471 strict (10 wins, no loss, wrong answers
 unchanged at 216), held out 278 → 304 (26 wins, no loss, wrong answers 261 → 257), Gemini on 529 → 538 (9 wins, no loss).
+
+## Full names, fields asked by their owner, counting words, conditions kept out of the answer (2026-10-12)
+
+The census after the previous change (evaluation-only, every pool member replayed through the served selection) held
+right answers refused for a field the gate did not see asked or read, and answers that showed a field or an aggregate
+the question names only as a condition. Each family was simulated on the DEV and held-out censuses first, then built
+with a positive, a same-shape contrast and a negative case (`tests/test_sql_ast.py`).
+
+Readings the completeness check was missing (`query_contract`):
+
+- "The full name" is a first and a last name of one table, unless a field is named for it (car_makers.FullName): the
+  search reads it so (`SQLSearcher._full_names`, for the mentions and the fields listed), and the check reads "full"
+  by a query showing both, whatever cell holds the word "full".
+- A word the search names a read field by is read (`sql_expansion.column_matches`: "gender" by Sex), but not a word a
+  read table or field spells, which stays a name the clarification of an unread word offers fields beside.
+- A requested field is used where a longer field's name says it and the question says that longer name together, in
+  order ("first name and last name" beside a Dogs.name), or apart where the longer field's table is the one the
+  question names as the owner after "of" ("the name of the breed", "the names and ids of all countries") or the rows
+  it asks for; a camel-cased name split further needs one of those ("at least 2 models ... the id" is no ModelId). A
+  field named as its table answers "the names of orchestras". An aliased self-join's field is its table's.
+- A word saying how rows are counted is read by a query counting rows: "times" and "records" after a word of a count,
+  and a verb a count follows after "by" ("shared by at least two teachers") by one that groups the rows it counts.
+- A question opening "how many" or "count" is answered by a computed aggregate: "how many friends does Kyle have"
+  listed the friends.
+
+Output requirements (`sql_rank.CandidateRanker`, −8 each, as the existing `_filter_only`):
+
+- A field the question compares before naming it ("projects that require between 100 and 300 hours", "who do not use
+  Cash as payment method") or picks the row by after "with the highest" ("the account with the highest checking
+  balance") is not shown; "which 2 products have the highest price" still shows the prices (review F5).
+- An aggregate said only where the groups are kept ("the studios whose average gross is above 4500000", "with count
+  more than 1") is not shown, and the search builds the reading without it (`sql_search._condition_twin`); one the
+  question also asks for is shown.
+- "The first name and age" lists Fname first: a name's part a field abbreviates is placed at its two words.
+
+The labelled Gemini rewording (`engine/question_rewrite.py`, `engine/sql_prompt.py`), which answers a question only
+when the search finds no runnable query for it: of 357 rewordings on DEV, 98 were refused as changing a stated value
+or number (recovered from the rewrite cache, evaluation-only `rejected_rewrites.py`):
+
+- 48 because a comparison came back as a symbol ("Horsepower > 150", "Year < 1980"), so the check that the rewording
+  keeps the question's operations found no "more than" or "before"; 129 cached rewordings read like SQL. Gemini is
+  now asked for a plain English question, each comparison of size or order in words and each column without its
+  table. A first version also asked for "equal to" in place of "=": 42 of 55 rewordings refused for an unread word
+  then said it, while "PetType = 'dog'" had always been read, so equality is left as Gemini writes it.
+- 34 because every cell value the question says as a word had to survive the rewording, and country codes are words:
+  'IN' refused "Which region is the city Kabul located in?" and 'ARE' "countries that are republics". The check now
+  holds only names the search cannot read (東京); the values it reads are held by the check before it, as they were.
+
+Measured and not adopted: reading a word the data holds only in free-text cells (upper bound +0 DEV, +3/−1 held out);
+an ORDER BY ... LIMIT 1 as the maximum asked (no win); a "listed" witness (an "are listed" rule, guarded against
+status fields, already exists).
+
+Measured on Spider (`spider/results/RESULTS.md`, same date): DEV 471 → 493 strict (22 wins, no loss, wrong answers
+216 → 208), held out 304 → 324 (20 wins, no loss), the fresh holdout against what production served 306 → 329 (24
+wins, 1 loss, wrong answers 255 → 258), Gemini on 538 → 576 (51 wins, 13 losses, all but one a refusal of a reworded question). Of 29 newly answered fresh-holdout questions 9 are right:
+a word or field the gate now reads lets through a query wrong elsewhere (a count without its group, the direction of a
+prerequisite), so the precision of new answers stays the measure to watch.

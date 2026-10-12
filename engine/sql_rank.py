@@ -18,6 +18,7 @@ from engine.sql_ast import (
     share_aggregate,
 )
 from engine.sql_dates import period_grouping
+from engine.sql_extrema import MAX_CUES, MIN_CUES
 from engine.sql_expansion import (
     FUNCTION_WORDS, asked_cues, by_groups, field_numbers, share_cue, share_requested, words,
 )
@@ -217,6 +218,20 @@ class CandidateRanker:
             if self._owner_only(column, roles):
                 features.append((f"owner_only_output:{_column_label(column)}", -8.0))
 
+        # An aggregate the question names only in a clause keeping the groups is not asked for: "the studios whose
+        # average gross is above 4500000", "the job ids for those jobs which average salary is above 8000" (held-out
+        # Spider train 743, 746, 750, 2026-10-12: each showed the average it kept the groups by); one it also asks
+        # for is shown, and so is one it says after "with" ("cities with total sales over 100" shows each total).
+        if isinstance(query, SelectQuery) and query.having is not None:
+            kept = {comparison.left for comparison in _comparisons(query.having) if isinstance(comparison.left, Aggregate)}
+            shown = {item.expression for item in query.select}
+            for aggregate in sorted(kept, key=repr):
+                said = self._condition_said(aggregate, roles)
+                if aggregate in shown and said == "condition":
+                    features.append((f"condition_only_output:{aggregate.function}", -8.0))
+                elif aggregate not in shown and said == "asked":
+                    features.append((f"asked_aggregate_unshown:{aggregate.function}", -8.0))
+
         # Rows a join repeats are one answer each: "the makers that produced some cars in 1970" listed a maker once per
         # car, and "the template type code for description 'Book'" once per template (Spider DEV 99, 351). Only where
         # a joined table refers to a shown one, or a shown field is itself a reference to another table's key, and
@@ -309,10 +324,17 @@ class CandidateRanker:
         value_words = {canon(word) for value in values for word in words(str(value.value))}
         comparing = {"is", "not", "named", "called", "than", "over", "under", "above", "below", "equal", "between",
                      "more", "less", "greater", "smaller", "after", "before"}
-        # "the name and population of cities that have a population between ..." asks for the population once.
-        return bool(said) and all(
-            set(roles.tokens[index + 1:index + 5]) & value_words
-            or (index + 1 < len(roles.tokens) and roles.tokens[index + 1] in comparing) for index in said)
+        # "the name and population of cities that have a population between ..." asks for the population once. The
+        # comparison may come first: "projects that require between 100 and 300 hours", "customers who do not use Cash
+        # as payment method" (held-out Spider train 396, 420, 2026-10-12: each showed the field compared).
+        def compared(index):
+            start = index - len(name) + 1
+            before = set(roles.tokens[max(0, start - 4):max(0, start)])
+            return bool(set(roles.tokens[index + 1:index + 5]) & value_words
+                        or (index + 1 < len(roles.tokens) and roles.tokens[index + 1] in comparing)
+                        or before & value_words or before & {"between", "than"})
+
+        return bool(said) and all(compared(index) for index in said)
 
     @staticmethod
     def _owner_only(column: ColumnRef, roles: QuestionRoles) -> bool:
@@ -341,14 +363,39 @@ class CandidateRanker:
         name = [canon(word) for word in name_words(column.name)]
         said = [index for index, token in enumerate(roles.tokens) if name and token == name[-1]]
 
+        # A place another table's word qualifies names that table's field: "the saving balance of the account with
+        # the highest checking balance" names the savings' balance first.
+        own = {canon(word) for word in name_words(column.table)}
+        others = {canon(word) for table in self.schema.tables if table != column.table
+                  for word in name_words(table)} - own
+        said = [index for index in said
+                if index - len(name) < 0 or roles.tokens[index - len(name)] not in others]
+
         def ordering(index):
             before = [token for token in roles.tokens[max(0, index - 6):index - len(name) + 1]
-                      if token not in {"the", "their", "its", "his", "her", "a"}]
+                      if token not in {"the", "their", "its", "his", "her", "a"} and token not in own]
+            # The field a superlative after "with" picks the row by: "the account with the highest checking balance"
+            # and "the stadium with highest average attendance" ask for the account and the stadium (held-out Spider
+            # train 504). "Which 2 products have the highest price" shows the prices it ranks by (review F5).
             return (len(before) >= 2 and before[-1] in {"of", "by", "to"}
                     and bool(set(before[-4:-1]) & {"order", "ordered", "sort", "sorted", "rank", "ranked",
-                                                   "according"}))
+                                                   "according"})
+                    or len(before) >= 2 and before[-1] in MAX_CUES | MIN_CUES and before[-2] == "with")
 
         return bool(said) and all(ordering(index) for index in said)
+
+    @staticmethod
+    def _condition_said(aggregate: Aggregate, roles: QuestionRoles) -> str | None:
+        """How the question says ``aggregate``: "condition" when each word saying it opens a relative clause that
+        compares it ("whose average gross is above", "which average salary is above"), "asked" when one does not,
+        None when no word says it."""
+        cues = _CONDITION_CUES.get(aggregate.function, frozenset())
+        said = [index for index, token in enumerate(roles.tokens) if token in cues]
+        if not said:
+            return None
+        return "condition" if all(
+            set(roles.tokens[max(0, index - 3):index]) & _RELATIVE_WORDS
+            and set(roles.tokens[index + 1:index + 6]) & _CONDITION_COMPARISONS for index in said) else "asked"
 
     def _group_alignment(self, column: ColumnRef | DatePart, roles: QuestionRoles) -> bool:
         if isinstance(column, DatePart):
@@ -625,6 +672,19 @@ def repeats_shown_rows(schema: SchemaGraph, query: Query, tokens: Sequence[str])
             if any(column.table == child.table and column.name == child.name for column in shown_columns):
                 return True
     return False
+
+
+# The words that say an aggregate, and the comparison words after one that make it a condition (canon() forms).
+_CONDITION_CUES = {
+    "AVG": frozenset({"average", "avg", "mean"}),
+    "SUM": frozenset({"total", "sum"}),
+    "MAX": frozenset({"maximum", "max"}),
+    "MIN": frozenset({"minimum", "min"}),
+    "COUNT": frozenset({"count", "number", "many"}),
+}
+_CONDITION_COMPARISONS = frozenset({"above", "below", "over", "under", "more", "less", "greater", "higher", "lower",
+                                    "larger", "smaller", "bigger", "fewer", "exceed", "exceeds", "least", "than"})
+_RELATIVE_WORDS = frozenset({"which", "whose", "where", "that"})
 
 
 def _comparisons(predicate):

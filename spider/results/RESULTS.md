@@ -4,6 +4,40 @@ Dated entries come newest first. Each records a run at the commit it names; the 
 entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection arbiter`) may since have
 been removed, and that commit holds the code that ran.
 
+## Full names, fields asked by their owner, counting words, plain-English rewordings: 471 → 493 strict, Gemini on 538 → 576, held out 304 → 324, fresh holdout 306 → 329 (2026-10-12)
+
+Same contract as below. Runs `pkgQ-dirty`, `pkgQ2-gemini-dirty`, `heldout-pkgQ-dirty` and `holdout2-pkgQ-dirty` are
+`d17cede` with this change, against `pkgN-dirty`, `pkgN-gemini-dirty`, `heldout-pkgN-dirty` (`d17cede`) and, for the
+fresh holdout, `holdout2-pkgF-dirty` (`eba2339`, what production serves; `d17cede` was not run on it). Gemini on fetched
+every rewording live: the rewording prompt changed. The change is `DECISIONS.md` "Full names, fields asked by their
+owner, counting words, conditions kept out of the answer".
+
+- DEV, engine alone: 471 → **493 strict (47.7%)**, 527 → 543 lenient, 687 → 701 answered; 22 wins (75, 76, 81, 82,
+  123, 124, 397, 677, 814, 852, 853, 854, 890, 891, 892, 893, 930, 931, 934, 935, 936, 937), no loss; wrong answers
+  216 → 208, strict of answered 68.6% → 70.3%; 36 queries changed. Of 14 newly answered, 9 are strict-correct; 421
+  and 456 are the right query graded on ties (5,000 capped rows), 129, 541 and 606 are wrong elsewhere (a count of
+  the wrong rows). Against `eba2339`: 461 → 493, 32 wins, no loss.
+- Gemini on (every rewording fetched live, the prompt having changed): 538 → **576 strict**, 612 → 647 lenient, 802 →
+  839 answered; 51 wins, 13 losses; wrong answers 264 → 263. Twelve losses are questions refused because their new
+  rewording no longer reads (rewording variance: "what is Kyle's id?" and "how many TV Channel using language
+  English?" among them), one (486) is a count of the wrong hand. Against `eba2339`'s 529: +47. A first run of the
+  prompt, which also asked for "equal to" in place of "=", was stopped at 700 questions: 42 of 55 rewordings it
+  refused for an unread word said "equal".
+- Held out (1,000 train questions): 304 → **324 strict**, 365 → 378 lenient, 561 → 581 answered; 20 wins (40, 58,
+  145, 169, 323, 335, 396, 420, 557, 609, 667, 727, 743, 746, 750, 850, 892, 902, 938, 944), no loss; wrong answers
+  257 → 257, strict of answered 54.2% → 55.8%. Against `eba2339`: 278 → 324, 46 wins, no loss.
+- Fresh holdout (`random.Random(20261012)`, never used to choose or tune anything), against `eba2339`: 306 → **329
+  strict**, 367 → 384 lenient, 561 → 587 answered; 24 wins (9, 152, 158, 183, 244, 326, 330, 366, 399, 414, 475, 530,
+  539, 683, 698, 718, 721, 736, 790, 929, 968, 969, 976, 999), 1 loss (167: "the mountains with the top 3 prominence"
+  compares Prominence with 3, the previous change's number beside a field); wrong answers 255 → 258. Of 29 newly
+  answered, 9 are strict-correct: the others are wrong elsewhere (a count without its group, the direction of a
+  prerequisite, "ids and full names" listing the last name first), so the precision of new answers is the weakness
+  this sample shows, as the held-out sample did after the first change.
+- Census replays (evaluation-only) measured each family before the full runs: DEV 486 → 508 (22 wins, no loss), held
+  out 308 → 329 (21 wins, no loss).
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_{pkgQ,pkgQ2-gemini,heldout-pkgQ,holdout2-pkgQ}-dirty.json`.
+
 ## Counts over exclusions and averages, numbers beside fields: 461 → 471 strict, Gemini on 529 → 538, held out 278 → 304 (2026-10-12)
 
 Same contract as below (`whole_db`, `served`, SQL backend, row cap 5,000, 12 s soft budget, runtime bundle unchanged,

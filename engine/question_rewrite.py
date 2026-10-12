@@ -107,9 +107,14 @@ def _preserves_explicit_constraints(question: str, rewritten: str, graph) -> boo
             return False
     # The English candidate search tokenizer cannot be the literal-preservation
     # authority for names such as 東京. Bind those locally with Unicode boundaries.
+    # A value in ASCII is the search's to read, and is checked above: a country code
+    # 'IN' or 'ARE' spelled as an English word refused 34 rewordings that dropped
+    # "in" or "are" (Spider DEV, 2026-10-12).
     for column in graph.columns:
         for value in set(str(v) for v in column.values if v is not None):
             value = " ".join(value.casefold().split())
+            if value.isascii():
+                continue
             if value and re.search(r"(?<!\w)" + re.escape(value) + r"(?!\w)", original):
                 if not re.search(r"(?<!\w)" + re.escape(value) + r"(?!\w)", candidate):
                     return False

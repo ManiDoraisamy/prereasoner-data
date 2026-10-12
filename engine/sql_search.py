@@ -187,6 +187,9 @@ class SQLSearcher:
                 and _column_link_positions(schema_column.ref, prefix, self.schema, link_words)
             )
         }
+        explicit_projection_columns.update(
+            column for index, _, first, last in self._full_names(tokens)
+            if index + 1 < clause_boundary and index not in qualifiers for column in (first, last))
         clause_only_columns = {
             option.column for mention in mentions for option in mention.options
             if option.column not in explicit_projection_columns
@@ -366,6 +369,10 @@ class SQLSearcher:
         pool = _merge_candidates(pool, [_distinct_twin(candidate) for candidate in pool
                                         if repeats_shown_rows(self.schema, candidate.query, tokens)
                                         and not candidate.query.distinct])
+        # An aggregate the groups are kept by may be only the condition: "the studios whose average gross is above
+        # 4500000" lists the studios (held-out Spider train 746, 750, 2026-10-12: only readings showing the average
+        # were built). The ranker prefers the twin where the question says the aggregate only in its condition.
+        pool = _merge_candidates(pool, [twin for candidate in pool if (twin := _condition_twin(candidate))])
         if not rank_candidates:
             return _rows_named(pool[:self.max_candidates])
         from engine.sql_rank import CandidateRanker
@@ -534,6 +541,22 @@ class SQLSearcher:
             scores[table] = (3.0 if coverage == len(words) and words else 0.0) + (1.0 if plural else 0.0)
         return scores
 
+    def _full_names(self, tokens: tuple[str, ...]) -> list[tuple[int, str, ColumnRef, ColumnRef]]:
+        """"The full name" of rows holding a first and a last name is both, the first at "full" and the last at
+        "name", unless a field is named for it (car_makers.FullName): "the full names of employees living in
+        Calgary" (held-out Spider train 474, 2026-10-12: neither was shown)."""
+        if any(_column_link_words(schema_column.ref, False) == ("full", "name")
+               for schema_column in self.schema.columns):
+            return []
+        parts: dict[str, dict[str, ColumnRef]] = {}
+        for schema_column in self.schema.columns:
+            part = name_part_words(schema_column.ref.name)
+            if part:
+                parts.setdefault(schema_column.ref.table, {}).setdefault(part[0], schema_column.ref)
+        return [(index, table, held["first"], held["last"])
+                for index in range(len(tokens) - 1) if tokens[index:index + 2] == ("full", "name")
+                for table, held in sorted(parts.items()) if {"first", "last"} <= set(held)]
+
     def _column_mentions(self, tokens: tuple[str, ...], table_scores: dict[str, float]) -> tuple[_Mention, ...]:
         grouped: dict[int, list[_ColumnOption]] = {}
         token_set = set(tokens)
@@ -588,6 +611,10 @@ class SQLSearcher:
             exact = exact and position not in contested
             score = 3.0 + coverage + (1.0 if exact else 0.0) + 0.15 * table_scores.get(column.table, 0.0)
             grouped.setdefault(position, []).append(_ColumnOption(column, score, position))
+        for index, table, first, last in self._full_names(tokens):
+            score = 5.0 + 0.15 * table_scores.get(table, 0.0)
+            grouped.setdefault(index, []).append(_ColumnOption(first, score, index))
+            grouped.setdefault(index + 1, []).append(_ColumnOption(last, score, index + 1))
         mentions = []
         for position, options in sorted(grouped.items()):
             options.sort(key=lambda option: (-option.score, option.column.table, option.column.name))
@@ -1802,9 +1829,11 @@ def _says(tokens: tuple[str, ...], column: ColumnRef) -> bool:
 def _named_at(tokens: tuple[str, ...], column: ColumnRef) -> int:
     """Where the question first names a column, past the end when it does not: where its whole name is
     said ("template type codes"); at the last word of its name, or a modifier said just before it ("the
-    first and last name"); at another word of its name ("the role" of role_code); at its table's word."""
+    first and last name"); at another word of its name ("the role" of role_code); at its table's word. A name's part
+    a field abbreviates is said in its two words: Fname at "the first name" (Spider DEV 75, 2026-10-12: the age was
+    listed before the first name asked first)."""
     end = len(tokens)
-    name = tuple(canon(word) for word in name_words(column.name))
+    name = name_part_words(column.name) or tuple(canon(word) for word in name_words(column.name))
     size = len(name)
     said = next((start for start in range(end - size + 1) if tokens[start:start + size] == name), None)
     if said is not None:
@@ -1892,6 +1921,29 @@ def _distinct_twin(candidate: ScoredQuery) -> ScoredQuery:
     """``candidate`` showing each row once (sql_rank.repeats_shown_rows)."""
     query = replace(candidate.query, distinct=True)
     return replace(candidate, query=query, sql=render_query(query), evidence=candidate.evidence + ("distinct-twin",))
+
+
+def _condition_twin(candidate: ScoredQuery) -> ScoredQuery | None:
+    """``candidate`` without the aggregates it shows that its HAVING compares, beside a field it still shows; None
+    when it shows none of them, or nothing else."""
+    query = candidate.query
+    if not isinstance(query, SelectQuery) or query.having is None:
+        return None
+    kept = {comparison.left for comparison in _comparisons_of(query.having) if isinstance(comparison.left, Aggregate)}
+    select = tuple(item for item in query.select if item.expression not in kept)
+    if len(select) == len(query.select) or not any(isinstance(item.expression, ColumnRef) for item in select):
+        return None
+    twin = replace(query, select=select)
+    return replace(candidate, query=twin, sql=render_query(twin), evidence=candidate.evidence + ("condition-twin",))
+
+
+def _comparisons_of(predicate: Any) -> tuple[Comparison, ...]:
+    """The comparisons of ``predicate``, through its AND and OR terms."""
+    if isinstance(predicate, Comparison):
+        return (predicate,)
+    if isinstance(predicate, BooleanExpr):
+        return tuple(comparison for term in predicate.terms for comparison in _comparisons_of(term))
+    return ()
 
 
 def _coordinated_modifiers(tokens: tuple[str, ...], head: int, modifiers: set[str]) -> list[int]:

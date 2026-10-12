@@ -329,6 +329,14 @@ The own-data path serves one typed SQL AST chosen from the deterministic search'
    in the groups the table's own field makes ("the number of cities in each district whose population
    is greater than the average"; `sql_expansion.average_comparison`), and a number said beside a
    numeric field's name is that field's value ("high schoolers in grade 10", "a cat that is age 3").
+   "The full name" of rows holding a first and a last name is both fields, unless a field is named
+   for it (`SQLSearcher._full_names`); a name's part a field abbreviates is listed where the question
+   says its two words ("the first name and age" lists Fname first). A field the question compares
+   before naming it ("projects that require between 100 and 300 hours") or picks the row by after
+   "with the highest" is not shown, nor an aggregate it says only in a relative clause keeping the
+   groups ("the studios whose average gross is above 4500000"), for which the search builds the
+   reading without it (`sql_search._condition_twin`); "cities with total sales over 100" still shows
+   each total.
 2. Every candidate runs on an in-memory SQLite copy of the request's tables under the SELECT guard
    and a budget of SQLite VM steps that grows with the cells of the tables it reads: 20 a cell, at
    least 10,000,000 and at most 100,000,000 (`execution_op_limit`). The Gemini rewording's pool runs
@@ -376,7 +384,10 @@ departing from APG" by SourceAirport); a name's part a field abbreviates ("first
 named as its table is (airlines.Airline); a verb relating two tables it reads, one named before the verb and the
 other after; a word sharing a stem of five letters or more with a table or field it reads ("students enrolled" by
 Student_Enrolment), a word of an operation excepted; and "one" after a determiner ("the one whose name"). Two words
-that begin the name of a table it reads are read ("the high school student" by Highschooler).
+that begin the name of a table it reads are read ("the high school student" by Highschooler). So is a word the search
+names a read field by ("gender" by Sex, `sql_expansion.column_matches`), "the full name" by a first and a last name of
+one table, and a word saying how rows are counted by a query counting them: "times" and "records" after a word of a
+count, and a verb a count follows after "by" ("the hometowns shared by at least two teachers") by one that groups them.
 
 The constraint check (`engine/query_contract.constraint_violations`) judges a set query branch by branch for the
 result's shape (aggregates, projection, ordering, grain; a field an aggregate word takes, as in "top 2 cities by
@@ -427,7 +438,12 @@ names: a table joined inside it only to filter, which the question does not name
 one; a foreign key to a unique lookup names the lookup's rows, not its own): the projected values when they do,
 else the entity's key, filled in every row, NOT IN the related rows'.
 A field's name inside a longer field's name the question also says ("the name of the song" is `Song_Name`) or
-inside a table's name the query reads ("car makers") asks for that longer field or table. The column an aggregate phrase
+inside a table's name the query reads ("car makers") asks for that longer field or table: said together and in order
+("first name and last name") whatever other table holds the shorter name, said apart where the longer field's table
+is the one the question names as the owner after "of" ("the name of the breed", `query_contract._owner_tables`) or
+the rows it asks for; a camel-cased name split further needs one of those ("at least 2 models ... the id" is no
+ModelId). A field named as its table answers "the names of orchestras", and a self-join's shown field is its table's.
+A question opening "how many" or "count" is answered by an aggregate, never a listing. The column an aggregate phrase
 names most fully ("the total amount", "the total estimated amount") is its operand
 (`engine/sql_rank.aggregate_operand`); when it is text and its cells are not all numbers the question is
 refused naming them (`engine/query_contract.unreadable_operand`), by compose, the planner, both world routes
@@ -451,8 +467,11 @@ values ("all inspection checklist") is spelled as that column containing the val
 (`engine/sql_prompt.py:prompt_question`): with only names to go on, Gemini read tabs named Inspection and
 Checklist into "all inspection checklist". It receives no other cell value, no full rows and no conversation
 history, and it is told not to name a table the question does not name. The call asks for LOW thinking and
-stops after 20 s: at the model's default thinking a rewording once outlasted the 30 s client timeout. The rewriter checks that numbers, quoted text, and any source values it
-recognized in the question remain in its rewrite. Replies are not cached. The deterministic typed search alone builds candidates and SQL. A rewritten reading is served
+stops after 20 s: at the model's default thinking a rewording once outlasted the 30 s client timeout. Gemini is asked for a plain English question: comparisons of size or order in
+words, never > or <, and columns without their table ("Student with Age > 20" lost the "more than" the next check holds). The
+rewriter checks that numbers, quoted text, and the source values the search recognized in the question remain in
+its rewrite, and so does every source value in a script the search cannot read (東京); an ASCII cell value said as a
+word ("IN", a country code) is the search's to recognize. Replies are not cached. The deterministic typed search alone builds candidates and SQL. A rewritten reading is served
 only when it runs, keeps every constraint of the original question and leaves no word of the rewording
 unread.
 

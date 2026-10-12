@@ -293,8 +293,32 @@ def constraint_violations(question, query, graph):
     branches = tuple(_select_branches(query))
     if not all(isinstance(branch, SelectQuery) for branch in branches):
         return ("unsupported interpretation scope",)
+    # A question that opens by asking how many is answered by a count, or another aggregate: "how many friends does
+    # the high school student Kyle have" listed Kyle's friends (Spider DEV 892, 893, 2026-10-12).
+    uncounted = ("the question asks how many, and the answer computes no count",) if (
+        _OPENS_WITH_COUNT.match(question) and not _computes(query)) else ()
     return tuple(dict.fromkeys(violation for branch in branches
-                               for violation in _select_violations(question, branch, graph, query)))
+                               for violation in _select_violations(question, branch, graph, query))) + uncounted
+
+
+_OPENS_WITH_COUNT = re.compile(r"\s*(?:how\s+many|count)\b", re.I)
+
+
+def _computes(query):
+    """Whether ``query`` computes an aggregate anywhere: in what it shows, orders or keeps, or in a subquery."""
+    from engine.sql_ast import Aggregate
+    from dataclasses import fields, is_dataclass
+
+    def found(value):
+        if isinstance(value, Aggregate):
+            return True
+        if is_dataclass(value):
+            return any(found(getattr(value, field.name)) for field in fields(value))
+        if isinstance(value, (tuple, list)):
+            return any(found(item) for item in value)
+        return False
+
+    return found(query)
 
 
 def _select_violations(question, query, graph, whole):
@@ -451,6 +475,10 @@ def _select_violations(question, query, graph, whole):
             table_masked = table_masked.replace(' ' + table_label + ' ', ' ')
     question_words = set(question_text.split())
     every_measure = aggregate_columns(whole)
+    # An aliased table's shown field is its table's: a self-join's "related"."name" shows Highschooler.name ("the names
+    # of Kyle's friends", Spider DEV 890, 2026-10-12: refused for a name it showed).
+    read_fields = used | _base_refs(whole)
+    asked_tables = _asked_tables(question_tokens, graph)
     from engine.sql_rank import aggregate_operand
     for label, refs in named_fields.items():
         if ' '+label+' ' not in table_masked:
@@ -486,7 +514,7 @@ def _select_violations(question, query, graph, whole):
                                   + ' could not be computed from that field; check for nonnumeric/error cells or '
                                   'choose a numeric field')
             continue
-        if refs & used:
+        if refs & read_fields:
             continue
         # A field's name is also part of a longer field's name the query uses when the question says that longer
         # name's other words: "the name and the release year of the song" asks for Song_Name and Song_release_year,
@@ -494,12 +522,39 @@ def _select_violations(question, query, graph, whole):
         # reads holds the named field itself, unless the longer field is in that table: "the name and location of
         # the stadiums which some concerts happened" asks for the stadiums' Name, not concert_Name (DEV 41,
         # 2026-10-10: any of the question's words once made it the longer field).
+        # A longer name the question says together, in order, is that field whatever other table holds the shorter
+        # one: "the first name and last name" of Owners beside a Dogs.name, "the average fastest lap speed" of
+        # fastestLapSpeed beside lapTimes.lap, "the last names of authors" of lname (Spider DEV 930, held-out Spider
+        # train 169, 727, 2026-10-12). Said apart, it is the field of the table the question names the asked field's
+        # owner by, after "of" ("the name of the breed" of breed_name, "the names and ids of all countries" of
+        # CountryName and CountryId), or of the rows it asks for (`_asked_tables`). A name the search splits further
+        # (a camel-cased one) needs one of those: "at least 2 models" with "the id" said apart is no ModelId (Spider
+        # DEV 175).
+        from engine.sql_expansion import name_part_words
+        from engine.sql_schema import name_words
         label_words = set(label.split())
         named_holders = {named.table for named in refs if named.table in whole.referenced_tables()
                          and ' ' + ' '.join(canon(word) for word in lexical_words(named.table)) + ' ' in question_text}
-        if any(label_words < (words := _name_vocabulary((ref.name,))) and words <= question_words
-               and (ref.table in {named.table for named in refs} or not named_holders)
-               for ref in used):
+        owners = _owner_tables(label.split(), question_tokens, graph) | asked_tables
+
+        def longer(ref):
+            words = _name_vocabulary((ref.name,))
+            parts = name_part_words(ref.name) or tuple(canon(word) for word in name_words(ref.name))
+            if label_words < set(parts) and ' ' + ' '.join(parts) + ' ' in question_text:
+                return True
+            if label_words < words and words <= question_words:
+                return ref.table in owners or ref.table in {named.table for named in refs} or not named_holders
+            return label_words < set(parts) and set(parts) <= question_words and ref.table in owners
+
+        if any(longer(ref) for ref in read_fields):
+            continue
+        # "The names of orchestras" is the field named as the table the question names their owner by.
+        if label_words <= {"name", "title"} and any(
+                ref.table in owners and [canon(word) for word in name_words(ref.name)]
+                == [canon(word) for word in name_words(ref.table)][-1:] for ref in read_fields):
+            continue
+        # "The full name" is a first and a last name the query reads, not a Name field of another table.
+        if label_words == {"name"} and _full_name_read(list(question_tokens), read_fields):
             continue
         # "the total Amount" asks the total of Amount as well as naming a Total Amount field: a query that
         # aggregates the field the rest of the name names, with the aggregate its first word asks for, uses
@@ -1179,9 +1234,11 @@ def _witnessed_words(question, words, query, graph, observed, schema_words, alre
 
     - a word of travel direction, by the column of that direction: "flights departing from APG" by SourceAirport,
       "flights arriving at AHD" by DestAirport;
-    - a name's part a field abbreviates: "the first name and gender" by Fname, "last name" by LName;
+    - a name's part a field abbreviates: "the first name and gender" by Fname, "last name" by LName, and "the full
+      name" by a first and a last name of one table;
     - "name" by a field named as its table is: "the airline names" by airlines.Airline, "the continent name" by
       continents.Continent;
+    - a word the search names a read field by: "gender" by Sex, "manufacturer" by Maker;
     - a verb relating two tables the query reads, one named before it and the other after: "templates used by
       documents", "the conductor that has conducted the most orchestras";
     - a word sharing a stem of five letters or more with the name of a table or field the query reads: "the semester
@@ -1189,7 +1246,11 @@ def _witnessed_words(question, words, query, graph, observed, schema_words, alre
       "countries that became independent" by IndepYear, "the most populated countries" by Population; a word of an
       operation the query must perform ("ordered", "listed", "counted") is not read so;
     - "one" standing for a row after a determiner: "the department description for the one whose name has the word
-      computer", "how many car makers are there in each one".
+      computer", "how many car makers are there in each one";
+    - a word saying how rows are counted, by a query counting rows (``_counts_rows``): "times" and "records" after a
+      word of a count ("the most times", "at least two records"), and a verb a count follows after "by" by one that
+      groups the rows it counts ("the hometowns shared by at least two teachers", "the record company used by the
+      greatest number of orchestras").
 
     Spider DEV, 2026-10-12: the last two, with two-word names (read_question), read 22 more right answers and 8 wrong
     ones, each wrong for another reason (a field the question asks for left out, a count read as a listing).
@@ -1210,10 +1271,21 @@ def _witnessed_words(question, words, query, graph, observed, schema_words, alre
         if word in parts and all(
                 "name" in words[place + 1:place + 5] for place, said in enumerate(words) if said == word):
             out.update({word, "name"})
+    # "The full name" is read by a query showing a first and a last name of one table, whatever cell says "full".
+    full_name = {"full", "name"} if _full_name_read(words, used) else set()
     if any([canon(part) for part in name_words(ref.name)] == [canon(part) for part in name_words(ref.table)][-1:]
            for ref in used):
         out.add("name")
+    # A word that names a field the query reads by the search's own naming of fields (sql_expansion.column_matches):
+    # "the gender of each student" is Sex (Spider DEV 81, held-out train 335, 2026-10-12).
+    # A word a read table or field spells is named, not witnessed: "country" by countries.country stays a name the
+    # clarification of an unread word offers fields beside.
+    from engine.sql_expansion import column_matches
     tables = sorted(table for table in query.referenced_tables() if isinstance(table, str))
+    spelled = {canon(part) for table in tables for part in name_words(table)}
+    spelled |= {canon(part) for ref in used for part in name_words(ref.name)}
+    out.update(word for word in set(words) - set(already) - spelled
+               if any(column_matches(ref.name, {word}) for ref in used))
     named = {table: {canon(part) for part in name_words(table)} - {"id"} for table in tables}
     for verb in relation_verbs(question):
         word = canon(verb)
@@ -1233,11 +1305,82 @@ def _witnessed_words(question, words, query, graph, observed, schema_words, alre
                 mine.startswith(theirs) or theirs.startswith(mine)
                 for mine in stems for theirs in name_stems if min(len(mine), len(theirs)) >= 5):
             out.add(word)
+    # Spider DEV 397, 852, 853 and held-out Spider train 404, 609, 667, 850, 892, 2026-10-12: right answers were refused
+    # for these words.
+    if _counts_rows(query):
+        for word in {"time", "record"} & set(words):
+            if all(set(words[max(0, place - 3):place]) & _COUNT_WORDS
+                   for place, said in enumerate(words) if said == word):
+                out.add(word)
+        if any(source.group_by for source, _ in _select_queries(query)):
+            for verb in relation_verbs(question):
+                word = canon(verb)
+                places = [place for place, said in enumerate(words) if said == word]
+                if places and all(list(words[place + 1:place + 2]) == ["by"]
+                                  and set(words[place + 2:place + 6]) & _COUNT_WORDS for place in places):
+                    out.add(word)
     places = [index for index, said in enumerate(words) if said == "one"]
     determiners = {canon(word) for word in _PRONOUN_DETERMINERS}
     if places and all(place and words[place - 1] in determiners for place in places):
         out.add("one")
-    return out - observed if out else out
+    return (out - observed) | full_name
+
+
+def _base_refs(query):
+    """The fields ``query`` shows from an aliased table, as its table's: a self-join's "related"."name" shows
+    Highschooler.name. A field an alias only joins on or compares is not counted: "owner"."ID" joining Kyle to his
+    friends answers no "id" (Spider DEV 872, 2026-10-12)."""
+    from dataclasses import replace
+    from engine.sql_ast import ColumnRef, SelectQuery, column_refs
+    out = set()
+    for select, _ in _select_queries(query):
+        if not isinstance(select, SelectQuery):
+            continue
+        aliases = {join.alias: join.table for join in select.joins if join.alias}
+        if select.from_alias and isinstance(select.from_table, str):
+            aliases[select.from_alias] = select.from_table
+        out.update(replace(ref, table=aliases[ref.table]) for item in select.select
+                   for ref in column_refs(item.expression) if isinstance(ref, ColumnRef) and ref.table in aliases)
+    return out
+
+
+def _owner_tables(label, question_tokens, graph):
+    """The tables the question names as the owner of the field ``label`` (canon() words) names, after the "of" that
+    follows it, past the fields coordinated with it: "the name of the breed", "the names and ids of all countries"."""
+    from engine.sql_schema import canon, name_words
+    tokens = list(question_tokens)
+    size = len(label)
+    stops = {"that", "which", "who", "whose", "where", "with", "for", "in", "by", "from", "than"}
+    determiners = {"the", "all", "each", "every", "a", "an", "its", "their", "his", "her", "these", "those"}
+    owners = set()
+    for start in range(len(tokens) - size + 1):
+        if tokens[start:start + size] != list(label):
+            continue
+        after = start + size
+        of = next((index for index in range(after, min(len(tokens), after + 6)) if tokens[index] == "of"), None)
+        if of is None or stops & set(tokens[after:of]):
+            continue
+        rest = [token for token in tokens[of + 1:of + 6] if token not in determiners]
+        for table in graph.tables:
+            words = [canon(word) for word in name_words(table)]
+            if words and (rest[:len(words)] == words or rest[:1] == words[-1:]):
+                owners.add(table)
+    return owners
+
+
+def _full_name_read(words, used):
+    """Whether every "full" of the question (canon() forms) says "full name", and the fields ``used`` hold a first
+    and a last name of one table: "the full names of employees" read by FirstName and LastName (held-out Spider train
+    474, 2026-10-12)."""
+    from engine.sql_expansion import name_part_words
+    places = [index for index, word in enumerate(words) if word == "full"]
+    if not places or not all(list(words[place + 1:place + 2]) == ["name"] for place in places):
+        return False
+    held: dict[str, set[str]] = {}
+    for ref in used:
+        if (part := name_part_words(ref.name)):
+            held.setdefault(ref.table, set()).add(part[0])
+    return any({"first", "last"} <= parts for parts in held.values())
 
 
 # The stems of the operations a query performs (_witnessed_words): a word sharing one names the operation, which the
@@ -1247,6 +1390,28 @@ _OPERATION_STEMS = frozenset({"order", "sort", "group", "list", "count", "total"
                               "contain", "start", "end"})
 # The words before a "one" that make it a pronoun for a row: "the one whose", "each one".
 _PRONOUN_DETERMINERS = frozenset({"the", "each", "this", "that", "which", "every"})
+# Words of a count before the noun or after the "by" they count (canon() forms): "the most times", "at least two
+# records", "shared by the greatest number of".
+_COUNT_WORDS = frozenset({"most", "fewest", "least", "many", "number", "greatest", "largest", "smallest", "more", "less",
+                          "once", "twice", "two", "three", "four", "five", "2", "3", "4", "5"})
+
+
+def _counts_rows(query):
+    """Whether ``query`` counts rows in what it shows, orders or keeps: a COUNT(*) or a count of a field's values,
+    not of its distinct ones."""
+    from engine.sql_ast import Aggregate
+    from dataclasses import fields, is_dataclass
+
+    def counts(value):
+        if isinstance(value, Aggregate) and value.function == "COUNT" and not value.distinct:
+            return True
+        if is_dataclass(value):
+            return any(counts(getattr(value, field.name)) for field in fields(value))
+        if isinstance(value, (tuple, list)):
+            return any(counts(item) for item in value)
+        return False
+
+    return any(counts((source.select, source.order_by, source.having)) for source, _ in _select_queries(query))
 
 
 def _stems(word):

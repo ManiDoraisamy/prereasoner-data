@@ -1928,6 +1928,39 @@ def test_gemini_reads_schema_names_but_not_cell_values():
     assert not [char for char in prompt if 0xE000 <= ord(char) <= 0xF8FF], "private-use characters"
 
 
+def test_gemini_is_asked_for_words_not_sql_symbols():
+    """Spider DEV, 2026-10-12: 129 cached rewordings read like SQL ("Student with Age > 20", "PetType = 'dog'"), and
+    a comparison said as a symbol fails the check that the rewording keeps the question's operations ("more than" is
+    gone), so 98 rewordings were refused. Gemini is asked for plain words; a rewording with a symbol is still refused."""
+    question = "Which people have an age of more than 20?"
+    planner, gemini = _gemini_planner(question="Which people have Age > 20?")
+    _norm, fks, sch, _tablemap = _request(planner, [PEOPLE])
+    graph = SchemaGraph.from_planner(sch, fks)
+    rewritten, note = planner.question_rewriter.rewrite(question, graph)
+    system = gemini.requests[0]["system"]
+    assert "never with a symbol" in system and "not Student.Age" in system, system
+    assert rewritten is None and note == "rewording changed a stated value or number", (rewritten, note)
+
+
+def test_a_code_spelled_as_a_word_does_not_hold_a_rewording():
+    """Spider DEV 710, 724, 2026-10-12: "Which region is the city Kabul located in?" was refused its rewording because a
+    country's Code2 is 'IN', and "countries that are republics" because a CountryCode is 'ARE': every cell value said
+    as a word had to survive. A value the search reads is checked as before, and a name it cannot read (東京) too."""
+    from engine.question_rewrite import _preserves_explicit_constraints
+    country = {"name": "country", "columns": ["Code", "Code2", "Name", "Region"],
+               "rows": [["AFG", "AF", "Afghanistan", "Southern Asia"], ["IND", "IN", "India", "Southern Asia"],
+                        ["ARE", "AE", "United Arab Emirates", "Middle East"]]}
+    city = {"name": "city", "columns": ["ID", "Name", "CountryCode"], "rows": [[1, "Kabul", "AFG"], [2, "東京", "ARE"]]}
+    graph = SchemaGraph.from_tables([country, city], [("city", "CountryCode", "country", "Code")])
+    assert _preserves_explicit_constraints("Which region is the city Kabul located in?",
+                                           "What is the Region of the city Kabul?", graph)
+    # Negative: a stated value and a name the search cannot read still hold the rewording.
+    assert not _preserves_explicit_constraints("Which region is the city Kabul located in?",
+                                               "What is the Region of each city?", graph)
+    assert not _preserves_explicit_constraints("Which region is the city 東京 in?",
+                                               "What is the Region of the city Tokyo?", graph)
+
+
 def test_gemini_rewrite_must_preserve_data_values_and_numbers():
     question = "top 5 customers in France"
     planner, gemini = _gemini_planner(question="top 3 customers")
@@ -3723,6 +3756,81 @@ def test_stems_pronouns_and_compounds_a_query_reads_are_read():
     words = read_question("Show the name of the high school student.", ScoredQuery(kyle, render_query(kyle), 0.0, ()),
                           school_graph).unread
     assert not {"high", "school"} & set(words), words
+    # A word the search names a field by is read by a query reading that field: "gender" is Sex (Spider DEV 81).
+    people = {"name": "people", "columns": ["id", "Name", "Sex"], "rows": [[1, "Ann", "F"], [2, "Bo", "M"]]}
+    people_graph = SchemaGraph.from_tables([people], ())
+    shown = SelectQuery((SelectItem(ColumnRef("people", "Name", SQLType.TEXT)),
+                         SelectItem(ColumnRef("people", "Sex", SQLType.TEXT))), "people")
+    assert "gender" not in read_question("Show the name and gender of every person.", ScoredQuery(
+        shown, render_query(shown), 0.0, ()), people_graph).unread
+    names_only = SelectQuery((SelectItem(ColumnRef("people", "Name", SQLType.TEXT)),), "people")
+    assert "gender" in read_question("Show the name and gender of every person.", ScoredQuery(
+        names_only, render_query(names_only), 0.0, ()), people_graph).unread
+    # "The last names" is lname, whatever name another table holds (held-out train 727).
+    authors = {"name": "Authors", "columns": ["authID", "fname", "lname"], "rows": [[1, "Amy", "Ng"]]}
+    inst = {"name": "Inst", "columns": ["instID", "name"], "rows": [[1, "MIT"]]}
+    last = SelectQuery((SelectItem(ColumnRef("Authors", "lname", SQLType.TEXT)),), "Authors")
+    assert not constraint_violations("Retrieve all the last names of authors.", last,
+                                     SchemaGraph.from_tables([authors, inst], ()))
+    # A camel-cased longer name the question spells is that field, not also a field named by one of its words
+    # (held-out train 169: "the average fastest lap speed" is fastestLapSpeed, not lapTimes.lap).
+    results = {"name": "results", "columns": ["resultId", "fastestLapSpeed"], "rows": [[1, 201.5], [2, 199.5]]}
+    laps = {"name": "lapTimes", "columns": ["resultId", "lap"], "rows": [[1, 3]]}
+    speed = ColumnRef("results", "fastestLapSpeed", SQLType.REAL)
+    average = SelectQuery((SelectItem(Aggregate("AVG", speed)),), "results")
+    assert not constraint_violations("What is the average fastest lap speed?", average,
+                                     SchemaGraph.from_tables([results, laps], ()))
+    # Contrast: the first names leave "last" unread.
+    first = SelectQuery((SelectItem(ColumnRef("Authors", "fname", SQLType.TEXT)),), "Authors")
+    assert "last" in read_question("Retrieve all the last names of authors.", ScoredQuery(
+        first, render_query(first), 0.0, ()), SchemaGraph.from_tables([authors, inst], ())).unread
+    # Contrast: a camel-cased name's words said apart are not that field: "at least 2 models" and "the id" ask for the
+    # models, not ModelId (Spider DEV 175).
+    makers = {"name": "car_makers", "columns": ["Id", "Maker"], "rows": [[1, "amc"], [2, "gm"]]}
+    models = {"name": "model_list", "columns": ["ModelId", "Maker", "Model"], "rows": [[1, 1, "amc"], [2, 2, "chevy"]]}
+    maker_id = ColumnRef("car_makers", "Id", SQLType.INTEGER)
+    numbered = SelectQuery((SelectItem(maker_id), SelectItem(ColumnRef("car_makers", "Maker", SQLType.TEXT))),
+                           "car_makers", joins=(Join("model_list", ColumnRef("model_list", "Maker", SQLType.INTEGER),
+                                                     maker_id),),
+                           where=Comparison(ColumnRef("model_list", "ModelId", SQLType.INTEGER), ">=", Literal(2)))
+    assert "The requested field is not used: Model" in constraint_violations(
+        "Which are the car makers which produce at least 2 models and more than 3 car makers? "
+        "List the id and the maker.", numbered,
+        SchemaGraph.from_tables([makers, models], [("model_list", "Maker", "car_makers", "Id")]))
+
+
+def test_a_full_name_is_a_first_and_a_last_name_unless_a_field_is_named_so():
+    """Held-out Spider train 474, 2026-10-12: "the full names of employees in Calgary" showed every field, and a query
+    showing FirstName and LastName was refused for "full", which a track title held, and for an albums' Name. A
+    table with a field named "full name" keeps it, and a first name alone leaves "full" unread. Spider DEV 75: "the
+    first name and age" listed the age first."""
+    from engine.query_contract import read_question
+    employee = {"name": "Employee", "columns": ["EmployeeId", "FirstName", "LastName", "City"],
+                "rows": [[1, "Ann", "Lee", "Calgary"], [2, "Bo", "Ng", "Edmonton"], [3, "Cy", "Fox", "Lethbridge"]]}
+    album = {"name": "Album", "columns": ["AlbumId", "Name"], "rows": [[1, "Full Circle"], [2, "Blue"]]}
+    served = _hermetic_planner().serve([employee, album], "Find the full names of employees in the city of Calgary.",
+                                       [])
+    assert served.get("valid"), (served.get("error"), served.get("sql"))
+    assert [list(row) for row in served["result"]["rows"]] == [["Ann", "Lee"]], served.get("sql")
+    # Contrast: a field named "full name" is the full name.
+    makers = {"name": "car_makers", "columns": ["Id", "Maker", "FullName"],
+              "rows": [[1, "amc", "American Motor Company"], [2, "gm", "General Motors"]]}
+    owners = {"name": "owners", "columns": ["Id", "first_name", "last_name"], "rows": [[1, "Ann", "Lee"]]}
+    served = _hermetic_planner().serve([makers, owners], "What is the full name of each car maker?", [])
+    assert served.get("valid"), (served.get("error"), served.get("sql"))
+    assert sorted(row[0] for row in served["result"]["rows"]) == ["American Motor Company", "General Motors"], (
+        served.get("sql"))
+    # Negative: a first name alone leaves "full" unread.
+    graph = SchemaGraph.from_tables([employee, album], ())
+    first = SelectQuery((SelectItem(ColumnRef("Employee", "FirstName", SQLType.TEXT)),), "Employee")
+    assert "full" in read_question("Find the full names of employees.", ScoredQuery(
+        first, render_query(first), 0.0, ()), graph).unread
+    # A name's part a field abbreviates is listed where the question says it: "the first name and age" lists Fname
+    # first (Spider DEV 75).
+    student = {"name": "Student", "columns": ["StuID", "LName", "Fname", "Age"],
+               "rows": [[1, "Lee", "Ann", 19], [2, "Ng", "Bo", 21]]}
+    listed = best("Find the first name and age of all students.", [student])
+    assert execute([student], listed.sql)[0] == ("Ann", 19), listed.sql
 
 
 def test_groups_list_each_value_once_and_count_more_than_their_own_value():
@@ -3831,6 +3939,201 @@ def test_a_field_named_as_its_table_is_not_shown_for_its_owner_noun():
     named = CandidateRanker(graph).rank("What are the names of devices?", [
         ScoredQuery(query, render_query(query), 0.0, ()) for query in (SelectQuery((SelectItem(name),), "device"),)])
     assert not any("owner_only_output" in evidence for evidence in named[0].evidence), named[0].evidence
+
+
+def test_a_field_said_after_its_comparison_or_its_superlative_is_not_shown():
+    """Held-out Spider train 396, 420, 504, 2026-10-12: "projects that require between 100 and 300 hours" showed the
+    hours, "customers who do not use Cash as payment method" the payment method, and "the saving balance of the
+    account with the highest checking balance" the checking balance: each field said only where the question compares
+    it or picks the row by it. A field the question also lists is shown."""
+    def first(graph, question, *queries):
+        return CandidateRanker(graph).rank(question, [ScoredQuery(query, render_query(query), 0.0, ())
+                                                      for query in queries])
+
+    projects = {"name": "Projects", "columns": ["Code", "Name", "Hours"],
+                "rows": [["a", "Alpha", 150], ["b", "Beta", 400]]}
+    graph = SchemaGraph.from_tables([projects], ())
+    name, hours = ColumnRef("Projects", "Name", SQLType.TEXT), ColumnRef("Projects", "Hours", SQLType.INTEGER)
+    from engine.sql_ast import BooleanExpr
+    within = BooleanExpr("AND", (Comparison(hours, ">=", Literal(100)), Comparison(hours, "<=", Literal(300))))
+    alone = SelectQuery((SelectItem(name),), "Projects", where=within)
+    beside = SelectQuery((SelectItem(name), SelectItem(hours)), "Projects", where=within)
+    ranked = first(graph, "What are the names of projects that require between 100 and 300 hours?", beside, alone)
+    assert ranked[0].query == alone, [candidate.sql for candidate in ranked]
+    # Contrast: the hours the question lists are shown.
+    listed = first(graph, "Show the name and hours of projects that require between 100 and 300 hours.", beside)
+    assert not any("filter_only_output" in evidence for evidence in listed[0].evidence), listed[0].evidence
+    customers = {"name": "Customers", "columns": ["customer_id", "customer_name", "payment_method"],
+                 "rows": [[1, "Ann", "Cash"], [2, "Bo", "Visa"]]}
+    graph = SchemaGraph.from_tables([customers], ())
+    customer, method = (ColumnRef("Customers", "customer_name", SQLType.TEXT),
+                        ColumnRef("Customers", "payment_method", SQLType.TEXT))
+    other = Comparison(method, "!=", Literal("Cash"))
+    ranked = first(graph, "What is the name of customers who do not use Cash as payment method?",
+                   SelectQuery((SelectItem(customer), SelectItem(method)), "Customers", where=other),
+                   SelectQuery((SelectItem(customer),), "Customers", where=other))
+    assert ranked[0].query.select == (SelectItem(customer),), [candidate.sql for candidate in ranked]
+    savings = {"name": "SAVINGS", "columns": ["custid", "balance"], "rows": [[1, 50.0], [2, 70.0]]}
+    checking = {"name": "CHECKING", "columns": ["custid", "balance"], "rows": [[1, 900.0], [2, 10.0]]}
+    accounts = {"name": "ACCOUNTS", "columns": ["custid", "name"], "rows": [[1, "Ann"], [2, "Bo"]]}
+    keys = [("SAVINGS", "custid", "ACCOUNTS", "custid"), ("CHECKING", "custid", "ACCOUNTS", "custid")]
+    graph = SchemaGraph.from_tables([savings, checking, accounts], keys)
+    saved, checked = ColumnRef("SAVINGS", "balance", SQLType.REAL), ColumnRef("CHECKING", "balance", SQLType.REAL)
+    joins = (Join("ACCOUNTS", ColumnRef("CHECKING", "custid", SQLType.INTEGER),
+                  ColumnRef("ACCOUNTS", "custid", SQLType.INTEGER)),
+             Join("SAVINGS", ColumnRef("SAVINGS", "custid", SQLType.INTEGER),
+                  ColumnRef("ACCOUNTS", "custid", SQLType.INTEGER)))
+    top = (OrderTerm(checked, "DESC"),)
+    alone = SelectQuery((SelectItem(saved),), "CHECKING", joins=joins, order_by=top, limit=1)
+    beside = SelectQuery((SelectItem(checked), SelectItem(saved)), "CHECKING", joins=joins, order_by=top, limit=1)
+    ranked = first(graph, "Find the saving balance of the account with the highest checking balance.", beside, alone)
+    assert ranked[0].query == alone, [candidate.sql for candidate in ranked]
+    # Contrast: a balance the question also lists is shown, and so is one a verb says the rows have.
+    listed = first(graph, "Which account has the highest checking balance? Show its saving and checking balance.",
+                   beside)
+    assert not any("order_only_output" in evidence for evidence in listed[0].evidence), listed[0].evidence
+    had = first(graph, "Which account has the highest checking balance?", beside)
+    assert not any("order_only_output" in evidence for evidence in had[0].evidence), had[0].evidence
+
+
+def test_a_field_asked_by_its_whole_name_its_owner_or_an_alias_is_used():
+    """Spider DEV 930, 934, 890, 124, 854, 2026-10-12: right answers were refused as leaving a requested "name" or "id"
+    unused: "the owner id, first name and last name" beside a Dogs.name, "the name of the breed" by breed_name, "the
+    names of Kyle's friends" read through a self-join's alias, "the names and ids of all countries" by CountryName and
+    CountryId beside car_makers.Id, and "the names of orchestras" by orchestra.Orchestra beside a conductor's Name. The
+    stadiums' name is still not a concert's name (DEV 41)."""
+    def unused(question, query, tables, keys=()):
+        return [violation for violation in constraint_violations(question, query, SchemaGraph.from_tables(tables, keys))
+                if violation.startswith("The requested field is not used")]
+
+    owners = {"name": "Owners", "columns": ["owner_id", "first_name", "last_name"], "rows": [[1, "Ann", "Lee"]]}
+    breeds = {"name": "Breeds", "columns": ["breed_code", "breed_name"], "rows": [["BUL", "Bulldog"]]}
+    dogs = {"name": "Dogs", "columns": ["dog_id", "owner_id", "breed_code", "name"], "rows": [[1, 1, "BUL", "Rex"]]}
+    dog_keys = [("Dogs", "owner_id", "Owners", "owner_id"), ("Dogs", "breed_code", "Breeds", "breed_code")]
+    owner_id = ColumnRef("Owners", "owner_id", SQLType.INTEGER)
+    by_owner = Join("Owners", ColumnRef("Dogs", "owner_id", SQLType.INTEGER), owner_id)
+    shown = (owner_id, ColumnRef("Owners", "first_name", SQLType.TEXT), ColumnRef("Owners", "last_name", SQLType.TEXT))
+    most = SelectQuery(tuple(SelectItem(column) for column in shown), "Dogs", joins=(by_owner,), group_by=shown,
+                       order_by=(OrderTerm(Aggregate("COUNT", Star()), "DESC"),), limit=1)
+    assert not unused("Which owner owns the most dogs? List the owner id, first name and last name.", most,
+                      [owners, breeds, dogs], dog_keys)
+    breed_name = ColumnRef("Breeds", "breed_name", SQLType.TEXT)
+    breed = SelectQuery((SelectItem(breed_name),), "Breeds", joins=(
+        Join("Dogs", ColumnRef("Dogs", "breed_code", SQLType.TEXT), ColumnRef("Breeds", "breed_code", SQLType.TEXT)),),
+        group_by=(breed_name,), order_by=(OrderTerm(Aggregate("COUNT", Star()), "DESC"),), limit=1)
+    assert not unused("What is the name of the breed with the most dogs?", breed, [owners, breeds, dogs], dog_keys)
+    student = {"name": "Highschooler", "columns": ["ID", "name"], "rows": [[1, "Kyle"], [2, "Ann"]]}
+    friend = {"name": "Friend", "columns": ["student_id", "friend_id"], "rows": [[1, 2]]}
+    friends = SelectQuery((SelectItem(ColumnRef("related", "name", SQLType.TEXT)),), "Friend", from_alias="relation",
+                          joins=(Join("Highschooler", ColumnRef("relation", "student_id", SQLType.INTEGER),
+                                      ColumnRef("owner", "ID", SQLType.INTEGER), alias="owner"),
+                                 Join("Highschooler", ColumnRef("relation", "friend_id", SQLType.INTEGER),
+                                      ColumnRef("related", "ID", SQLType.INTEGER), alias="related")),
+                          where=Comparison(ColumnRef("owner", "name", SQLType.TEXT), "=", Literal("Kyle")))
+    assert not unused("Return the names of friends of the high school student Kyle.", friends, [student, friend])
+    # Contrast: the ID an alias only joins on answers no "id" (DEV 872).
+    assert unused("What is Kyle's id?", friends, [student, friend])
+    countries = {"name": "countries", "columns": ["CountryId", "CountryName"], "rows": [[1, "usa"], [2, "japan"]]}
+    makers = {"name": "car_makers", "columns": ["Id", "Maker", "Country"], "rows": [[1, "amc", 1]]}
+    country_id = ColumnRef("countries", "CountryId", SQLType.INTEGER)
+    named = SelectQuery((SelectItem(ColumnRef("countries", "CountryName", SQLType.TEXT)), SelectItem(country_id)),
+                        "countries", joins=(Join("car_makers", ColumnRef("car_makers", "Country", SQLType.INTEGER),
+                                                 country_id),))
+    assert not unused("What are the names and ids of all countries with at least one car maker?", named,
+                      [countries, makers], [("car_makers", "Country", "countries", "CountryId")])
+    orchestra = {"name": "orchestra", "columns": ["Orchestra_ID", "Orchestra", "Conductor_ID"],
+                 "rows": [[1, "London Symphony", 1]]}
+    conductor = {"name": "conductor", "columns": ["Conductor_ID", "Name"], "rows": [[1, "Ann"]]}
+    listed = SelectQuery((SelectItem(ColumnRef("orchestra", "Orchestra", SQLType.TEXT)),), "orchestra")
+    assert not unused("List the names of orchestras.", listed, [orchestra, conductor],
+                      [("orchestra", "Conductor_ID", "conductor", "Conductor_ID")])
+    # Contrast: the stadiums' name is not a concert's name, though the question says "concerts" too.
+    stadium = {"name": "stadium", "columns": ["Stadium_ID", "Name", "Location"], "rows": [[1, "Hampden", "Glasgow"]]}
+    concert = {"name": "concert", "columns": ["concert_ID", "concert_Name", "Stadium_ID"], "rows": [[1, "Gig", 1]]}
+    stadium_id = ColumnRef("stadium", "Stadium_ID", SQLType.INTEGER)
+    wrong = SelectQuery((SelectItem(ColumnRef("concert", "concert_Name", SQLType.TEXT)),
+                         SelectItem(ColumnRef("stadium", "Location", SQLType.TEXT))), "stadium",
+                        joins=(Join("concert", ColumnRef("concert", "Stadium_ID", SQLType.INTEGER), stadium_id),))
+    assert unused("What are the name and location of the stadiums which some concerts happened in?", wrong,
+                  [stadium, concert], [("concert", "Stadium_ID", "stadium", "Stadium_ID")])
+
+
+def test_words_saying_how_rows_are_counted_are_read_by_a_count():
+    """Spider DEV 397, 852 and held-out Spider train 609, 892, 2026-10-12: right answers were refused for "shared" in
+    "the hometowns shared by at least two teachers", "times" in "visited the most times" and "records" in "at least two
+    records". A query that counts nothing, and a verb no count follows, leave them unread."""
+    from engine.query_contract import read_question
+    teacher = {"name": "teacher", "columns": ["Teacher_ID", "Name", "Hometown"],
+               "rows": [[1, "Ann", "Bolton"], [2, "Bo", "Bolton"], [3, "Cy", "Wigan"]]}
+    graph = SchemaGraph.from_tables([teacher], ())
+    hometown = ColumnRef("teacher", "Hometown", SQLType.TEXT)
+    shared = SelectQuery((SelectItem(hometown),), "teacher", group_by=(hometown,),
+                         having=Comparison(Aggregate("COUNT", Star()), ">=", Literal(2)))
+
+    def unread(question, query, on=graph):
+        return read_question(question, ScoredQuery(query, render_query(query), 0.0, ()), on).unread
+
+    assert "shared" not in unread("Show the hometowns shared by at least two teachers.", shared)
+    assert "records" not in unread("Show the hometown that has at least two records.", shared)
+    # Contrast: no count follows "by", or the query counts nothing.
+    assert "shared" in unread("Show the hometowns shared by teachers.", shared)
+    listing = SelectQuery((SelectItem(hometown),), "teacher", distinct=True)
+    assert "shared" in unread("Show the hometowns shared by at least two teachers.", listing)
+    museum = {"name": "museum", "columns": ["Museum_ID", "Name"], "rows": [[1, "Tate"], [2, "Louvre"]]}
+    visit = {"name": "visit", "columns": ["Museum_ID", "visitor_ID"], "rows": [[1, 1], [1, 2], [2, 1]]}
+    museums = SchemaGraph.from_tables([museum, visit], [("visit", "Museum_ID", "museum", "Museum_ID")])
+    museum_id, name = ColumnRef("museum", "Museum_ID", SQLType.INTEGER), ColumnRef("museum", "Name", SQLType.TEXT)
+    joins = (Join("museum", ColumnRef("visit", "Museum_ID", SQLType.INTEGER), museum_id),)
+    most = SelectQuery((SelectItem(museum_id), SelectItem(name)), "visit", joins=joins, group_by=(museum_id, name),
+                       order_by=(OrderTerm(Aggregate("COUNT", Star()), "DESC"),), limit=1)
+    question = "What are the id and name of the museum visited most times?"
+    assert "times" not in unread(question, most, museums), unread(question, most, museums)
+    first = SelectQuery((SelectItem(museum_id), SelectItem(name)), "museum", order_by=(OrderTerm(museum_id),), limit=1)
+    assert "times" in unread(question, first, museums)
+
+
+def test_an_aggregate_said_only_in_a_condition_is_not_shown():
+    """Held-out Spider train 746, 2026-10-12: "the studios whose average gross is above 4500000" showed each studio's
+    average, and only readings showing it were built. An aggregate the question also asks for is shown, and so is one
+    said after "with": "cities with total sales over 100" shows each city's total (test_a_having_reading_lists_in_the_
+    question_order), and "the categories with count more than 1" each count."""
+    film = {"name": "film", "columns": ["Film_ID", "Studio", "Gross_in_dollar"],
+            "rows": [[1, "Pixar", 5000000], [2, "Pixar", 6000000], [3, "Fox", 1000000], [4, "Fox", 2000000]]}
+    planner = _hermetic_planner()
+    for question in ("List the studios which average gross is above 4500000.",
+                     "List the studios whose average gross is above 4500000."):
+        served = planner.serve([film], question, [])
+        assert served.get("valid"), (question, served.get("error"), served.get("sql"))
+        assert [list(row) for row in served["result"]["rows"]] == [["Pixar"]], served.get("sql")
+    # Contrast: an average the question also asks for is shown.
+    shown = planner.serve([film], "Show each studio and its average gross for studios with average gross above "
+                                  "4500000.", [])
+    assert [list(row) for row in shown["result"]["rows"]] == [["Pixar", 5500000.0]], shown.get("sql")
+    festival = {"name": "music_festival", "columns": ["ID", "Music_Festival", "Category"],
+                "rows": [[1, "A", "Best Song"], [2, "B", "Best Song"], [3, "C", "Best Lyrics"]]}
+    counted = planner.serve([festival], "Please show the categories of the music festivals with count more than 1.",
+                            [])
+    assert [list(row) for row in counted["result"]["rows"]] == [["Best Song", 2]], counted.get("sql")
+
+
+def test_a_question_asking_how_many_is_answered_by_a_count():
+    """Spider DEV 892, 893, 2026-10-12: "how many friends does the high school student Kyle have" was answered with
+    the names of Kyle's friends. A count answers it; "countries with" opens with no count."""
+    student = {"name": "Highschooler", "columns": ["ID", "name"], "rows": [[1, "Kyle"], [2, "Ann"], [3, "Bo"]]}
+    friend = {"name": "Friend", "columns": ["student_id", "friend_id"], "rows": [[1, 2], [1, 3]]}
+    graph = SchemaGraph.from_tables([student, friend], [("Friend", "student_id", "Highschooler", "ID")])
+    kyle = Comparison(ColumnRef("Highschooler", "name", SQLType.TEXT), "=", Literal("Kyle"))
+    joins = (Join("Highschooler", ColumnRef("Friend", "student_id", SQLType.INTEGER),
+                  ColumnRef("Highschooler", "ID", SQLType.INTEGER)),)
+    listed = SelectQuery((SelectItem(ColumnRef("Friend", "friend_id", SQLType.INTEGER)),), "Friend", joins=joins,
+                         where=kyle)
+    counted = SelectQuery((SelectItem(Aggregate("COUNT", Star())),), "Friend", joins=joins, where=kyle)
+    uncounted = "the question asks how many, and the answer computes no count"
+    for question in ("How many friends does the high school student Kyle have?", "Count the number of friends Kyle has."):
+        assert uncounted in constraint_violations(question, listed, graph), question
+        assert uncounted not in constraint_violations(question, counted, graph), question
+    # Negative: a question that opens with another word asks no count.
+    assert uncounted not in constraint_violations("Countries of the friends of Kyle.", listed, graph)
 
 
 def test_one_aggregate_word_over_coordinated_fields_takes_each():
@@ -5551,6 +5854,8 @@ TESTS = [
     test_unread_check_accepts_a_threshold_only_when_the_ast_realizes_it,
     test_unread_check_treats_sheet_scope_words_as_context_not_filters,
     test_gemini_reads_schema_names_but_not_cell_values,
+    test_gemini_is_asked_for_words_not_sql_symbols,
+    test_a_code_spelled_as_a_word_does_not_hold_a_rewording,
     test_gemini_rewrite_must_preserve_data_values_and_numbers,
     test_evaluator_grades_the_served_selection,
     test_sql_import_maps_numeric_arithmetic_but_refuses_nonnumeric,
@@ -5632,10 +5937,16 @@ TESTS = [
     test_an_answer_shows_the_fields_the_question_asks_in_its_order,
     test_words_a_query_realizes_without_spelling_them_are_read,
     test_stems_pronouns_and_compounds_a_query_reads_are_read,
+    test_a_full_name_is_a_first_and_a_last_name_unless_a_field_is_named_so,
     test_groups_list_each_value_once_and_count_more_than_their_own_value,
     test_a_count_over_an_exclusion_or_an_average_comparison_counts_the_rows_kept,
     test_a_number_beside_a_field_and_an_order_of_a_field_are_read,
     test_a_field_named_as_its_table_is_not_shown_for_its_owner_noun,
+    test_a_field_said_after_its_comparison_or_its_superlative_is_not_shown,
+    test_a_field_asked_by_its_whole_name_its_owner_or_an_alias_is_used,
+    test_words_saying_how_rows_are_counted_are_read_by_a_count,
+    test_an_aggregate_said_only_in_a_condition_is_not_shown,
+    test_a_question_asking_how_many_is_answered_by_a_count,
     test_one_aggregate_word_over_coordinated_fields_takes_each,
     test_by_after_a_participle_names_who_acted,
     test_multiple_aggregates_share_a_typed_operand,

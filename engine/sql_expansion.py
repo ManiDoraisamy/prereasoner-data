@@ -948,15 +948,19 @@ _NAME_PART_INITIALS = {"f": "first", "l": "last", "m": "middle"}
 
 
 def name_part_words(name: str) -> tuple[str, str] | None:
-    """The words of the part of a person's name a field holds, when its name says the part in one word: "Fname" and
-    "firstname" are the first name, "LName" the last (Spider pets_1, dorm_1). None for any other field. The search
-    links "the first name" to such a field by them, and the completeness check reads them."""
-    compact = re.sub(r"[^a-z0-9]", "", str(name).lower())
-    if not compact.endswith("name"):
-        return None
-    head = compact[:-4]
-    part = _NAME_PART_INITIALS.get(head) or (head if head in {"first", "last", "middle"} else None)
-    return (part, "name") if part else None
+    """The words of the part of a person's name a field holds: "Fname", "firstname", "STU_FNAME" and "name_first" are
+    the first name, "LName" and "emp_lname" the last (Spider pets_1, college_1, baseball_1). None for any other field.
+    The search links "the first name" to such a field by them, and the completeness check reads them."""
+    from engine.sql_schema import name_words
+    parts = [word.lower() for word in name_words(name)]
+    if len(parts) >= 2 and parts[-2] == "name" and parts[-1] in {"first", "last", "middle"}:
+        return (parts[-1], "name")
+    for token in (parts[-1] if parts else "", "".join(parts)):
+        head = token[:-4] if token.endswith("name") else None
+        part = _NAME_PART_INITIALS.get(head) or (head if head in {"first", "last", "middle"} else None)
+        if part:
+            return (part, "name")
+    return None
 
 
 def column_matches(name: str, question_tokens: set[str], table: str | None = None,
