@@ -53,6 +53,7 @@ from engine.sql_expansion import (
     groups_requested as _groups_requested,
     join_key as _join_key,
     linker_noise as _linker_noise,
+    name_tokens as _name_tokens,
     parse_number as _parse_number,
     physical_tables as _physical_tables,
     projection_window as _projection_window,
@@ -1119,11 +1120,17 @@ class ConstraintQueryExpander(ExpansionSupport):
 def _explicit_aggregate_constraint(
     tokens: tuple[str, ...], aggregate: Aggregate, literal: Literal
 ) -> bool:
+    """Whether the question compares the aggregate itself with the literal: its word stands before its field's name
+    near the number ("whose average life expectancy is longer than 72"). "The average weight of the cars with 4
+    cylinders" averages the weight of the cars with 4 cylinders: its word names no cylinders (Spider DEV 117,
+    2026-10-12: HAVING AVG(Cylinders) = 4 by each weight was served)."""
     cues = {
         "AVG": {"average", "avg", "mean"},
         "SUM": {"sum", "total"},
     }.get(aggregate.function, set())
-    cue_positions = [index for index, token in enumerate(tokens) if token in cues]
+    operand = set(_name_tokens(aggregate.operand.name)) if isinstance(aggregate.operand, ColumnRef) else set()
+    cue_positions = [index for index, token in enumerate(tokens) if token in cues
+                     and set(tokens[index + 1:index + 4]) & operand]
     literal_positions = [
         index for index, token in enumerate(tokens)
         if _parse_number(token) == literal.value

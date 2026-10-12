@@ -418,10 +418,19 @@ def _select_violations(question, query, graph, whole):
     # What the query computes: its answer, and the aggregates it compares to keep groups, in it or in the query it
     # reads FROM. "How many customers have a total amount over 10" totals the amounts in the HAVING its count reads
     # (the review of 2026-10-11).
+    # An average the rows are compared with is computed too, where the question compares rows with their average:
+    # "how many dogs have an age below the average" (sql_expansion.average_comparison; Spider DEV 974, 275, 2026-10-12:
+    # refused for the average it compares with).
+    from engine.sql_ast import ScalarSubquery
+    from engine.sql_expansion import average_comparison
+    compared = average_comparison(question) is not None
     computed = []
     source = query
     while isinstance(source, SelectQuery):
         computed.extend((source.select, source.having))
+        if compared:
+            computed.extend(comparison.right.query.select for comparison in _comparisons(source.where)
+                            if isinstance(comparison.right, ScalarSubquery))
         source = source.from_table.query if isinstance(source.from_table, SubquerySource) else None
     measures = aggregate_columns(computed)
     if roles.aggregate_positions.get('SUM') and not count_requested and 'SUM' not in aggregate_functions(query.select):
@@ -705,14 +714,15 @@ def _select_violations(question, query, graph, whole):
             violations.append(f"the answer shows {shown[0][0]}'s fields, not the {sorted(asked)[0]} asked for")
     # A count grouped by the key of the one table it reads counts one row in each group, while the tables whose foreign
     # keys refer to that key hold its occurrences: "the transaction type code that occurs the most frequently" counted
-    # each type's own row, and every type tied at 1 (held-out Spider train 370, 2026-10-11).
+    # each type's own row, and every type tied at 1 (held-out Spider train 370, 2026-10-11). A key that itself refers
+    # to another table's rows is counted where it is: "the number of likes for each student id" counts the Likes rows
+    # of each student (Spider DEV 902, 2026-10-12: refused for the Highschooler key Likes refers to).
     if (not query.joins and isinstance(query.from_table, str) and query.group_by
             and all(isinstance(group, ColumnRef) and group.table == query.from_table for group in query.group_by)
             and graph.identifies(query.group_by) and counts_groups):
         keys = {(group.table, group.name) for group in query.group_by}
-        if any((mine.table, mine.name) in keys and other.table != query.from_table
-               for key in graph.foreign_keys for left, right in key.column_pairs
-               for mine, other in ((left, right), (right, left))):
+        if any((parent.table, parent.name) in keys and child.table != query.from_table
+               for key in graph.foreign_keys for child, parent in key.column_pairs):
             violations.append(f"each group counts one {query.from_table} row, not the rows its key joins")
     # A count of a group's own distinct values is 1 in every group, a key the joins equate with it included: "the
     # number of teachers from each hometown" was COUNT(DISTINCT Hometown) by Hometown, and "how many templates
@@ -1194,9 +1204,10 @@ def _witnessed_words(question, words, query, graph, observed, schema_words, alre
     out = set()
     for role in {travel_column_role(ref) for ref in used} - {None}:
         out.update(canon(word) for word in TRAVEL_WORDS[role])
-    initials = {match[1] for ref in used if (match := re.fullmatch(r"([a-z])_?name", ref.name.lower()))}
+    from engine.sql_expansion import name_part_words
+    parts = {part[0] for ref in used if (part := name_part_words(ref.name))}
     for index, word in enumerate(words):
-        if word in {"first", "last", "middle", "given", "family"} and word[0] in initials and all(
+        if word in parts and all(
                 "name" in words[place + 1:place + 5] for place, said in enumerate(words) if said == word):
             out.update({word, "name"})
     if any([canon(part) for part in name_words(ref.name)] == [canon(part) for part in name_words(ref.table)][-1:]

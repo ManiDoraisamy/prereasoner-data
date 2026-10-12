@@ -4,6 +4,29 @@ Dated entries come newest first. Each records a run at the commit it names; the 
 entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection arbiter`) may since have
 been removed, and that commit holds the code that ran.
 
+## Counts over exclusions and averages, numbers beside fields: 461 → 471 strict, Gemini on 529 → 538, held out 278 → 304 (2026-10-12)
+
+Same contract as below (`whole_db`, `served`, SQL backend, row cap 5,000, 12 s soft budget, runtime bundle unchanged,
+external rewriting off except where Gemini is on, which replays cached rewordings: all 347 it needed were cached).
+Runs `pkgN-dirty`, `pkgN-gemini-dirty` and `heldout-pkgN-dirty` are `eba2339` with this change, against `pkgF-dirty`,
+`pkgF-gemini-dirty` and `heldout-pkgF-dirty` (the engine `eba2339` serves). The change is `DECISIONS.md` "Counts over
+exclusions and averages, numbers beside fields, fields shown only where asked".
+
+- DEV, engine alone: 461 → **471 strict (45.6%)**, 515 → 527 lenient, 677 → 687 answered; 10 wins (120, 870, 871,
+  974, 975, 978, 979, 980, 982, 983), no loss; wrong answers 216 → 216; 19 queries changed. Newly answered 10, 6 of
+  them strict-correct: of the other 4, 75 and 76 list the age before the first name asked first (the order is fixed
+  in the next change), 83 is DISTINCT where gold repeats a student, and 455 orders 5,000 capped rows whose birth dates
+  tie differently from gold's.
+- Gemini on: 529 → **538 strict**, 601 → 612 lenient, 793 → 802 answered; 9 wins, no loss; wrong answers 264 → 264.
+- Held out (1,000 train questions): 278 → **304 strict**, 347 → 365 lenient, 539 → 561 answered; 26 wins (105, 137,
+  163, 182, 241, 261, 300, 311, 347, 376, 384, 424, 529, 540, 636, 661, 734, 735, 736, 799, 837, 851, 862, 906, 917,
+  919), no loss; wrong answers 261 → 257, strict of answered 51.6% → 54.2%; 37 queries changed. Of 22 newly
+  answered, 15 are strict-correct; the others are wrong elsewhere ("room 111 most recently" ranked by a count, a
+  student named More read from "more than"), and 183, lenient before, now shows the checking balance it compares.
+- Fresh holdout: not run for this change alone; the next entry measures it with the changes after it.
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_{pkgN,pkgN-gemini,heldout-pkgN}-dirty.json`.
+
 ## Answers shown as asked, words a query realizes read: 386 → 461 strict, Gemini on 471 → 529, held out 255 → 278, fresh holdout 286 → 306 (2026-10-12)
 
 Same contract as below: `whole_db`, `served`, SQL backend, row cap 5,000, 12 s soft budget, runtime bundle unchanged

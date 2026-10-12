@@ -3754,6 +3754,85 @@ def test_groups_list_each_value_once_and_count_more_than_their_own_value():
         "What are the different template type codes, and how many templates correspond to each?", joined, joined_graph)
 
 
+def test_a_count_over_an_exclusion_or_an_average_comparison_counts_the_rows_kept():
+    """Spider DEV 974, 978, 983, 2026-10-12: "how many dogs have not gone through any treatment" listed the untreated
+    dogs ("have not" was no negation, and the count was dropped from the exclusion), and "how many dogs have an age below
+    the average" was refused for the average it compares with. A question asking for the average itself still needs it
+    shown."""
+    planner = _hermetic_planner()
+    dogs = {"name": "Dogs", "columns": ["dog_id", "name", "age"],
+            "rows": [[1, "Rex", 2], [2, "Bo", 6], [3, "Ace", 10], [4, "Kit", 3]]}
+    treatments = {"name": "Treatments", "columns": ["treatment_id", "dog_id", "cost"],
+                  "rows": [[1, 1, 50], [2, 1, 70], [3, 3, 20]]}
+    keys = [{"from_table": "Treatments", "from_col": "dog_id", "to_table": "Dogs", "to_col": "dog_id"}]
+
+    def answer(question):
+        served = planner.serve([dogs, treatments], question, keys)
+        assert served.get("valid"), (question, served.get("error"), served.get("sql"))
+        return [list(row) for row in served["result"]["rows"]]
+
+    assert answer("How many dogs have not gone through any treatment?") == [[2]]
+    assert answer("How many dogs have an age below the average?") == [[2]]
+    assert sorted(answer("Which dogs have an age above the average? List the names.")) == [["Ace"], ["Bo"]]
+    # Contrast: the average a question asks for is shown, not only compared with.
+    age = ColumnRef("Dogs", "age", SQLType.INTEGER)
+    compared = SelectQuery((SelectItem(Aggregate("COUNT", Star())),), "Dogs", where=Comparison(
+        age, "<", ScalarSubquery(SelectQuery((SelectItem(Aggregate("AVG", age)),), "Dogs"))))
+    graph = SchemaGraph.from_tables([dogs, treatments], [("Treatments", "dog_id", "Dogs", "dog_id")])
+    assert not constraint_violations("How many dogs have an age below the average?", compared, graph)
+    assert constraint_violations("What is the average age of the dogs?", compared, graph)
+
+
+def test_a_number_beside_a_field_and_an_order_of_a_field_are_read():
+    """Spider DEV 870, 117, 455, 2026-10-12: "the high schoolers in grade 10" and "the cars with 4 cylinders" compared
+    nothing with the number beside the field's name, and "in the order of birth date" ordered nothing."""
+    students = {"name": "Highschooler", "columns": ["ID", "name", "grade"],
+                "rows": [[1, "Ann", 9], [2, "Bo", 10], [3, "Cy", 10], [4, "Di", 11]]}
+    tenth = best("Show the names of all high schoolers in grade 10.", [students])
+    assert sorted(execute([students], tenth.sql)) == [("Bo",), ("Cy",)], tenth.sql
+    cars = {"name": "cars_data", "columns": ["Id", "Cylinders", "Weight"],
+            "rows": [[1, 4, 2000], [2, 8, 4000], [3, 4, 2500]]}
+    four = _hermetic_planner().serve([cars], "What is the average weight of the cars with 4 cylinders?", [])
+    assert four.get("valid") and [list(row) for row in four["result"]["rows"]] == [[2250.0]], four.get("sql")
+    # Contrast: a ranking's number stands beside no field's name and keeps that many rows.
+    top = best("Show the names of the top 2 high schoolers by grade.", [students])
+    assert len(execute([students], top.sql)) >= 2 and "= 2" not in top.sql, top.sql
+    players ={"name": "players", "columns": ["player_id", "first_name", "birth_date"],
+               "rows": [[1, "Zed", "1990-05-01"], [2, "Amy", "1985-01-02"], [3, "Bob", "2000-03-04"]]}
+    ordered = best("List the first name of all players in the order of birth date.", [players])
+    assert execute([players], ordered.sql) == [("Amy",), ("Zed",), ("Bob",)], ordered.sql
+    # "The first name" is a Fname field, and a field named only to order by is not shown (held-out train 736).
+    student = {"name": "Student", "columns": ["StuID", "Fname", "LName", "Age"],
+               "rows": [[1, "Ann", "Lee", 20], [2, "Bo", "Kim", 22], [3, "Cy", "Ng", 19]]}
+    served = _hermetic_planner().serve([student], "Find the first name of students in the descending order of age.", [])
+    assert served.get("valid") and [list(row) for row in served["result"]["rows"]] == [["Bo"], ["Ann"], ["Cy"]], \
+        served.get("sql")
+    # Contrast: a field the question also lists is shown.
+    both = _hermetic_planner().serve([student], "List the first name and age of students in descending order of age.",
+                                     [])
+    assert both.get("valid") and sorted(len(row) for row in both["result"]["rows"]) == [2, 2, 2], both.get("sql")
+
+
+def test_a_field_named_as_its_table_is_not_shown_for_its_owner_noun():
+    """Held-out Spider train 300, 105, 2026-10-12: "the carriers of devices" showed device.Device beside each carrier,
+    and "the locations and nicknames of schools" school.School: the table's word after "of" names the owner of the
+    fields asked, not a field. "The names of devices" asks for that field."""
+    device = {"name": "device", "columns": ["Device_ID", "Device", "Carrier"],
+              "rows": [[1, "Phone", "Verizon"], [2, "Tablet", "AT&T"]]}
+    graph = SchemaGraph.from_tables([device], ())
+    carrier = ColumnRef("device", "Carrier", SQLType.TEXT)
+    name = ColumnRef("device", "Device", SQLType.TEXT)
+    alone = SelectQuery((SelectItem(carrier),), "device")
+    beside = SelectQuery((SelectItem(carrier), SelectItem(name)), "device")
+    ranked = CandidateRanker(graph).rank("What are the carriers of devices?", [
+        ScoredQuery(query, render_query(query), 0.0, ()) for query in (beside, alone)])
+    assert ranked[0].query == alone, [candidate.sql for candidate in ranked]
+    assert any("owner_only_output" in evidence for evidence in ranked[1].evidence), ranked[1].evidence
+    named = CandidateRanker(graph).rank("What are the names of devices?", [
+        ScoredQuery(query, render_query(query), 0.0, ()) for query in (SelectQuery((SelectItem(name),), "device"),)])
+    assert not any("owner_only_output" in evidence for evidence in named[0].evidence), named[0].evidence
+
+
 def test_one_aggregate_word_over_coordinated_fields_takes_each():
     """Spider DEV, 2026-10-12: "the average age of losers and winners" averaged one of loser_age and winner_age, and
     "the number of different series names and contents" counted one field; "the average and maximum number of
@@ -5554,6 +5633,9 @@ TESTS = [
     test_words_a_query_realizes_without_spelling_them_are_read,
     test_stems_pronouns_and_compounds_a_query_reads_are_read,
     test_groups_list_each_value_once_and_count_more_than_their_own_value,
+    test_a_count_over_an_exclusion_or_an_average_comparison_counts_the_rows_kept,
+    test_a_number_beside_a_field_and_an_order_of_a_field_are_read,
+    test_a_field_named_as_its_table_is_not_shown_for_its_owner_noun,
     test_one_aggregate_word_over_coordinated_fields_takes_each,
     test_by_after_a_participle_names_who_acted,
     test_multiple_aggregates_share_a_typed_operand,

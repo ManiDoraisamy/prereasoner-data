@@ -22,6 +22,10 @@ constructor-consumed binding interface (item 4) and the ledger certification (it
 than the old ones on the samples (held out: 20 of 58 newly answered are right), so the next work is the gate's checks
 of what a query shows and groups, as `DECISIONS.md` records with the variants measured and not adopted.
 
+A second package (construction of counts over exclusions and average comparisons, numbers beside fields; output kept
+to the fields the question asks) raised DEV 461 → 471 and the held-out sample 278 → 304 with no losses on either, and
+lowered the held-out wrong answers 261 → 257 (`spider/results/RESULTS.md`, "Counts over exclusions and averages").
+
 ## October 12 assessment: what Claude implemented and what remains
 
 **Assessment:** Claude followed the correctness-hardening and measurement stages, and implemented a useful narrow count composer. He did not implement the proposed constructor-consumed entity/operand/population/scope binding interface. There is no substantial accuracy gain attributable to this latest stage. The retained encoder-only/deterministic architecture remains intact; its broader semantic-binding proposal has not yet received the intended experiment.

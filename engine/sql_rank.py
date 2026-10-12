@@ -207,6 +207,15 @@ class CandidateRanker:
             # the bulgarian commander is not 'Boril'" showed every row's commander, Boril excluded (Spider DEV 497).
             if self._filter_only(column, query, roles):
                 features.append((f"filter_only_output:{_column_label(column)}", -8.0))
+            # So is one it names only to order the rows by: "the first name of students in the descending order of
+            # age" showed each age beside the name (held-out Spider train 736, 2026-10-12).
+            if self._order_only(column, query, roles):
+                features.append((f"order_only_output:{_column_label(column)}", -8.0))
+            # A field named as its table is not asked for where the question names the table only as the owner of
+            # other fields: "the carriers of devices" showed device.Device beside each carrier, and "the locations
+            # and nicknames of schools" school.School (held-out Spider train 300, 105, 2026-10-12).
+            if self._owner_only(column, roles):
+                features.append((f"owner_only_output:{_column_label(column)}", -8.0))
 
         # Rows a join repeats are one answer each: "the makers that produced some cars in 1970" listed a maker once per
         # car, and "the template type code for description 'Book'" once per template (Spider DEV 99, 351). Only where
@@ -304,6 +313,42 @@ class CandidateRanker:
         return bool(said) and all(
             set(roles.tokens[index + 1:index + 5]) & value_words
             or (index + 1 < len(roles.tokens) and roles.tokens[index + 1] in comparing) for index in said)
+
+    @staticmethod
+    def _owner_only(column: ColumnRef, roles: QuestionRoles) -> bool:
+        """Whether ``column`` is named as its table is (device.Device, school.School) and the question says that name
+        only after "of", as the owner of the fields it asks for ("the carriers of devices"). "The names of schools"
+        asks for that field: it is the schools' name."""
+        name = [canon(word) for word in name_words(column.name)]
+        if not name or name != [canon(word) for word in name_words(column.table)]:
+            return False
+        said = [index for index, token in enumerate(roles.tokens) if token == name[-1]]
+
+        def owner(index):
+            start = index - len(name) + 1
+            before = [token for token in roles.tokens[max(0, start - 4):max(0, start)]
+                      if token not in {"the", "all", "a", "an", "their", "its", "each", "every", "these", "those"}]
+            return bool(before) and before[-1] == "of" and (len(before) < 2 or before[-2] not in {"name", "title"})
+
+        return bool(said) and all(owner(index) for index in said)
+
+    def _order_only(self, column: ColumnRef, query: SelectQuery, roles: QuestionRoles) -> bool:
+        """Whether ``query`` orders its rows by ``column`` and the question says the field only in the phrase that
+        orders them: an ordering word ("order", "sorted", "ranked") and its "of", "by" or "to" before each place it
+        names the field ("in the descending order of age", "sorted by their age")."""
+        if not any(term.expression == column for term in query.order_by):
+            return False
+        name = [canon(word) for word in name_words(column.name)]
+        said = [index for index, token in enumerate(roles.tokens) if name and token == name[-1]]
+
+        def ordering(index):
+            before = [token for token in roles.tokens[max(0, index - 6):index - len(name) + 1]
+                      if token not in {"the", "their", "its", "his", "her", "a"}]
+            return (len(before) >= 2 and before[-1] in {"of", "by", "to"}
+                    and bool(set(before[-4:-1]) & {"order", "ordered", "sort", "sorted", "rank", "ranked",
+                                                   "according"}))
+
+        return bool(said) and all(ordering(index) for index in said)
 
     def _group_alignment(self, column: ColumnRef | DatePart, roles: QuestionRoles) -> bool:
         if isinstance(column, DatePart):

@@ -33,12 +33,14 @@ from engine.sql_ast import (
 )
 from engine.numeric import parse_decimal
 from engine.sql_candidate import ScoredQuery
-from engine.sql_expansion import count_requested, positive_predicate, words
+from engine.sql_expansion import average_comparison, count_requested, name_part_words, positive_predicate, words
 from engine.sql_schema import ForeignKey, SchemaGraph, canon, is_surrogate_key
 
 
+# "have not gone through any treatment" and "have not treated any dogs" negate as "do not" does (Spider DEV 978, 983,
+# 2026-10-12: no NOT IN was built).
 _NEGATIVE_RE = re.compile(
-    r"\b(?:without|never|except|excluding|no|not\s+have|do\s+not|does\s+not|did\s+not)\b",
+    r"\b(?:without|never|except|excluding|no|not\s+have|(?:do|does|did|have|has|had)\s+not)\b",
     re.I,
 )
 _STOP_VALUES = frozenset({
@@ -246,21 +248,8 @@ class RecursiveQueryExpander:
     def _scalar_average_candidates(
         self, question: str, base: Sequence[ScoredQuery]
     ) -> list[ScoredQuery]:
-        tokens = set(_tokens(question))
-        if not tokens & {"average", "avg", "mean"}:
-            return []
-        normalized = " ".join(_tokens(question))
-        if re.search(
-            r"\b(?:older|above|greater|higher|more)\s+(?:than\s+)?(?:the\s+)?(?:average|avg|mean)\b",
-            normalized,
-        ):
-            operator = ">"
-        elif re.search(
-            r"\b(?:younger|below|less|lower|fewer)\s+(?:than\s+)?(?:the\s+)?(?:average|avg|mean)\b",
-            normalized,
-        ):
-            operator = "<"
-        else:
+        operator = average_comparison(question)
+        if operator is None:
             return []
 
         out = []
@@ -297,6 +286,28 @@ class RecursiveQueryExpander:
                         candidate.score + 15.0 + _column_question_overlap(projection, question),
                         candidate.evidence + (f"recursive:scalar-avg:{operator}",),
                     )
+                    if built is not None:
+                        out.append(built)
+                # A count beside the average counts the rows on its side: "how many dogs have an age below the
+                # average", and in each group the table's own field makes: "the number of cities in each district
+                # whose population is greater than the average" (Spider DEV 974, 794, 2026-10-12: no reading built).
+                groups = tuple(group for group in query.group_by
+                               if isinstance(group, ColumnRef) and group.table == target.table)
+                counts = any(isinstance(item.expression, Aggregate) and item.expression.function == "COUNT"
+                             for item in query.select)
+                if counts and len(groups) == len(query.group_by):
+                    counted = SelectQuery(
+                        tuple(SelectItem(Aggregate("COUNT", Star())) if isinstance(item.expression, Aggregate)
+                              else item for item in query.select
+                              if item.expression != average and (
+                                  (isinstance(item.expression, Aggregate) and item.expression.function == "COUNT")
+                                  or item.expression in groups)),
+                        target.table,
+                        where=Comparison(target, operator, ScalarSubquery(inner)),
+                        group_by=groups,
+                    )
+                    built = _candidate(counted, candidate.score + 15.0,
+                                       candidate.evidence + (f"recursive:scalar-avg-count:{operator}",))
                     if built is not None:
                         out.append(built)
         return out
@@ -630,10 +641,13 @@ def _linker_noise(predicate: Predicate) -> bool:
 
 
 def _entity_select(select: tuple[SelectItem, ...], table: str) -> tuple[SelectItem, ...]:
+    """The items of ``select`` that read only ``table``'s rows: its fields, an aggregate of one, and a count of rows,
+    which counts the entity's rows once the query reads them alone ("how many dogs have not gone through any
+    treatment" counts the dogs NOT IN the treated ones; Spider DEV 978, 2026-10-12: they were listed instead)."""
     out = []
     for item in select:
         expression = item.expression
-        if isinstance(expression, Star):
+        if isinstance(expression, Star) or (isinstance(expression, Aggregate) and isinstance(expression.operand, Star)):
             out.append(item)
         elif isinstance(expression, ColumnRef) and expression.table == table:
             out.append(item)
@@ -868,12 +882,7 @@ def _name_tokens(name: str) -> tuple[str, ...]:
 
 
 def _semantic_name_tokens(name: str) -> tuple[str, ...]:
-    compact = re.sub(r"[^a-z0-9]", "", str(name).lower())
-    if compact in {"fname", "firstname"}:
-        return ("first", "name")
-    if compact in {"lname", "lastname"}:
-        return ("last", "name")
-    return _name_tokens(name)
+    return name_part_words(name) or _name_tokens(name)
 
 
 def _tokens(text: str) -> tuple[str, ...]:

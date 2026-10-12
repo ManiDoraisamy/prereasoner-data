@@ -63,6 +63,7 @@ from engine.sql_expansion import (
     implicit_sum_measures,
     measure_words_after,
     money_total_position,
+    name_part_words,
     name_tokens,
     naming_context,
     naming_words,
@@ -1374,6 +1375,22 @@ class SQLSearcher:
                 groups.append(options)
                 used_numbers.add(number_index)
 
+        # A number beside the name of a numeric field is that field's value: "the high schoolers in grade 10", "the
+        # cars with 4 cylinders", "a cat that is age 3" (Spider DEV 870, 117, 83, 2026-10-12: the number went unread
+        # and no reading compared it).
+        for index, token in enumerate(tokens):
+            if index in used_numbers or index in claimed or not NUMBER_TEXT.match(token):
+                continue
+            beside = _unique_columns(tuple(
+                option.column for mention in mentions for option in mention.options
+                if option.position in (index - 1, index + 1) and option.column.type.numeric
+                and not is_surrogate_key(option.column.name)))
+            if beside:
+                value = _number(token)
+                groups.append([((Comparison(column, "=", Literal(value, column.type)),), 4.5,
+                                f"beside:{column.table}.{column.name}={value}") for column in beside[:4]])
+                used_numbers.add(index)
+
         for i, token in enumerate(tokens):
             if i in used_numbers or not re.fullmatch(r"(?:19|20)\d{2}", token):
                 continue
@@ -2180,9 +2197,10 @@ def _tokens(question: str) -> tuple[str, ...]:
 
 
 def _column_link_words(column: ColumnRef, id_requested: bool) -> tuple[str, ...]:
-    # "No" and "Num" abbreviate "number": "the number of tickets" names Num_of_Ticket (Spider DEV 424).
-    words = tuple("number" if word.lower() in {"no", "num"} else canon(word)
-                  for word in name_words(column.name))
+    # "No" and "Num" abbreviate "number": "the number of tickets" names Num_of_Ticket (Spider DEV 424). A name's part
+    # is said in two words: "the first name of students" is Fname (held-out Spider train 736, 2026-10-12).
+    words = name_part_words(column.name) or tuple("number" if word.lower() in {"no", "num"} else canon(word)
+                                                  for word in name_words(column.name))
     table_words = {canon(word) for word in name_words(column.table)}
     meaningful = tuple(
         word for word in words

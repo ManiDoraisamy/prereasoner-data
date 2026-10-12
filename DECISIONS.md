@@ -3207,3 +3207,39 @@ answers that matched an empty gold by coincidence), Gemini on 471 → 529, held 
 fresh holdout no change was chosen on 286 → 306 (23 wins, 3 losses). The held-out gain answers more wrongly too (wrong
 answers 232 → 261): a word the gate now reads lets a query through that is wrong elsewhere, so the gate's other checks
 (a count without its group, a field shown but not asked) are the next work, not looser reading.
+
+## Counts over exclusions and averages, numbers beside fields, fields shown only where asked (2026-10-12)
+
+The census of every pool member after the previous change (evaluation-only, replayed through the served selection)
+still held correct plans the search never built for counts, comparisons and listings the question states plainly, and
+answers that showed a field the question names only to order or own other fields. Each family below was built with a
+positive, a same-shape contrast and a negative case (`tests/test_sql_ast.py`), then censused on DEV and the held-out
+sample before the full evaluations.
+
+Construction:
+
+- A count over an exclusion counts the rows kept: "how many dogs have not gone through any treatment" and "the number
+  of professionals who have not treated any dogs" (`sql_recursive`: "have not", "has not" and "did not" negate as "do
+  not" does, and the exclusion keeps its COUNT(*)).
+- A count beside an average comparison counts the rows on its side, by the groups the table's own field makes: "how many
+  dogs have an age below the average", "the number of cities in each district whose population is greater than the
+  average" (`sql_expansion.average_comparison`, `sql_recursive`); the completeness check reads the compared average as
+  computed.
+- A number said beside a numeric field's name is that field's value: "high schoolers in grade 10", "the cars with 8
+  cylinders", "a cat that is age 3" (`sql_search._numeric_predicate_groups`).
+- "In the order of birth date" orders as "ordered by birth date" does (`sql_expansion.ordering_requested`).
+- A name's part a field abbreviates links "the first name" to Fname and "last name" to LName in the search as well as
+  the completeness check (`sql_expansion.name_part_words`).
+
+Output requirements: a field the question names only in the phrase that orders the rows ("the first name of students
+in the descending order of age"), or a field named as its table where the question says that name only after "of", as
+the owner of the fields it asks for ("the carriers of devices"), is not shown (`CandidateRanker._order_only`,
+`_owner_only`, −8 each, as `_filter_only`).
+
+Correctness: a filter moves into a HAVING ("HAVING AVG(Cylinders) = 4" for "the average weight of the cars with 4
+cylinders") only where the operand's name follows its aggregate word within three words
+(`sql_constraints._explicit_aggregate_constraint`), and a count grouped by a key that itself refers to another
+table's rows counts the rows where it is ("the number of likes for each student id", `query_contract`).
+
+Measured on Spider (`spider/results/RESULTS.md`, same date): DEV 461 → 471 strict (10 wins, no loss, wrong answers
+unchanged at 216), held out 278 → 304 (26 wins, no loss, wrong answers 261 → 257), Gemini on 529 → 538 (9 wins, no loss).

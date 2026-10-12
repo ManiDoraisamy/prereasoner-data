@@ -56,10 +56,13 @@ def ordering_requested(question: str) -> bool:
     lexical: it is only a candidate-expansion cue, not an interpretation layer.
     """
     text = " ".join(question.split())
+    # "in the order of birth date" orders as "ordered by birth date" does (Spider DEV 455, 2026-10-12: nothing was
+    # ordered, and the birth date went unused).
     if re.search(
         r'\b(?:sort|sorted|alphabetical|alphabetically)\b'
         r'|\b(?:ascending|descending)\s+order\b'
-        r'|\border\s+by\b',
+        r'|\border\s+by\b'
+        r'|\bin\s+(?:the\s+)?order\s+of\b',
         text, re.IGNORECASE,
     ):
         return True
@@ -792,6 +795,24 @@ def groups_requested(question: str) -> bool:
                for index, token in enumerate(question_tokens))
 
 
+# A comparative before "average" compares rows with their average (canon() forms).
+_ABOVE_AVERAGE = re.compile(r"\b(?:older|above|greater|higher|more)\s+(?:than\s+)?(?:the\s+)?(?:average|avg|mean)\b")
+_BELOW_AVERAGE = re.compile(r"\b(?:younger|below|less|lower|fewer)\s+(?:than\s+)?(?:the\s+)?(?:average|avg|mean)\b")
+
+
+def average_comparison(question: str) -> str | None:
+    """The operator, ">" or "<", by which the question compares rows with their average: "singers older than average",
+    "dogs with an age below the average". The search builds the comparison with the average a scalar subquery
+    computes (``RecursiveQueryExpander``), and the completeness check reads that average as the one the question asks
+    for. None when the question compares nothing with an average."""
+    normalized = " ".join(tokens(question))
+    if _ABOVE_AVERAGE.search(normalized):
+        return ">"
+    if _BELOW_AVERAGE.search(normalized):
+        return "<"
+    return None
+
+
 def field_numbers(question: str, field_names: Iterable[str]) -> frozenset[int]:
     """The positions in ``tokens(question)`` of a "number" that ends the name of a field: the word before it ends
     the field's name, or comes before the name's own last word "number" ("the phone number" of Phone, "flight
@@ -922,6 +943,22 @@ def naming_words(link_words: tuple[str, ...], context: frozenset[str]) -> tuple[
     return link_words
 
 
+# The parts of a name a field abbreviates by its initial (``name_part_words``).
+_NAME_PART_INITIALS = {"f": "first", "l": "last", "m": "middle"}
+
+
+def name_part_words(name: str) -> tuple[str, str] | None:
+    """The words of the part of a person's name a field holds, when its name says the part in one word: "Fname" and
+    "firstname" are the first name, "LName" the last (Spider pets_1, dorm_1). None for any other field. The search
+    links "the first name" to such a field by them, and the completeness check reads them."""
+    compact = re.sub(r"[^a-z0-9]", "", str(name).lower())
+    if not compact.endswith("name"):
+        return None
+    head = compact[:-4]
+    part = _NAME_PART_INITIALS.get(head) or (head if head in {"first", "last", "middle"} else None)
+    return (part, "name") if part else None
+
+
 def column_matches(name: str, question_tokens: set[str], table: str | None = None,
                    context: frozenset[str] | None = None) -> bool:
     """Whether the question names the column ``name``: its words, or with its table's naming_context its
@@ -930,12 +967,11 @@ def column_matches(name: str, question_tokens: set[str], table: str | None = Non
     if compact in question_tokens:
         return True
     special = {
-        "fname": ({"first"}, {"name"}), "firstname": ({"first"}, {"name"}),
-        "lname": ({"last"}, {"name"}), "lastname": ({"last"}, {"name"}),
         "sex": ({"sex", "gender"},), "gender": ({"sex", "gender"},),
         "mpg": ({"mpg", "mile"}, {"mpg", "gallon"}),
     }
-    groups = special.get(compact)
+    parts = name_part_words(name)
+    groups = tuple({word} for word in parts) if parts else special.get(compact)
     if groups is None:
         aliases = {
             "maker": {"maker", "manufacturer"},
@@ -957,12 +993,8 @@ def column_matches(name: str, question_tokens: set[str], table: str | None = Non
 
 def semantic_tokens(name: str) -> tuple[str, ...]:
     compact = re.sub(r"[^a-z0-9]", "", str(name).lower())
-    special = {
-        "fname": ("first", "name"), "firstname": ("first", "name"),
-        "lname": ("last", "name"), "lastname": ("last", "name"),
-        "sex": ("sex", "gender"), "gender": ("sex", "gender"),
-    }
-    words = list(special.get(compact, name_tokens(name)))
+    special = {"sex": ("sex", "gender"), "gender": ("sex", "gender")}
+    words = list(name_part_words(name) or special.get(compact, name_tokens(name)))
     synonyms = {
         "maker": ("manufacturer",), "manufacturer": ("maker",),
         "weight": ("weigh", "weighed", "weighing"),

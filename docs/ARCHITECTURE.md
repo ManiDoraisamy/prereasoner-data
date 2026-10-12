@@ -321,7 +321,14 @@ The own-data path serves one typed SQL AST chosen from the deterministic search'
    "number"). A grouped answer that names a group as a field to show lists its fields in the
    question's order (`sql_search._in_question_order`); a joined listing whose join repeats its rows
    gets a DISTINCT twin, and the ranker prefers it (`sql_rank.repeats_shown_rows`), and a field the
-   question names only to filter on is not shown.
+   question names only to filter on is not shown, nor one it names only in the phrase that orders the
+   rows ("the first name of students in the descending order of age"), nor a field named as its table
+   where the question says that name only after "of", as the owner of the fields it asks for ("the
+   carriers of devices"). A count over an exclusion counts the rows kept ("how many dogs have not gone
+   through any treatment"), a count beside a comparison with the average counts the rows on its side,
+   in the groups the table's own field makes ("the number of cities in each district whose population
+   is greater than the average"; `sql_expansion.average_comparison`), and a number said beside a
+   numeric field's name is that field's value ("high schoolers in grade 10", "a cat that is age 3").
 2. Every candidate runs on an in-memory SQLite copy of the request's tables under the SELECT guard
    and a budget of SQLite VM steps that grows with the cells of the tables it reads: 20 a cell, at
    least 10,000,000 and at most 100,000,000 (`execution_op_limit`). The Gemini rewording's pool runs
@@ -399,7 +406,10 @@ flights"): it shows a field of such a table, of one a foreign key joins to it, o
 (`query_contract._asked_tables`), so airport names do not answer for airlines. A "number"
 ending a field's name ("the phone number") asks for the field, not a count (`sql_expansion.field_numbers`, read by
 `count_requested`, the search's aggregate cues and the ranker's question roles). A threshold on an aggregate a thing has ("customers with a total amount
-over 10", `ExpansionSupport.aggregate_thresholds`) is met only on that aggregate. A number said right after a field
+over 10", `ExpansionSupport.aggregate_thresholds`) is met only on that aggregate, and a filter moves into a HAVING
+only where the aggregate's word stands before its field's name near the number ("whose average life expectancy is
+longer than 72", not "the average weight of the cars with 4 cylinders"). An average the rows are compared with
+("how many dogs have an age below the average") is computed by the query, in its scalar subquery. A number said right after a field
 whose cells are not all numbers ("horsepower more than 150") is compared with that field and no other
 (`query_contract._compares_another_field`), and a field named after its table's name ("the highest savings
 balances") is that table's, not a same-named field of a table the question does not name. "How many" answered by groups a
