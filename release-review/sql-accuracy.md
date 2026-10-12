@@ -1,16 +1,83 @@
 # SQL accuracy: measured weaknesses and implementation plan
 
-**Updated:** 2026-10-11. This updates the existing guide after the independent fix review and full Spider evaluation. It supersedes the October 8 baseline and ordering of work in this document.
+**Updated:** 2026-10-12. This updates the existing guide after the independent fix reviews, Spider artifact audit, and review of Claude's implementation of the plan. It supersedes the October 8 baseline and earlier first-batch ordering.
 
-**Latest follow-up at `6263502`:** [the current independent review](C:/work/prereasoner-data/release-review/spider-review-20261011.md) verifies **386/1,034 strict (37.3%), 444/1,034 lenient (42.9%), 590/1,034 answered (57.1%)**, with 403 passing focused tests and all 141 provenance fields unchanged. Versus `3ef82c4`, there are four strict wins and zero losses; the original F1–F5 and later R1/R2/R3 counterexamples are repaired. Six broader count/scope/performance/ranking findings remain in the latest review. The two earlier country-count gold-label losses remain separately documented. Treat the detailed `3817b34` measurements below as historical baseline evidence; current measurements and open work are here and in the latest review.
+**Latest independent run, October 12:** local `f6fbf4d` plus the uncommitted Boolean-count repair verifies **386/1,034 strict (37.3%), 444/1,034 lenient (42.9%), 590/1,034 answered (57.1%)**, with 361 passing focused checks and all 113 tracked source fingerprints matching after evaluation. The selected SQL and all grades/statuses exactly match Claude's r127. The earlier S1–S6 examples are repaired; the new AND/OR contrast is repaired locally. This stage adds no DEV accuracy gain. See [the current review](C:/work/prereasoner-data/release-review/spider-review-20261011.md) and the assessment below. Detailed `3817b34` and `6263502` records remain historical evidence.
 
-**Historical measured source:** `3817b34378d0133e272d75619d53bfe66a2e8e2c`, in an isolated, clean checkout. The current independently measured source is `6263502f7cdd3c0639208f13e49daa4563bfaae0`.
+**Historical measured sources:** `3817b34378d0133e272d75619d53bfe66a2e8e2c` and `6263502f7cdd3c0639208f13e49daa4563bfaae0`, in isolated clean checkouts. The current independent source is `f6fbf4d5d9b914129ec1ccab2c3d5ad996fe9b0b` with the documented local repair; immutable file fingerprints, not the commit alone, identify this dirty run.
 
-**Scope:** improve the existing deterministic, interpretable own-data engine. This update changes documentation only. Implementation, training, promotion, paid model generation, and deployment were not performed for this plan. Repository rules remain in [CLAUDE.md](C:/work/prereasoner-data/CLAUDE.md); architecture facts and decisions retain their existing owners.
+**Scope:** improve the existing deterministic, interpretable own-data engine. The October 11 plan update changed documentation only. The October 12 independent review includes a narrow Boolean count-composition repair described below; the broader binding implementation and training remain proposed. No training, promotion, paid model generation, or deployment was performed in this review. Repository rules remain in [CLAUDE.md](C:/work/prereasoner-data/CLAUDE.md); architecture facts and decisions retain their existing owners.
 
 **Plan expansion, 2026-10-11:** sections 0, 5, 6, and 10 now explain the semantic-binding bottleneck and specify the internal records, first implementation slice, diagnostic experiments, conditional training objective, and acceptance gates. These are proposed changes, not shipped capabilities or new benchmark results. The current follow-up and section 10 supersede the historical first-batch ordering; repaired F/R examples remain regression controls, not defects to fix again.
 
-## Current follow-up actions at `6263502`
+## October 12 assessment: what Claude implemented and what remains
+
+**Assessment:** Claude followed the correctness-hardening and measurement stages, and implemented a useful narrow count composer. He did not implement the proposed constructor-consumed entity/operand/population/scope binding interface. There is no substantial accuracy gain attributable to this latest stage. The retained encoder-only/deterministic architecture remains intact; its broader semantic-binding proposal has not yet received the intended experiment.
+
+### Measured change against the appropriate baseline
+
+The independently reviewed starting point was `6263502`, not the older deployed `8164601`. Recomputed paired comparisons of Claude's complete saved per-question records give:
+
+| Configuration | `6263502` / r123 | `3563863` / r126 | Count composer / r127 | Latest-stage effect |
+|---|---:|---:|---:|---|
+| DEV, external rewriting off | 386/1,034 (37.3%) | 386/1,034 (37.3%) | 386/1,034 (37.3%) | 0 wins, 0 losses in each stage |
+| DEV, cached Gemini rewriting on | 471/1,034 (45.6%) | 471/1,034 (45.6%) | Not separately rerun in r127 | 0 wins, 0 losses for r123 → r126 |
+| Repeatedly used 1,000-question sample | 253/1,000 (25.3%) | 255/1,000 (25.5%) | 255/1,000 (25.5%) | +2, 0 losses; then 0 changes in correctness |
+
+The 382 → 386 DEV and 249 → 255 sample release comparison includes earlier R fixes. It must not be credited entirely to the latest S fixes or to the count composer. The two new sample wins are 47 (remove the unrequested count from name/phone output) and 370 (recover the transaction-frequency regression). Sample 102 moves from refusal to a wrong answer, even though no previously strict-correct answer is lost.
+
+All 113 recorded tracked code fingerprints in r126 match `3563863`; all 113 in r127 match `f6fbf4d`. The promoted bundle remains `b11056f8…`. Those historical runs were independently audited; the separate fresh full DEV run after the October 12 repair exactly matches r127's 386 strict / 444 lenient / 590 answered, with no SQL or grade changes and all 113 tracked source fingerprints matching after evaluation. Production deployment and Chrome gates were not independently rechecked.
+
+The Gemini row is our deterministic engine aided by cached wording rewrites. It is not Gemini generating SQL, and it is not the 872/1,034 hosted SQL reference.
+
+### Which parts of the approach were followed
+
+| Proposed part | Actual implementation | Assessment |
+|---|---|---|
+| Repair reproduced count/membership/performance/numeric-role defects | S1–S6 controls repaired, with additional field-number and lookup-count tests | Useful hardening; passing these fixtures does not certify entire families |
+| Share count occurrences between building and checking | `counted_thresholds` retains separate endpoints and is consumed by both; separate child membership plans added | Narrow implementation, not the full entity/filter/grain/scope record |
+| Measure candidate availability and blocked choices | All 1,034 raw pools and a served-run ledger recorded | Useful diagnostic evidence, with finalization and retention qualifications below |
+| Supply independently correct semantic bindings to construction | Gold's broad column-role score sets were substituted instead | Different experiment; operation, entity, value, Boolean scope and population bindings were not supplied |
+| Consume richer encoder readings during enumeration | Base construction still uses lexical/schema evidence; learned column roles remain mainly ranking inputs | The essential interface work remains |
+| Demonstrate compositional generalization | Independent fixtures and repeated sample checks | The sample has informed fixes and is now development data, not an untouched final holdout |
+| Avoid unmotivated retraining or SQL generation | One unchanged bundle; no new SQL generator | Correct decision; train only after a useful constructor-consumed reading deficit is established |
+
+### What the census and oracle actually establish
+
+The saved census and oracle each contain 1,034 unique indices and no recorded tracebacks. The served ledger reproduces 386 correct; 59 wrong with a raw flag-admitted correct alternative; 27 wrong with only blocked raw-correct alternatives; 118 wrong with no raw strict hit; 200 refused with a blocked raw-correct alternative; and 244 refused with no raw strict hit.
+
+There are **672 questions with a strict hit in the retained raw pool**, including **445 with a raw candidate passing the census's admission flags**. Neither number is certified served recall: the scripts execute raw member SQL, omit `keep_ties` finalization, and do not measure interpretations discarded before the final 25-member pool. Validate realizations and independent meaning before treating the 227 blocked cases as recoverable or the 59 selection cases as safe wins.
+
+The reported structure strata initially omitted 20 questions. A disjoint classification from parsed gold SQL, with set operations before nesting before grouping/ordering, gives **139 flat, 145 grouping/ordering, 40 nested, 38 set = 362**. Flat here allows scalar aggregates. Gold structures are offline diagnostic labels, never serving inputs.
+
+Claude's 535 → 544 result is a **gold-column-role reweighting ablation**, with 20 raw pre-completeness wins and 11 losses. It flattens all nested scopes into role sets and does not supply operation occurrences, COUNT-versus-SUM, counted entity, predicate values, reference populations, output order, polarity, or scope edges. `_choose`'s raw choice is graded before completeness and serving finalization. The result is not a measured 9-answer serving gain, an upper bound on a richer encoder, or completion of the correct-binding experiment.
+
+The defensible conclusion is that the existing role-score interface has limited leverage and base enumeration does not consume it. This is an implementation interface limitation. It does not establish that the encoder understands all required meaning already or that purely lexical construction is the only remaining problem.
+
+Another useful existing ablation points at that interface: r126 with cached Gemini wording rewrites gains **85 strict answers and loses 0** versus rewrite-off (386 → 471). Of those wins, 54 already had a raw-correct candidate under the original question and 31 had no raw strict hit. Rewording can therefore alter both admission and available plans without adding SQL operators. This is not a fully deterministic headline or an automatic source of trustworthy labels: audit meaning preservation and use it only as offline diagnostic evidence. The deterministic alternative is to bind those meanings directly, rather than rely on a text rewrite in serving.
+
+The reported 39 order-only, 53 extra-row, 28 extra-column, 7 duplicate-only and 12 miscellaneous cohorts need saved per-question definitions and semantic validation. Extra rows can arise from wrong filters, joins, populations, grain or legitimate ties; they do not prove a missing filter. No lenient hit does not mean nothing was partially correct. The raw saved census has 222/362 without any lenient hit under its stored flags, so the reported 223 needs its filtering/finalization definition reconciled.
+
+### Additional ordinary-serving bug reproduced and repaired
+
+At `f6fbf4d`, `Which countries have more than 1 car maker OR more than 1 airport?` serves Chile alone on the registered USA/Japan/Chile/Peru fixture. Expected: USA, Japan, Chile. Its scalar version returns 1 instead of 3. `_requirement_candidates` hard-codes AND, and independent count witnesses pass without checking their Boolean connection.
+
+The October 12 repair reads explicit homogeneous AND/OR coordination once through `sql_expansion.count_requirement_operator`, uses it in the typed constructor, and checks the joint Boolean relationship in `query_contract.realizes_numeric_comparisons`. Mixed/unbound coordination remains unresolved. Serving OR/list/scalar/zero-admitting cases and wrong-AND/wrong-OR completeness contrasts fail before and pass after this repair. This is a necessary semantic fix, not a forecast of headline gains; r127's new multi-count constructor had no DEV SQL effects with its existing reader.
+
+Fresh full DEV confirms no new benchmark gains or losses. The 361 focused checks, repository CI Ruff F/E9/high-severity Bandit commands, compilation and whitespace checks pass. These compound membership shapes are SQL-supported; the current Python lowerer rejects them as unsupported, so no execution-parity claim is made for the three new controls. The existing emitter suite passes. Saved outputs and provenance are in `%TEMP%/prereasoner-claude-approach-review-20261012/`; full metrics remain in the canonical results record.
+
+### Revised next work, ordered by evidence
+
+1. **Certify the ledger's serving realizations and preserve joint scope.** Share finalization through the existing selection owner, retain per-candidate rejection witnesses, and distinguish never enumerated from pruned/retained-pool misses. Keep the OR contrasts mandatory. Do not increase base score constants as a substitute for complete semantic requirements.
+2. **Implement occurrence-bound output requirements.** Begin with the reported order/extra-column cohorts, independently auditing intent. DEV 49 explicitly says `List the maximum weight and pet type`, while the engine returns pet type first. Honor explicit requested field order through typed SelectItems; keep fields mentioned only as filters out of output. Reuse the requirement in construction, ranking and checking. Preserve scalar/group output grain and update supported SQL/Python parity. A global permutation selected by gold is prohibited; an explicit source-order requirement needs no new product permission.
+3. **Bind numeric roles and quantity-versus-entity aggregation before extending many templates.** Sample 102 filters Degrees against 1998–2002 and uses COUNT(Degrees); the reference uses Year and SUM(Degrees), grouped by campus. The year/quantity errors are clear; campus grouping is not explicit in the printed question and must be adjudicated separately. Add fixtures distinguishing quantity totals from record counts and year ranges from amount/ID/cutoff literals. Supply independent bindings through the existing constructor, not just a final cosine adjustment.
+4. **Wire the first richer reading into enumeration, then run the actual 60-case diagnostic.** Extend the existing named evidence/requirement interface for output slots, operation operands, and predicate attachment. Preserve source occurrences and scope IDs. Exact/schema/grammatical evidence and current encoder scores propose bounded typed alternatives; deterministic constraints select coherent assignments. On the same audited cases, substitute independently correct bindings at this constructor interface and record which new plans appear, are pruned, are rejected or lose. This answers the question the column-role ablation did not test.
+5. **Extend the largest validated missing family and witness false refusals.** Validate the 227 raw-correct blocked cases and the remaining 362 retained-pool misses. Choose a family by correctly recoverable answers per work/resource cost, including compound/group/nested behavior once the output/predicate interface is sound. Empty-result coincidence and gold mistakes must not become evidence for ignoring qualifiers.
+6. **Train only for a demonstrated consumed-reading deficit.** If correct bindings materially recover plans under the integrated constructor, use package F's frozen-representation pilot before shared adaptation. Otherwise repair construction/retention. Keep a fresh, untouched schema/composition set, since both DEV and the 1,000-question sample now influenced implementation. Claim a substantive gain only with actual net correct answers and independent generalization, not recovered refusals alone.
+
+The latest fixes are a prerequisite for broader accuracy, not completion of the proposed semantic-binding program. To exceed the frozen Gemini point count, even selecting all 672 observed raw hits would require at least **201 additional question successes** to reach 873/1,034. This is scale arithmetic, not a proven serving ceiling or forecast. The next investment must make meaning available to construction and retain correct plans; more isolated test-case patches will not close that gap.
+
+## October 11 follow-up actions at `6263502` (historical scope)
 
 Continue this implementation plan through the same production owners. The latest report's S1–S6 are counterexamples and repair requirements, not a second planner or a separate implementation program.
 
@@ -30,7 +97,7 @@ The current strict gaps to Sonnet/Gemini Flash are 454/486 answers. Approximatel
 
 An AST specifies a program precisely. It does not establish which program a natural-language request intended. The engine must first bind words to entities, fields, relations, populations, operators, and scopes. A perfectly deterministic renderer faithfully emits an incorrectly bound AST, just as a compiler faithfully compiles the wrong algorithm.
 
-The measured latest gain is four strict answers, representing two easy-question pairs. Medium, hard, and extra-hard strict counts did not improve. Those repairs removed harmful joins and corrected specific construction/verification behavior; they did not demonstrate a broad improvement in compositional interpretation. This is why the headline moves slowly despite useful correctness work.
+The measured `3ef82c4` → `6263502` gain is four strict answers, representing two easy-question pairs. Medium, hard, and extra-hard strict counts did not improve. Subsequent S fixes and the count composer add no DEV strict wins in Claude's saved runs. Those repairs corrected specific construction/verification behavior; they did not demonstrate a broad improvement in compositional interpretation. This is why the headline moves slowly despite useful correctness work.
 
 For this plan, distinguish three properties:
 
@@ -406,7 +473,7 @@ Early pruning is sound only for established incompatibilities. For unresolved se
 
 ## 6. Ordered implementation packages and gates
 
-Each package extends the current owners, removes superseded logic in the same change, registers regression tests, and records measured wins/losses before proceeding. The ordering is a dependency plan, not an estimate of guaranteed score gains or calendar duration. Package F becomes eligible when the first binding slice and diagnostics demonstrate a model-signal deficit; it need not wait for every construction family in E to be completed. The current concrete work queue is section 10.
+Each package extends the current owners, removes superseded logic in the same change, registers regression tests, and records measured wins/losses before proceeding. The ordering is a dependency plan, not an estimate of guaranteed score gains or calendar duration. Package F becomes eligible when the first binding slice and diagnostics demonstrate a model-signal deficit; it need not wait for every construction family in E to be completed. Section 10 preserves the original concrete queue; the October 12 assessment records completed narrow repairs and the current next work.
 
 ### Package A — Reconcile the failure ledger with actual serving
 
@@ -664,7 +731,7 @@ Do not attach invented percentage gains or fixed dates to these milestones befor
 
 ## 10. First implementation batch
 
-### 10.1 Concrete work queue at `6263502`
+### 10.1 Original concrete work queue at `6263502`
 
 This queue expands packages A–G rather than adding a competing plan. Each row is a coherent implementation/change contract; adjacent rows can be combined only when their shared caller migration requires it. No dates or effort estimates are justified before the diagnostic sample and implementation audit.
 

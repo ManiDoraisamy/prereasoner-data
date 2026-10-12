@@ -3127,10 +3127,30 @@ IN the counted table's groups meeting it, or NOT IN the groups failing it when i
 table, so no join repeats another's rows. No Spider DEV or held-out question states two count thresholds, so the
 benchmarks cannot move; the change closes the serving half of the review's S3.
 
-The review's plan (`release-review/sql-accuracy.md`, step 4) asked whether correct readings would make correct plans
-appear. An evaluation-only run with the encoder's role readings replaced by gold's (`spider/results/RESULTS.md`,
-2026-10-12) moved the choice before the completeness check 535 → 544 of 1,034 and pool recall 672 → 673: the readings
-reach only the ranker and the calculation expander, and candidate construction is lexical. The lost accuracy is in
-construction (362 questions with no strict-correct candidate) and in the completeness check (227 strict-correct
-candidates refused, 165 of them for an unread word), so the next accuracy work extends construction; a named-binding
-encoder head would pay only once construction consumes the readings it adds.
+The review's plan (`release-review/sql-accuracy.md`, step 4) asked whether constructor-consumed correct semantic
+bindings would make correct plans appear. The evaluation-only gold-column-role reweighting run
+(`spider/results/RESULTS.md`, 2026-10-12) moved the raw choice before completeness/finalization 535 → 544 of 1,034
+and retained raw pool recall 672 → 673. It changed broad column-role sets, not operation/entity/population/scope
+bindings, and base construction does not consume those role scores. It diagnoses the current interface's limited
+leverage, not an upper bound on semantic readings or completion of the proposed correct-binding experiment. The
+362 retained-pool misses need classification into binding/consumption, missing construction, and pruning; the 227
+raw-correct blocked cases need validated serving realizations and witnessed admission. Named-binding improvements
+must reach construction to be evaluated fairly.
+
+## Count requirements preserve their explicit Boolean connection (2026-10-12)
+
+Independent review of `f6fbf4d` reproduced an OR request serving the new AND membership plan: countries with more
+than one maker OR more than one airport returned Chile, omitting USA and Japan. Both counts were independently
+witnessed, so completeness accepted the wrong intersection. `sql_expansion.count_requirement_operator` now reads
+the connective between threshold occurrences, excluding each threshold's internal range or "two or more" wording.
+The constraint constructor uses that same reading for its typed AND/OR expression. Mixed or unbound coordination
+remains unresolved, rather than silently becoming AND.
+
+`query_contract.realizes_numeric_comparisons` additionally checks the Boolean connection between distinct counted
+populations. It derives a test from witnessed typed membership/existence predicates and supported set/derived-table
+structure, rejects unrelated OR alternatives, and compares the requested and actual Boolean relationship over the
+bounded retained requirements (currently at most four). Separate valid count witnesses cannot substitute for this
+joint check. This closes the reproduced AND/OR swap; it does not claim a complete natural-language scope parser.
+
+Serving list/scalar OR controls and zero-admitting OR contrasts, plus direct wrong-AND/wrong-OR completeness tests,
+failed before the repair and pass afterward. No model, SQL-token generator, alternate planner, or bundle was added.

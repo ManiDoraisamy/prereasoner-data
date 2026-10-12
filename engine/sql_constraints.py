@@ -42,6 +42,7 @@ from engine.sql_expansion import (
     column_requested_as_output as _column_requested_as_output,
     COMPLEMENTS as _COMPLEMENTS,
     count_admits as _count_admits,
+    count_requirement_operator as _count_requirement_operator,
     count_requested as _count_requested,
     count_thresholds as _count_thresholds,
     counted_thresholds as _counted_thresholds,
@@ -273,6 +274,9 @@ class ConstraintQueryExpander(ExpansionSupport):
         requirements = _counted_thresholds(tokens, self.schema.tables)
         if len(requirements) < 2:
             return []
+        operator = _count_requirement_operator(tokens, requirements)
+        if operator is None:
+            return []
         counts_qualifying = _top_level_count(tokens) and not _groups_requested(question)
         out = []
         for entity_table, entity_score in self.entity_tables(tokens, requirements[0][0])[:2]:
@@ -298,7 +302,8 @@ class ConstraintQueryExpander(ExpansionSupport):
                 continue
             # It meets every requirement where a grouped candidate meets one, so it stays in the pool beside them.
             score = 50.0 + entity_score + sum(threshold.strength for threshold, _ in requirements)
-            built = _candidate(SelectQuery(select=select, from_table=entity_table, where=and_predicates(tests)),
+            built = _candidate(SelectQuery(select=select, from_table=entity_table,
+                                          where=BooleanExpr(operator, tuple(tests))),
                                score, ("constraint:having:count-requirements",))
             if built is not None:
                 out.append(built)

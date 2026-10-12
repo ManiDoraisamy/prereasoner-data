@@ -4,6 +4,33 @@ Dated entries come newest first. Each records a run at the commit it names; the 
 entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection arbiter`) may since have
 been removed, and that commit holds the code that ran.
 
+## Independent October 12 approach review and Boolean-count repair: 386 strict, unchanged DEV predictions
+
+Fresh full evaluation of local `f6fbf4d5d9b914129ec1ccab2c3d5ad996fe9b0b` plus the uncommitted OR-count repair:
+`whole_db`, `served`, SQL backend, compose on, cap 5,000/table, 12-second soft budget, external rewriting off,
+unchanged promoted bundle `b11056f8ce8bf16a44da69bf76fea238149df439d7fde52d5e1f4747a5f536c7`.
+
+- **386/1,034 strict (37.3%), 444/1,034 lenient (42.9%), 590/1,034 answered (57.1%).**
+- Exact match with Claude's `r127-dirty`: zero selected SQL, strict, lenient, or answered-status differences.
+  This is correctness hardening on independent OR fixtures, not a new DEV accuracy gain.
+- All 1,034 indices unique; all 113 tracked code fingerprints agree with the after-run files. Source is dirty
+  because the reviewed fix remains local/uncommitted; no training, promotion, commit, push or deployment occurred.
+- Partition remains 386 strict-correct, 77 lenient-only, 127 wrong under both metrics, 444 unanswered.
+  Refusal stages remain 362 completeness, 73 constraints, 9 AST search. No soft-budget exceedances.
+- Prediction median/p90/p95/max: 1.171 / 2.555 / 3.081 / 5.971 seconds. These observations are not a controlled
+  speed comparison with the saved runs.
+- 361 focused checks pass: SQL AST 207, query contract 57, compose 33, deterministic emitters 64. Repository CI
+  Ruff F/E9 and high-severity Bandit commands pass, as do Python compilation and `git diff --check`.
+- The new serving OR/list/scalar/zero-admitting tests and opposite-connective completeness tests fail before the
+  repair and pass afterward. Current Python lowering rejects these compound membership shapes as unsupported
+  (`only one non-aggregate comparison is supported`); no SQL/Python execution-parity claim is made for them.
+  The existing dual-emitter suite passes. Historical held-out/reference/deployed/browser runs were not rerun here.
+
+Artifacts: `%TEMP%/prereasoner-claude-approach-review-20261012/`, with `full_eval_approach-review-f6fbf4d.json`,
+the matching per-example file, `independent-verification.json`, and focused suite logs.
+Assessment and revised next implementation work remain in `release-review/sql-accuracy.md` and the October 12
+follow-up of `release-review/spider-review-20261011.md`.
+
 ## Where correct plans are lost at `3563863`: pool census and gold role readings (2026-10-12)
 
 Evaluation-only, on the release commit `3563863` (clean worktree, runtime bundle `b11056f8…`, DEV 1,034, `whole_db`,
@@ -13,15 +40,37 @@ served run `r126-dirty` (same code), and the same census with the encoder's role
 - Served-path ledger: 386 right; 59 wrong while a strict-correct candidate was eligible but ranked below; 27 wrong
   while a strict-correct one was refused; 118 wrong with none built; 200 refused while a strict-correct one was
   refused (165 by an unread word, 62 by a violation, some both); 244 refused with none built. A strict-correct
-  candidate is in the pool for 672 (65.0%), as the review's earlier census (671) found.
-- Of the 362 with none built, 139 are flat queries (no grouping, ordering, nesting or set operation), 125 group or
+  candidate is in the retained raw pool for 672 (65.0%), as the review's earlier census (671) found. This census
+  grades raw SQL, not `PoolSelection.candidate`'s `keep_ties` realization; its flag eligibility is diagnostic,
+  not a certified recoverable serving ceiling. "None built" here means no strict hit in the retained raw pool;
+  it does not distinguish never constructed from discarded before the final pool.
+- Of the 362 with none in that pool, 139 are flat queries (no grouping, ordering, nesting or set operation), 145 group or
   order, 40 nest a query and 38 are set operations.
 - Gold role readings (projection, aggregate, group, order and filter columns at 1.0, every other column 0.0; gold's
   tables at 1.0): the choice before the completeness check is strict-correct for 535 → 544 (20 wins, 11 losses), and
-  the pool holds a strict-correct candidate for 672 → 673. The readings reach only the ranker and the calculation
-  expander; candidate construction is lexical (table scores and mentions), so perfect readings of this kind buy about
-  one point. The review's step 4 asked whether correct bindings make a correct plan appear: they do not. The
-  missing plans are construction's (362) and the completeness check's (227 refused right ones).
+  the pool holds a strict-correct candidate for 672 → 673. These are a gold-column-role reweighting ablation:
+  the role sets flatten nested scopes, preserve no operation occurrence/output order, and provide no operator,
+  counted-entity, population, filter-value, or Boolean-scope binding. They reach the ranker and calculation
+  expander, not base enumeration's table scores/mentions. The 535 → 544 count is `_choose`'s raw choice before
+  completeness and serving finalization, not a measured 9-answer serving gain. It shows limited leverage through
+  the existing role-score interface; it neither executes the proposed constructor-consumed correct-binding
+  experiment nor rules out a semantic-reading deficit. The 362 retained-pool misses and 227 raw-correct blocked
+  cases justify work on binding consumption, construction/retention, and witnessed admission.
+
+Independent October 12 artifact audit: all 1,034 census and all 1,034 oracle indices are unique, with no recorded
+tracebacks; the six served-ledger counts above reproduce. For `r126-dirty` and `r127-dirty`, all 113 recorded tracked
+code fingerprints match commits `3563863` and `f6fbf4d`, respectively. Compared with `r123-dirty` (`6263502`),
+`r126-dirty` adds **0 DEV wins/losses** and **2/1,000 sample wins, 0 losses** (47 and 370); sample 102 is newly
+answered wrong. `r127-dirty` adds 0 wins/losses on either set, no DEV SQL changes, and one sample SQL change from
+the current-day Julian literal. The 382 → 386 / 249 → 255 release comparison below spans the earlier R fixes too.
+The sample has now informed fixes and is not an untouched generalization test. A sequential `r127` sample run has
+22 soft-budget exceedances versus 40 in `r126` with unchanged grades; workload differences preclude a controlled
+speed claim or attributing all overruns solely to immutable data characteristics.
+
+For the same r126 inputs, cached-rewrite-on versus rewrite-off has 85 strict wins and 0 losses (386 → 471).
+Of those 85, 54 original questions already have a raw strict hit and 31 do not. This is useful evidence of an
+interpretation/admission/retention interface limitation, subject to independent meaning-preservation checks;
+it is not Gemini SQL-generation accuracy or a rewrite-off deterministic result.
 
 Output: `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/census_3563863/` and `oracle_3563863/` (with the
 evaluation-only scripts `census.py`, `oracle_bindings.py`, `served_ledger.py`, `replay.py`).

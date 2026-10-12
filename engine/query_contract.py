@@ -1350,8 +1350,12 @@ def realizes_numeric_comparisons(question, candidate, graph, *, exclude_position
     prevents ``over`` from forcing Gemini while still rejecting a query that reverses it to ``under``.
     """
     import math
-    from engine.sql_ast import Aggregate, BinaryExpr, BooleanExpr, ColumnRef, Comparison, DatePart, Star
-    from engine.sql_expansion import ExpansionSupport, count_admits, counted_thresholds, tokens
+    from engine.sql_ast import (
+        Aggregate, BinaryExpr, BooleanExpr, ColumnRef, Comparison, DatePart, SelectQuery, SetQuery, Star, SubquerySource,
+    )
+    from engine.sql_expansion import (
+        ExpansionSupport, count_admits, count_requirement_operator, counted_thresholds, tokens,
+    )
     from engine.sql_extrema import MAX_CUES, MIN_CUES
     from engine.sql_search import _number
 
@@ -1525,6 +1529,59 @@ def realizes_numeric_comparisons(question, candidate, graph, *, exclude_position
     for threshold, table in counts_asked:
         if not any(counts_as_asked(threshold.predicates, table, query, scope) for query, scope in scoped):
             return False
-    return True
+    if len({table for _, table in counts_asked}) > 1:
+        operator = count_requirement_operator(question_tokens, counts_asked)
+        if operator is None:
+            return False
+        extremum = bool(set(question_tokens) & (MAX_CUES | MIN_CUES))
 
+        def combine_tests(parts, connective):
+            if connective == "OR" and any(part is None for part in parts):
+                return None
+            parts = [part for part in parts if part is not None]
+            if not parts:
+                return None
+            combine = all if connective == "AND" else any
+            return lambda truths: combine(part(truths) for part in parts)
+
+        def matching_counts(queries):
+            matched = tuple(index for index, (threshold, table) in enumerate(counts_asked)
+                            if any(counts_as_asked(threshold.predicates, table, query, scope)
+                                   for query, scope in queries))
+            return (lambda truths: all(truths[index] for index in matched)) if matched else None
+
+        def predicate_test(predicate):
+            if isinstance(predicate, BooleanExpr):
+                return combine_tests([predicate_test(term) for term in predicate.terms], predicate.operator)
+            queries = []
+            for inner, scalar, negated, operand in _tested_subqueries(predicate):
+                if not scalar:
+                    scope = _Scope(negated=negated, unbound=not _binds(operand, inner, graph, extremum))
+                    queries.extend(_select_queries(inner, scope, graph, extremum))
+            return matching_counts(queries)
+
+        def query_test(query):
+            if isinstance(query, SetQuery):
+                if query.operator not in {"UNION", "INTERSECT"}:
+                    return None
+                return combine_tests([query_test(query.left), query_test(query.right)],
+                                     "OR" if query.operator == "UNION" else "AND")
+            if not isinstance(query, SelectQuery):
+                return None
+            parts = [matching_counts(((query, _Scope()),)), predicate_test(query.where)]
+            if isinstance(query.from_table, SubquerySource):
+                parts.append(query_test(query.from_table.query))
+            return combine_tests(parts, "AND")
+
+        actual_test = query_test(candidate.query)
+        if actual_test is None:
+            return False
+        wanted = all if operator == "AND" else any
+        # Count extraction retains at most four occurrences: compare their Boolean relationship, not their numeric
+        # magnitude. Independent witnesses alone once accepted A AND B as the requested A OR B (2026-10-12).
+        for mask in range(1 << len(counts_asked)):
+            truths = tuple(bool(mask & (1 << index)) for index in range(len(counts_asked)))
+            if actual_test(truths) != wanted(truths):
+                return False
+    return True
 

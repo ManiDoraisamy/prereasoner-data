@@ -364,7 +364,10 @@ of the rows: a
 comparison may sit in either branch of an INTERSECT, in an OR or a UNION only of alternatives the question offers, in
 a HAVING COUNT for a threshold on counted rows (the only place a number the name of a table follows is met: "more
 than 1 car maker", `sql_expansion.counted_thresholds`, each threshold stated needing its own count, which
-construction builds as one membership test per requirement, `ConstraintQueryExpander._requirement_candidates`; the HAVING is
+construction builds as one membership test per requirement, `ConstraintQueryExpander._requirement_candidates`,
+connected by the explicitly read AND or OR (`sql_expansion.count_requirement_operator`). Mixed/unbound coordination
+remains unresolved. The checker also proves the joint Boolean relationship between distinct counted populations;
+individually correct membership counts do not justify substituting AND for OR. The HAVING is
 read as a formula, AND and OR, of the counts of the counted rows, COUNT(*) or a column of theirs, a distinct one
 telling them apart, and must admit the same numbers of rows, tried at the boundaries its bounds make, over the
 counted table without joins that repeat its rows or groups that hold its key; one admitting none, "fewer than 2",

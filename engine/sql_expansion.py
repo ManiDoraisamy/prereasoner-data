@@ -740,6 +740,23 @@ def counted_thresholds(question_tokens: tuple[str, ...],
     return tuple(sorted(by_end.values(), key=lambda item: item[0].start))
 
 
+def count_requirement_operator(
+    question_tokens: tuple[str, ...], requirements: Sequence[tuple[CountThreshold, str]]
+) -> str | None:
+    """The shared connective of explicitly coordinated count requirements; mixed/unbound scope is unresolved.
+
+    Read between occurrences, excluding each threshold's own "two or more" or range. A count's presence alone
+    cannot prove whether its population intersects or joins the other count's population.
+    """
+    operators = set()
+    for (left, _), (right, _) in zip(requirements, requirements[1:]):
+        said = set(question_tokens[left.end:right.start]) & {"and", "or"}
+        if len(said) != 1:
+            return None
+        operators.update(said)
+    return next(iter(operators)).upper() if len(operators) == 1 else None
+
+
 def threshold_number(question_tokens: tuple[str, ...], index: int) -> bool:
     """Whether the number at ``index`` is a threshold a comparison takes ("more than two", "at least 3", "exactly
     2"), not a count of rows to keep."""

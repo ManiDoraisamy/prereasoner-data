@@ -1225,6 +1225,25 @@ def test_each_count_the_question_states_is_met_by_a_count_of_its_own_rows():
     assert 0 < len(calls) < 100, len(calls)
 
 
+def test_count_requirements_preserve_their_boolean_connection():
+    """Separate count witnesses cannot turn the requested union into an intersection, or vice versa."""
+    tables = [{"name": "countries", "columns": ["CountryId", "CountryName"],
+               "rows": [[1, "usa"], [2, "japan"], [3, "chile"], [4, "peru"]]},
+              {"name": "car_makers", "columns": ["Id", "Maker", "Country"],
+               "rows": [[1, "ford", 1], [2, "gm", 1], [3, "tesla", 1], [4, "toyota", 2],
+                        [5, "cmc", 3], [6, "zz", 3]]},
+              {"name": "airports", "columns": ["AirportId", "Code", "Country"],
+               "rows": [[1, "JFK", 1], [2, "HND", 2], [3, "NRT", 2], [4, "SCL", 3], [5, "PMC", 3]]}]
+    left = "CountryId IN (SELECT Country FROM car_makers GROUP BY Country HAVING COUNT(*) > 1)"
+    right = "CountryId IN (SELECT Country FROM airports GROUP BY Country HAVING COUNT(*) > 1)"
+    for connective in ("AND", "OR"):
+        question = f"Which countries have more than 1 car maker {connective.lower()} more than 1 airport?"
+        sql = "SELECT CountryName FROM countries WHERE "
+        assert _reading(tables, question, sql + left + f" {connective} " + right)[0]
+        opposite = "OR" if connective == "AND" else "AND"
+        assert not _reading(tables, question, sql + left + f" {opposite} " + right)[0]
+
+
 def test_a_count_grouped_by_the_key_of_its_one_table_counts_the_rows_that_refer_to_it():
     """Held-out Spider train 370 (2026-10-11): "the transaction type code that occurs the most frequently" was met by the
     transaction types grouped by their own code, one row in each, so every type tied at 1; the transactions referring

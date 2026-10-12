@@ -4847,6 +4847,12 @@ def test_each_count_the_question_requires_is_met_on_its_own_rows():
     assert answer("How many countries have more than 1 car maker and more than 1 airport?") == [[1]]
     assert answer("Which countries have fewer than 2 car makers and more than 1 airport?") == [["japan"]]
     assert answer("Which countries have at least 1 car maker and fewer than 2 airports?") == [["usa"]]
+    # The same populations connected by OR include either qualifying group, not their intersection.
+    assert answer("Which countries have more than 1 car maker or more than 1 airport?") == [
+        ["chile"], ["japan"], ["usa"]]
+    assert answer("How many countries have more than 1 car maker or more than 1 airport?") == [[3]]
+    assert answer("Which countries have fewer than 2 car makers or more than 1 airport?") == [
+        ["chile"], ["japan"], ["peru"]]
     # Contrast: one requirement is met as before.
     assert answer("Which countries have more than 1 car maker?") == [["chile"], ["usa"]]
     assert answer("Which countries have fewer than 2 car makers?") == [["japan"], ["peru"]]
