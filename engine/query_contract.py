@@ -192,7 +192,9 @@ def relational_operator_evidence(question, query, graph):
         counted = [item.expression for item in query.select
                    if isinstance(item.expression, Aggregate)
                    and item.expression.function == 'COUNT']
-        projected = [item.expression for item in query.select]
+        # Groups list each value once, the counts beside them included: "different citizenships of singers and the
+        # number of singers of each" (Spider DEV 1012, 2026-10-12: refused for the count beside the groups).
+        projected = [item.expression for item in query.select if not isinstance(item.expression, Aggregate)]
         grouped_projection = (bool(query.group_by) and bool(projected)
                               and all(isinstance(item, ColumnRef) and item in query.group_by
                                       for item in projected))
@@ -684,6 +686,23 @@ def _select_violations(question, query, graph, whole):
     if (top_level_count(question_tokens) and query.group_by and query.having is not None and query.limit is None
             and not groups_requested(question)):
         violations.append("the question counts the groups that qualify, not the rows in each")
+    # The rows the question asks for are the ones the answer shows: "what are airlines that have flights arriving at
+    # airport 'AHD'" was answered with airport names, and "the flight numbers of flights arriving at APG" too (Spider
+    # DEV 235, 249, 2026-10-12, once "arriving" was read; empty on Spider's data, wrong on any other). A table the
+    # question's opening names must show a field of its own, of a table it is joined to by a key, or a key referring
+    # to it. An aggregate answers about the rows it computes over.
+    asked = _asked_tables(question_tokens, graph)
+    if asked and isinstance(query.from_table, str) and not any(
+            isinstance(item.expression, Aggregate) for item in query.select):
+        aliases = {query.from_alias or query.from_table: query.from_table,
+                   **{join.alias or join.table: join.table for join in query.joins}}
+        shown = [(aliases.get(item.expression.table, item.expression.table), item.expression)
+                 for item in query.select if isinstance(item.expression, ColumnRef)]
+        linked = {(left.table, right.table) for key in graph.foreign_keys for left, right in key.column_pairs}
+        linked |= {(right, left) for left, right in linked}
+        if shown and not any(table in asked or any((table, wanted) in linked for wanted in asked)
+                             for table, _ in shown):
+            violations.append(f"the answer shows {shown[0][0]}'s fields, not the {sorted(asked)[0]} asked for")
     # A count grouped by the key of the one table it reads counts one row in each group, while the tables whose foreign
     # keys refer to that key hold its occurrences: "the transaction type code that occurs the most frequently" counted
     # each type's own row, and every type tied at 1 (held-out Spider train 370, 2026-10-11).
@@ -695,6 +714,24 @@ def _select_violations(question, query, graph, whole):
                for key in graph.foreign_keys for left, right in key.column_pairs
                for mine, other in ((left, right), (right, left))):
             violations.append(f"each group counts one {query.from_table} row, not the rows its key joins")
+    # A count of a group's own distinct values is 1 in every group, a key the joins equate with it included: "the
+    # number of teachers from each hometown" was COUNT(DISTINCT Hometown) by Hometown, and "how many templates
+    # correspond to each type code" counted the type code its group joins (Spider DEV 393, 330, 2026-10-12).
+    if query.group_by:
+        same = {(group.table, group.name) for group in query.group_by if isinstance(group, ColumnRef)}
+        pairs = [pair for join in query.joins for pair in ((join.left, join.right), *join.additional)]
+        grown = True
+        while grown:
+            grown = False
+            for left, right in pairs:
+                ends = {(left.table, left.name), (right.table, right.name)}
+                if ends & same and not ends <= same:
+                    same |= ends
+                    grown = True
+        if any(isinstance(item.expression, Aggregate) and item.expression.function == "COUNT"
+               and item.expression.distinct and isinstance(item.expression.operand, ColumnRef)
+               and (item.expression.operand.table, item.expression.operand.name) in same for item in query.select):
+            violations.append("each group counts its own value once")
     # Explicitly named output grain must be represented, rather than just appearing
     # somewhere in the schema: a field named in full after "by/per/each", up to the clause's
     # end. "sorted by average Price" orders the groups and asks for no grain of its own, and a
@@ -1025,8 +1062,10 @@ def read_question(question, candidate, graph, *, calculation_satisfied=False):
     # tested by the query. It cannot stand in for an omitted state column or value.
     if re.search(r"\b(?:named|called)\s+", question, re.I) and sql_literals:
         ordinary_words.update({"named", "called"})
-    # A name the question spells as two words: "high schoolers" is the Highschooler table it reads.
-    ordinary_words.update(word for left, right in zip(words, words[1:]) if canon(left + right) in read_names
+    # A name the question spells as two words: "high schoolers" is the Highschooler table it reads, and so is "the
+    # high school student Kyle" (Spider DEV 887, 895, 896, 2026-10-12: refused for "high" and "school").
+    ordinary_words.update(word for left, right in zip(words, words[1:])
+                          if len(joined := canon(left + right)) >= 6 and any(name.startswith(joined) for name in read_names)
                           for word in (left, right))
     # A spelled number the query realizes in its role (_number_read): "the two oldest" keeps two rows, "at least
     # two votes" compares with 2. Every place the question says it must be realized.
@@ -1064,6 +1103,8 @@ def read_question(question, candidate, graph, *, calculation_satisfied=False):
                 and canon(participle) not in observed and canon(participle) not in schema_words
                 and _one_relationship(candidate.query, graph, objects & sql_literals, participle)):
             ordinary_words.add(canon(participle))
+    ordinary_words.update(_witnessed_words(question, words, candidate.query, graph, observed, schema_words,
+                                           ordinary_words))
     unread = tuple(dict.fromkeys(said for said, word in zip(spelled, words)
                                  if word not in read_names | sql_literals | ordinary_words))
     named = tuple(dict.fromkeys(said for said, word in zip(spelled, words)
@@ -1087,6 +1128,127 @@ def read_question(question, candidate, graph, *, calculation_satisfied=False):
     explicitly_all_fields = complete_projection_requested(question)
     return Reading(unread, named,
                    has_star(candidate.query) and bool(requested_fields) and not explicitly_all_fields)
+
+
+# The words that end the opening of a question, where it says which rows it asks for: "what are airlines | that have
+# flights", "which airlines | have departing flights", "the flight numbers of flights | arriving at".
+_OPENING_STOPS = frozenset({"that", "who", "whom", "whose", "where", "with", "having", "has", "have", "had", "in",
+                            "from", "at", "by", "for", "when", "if", "than", "and", "or"})
+# The command a question may open with, which names no rows: "Show the record companies shared by orchestras" asks for
+# no show (Spider DEV 856, 2026-10-12).
+_OPENING_COMMANDS = frozenset({"find", "give", "list", "return", "show", "what", "which", "display", "tell", "name",
+                               "count"})
+
+
+def _asked_tables(question_tokens, graph):
+    """The tables whose whole name the question's opening says (canon() forms), after a command it opens with and up
+    to its first relative, condition or preposition word; a "which" after its first two words starts a relative clause:
+    "the stadiums | which some concerts happened in". The projection window (sql_expansion.projection_window) is
+    another reading: what the answer shows, from a later command on ("How many countries does each continent have?
+    List the continent id"), where this one is the rows the question asks about."""
+    from engine.sql_schema import canon, name_words
+    opening = set()
+    for index, token in enumerate(question_tokens):
+        if index == 0 and token in _OPENING_COMMANDS:
+            continue
+        if index and (token in _OPENING_STOPS or (token == "which" and index > 1)):
+            break
+        opening.add(token)
+    asked = set()
+    for table in graph.tables:
+        name = {canon(word) for word in name_words(table)} - {"id"}
+        if name and name <= opening:
+            asked.add(table)
+    return asked
+
+
+def _witnessed_words(question, words, query, graph, observed, schema_words, already):
+    """The words of ``question`` (``words``, canon() forms in order) that ``query`` realizes in what it reads, though no
+    table, field or value of it spells them (Spider DEV, 2026-10-12: 173 right answers refused for one to four such
+    words, 136 for one):
+
+    - a word of travel direction, by the column of that direction: "flights departing from APG" by SourceAirport,
+      "flights arriving at AHD" by DestAirport;
+    - a name's part a field abbreviates: "the first name and gender" by Fname, "last name" by LName;
+    - "name" by a field named as its table is: "the airline names" by airlines.Airline, "the continent name" by
+      continents.Continent;
+    - a verb relating two tables the query reads, one named before it and the other after: "templates used by
+      documents", "the conductor that has conducted the most orchestras";
+    - a word sharing a stem of five letters or more with the name of a table or field the query reads: "the semester
+      with no students enrolled" by Student_Enrolment, "the courses they are arranged to teach" by course_arrange,
+      "countries that became independent" by IndepYear, "the most populated countries" by Population; a word of an
+      operation the query must perform ("ordered", "listed", "counted") is not read so;
+    - "one" standing for a row after a determiner: "the department description for the one whose name has the word
+      computer", "how many car makers are there in each one".
+
+    Spider DEV, 2026-10-12: the last two, with two-word names (read_question), read 22 more right answers and 8 wrong
+    ones, each wrong for another reason (a field the question asks for left out, a count read as a listing).
+
+    None is read where the data holds it as a value or a field is named for it: "orders returned by Alice" over a
+    status holding 'Returned' still asks for that status."""
+    from engine.closed_class import relation_verbs
+    from engine.sql_ast import column_refs
+    from engine.sql_rank import TRAVEL_WORDS, travel_column_role
+    from engine.sql_schema import canon, name_words
+    used = [ref for ref in column_refs(query) if hasattr(ref, "name")]
+    out = set()
+    for role in {travel_column_role(ref) for ref in used} - {None}:
+        out.update(canon(word) for word in TRAVEL_WORDS[role])
+    initials = {match[1] for ref in used if (match := re.fullmatch(r"([a-z])_?name", ref.name.lower()))}
+    for index, word in enumerate(words):
+        if word in {"first", "last", "middle", "given", "family"} and word[0] in initials and all(
+                "name" in words[place + 1:place + 5] for place, said in enumerate(words) if said == word):
+            out.update({word, "name"})
+    if any([canon(part) for part in name_words(ref.name)] == [canon(part) for part in name_words(ref.table)][-1:]
+           for ref in used):
+        out.add("name")
+    tables = sorted(table for table in query.referenced_tables() if isinstance(table, str))
+    named = {table: {canon(part) for part in name_words(table)} - {"id"} for table in tables}
+    for verb in relation_verbs(question):
+        word = canon(verb)
+        places = [index for index, said in enumerate(words) if said == word]
+        if not places or word in already or word in observed or word in schema_words:
+            continue
+        if all(any(named[left] & set(words[max(0, place - 8):place]) and named[right] & set(words[place + 1:place + 9])
+                   for left in tables for right in tables if left != right) for place in places):
+            out.add(word)
+    read_names = {canon(part) for table in tables for part in name_words(table)}
+    read_names |= {canon(part) for ref in used for part in name_words(ref.name)}
+    name_stems = {stem for name in read_names for stem in _stems(name)}
+    for word in set(words) - set(already):
+        stems = _stems(word)
+        if word.isalpha() and not any(stem.startswith(operation) or operation.startswith(stem)
+                                      for stem in stems for operation in _OPERATION_STEMS) and any(
+                mine.startswith(theirs) or theirs.startswith(mine)
+                for mine in stems for theirs in name_stems if min(len(mine), len(theirs)) >= 5):
+            out.add(word)
+    places = [index for index, said in enumerate(words) if said == "one"]
+    determiners = {canon(word) for word in _PRONOUN_DETERMINERS}
+    if places and all(place and words[place - 1] in determiners for place in places):
+        out.add("one")
+    return out - observed if out else out
+
+
+# The stems of the operations a query performs (_witnessed_words): a word sharing one names the operation, which the
+# query must realize, not a table or field it reads ("ordered by" an Orders table, "listed" a Listings one).
+_OPERATION_STEMS = frozenset({"order", "sort", "group", "list", "count", "total", "sum", "rank", "name", "number",
+                              "show", "return", "find", "give", "select", "averag", "distinct", "differ", "includ",
+                              "contain", "start", "end"})
+# The words before a "one" that make it a pronoun for a row: "the one whose", "each one".
+_PRONOUN_DETERMINERS = frozenset({"the", "each", "this", "that", "which", "every"})
+
+
+def _stems(word):
+    """``word`` and its forms without one inflectional or derivational suffix, a doubled final consonant undone, of
+    four letters or more: "enrolled" -> enroll, enrol; "enrolment" -> enrol; "populated" -> populat."""
+    out = {word}
+    for suffix in ("ing", "ed", "d", "es", "s", "ment", "er", "or", "ion"):
+        if word.endswith(suffix) and len(word) - len(suffix) >= 4:
+            stem = word[:-len(suffix)]
+            out.add(stem)
+            if len(stem) > 4 and stem[-1] == stem[-2]:
+                out.add(stem[:-1])
+    return {stem for stem in out if len(stem) >= 4}
 
 
 def _comparisons(predicate, alternatives=False):

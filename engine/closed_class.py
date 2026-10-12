@@ -84,6 +84,17 @@ def action_words(text):
 
 
 @lru_cache(maxsize=1024)
+def relation_verbs(text):
+    """The lowercased words the tagger reads in ``text`` as a full verb, a participle included, not an auxiliary or
+    an exclusion cue: "used" in "templates used by documents", "conducted" in "the conductor that has conducted the
+    most orchestras"."""
+    return frozenset(
+        token.text.lower() for token in spacy_model()(text or "")
+        if token.pos_ == "VERB" and token.tag_.startswith("VB") and not EXCLUSION_CUES.fullmatch(token.text)
+    )
+
+
+@lru_cache(maxsize=1024)
 def measure_participles(text, measures):
     """The past participles ``text`` attaches to one of ``measures``: "purchased" in "the total quantity
     purchased", "paid" in "the total amount paid". They say how the measured values came about."""

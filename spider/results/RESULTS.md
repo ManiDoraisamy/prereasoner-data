@@ -4,6 +4,41 @@ Dated entries come newest first. Each records a run at the commit it names; the 
 entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection arbiter`) may since have
 been removed, and that commit holds the code that ran.
 
+## Answers shown as asked, words a query realizes read: 386 → 461 strict, Gemini on 471 → 529, held out 255 → 278, fresh holdout 286 → 306 (2026-10-12)
+
+Same contract as below: `whole_db`, `served`, SQL backend, row cap 5,000, 12 s soft budget, runtime bundle unchanged
+(`b11056f8…`), external rewriting off except where Gemini is on, which replays cached rewordings (4 rewordings the
+change newly needed were fetched live and cached). Runs `pkgF-dirty`, `pkgF-gemini-dirty` and `heldout-pkgF-dirty` are a
+worktree of `7843363` with this change, against `r126-dirty`, `r126-gemini-dirty` and `heldout-r126-dirty` (the engine
+production serves, `3563863`). The change is `DECISIONS.md` "Answers shown as asked, words a query realizes read,
+aggregates over every field they coordinate".
+
+- DEV, engine alone: 386 → **461 strict (44.6%)**, 444 → 515 lenient, 590 → 677 answered; 80 wins, 5 losses; wrong
+  answers 204 → 216; strict of answered 65.4% → 68.1%; 170 queries changed. Newly answered 91, of which 57 strict-correct.
+  The losses: 233, 234 and 237 showed airport names for airline questions, right only because Spider's flight_2 gold
+  is empty (its codes carry a trailing space), now refused; 37 is "singer names in concerts in year 2014", now
+  DISTINCT where gold repeats a singer; 793 keeps the country before its count where gold puts the count first.
+- Gemini on: 471 → **529 strict**, 550 → 601 lenient, 740 → 793 answered; 65 wins, 7 losses; wrong answers 269 → 264.
+- Held out (1,000 train questions): 255 → **278 strict**, 311 → 347 lenient, 487 → 539 answered; 28 wins (23, 125, 213,
+  245, 268, 330, 357, 379, 397, 398, 408, 481, 503, 541, 577, 583, 654, 660, 698, 702, 712, 716, 781, 875, 909, 960, 963,
+  968), 5 losses (219 and 286 compare Alice on the other side of PersonFriend; 309 and 677 are now DISTINCT where
+  gold repeats rows; 455 also shows the player); wrong answers 232 → 261: of 58 newly answered, 20 are strict-correct.
+  The stem witness accounts for about 5 right and 10 wrong of them (read from the served SQL): the word is the
+  table's ("visited" by Visits), and the query is wrong elsewhere (a count without its group, an extra field).
+- Fresh holdout, never used to choose or tune anything (1,000 Spider train questions over 136 databases, drawn with
+  `random.Random(20261012)` from the train questions outside the first sample): `holdout2-3563863` → `holdout2-pkgF-dirty`
+  286 → **306 strict**, 336 → 367 lenient, 519 → 561 answered; 23 wins, 3 losses (119 puts the count of coaches before
+  the club it counts, as "how many" opens the question; 178 is newly refused; 889 is DISTINCT where gold repeats
+  rows); wrong answers 233 → 255, 22 of 49 newly answered strict-correct.
+- Census replays (evaluation-only, every pool member of every DEV question) measured each family before the full
+  runs; their figures run about 11 above the served counts, which realize ties (`keep_ties`), and were used only to
+  compare variants.
+- Soft-budget exceedances: 7 on DEV, 1 Gemini on, 69 held out, all with three evaluations and test suites sharing the
+  machine; predictions median 2.4 s on DEV under that load. Grades do not depend on the budget; no controlled speed
+  comparison was made.
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_{pkgF,pkgF-gemini,heldout-pkgF}-dirty.json`.
+
 ## Independent October 12 approach review and Boolean-count repair: 386 strict, unchanged DEV predictions
 
 Fresh full evaluation of local `f6fbf4d5d9b914129ec1ccab2c3d5ad996fe9b0b` plus the uncommitted OR-count repair:

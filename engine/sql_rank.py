@@ -14,7 +14,7 @@ import re
 from typing import Mapping, Sequence
 
 from engine.sql_ast import (
-    Aggregate, ColumnRef, Comparison, DatePart, Query, SelectQuery, SetQuery, keep_ties, render_query,
+    Aggregate, ColumnRef, Comparison, DatePart, Literal, Query, SelectQuery, SetQuery, keep_ties, render_query,
     share_aggregate,
 )
 from engine.sql_dates import period_grouping
@@ -203,6 +203,18 @@ class CandidateRanker:
             else:
                 value = -1.25 if aggregates else 0.0
             features.append((f"projection_role:{_column_label(column)}", value))
+            # A field the question names only to filter on is not asked for: "the name and results of the battles when
+            # the bulgarian commander is not 'Boril'" showed every row's commander, Boril excluded (Spider DEV 497).
+            if self._filter_only(column, query, roles):
+                features.append((f"filter_only_output:{_column_label(column)}", -8.0))
+
+        # Rows a join repeats are one answer each: "the makers that produced some cars in 1970" listed a maker once per
+        # car, and "the template type code for description 'Book'" once per template (Spider DEV 99, 351). Only where
+        # a joined table refers to a shown one, or a shown field is itself a reference to another table's key, and
+        # only against the answer that repeats them: a bonus for DISTINCT lifted unrelated joined readings over a
+        # right one (DEV 324, 962). A ranking keeps its number of rows whatever repeats.
+        if not query.distinct and repeats_shown_rows(self.schema, query, roles.tokens):
+            features.append(("repeated_rows", -3.0))
 
         # A field's name the question says once binds one field: "the name of the employee who got the highest one
         # time bonus" is the employee's Name, not also the Name of a shop joined for nothing else (Spider DEV 279,
@@ -275,6 +287,23 @@ class CandidateRanker:
 
         features.extend(self._model_features(query))
         return tuple(features)
+
+    def _filter_only(self, column: ColumnRef, query: SelectQuery, roles: QuestionRoles) -> bool:
+        """Whether ``query`` compares ``column`` with a value and the question says the field only where it says
+        that comparison: the value, or a comparison word, follows each place it names the field."""
+        values = [comparison.right for comparison in _comparisons(query.where)
+                  if comparison.left == column and isinstance(comparison.right, Literal)]
+        if not values:
+            return False
+        name = [canon(word) for word in name_words(column.name)]
+        said = [index for index, token in enumerate(roles.tokens) if name and token == name[-1]]
+        value_words = {canon(word) for value in values for word in words(str(value.value))}
+        comparing = {"is", "not", "named", "called", "than", "over", "under", "above", "below", "equal", "between",
+                     "more", "less", "greater", "smaller", "after", "before"}
+        # "the name and population of cities that have a population between ..." asks for the population once.
+        return bool(said) and all(
+            set(roles.tokens[index + 1:index + 5]) & value_words
+            or (index + 1 < len(roles.tokens) and roles.tokens[index + 1] in comparing) for index in said)
 
     def _group_alignment(self, column: ColumnRef | DatePart, roles: QuestionRoles) -> bool:
         if isinstance(column, DatePart):
@@ -525,6 +554,34 @@ def _tables_in_windows(schema: SchemaGraph, tokens: tuple[str, ...], windows: Se
     return out
 
 
+def repeats_shown_rows(schema: SchemaGraph, query: Query, tokens: Sequence[str]) -> bool:
+    """Whether a joined, unaggregated listing shows a row once per row of what it joins: a joined table refers to a
+    shown table by a key its rows repeat (each shown row once per referring row), or a shown field refers to another
+    table's key and repeats (its value once per row holding it). A ranking keeps its number of rows whatever repeats,
+    and rows the question asks for one by one are its own ("the country name for each registration"). The search
+    adds such a listing's DISTINCT twin and the ranker prefers it (Spider DEV 99, 351, 535)."""
+    if (not isinstance(query, SelectQuery) or not query.joins or query.group_by or query.limit is not None
+            or not isinstance(query.from_table, str)
+            or not all(isinstance(item.expression, ColumnRef) for item in query.select)):
+        return False
+    shown_columns = [item.expression for item in query.select]
+    shown = {column.table for column in shown_columns}
+    read = {query.from_table, *(join.table for join in query.joins)}
+    each = {canon(token) for index, token in enumerate(tokens) for before in tokens[max(0, index - 2):index]
+            if before in {"each", "every", "per"}}
+    for key in schema.foreign_keys:
+        for child, parent in key.column_pairs:
+            if child.table not in read or not schema.repeats((child,)):
+                continue
+            if {canon(word) for word in name_words(child.table)} & each:
+                continue
+            if child.table not in shown and parent.table in shown:
+                return True
+            if any(column.table == child.table and column.name == child.name for column in shown_columns):
+                return True
+    return False
+
+
 def _comparisons(predicate):
     if predicate is None:
         return ()
@@ -576,13 +633,16 @@ def relation_sides(schema: SchemaGraph) -> dict[str, tuple]:
     return sides
 
 
+# The words that say which end of a trip a question asks about.
+TRAVEL_WORDS = {
+    "source": frozenset({"leave", "leaving", "depart", "departing", "departure", "origin", "source"}),
+    "destination": frozenset({"arrive", "arriving", "arrival", "land", "landing", "destination", "dest"}),
+}
+
+
 def travel_direction(tokens: tuple[str, ...]) -> str | None:
     token_set = set(tokens)
-    if token_set & {"leave", "leaving", "depart", "departing", "departure", "origin", "source"}:
-        return "source"
-    if token_set & {"arrive", "arriving", "arrival", "land", "landing", "destination", "dest"}:
-        return "destination"
-    return None
+    return next((role for role, said in TRAVEL_WORDS.items() if token_set & said), None)
 
 
 def travel_column_role(column: ColumnRef) -> str | None:

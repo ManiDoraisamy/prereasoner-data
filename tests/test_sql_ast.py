@@ -3580,6 +3580,201 @@ def test_a_listing_follows_the_order_the_question_names():
     assert sorted(execute([pets], average.sql)) == [("cat", 12.0), ("dog", 11.350000000000001)], average.sql
 
 
+def test_an_answer_shows_the_fields_the_question_asks_in_its_order():
+    """Spider DEV, 2026-10-12: "List the maximum weight and pet type" showed the pet type first; "the makers that
+    produced some cars in 1970" listed a maker once per car; and "the name and results of the battles when the
+    bulgarian commander is not 'Boril'" showed every battle's commander. A group the question names as a field to show
+    follows the question's order (one it only groups by stays first, as a table shows it); rows a joined table repeats
+    are one answer each; a field named only in its filter is not shown."""
+    pets = {"name": "Pets", "columns": ["PetID", "PetType", "pet_age", "weight"], "rows": [
+        [2001, "cat", 3, 12.0], [2002, "dog", 2, 13.4], [2003, "dog", 1, 9.3]]}
+    listed = best("Find the maximum weight for each type of pet. List the maximum weight and pet type.", [pets])
+    assert sorted(execute([pets], listed.sql)) == [(12.0, "cat"), (13.4, "dog")], listed.sql
+    grouped = best("Find the average weight for each pet type.", [pets])
+    assert sorted(execute([pets], grouped.sql)) == [("cat", 12.0), ("dog", 11.350000000000001)], grouped.sql
+    students = {"name": "Students", "columns": ["student_id", "first_name"], "rows": [[1, "Ann"], [2, "Bo"]]}
+    enrolments = {"name": "Student_Enrolment", "columns": ["enrolment_id", "student_id", "program"],
+                  "rows": [[10, 1, "Bachelor"], [11, 1, "Bachelor"], [12, 2, "Master"]]}
+    keys = [{"from_table": "Student_Enrolment", "from_col": "student_id", "to_table": "Students",
+             "to_col": "student_id"}]
+    enrolled = best("Who is enrolled in a Bachelor program? List the first name.", [students, enrolments], keys)
+    assert execute([students, enrolments], enrolled.sql) == [("Ann",)], enrolled.sql
+    # Contrast: the rows of the table referring to the other are its own; two paragraphs with one text are two.
+    documents = {"name": "Documents", "columns": ["Document_ID", "Document_Name"], "rows": [[1, "Reviews"], [2, "Notes"]]}
+    paragraphs = {"name": "Paragraphs", "columns": ["Paragraph_ID", "Document_ID", "Paragraph_Text"],
+                  "rows": [[10, 1, "Korea"], [11, 1, "Korea"], [12, 2, "Brazil"]]}
+    texts = best('Show all paragraph texts for the document "Reviews".', [documents, paragraphs],
+                 [{"from_table": "Paragraphs", "from_col": "Document_ID", "to_table": "Documents",
+                   "to_col": "Document_ID"}])
+    assert execute([documents, paragraphs], texts.sql) == [("Korea",), ("Korea",)], texts.sql
+    battles = {"name": "battle", "columns": ["id", "name", "result", "bulgarian_commander"],
+               "rows": [[1, "Adrianople", "victory", "Kaloyan"], [2, "Serres", "defeat", "Boril"]]}
+    filtered = best("What are the name and results of the battles when the bulgarian commander is not 'Boril'",
+                    [battles])
+    assert execute([battles], filtered.sql) == [("Adrianople", "victory")], filtered.sql
+
+
+def test_words_a_query_realizes_without_spelling_them_are_read():
+    """Spider DEV, 2026-10-12: 173 right answers were refused for words no table, field or value spells. A word of
+    travel direction is read by the column of that direction ("flights depart from APG" by SourceAirport), a name's part
+    by a field abbreviating it ("the first name" by Fname), and a verb by the two tables it relates ("templates used by
+    more than one document"). A verb the data holds as a value is still a filter to apply, and an answer must show the
+    rows the question asks for ("airlines that have flights arriving at AHD" are not airport names)."""
+    planner = _hermetic_planner()
+    airlines = {"name": "airlines", "columns": ["uid", "Airline", "Country"],
+                "rows": [[1, "United", "USA"], [2, "Delta", "USA"]]}
+    airports = {"name": "airports", "columns": ["AirportCode", "AirportName", "City"],
+                "rows": [["APG", "Phillips", "Aberdeen"], ["AHD", "Ardmore", "Ardmore"], ["CVO", "Corvallis", "Corvallis"]]}
+    flights = {"name": "flights", "columns": ["FlightNo", "Airline", "SourceAirport", "DestAirport"],
+               "rows": [[10, 1, "APG", "AHD"], [11, 1, "APG", "CVO"], [12, 2, "CVO", "AHD"]]}
+    keys = [{"from_table": "flights", "from_col": "SourceAirport", "to_table": "airports", "to_col": "AirportCode"},
+            {"from_table": "flights", "from_col": "DestAirport", "to_table": "airports", "to_col": "AirportCode"},
+            {"from_table": "flights", "from_col": "Airline", "to_table": "airlines", "to_col": "uid"}]
+
+    def answer(question, tables, keys):
+        served = planner.serve(tables, question, keys)
+        assert served.get("valid"), (question, served.get("error"), served.get("sql"))
+        return sorted(list(row) for row in served["result"]["rows"])
+
+    trips = [airlines, airports, flights]
+    assert answer("How many flights depart from 'APG'?", trips, keys) == [[2]]
+    assert answer("How many flights have destination 'AHD'?", trips, keys) == [[2]]
+    asked = planner.serve(trips, "What are airlines that have flights arriving at airport 'AHD'?", keys)
+    assert not asked.get("valid") or sorted(list(row) for row in asked["result"]["rows"]) == [["Delta"], ["United"]], \
+        asked.get("sql")
+    trip_graph = SchemaGraph.from_tables(trips, keys)
+    airport_names = SelectQuery((SelectItem(ColumnRef("airports", "AirportName", SQLType.TEXT)),), "airports")
+    assert "the answer shows airports's fields, not the airlines asked for" in constraint_violations(
+        "What are airlines that have flights arriving at airport 'AHD'?", airport_names, trip_graph)
+    # Contrast: a command word names no table; "Show the record companies shared by orchestras" asks for no show.
+    orchestra = {"name": "orchestra", "columns": ["Orchestra_ID", "Record_Company"], "rows": [[1, "Decca"]]}
+    show = {"name": "show", "columns": ["Show_ID", "Attendance"], "rows": [[1, 900]]}
+    companies = SelectQuery((SelectItem(ColumnRef("orchestra", "Record_Company", SQLType.TEXT)),), "orchestra")
+    assert not any("asked for" in violation for violation in constraint_violations(
+        "Show the record companies shared by orchestras.", companies, SchemaGraph.from_tables([orchestra, show], ())))
+    students = {"name": "Student", "columns": ["StuID", "Fname", "LName", "Age"],
+                "rows": [[1, "Linda", "Smith", 18], [2, "Tracy", "Kim", 19]]}
+    has_pet = {"name": "Has_Pet", "columns": ["StuID", "PetID"], "rows": [[1, 7], [2, 8]]}
+    pets = {"name": "Pets", "columns": ["PetID", "PetType"], "rows": [[7, "cat"], [8, "dog"]]}
+    pet_keys = [{"from_table": "Has_Pet", "from_col": "StuID", "to_table": "Student", "to_col": "StuID"},
+                {"from_table": "Has_Pet", "from_col": "PetID", "to_table": "Pets", "to_col": "PetID"}]
+    assert answer("Find the first name of students who have a cat.", [students, has_pet, pets], pet_keys) == [["Linda"]]
+    templates = {"name": "Templates", "columns": ["Template_ID", "Template_Type_Code"],
+                 "rows": [[1, "PP"], [2, "BK"], [3, "PP"]]}
+    documents = {"name": "Documents", "columns": ["Document_ID", "Template_ID", "Document_Name"],
+                 "rows": [[10, 1, "a"], [11, 1, "b"], [12, 2, "c"]]}
+    used = answer("Show ids for all templates that are used by more than one document.", [templates, documents],
+                  [{"from_table": "Documents", "from_col": "Template_ID", "to_table": "Templates",
+                    "to_col": "Template_ID"}])
+    assert used == [[1]], used
+    # Negative: a verb the data holds as a value names that value; the join alone does not answer it.
+    customers = {"name": "customers", "columns": ["customer_id", "name"], "rows": [[1, "Ann"], [2, "Bo"]]}
+    orders = {"name": "orders", "columns": ["order_id", "customer_id", "status"],
+              "rows": [[1, 1, "returned"], [2, 2, "shipped"]]}
+    returned = planner.serve([customers, orders], "Which customers returned orders?",
+                             [{"from_table": "orders", "from_col": "customer_id", "to_table": "customers",
+                               "to_col": "customer_id"}])
+    assert not returned.get("valid") or [list(row) for row in returned["result"]["rows"]] == [["Ann"]], \
+        returned.get("sql")
+
+
+def test_stems_pronouns_and_compounds_a_query_reads_are_read():
+    """Spider DEV, 2026-10-12: right answers were refused for a word sharing a stem with a table the query reads
+    ("teachers arranged to teach" by course_arrange), for "one" standing for a row ("the one whose name"), and for two
+    words that begin a table's name ("the high school student" by Highschooler). A word whose table the query does not
+    read, a "one" that is a number, and a word of an operation stay unread."""
+    from engine.query_contract import read_question
+    teacher = {"name": "teacher", "columns": ["Teacher_ID", "Name"], "rows": [[1, "Ann"], [2, "Bo"]]}
+    course = {"name": "course", "columns": ["Course_ID", "Course"], "rows": [[1, "Math"], [2, "Art"]]}
+    arrange = {"name": "course_arrange", "columns": ["Course_ID", "Teacher_ID"], "rows": [[1, 1], [2, 2]]}
+    keys = [("course_arrange", "Course_ID", "course", "Course_ID"),
+            ("course_arrange", "Teacher_ID", "teacher", "Teacher_ID")]
+    graph = SchemaGraph.from_tables([teacher, course, arrange], keys)
+    name, title = ColumnRef("teacher", "Name", SQLType.TEXT), ColumnRef("course", "Course", SQLType.TEXT)
+    arranged = SelectQuery((SelectItem(name), SelectItem(title)), "course", joins=(
+        Join("course_arrange", ColumnRef("course_arrange", "Course_ID", SQLType.INTEGER),
+             ColumnRef("course", "Course_ID", SQLType.INTEGER)),
+        Join("teacher", ColumnRef("course_arrange", "Teacher_ID", SQLType.INTEGER),
+             ColumnRef("teacher", "Teacher_ID", SQLType.INTEGER))))
+
+    def unread(question, query):
+        return read_question(question, ScoredQuery(query, render_query(query), 0.0, ()), graph).unread
+
+    question = "Show names of teachers and the courses they are arranged to teach."
+    assert "arranged" not in unread(question, arranged), unread(question, arranged)
+    # Contrast: a query that reads no arrangement leaves "arranged" unread.
+    teachers_only = SelectQuery((SelectItem(name),), "teacher")
+    assert "arranged" in unread("Show names of teachers who are arranged to teach.", teachers_only)
+    # Negative: a word of an operation is not read by a table sharing its stem.
+    rankings = {"name": "rankings", "columns": ["player", "points"], "rows": [["Ann", 3]]}
+    players = SelectQuery((SelectItem(ColumnRef("rankings", "player", SQLType.TEXT)),), "rankings")
+    ranked = read_question("Show the players who were ranked.", ScoredQuery(players, render_query(players), 0.0, ()),
+                           SchemaGraph.from_tables([rankings], ())).unread
+    assert "ranked" in ranked, ranked
+    # "one" after a determiner stands for a row; after "than" it is a number.
+    assert "one" not in unread("What is the name of the one whose id is 1?", SelectQuery(
+        (SelectItem(name),), "teacher",
+        where=Comparison(ColumnRef("teacher", "Teacher_ID", SQLType.INTEGER), "=", Literal(1))))
+    assert "one" in unread("Show names of teachers with more than one course.", teachers_only)
+    # Two words a read table's name spells as one.
+    student = {"name": "Highschooler", "columns": ["ID", "name"], "rows": [[1, "Kyle"]]}
+    school_graph = SchemaGraph.from_tables([student], ())
+    kyle = SelectQuery((SelectItem(ColumnRef("Highschooler", "name", SQLType.TEXT)),), "Highschooler")
+    words = read_question("Show the name of the high school student.", ScoredQuery(kyle, render_query(kyle), 0.0, ()),
+                          school_graph).unread
+    assert not {"high", "school"} & set(words), words
+
+
+def test_groups_list_each_value_once_and_count_more_than_their_own_value():
+    """Spider DEV 393, 1012, 2026-10-12: "different hometowns of teachers and the number of teachers from each" was
+    refused for "different" beside COUNT(*) by Hometown, though groups list each value once, and answered with
+    COUNT(DISTINCT Hometown) by Hometown, 1 in every group. A count of a key the joins equate with the group's is 1
+    too."""
+    teacher = {"name": "teacher", "columns": ["Teacher_ID", "Name", "Hometown"],
+               "rows": [[1, "Ann", "Bolton"], [2, "Bo", "Bolton"], [3, "Cy", "Wigan"]]}
+    question = "Show different hometown of teachers and the number of teachers from each hometown."
+    served = _hermetic_planner().serve([teacher], question, [])
+    assert served.get("valid"), (served.get("error"), served.get("sql"))
+    assert sorted(list(row) for row in served["result"]["rows"]) == [["Bolton", 2], ["Wigan", 1]], served.get("sql")
+    hometown = ColumnRef("teacher", "Hometown", SQLType.TEXT)
+    graph = SchemaGraph.from_tables([teacher], ())
+    once = SelectQuery((SelectItem(hometown), SelectItem(Aggregate("COUNT", hometown, distinct=True))), "teacher",
+                       group_by=(hometown,))
+    assert "each group counts its own value once" in constraint_violations(question, once, graph)
+    rows = SelectQuery((SelectItem(hometown), SelectItem(Aggregate("COUNT", Star()))), "teacher", group_by=(hometown,))
+    assert not constraint_violations(question, rows, graph), constraint_violations(question, rows, graph)
+    # A key the joins equate with the group's counts one value in each group too.
+    types = {"name": "Ref_Types", "columns": ["Type_Code", "Description"], "rows": [["PP", "Paper"]]}
+    templates = {"name": "Templates", "columns": ["Template_ID", "Type_Code"], "rows": [[1, "PP"], [2, "PP"]]}
+    joined_graph = SchemaGraph.from_tables([types, templates], [("Templates", "Type_Code", "Ref_Types", "Type_Code")])
+    mine, theirs = ColumnRef("Templates", "Type_Code", SQLType.TEXT), ColumnRef("Ref_Types", "Type_Code", SQLType.TEXT)
+    joined = SelectQuery((SelectItem(theirs), SelectItem(Aggregate("COUNT", mine, distinct=True))), "Templates",
+                         joins=(Join("Ref_Types", mine, theirs),), group_by=(theirs,))
+    assert "each group counts its own value once" in constraint_violations(
+        "What are the different template type codes, and how many templates correspond to each?", joined, joined_graph)
+
+
+def test_one_aggregate_word_over_coordinated_fields_takes_each():
+    """Spider DEV, 2026-10-12: "the average age of losers and winners" averaged one of loser_age and winner_age, and
+    "the number of different series names and contents" counted one field; "the average and maximum number of
+    tickets" counted visits, its "number" the start of Num_of_Ticket's name, and its "num" the word "number"."""
+    matches = {"name": "matches", "columns": ["match_id", "loser_age", "winner_age"],
+               "rows": [[1, 20, 30], [2, 22, 26]]}
+    ages = best("Find the average age of losers and winners of all matches.", [matches])
+    assert execute([matches], ages.sql) == [(21.0, 28.0)], ages.sql
+    channel = {"name": "TV_Channel", "columns": ["id", "series_name", "Content"],
+               "rows": [[1, "A", "music"], [2, "A", "news"], [3, "B", "news"]]}
+    counted = best("List the number of different series names and contents in the TV Channel table.", [channel])
+    assert execute([channel], counted.sql) == [(2, 2)], counted.sql
+    visit = {"name": "visit", "columns": ["Museum_ID", "visitor_ID", "Num_of_Ticket", "Total_spent"],
+             "rows": [[1, 1, 2, 10.0], [1, 2, 6, 30.0], [2, 1, 4, 20.0]]}
+    tickets = best("What are the average and maximum number of tickets bought in all visits?", [visit])
+    assert execute([visit], tickets.sql) == [(4.0, 6)], tickets.sql
+    # Contrast: a "number of" no field's name continues still counts.
+    trips = best("What is the number of visits?", [visit])
+    assert execute([visit], trips.sql) == [(3,)], trips.sql
+
+
 def test_by_after_a_participle_names_who_acted():
     """Spider DEV, 2026-10-02: "how many cartoons were written by Joseph Kuhr" counted one group per
     writer and "the number of pets owned by students who are older than 20" one per student: "by" read as a
@@ -5355,6 +5550,11 @@ TESTS = [
     test_the_rewrite_asks_for_low_thinking_and_stops_at_twenty_seconds,
     test_serving_preserves_repeated_source_rows_in_aggregates,
     test_a_listing_follows_the_order_the_question_names,
+    test_an_answer_shows_the_fields_the_question_asks_in_its_order,
+    test_words_a_query_realizes_without_spelling_them_are_read,
+    test_stems_pronouns_and_compounds_a_query_reads_are_read,
+    test_groups_list_each_value_once_and_count_more_than_their_own_value,
+    test_one_aggregate_word_over_coordinated_fields_takes_each,
     test_by_after_a_participle_names_who_acted,
     test_multiple_aggregates_share_a_typed_operand,
     test_repeated_count_paraphrase_is_one_aggregate,

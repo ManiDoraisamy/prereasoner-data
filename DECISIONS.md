@@ -3154,3 +3154,56 @@ joint check. This closes the reproduced AND/OR swap; it does not claim a complet
 
 Serving list/scalar OR controls and zero-admitting OR contrasts, plus direct wrong-AND/wrong-OR completeness tests,
 failed before the repair and pass afterward. No model, SQL-token generator, alternate planner, or bundle was added.
+
+## Answers shown as asked, words a query realizes read, aggregates over every field they coordinate (2026-10-12)
+
+The plan of `release-review/sql-accuracy.md` measured where correct plans are lost at `3563863` (`spider/results/RESULTS.md`,
+"Where correct plans are lost"): 386 served right, 227 refused or out-ranked while a strict-correct candidate was in the
+pool, 362 with none in it. This change works through the families those buckets hold, each measured on a census of
+every pool member (evaluation-only `census.py`, replayed through the served selection) before the full evaluation.
+
+Recovering correct plans the gate refused or the ranker passed over:
+
+- A word the query realizes though nothing of it spells the word is read (`query_contract._witnessed_words`): a
+  travel direction by the column of that direction, a name's part by the field abbreviating it (Fname), "name" by a
+  field named as its table is, a verb relating two tables the query reads, a word sharing a stem of five letters or
+  more with a table or field it reads ("enrolled" by Student_Enrolment, "independent" by IndepYear; a word of an
+  operation excepted), and "one" after a determiner. Two words that begin a read table's name are read ("the high
+  school student" by Highschooler), extending the two-word reading already in `read_question`.
+- A grouped answer that names a group as a field lists its fields in the question's order
+  (`sql_search._in_question_order`); a joined listing whose join repeats its rows gets a DISTINCT twin, preferred by
+  the ranker (`sql_rank.repeats_shown_rows`); a field the question names only to filter on is not shown
+  (`CandidateRanker._filter_only`).
+- Groups list each value once, so "different" is read by a grouped answer with counts beside its groups; a count of a
+  group's own distinct values (1 in every group) is refused, a key its joins equate with the group's included.
+
+Construction and bindings:
+
+- One aggregate word takes every field it coordinates after "of" when the words before "of" are both fields' ("the
+  average age of losers and winners"), and a count takes the fields it coordinates ("the number of different series
+  names and contents").
+- A "number" that begins a field's name with the rest of the name after it asks for the field (Num_of_Ticket,
+  Number_products); "Num" reads "number" as "No" did, and a lone "number" names such a field only beside its
+  entity's words ("the total number of players" is no match_num).
+
+Refusing wrong answers: a listing answers the rows the question's opening names, after a command it opens with
+(`query_contract._asked_tables`): airport names no longer answer "what are airlines that have flights from AHD",
+which matched Spider's empty gold by coincidence.
+
+Measured and not adopted (each simulated on the census, or built and censused):
+
+- Admitting, when no pool member can pass the gate, the best-ranked readings beyond the pool that can: 2 wins (DEV 722,
+  791), 8 newly wrong. A refusal gets the Gemini rewording in production; a wrong answer does not.
+- A field named by its last word alone when no other field has it ("area" of SurfaceArea): no win, one newly wrong.
+- An aggregate word's own field after the fields it names ("the average age" past stadium.Average): the freed field
+  became a shown or grouped field.
+- Synonyms by spaCy word vectors: 7 wins and 14 newly wrong at cosine 0.7. Edit-distance typos: 6 wins and 3 newly
+  wrong, firing on real words ("voted", "owned"). Inflections of a schema word: 5 right, 9 wrong.
+- "One word, one field" demotion of answers showing more name fields than the question says "name": +3 at most.
+- Refusing an answer that leaves out a field the projection window names: 92 right answers refused.
+
+Measured on Spider (`spider/results/RESULTS.md`, same date): DEV 386 → 461 strict (80 wins, 5 losses, three of them
+answers that matched an empty gold by coincidence), Gemini on 471 → 529, held out 255 → 278 (28 wins, 5 losses), and a
+fresh holdout no change was chosen on 286 → 306 (23 wins, 3 losses). The held-out gain answers more wrongly too (wrong
+answers 232 → 261): a word the gate now reads lets a query through that is wrong elsewhere, so the gate's other checks
+(a count without its group, a field shown but not asked) are the next work, not looser reading.

@@ -313,7 +313,15 @@ The own-data path serves one typed SQL AST chosen from the deterministic search'
    own noun ("average amount per order" over a table of orders) averages the rows, and a number the
    question names no field for, after a noun naming a table, compares that table's money measure
    ("orders over 20": amount, not unit price). In a workbook of one table a count counts its rows
-   whatever the question calls them ("which country has the most leads").
+   whatever the question calls them ("which country has the most leads"). One aggregate word takes
+   every field it coordinates, after "of" too when the words before it are both fields' ("the average
+   age of losers and winners", "the number of different series names and contents",
+   `sql_search._coordinated_targets`), and a "number" that begins a field's name with the rest of the
+   name after it asks for the field ("the number of tickets" of Num_of_Ticket; "No" and "Num" read
+   "number"). A grouped answer that names a group as a field to show lists its fields in the
+   question's order (`sql_search._in_question_order`); a joined listing whose join repeats its rows
+   gets a DISTINCT twin, and the ranker prefers it (`sql_rank.repeats_shown_rows`), and a field the
+   question names only to filter on is not shown.
 2. Every candidate runs on an in-memory SQLite copy of the request's tables under the SELECT guard
    and a budget of SQLite VM steps that grows with the cells of the tables it reads: 20 a cell, at
    least 10,000,000 and at most 100,000,000 (`execution_op_limit`). The Gemini rewording's pool runs
@@ -355,7 +363,13 @@ an arrival airport), when the column relating it carries the participle's travel
 `engine/sql_expansion.comparative_operator`; "the most common" orders groups by their count; any other superlative
 orders by, or takes the extreme of, a field in `engine/sql_extrema.superlative_direction`, so "the youngest" is the
 least age or the latest birth date); or when it is grammar, a counted noun naming the rows counted, or one of the closed lists
-the check keeps. A word that names only some other table's column is unread.
+the check keeps. A word that names only some other table's column is unread. The query also reads, though nothing of
+it spells them (`query_contract._witnessed_words`): a travel direction by the column of that direction ("flights
+departing from APG" by SourceAirport); a name's part a field abbreviates ("first name" by Fname); "name" by a field
+named as its table is (airlines.Airline); a verb relating two tables it reads, one named before the verb and the
+other after; a word sharing a stem of five letters or more with a table or field it reads ("students enrolled" by
+Student_Enrolment), a word of an operation excepted; and "one" after a determiner ("the one whose name"). Two words
+that begin the name of a table it reads are read ("the high school student" by Highschooler).
 
 The constraint check (`engine/query_contract.constraint_violations`) judges a set query branch by branch for the
 result's shape (aggregates, projection, ordering, grain; a field an aggregate word takes, as in "top 2 cities by
@@ -377,7 +391,12 @@ that binds the returned rows (an IN of the operand's own column, a foreign-key p
 for its table and itself, never a computed value, and a largest or smallest value only where the question asks for
 an extremum; an EXISTS that refers to the outer row, `query_contract._binds`),
 and never counts from a scalar subquery or an unbound one, which filter no returned row. A count grouped by the key
-of the one table it reads, which other tables refer to, counts one row in each group and is refused. A "number"
+of the one table it reads, which other tables refer to, counts one row in each group and is refused, and so is a
+count of a group's own distinct values, a key its joins equate with the group's included (1 in every group). Groups
+list each value once, so "different" is read by a grouped answer, the counts beside its groups included. A listing
+answers the rows the question's opening names, after a command it opens with ("what are airlines | that have
+flights"): it shows a field of such a table, of one a foreign key joins to it, or a key referring to it
+(`query_contract._asked_tables`), so airport names do not answer for airlines. A "number"
 ending a field's name ("the phone number") asks for the field, not a count (`sql_expansion.field_numbers`, read by
 `count_requested`, the search's aggregate cues and the ranker's question roles). A threshold on an aggregate a thing has ("customers with a total amount
 over 10", `ExpansionSupport.aggregate_thresholds`) is met only on that aggregate. A number said right after a field

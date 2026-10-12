@@ -245,8 +245,8 @@ class SQLSearcher:
                 else:
                     grouped = ()
                     # A listing follows the question's order: "the airline names and abbreviations" lists the
-                    # names first (Spider DEV, 2026-10-02: 8 listings matched gold but for the order). A
-                    # grouped answer keeps its groups before their aggregates, as a table shows them.
+                    # names first (Spider DEV, 2026-10-02: 8 listings matched gold but for the order). Every
+                    # answer's fields are put in the question's order once the pool is built (_in_question_order).
                     listed = raw_projection if complete_projection else sorted(raw_projection, key=lambda column: _named_at(tokens, column))
                     expressions = tuple(SelectItem(c) for c in listed) or (SelectItem(Star()),)
 
@@ -359,6 +359,12 @@ class SQLSearcher:
         # The tables the question names: their words together, and scored as a mention.
         named_here = {table for table in named_tables if table_scores.get(table, 0.0) >= 2.5}
         pool = _merge_candidates([], [self._simplified(candidate, named_here) for candidate in pool])
+        if not complete_projection:
+            pool = _merge_candidates([], [_in_question_order(candidate, tokens) for candidate in pool])
+        from engine.sql_rank import repeats_shown_rows
+        pool = _merge_candidates(pool, [_distinct_twin(candidate) for candidate in pool
+                                        if repeats_shown_rows(self.schema, candidate.query, tokens)
+                                        and not candidate.query.distinct])
         if not rank_candidates:
             return _rows_named(pool[:self.max_candidates])
         from engine.sql_rank import CandidateRanker
@@ -778,6 +784,14 @@ class SQLSearcher:
                 for column in self._distinct_counted_columns(tokens, position):
                     options.append((Aggregate("COUNT", column, distinct=True), 3.3,
                                     f"aggregate:COUNT(DISTINCT {column.table}.{column.name}):noun"))
+                # "the number of different series names and contents" counts each field's values.
+                counted = self._target_columns(mentions, position, numeric=False)
+                pair = _coordinated_targets(tokens, position, counted, numeric=False)
+                if pair:
+                    distinct = bool({"different", "distinct", "unique"} & set(tokens))
+                    options.append((tuple(Aggregate("COUNT", option.column, distinct) for option in pair),
+                                    3.3 + sum(option.score for option in pair) * 0.1 + 0.5,
+                                    "aggregate:COUNT:coordinated"))
             else:
                 implicit_words = implicit_measures.get(position)
                 if implicit_words is not None:
@@ -1636,7 +1650,10 @@ def _coordinated_targets(tokens: tuple[str, ...], position: int, targets: Sequen
                          numeric: bool) -> tuple[_ColumnOption, _ColumnOption] | None:
     """The two fields the phrase an aggregate word at ``position`` begins coordinates, the first two it names after
     the word, joined by "and" with nothing but articles between: "the average latitude and longitude", "total cost
-    and price". None when the phrase names one."""
+    and price". The "of" of "the number of" is the count's own, and an "of" after words both fields' names share
+    says what they both are: "the number of different series names and contents", "the average age of losers and
+    winners" (loser_age, winner_age; Spider DEV 435, 597: one of the two was dropped). None when the phrase names
+    one."""
     after = sorted((option for option in targets if option.position > position
                     and (not numeric or option.column.type.numeric)), key=lambda option: (option.position, -option.score))
     first = next(iter(after), None)
@@ -1649,7 +1666,15 @@ def _coordinated_targets(tokens: tuple[str, ...], position: int, targets: Sequen
     between = tokens[first.position + 1:second.position]
     if "and" not in between or set(between) - {"and", "the", "its", "their", "a", "an"}:
         return None
-    if set(tokens[position + 1:first.position]) & {"and", "by", "of", "for", "per", "where", "with"}:
+    lead = list(tokens[position + 1:first.position])
+    if tokens[position] == "number" and lead[:1] == ["of"]:
+        lead = lead[1:]
+    if "of" in lead:
+        head = set(lead[:lead.index("of")]) - {"the", "a", "an"}
+        shared = set(_column_link_words(first.column, False)) & set(_column_link_words(second.column, False))
+        if head and head <= shared:
+            lead = lead[lead.index("of") + 1:]
+    if set(lead) & {"and", "by", "of", "for", "per", "where", "with"}:
         return None
     return first, second
 
@@ -1777,6 +1802,79 @@ def _named_at(tokens: tuple[str, ...], column: ColumnRef) -> int:
         if found is not None:
             return found
     return end
+
+
+# The words that say each aggregate (canon() forms): "the average weight", "how many", "the number of orders".
+_AGGREGATE_SAID = {
+    "COUNT": frozenset({"count", "number", "many"}),
+    "SUM": frozenset({"total", "sum"}),
+    "AVG": frozenset({"average", "avg", "mean"}),
+    "MAX": frozenset({"maximum", "max", "highest", "largest", "biggest", "greatest", "most"}),
+    "MIN": frozenset({"minimum", "min", "lowest", "smallest", "least", "fewest"}),
+}
+
+
+def _said_at(tokens: tuple[str, ...], expression) -> int | None:
+    """Where the question says an answer's field: a column where it is named (``_named_at``), a period at its word
+    ("per month"), an aggregate at the word that says it nearest before its operand ("the maximum weight", "how many
+    shops"). None when the question does not say it."""
+    end = len(tokens)
+    if isinstance(expression, ColumnRef):
+        said = _named_at(tokens, expression)
+        return said if said < end else None
+    if isinstance(expression, DatePart):
+        period = next((index for index, token in enumerate(tokens) if token == expression.part.split("_")[-1]), None)
+        return period if period is not None else _said_at(tokens, expression.operand)
+    if isinstance(expression, Aggregate):
+        cues = [index for index, token in enumerate(tokens) if token in _AGGREGATE_SAID.get(expression.function, ())]
+        operand = _said_at(tokens, expression.operand) if isinstance(expression.operand, ColumnRef) else None
+        if operand is not None:
+            before = [index for index in cues if index <= operand]
+            return before[-1] if before else (cues[0] if cues else operand)
+        return cues[0] if cues else None
+    return None
+
+
+# Words a group's field follows in the phrase that groups by it: "for each pet type", "by month", "per city", "for
+# all the different countries" (sql_expansion.groups_requested reads the same words as asking for groups).
+_GROUPING_WORDS = frozenset({"each", "per", "by", "every", "different"})
+
+
+def _in_question_order(candidate: ScoredQuery, tokens: tuple[str, ...]) -> ScoredQuery:
+    """``candidate`` with its answer's fields in the order the question says them: "list the maximum weight and pet
+    type" shows the maximum weight first. A grouped answer whose groups the question names only in the phrase that
+    groups by them ("the average weight for each pet type", "total amount by month") keeps its groups first, as a
+    table shows them; one naming a group as a field to show follows the question (Spider DEV 49, 50, 128: answers
+    right but for their order, 2026-10-12). A listing is put in the question's order where it is built; an ungrouped
+    answer, a field the question does not say, or a set of queries keeps the order it was built in. Spider's gold is
+    no guide past this: "how many singers are from each country" lists the country first and "the number of employees
+    from each city" the count."""
+    query = candidate.query
+    if not isinstance(query, SelectQuery) or len(query.select) < 2 or not query.group_by:
+        return candidate
+    positions = [_said_at(tokens, item.expression) for item in query.select]
+    if None in positions:
+        return candidate
+    grouped = [position for item, position in zip(query.select, positions) if item.expression in query.group_by]
+    # Fields coordinated in the grouping phrase are grouped by it too: "by plan and currency".
+    if not grouped or all(any(token in _GROUPING_WORDS for token in tokens[max(0, position - 4):position])
+                          for position in grouped):
+        return candidate
+    order = sorted(range(len(positions)), key=lambda index: (positions[index], index))
+    if order == list(range(len(positions))):
+        return candidate
+    reordered = replace(query, select=tuple(query.select[index] for index in order))
+    try:
+        validate_query(reordered)
+        return replace(candidate, query=reordered, sql=render_query(reordered))
+    except (TypeError, ValueError):
+        return candidate
+
+
+def _distinct_twin(candidate: ScoredQuery) -> ScoredQuery:
+    """``candidate`` showing each row once (sql_rank.repeats_shown_rows)."""
+    query = replace(candidate.query, distinct=True)
+    return replace(candidate, query=query, sql=render_query(query), evidence=candidate.evidence + ("distinct-twin",))
 
 
 def _coordinated_modifiers(tokens: tuple[str, ...], head: int, modifiers: set[str]) -> list[int]:
@@ -2082,7 +2180,8 @@ def _tokens(question: str) -> tuple[str, ...]:
 
 
 def _column_link_words(column: ColumnRef, id_requested: bool) -> tuple[str, ...]:
-    words = tuple("number" if word.lower() == "no" else canon(word)
+    # "No" and "Num" abbreviate "number": "the number of tickets" names Num_of_Ticket (Spider DEV 424).
+    words = tuple("number" if word.lower() in {"no", "num"} else canon(word)
                   for word in name_words(column.name))
     table_words = {canon(word) for word in name_words(column.table)}
     meaningful = tuple(
@@ -2101,13 +2200,15 @@ def _column_link_positions(
     link_words: tuple[str, ...],
 ) -> list[int]:
     positions = [i for i, token in enumerate(tokens) if token in link_words]
-    if link_words == ("number",) and "no" in {
+    if link_words == ("number",) and {"no", "num"} & {
         word.lower() for word in name_words(column.name)
     }:
+        # A "number" names a match_num or a flight_no only after its entity's words: "the total number of players"
+        # counts players (Spider DEV 429, 2026-10-12: it counted match numbers once "num" read "number").
         entity_words = {
             canon(word)
             for word in name_words(column.table) + name_words(column.name)
-            if word.lower() != "no"
+            if word.lower() not in {"no", "num"}
         }
         positions = [
             position for position in positions

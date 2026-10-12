@@ -10,6 +10,18 @@
 
 **Plan expansion, 2026-10-11:** sections 0, 5, 6, and 10 now explain the semantic-binding bottleneck and specify the internal records, first implementation slice, diagnostic experiments, conditional training objective, and acceptance gates. These are proposed changes, not shipped capabilities or new benchmark results. The current follow-up and section 10 supersede the historical first-batch ordering; repaired F/R examples remain regression controls, not defects to fix again.
 
+## October 12 package: output requirements and witnessed refusals (implemented)
+
+Implemented against the revised next work below, measured in `spider/results/RESULTS.md` (2026-10-12, "Answers shown as
+asked"): DEV 386 → 461 strict, Gemini on 471 → 529, the repeatedly used sample 255 → 278, and a fresh 1,000-question
+holdout drawn for this purpose 286 → 306. Item 2 (output requirements): grouped answers in the question's order, fields
+named only as filters kept out of the output, DISTINCT where a join repeats shown rows. Item 5 (witnessed false
+refusals): words a query realizes without spelling them, each family simulated on the full pool census first. Item 3,
+in part: a "number" that begins a field's name, and one aggregate word over every field it coordinates. Not done: the
+constructor-consumed binding interface (item 4) and the ledger certification (item 1). The new answers are less precise
+than the old ones on the samples (held out: 20 of 58 newly answered are right), so the next work is the gate's checks
+of what a query shows and groups, as `DECISIONS.md` records with the variants measured and not adopted.
+
 ## October 12 assessment: what Claude implemented and what remains
 
 **Assessment:** Claude followed the correctness-hardening and measurement stages, and implemented a useful narrow count composer. He did not implement the proposed constructor-consumed entity/operand/population/scope binding interface. There is no substantial accuracy gain attributable to this latest stage. The retained encoder-only/deterministic architecture remains intact; its broader semantic-binding proposal has not yet received the intended experiment.

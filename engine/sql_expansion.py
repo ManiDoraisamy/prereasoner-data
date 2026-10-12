@@ -798,22 +798,32 @@ def field_numbers(question: str, field_names: Iterable[str]) -> frozenset[int]:
     numbers" of flight_number, "the staff number" of Num_of_Staff). It asks for the field, not for a count: "the
     name and phone number of these patients" showed each patient's count of appointments (held-out Spider train 47,
     2026-10-11). An owner's number ("each customer's number of orders") and a quantity's ("the total number", "the
-    largest number") count."""
+    largest number") count. A "number" that begins a field's name, the rest of the name following it, asks for the
+    field too: "the average and maximum number of tickets" of Num_of_Ticket, "the number of products" of
+    Number_products (Spider DEV 271, 424: each was counted)."""
     from engine.closed_class import DEGREE_MODIFIERS
     from engine.sql_extrema import MAX_CUES, MIN_CUES
     quantities = FUNCTION_WORDS | DEGREE_MODIFIERS | MAX_CUES | MIN_CUES | {"total", "sum", "average", "avg", "mean",
                                                                               "count"}
     ends = set()
+    rests = set()
     for name in field_names:
         name_words = name_tokens(name)
         if len(name_words) > 1 and name_words[-1] in {"number", "no", "num"}:
             ends.add(name_words[-2])
         elif name_words:
             ends.add(name_words[-1])
+        if len(name_words) > 1 and name_words[0] in {"number", "no", "num"}:
+            rests.add(tuple(word for word in name_words[1:] if word != "of"))
     raw, question_tokens = words(question), tokens(question)
+
+    def begins_a_name(index):
+        following = [token for token in question_tokens[index + 1:index + 6] if token not in {"of", "the"}]
+        return any(rest and tuple(following[:len(rest)]) == rest for rest in rests)
+
     return frozenset(index for index, token in enumerate(question_tokens)
-                     if token == "number" and index and question_tokens[index - 1] in ends - quantities
-                     and not raw[index - 1].endswith("'s"))
+                     if token == "number" and ((index and question_tokens[index - 1] in ends - quantities
+                                                and not raw[index - 1].endswith("'s")) or begins_a_name(index)))
 
 
 def count_requested(question: str, field_names: Iterable[str]) -> bool:
