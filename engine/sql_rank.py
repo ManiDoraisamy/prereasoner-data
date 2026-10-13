@@ -14,7 +14,7 @@ import re
 from typing import Mapping, Sequence
 
 from engine.sql_ast import (
-    Aggregate, ColumnRef, Comparison, DatePart, Literal, Query, SelectQuery, SetQuery, keep_ties, render_query,
+    Aggregate, ColumnRef, Comparison, DatePart, Literal, Query, SelectQuery, SetQuery, Star, keep_ties, render_query,
     share_aggregate,
 )
 from engine.sql_dates import period_grouping
@@ -56,6 +56,7 @@ class QuestionRoles:
     group_tables: frozenset[str]
     group_columns: frozenset[ColumnRef]
     counted_tables: frozenset[str]
+    counted_heads: frozenset[str]   # the tables the noun right after the count word names: "how many countries"
     counted_columns: frozenset[ColumnRef]
     aggregate_targets: Mapping[str, frozenset[ColumnRef]]
     projection_columns: frozenset[ColumnRef]
@@ -253,6 +254,22 @@ class CandidateRanker:
             head = canon((_schema_tokens(name) or (name,))[-1])
             if len(tables) > 1 and said.count(head) < len(tables):
                 features.append((f"one_binding:{name}", -6.0))
+        # So does the word several shown fields' names end in, said fewer times than they are shown: "the name and the
+        # release year of the song by the youngest singer" is Song_Name, not also the concert_Name of a concert the
+        # question never mentions (Spider DEV 6, 7, 2026-10-13). The field whose other words and table it never says is
+        # the one not asked.
+        heads: dict[str, list[ColumnRef]] = {}
+        for column in dict.fromkeys(select_columns):
+            name_tokens = _schema_tokens(column.name)
+            if name_tokens:
+                heads.setdefault(canon(name_tokens[-1]), []).append(column)
+        for head, columns in sorted(heads.items()):
+            if len({column.name.casefold() for column in columns}) < 2 or said.count(head) >= len(columns):
+                continue
+            for column in columns:
+                owner = set(_schema_tokens(column.name)[:-1]) | set(_schema_tokens(column.table))
+                if owner and not owner & set(said):
+                    features.append((f"unsaid_owner:{_column_label(column)}", -6.0))
 
         if roles.id_instead_of_name:
             id_columns = [column for column in select_columns + group_columns if is_surrogate_key(column.name)]
@@ -262,6 +279,11 @@ class CandidateRanker:
 
         for aggregate in aggregates:
             if not isinstance(aggregate.operand, ColumnRef):
+                # The rows of the table the counted noun names are what it counts: "How many countries are listed?"
+                # counts the countries (Spider DEV 91, 92, 2026-10-13: car_makers' Country values were counted).
+                if (aggregate.function == "COUNT" and isinstance(aggregate.operand, Star)
+                        and query.from_table in roles.counted_heads):
+                    features.append(("count_rows:counted_table", 1.5))
                 continue
             operand = aggregate.operand
             targets = roles.aggregate_targets.get(aggregate.function, frozenset())
@@ -271,7 +293,10 @@ class CandidateRanker:
                     if roles.counted_tables
                     else operand in roles.counted_columns
                 )
-                features.append((f"count_target:{_column_label(operand)}", 1.5 if aligned else 0.0))
+                # A field of another table than the one the counted noun names is not what the question counts: not
+                # where the noun only names a table further on ("How many sections does course ACCT-211 have?").
+                features.append((f"count_target:{_column_label(operand)}",
+                                 1.5 if aligned else -1.5 if roles.counted_heads - {operand.table} else 0.0))
             elif targets:
                 features.append((f"aggregate_target:{aggregate.function}:{_column_label(operand)}",
                                  3.0 if operand in targets else -3.5))
@@ -536,6 +561,12 @@ def analyze_question(question: str, schema: SchemaGraph) -> QuestionRoles:
 
     group_tables = _tables_in_windows(schema, tokens, group_windows)
     counted_tables = _tables_in_windows(schema, tokens, count_windows)
+    counted_heads = set()
+    for start, end in count_windows:
+        while start < end and tokens[start] in {"the", "a", "an", "different", "distinct", "unique"}:
+            start += 1
+        counted_heads.update(table for table in schema.tables
+                             if (name := _schema_tokens(table)) and tokens[start:start + len(name)] == name)
     group_columns = _columns_in_windows(schema, tokens, group_windows)
     counted_columns = _columns_in_windows(schema, tokens, count_windows)
 
@@ -584,6 +615,7 @@ def analyze_question(question: str, schema: SchemaGraph) -> QuestionRoles:
         group_tables=frozenset(group_tables),
         group_columns=frozenset(group_columns),
         counted_tables=frozenset(counted_tables),
+        counted_heads=frozenset(counted_heads),
         counted_columns=frozenset(counted_columns),
         aggregate_targets=aggregate_targets,
         projection_columns=frozenset(projection_columns),

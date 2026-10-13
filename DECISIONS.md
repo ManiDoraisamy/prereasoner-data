@@ -3461,3 +3461,22 @@ it is served. The question's command is no such word: "Return the most common fi
 
 Measured on Spider (`spider/results/RESULTS.md`, 2026-10-13): DEV 527 → 529 strict, held out 356 → 357, the fresh
 holdout 353 → 354, Gemini on 614 → 616, with no loss on any set and fewer wrong answers on each.
+
+## A count counts the rows of the table its noun names; a field abbreviated by its table's name is shown; a word said once names one field (2026-10-13)
+
+Three ranking and projection families of the census's wrong answers with a strict-correct reading in the pool:
+
+- The noun right after the count word names the table whose rows are counted (`sql_rank.analyze_question`
+  counted_heads): "How many countries are listed?" counts the countries, and a count of another table's field (the car
+  makers' Country) is not that count. A table named further on is no counted noun: "How many sections does course
+  ACCT-211 have?" still counts the class sections.
+- The reading of the fields to show (`sql_expansion.column_matches`) reads a first word abbreviating the table's name as
+  that table's word, where the question says the table, as the search's linker does: "the id of students" shows StuID,
+  not the students' last names. The abbreviation reading moved from `sql_search` to `sql_expansion.abbreviated_table`, its
+  one owner; "the first names of all professors" names no DEPT_NAME of a department it never says.
+- Of several shown fields whose names end in a word the question says fewer times, the one whose other words and
+  table the question never says is not asked (`CandidateRanker`, unsaid_owner): "the name and the release year of the
+  song by the youngest singer" is Song_Name, not also a concert's concert_Name.
+
+Measured on Spider (`spider/results/RESULTS.md`, 2026-10-13): DEV 529 → 535 strict, held out 357 → 358, the fresh
+holdout 354 → 355, Gemini on 616 → 622, with no loss on any set and fewer wrong answers on each.

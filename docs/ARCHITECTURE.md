@@ -334,7 +334,10 @@ The own-data path serves one typed SQL AST chosen from the deterministic search'
    date" is no ranking). The ranker credits no field the question does not ask to show as the group it asks when
    the answer shows a field the question asks of the same entity (`CandidateRanker._named_beside`). The
    completeness check reads a requested field by its name without its kind too ("role" of role_code), never by the
-   question's command ("Return ..."). A grouped
+   question's command ("Return ..."). A count counts the rows of the table the noun after its count word
+   names ("how many countries"), a field whose first word abbreviates its table's name is shown where the question
+   says the table (`sql_expansion.abbreviated_table`: "the id of students" is StuID), and of shown fields ending in a
+   word said once, the one whose owner the question never says is not asked. A grouped
    answer that names a group as a field to show lists its fields in the question's
    order (`sql_search._in_question_order`); a joined listing whose join repeats its rows gets a DISTINCT twin, and
    the ranker prefers it (`sql_rank.repeats_shown_rows`), and a field the

@@ -32,7 +32,7 @@ from engine.sql_ast import (
 from engine.closed_class import COMPARATIVES, QUANTITY_COMPARATIVES
 from engine.numeric import NUMBER_TEXT, NUMBER_WORD, parse_decimal
 from engine.sql_candidate import ScoredQuery
-from engine.sql_schema import SchemaGraph, canon, is_surrogate_key
+from engine.sql_schema import SchemaGraph, canon, is_surrogate_key, name_words
 
 
 def complete_projection_requested(question: str) -> bool:
@@ -1033,6 +1033,28 @@ def says_in_another_form(word: str, name_word: str) -> bool:
                for mine in stems for theirs in word_stems(name_word) if min(len(mine), len(theirs)) >= 5)
 
 
+def abbreviated_table(name: str, table: str) -> bool:
+    """Whether the first word of the field ``name`` abbreviates a word of its ``table``'s name: cust_name of customer,
+    crs_description of COURSE, StuID of Student; not a name's part (Fname) nor the table's word itself (customer_name).
+    The search links such a field beside its table (sql_search._column_link_positions) and column_matches reads it."""
+    if name_part_words(name):
+        return False
+    words = [canon(word) for word in name_words(name)]
+    table_words = {canon(word) for word in name_words(table)}
+    return len(words) > 1 and words[0] not in table_words and any(abbreviates(words[0], word) for word in table_words)
+
+
+def abbreviates(short: str, full: str) -> bool:
+    """Whether ``short`` abbreviates the word ``full``: a shorter start of it ("cust" customer, "f" file), or of three
+    letters or more its letters in order from its first ("crs" course, "dept" department, "apt" apartment)."""
+    if not short.isalpha() or len(short) >= len(full) or short[0] != full[0]:
+        return False
+    if full.startswith(short):
+        return True
+    rest = iter(full)
+    return len(short) >= 3 and all(letter in rest for letter in short)
+
+
 def column_matches(name: str, question_tokens: set[str], table: str | None = None,
                    context: frozenset[str] | None = None) -> bool:
     """Whether the question names the column ``name``: its words, or with its table's naming_context its
@@ -1055,9 +1077,15 @@ def column_matches(name: str, question_tokens: set[str], table: str | None = Non
             "death": {"death", "killed"},
         }
         table_words = set(name_tokens(table)) if table is not None else set()
+        # A first word abbreviating the table's name is that table's word, where the question says the table: "the id
+        # of students" names StuID (Spider DEV 63, 64, 2026-10-13: the students' last names were shown), and "the first
+        # names of all professors" no DEPT_NAME of a department it never says (fresh holdout of Spider train 183).
+        abbreviation = (table is not None and abbreviated_table(name, table)
+                        and bool(table_words & question_tokens))
         words = [
-            word for word in name_tokens(name)
+            word for index, word in enumerate(name_tokens(name))
             if word != "of" and (word not in table_words or len(name_tokens(name)) == 1)
+            and not (abbreviation and index == 0)
         ]
         if context is not None:
             words = list(naming_words(tuple(words), context))

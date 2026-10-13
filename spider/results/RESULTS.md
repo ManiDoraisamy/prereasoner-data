@@ -28,6 +28,24 @@ Artifacts: `%LOCALAPPDATA%/Temp/prereasoner-spider-review-20261013/`, tags `revi
 Incomplete intermediate runs are excluded. The review hardens ranking-number roles, output counts (preserving stored-count SUM),
 and table-owned full-name construction; it does not introduce another planner or model bundle.
 
+## A count counts its noun's table, abbreviated fields shown, a word said once names one field: 529 → 535 strict, Gemini on 616 → 622 (6 wins: 6, 7, 63, 64, 91, 92; no loss; wrong answers 263 → 256; 13 queries changed), held out 357 → 358, fresh holdout 354 → 355 (2026-10-13)
+
+Same contract as below. Runs `pkg13b-dirty`, `pkg13b-gemini-dirty`, `heldout-pkg13b-dirty` and `holdout2-pkg13b-dirty`
+are the change of the entry below with this change, against its `pkg12b` runs. The change is `DECISIONS.md` "A count
+counts the rows of the table its noun names; a field abbreviated by its table's name is shown; a word said once names
+one field".
+
+- DEV, engine alone: 529 → **535 strict**; 6 wins (6, 7, 63, 64, 91, 92), no loss; wrong answers 200 → 193; 12 queries
+  changed.
+- Held out: 357 → **358 strict**; 1 win (969), no loss; wrong answers 237 → 235; 7 queries changed.
+- Fresh holdout: 354 → **355 strict**; 1 win (710), no loss; wrong answers 245 → 244; 5 queries changed.
+- Gemini on: 616 → 622 (6 wins: 6, 7, 63, 64, 91, 92; no loss; wrong answers 263 → 256; 13 queries changed).
+- A first round without the head-noun and said-table guards won the same questions and lost six: DEV 203-206 (an
+  unjoined count of flights from ' APG' favoured; Spider's gold counts none), fresh holdout 494 (the course read as the
+  counted noun) and 183 (DEPT_NAME read for "first names").
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_{pkg13b,pkg13b-gemini,heldout-pkg13b,holdout2-pkg13b}-dirty.json`.
+
 ## A field asked by its name without its kind: 527 → 529 strict, Gemini on 614 → 616, held out 356 → 357, fresh holdout 353 → 354 (2026-10-13)
 
 Same contract as below. Runs `pkg12b-dirty`, `pkg12b-gemini-dirty`, `heldout-pkg12b-dirty` and `holdout2-pkg12b-dirty`

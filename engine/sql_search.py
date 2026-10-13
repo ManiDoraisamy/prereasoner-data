@@ -56,6 +56,7 @@ from engine.sql_expansion import (
     FUNCTION_WORDS,
     KIND_WORDS,
     MONEY_MEASURE_COLUMN_WORDS,
+    abbreviated_table,
     asked_cues,
     by_groups,
     count_requested,
@@ -2315,7 +2316,7 @@ def _column_link_words(column: ColumnRef, id_requested: bool) -> tuple[str, ...]
     # cust_name of customer, stu_gpa of STUDENT, crs_description of COURSE, dept_name of DEPARTMENT, f_id of files
     # (held-out Spider train, 2026-10-13: 19 questions asked such a field by its other words, and none was shown).
     # The table is then said beside the field (_column_link_positions).
-    if _abbreviated_table(column):
+    if abbreviated_table(column.name, column.table):
         table_words = table_words | {words[0]}
     meaningful = tuple(
         word for word in words
@@ -2350,27 +2351,6 @@ def _longer_names(column: ColumnRef, link_words: tuple[str, ...], schema: Schema
             if len(words) > len(link_words) and set(link_words) < set(words)]
 
 
-def _abbreviated_table(column: ColumnRef) -> bool:
-    """Whether the first word of ``column``'s name abbreviates a word of its table's name: cust_name of customer,
-    crs_description of COURSE; not a name's part (Fname) nor the table's word itself (customer_name)."""
-    if name_part_words(column.name):
-        return False
-    words = [canon(word) for word in name_words(column.name)]
-    table_words = {canon(word) for word in name_words(column.table)}
-    return len(words) > 1 and words[0] not in table_words and any(_abbreviates(words[0], word) for word in table_words)
-
-
-def _abbreviates(short: str, full: str) -> bool:
-    """Whether ``short`` abbreviates the word ``full``: a shorter start of it ("cust" customer, "f" file), or of three
-    letters or more its letters in order from its first ("crs" course, "dept" department, "apt" apartment)."""
-    if not short.isalpha() or len(short) >= len(full) or short[0] != full[0]:
-        return False
-    if full.startswith(short):
-        return True
-    rest = iter(full)
-    return len(short) >= 3 and all(letter in rest for letter in short)
-
-
 def _column_link_positions(
     column: ColumnRef,
     tokens: tuple[str, ...],
@@ -2391,7 +2371,7 @@ def _column_link_positions(
               for start in range(len(tokens) - len(words) + 1) if tokens[start:start + len(words)] == words
               for index in range(start, start + len(words))}
     positions = [position for position in positions if position not in inside]
-    if (_abbreviated_table(column) and link_words != ("id",)) or (
+    if (abbreviated_table(column.name, column.table) and link_words != ("id",)) or (
             set(link_words) & FUNCTION_WORDS and set(link_words) <= FUNCTION_WORDS | KIND_WORDS):
         # A field read without its table's abbreviation is named beside its table: "their apartment numbers",
         # "the name of the different customers", not the "phone number" of a building or "any class" of a student

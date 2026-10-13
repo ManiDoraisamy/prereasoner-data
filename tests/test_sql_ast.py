@@ -2052,9 +2052,10 @@ def test_a_field_named_with_its_tables_abbreviation():
     counted = planner.serve([apartments], 'Find the number of apartments that have type code "Flat".', [])
     assert [list(row) for row in counted["result"]["rows"]] == [[2]], counted.get("sql")
     from engine.sql_ast import ColumnRef, SQLType
-    from engine.sql_search import _abbreviates, _column_link_words
-    assert _abbreviates("cust", "customer") and _abbreviates("crs", "course") and _abbreviates("dept", "department")
-    assert not _abbreviates("acc", "customer") and not _abbreviates("cs", "course") and not _abbreviates("stu", "course")
+    from engine.sql_expansion import abbreviates
+    from engine.sql_search import _column_link_words
+    assert abbreviates("cust", "customer") and abbreviates("crs", "course") and abbreviates("dept", "department")
+    assert not abbreviates("acc", "customer") and not abbreviates("cs", "course") and not abbreviates("stu", "course")
     assert _column_link_words(ColumnRef("customer", "cust_name", SQLType.TEXT), False) == ("name",)
     assert _column_link_words(ColumnRef("loan", "cust_name", SQLType.TEXT), False) == ("cust", "name")
 
@@ -2265,6 +2266,76 @@ def test_a_field_asked_by_its_name_without_its_kind_is_requested():
         "Return the customer ids of all rentals.", customers, rental_graph))
     assert any("requested field" in violation for violation in constraint_violations(
         "What are the return dates and customer ids of all rentals?", customers, rental_graph))
+
+
+def test_a_count_counts_the_rows_of_the_table_its_noun_names():
+    """Spider DEV 91, 92, 2026-10-13: "How many countries are listed?" counted the car makers' Country values. The rows of
+    the table the counted noun names are what it counts; another table's field is not; a count of the named table's own
+    field still is."""
+    from engine.sql_ast import Aggregate, Star
+    countries = {"name": "countries", "columns": ["CountryId", "CountryName"],
+                 "rows": [[1, "usa"], [2, "germany"], [3, "japan"]]}
+    makers = {"name": "car_makers", "columns": ["Id", "Maker", "Country"], "rows": [[1, "amc", 1], [2, "vw", 2]]}
+    graph = SchemaGraph.from_tables([countries, makers], ())
+    rows = SelectQuery((SelectItem(Aggregate("COUNT", Star())),), "countries")
+    other = SelectQuery((SelectItem(Aggregate("COUNT", ColumnRef("car_makers", "Country", SQLType.INTEGER))),),
+                        "car_makers")
+    own = SelectQuery((SelectItem(Aggregate("COUNT", ColumnRef("countries", "CountryName", SQLType.TEXT))),),
+                      "countries")
+    for question in ("How many countries are listed?", "How many countries exist?"):
+        ranked = CandidateRanker(graph).rank(question, [ScoredQuery(other, render_query(other), 0.5, ()),
+                                                        ScoredQuery(rows, render_query(rows), 0.0, ())])
+        assert ranked[0].query == rows, [candidate.sql for candidate in ranked]
+        # Contrast: the counted table's own field is a count of it.
+        ranked = CandidateRanker(graph).rank(question, [ScoredQuery(other, render_query(other), 0.5, ()),
+                                                        ScoredQuery(own, render_query(own), 0.0, ())])
+        assert ranked[0].query == own, [candidate.sql for candidate in ranked]
+
+
+def test_a_field_named_by_its_tables_abbreviation_is_matched_where_fields_are_shown():
+    """Spider DEV 63, 64, 2026-10-13: "Find the id of students who do not have a cat pet" showed the students' last names:
+    the reading of the fields to show (sql_expansion.column_matches) did not know "stu" of StuID abbreviates Student,
+    which the search's linker reads (abbreviated_table, one shared reading). A word of another table's name is no
+    abbreviation of this one."""
+    from engine.sql_expansion import column_matches
+    from engine.sql_search import _tokens
+    said = set(_tokens("Find the id of students who do not have a cat pet."))
+    assert column_matches("StuID", said, "Student")
+    assert column_matches("stu_id", said, "Student")
+    assert not column_matches("crs_id", said, "Student")
+    assert not column_matches("StuID", set(_tokens("Find the name of students.")), "Student")
+    # Negative: the abbreviation reads only beside its table (fresh holdout of Spider train 183).
+    assert not column_matches("DEPT_NAME", set(_tokens("What are the first names of all professors?")), "DEPARTMENT")
+    assert column_matches("DEPT_NAME", set(_tokens("What are the names of all departments?")), "DEPARTMENT")
+
+
+def test_a_word_said_once_names_one_of_the_fields_ending_in_it():
+    """Spider DEV 6, 7, 2026-10-13: "the name and the release year of the song by the youngest singer" showed a concert's
+    concert_Name beside Song_Name. Of several shown fields ending in a word the question says fewer times, the one whose
+    other words and table it never says is not asked; a question naming both owners asks for both."""
+    from engine.sql_ast import Join
+    singer = {"name": "singer", "columns": ["Singer_ID", "Song_Name", "Song_release_year", "Age"],
+              "rows": [[1, "Love", "2016", 29], [2, "Dance", "2008", 41]]}
+    concert = {"name": "concert", "columns": ["concert_ID", "concert_Name"], "rows": [[1, "Auditions"]]}
+    link = {"name": "singer_in_concert", "columns": ["concert_ID", "Singer_ID"], "rows": [[1, 1], [1, 2]]}
+    graph = SchemaGraph.from_tables([singer, concert, link], ())
+    ref = lambda table, name, kind=SQLType.TEXT: ColumnRef(table, name, kind)  # noqa: E731
+    joins = (Join("singer_in_concert", ref("singer_in_concert", "Singer_ID", SQLType.INTEGER),
+                  ref("singer", "Singer_ID", SQLType.INTEGER)),
+             Join("concert", ref("concert", "concert_ID", SQLType.INTEGER),
+                  ref("singer_in_concert", "concert_ID", SQLType.INTEGER)))
+    song = (SelectItem(ref("singer", "Song_Name")), SelectItem(ref("singer", "Song_release_year")))
+    both = SelectQuery((song[0], SelectItem(ref("concert", "concert_Name")), song[1]), "singer", joins=joins)
+    only = SelectQuery(song, "singer", joins=joins)
+    question = "Show the name and the release year of the song by the youngest singer."
+    ranked = CandidateRanker(graph).rank(question, [ScoredQuery(both, render_query(both), 0.5, ()),
+                                                    ScoredQuery(only, render_query(only), 0.0, ())])
+    assert ranked[0].query == only, [candidate.sql for candidate in ranked]
+    # Contrast: the question naming the concert asks for its name too.
+    named = "Show the song names and the concert names of the singers."
+    ranked = CandidateRanker(graph).rank(named, [ScoredQuery(both, render_query(both), 0.5, ()),
+                                                 ScoredQuery(only, render_query(only), 0.0, ())])
+    assert ranked[0].query == both, [candidate.sql for candidate in ranked]
 
 
 def test_a_rewording_keeps_the_operations_the_engine_reads():
@@ -6341,6 +6412,9 @@ TESTS = [
     test_a_field_inside_another_fields_name_is_not_named_there,
     test_a_field_beside_the_named_field_of_its_entity_is_not_asked,
     test_a_field_asked_by_its_name_without_its_kind_is_requested,
+    test_a_count_counts_the_rows_of_the_table_its_noun_names,
+    test_a_field_named_by_its_tables_abbreviation_is_matched_where_fields_are_shown,
+    test_a_word_said_once_names_one_of_the_fields_ending_in_it,
     test_a_rewording_keeps_the_operations_the_engine_reads,
     test_gemini_rewrite_must_preserve_data_values_and_numbers,
     test_evaluator_grades_the_served_selection,
