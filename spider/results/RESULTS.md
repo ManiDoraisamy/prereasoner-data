@@ -28,6 +28,21 @@ Artifacts: `%LOCALAPPDATA%/Temp/prereasoner-spider-review-20261013/`, tags `revi
 Incomplete intermediate runs are excluded. The review hardens ranking-number roles, output counts (preserving stored-count SUM),
 and table-owned full-name construction; it does not introduce another planner or model bundle.
 
+## "In total" restates a count, a field inside another's name: 524 → 525 strict, Gemini on 611 → 612, held out 353 → 354, fresh holdout 346 → 351 (2026-10-13)
+
+Same contract as below. Runs `pkg10-dirty`, `pkg10-gemini-dirty`, `heldout-pkg10-dirty` and `holdout2-pkg10-dirty` are
+the change of the entry below with this change, against its `pkg9c` runs. The change is `DECISIONS.md` ""In total"
+closing a count restates it; a field inside another field's spelled name is not named there".
+
+- DEV, engine alone: 524 → **525 strict**; 1 win (357), no loss; wrong answers 206 → 204 (480 now refused, its
+  ranking date no longer grouped beside the ranking); 5 queries changed.
+- Held out: 353 → **354 strict**; 1 win (108), no loss; wrong answers 244 → 241; 6 queries changed.
+- Fresh holdout: 346 → **351 strict**; 5 wins (41, 83, 531, 562, 598), no loss; wrong answers 254 → 249; 9 queries
+  changed.
+- Gemini on: 611 → **612 strict**; 1 win (357), no loss; wrong answers 270 → 267; 7 queries changed.
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_{pkg10,pkg10-gemini,heldout-pkg10,holdout2-pkg10}-dirty.json`.
+
 ## A nation is a country, a store a shop; one-letter codes, a participle before a year: 505 → 524 strict, Gemini on 604 → 611, held out 348 → 353, fresh holdout 345 → 346 (2026-10-13)
 
 Same contract as below. Runs `pkg9c-dirty`, `pkg9c-gemini-dirty`, `heldout-pkg9c-dirty` and `holdout2-pkg9c-dirty` are

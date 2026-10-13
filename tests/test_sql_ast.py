@@ -2174,6 +2174,44 @@ def test_a_noun_several_fields_share_counts_its_entity():
     assert [column.name for column in searcher._distinct_counted_columns(tokens, tokens.index("many"))] == ["country_code"]
 
 
+def test_in_total_closing_a_count_restates_it():
+    """Spider DEV 357, fresh holdout of Spider train 41, 83, 562, 598, 2026-10-13: "How many tasks are there in total?"
+    counted the tasks and summed a field the question never names. "In total" after "how many" restates the count; a
+    total of a field the question names is still a sum."""
+    tasks = {"name": "Tasks", "columns": ["task_id", "project_id", "task_details"],
+             "rows": [[1, 1, "a"], [2, 1, "b"], [3, 2, "c"]]}
+    grants = {"name": "Grants", "columns": ["grant_id", "project_id", "grant_amount"],
+              "rows": [[1, 1, 100.0], [2, 2, 250.0]]}
+    planner = _hermetic_planner()
+    served = planner.serve([tasks, grants], "How many tasks are there in total?", [])
+    assert [list(row) for row in served["result"]["rows"]] == [[3]], served.get("sql")
+    assert "SUM" not in served["sql"], served["sql"]
+    # Contrast: a total the question names is a sum.
+    total = planner.serve([tasks, grants], "What is the total grant amount?", [])
+    assert [list(row) for row in total["result"]["rows"]] == [[350.0]], total.get("sql")
+
+
+def test_a_field_inside_another_fields_name_is_not_named_there():
+    """Spider DEV 471, 480, held-out Spider train 108, 2026-10-13: "for each bed type" grouped by beds as well as bedType,
+    and "the total ranking points" showed the ranking beside them. A field whose words another field of its table
+    spells whole is not named inside that spelling; said on its own it still is."""
+    from engine.sql_search import _column_link_positions, _tokens
+    rooms = {"name": "Rooms", "columns": ["RoomId", "beds", "bedType", "basePrice"],
+             "rows": [["R1", 1, "King", 150.0], ["R2", 2, "Queen", 100.0], ["R3", 1, "Queen", 120.0],
+                      ["R4", 2, "King", 170.0]]}
+    planner = _hermetic_planner()
+    served = planner.serve([rooms], "For each bed type, find the average base price.", [])
+    assert sorted(map(list, served["result"]["rows"])) == [["King", 160.0], ["Queen", 110.0]], served.get("sql")
+    rankings = {"name": "rankings", "columns": ["player_id", "ranking", "ranking_date", "ranking_points"],
+                "rows": [[1, 3, 20000101, 100], [2, 1, 20000101, 300]]}
+    graph = SchemaGraph.from_tables([rankings], ())
+    ranking = next(column.ref for column in graph.columns if column.ref.name == "ranking")
+    assert _column_link_positions(ranking, _tokens("the total ranking points of each ranking date"), graph,
+                                  ("ranking",)) == []
+    # Said on its own, the field is still named.
+    assert _column_link_positions(ranking, _tokens("the ranking and the ranking date"), graph, ("ranking",)) == [1]
+
+
 def test_a_rewording_keeps_the_operations_the_engine_reads():
     """Spider DEV, 2026-10-13: rewordings were refused for losing words the engine does not read as operations: "per" in
     "miles per gallon", "number of" before the field Number_products, "no less than" said "at least". The engine's own
@@ -6244,6 +6282,8 @@ TESTS = [
     test_a_participle_before_a_year_the_answer_compares_is_read,
     test_a_one_letter_code_holds_the_word_it_stands_for,
     test_a_noun_several_fields_share_counts_its_entity,
+    test_in_total_closing_a_count_restates_it,
+    test_a_field_inside_another_fields_name_is_not_named_there,
     test_a_rewording_keeps_the_operations_the_engine_reads,
     test_gemini_rewrite_must_preserve_data_values_and_numbers,
     test_evaluator_grades_the_served_selection,

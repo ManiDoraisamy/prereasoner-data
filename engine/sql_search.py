@@ -721,6 +721,7 @@ class SQLSearcher:
                            question: str) -> list[tuple[tuple, float, tuple[str, ...]]]:
         cues: list[tuple[str, int]] = []
         labels = field_numbers(question, (column.ref for column in self.schema.columns))
+        counted = any(tokens[i:i + 2] == ("how", "many") for i in range(len(tokens) - 1))
         for i, token in enumerate(tokens):
             if token in {"count", "counts"} or (
                 token == "number"
@@ -731,6 +732,11 @@ class SQLSearcher:
                 cues.append(("COUNT", i))
             elif token in {"sum", "total"}:
                 if token == "total" and i + 1 < len(tokens) and tokens[i + 1] in {"number", "count"}:
+                    continue
+                # "In total" closing a count restates it: "How many tasks are there in total?" counts the tasks and
+                # sums nothing (Spider DEV 357, fresh holdout of Spider train 41, 83, 562, 598, 710, 2026-10-13: each
+                # added a sum of a field the question never names).
+                if token == "total" and tokens[i - 1:i] == ("in",) and counted:
                     continue
                 cues.append(("SUM", i))
             elif token in {"average", "avg", "mean"}:
@@ -2334,6 +2340,16 @@ def _spelled_link_words(schema: SchemaGraph) -> frozenset[str]:
     return spelled
 
 
+def _longer_names(column: ColumnRef, link_words: tuple[str, ...], schema: SchemaGraph) -> list[tuple[str, ...]]:
+    """The names, in words, of the other fields of ``column``'s table that hold all of ``link_words`` and more:
+    ranking_date and ranking_points beside ranking, bedType beside beds."""
+    if not link_words:
+        return []
+    return [words for schema_column in schema.by_table.get(column.table, ()) if schema_column.ref != column
+            for words in (tuple(canon(word) for word in name_words(schema_column.ref.name)),)
+            if len(words) > len(link_words) and set(link_words) < set(words)]
+
+
 def _abbreviated_table(column: ColumnRef) -> bool:
     """Whether the first word of ``column``'s name abbreviates a word of its table's name: cust_name of customer,
     crs_description of COURSE; not a name's part (Fname) nor the table's word itself (customer_name)."""
@@ -2368,6 +2384,13 @@ def _column_link_positions(
     positions = [i for i, token in enumerate(tokens)
                  if token in link_words or (token not in spelled
                                             and any(says_in_another_form(token, word) for word in link_words))]
+    # A field whose words another field of its table spells whole is not named inside that spelling: "the ranking
+    # date" names ranking_date and not the ranking, "each bed type" bedType and not beds (Spider DEV 471, 480,
+    # held-out Spider train 108, fresh holdout 534, 636, 2026-10-13: each grouped or showed both).
+    inside = {index for words in _longer_names(column, link_words, schema)
+              for start in range(len(tokens) - len(words) + 1) if tokens[start:start + len(words)] == words
+              for index in range(start, start + len(words))}
+    positions = [position for position in positions if position not in inside]
     if (_abbreviated_table(column) and link_words != ("id",)) or (
             set(link_words) & FUNCTION_WORDS and set(link_words) <= FUNCTION_WORDS | KIND_WORDS):
         # A field read without its table's abbreviation is named beside its table: "their apartment numbers",

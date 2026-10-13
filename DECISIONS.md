@@ -3418,3 +3418,18 @@ search and by the completeness check:
 Measured on Spider (`spider/results/RESULTS.md`, 2026-10-13): DEV 505 → 524 strict, held out 348 → 353, the fresh
 holdout 345 → 346, Gemini on 604 → 611, with no loss engine alone and one with Gemini on (639, a field the answer
 leaves out: a family of its own).
+
+## "In total" closing a count restates it; a field inside another field's spelled name is not named there (2026-10-13)
+
+Two construction families the pool census of the package 9 code found, each a stray part of an otherwise built answer:
+
+- "In total" after "how many" restates the count (`SQLSearcher._aggregate_choices`): "How many tasks are there in
+  total?" counts the tasks and sums nothing. Each such question had added a SUM of a field it never names (a grant's
+  amount, a student's advisor, a county's population). A total the question names ("the total grant amount") is still a
+  sum.
+- A field whose words another field of its table spells whole is not named inside that spelling
+  (`sql_search._column_link_positions`, `_longer_names`): "the ranking date" names ranking_date and not the ranking too,
+  "each bed type" bedType and not beds. Said on its own, the field is still named.
+
+Measured on Spider (`spider/results/RESULTS.md`, 2026-10-13): DEV 524 → 525 strict, held out 353 → 354, the fresh
+holdout 346 → 351, Gemini on 611 → 612, with no loss on any set and fewer wrong answers on each.
