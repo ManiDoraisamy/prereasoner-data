@@ -181,12 +181,14 @@ class CandidateRanker:
             ]
             features.append(("count_distinct_entity", 4.0 if distinct_identities else 0.0))
 
+        shown_columns = [column for column in (*select_columns, *group_columns) if isinstance(column, ColumnRef)]
         for column in group_columns:
             if (isinstance(column, ColumnRef) and is_surrogate_key(column.name) and column not in select_columns
                     and any(isinstance(other, ColumnRef) and other.table == column.table and other != column
                             for other in group_columns)):
                 continue    # an unlisted key beside its table's other groups tells their rows apart (entity_groups)
-            alignment = self._group_alignment(column, roles) or (
+            alignment = (self._group_alignment(column, roles) and not (
+                column not in roles.group_columns and self._named_beside(column, shown_columns, roles))) or (
                 count_ranked and any(
                     selected == column or selected.table == column.table
                     for selected in select_columns
@@ -197,7 +199,7 @@ class CandidateRanker:
         for column in select_columns:
             if column in roles.projection_columns:
                 value = 1.0
-            elif self._group_alignment(column, roles):
+            elif self._group_alignment(column, roles) and not self._named_beside(column, shown_columns, roles):
                 value = 1.5
             elif column.table in roles.counted_tables:
                 value = -3.5
@@ -396,6 +398,30 @@ class CandidateRanker:
         return "condition" if all(
             set(roles.tokens[max(0, index - 3):index]) & _RELATIVE_WORDS
             and set(roles.tokens[index + 1:index + 6]) & _CONDITION_COMPARISONS for index in said) else "asked"
+
+    def _named_beside(self, column: ColumnRef | DatePart, shown: Sequence[ColumnRef], roles: QuestionRoles) -> bool:
+        """Whether ``column``, which the question does not ask to show, stands beside a field it asks to show of the
+        same entity (a table and the tables its keys link). The question asks for that entity by the field it names,
+        and ``column`` is not asked: "all template ids and the number of documents using each template" shows the
+        ids, not their type code too (Spider DEV 309, 367, 33, 2026-10-13: an entity's other field was shown)."""
+        if not isinstance(column, ColumnRef) or column in roles.projection_columns:
+            return False
+        if is_surrogate_key(column.name) and {"id", "ids", "identifier"} & set(roles.tokens):
+            return False    # "the full name of each car maker, along with its id" asks for the key (Spider DEV 94)
+        entity = self._entity_tables(column)
+        return any(other != column and other in roles.projection_columns and self._entity_tables(other) & entity
+                   for other in shown)
+
+    def _entity_tables(self, column: ColumnRef) -> set[str]:
+        """``column``'s table and the tables its key pairs link it to."""
+        tables = {column.table}
+        for fk in self.schema.foreign_keys:
+            for from_column, to_column in fk.column_pairs:
+                if column == from_column:
+                    tables.add(to_column.table)
+                elif column == to_column:
+                    tables.add(from_column.table)
+        return tables
 
     def _group_alignment(self, column: ColumnRef | DatePart, roles: QuestionRoles) -> bool:
         if isinstance(column, DatePart):

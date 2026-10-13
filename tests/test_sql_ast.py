@@ -2144,6 +2144,56 @@ def test_a_one_letter_code_holds_the_word_it_stands_for():
     assert "male" not in sizes.value_index and "left" not in sizes.value_index
 
 
+
+
+def test_code_words_need_the_named_kind_and_the_bound_field():
+    """One-letter values alone do not establish sex or handedness, including a capped single-code sample."""
+    from engine.query_contract import read_question
+    from engine.sql_ast import Aggregate, Comparison, Literal, Star
+    planner = _hermetic_planner()
+    for name, values, word in (("Size", ("M", "M", "M"), "male"),
+                               ("Stage", ("F", "M", "F"), "male"),
+                               ("Grade", ("L", "R", "L"), "left")):
+        sheet = {"name": "players", "columns": ["player_id", name],
+                 "rows": [[i, value] for i, value in enumerate(values, 1)]}
+        graph = SchemaGraph.from_tables([sheet], ())
+        assert word not in graph.value_index, (name, graph.value_index.get(word))
+        refused = planner.serve([sheet], f"How many {word} players are there?", [])
+        assert not refused.get("valid"), refused.get("sql")
+        # Explicit codes retain their literal interpretation on the same profile.
+        literal = planner.serve([sheet], f'How many players have {name} "{values[0]}"?', [])
+        assert literal.get("valid"), (literal.get("error"), literal.get("sql"))
+        assert list(map(list, literal["result"]["rows"])) == [[values.count(values[0])]], literal.get("sql")
+    # A supported field keeps the same code even in a single-value sample.
+    sheet = {"name": "players", "columns": ["player_id", "Sex", "Stage"],
+             "rows": [[1, "M", "F"], [2, "F", "M"], [3, "F", "M"]]}
+    gender = planner.serve([sheet], "How many male players are there?", [])
+    assert list(map(list, gender["result"]["rows"])) == [[1]], gender.get("sql")
+    graph = SchemaGraph.from_tables([sheet], ())
+    refs = {c.ref.name: c.ref for c in graph.columns}
+    for field, unread in (("Stage", True), ("Sex", False)):
+        query = SelectQuery(select=(SelectItem(Aggregate("COUNT", Star())),), from_table="players",
+                            where=Comparison(refs[field], "=", Literal("M", SQLType.TEXT)))
+        reading = read_question("How many male players are there?",
+                                ScoredQuery(query, render_query(query), 0.0, ()), graph)
+        assert ("male" in reading.unread) == unread, (field, reading)
+    # LOWER and aliases retain their meaning; an unlowered different-case literal does not.
+    from dataclasses import replace
+    from engine.sql_ast import Lower
+    for folded, alias, value, unread in ((True, None, "m", False), (False, None, "m", True),
+                                       (False, "p", "M", False)):
+        column = replace(refs["Sex"], table=alias or "players")
+        query = SelectQuery(select=(SelectItem(Aggregate("COUNT", Star())),), from_table="players",
+                            from_alias=alias, where=Comparison(Lower(column) if folded else column,
+                                                             "=", Literal(value, SQLType.TEXT)))
+        reading = read_question("How many male players are there?",
+                                ScoredQuery(query, render_query(query), 0.0, ()), graph)
+        assert ("male" in reading.unread) == unread, (folded, alias, reading)
+    single = {"name": "players", "columns": ["player_id", "Gender"], "rows": [[1, "F"], [2, "F"]]}
+    women = planner.serve([single], "How many female players are there?", [])
+    assert list(map(list, women["result"]["rows"])) == [[2]], women.get("sql")
+
+
 def test_a_noun_several_fields_share_counts_its_entity():
     """Spider DEV 485, 2026-10-13: "how many different winners" named winner_age, winner_entry, winner_hand, winner_ht,
     winner_id and winner_name, the first four were offered, and the count counted the hands it compared with 'L'. The
@@ -2210,6 +2260,34 @@ def test_a_field_inside_another_fields_name_is_not_named_there():
                                   ("ranking",)) == []
     # Said on its own, the field is still named.
     assert _column_link_positions(ranking, _tokens("the ranking and the ranking date"), graph, ("ranking",)) == [1]
+
+
+def test_a_field_beside_the_named_field_of_its_entity_is_not_asked():
+    """Spider DEV 309, 367, 2026-10-13: "all template ids and the number of documents using each template" showed and
+    grouped the template's type code beside the ids. A field the question does not ask to show, beside a field it asks
+    of the same entity, earns no group credit; a key the question asks by "id" is still asked."""
+    templates = {"name": "Templates", "columns": ["Template_ID", "Template_Type_Code", "Version_Number"],
+                 "rows": [[1, "PP", 5], [2, "BK", 3], [3, "PP", 1]]}
+    documents = {"name": "Documents", "columns": ["Document_ID", "Template_ID", "Document_Name"],
+                 "rows": [[10, 1, "a"], [11, 1, "b"], [12, 2, "c"]]}
+    fks = [{"from_table": "Documents", "from_col": "Template_ID", "to_table": "Templates", "to_col": "Template_ID"}]
+    planner = _hermetic_planner()
+    served = planner.serve([templates, documents], "Show all template ids and number of documents using each template.",
+                           fks)
+    assert sorted(map(list, served["result"]["rows"])) == [[1, 2], [2, 1]], served.get("sql")
+    # Contrast: the field the question names is shown.
+    codes = planner.serve([templates, documents],
+                          "Show all template type codes and number of documents using each template type code.", fks)
+    assert sorted(map(list, codes["result"]["rows"])) == [["BK", 1], ["PP", 2]], codes.get("sql")
+    # A key asked by "its id" stays beside the name.
+    makers = {"name": "car_makers", "columns": ["Id", "FullName"],
+              "rows": [[1, "American Motor Company"], [2, "Volkswagen"]]}
+    models = {"name": "model_list", "columns": ["ModelId", "Maker", "Model"],
+              "rows": [[1, 1, "amc"], [2, 2, "audi"], [3, 2, "vw"]]}
+    full = planner.serve([makers, models], "What is the full name of each car maker, along with its id and how many "
+                                           "models it produces?",
+                         [{"from_table": "model_list", "from_col": "Maker", "to_table": "car_makers", "to_col": "Id"}])
+    assert sorted(map(list, full["result"]["rows"])) == [["American Motor Company", 1, 1], ["Volkswagen", 2, 2]],         full.get("sql")
 
 
 def test_a_rewording_keeps_the_operations_the_engine_reads():
@@ -6281,9 +6359,11 @@ TESTS = [
     test_a_nation_is_a_country,
     test_a_participle_before_a_year_the_answer_compares_is_read,
     test_a_one_letter_code_holds_the_word_it_stands_for,
+    test_code_words_need_the_named_kind_and_the_bound_field,
     test_a_noun_several_fields_share_counts_its_entity,
     test_in_total_closing_a_count_restates_it,
     test_a_field_inside_another_fields_name_is_not_named_there,
+    test_a_field_beside_the_named_field_of_its_entity_is_not_asked,
     test_a_rewording_keeps_the_operations_the_engine_reads,
     test_gemini_rewrite_must_preserve_data_values_and_numbers,
     test_evaluator_grades_the_served_selection,

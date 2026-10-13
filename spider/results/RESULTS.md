@@ -28,6 +28,21 @@ Artifacts: `%LOCALAPPDATA%/Temp/prereasoner-spider-review-20261013/`, tags `revi
 Incomplete intermediate runs are excluded. The review hardens ranking-number roles, output counts (preserving stored-count SUM),
 and table-owned full-name construction; it does not introduce another planner or model bundle.
 
+## A field beside the named field of its entity is not asked: 525 → 527 strict, Gemini on 612 → 614, held out 354 → 356, fresh holdout 351 → 353 (2026-10-13)
+
+Same contract as below. Runs `pkg11-dirty`, `pkg11-gemini-dirty`, `heldout-pkg11-dirty` and `holdout2-pkg11-dirty` are
+the change of the entry below with this change, against its `pkg10` runs. The change is `DECISIONS.md` "A field beside
+the named field of its entity is not asked".
+
+- DEV, engine alone: 525 → **527 strict**; 2 wins (309, 367), no loss; wrong answers 204 → 202; 3 queries changed
+  (995 wrong before and after).
+- Held out: 354 → **356 strict**; 2 wins (546, 872), no loss; wrong answers 241 → 239; 2 queries changed.
+- Fresh holdout: 351 → **353 strict**; 2 wins (361, 885), no loss; wrong answers 249 → 246 (874 now refused); 3
+  queries changed.
+- Gemini on: 612 → **614 strict**; 2 wins (309, 367), no loss; wrong answers 267 → 265; 4 queries changed.
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_{pkg11,pkg11-gemini,heldout-pkg11,holdout2-pkg11}-dirty.json`.
+
 ## "In total" restates a count, a field inside another's name: 524 → 525 strict, Gemini on 611 → 612, held out 353 → 354, fresh holdout 346 → 351 (2026-10-13)
 
 Same contract as below. Runs `pkg10-dirty`, `pkg10-gemini-dirty`, `heldout-pkg10-dirty` and `holdout2-pkg10-dirty` are

@@ -327,11 +327,17 @@ The own-data path serves one typed SQL AST chosen from the deterministic search'
    its kind (date_of_treatment), is named beside its table: "their apartment numbers", "the date of treatment". A
    sort verb opening the question is its command ("Sort employee names by their age"), and "number", "all" or
    "each" in lower case is no cell value. A nation is a country and a store a shop (`sql_schema.canon`); a field of
-   one-letter codes holds the words they stand for ("female" Sex 'F', "left handed" hand 'L'); a participle before
+   one-letter codes holds the words they stand for only with the field-kind evidence for M/F and L/R
+   (`sql_schema.code_word_matches_column`: sex/gender, hand/side/direction/orientation). A sampled Size 'M' or Stage F/M
+   is no sex. The qualified-code constructor uses the same rule, and completeness witnesses the word from the typed
+   comparison on that field, including aliases and LOWER, rather than a matching literal elsewhere in the SQL.
+   Explicit codes and the existing binary Y/N reading remain available. A participle before
    a compared year ("produced in 1980") is read by the answer; and a count of "different winners" counts the
    entity's name or key before the other fields the noun names. "In total" after "how many" restates the count,
    and a field whose words another field of its table spells whole is not named inside that spelling ("the ranking
-   date" is no ranking). A grouped answer that names a group as a field to show lists its fields in the question's
+   date" is no ranking). The ranker credits no field the question does not ask to show as the group it asks when
+   the answer shows a field the question asks of the same entity (`CandidateRanker._named_beside`). A grouped
+   answer that names a group as a field to show lists its fields in the question's
    order (`sql_search._in_question_order`); a joined listing whose join repeats its rows gets a DISTINCT twin, and
    the ranker prefers it (`sql_rank.repeats_shown_rows`), and a field the
    question names only to filter on is not shown, nor one it names only in the phrase that orders the

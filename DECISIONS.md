@@ -3433,3 +3433,39 @@ Two construction families the pool census of the package 9 code found, each a st
 
 Measured on Spider (`spider/results/RESULTS.md`, 2026-10-13): DEV 524 → 525 strict, held out 353 → 354, the fresh
 holdout 346 → 351, Gemini on 611 → 612, with no loss on any set and fewer wrong answers on each.
+
+## A field beside the named field of its entity is not asked (2026-10-13)
+
+The pool census of the package 9 code found 67 DEV questions answered wrongly with a strict-correct reading in the
+pool; the largest share differed only in the fields shown, most often an entity's other field shown and grouped beside
+the field the question names: "all template ids and the number of documents using each template" showed the template's
+type code too, "all document ids and the number of paragraphs in each document" the document's name.
+
+The ranker credits a field as the group a question asks when its table, or a table its key links, is the entity the
+question groups by (`CandidateRanker._group_alignment`). It no longer does for a field the question does not ask to show
+when the answer shows a field the question does ask of that same entity (`CandidateRanker._named_beside`, over the
+tables a field's key pairs link, `_entity_tables`): that field is how the question asks for the entity. A key the
+question asks by "id" stays asked ("the full name of each car maker, along with its id").
+
+Measured on Spider (`spider/results/RESULTS.md`, 2026-10-13): DEV 525 → 527 strict, held out 354 → 356, the fresh
+holdout 351 → 353, Gemini on 612 → 614, with no loss on any set and fewer wrong answers on each.
+
+## Standard code words require field-kind and AST-bound evidence (2026-10-13)
+
+The October 13 independent review reproduced two wrong-answer paths in the new code aliases. A players table with
+only Size 'M' answered "How many male players?" as the number of medium-size entries; Stage F/M did the same. With
+Sex and Stage both present, completeness also read "male" from a Stage='M' predicate merely because SQL held the same
+literal as the Sex code. The production selector accepted that wrong candidate and returned 2 instead of 1.
+
+- `SchemaGraph._build_value_index` and the existing qualified-code constructor share
+  `sql_schema.code_word_matches_column`: M/F needs a sex/gender field, L/R a hand/side/direction/orientation field.
+  A single-code capped profile is sufficient only after that field evidence, never by itself. Unknown labels require
+  an explicit literal or separately established meaning; the existing Y/N and explicit boolean readings are unchanged.
+- `query_contract.read_question` reads aliases from typed comparisons on the bound field, through existing predicate
+  extraction. It preserves base-table aliases and LOWER and distinguishes a bare different-case literal. Projection
+  literals and codes compared on another field do not prove the reading.
+- The registered regression exercises ambiguous Size/Stage/Grade profiles, raw literal codes on those same profiles,
+  supported Sex/Gender and handedness, a confounding field beside Sex, alias resolution, and literal case.
+
+This is a bounded correctness repair in the existing owners, not a complete population/scope proof. Fresh Spider
+accuracy and paired changes are recorded in `spider/results/RESULTS.md`; fixture hardening is not itself an accuracy gain.
