@@ -3349,3 +3349,20 @@ across DEV, the held-out sample and the fresh holdout before it was built:
 Measured on Spider (`spider/results/RESULTS.md`, 2026-10-13): DEV 493 → 497 strict, held out 324 → 335, the fresh
 holdout 329 → 334, with no loss on any of them, and wrong answers down on each (208 → 207, 257 → 253, 258 → 257);
 Gemini on 576 → 592 (16 wins, no loss; wrong answers 263 → 271, the rewordings "equal to" now lets through). Of 14 newly answered questions across the three, 12 are strict-correct.
+
+## Rewordings keep the operations the engine reads; aggregate words coordinated before a field share it (2026-10-13)
+
+- A labelled rewording (`engine/question_rewrite.py`) must keep the computations the question asks, and a count is now
+  the engine's own reading of one (`sql_expansion.count_requested`): "the number of products" beside a field
+  Number_products asks for that field, and "the phone number" for a phone. Words of grouping ("per", "by", "group") are
+  no longer required of a rewording: the answer check after the reworded search holds the grain the original question
+  asks ("requested output grain is missing"), and "miles per gallon", "song names by singers" and "produced by the
+  maker" group nothing. "No less than" reworded "at least" keeps its comparison. Spider DEV, 2026-10-13: 30 rewordings
+  were refused for losing one of those words.
+- Aggregate words coordinated before a field share that field (`sql_rank._heads_phrase`): "the average, minimum, and
+  maximum age" averages Age. A field named by the aggregate word itself (a stadium's Average) is not what the word asks
+  when its phrase names another field (`sql_rank.analyze_question` aggregate targets): "the average and maximum
+  capacities" averages Capacity, and "the highest average attendance" still names the Average field.
+
+Measured on Spider (`spider/results/RESULTS.md`, 2026-10-13): DEV 497 → 499 strict, held out 335 and the fresh holdout
+334 unchanged, Gemini on 592 → 601 (9 wins, no loss), with no loss on any of them.

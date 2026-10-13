@@ -530,8 +530,16 @@ def analyze_question(question: str, schema: SchemaGraph) -> QuestionRoles:
             candidates.append((distance, column.ref))
         if candidates:
             best_distance = min(distance for distance, _ in candidates)
-            aggregate_targets[function] = frozenset(column for distance, column in candidates
-                                                    if distance == best_distance)
+            targets = {column for distance, column in candidates if distance == best_distance}
+            # A field named by the aggregate word itself (a stadium's Average) is not what the word asks when its
+            # phrase names another field: "the average and maximum capacities" averages Capacity (Spider DEV 17,
+            # 2026-10-13).
+            cue_named = {ref for _, ref in candidates if set(_schema_tokens(ref.name)) <= _COORDINATED_AGGREGATES}
+            headed = {ref for _, ref in candidates
+                      if ref not in cue_named and _heads_phrase(tokens, _schema_tokens(ref.name), positions)}
+            if targets & cue_named and headed:
+                targets = headed
+            aggregate_targets[function] = frozenset(targets)
 
     first_role = min(all_aggregate_positions + group_positions
                      + [i for i, token in enumerate(tokens) if token in clause_stops], default=len(tokens))
@@ -592,7 +600,11 @@ def _heads_phrase(tokens: tuple[str, ...], name_tokens: tuple[str, ...], positio
     keywords" was refused for not totaling Keyword."""
     for position in positions:
         start = position + 1
-        while start < len(tokens) and tokens[start] in _PHRASE_OPENERS:
+        # Aggregate words coordinated after it share its field: "the average, minimum, and maximum age" averages Age,
+        # whatever field is named Average (Spider DEV 4, 17, 2026-10-13: refused as no average of stadium.Average).
+        while start < len(tokens) and (tokens[start] in _PHRASE_OPENERS or tokens[start] in _COORDINATED_AGGREGATES
+                                       or tokens[start] in {"and", "or"} and start + 1 < len(tokens)
+                                       and tokens[start + 1] in _COORDINATED_AGGREGATES):
             start += 1
         end = start
         while end < len(tokens) and tokens[end].isalpha() and not _ends_phrase(tokens, end):
@@ -600,6 +612,10 @@ def _heads_phrase(tokens: tuple[str, ...], name_tokens: tuple[str, ...], positio
         if end > start and tokens[end - 1] == name_tokens[-1]:
             return True
     return False
+
+
+# The aggregate words one coordinates with another before the field they share (canon() forms).
+_COORDINATED_AGGREGATES = frozenset({"average", "avg", "mean", "minimum", "min", "maximum", "max", "total", "sum"})
 
 
 # The words that ask a total or an average, as analyze_question reads them.

@@ -75,23 +75,32 @@ def _preserves_explicit_constraints(question: str, rewritten: str, graph) -> boo
     if target is not None and currency_conversion_target(rewritten) != target:
         return False
     # Preserve recognized computation roles. A rewrite may replace a schema label,
-    # but cannot turn a known comparison, aggregate, ranking or grouping into another.
+    # but cannot turn a known comparison, aggregate or ranking into another. A count is
+    # the engine's reading of one (sql_expansion.count_requested): "the number of
+    # products" of Number_products and "the phone number" ask for a field. Groups are
+    # held by the answer check after the reworded search (constraint_violations of the
+    # original question: "requested output grain is missing"), not by words: "miles per
+    # gallon", "song names by singers" and "produced by the maker" group nothing, and 30
+    # DEV rewordings were refused for losing such a word (2026-10-13).
+    from engine.sql_expansion import count_requested
+    fields = [column.ref for column in graph.columns]
+
     def roles(text):
+        counted = count_requested(text, fields)
         text = " ".join(lexical_words(text))
         for column in sorted(graph.columns, key=lambda c: -len(c.ref.name)):
             text = text.replace(" ".join(lexical_words(column.ref.name)), " ")
         patterns = {
             "sum": r"\b(?:sum|total)\b", "avg": r"\b(?:avg|average|mean)\b",
             "max": r"\b(?:max|maximum)\b", "min": r"\b(?:min|minimum)\b",
-            "count": r"\b(?:count|how many|number of)\b",
-            "greater": r"\b(?:greater than|more than|over|above)\b",
-            "less": r"\b(?:less than|fewer than|under|below)\b",
+            "greater": r"\b(?:greater than|more than|over|above|at least)\b",
+            "less": r"\b(?:less than|fewer than|under|below|at most)\b",
             "before": r"\bbefore\b", "after": r"\bafter\b", "between": r"\bbetween\b",
             "top": r"\btop\b", "bottom": r"\bbottom\b",
             "share": r"\b(?:share|percentage|percent)\b",
-            "group": r"\b(?:by|per|each)\b",
         }
-        return {role for role, pattern in patterns.items() if re.search(pattern, text)}
+        return {role for role, pattern in patterns.items() if re.search(pattern, text)} | (
+            {"count"} if counted else set())
     if not roles(question).issubset(roles(rewritten)):
         return False
     numbers = re.findall(r"(?<![a-z0-9])[+-]?\d[\d,]*(?:\.\d+)?(?![a-z0-9])", original)

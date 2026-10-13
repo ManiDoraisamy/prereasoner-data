@@ -1961,6 +1961,47 @@ def test_a_code_spelled_as_a_word_does_not_hold_a_rewording():
                                                "What is the Region of the city Tokyo?", graph)
 
 
+def test_coordinated_aggregate_words_share_the_field_after_them():
+    """Spider DEV 4, 17, 2026-10-13: "the average, minimum, and maximum age of all singers from France" was refused as no
+    average of stadium.Average, a field named for the word, though the query averaged Age: the words coordinated after
+    "average" share the field after them. "The highest average attendance" still names the Average field."""
+    stadium = {"name": "stadium", "columns": ["Stadium_ID", "Name", "Capacity", "Average"],
+               "rows": [[1, "Hampden", 52500, 864], [2, "Ibrox", 50000, 4000]]}
+    singer = {"name": "singer", "columns": ["Singer_ID", "Name", "Country", "Age"],
+              "rows": [[1, "Ann", "France", 30], [2, "Bo", "France", 40], [3, "Cy", "Spain", 50]]}
+    planner = _hermetic_planner()
+    served = planner.serve([stadium, singer], "What is the average, minimum, and maximum age of all singers from France?",
+                           [])
+    assert served.get("valid"), (served.get("error"), served.get("sql"))
+    assert [list(row) for row in served["result"]["rows"]] == [[35.0, 30, 40]], served.get("sql")
+    capacities = planner.serve([stadium, singer], "What is the average and maximum capacities for all stadiums?", [])
+    assert [list(row) for row in capacities["result"]["rows"]] == [[51250.0, 52500]], capacities.get("sql")
+    from engine.sql_rank import aggregate_operand
+    assert aggregate_operand("the stadium with the highest average attendance", ["Average", "Capacity"], "AVG") is None
+
+
+def test_a_rewording_keeps_the_operations_the_engine_reads():
+    """Spider DEV, 2026-10-13: rewordings were refused for losing words the engine does not read as operations: "per" in
+    "miles per gallon", "number of" before the field Number_products, "no less than" said "at least". The engine's own
+    reading of a count decides, and a dropped count or comparison still refuses the rewording."""
+    from engine.question_rewrite import _preserves_explicit_constraints
+    cars = {"name": "cars_data", "columns": ["Id", "MPG", "Cylinders", "Weight"],
+            "rows": [[1, 18.0, 8, 3504], [2, 30.0, 4, 2200]]}
+    shop = {"name": "shop", "columns": ["Shop_ID", "Name", "Number_products"], "rows": [[1, "A", 10], [2, "B", 20]]}
+    graph = SchemaGraph.from_tables([cars, shop], ())
+    for question, rewording in (
+            ("What is the average miles per gallon of the cars with 4 cylinders?",
+             "What is the average MPG of cars_data with Cylinders equal to 4?"),
+            ("Find the minimum and maximum number of products of all stores.",
+             "Find the minimum and maximum Number_products of all shops."),
+            ("In which years were cars produced weighing no less than 3000 and no more than 4000?",
+             "Which years have cars with Weight at least 3000 and Weight at most 4000?")):
+        assert _preserves_explicit_constraints(question, rewording, graph), (question, rewording)
+    # Negative: a count or a comparison the rewording drops still refuses it.
+    assert not _preserves_explicit_constraints("How many cars have 4 cylinders?", "Show the cars with 4 Cylinders.", graph)
+    assert not _preserves_explicit_constraints("Which cars weigh more than 3000?", "Which cars have Weight 3000?", graph)
+
+
 def test_gemini_rewrite_must_preserve_data_values_and_numbers():
     question = "top 5 customers in France"
     planner, gemini = _gemini_planner(question="top 3 customers")
@@ -6000,6 +6041,8 @@ TESTS = [
     test_gemini_reads_schema_names_but_not_cell_values,
     test_gemini_is_asked_for_words_not_sql_symbols,
     test_a_code_spelled_as_a_word_does_not_hold_a_rewording,
+    test_coordinated_aggregate_words_share_the_field_after_them,
+    test_a_rewording_keeps_the_operations_the_engine_reads,
     test_gemini_rewrite_must_preserve_data_values_and_numbers,
     test_evaluator_grades_the_served_selection,
     test_sql_import_maps_numeric_arithmetic_but_refuses_nonnumeric,

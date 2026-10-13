@@ -28,6 +28,22 @@ Artifacts: `%LOCALAPPDATA%/Temp/prereasoner-spider-review-20261013/`, tags `revi
 Incomplete intermediate runs are excluded. The review hardens ranking-number roles, output counts (preserving stored-count SUM),
 and table-owned full-name construction; it does not introduce another planner or model bundle.
 
+## Rewordings keep the operations the engine reads, coordinated aggregate words share their field: 497 → 499 strict, Gemini on 592 → 601, held out 335, fresh holdout 334 (2026-10-13)
+
+Same contract as below. Runs `pkgT-dirty`, `pkgT-gemini-dirty`, `heldout-pkgT-dirty` and `holdout2-pkgT-dirty` are
+`94c4d50` (what production serves) with this change, against the `pkgR` runs of the entry below. The change is
+`DECISIONS.md` "Rewordings keep the operations the engine reads; aggregate words coordinated before a field share it".
+
+- DEV, engine alone: 497 → **499 strict (48.3%)**, 546 → 548 lenient, 704 answered; 2 wins (4, 17), no loss; wrong
+  answers 207 → 205; 2 queries changed.
+- Gemini on (all 330 rewordings replayed from the cache): 592 → **601 strict**, 668 → 679 lenient, 863 → 873 answered;
+  9 wins (4, 17, 151, 271, 275, 416, 417, 757, 763), no loss; wrong answers 271 → 272: of 11 newly answered, 7 are
+  strict-correct.
+- Held out: 335 → **335 strict**; 1 query changed (752, wrong before and after).
+- Fresh holdout: 334 → **334 strict**; no query changed.
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_{pkgT,pkgT-gemini,heldout-pkgT,holdout2-pkgT}-dirty.json`.
+
 ## A number of a numeric field, all the information, "equal to" and "record": 493 → 497 strict, Gemini on 576 → 592, held out 324 → 335, fresh holdout 329 → 334 (2026-10-13)
 
 Same contract as below. Runs `pkgR-dirty`, `pkgR-gemini-dirty`, `heldout-pkgR-dirty` and `holdout2-pkgR-dirty` are
