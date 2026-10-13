@@ -545,9 +545,8 @@ class SQLSearcher:
         """"The full name" of rows holding a first and a last name is both, the first at "full" and the last at
         "name", unless a field is named for it (car_makers.FullName): "the full names of employees living in
         Calgary" (held-out Spider train 474, 2026-10-12: neither was shown)."""
-        if any(_column_link_words(schema_column.ref, False) == ("full", "name")
-               for schema_column in self.schema.columns):
-            return []
+        named_full = {schema_column.ref.table for schema_column in self.schema.columns
+                      if _column_link_words(schema_column.ref, False) == ("full", "name")}
         parts: dict[str, dict[str, ColumnRef]] = {}
         for schema_column in self.schema.columns:
             part = name_part_words(schema_column.ref.name)
@@ -555,7 +554,7 @@ class SQLSearcher:
                 parts.setdefault(schema_column.ref.table, {}).setdefault(part[0], schema_column.ref)
         return [(index, table, held["first"], held["last"])
                 for index in range(len(tokens) - 1) if tokens[index:index + 2] == ("full", "name")
-                for table, held in sorted(parts.items()) if {"first", "last"} <= set(held)]
+                for table, held in sorted(parts.items()) if table not in named_full and {"first", "last"} <= set(held)]
 
     def _column_mentions(self, tokens: tuple[str, ...], table_scores: dict[str, float]) -> tuple[_Mention, ...]:
         grouped: dict[int, list[_ColumnOption]] = {}
@@ -1405,12 +1404,14 @@ class SQLSearcher:
         # A number beside the name of a numeric field is that field's value: "the high schoolers in grade 10", "the
         # cars with 4 cylinders", "a cat that is age 3" (Spider DEV 870, 117, 83, 2026-10-12: the number went unread
         # and no reading compared it).
-        # A number a ranking word keeps rows by is its cutoff, not a value: "the mountains with the top 3 prominence"
-        # (fresh holdout of Spider train 167, 2026-10-12: Prominence was compared with 3).
+        # Reserve the ranking cutoff's occurrence through the reader used by construction and verification:
+        # "the top 3 prominence" ranks three rows rather than filtering prominence to 3.
+        from engine.sql_extrema import MAX_CUES, MIN_CUES, ranking_cutoff
+        ranking_cues = tuple(index for index, token in enumerate(tokens)
+                             if token in {"top", "bottom"} | MAX_CUES | MIN_CUES)
+        _, cutoff_position = ranking_cutoff(tokens, ranking_cues)
         for index, token in enumerate(tokens):
-            if index in used_numbers or index in claimed or not NUMBER_TEXT.match(token):
-                continue
-            if index and tokens[index - 1] in {"top", "bottom", "first", "last"}:
+            if index in used_numbers or index in claimed or index == cutoff_position or not NUMBER_TEXT.match(token):
                 continue
             beside = _unique_columns(tuple(
                 option.column for mention in mentions for option in mention.options

@@ -4,6 +4,30 @@ Dated entries come newest first. Each records a run at the commit it names; the 
 entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection arbiter`) may since have
 been removed, and that commit holds the code that ran.
 
+
+## Independent October 13 review: 497 strict, matched hosted SQL references
+
+Frozen source: `e709851` plus Claude's audited package-R source snapshot and the three review repairs in the attached
+`spider-accuracy-review-20261013` worktree. Package R matched all 113 serving-source fingerprints before repair;
+the final dirty snapshot, inputs and unchanged promoted bundle are verified after execution. Concurrent main edits
+were preserved; the tested repairs are applied as uncommitted changes on primary `94c4d50`, with all 113 serving sources
+and the regression source equal under Python newline handling. `whole_db`, `served`, SQL, cap 5,000, 12s soft budget,
+external rewriting off. Full fresh DEV: **497/1,034 (48.1%) strict**, 546/1,034 (52.8%) lenient,
+704/1,034 (68.1%) answered. Versus saved package R: 0 strict wins / 0 losses,
+0 SQL changes / 0 grade/status changes. Versus independent 386 baseline: +111 strict,
+116 wins / 5 losses. Disjoint results: 75 lenient-only,
+132 incorrect under both, 330 unanswered; 26 strict-correct empty-gold cases receive lenient-false.
+
+The saved October 7 Sonnet 5.5 and Gemini 3.8 Flash SQL was independently reexecuted on the identical capped rows
+with the shared scorer: **840/1,034 strict, 897 lenient, 1,023 answered** and **872/1,034 strict, 904 lenient, 1,034 answered**.
+No changed provider grades and no new API calls. Same task/data/scorer; different prompts and inference budgets.
+The full review, validation and limitations are in `release-review/spider-review-20261011.md`.
+
+Artifacts: `%LOCALAPPDATA%/Temp/prereasoner-spider-review-20261013/`, tags `review-e709851`,
+`review-pkgR-isolated-repairs`, plus the explicitly limited raw-pool diagnostic `review-pkgR-isolated-pool-120`.
+Incomplete intermediate runs are excluded. The review hardens ranking-number roles, output counts (preserving stored-count SUM),
+and table-owned full-name construction; it does not introduce another planner or model bundle.
+
 ## A number of a numeric field, all the information, "equal to" and "record": 493 → 497 strict, Gemini on 576 → 592, held out 324 → 335, fresh holdout 329 → 334 (2026-10-13)
 
 Same contract as below. Runs `pkgR-dirty`, `pkgR-gemini-dirty`, `heldout-pkgR-dirty` and `holdout2-pkgR-dirty` are

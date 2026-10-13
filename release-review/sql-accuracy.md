@@ -1,10 +1,61 @@
 # SQL accuracy: measured weaknesses and implementation plan
 
-**Updated:** 2026-10-12. This updates the existing guide after the independent fix reviews, Spider artifact audit, and review of Claude's implementation of the plan. It supersedes the October 8 baseline and earlier first-batch ordering.
+## October 13 independent measurement and next implementation order
 
-**Latest independent run, October 12:** local `f6fbf4d` plus the uncommitted Boolean-count repair verifies **386/1,034 strict (37.3%), 444/1,034 lenient (42.9%), 590/1,034 answered (57.1%)**, with 361 passing focused checks and all 113 tracked source fingerprints matching after evaluation. The selected SQL and all grades/statuses exactly match Claude's r127. The earlier S1–S6 examples are repaired; the new AND/OR contrast is repaired locally. This stage adds no DEV accuracy gain. See [the current review](C:/work/prereasoner-data/release-review/spider-review-20261011.md) and the assessment below. Detailed `3817b34` and `6263502` records remain historical evidence.
+The frozen package-R snapshot plus review repairs measures **497/1,034 (48.1%) strict / 546/1,034 (52.8%) lenient / 704/1,034 (68.1%) answered**, external rewriting off. The earlier clean `e709851` fresh run verifies 493/543/701. Package R's 113 recorded serving files matched before repair, and final source/input/model fingerprints match after evaluation. Refer to the current [review](C:/work/prereasoner-data/release-review/spider-review-20261011.md) for source scope, hosted comparison and evidence. Later edits must receive their own run.
 
-**Historical measured sources:** `3817b34378d0133e272d75619d53bfe66a2e8e2c` and `6263502f7cdd3c0639208f13e49daa4563bfaae0`, in isolated clean checkouts. The current independent source is `f6fbf4d5d9b914129ec1ccab2c3d5ad996fe9b0b` with the documented local repair; immutable file fingerprints, not the commit alone, identify this dirty run.
+The disjoint remaining cohorts are 330 unanswered, 132 incorrect under both scorers, and 75 lenient-only. The latter includes semantic failures, not just cosmetic output mismatches. Fixing every refusal alone would yield only 827/1,034; perfect correctness at today's answer coverage would yield 704/1,034. Both coverage and precision must improve to exceed the saved Sonnet 840 or Gemini 872 references. The engineering target for beating both references on this exact contract is at least 873/1,034, with a new untouched acceptance set and comparable coverage. That is a target, not a forecast.
+
+### 1. Make population and output requirements a shared constructor input
+
+Extend the existing `sql_expansion`, `sql_search`, `sql_constraints` and `query_contract` owners. Do not add another planner or a model-written AST grammar. Begin with row counts, stored-count quantities, grouped counts and frequency rankings. Preserve an occurrence for each requirement, rather than collapsing by column name or numeric bound.
+
+| Requirement | Necessary fields | Example obligation |
+|---|---|---|
+| Output | occurrence/span, entity, expression kind, operand, grain, output ordinal | Show the student ID, first/middle/last names and enrollment count; an operand used only to order is not an output |
+| Count/quantity | counted entity or stored-count field, identity key, NULL/distinct policy, grouping grain | Count manufacturers, not the joined cars; transfers 8+5 are 13, not two hospital rows |
+| Predicate | occurrence/span, bound field or aggregate, operator, literal, scope, polarity, Boolean parent | Both related counts must satisfy the stated AND/OR; the top-3 occurrence cannot also mean field = 3 |
+| Population | subject identity, relation path/direction, qualifying filters, reference population, scope | The mean used as a threshold belongs to the requested population and keeps its filters |
+
+Use the same bindings to build candidates and to discharge their obligations. The bindings are nonexecutable named evidence: they do not contain SQL strings or free-form AST tokens. Encoder heads may assign bounded entity/field/operation/scope labels; fixed typed constructors consume those readings. Every selected AST must expose how each required output and predicate is realized. Missing or contradictory evidence remains unresolved rather than silently ignored.
+
+First positive/negative fixtures: zero/one/many manufacturers with repeated downstream car rows; one row per channel versus many cartoons per channel; repeated output requests; a count used only in HAVING versus a displayed count; COUNT versus SUM of stored counts; SUM of the wrong numeric field; nullable children and repeated labels; identical numbers in cutoff and predicate roles; self-relation direction and scoped averages. Use counterfactual rows so wrong plans cannot pass merely because this particular answer is empty or tied.
+
+### 2. Certify recoverable refusals before relaxing admission
+
+Produce a per-question ledger through the existing production selector. For each refusal, distinguish: correct plan exists and is rejected; correct plan exists only before pool pruning/finalization; correct plan is absent; or the question/data is genuinely ambiguous. Run the actual served realization, including `keep_ties`, on each proposed recovery and independently check its meaning. A table name, stem match or executable query is insufficient proof of an entity, predicate or scope binding.
+
+Prioritize recurring false refusals with a correct, fully witnessed plan. Add same-profile contrastive and negative fixtures before broadening a lexical witness. The current 120-case raw-pool diagnostic is limited to the first 30 questions per difficulty; historical 672 raw hits and the old 227 blocked cases are not today's certified recovery count. Recompute a full current ledger before using those numbers as an accuracy ceiling or a prioritization budget.
+
+### 3. Repair returned semantic errors alongside the refusal work
+
+Work on wrong counted populations, multiplying joins, predicate attachment, output grain, omitted outputs and reference-average scope first. Lenient-only cases with extra rows or incorrect row associations belong in this work as well. Make a join prove whether it preserves or multiplies the requested identity; COUNT(*) is correct only at the proven counted grain. Prefer deterministic semijoins/preaggregation/distinct identity counts only when they realize that obligation. Removing a join or applying DISTINCT merely to match gold is not a valid repair.
+
+Then address true presentation-only mismatches: requested output order, projection shape and explicitly requested bag/set semantics. Preserve the order of requested output occurrences and do not reorder by gold. Keep a separately adjudicated list of reference/tie defects; use one unchanged scorer for every system.
+
+### 4. Measure correct bindings before training
+
+Independently annotate a bounded set of failure families with entity, operation, operand, value, population and scope bindings. Inject those named bindings into the current constructor/checker interface as an offline-only experiment, leaving the production encoder, AST grammar, ranker and evaluator unchanged. Measure served top-1, retained and pre-pruning candidate recall, checker admissions, wins/losses and latency. The previous broad gold-column-role score substitution did not run this experiment.
+
+Measure the encoder's actual coverage of needed spans too: `TableQuery._encode_batch` currently tokenizes at `MAX_LEN = 48`, so audit token truncation on longer global and role phrases before assuming all meaning reaches the heads. Compare a token-budget-only ablation under the same code/data/model/scorer, including latency and unaffected short-question contrasts. Do not blindly change context length or train a larger encoder together with grammar changes.
+
+If correct bindings still cannot build the correct AST, extend typed construction/proofs before training. If correct bindings recover plans but the real encoder's readings do not, train the existing named-property pipeline on those binding labels only after a separate explicit training request and frozen experiment contract. Candidate weights remain outside `engine/data`; promotion is separate. No next-token SQL/AST generator is part of this plan.
+
+### 5. Optimize measured costs after binding correctness
+
+Use the existing per-request timing spans to separate encoding, schema preparation, construction, admission and execution. Existing per-instance vector caching already exists; preserve its invalidation rather than adding another cache. Compute question semantics once and share the named bindings between construction and checking. Cache schema-only indexes by schema/upload version, prune impossible type/scope assignments early, and retain semantic diversity under the existing bounded pool. Compare warm and cold requests separately on an otherwise idle machine. Benchmark-query finalization must remain identical to serving.
+
+### Acceptance gates for each implementation slice
+
+Freeze source, promoted bundle, question/database identities and evaluator contract; keep external rewriting off for the deterministic headline. Require registered positive, contrastive and negative production-owner regressions, applicable emitter parity or explicit unsupported coverage, fresh full `whole_db`/`served` DEV results and paired wins/losses. Report strict, lenient, answered, false-admission counts and marginal precision of newly answered questions, not aggregate wins alone. Diagnose every loss and any precision degradation. Run one new schema/composition holdout that has not informed the change; the two existing 1,000-question samples are development evidence now. Report latency and raw-versus-certified pool recall honestly. Keep one planner, selector, ranker, evaluator and promoted bundle.
+
+This order follows semantics: fix returned wrong meanings and witnessed false refusals together; presentation-only corrections follow. The cohort labels by themselves do not identify root causes, and there is no evidence that next-token entropy makes a generator inherently more accurate than a complete, properly bound deterministic compiler.
+
+**Updated:** 2026-10-13. This updates the existing guide after the independent fix reviews, Spider artifact audit, and review of Claude's implementation of the plan. It supersedes the October 8 baseline and earlier first-batch ordering.
+
+**Historical independent run, October 12:** local `f6fbf4d` plus the uncommitted Boolean-count repair verifies **386/1,034 strict (37.3%), 444/1,034 lenient (42.9%), 590/1,034 answered (57.1%)**, with 361 passing focused checks and all 113 tracked source fingerprints matching after evaluation. The selected SQL and all grades/statuses exactly match Claude's r127. The earlier S1–S6 examples are repaired; the new AND/OR contrast is repaired locally. This stage adds no DEV accuracy gain. See [the current review](C:/work/prereasoner-data/release-review/spider-review-20261011.md) and the assessment below. Detailed `3817b34` and `6263502` records remain historical evidence.
+
+**Historical measured sources:** `3817b34378d0133e272d75619d53bfe66a2e8e2c` and `6263502f7cdd3c0639208f13e49daa4563bfaae0`, in isolated clean checkouts. The October 12 independent source was `f6fbf4d5d9b914129ec1ccab2c3d5ad996fe9b0b` with the documented local repair; immutable file fingerprints, not the commit alone, identify this dirty run.
 
 **Scope:** improve the existing deterministic, interpretable own-data engine. The October 11 plan update changed documentation only. The October 12 independent review includes a narrow Boolean count-composition repair described below; the broader binding implementation and training remain proposed. No training, promotion, paid model generation, or deployment was performed in this review. Repository rules remain in [CLAUDE.md](C:/work/prereasoner-data/CLAUDE.md); architecture facts and decisions retain their existing owners.
 

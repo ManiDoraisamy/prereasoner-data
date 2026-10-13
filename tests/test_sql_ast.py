@@ -3815,6 +3815,13 @@ def test_a_full_name_is_a_first_and_a_last_name_unless_a_field_is_named_so():
     # Contrast: a field named "full name" is the full name.
     makers = {"name": "car_makers", "columns": ["Id", "Maker", "FullName"],
               "rows": [[1, "amc", "American Motor Company"], [2, "gm", "General Motors"]]}
+    served = _hermetic_planner().serve([employee, album, makers],
+                                      "Find the full names of employees in the city of Calgary.", [])
+    assert served.get("valid") and [list(row) for row in served["result"]["rows"]] == [["Ann", "Lee"]], served
+    named_employee = {"name": "Employee", "columns": ["EmployeeId", "FirstName", "LastName", "FullName"],
+                      "rows": [[1, "Ann", "Lee", "Ann Lee"], [2, "Bo", "Ng", "Bo Ng"]]}
+    served = _hermetic_planner().serve([named_employee], "Find the full names of employees.", [])
+    assert served.get("valid") and [list(row) for row in served["result"]["rows"]] == [["Ann Lee"], ["Bo Ng"]], served
     owners = {"name": "owners", "columns": ["Id", "first_name", "last_name"], "rows": [[1, "Ann", "Lee"]]}
     served = _hermetic_planner().serve([makers, owners], "What is the full name of each car maker?", [])
     assert served.get("valid"), (served.get("error"), served.get("sql"))
@@ -5881,6 +5888,71 @@ def test_spider_evaluator_does_not_count_all_errors_as_answered():
     assert integrated["scalar_correct"] == 0
 
 
+def test_a_ranking_number_beside_a_measure_is_not_an_equality_filter():
+    mountains = {"name": "mountains", "columns": ["id", "name", "prominence", "region"],
+                 "rows": [[1, "A", 100, 1], [2, "B", 80, 1], [3, "C", 60, 1],
+                          [4, "D", 3, 1], [5, "E", 1, 2]]}
+    planner = _hermetic_planner()
+    for direction, expected in (("top", [["A"], ["B"], ["C"]]),
+                                ("bottom", [["E"], ["D"], ["C"]])):
+        served = planner.serve([mountains], f"List the names of the mountains with the {direction} 3 prominence.", [])
+        assert served.get("valid") and [list(row) for row in served["result"]["rows"]] == expected, served
+        assert '"prominence" = 3' not in served["sql"], served["sql"]
+    same = planner.serve([mountains], "List the names of the top 1 mountains with region 1 by prominence.", [])
+    assert same.get("valid") and [list(row) for row in same["result"]["rows"]] == [["A"]], same
+    assert '"region" = 1' in same["sql"], same["sql"]
+    equal = planner.serve([mountains], "List the names of mountains with prominence 3.", [])
+    assert equal.get("valid") and [list(row) for row in equal["result"]["rows"]] == [["D"]], equal
+    assert '"prominence" = 3' in equal["sql"], equal["sql"]
+
+
+def test_a_requested_count_is_shown_not_only_computed_in_a_filter():
+    people = {"name": "people", "columns": ["id", "name", "age"],
+              "rows": [[1, "Ann", 20], [2, "Bo", 40], [3, "Cy", 60]]}
+    graph = SchemaGraph.from_tables([people], ())
+    age = ColumnRef("people", "age", SQLType.INTEGER)
+    name = ColumnRef("people", "name", SQLType.TEXT)
+    average = SelectQuery((SelectItem(Aggregate("AVG", age)),), "people")
+    above = Comparison(age, ">", ScalarSubquery(average))
+    question = "How many people have an age above the average?"
+    uncounted = "the question asks how many, and the answer computes no count"
+    for expression in (name, Aggregate("SUM", age), Aggregate("AVG", age), Aggregate("MAX", age)):
+        wrong = SelectQuery((SelectItem(expression),), "people", where=above)
+        assert uncounted in constraint_violations(question, wrong, graph), render_query(wrong)
+    qualifying = SelectQuery((SelectItem(name),), "people", group_by=(name,),
+                             having=Comparison(Aggregate("COUNT", Star()), ">", Literal(1)))
+    assert uncounted in constraint_violations("How many people have more than 1 record?", qualifying, graph)
+    scalar_average = SelectQuery((SelectItem(Aggregate("AVG", age)),), "people",
+                                 having=Comparison(Aggregate("COUNT", Star()), ">", Literal(1)))
+    scalar_wrong = SelectQuery((SelectItem(ScalarSubquery(scalar_average)),), "people", where=above)
+    assert uncounted in constraint_violations(question, scalar_wrong, graph)
+    counted = SelectQuery((SelectItem(Aggregate("COUNT", Star())),), "people", where=above)
+    assert not constraint_violations(question, counted, graph)
+    assert execute([people], render_query(counted)) == [(1,)]
+    scalar_count = SelectQuery((SelectItem(ScalarSubquery(counted)),), "people")
+    assert uncounted not in constraint_violations(question, scalar_count, graph)
+    listed = SelectQuery((SelectItem(name),), "people", where=above)
+    assert not constraint_violations("List names of people whose age is above the average.", listed, graph)
+    served = _hermetic_planner().serve([people], question, [])
+    assert served.get("valid") and [list(row) for row in served["result"]["rows"]] == [[1]], served
+    # Numeric columns storing the requested count use the existing shared operand-reading rule.
+    hospitals = {"name": "hospitals", "columns": ["id", "name", "transfers", "age"],
+                 "rows": [[1, "A", 8, 20], [2, "B", 5, 40]]}
+    hospital_graph = SchemaGraph.from_tables([hospitals], ())
+    transfers = ColumnRef("hospitals", "transfers", SQLType.INTEGER)
+    stored = SelectQuery((SelectItem(Aggregate("SUM", transfers)),), "hospitals")
+    assert uncounted not in constraint_violations("How many transfers are there?", stored, hospital_graph)
+    assert execute([hospitals], render_query(stored)) == [(13,)]
+    assert uncounted in constraint_violations("How many hospitals are there?", stored, hospital_graph)
+    wrong_quantity = SelectQuery((SelectItem(Aggregate("SUM", ColumnRef("hospitals", "age", SQLType.INTEGER))),),
+                                "hospitals")
+    assert uncounted in constraint_violations("How many transfers are there?", wrong_quantity, hospital_graph)
+    aliased = SelectQuery((SelectItem(Aggregate("SUM", ColumnRef("h", "transfers", SQLType.INTEGER))),),
+                         "hospitals", from_alias="h")
+    assert uncounted not in constraint_violations("How many transfers are there?", aliased, hospital_graph)
+
+
+
 TESTS = [
     test_shared_ranking_rule_preserves_calculation_then_money_precedence,
     test_pool_oracle_counts_only_eligible_denotation_hits_and_validates_checkpoints,
@@ -6019,6 +6091,8 @@ TESTS = [
     test_words_saying_how_rows_are_counted_are_read_by_a_count,
     test_an_aggregate_said_only_in_a_condition_is_not_shown,
     test_a_question_asking_how_many_is_answered_by_a_count,
+    test_a_ranking_number_beside_a_measure_is_not_an_equality_filter,
+    test_a_requested_count_is_shown_not_only_computed_in_a_filter,
     test_a_number_of_a_numeric_field_is_the_field,
     test_equal_to_is_read_by_a_comparison_for_equality,
     test_one_aggregate_word_over_coordinated_fields_takes_each,

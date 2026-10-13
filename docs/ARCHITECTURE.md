@@ -329,16 +329,21 @@ The own-data path serves one typed SQL AST chosen from the deterministic search'
    in the groups the table's own field makes ("the number of cities in each district whose population
    is greater than the average"; `sql_expansion.average_comparison`), and a number said beside a
    numeric field's name is that field's value ("high schoolers in grade 10", "a cat that is age 3"),
-   unless a ranking word keeps the rows by it ("the mountains with the top 3 prominence").
+   unless the shared `sql_extrema.ranking_cutoff` reader reserves that occurrence for a ranking ("the mountains
+   with the top 3 prominence"). A separate occurrence of the same number can still supply its own filter.
    "The full name" of rows holding a first and a last name is both fields, unless a field is named
-   for it (`SQLSearcher._full_names`); a name's part a field abbreviates is listed where the question
+   for it in that same table (`SQLSearcher._full_names`); an unrelated table's FullName cannot suppress the
+   requested table's name parts. A name's part a field abbreviates is listed where the question
    says its two words ("the first name and age" lists Fname first), and "the full name" lists the first name before the
    last, wherever else the question says a part. A field the question compares
    before naming it ("projects that require between 100 and 300 hours") or picks the row by after
    "with the highest" is not shown, nor an aggregate it says only in a relative clause keeping the
    groups ("the studios whose average gross is above 4500000"), for which the search builds the
    reading without it (`sql_search._condition_twin`); "cities with total sales over 100" still shows
-   each total.
+   each total. Questions opening with "how many" or "count" must show COUNT in an output, including a projected
+   scalar query, or SUM of an explicitly requested stored-count field (`query_contract._shows_count`, sharing
+   `sql_expansion.counted_measure_columns` with the operand reader). An unrelated aggregate in a filter,
+   ordering, HAVING or source subquery supplies no count output.
 2. Every candidate runs on an in-memory SQLite copy of the request's tables under the SELECT guard
    and a budget of SQLite VM steps that grows with the cells of the tables it reads: 20 a cell, at
    least 10,000,000 and at most 100,000,000 (`execution_op_limit`). The Gemini rewording's pool runs

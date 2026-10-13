@@ -293,10 +293,17 @@ def constraint_violations(question, query, graph):
     branches = tuple(_select_branches(query))
     if not all(isinstance(branch, SelectQuery) for branch in branches):
         return ("unsupported interpretation scope",)
-    # A question that opens by asking how many is answered by a count, or another aggregate: "how many friends does
-    # the high school student Kyle have" listed Kyle's friends (Spider DEV 892, 893, 2026-10-12).
-    uncounted = ("the question asks how many, and the answer computes no count",) if (
-        _OPENS_WITH_COUNT.match(question) and not _computes(query)) else ()
+    # A count request must show its count, not merely use an aggregate in a filter or ordering. A numeric column
+    # that already stores the requested count is totaled, using the operand reader's existing shared rule.
+    uncounted = ()
+    if _OPENS_WITH_COUNT.match(question):
+        from engine.sql_expansion import counted_measure_columns
+        schema = [{"table": column.ref.table, "name": column.ref.name,
+                   "affinity": "REAL" if column.ref.type.numeric else "TEXT"} for column in graph.columns]
+        quantities = frozenset((column["table"], column["name"])
+                               for column in counted_measure_columns(question, schema))
+        if not all(_shows_count(branch, quantities) for branch in branches):
+            uncounted = ("the question asks how many, and the answer computes no count",)
     return tuple(dict.fromkeys(violation for branch in branches
                                for violation in _select_violations(question, branch, graph, query))) + uncounted
 
@@ -304,21 +311,31 @@ def constraint_violations(question, query, graph):
 _OPENS_WITH_COUNT = re.compile(r"\s*(?:how\s+many|count)\b", re.I)
 
 
-def _computes(query):
-    """Whether ``query`` computes an aggregate anywhere: in what it shows, orders or keeps, or in a subquery."""
-    from engine.sql_ast import Aggregate
+def _shows_count(query, quantities=frozenset()):
+    """Whether an output computes COUNT or totals an explicitly requested stored-count column. Aggregates in
+    WHERE/HAVING/order or FROM subqueries do not supply the output. Projected scalar queries read their own outputs."""
+    from engine.sql_ast import Aggregate, ColumnRef, ScalarSubquery
     from dataclasses import fields, is_dataclass
+
+    aliases = {join.alias: join.table for join in query.joins if join.alias}
+    if query.from_alias and isinstance(query.from_table, str):
+        aliases[query.from_alias] = query.from_table
 
     def found(value):
         if isinstance(value, Aggregate):
-            return True
+            operand = value.operand
+            return value.function == "COUNT" or (
+                value.function == "SUM" and isinstance(operand, ColumnRef)
+                and (aliases.get(operand.table, operand.table), operand.name) in quantities)
+        if isinstance(value, ScalarSubquery):
+            return all(_shows_count(branch, quantities) for branch in _select_branches(value.query))
         if is_dataclass(value):
             return any(found(getattr(value, field.name)) for field in fields(value))
         if isinstance(value, (tuple, list)):
             return any(found(item) for item in value)
         return False
 
-    return found(query)
+    return found(tuple(item.expression for item in query.select))
 
 
 def _select_violations(question, query, graph, whole):

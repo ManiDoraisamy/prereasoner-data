@@ -5,6 +5,26 @@ separate frontend repo, three Cloud Run services). Every structural choice below
 deliberately during that consolidation; this file records what changed and why, so reviewers
 don't have to reverse-engineer the reasoning.
 
+## Count outputs, ranking occurrences and table-owned full names (2026-10-13)
+
+The independent review of the committed October 12 build and the completed October 13 package preserves the
+existing typed-AST owners and the unchanged encoder bundle. Questions opening with "how many" or "count" must
+show a count, not merely contain an aggregate in a WHERE, HAVING, ordering or source subquery. `query_contract._shows_count`
+checks output expressions in their scope, including projected scalar queries. A SUM of the explicitly requested
+stored-count field remains valid through the shared `sql_expansion.counted_measure_columns` reader; numeric
+column aliases resolve to their base tables. A SUM of another field or an unrelated AVG/MAX supplies no count.
+
+Adjacent numeric-field expansion reserves the occurrence recognized by `sql_extrema.ranking_cutoff`, the same
+reader construction and checking use. Reusing a cutoff as an equality silently filtered away the intended top
+rows. Independent occurrences of the same numeric value retain their own predicate roles. Full-name construction
+is suppressed only by a FullName field in that same table, preserving first/last-name answers when unrelated
+tables expose FullName. Registered serving and checker contrasts cover these behaviors.
+
+These are bounded correctness repairs, not complete population/scope/output proofs. They introduce no new AST
+operation, planner, ranker, evaluator, model bundle or SQL generator. The fresh full DEV result and matched saved
+hosted references are recorded only in `spider/results/RESULTS.md`; the detailed review and remaining binding plan
+retain their existing `release-review/spider-review-20261011.md` and `release-review/sql-accuracy.md` owners.
+
 ## One service, not three
 
 The backend previously ran as three Cloud Run services (dimension / reason / world). The reason

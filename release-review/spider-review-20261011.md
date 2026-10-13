@@ -1,5 +1,69 @@
 # Claude fix review and matched Spider comparison — 2026-10-11
 
+## October 13 independent review: completed package R and matched comparison
+
+**Verified result:** 497/1,034 (48.1%) strict, 546/1,034 (52.8%) lenient, and 704/1,034 (68.1%) answered, with external rewriting disabled. Against October 12's independently verified 386, this is **+111 answers / +10.7 percentage points**: 116 wins and 5 losses. This is a substantial DEV gain, though the engine remains well below both SQL-generator references.
+
+### Exact source and review scope
+
+The first fresh full run freezes clean `e709851234f091503fb9213cda1ea57bccae6457` and independently checks the 493-answer committed build. Claude completed package R during this review, then committed it as `94c4d501113ec0f89a79772937256f00ebff8872`. Its 113 recorded serving-source fingerprints were matched byte-for-byte in a separate checkout before adding the review repairs. The final run is that audited package-R snapshot plus the three repairs below, based on `e709851`, with a dirty-worktree flag and immutable source fingerprints. Concurrent changes were preserved. After the full run, the tested repairs were applied to the clean `94c4d50` primary checkout as **uncommitted changes**. All 113 serving-source files and the regression source match the tested checkout under Python's universal-newline handling; the only byte differences outside the repairs are line endings. The attached worktree retains the immutable tested source. This report measures these named snapshots, not subsequent edits or a deployed release.
+
+The final selected SQL/grade/answered comparison against Claude's saved package R is **0 strict wins, 0 strict losses, 0 SQL changes, 0 grade/status changes**. The review repairs must be credited only for that measured effect; correctness regressions passing on independent fixtures are separate evidence. Early interrupted main-checkout and intermediate repair runs are excluded from every reported total.
+
+### Apples-to-apples accuracy
+
+| System | Strict execution match | Lenient containment | Answered |
+|---|---:|---:|---:|
+| Engine, external rewriting off, frozen package R + review repairs | 497/1,034 (48.1%) | 546/1,034 (52.8%) | 704/1,034 (68.1%) |
+| Sonnet 5.5, saved October 7 SQL, reexecuted October 13 | 840/1,034 (81.2%) | 897/1,034 (86.8%) | 1,023/1,034 (98.9%) |
+| Gemini 3.8 **Flash**, saved October 7 SQL, reexecuted October 13 | 872/1,034 (84.3%) | 904/1,034 (87.4%) | 1,034/1,034 (100.0%) |
+
+Scalar-gold correctness is 258/408 (63.2%) for the engine, 373/408 (91.4%) for Sonnet and 390/408 (95.6%) for Gemini. This also leaves a sizeable gap on one-cell numeric answers; the problem extends beyond complex output formatting.
+
+All rows use the same 1,034 question indices, database IDs, capped rows, gold executions and repository scorer. The hosted SQL was reexecuted and regraded independently; neither provider has a changed grade relative to its saved run. No new model API calls were made. This matches the task/data/scorer; **prompts and inference budgets differ**. Hosted inputs include DDL, foreign keys and three sample rows per table; the engine profiles the capped tables. Sonnet used non-thinking generation with a 1,024-token limit; Gemini used temperature 0 and LOW thinking. The external weights/alias revision cannot be recovered from these artifacts. These are local execution scores, not official Spider leaderboard results or proof of latest provider-version performance.
+
+| On the identical engine-answered subset | Strict | Lenient |
+|---|---:|---:|
+| Engine | 497/704 (70.6%) | 546/704 (77.6%) |
+| Sonnet 5.5 | 587/704 (83.4%) | 621/704 (88.2%) |
+| Gemini 3.8 Flash | 602/704 (85.5%) | 623/704 (88.5%) |
+
+Conditional correctness divides by the same 704 questions for every system. It is not another all-question accuracy. Sonnet is strict-correct on 253 of the engine's 330 unanswered cases, and Gemini on 270. Across all questions, the engine is uniquely strict-correct versus Sonnet on 33 and versus Gemini on 27; Sonnet-only wins are 376, Gemini-only wins 402.
+
+**Scorer definitions:** strict compares normalized row multisets: row order is ignored, column positions and duplicates matter, text is case-normalized and numeric values rounded to three decimals. Lenient checks gold-cell containment and can accept extra rows/columns or wrong row associations. Empty gold receives lenient-false, including 26 strict-correct engine cases; lenient is consequently not a strict superset. Answered means an executed prediction, including an empty result. Unanswered is a refusal/no admissible answer; it is counted wrong in the full denominator.
+
+### Reproduced defects and repairs
+
+1. **High: a ranking cutoff becomes a filter value.** On mountains A/100, B/80, C/60, D/3, E/1, `List the names of the mountains with the top 3 prominence` served D with `WHERE prominence = 3 ... LIMIT 3`, marked valid. Claude's package R adds a nearby-word exclusion. The review uses the same `ranking_cutoff` reader as construction/checking to reserve the particular cutoff occurrence. Top/bottom contrasts, an independent repeated numeric filter, and the real `prominence 3` equality all pass. This is an occurrence-role repair, not a global exclusion of the number 3. Owner: [sql_search.py](C:/Users/manid/.codex/worktrees/spider-accuracy-review-20261013/prereasoner-data/engine/sql_search.py).
+2. **Medium: any nested aggregate satisfies a requested count.** `How many people have an age above the average?` was declared complete for `SELECT name ... WHERE age > (SELECT AVG(age)...)`, and for SUM(age), returning Cy or 60 instead of 1. Ordinary selection already chose the correct count on this fixture; this is a reproduced checker defect, not a claimed ordinary-serving failure. The repaired gate checks output COUNTs in the appropriate scope, including projected scalar queries. It rejects unrelated SUM/AVG/MAX and counts only in HAVING/filters. It preserves a legitimate SUM of an explicitly requested stored-count field using the existing shared `counted_measure_columns` reader: transfers 8+5 totals 13, and summing age cannot substitute. Aliases and ordinary listing controls pass. Owner: [query_contract.py](C:/Users/manid/.codex/worktrees/spider-accuracy-review-20261013/prereasoner-data/engine/query_contract.py).
+3. **Medium: an unrelated FullName column disables name construction.** An Employee table with FirstName/LastName correctly answered a Calgary question until an unrelated car_makers.FullName column was added; the same question then refused. The suppression is now scoped to the table owning FullName. The requested table's own FullName still wins over its two-part fields. Owner: [sql_search.py](C:/Users/manid/.codex/worktrees/spider-accuracy-review-20261013/prereasoner-data/engine/sql_search.py).
+
+Regressions are registered in [test_sql_ast.py](C:/Users/manid/.codex/worktrees/spider-accuracy-review-20261013/prereasoner-data/tests/test_sql_ast.py). The first two original regressions fail before repair; the original full-name serving failure is saved in `full-name-before.log`. The stored-count contrast prevented an overly restrictive COUNT-only gate from becoming the final repair.
+
+### What remains weak
+
+The disjoint served-result partition is **497 strict-correct / 75 lenient-only / 132 incorrect under both scorers / 330 unanswered**. Refusals comprise 246 completeness, 75 constraint, and 9 AST-search cases. This is a concrete reduction in refusals from 444 at the earlier baseline, not evidence that every new answer is trustworthy.
+
+The constructor-consumed entity/operand/population/scope binding interface from the existing accuracy guide is still missing. Much base enumeration links lexical spans and schema names, while learned column roles act mainly in ranking. Witnessing a word from a used field/table cannot by itself prove the requested relation, counted unit or output scope. Remaining scored examples show these weaknesses: DEV 129 counts over a chain down to car rows for a manufacturer threshold; 606 counts joined cartoons for a TV-channel population; 541 omits requested outputs and mixes frequency ranking with its displayed answer. These are evidence for population/output binding work, not justification to generate SQL tokens or broadly weaken completeness.
+
+The five losses versus the 386 baseline are DEV 37, 233, 234, 237 and 793: duplicate/bag policy, three empty-gold flight cases formerly showing the wrong entity, and output order differing from gold. Keep the common scorer unchanged. Gold/tie ambiguities need separate semantic adjudication rather than benchmark-specific ordering or DISTINCT rules.
+
+Claude's saved sample results are 335/1,000 on the repeatedly used sample and 334/1,000 on the initially fresh sample, versus 255 and 286 earlier. These were audited as saved evidence, not freshly rerun here. The initially fresh sample has now informed diagnosis and fixes (including the top-3 case), so it cannot remain an untouched final acceptance set. DEV gains exceed the latter sample's +4.8 points; generalization remains an open weakness.
+
+### Candidate recall, performance and validation
+
+The production evaluator's explicit pool-oracle diagnostic covers **120 questions: the first 30 of each difficulty**, not a representative whole-DEV census. Raw retained pools have strict hits on 95/120; the evaluator's executable/grounded admission flags retain strict hits on 95/120. Same-run raw top-1 is 57/120. These raw pools omit served tie finalization and their admission flags do not certify completeness; none of these figures is headline accuracy or a fully certified serving ceiling. The full served run remains the authority.
+
+The final serving run has median 1.871s, p90 3.815s, p95 4.775s, max 8.706s and 0 soft-budget exceedances. Other Python work and overlapping evaluations shared the machine. Provider timing is an older remote-generation measure; these timings cannot establish a fair speed advantage or regression. The 12s prediction budget is soft and does not terminate all work.
+
+Focused suites pass: test_sql_ast 227, test_query_contract 57, test_compose 33, test_deterministic_emitters 64 (**381 checks**), plus CI Ruff F/E9, high-severity Bandit, compilation and whitespace checks. No new dual-emitter operation was introduced; SQL was evaluated and the existing emitter parity suite passed. Full live Postgres, deployed Chrome journeys and a production release gate were not run. This review performed no training, model promotion, commit, push or deployment.
+
+All completed run inputs, the 113 tracked serving-source fingerprints and the promoted bundle are verified again after execution. Evidence: [paired analysis](C:/Users/manid/AppData/Local/Temp/prereasoner-spider-review-20261013/review-analysis.json), [final full result](C:/Users/manid/AppData/Local/Temp/prereasoner-spider-review-20261013/full_eval_review-pkgR-isolated-repairs.json), [per-question results](C:/Users/manid/AppData/Local/Temp/prereasoner-spider-review-20261013/full_eval_per_example_review-pkgR-isolated-repairs.json), [provenance verification](C:/Users/manid/AppData/Local/Temp/prereasoner-spider-review-20261013/verified-review-pkgR-isolated-repairs.json), and [primary-source equivalence](C:/Users/manid/AppData/Local/Temp/prereasoner-spider-review-20261013/primary-source-equivalence.json). The attached [repair checkout](C:/Users/manid/.codex/worktrees/spider-accuracy-review-20261013/prereasoner-data/engine/query_contract.py) retains the actual code, now also applied in the primary owners; historical sections below describe earlier snapshots.
+
+### Next work, preserving deterministic and interpretable SQL
+
+Use the existing [SQL accuracy guide](C:/work/prereasoner-data/release-review/sql-accuracy.md) as the implementation plan. First bind counted populations and output occurrences, then recover witnessed false refusals, and extend missing nested/set constructions when diagnostics prove they are absent. Train only after the proposed independently correct-binding experiment demonstrates that constructor-consumed encoder readings would recover those cases. No SQL/AST token decoder is proposed.
+
 ## October 12 follow-up: implementation of the accuracy plan
 
 **Conclusion:** Claude implemented the reproduced correctness hardening, raw candidate census, and a narrow multi-count membership composer. The proposed constructor-consumed semantic binding interface and its independently annotated experiment remain unimplemented. Saved-run comparison against the correct `6263502` baseline is **0 new DEV strict wins**, **2/1,000 sample wins and 0 losses**, and then **0 additional wins from the count composer**. The older release comparison includes the previous four DEV wins and must not be credited entirely to this stage.
