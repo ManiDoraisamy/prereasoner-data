@@ -995,6 +995,44 @@ def name_part_words(name: str) -> tuple[str, str] | None:
     return None
 
 
+# The stems of the operations a query performs: a word sharing one names the operation, which the query must realize,
+# not a table or field it reads ("ordered by" an Orders table, "listed" a Listings one).
+OPERATION_STEMS = frozenset({"order", "sort", "group", "list", "count", "total", "sum", "rank", "name", "number",
+                             "show", "return", "find", "give", "select", "averag", "distinct", "differ", "includ",
+                             "contain", "start", "end"})
+
+
+def word_stems(word: str) -> set[str]:
+    """``word`` and its forms without one inflectional or derivational suffix, a doubled final consonant undone, of
+    four letters or more: "enrolled" -> enroll, enrol; "enrolment" -> enrol; "populated" -> populat, populate. A "d"
+    alone ends only a past form ("created" -> create): "amenid" has no stem "ameni" to say "amenity" (held-out Spider
+    train 531, 2026-10-13)."""
+    out = {word}
+    for suffix in ("ing", "ed", "d", "es", "s", "ment", "er", "or", "ion"):
+        if suffix == "d" and not word.endswith("ed"):
+            continue
+        if word.endswith(suffix) and len(word) - len(suffix) >= 4:
+            stem = word[:-len(suffix)]
+            out.add(stem)
+            if len(stem) > 4 and stem[-1] == stem[-2]:
+                out.add(stem[:-1])
+    return {stem for stem in out if len(stem) >= 4}
+
+
+def says_in_another_form(word: str, name_word: str) -> bool:
+    """Whether the question's ``word`` says ``name_word``, a word of a table's or field's name, in another form: they
+    share a stem of five letters or more ("enrolled" Student_Enrolment, "arriving" date_arrived, "directors"
+    directed_by), and the word names no operation ("ordered" by an Orders table). Both are canon() forms. The field
+    linker (sql_search) names fields by it and the completeness gate (query_contract) reads words by it."""
+    if not word.isalpha():
+        return False
+    stems = word_stems(word)
+    if any(stem.startswith(operation) or operation.startswith(stem) for stem in stems for operation in OPERATION_STEMS):
+        return False
+    return any(mine.startswith(theirs) or theirs.startswith(mine)
+               for mine in stems for theirs in word_stems(name_word) if min(len(mine), len(theirs)) >= 5)
+
+
 def column_matches(name: str, question_tokens: set[str], table: str | None = None,
                    context: frozenset[str] | None = None) -> bool:
     """Whether the question names the column ``name``: its words, or with its table's naming_context its

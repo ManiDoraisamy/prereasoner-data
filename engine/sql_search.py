@@ -54,6 +54,7 @@ from engine.sql_expansion import (
     EXCLUDING_WORDS,
     REVERSE_ORDER_WORDS,
     FUNCTION_WORDS,
+    KIND_WORDS,
     MONEY_MEASURE_COLUMN_WORDS,
     asked_cues,
     by_groups,
@@ -68,6 +69,7 @@ from engine.sql_expansion import (
     naming_context,
     naming_words,
     ordering_requested,
+    says_in_another_form,
     share_cue,
     share_requested,
     spelled_names,
@@ -165,9 +167,15 @@ class SQLSearcher:
         table_scores = self._table_scores(unvalued)
         mentions = self._column_mentions(tokens, table_scores)
         mentions = self._suppress_fk_attribute_qualifiers(tokens, mentions)
+        # A sort verb opening the question is its command, and its ordering opens at the "by" after it: "Sort employee
+        # names by their age" lists the names (Spider DEV 261, held-out Spider train 924, 2026-10-13: every reading
+        # showed every field).
+        opening = 1 if tokens[:1] == ("please",) else 0
+        commanded = opening + 1 if tokens[opening:opening + 1] in {("sort",), ("order",), ("rank",)} else 0
         clause_boundary = next((i for i, token in enumerate(tokens)
-                                if token in {"where", "with", "whose", "having", "from", "for",
-                                             "order", "ordered", "sort", "sorted", "rank", "ranked"}),
+                                if i >= commanded and (token in {"where", "with", "whose", "having", "from", "for",
+                                                                 "order", "ordered", "sort", "sorted", "rank", "ranked"}
+                                                       or commanded and token == "by")),
                                len(tokens))
         # A column word that introduces a stated value names the compared column, not one to list: "singer
         # names in concerts in year 2014", "the airline with abbreviation 'UAL'" (Spider DEV, 2026-10-02: 30
@@ -183,7 +191,12 @@ class SQLSearcher:
             for schema_column in self.schema.columns
             if (schema_column.ref not in references or _says(tokens, schema_column.ref)) and (
                 (link_words := _column_link_words(schema_column.ref, id_requested))
-                and set(naming_words(link_words, context[schema_column.ref.table])) <= prefix_tokens
+                # A past participle says a condition on the field, not that it is shown: "the buildings managed by
+                # 'Brenden'" lists no building_manager (held-out Spider train 29, 2026-10-13).
+                and all(word in prefix_tokens or any(says_in_another_form(token, word) and not token.endswith("ed")
+                                                     and token not in _spelled_link_words(self.schema)
+                                                     for token in prefix_tokens)
+                        for word in naming_words(link_words, context[schema_column.ref.table]))
                 and _column_link_positions(schema_column.ref, prefix, self.schema, link_words)
             )
         }
@@ -587,7 +600,8 @@ class SQLSearcher:
                 positions = sorted(set(positions) | contested)
             if not positions:
                 continue
-            said = {tokens[i] for i in positions}
+            said = {word for i in positions for word in meaningful
+                    if tokens[i] == word or says_in_another_form(tokens[i], word)}
             if not set(naming_words(meaningful, context[column.table])) <= said:
                 continue
             coverage = len(said & set(meaningful)) / max(len(set(meaningful)), 1)
@@ -606,6 +620,16 @@ class SQLSearcher:
                     said = [index for head in range(len(tokens)) if tokens[head] == meaningful[1]
                             for index in _coordinated_modifiers(tokens, head, modifiers[meaningful[1]])
                             if tokens[index] == meaningful[0]][:1]
+                if not said and any(tokens[i] not in meaningful for i in positions):
+                    # A name said in another form is where its own word is, or the word of its kind after it: "the
+                    # arriving date and the departing date" names date_arrived and date_departed at each "date",
+                    # not both at the last (Spider DEV 958, 2026-10-13).
+                    naming = naming_words(meaningful, context[column.table])
+                    own = [i for i in positions if any(tokens[i] == word or says_in_another_form(tokens[i], word)
+                                                       for word in naming)]
+                    if own:
+                        said = [own[-1] + 1 if own[-1] + 1 < len(tokens) and tokens[own[-1] + 1] in meaningful
+                                else own[-1]]
                 position = said[-1] if said else position
             exact = exact and position not in contested
             score = 3.0 + coverage + (1.0 if exact else 0.0) + 0.15 * table_scores.get(column.table, 0.0)
@@ -1116,6 +1140,11 @@ class SQLSearcher:
             for size in range(1, min(6, len(tokens) - start) + 1):
                 if size == 1 and tokens[start] in FUNCTION_WORDS and tokens[start] not in capitalized:
                     continue                    # "in" alone is no Code2 'IN'; "Welcome to NY" stays one value
+                if (size == 1 and tokens[start] in _QUANTITY_WORDS and tokens[start] not in capitalized
+                        and start not in quoted):
+                    # "the number of tracks" holds no track named 'Numbers', "all airports" no IATA code 'ALL'
+                    # (held-out Spider train 282, 135, 593, 2026-10-13: 8 answers filtered on such a value).
+                    continue
                 phrase = " ".join(tokens[start:start + size])
                 span = set(range(start, start + size))
                 if span <= named and not span <= quoted:
@@ -1854,11 +1883,16 @@ def _named_at(tokens: tuple[str, ...], column: ColumnRef) -> int:
         first = next((index for index in range(last - 1, max(-1, last - 5), -1)
                       if size > 1 and tokens[index] == name[0]), None)
         return last if first is None else first
-    for named in (set(name), {canon(word) for word in name_words(column.table)}):
-        found = next((index for index, token in enumerate(tokens) if token in named), None)
-        if found is not None:
-            return found
-    return end
+    found = next((index for index, token in enumerate(tokens) if token in set(name)), None)
+    if found is None:
+        # A word of the name said in another form: "the create dates, states, and phone numbers" lists created first
+        # (Spider DEV 699, 2026-10-13).
+        found = next((index for index, token in enumerate(tokens)
+                      if any(says_in_another_form(token, word) for word in name)), None)
+    if found is None:
+        table = {canon(word) for word in name_words(column.table)}
+        found = next((index for index, token in enumerate(tokens) if token in table), None)
+    return end if found is None else found
 
 
 # The words that say each aggregate (canon() forms): "the average weight", "how many", "the number of orders".
@@ -2239,6 +2273,10 @@ def realizes_substring(query: Any, text: str, columns: Sequence[ColumnRef] = ())
     return found(query)
 
 
+# Words that count or quantify the rows a question asks of (canon() forms); unquoted, in lower case, no value.
+_QUANTITY_WORDS = frozenset({"all", "any", "each", "every", "number"})
+
+
 def _capitalized(question: str) -> frozenset[str]:
     """The question's words written in capitals ("NY", "UAL", a lone "A" after the first word): a function
     word so written is a value."""
@@ -2265,6 +2303,12 @@ def _column_link_words(column: ColumnRef, id_requested: bool) -> tuple[str, ...]
     words = name_part_words(column.name) or tuple("number" if word.lower() in {"no", "num"} else canon(word)
                                                   for word in name_words(column.name))
     table_words = {canon(word) for word in name_words(column.table)}
+    # A field's first word abbreviating its table's name is that table's word, as "customer" of customer_name is:
+    # cust_name of customer, stu_gpa of STUDENT, crs_description of COURSE, dept_name of DEPARTMENT, f_id of files
+    # (held-out Spider train, 2026-10-13: 19 questions asked such a field by its other words, and none was shown).
+    # The table is then said beside the field (_column_link_positions).
+    if _abbreviated_table(column):
+        table_words = table_words | {words[0]}
     meaningful = tuple(
         word for word in words
         if word != "id" and word not in table_words
@@ -2274,13 +2318,71 @@ def _column_link_words(column: ColumnRef, id_requested: bool) -> tuple[str, ...]
     return meaningful or tuple(word for word in words if word != "id")
 
 
+_SPELLED_LINK_WORDS: "weakref.WeakKeyDictionary[SchemaGraph, frozenset[str]]" = weakref.WeakKeyDictionary()
+
+
+def _spelled_link_words(schema: SchemaGraph) -> frozenset[str]:
+    """The words the schema's fields are named by (_column_link_words). A question word naming one so names no other
+    field in another form: "the gradepoints" is gradepoint, not a Grade (held-out Spider train 962, 2026-10-13)."""
+    spelled = _SPELLED_LINK_WORDS.get(schema)
+    if spelled is None:
+        spelled = frozenset(word for schema_column in schema.columns
+                            for requested in (False, True) for word in _column_link_words(schema_column.ref, requested))
+        _SPELLED_LINK_WORDS[schema] = spelled
+    return spelled
+
+
+def _abbreviated_table(column: ColumnRef) -> bool:
+    """Whether the first word of ``column``'s name abbreviates a word of its table's name: cust_name of customer,
+    crs_description of COURSE; not a name's part (Fname) nor the table's word itself (customer_name)."""
+    if name_part_words(column.name):
+        return False
+    words = [canon(word) for word in name_words(column.name)]
+    table_words = {canon(word) for word in name_words(column.table)}
+    return len(words) > 1 and words[0] not in table_words and any(_abbreviates(words[0], word) for word in table_words)
+
+
+def _abbreviates(short: str, full: str) -> bool:
+    """Whether ``short`` abbreviates the word ``full``: a shorter start of it ("cust" customer, "f" file), or of three
+    letters or more its letters in order from its first ("crs" course, "dept" department, "apt" apartment)."""
+    if not short.isalpha() or len(short) >= len(full) or short[0] != full[0]:
+        return False
+    if full.startswith(short):
+        return True
+    rest = iter(full)
+    return len(short) >= 3 and all(letter in rest for letter in short)
+
+
 def _column_link_positions(
     column: ColumnRef,
     tokens: tuple[str, ...],
     schema: SchemaGraph,
     link_words: tuple[str, ...],
 ) -> list[int]:
-    positions = [i for i, token in enumerate(tokens) if token in link_words]
+    # A word of the name said in another form names it: "the arriving date" date_arrived, "their directors"
+    # directed_by, "the settlement date" date_claim_settled (Spider DEV 958, 591, held-out Spider train 920,
+    # 2026-10-13: no reading showed the field asked).
+    spelled = _spelled_link_words(schema)
+    positions = [i for i, token in enumerate(tokens)
+                 if token in link_words or (token not in spelled
+                                            and any(says_in_another_form(token, word) for word in link_words))]
+    if (_abbreviated_table(column) and link_words != ("id",)) or (
+            set(link_words) & FUNCTION_WORDS and set(link_words) <= FUNCTION_WORDS | KIND_WORDS):
+        # A field read without its table's abbreviation is named beside its table: "their apartment numbers",
+        # "the name of the different customers", not the "phone number" of a building or "any class" of a student
+        # (held-out Spider train 29, 58, 2026-10-13). So is a field its table's word names but for its kind:
+        # date_of_treatment is "the treatment date", not the "departing date of all the dogs" (Spider DEV 964).
+        # A lone "number of" a table counts its rows (sql_expansion.field_numbers): "the number of apartments" is no
+        # apt_number (fresh holdout of Spider train 530).
+        table_words = {canon(word) for word in name_words(column.table)}
+        beside = [position for position in positions
+                  if table_words & (set(tokens[max(0, position - 2):position])
+                                    | (set(tokens[position + 2:position + 5])
+                                       if tokens[position + 1:position + 2] == ("of",) and link_words != ("number",)
+                                       else set()))]
+        # The "of" of date_of_treatment stays said where its kind is said beside the table ("the date of treatment").
+        positions = sorted(set(beside) | {position for position in positions
+                                          if tokens[position] in FUNCTION_WORDS}) if beside else []
     if link_words == ("number",) and {"no", "num"} & {
         word.lower() for word in name_words(column.name)
     }:

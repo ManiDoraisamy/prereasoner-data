@@ -1980,6 +1980,115 @@ def test_coordinated_aggregate_words_share_the_field_after_them():
     assert aggregate_operand("the stadium with the highest average attendance", ["Average", "Capacity"], "AVG") is None
 
 
+def test_a_field_is_named_by_another_form_of_its_word():
+    """Spider DEV 958, 861, held-out Spider train 920, 2026-10-13: "the arriving date and the departing date of the dogs"
+    showed no date_arrived or date_departed, and "years of founding" no Year_of_Founded: a word of a field's name said in
+    another form names the field, each where its own word is. A word naming an operation names no field ("ordered"
+    by an Orders field), and a short shared start is no shared stem ("named" is not "name")."""
+    dogs = {"name": "Dogs", "columns": ["dog_id", "name", "date_arrived", "date_departed"],
+            "rows": [[1, "Rex", "2017-09-08", "2018-03-25"], [2, "Bo", "2017-12-22", "2018-03-25"]]}
+    orchestra = {"name": "orchestra", "columns": ["Orchestra_ID", "Orchestra", "Year_of_Founded"],
+                 "rows": [[1, "London", 2003], [2, "Berlin", 2008]]}
+    treatments = {"name": "Treatments", "columns": ["treatment_id", "dog_id", "date_of_treatment"],
+                  "rows": [[1, 1, "2018-03-19"], [2, 2, "2018-03-15"]]}
+    fks = [{"from_table": "Treatments", "from_col": "dog_id", "to_table": "Dogs", "to_col": "dog_id"}]
+    planner = _hermetic_planner()
+    # date_of_treatment is "the treatment date": the departing date "of all the dogs" names no such field (DEV 964).
+    served = planner.serve([dogs, treatments], "What are the arriving date and the departing date of all the dogs?", fks)
+    assert served.get("valid"), (served.get("error"), served.get("sql"))
+    assert sorted(list(row) for row in served["result"]["rows"]) == [
+        ["2017-09-08", "2018-03-25"], ["2017-12-22", "2018-03-25"]], served.get("sql")
+    founded = planner.serve([orchestra], "What are the years of founding of the orchestras?", [])
+    assert sorted(list(row) for row in founded["result"]["rows"]) == [[2003], [2008]], founded.get("sql")
+    from engine.sql_expansion import says_in_another_form
+    assert says_in_another_form("arriving", "arrived") and says_in_another_form("departure", "departed")
+    assert says_in_another_form("directors", "directed") and says_in_another_form("settlement", "settled")
+    assert not says_in_another_form("ordered", "order") and not says_in_another_form("listed", "listing")
+    assert not says_in_another_form("named", "name") and not says_in_another_form("country", "count")
+    # A "d" alone ends only a past form: "amenity" says no amenid (held-out 531).
+    assert not says_in_another_form("amenity", "amenid") and says_in_another_form("created", "create")
+    # A word naming a field names no other in another form: "the gradepoints" is no Grade (held-out 962).
+    from engine.sql_search import _column_link_positions
+    grades = SchemaGraph.from_tables([
+        {"name": "Enrolled_in", "columns": ["StuID", "Grade"], "rows": [[1, "A"]]},
+        {"name": "Gradeconversion", "columns": ["lettergrade", "gradepoint"], "rows": [["A", 4.0]]}], ())
+    grade = next(column.ref for column in grades.columns if column.ref.name == "Grade")
+    assert _column_link_positions(grade, ("the", "maximum", "gradepoint"), grades, ("grade",)) == []
+    # "The date of treatment" still names date_of_treatment, its "of" with it (DEV 947, reworded).
+    treated = SchemaGraph.from_tables([treatments], ())
+    when = next(column.ref for column in treated.columns if column.ref.name == "date_of_treatment")
+    assert _column_link_positions(when, ("the", "date", "of", "treatment"), treated, ("date", "of")) == [1, 2]
+
+
+def test_a_field_named_with_its_tables_abbreviation():
+    """Held-out Spider train, 2026-10-13: 19 questions asked for cust_name, stu_gpa, crs_description, dept_name or
+    apt_number by their other words ("the name of customers", "their apartment numbers") and none was shown: a field's
+    first word abbreviating its own table's name is that table's word, as "customer" of customer_name is. The same word
+    in another table's field, or one that abbreviates no word of its table, still has to be said."""
+    customer = {"name": "customer", "columns": ["cust_ID", "cust_name", "credit_score"],
+                "rows": [[1, "Mary", 30], [2, "Jack", 70], [3, "Owen", 210]]}
+    apartments = {"name": "Apartments", "columns": ["apt_id", "apt_number", "apt_type_code"],
+                  "rows": [[1, "Suite 645", "Flat"], [2, "Apt. 585", "Studio"], [3, "Suite 088", "Flat"]]}
+    planner = _hermetic_planner()
+    served = planner.serve([customer], "Find the name of customers whose credit score is below 100.", [])
+    assert served.get("valid"), (served.get("error"), served.get("sql"))
+    assert sorted(list(row) for row in served["result"]["rows"]) == [["Jack"], ["Mary"]], served.get("sql")
+    flats = planner.serve([apartments], 'Which apartments have type code "Flat"? Give me their apartment numbers.', [])
+    assert sorted(list(row) for row in flats["result"]["rows"]) == [["Suite 088"], ["Suite 645"]], flats.get("sql")
+    # The field read without its table's abbreviation is named beside its table: a building's "phone number" names no
+    # apt_number, and "managed by" a stated name compares building_manager without showing it (held-out 29).
+    buildings = {"name": "Apartment_Buildings",
+                 "columns": ["building_id", "building_address", "building_phone", "building_manager"],
+                 "rows": [[133, "1 High St", "1-724-982", "Brenden"], [153, "9 Low Rd", "540-244", "Melyssa"]]}
+    apartments_of = {"name": "Apartments", "columns": ["apt_id", "building_id", "apt_number"],
+                     "rows": [[1, 133, "Suite 645"], [2, 153, "Apt. 585"]]}
+    fks = [{"from_table": "Apartments", "from_col": "building_id", "to_table": "Apartment_Buildings",
+            "to_col": "building_id"}]
+    managed = planner.serve([buildings, apartments_of],
+                            'What are the address and phone number of the buildings managed by "Brenden"?', fks)
+    assert managed.get("valid"), (managed.get("error"), managed.get("sql"))
+    assert [list(row) for row in managed["result"]["rows"]] == [["1 High St", "1-724-982"]], managed.get("sql")
+    # A lone "number of" a table counts its rows: "the number of apartments" is no apt_number (fresh holdout 530).
+    counted = planner.serve([apartments], 'Find the number of apartments that have type code "Flat".', [])
+    assert [list(row) for row in counted["result"]["rows"]] == [[2]], counted.get("sql")
+    from engine.sql_ast import ColumnRef, SQLType
+    from engine.sql_search import _abbreviates, _column_link_words
+    assert _abbreviates("cust", "customer") and _abbreviates("crs", "course") and _abbreviates("dept", "department")
+    assert not _abbreviates("acc", "customer") and not _abbreviates("cs", "course") and not _abbreviates("stu", "course")
+    assert _column_link_words(ColumnRef("customer", "cust_name", SQLType.TEXT), False) == ("name",)
+    assert _column_link_words(ColumnRef("loan", "cust_name", SQLType.TEXT), False) == ("cust", "name")
+
+
+def test_a_sort_verb_opening_the_question_is_its_command():
+    """Spider DEV 261, held-out Spider train 924, 2026-10-13: "Sort employee names by their age in ascending order"
+    showed every field of every employee: the opening "Sort" was read as the ordering clause, so the names before "by"
+    were only the ordering's. The ordering opens at "by"; a sort verb later in the question still opens it."""
+    employee = {"name": "employee", "columns": ["Employee_ID", "Name", "Age", "City"],
+                "rows": [[1, "George", 23, "Bristol"], [2, "Lee", 29, "Bath"], [3, "Mark", 21, "Bristol"]]}
+    planner = _hermetic_planner()
+    served = planner.serve([employee], "Sort employee names by their age in ascending order.", [])
+    assert served.get("valid"), (served.get("error"), served.get("sql"))
+    assert [list(row) for row in served["result"]["rows"]] == [["Mark"], ["George"], ["Lee"]], served.get("sql")
+    listed = planner.serve([employee], "List the names of employees in Bristol sorted by age.", [])
+    assert [list(row) for row in listed["result"]["rows"]] == [["Mark"], ["George"]], listed.get("sql")
+
+
+def test_a_quantity_word_is_no_value():
+    """Held-out Spider train 282, 135, 237, 2026-10-13: 8 answers filtered on a value the question only counted or
+    quantified with: "the number of tracks in each genre" kept the track named 'Numbers', "all airports" the IATA code
+    'ALL'. Quoted or in capitals, the word is the value."""
+    genres = {"name": "genres", "columns": ["id", "name"], "rows": [[1, "Rock"], [2, "Jazz"]]}
+    tracks = {"name": "tracks", "columns": ["id", "name", "genre_id"],
+              "rows": [[1, "Numbers", 1], [2, "Blue", 1], [3, "So What", 2]]}
+    fks = [{"from_table": "tracks", "from_col": "genre_id", "to_table": "genres", "to_col": "id"}]
+    planner = _hermetic_planner()
+    served = planner.serve([genres, tracks], "Find the number of tracks in each genre.", fks)
+    assert served.get("valid"), (served.get("error"), served.get("sql"))
+    assert sorted(list(row) for row in served["result"]["rows"]) == [["Jazz", 1], ["Rock", 2]], served.get("sql")
+    quoted = planner.serve([genres, tracks], 'How many tracks are named "Numbers"?', fks)
+    assert [list(row) for row in quoted["result"]["rows"]] == [[1]], quoted.get("sql")
+
+
 def test_a_rewording_keeps_the_operations_the_engine_reads():
     """Spider DEV, 2026-10-13: rewordings were refused for losing words the engine does not read as operations: "per" in
     "miles per gallon", "number of" before the field Number_products, "no less than" said "at least". The engine's own
@@ -6042,6 +6151,10 @@ TESTS = [
     test_gemini_is_asked_for_words_not_sql_symbols,
     test_a_code_spelled_as_a_word_does_not_hold_a_rewording,
     test_coordinated_aggregate_words_share_the_field_after_them,
+    test_a_field_is_named_by_another_form_of_its_word,
+    test_a_field_named_with_its_tables_abbreviation,
+    test_a_sort_verb_opening_the_question_is_its_command,
+    test_a_quantity_word_is_no_value,
     test_a_rewording_keeps_the_operations_the_engine_reads,
     test_gemini_rewrite_must_preserve_data_values_and_numbers,
     test_evaluator_grades_the_served_selection,

@@ -1359,13 +1359,9 @@ def _witnessed_words(question, words, query, graph, observed, schema_words, alre
             out.add(word)
     read_names = {canon(part) for table in tables for part in name_words(table)}
     read_names |= {canon(part) for ref in used for part in name_words(ref.name)}
-    name_stems = {stem for name in read_names for stem in _stems(name)}
+    from engine.sql_expansion import says_in_another_form
     for word in set(words) - set(already):
-        stems = _stems(word)
-        if word.isalpha() and not any(stem.startswith(operation) or operation.startswith(stem)
-                                      for stem in stems for operation in _OPERATION_STEMS) and any(
-                mine.startswith(theirs) or theirs.startswith(mine)
-                for mine in stems for theirs in name_stems if min(len(mine), len(theirs)) >= 5):
+        if any(says_in_another_form(word, name) for name in read_names):
             out.add(word)
     # Spider DEV 397, 852, 853 and held-out Spider train 404, 609, 667, 850, 892, 2026-10-12: right answers were refused
     # for these words.
@@ -1450,11 +1446,6 @@ def _full_name_read(words, used):
     return any({"first", "last"} <= parts for parts in held.values())
 
 
-# The stems of the operations a query performs (_witnessed_words): a word sharing one names the operation, which the
-# query must realize, not a table or field it reads ("ordered by" an Orders table, "listed" a Listings one).
-_OPERATION_STEMS = frozenset({"order", "sort", "group", "list", "count", "total", "sum", "rank", "name", "number",
-                              "show", "return", "find", "give", "select", "averag", "distinct", "differ", "includ",
-                              "contain", "start", "end"})
 # The words before a "one" that make it a pronoun for a row: "the one whose", "each one".
 _PRONOUN_DETERMINERS = frozenset({"the", "each", "this", "that", "which", "every"})
 # Words of a count before the noun or after the "by" they count (canon() forms): "the most times", "at least two
@@ -1479,19 +1470,6 @@ def _counts_rows(query):
         return False
 
     return any(counts((source.select, source.order_by, source.having)) for source, _ in _select_queries(query))
-
-
-def _stems(word):
-    """``word`` and its forms without one inflectional or derivational suffix, a doubled final consonant undone, of
-    four letters or more: "enrolled" -> enroll, enrol; "enrolment" -> enrol; "populated" -> populat."""
-    out = {word}
-    for suffix in ("ing", "ed", "d", "es", "s", "ment", "er", "or", "ion"):
-        if word.endswith(suffix) and len(word) - len(suffix) >= 4:
-            stem = word[:-len(suffix)]
-            out.add(stem)
-            if len(stem) > 4 and stem[-1] == stem[-2]:
-                out.add(stem[:-1])
-    return {stem for stem in out if len(stem) >= 4}
 
 
 def _comparisons(predicate, alternatives=False):

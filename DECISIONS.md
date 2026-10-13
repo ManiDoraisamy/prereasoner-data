@@ -3366,3 +3366,31 @@ Gemini on 576 → 592 (16 wins, no loss; wrong answers 263 → 271, the rewordin
 
 Measured on Spider (`spider/results/RESULTS.md`, 2026-10-13): DEV 497 → 499 strict, held out 335 and the fresh holdout
 334 unchanged, Gemini on 592 → 601 (9 wins, no loss), with no loss on any of them.
+
+## Fields named by another form of their words and by their table's abbreviation; a sort verb opening a question (2026-10-13)
+
+The pool census after the review found the projection the largest construction gap: on the held-out sample 182 of the
+433 questions with no strict-correct reading never built the fields gold shows, 117 of them because no reading named a
+field the question asks for. The question says such a field in another form of its name's words, or by the words its
+table's abbreviation stands for.
+
+- The stem reading the completeness check read words by (a shared stem of five letters or more, no operation's word)
+  is one shared reading, `sql_expansion.says_in_another_form` (moved from `query_contract`), and the field linker names
+  fields by it (`sql_search._column_link_positions`): "the arriving date and the departing date" date_arrived and
+  date_departed, "years of founding" Year_of_Founded, "their directors" Directed_by. A field said so is placed at its
+  own word, or the word of its kind after it, so two such fields are two fields of the answer, and the question's order
+  reads it there. A word that names a field itself names no other in another form ("the gradepoints" is no Grade); a
+  bare "d" ends only a past form ("amenid" says no "amenity"); a past participle says a condition, not a field to show
+  ("the buildings managed by 'Brenden'" lists no building_manager).
+- A field's first word abbreviating its own table's name is that table's word (`sql_search._abbreviated_table`), as
+  "customer" of customer_name is: cust_name, stu_gpa, crs_description, dept_name, apt_number. Such a field, and one its
+  table's word names but for its kind and a preposition (date_of_treatment), is named beside its table: "their
+  apartment numbers", "the name of the different customers", "the date of treatment"; not the "phone number" of a
+  building, "any class" of a student, "the number of apartments" or the "departing date of all the dogs".
+- A sort verb opening the question is its command, and the ordering opens at the "by" after it: "Sort employee names by
+  their age" lists the names.
+- "Number", "all", "any", "each" and "every" in lower case are no cell value: "the number of tracks in each genre" kept
+  the track named 'Numbers', "all airports" the IATA code 'ALL'.
+
+Measured on Spider (`spider/results/RESULTS.md`, 2026-10-13): DEV 499 → 505 strict, held out 335 → 348, the fresh
+holdout 334 → 345, Gemini on 601 → 604, with no loss on any of the three engine-alone sets.

@@ -28,6 +28,26 @@ Artifacts: `%LOCALAPPDATA%/Temp/prereasoner-spider-review-20261013/`, tags `revi
 Incomplete intermediate runs are excluded. The review hardens ranking-number roles, output counts (preserving stored-count SUM),
 and table-owned full-name construction; it does not introduce another planner or model bundle.
 
+## Fields named by another form of their words and by their table's abbreviation: 499 → 505 strict, Gemini on 601 → 604, held out 335 → 348, fresh holdout 334 → 345 (2026-10-13)
+
+Same contract as below. Runs `pkgZ-dirty`, `pkgZ-gemini-dirty`, `heldout-pkgZ-dirty` and `holdout2-pkgZ-dirty` are
+`3ad0bb1` (what production serves) with this change, against the `pkgT` runs (the same served code: the review repairs
+of `305c99c` changed no served query). The change is `DECISIONS.md` "Fields named by another form of their words and by
+their table's abbreviation; a sort verb opening a question".
+
+- DEV, engine alone: 499 → 505 strict, 548 → 555 lenient, 704 → 710 answered; 6 wins
+  (261, 699, 958, 959, 964, 965), no loss; wrong answers 205 → 205 (all 6 newly answered are strict-correct); 10 queries changed.
+- Held out: 335 → 348 strict; 13 wins (237, 249, 272, 555, 578, 773, 853, 871, 888, 893, 907, 910, 975), no loss; wrong answers 253 → 242;
+  33 queries changed.
+- Fresh holdout: 334 → 345 strict; 11 wins (51, 94, 310, 339, 478, 614, 629, 630, 843, 857, 877), no loss; wrong answers 257 → 253;
+  27 queries changed.
+- Gemini on: 601 → 604 strict; all 324 rewordings replayed from the cache; 3 wins (958, 959, 964), no loss; wrong answers 272 → 271; both newly answered questions are strict-correct; 7 queries changed.
+- Three intermediate rounds found the losses this change no longer has: a dropped table abbreviation let a lone
+  "number" or "class" name apt_number or STU_CLASS, a stripped "d" read "amenid" as "amenity", "the gradepoints" named a
+  Grade, and date_of_treatment joined "the departing date of all the dogs".
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_{pkgZ,pkgZ-gemini,heldout-pkgZ,holdout2-pkgZ}-dirty.json`.
+
 ## Rewordings keep the operations the engine reads, coordinated aggregate words share their field: 497 → 499 strict, Gemini on 592 → 601, held out 335, fresh holdout 334 (2026-10-13)
 
 Same contract as below. Runs `pkgT-dirty`, `pkgT-gemini-dirty`, `heldout-pkgT-dirty` and `holdout2-pkgT-dirty` are

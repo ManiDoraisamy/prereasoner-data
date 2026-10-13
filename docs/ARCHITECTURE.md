@@ -320,7 +320,13 @@ The own-data path serves one typed SQL AST chosen from the deterministic search'
    average, minimum, and maximum age", `sql_rank._heads_phrase`) whatever field an aggregate word itself names
    (a stadium's Average), and a "number" that begins a field's name with the rest of the
    name after it asks for the field ("the number of tickets" of Num_of_Ticket; "No" and "Num" read
-   "number"). A grouped answer that names a group as a field to show lists its fields in the
+   "number"). A word of a field's name said in another form names the field, by the shared stem reading the
+   completeness check reads words by (`sql_expansion.says_in_another_form`): "the arriving date" date_arrived,
+   "their directors" Directed_by, unless the word names another field itself ("the gradepoints" is no Grade). A
+   field whose first word abbreviates its table's name (cust_name, stu_gpa), or whose name is its table's word but for
+   its kind (date_of_treatment), is named beside its table: "their apartment numbers", "the date of treatment". A
+   sort verb opening the question is its command ("Sort employee names by their age"), and "number", "all" or
+   "each" in lower case is no cell value. A grouped answer that names a group as a field to show lists its fields in the
    question's order (`sql_search._in_question_order`); a joined listing whose join repeats its rows
    gets a DISTINCT twin, and the ranker prefers it (`sql_rank.repeats_shown_rows`), and a field the
    question names only to filter on is not shown, nor one it names only in the phrase that orders the
