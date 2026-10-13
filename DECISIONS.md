@@ -3449,23 +3449,3 @@ question asks by "id" stays asked ("the full name of each car maker, along with 
 
 Measured on Spider (`spider/results/RESULTS.md`, 2026-10-13): DEV 525 → 527 strict, held out 354 → 356, the fresh
 holdout 351 → 353, Gemini on 612 → 614, with no loss on any set and fewer wrong answers on each.
-
-## Standard code words require field-kind and AST-bound evidence (2026-10-13)
-
-The October 13 independent review reproduced two wrong-answer paths in the new code aliases. A players table with
-only Size 'M' answered "How many male players?" as the number of medium-size entries; Stage F/M did the same. With
-Sex and Stage both present, completeness also read "male" from a Stage='M' predicate merely because SQL held the same
-literal as the Sex code. The production selector accepted that wrong candidate and returned 2 instead of 1.
-
-- `SchemaGraph._build_value_index` and the existing qualified-code constructor share
-  `sql_schema.code_word_matches_column`: M/F needs a sex/gender field, L/R a hand/side/direction/orientation field.
-  A single-code capped profile is sufficient only after that field evidence, never by itself. Unknown labels require
-  an explicit literal or separately established meaning; the existing Y/N and explicit boolean readings are unchanged.
-- `query_contract.read_question` reads aliases from typed comparisons on the bound field, through existing predicate
-  extraction. It preserves base-table aliases and LOWER and distinguishes a bare different-case literal. Projection
-  literals and codes compared on another field do not prove the reading.
-- The registered regression exercises ambiguous Size/Stage/Grade profiles, raw literal codes on those same profiles,
-  supported Sex/Gender and handedness, a confounding field beside Sex, alias resolution, and literal case.
-
-This is a bounded correctness repair in the existing owners, not a complete population/scope proof. Fresh Spider
-accuracy and paired changes are recorded in `spider/results/RESULTS.md`; fixture hardening is not itself an accuracy gain.

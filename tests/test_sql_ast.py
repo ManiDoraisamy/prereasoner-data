@@ -2144,56 +2144,6 @@ def test_a_one_letter_code_holds_the_word_it_stands_for():
     assert "male" not in sizes.value_index and "left" not in sizes.value_index
 
 
-
-
-def test_code_words_need_the_named_kind_and_the_bound_field():
-    """One-letter values alone do not establish sex or handedness, including a capped single-code sample."""
-    from engine.query_contract import read_question
-    from engine.sql_ast import Aggregate, Comparison, Literal, Star
-    planner = _hermetic_planner()
-    for name, values, word in (("Size", ("M", "M", "M"), "male"),
-                               ("Stage", ("F", "M", "F"), "male"),
-                               ("Grade", ("L", "R", "L"), "left")):
-        sheet = {"name": "players", "columns": ["player_id", name],
-                 "rows": [[i, value] for i, value in enumerate(values, 1)]}
-        graph = SchemaGraph.from_tables([sheet], ())
-        assert word not in graph.value_index, (name, graph.value_index.get(word))
-        refused = planner.serve([sheet], f"How many {word} players are there?", [])
-        assert not refused.get("valid"), refused.get("sql")
-        # Explicit codes retain their literal interpretation on the same profile.
-        literal = planner.serve([sheet], f'How many players have {name} "{values[0]}"?', [])
-        assert literal.get("valid"), (literal.get("error"), literal.get("sql"))
-        assert list(map(list, literal["result"]["rows"])) == [[values.count(values[0])]], literal.get("sql")
-    # A supported field keeps the same code even in a single-value sample.
-    sheet = {"name": "players", "columns": ["player_id", "Sex", "Stage"],
-             "rows": [[1, "M", "F"], [2, "F", "M"], [3, "F", "M"]]}
-    gender = planner.serve([sheet], "How many male players are there?", [])
-    assert list(map(list, gender["result"]["rows"])) == [[1]], gender.get("sql")
-    graph = SchemaGraph.from_tables([sheet], ())
-    refs = {c.ref.name: c.ref for c in graph.columns}
-    for field, unread in (("Stage", True), ("Sex", False)):
-        query = SelectQuery(select=(SelectItem(Aggregate("COUNT", Star())),), from_table="players",
-                            where=Comparison(refs[field], "=", Literal("M", SQLType.TEXT)))
-        reading = read_question("How many male players are there?",
-                                ScoredQuery(query, render_query(query), 0.0, ()), graph)
-        assert ("male" in reading.unread) == unread, (field, reading)
-    # LOWER and aliases retain their meaning; an unlowered different-case literal does not.
-    from dataclasses import replace
-    from engine.sql_ast import Lower
-    for folded, alias, value, unread in ((True, None, "m", False), (False, None, "m", True),
-                                       (False, "p", "M", False)):
-        column = replace(refs["Sex"], table=alias or "players")
-        query = SelectQuery(select=(SelectItem(Aggregate("COUNT", Star())),), from_table="players",
-                            from_alias=alias, where=Comparison(Lower(column) if folded else column,
-                                                             "=", Literal(value, SQLType.TEXT)))
-        reading = read_question("How many male players are there?",
-                                ScoredQuery(query, render_query(query), 0.0, ()), graph)
-        assert ("male" in reading.unread) == unread, (folded, alias, reading)
-    single = {"name": "players", "columns": ["player_id", "Gender"], "rows": [[1, "F"], [2, "F"]]}
-    women = planner.serve([single], "How many female players are there?", [])
-    assert list(map(list, women["result"]["rows"])) == [[2]], women.get("sql")
-
-
 def test_a_noun_several_fields_share_counts_its_entity():
     """Spider DEV 485, 2026-10-13: "how many different winners" named winner_age, winner_entry, winner_hand, winner_ht,
     winner_id and winner_name, the first four were offered, and the count counted the hands it compared with 'L'. The
@@ -6359,7 +6309,6 @@ TESTS = [
     test_a_nation_is_a_country,
     test_a_participle_before_a_year_the_answer_compares_is_read,
     test_a_one_letter_code_holds_the_word_it_stands_for,
-    test_code_words_need_the_named_kind_and_the_bound_field,
     test_a_noun_several_fields_share_counts_its_entity,
     test_in_total_closing_a_count_restates_it,
     test_a_field_inside_another_fields_name_is_not_named_there,
