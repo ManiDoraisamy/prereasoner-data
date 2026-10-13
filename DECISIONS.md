@@ -3449,3 +3449,15 @@ question asks by "id" stays asked ("the full name of each car maker, along with 
 
 Measured on Spider (`spider/results/RESULTS.md`, 2026-10-13): DEV 525 → 527 strict, held out 354 → 356, the fresh
 holdout 351 → 353, Gemini on 612 → 614, with no loss on any set and fewer wrong answers on each.
+
+## A field is asked by its name without its kind (2026-10-13)
+
+The completeness check named a field the question asks for only by its whole name, while the search names it by the
+words of its name without their kind too (`sql_expansion.naming_words`): "the professional's id, role and email" passed
+with the ids alone, role_code and email_address unread as requests. The check now reads both
+(`query_contract._select_violations`), so a requested field the answer leaves out refuses it, and the reading that shows
+it is served. The question's command is no such word: "Return the most common first name" asks for no return_date
+(`closed_class.action_words`; held-out Spider train 156 lost its answer to that reading before the guard).
+
+Measured on Spider (`spider/results/RESULTS.md`, 2026-10-13): DEV 527 → 529 strict, held out 356 → 357, the fresh
+holdout 353 → 354, Gemini on 614 → 616, with no loss on any set and fewer wrong answers on each.

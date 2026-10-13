@@ -28,6 +28,22 @@ Artifacts: `%LOCALAPPDATA%/Temp/prereasoner-spider-review-20261013/`, tags `revi
 Incomplete intermediate runs are excluded. The review hardens ranking-number roles, output counts (preserving stored-count SUM),
 and table-owned full-name construction; it does not introduce another planner or model bundle.
 
+## A field asked by its name without its kind: 527 → 529 strict, Gemini on 614 → 616, held out 356 → 357, fresh holdout 353 → 354 (2026-10-13)
+
+Same contract as below. Runs `pkg12b-dirty`, `pkg12b-gemini-dirty`, `heldout-pkg12b-dirty` and `holdout2-pkg12b-dirty`
+are the change of the entry below with this change, against its `pkg11` runs. The change is `DECISIONS.md` "A field is
+asked by its name without its kind".
+
+- DEV, engine alone: 527 → **529 strict**; 2 wins (928, 929), no loss; wrong answers 202 → 200; 4 queries changed (994,
+  995 wrong before and after).
+- Held out: 356 → **357 strict**; 1 win (16), no loss; wrong answers 239 → 237 (136 now refused); 4 queries changed.
+- Fresh holdout: 353 → **354 strict**; 1 win (203), no loss; wrong answers 246 → 245; 1 query changed.
+- Gemini on: 614 → **616 strict**; 2 wins (928, 929), no loss; wrong answers 265 → 263; 4 queries changed.
+- A first round without the command guard lost held-out 156 ("Return the most common first name" read as asking for
+  return_date); the guard recovered it.
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_{pkg12b,pkg12b-gemini,heldout-pkg12b,holdout2-pkg12b}-dirty.json`.
+
 ## A field beside the named field of its entity is not asked: 525 → 527 strict, Gemini on 612 → 614, held out 354 → 356, fresh holdout 351 → 353 (2026-10-13)
 
 Same contract as below. Runs `pkg11-dirty`, `pkg11-gemini-dirty`, `heldout-pkg11-dirty` and `holdout2-pkg11-dirty` are

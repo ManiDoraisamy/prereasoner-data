@@ -414,11 +414,23 @@ def _select_violations(question, query, graph, whole):
         if not explicit_position and not (siblings <= projected and not siblings & constrained):
             violations.append('Which repeated field should be used: '+', '.join(sorted(ref.name for ref in siblings))+'?')
     named_fields = {}
+    from engine.closed_class import action_words
+    from engine.sql_expansion import naming_context, naming_words
+    context = naming_context(graph)
+    commands = {canon(word) for word in action_words(question)}
     for column in graph.columns:
-        label = ' '.join(canon(word) for word in lexical_words(column.ref.name))
-        if not label or label in table_labels or (len(label.split()) == 1 and label in noise):
-            continue
-        named_fields.setdefault(label, set()).add(column.ref)
+        words = tuple(canon(word) for word in lexical_words(column.ref.name))
+        label = ' '.join(words)
+        if label and label not in table_labels and not (len(words) == 1 and label in noise):
+            named_fields.setdefault(label, set()).add(column.ref)
+        # A field is asked by the words the search names it by too, its kind left unsaid: "the professional's id, role
+        # and email" asks for role_code and email_address (Spider DEV 928, 929, 2026-10-13: the professionals' ids
+        # alone passed). The question's command is no such word: "Return the most common first name" asks for no
+        # return_date (held-out Spider train 156).
+        said = ' '.join(naming_words(words, context.get(column.ref.table, frozenset())))
+        if said and said != label and said not in table_labels and not (
+                len(said.split()) == 1 and said in noise | commands):
+            named_fields.setdefault(said, set()).add(column.ref)
     from dataclasses import replace
     from engine.sql_expansion import AGGREGATE_CUES, spelled_names
     from engine.sql_rank import analyze_question

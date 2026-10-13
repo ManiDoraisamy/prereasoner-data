@@ -2240,6 +2240,33 @@ def test_a_field_beside_the_named_field_of_its_entity_is_not_asked():
     assert sorted(map(list, full["result"]["rows"])) == [["American Motor Company", 1, 1], ["Volkswagen", 2, 2]],         full.get("sql")
 
 
+def test_a_field_asked_by_its_name_without_its_kind_is_requested():
+    """Spider DEV 928, 929, 2026-10-13: "the professional's id, role and email" passed with the ids alone, because the
+    completeness check named role_code and email_address only by their whole names. A field is asked by the words the
+    search names it by too, its kind left unsaid; a word that names no field asks for nothing."""
+    from engine.query_contract import constraint_violations
+    professionals = {"name": "Professionals", "columns": ["professional_id", "role_code", "email_address"],
+                     "rows": [[1, "Vet", "a@x.org"], [2, "Nurse", "b@x.org"]]}
+    graph = SchemaGraph.from_tables([professionals], ())
+    ref = {name: ColumnRef("Professionals", name, SQLType.TEXT) for name in professionals["columns"]}
+    ids = SelectQuery((SelectItem(ref["professional_id"]),), "Professionals")
+    question = "List the professional's id, role and email."
+    assert any("requested field is not used" in violation for violation in constraint_violations(question, ids, graph))
+    every = SelectQuery(tuple(SelectItem(ref[name]) for name in professionals["columns"]), "Professionals")
+    assert not constraint_violations(question, every, graph)
+    # Negative: a question naming only the ids asks for no role.
+    assert not constraint_violations("List the professional's id.", ids, graph)
+    # Negative: the question's command names no field (held-out Spider train 156: "Return" is no return_date).
+    rentals = {"name": "rental", "columns": ["rental_id", "return_date", "customer_id"],
+               "rows": [[1, "2005-05-26", 7], [2, "2005-05-28", 7], [3, "2005-05-29", 9]]}
+    rental_graph = SchemaGraph.from_tables([rentals], ())
+    customers = SelectQuery((SelectItem(ColumnRef("rental", "customer_id", SQLType.INTEGER)),), "rental")
+    assert not any("requested field" in violation for violation in constraint_violations(
+        "Return the customer ids of all rentals.", customers, rental_graph))
+    assert any("requested field" in violation for violation in constraint_violations(
+        "What are the return dates and customer ids of all rentals?", customers, rental_graph))
+
+
 def test_a_rewording_keeps_the_operations_the_engine_reads():
     """Spider DEV, 2026-10-13: rewordings were refused for losing words the engine does not read as operations: "per" in
     "miles per gallon", "number of" before the field Number_products, "no less than" said "at least". The engine's own
@@ -6313,6 +6340,7 @@ TESTS = [
     test_in_total_closing_a_count_restates_it,
     test_a_field_inside_another_fields_name_is_not_named_there,
     test_a_field_beside_the_named_field_of_its_entity_is_not_asked,
+    test_a_field_asked_by_its_name_without_its_kind_is_requested,
     test_a_rewording_keeps_the_operations_the_engine_reads,
     test_gemini_rewrite_must_preserve_data_values_and_numbers,
     test_evaluator_grades_the_served_selection,
