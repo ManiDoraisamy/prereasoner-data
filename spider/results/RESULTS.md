@@ -28,6 +28,27 @@ Artifacts: `%LOCALAPPDATA%/Temp/prereasoner-spider-review-20261013/`, tags `revi
 Incomplete intermediate runs are excluded. The review hardens ranking-number roles, output counts (preserving stored-count SUM),
 and table-owned full-name construction; it does not introduce another planner or model bundle.
 
+## A nation is a country, a store a shop; one-letter codes, a participle before a year: 505 → 524 strict, Gemini on 604 → 611, held out 348 → 353, fresh holdout 345 → 346 (2026-10-13)
+
+Same contract as below. Runs `pkg9c-dirty`, `pkg9c-gemini-dirty`, `heldout-pkg9c-dirty` and `holdout2-pkg9c-dirty` are
+`0f26bfe` (what production serves) with this change, against the `pkgZ` runs of the entry below (the same served code).
+The change is `DECISIONS.md` "A nation is a country, a store a shop; one-letter codes and a participle before a year
+read; a noun fields share counts its entity".
+
+- DEV, engine alone: 505 → **524 strict (50.7%)**, 555 → 573 lenient, 710 → 730 answered; 19 wins (53, 54, 103, 145,
+  271, 275, 293, 295, 296, 457, 458, 485, 486, 703, 730, 745, 746, 747, 804), no loss; wrong answers 205 → 206: of 20
+  newly answered, 19 are strict-correct, and 639 shows the country of the channels without their pixel aspect ratio; 21
+  queries changed.
+- Held out: 348 → **353 strict**; 5 wins (49, 50, 52, 326, 337), no loss; wrong answers 242 → 244 (7 newly answered, 5
+  strict-correct); 7 queries changed.
+- Fresh holdout: 345 → **346 strict**; 1 win (208), no loss; wrong answers 253 → 254; 2 queries changed.
+- Gemini on: 604 → **611 strict**, 683 → 690 lenient, 875 → 881 answered; 8 wins (53, 54, 104, 485, 486, 730, 745, 747),
+  1 loss (639: the engine now reads "nation" and answers with the country alone, where the rewording it refused before
+  showed the pixel aspect ratio too; the completeness check reads every field of a table the query reads, so a field the
+  answer leaves out passes it); wrong answers 271 → 270; 13 queries changed.
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_{pkg9c,pkg9c-gemini,heldout-pkg9c,holdout2-pkg9c}-dirty.json`.
+
 ## Fields named by another form of their words and by their table's abbreviation: 499 → 505 strict, Gemini on 601 → 604, held out 335 → 348, fresh holdout 334 → 345 (2026-10-13)
 
 Same contract as below. Runs `pkgZ-dirty`, `pkgZ-gemini-dirty`, `heldout-pkgZ-dirty` and `holdout2-pkgZ-dirty` are

@@ -3394,3 +3394,27 @@ table's abbreviation stands for.
 
 Measured on Spider (`spider/results/RESULTS.md`, 2026-10-13): DEV 499 → 505 strict, held out 335 → 348, the fresh
 holdout 334 → 345, Gemini on 601 → 604, with no loss on any of the three engine-alone sets.
+
+## A nation is a country, a store a shop; one-letter codes and a participle before a year read; a noun fields share counts its entity (2026-10-13)
+
+Families of questions the census found refused for one word, or with no reading built, each read the same way by the
+search and by the completeness check:
+
+- `sql_schema.canon` reads "nation" as "country" and "store" as "shop", so every reader of questions, names and values
+  agrees: "the names of the nations with the 3 lowest populations", "the minimum and maximum number of products of all
+  stores". A "nationality" stays its own word.
+- A field of one-letter codes holds the words they stand for (`SchemaGraph._build_value_index`: M/F male and female,
+  L/R left and right, Y/N yes and no, beside an unknown U, X or O), and a query comparing the code reads the word:
+  "how many female dependents" compares Sex 'F', "left handed players" hand 'L'. Sizes S/M/L hold no "male".
+- A past participle before a year the query compares says how that year relates to the rows: "cars produced in 1980".
+- A noun several fields share names their entity, and a count of its different values counts the entity's name or key
+  first (`SQLSearcher._distinct_counted_columns`): "how many different winners ... were left handed" counts winner_name
+  or winner_id, not the winner_hand it compares with 'L' (the first four fields in alphabetical order were offered).
+- The search's reading of a code word before a field's name ("left handed", `sql_search._CATEGORICAL_INITIALS`) takes
+  its letters from the same table (`sql_schema.CODE_LETTERS`).
+- Measured and not kept: "when" asking for a date field of the tables the question names won one held-out question
+  and answered three DEV questions wrongly.
+
+Measured on Spider (`spider/results/RESULTS.md`, 2026-10-13): DEV 505 → 524 strict, held out 348 → 353, the fresh
+holdout 345 → 346, Gemini on 604 → 611, with no loss engine alone and one with Gemini on (639, a field the answer
+leaves out: a family of its own).

@@ -1090,6 +1090,11 @@ def read_question(question, candidate, graph, *, calculation_satisfied=False):
         canon(number)
         for number in re.findall(r"(?<![A-Za-z0-9_])[+-]?\d[\d,]*(?:\.\d+)?(?![A-Za-z0-9_])", candidate.sql)
     )
+    # A word the value index holds for a value the query compares reads as that value: "left" for winner_hand 'L', a
+    # one-letter code (SchemaGraph._build_value_index).
+    sql_literals.update(word for word in set(words) if len(word) > 1 and any(
+        isinstance(value, str) and len(value) == 1 and f"'{value}'" in candidate.sql
+        for _, value in graph.value_index.get(word, ())))
     ordinary_words = {
         "a", "an", "am", "and", "are", "as", "at", "be", "been", "being", "by", "can", "could",
         "did", "do", "does", "for", "from", "give", "has", "have", "how", "in", "is", "it",
@@ -1377,6 +1382,13 @@ def _witnessed_words(question, words, query, graph, observed, schema_words, alre
                 if places and all(list(words[place + 1:place + 2]) == ["by"]
                                   and set(words[place + 2:place + 6]) & _COUNT_WORDS for place in places):
                     out.add(word)
+    # A past participle before a year the query compares says how that year relates to the rows: "cars produced in
+    # 1980", "models produced after 1980" (Spider DEV 145, 103, 104, 169, 2026-10-13: right answers refused for it).
+    years = {number for number in _compared_numbers(query) if 1000 <= number <= 2999 and number == int(number)}
+    for index, word in enumerate(words[:-2]):
+        if word.endswith("ed") and word not in already and words[index + 1] in _YEAR_PREPOSITIONS and any(
+                said.isdigit() and float(said) in years for said in words[index + 2:index + 5]):
+            out.add(word)
     # "Record" after the name of a table or field the query reads names its rows: "from the trip record", "teams that do
     # not have match season record" (held-out Spider train 288, 598, 806, 2026-10-12).
     places = [index for index, said in enumerate(words) if said == "record"]
@@ -1446,6 +1458,8 @@ def _full_name_read(words, used):
     return any({"first", "last"} <= parts for parts in held.values())
 
 
+# The words that put a year after a participle: "produced in 1980", "built before 1990".
+_YEAR_PREPOSITIONS = frozenset({"in", "before", "after", "since", "until", "from"})
 # The words before a "one" that make it a pronoun for a row: "the one whose", "each one".
 _PRONOUN_DETERMINERS = frozenset({"the", "each", "this", "that", "which", "every"})
 # Words of a count before the noun or after the "by" they count (canon() forms): "the most times", "at least two

@@ -76,7 +76,9 @@ from engine.sql_expansion import (
     word_spans,
     words,
 )
-from engine.sql_schema import SchemaGraph, canon, is_name_column, is_surrogate_key, name_words, normalize_value
+from engine.sql_schema import (
+    CODE_LETTERS, SchemaGraph, canon, is_name_column, is_surrogate_key, name_words, normalize_value,
+)
 
 _PROJECTION_CUES = frozenset({"show", "list", "display", "select", "give", "find", "which", "what"})
 # A text the question quotes: 'Al', "Sky Radio".
@@ -105,12 +107,10 @@ _VALUE_BRIDGE_WORDS = frozenset({
     "exceed", "both", "either",
 })
 _CATEGORICAL_INITIALS = {
-    "left": "l", "right": "r",
-    "male": "m", "female": "f",
-    "yes": "y", "no": "n",
-    "true": "t", "false": "f",
-    "unknown": "u",
-}
+    word: letter for pair in CODE_LETTERS for letter, words in pair.items() for word in words
+} | {"true": "t", "false": "f", "unknown": "u"}
+# The last word of a field naming its entity, in the order a count of the entity prefers them.
+_IDENTITY_RANK = {"name": 0, "id": 1, "identifier": 1, "key": 1}
 
 
 @dataclass(frozen=True)
@@ -907,7 +907,11 @@ class SQLSearcher:
         noun = tokens[distinct_at + 1]
         named = [column.ref for column in self.schema.columns
                  if noun in {canon(word) for word in name_words(column.ref.name)}]
-        return sorted(named, key=lambda column: (column.table, column.name))[:4]
+        # A noun several fields share names their entity, counted by its name or key first: "how many different
+        # winners" counts winner_name, not the first four of winner_age, winner_entry, winner_hand, winner_ht
+        # (Spider DEV 485, 2026-10-13).
+        return sorted(named, key=lambda column: (_IDENTITY_RANK.get(canon(name_words(column.name)[-1]), 2),
+                                                 column.table, column.name))[:4]
 
     def _counted_entity_identities(
         self, tokens: tuple[str, ...], position: int
@@ -928,16 +932,14 @@ class SQLSearcher:
         for schema_column in self.schema.columns:
             column = schema_column.ref
             words = tuple(canon(word) for word in name_words(column.name))
-            if not words or words[-1] not in {"id", "identifier", "key", "name"}:
+            if not words or words[-1] not in _IDENTITY_RANK:
                 continue
             role = set(words[:-1])
             table_role = {canon(word) for word in name_words(column.table)}
             if (role and role & subject) or (not role and table_role & subject):
                 matches.append(column)
         return sorted(matches, key=lambda column: (
-            0 if name_words(column.name)[-1].lower() == "name" else 1,
-            column.table,
-            column.name,
+            _IDENTITY_RANK[canon(name_words(column.name)[-1])], column.table, column.name,
         ))[:4]
 
     def _target_columns(self, mentions: tuple[_Mention, ...], position: int, numeric: bool) -> list[_ColumnOption]:

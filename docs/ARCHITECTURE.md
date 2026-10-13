@@ -326,9 +326,12 @@ The own-data path serves one typed SQL AST chosen from the deterministic search'
    field whose first word abbreviates its table's name (cust_name, stu_gpa), or whose name is its table's word but for
    its kind (date_of_treatment), is named beside its table: "their apartment numbers", "the date of treatment". A
    sort verb opening the question is its command ("Sort employee names by their age"), and "number", "all" or
-   "each" in lower case is no cell value. A grouped answer that names a group as a field to show lists its fields in the
-   question's order (`sql_search._in_question_order`); a joined listing whose join repeats its rows
-   gets a DISTINCT twin, and the ranker prefers it (`sql_rank.repeats_shown_rows`), and a field the
+   "each" in lower case is no cell value. A nation is a country and a store a shop (`sql_schema.canon`); a field of
+   one-letter codes holds the words they stand for ("female" Sex 'F', "left handed" hand 'L'); a participle before
+   a compared year ("produced in 1980") is read by the answer; and a count of "different winners" counts the
+   entity's name or key before the other fields the noun names. A grouped answer that names a group as a field to
+   show lists its fields in the question's order (`sql_search._in_question_order`); a joined listing whose join
+   repeats its rows gets a DISTINCT twin, and the ranker prefers it (`sql_rank.repeats_shown_rows`), and a field the
    question names only to filter on is not shown, nor one it names only in the phrase that orders the
    rows ("the first name of students in the descending order of age"), nor a field named as its table
    where the question says that name only after "of", as the owner of the fields it asks for ("the

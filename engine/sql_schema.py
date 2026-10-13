@@ -349,7 +349,26 @@ class SchemaGraph:
                     continue
                 seen.add(normalized)
                 values.setdefault(normalized, []).append((column.ref, value))
+            # A field of one-letter codes holds the words they stand for: "female students" are Sex 'F', "left handed
+            # winners" winner_hand 'L' (Spider DEV 54, 486, held-out Spider train 246, 337, 2026-10-13: 14 questions
+            # compared no such value).
+            letters = {normalized: value for value in distinct_values(column.values)
+                       if len(normalized := normalize_value(value)) == 1 and normalized.isalpha()}
+            for pair in CODE_LETTERS:
+                if letters and set(letters) & set(pair) and set(letters) <= set(pair) | _UNKNOWN_CODES:
+                    for letter, words in pair.items():
+                        if letter in letters:
+                            for word in words:
+                                values.setdefault(word, []).append((column.ref, letters[letter]))
         return {value: tuple(options) for value, options in values.items()}
+
+
+# The standard one-letter codes a field holds and the words each stands for (canon() forms), and the letters such a
+# field also holds for an unknown or other value. The search reads a word before a field's name by them too
+# (sql_search._CATEGORICAL_INITIALS).
+CODE_LETTERS = ({"m": ("male", "man"), "f": ("female", "woman")}, {"l": ("left",), "r": ("right",)},
+                {"y": ("yes",), "n": ("no",)})
+_UNKNOWN_CODES = frozenset({"u", "x", "o"})
 
 
 def distinct_values(values: Sequence[Any]) -> Sequence[Any]:
@@ -499,7 +518,9 @@ def canon(word: str) -> str:
     questions, names and values with: lower case, and a plural as its singular ("courses" -> "course",
     "matches" -> "match", "classes" -> "class", "cities" -> "city"). Spider DEV, 2026-10-02: "courses" read
     "cours", "matches" "matche" and "finishes" "finishe", so a question saying "course", "match" or
-    "finish" named no Courses, matches or best_finish."""
+    "finish" named no Courses, matches or best_finish. A nation is a country and a store a shop: "the names of the
+    nations with the 3 lowest populations" named no country, "the names of stores" no shop (Spider DEV 804, 275,
+    2026-10-13: 19 such questions had no reading or were refused)."""
     word = word.lower().strip()
     if "," in word and NUMBER_TEXT.match(word):
         return word.replace(",", "")                      # "1,000" is the number 1000 a query compares
@@ -507,6 +528,10 @@ def canon(word: str) -> str:
         return "hand"
     if word == "ids":
         return "id"
+    if word in ("nation", "nations"):
+        return "country"                                  # "the names of nations" are countries' (Spider DEV 747)
+    if word in ("store", "stores"):
+        return "shop"                                     # "the names of stores" are shops' (Spider DEV 275)
     if len(word) > 4 and word.endswith("ies"):
         return word[:-3] + "y"
     if word.endswith("sses") or (len(word) > 4 and word.endswith(("ches", "shes", "xes"))):

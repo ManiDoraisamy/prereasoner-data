@@ -2089,6 +2089,91 @@ def test_a_quantity_word_is_no_value():
     assert [list(row) for row in quoted["result"]["rows"]] == [[1]], quoted.get("sql")
 
 
+def test_a_nation_is_a_country():
+    """Spider DEV 747, 804, 703, 2026-10-13: 14 questions said "nation" for a country table ("the names of the nations
+    with the 3 lowest populations") and none had a reading. A nationality stays its own word."""
+    country = {"name": "country", "columns": ["Code", "Name", "Population"],
+               "rows": [["ABW", "Aruba", 103000], ["AFG", "Afghanistan", 22720000], ["AIA", "Anguilla", 8000]]}
+    people = {"name": "people", "columns": ["People_ID", "Name", "Nationality"],
+              "rows": [[1, "Ann", "Russia"], [2, "Bo", "Bulgaria"], [3, "Cy", "Russia"]]}
+    planner = _hermetic_planner()
+    served = planner.serve([country], "What are the names of the nations with the 2 lowest populations?", [])
+    assert served.get("valid"), (served.get("error"), served.get("sql"))
+    assert sorted(list(row) for row in served["result"]["rows"]) == [["Anguilla"], ["Aruba"]], served.get("sql")
+    distinct = planner.serve([people], "How many different nationalities are there?", [])
+    assert [list(row) for row in distinct["result"]["rows"]] == [[2]], distinct.get("sql")
+
+
+def test_a_participle_before_a_year_the_answer_compares_is_read():
+    """Spider DEV 145, 103, 2026-10-13: "how many cars were produced in 1980?" was refused for "produced", though the
+    count compares the Year with 1980: a past participle before a year the query compares says how that year relates to
+    the rows. A store is a shop (DEV 275). Negative: the participle stays unread when the query compares no such year."""
+    cars = {"name": "cars_data", "columns": ["Id", "MPG", "Year"], "rows": [[1, 18.0, 1970], [2, 30.0, 1980], [3, 25.0, 1980]]}
+    shop = {"name": "shop", "columns": ["Shop_ID", "Name", "Location", "Number_products"],
+            "rows": [[1, "A", "Paris", 10], [2, "B", "Lyon", 20], [3, "C", "Paris", 30]]}
+    planner = _hermetic_planner()
+    served = planner.serve([cars], "How many cars were produced in 1980?", [])
+    assert served.get("valid"), (served.get("error"), served.get("sql"))
+    assert [list(row) for row in served["result"]["rows"]] == [[2]], served.get("sql")
+    stores = planner.serve([shop], "How many different store locations are there?", [])
+    assert [list(row) for row in stores["result"]["rows"]] == [[2]], stores.get("sql")
+    from engine.query_contract import read_question
+    graph = SchemaGraph.from_tables([cars], ())
+    from engine.sql_ast import Aggregate, Star, SelectItem, SelectQuery
+    unfiltered = SelectQuery(select=(SelectItem(Aggregate("COUNT", Star())),), from_table="cars_data")
+    assert "produced" in read_question("How many cars were produced in 1980?",
+                                       ScoredQuery(unfiltered, render_query(unfiltered), 0.0, ()), graph).unread
+
+
+def test_a_one_letter_code_holds_the_word_it_stands_for():
+    """Spider DEV 54, 486, held-out Spider train 50, 337, 2026-10-13: 14 questions said "female", "male" or "left handed"
+    of a field holding F/M or L/R codes, and none compared the code. A field of one-letter codes holds the words they
+    stand for, and a query comparing the code reads the word. Sizes S/M/L are no sex code: "male" names no size."""
+    dependent = {"name": "dependent", "columns": ["Essn", "Name", "Sex"],
+                 "rows": [[1, "Alice", "F"], [2, "Theodore", "M"], [3, "Joy", "F"]]}
+    players = {"name": "players", "columns": ["player_id", "first_name", "hand"],
+               "rows": [[1, "Ann", "R"], [2, "Bo", "L"], [3, "Cy", "U"]]}
+    shirts = {"name": "shirts", "columns": ["id", "Size"], "rows": [[1, "S"], [2, "M"], [3, "L"]]}
+    planner = _hermetic_planner()
+    female = planner.serve([dependent], "How many female dependents are there?", [])
+    assert female.get("valid"), (female.get("error"), female.get("sql"))
+    assert [list(row) for row in female["result"]["rows"]] == [[2]], female.get("sql")
+    left = planner.serve([players], "What are the first names of the left handed players?", [])
+    assert [list(row) for row in left["result"]["rows"]] == [["Bo"]], left.get("sql")
+    sizes = SchemaGraph.from_tables([shirts], ())
+    assert "male" not in sizes.value_index and "left" not in sizes.value_index
+
+
+def test_a_noun_several_fields_share_counts_its_entity():
+    """Spider DEV 485, 2026-10-13: "how many different winners" named winner_age, winner_entry, winner_hand, winner_ht,
+    winner_id and winner_name, the first four were offered, and the count counted the hands it compared with 'L'. The
+    noun counts its entity by its name or key first; a noun no name or key carries still counts the field it names."""
+    from engine.sql_search import _tokens
+    matches = {"name": "matches",
+               "columns": ["tourney_name", "winner_age", "winner_entry", "winner_hand", "winner_ht", "winner_id",
+                           "winner_name"],
+               "rows": [["WTA Championships", 25, "Q", "L", 170, 1, "Ann"],
+                        ["WTA Championships", 27, "Q", "L", 175, 2, "Bea"],
+                        ["WTA Championships", 27, "WC", "R", 180, 3, "Cat"],
+                        ["Other", 30, "Q", "L", 165, 4, "Dee"],
+                        ["WTA Championships", 25, "Q", "L", 170, 1, "Ann"]]}
+    graph = SchemaGraph.from_tables([matches], ())
+    searcher = SQLSearcher(graph)
+    tokens = _tokens("How many different winners both participated in the WTA Championships and were left handed?")
+    counted = searcher._distinct_counted_columns(tokens, tokens.index("many"))
+    assert [column.name for column in counted[:2]] == ["winner_name", "winner_id"], counted
+    planner = _hermetic_planner()
+    served = planner.serve([matches], "How many different winners both participated in the WTA Championships and "
+                                      "were left handed?", [])
+    assert [list(row) for row in served["result"]["rows"]] == [[2]], served.get("sql")
+    # Contrast: a noun no name or key carries counts the field it names.
+    players = {"name": "players", "columns": ["player_id", "first_name", "country_code"],
+               "rows": [[1, "Ann", "USA"], [2, "Bo", "USA"], [3, "Cy", "FRA"]]}
+    searcher = SQLSearcher(SchemaGraph.from_tables([players], ()))
+    tokens = _tokens("How many different countries do players come from?")
+    assert [column.name for column in searcher._distinct_counted_columns(tokens, tokens.index("many"))] == ["country_code"]
+
+
 def test_a_rewording_keeps_the_operations_the_engine_reads():
     """Spider DEV, 2026-10-13: rewordings were refused for losing words the engine does not read as operations: "per" in
     "miles per gallon", "number of" before the field Number_products, "no less than" said "at least". The engine's own
@@ -6155,6 +6240,10 @@ TESTS = [
     test_a_field_named_with_its_tables_abbreviation,
     test_a_sort_verb_opening_the_question_is_its_command,
     test_a_quantity_word_is_no_value,
+    test_a_nation_is_a_country,
+    test_a_participle_before_a_year_the_answer_compares_is_read,
+    test_a_one_letter_code_holds_the_word_it_stands_for,
+    test_a_noun_several_fields_share_counts_its_entity,
     test_a_rewording_keeps_the_operations_the_engine_reads,
     test_gemini_rewrite_must_preserve_data_values_and_numbers,
     test_evaluator_grades_the_served_selection,
