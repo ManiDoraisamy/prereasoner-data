@@ -341,7 +341,10 @@ The own-data path serves one typed SQL AST chosen from the deterministic search'
    outputs ("List the continent id, continent name and the number of countries.") names them, their owner and their
    order once for construction, ranking, the answer's order and the completeness check (`sql_expansion.output_requests`,
    `request_fields`), and a row count drops a leaf join to a table nothing reads, nothing counts and the question does
-   not name (`sql_expansion.counted_noun_tables`), which only multiplies the counted rows. A grouped
+   not name (`sql_expansion.counted_noun_tables`), which only multiplies the counted rows. The verb a sentence opens
+   with is its command and names no table (`sql_expansion.command_positions`: "Show the names of conductors" joins no
+   show table), and a relationship self-join is built only where a word of its key besides the parent table's name is
+   said, whole or abbreviated (`sql_recursive`: "the course whose prerequisite is ..."). A grouped
    answer that names a group as a field to show lists its fields in the question's
    order (`sql_search._in_question_order`); a joined listing whose join repeats its rows gets a DISTINCT twin, and
    the ranker prefers it (`sql_rank.repeats_shown_rows`), and a field the
@@ -390,7 +393,7 @@ The own-data path serves one typed SQL AST chosen from the deterministic search'
    (`engine/sql_expansion.money_total_columns`). These preferences,
    the single-branch serving contract, and the decomposition leaf contract filter the ranking; none
    rescores it. A served top-1 ranking keeps every row tied with its first row (`sql_ast.keep_ties`,
-   rendered with `RANK() OVER`).
+   rendered with `RANK() OVER`), unless it shows only what it is ordered by: its tied rows show the same values.
 4. For a named request, the search's top candidate is read first, before any candidate runs: a
    set operation (a compound question) requests decomposition instead of executing a single query.
    Otherwise one dual-emitter branch serves the request: the best-ranked eligible single query.

@@ -3509,3 +3509,26 @@ Measured on Spider (`spider/results/RESULTS.md`, 2026-10-14): DEV 535 → 539 st
 holdout 355 → 358, Gemini on 622 → 626, with no loss on any set. These remain bounded repairs: a count over a join that
 multiplies a NAMED table's rows is still COUNT(*), not a distinct count of the counted entity (DEV 966), and a count
 threshold's noun ("more than 3 car models") is not yet a counted-population reading (DEV 149).
+
+## The verb a sentence opens with names no table; "the count" in a list; a relationship self-join needs its word; a superlative over the shown field is one value (2026-10-14)
+
+Four ranking and construction families from the certified ledger's wrong answers that had an admissible, independently
+certified plan in the pool (DEV, 2026-10-14):
+
+- `sql_expansion.command_positions`: the verb a sentence opens with, after "please", which the tagger reads as a verb,
+  is its command and names no table. The search's table linking leaves it out, and the completeness check's asked
+  tables skip a leading "please" before the opening command: "Show the names of conductors and the orchestras they
+  have conducted" joins no show table of the orchestra database.
+- `sql_expansion.output_requests`: a list item that is only "count" asks for the count ("List the continent name and
+  the count.").
+- `sql_recursive`: a relationship self-join is built only where a word of one of its keys besides the parent table's
+  name is said, whole or abbreviated ("Kyle's friends" by friend_id, "the course whose prerequisite is ..." by
+  prereq_id); "the airport with code 'AKO'" names no flight between airports.
+- `CandidateRanker` prefers a top-1 superlative ordered by the one field it shows ("the age of the oldest dog" by age,
+  not birth date), and `sql_ast.keep_ties` serves one row when every shown expression is one the rows are ordered by:
+  the tied rows show the same values.
+
+Measured on Spider (`spider/results/RESULTS.md`, 2026-10-14): DEV 539 → 544 strict, held out 359 unchanged, the fresh
+holdout 358 → 359, Gemini on 626 → 632. The one loss, DEV 202 ("the names of airports in Aberdeen"), is an
+empty-result coincidence: Spider's gold compares City = 'Aberdeen' with the stored 'Aberdeen ' and returns no rows, which
+the old self-join reading also returned; the served answer now names the airport.

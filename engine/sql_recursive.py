@@ -476,6 +476,15 @@ class RecursiveQueryExpander:
                     if built is not None:
                         out.append(built)
 
+            # A relationship self-join needs a word of a key besides the parent table's name, whole or abbreviated:
+            # "Kyle's friends" says friend_id's "friend", "the course whose prerequisite is ..." prereq_id's "prereq",
+            # while "the airport with code 'AKO'" names no flight between airports (SourceAirport's "airport" is the
+            # parent's own name; Spider DEV 199, 200, fresh holdout 539, 790, 2026-10-14).
+            parent_words = set(_name_tokens(parent_table))
+            if not any(said == word or (len(word) >= 4 and said.startswith(word))
+                       for fk in fks for word in set(_name_tokens(fk.from_column.name)) - parent_words
+                       for said in token_set):
+                continue
             relationship_fk = next(
                 (fk for fk in fks if set(_name_tokens(fk.from_column.name)) & token_set), None
             )

@@ -228,6 +228,13 @@ class CandidateRanker:
             if self._owner_only(column, roles):
                 features.append((f"owner_only_output:{_column_label(column)}", -8.0))
 
+        # A superlative over the one field the answer shows ranks by that field: "the age of the oldest dog" is the
+        # greatest age, not the age of the earliest birth date (Spider DEV 988, 989, 2026-10-14).
+        if (isinstance(query, SelectQuery) and query.limit is not None and len(query.order_by) == 1
+                and not query.group_by and len(query.select) == 1 and select_columns
+                and query.order_by[0].expression == select_columns[0]):
+            features.append(("superlative_on_shown", 0.75))
+
         # An aggregate the question names only in a clause keeping the groups is not asked for: "the studios whose
         # average gross is above 4500000", "the job ids for those jobs which average salary is above 8000" (held-out
         # Spider train 743, 746, 750, 2026-10-12: each showed the average it kept the groups by); one it also asks

@@ -541,10 +541,13 @@ def keep_ties(query: Query) -> Query:
     "which customer placed the most orders" ranked five customers tied at three orders and served one
     of them (2026-10-02). A top-level ORDER BY ... LIMIT 1 keeps every row that sorts equal to its first
     row, as FETCH FIRST 1 ROW WITH TIES does. A larger LIMIT is the number of rows the question asks
-    for, a subquery's LIMIT 1 stays one row, and a SELECT * keeps its plain LIMIT.
+    for, a subquery's LIMIT 1 stays one row, and a SELECT * keeps its plain LIMIT. A ranking showing only what it is
+    ordered by keeps its one row: its tied rows show the same values ("the age of the oldest dog" is one age, Spider
+    DEV 988, 989, 2026-10-14).
     """
     if (isinstance(query, SelectQuery) and query.limit == 1 and query.order_by and not query.with_ties
-            and not _has_star_projection(query)):
+            and not _has_star_projection(query)
+            and not all(item.expression in [term.expression for term in query.order_by] for item in query.select)):
         return replace(query, with_ties=True)
     return query
 

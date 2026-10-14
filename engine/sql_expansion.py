@@ -1511,6 +1511,27 @@ def output_requests(question: str, schema: Any = None) -> tuple[OutputRequest, .
     return ()
 
 
+def command_positions(question: str) -> frozenset[int]:
+    """The positions in ``tokens(question)`` of the verb a sentence opens with ("Show", "Please list"), which the tagger
+    reads as a verb: the command, naming no rows. "Please show the different record companies" asks for no show of an
+    orchestra database's show table (Spider DEV 840, 846, 848, 2026-10-14: every reading joined the shows)."""
+    from engine.closed_class import action_words
+    spans = word_spans(question)
+    said = tokens(question)
+    if len(spans) != len(said):
+        return frozenset()
+    verbs = {canon(word) for word in action_words(question)}
+    starts = [0] + [index for index in range(1, len(said))
+                    if re.search(r"[.?!;]", question[spans[index - 1][1]:spans[index][0]])]
+    found = set()
+    for index in starts:
+        while index < len(said) and said[index] in {"please", "now", "also", "and"}:
+            index += 1
+        if index < len(said) and said[index] in verbs:
+            found.add(index)
+    return frozenset(found)
+
+
 def counted_noun_tables(said: Sequence[str], schema: Any) -> frozenset[str]:
     """The tables whose rows a count counts: those the noun right after "how many", "number of" or "count of" names
     ("How many countries does each continent have?" counts the countries). The ranker credits a count of them, and a
@@ -1604,7 +1625,8 @@ def _output_request(said: tuple[str, ...], start: int, end: int,
     if start >= end:
         return None
     head = start + 1 if said[start] == "total" else start
-    count = said[start:start + 2] == ("how", "many") or (
+    # "List the continent name and the count." asks for the count (Spider DEV 105, 2026-10-14).
+    count = said[start:end] == ("count",) or said[start:start + 2] == ("how", "many") or (
         said[head:head + 1] in (("number",), ("count",)) and said[head + 1:head + 2] == ("of",) and head < end
         and head not in numbers)
     return OutputRequest(start, end, count)

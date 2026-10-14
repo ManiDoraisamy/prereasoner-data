@@ -2409,6 +2409,93 @@ def test_a_row_count_keeps_the_join_to_a_table_the_question_names():
     assert '"Treatments"' in served["sql"], served["sql"]
 
 
+def test_the_verb_a_sentence_opens_with_names_no_table():
+    """Spider DEV 840, 846 (2026-10-14): "Show the names of conductors and the orchestras they have conducted" joined
+    the orchestra database's show table, which the command names; "Please show ..." too. The verb a sentence opens
+    with is its command (sql_expansion.command_positions), for the search's table linking and the completeness check's
+    asked tables alike. Contrast: a show the question names after its command is still a table it asks about."""
+    from engine.query_contract import _asked_tables
+    from engine.sql_expansion import command_positions, tokens
+    assert command_positions("Show the names of conductors and the orchestras they have conducted.") == {0}
+    assert command_positions("Please show the different record companies.") == {1}
+    assert command_positions("How many shows had attendance above 100? List the show ids.") == {7}
+    conductors = {"name": "conductor", "columns": ["Conductor_ID", "Name"], "rows": [[1, "Ann"], [2, "Bo"]]}
+    orchestras = {"name": "orchestra", "columns": ["Orchestra_ID", "Orchestra", "Conductor_ID"],
+                  "rows": [[1, "LSO", 1], [2, "BPO", 2], [3, "NYP", 1]]}
+    performances = {"name": "performance", "columns": ["Performance_ID", "Orchestra_ID", "Type"],
+                    "rows": [[1, 1, "Live"], [2, 1, "Studio"]]}
+    shows = {"name": "show", "columns": ["Show_ID", "Performance_ID", "Attendance"], "rows": [[1, 1, 900], [2, 2, 50]]}
+    keys = [("orchestra", "Conductor_ID", "conductor", "Conductor_ID"),
+            ("performance", "Orchestra_ID", "orchestra", "Orchestra_ID"),
+            ("show", "Performance_ID", "performance", "Performance_ID")]
+    candidate = best("Show the names of conductors and the orchestras they have conducted.",
+                     [conductors, orchestras, performances, shows], keys)
+    assert '"show"' not in candidate.sql and '"performance"' not in candidate.sql, candidate.sql
+    graph = SchemaGraph.from_tables([conductors, orchestras, performances, shows], keys)
+    assert "show" not in _asked_tables(tokens("Please show the names of conductors."), graph)
+    assert "show" in _asked_tables(tokens("Which show had the largest attendance?"), graph)
+
+
+def test_a_list_item_that_is_only_the_count_asks_for_the_count():
+    """Spider DEV 105 (2026-10-14): "How many car makers are there in each continents? List the continent name and the
+    count." showed both the countries' and the continents' Continent: "the count" asked no field, so no list was
+    read. An item that is only "count" asks for the count (sql_expansion.output_requests); "the count of cars" too."""
+    from engine.sql_expansion import output_requests, tokens
+    question = "How many car makers are there in each continents? List the continent name and the count."
+    said = tokens(question)
+    assert [(" ".join(said[r.start:r.end]), r.count) for r in output_requests(question)] == [
+        ("continent name", False), ("count", True)]
+    assert [r.count for r in output_requests("Which shops sell shoes? List the shop name and the count of shoes.")] == [
+        False, True]
+
+
+def test_a_relationship_self_join_needs_a_word_besides_its_parent_table():
+    """Spider DEV 199, 200 (2026-10-14): "Return the name of the airport with code 'AKO'." named the destination
+    airports of flights from AKO: SourceAirport's "airport" read as the flights relationship, though it is only the
+    airports table's own name. A relationship is named by another word of its key (sql_recursive): "Kyle's friends"
+    by friend_id still read the Friend relationship."""
+    airports = {"name": "airports", "columns": ["AirportCode", "AirportName", "City"],
+                "rows": [["AKO", "Akron", "Akron"], ["APG", "Aberdeen", "Aberdeen"], ["LAX", "Los Angeles", "LA"]]}
+    flights = {"name": "flights", "columns": ["FlightNo", "SourceAirport", "DestAirport"],
+               "rows": [[1, "AKO", "APG"], [2, "APG", "LAX"], [3, "AKO", "LAX"]]}
+    keys = [("flights", "SourceAirport", "airports", "AirportCode"),
+            ("flights", "DestAirport", "airports", "AirportCode")]
+    candidate = best("Return the name of the airport with code 'AKO'.", [airports, flights], keys)
+    assert '"flights"' not in candidate.sql, candidate.sql
+    students = {"name": "Highschooler", "columns": ["ID", "name"], "rows": [[1, "Kyle"], [2, "Ann"], [3, "Bo"]]}
+    friends = {"name": "Friend", "columns": ["student_id", "friend_id"], "rows": [[1, 2], [1, 3], [2, 3]]}
+    friend_keys = [("Friend", "student_id", "Highschooler", "ID"), ("Friend", "friend_id", "Highschooler", "ID")]
+    candidate = best("Show the names of all of Kyle's friends.", [students, friends], friend_keys)
+    assert '"Friend"' in candidate.sql, candidate.sql
+    # A key's word abbreviating the said one names the relationship too: prereq_id for "prerequisite" (fresh holdout
+    # 539, 790).
+    courses = {"name": "course", "columns": ["course_id", "title"],
+               "rows": [[1, "Geometry"], [2, "Topology"], [3, "Algebra"]]}
+    prereqs = {"name": "prereq", "columns": ["course_id", "prereq_id"], "rows": [[2, 1], [3, 2]]}
+    prereq_keys = [("prereq", "course_id", "course", "course_id"), ("prereq", "prereq_id", "course", "course_id")]
+    candidate = best("Find the title of the course whose prerequisite is course Geometry.", [courses, prereqs],
+                     prereq_keys)
+    assert '"prereq"' in candidate.sql, candidate.sql
+
+
+def test_a_superlative_over_the_shown_field_is_one_value():
+    """Spider DEV 988, 989 (2026-10-14): "What is the age of the oldest dog?" ranked the dogs by birth date and served
+    every dog tied at the earliest one. A superlative over the one field the answer shows ranks by that field
+    (CandidateRanker), and a ranking showing only what it is ordered by serves one row, its ties showing the same
+    value (sql_ast.keep_ties). Contrast: a ranking showing another field keeps every tied row."""
+    from engine.sql_ast import OrderTerm, keep_ties
+    dogs = {"name": "Dogs", "columns": ["dog_id", "name", "age", "date_of_birth"],
+            "rows": [[1, "Rex", 9, "2015-03-01"], [2, "Fido", 9, "2015-07-09"], [3, "Bo", 4, "2020-01-01"]]}
+    served = _hermetic_planner().serve([dogs], "What is the age of the oldest dog?", [])
+    assert served.get("valid"), (served.get("error"), served.get("sql"))
+    assert served["result"]["rows"] == [[9]] or [list(row) for row in served["result"]["rows"]] == [[9]], served
+    age = ColumnRef("Dogs", "age", SQLType.INTEGER)
+    name = ColumnRef("Dogs", "name", SQLType.TEXT)
+    oldest = SelectQuery((SelectItem(age),), "Dogs", order_by=(OrderTerm(age, "DESC"),), limit=1)
+    assert keep_ties(oldest) == oldest
+    assert keep_ties(SelectQuery((SelectItem(name),), "Dogs", order_by=(OrderTerm(age, "DESC"),), limit=1)).with_ties
+
+
 def test_a_rewording_keeps_the_operations_the_engine_reads():
     """Spider DEV, 2026-10-13: rewordings were refused for losing words the engine does not read as operations: "per" in
     "miles per gallon", "number of" before the field Number_products, "no less than" said "at least". The engine's own
@@ -6488,6 +6575,10 @@ TESTS = [
     test_a_word_said_once_names_one_of_the_fields_ending_in_it,
     test_an_explicit_list_names_the_outputs_their_owner_and_order,
     test_a_row_count_keeps_the_join_to_a_table_the_question_names,
+    test_the_verb_a_sentence_opens_with_names_no_table,
+    test_a_list_item_that_is_only_the_count_asks_for_the_count,
+    test_a_relationship_self_join_needs_a_word_besides_its_parent_table,
+    test_a_superlative_over_the_shown_field_is_one_value,
     test_a_rewording_keeps_the_operations_the_engine_reads,
     test_gemini_rewrite_must_preserve_data_values_and_numbers,
     test_evaluator_grades_the_served_selection,

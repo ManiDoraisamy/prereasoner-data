@@ -70,6 +70,7 @@ from engine.sql_expansion import (
     naming_context,
     naming_words,
     ordering_requested,
+    command_positions,
     counted_noun_tables,
     request_fields,
     request_slots,
@@ -167,6 +168,9 @@ class SQLSearcher:
         # which no key joins (a customer's three keyword tabs, 2026-10-02: no reading at all).
         stated, _ = self._value_matches(tokens, frozenset(), question)
         in_values = {index for start, end, _, _ in stated if end - start > 1 for index in range(start, end)}
+        # The verb a sentence opens with is its command and names no table (sql_expansion.command_positions): "Please
+        # show the different record companies" joins no shows (Spider DEV 840, 846, 848, 2026-10-14).
+        in_values |= command_positions(question)
         unvalued = tuple("" if index in in_values else token for index, token in enumerate(tokens))
         table_scores = self._table_scores(unvalued)
         mentions = self._column_mentions(tokens, table_scores)

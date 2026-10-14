@@ -28,6 +28,25 @@ Artifacts: `%LOCALAPPDATA%/Temp/prereasoner-spider-review-20261013/`, tags `revi
 Incomplete intermediate runs are excluded. The review hardens ranking-number roles, output counts (preserving stored-count SUM),
 and table-owned full-name construction; it does not introduce another planner or model bundle.
 
+## The verb a sentence opens with names no table; "the count" in a list; relationship self-joins; a superlative over the shown field: 539 → 544 strict, Gemini on 626 → 632, held out 359 unchanged, fresh holdout 358 → 359 (2026-10-14)
+
+Same contract as below. Runs `pkg15b-dirty`, `pkg15b-gemini-dirty`, `heldout-pkg15b-dirty` and `holdout2-pkg15b-dirty`
+are the change of the entry below with this change, against its `pkg14b` runs. The change is `DECISIONS.md` "The verb
+a sentence opens with names no table; "the count" in a list; a relationship self-join needs its word; a superlative over
+the shown field is one value".
+
+- DEV, engine alone: 539 → **544 strict**; 6 wins (27, 105, 200, 840, 988, 989), 1 loss (202: gold compares the
+  padded city 'Aberdeen ' as 'Aberdeen' and returns no rows; the old reading also returned none); wrong answers 189 → 184;
+  21 queries changed.
+- Held out: 359 → **359 strict**; no win, no loss; 4 queries changed (the same rows served without the tie window).
+- Fresh holdout: 358 → **359 strict**; 1 win (796), no loss; wrong answers 243 → 242; 5 queries changed.
+- Gemini on: 626 → 632 (7 wins: 27, 105, 200, 840, 848, 988, 989; 1 loss: 202; wrong answers 253 → 247; 25 queries changed).
+- A first round (`pkg15`) required the relationship's word whole and chose the relationship key by it, which refused
+  fresh holdout 539 and 790 ("the course whose prerequisite is ..."); the key choice is unchanged and an abbreviation
+  counts. Both are registered regressions.
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_{pkg15b,pkg15b-gemini,heldout-pkg15b,holdout2-pkg15b}-dirty.json`.
+
 ## An explicit list names the outputs, their owner and order; a row count drops joins that only multiply it: 535 → 539 strict, Gemini on 622 → 626 (4 wins: 24, 89, 515, 539; no loss; wrong answers 256 → 253; 14 queries changed), held out 358 → 359, fresh holdout 355 → 358 (2026-10-14)
 
 Same contract as below. Runs `pkg14b-dirty`, `pkg14b-gemini-dirty`, `heldout-pkg14b-dirty` and `holdout2-pkg14b-dirty`

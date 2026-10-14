@@ -1300,9 +1300,10 @@ def _asked_tables(question_tokens, graph):
     List the continent id"), where this one is the rows the question asks about."""
     from engine.sql_schema import canon, name_words
     opening = set()
+    lead = 1 if question_tokens[:1] == ("please",) else 0
     for index, token in enumerate(question_tokens):
-        if index == 0 and token in _OPENING_COMMANDS:
-            continue
+        if index < lead or (index == lead and token in _OPENING_COMMANDS):
+            continue    # "Please show the record companies ..." asks for no show (Spider DEV 846, 848, 2026-10-14)
         if index and (token in _OPENING_STOPS or (token == "which" and index > 1)):
             break
         opening.add(token)
