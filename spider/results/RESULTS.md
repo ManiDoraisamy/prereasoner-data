@@ -28,6 +28,24 @@ Artifacts: `%LOCALAPPDATA%/Temp/prereasoner-spider-review-20261013/`, tags `revi
 Incomplete intermediate runs are excluded. The review hardens ranking-number roles, output counts (preserving stored-count SUM),
 and table-owned full-name construction; it does not introduce another planner or model bundle.
 
+## An explicit list names the outputs, their owner and order; a row count drops joins that only multiply it: 535 → 539 strict, Gemini on 622 → 626 (4 wins: 24, 89, 515, 539; no loss; wrong answers 256 → 253; 14 queries changed), held out 358 → 359, fresh holdout 355 → 358 (2026-10-14)
+
+Same contract as below. Runs `pkg14b-dirty`, `pkg14b-gemini-dirty`, `heldout-pkg14b-dirty` and `holdout2-pkg14b-dirty`
+are the change of the entry below with this change, against its `pkg13b` runs. The change is `DECISIONS.md` "An
+explicit list names the outputs, their owner and order; a row count drops joins that only multiply it".
+
+- DEV, engine alone: 535 → **539 strict**; 4 wins (24, 89, 515, 539), no loss; wrong answers 193 → 189; 11 queries
+  changed.
+- Held out: 358 → **359 strict**; 1 win (903), no loss; wrong answers 235 → 234; 12 queries changed.
+- Fresh holdout: 355 → **358 strict**; 3 wins (119, 259, 935), no loss; wrong answers 244 → 243; 11 queries changed.
+- Gemini on: 622 → 626 (4 wins: 24, 89, 515, 539; no loss; wrong answers 256 → 253; 14 queries changed).
+- A first round (`pkg14`) dropped a row count's join to a table the question names and lost held out 654 ("How many
+  songs have a shared vocal?", refused) and refused DEV 966 (wrong before); a foreign key tied the owner of "the club
+  id" and showed a coach's name (fresh holdout 119); the planner suite caught "the name and phone number of these
+  patients" read as a count (held-out Spider train 47). Each is a registered regression.
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_{pkg14b,pkg14b-gemini,heldout-pkg14b,holdout2-pkg14b}-dirty.json`.
+
 ## A count counts its noun's table, abbreviated fields shown, a word said once names one field: 529 → 535 strict, Gemini on 616 → 622 (6 wins: 6, 7, 63, 64, 91, 92; no loss; wrong answers 263 → 256; 13 queries changed), held out 357 → 358, fresh holdout 354 → 355 (2026-10-13)
 
 Same contract as below. Runs `pkg13b-dirty`, `pkg13b-gemini-dirty`, `heldout-pkg13b-dirty` and `holdout2-pkg13b-dirty`

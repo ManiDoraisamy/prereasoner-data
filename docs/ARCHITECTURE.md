@@ -337,7 +337,11 @@ The own-data path serves one typed SQL AST chosen from the deterministic search'
    question's command ("Return ..."). A count counts the rows of the table the noun after its count word
    names ("how many countries"), a field whose first word abbreviates its table's name is shown where the question
    says the table (`sql_expansion.abbreviated_table`: "the id of students" is StuID), and of shown fields ending in a
-   word said once, the one whose owner the question never says is not asked. A grouped
+   word said once, the one whose owner the question never says is not asked. A sentence after the first that lists the
+   outputs ("List the continent id, continent name and the number of countries.") names them, their owner and their
+   order once for construction, ranking, the answer's order and the completeness check (`sql_expansion.output_requests`,
+   `request_fields`), and a row count drops a leaf join to a table nothing reads, nothing counts and the question does
+   not name (`sql_expansion.counted_noun_tables`), which only multiplies the counted rows. A grouped
    answer that names a group as a field to show lists its fields in the question's
    order (`sql_search._in_question_order`); a joined listing whose join repeats its rows gets a DISTINCT twin, and
    the ranker prefers it (`sql_rank.repeats_shown_rows`), and a field the

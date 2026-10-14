@@ -509,8 +509,18 @@ def _select_violations(question, query, graph, whole):
     read_fields = used | _base_refs(whole)
     asked_tables = _asked_tables(question_tokens, graph)
     from engine.sql_rank import aggregate_operand
+    # The fields an explicit list instruction asks for are read as the search built them and the ranker reads them
+    # (sql_expansion.request_fields): "List the continent id, continent name ..." is realized by ContId, and its "id"
+    # asks for no other table's Id (Spider DEV 89, 2026-10-14: the reading showing exactly the list was refused).
+    from engine.sql_expansion import output_requests, request_fields, tokens as list_tokens
+    said = list_tokens(question)
+    listed = [request for request in output_requests(question, graph) if not request.count]
+    realized_items = [set(said[request.start:request.end])
+                      for request, refs in zip(listed, request_fields(question, graph)) if set(refs) & projected]
     for label, refs in named_fields.items():
         if ' '+label+' ' not in table_masked:
+            continue
+        if any(set(label.split()) <= item for item in realized_items):
             continue
         # An aggregate word that is also a field's name (a stadium's "Average" attendance) is the aggregate when the
         # phrase it begins names another field the query aggregates that way: "singers above the average age"

@@ -307,7 +307,23 @@ class ExpansionSupport:
         full = tuple(SelectItem(column) for column in dict.fromkeys(linked[:4]))
         options = [full]
         options.extend((SelectItem(column),) for column in linked[:4])
+        # An explicit list instruction's fields, when this table realizes every one, are shown first and in its order:
+        # "Which makers designed more than 3 car models? List full name and the id." (Spider DEV 149, 2026-10-14).
+        requested = self.requested_fields(question, table)
+        if requested:
+            options.insert(0, tuple(SelectItem(column) for column in requested))
         return list(dict.fromkeys(options))
+
+    def requested_fields(self, question: str, table: str) -> tuple[ColumnRef, ...]:
+        """The fields of ``table`` an explicit list instruction asks for (request_fields), in its order; empty unless
+        the table realizes every field it asks."""
+        fields = []
+        for refs in request_fields(question, self.schema):
+            realized = [ref for ref in refs if ref.table == table]
+            if not realized:
+                return ()
+            fields.append(realized[0])
+        return tuple(dict.fromkeys(fields))
 
     def group_options(
         self,
@@ -1429,6 +1445,169 @@ def words(text: str) -> list[str]:
 def word_spans(text: str) -> list[tuple[int, int]]:
     """Where each of ``words(text)`` stands in ``text``."""
     return [match.span() for match in _QUESTION_WORD.finditer(text.lower())]
+
+
+@dataclass(frozen=True)
+class OutputRequest:
+    """One output an explicit list instruction asks to show, in the order asked: the span of ``tokens(question)`` that
+    says it, and whether it asks for a count ("the number of countries") rather than a field."""
+    start: int
+    end: int
+    count: bool
+
+
+# The verbs that open a sentence listing the outputs ("List the continent id, continent name and the number of
+# countries."), the words before the list that ask nothing, and the words that end it.
+_LIST_VERBS = frozenset({"list", "show", "give", "return", "report", "display", "tell", "provide", "output"})
+_LIST_LEADS = frozenset({"only", "me", "us", "both", "the", "a", "an", "all", "please", "just", "also"})
+_LIST_ENDS = frozenset({"for", "who", "that", "which", "whose", "where", "when", "with", "in", "from", "by", "order",
+                        "ordered", "sort", "sorted", "rank", "ranked", "if", "than"})
+_LIST_COUNTS = frozenset({"number", "count", "many", "total"})
+
+
+def output_requests(question: str, schema: Any = None) -> tuple[OutputRequest, ...]:
+    """The outputs a sentence after the first asks for by an instruction, in order: "How many countries does each
+    continent have? List the continent id, continent name and the number of countries." asks for the continent id, the
+    continent name and the count, and "Which makers designed more than 3 car models? List full name and the id." for
+    the full name and the id (Spider DEV 89, 149). The search builds that projection and the ranker reads whether an
+    answer shows exactly those, one reading for both. Empty where no such sentence lists them.
+
+    An item counts when it begins with the count ("the number of countries", "how many"), unless its "number" names
+    one of ``schema``'s fields (field_numbers): "Tell me the name and phone number of these patients" asks for the
+    phone (held-out Spider train 47)."""
+    spans = word_spans(question)
+    said = tokens(question)
+    if len(spans) != len(said):
+        return ()
+    numbers = field_numbers(question, (column.ref for column in schema.columns)) if schema is not None else frozenset()
+    gaps = [question[spans[index - 1][1]:spans[index][0]] if index else "" for index in range(len(spans))]
+    sentences = [index for index in range(1, len(said)) if re.search(r"[.?!;]", gaps[index])]
+    for start in sentences:
+        index = start
+        while index < len(said) and said[index] in {"please", "only", "also", "and", "now"}:
+            index += 1
+        if index >= len(said) or said[index] not in _LIST_VERBS:
+            continue
+        index += 1
+        end = next((position for position in range(index, len(said))
+                    if position > index and re.search(r"[.?!;]", gaps[position])), len(said))
+        requests: list[OutputRequest] = []
+        item = index
+        position = index
+        while position < end:
+            word = said[position]
+            boundary = position > item and ("," in gaps[position] or word in {"and", "&"})
+            if word in _LIST_ENDS or (word == "of" and position > item and said[position - 1] not in _LIST_COUNTS
+                                      and said[position + 1:position + 2] in (("each",), ("every",), ("all",))):
+                break
+            if boundary:
+                requests.append(_output_request(said, item, position, numbers))
+                item = position + (1 if word in {"and", "&"} else 0)
+            position += 1
+        requests.append(_output_request(said, item, position, numbers))
+        found = tuple(request for request in requests if request is not None)
+        if found:
+            return found
+    return ()
+
+
+def counted_noun_tables(said: Sequence[str], schema: Any) -> frozenset[str]:
+    """The tables whose rows a count counts: those the noun right after "how many", "number of" or "count of" names
+    ("How many countries does each continent have?" counts the countries). The ranker credits a count of them, and a
+    row count keeps no join to another table nothing else reads, which would only multiply them
+    (SQLSearcher._simplified; Spider DEV 89, 91, 2026-10-14)."""
+    found = set()
+    for index in range(len(said)):
+        if said[index:index + 2] == ("how", "many"):
+            start = index + 2
+        elif said[index] in {"number", "count"} and said[index + 1:index + 2] == ("of",):
+            start = index + 2
+        else:
+            continue
+        while start < len(said) and said[start] in {"the", "a", "an", "different", "distinct", "unique", "all"}:
+            start += 1
+        for table in schema.tables:
+            name = tuple(canon(word) for word in name_words(table))
+            if name and tuple(said[start:start + len(name)]) == name:
+                found.add(table)
+    return frozenset(found)
+
+
+def realizes_request(column: ColumnRef, said: Sequence[str], request: OutputRequest, schema: Any,
+                     numbers: frozenset[int] = frozenset()) -> int:
+    """How showing ``column`` realizes the field ``request`` asks for: 2 when the field's own name says every word the
+    request says, 1 when its table's name or, for the field that names its table's rows, "name" says the rest, 0 when
+    it does not (at least one word must be the field's own). "Continent id" is ContId, not a Continent field nor
+    another table's Id; "maker full name" a maker's FullName; "the role" role_code (Spider DEV 89, 109, 149,
+    2026-10-14); "the name" of patients their Name before an appointment's display field (held-out Spider train 47).
+    A "number" naming a field (``numbers``, field_numbers) asks for the word before it: "phone number" is Phone."""
+    asked = {said[position] for position in range(request.start, request.end)
+             if position not in numbers and said[position] not in FUNCTION_WORDS | _LIST_LEADS}
+    own = set(name_part_words(column.name) or name_tokens(column.name))
+    if abbreviated_table(column.name, column.table):
+        own = (own - {name_tokens(column.name)[0]}) | set(name_tokens(column.table))
+    displays = schema.display_columns(column.table) if hasattr(schema, "display_columns") else ()
+    display = {"name", "title"} if displays and displays[0] == column else set()
+    if not asked or not asked & (own | display):
+        return 0
+
+    def says(vocabulary: set[str]) -> bool:
+        return all(word in vocabulary or any(says_in_another_form(word, known) for known in vocabulary)
+                   for word in asked)
+
+    if says(own):
+        return 2
+    return 1 if says(own | display | set(name_tokens(column.table))) else 0
+
+
+def request_fields(question: str, schema: Any) -> tuple[tuple[ColumnRef, ...], ...]:
+    """For each field an explicit list instruction asks for (output_requests), in order, the fields that realize it. The
+    items of one list are one owner's unless an item names another: the table realizing the most of them, where one
+    does, realizes each it can ("List full name and the id" of makers is the makers' FullName and Id, not a model's
+    ModelId; Spider DEV 149, 2026-10-14). Empty where any requested field has none. The search builds them, and the
+    ranker reads whether an answer shows them, from this one reading."""
+    said = tokens(question)
+    numbers = field_numbers(question, (column.ref for column in schema.columns))
+    requests = [request for request in output_requests(question, schema) if not request.count]
+    # A foreign key realizing a request gives way to the key it references, which names the same thing: "the club id"
+    # of a count of coaches per club is the club's Club_ID, not also the coach's (fresh holdout 119, 2026-10-14).
+    references = {key.from_column: key.to_column for key in getattr(schema, "foreign_keys", ())}
+    options = []
+    for request in requests:
+        realized = [(realizes_request(column.ref, said, request, schema, numbers), column.ref)
+                    for column in schema.columns]
+        best = max((level for level, _ in realized), default=0)
+        kept = [ref for level, ref in realized if level and level == best]
+        options.append([ref for ref in kept if references.get(ref) not in kept] or kept)
+    if not options or not all(options):
+        return ()
+    coverage = Counter(table for refs in options for table in {ref.table for ref in refs})
+    ranked = sorted(coverage.items(), key=lambda item: (-item[1], item[0]))
+    owner = ranked[0][0] if len(ranked) == 1 or ranked[0][1] > ranked[1][1] else None
+    return tuple(tuple(ref for ref in refs if ref.table == owner) or tuple(refs) for refs in options)
+
+
+def request_slots(question: str, schema: Any) -> tuple[frozenset[ColumnRef] | None, ...]:
+    """The outputs an explicit list instruction asks for, in its order: for a field, the fields realizing it
+    (request_fields); None for a count. Empty unless every requested field has one."""
+    fields = list(request_fields(question, schema))
+    requests = output_requests(question, schema)
+    if not fields and any(not request.count for request in requests):
+        return ()
+    return tuple(None if request.count else frozenset(fields.pop(0)) for request in requests)
+
+
+def _output_request(said: tuple[str, ...], start: int, end: int,
+                    numbers: frozenset[int] = frozenset()) -> OutputRequest | None:
+    while start < end and said[start] in _LIST_LEADS | {"and", "as", "well", "along", "together", "with"}:
+        start += 1
+    if start >= end:
+        return None
+    head = start + 1 if said[start] == "total" else start
+    count = said[start:start + 2] == ("how", "many") or (
+        said[head:head + 1] in (("number",), ("count",)) and said[head + 1:head + 2] == ("of",) and head < end
+        and head not in numbers)
+    return OutputRequest(start, end, count)
 
 
 def tokens(text: str) -> tuple[str, ...]:

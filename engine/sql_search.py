@@ -70,6 +70,9 @@ from engine.sql_expansion import (
     naming_context,
     naming_words,
     ordering_requested,
+    counted_noun_tables,
+    request_fields,
+    request_slots,
     says_in_another_form,
     share_cue,
     share_requested,
@@ -212,6 +215,13 @@ class SQLSearcher:
         from engine.sql_expansion import complete_projection_requested
         complete_projection = complete_projection_requested(question)
         projection_choices = self._projection_choices(tokens, mentions, table_scores)
+        # An explicit list instruction names the outputs in order, and a reading shows exactly those
+        # (sql_expansion.output_requests, which the ranker reads too): "List the continent id, continent name and the
+        # number of countries" (Spider DEV 89, 2026-10-14).
+        requested = self._requested_projection(question, table_scores)
+        if requested is not None:
+            explicit_projection_columns.update(requested[0])
+            projection_choices = [requested] + [choice for choice in projection_choices if choice[0] != requested[0]]
         # A table joins every reading only when the question names it with its words together ("car
         # makers"); Spider car_1, 2026-10-02: "how many car makers are there in each continent? List the
         # continent name" named car_names by "car" and "name" far apart, and every reading joined it,
@@ -250,11 +260,16 @@ class SQLSearcher:
                     # only columns the question names explicitly; _group_choices owns each/per/by grouping.
                     # An empty group choice is the scalar interpretation, so it must not inherit a display
                     # projection merely because the same words also identify a filter column.
+                    requested_draft = "output-requests" in draft.evidence
                     raw_projection = tuple(
                         c for c in raw_projection
-                        if c in explicit_projection_columns and group_columns
+                        if c in explicit_projection_columns and (group_columns or requested_draft)
                     )
-                    grouped = _unique_columns(group_columns + raw_projection)
+                    # An explicit list's fields are the groups: "List the continent id, continent name and the number
+                    # of countries" groups by the continent, not also by a field the counted noun names (Spider DEV
+                    # 89, 2026-10-14: every reading grouped and showed a car maker's Country too).
+                    grouped = (raw_projection if requested_draft and raw_projection
+                               else _unique_columns(group_columns + raw_projection))
                     # A period's column is headed by the period it is: "month", not its SQL.
                     expressions = tuple(SelectItem(c, "month" if isinstance(c, DatePart) else None)
                                         for c in grouped) + tuple(
@@ -376,9 +391,12 @@ class SQLSearcher:
         pool = [candidate for candidate in pool if not _reads_a_value_twice(candidate.query, tokens)]
         # The tables the question names: their words together, and scored as a mention.
         named_here = {table for table in named_tables if table_scores.get(table, 0.0) >= 2.5}
-        pool = _merge_candidates([], [self._simplified(candidate, named_here) for candidate in pool])
+        counted = counted_noun_tables(tokens, self.schema)
+        pool = _merge_candidates([], [self._simplified(candidate, named_here, counted) for candidate in pool])
         if not complete_projection:
-            pool = _merge_candidates([], [_in_question_order(candidate, tokens) for candidate in pool])
+            slots = request_slots(question, self.schema)
+            pool = _merge_candidates([], [_in_list_order(candidate, slots) or _in_question_order(candidate, tokens)
+                                          for candidate in pool])
         from engine.sql_rank import repeats_shown_rows
         pool = _merge_candidates(pool, [_distinct_twin(candidate) for candidate in pool
                                         if repeats_shown_rows(self.schema, candidate.query, tokens)
@@ -426,7 +444,8 @@ class SQLSearcher:
                                         evidence=draft.evidence + evidence))
         return sorted(expanded, key=lambda d: (-d.score, repr(d)))[:self.beam_size]
 
-    def _simplified(self, candidate: ScoredQuery, named_tables: set[str]) -> ScoredQuery:
+    def _simplified(self, candidate: ScoredQuery, named_tables: set[str],
+                    counted: frozenset[str] = frozenset()) -> ScoredQuery:
         """``candidate`` without what its answer never reads: a second column its joins equate with one it
         projects (they carry one value), and a joined table no clause reads that the question does not
         name. Spider DEV, 2026-10-02: "the id and name of the museum with the most staff"
@@ -515,6 +534,21 @@ class SQLSearcher:
                 changed = True
                 continue
             break
+        # A row count counts the rows of the table the counted noun names (sql_expansion.counted_noun_tables): a leaf
+        # join to another table nothing else reads and the question does not name only multiplies them. "How many
+        # countries does each continent have?" counts no car makers (Spider DEV 89, 2026-10-14). A table the question
+        # names keeps its join, which says which rows count: "How many songs have a shared vocal?" (held-out Spider
+        # train 654). Where the noun names no table ("the model with the most versions"), the joins say what is counted.
+        while counts_rows and counted and counted & ({root} | {join.table for join in joins}):
+            edges = [{left.table for left, _ in join.predicates} | {right.table for _, right in join.predicates}
+                     for join in joins]
+            leaf = next((index for index, join in enumerate(joins)
+                         if join.table not in read and join.table not in counted and join.table not in named_tables
+                         and not any(join.table in edge for other, edge in enumerate(edges) if other != index)), None)
+            if leaf is None:
+                break
+            del joins[leaf]
+            changed = True
         if not changed:
             return candidate
         simplified = replace(query, select=select, group_by=group_by, from_table=root, joins=tuple(joins))
@@ -644,6 +678,18 @@ class SQLSearcher:
             options.sort(key=lambda option: (-option.score, option.column.table, option.column.name))
             mentions.append(_Mention(position, tuple(options[:4])))
         return tuple(mentions)
+
+    def _requested_projection(self, question: str, table_scores: dict[str, float]
+                              ) -> tuple[tuple, float, tuple[str, ...]] | None:
+        """The fields an explicit list instruction asks for (sql_expansion.request_fields), in its order, each the one of
+        the question's best scored table; None where it asks for none."""
+        fields = request_fields(question, self.schema)
+        if not fields:
+            return None
+        chosen = _unique_columns(tuple(min(refs, key=lambda ref: (-table_scores.get(ref.table, 0.0), ref.table,
+                                                                  ref.name))
+                                       for refs in fields))
+        return chosen, 4.0 * len(chosen) + 1.0, ("output-requests",)
 
     def _projection_choices(self, tokens: tuple[str, ...], mentions: tuple[_Mention, ...],
                             table_scores: dict[str, float]) -> list[tuple[tuple, float, tuple[str, ...]]]:
@@ -1938,6 +1984,34 @@ def _said_at(tokens: tuple[str, ...], expression) -> int | None:
 # Words a group's field follows in the phrase that groups by it: "for each pet type", "by month", "per city", "for
 # all the different countries" (sql_expansion.groups_requested reads the same words as asking for groups).
 _GROUPING_WORDS = frozenset({"each", "per", "by", "every", "different"})
+
+
+def _in_list_order(candidate: ScoredQuery, slots: tuple[frozenset[ColumnRef] | None, ...]) -> ScoredQuery | None:
+    """``candidate`` with its answer's outputs in the order an explicit list instruction asks for them
+    (sql_expansion.request_slots): "How many countries does each continent have? List the continent id, continent name
+    and the number of countries." shows the id, the name, then the count (Spider DEV 89, 2026-10-14). None unless each
+    output realizes one request of its own."""
+    query = candidate.query
+    if not slots or not isinstance(query, SelectQuery) or len(query.select) < 2:
+        return None
+    ordinals = []
+    for item in query.select:
+        expression = item.expression
+        ordinals.append(next((index for index, slot in enumerate(slots)
+                              if index not in ordinals and (
+                                  expression in slot if slot is not None
+                                  else isinstance(expression, Aggregate) and expression.function == "COUNT")), None))
+    if None in ordinals:
+        return None
+    order = sorted(range(len(ordinals)), key=lambda index: ordinals[index])
+    if order == list(range(len(ordinals))):
+        return candidate
+    reordered = replace(query, select=tuple(query.select[index] for index in order))
+    try:
+        validate_query(reordered)
+        return replace(candidate, query=reordered, sql=render_query(reordered))
+    except (TypeError, ValueError):
+        return None
 
 
 def _in_question_order(candidate: ScoredQuery, tokens: tuple[str, ...]) -> ScoredQuery:

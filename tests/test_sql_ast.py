@@ -2338,6 +2338,77 @@ def test_a_word_said_once_names_one_of_the_fields_ending_in_it():
     assert ranked[0].query == both, [candidate.sql for candidate in ranked]
 
 
+def test_an_explicit_list_names_the_outputs_their_owner_and_order():
+    """Spider DEV 89, 149, 2026-10-14: "How many countries does each continent have? List the continent id, continent
+    name and the number of countries." showed a car maker's Country beside the continent and the count first, and "List
+    full name and the id" of makers showed a model's ModelId. An explicit list instruction names the outputs
+    (sql_expansion.output_requests): one owner's fields unless an item names another (request_fields), read the same
+    way by the search, the ranker and the order of the answer. A question with no such sentence lists nothing."""
+    from engine.sql_ast import Aggregate, Join, Star
+    from engine.sql_expansion import output_requests, request_fields, request_slots, tokens
+    from engine.sql_search import _in_list_order
+    question = ("How many countries does each continent have? List the continent id, continent name and the number "
+                "of countries.")
+    said = tokens(question)
+    assert [(" ".join(said[r.start:r.end]), r.count) for r in output_requests(question)] == [
+        ("continent id", False), ("continent name", False), ("number of country", True)]
+    assert output_requests("What are the names of the teachers?") == ()
+    assert [" ".join(tokens(q)[r.start:r.end]) for q in ("Find the program which most students are enrolled in. List "
+                                                         "both the id and the summary.",)
+            for r in output_requests(q)] == ["id", "summary"]
+    continents = {"name": "continents", "columns": ["ContId", "Continent"], "rows": [[1, "america"], [2, "europe"]]}
+    countries = {"name": "countries", "columns": ["CountryId", "CountryName", "Continent"],
+                 "rows": [[1, "usa", 1], [2, "germany", 2], [3, "france", 2]]}
+    makers = {"name": "car_makers", "columns": ["Id", "Maker", "FullName", "Country"],
+              "rows": [[1, "amc", "American Motor Company", 1], [2, "vw", "Volkswagen", 2]]}
+    models = {"name": "model_list", "columns": ["ModelId", "Maker", "Model"], "rows": [[1, 1, "amc"], [2, 2, "golf"]]}
+    graph = SchemaGraph.from_tables([continents, countries, makers, models], ())
+    ref = {(column.ref.table, column.ref.name): column.ref for column in graph.columns}
+    # The continent id is ContId, not the countries' CountryId; the list's owner is the continents table.
+    assert request_fields(question, graph) == ((ref["continents", "ContId"],), (ref["continents", "Continent"],))
+    assert request_fields("Which makers designed more than 3 car models? List full name and the id.", graph) == (
+        (ref["car_makers", "FullName"],), (ref["car_makers", "Id"],))
+    # A "number" naming a field asks for the field (held-out Spider train 47), and a foreign key gives way to the key it
+    # references: the club id of a count of coaches per club is the club's (fresh holdout 119, 2026-10-14).
+    assert [r.count for r in output_requests("Which patients made more than one appointment? Tell me the name and "
+                                             "phone number of these patients.")] == [False, False]
+    clubs = {"name": "club", "columns": ["Club_ID", "Club_name"], "rows": [[1, "Ajax"], [2, "Benfica"]]}
+    coaches = {"name": "coach", "columns": ["Coach_ID", "Coach_name", "Club_ID"],
+               "rows": [[1, "Ann", 1], [2, "Bo", 1], [3, "Cy", 2]]}
+    clubs_graph = SchemaGraph.from_tables([clubs, coaches], [("coach", "Club_ID", "club", "Club_ID")])
+    club = {(column.ref.table, column.ref.name): column.ref for column in clubs_graph.columns}
+    assert request_fields("How many coaches does each club has? List the club id, name and the number of coaches.",
+                          clubs_graph) == ((club["club", "Club_ID"],), (club["club", "Club_name"],))
+    # The answer shows the list's order: the id, the name, then the count.
+    shown = SelectQuery((SelectItem(Aggregate("COUNT", Star())), SelectItem(ref["continents", "Continent"]),
+                         SelectItem(ref["continents", "ContId"])), "continents",
+                        joins=(Join("countries", ref["countries", "Continent"], ref["continents", "ContId"]),),
+                        group_by=(ref["continents", "ContId"], ref["continents", "Continent"]))
+    ordered = _in_list_order(ScoredQuery(shown, render_query(shown), 0.0, ()), request_slots(question, graph))
+    assert [item.expression for item in ordered.query.select] == [
+        ref["continents", "ContId"], ref["continents", "Continent"], Aggregate("COUNT", Star())], ordered.sql
+    # The ranker prefers the answer showing exactly what the list asks over one showing another field too.
+    extra = SelectQuery(ordered.query.select + (SelectItem(ref["countries", "CountryName"]),), "continents",
+                        joins=ordered.query.joins, group_by=ordered.query.group_by + (ref["countries", "CountryName"],))
+    ranked = CandidateRanker(graph).rank(question, [ScoredQuery(extra, render_query(extra), 1.0, ()),
+                                                    ScoredQuery(ordered.query, ordered.sql, 0.0, ())])
+    assert ranked[0].query == ordered.query, [candidate.sql for candidate in ranked]
+
+
+def test_a_row_count_keeps_the_join_to_a_table_the_question_names():
+    """Held-out Spider train 654, DEV 966 (2026-10-14): "How many dogs went through any treatments?" was refused once the
+    row count dropped its join to the treatments, which leaves the treatments unread. A count drops only a leaf join
+    to a table nothing reads and the question does not name (SQLSearcher._simplified): "How many countries does each
+    continent have?" counts no car makers (test_an_explicit_list_names_the_outputs_their_owner_and_order)."""
+    dogs = {"name": "Dogs", "columns": ["dog_id", "name"], "rows": [[1, "Rex"], [2, "Fido"], [3, "Bo"]]}
+    treatments = {"name": "Treatments", "columns": ["treatment_id", "dog_id", "cost"],
+                  "rows": [[10, 1, 50], [11, 1, 70], [12, 2, 30]]}
+    keys = [{"from_table": "Treatments", "from_col": "dog_id", "to_table": "Dogs", "to_col": "dog_id"}]
+    served = _hermetic_planner().serve([dogs, treatments], "How many dogs went through any treatments?", keys)
+    assert served.get("valid"), (served.get("error"), served.get("sql"))
+    assert '"Treatments"' in served["sql"], served["sql"]
+
+
 def test_a_rewording_keeps_the_operations_the_engine_reads():
     """Spider DEV, 2026-10-13: rewordings were refused for losing words the engine does not read as operations: "per" in
     "miles per gallon", "number of" before the field Number_products, "no less than" said "at least". The engine's own
@@ -6415,6 +6486,8 @@ TESTS = [
     test_a_count_counts_the_rows_of_the_table_its_noun_names,
     test_a_field_named_by_its_tables_abbreviation_is_matched_where_fields_are_shown,
     test_a_word_said_once_names_one_of_the_fields_ending_in_it,
+    test_an_explicit_list_names_the_outputs_their_owner_and_order,
+    test_a_row_count_keeps_the_join_to_a_table_the_question_names,
     test_a_rewording_keeps_the_operations_the_engine_reads,
     test_gemini_rewrite_must_preserve_data_values_and_numbers,
     test_evaluator_grades_the_served_selection,

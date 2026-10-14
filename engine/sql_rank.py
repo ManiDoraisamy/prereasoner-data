@@ -20,7 +20,8 @@ from engine.sql_ast import (
 from engine.sql_dates import period_grouping
 from engine.sql_extrema import MAX_CUES, MIN_CUES
 from engine.sql_expansion import (
-    FUNCTION_WORDS, asked_cues, by_groups, field_numbers, share_cue, share_requested, words,
+    FUNCTION_WORDS, OutputRequest, asked_cues, by_groups, counted_noun_tables, field_numbers, output_requests,
+    request_fields, share_cue, share_requested, words,
 )
 from engine.sql_candidate import ScoredQuery
 from engine.sql_schema import SURROGATE_KEY_WORDS, SchemaGraph, canon, is_name_column, is_surrogate_key, name_words
@@ -57,6 +58,8 @@ class QuestionRoles:
     group_columns: frozenset[ColumnRef]
     counted_tables: frozenset[str]
     counted_heads: frozenset[str]   # the tables the noun right after the count word names: "how many countries"
+    output_requests: tuple[OutputRequest, ...]   # an explicit list instruction's outputs, in order
+    requested_fields: tuple[tuple[ColumnRef, ...], ...]   # the fields realizing each requested field (request_fields)
     counted_columns: frozenset[ColumnRef]
     aggregate_targets: Mapping[str, frozenset[ColumnRef]]
     projection_columns: frozenset[ColumnRef]
@@ -183,12 +186,16 @@ class CandidateRanker:
             features.append(("count_distinct_entity", 4.0 if distinct_identities else 0.0))
 
         shown_columns = [column for column in (*select_columns, *group_columns) if isinstance(column, ColumnRef)]
+        requested = {ref for refs in roles.requested_fields for ref in refs}
+        if roles.output_requests:
+            features.extend(self._output_request_features(select_columns, aggregates, roles))
+
         for column in group_columns:
             if (isinstance(column, ColumnRef) and is_surrogate_key(column.name) and column not in select_columns
                     and any(isinstance(other, ColumnRef) and other.table == column.table and other != column
                             for other in group_columns)):
                 continue    # an unlisted key beside its table's other groups tells their rows apart (entity_groups)
-            alignment = (self._group_alignment(column, roles) and not (
+            alignment = column in requested or (self._group_alignment(column, roles) and not (
                 column not in roles.group_columns and self._named_beside(column, shown_columns, roles))) or (
                 count_ranked and any(
                     selected == column or selected.table == column.table
@@ -198,7 +205,7 @@ class CandidateRanker:
             features.append((f"group_role:{_column_label(column)}", 2.5 if alignment else -4.0))
 
         for column in select_columns:
-            if column in roles.projection_columns:
+            if column in roles.projection_columns or column in requested:
                 value = 1.0
             elif self._group_alignment(column, roles) and not self._named_beside(column, shown_columns, roles):
                 value = 1.5
@@ -424,6 +431,27 @@ class CandidateRanker:
             set(roles.tokens[max(0, index - 3):index]) & _RELATIVE_WORDS
             and set(roles.tokens[index + 1:index + 6]) & _CONDITION_COMPARISONS for index in said) else "asked"
 
+    def _output_request_features(self, select_columns: Sequence[ColumnRef], aggregates: Sequence[Aggregate],
+                                 roles: QuestionRoles) -> list[tuple[str, float]]:
+        """An explicit list instruction names the outputs (sql_expansion.output_requests, request_fields): an answer
+        leaving a requested one out, or showing a field no request asks for, is not the answer asked. "List the continent
+        id, continent name and the number of countries" shows no car maker's Country, and "List full name and the id"
+        of makers shows their Id, not a model's ModelId (Spider DEV 89, 149, 2026-10-14)."""
+        features: list[tuple[str, float]] = []
+        if any(request.count for request in roles.output_requests) and not any(
+                aggregate.function == "COUNT" for aggregate in aggregates):
+            features.append(("output_request_missing:count", -4.0))
+        if not roles.requested_fields:
+            return features
+        requested = {ref for refs in roles.requested_fields for ref in refs}
+        for refs in roles.requested_fields:
+            if not set(refs) & set(select_columns):
+                features.append((f"output_request_missing:{_column_label(refs[0])}", -4.0))
+        for column in dict.fromkeys(select_columns):
+            if column not in requested:
+                features.append((f"output_unrequested:{_column_label(column)}", -4.0))
+        return features
+
     def _named_beside(self, column: ColumnRef | DatePart, shown: Sequence[ColumnRef], roles: QuestionRoles) -> bool:
         """Whether ``column``, which the question does not ask to show, stands beside a field it asks to show of the
         same entity (a table and the tables its keys link). The question asks for that entity by the field it names,
@@ -561,12 +589,7 @@ def analyze_question(question: str, schema: SchemaGraph) -> QuestionRoles:
 
     group_tables = _tables_in_windows(schema, tokens, group_windows)
     counted_tables = _tables_in_windows(schema, tokens, count_windows)
-    counted_heads = set()
-    for start, end in count_windows:
-        while start < end and tokens[start] in {"the", "a", "an", "different", "distinct", "unique"}:
-            start += 1
-        counted_heads.update(table for table in schema.tables
-                             if (name := _schema_tokens(table)) and tokens[start:start + len(name)] == name)
+    counted_heads = counted_noun_tables(tokens, schema)
     group_columns = _columns_in_windows(schema, tokens, group_windows)
     counted_columns = _columns_in_windows(schema, tokens, count_windows)
 
@@ -616,6 +639,8 @@ def analyze_question(question: str, schema: SchemaGraph) -> QuestionRoles:
         group_columns=frozenset(group_columns),
         counted_tables=frozenset(counted_tables),
         counted_heads=frozenset(counted_heads),
+        output_requests=output_requests(question, schema),
+        requested_fields=request_fields(question, schema),
         counted_columns=frozenset(counted_columns),
         aggregate_targets=aggregate_targets,
         projection_columns=frozenset(projection_columns),

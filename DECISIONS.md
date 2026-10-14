@@ -3480,3 +3480,32 @@ Three ranking and projection families of the census's wrong answers with a stric
 
 Measured on Spider (`spider/results/RESULTS.md`, 2026-10-13): DEV 529 → 535 strict, held out 357 → 358, the fresh
 holdout 354 → 355, Gemini on 616 → 622, with no loss on any set and fewer wrong answers on each.
+
+## An explicit list names the outputs, their owner and order; a row count drops joins that only multiply it (2026-10-14)
+
+The October 14 review asked for shared output bindings (each requested field's owner, occurrence and output position,
+kept through construction and checking) and count-population bindings (count the counted entity, not joined rows).
+This is their first slice, built on the existing owners:
+
+- `sql_expansion.output_requests` reads a sentence after the first that opens with a list verb ("List the continent
+  id, continent name and the number of countries."): its items in order, an item a count when it begins with one ("the
+  number of countries", "how many") whose "number" names no field (`field_numbers`: "the phone number" is Phone).
+  `request_fields` realizes each field item by the fields whose own name says it before those that need their table's
+  word or the display field's "name"; the items are one owner's unless an item names another, and a foreign key gives
+  way to the key it references ("the club id" of a count of coaches per club is the club's Club_ID). `request_slots`
+  is the order.
+- That one reading is consumed by construction (the search's requested projection and its group-by,
+  `SQLExpansion.requested_fields` first among a table's projection options), ranking
+  (`CandidateRanker._output_request_features`: a requested field or count left out, or a field no item asks for, -4;
+  a requested field counts as asked and as the asked group), the answer's order (`sql_search._in_list_order`) and the
+  completeness check (`query_contract._select_violations` reads a label a realized item covers as read).
+- `sql_expansion.counted_noun_tables` (the table the noun after "how many", "number of" or "count of" names) is the
+  one reading of the counted population for the ranker (counted_heads) and the search: `SQLSearcher._simplified`
+  drops from a row count a leaf join to a table nothing reads, nothing counts and the question does not name, which
+  only multiplies the counted rows ("How many countries does each continent have?" counts no car makers). A table the
+  question names keeps its join: "How many dogs went through any treatments?" counts dogs that have one.
+
+Measured on Spider (`spider/results/RESULTS.md`, 2026-10-14): DEV 535 → 539 strict, held out 358 → 359, the fresh
+holdout 355 → 358, Gemini on 622 → 626, with no loss on any set. These remain bounded repairs: a count over a join that
+multiplies a NAMED table's rows is still COUNT(*), not a distinct count of the counted entity (DEV 966), and a count
+threshold's noun ("more than 3 car models") is not yet a counted-population reading (DEV 149).
