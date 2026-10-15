@@ -1459,18 +1459,49 @@ class OutputRequest:
 # The verbs that open a sentence listing the outputs ("List the continent id, continent name and the number of
 # countries."), the words before the list that ask nothing, and the words that end it.
 _LIST_VERBS = frozenset({"list", "show", "give", "return", "report", "display", "tell", "provide", "output"})
-_LIST_LEADS = frozenset({"only", "me", "us", "both", "the", "a", "an", "all", "please", "just", "also", "each", "every"})
+_LIST_LEADS = frozenset({"only", "me", "us", "both", "the", "a", "an", "all", "please", "just", "also", "each", "every",
+                         "his", "her", "their", "its"})
 _LIST_ENDS = frozenset({"for", "who", "that", "which", "whose", "where", "when", "with", "in", "from", "by", "order",
                         "ordered", "sort", "sorted", "rank", "ranked", "if", "than"})
 _LIST_COUNTS = frozenset({"number", "count", "many", "total"})
+
+
+# The words before a sentence's command that ask nothing ("Please list", "and show").
+_INSTRUCTION_LEADS = frozenset({"please", "only", "also", "and", "then", "now"})
+
+
+def instruction_starts(question: str) -> tuple[int, ...]:
+    """Where in ``tokens(question)`` an instruction may open: each sentence, and a clause after a comma that a list verb
+    opens ("For each continent, list its id, name, ...", "..., and return the name, location and district of each
+    shop")."""
+    spans = word_spans(question)
+    said = tokens(question)
+    if len(spans) != len(said):
+        return ()
+    gaps = [question[spans[index - 1][1]:spans[index][0]] if index else "" for index in range(len(spans))]
+    starts = [0]
+    for index in range(1, len(said)):
+        if re.search(r"[.?!;]", gaps[index]):
+            starts.append(index)
+        elif "," in gaps[index]:
+            verb = index
+            while verb < len(said) and said[verb] in _INSTRUCTION_LEADS:
+                verb += 1
+            if (verb < len(said) and said[verb] in _LIST_VERBS
+                    and not re.search(r"[.?!;,]", "".join(gaps[index + 1:verb + 1]))):
+                starts.append(index)
+    return tuple(starts)
 
 
 def output_requests(question: str, schema: Any = None) -> tuple[OutputRequest, ...]:
     """The outputs a sentence after the first asks for by an instruction, in order: "How many countries does each
     continent have? List the continent id, continent name and the number of countries." asks for the continent id, the
     continent name and the count, and "Which makers designed more than 3 car models? List full name and the id." for
-    the full name and the id (Spider DEV 89, 149). The search builds that projection and the ranker reads whether an
-    answer shows exactly those, one reading for both. Empty where no such sentence lists them.
+    the full name and the id (Spider DEV 89, 149). So does a clause a list verb opens after a comma: "For each
+    continent, list its id, name, and how many countries it has?", "Sort all the shops by number products ..., and
+    return the name, location and district of each shop." (Spider DEV 90, 274; instruction_starts). The search builds
+    that projection and the ranker reads whether an answer shows exactly those, one reading for both. Empty where no
+    such sentence lists them.
 
     An item counts when it begins with the count ("the number of countries", "how many"), unless its "number" names
     one of ``schema``'s fields (field_numbers): "Tell me the name and phone number of these patients" asks for the
@@ -1481,10 +1512,9 @@ def output_requests(question: str, schema: Any = None) -> tuple[OutputRequest, .
         return ()
     numbers = field_numbers(question, (column.ref for column in schema.columns)) if schema is not None else frozenset()
     gaps = [question[spans[index - 1][1]:spans[index][0]] if index else "" for index in range(len(spans))]
-    sentences = [index for index in range(1, len(said)) if re.search(r"[.?!;]", gaps[index])]
-    for start in [0, *sentences]:
+    for start in instruction_starts(question):
         index = start
-        while index < len(said) and said[index] in {"please", "only", "also", "and", "now"}:
+        while index < len(said) and said[index] in _INSTRUCTION_LEADS:
             index += 1
         # The opening sentence lists outputs when it asks for two or more, coordinated, by a command or "what is/are":
         # "What are the names, themes, and number of singers for every concert?", "the names and areas of countries"
@@ -1528,18 +1558,17 @@ def output_requests(question: str, schema: Any = None) -> tuple[OutputRequest, .
 def command_positions(question: str) -> frozenset[int]:
     """The positions in ``tokens(question)`` of the verb a sentence opens with ("Show", "Please list"), which the tagger
     reads as a verb: the command, naming no rows. "Please show the different record companies" asks for no show of an
-    orchestra database's show table (Spider DEV 840, 846, 848, 2026-10-14: every reading joined the shows)."""
+    orchestra database's show table (Spider DEV 840, 846, 848, 2026-10-14: every reading joined the shows), and "For
+    each continent, list its id ..." no model_list (instruction_starts)."""
     from engine.closed_class import action_words
     spans = word_spans(question)
     said = tokens(question)
     if len(spans) != len(said):
         return frozenset()
     verbs = {canon(word) for word in action_words(question)}
-    starts = [0] + [index for index in range(1, len(said))
-                    if re.search(r"[.?!;]", question[spans[index - 1][1]:spans[index][0]])]
     found = set()
-    for index in starts:
-        while index < len(said) and said[index] in {"please", "now", "also", "and"}:
+    for index in instruction_starts(question):
+        while index < len(said) and said[index] in _INSTRUCTION_LEADS:
             index += 1
         if index < len(said) and said[index] in verbs:
             found.add(index)
@@ -1618,6 +1647,7 @@ def request_fields(question: str, schema: Any) -> tuple[tuple[ColumnRef, ...], .
     # codes" of templates is Templates.Template_Type_Code; Spider DEV 319, 327, 2026-10-14).
     candidates = []
     deciding = []
+    every = []
     for request in requests:
         realized = [(level, column.ref) for column in schema.columns
                     if (level := realizes_request(column.ref, said, request, schema, numbers))]
@@ -1625,8 +1655,22 @@ def request_fields(question: str, schema: Any) -> tuple[tuple[ColumnRef, ...], .
         options = [(level, ref) for level, ref in realized if level >= floor]
         refs = {ref for _, ref in options}
         candidates.append(options)
+        every.append(realized)
         deciding.append([(level, ref) for level, ref in options if references.get(ref) not in refs])
-    if not candidates or not all(candidates):
+    if not candidates or not all(every):
+        return ()
+    # A possessive opening the items names their owner, the one table named before them, where its fields realize
+    # every item: "For each continent, list its id, name, and how many countries it has?" is the continent's ContId
+    # and Continent, not a country's CountryId and CountryName (Spider DEV 90, 2026-10-15).
+    before = said[:listed[0].start]
+    antecedent = [table for table in schema.tables
+                  if _says_in_order(before, [canon(word) for word in name_words(table)])]
+    if said[listed[0].start - 1:listed[0].start] in (("its",), ("their",), ("his",), ("her",)) and len(
+            antecedent) == 1:
+        owned = [[(level, ref) for level, ref in realized if ref.table == antecedent[0]] for realized in every]
+        if all(owned):
+            candidates = deciding = owned
+    if not all(candidates):
         return ()
     coverage = Counter(table for options in deciding for table in {ref.table for _, ref in options})
     # The table the list names right after its items owns them where the items alone tie: "the names and descriptions
@@ -1645,9 +1689,7 @@ def request_fields(question: str, schema: Any) -> tuple[tuple[ColumnRef, ...], .
         # in its condition (fresh holdout 654). Where it names none, the items read no list: "the first name and last
         # name for all the instructors" over students and faculty (held-out Spider train 529, 2026-10-14).
         tied = [table for table, count in ranked if count == ranked[0][1]]
-        before = said[:listed[0].start]
-        named = [table for table in tied
-                 if _says_in_order(before, [canon(word) for word in name_words(table)])]
+        named = [table for table in tied if table in antecedent]
         if len(named) != 1:
             return ()
         owner = named[0]
@@ -1684,7 +1726,9 @@ def request_slots(question: str, schema: Any) -> tuple[frozenset[ColumnRef] | No
 
 def _output_request(said: tuple[str, ...], start: int, end: int,
                     numbers: frozenset[int] = frozenset()) -> OutputRequest | None:
-    while start < end and said[start] in _LIST_LEADS | {"and", "as", "well", "along", "together", "with"}:
+    # "List his or her role, street, city and state." asks for the role (Spider DEV 970, 2026-10-15).
+    while start < end and (said[start] in _LIST_LEADS | {"and", "as", "well", "along", "together", "with"}
+                           or (said[start] == "or" and start > 0 and said[start - 1] in {"his", "her"})):
         start += 1
     if start >= end:
         return None

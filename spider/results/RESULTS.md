@@ -28,6 +28,30 @@ Artifacts: `%LOCALAPPDATA%/Temp/prereasoner-spider-review-20261013/`, tags `revi
 Incomplete intermediate runs are excluded. The review hardens ranking-number roles, output counts (preserving stored-count SUM),
 and table-owned full-name construction; it does not introduce another planner or model bundle.
 
+## A list verb after a comma lists the outputs; a field compared only is not the answer: 555 → 562 strict, Gemini on 645 → 651, held out 361 → 364, fresh holdout 365 → 367 (2026-10-15)
+
+Same contract as below. Runs `pkg17b-dirty`, `pkg17b-gemini-dirty`, `heldout-pkg17b-dirty` and `holdout2-pkg17b-dirty`
+are the change of the entry below with this change, against its `pkg16d` runs. The change is `DECISIONS.md` "A list
+verb after a comma lists the outputs; a field compared only is not the answer".
+
+- DEV, engine alone: 555 → **562 strict**; 7 wins (90, 274, 587, 621, 622, 812, 970), no loss; wrong answers 175 → 172;
+  8 queries changed.
+- Held out: 361 → **364 strict**; 3 wins (437, 894, 945), no loss; wrong answers 233 → 232; 4 queries changed.
+- Fresh holdout: 365 → **367 strict**; 2 wins (34, 841), no loss; wrong answers 238 → 236; 5 queries changed.
+- Gemini on: 645 → 651; 7 wins, 1 loss (972: the engine now answers it, showing the state beside the listed fields,
+  where the rewording had answered it); wrong answers 234 → 231; 9 queries changed.
+- Fresh holdout 597 ("For each party, return the name of the party and the number of delegates from that party.") was
+  lenient and is wrong: the list is read and the answer groups by the party's name, merging two parties named
+  Democratic, where Spider's gold groups by the party's key. No other answer across the three sets groups an entity by a
+  field its rows share.
+- An earlier round (`pkg17`) also showed a product as the name of orders ("orders with Amount over 1000") and read "For
+  each continent, list its id, name, ..." as the countries'; both are registered regressions.
+- The correct-binding experiment rerun on the entry below (gold select lists through the same reading, everything
+  else production): DEV 555 → 592 strict with gold outputs; nine of its 40 wins are grouped answers Spider lists count
+  first, the order a recorded product choice. Its scripts are evaluation-only and not in the repository.
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_{pkg17b,pkg17b-gemini,heldout-pkg17b,holdout2-pkg17b}-dirty.json`.
+
 ## The opening sentence lists its coordinated outputs: 544 → 555 strict, Gemini on 632 → 645, held out 359 → 361, fresh holdout 359 → 365 (2026-10-14)
 
 Same contract as below. Runs `pkg16d-dirty`, `pkg16d-gemini-dirty`, `heldout-pkg16d-dirty` and `holdout2-pkg16d-dirty` are

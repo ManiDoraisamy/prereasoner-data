@@ -2579,6 +2579,104 @@ def test_the_opening_sentence_lists_its_coordinated_outputs():
     assert request_fields("What are the first name and last name of those who advise a student?", campus) == ()
 
 
+def test_an_ordering_word_said_with_a_fields_name_is_that_field():
+    """Spider DEV 621, 622 (2026-10-15): "What is the weekly rank for the episode 'A Love of a Lifetime'?" was refused:
+    "rank" ended the words that name the outputs, as an ordering does, and every reading showed every field. An ordering
+    word said with the rest of a field's name is that field. Contrast: an ordering word that is not a field's still
+    orders the rows by the field named after it."""
+    series = {"name": "TV_series", "columns": ["id", "Episode", "Weekly_Rank", "Rating"],
+              "rows": [[1, "A Love of a Lifetime", 43, 5.8], [2, "Friendly Skies", 50, 5.3], [3, "Blowback", 61, 4.4]]}
+    served = _hermetic_planner().serve([series], "What is the weekly rank for the episode 'A Love of a Lifetime'?", [])
+    assert served.get("valid"), (served.get("error"), served.get("sql"))
+    assert [list(row) for row in served["result"]["rows"]] == [[43]], served["sql"]
+    served = _hermetic_planner().serve([series], "What is Weekly Rank of TV series with Episode 'Blowback'?", [])
+    assert [list(row) for row in served["result"]["rows"]] == [[61]], served["sql"]
+    # Contrast: an ordering word apart from the field still orders the rows by it, and shows what the list names.
+    served = _hermetic_planner().serve([series], "List the episodes in descending order of weekly rank.", [])
+    assert served.get("valid") and served["sql"] == (
+        'SELECT "TV_series"."Episode" FROM "TV_series" ORDER BY "TV_series"."Weekly_Rank" DESC'), served.get("sql")
+
+
+def test_an_answer_showing_only_its_compared_field_shows_the_rows_asked_for():
+    """Spider DEV 812, 587 (2026-10-15): "What are the cities whose population is between 160000 and 900000?" listed the
+    populations and "List all cartoon directed by 'Ben Jones'" the director, in every reading built. Where an answer
+    shows only fields of a table the question names that it says only to filter on (sql_rank.filter_only), the search
+    adds the listing of that table's display field, and the ranker prefers it. Contrast: a field the question asks for
+    as well as compares ("the populations of cities whose population ...") is shown."""
+    cities = {"name": "city", "columns": ["ID", "Name", "Population"],
+              "rows": [[1, "Kabul", 1780000], [2, "Qandahar", 237500], [3, "Herat", 186800], [4, "Haarlem", 148772]]}
+    served = _hermetic_planner().serve([cities], "What are the cities whose population is between 160000 and 900000?",
+                                       [])
+    assert served.get("valid"), (served.get("error"), served.get("sql"))
+    assert sorted(row[0] for row in served["result"]["rows"]) == ["Herat", "Qandahar"], served["sql"]
+    cartoons = {"name": "Cartoon", "columns": ["id", "Title", "Directed_by"],
+                "rows": [[1, "The Rise of the Blue Beetle!", "Ben Jones"], [2, "Terror on Dinosaur Island!", "Brandon"],
+                         [3, "Day of the Dark Knight!", "Ben Jones"]]}
+    served = _hermetic_planner().serve([cartoons], 'List all cartoon directed by "Ben Jones".', [])
+    assert served.get("valid"), (served.get("error"), served.get("sql"))
+    assert sorted(row[0] for row in served["result"]["rows"]) == [
+        "Day of the Dark Knight!", "The Rise of the Blue Beetle!"], served["sql"]
+    # Contrast: the populations are asked for before the condition compares them.
+    from engine.sql_expansion import tokens
+    from engine.sql_rank import filter_only
+    population = ColumnRef("city", "Population", SQLType.INTEGER)
+    query = SelectQuery((SelectItem(population),), "city", where=Comparison(population, ">", Literal(160000)))
+    assert filter_only(population, query, tokens("What are the cities whose population is above 160000?"))
+    assert not filter_only(population, query, tokens("What are the populations of cities whose population is above "
+                                                     "160000?"))
+    served = _hermetic_planner().serve([cities], "What are the populations of cities whose population is above 160000?",
+                                       [])
+    assert served.get("valid") and sorted(row[0] for row in served["result"]["rows"]) == [186800, 237500, 1780000], (
+        served.get("sql"))
+
+
+def test_a_list_verb_after_a_comma_lists_the_outputs():
+    """Spider DEV 274, 970 (2026-10-15): "Sort all the shops by number products in descending order, and return the
+    name, location and district of each shop." was refused, every reading showing every field, and "List his or her
+    role, street, city and state." listed the fields in no order asked. A clause a list verb opens after a comma lists
+    the outputs as a sentence does (sql_expansion.instruction_starts), and a possessive before an item asks nothing.
+    Negative: a comma before no list verb opens no list."""
+    from engine.sql_expansion import command_positions, output_requests, tokens
+
+    def items(question):
+        said = tokens(question)
+        return [(" ".join(said[r.start:r.end]), r.count) for r in output_requests(question)]
+
+    sort = "Sort all the shops by number products in descending order, and return the name, location and district of "
+    assert items(sort + "each shop.") == [("name", False), ("location", False), ("district", False)]
+    assert items("For each language, list the number of TV Channels that use it.") == [("number of tv channel", True)]
+    assert items("Which professionals live in a city containing the substring 'West'? List his or her role, street, "
+                 "city and state.") == [("role", False), ("street", False), ("city", False), ("state", False)]
+    assert items("Which dogs are of the rarest breed? Show their names and treatment dates.") == [
+        ("name", False), ("treatment date", False)]
+    # The list verb after the comma is a command and names no table ("list" is not model_list), and the possessive
+    # opening the items names their owner, the continent named before them (DEV 90), not the countries whose fields
+    # say "id" and "name" more nearly. Without a possessive the countries own them.
+    from engine.sql_expansion import instruction_starts, request_fields
+    question = "For each continent, list its id, name, and how many countries it has?"
+    assert instruction_starts(question) == (0, 3) and 3 in command_positions(question)
+    countries = {"name": "countries", "columns": ["CountryId", "CountryName", "Continent"],
+                 "rows": [[1, "France", 10], [2, "Germany", 10]]}
+    continents = {"name": "continents", "columns": ["ContId", "Continent"], "rows": [[10, "Europe"]]}
+    world = SchemaGraph.from_tables([countries, continents], [("countries", "Continent", "continents", "ContId")])
+    place = {(column.ref.table, column.ref.name): column.ref for column in world.columns}
+    assert request_fields(question, world) == ((place["continents", "ContId"],), (place["continents", "Continent"],))
+    assert request_fields("For each continent, list the id and name of the countries.", world) == (
+        (place["countries", "CountryId"],), (place["countries", "CountryName"],))
+    # Negative: a comma that no list verb follows opens nothing.
+    assert items("For each shop, how many employees are there?") == []
+    assert instruction_starts("For each shop, how many employees are there?") == (0,)
+    shops = {"name": "shop", "columns": ["Shop_ID", "Name", "Location", "District", "Number_products"],
+             "rows": [[1, "FC Haka", "Valkeakoski", "Tehtaan kentta", 3516],
+                      [2, "HJK", "Helsinki", "Finnair Stadium", 10770],
+                      [3, "FC Inter", "Turku", "Veritas Stadion", 9372]]}
+    served = _hermetic_planner().serve([shops], sort + "each shop.", [])
+    assert served.get("valid"), (served.get("error"), served.get("sql"))
+    assert [list(row) for row in served["result"]["rows"]] == [
+        ["HJK", "Helsinki", "Finnair Stadium"], ["FC Inter", "Turku", "Veritas Stadion"],
+        ["FC Haka", "Valkeakoski", "Tehtaan kentta"]], served["sql"]
+
+
 def test_a_rewording_keeps_the_operations_the_engine_reads():
     """Spider DEV, 2026-10-13: rewordings were refused for losing words the engine does not read as operations: "per" in
     "miles per gallon", "number of" before the field Number_products, "no less than" said "at least". The engine's own
@@ -6663,6 +6761,9 @@ TESTS = [
     test_a_relationship_self_join_needs_a_word_besides_its_parent_table,
     test_a_superlative_over_the_shown_field_is_one_value,
     test_the_opening_sentence_lists_its_coordinated_outputs,
+    test_an_ordering_word_said_with_a_fields_name_is_that_field,
+    test_an_answer_showing_only_its_compared_field_shows_the_rows_asked_for,
+    test_a_list_verb_after_a_comma_lists_the_outputs,
     test_a_rewording_keeps_the_operations_the_engine_reads,
     test_gemini_rewrite_must_preserve_data_values_and_numbers,
     test_evaluator_grades_the_served_selection,

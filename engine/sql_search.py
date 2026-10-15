@@ -180,10 +180,21 @@ class SQLSearcher:
         # showed every field).
         opening = 1 if tokens[:1] == ("please",) else 0
         commanded = opening + 1 if tokens[opening:opening + 1] in {("sort",), ("order",), ("rank",)} else 0
+        # An ordering word said with the rest of a field's name is that field: "What is the weekly rank for the
+        # episode ..." asks for Weekly_Rank and orders nothing (Spider DEV 621, 622, 2026-10-15: every reading showed
+        # every field).
+        field_words = {mention.position for mention in mentions for option in mention.options
+                       if tokens[mention.position] in {"order", "sort", "rank"}
+                       and len(words := [canon(word) for word in name_words(option.column.name)]) > 1
+                       and tokens[mention.position] in words
+                       and {*tokens[max(0, mention.position - 1):mention.position],
+                            *tokens[mention.position + 1:mention.position + 2]}
+                       & (set(words) - {tokens[mention.position]})}
         clause_boundary = next((i for i, token in enumerate(tokens)
-                                if i >= commanded and (token in {"where", "with", "whose", "having", "from", "for",
-                                                                 "order", "ordered", "sort", "sorted", "rank", "ranked"}
-                                                       or commanded and token == "by")),
+                                if i >= commanded and i not in field_words
+                                and (token in {"where", "with", "whose", "having", "from", "for",
+                                               "order", "ordered", "sort", "sorted", "rank", "ranked"}
+                                     or commanded and token == "by")),
                                len(tokens))
         # A column word that introduces a stated value names the compared column, not one to list: "singer
         # names in concerts in year 2014", "the airline with abbreviation 'UAL'" (Spider DEV, 2026-10-02: 30
@@ -409,6 +420,8 @@ class SQLSearcher:
         # 4500000" lists the studios (held-out Spider train 746, 750, 2026-10-12: only readings showing the average
         # were built). The ranker prefers the twin where the question says the aggregate only in its condition.
         pool = _merge_candidates(pool, [twin for candidate in pool if (twin := _condition_twin(candidate))])
+        pool = _merge_candidates(pool, [twin for candidate in pool
+                                        if (twin := self._display_twin(candidate, tokens, named_tables))])
         if not rank_candidates:
             return _rows_named(pool[:self.max_candidates])
         from engine.sql_rank import CandidateRanker
@@ -416,6 +429,37 @@ class SQLSearcher:
             question, pool
         )[:self.max_candidates]
         return _rows_named(ranked)
+
+    def _display_twin(self, candidate: ScoredQuery, tokens: tuple[str, ...],
+                      named: set[str]) -> ScoredQuery | None:
+        """``candidate`` showing its rows by the field that names them where it lists only fields of a table the
+        question names that the question says only to filter on (sql_rank.filter_only): "What are the cities whose
+        population is between 160000 and 900000?" lists the cities' names, "List all cartoon directed by 'Ben Jones'"
+        the cartoons' titles (Spider DEV 812, 587, 2026-10-15: each reading showed the field compared). None
+        otherwise."""
+        from engine.sql_rank import filter_only
+        query = candidate.query
+        if (not isinstance(query, SelectQuery) or not query.select or query.group_by or query.from_alias
+                or any(join.alias for join in query.joins)
+                or not all(isinstance(item.expression, ColumnRef) for item in query.select)):
+            return None
+        tables = {item.expression.table for item in query.select}
+        if len(tables) != 1 or not tables <= named:
+            return None
+        if not all(filter_only(item.expression, query, tokens) for item in query.select):
+            return None
+        # Only a field naming the rows shows them: "orders with Amount over 1000" keeps its amounts, a product being no
+        # order's name.
+        displays = self.schema.display_columns(next(iter(tables)))
+        if (not displays or not is_name_column(displays[0].name)
+                or any(item.expression == displays[0] for item in query.select)):
+            return None
+        twin = replace(query, select=(SelectItem(displays[0]),))
+        try:
+            validate_query(twin)
+        except (TypeError, ValueError):
+            return None
+        return replace(candidate, query=twin, sql=render_query(twin), evidence=candidate.evidence + ("display-twin",))
 
     def _unasked_copies(self, tokens: tuple[str, ...], question: str) -> frozenset[str]:
         """The tables the search leaves out as copies of another's layout (`SchemaGraph.layout_copies`): each

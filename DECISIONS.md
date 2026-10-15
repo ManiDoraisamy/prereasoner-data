@@ -3193,7 +3193,7 @@ Recovering correct plans the gate refused or the ranker passed over:
 - A grouped answer that names a group as a field lists its fields in the question's order
   (`sql_search._in_question_order`); a joined listing whose join repeats its rows gets a DISTINCT twin, preferred by
   the ranker (`sql_rank.repeats_shown_rows`); a field the question names only to filter on is not shown
-  (`CandidateRanker._filter_only`).
+  (`sql_rank.filter_only`).
 - Groups list each value once, so "different" is read by a grouped answer with counts beside its groups; a count of a
   group's own distinct values (1 in every group) is refused, a key its joins equate with the group's included.
 
@@ -3254,7 +3254,7 @@ Construction:
 Output requirements: a field the question names only in the phrase that orders the rows ("the first name of students
 in the descending order of age"), or a field named as its table where the question says that name only after "of", as
 the owner of the fields it asks for ("the carriers of devices"), is not shown (`CandidateRanker._order_only`,
-`_owner_only`, −8 each, as `_filter_only`).
+`_owner_only`, −8 each, as `sql_rank.filter_only`).
 
 Correctness: a filter moves into a HAVING ("HAVING AVG(Cylinders) = 4" for "the average weight of the cars with 4
 cylinders") only where the operand's name follows its aggregate word within three words
@@ -3288,7 +3288,7 @@ Readings the completeness check was missing (`query_contract`):
 - A question opening "how many" or "count" is answered by a computed aggregate: "how many friends does Kyle have"
   listed the friends.
 
-Output requirements (`sql_rank.CandidateRanker`, −8 each, as the existing `_filter_only`):
+Output requirements (`sql_rank.CandidateRanker`, −8 each, as the existing `sql_rank.filter_only`):
 
 - A field the question compares before naming it ("projects that require between 100 and 300 hours", "who do not use
   Cash as payment method") or picks the row by after "with the highest" ("the account with the highest checking
@@ -3559,3 +3559,34 @@ Measured on Spider (`spider/results/RESULTS.md`, 2026-10-14): DEV 544 → 555 st
 Two losses remain: held-out 113 ("the id, the date of account opened, ...", read right, lost to a simplified plan that
 keeps a fuller draft's score) and Gemini DEV 417 (the answer follows the question's order, the opening year first;
 Spider's gold lists the staff number first).
+
+## A list verb after a comma lists the outputs; a field compared only is not the answer (2026-10-15)
+
+The correct-binding experiment rerun on the package above (gold select lists through the same reading, everything else
+production) still served 37 more DEV answers (555 → 592). Of its 40 wins, nine are grouped answers Spider lists count
+first, a recorded product choice (`sql_search._in_question_order`); this change reads four families of the rest:
+
+- A clause a list verb opens after a comma lists the outputs as a sentence does (`sql_expansion.instruction_starts`,
+  shared by `output_requests` and `command_positions`): "Sort all the shops by number products in descending order,
+  and return the name, location and district of each shop." The verb is the command and names no table ("For each
+  continent, list its id ..." joins no model_list).
+- A possessive before an item asks nothing ("List his or her role, street, city and state."), and one opening the items
+  names their owner, the one table named before them, where its fields realize every item (`request_fields`): "For each
+  continent, list its id, name, and how many countries it has?" is the continent's ContId and Continent.
+- An ordering word said with the rest of a field's name is that field, not an ordering: "What is the weekly rank for
+  the episode ..." shows Weekly_Rank, where "rank" had ended the words naming the outputs.
+- Where an answer shows only fields of a table the question names that it says only to filter on (`sql_rank.filter_only`,
+  the ranker's existing −8, now one module function both read), the search adds the listing of that table's field
+  naming its rows (`SQLSearcher._display_twin`): "What are the cities whose population is between 160000 and 900000?"
+  lists the cities' names, "List all cartoon directed by 'Ben Jones'" their titles. Only a name field shows the rows:
+  "orders with Amount over 1000" keeps its amounts.
+
+Measured on Spider (`spider/results/RESULTS.md`, 2026-10-15): DEV 555 → 562 strict, held out
+361 → 364, the fresh holdout 365 → 367, Gemini on 645 → 651.
+
+- Fresh holdout 597 ("For each party, return the name of the party and the number of delegates from that party.") was
+  lenient and is wrong: the list is read and the answer groups by the party's name, merging two parties named
+  Democratic, where Spider's gold groups by the party's key. No other answer across the three sets groups an entity by a
+  field its rows share.
+- An earlier round (`pkg17`) also showed a product as the name of orders ("orders with Amount over 1000") and read "For
+  each continent, list its id, name, ..." as the countries'; both are registered regressions.

@@ -216,7 +216,7 @@ class CandidateRanker:
             features.append((f"projection_role:{_column_label(column)}", value))
             # A field the question names only to filter on is not asked for: "the name and results of the battles when
             # the bulgarian commander is not 'Boril'" showed every row's commander, Boril excluded (Spider DEV 497).
-            if self._filter_only(column, query, roles):
+            if filter_only(column, query, roles.tokens):
                 features.append((f"filter_only_output:{_column_label(column)}", -8.0))
             # So is one it names only to order the rows by: "the first name of students in the descending order of
             # age" showed each age beside the name (held-out Spider train 736, 2026-10-12).
@@ -352,30 +352,6 @@ class CandidateRanker:
 
         features.extend(self._model_features(query))
         return tuple(features)
-
-    def _filter_only(self, column: ColumnRef, query: SelectQuery, roles: QuestionRoles) -> bool:
-        """Whether ``query`` compares ``column`` with a value and the question says the field only where it says
-        that comparison: the value, or a comparison word, follows each place it names the field."""
-        values = [comparison.right for comparison in _comparisons(query.where)
-                  if comparison.left == column and isinstance(comparison.right, Literal)]
-        if not values:
-            return False
-        name = [canon(word) for word in name_words(column.name)]
-        said = [index for index, token in enumerate(roles.tokens) if name and token == name[-1]]
-        value_words = {canon(word) for value in values for word in words(str(value.value))}
-        comparing = {"is", "not", "named", "called", "than", "over", "under", "above", "below", "equal", "between",
-                     "more", "less", "greater", "smaller", "after", "before"}
-        # "the name and population of cities that have a population between ..." asks for the population once. The
-        # comparison may come first: "projects that require between 100 and 300 hours", "customers who do not use Cash
-        # as payment method" (held-out Spider train 396, 420, 2026-10-12: each showed the field compared).
-        def compared(index):
-            start = index - len(name) + 1
-            before = set(roles.tokens[max(0, start - 4):max(0, start)])
-            return bool(set(roles.tokens[index + 1:index + 5]) & value_words
-                        or (index + 1 < len(roles.tokens) and roles.tokens[index + 1] in comparing)
-                        or before & value_words or before & {"between", "than"})
-
-        return bool(said) and all(compared(index) for index in said)
 
     @staticmethod
     def _owner_only(column: ColumnRef, roles: QuestionRoles) -> bool:
@@ -750,6 +726,34 @@ def _tables_in_windows(schema: SchemaGraph, tokens: tuple[str, ...], windows: Se
             if name_tokens and name_tokens <= window:
                 out.add(table)
     return out
+
+
+def filter_only(column: ColumnRef, query: SelectQuery, tokens: Sequence[str]) -> bool:
+    """Whether ``query`` compares ``column`` with a value and the question says the field only where it says that
+    comparison: the value, or a comparison word, follows each place it names the field. The ranker does not prefer
+    showing such a field, and the search adds a listing showing the rows' display field beside one that shows only such
+    fields (sql_search._display_twin)."""
+    values = [comparison.right for comparison in _comparisons(query.where)
+              if comparison.left == column and isinstance(comparison.right, Literal)]
+    if not values:
+        return False
+    name = [canon(word) for word in name_words(column.name)]
+    said = [index for index, token in enumerate(tokens) if name and token == name[-1]]
+    value_words = {canon(word) for value in values for word in words(str(value.value))}
+    comparing = {"is", "not", "named", "called", "than", "over", "under", "above", "below", "equal", "between",
+                 "more", "less", "greater", "smaller", "after", "before"}
+
+    # "the name and population of cities that have a population between ..." asks for the population once. The
+    # comparison may come first: "projects that require between 100 and 300 hours", "customers who do not use Cash
+    # as payment method" (held-out Spider train 396, 420, 2026-10-12: each showed the field compared).
+    def compared(index):
+        start = index - len(name) + 1
+        before = set(tokens[max(0, start - 4):max(0, start)])
+        return bool(set(tokens[index + 1:index + 5]) & value_words
+                    or (index + 1 < len(tokens) and tokens[index + 1] in comparing)
+                    or before & value_words or before & {"between", "than"})
+
+    return bool(said) and all(compared(index) for index in said)
 
 
 def repeats_shown_rows(schema: SchemaGraph, query: Query, tokens: Sequence[str]) -> bool:
