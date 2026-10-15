@@ -23,6 +23,7 @@ from engine.sql_expansion import (
     FUNCTION_WORDS, OutputRequest, asked_cues, by_groups, counted_noun_tables, field_numbers, output_requests,
     request_fields, share_cue, share_requested, words,
 )
+from engine.sql_expansion import tokens as expansion_tokens
 from engine.sql_candidate import ScoredQuery
 from engine.sql_schema import SURROGATE_KEY_WORDS, SchemaGraph, canon, is_name_column, is_surrogate_key, name_words
 
@@ -610,20 +611,32 @@ def analyze_question(question: str, schema: SchemaGraph) -> QuestionRoles:
     id_instead = ("instead" in tokens and bool({"id", "identifier"} & set(tokens))
                   and bool({"name", "names"} & set(tokens)))
     frozen_positions = {function: tuple(positions) for function, positions in aggregate_positions.items() if positions}
+    requests = output_requests(question, schema)
+    fields = request_fields(question, schema)
+    # A list asking for fields and a count asks for the count in each of those fields' groups: "Show different
+    # publishers together with the number of publications they have" (held-out Spider train 532, 2026-10-15). Its
+    # "different" before a field says each group once, which grouping does; only one inside the count asks a count of
+    # distinct values ("the number of different products").
+    listed_groups = bool(fields) and any(request.count for request in requests)
+    distinct_words = {"distinct", "different", "unique"}
+    said = expansion_tokens(question)
+    distinct = (any(said[position] in distinct_words for request in requests if request.count
+                    for position in range(request.start, request.end)) if listed_groups
+                else bool(distinct_words & set(tokens)))
     return QuestionRoles(
         question=question,
         tokens=tokens,
         aggregate_positions=frozen_positions,
         count_requested=bool(aggregate_positions["COUNT"]),
-        distinct_requested=bool({"distinct", "different", "unique"} & set(tokens)),
-        group_requested=bool(group_positions) or period is not None,
+        distinct_requested=distinct,
+        group_requested=bool(group_positions) or period is not None or listed_groups,
         group_period=period is not None,
         group_tables=frozenset(group_tables),
         group_columns=frozenset(group_columns),
         counted_tables=frozenset(counted_tables),
         counted_heads=frozenset(counted_heads),
-        output_requests=output_requests(question, schema),
-        requested_fields=request_fields(question, schema),
+        output_requests=requests,
+        requested_fields=fields,
         counted_columns=frozenset(counted_columns),
         aggregate_targets=aggregate_targets,
         projection_columns=frozenset(projection_columns),

@@ -2677,6 +2677,120 @@ def test_a_list_verb_after_a_comma_lists_the_outputs():
         ["FC Haka", "Valkeakoski", "Tehtaan kentta"]], served["sql"]
 
 
+def test_along_with_adds_an_item_to_a_list():
+    """Spider DEV 94, 534, 946 (2026-10-15): "What is the full name of each car maker, along with its id and how many
+    models it produces?" read no list: "along with" joined nothing, and "of each car maker" ended the items. "Along
+    with", "together with" and "as well as" add an item as "and" does, even past the rows the items before them name,
+    and "different" before an item asks no field. Negative: a list that nothing continues past its rows still ends
+    there."""
+    from engine.sql_expansion import output_requests, request_fields, tokens
+
+    def items(question):
+        said = tokens(question)
+        return [(" ".join(said[r.start:r.end]), r.count) for r in output_requests(question)]
+
+    question = "What is the full name of each car maker, along with its id and how many models it produces?"
+    assert items(question) == [("full name", False), ("id", False), ("how many model it produce", True)]
+    assert items("What are the first, middle, and last names, along with the ids, of all students who enrolled in 2 "
+                 "degree programs in one semester?") == [
+        ("first", False), ("middle", False), ("last name", False), ("id", False)]
+    assert items("List the date of each treatment, together with the first name of the professional who operated "
+                 "it.") == [("date", False), ("first name", False)]
+    assert items("Show different occupations along with the number of players in each occupation.") == [
+        ("occupation", False), ("number of player", True)]
+    # "And" before a possessive adds an item past the rows too (fresh holdout 745: no track name was shown).
+    assert items("Show the name and date for each race and its track name.") == [
+        ("name", False), ("date", False), ("track name", False)]
+    # Negative: "and" after the rows the items name adds nothing; the list ends at "for all concerts".
+    assert items("Show the name and theme for all concerts and the number of singers in each concert.") == [
+        ("name", False), ("theme", False)]
+    makers = {"name": "car_makers", "columns": ["Id", "Maker", "FullName", "Country"],
+              "rows": [[1, "amc", "American Motor Company", 1], [2, "volkswagen", "Volkswagen", 2]]}
+    models = {"name": "model_list", "columns": ["ModelId", "Maker", "Model"],
+              "rows": [[1, 1, "amc"], [2, 2, "audi"], [3, 2, "bmw"]]}
+    cars = SchemaGraph.from_tables([makers, models], [("model_list", "Maker", "car_makers", "Id")])
+    maker = {(column.ref.table, column.ref.name): column.ref for column in cars.columns}
+    assert request_fields(question, cars) == ((maker["car_makers", "FullName"],), (maker["car_makers", "Id"],))
+
+
+def test_a_list_of_fields_and_a_count_counts_each_group():
+    """Held-out Spider train 532, 495 (2026-10-15): "Show different publishers together with the number of publications
+    they have." served one count of distinct publishers. A list asking for fields and a count asks the count in each of
+    those fields' groups, and its "different" before a field says each group once (sql_rank.QuestionRoles). Contrast:
+    "different" inside the count still counts distinct values, and a lone count of different values is one number."""
+    pubs = {"name": "publication", "columns": ["Publication_ID", "Book_ID", "Publisher", "Price"],
+            "rows": [[1, 1, "Pearson", 15.0], [2, 3, "Thomson Reuters", 6.0], [3, 4, "Wiley", 4.1],
+                     [4, 5, "Pearson", 2.0], [5, 5, "Pearson", 3.0]]}
+    served = _hermetic_planner().serve([pubs], "Show different publishers together with the number of publications "
+                                               "they have.", [])
+    assert served.get("valid"), (served.get("error"), served.get("sql"))
+    assert sorted(map(tuple, served["result"]["rows"])) == [("Pearson", 3), ("Thomson Reuters", 1), ("Wiley", 1)], (
+        served["sql"])
+    served = _hermetic_planner().serve([pubs], "Show the publishers and the number of different books they have.", [])
+    assert sorted(map(tuple, served["result"]["rows"])) == [("Pearson", 2), ("Thomson Reuters", 1), ("Wiley", 1)], (
+        served["sql"])
+    served = _hermetic_planner().serve([pubs], "How many different publishers are there?", [])
+    assert [list(row) for row in served["result"]["rows"]] == [[3]], served["sql"]
+    # Negative (DEV 597): a bare noun added to the count by "and" is counted too, so nothing is grouped.
+    from engine.sql_expansion import output_requests
+    question = "List the number of different series names and contents in the TV Channel table."
+    assert [request.count for request in output_requests(question)] == [True, True]
+    channels = {"name": "TV_Channel", "columns": ["id", "series_name", "Content"],
+                "rows": [[1, "Sky Radio", "music"], [2, "Sky Music", "music"], [3, "Rock TV", "music"],
+                         [4, "Sky News", "news"]]}
+    served = _hermetic_planner().serve([channels], question, [])
+    assert served.get("valid") and [list(row) for row in served["result"]["rows"]] == [[4, 2]], served.get("sql")
+
+
+def test_a_reading_showing_exactly_the_list_outranks_one_adding_a_field():
+    """Spider DEV 972 (2026-10-15): "Which owners live in the state whose name contains the substring 'North'? List his
+    first name, last name and email." showed the state beside the three fields: the reading naming every mention
+    scored above the list's own. The reading showing exactly the list's fields starts ahead of one adding a field
+    (SQLSearcher.search). Contrast (held-out Spider train 269, 977): where two items read one field, "the names of
+    climbers and the names of mountains", the list asks for the second name too, and both are shown."""
+    owners = {"name": "Owners", "columns": ["owner_id", "first_name", "last_name", "state", "email_address"],
+              "rows": [[1, "Nora", "Haley", "North Carolina", "nora@example.com"],
+                       [2, "Melisa", "DuBuque", "Kansas", "mel@example.com"],
+                       [3, "Lorenz", "Nicolas", "North Dakota", "lorenz@example.com"]]}
+    served = _hermetic_planner().serve([owners], "Which owners live in the state whose name contains the substring "
+                                                 "'North'? List his first name, last name and email.", [])
+    assert served.get("valid"), (served.get("error"), served.get("sql"))
+    assert sorted(map(tuple, served["result"]["rows"])) == [
+        ("Lorenz", "Nicolas", "lorenz@example.com"), ("Nora", "Haley", "nora@example.com")], served["sql"]
+    climbers = {"name": "climber", "columns": ["Climber_ID", "Name", "Mountain_ID"],
+                "rows": [[1, "Klaus Enders", 1], [2, "Siegfried Schauzu", 2]]}
+    mountains = {"name": "mountain", "columns": ["Mountain_ID", "Name", "Height"],
+                 "rows": [[1, "Kibo (Uhuru Pk)", 5895.0], [2, "Mount Kenya (Batian)", 5199.0]]}
+    keys = [{"from_table": "climber", "from_col": "Mountain_ID", "to_table": "mountain", "to_col": "Mountain_ID"}]
+    served = _hermetic_planner().serve([climbers, mountains], "Show names of climbers and the names of mountains they "
+                                                              "climb.", keys)
+    assert served.get("valid"), (served.get("error"), served.get("sql"))
+    assert sorted(map(tuple, served["result"]["rows"])) == [
+        ("Klaus Enders", "Kibo (Uhuru Pk)"), ("Siegfried Schauzu", "Mount Kenya (Batian)")], served["sql"]
+
+
+def test_listed_says_the_rows_are_in_the_data():
+    """Spider DEV 552, 627 (2026-10-15): "Find the number of cartoons directed by each of the listed directors." was
+    refused, "listed" unread: it was read as asking nothing only in "is/are listed" beside an aggregate. Where no field
+    holds a state, "listed" says the rows are in the data and asks no condition (query_contract.read_question).
+    Contrast: where a status field holds 'listed', the word is that value."""
+    cartoons = {"name": "Cartoon", "columns": ["id", "Title", "Directed_by"],
+                "rows": [[1, "The Rise of the Blue Beetle!", "Ben Jones"], [2, "Terror on Dinosaur Island!", "Brandon"],
+                         [3, "Day of the Dark Knight!", "Ben Jones"]]}
+    served = _hermetic_planner().serve([cartoons], "Find the number of cartoons directed by each of the listed "
+                                                   "directors.", [])
+    assert served.get("valid"), (served.get("error"), served.get("sql"))
+    assert sorted(map(tuple, served["result"]["rows"])) == [(1, "Brandon"), (2, "Ben Jones")], served["sql"]
+    courses = {"name": "Courses", "columns": ["course_id", "course_name"], "rows": [[1, "math"], [2, "art"], [3, "os"]]}
+    served = _hermetic_planner().serve([courses], "Show the names of the listed courses.", [])
+    assert served.get("valid") and sorted(row[0] for row in served["result"]["rows"]) == ["art", "math", "os"], (
+        served.get("sql"))
+    properties = {"name": "properties", "columns": ["property_id", "address", "status"],
+                  "rows": [[1, "1 Main", "listed"], [2, "2 Oak", "sold"], [3, "3 Elm", "listed"]]}
+    served = _hermetic_planner().serve([properties], "How many properties are listed?", [])
+    assert [list(row) for row in served["result"]["rows"]] == [[2]], served["sql"]
+
+
 def test_a_rewording_keeps_the_operations_the_engine_reads():
     """Spider DEV, 2026-10-13: rewordings were refused for losing words the engine does not read as operations: "per" in
     "miles per gallon", "number of" before the field Number_products, "no less than" said "at least". The engine's own
@@ -6764,6 +6878,10 @@ TESTS = [
     test_an_ordering_word_said_with_a_fields_name_is_that_field,
     test_an_answer_showing_only_its_compared_field_shows_the_rows_asked_for,
     test_a_list_verb_after_a_comma_lists_the_outputs,
+    test_along_with_adds_an_item_to_a_list,
+    test_a_list_of_fields_and_a_count_counts_each_group,
+    test_a_reading_showing_exactly_the_list_outranks_one_adding_a_field,
+    test_listed_says_the_rows_are_in_the_data,
     test_a_rewording_keeps_the_operations_the_engine_reads,
     test_gemini_rewrite_must_preserve_data_values_and_numbers,
     test_evaluator_grades_the_served_selection,

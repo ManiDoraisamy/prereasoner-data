@@ -3590,3 +3590,32 @@ Measured on Spider (`spider/results/RESULTS.md`, 2026-10-15): DEV 555 → 562 st
   field its rows share.
 - An earlier round (`pkg17`) also showed a product as the name of orders ("orders with Amount over 1000") and read "For
   each continent, list its id, name, ..." as the countries'; both are registered regressions.
+
+## "Along with" adds an item; a list of fields and a count counts each group; "listed" asks nothing (2026-10-15)
+
+Of 29 Spider questions (DEV, held out, fresh holdout) continuing a list with "along with", "together with" or "as well
+as", 5 were answered right: the words joined nothing, and "of each car maker" ended the items before them.
+
+- "Along with", "together with", "as well as", and "and" before a possessive add an item as "and" does, even past the
+  rows the items before them name (`sql_expansion.output_requests`): "What is the full name of each car maker, along
+  with its id and how many models it produces?", "the name and date for each race and its track name". "Different",
+  "distinct" and "unique" before an item ask no field, and a bare noun added to a count by "and" is counted too ("the
+  number of different series names and contents").
+- A list asking for fields and a count asks the count in each of those fields' groups, and a "different" before a field
+  says each group once, which grouping does; only one inside the count asks a count of distinct values
+  (`sql_rank.QuestionRoles`): "Show different publishers together with the number of publications they have" counts
+  each publisher's publications, not the publishers.
+- The reading showing exactly the list's fields starts ahead of one adding a field to them, where each item names a
+  field of its own (`SQLSearcher.search`): "Which owners live in the state whose name contains 'North'? List his first
+  name, last name and email." shows no state, while "the names of climbers and the names of mountains" shows both.
+- Where no field holds a state, "listed" says the rows are in the data and asks no condition
+  (`query_contract.read_question`, formerly only "is/are listed" beside an aggregate): "How many transcripts are
+  listed?", "the transcript with at least 2 courses listed". Where a status field holds 'listed' the word stays that
+  value.
+
+Measured on Spider (`spider/results/RESULTS.md`, 2026-10-15): DEV 562 → 568 strict, held out
+364 → 369, the fresh holdout 367 → 374, Gemini on 651 → 658.
+
+- An earlier round (`pkg18`) let the exact list start ahead where two items read one field and lost held-out 269, 977
+  and fresh holdout 59 ("the names of climbers and the names of mountains"), and `pkg18b` lost the track name of fresh
+  holdout 745 ("the name and date for each race and its track name"); each is a registered regression.

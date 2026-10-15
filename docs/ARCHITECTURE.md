@@ -344,7 +344,10 @@ The own-data path serves one typed SQL AST chosen from the deterministic search'
    names, themes, and number of singers for every concert?"), the owner decided over all items before an item prefers
    the field its words name exactly, and so does a clause a list verb opens after a comma ("..., and return the name,
    location and district of each shop"; `sql_expansion.instruction_starts`), a possessive opening its items naming
-   their owner. An answer showing only fields the question says only to filter on gets a twin showing the name of the
+   their owner; "along with", "together with" and "as well as" add an item as "and" does, a list asking for fields
+   and a count asks the count in each of those fields' groups, and the reading showing exactly the list's fields starts
+   ahead of one adding a field. An answer showing only fields the question says only to filter on gets a twin showing
+   the name of the
    rows it lists (`SQLSearcher._display_twin`, `sql_rank.filter_only`: "the cities whose population is between ..."),
    and a row count drops a leaf join to a table nothing reads, nothing counts and the question does
    not name (`sql_expansion.counted_noun_tables`), which only multiplies the counted rows. The verb a sentence opens

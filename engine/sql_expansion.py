@@ -1460,7 +1460,7 @@ class OutputRequest:
 # countries."), the words before the list that ask nothing, and the words that end it.
 _LIST_VERBS = frozenset({"list", "show", "give", "return", "report", "display", "tell", "provide", "output"})
 _LIST_LEADS = frozenset({"only", "me", "us", "both", "the", "a", "an", "all", "please", "just", "also", "each", "every",
-                         "his", "her", "their", "its"})
+                         "his", "her", "their", "its", "different", "distinct", "unique"})
 _LIST_ENDS = frozenset({"for", "who", "that", "which", "whose", "where", "when", "with", "in", "from", "by", "order",
                         "ordered", "sort", "sorted", "rank", "ranked", "if", "than"})
 _LIST_COUNTS = frozenset({"number", "count", "many", "total"})
@@ -1532,27 +1532,67 @@ def output_requests(question: str, schema: Any = None) -> tuple[OutputRequest, .
         requests: list[OutputRequest] = []
         item = index
         position = index
-        stop = next((position for position in range(index, end) if said[position] in _LIST_ENDS), end)
+        # "along with", "together with" and "as well as" add an item, as "and" does, even past the rows the items
+        # before them name: "the full name of each car maker, along with its id and how many models it produces"
+        # (Spider DEV 94, 2026-10-15).
+        joined = {later: _joins_items(said, later) for later in range(index, end) if _joins_items(said, later)}
+        inside = {later + offset for later, length in joined.items() for offset in range(length)}
+
+        def ends_at(start):
+            return next((later for later in range(start, end) if said[later] in _LIST_ENDS and later not in inside),
+                        end)
+
+        stop = ends_at(index)
         while position < end:
             word = said[position]
+            if position in joined and position > item:
+                requests.append(_output_request(said, item, position, numbers))
+                position += joined[position]
+                item = position
+                stop = ends_at(position)
+                continue
             boundary = position > item and ("," in gaps[position] or word in {"and", "&"})
             # In the opening sentence "of" ends the list where no item follows it: "the names and areas of countries",
             # while "the date of account opened, the account name, and ..." goes on (held-out Spider train 113).
-            ends_items = opening and not any("," in gaps[later] or said[later] in {"and", "&"}
+            ends_items = opening and not any("," in gaps[later] or said[later] in {"and", "&"} or later in joined
                                              for later in range(position + 1, stop))
-            if word in _LIST_ENDS or (word == "of" and position > item and said[position - 1] not in _LIST_COUNTS
-                                      and (ends_items or said[position + 1:position + 2] in (("each",), ("every",),
-                                                                                          ("all",)))):
-                break
+            if (word in _LIST_ENDS and position not in inside) or (
+                    word == "of" and position > item and said[position - 1] not in _LIST_COUNTS
+                    and (ends_items or said[position + 1:position + 2] in (("each",), ("every",), ("all",)))):
+                resume = next((later for later in sorted(joined) if later > position), None)
+                if resume is None:
+                    break
+                requests.append(_output_request(said, item, position, numbers))
+                position = item = resume + joined[resume]
+                stop = ends_at(position)
+                continue
             if boundary:
                 requests.append(_output_request(said, item, position, numbers))
                 item = position + (1 if word in {"and", "&"} else 0)
             position += 1
         requests.append(_output_request(said, item, position, numbers))
-        found = tuple(request for request in requests if request is not None)
+        found = [request for request in requests if request is not None]
+        # A bare noun added to a count by "and" is counted too: "the number of different series names and contents"
+        # counts both (Spider DEV 597, 2026-10-15), while "the number of employees ... and the name of the shop" asks
+        # for the name.
+        for position in range(1, len(found)):
+            joined = said[found[position].start - 1:found[position].start] in (("and",), ("&",))
+            if found[position - 1].count and joined:
+                found[position] = OutputRequest(found[position].start, found[position].end, True)
         if found and (len(found) > 1 or not opening):
-            return found
+            return tuple(found)
     return ()
+
+
+def _joins_items(said: Sequence[str], position: int) -> int:
+    """The length of the words at ``position`` that add an item to a list ("along with", "together with", "as well
+    as", and "and" before a possessive: "the name and date for each race and its track name"), else 0."""
+    if tuple(said[position:position + 2]) in (("along", "with"), ("together", "with")):
+        return 2
+    if said[position:position + 1] == ("and",) and said[position + 1:position + 2] in (
+            ("its",), ("their",), ("his",), ("her",)):
+        return 1
+    return 3 if tuple(said[position:position + 3]) == ("as", "well", "as") else 0
 
 
 def command_positions(question: str) -> frozenset[int]:

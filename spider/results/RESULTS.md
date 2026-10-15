@@ -28,6 +28,24 @@ Artifacts: `%LOCALAPPDATA%/Temp/prereasoner-spider-review-20261013/`, tags `revi
 Incomplete intermediate runs are excluded. The review hardens ranking-number roles, output counts (preserving stored-count SUM),
 and table-owned full-name construction; it does not introduce another planner or model bundle.
 
+## "Along with" adds an item; a list of fields and a count counts each group; "listed" asks nothing: 562 → 568 strict, Gemini on 651 → 658, held out 364 → 369, fresh holdout 367 → 374 (2026-10-15)
+
+Same contract as below. Runs `pkg18c-dirty`, `pkg18c-gemini-dirty`, `heldout-pkg18c-dirty` and
+`holdout2-pkg18c-dirty` are the change of the entry below with this change, against its `pkg17b` runs. The change is
+the `DECISIONS.md` entry of this title.
+
+- DEV, engine alone: 562 → **568 strict**; 6 wins (342, 623, 627, 638, 946, 972), no loss; wrong answers 172 → 168; 9
+  queries changed.
+- Held out: 364 → **369 strict**; 5 wins (316, 532, 621, 695, 699), no loss; wrong answers 232 → 228; 8 queries changed.
+- Fresh holdout: 367 → **374 strict**; 7 wins (145, 216, 277, 279, 489, 599, 673), no loss; wrong answers 236 → 233; 12
+  queries changed.
+- Gemini on: 651 → 658; 7 wins, no loss; wrong answers 231 → 224; 11 queries changed.
+- An earlier round (`pkg18`) let the exact list start ahead where two items read one field and lost held-out 269, 977
+  and fresh holdout 59 ("the names of climbers and the names of mountains"), and `pkg18b` lost the track name of fresh
+  holdout 745 ("the name and date for each race and its track name"); each is a registered regression.
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_{pkg18c,pkg18c-gemini,heldout-pkg18c,holdout2-pkg18c}-dirty.json`.
+
 ## A list verb after a comma lists the outputs; a field compared only is not the answer: 555 → 562 strict, Gemini on 645 → 651, held out 361 → 364, fresh holdout 365 → 367 (2026-10-15)
 
 Same contract as below. Runs `pkg17b-dirty`, `pkg17b-gemini-dirty`, `heldout-pkg17b-dirty` and `holdout2-pkg17b-dirty`

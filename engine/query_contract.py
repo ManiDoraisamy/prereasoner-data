@@ -1162,14 +1162,18 @@ def read_question(question, candidate, graph, *, calculation_satisfied=False):
         ordinary_words.update(canon(word) for word in counted_rows(question)
                               if canon(word) not in observed
                               and (len(graph.tables) == 1 or canon(word) in fields_named))
+    state_schema = any(set(lexical_words(c.ref.name)) & {"status", "state", "paid", "listed", "settled"}
+                       for c in graph.columns)
+    stateless = not state_schema and not observed & {"unpaid", "unlisted", "pending", "refunded", "settled"}
+    # Where no field holds a state, "listed" says the rows are in the data and asks no condition: "How many
+    # transcripts are listed?", "the transcript with at least 2 courses listed", "each of the listed directors" (Spider
+    # DEV 509, 552, 568, 627, 2026-10-15: each correct reading was refused for the word).
+    if stateless:
+        ordinary_words.add("listed")
     if has_aggregate:
         ordinary_words.update(canon(word) for word in measure_participles(question, frozenset(schema_words))
                               if canon(word) not in observed)
-        state_schema = any(set(lexical_words(c.ref.name)) & {"status", "state", "paid", "listed", "settled"}
-                           for c in graph.columns)
-        if not state_schema and not observed & {"unpaid", "unlisted", "pending", "refunded", "settled"}:
-            if re.search(r"\b(?:is|are|was|were)\s+listed\b", question, re.I):
-                ordinary_words.add("listed")
+        if stateless:
             if any(set(lexical_words(t)) & {"payments", "payment"} for t in graph.tables):
                 if re.search(r"\bamount\s+paid\b", question, re.I):
                     ordinary_words.add("paid")

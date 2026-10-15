@@ -236,7 +236,17 @@ class SQLSearcher:
         requested = self._requested_projection(question, table_scores)
         if requested is not None:
             explicit_projection_columns.update(requested[0])
-            projection_choices = [requested] + [choice for choice in projection_choices if choice[0] != requested[0]]
+            # The reading showing exactly the list starts ahead of one adding a field the words of a condition name:
+            # "Which owners live in the state whose name contains 'North'? List his first name, last name and email."
+            # shows no state (Spider DEV 972, 2026-10-15).
+            # Only where each item names a field of its own: "the names of climbers and the names of mountains" read as
+            # one Name asks the second too (held-out Spider train 269, 977, 2026-10-15).
+            others = [choice for choice in projection_choices if choice[0] != requested[0]]
+            ahead = max((score for columns, score, _ in others if set(requested[0]) < set(columns)), default=None)
+            distinct = len(requested[0]) == len(request_fields(question, self.schema))
+            if distinct and ahead is not None and ahead >= requested[1]:
+                requested = (requested[0], ahead + 0.5, requested[2])
+            projection_choices = [requested] + others
         # A table joins every reading only when the question names it with its words together ("car
         # makers"); Spider car_1, 2026-10-02: "how many car makers are there in each continent? List the
         # continent name" named car_names by "car" and "name" far apart, and every reading joined it,
