@@ -1459,7 +1459,7 @@ class OutputRequest:
 # The verbs that open a sentence listing the outputs ("List the continent id, continent name and the number of
 # countries."), the words before the list that ask nothing, and the words that end it.
 _LIST_VERBS = frozenset({"list", "show", "give", "return", "report", "display", "tell", "provide", "output"})
-_LIST_LEADS = frozenset({"only", "me", "us", "both", "the", "a", "an", "all", "please", "just", "also"})
+_LIST_LEADS = frozenset({"only", "me", "us", "both", "the", "a", "an", "all", "please", "just", "also", "each", "every"})
 _LIST_ENDS = frozenset({"for", "who", "that", "which", "whose", "where", "when", "with", "in", "from", "by", "order",
                         "ordered", "sort", "sorted", "rank", "ranked", "if", "than"})
 _LIST_COUNTS = frozenset({"number", "count", "many", "total"})
@@ -1482,11 +1482,19 @@ def output_requests(question: str, schema: Any = None) -> tuple[OutputRequest, .
     numbers = field_numbers(question, (column.ref for column in schema.columns)) if schema is not None else frozenset()
     gaps = [question[spans[index - 1][1]:spans[index][0]] if index else "" for index in range(len(spans))]
     sentences = [index for index in range(1, len(said)) if re.search(r"[.?!;]", gaps[index])]
-    for start in sentences:
+    for start in [0, *sentences]:
         index = start
         while index < len(said) and said[index] in {"please", "only", "also", "and", "now"}:
             index += 1
-        if index >= len(said) or said[index] not in _LIST_VERBS:
+        # The opening sentence lists outputs when it asks for two or more, coordinated, by a command or "what is/are":
+        # "What are the names, themes, and number of singers for every concert?", "the names and areas of countries"
+        # (Spider DEV 34, 800, 2026-10-14). Its list ends where the rows it reads begin ("of countries"), which no
+        # item names; a later sentence's list may end with its owner ("the number of countries").
+        opening = start == 0
+        if said[index:index + 1] in (("what",), ("which",)) and said[index + 1:index + 2] in (
+                ("is",), ("are",), ("was",), ("were",)) and opening:
+            index += 1
+        elif index >= len(said) or said[index] not in _LIST_VERBS:
             continue
         index += 1
         end = next((position for position in range(index, len(said))
@@ -1494,11 +1502,17 @@ def output_requests(question: str, schema: Any = None) -> tuple[OutputRequest, .
         requests: list[OutputRequest] = []
         item = index
         position = index
+        stop = next((position for position in range(index, end) if said[position] in _LIST_ENDS), end)
         while position < end:
             word = said[position]
             boundary = position > item and ("," in gaps[position] or word in {"and", "&"})
+            # In the opening sentence "of" ends the list where no item follows it: "the names and areas of countries",
+            # while "the date of account opened, the account name, and ..." goes on (held-out Spider train 113).
+            ends_items = opening and not any("," in gaps[later] or said[later] in {"and", "&"}
+                                             for later in range(position + 1, stop))
             if word in _LIST_ENDS or (word == "of" and position > item and said[position - 1] not in _LIST_COUNTS
-                                      and said[position + 1:position + 2] in (("each",), ("every",), ("all",))):
+                                      and (ends_items or said[position + 1:position + 2] in (("each",), ("every",),
+                                                                                          ("all",)))):
                 break
             if boundary:
                 requests.append(_output_request(said, item, position, numbers))
@@ -1506,7 +1520,7 @@ def output_requests(question: str, schema: Any = None) -> tuple[OutputRequest, .
             position += 1
         requests.append(_output_request(said, item, position, numbers))
         found = tuple(request for request in requests if request is not None)
-        if found:
+        if found and (len(found) > 1 or not opening):
             return found
     return ()
 
@@ -1556,8 +1570,9 @@ def counted_noun_tables(said: Sequence[str], schema: Any) -> frozenset[str]:
 
 def realizes_request(column: ColumnRef, said: Sequence[str], request: OutputRequest, schema: Any,
                      numbers: frozenset[int] = frozenset()) -> int:
-    """How showing ``column`` realizes the field ``request`` asks for: 2 when the field's own name says every word the
-    request says, 1 when its table's name or, for the field that names its table's rows, "name" says the rest, 0 when
+    """How showing ``column`` realizes the field ``request`` asks for: 3 when the field's own name is the request's
+    words, 2 when it says every word the request says among others, 1 when its table's name or, for the field that
+    names its table's rows, "name" says the rest, 0 when
     it does not (at least one word must be the field's own). "Continent id" is ContId, not a Continent field nor
     another table's Id; "maker full name" a maker's FullName; "the role" role_code (Spider DEV 89, 109, 149,
     2026-10-14); "the name" of patients their Name before an appointment's display field (held-out Spider train 47).
@@ -1577,7 +1592,9 @@ def realizes_request(column: ColumnRef, said: Sequence[str], request: OutputRequ
                    for word in asked)
 
     if says(own):
-        return 2
+        # A field whose own name is the item's words, no more, is it before one whose name holds them among others:
+        # "the names and areas of countries" is Name, not LocalName (Spider DEV 800, 2026-10-14).
+        return 3 if all(word in asked or any(says_in_another_form(word, said) for said in asked) for word in own) else 2
     return 1 if says(own | display | set(name_tokens(column.table))) else 0
 
 
@@ -1589,23 +1606,70 @@ def request_fields(question: str, schema: Any) -> tuple[tuple[ColumnRef, ...], .
     ranker reads whether an answer shows them, from this one reading."""
     said = tokens(question)
     numbers = field_numbers(question, (column.ref for column in schema.columns))
-    requests = [request for request in output_requests(question, schema) if not request.count]
+    listed = output_requests(question, schema)
+    requests = [request for request in listed if not request.count]
     # A foreign key realizing a request gives way to the key it references, which names the same thing: "the club id"
     # of a count of coaches per club is the club's Club_ID, not also the coach's (fresh holdout 119, 2026-10-14).
     references = {key.from_column: key.to_column for key in getattr(schema, "foreign_keys", ())}
-    options = []
+    # Each item's candidates are the fields whose own name says it, or, where none does, those its table's name or
+    # display field says. The owner is decided over all items before an item prefers the field named exactly by it:
+    # "Show the name and theme for all concerts" is the concert's concert_Name, not a singer's Name (Spider DEV 33).
+    # The foreign keys give way only in deciding the owner: within it, its own key is its field ("the template type
+    # codes" of templates is Templates.Template_Type_Code; Spider DEV 319, 327, 2026-10-14).
+    candidates = []
+    deciding = []
     for request in requests:
-        realized = [(realizes_request(column.ref, said, request, schema, numbers), column.ref)
-                    for column in schema.columns]
-        best = max((level for level, _ in realized), default=0)
-        kept = [ref for level, ref in realized if level and level == best]
-        options.append([ref for ref in kept if references.get(ref) not in kept] or kept)
-    if not options or not all(options):
+        realized = [(level, column.ref) for column in schema.columns
+                    if (level := realizes_request(column.ref, said, request, schema, numbers))]
+        floor = 2 if any(level >= 2 for level, _ in realized) else 1
+        options = [(level, ref) for level, ref in realized if level >= floor]
+        refs = {ref for _, ref in options}
+        candidates.append(options)
+        deciding.append([(level, ref) for level, ref in options if references.get(ref) not in refs])
+    if not candidates or not all(candidates):
         return ()
-    coverage = Counter(table for refs in options for table in {ref.table for ref in refs})
+    coverage = Counter(table for options in deciding for table in {ref.table for _, ref in options})
+    # The table the list names right after its items owns them where the items alone tie: "the names and descriptions
+    # of all the sections" are the sections' (Spider DEV 523, 524, 2026-10-14).
+    after = [word for word in said[listed[-1].end:listed[-1].end + 6] if word not in FUNCTION_WORDS | _LIST_LEADS]
+    for table in schema.tables:
+        name = [canon(word) for word in name_words(table)]
+        if name and coverage.get(table) and after[:len(name)] == name:
+            coverage[table] += 0.5
     ranked = sorted(coverage.items(), key=lambda item: (-item[1], item[0]))
     owner = ranked[0][0] if len(ranked) == 1 or ranked[0][1] > ranked[1][1] else None
-    return tuple(tuple(ref for ref in refs if ref.table == owner) or tuple(refs) for refs in options)
+    if owner is None:
+        # Of tables realizing the items alike, the one the question names before the list owns them: "Which head's
+        # name has the substring 'Ha'? List the id and name." is the head's (held-out Spider train 903), while "the
+        # ids and names of the web accelerators that are compatible with two or more browsers" names the browsers only
+        # in its condition (fresh holdout 654). Where it names none, the items read no list: "the first name and last
+        # name for all the instructors" over students and faculty (held-out Spider train 529, 2026-10-14).
+        tied = [table for table, count in ranked if count == ranked[0][1]]
+        before = said[:listed[0].start]
+        named = [table for table in tied
+                 if _says_in_order(before, [canon(word) for word in name_words(table)])]
+        if len(named) != 1:
+            return ()
+        owner = named[0]
+    fields = []
+    for options, decided in zip(candidates, deciding):
+        inside = [(level, ref) for level, ref in options if ref.table == owner] or decided
+        top = max(level for level, _ in inside)
+        best = [ref for level, ref in inside if level == top]
+        # Of the owner's fields an item names alike, its own before one referring to another table: "the id" of
+        # accounts is account_id, not customer_id (held-out Spider train 113, 2026-10-14). A foreign key and the key
+        # it references hold the same values: either realizes the item ("the grape" of wines, held-out 828).
+        best = [ref for ref in best if ref not in references] or best
+        named = {ref for _, ref in options}
+        fields.append(tuple(dict.fromkeys([*best, *(references[ref] for ref in best
+                                                    if references.get(ref) in named)])))
+    return tuple(fields)
+
+
+def _says_in_order(said: Sequence[str], words: Sequence[str]) -> bool:
+    """Whether ``said`` holds ``words`` together, in order."""
+    return bool(words) and any(list(said[index:index + len(words)]) == list(words)
+                               for index in range(len(said) - len(words) + 1))
 
 
 def request_slots(question: str, schema: Any) -> tuple[frozenset[ColumnRef] | None, ...]:

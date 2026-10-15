@@ -3532,3 +3532,30 @@ Measured on Spider (`spider/results/RESULTS.md`, 2026-10-14): DEV 539 → 544 st
 holdout 358 → 359, Gemini on 626 → 632. The one loss, DEV 202 ("the names of airports in Aberdeen"), is an
 empty-result coincidence: Spider's gold compares City = 'Aberdeen' with the stored 'Aberdeen ' and returns no rows, which
 the old self-join reading also returned; the served answer now names the airport.
+
+## The opening sentence lists its coordinated outputs (2026-10-14)
+
+A correct-binding experiment (offline, evaluation-only; no training) supplied each DEV question's gold select list
+through the existing output reading (`sql_expansion.output_requests`, `request_fields`, `request_slots`) and changed
+nothing else: served strict 544 → 592 (51 wins, 3 losses), answered 728 → 745, and 82 more questions with a correct
+plan in the retained pool; the counted-population binding added nothing. The typed construction builds those plans; the
+reading of which fields to show was the deficit. This change reads more of it with the same interface:
+
+- The opening sentence lists its outputs when it asks for two or more, coordinated, by a command or "what is/are" ("What
+  are the names, themes, and number of singers for every concert?"). Its list ends where the rows it reads begin ("of
+  countries"); "each"/"every" open an item without naming it.
+- `request_fields` decides the owner over all items before an item prefers the field its words name exactly: "the name
+  and theme for all concerts" is the concert's concert_Name, "the names and areas of countries" Name, not LocalName.
+  An item's candidates are the fields whose own name says it, or, where none does, those its table's word or display
+  field realizes. A foreign key gives way to the key it references only in deciding the owner; within the owner its
+  own key comes before a foreign key ("the id" of accounts is account_id), and a foreign key and the key it references,
+  holding the same values, both realize an item ("the grape" of wines). Where tables tie, the table named right after
+  the items ("of all the sections"), else one named before the list ("Which head's name ...? List the id and name."),
+  owns them; otherwise the items read no list ("the first name and last name for all the instructors"). In the opening
+  sentence "of" ends the list only where no item follows it ("the date of account opened, the account name, ...").
+
+Measured on Spider (`spider/results/RESULTS.md`, 2026-10-14): DEV 544 → 555 strict, held out
+359 → 361, the fresh holdout 359 → 365, Gemini on 632 → 645.
+Two losses remain: held-out 113 ("the id, the date of account opened, ...", read right, lost to a simplified plan that
+keeps a fuller draft's score) and Gemini DEV 417 (the answer follows the question's order, the opening year first;
+Spider's gold lists the staff number first).

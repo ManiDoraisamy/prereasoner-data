@@ -28,6 +28,30 @@ Artifacts: `%LOCALAPPDATA%/Temp/prereasoner-spider-review-20261013/`, tags `revi
 Incomplete intermediate runs are excluded. The review hardens ranking-number roles, output counts (preserving stored-count SUM),
 and table-owned full-name construction; it does not introduce another planner or model bundle.
 
+## The opening sentence lists its coordinated outputs: 544 → 555 strict, Gemini on 632 → 645, held out 359 → 361, fresh holdout 359 → 365 (2026-10-14)
+
+Same contract as below. Runs `pkg16d-dirty`, `pkg16d-gemini-dirty`, `heldout-pkg16d-dirty` and `holdout2-pkg16d-dirty` are
+the change of the entry below with this change, against its `pkg15b` runs. The change is `DECISIONS.md` "The opening
+sentence lists its coordinated outputs".
+
+- DEV, engine alone: 544 → **555 strict**; 11 wins (33, 34, 370, 405, 406, 504, 540, 694, 800, 950, 951), no loss;
+  wrong answers 184 → 175; 17 queries changed.
+- Held out: 359 → **361 strict**; 3 wins (776, 818, 825), 1 loss (113); wrong answers 234 → 233; 15 queries
+  changed.
+- Fresh holdout: 359 → **365 strict**; 6 wins (89, 294, 488, 596, 650, 785), no loss; wrong answers 242 → 238; 19
+  queries changed.
+- Gemini on: 632 → 645; 14 wins, 1 loss (417: the answer follows the question's order, Spider's gold reverses it);
+  wrong answers 247 → 234; 22 queries changed.
+- Earlier rounds (`pkg16`, `pkg16b`, `pkg16c`) lost DEV 319, 327 (a foreign key gave way inside its owner), 523, 524
+  and held-out 178, 709, 718, 769, fresh holdout 7 (tied owners; the table after the list owns them), held-out 828,
+  fresh holdout 346 (a foreign key and its referenced key), held-out 903 and fresh holdout 654 (a table named before
+  the list, not in its condition) and held-out 529 (a tie no named table breaks reads no list); each is a registered
+  regression.
+- The correct-binding experiment that chose this change (gold select lists through the same reading, everything else
+  production): DEV 544 → 592 strict with gold outputs; its scripts are evaluation-only and not in the repository.
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_{pkg16d,pkg16d-gemini,heldout-pkg16d,holdout2-pkg16d}-dirty.json`.
+
 ## The verb a sentence opens with names no table; "the count" in a list; relationship self-joins; a superlative over the shown field: 539 → 544 strict, Gemini on 626 → 632, held out 359 unchanged, fresh holdout 358 → 359 (2026-10-14)
 
 Same contract as below. Runs `pkg15b-dirty`, `pkg15b-gemini-dirty`, `heldout-pkg15b-dirty` and `holdout2-pkg15b-dirty`

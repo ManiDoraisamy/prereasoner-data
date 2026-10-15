@@ -340,7 +340,9 @@ The own-data path serves one typed SQL AST chosen from the deterministic search'
    word said once, the one whose owner the question never says is not asked. A sentence after the first that lists the
    outputs ("List the continent id, continent name and the number of countries.") names them, their owner and their
    order once for construction, ranking, the answer's order and the completeness check (`sql_expansion.output_requests`,
-   `request_fields`), and a row count drops a leaf join to a table nothing reads, nothing counts and the question does
+   `request_fields`), and so does an opening sentence that asks for two or more coordinated outputs ("What are the
+   names, themes, and number of singers for every concert?"), the owner decided over all items before an item prefers
+   the field its words name exactly, and a row count drops a leaf join to a table nothing reads, nothing counts and the question does
    not name (`sql_expansion.counted_noun_tables`), which only multiplies the counted rows. The verb a sentence opens
    with is its command and names no table (`sql_expansion.command_positions`: "Show the names of conductors" joins no
    show table), and a relationship self-join is built only where a word of its key besides the parent table's name is

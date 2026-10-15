@@ -2496,6 +2496,89 @@ def test_a_superlative_over_the_shown_field_is_one_value():
     assert keep_ties(SelectQuery((SelectItem(name),), "Dogs", order_by=(OrderTerm(age, "DESC"),), limit=1)).with_ties
 
 
+def test_the_opening_sentence_lists_its_coordinated_outputs():
+    """Spider DEV 33, 34, 800, 950 (2026-10-14): "What are the names, themes, and number of singers for every concert?"
+    showed a theme and a count without the concert's name; "the names and areas of countries" no area. A correct-binding
+    experiment that supplied the gold outputs through the list reading served 48 more DEV answers. The opening sentence's
+    two or more coordinated outputs are read like a later list instruction's (sql_expansion.output_requests): the list
+    ends where its rows begin ("of countries"), the owner is the table realizing most items, and within it an item is
+    the field named exactly by it (Name, not LocalName). A single output, or none, lists nothing."""
+    from engine.sql_expansion import output_requests, request_fields, tokens
+    question = "What are the names, themes, and number of singers for every concert?"
+    said = tokens(question)
+    assert [(" ".join(said[r.start:r.end]), r.count) for r in output_requests(question)] == [
+        ("name", False), ("theme", False), ("number of singer", True)]
+    assert output_requests("What are the names of the singers?") == ()
+    assert output_requests("What is the average age of all singers?") == ()
+    said = tokens("List each owner's first name, last name, and the size of their dog.")
+    assert [" ".join(said[r.start:r.end]) for r in output_requests(
+        "List each owner's first name, last name, and the size of their dog.")] == ["owner first name", "last name", "size"]
+    concerts = {"name": "concert", "columns": ["concert_ID", "concert_Name", "Theme"],
+                "rows": [[1, "Auditions", "Free choice"], [2, "Super bootcamp", "Bleeding Love"]]}
+    singers = {"name": "singer", "columns": ["Singer_ID", "Name"], "rows": [[1, "Joe"], [2, "Tribal King"]]}
+    roster = {"name": "singer_in_concert", "columns": ["concert_ID", "Singer_ID"], "rows": [[1, 1], [1, 2], [2, 2]]}
+    graph = SchemaGraph.from_tables([concerts, singers, roster], [("singer_in_concert", "concert_ID", "concert",
+                                                                   "concert_ID"),
+                                                                  ("singer_in_concert", "Singer_ID", "singer",
+                                                                   "Singer_ID")])
+    ref = {(column.ref.table, column.ref.name): column.ref for column in graph.columns}
+    # The owner is the concert, which realizes both items; its name is concert_Name, not a singer's Name.
+    assert request_fields("Show the name and theme for all concerts and the number of singers in each concert.",
+                          graph) == ((ref["concert", "concert_Name"],), (ref["concert", "Theme"],))
+    countries = {"name": "country", "columns": ["Code", "Name", "LocalName", "SurfaceArea"],
+                 "rows": [["AGO", "Angola", "Angola", 1246700.0], ["CHN", "China", "Zhongquo", 9572900.0]]}
+    cities = {"name": "city", "columns": ["ID", "Name", "CountryCode"], "rows": [[1, "Luanda", "AGO"]]}
+    world = SchemaGraph.from_tables([countries, cities], [("city", "CountryCode", "country", "Code")])
+    place = {(column.ref.table, column.ref.name): column.ref for column in world.columns}
+    assert request_fields("What are the names and areas of countries with the top 5 largest area?", world) == (
+        (place["country", "Name"],), (place["country", "SurfaceArea"],))
+    # Within the owner its own foreign key is its field (DEV 319: Templates.Template_Type_Code, not only the referenced
+    # type table's key, which holds the same values), and the table named right after the items owns them where they
+    # tie (DEV 523: the sections).
+    templates = {"name": "Templates", "columns": ["Template_ID", "Version_Number", "Template_Type_Code"],
+                 "rows": [[1, 5, "PP"], [2, 7, "BK"]]}
+    types = {"name": "Ref_Template_Types", "columns": ["Template_Type_Code", "Template_Type_Description"],
+             "rows": [["PP", "Paper"], ["BK", "Book"]]}
+    docs = SchemaGraph.from_tables([templates, types], [("Templates", "Template_Type_Code", "Ref_Template_Types",
+                                                         "Template_Type_Code")])
+    doc = {(column.ref.table, column.ref.name): column.ref for column in docs.columns}
+    assert request_fields("Show template ids, version numbers, and template type codes for all templates.", docs) == (
+        (doc["Templates", "Template_ID"],), (doc["Templates", "Version_Number"],),
+        (doc["Templates", "Template_Type_Code"], doc["Ref_Template_Types", "Template_Type_Code"]))
+    courses = {"name": "Courses", "columns": ["course_id", "course_name", "course_description"],
+               "rows": [[1, "math", "numbers"], [2, "art", "paint"]]}
+    sections = {"name": "Sections", "columns": ["section_id", "course_id", "section_name", "section_description"],
+                "rows": [[1, 1, "a", "first"], [2, 2, "b", "second"]]}
+    school = SchemaGraph.from_tables([courses, sections], [("Sections", "course_id", "Courses", "course_id")])
+    room = {(column.ref.table, column.ref.name): column.ref for column in school.columns}
+    assert request_fields("What are the names and descriptions of all the sections?", school) == (
+        (room["Sections", "section_name"],), (room["Sections", "section_description"],))
+    # "of" inside an item that other items follow does not end the list (held-out Spider train 113), the owner's own
+    # key is its "id" before a foreign key, and items two tables realize alike with neither named read no list (529).
+    said = tokens("Show the id, the date of account opened, the account name, and other account detail for all "
+                  "accounts.")
+    assert [" ".join(said[r.start:r.end]) for r in output_requests(
+        "Show the id, the date of account opened, the account name, and other account detail for all accounts.")] == [
+        "id", "date of account opened", "account name", "other account detail"]
+    accounts = {"name": "Accounts", "columns": ["account_id", "customer_id", "account_name"],
+                "rows": [[1, 7, "main"], [2, 8, "spare"]]}
+    customers = {"name": "Customers", "columns": ["customer_id", "customer_name"], "rows": [[7, "Ann"], [8, "Bo"]]}
+    bank = SchemaGraph.from_tables([accounts, customers], [("Accounts", "customer_id", "Customers", "customer_id")])
+    vault = {(column.ref.table, column.ref.name): column.ref for column in bank.columns}
+    assert request_fields("Show the id and the account name for all accounts.", bank) == (
+        (vault["Accounts", "account_id"],), (vault["Accounts", "account_name"],))
+    students = {"name": "Student", "columns": ["StuID", "Fname", "LName"], "rows": [[1, "Ann", "Lee"]]}
+    faculty = {"name": "Faculty", "columns": ["FacID", "Fname", "Lname"], "rows": [[1, "Bo", "Ray"]]}
+    campus = SchemaGraph.from_tables([students, faculty], [])
+    assert request_fields("Show the first name and last name for all the instructors.", campus) == ()
+    # Of tied tables, the one the question names owns the items (held-out Spider train 903).
+    person = {(column.ref.table, column.ref.name): column.ref for column in campus.columns}
+    assert request_fields("Which student has the longest name? Show the first name and last name.", campus) == (
+        (person["Student", "Fname"],), (person["Student", "LName"],))
+    # One named only after the list, in its condition, does not (fresh holdout 654).
+    assert request_fields("What are the first name and last name of those who advise a student?", campus) == ()
+
+
 def test_a_rewording_keeps_the_operations_the_engine_reads():
     """Spider DEV, 2026-10-13: rewordings were refused for losing words the engine does not read as operations: "per" in
     "miles per gallon", "number of" before the field Number_products, "no less than" said "at least". The engine's own
@@ -6579,6 +6662,7 @@ TESTS = [
     test_a_list_item_that_is_only_the_count_asks_for_the_count,
     test_a_relationship_self_join_needs_a_word_besides_its_parent_table,
     test_a_superlative_over_the_shown_field_is_one_value,
+    test_the_opening_sentence_lists_its_coordinated_outputs,
     test_a_rewording_keeps_the_operations_the_engine_reads,
     test_gemini_rewrite_must_preserve_data_values_and_numbers,
     test_evaluator_grades_the_served_selection,
