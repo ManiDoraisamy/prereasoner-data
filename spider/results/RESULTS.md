@@ -28,6 +28,25 @@ Artifacts: `%LOCALAPPDATA%/Temp/prereasoner-spider-review-20261013/`, tags `revi
 Incomplete intermediate runs are excluded. The review hardens ranking-number roles, output counts (preserving stored-count SUM),
 and table-owned full-name construction; it does not introduce another planner or model bundle.
 
+## "Find" opens a list of outputs; an item followed by "of" and its rows is theirs: 568 → 570 strict, Gemini on 658 → 661, held out 369 → 370, fresh holdout 374 → 376 (2026-10-15)
+
+Same contract as below. Runs `pkg19b-dirty`, `pkg19b-gemini-dirty`, `heldout-pkg19b-dirty` and
+`holdout2-pkg19b-dirty` are the change of the entry below with this change, against its `pkg18c` runs. The change is
+the `DECISIONS.md` entry of this title.
+
+- DEV, engine alone: 568 → **570 strict**; 2 wins (419, 637), no loss; wrong answers 168 → 166; 5 queries changed.
+- Held out: 369 → **370 strict**; 1 win (84), no loss; wrong answers 228 → 229; 4 queries changed.
+- Fresh holdout: 374 → **376 strict**; 2 wins (402, 869), no loss; wrong answers 233 → 231; 6 queries changed.
+- Gemini on: 658 → 661; 3 wins, no loss; wrong answers 224 → 222; 7 queries changed.
+- Held out answers 2 questions it refused: 84 right, and 434 ("Find the city and name of bank branches that provide
+  business loans") wrong: it shows a customer's name for the branch's bname, and Spider's gold lists the name before the
+  city the question asks first.
+- An earlier round (`pkg19`) left the item followed by "of" out of deciding the list's owner and lost DEV 370 ("the ids
+  and names of each document, as well as the number of paragraphs" showed a template's id); `pkg19b` decides the owner
+  over every item and pins only that item's field, and the case is a registered regression.
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_{pkg19b,pkg19b-gemini,heldout-pkg19b,holdout2-pkg19b}-dirty.json`.
+
 ## "Along with" adds an item; a list of fields and a count counts each group; "listed" asks nothing: 562 → 568 strict, Gemini on 651 → 658, held out 364 → 369, fresh holdout 367 → 374 (2026-10-15)
 
 Same contract as below. Runs `pkg18c-dirty`, `pkg18c-gemini-dirty`, `heldout-pkg18c-dirty` and

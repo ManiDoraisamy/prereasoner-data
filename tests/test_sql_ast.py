@@ -2791,6 +2791,65 @@ def test_listed_says_the_rows_are_in_the_data():
     assert [list(row) for row in served["result"]["rows"]] == [[2]], served["sql"]
 
 
+def test_find_opens_a_list_of_outputs():
+    """Spider DEV 419, 637 (2026-10-15): "find the id, name and age for visitors who visited some museums more than
+    once." showed a museum's id and name beside the visitor's age: "find" opened no list. "Find" is a list verb like
+    "list" and "show" (sql_expansion.output_requests). Negative: an opening "find" with one item lists nothing."""
+    from engine.sql_expansion import output_requests, request_fields, tokens
+
+    def items(question):
+        said = tokens(question)
+        return [(" ".join(said[r.start:r.end]), r.count) for r in output_requests(question)]
+
+    assert items("find the id, name and age for visitors who visited some museums more than once.") == [
+        ("id", False), ("name", False), ("age", False)]
+    assert items("For each journal_committee, find the editor name and the journal theme.") == [
+        ("editor name", False), ("journal theme", False)]
+    assert items("Find the number of concerts happened in the stadium with the highest capacity.") == []
+    visitors = {"name": "visitor", "columns": ["ID", "Name", "Level_of_membership", "Age"],
+                "rows": [[1, "Gonzalo Higuain", 8, 35], [2, "Guti Midfielder", 5, 28]]}
+    museums = {"name": "museum", "columns": ["Museum_ID", "Name", "Num_of_Staff"], "rows": [[1, "Plaza Museum", 62]]}
+    visits = {"name": "visit", "columns": ["Museum_ID", "visitor_ID", "Num_of_Ticket"], "rows": [[1, 1, 20], [1, 1, 4]]}
+    graph = SchemaGraph.from_tables([visitors, museums, visits], [("visit", "Museum_ID", "museum", "Museum_ID"),
+                                                                   ("visit", "visitor_ID", "visitor", "ID")])
+    ref = {(column.ref.table, column.ref.name): column.ref for column in graph.columns}
+    assert request_fields("find the id, name and age for visitors who visited some museums more than once.", graph) == (
+        (ref["visitor", "ID"],), (ref["visitor", "Name"],), (ref["visitor", "Age"],))
+
+
+def test_an_item_followed_by_of_and_its_rows_is_theirs():
+    """Fresh holdout 509, Spider DEV 946 (2026-10-15): "Find the customer name and date of the orders that have the
+    status 'Delivered'." showed each customer's date_became_customer: the customers, owning more items, owned the date
+    too. An item followed by "of" and the rows of one table that realizes it is that table's (request_fields), and
+    still counts in deciding the list's owner (DEV 370: "the ids and names of each document" showed a template's id).
+    Contrast: where no table holds the rows named after "of", the owner of the items decides it."""
+    from engine.sql_expansion import request_fields
+    customers = {"name": "Customers", "columns": ["customer_id", "customer_name", "date_became_customer"],
+                 "rows": [[1, "Ann", "2017-03-01"], [2, "Bo", "2016-11-07"]]}
+    orders = {"name": "Customer_Orders", "columns": ["order_id", "customer_id", "order_status", "order_date"],
+              "rows": [[1, 1, "Delivered", "2018-03-08"], [2, 2, "Cancelled", "2018-02-01"]]}
+    graph = SchemaGraph.from_tables([customers, orders], [("Customer_Orders", "customer_id", "Customers",
+                                                           "customer_id")])
+    ref = {(column.ref.table, column.ref.name): column.ref for column in graph.columns}
+    question = "Find the customer name and date of the orders that have the status \"Delivered\"."
+    assert request_fields(question, graph) == (
+        (ref["Customers", "customer_name"],), (ref["Customer_Orders", "order_date"],))
+    # Contrast: rows no table holds own nothing, and the customers, owning more items, own the date.
+    assert request_fields("Find the customer name and date of the shipments.", graph) == (
+        (ref["Customers", "customer_name"],), (ref["Customers", "date_became_customer"],))
+    templates = {"name": "Templates", "columns": ["Template_ID", "Template_Type_Code"], "rows": [[1, "PP"], [2, "BK"]]}
+    documents = {"name": "Documents", "columns": ["Document_ID", "Template_ID", "Document_Name"],
+                 "rows": [[10, 1, "Robbin CV"], [11, 2, "Data base"]]}
+    paragraphs = {"name": "Paragraphs", "columns": ["Paragraph_ID", "Document_ID", "Paragraph_Text"],
+                  "rows": [[100, 10, "Korea"], [101, 10, "Ireland"], [102, 11, "Brazil"]]}
+    docs = SchemaGraph.from_tables([templates, documents, paragraphs], [
+        ("Documents", "Template_ID", "Templates", "Template_ID"), ("Paragraphs", "Document_ID", "Documents",
+                                                                   "Document_ID")])
+    doc = {(column.ref.table, column.ref.name): column.ref for column in docs.columns}
+    assert request_fields("What are the ids and names of each document, as well as the number of paragraphs in "
+                          "each?", docs)[0] == (doc["Documents", "Document_ID"],)
+
+
 def test_a_rewording_keeps_the_operations_the_engine_reads():
     """Spider DEV, 2026-10-13: rewordings were refused for losing words the engine does not read as operations: "per" in
     "miles per gallon", "number of" before the field Number_products, "no less than" said "at least". The engine's own
@@ -6882,6 +6941,8 @@ TESTS = [
     test_a_list_of_fields_and_a_count_counts_each_group,
     test_a_reading_showing_exactly_the_list_outranks_one_adding_a_field,
     test_listed_says_the_rows_are_in_the_data,
+    test_find_opens_a_list_of_outputs,
+    test_an_item_followed_by_of_and_its_rows_is_theirs,
     test_a_rewording_keeps_the_operations_the_engine_reads,
     test_gemini_rewrite_must_preserve_data_values_and_numbers,
     test_evaluator_grades_the_served_selection,

@@ -3619,3 +3619,27 @@ Measured on Spider (`spider/results/RESULTS.md`, 2026-10-15): DEV 562 → 568 st
 - An earlier round (`pkg18`) let the exact list start ahead where two items read one field and lost held-out 269, 977
   and fresh holdout 59 ("the names of climbers and the names of mountains"), and `pkg18b` lost the track name of fresh
   holdout 745 ("the name and date for each race and its track name"); each is a registered regression.
+
+## "Find" opens a list of outputs; an item followed by "of" and its rows is theirs (2026-10-15)
+
+"Find the id, name and age for visitors who visited some museums more than once." showed a museum's id and name beside
+the visitor's age, and "Find the customer name and date of the orders that have the status 'Delivered'" showed each
+customer's date_became_customer.
+
+- "Find" is a list verb like "list" and "show" (`sql_expansion.output_requests`): an opening "find" with two or more
+  items names the outputs, their owner and their order; with one item it lists nothing.
+- An item followed by "of" and the rows of one table that realizes it is that table's field, whatever the list's owner
+  (`sql_expansion.request_fields`): "the customer name and date of the orders" is the customers' name and the orders'
+  order_date. The item still counts in deciding the owner: "the ids and names of each document, as well as the number
+  of paragraphs" are the documents' (an earlier round left the item out of that decision and showed a template's id).
+  Where no table holds the rows named after "of", the owner of the items decides it.
+
+Measured on Spider (`spider/results/RESULTS.md`, 2026-10-15): DEV 568 → 570 strict, held out
+369 → 370, the fresh holdout 374 → 376, Gemini on 658 → 661.
+
+- Held out answers 2 questions it refused: 84 right, and 434 ("Find the city and name of bank branches that provide
+  business loans") wrong: it shows a customer's name for the branch's bname, and Spider's gold lists the name before the
+  city the question asks first.
+- An earlier round (`pkg19`) left the item followed by "of" out of deciding the list's owner and lost DEV 370 ("the ids
+  and names of each document, as well as the number of paragraphs" showed a template's id); `pkg19b` decides the owner
+  over every item and pins only that item's field, and the case is a registered regression.

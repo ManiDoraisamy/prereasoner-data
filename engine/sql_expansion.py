@@ -1458,7 +1458,7 @@ class OutputRequest:
 
 # The verbs that open a sentence listing the outputs ("List the continent id, continent name and the number of
 # countries."), the words before the list that ask nothing, and the words that end it.
-_LIST_VERBS = frozenset({"list", "show", "give", "return", "report", "display", "tell", "provide", "output"})
+_LIST_VERBS = frozenset({"list", "show", "give", "return", "report", "display", "tell", "provide", "output", "find"})
 _LIST_LEADS = frozenset({"only", "me", "us", "both", "the", "a", "an", "all", "please", "just", "also", "each", "every",
                          "his", "her", "their", "its", "different", "distinct", "unique"})
 _LIST_ENDS = frozenset({"for", "who", "that", "which", "whose", "where", "when", "with", "in", "from", "by", "order",
@@ -1705,8 +1705,8 @@ def request_fields(question: str, schema: Any) -> tuple[tuple[ColumnRef, ...], .
     before = said[:listed[0].start]
     antecedent = [table for table in schema.tables
                   if _says_in_order(before, [canon(word) for word in name_words(table)])]
-    if said[listed[0].start - 1:listed[0].start] in (("its",), ("their",), ("his",), ("her",)) and len(
-            antecedent) == 1:
+    possessive = said[listed[0].start - 1:listed[0].start] in (("its",), ("their",), ("his",), ("her",))
+    if possessive and len(antecedent) == 1:
         owned = [[(level, ref) for level, ref in realized if ref.table == antecedent[0]] for realized in every]
         if all(owned):
             candidates = deciding = owned
@@ -1733,9 +1733,23 @@ def request_fields(question: str, schema: Any) -> tuple[tuple[ColumnRef, ...], .
         if len(named) != 1:
             return ()
         owner = named[0]
+    # An item followed by "of" and the rows of one table realizing it is that table's, whatever the list's owner:
+    # "Find the customer name and date of the orders" is the orders' order_date, not the customers'
+    # date_became_customer (fresh holdout 509, 2026-10-15).
+    pinned: dict[int, str] = {}
+    for index, request in enumerate(requests):
+        if possessive or said[request.end:request.end + 1] != ("of",):
+            continue
+        rest = [word for word in said[request.end + 1:request.end + 5] if word not in _OWNER_LEADS]
+        tables = {table for table in schema.tables
+                  if (name := [canon(word) for word in name_words(table)])
+                  and rest and (rest[:len(name)] == name or name[-1] == rest[0])}
+        owners = {ref.table for _, ref in candidates[index] if ref.table in tables}
+        if len(owners) == 1:
+            pinned[index] = owners.pop()
     fields = []
-    for options, decided in zip(candidates, deciding):
-        inside = [(level, ref) for level, ref in options if ref.table == owner] or decided
+    for index, (options, decided) in enumerate(zip(candidates, deciding)):
+        inside = [(level, ref) for level, ref in options if ref.table == pinned.get(index, owner)] or decided
         top = max(level for level, _ in inside)
         best = [ref for level, ref in inside if level == top]
         # Of the owner's fields an item names alike, its own before one referring to another table: "the id" of
@@ -1746,6 +1760,10 @@ def request_fields(question: str, schema: Any) -> tuple[tuple[ColumnRef, ...], .
         fields.append(tuple(dict.fromkeys([*best, *(references[ref] for ref in best
                                                     if references.get(ref) in named)])))
     return tuple(fields)
+
+
+# The words between "of" and the rows it names that name none of them.
+_OWNER_LEADS = frozenset({"the", "a", "an", "each", "every", "all", "its", "their"})
 
 
 def _says_in_order(said: Sequence[str], words: Sequence[str]) -> bool:
