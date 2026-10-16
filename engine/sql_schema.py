@@ -349,6 +349,13 @@ class SchemaGraph:
                     continue
                 seen.add(normalized)
                 values.setdefault(normalized, []).append((column.ref, value))
+                # A place's name holds the word for what is of it: "African countries" are in Continent 'Africa',
+                # "Asian nations" in 'Asia', "European countries" in 'Europe' (Spider DEV 724, 756, 784, 2026-10-15:
+                # 10 questions were refused).
+                if (isinstance(value, str) and value[:1].isupper() and normalized.isalpha() and len(normalized) >= 4
+                        and normalized[-1] in "ae"):
+                    demonym = normalized + ("n" if normalized.endswith("a") else "an")
+                    values.setdefault(demonym, []).append((column.ref, value))
             # A field of one-letter codes holds the words they stand for: "female students" are Sex 'F', "left handed
             # winners" winner_hand 'L' (Spider DEV 54, 486, held-out Spider train 246, 337, 2026-10-13: 14 questions
             # compared no such value).

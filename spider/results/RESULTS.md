@@ -28,6 +28,27 @@ Artifacts: `%LOCALAPPDATA%/Temp/prereasoner-spider-review-20261013/`, tags `revi
 Incomplete intermediate runs are excluded. The review hardens ranking-number roles, output counts (preserving stored-count SUM),
 and table-owned full-name construction; it does not introduce another planner or model bundle.
 
+## "For which" opens no command; "amount of" says a quantity; a place names its people; an item's last word may stand for its field's kind: 570 → 577 strict, Gemini on 661 → 662, held out 370 → 372, fresh holdout 376 → 377 (2026-10-15)
+
+Same contract as below. Runs `pkg20-dirty`, `pkg20-gemini-dirty`, `heldout-pkg20-dirty` and `holdout2-pkg20-dirty`
+are the change of the entry below with this change, against its `pkg19b` runs. The change is the `DECISIONS.md` entry
+of this title.
+
+- DEV, engine alone: 570 → **577 strict**; 7 wins (290, 398, 678, 724, 757, 994, 995), no loss; wrong answers 166 → 166;
+  11 queries changed.
+- Held out: 370 → **372 strict**; 2 wins (491, 943), no loss; wrong answers 229 → 230; 3 queries changed.
+- Fresh holdout: 376 → **377 strict**; 1 win (593), no loss; wrong answers 231 → 233; 4 queries changed.
+- Gemini on: 661 → 662; 4 wins, 3 losses (154, 762, 763); wrong answers 222 → 221; 10 queries changed.
+- DEV answers 8 questions it refused: 5 right, 96 ("the model of the car with the smallest amount of horsepower") right
+  but for one of its tied rows, and 132 and 154 wrong; it refuses 787, which it answered right only leniently. Held out
+  answers 3 (491 and 943 right, 171 wrong) and the fresh holdout 3 (593 right, 699 wrong, 922 right only leniently).
+- With Gemini on, DEV 154 ("the different years in which there were cars produced that weighed less than 4000 and also
+  cars that weighed more than 3000") is now read by the engine, which keeps only the first comparison, where the
+  rewording answered it; 762 and 763 ("asian country") are refused: the rewording said "Asia", and the rewording check,
+  now reading "asian" as the value, asked it to keep the word.
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_{pkg20,pkg20-gemini,heldout-pkg20,holdout2-pkg20}-dirty.json`.
+
 ## "Find" opens a list of outputs; an item followed by "of" and its rows is theirs: 568 → 570 strict, Gemini on 658 → 661, held out 369 → 370, fresh holdout 374 → 376 (2026-10-15)
 
 Same contract as below. Runs `pkg19b-dirty`, `pkg19b-gemini-dirty`, `heldout-pkg19b-dirty` and

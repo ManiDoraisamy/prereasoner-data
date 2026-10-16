@@ -1113,9 +1113,9 @@ def read_question(question, candidate, graph, *, calculation_satisfied=False):
         for number in re.findall(r"(?<![A-Za-z0-9_])[+-]?\d[\d,]*(?:\.\d+)?(?![A-Za-z0-9_])", candidate.sql)
     )
     # A word the value index holds for a value the query compares reads as that value: "left" for winner_hand 'L', a
-    # one-letter code (SchemaGraph._build_value_index).
+    # one-letter code, and "African" for Continent 'Africa', a place (SchemaGraph._build_value_index).
     sql_literals.update(word for word in set(words) if len(word) > 1 and any(
-        isinstance(value, str) and len(value) == 1 and f"'{value}'" in candidate.sql
+        isinstance(value, str) and f"'{value}'" in candidate.sql
         for _, value in graph.value_index.get(word, ())))
     ordinary_words = {
         "a", "an", "am", "and", "are", "as", "at", "be", "been", "being", "by", "can", "could",
@@ -1170,6 +1170,14 @@ def read_question(question, candidate, graph, *, calculation_satisfied=False):
     # DEV 509, 552, 568, 627, 2026-10-15: each correct reading was refused for the word).
     if stateless:
         ordinary_words.add("listed")
+    # "Amount of" says a quantity as "number of" does, read by a query aggregating or ordering its rows where no field
+    # of the tables it reads is an amount: "the total amount of bonus" is SUM(Bonus), "the smallest amount of
+    # horsepower" the least Horsepower, "the greatest amount of languages" the most languages (Spider DEV 290, 96, 741,
+    # 2026-10-15: each was refused for the word). "The total amount of payments" with an amount field is that field.
+    if (re.search(r"\bamounts?\s+of\b", question, re.I) and (has_aggregate or _orders_rows(candidate.query))
+            and not any("amount" in _name_vocabulary((column.ref.name,)) for column in graph.columns
+                        if column.ref.table in read_tables)):
+        ordinary_words.add("amount")
     if has_aggregate:
         ordinary_words.update(canon(word) for word in measure_participles(question, frozenset(schema_words))
                               if canon(word) not in observed)

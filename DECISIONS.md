@@ -3643,3 +3643,33 @@ Measured on Spider (`spider/results/RESULTS.md`, 2026-10-15): DEV 568 → 570 st
 - An earlier round (`pkg19`) left the item followed by "of" out of deciding the list's owner and lost DEV 370 ("the ids
   and names of each document, as well as the number of paragraphs" showed a template's id); `pkg19b` decides the owner
   over every item and pins only that item's field, and the case is a registered regression.
+
+## "For which" opens no command; "amount of" says a quantity; a place names its people; an item's last word may stand for its field's kind (2026-10-15)
+
+Four readings of the words a question uses, each a family the search or the completeness gate missed:
+
+- A "which" after a preposition opens a relative clause, not a second command (`sql_expansion.projection_window`):
+  "Return the nationalities for which there are two or more people" shows the nationalities, grouped, and "the towns
+  from which at least two teachers come" the hometowns. The field before it had fallen out of what the question shows,
+  and the people were grouped by name.
+- "Amount of" says a quantity as "number of" does, read by a query aggregating or ordering its rows where no field of
+  the tables it reads is an amount (`query_contract.read_question`): "the total amount of bonus" is SUM(Bonus), "the
+  smallest amount of horsepower" the least Horsepower. "The total amount of payments" over an amount field is still
+  that field's sum, never a count of the payments.
+- A place's name holds the word for what is of it (`SchemaGraph._build_value_index`, read by the gate as the one-letter
+  codes are): "African countries" are in Continent 'Africa', "Asian nations" in 'Asia', "European countries" in
+  'Europe'. Only a capitalized one-word value ending in "a" or "e" adds the form (+"n", +"an").
+- An item whose last word stands where its field's name says only the kind of its values ("number", "code", "date",
+  ...), the item saying the rest of the name, is that field (`sql_expansion.realizes_request`): "the cell phone" is
+  cell_number. A field whose own name says the item's words is it first.
+
+Measured on Spider (`spider/results/RESULTS.md`, 2026-10-15): DEV 570 → 577 strict, held out
+370 → 372, the fresh holdout 376 → 377, Gemini on 661 → 662.
+
+- DEV answers 8 questions it refused: 5 right, 96 ("the model of the car with the smallest amount of horsepower") right
+  but for one of its tied rows, and 132 and 154 wrong; it refuses 787, which it answered right only leniently. Held out
+  answers 3 (491 and 943 right, 171 wrong) and the fresh holdout 3 (593 right, 699 wrong, 922 right only leniently).
+- With Gemini on, DEV 154 ("the different years in which there were cars produced that weighed less than 4000 and also
+  cars that weighed more than 3000") is now read by the engine, which keeps only the first comparison, where the
+  rewording answered it; 762 and 763 ("asian country") are refused: the rewording said "Asia", and the rewording check,
+  now reading "asian" as the value, asked it to keep the word.

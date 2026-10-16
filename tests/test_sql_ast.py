@@ -2850,6 +2850,89 @@ def test_an_item_followed_by_of_and_its_rows_is_theirs():
                           "each?", docs)[0] == (doc["Documents", "Document_ID"],)
 
 
+def test_an_items_last_word_may_stand_for_its_fields_kind():
+    """Spider DEV 994, 995 (2026-10-15): "List the email, cell phone and home phone of all the professionals." read no
+    list: no field's name says "cell phone", and the professionals' cell_number came first, then an owner's home_phone.
+    An item whose last word stands where its field's name says only the kind of its values ("number"), the item saying
+    the rest, is that field (sql_expansion.realizes_request). Contrast: a field whose own name says the item is it."""
+    from engine.sql_expansion import request_fields
+    columns = ["professional_id", "email_address", "home_phone", "cell_number"]
+    professionals = {"name": "Professionals", "columns": columns,
+                     "rows": [[1, "a@x.com", "555-0100", "555-0101"], [2, "b@x.com", "555-0200", "555-0201"]]}
+    owners = {"name": "Owners", "columns": ["owner_id", "email_address", "home_phone", "cell_number"],
+              "rows": [[1, "c@x.com", "555-0300", "555-0301"]]}
+    graph = SchemaGraph.from_tables([professionals, owners], [])
+    ref = {(column.ref.table, column.ref.name): column.ref for column in graph.columns}
+    question = "List the email, cell phone and home phone of all the professionals."
+    assert request_fields(question, graph) == (
+        (ref["Professionals", "email_address"],), (ref["Professionals", "cell_number"],),
+        (ref["Professionals", "home_phone"],))
+    served = _hermetic_planner().serve([professionals, owners], question, [])
+    assert served["result"]["rows"][0] == ["a@x.com", "555-0101", "555-0100"], served.get("sql")
+    # Contrast: a field named by the item's own words is it, before the field its kind stands for.
+    phones = {"name": "Professionals", "columns": columns + ["cell_phone"],
+              "rows": [row + ["x"] for row in professionals["rows"]]}
+    named = SchemaGraph.from_tables([phones], [])
+    assert request_fields(question, named)[1] == (named.by_table["Professionals"][4].ref,)
+
+
+def test_a_which_after_a_preposition_opens_no_command():
+    """Spider DEV 678, 398 (2026-10-15): "Return the nationalities for which there are two or more people." grouped the
+    people by name: the "which" of "for which" was read as a second command, and the field before it fell out of what
+    the question shows (sql_expansion.projection_window). A "which" after a preposition opens a relative clause.
+    Contrast: a command after the first sentence still opens what is shown."""
+    from engine.sql_expansion import projection_window, tokens
+    people = {"name": "people", "columns": ["People_ID", "Nationality", "Name"],
+              "rows": [[1, "Russia", "Aleksey Ostapenko"], [2, "Bulgaria", "Teodor Salparov"],
+                       [3, "Russia", "Yevgeni Sivozhelez"], [4, "Russia", "Maksim Botin"]]}
+    served = _hermetic_planner().serve([people], "Return the nationalities for which there are two or more people.", [])
+    assert served["result"]["rows"] == [["Russia"]], served.get("sql")
+    window = [word for _, word in projection_window(tokens("What are the towns from which at least two teachers come "
+                                                           "from?"))]
+    assert "town" in window
+    window = [word for _, word in projection_window(tokens("Which address holds the most students? List the address id "
+                                                           "and all lines."))]
+    assert window[:3] == ["the", "address", "id"]
+
+
+def test_a_place_names_what_is_of_it():
+    """Spider DEV 724, 757 (2026-10-15): "What is the average life expectancy in African countries that are republics?"
+    was refused: no value says "African". A capitalized place's name ending in "a" or "e" holds the word for what is of
+    it (SchemaGraph._build_value_index), and the completeness gate reads it by the comparison on that value
+    (query_contract.read_question). Contrast: a value written in lower case adds no word."""
+    country = {"name": "country", "columns": ["Code", "Name", "Continent", "GovernmentForm", "LifeExpectancy"],
+               "rows": [["AGO", "Angola", "Africa", "Republic", 38], ["BEN", "Benin", "Africa", "Republic", 50],
+                        ["MAR", "Morocco", "Africa", "Monarchy", 69], ["JPN", "Japan", "Asia", "Monarchy", 80]]}
+    served = _hermetic_planner().serve([country], "What is the average life expectancy in African countries that are "
+                                                  "republics?", [])
+    assert served.get("valid") and served["result"]["rows"] == [[44]], (served.get("error"), served.get("sql"))
+    graph = SchemaGraph.from_tables([country], [])
+    assert {value for _, value in graph.value_index.get("african", ())} == {"Africa"}
+    lower = SchemaGraph.from_tables([dict(country, rows=[[row[0], row[1], row[2].lower(), *row[3:]]
+                                                         for row in country["rows"]])], [])
+    assert "african" not in lower.value_index
+
+
+def test_amount_of_says_a_quantity():
+    """Spider DEV 290, 96 (2026-10-15): "Find the total amount of bonus given in all the evaluations." was refused, its
+    SUM(Bonus) leaving "amount" unread, as was "the car with the smallest amount of horsepower". "Amount of" says a
+    quantity as "number of" does, read by a query aggregating or ordering its rows (query_contract.read_question).
+    Contrast: where a table the query reads has an amount field, "the total amount of payments" is that field's sum,
+    never a count of the payments."""
+    evaluation = {"name": "evaluation", "columns": ["Employee_ID", "Year_awarded", "Bonus"],
+                  "rows": [[1, "2011", 3000.0], [2, "2015", 3200.0], [1, "2016", 2900.0]]}
+    served = _hermetic_planner().serve([evaluation], "Find the total amount of bonus given in all the evaluations.", [])
+    assert served.get("valid") and served["result"]["rows"] == [[9100.0]], (served.get("error"), served.get("sql"))
+    cars = {"name": "cars_data", "columns": ["Id", "Model", "Horsepower"],
+            "rows": [[1, "chevelle", 130], [2, "skylark", 165], [3, "pinto", 46]]}
+    served = _hermetic_planner().serve([cars], "What is the model of the car with the smallest amount of horsepower?", [])
+    assert served.get("valid") and served["result"]["rows"] == [["pinto"]], (served.get("error"), served.get("sql"))
+    payments = {"name": "Payments", "columns": ["payment_id", "customer_id", "amount"],
+                "rows": [[1, 1, 10], [2, 1, 20], [3, 2, 7]]}
+    served = _hermetic_planner().serve([payments], "What is the total amount of payments?", [])
+    assert served.get("valid") and served["result"]["rows"] == [[37]], (served.get("error"), served.get("sql"))
+
+
 def test_a_rewording_keeps_the_operations_the_engine_reads():
     """Spider DEV, 2026-10-13: rewordings were refused for losing words the engine does not read as operations: "per" in
     "miles per gallon", "number of" before the field Number_products, "no less than" said "at least". The engine's own
@@ -6943,6 +7026,10 @@ TESTS = [
     test_listed_says_the_rows_are_in_the_data,
     test_find_opens_a_list_of_outputs,
     test_an_item_followed_by_of_and_its_rows_is_theirs,
+    test_an_items_last_word_may_stand_for_its_fields_kind,
+    test_a_which_after_a_preposition_opens_no_command,
+    test_a_place_names_what_is_of_it,
+    test_amount_of_says_a_quantity,
     test_a_rewording_keeps_the_operations_the_engine_reads,
     test_gemini_rewrite_must_preserve_data_values_and_numbers,
     test_evaluator_grades_the_served_selection,

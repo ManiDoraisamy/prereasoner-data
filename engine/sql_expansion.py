@@ -917,14 +917,21 @@ def parse_number(token: str):
     return None
 
 
+# The prepositions that open a relative clause with "which": "for which", "in which", "from which".
+_RELATIVE_LEADS = frozenset({"for", "in", "on", "from", "of", "by", "at", "with", "to", "into", "during", "through"})
+
+
 def projection_window(question_tokens: tuple[str, ...]) -> tuple[tuple[int, str], ...]:
     commands = {"find", "give", "list", "return", "show", "what", "which"}
     boundaries = {
         "has", "have", "having", "shared", "that", "under", "where", "which",
         "who", "whose", "with",
     }
+    # A "which" after a preposition opens a relative clause, not a command: "Return the nationalities for which there
+    # are two or more people" shows the nationalities (Spider DEV 678, 2026-10-15).
     late_commands = [
-        index for index, token in enumerate(question_tokens) if token in commands and index > 2
+        index for index, token in enumerate(question_tokens)
+        if token in commands and index > 2 and question_tokens[index - 1] not in _RELATIVE_LEADS
     ]
     if late_commands:
         start = late_commands[-1] + 1
@@ -1664,6 +1671,12 @@ def realizes_request(column: ColumnRef, said: Sequence[str], request: OutputRequ
         # A field whose own name is the item's words, no more, is it before one whose name holds them among others:
         # "the names and areas of countries" is Name, not LocalName (Spider DEV 800, 2026-10-14).
         return 3 if all(word in asked or any(says_in_another_form(word, said) for said in asked) for word in own) else 2
+    # An item whose last word stands where its field's name says only the kind of its values, the item saying the
+    # rest of the name, is that field: "the cell phone" is cell_number (Spider DEV 994, 995, 2026-10-15).
+    head = said[request.end - 1]
+    rest = own - KIND_WORDS
+    if rest and own & KIND_WORDS and head in asked - own and asked - {head} == rest:
+        return 1
     return 1 if says(own | display | set(name_tokens(column.table))) else 0
 
 

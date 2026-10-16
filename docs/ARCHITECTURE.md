@@ -347,8 +347,9 @@ The own-data path serves one typed SQL AST chosen from the deterministic search'
    their owner; "along with", "together with" and "as well as" add an item as "and" does, a list asking for fields
    and a count asks the count in each of those fields' groups, and the reading showing exactly the list's fields starts
    ahead of one adding a field; "find" is a list verb, and an item followed by "of" and the rows of one table realizing
-   it is that table's field. An answer showing only fields the question says only to filter on gets a twin showing
-   the name of the
+   it is that table's field; an item's last word may stand for the kind its field's name ends in ("the cell phone" is
+   cell_number), and a "which" after a preposition opens a relative clause, not a command. An answer showing only
+   fields the question says only to filter on gets a twin showing the name of the
    rows it lists (`SQLSearcher._display_twin`, `sql_rank.filter_only`: "the cities whose population is between ..."),
    and a row count drops a leaf join to a table nothing reads, nothing counts and the question does
    not name (`sql_expansion.counted_noun_tables`), which only multiplies the counted rows. The verb a sentence opens
