@@ -28,6 +28,23 @@ Artifacts: `%LOCALAPPDATA%/Temp/prereasoner-spider-review-20261013/`, tags `revi
 Incomplete intermediate runs are excluded. The review hardens ranking-number roles, output counts (preserving stored-count SUM),
 and table-owned full-name construction; it does not introduce another planner or model bundle.
 
+## A misspelled word the query reads is read; "listed" asks nothing beside an address state: 578 → 583 strict, Gemini on 669 → 670, held out 372 → 373, fresh holdout 378 → 379 (2026-10-16)
+
+Same contract as below. Runs `pkg22b-dirty`, `pkg22b-gemini-dirty`, `heldout-pkg22b-dirty` and `holdout2-pkg22b-dirty`
+are the change of the entry below with this change, against its `pkg21` runs. The change is the `DECISIONS.md` entry
+of this title.
+
+- DEV, engine alone: 578 → **583 strict**; 5 wins (498, 509, 552, 568, 612), no loss; wrong answers 167 → 167; 5 queries
+  changed.
+- Held out: 372 → **373 strict**; 1 win (986), no loss; wrong answers 230 → 230; 2 queries changed.
+- Fresh holdout: 378 → **379 strict**; 1 win (231), no loss; wrong answers 234 → 234; 1 queries changed.
+- Gemini on: 669 → 670; 1 win (552), no loss; wrong answers 219 → 219; 2 queries changed.
+- Gemini on, 612 is now served by the engine, where the rewording answered it the same. The first round of this change
+  read a misspelling without the vocabulary test: held out, it answered 10 more questions, 8 of them wrong ("country"
+  read as County, a name read as a field); that round is not this measurement.
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_{pkg22b,pkg22b-gemini,heldout-pkg22b,holdout2-pkg22b}-dirty.json`.
+
 ## The row with the maximum is the row holding it; an extreme listed beside another output is a value; a rewording may say the value: 577 → 578 strict, Gemini on 662 → 669, held out 372 → 372, fresh holdout 377 → 378 (2026-10-15)
 
 Same contract as below. Runs `pkg21-dirty`, `pkg21-gemini-dirty`, `heldout-pkg21-dirty` and `holdout2-pkg21-dirty`

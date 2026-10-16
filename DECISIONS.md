@@ -3700,3 +3700,26 @@ Measured on Spider (`spider/results/RESULTS.md`, 2026-10-15): DEV 577 → 578 st
   Engine alone, DEV answers 2 questions it refused (722 right, 168 wrong), held out 2 (329 right only leniently, 75
   wrong) and refuses 406 and 666, both wrong before; the fresh holdout answers 549 and 912 right only leniently and 893
   turns lenient: the row with the minimum is every tied row, where Spider keeps one.
+
+## A misspelled word the query reads is read; "listed" asks nothing beside an address state (2026-10-16)
+
+A census of the selection (every pool member of every DEV question, its violations and the words the completeness gate
+leaves unread) found 206 DEV refusals at the completeness gate, 75 of them with the selected reading already right.
+Two of their families:
+
+- A word the English vocabulary holds no use of (`engine/closed_class.spacy_model`), five letters or more and one edit
+  (a letter added, dropped or changed, or two neighbours swapped) from a word the query reads, is that word misspelled
+  (`query_contract.read_question`): "the cartools that are on the TV Channel", "the battles that lost any 'Brig' type
+  shipes". A word the vocabulary knows is itself: "the country of all appelations" is no County, and "the course
+  names" no field one letter from "name".
+- "Listed" asks no condition where no field holds a listing or is named for a status (`query_contract.read_question`):
+  "How many transcripts are listed?" was still refused because any field named for a state (an address's
+  state_province_county) kept the word a condition. The rule of 2026-10-15 named these questions as its cases without
+  firing on them.
+
+Measured on Spider (`spider/results/RESULTS.md`, 2026-10-16): DEV 578 → 583 strict, held out
+372 → 373, the fresh holdout 378 → 379, Gemini on 669 → 670.
+
+- Gemini on, 612 is now served by the engine, where the rewording answered it the same. The first round of this change
+  read a misspelling without the vocabulary test: held out, it answered 10 more questions, 8 of them wrong ("country"
+  read as County, a name read as a field); that round is not this measurement.

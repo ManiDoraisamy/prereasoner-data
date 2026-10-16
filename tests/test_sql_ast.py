@@ -2977,6 +2977,46 @@ def test_the_row_with_the_maximum_is_the_row_holding_it():
     assert not selects_extreme(said, said.index("maximum")) and selects_extreme(said, said.index("minimum"))
 
 
+def test_a_word_one_letter_from_a_read_word_is_it_misspelled():
+    """Spider DEV 612, 498 (2026-10-16): "What is the title of all the cartools that are on the TV Channel ...?" was
+    refused, its correct reading leaving "cartools" unread. A word of five letters or more one edit (a letter added,
+    dropped or changed, or two neighbours swapped) from a word the query reads, and of no use the language knows, is
+    that word misspelled (query_contract.read_question). Contrast: one only near a word the query does not read stays
+    unread ("odrer" by a query that orders nothing), and so does a word the language knows (held-out Spider train 78:
+    "the country of all appelations" is no County)."""
+    from engine.query_contract import read_question
+    cartoons = {"name": "Cartoon", "columns": ["id", "Title", "Directed_by"],
+                "rows": [[1, "The Rise of the Blue Beetle!", "Ben Jones"], [2, "Day of the Dark Knight!", "Brandon"]]}
+    searcher = SQLSearcher.from_tables([cartoons], [])
+    reading = searcher.search("List the titles of all the cartoons.")[0]
+    assert read_question("List the titles of all the cartools.", reading, searcher.schema).unread == (), reading.sql
+    assert "odrer" in read_question("List the titles of all the cartools in odrer.", reading, searcher.schema).unread
+    wines = {"name": "wine", "columns": ["No", "Name", "County"], "rows": [[1, "Pinot", "Napa"], [2, "Syrah", "Sonoma"]]}
+    by_county = SQLSearcher.from_tables([wines], [])
+    county = by_county.search("List the county of all wines.")[0]
+    assert "country" in read_question("List the country of all wines.", county, by_county.schema).unread, county.sql
+    from engine.query_contract import _misspells
+    assert _misspells("alphaetical", {"alphabetical"}) and _misspells("langauge", {"language"})
+    assert _misspells("shipe", {"ship"}) and not _misspells("older", {"name", "age"})
+    assert not _misspells("card", {"car"})
+
+
+def test_listed_says_the_rows_are_in_the_data_beside_an_address_state():
+    """Spider DEV 509, 552, 568 (2026-10-16): "How many transcripts are listed?" was still refused: any field named for a
+    state (an address's state_province_county) kept "listed" a condition. Only a field holding a listing or named for a
+    status does (query_contract.read_question). Contrast: beside a status field, "listed" still asks a state."""
+    transcripts = {"name": "Transcripts", "columns": ["transcript_id", "transcript_date"],
+                   "rows": [[1, "1988-04-30"], [2, "1975-10-28"], [3, "1984-12-19"]]}
+    addresses = {"name": "Addresses", "columns": ["address_id", "city", "state_province_county"],
+                 "rows": [[1, "Port Chelsea", "Virginia"], [2, "Lake Laishafurt", "Kentucky"]]}
+    served = _hermetic_planner().serve([transcripts, addresses], "How many transcripts are listed?", [])
+    assert served.get("valid") and served["result"]["rows"] == [[3]], (served.get("error"), served.get("sql"))
+    properties = {"name": "properties", "columns": ["property_id", "address", "status"],
+                  "rows": [[1, "1 Main", "sold"], [2, "2 Oak", "for sale"], [3, "3 Elm", "sold"]]}
+    served = _hermetic_planner().serve([properties], "How many properties are listed?", [])
+    assert not served.get("valid"), served.get("sql")
+
+
 def test_a_rewording_keeps_the_operations_the_engine_reads():
     """Spider DEV, 2026-10-13: rewordings were refused for losing words the engine does not read as operations: "per" in
     "miles per gallon", "number of" before the field Number_products, "no less than" said "at least". The engine's own
@@ -7093,6 +7133,8 @@ TESTS = [
     test_amount_of_says_a_quantity,
     test_an_extreme_listed_beside_another_output_is_a_value,
     test_the_row_with_the_maximum_is_the_row_holding_it,
+    test_a_word_one_letter_from_a_read_word_is_it_misspelled,
+    test_listed_says_the_rows_are_in_the_data_beside_an_address_state,
     test_a_rewording_keeps_the_operations_the_engine_reads,
     test_gemini_rewrite_must_preserve_data_values_and_numbers,
     test_a_rewording_may_say_the_value_a_word_names,

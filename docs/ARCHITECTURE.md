@@ -431,7 +431,9 @@ departing from APG" by SourceAirport); a name's part a field abbreviates ("first
 named as its table is (airlines.Airline); a verb relating two tables it reads, one named before the verb and the
 other after; a word sharing a stem of five letters or more with a table or field it reads ("students enrolled" by
 Student_Enrolment), a word of an operation excepted; and "one" after a determiner ("the one whose name"). Two words
-that begin the name of a table it reads are read ("the high school student" by Highschooler). So is a word the search
+that begin the name of a table it reads are read ("the high school student" by Highschooler), as is a
+word the English vocabulary lacks one letter from a word it reads, misspelled ("the cartools" by Cartoon). So is a word
+the search
 names a read field by ("gender" by Sex, `sql_expansion.column_matches`), "the full name" by a first and a last name of
 one table, and a word saying how rows are counted by a query counting them: "times" and "records" after a word of a
 count, and a verb a count follows after "by" ("the hometowns shared by at least two teachers") by one that groups them.

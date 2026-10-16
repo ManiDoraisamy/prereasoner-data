@@ -1173,10 +1173,12 @@ def read_question(question, candidate, graph, *, calculation_satisfied=False):
     state_schema = any(set(lexical_words(c.ref.name)) & {"status", "state", "paid", "listed", "settled"}
                        for c in graph.columns)
     stateless = not state_schema and not observed & {"unpaid", "unlisted", "pending", "refunded", "settled"}
-    # Where no field holds a state, "listed" says the rows are in the data and asks no condition: "How many
-    # transcripts are listed?", "the transcript with at least 2 courses listed", "each of the listed directors" (Spider
-    # DEV 509, 552, 568, 627, 2026-10-15: each correct reading was refused for the word).
-    if stateless:
+    # Where no field holds a listing or is named for a status, "listed" says the rows are in the data and asks no
+    # condition: "How many transcripts are listed?", "the transcript with at least 2 courses listed", "each of the
+    # listed directors" (Spider DEV 509, 552, 568, 627). An address's state is no listing: the transcripts were still
+    # refused for the word beside a state_province_county field (2026-10-16).
+    if not observed & {"listed", "unlisted"} and not any(
+            {"listed", "unlisted", "listing", "status"} & set(lexical_words(c.ref.name)) for c in graph.columns):
         ordinary_words.add("listed")
     # "Amount of" says a quantity as "number of" does, read by a query aggregating or ordering its rows where no field
     # of the tables it reads is an amount: "the total amount of bonus" is SUM(Bonus), "the smallest amount of
@@ -1248,6 +1250,14 @@ def read_question(question, candidate, graph, *, calculation_satisfied=False):
             ordinary_words.add(canon(participle))
     ordinary_words.update(_witnessed_words(question, words, candidate.query, graph, observed, schema_words,
                                            ordinary_words))
+    # A word the language knows no use of, one letter from a word the query reads, is that word misspelled: "the
+    # cartools that are on the TV Channel", "the battles that lost any 'Brig' type shipes" (Spider DEV 612, 498,
+    # 2026-10-16: each correct reading was refused for the misspelling). A word the language knows is itself: "the
+    # country of all appelations" is no County, nor "the course names" a field one letter from "name".
+    read = read_names | sql_literals | ordinary_words
+    ordinary_words.update(word for said, word in zip(spelled, words)
+                          if word not in read and len(said) >= 5 and said.isalpha() and _misspells(word, read)
+                          and _unknown_word(said))
     unread = tuple(dict.fromkeys(said for said, word in zip(spelled, words)
                                  if word not in read_names | sql_literals | ordinary_words))
     named = tuple(dict.fromkeys(said for said, word in zip(spelled, words)
@@ -1271,6 +1281,28 @@ def read_question(question, candidate, graph, *, calculation_satisfied=False):
     explicitly_all_fields = complete_projection_requested(question)
     return Reading(unread, named,
                    has_star(candidate.query) and bool(requested_fields) and not explicitly_all_fields)
+
+
+def _unknown_word(said):
+    """Whether the English vocabulary (engine/closed_class.spacy_model) holds no use of the spelled word ``said``."""
+    from engine.closed_class import spacy_model
+    return spacy_model().vocab[said.lower()].is_oov
+
+
+def _misspells(word, read):
+    """Whether ``word`` is one edit (a letter added, dropped or changed, or two neighbours swapped) from a word of
+    ``read`` of four letters or more, or from its plural."""
+    def one_edit(a, b):
+        if a == b or abs(len(a) - len(b)) > 1:
+            return False
+        if len(a) == len(b):
+            diff = [index for index in range(len(a)) if a[index] != b[index]]
+            return len(diff) == 1 or (len(diff) == 2 and diff[1] == diff[0] + 1
+                                      and a[diff[0]] == b[diff[1]] and a[diff[1]] == b[diff[0]])
+        short, long = (a, b) if len(a) < len(b) else (b, a)
+        return any(long[:index] + long[index + 1:] == short for index in range(len(long)))
+    return any(one_edit(word, known) or one_edit(word, known + "s") for known in read
+               if len(known) >= 4 and known.isalpha())
 
 
 def _compares_for_equality(query):
