@@ -3263,6 +3263,68 @@ def test_a_key_named_as_the_table_it_refers_to_names_that_table():
     assert served.get("valid") and served["result"]["rows"] == [["Tides"]], (served.get("error"), served.get("sql"))
 
 
+def test_available_results_and_compute_ask_nothing():
+    """Held-out Spider train 443, 447, 477, 2026-10-16: "How many available hotels are there in total?", "... and sort
+    the results by the number of followers" and "Compute the total amount of payment processed." were refused, the
+    selected reading right, for "available", "results" and "compute". Where no table or field is named for
+    availability, "available" says the rows are in the data; "the results" a sort verb orders are the answer's rows; and
+    "compute" is a command (query_contract.read_question). Contrast: beside an availability field "available" still
+    asks a condition (a table's availability the count does not read), and "the least number of results" still asks for
+    results."""
+    from engine.query_contract import read_question
+    hotels = {"name": "Hotels", "columns": ["hotel_id", "star_rating"], "rows": [[1, 5], [2, 3], [3, 4]]}
+    served = _hermetic_planner().serve([hotels], "How many available hotels are there in total?", [])
+    assert served.get("valid") and served["result"]["rows"] == [[3]], (served.get("error"), served.get("sql"))
+    users = {"name": "user_profiles", "columns": ["uid", "name", "followers"],
+             "rows": [[1, "Ann", 30], [2, "Bo", 90], [3, "Cy", 60]]}
+    served = _hermetic_planner().serve([users], "List the name and number of followers for each user, and sort the "
+                                                "results by the number of followers in descending order.", [])
+    assert served.get("valid") and [list(row) for row in served["result"]["rows"]] == [
+        ["Bo", 90], ["Cy", 60], ["Ann", 30]], (served.get("error"), served.get("sql"))
+    payments = {"name": "Payments", "columns": ["payment_id", "amount_payment"], "rows": [[1, 20], [2, 30]]}
+    served = _hermetic_planner().serve([payments], "Compute the total amount of payment processed.", [])
+    assert served.get("valid") and served["result"]["rows"] == [[50]], (served.get("error"), served.get("sql"))
+    rooms = {"name": "Rooms", "columns": ["room_id", "beds"], "rows": [[1, 2], [2, 1]]}
+    slots = {"name": "Room_Slots", "columns": ["room_id", "availability"], "rows": [[1, "open"], [2, "booked"]]}
+    graph = SchemaGraph.from_tables([rooms, slots], ())
+    every = SelectQuery((SelectItem(Aggregate("COUNT", Star())),), "Rooms")
+    candidate = ScoredQuery(every, render_query(every), 0.0, ())
+    assert "available" in read_question("How many available rooms are there?", candidate, graph).unread
+    graph = SchemaGraph.from_tables([users], ())
+    ref = {(column.ref.table, column.ref.name): column.ref for column in graph.columns}
+    least = SelectQuery((SelectItem(ref["user_profiles", "name"]),), "user_profiles",
+                        order_by=(OrderTerm(ref["user_profiles", "followers"], "ASC"),), limit=1)
+    candidate = ScoredQuery(least, render_query(least), 0.0, ())
+    assert "results" in read_question("Show the user with the least number of results.", candidate, graph).unread
+
+
+def test_an_ordering_from_old_to_young_starts_at_the_oldest():
+    """Held-out Spider train 924, 715, Spider DEV 414, 2026-10-16: "Sort all captain names by their ages from old to
+    young." ordered the ages ascending, from the youngest, and was refused for "old" and "young". An ordering from one
+    age end to the other starts at the first one's grade (sql_extrema.span_grade), an age descending and a birth date
+    ascending from the oldest, and the completeness gate reads its words by an ordering in that direction. Contrast:
+    "from young to old" starts at the youngest; "how old are they" asks for something."""
+    from engine.sql_extrema import span_grade
+    from engine.sql_expansion import tokens
+    assert span_grade(tokens("sorted by their ages from old to young")) == "oldest"
+    assert span_grade(tokens("from younger to older")) == "youngest"
+    assert span_grade(tokens("how old are they")) is None
+    captains = {"name": "captain", "columns": ["Captain_ID", "Name", "age"],
+                "rows": [[1, "Ann", 40], [2, "Bo", 60], [3, "Cy", 50]]}
+    served = _hermetic_planner().serve([captains], "Sort all captain names by their ages from old to young.", [])
+    assert served.get("valid") and [row[0] for row in served["result"]["rows"]] == ["Bo", "Cy", "Ann"], (
+        served.get("error"), served.get("sql"))
+    served = _hermetic_planner().serve([captains], "Sort all captain names by their ages from young to old.", [])
+    assert served.get("valid") and [row[0] for row in served["result"]["rows"]] == ["Ann", "Cy", "Bo"], (
+        served.get("error"), served.get("sql"))
+    people = {"name": "people", "columns": ["People_ID", "Name", "Date_of_Birth"],
+              "rows": [[1, "Ann", "1990-01-01"], [2, "Bo", "1950-01-01"], [3, "Cy", "1970-01-01"]]}
+    served = _hermetic_planner().serve([people], "List all people names in the order of their date of birth from old to "
+                                                 "young.", [])
+    assert served.get("valid") and [row[0] for row in served["result"]["rows"]] == ["Bo", "Cy", "Ann"], (
+        served.get("error"), served.get("sql"))
+
+
 def test_a_rewording_keeps_the_operations_the_engine_reads():
     """Spider DEV, 2026-10-13: rewordings were refused for losing words the engine does not read as operations: "per" in
     "miles per gallon", "number of" before the field Number_products, "no less than" said "at least". The engine's own
@@ -7389,6 +7451,8 @@ TESTS = [
     test_a_possessive_is_its_word,
     test_a_word_spelling_out_a_fields_abbreviation_names_it,
     test_a_key_named_as_the_table_it_refers_to_names_that_table,
+    test_available_results_and_compute_ask_nothing,
+    test_an_ordering_from_old_to_young_starts_at_the_oldest,
     test_a_rewording_keeps_the_operations_the_engine_reads,
     test_gemini_rewrite_must_preserve_data_values_and_numbers,
     test_a_rewording_may_say_the_value_a_word_names,

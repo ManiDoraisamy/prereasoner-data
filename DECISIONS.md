@@ -3848,3 +3848,32 @@ Measured on Spider (`spider/results/RESULTS.md`, 2026-10-16): DEV 584 → 587 st
   change recovers.
 - A first round of the abbreviation reading without the table-word guard lost held out 58, 557 and 938 ("students" read
   as ENROLL.STU_NUM, shown beside the name); that round is not this measurement.
+
+## "Available", "the results" and "compute" ask nothing; an ordering from old to young starts at the oldest (2026-10-16)
+
+A census of the selection on the held-out set (every pool member, its violations and unread words; 1,000 questions at
+`ae1c0a4`) found 94 refusals with the selected reading right. Most are synonyms only a learned reading could resolve
+("employees" for Staff, "airplanes" for aircraft) or readings right only by accident (a song's "Badlands" filter left
+out); four word families were generic:
+
+- "Available" says the rows are in the data where no table or field is named for availability
+  (`query_contract.read_question`): "the files that are available in the format of mp4", "How many available hotels
+  are there in total?". Over a table Other_Available_Features the word names that table.
+- "The results" a sort verb orders are the answer's rows: "sort the results by the number of followers"; "the least
+  number of results" still asks for results. "Compute" is a command, as "calculate" is.
+- An ordering from one age end to the other starts at the first one's grade (`sql_extrema.span_grade`, read by the
+  search's ordering and by the gate): "Sort all captain names by their ages from old to young" is an age descending,
+  "in the order of their date of birth from old to young" a birth date ascending. The search ordered every such age
+  ascending; Spider's strict grade compares rows as a multiset, so those answers would have scored without being right,
+  and the gate reads the words only for an ordering in the grade's direction.
+- "Alphabetic" is an alphabetical word (`sql_expansion.ALPHABETICAL_WORDS`).
+
+Measured on Spider (`spider/results/RESULTS.md`, 2026-10-16): DEV 587 → 588 strict, held out
+377 → 385, the fresh holdout 390 → 390, Gemini on 674 → 674.
+
+- The fresh holdout answers 789, which it refused, wrong: "Compute the total amount of settlement across all the
+  settlements." sums Payments.Amount_Payment where Spider sums Settlements.Amount_Settled. The search names no field by
+  "settlement", the word of the Settlements table, so no reading summed Amount_Settled; "compute" was the only word the
+  gate left unread.
+- Held out 924 and DEV 414 order the ages descending; the search ordered them ascending before, and those answers were
+  refused for "old" and "young" (Spider's strict grade, a multiset of rows, would have scored them).

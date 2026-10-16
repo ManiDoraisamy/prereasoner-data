@@ -47,7 +47,7 @@ def complete_projection_requested(question: str) -> bool:
 
 
 # "in alphabetical order", "alphabetically": a text field ordered A to Z; with a reversing word, Z to A.
-ALPHABETICAL_WORDS = frozenset({"alphabetical", "alphabetically"})
+ALPHABETICAL_WORDS = frozenset({"alphabetic", "alphabetical", "alphabetically"})
 REVERSE_ORDER_WORDS = frozenset({"reverse", "reversed", "descending", "desc"})
 
 

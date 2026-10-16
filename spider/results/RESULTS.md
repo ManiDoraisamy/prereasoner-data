@@ -107,6 +107,25 @@ Artifacts: `%LOCALAPPDATA%/Temp/prereasoner-spider-review-20261013/`, tags `revi
 Incomplete intermediate runs are excluded. The review hardens ranking-number roles, output counts (preserving stored-count SUM),
 and table-owned full-name construction; it does not introduce another planner or model bundle.
 
+## "Available", "the results" and "compute" ask nothing; an ordering from old to young starts at the oldest: 587 → 588 strict, Gemini on 674 → 674, held out 377 → 385, fresh holdout 390 → 390 (2026-10-16)
+
+Same contract as below. Runs `p28-dirty`, `p28-gemini-dirty`, `heldout-p28-dirty` and `holdout2-p28-dirty` are
+`ae1c0a4` with this change, against its `m27` runs. The change is the `DECISIONS.md` entry of this title.
+
+- DEV, engine alone: 587 → **588 strict**; 1 win (414), no loss; wrong answers 165 → 165; 1 query changed.
+- Held out: 377 → **385 strict**; 8 wins (41, 390, 443, 447, 477, 715, 842, 924), no loss; wrong answers 232 → 232; 8
+  queries changed.
+- Fresh holdout: 390 → **390 strict**; no win, no loss; wrong answers 234 → 235; 1 query changed.
+- Gemini on: 674 → 674; no win, no loss; wrong answers 216 → 216; 0 queries changed.
+- The fresh holdout answers 789, which it refused, wrong: "Compute the total amount of settlement across all the
+  settlements." sums Payments.Amount_Payment where Spider sums Settlements.Amount_Settled. The search names no field by
+  "settlement", the word of the Settlements table, so no reading summed Amount_Settled; "compute" was the only word the
+  gate left unread.
+- Held out 924 and DEV 414 order the ages descending; the search ordered them ascending before, and those answers were
+  refused for "old" and "young" (Spider's strict grade, a multiset of rows, would have scored them).
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_{p28,p28-gemini,heldout-p28,holdout2-p28}-dirty.json`.
+
 ## A possessive is its word; a word spelling out a field's abbreviation names it; a key named as the table it refers to names that table; only a request said again repeats its field: 584 → 587 strict, Gemini on 671 → 674, held out 370 → 377, fresh holdout 383 → 390 (2026-10-16)
 
 Same contract as below. Runs `m27-dirty`, `m27-gemini-dirty`, `heldout-m27-dirty` and `holdout2-m27-dirty` are

@@ -801,6 +801,22 @@ def superlative_direction(cue: str, column: ColumnRef) -> str:
     return "ASC" if cue in MIN_CUES else "DESC"
 
 
+_AGE_ENDS = {"old": "oldest", "older": "oldest", "oldest": "oldest",
+             "young": "youngest", "younger": "youngest", "youngest": "youngest"}
+
+
+def span_grade(tokens: Sequence[str]) -> str | None:
+    """The age grade an ordering from one end to the other starts at: "sorted by their ages from old to young" orders
+    from the oldest (an age descending, a birth date ascending; ``superlative_direction``), "from young to old" from the
+    youngest (held-out Spider train 924, 715, Spider DEV 414, 2026-10-16: each ordered ages ascending). ``tokens`` are
+    canon() forms; None where no such span is said."""
+    for index in range(len(tokens) - 3):
+        start, end = _AGE_ENDS.get(tokens[index + 1]), _AGE_ENDS.get(tokens[index + 3])
+        if tokens[index] == "from" and tokens[index + 2] == "to" and start and end and start != end:
+            return start
+    return None
+
+
 # Words that rank from the start of a list, the number of rows after them: "the top 3", "the first two".
 LEADING_RANKS = frozenset({"top", "bottom", "first", "last"})
 # Words joining a ranked noun to the superlative that ranks it: "the two people with the largest age".

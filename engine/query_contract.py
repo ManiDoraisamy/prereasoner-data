@@ -1095,7 +1095,9 @@ class Reading:
 
 def read_question(question, candidate, graph, *, calculation_satisfied=False):
     """The ``Reading`` of ``question`` by ``candidate``, a runnable pool member."""
-    from engine.sql_ast import Aggregate, SelectQuery, SetQuery, Star, SubquerySource, column_refs, share_aggregate
+    from engine.sql_ast import (
+        Aggregate, ColumnRef, SelectQuery, SetQuery, Star, SubquerySource, column_refs, share_aggregate,
+    )
     from engine.sql_schema import canon
     from engine.closed_class import (
         action_words, closed_class_words, degree_words, measure_participles, number_words, value_participles,
@@ -1171,7 +1173,7 @@ def read_question(question, candidate, graph, *, calculation_satisfied=False):
         "least", "top", "bottom", "per", "each", "than", "more", "less", "greater", "above", "below",
         "before", "after", "between", "not", "no", "except", "excluding", "without", "month", "year",
         "day", "date", "value", "values", "column", "field", "data", "sheet", "spreadsheet", "tell",
-        "find", "list", "get", "return", "display", "calculate", "bought", "ordered",
+        "find", "list", "get", "return", "display", "calculate", "compute", "bought", "ordered",
     }
     if realizes_numeric_comparisons(question, candidate, graph):
         ordinary_words.update({
@@ -1216,6 +1218,29 @@ def read_question(question, candidate, graph, *, calculation_satisfied=False):
     if not observed & {"listed", "unlisted"} and not any(
             {"listed", "unlisted", "listing", "status"} & set(lexical_words(c.ref.name)) for c in graph.columns):
         ordinary_words.add("listed")
+    # So does "available" where no table or field is named for availability: "the files that are available in the
+    # format of mp4", "How many available hotels are there in total?" (held-out Spider train 41, 443, 877, 2026-10-16:
+    # each was refused for the word). Over a table Other_Available_Features the word names that table.
+    if not observed & {"available", "unavailable"} and not any(
+            {"available", "availability", "unavailable"} & set(lexical_words(name))
+            for name in (*graph.tables, *(column.ref.name for column in graph.columns))):
+        ordinary_words.add("available")
+    # An ordering said from one end to the other is read by a query ordering its rows in that grade's direction: "Sort
+    # all captain names by their ages from old to young" by an age descending, "in the order of their date of birth
+    # from old to young" by a birth date ascending (held-out Spider train 924, 715; sql_extrema.span_grade). The
+    # opposite direction leaves the words unread. "The results" a sort verb orders are the answer's rows: "sort the
+    # results by the number of followers" (447, 842). "How old are they" and "the least number of results" still ask
+    # for something.
+    if _orders_rows(candidate.query):
+        from engine.sql_extrema import span_grade, superlative_direction
+        grade = span_grade(tokens(question))
+        if grade and any(isinstance(term.expression, ColumnRef)
+                         and term.direction == superlative_direction(grade, term.expression)
+                         for select, _ in _select_queries(candidate.query, graph=graph) for term in select.order_by):
+            ordinary_words.update({"old", "older", "oldest", "young", "younger", "youngest"})
+        if re.search(r"\b(?:sort|sorted|order|ordered|rank|ranked)\s+(?:all\s+)?(?:the\s+|these\s+)?results?\b",
+                     question, re.I):
+            ordinary_words.add("result")
     # "Amount of" says a quantity as "number of" does, read by a query aggregating or ordering its rows where no field
     # of the tables it reads is an amount: "the total amount of bonus" is SUM(Bonus), "the smallest amount of
     # horsepower" the least Horsepower, "the greatest amount of languages" the most languages (Spider DEV 290, 96, 741,

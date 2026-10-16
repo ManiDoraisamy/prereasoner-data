@@ -455,7 +455,9 @@ it spells them (`query_contract._witnessed_words`): a travel direction by the co
 departing from APG" by SourceAirport); a name's part a field abbreviates ("first name" by Fname); "name" by a field
 named as its table is (airlines.Airline); a verb relating two tables it reads, one named before the verb and the
 other after; a word sharing a stem of five letters or more with a table or field it reads ("students enrolled" by
-Student_Enrolment), a word of an operation excepted; and "one" after a determiner ("the one whose name"). Two words
+Student_Enrolment), a word of an operation excepted; and "one" after a determiner ("the one whose name"). "Available"
+asks nothing where no table or field is named for availability, nor do "the results" a sort verb orders, and an
+ordering "from old to young" is read by an ordering in that grade's direction (`sql_extrema.span_grade`). Two words
 that begin the name of a table it reads are read ("the high school student" by Highschooler), as is a
 word the English vocabulary lacks one letter from a word it reads, misspelled ("the cartools" by Cartoon). So is a word
 the search

@@ -1838,8 +1838,8 @@ class SQLSearcher:
         # An age grade orders each field in its own direction (sql_extrema.superlative_direction): "from the oldest
         # to the youngest" is an age descending and a birth date ascending. "Oldest" was ascending on every field,
         # so no candidate ordered singers by age from the oldest (Spider DEV 2, 2026-10-10).
-        from engine.sql_extrema import superlative_direction
-        graded = next((token for token in tokens if token in {"youngest", "oldest"}), None)
+        from engine.sql_extrema import span_grade, superlative_direction
+        graded = span_grade(tokens) or next((token for token in tokens if token in {"youngest", "oldest"}), None)
         out = []
         seen = set()
         for expression, expression_score in expressions:
