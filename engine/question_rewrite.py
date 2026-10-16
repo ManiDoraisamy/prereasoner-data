@@ -111,8 +111,12 @@ def _preserves_explicit_constraints(question: str, rewritten: str, graph) -> boo
         return False
     searcher = SQLSearcher(graph)
     matches, _occupied = searcher._value_matches(_tokens(question), frozenset(), question)
-    for _start, _end, phrase, _options in matches:
-        if " ".join(phrase.casefold().split()) not in candidate:
+    for _start, _end, phrase, options in matches:
+        # A rewording keeps a value it says itself where the question said a word for it: "Asian countries" is
+        # "countries in Asia" (Spider DEV 762, 763, 2026-10-15: refused once "Asian" read as 'Asia').
+        if " ".join(phrase.casefold().split()) not in candidate and not any(
+                re.search(r"(?<!\w)" + re.escape(" ".join(str(value).casefold().split())) + r"(?!\w)", candidate)
+                for _column, value in options if len(str(value).strip()) > 1):
             return False
     # The English candidate search tokenizer cannot be the literal-preservation
     # authority for names such as 東京. Bind those locally with Unicode boundaries.

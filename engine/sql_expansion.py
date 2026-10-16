@@ -1423,6 +1423,30 @@ def spelled_names(question_tokens: tuple[str, ...], schema: Any) -> frozenset[in
                      for index in range(start, start + len(words)))
 
 
+# The words before "the" that make an extreme select the row holding it (``selects_extreme``).
+_SELECTOR_LEADS = frozenset({"with", "has", "have", "had", "having"})
+_EXTREME_WORDS = {"maximum": "MAX", "max": "MAX", "minimum": "MIN", "min": "MIN"}
+
+
+def selects_extreme(question_tokens: Sequence[str], position: int) -> bool:
+    """Whether the extreme at ``position`` ("maximum", "minimum") selects the row holding it, as "the highest" does,
+    rather than asking for the extreme itself: "the country with the maximum GNP", "Which model of the car has the
+    minimum horsepower?" (Spider DEV 95, 2026-10-15: 11 such questions, none answered right)."""
+    return (question_tokens[position] in _EXTREME_WORDS and position >= 2 and question_tokens[position - 1] == "the"
+            and question_tokens[position - 2] in _SELECTOR_LEADS)
+
+
+def selected_extremes(question_tokens: Sequence[str]) -> dict[str, str]:
+    """For each extreme ("MAX", "MIN") every mention of which selects the row holding it (``selects_extreme``), the
+    direction an ordering realizing it sorts in."""
+    out = {}
+    for function, direction in (("MAX", "DESC"), ("MIN", "ASC")):
+        positions = [index for index, token in enumerate(question_tokens) if _EXTREME_WORDS.get(token) == function]
+        if positions and all(selects_extreme(question_tokens, position) for position in positions):
+            out[function] = direction
+    return out
+
+
 def asked_cues(cues: list[tuple[str, int]], question_tokens: tuple[str, ...],
                schema: Any) -> list[tuple[str, int]]:
     """The aggregate cues (function, position) that ask for their aggregate, as the search and the ranker read
@@ -1430,7 +1454,9 @@ def asked_cues(cues: list[tuple[str, int]], question_tokens: tuple[str, ...],
     asks only when no other cue does, and an average never does, since an average of rows' averages is not
     their average: "the Avg. monthly searches for all Keyword containing 'inspection checklist'" lists the 38
     keywords' searches rather than averaging them (a customer's keyword sheet, 2026-10-06). The total, maximum
-    or minimum of rows' totals, maxima or minima is theirs: "the total amount in Paris" sums Total Amount."""
+    or minimum of rows' totals, maxima or minima is theirs: "the total amount in Paris" sums Total Amount. An
+    extreme that selects the row holding it asks for no aggregate (``selects_extreme``)."""
+    cues = [(function, position) for function, position in cues if not selects_extreme(question_tokens, position)]
     spelled = spelled_names(question_tokens, schema)
     if any(position not in spelled for _, position in cues):
         return [(function, position) for function, position in cues if position not in spelled]

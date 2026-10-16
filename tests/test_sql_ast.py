@@ -2933,6 +2933,50 @@ def test_amount_of_says_a_quantity():
     assert served.get("valid") and served["result"]["rows"] == [[37]], (served.get("error"), served.get("sql"))
 
 
+def test_an_extreme_listed_beside_another_output_is_a_value():
+    """Spider DEV 722 (2026-10-15): "What is the total population and maximum GNP in Asia?" was refused: every reading
+    the pool kept selected the countries whose GNP equals the largest, and SUM(Population), MAX(GNP) fell out of it. An
+    extreme the question lists beside another output is a value it asks for (sql_constraints
+    ._scalar_aggregate_candidates). Contrast: a lone extreme is the value too."""
+    country = {"name": "country", "columns": ["Code", "Name", "Continent", "Population", "GNP"],
+               "rows": [["AFG", "Afghanistan", "Asia", 22720000, 5976], ["CHN", "China", "Asia", 1277558000, 982268],
+                        ["JPN", "Japan", "Asia", 126714000, 3787042], ["NLD", "Netherlands", "Europe", 15864000, 371362]]}
+    city = {"name": "city", "columns": ["ID", "Name", "CountryCode", "District", "Population"],
+            "rows": [[1, "Kabul", "AFG", "Kabol", 1780000], [2, "Shanghai", "CHN", "Shanghai", 9696300],
+                     [3, "Tokyo", "JPN", "Tokyo-to", 7980230], [4, "Amsterdam", "NLD", "Noord-Holland", 731200]]}
+    languages = {"name": "countrylanguage", "columns": ["CountryCode", "Language", "IsOfficial", "Percentage"],
+                 "rows": [["AFG", "Pashto", "T", 52], ["CHN", "Chinese", "T", 92], ["JPN", "Japanese", "T", 99],
+                          ["NLD", "Dutch", "T", 95]]}
+    keys = [{"from_table": "city", "from_col": "CountryCode", "to_table": "country", "to_col": "Code"},
+            {"from_table": "countrylanguage", "from_col": "CountryCode", "to_table": "country", "to_col": "Code"}]
+    served = _hermetic_planner().serve([country, city, languages], "What is the total population and maximum GNP in "
+                                                                   "Asia?", keys)
+    assert served.get("valid") and served["result"]["rows"] == [[1426992000, 3787042]], (
+        served.get("error"), served.get("sql"))
+    served = _hermetic_planner().serve([country], "What is the maximum GNP of countries in Asia?", [])
+    assert served.get("valid") and served["result"]["rows"] == [[3787042]], (served.get("error"), served.get("sql"))
+
+
+def test_the_row_with_the_maximum_is_the_row_holding_it():
+    """Spider DEV 95, fresh holdout 896 (2026-10-15): "What is the name of the country with the maximum GNP?" listed
+    every country beside its own GNP: the contract asked for a MAX aggregate and refused the reading ordering by GNP.
+    An extreme after "with/has/have the" selects the row holding it, as "the highest" does
+    (sql_expansion.selects_extreme), read so by the search, the ranker and the contract. Contrast: "the maximum GNP of
+    countries" asks for the value."""
+    country = {"name": "country", "columns": ["Code", "Name", "Continent", "Population", "GNP"],
+               "rows": [["AFG", "Afghanistan", "Asia", 22720000, 5976], ["CHN", "China", "Asia", 1277558000, 982268],
+                        ["JPN", "Japan", "Asia", 126714000, 3787042], ["NLD", "Netherlands", "Europe", 15864000, 371362]]}
+    served = _hermetic_planner().serve([country], "What is the name of the country with the maximum GNP?", [])
+    assert served.get("valid") and served["result"]["rows"] == [["Japan"]], (served.get("error"), served.get("sql"))
+    served = _hermetic_planner().serve([country], "What are the name and population of the country with the minimum "
+                                                  "GNP?", [])
+    assert served.get("valid") and served["result"]["rows"] == [["Afghanistan", 22720000]], (
+        served.get("error"), served.get("sql"))
+    from engine.sql_expansion import selects_extreme, tokens
+    said = tokens("What is the maximum GNP of countries that have the minimum population?")
+    assert not selects_extreme(said, said.index("maximum")) and selects_extreme(said, said.index("minimum"))
+
+
 def test_a_rewording_keeps_the_operations_the_engine_reads():
     """Spider DEV, 2026-10-13: rewordings were refused for losing words the engine does not read as operations: "per" in
     "miles per gallon", "number of" before the field Number_products, "no less than" said "at least". The engine's own
@@ -2964,6 +3008,23 @@ def test_gemini_rewrite_must_preserve_data_values_and_numbers():
     assert rewritten is None
     assert note == "rewording changed a stated value or number"
     assert [step for step, _ in gemini.calls] == ["question"]
+
+
+def test_a_rewording_may_say_the_value_a_word_names():
+    """Spider DEV 762, 763 with Gemini on (2026-10-15): "Find the name, population and expected life length of asian
+    country with the largest area?" was refused once "asian" read as Continent 'Asia': the rewording said "in Asia",
+    and the check asked it to keep the word "asian" (question_rewrite._preserves_explicit_constraints). A rewording
+    keeps a value it says itself. Contrast: one that drops the value still changes the question."""
+    country = {"name": "country", "columns": ["Code", "Name", "Continent", "Population"],
+               "rows": [["AFG", "Afghanistan", "Asia", 22720000], ["NLD", "Netherlands", "Europe", 15864000]]}
+    question = "What is the average population of Asian countries?"
+    planner, _ = _gemini_planner(question="What is the average population of countries in Asia?")
+    _norm, fks, sch, _tablemap = _request(planner, [country])
+    graph = SchemaGraph.from_planner(sch, fks)
+    assert planner.question_rewriter.rewrite(question, graph) == (
+        "What is the average population of countries in Asia?", "")
+    planner, _ = _gemini_planner(question="What is the average population of countries?")
+    assert planner.question_rewriter.rewrite(question, graph) == (None, "rewording changed a stated value or number")
 
 
 def test_evaluator_grades_the_served_selection():
@@ -7030,8 +7091,11 @@ TESTS = [
     test_a_which_after_a_preposition_opens_no_command,
     test_a_place_names_what_is_of_it,
     test_amount_of_says_a_quantity,
+    test_an_extreme_listed_beside_another_output_is_a_value,
+    test_the_row_with_the_maximum_is_the_row_holding_it,
     test_a_rewording_keeps_the_operations_the_engine_reads,
     test_gemini_rewrite_must_preserve_data_values_and_numbers,
+    test_a_rewording_may_say_the_value_a_word_names,
     test_evaluator_grades_the_served_selection,
     test_sql_import_maps_numeric_arithmetic_but_refuses_nonnumeric,
     test_sql_import_round_trip_executes_and_matches,

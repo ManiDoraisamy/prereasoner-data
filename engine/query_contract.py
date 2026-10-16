@@ -757,9 +757,17 @@ def _select_violations(question, query, graph, whole):
         if label.startswith("avg "):
             text = text.replace("average " + label[4:], " ")
     aggregates = {item.expression.function for item in query.select if isinstance(item.expression, Aggregate)}
+    # An extreme that selects the row holding it is realized as "the highest" is, by an ordering in its direction:
+    # "the country with the maximum GNP" (sql_expansion.selects_extreme).
+    from engine.sql_expansion import selected_extremes
+    selecting = selected_extremes(said)
     for pattern, function in ((r"\b(?:maximum|max)\b", "MAX"), (r"\b(?:minimum|min)\b", "MIN"),
                               (r"\b(?:average|avg|mean)\b", "AVG")):
         if re.search(pattern, text) and function not in aggregates and function not in measures:
+            if function in selecting:
+                if not query.order_by or query.order_by[0].direction != selecting[function]:
+                    violations.append("requested extremum or ordering is missing")
+                continue
             violations.append("requested aggregate is missing: " + function)
     for pattern, function, direction in ((r"\b(?:highest|largest)\b", "MAX", "DESC"),
                                          (r"\b(?:lowest|smallest)\b", "MIN", "ASC")):

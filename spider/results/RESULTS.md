@@ -28,6 +28,23 @@ Artifacts: `%LOCALAPPDATA%/Temp/prereasoner-spider-review-20261013/`, tags `revi
 Incomplete intermediate runs are excluded. The review hardens ranking-number roles, output counts (preserving stored-count SUM),
 and table-owned full-name construction; it does not introduce another planner or model bundle.
 
+## The row with the maximum is the row holding it; an extreme listed beside another output is a value; a rewording may say the value: 577 → 578 strict, Gemini on 662 → 669, held out 372 → 372, fresh holdout 377 → 378 (2026-10-15)
+
+Same contract as below. Runs `pkg21-dirty`, `pkg21-gemini-dirty`, `heldout-pkg21-dirty` and `holdout2-pkg21-dirty`
+are the change of the entry below with this change, against its `pkg20` runs. The change is the `DECISIONS.md` entry
+of this title.
+
+- DEV, engine alone: 577 → **578 strict**; 1 win (722), no loss; wrong answers 166 → 167; 3 queries changed.
+- Held out: 372 → **372 strict**; no win, no loss; wrong answers 230 → 230; 4 queries changed.
+- Fresh holdout: 377 → **378 strict**; 1 win (896), no loss; wrong answers 233 → 234; 4 queries changed.
+- Gemini on: 662 → 669; 7 wins (5, 392, 466, 667, 722, 762, 763), no loss; wrong answers 221 → 219; 15 queries changed.
+- The rewording check reads only the Gemini path: it accounts for Gemini on 762 and 763, the losses of the entry below.
+  Engine alone, DEV answers 2 questions it refused (722 right, 168 wrong), held out 2 (329 right only leniently, 75
+  wrong) and refuses 406 and 666, both wrong before; the fresh holdout answers 549 and 912 right only leniently and 893
+  turns lenient: the row with the minimum is every tied row, where Spider keeps one.
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_{pkg21,pkg21-gemini,heldout-pkg21,holdout2-pkg21}-dirty.json`.
+
 ## "For which" opens no command; "amount of" says a quantity; a place names its people; an item's last word may stand for its field's kind: 570 → 577 strict, Gemini on 661 → 662, held out 370 → 372, fresh holdout 376 → 377 (2026-10-15)
 
 Same contract as below. Runs `pkg20-dirty`, `pkg20-gemini-dirty`, `heldout-pkg20-dirty` and `holdout2-pkg20-dirty`

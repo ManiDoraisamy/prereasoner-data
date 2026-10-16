@@ -3673,3 +3673,30 @@ Measured on Spider (`spider/results/RESULTS.md`, 2026-10-15): DEV 570 → 577 st
   cars that weighed more than 3000") is now read by the engine, which keeps only the first comparison, where the
   rewording answered it; 762 and 763 ("asian country") are refused: the rewording said "Asia", and the rewording check,
   now reading "asian" as the value, asked it to keep the word.
+
+## The row with the maximum is the row holding it; an extreme listed beside another output is a value; a rewording may say the value (2026-10-15)
+
+Of 11 Spider questions (DEV, held out, fresh holdout) saying "with/has/have the maximum (minimum) ...", none was
+answered right: "What is the name of the country with the maximum GNP?" listed every country beside its own GNP.
+
+- An extreme after "with", "has", "have", "had" or "having" and "the" selects the row holding it, as "the highest"
+  does (`sql_expansion.selects_extreme`): it asks for no aggregate where the search and the ranker read the question's
+  aggregate words (`sql_expansion.asked_cues`), and the completeness contract asks for an ordering in its direction
+  instead of a MAX or MIN (`query_contract.constraint_violations`). "The maximum GNP of countries" still asks for the
+  value.
+- An extreme the question lists beside another output is a value it asks for, not the rows holding it
+  (`sql_constraints._scalar_aggregate_candidates`): "What is the total population and maximum GNP in Asia?" is
+  SUM(Population) and MAX(GNP). The readings selecting the countries whose GNP equals the largest had pushed it out of
+  the pool, and the question was refused.
+- A Gemini rewording keeps a value it says itself where the question said a word for it
+  (`question_rewrite._preserves_explicit_constraints`): "Asian countries" reworded as "countries in Asia" keeps Continent
+  'Asia', which the entry below began to read for "Asian" (it lost DEV 762 and 763 with Gemini on). A one-letter code
+  keeps its word.
+
+Measured on Spider (`spider/results/RESULTS.md`, 2026-10-15): DEV 577 → 578 strict, held out
+372 → 372, the fresh holdout 377 → 378, Gemini on 662 → 669.
+
+- The rewording check reads only the Gemini path: it accounts for Gemini on 762 and 763, the losses of the entry below.
+  Engine alone, DEV answers 2 questions it refused (722 right, 168 wrong), held out 2 (329 right only leniently, 75
+  wrong) and refuses 406 and 666, both wrong before; the fresh holdout answers 549 and 912 right only leniently and 893
+  turns lenient: the row with the minimum is every tied row, where Spider keeps one.

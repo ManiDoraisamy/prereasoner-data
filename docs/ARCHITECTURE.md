@@ -422,7 +422,9 @@ an arrival airport), when the column relating it carries the participle's travel
 (a comparative before "than" is a comparison with its operator, complemented when negated,
 `engine/sql_expansion.comparative_operator`; "the most common" orders groups by their count; any other superlative
 orders by, or takes the extreme of, a field in `engine/sql_extrema.superlative_direction`, so "the youngest" is the
-least age or the latest birth date); or when it is grammar, a counted noun naming the rows counted, or one of the closed lists
+least age or the latest birth date, and "the maximum" after "with", "has" or "have the" selects the row holding it
+as "the highest" does, `engine/sql_expansion.selects_extreme`); or when it is grammar, a counted noun naming the rows
+counted, or one of the closed lists
 the check keeps. A word that names only some other table's column is unread. The query also reads, though nothing of
 it spells them (`query_contract._witnessed_words`): a travel direction by the column of that direction ("flights
 departing from APG" by SourceAirport); a name's part a field abbreviates ("first name" by Fname); "name" by a field
@@ -522,7 +524,7 @@ history, and it is told not to name a table the question does not name. The call
 stops after 20 s: at the model's default thinking a rewording once outlasted the 30 s client timeout. Gemini is asked for a plain English question: comparisons of size or order in
 words, never > or <, and columns without their table ("Student with Age > 20" lost the "more than" the next check holds). The
 rewriter checks that numbers, quoted text, and the source values the search recognized in the question remain in
-its rewrite, and so does every source value in a script the search cannot read (東京); an ASCII cell value said as a
+its rewrite (a value a word names may stand for the word: "Asian countries" as "countries in Asia"), and so does every source value in a script the search cannot read (東京); an ASCII cell value said as a
 word ("IN", a country code) is the search's to recognize. It also keeps the computations the question asks: an
 aggregate, comparison, ranking or share word, and a count as the engine itself reads one
 (`sql_expansion.count_requested`); the grain a grouping word asks is held by the answer check after the reworded

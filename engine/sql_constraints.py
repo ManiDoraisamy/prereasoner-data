@@ -51,6 +51,7 @@ from engine.sql_expansion import (
     explicit_order as _explicit_order,
     expression_table as _expression_table,
     groups_requested as _groups_requested,
+    output_requests as _output_requests,
     join_key as _join_key,
     linker_noise as _linker_noise,
     name_tokens as _name_tokens,
@@ -554,6 +555,18 @@ class ConstraintQueryExpander(ExpansionSupport):
         normalized = " ".join(_tokens(question))
         if set(_tokens(question)) & {"different", "each", "per"}:
             return []
+        # An extreme the question lists beside another output is a value it asks for, not the rows holding it: "What
+        # is the total population and maximum GNP in Asia?" is SUM(Population) and MAX(GNP), not the population of
+        # the country with the largest GNP (Spider DEV 722, 2026-10-15: no reading of the values was kept).
+        listed = _output_requests(question, self.schema)
+        inside = {position for request in listed for position in range(request.start, request.end)} if len(
+            listed) > 1 else set()
+        said = _tokens(question)
+
+        def listed_value(function: str) -> bool:
+            positions = [index for index, token in enumerate(said) if token in _SCALAR_CUES[function]]
+            return bool(positions) and all(position in inside for position in positions)
+
         out = []
         for candidate in candidates:
             query = candidate.query
@@ -567,7 +580,7 @@ class ConstraintQueryExpander(ExpansionSupport):
             ]
             for aggregate in aggregates:
                 operator = _scalar_aggregate_operator(aggregate.function, normalized)
-                if operator is None:
+                if operator is None or listed_value(aggregate.function):
                     continue
                 target = aggregate.operand
                 projections = tuple(
@@ -627,13 +640,9 @@ class ConstraintQueryExpander(ExpansionSupport):
             functions.append("MAX")
         for function in functions:
             operator = _scalar_aggregate_operator(function, normalized)
-            if operator is None:
+            if operator is None or listed_value(function):
                 continue
-            cue_words = {
-                "AVG": {"average", "avg", "mean"},
-                "MIN": {"earliest", "lowest", "minimum", "min"},
-                "MAX": {"latest", "highest", "largest", "biggest", "maximum", "max"},
-            }[function]
+            cue_words = _SCALAR_CUES[function]
             cue_positions = [
                 index for index, token in enumerate(_tokens(question)) if token in cue_words
             ]
@@ -1214,6 +1223,14 @@ def _needs_distinct_for_relation(
     )
 
 
+
+
+# The words that ask for each extreme or average of a field (_scalar_aggregate_candidates).
+_SCALAR_CUES = {
+    "AVG": frozenset({"average", "avg", "mean"}),
+    "MIN": frozenset({"earliest", "lowest", "minimum", "min"}),
+    "MAX": frozenset({"latest", "highest", "largest", "biggest", "maximum", "max"}),
+}
 
 
 def _scalar_aggregate_operator(function: str, normalized: str) -> str | None:
