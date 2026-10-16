@@ -33,7 +33,8 @@ from engine.sql_ast import (
 )
 from engine.numeric import parse_decimal
 from engine.sql_candidate import ScoredQuery
-from engine.sql_expansion import average_comparison, count_requested, name_part_words, positive_predicate, words
+from engine.sql_expansion import average_comparison, count_requested, name_part_words, positive_predicate
+from engine.sql_expansion import tokens as _tokens
 from engine.sql_schema import ForeignKey, SchemaGraph, canon, is_surrogate_key
 
 
@@ -892,12 +893,3 @@ def _name_tokens(name: str) -> tuple[str, ...]:
 
 def _semantic_name_tokens(name: str) -> tuple[str, ...]:
     return name_part_words(name) or _name_tokens(name)
-
-
-def _tokens(text: str) -> tuple[str, ...]:
-    out = []
-    for token in words(text):
-        if token.endswith("'s"):
-            token = token[:-2]
-        out.append(canon(token))
-    return tuple(out)

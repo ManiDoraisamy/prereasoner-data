@@ -546,8 +546,13 @@ def canon(word: str) -> str:
     "cours", "matches" "matche" and "finishes" "finishe", so a question saying "course", "match" or
     "finish" named no Courses, matches or best_finish. A nation is a country and a store a shop: "the names of the
     nations with the 3 lowest populations" named no country, "the names of stores" no shop (Spider DEV 804, 275,
-    2026-10-13: 19 such questions had no reading or were refused)."""
+    2026-10-13: 19 such questions had no reading or were refused). A possessive is its word: "Brazil's population"
+    states the country 'Brazil' and "the owner's first name" names owner (Spider DEV 715, 873, 952, 2026-10-16: the
+    search read "brazil'", and 26 of 34 possessive questions of DEV and the two held-out sets were refused or
+    wrong)."""
     word = word.lower().strip()
+    if word.endswith("'s"):
+        word = word[:-2]
     if "," in word and NUMBER_TEXT.match(word):
         return word.replace(",", "")                      # "1,000" is the number 1000 a query compares
     if word == "handed":

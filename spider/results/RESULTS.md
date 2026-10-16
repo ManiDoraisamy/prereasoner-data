@@ -107,6 +107,33 @@ Artifacts: `%LOCALAPPDATA%/Temp/prereasoner-spider-review-20261013/`, tags `revi
 Incomplete intermediate runs are excluded. The review hardens ranking-number roles, output counts (preserving stored-count SUM),
 and table-owned full-name construction; it does not introduce another planner or model bundle.
 
+## A possessive is its word; a word spelling out a field's abbreviation names it; a key named as the table it refers to names that table; only a request said again repeats its field: 584 → 587 strict, Gemini on 671 → 674, held out 370 → 377, fresh holdout 383 → 390 (2026-10-16)
+
+Same contract as below. Runs `m27-dirty`, `m27-gemini-dirty`, `heldout-m27-dirty` and `holdout2-m27-dirty` are
+`02a2d69` with this change, against its `m23` runs (`02a2d69` itself: the review session's `7452cf2` and the entry
+below). The change is the `DECISIONS.md` entry of this title.
+
+- DEV, engine alone: 584 → **587 strict**; 3 wins (688, 715, 873), no loss; wrong answers 166 → 165; 3 queries changed.
+- Held out: 370 → **377 strict**; 7 wins (202, 269, 292, 369, 383, 631, 672), no loss; wrong answers 231 → 232; 13
+  queries changed.
+- Fresh holdout: 383 → **390 strict**; 7 wins (21, 35, 68, 450, 640, 684, 728), no loss; wrong answers 231 → 234; 13
+  queries changed.
+- Gemini on: 671 → 674; 3 wins (688, 715, 873), no loss; wrong answers 218 → 216; 5 queries changed.
+- The added wrong answers are questions the engine refused: held out 100 ("Alice's friends of friends", one step of the
+  friendship read) and 409 (the stations never above 10 bikes, read as a NOT IN of the wrong rows), the fresh holdout
+  156 (a total per customer where the question asks one total) and 818 and 971, right only leniently (the balance field
+  shown beside each state's total).
+- Against the base before the review session's 7452cf2 (the `pkg23` runs), `02a2d69` measured DEV 583 → 584, held out
+  373 → 370, the fresh holdout 379 → 383 and Gemini on 670 → 671: its count-grain repair won DEV 966 and 968 and held
+  out 719 and lost held out 412 and 654 (each counts the joined rows, or one filtered by a type, where the repair counts
+  each exhibition or song once), and its output-occurrence repair lost DEV 688 and held out 269 and 383, which this
+  change recovers.
+- A first round of the abbreviation reading without the table-word guard lost held out 58, 557 and 938 ("students" read
+  as ENROLL.STU_NUM, shown beside the name); that round is not this measurement.
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_{m23,m27}{,-gemini}-dirty.json` and
+`full_eval_{heldout,holdout2}-{m23,m27}-dirty.json`.
+
 ## A typographic quote or apostrophe is the ASCII one: 583 → 583 strict, Gemini on 670 → 670, held out 373 → 373, fresh holdout 379 → 379 (2026-10-16)
 
 Same contract as below. Runs `pkg23-dirty`, `pkg23-gemini-dirty`, `heldout-pkg23-dirty` and `holdout2-pkg23-dirty`

@@ -2322,7 +2322,7 @@ def test_explicit_list_preserves_repeated_bound_field_outputs():
     """A repeated output is another occurrence, not another schema column or an invented count."""
     from engine.query_contract import constraint_violations
     from engine.sql_ast import Aggregate, Star
-    from engine.sql_expansion import ExpansionSupport, request_slots
+    from engine.sql_expansion import ExpansionSupport, repeated_requests, request_slots
     from engine.sql_search import _in_list_order
     people = {"name": "People", "columns": ["id", "name"], "rows": [[1, "Ann"], [2, "Bo"]]}
     planner = _hermetic_planner()
@@ -2336,7 +2336,8 @@ def test_explicit_list_preserves_repeated_bound_field_outputs():
     assert ExpansionSupport(graph).requested_fields(question, "People") == (identity, name, identity)
     missing = SelectQuery((SelectItem(identity), SelectItem(name)), "People")
     assert any("output occurrence" in reason for reason in constraint_violations(question, missing, graph))
-    realized = _in_list_order(ScoredQuery(missing, render_query(missing), 0.0, ()), request_slots(question, graph))
+    realized = _in_list_order(ScoredQuery(missing, render_query(missing), 0.0, ()), request_slots(question, graph),
+                              repeated_requests(question, graph))
     assert realized and tuple(item.expression for item in realized.query.select) == (identity, name, identity)
     assert not constraint_violations(question, realized.query, graph)
     # The same schema preserves a different repeated position, and makes no unsaid copies.
@@ -2356,6 +2357,33 @@ def test_explicit_list_preserves_repeated_bound_field_outputs():
     # Anonymous count slots carry no counted population; one count cannot stand for two requests.
     count = SelectQuery((SelectItem(Aggregate("COUNT", Star())),), "People")
     assert _in_list_order(ScoredQuery(count, render_query(count), 0.0, ()), (None, None)) is None
+
+
+def test_only_a_request_said_again_repeats_its_field():
+    """Spider DEV 688, held-out Spider train 269, 2026-10-16: "List the contestant numbers and names" showed
+    contestant_name twice, and "the names of cities, as well as the names of the counties they correspond to" the
+    city's Name twice, the right answer refused as missing the repetition: two requests one field could realize were
+    read as one request said twice. Only a request said again in the same words repeats its field
+    (sql_expansion.repeated_requests). Contrast: "List the id, name and id." still shows the id twice."""
+    from engine.query_contract import constraint_violations
+    from engine.sql_expansion import repeated_requests
+    contestants = {"name": "CONTESTANTS", "columns": ["contestant_number", "contestant_name"],
+                   "rows": [[1, "Edwina"], [2, "Tabatha"]]}
+    served = _hermetic_planner().serve([contestants], "List the contestant numbers and names, ordered by contestant "
+                                                      "name descending.", [])
+    assert served.get("valid") and [list(row) for row in served["result"]["rows"]] == [[2, "Tabatha"], [1, "Edwina"]], (
+        served.get("error"), served.get("sql"))
+    assert repeated_requests("Find all people. List the id, name and id.") == (None, None, 0)
+    assert repeated_requests("List the contestant numbers and names.") == (None, None)
+    city = {"name": "city", "columns": ["City_ID", "County_ID", "Name"], "rows": [[1, 1, "Oak"], [2, 2, "Elm"]]}
+    county = {"name": "county_public_safety", "columns": ["County_ID", "Name"], "rows": [[1, "Abbot"], [2, "Burr"]]}
+    graph = SchemaGraph.from_tables([city, county], [("city", "County_ID", "county_public_safety", "County_ID")])
+    ref = {(column.ref.table, column.ref.name): column.ref for column in graph.columns}
+    question = "What are the names of cities, as well as the names of the counties they correspond to?"
+    both = SelectQuery((SelectItem(ref["city", "Name"]), SelectItem(ref["county_public_safety", "Name"])), "city",
+                       joins=(Join("county_public_safety", ref["city", "County_ID"],
+                                   ref["county_public_safety", "County_ID"]),))
+    assert not any("output occurrence" in reason for reason in constraint_violations(question, both, graph))
 
 
 def test_a_count_counts_the_rows_of_the_table_its_noun_names():
@@ -3161,6 +3189,78 @@ def test_typographic_quotes_read_as_the_ascii_ones():
     from engine.sql_expansion import plain_quotes, tokens
     assert tokens(plain_quotes("Give me Brazil’s population")) == tokens("Give me Brazil's population")
     assert plain_quotes("hometown is not `` Little Lever '' .") == 'hometown is not " Little Lever " .'
+
+
+def test_a_possessive_is_its_word():
+    """Spider DEV 715, 873, 952, 2026-10-16: the search read "Brazil's" as "brazil'", so "Give me Brazil's population"
+    stated no country and "the owner's first name" named no owner; the completeness gate, reading "brazil", refused
+    every reading. A possessive is its word (sql_schema.canon). Contrast: the question said with "of" is answered the
+    same; a possessive naming a table, not a value, filters nothing."""
+    from engine.sql_schema import canon
+    assert canon("Brazil's") == "brazil" and canon("dogs's") == "dog" and canon("owners") == "owner"
+    country = {"name": "country", "columns": ["Code", "Name", "Population", "LifeExpectancy"],
+               "rows": [["BRA", "Brazil", 170115000, 62], ["PER", "Peru", 25662000, 70]]}
+    owned = _hermetic_planner().serve([country], "Give me Brazil's population and life expectancy.", [])
+    said = _hermetic_planner().serve([country], "Give me the population and life expectancy of Brazil.", [])
+    assert owned.get("valid") and owned["result"]["rows"] == [[170115000, 62]], (owned.get("error"), owned.get("sql"))
+    assert owned.get("sql") == said.get("sql")
+    owners = {"name": "Owners", "columns": ["owner_id", "first_name", "state"],
+              "rows": [[1, "Nora", "Virginia"], [2, "Ivan", "Ohio"]]}
+    dogs = {"name": "Dogs", "columns": ["dog_id", "owner_id", "name"], "rows": [[10, 1, "Rex"], [11, 2, "Bo"]]}
+    fks = [{"from_table": "Dogs", "from_col": "owner_id", "to_table": "Owners", "to_col": "owner_id"}]
+    served = _hermetic_planner().serve([owners, dogs], "List each owner's first name and the dog's name.", fks)
+    assert served.get("valid") and sorted(map(tuple, served["result"]["rows"])) == [("Ivan", "Bo"), ("Nora", "Rex")], (
+        served.get("error"), served.get("sql"))
+    assert "WHERE" not in served["sql"]
+
+
+def test_a_word_spelling_out_a_fields_abbreviation_names_it():
+    """Held-out Spider train 202, 2026-10-16: "Find the name and account balance of the customer whose name includes the
+    letter 'a'." was refused, "account balance" naming no acc_bal; 35 held-out questions saying an abbreviated field's
+    words in full (enr "enrollment", lat "latitude", instID "institution") were refused. A word of seven letters or
+    more that a field's three- or four-letter name word begins spells it out (sql_expansion.spells_out). Contrast: a
+    form of the short word ("longest"), an ordering word ("descending") and a stop word ("per") spell out nothing."""
+    from engine.sql_expansion import says_in_another_form, spells_out
+    customers = {"name": "customer", "columns": ["cust_id", "cust_name", "acc_bal"],
+                 "rows": [[1, "Mary", 2000], [2, "Jack", 1000], [3, "Owen", 800]]}
+    served = _hermetic_planner().serve([customers], "Find the name and account balance of the customer whose name "
+                                                    "includes the letter 'a'.", [])
+    assert served.get("valid") and sorted(map(tuple, served["result"]["rows"])) == [("Jack", 1000), ("Mary", 2000)], (
+        served.get("error"), served.get("sql"))
+    assert spells_out("account", "acc") and spells_out("longitude", "long") and spells_out("institution", "inst")
+    assert says_in_another_form("balance", "bal") and says_in_another_form("enrollment", "enr")
+    assert not spells_out("longest", "long") and not spells_out("descending", "desc")
+    assert not spells_out("percentage", "per") and not spells_out("report", "rep")
+    # A word naming a table spells out no field's abbreviation of it: "the first name of students" shows no
+    # ENROLL.STU_NUM (held-out Spider train 58, 2026-10-16); "institution" still spells out the table Inst.
+    assert not says_in_another_form("student", "stu", frozenset({"student", "enroll"}))
+    assert says_in_another_form("institution", "inst", frozenset({"inst", "paper"}))
+    student = {"name": "STUDENT", "columns": ["STU_NUM", "STU_FNAME"], "rows": [[1, "Ann"], [2, "Bo"]]}
+    enroll = {"name": "ENROLL", "columns": ["CLASS_CODE", "STU_NUM", "ENROLL_GRADE"],
+              "rows": [[10, 1, "C"], [10, 2, "A"]]}
+    keys = [{"from_table": "ENROLL", "from_col": "STU_NUM", "to_table": "STUDENT", "to_col": "STU_NUM"}]
+    graded = _hermetic_planner().serve([student, enroll], "What is the first name of students who got grade C?", keys)
+    assert graded.get("valid") and [list(row) for row in graded["result"]["rows"]] == [["Ann"]], (
+        graded.get("error"), graded.get("sql"))
+
+
+def test_a_key_named_as_the_table_it_refers_to_names_that_table():
+    """Fresh holdout 742, 2026-10-16: "Find the name of the project for which a scientist whose name contains 'Smith' is
+    assigned to." showed AssignedTo.Project beside Projects.Name: the root table's key echoing a table the answer reads
+    was kept as the question's own rows (22 of 23 such answers in DEV and the two held-out sets were wrong). A key named
+    as the table it refers to names that table (SQLSearcher._simplified). Contrast: a key of the root table named
+    otherwise ("the currency symbol for every order", tests.test_enrichment) keeps its column."""
+    projects = {"name": "Projects", "columns": ["Code", "Name", "Hours"],
+                "rows": [["AE1", "Winds", 156], ["AE2", "Tides", 189], ["AE3", "Sands", 300]]}
+    scientists = {"name": "Scientists", "columns": ["SSN", "Name"],
+                  "rows": [[1, "Ann Smith"], [2, "Bo Lee"], [3, "Cy Smithers"]]}
+    assigned = {"name": "AssignedTo", "columns": ["Scientist", "Project"],
+                "rows": [[1, "AE1"], [2, "AE2"], [3, "AE1"], [3, "AE3"]]}
+    fks = [{"from_table": "AssignedTo", "from_col": "Scientist", "to_table": "Scientists", "to_col": "SSN"},
+           {"from_table": "AssignedTo", "from_col": "Project", "to_table": "Projects", "to_col": "Code"}]
+    served = _hermetic_planner().serve([projects, scientists, assigned], "Find the name of the project for which "
+                                       "the scientist 'Bo Lee' is assigned to.", fks)
+    assert served.get("valid") and served["result"]["rows"] == [["Tides"]], (served.get("error"), served.get("sql"))
 
 
 def test_a_rewording_keeps_the_operations_the_engine_reads():
@@ -7256,6 +7356,7 @@ TESTS = [
     test_a_field_beside_the_named_field_of_its_entity_is_not_asked,
     test_a_field_asked_by_its_name_without_its_kind_is_requested,
     test_explicit_list_preserves_repeated_bound_field_outputs,
+    test_only_a_request_said_again_repeats_its_field,
     test_a_count_counts_the_rows_of_the_table_its_noun_names,
     test_a_field_named_by_its_tables_abbreviation_is_matched_where_fields_are_shown,
     test_a_word_said_once_names_one_of_the_fields_ending_in_it,
@@ -7285,6 +7386,9 @@ TESTS = [
     test_a_word_one_letter_from_a_read_word_is_it_misspelled,
     test_listed_says_the_rows_are_in_the_data_beside_an_address_state,
     test_typographic_quotes_read_as_the_ascii_ones,
+    test_a_possessive_is_its_word,
+    test_a_word_spelling_out_a_fields_abbreviation_names_it,
+    test_a_key_named_as_the_table_it_refers_to_names_that_table,
     test_a_rewording_keeps_the_operations_the_engine_reads,
     test_gemini_rewrite_must_preserve_data_values_and_numbers,
     test_a_rewording_may_say_the_value_a_word_names,

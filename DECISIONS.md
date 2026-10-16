@@ -3806,3 +3806,45 @@ strict accuracy is unchanged in every set (DEV 583, held out 373, the fresh hold
   as before: DEV 715 is refused for its possessive (the search read "Brazil's" as "brazil'"), held out 202 for "account
   balance", which names no acc_bal. The fresh holdout answers 742, which it refused, right only leniently: its quoted
   'Smith' is now read, and the answer shows the project's code beside its name.
+
+## A possessive is its word; a word spelling out a field's abbreviation names it; a key named as the table it refers to names that table; only a request said again repeats its field (2026-10-16)
+
+Four families, measured together on `02a2d69` (the review session's `7452cf2` and the entry below):
+
+- The search read a question with its own tokenizer, which kept a possessive: "Brazil's" was "brazil'", so "Give me
+  Brazil's population and life expectancies." stated no country 'Brazil' and "the owner's first name" named no owner,
+  while the completeness gate read "brazil" and refused every reading. A possessive is its word in `sql_schema.canon`,
+  the one comparable form of question words, names and values, and the search's and the recursive expander's
+  tokenizers are `sql_expansion.tokens`, the one the gate reads with (the three copies differed only in the
+  possessive). Of 34 possessive questions in DEV and the two held-out sets, 26 were refused or wrong.
+- A word of seven letters or more spells out a field's or table's three- or four-letter name word that begins it
+  (`sql_expansion.spells_out`, read by `says_in_another_form`, the one field and gate reader): "account balance"
+  acc_bal, "enrollment" enr, "latitude" lat, "institution" Inst. A stop word abbreviates nothing ("percentage" is no
+  Residents_per_officer); a form of the short word ("longest") and an ordering word ("descending") spell out
+  nothing; and a word naming a table spells out no field (`entity_words`): "students" is no ENROLL.STU_NUM, the
+  abbreviation of a table's name being read beside its table (`abbreviated_table`). 35 held-out questions saying
+  such a field's words in full were refused.
+- A key named as the table it refers to names that table wherever it sits (`SQLSearcher._simplified`): "the name of
+  the project for which a scientist ... is assigned to" showed AssignedTo.Project beside Projects.Name, kept as the
+  root table's own rows. 22 of 23 such answers in DEV and the two held-out sets were wrong.
+- Only a request said again in the same words repeats its field (`sql_expansion.repeated_requests`, read by the list
+  order, the requested projection, `ExpansionSupport.requested_fields` and the occurrence check of
+  `query_contract`). The review's output-occurrence repair read two requests one field could realize as one request
+  said twice: "List the contestant numbers and names" showed contestant_name twice (Spider DEV 688), and "the names of
+  cities, as well as the names of the counties" the city's Name twice, the right answer refused as missing the
+  repetition (held-out Spider train 269, 383). "List the id, name and id." still shows the id twice.
+
+Measured on Spider (`spider/results/RESULTS.md`, 2026-10-16): DEV 584 → 587 strict, held out
+370 → 377, the fresh holdout 383 → 390, Gemini on 671 → 674, with no loss in any set.
+
+- The added wrong answers are questions the engine refused: held out 100 ("Alice's friends of friends", one step of the
+  friendship read) and 409 (the stations never above 10 bikes, read as a NOT IN of the wrong rows), the fresh holdout
+  156 (a total per customer where the question asks one total) and 818 and 971, right only leniently (the balance field
+  shown beside each state's total).
+- Against the base before the review session's 7452cf2 (the `pkg23` runs), `02a2d69` measured DEV 583 → 584, held out
+  373 → 370, the fresh holdout 379 → 383 and Gemini on 670 → 671: its count-grain repair won DEV 966 and 968 and held
+  out 719 and lost held out 412 and 654 (each counts the joined rows, or one filtered by a type, where the repair counts
+  each exhibition or song once), and its output-occurrence repair lost DEV 688 and held out 269 and 383, which this
+  change recovers.
+- A first round of the abbreviation reading without the table-word guard lost held out 58, 557 and 938 ("students" read
+  as ENROLL.STU_NUM, shown beside the name); that round is not this measurement.

@@ -323,11 +323,14 @@ The own-data path serves one typed SQL AST chosen from the deterministic search'
    name after it asks for the field ("the number of tickets" of Num_of_Ticket; "No" and "Num" read
    "number"). A word of a field's name said in another form names the field, by the shared stem reading the
    completeness check reads words by (`sql_expansion.says_in_another_form`): "the arriving date" date_arrived,
-   "their directors" Directed_by, unless the word names another field itself ("the gradepoints" is no Grade). A
+   "their directors" Directed_by, unless the word names another field itself ("the gradepoints" is no Grade); and a
+   word of seven letters or more spells out a three- or four-letter name word that begins it ("account balance"
+   acc_bal, "latitude" lat; `sql_expansion.spells_out`), unless it names a table ("students" is no ENROLL.STU_NUM). A
    field whose first word abbreviates its table's name (cust_name, stu_gpa), or whose name is its table's word but for
    its kind (date_of_treatment), is named beside its table: "their apartment numbers", "the date of treatment". A
    sort verb opening the question is its command ("Sort employee names by their age"), and "number", "all" or
-   "each" in lower case is no cell value. A nation is a country and a store a shop (`sql_schema.canon`); a field of
+   "each" in lower case is no cell value. A nation is a country, a store a shop and a possessive its word ("Brazil's
+   population" states 'Brazil'; `sql_schema.canon`); a field of
    one-letter codes holds the words they stand for only with the field-kind evidence for M/F and L/R
    (`sql_schema.code_word_matches_column`: sex/gender, hand/side/direction/orientation). A sampled Size 'M' or Stage F/M
    is no sex. The qualified-code constructor uses the same rule, and completeness witnesses the word from the typed
@@ -357,7 +360,10 @@ The own-data path serves one typed SQL AST chosen from the deterministic search'
    fields the question says only to filter on gets a twin showing
    the name of the rows it lists (`SQLSearcher._display_twin`, `sql_rank.filter_only`: "the cities whose population
    is between ...").
-   Explicitly repeated fields retain each output occurrence in construction and list ordering;
+   A key named as the table it refers to names that table: "the name of the project for which a scientist ... is
+   assigned to" shows Projects.Name, not also AssignedTo.Project (`SQLSearcher._simplified`).
+   Fields asked again in the same words (`sql_expansion.repeated_requests`: "List the id, name and id.") retain each
+   output occurrence in construction and list ordering; two requests one field could realize ask for two fields;
    the checker requires each occurrence of an unambiguous repeated field, resolving table aliases. List ordering
    can copy an already bound column value; anonymous count slots never create another count. A row count drops a
    leaf join to a table nothing reads, nothing counts and the question does

@@ -516,7 +516,8 @@ def _select_violations(question, query, graph, whole):
     # The fields an explicit list instruction asks for are read as the search built them and the ranker reads them
     # (sql_expansion.request_fields): "List the continent id, continent name ..." is realized by ContId, and its "id"
     # asks for no other table's Id (Spider DEV 89, 2026-10-14: the reading showing exactly the list was refused).
-    from engine.sql_expansion import output_requests, request_fields, request_slots, tokens as list_tokens
+    from engine.sql_expansion import (output_requests, repeated_requests, request_fields, request_slots,
+                                      tokens as list_tokens)
     said = list_tokens(question)
     listed = [request for request in output_requests(question, graph) if not request.count]
     realized_items = [set(said[request.start:request.end])
@@ -524,9 +525,13 @@ def _select_violations(question, query, graph, whole):
     # An explicitly repeated, unambiguously bound field must be shown each time.
     # A set of read columns cannot prove multiple output occurrences; aliases
     # identify the same field but do not add an output of their own.
+    # Only a request said again in the same words asks for another occurrence (sql_expansion.repeated_requests).
     from collections import Counter
-    repeated = Counter(next(iter(slot)) for slot in request_slots(question, graph)
-                       if slot is not None and len(slot) == 1)
+    bound = [next(iter(slot)) if slot is not None and len(slot) == 1 else None
+             for slot in request_slots(question, graph)]
+    repeated = Counter({ref for ref in bound if ref is not None})
+    repeated.update(ref for ref, earlier in zip(bound, repeated_requests(question, graph))
+                    if ref is not None and earlier is not None and bound[earlier] == ref)
     aliases = {join.alias: join.table for join in query.joins if join.alias}
     if query.from_alias and isinstance(query.from_table, str):
         aliases[query.from_alias] = query.from_table
@@ -1470,9 +1475,10 @@ def _witnessed_words(question, words, query, graph, observed, schema_words, alre
             out.add(word)
     read_names = {canon(part) for table in tables for part in name_words(table)}
     read_names |= {canon(part) for ref in used for part in name_words(ref.name)}
-    from engine.sql_expansion import says_in_another_form
+    from engine.sql_expansion import entity_words, says_in_another_form
+    entities = entity_words(graph)
     for word in set(words) - set(already):
-        if any(says_in_another_form(word, name) for name in read_names):
+        if any(says_in_another_form(word, name, entities) for name in read_names):
             out.add(word)
     # Spider DEV 397, 852, 853 and held-out Spider train 404, 609, 667, 850, 892, 2026-10-12: right answers were refused
     # for these words.

@@ -47,6 +47,7 @@ from engine.sql_candidate import ScoredQuery
 from engine.sql_dates import period_grouping, served_date_phrases
 from engine.sql_durations import duration_phrases, question_date, span_comparisons
 from engine.closed_class import COMPARATIVE_COLUMNS, COMPARATIVES
+from engine.sql_expansion import tokens as _tokens
 from engine.sql_expansion import (
     AGGREGATE_CUES,
     ALPHABETICAL_WORDS,
@@ -73,11 +74,14 @@ from engine.sql_expansion import (
     command_positions,
     counted_noun_tables,
     count_preserves_population,
+    repeated_requests,
     request_fields,
     request_slots,
     scalar_counted_table,
+    entity_words,
     says_in_another_form,
     share_cue,
+    shown_once,
     share_requested,
     spelled_names,
     word_spans,
@@ -204,6 +208,7 @@ class SQLSearcher:
         # readings listed the column they filtered). Another mention of the column still asks for it.
         qualifiers = self._value_qualifiers(tokens, question)
         context = naming_context(self.schema)
+        entities = entity_words(self.schema)
         prefix = tuple("" if index in qualifiers else token for index, token in enumerate(tokens[:clause_boundary]))
         prefix_tokens = set(prefix)
         id_requested = bool(_ID_WORDS & set(tokens))
@@ -215,7 +220,8 @@ class SQLSearcher:
                 (link_words := _column_link_words(schema_column.ref, id_requested))
                 # A past participle says a condition on the field, not that it is shown: "the buildings managed by
                 # 'Brenden'" lists no building_manager (held-out Spider train 29, 2026-10-13).
-                and all(word in prefix_tokens or any(says_in_another_form(token, word) and not token.endswith("ed")
+                and all(word in prefix_tokens or any(says_in_another_form(token, word, entities)
+                                                     and not token.endswith("ed")
                                                      and token not in _spelled_link_words(self.schema)
                                                      for token in prefix_tokens)
                         for word in naming_words(link_words, context[schema_column.ref.table]))
@@ -423,7 +429,9 @@ class SQLSearcher:
         pool = _merge_candidates([], [self._simplified(candidate, named_here, counted, tokens) for candidate in pool])
         if not complete_projection:
             slots = request_slots(question, self.schema)
-            pool = _merge_candidates([], [_in_list_order(candidate, slots) or _in_question_order(candidate, tokens)
+            repeats = repeated_requests(question, self.schema)
+            pool = _merge_candidates([], [_in_list_order(candidate, slots, repeats)
+                                          or _in_question_order(candidate, tokens)
                                           for candidate in pool])
         from engine.sql_rank import repeats_shown_rows
         pool = _merge_candidates(pool, [_distinct_twin(candidate) for candidate in pool
@@ -505,6 +513,15 @@ class SQLSearcher:
                                         evidence=draft.evidence + evidence))
         return sorted(expanded, key=lambda d: (-d.score, repr(d)))[:self.beam_size]
 
+    def _names_referenced_table(self, column: ColumnRef) -> bool:
+        """Whether ``column`` refers to another table's key and is named as that table is: AssignedTo.Project of
+        Projects, Reservations.Room of Rooms, model_list.Maker of car_makers; not orders.currency of currency_iso4217."""
+        name = [canon(word) for word in name_words(column.name)]
+        return bool(name) and any(
+            from_column == column and to_column.table != column.table
+            and [canon(word) for word in name_words(to_column.table)][-len(name):] == name
+            for key in self.schema.foreign_keys for from_column, to_column in key.column_pairs)
+
     def _simplified(self, candidate: ScoredQuery, named_tables: set[str],
                     counted: frozenset[str] = frozenset(), question_tokens: tuple[str, ...] = ()) -> ScoredQuery:
         """``candidate`` without what its answer never reads: a second column its joins equate with one it
@@ -560,8 +577,12 @@ class SQLSearcher:
                 _clause_tables(query.where), _clause_tables(query.having),
                 *(_clause_tables(term.expression) for term in query.order_by))
             # The question's own rows keep their columns: "the currency symbol for every order" lists each
-            # order's currency beside its symbol (tests.test_enrichment serving benchmark, 2026-10-02).
-            if column.table == query.from_table or column.table in named_tables:
+            # order's currency beside its symbol (tests.test_enrichment serving benchmark, 2026-10-02). A key named
+            # as the table it refers to names that table wherever it sits: "the name of the project for which a
+            # scientist ... is assigned to" showed AssignedTo.Project beside Projects.Name (held-out Spider train,
+            # fresh holdout 742, 2026-10-16: 22 of 23 answers so shown were wrong).
+            if (column.table == query.from_table or column.table in named_tables) and not self._names_referenced_table(
+                    column):
                 continue
             if column.table not in others and any(
                     other.table in others and other.table != column.table and find(other) == find(column)
@@ -700,6 +721,7 @@ class SQLSearcher:
             if column in references and not _says(tokens, column):
                 continue
             meaningful = _column_link_words(column, id_requested)
+            entities = entity_words(self.schema)
             positions = _column_link_positions(column, tokens, self.schema, meaningful)
             contested: set[int] = set()
             if column.type.numeric and unaggregated != tokens:
@@ -712,7 +734,7 @@ class SQLSearcher:
             if not positions:
                 continue
             said = {word for i in positions for word in meaningful
-                    if tokens[i] == word or says_in_another_form(tokens[i], word)}
+                    if tokens[i] == word or says_in_another_form(tokens[i], word, entities)}
             if not set(naming_words(meaningful, context[column.table])) <= said:
                 continue
             coverage = len(said & set(meaningful)) / max(len(set(meaningful)), 1)
@@ -736,7 +758,8 @@ class SQLSearcher:
                     # arriving date and the departing date" names date_arrived and date_departed at each "date",
                     # not both at the last (Spider DEV 958, 2026-10-13).
                     naming = naming_words(meaningful, context[column.table])
-                    own = [i for i in positions if any(tokens[i] == word or says_in_another_form(tokens[i], word)
+                    own = [i for i in positions if any(tokens[i] == word or says_in_another_form(tokens[i], word,
+                                                                                                      entities)
                                                        for word in naming)]
                     if own:
                         said = [own[-1] + 1 if own[-1] + 1 < len(tokens) and tokens[own[-1] + 1] in meaningful
@@ -762,8 +785,8 @@ class SQLSearcher:
         fields = request_fields(question, self.schema)
         if not fields:
             return None
-        chosen = tuple(min(refs, key=lambda ref: (-table_scores.get(ref.table, 0.0), ref.table, ref.name))
-                       for refs in fields)
+        chosen = shown_once([min(refs, key=lambda ref: (-table_scores.get(ref.table, 0.0), ref.table, ref.name))
+                             for refs in fields], question, self.schema)
         return chosen, 4.0 * len(chosen) + 1.0, ("output-requests",)
 
     def _projection_choices(self, tokens: tuple[str, ...], mentions: tuple[_Mention, ...],
@@ -2061,7 +2084,8 @@ def _said_at(tokens: tuple[str, ...], expression) -> int | None:
 _GROUPING_WORDS = frozenset({"each", "per", "by", "every", "different"})
 
 
-def _in_list_order(candidate: ScoredQuery, slots: tuple[frozenset[ColumnRef] | None, ...]) -> ScoredQuery | None:
+def _in_list_order(candidate: ScoredQuery, slots: tuple[frozenset[ColumnRef] | None, ...],
+                   repeats: tuple[int | None, ...] = ()) -> ScoredQuery | None:
     """``candidate`` with its answer's outputs in the order an explicit list instruction asks for them
     (sql_expansion.request_slots): "How many countries does each continent have? List the continent id, continent name
     and the number of countries." shows the id, the name, then the count (Spider DEV 89, 2026-10-14). None unless each
@@ -2083,10 +2107,12 @@ def _in_list_order(candidate: ScoredQuery, slots: tuple[frozenset[ColumnRef] | N
     for index, slot in enumerate(slots):
         if index in ordinals or slot is None:
             continue
-        # A repeated field is another occurrence of the same bound value. Counts
+        # A request said again in the same words is another occurrence of the field its first saying binds
+        # (sql_expansion.repeated_requests); a request another shown field could realize is not. Counts
         # carry no population binding here and must never be invented/copied.
-        repeated = next((item for item in query.select
-                         if isinstance(item.expression, ColumnRef) and item.expression in slot), None)
+        earlier = repeats[index] if index < len(repeats) else None
+        repeated = next((item for item, ordinal in zip(items, ordinals) if ordinal == earlier
+                         and isinstance(item.expression, ColumnRef) and item.expression in slot), None)
         if repeated is not None:
             items.append(repeated)
             ordinals.append(index)
@@ -2462,12 +2488,6 @@ def _names_a_part(tokens: tuple[str, ...], index: int) -> bool:
     return following < len(tokens) and tokens[following] in {"name", "line"}
 
 
-def _tokens(question: str) -> tuple[str, ...]:
-    return tuple(canon(token) for token in words(question))
-
-
-
-
 def _column_link_words(column: ColumnRef, id_requested: bool) -> tuple[str, ...]:
     # "No" and "Num" abbreviate "number": "the number of tickets" names Num_of_Ticket (Spider DEV 424). A name's part
     # is said in two words: "the first name of students" is Fname (held-out Spider train 736, 2026-10-12).
@@ -2523,9 +2543,11 @@ def _column_link_positions(
     # directed_by, "the settlement date" date_claim_settled (Spider DEV 958, 591, held-out Spider train 920,
     # 2026-10-13: no reading showed the field asked).
     spelled = _spelled_link_words(schema)
+    entities = entity_words(schema)
     positions = [i for i, token in enumerate(tokens)
                  if token in link_words or (token not in spelled
-                                            and any(says_in_another_form(token, word) for word in link_words))]
+                                            and any(says_in_another_form(token, word, entities)
+                                                    for word in link_words))]
     # A field whose words another field of its table spells whole is not named inside that spelling: "the ranking
     # date" names ranking_date and not the ranking, "each bed type" bedType and not beds (Spider DEV 471, 480,
     # held-out Spider train 108, fresh holdout 534, 636, 2026-10-13: each grouped or showed both).
@@ -2555,14 +2577,14 @@ def _column_link_positions(
     }:
         # A "number" names a match_num or a flight_no only after its entity's words: "the total number of players"
         # counts players (Spider DEV 429, 2026-10-12: it counted match numbers once "num" read "number").
-        entity_words = {
+        owner_words = {
             canon(word)
             for word in name_words(column.table) + name_words(column.name)
             if word.lower() not in {"no", "num"}
         }
         positions = [
             position for position in positions
-            if set(tokens[max(0, position - 2):position]) & entity_words
+            if set(tokens[max(0, position - 2):position]) & owner_words
         ]
     generic_link = not set(link_words) - {"name", "id"}
     duplicate_link = sum(

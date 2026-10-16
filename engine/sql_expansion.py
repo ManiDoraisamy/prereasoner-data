@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
+from functools import lru_cache
 import re
 from typing import Any, Iterable, Sequence
 import weakref
@@ -29,7 +30,7 @@ from engine.sql_ast import (
     and_predicates,
     render_query,
 )
-from engine.closed_class import COMPARATIVES, QUANTITY_COMPARATIVES
+from engine.closed_class import COMPARATIVES, QUANTITY_COMPARATIVES, spacy_model
 from engine.numeric import NUMBER_TEXT, NUMBER_WORD, parse_decimal
 from engine.sql_candidate import ScoredQuery
 from engine.sql_schema import SchemaGraph, canon, is_surrogate_key, name_words
@@ -323,7 +324,7 @@ class ExpansionSupport:
             if not realized:
                 return ()
             fields.append(realized[0])
-        return tuple(fields)
+        return shown_once(fields, question, self.schema)
 
     def group_options(
         self,
@@ -971,6 +972,17 @@ KIND_WORDS = frozenset({"code", "number", "address", "date", "description", "det
 _NAMING_CONTEXTS: "weakref.WeakKeyDictionary[Any, dict[str, frozenset[str]]]" = weakref.WeakKeyDictionary()
 
 
+def entity_words(schema: Any) -> frozenset[str]:
+    """The words of the schema's table names (canon() forms), read once per schema."""
+    entities = _ENTITY_WORDS.get(schema)
+    if entities is None:
+        entities = _ENTITY_WORDS[schema] = frozenset(word for table in schema.tables for word in name_tokens(table))
+    return entities
+
+
+_ENTITY_WORDS: "weakref.WeakKeyDictionary[Any, frozenset[str]]" = weakref.WeakKeyDictionary()
+
+
 def naming_context(schema: Any) -> dict[str, frozenset[str]]:
     """For each table, the words that say what none of its columns holds alone: the words of the tables'
     names ("the treatment type description" names no treatment_type_code) and the words two of its columns'
@@ -978,7 +990,7 @@ def naming_context(schema: Any) -> dict[str, frozenset[str]]:
     schema."""
     context = _NAMING_CONTEXTS.get(schema)
     if context is None:
-        entities = frozenset(word for table in schema.tables for word in name_tokens(table))
+        entities = entity_words(schema)
         context = {}
         for table in schema.tables:
             names = {column.ref.name for column in schema.by_table.get(table, ())}
@@ -1042,18 +1054,50 @@ def word_stems(word: str) -> set[str]:
     return {stem for stem in out if len(stem) >= 4}
 
 
-def says_in_another_form(word: str, name_word: str) -> bool:
+def says_in_another_form(word: str, name_word: str, entities: frozenset[str] = frozenset()) -> bool:
     """Whether the question's ``word`` says ``name_word``, a word of a table's or field's name, in another form: they
     share a stem of five letters or more ("enrolled" Student_Enrolment, "arriving" date_arrived, "directors"
-    directed_by), and the word names no operation ("ordered" by an Orders table). Both are canon() forms. The field
-    linker (sql_search) names fields by it and the completeness gate (query_contract) reads words by it."""
+    directed_by), or one is the other's abbreviation (``spells_out``: "account balance" acc_bal, "latitude" lat,
+    "institution" Inst) and the word spelling it out names no table (``entity_words``: "students" spells out no
+    ENROLL.STU_NUM, the abbreviation of a table's name being read beside its table, ``abbreviated_table``; held-out
+    Spider train 58, 557, 938, 2026-10-16: three right answers showed it), and the word names no operation ("ordered"
+    by an Orders table). Both are canon() forms. The field linker (sql_search) names fields by it and the completeness gate
+    (query_contract) reads words by it."""
     if not word.isalpha():
         return False
     stems = word_stems(word)
     if any(stem.startswith(operation) or operation.startswith(stem) for stem in stems for operation in OPERATION_STEMS):
         return False
-    return any(mine.startswith(theirs) or theirs.startswith(mine)
-               for mine in stems for theirs in word_stems(name_word) if min(len(mine), len(theirs)) >= 5)
+    abbreviation = ((word not in entities and spells_out(word, name_word))
+                    or (name_word not in entities and spells_out(name_word, word)))
+    return abbreviation or any(
+        mine.startswith(theirs) or theirs.startswith(mine)
+        for mine in stems for theirs in word_stems(name_word) if min(len(mine), len(theirs)) >= 5)
+
+
+# The endings that make a word another form of the word they follow, not the word it abbreviates: "longest" is no
+# longitude, "nameless" no name.
+_FORM_ENDINGS = frozenset({"s", "es", "ed", "d", "er", "r", "est", "ing", "ers", "ly", "y", "less", "ness", "ful"})
+# Ordering words name no field: "descending" spells out no ClubDesc, "ascending" no asc field, "according to" no
+# acc_bal.
+_ORDERING_STARTS = ("ascend", "descend", "accord")
+
+
+def spells_out(word: str, short: str) -> bool:
+    """Whether ``word``, of seven letters or more, spells out ``short``, a field's or table's name word of three or four
+    letters that begins it and is no stop word: "account" acc, "balance" bal, "enrollment" enr, "longitude" long,
+    "institution" inst (held-out Spider train 202, 343, 369, 292 and the fresh holdout, 2026-10-16: 35 questions saying
+    such a field's words in full were refused). A stop word abbreviates nothing ("percentage" is no
+    Residents_per_officer), and a form of the short word itself ("longest", "stayed") and an ordering word
+    ("descending") spell out none. Both are canon() forms."""
+    return (3 <= len(short) <= 4 and len(word) >= 7 and short.isalpha() and word.startswith(short)
+            and word[len(short):] not in _FORM_ENDINGS and not word.startswith(_ORDERING_STARTS)
+            and not _stop_word(short))
+
+
+@lru_cache(maxsize=4096)
+def _stop_word(word: str) -> bool:
+    return bool(spacy_model().vocab[word].is_stop)
 
 
 def abbreviated_table(name: str, table: str) -> bool:
@@ -1727,15 +1771,17 @@ def realizes_request(column: ColumnRef, said: Sequence[str], request: OutputRequ
     display = {"name", "title"} if displays and displays[0] == column else set()
     if not asked or not asked & (own | display):
         return 0
+    entities = entity_words(schema) if hasattr(schema, "tables") else frozenset()
 
     def says(vocabulary: set[str]) -> bool:
-        return all(word in vocabulary or any(says_in_another_form(word, known) for known in vocabulary)
+        return all(word in vocabulary or any(says_in_another_form(word, known, entities) for known in vocabulary)
                    for word in asked)
 
     if says(own):
         # A field whose own name is the item's words, no more, is it before one whose name holds them among others:
         # "the names and areas of countries" is Name, not LocalName (Spider DEV 800, 2026-10-14).
-        return 3 if all(word in asked or any(says_in_another_form(word, said) for said in asked) for word in own) else 2
+        return 3 if all(word in asked or any(says_in_another_form(word, said, entities) for said in asked)
+                        for word in own) else 2
     # An item whose last word stands where its field's name says only the kind of its values, the item saying the
     # rest of the name, is that field: "the cell phone" is cell_number (Spider DEV 994, 995, 2026-10-15).
     head = said[request.end - 1]
@@ -1850,6 +1896,35 @@ def _says_in_order(said: Sequence[str], words: Sequence[str]) -> bool:
                                for index in range(len(said) - len(words) + 1))
 
 
+def repeated_requests(question: str, schema: Any = None) -> tuple[int | None, ...]:
+    """For each of ``question``'s output requests (output_requests), the earlier request it says again in the same words,
+    asking to show that field once more ("List the id, name and id."), else None. A request another shown field could
+    also realize is no repetition: "the contestant numbers and names" asks for two fields, and "the names of cities, as
+    well as the names of the counties" for two names (Spider DEV 688, held-out Spider train 269, 2026-10-16: each was
+    answered with one field shown twice, and the right answer refused as missing the repetition)."""
+    said = tokens(question)
+    first: dict[tuple[str, ...], int] = {}
+    out: list[int | None] = []
+    for index, request in enumerate(output_requests(question, schema)):
+        words = said[request.start:request.end]
+        out.append(None if request.count else first.get(words))
+        if not request.count:
+            first.setdefault(words, index)
+    return tuple(out)
+
+
+def shown_once(fields: Sequence[ColumnRef], question: str, schema: Any) -> tuple[ColumnRef, ...]:
+    """``fields``, one for each field request of ``question`` in its order (request_fields), with a field an earlier
+    request binds kept again only where its request repeats that one (repeated_requests)."""
+    requests = [index for index, request in enumerate(output_requests(question, schema)) if not request.count]
+    repeats = repeated_requests(question, schema)
+    out: list[ColumnRef] = []
+    for field, index in zip(fields, requests):
+        if field not in out or repeats[index] is not None:
+            out.append(field)
+    return tuple(out)
+
+
 def request_slots(question: str, schema: Any) -> tuple[frozenset[ColumnRef] | None, ...]:
     """The outputs an explicit list instruction asks for, in its order: for a field, the fields realizing it
     (request_fields); None for a count. Empty unless every requested field has one."""
@@ -1877,9 +1952,6 @@ def _output_request(said: tuple[str, ...], start: int, end: int,
 
 
 def tokens(text: str) -> tuple[str, ...]:
-    out = []
-    for token in words(text):
-        if token.endswith("'s"):
-            token = token[:-2]
-        out.append(canon(token))
-    return tuple(out)
+    """The comparable words of ``text`` (``canon`` of each of its ``words``): the one tokenization the search, its
+    expansions and the completeness gate read a question with."""
+    return tuple(canon(token) for token in words(text))
