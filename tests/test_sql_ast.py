@@ -3144,6 +3144,25 @@ def test_listed_says_the_rows_are_in_the_data_beside_an_address_state():
     assert not served.get("valid"), served.get("sql")
 
 
+def test_typographic_quotes_read_as_the_ascii_ones():
+    """Held-out Spider train 202, Spider DEV 715 (2026-10-16): "the customer whose name includes the letter “a”" quoted
+    nothing, and "Give me Brazil’s population and life expectancies." left a lone "s" unread: the readers parse the
+    ASCII apostrophe and quotes only. Selection reads a question with its typographic marks written as the ASCII ones
+    (sql_expansion.plain_quotes). Contrast: the ASCII question is answered the same."""
+    customers = {"name": "customer", "columns": ["cust_id", "cust_name", "acc_bal"],
+                 "rows": [[1, "Mary", 2000], [2, "Jack", 1000], [3, "Owen", 800]]}
+    curly = _hermetic_planner().serve([customers], "Find the name of the customer whose name includes the letter "
+                                                   "“a”.", [])
+    plain = _hermetic_planner().serve([customers], 'Find the name of the customer whose name includes the letter "a".',
+                                      [])
+    assert curly.get("valid") and sorted(row[0] for row in curly["result"]["rows"]) == ["Jack", "Mary"], (
+        curly.get("error"), curly.get("sql"))
+    assert curly.get("sql") == plain.get("sql")
+    from engine.sql_expansion import plain_quotes, tokens
+    assert tokens(plain_quotes("Give me Brazil’s population")) == tokens("Give me Brazil's population")
+    assert plain_quotes("hometown is not `` Little Lever '' .") == 'hometown is not " Little Lever " .'
+
+
 def test_a_rewording_keeps_the_operations_the_engine_reads():
     """Spider DEV, 2026-10-13: rewordings were refused for losing words the engine does not read as operations: "per" in
     "miles per gallon", "number of" before the field Number_products, "no less than" said "at least". The engine's own
@@ -7265,6 +7284,7 @@ TESTS = [
     test_the_row_with_the_maximum_is_the_row_holding_it,
     test_a_word_one_letter_from_a_read_word_is_it_misspelled,
     test_listed_says_the_rows_are_in_the_data_beside_an_address_state,
+    test_typographic_quotes_read_as_the_ascii_ones,
     test_a_rewording_keeps_the_operations_the_engine_reads,
     test_gemini_rewrite_must_preserve_data_values_and_numbers,
     test_a_rewording_may_say_the_value_a_word_names,

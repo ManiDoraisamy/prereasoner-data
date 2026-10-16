@@ -283,7 +283,8 @@ correct interpretation of the question.
 ## Own-Data SQL Planner
 
 The own-data path serves one typed SQL AST chosen from the deterministic search's candidates
-(`engine/tables.py:TableQuery.select_query`). No local model writes or scores SQL:
+(`engine/tables.py:TableQuery.select_query`), reading a question's typographic apostrophes and quotes as the ASCII ones
+(`sql_expansion.plain_quotes`). No local model writes or scores SQL:
 
 | Owner | Responsibility |
 |---|---|

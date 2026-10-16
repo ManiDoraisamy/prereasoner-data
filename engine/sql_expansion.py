@@ -1469,6 +1469,19 @@ def asked_cues(cues: list[tuple[str, int]], question_tokens: tuple[str, ...],
 _QUESTION_WORD = re.compile(NUMBER_WORD + r"|[^\W_]+(?:'[^\W_]+)?|(?<![\w%'\"])(?<!\d\s)%(?![\w'\"])", re.UNICODE)
 
 
+# Typographic apostrophes and quotes, and the replacement character a mis-decoded one leaves, as the ASCII marks the
+# readers of a question parse (``plain_quotes``).
+_TYPOGRAPHIC_MARKS = str.maketrans({"‘": "'", "’": "'", "ʼ": "'", "“": '"', "”": '"',
+                                    "�": "'"})
+
+
+def plain_quotes(question: str) -> str:
+    """``question`` with its typographic apostrophes and quotes written as the ASCII ones: "Brazil’s population" said
+    "Brazil" and a lone "s", and “Smith” quoted nothing (Spider DEV 715, 719, held-out 202, 2026-10-16: each was
+    refused). Selection reads a question so (engine/tables.py:TableQuery.select_query)."""
+    return str(question).translate(_TYPOGRAPHIC_MARKS).replace("``", '"').replace("''", '"')
+
+
 def words(text: str) -> list[str]:
     """The lowercase words of a question, before any module's own normalization: the one word
     splitter the search, its expansions and the ranker read a question with."""

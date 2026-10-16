@@ -107,6 +107,23 @@ Artifacts: `%LOCALAPPDATA%/Temp/prereasoner-spider-review-20261013/`, tags `revi
 Incomplete intermediate runs are excluded. The review hardens ranking-number roles, output counts (preserving stored-count SUM),
 and table-owned full-name construction; it does not introduce another planner or model bundle.
 
+## A typographic quote or apostrophe is the ASCII one: 583 → 583 strict, Gemini on 670 → 670, held out 373 → 373, fresh holdout 379 → 379 (2026-10-16)
+
+Same contract as below. Runs `pkg23-dirty`, `pkg23-gemini-dirty`, `heldout-pkg23-dirty` and `holdout2-pkg23-dirty`
+are the change of the entry below with this change, against its `pkg22b` runs. The change is the `DECISIONS.md` entry
+of this title: a hardening, with no strict change in any set.
+
+- DEV, engine alone: 583 → 583 strict; no win, no loss; wrong answers 167 → 167; 0 queries changed.
+- Held out: 373 → 373 strict; no win, no loss; wrong answers 230 → 230; 0 queries changed.
+- Fresh holdout: 379 → 379 strict; no win, no loss; wrong answers 234 → 235; 1 query changed.
+- Gemini on: 670 → 670 strict; no win, no loss; wrong answers 219 → 219; 0 queries changed.
+- The DEV and held-out questions written with typographic marks (DEV 77, 715, 719, held out 202) are answered or refused
+  as before: DEV 715 is refused for its possessive (the search read "Brazil's" as "brazil'"), held out 202 for "account
+  balance", which names no acc_bal. The fresh holdout answers 742, which it refused, right only leniently: its quoted
+  'Smith' is now read, and the answer shows the project's code beside its name.
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_{pkg23,pkg23-gemini,heldout-pkg23,holdout2-pkg23}-dirty.json`.
+
 ## A misspelled word the query reads is read; "listed" asks nothing beside an address state: 578 → 583 strict, Gemini on 669 → 670, held out 372 → 373, fresh holdout 378 → 379 (2026-10-16)
 
 Same contract as below. Runs `pkg22b-dirty`, `pkg22b-gemini-dirty`, `heldout-pkg22b-dirty` and `holdout2-pkg22b-dirty`

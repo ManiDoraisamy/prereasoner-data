@@ -3789,3 +3789,20 @@ Measured on Spider (`spider/results/RESULTS.md`, 2026-10-16): DEV 578 → 583 st
 - Gemini on, 612 is now served by the engine, where the rewording answered it the same. The first round of this change
   read a misspelling without the vocabulary test: held out, it answered 10 more questions, 8 of them wrong ("country"
   read as County, a name read as a field); that round is not this measurement.
+
+## A typographic quote or apostrophe is the ASCII one (2026-10-16)
+
+Questions typed on a phone or a Mac carry typographic marks: "Brazil’s population", the letter “a”, ‘Smith’. The
+readers of a question parse the ASCII apostrophe and quotes only, so "Brazil’s" said "Brazil" and a lone "s", and “a”
+quoted nothing. Selection reads a question with its typographic apostrophes and quotes, the replacement character a
+mis-decoded one leaves, and the doubled backquote and apostrophe pairs of tokenized text written as the ASCII marks
+(`sql_expansion.plain_quotes`, at the start of `tables.TableQuery.select_query` and `search_pool`).
+
+This is a correctness hardening, not an accuracy gain. Measured on Spider (`spider/results/RESULTS.md`, 2026-10-16),
+strict accuracy is unchanged in every set (DEV 583, held out 373, the fresh holdout 379, Gemini on
+670), and the fresh holdout answers one more question wrong (742, below).
+
+- The DEV and held-out questions written with typographic marks (DEV 77, 715, 719, held out 202) are answered or refused
+  as before: DEV 715 is refused for its possessive (the search read "Brazil's" as "brazil'"), held out 202 for "account
+  balance", which names no acc_bal. The fresh holdout answers 742, which it refused, right only leniently: its quoted
+  'Smith' is now read, and the answer shows the project's code beside its name.
