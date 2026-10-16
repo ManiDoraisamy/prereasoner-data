@@ -72,8 +72,10 @@ from engine.sql_expansion import (
     ordering_requested,
     command_positions,
     counted_noun_tables,
+    count_preserves_population,
     request_fields,
     request_slots,
+    scalar_counted_table,
     says_in_another_form,
     share_cue,
     share_requested,
@@ -82,7 +84,8 @@ from engine.sql_expansion import (
     words,
 )
 from engine.sql_schema import (
-    CODE_LETTERS, SchemaGraph, canon, is_name_column, is_surrogate_key, name_words, normalize_value,
+    CODE_LETTERS, SchemaGraph, canon, code_word_matches_column, is_name_column, is_surrogate_key, name_words,
+    normalize_value,
 )
 
 _PROJECTION_CUES = frozenset({"show", "list", "display", "select", "give", "find", "which", "what"})
@@ -417,7 +420,7 @@ class SQLSearcher:
         # The tables the question names: their words together, and scored as a mention.
         named_here = {table for table in named_tables if table_scores.get(table, 0.0) >= 2.5}
         counted = counted_noun_tables(tokens, self.schema)
-        pool = _merge_candidates([], [self._simplified(candidate, named_here, counted) for candidate in pool])
+        pool = _merge_candidates([], [self._simplified(candidate, named_here, counted, tokens) for candidate in pool])
         if not complete_projection:
             slots = request_slots(question, self.schema)
             pool = _merge_candidates([], [_in_list_order(candidate, slots) or _in_question_order(candidate, tokens)
@@ -503,7 +506,7 @@ class SQLSearcher:
         return sorted(expanded, key=lambda d: (-d.score, repr(d)))[:self.beam_size]
 
     def _simplified(self, candidate: ScoredQuery, named_tables: set[str],
-                    counted: frozenset[str] = frozenset()) -> ScoredQuery:
+                    counted: frozenset[str] = frozenset(), question_tokens: tuple[str, ...] = ()) -> ScoredQuery:
         """``candidate`` without what its answer never reads: a second column its joins equate with one it
         projects (they carry one value), and a joined table no clause reads that the question does not
         name. Spider DEV, 2026-10-02: "the id and name of the museum with the most staff"
@@ -607,6 +610,21 @@ class SQLSearcher:
                 break
             del joins[leaf]
             changed = True
+        population = scalar_counted_table(query, question_tokens, self.schema)
+        if (population and joins and population in ({root} | {join.table for join in joins})
+                and not count_preserves_population(replace(query, from_table=root, joins=tuple(joins)),
+                                                   population, self.schema)):
+            identity = self.schema.identifying_column(population)
+            if identity is not None:
+                # The identifying column is unique and non-null on the counted
+                # table. Counting its distinct qualified values counts that
+                # table's rows once while retaining every qualification join.
+                counted_rows = replace(query, from_table=root, joins=tuple(joins),
+                                       select=(replace(query.select[0], expression=Aggregate("COUNT", identity,
+                                                                                         distinct=True)),))
+                validate_query(counted_rows)
+                return replace(candidate, query=counted_rows, sql=render_query(counted_rows),
+                               evidence=candidate.evidence + ("counted-row-identity",))
         if not changed:
             return candidate
         simplified = replace(query, select=select, group_by=group_by, from_table=root, joins=tuple(joins))
@@ -744,9 +762,8 @@ class SQLSearcher:
         fields = request_fields(question, self.schema)
         if not fields:
             return None
-        chosen = _unique_columns(tuple(min(refs, key=lambda ref: (-table_scores.get(ref.table, 0.0), ref.table,
-                                                                  ref.name))
-                                       for refs in fields))
+        chosen = tuple(min(refs, key=lambda ref: (-table_scores.get(ref.table, 0.0), ref.table, ref.name))
+                       for refs in fields)
         return chosen, 4.0 * len(chosen) + 1.0, ("output-requests",)
 
     def _projection_choices(self, tokens: tuple[str, ...], mentions: tuple[_Mention, ...],
@@ -1348,7 +1365,7 @@ class SQLSearcher:
                         continue
                     token = tokens[descriptor]
                     value = values.get(_CATEGORICAL_INITIALS.get(token, ""))
-                    if value is not None:
+                    if value is not None and code_word_matches_column(token, column.name):
                         qualified.setdefault((descriptor, token), []).append(
                             (len(link_words), column, value)
                         )
@@ -2050,8 +2067,10 @@ def _in_list_order(candidate: ScoredQuery, slots: tuple[frozenset[ColumnRef] | N
     and the number of countries." shows the id, the name, then the count (Spider DEV 89, 2026-10-14). None unless each
     output realizes one request of its own."""
     query = candidate.query
-    if not slots or not isinstance(query, SelectQuery) or len(query.select) < 2:
+    if (not slots or not isinstance(query, SelectQuery) or not query.select
+            or (len(query.select) == 1 and not isinstance(query.select[0].expression, ColumnRef))):
         return None
+    items = list(query.select)
     ordinals = []
     for item in query.select:
         expression = item.expression
@@ -2061,10 +2080,21 @@ def _in_list_order(candidate: ScoredQuery, slots: tuple[frozenset[ColumnRef] | N
                                   else isinstance(expression, Aggregate) and expression.function == "COUNT")), None))
     if None in ordinals:
         return None
-    order = sorted(range(len(ordinals)), key=lambda index: ordinals[index])
-    if order == list(range(len(ordinals))):
+    for index, slot in enumerate(slots):
+        if index in ordinals or slot is None:
+            continue
+        # A repeated field is another occurrence of the same bound value. Counts
+        # carry no population binding here and must never be invented/copied.
+        repeated = next((item for item in query.select
+                         if isinstance(item.expression, ColumnRef) and item.expression in slot), None)
+        if repeated is not None:
+            items.append(repeated)
+            ordinals.append(index)
+    order = sorted(range(len(items)), key=lambda index: ordinals[index])
+    ordered = tuple(items[index] for index in order)
+    if ordered == query.select:
         return candidate
-    reordered = replace(query, select=tuple(query.select[index] for index in order))
+    reordered = replace(query, select=ordered)
     try:
         validate_query(reordered)
         return replace(candidate, query=reordered, sql=render_query(reordered))

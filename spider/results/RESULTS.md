@@ -5,6 +5,85 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
+## Independent October 14 review: Claude 544 strict; final repaired snapshot 546 strict
+
+Frozen `3e46a74` plus the nine initially dirty files, then separate occurrence-only and final count/paired-emitter repair snapshots.
+Fresh whole_db / served / SQL / cap 5,000 per table / 12s soft budget / seed 0 / rewriting off; unchanged bundle `b11056f8…`.
+Claude baseline: 544 strict / 588 lenient / 728 answered; versus verified 529: 16 wins / 1 loss (+15).
+Occurrence-only: identical totals, 0 strict wins/losses. Final: **546/1,034 (52.8%) strict / 590/1,034 (57.1%) lenient / 728/1,034 (70.4%) answered**.
+Final repairs versus baseline: 2 wins / 0 losses; wins [966, 968], losses []; newly answered [], newly refused [].
+Fresh baseline exactly matches saved package 15b SQL/grades. Question 202 remains a scored loss versus 529;
+independent capped execution confirms unpadded gold returns empty, stored-value direct query returns the two Aberdeen airports.
+No scorer/gold/denominator adjustment.
+
+Disjoint final cohorts: 546 strict-correct / 70 lenient-only / 112 incorrect under both / 306 unanswered.
+26 strict-correct empty-gold cases have lenient-false; refusal stages {'ast_search': 15, 'completeness': 219, 'constraints': 72}.
+October 7 saved Sonnet 5.5 and Gemini 3.8 **Flash** SQL freshly reexecuted on the same capped rows/scorer:
+840 strict / 897 lenient / 1,023 answered and 872 strict / 904 lenient / 1,034 answered. No provider grade changes/new API calls.
+Same task/data/scorer, different inference inputs/budgets; not a current latency/cost comparison.
+
+Final bounded pool diagnostic (same first 30/difficulty, n=120): 98 raw hits, 98 flag hits,
+70 unfinalized selected-member hits; actual served 69 strict / 86 answered.
+All recorded fingerprints and completed-run frozen 304-file source sets verified after execution. 410 focused checks plus Ruff F/E9,
+high-severity Bandit, compilation and whitespace pass; live Postgres/Chrome/full release gates not run.
+
+Artifacts: `%LOCALAPPDATA%/Temp/prereasoner-spider-review-3e46a74-20261014/`, tags `review-3e46a74`,
+`review-output-occurrences`, `review-qualified-count` and their named 120-case diagnostics. Review/plan remain
+`release-review/spider-review-20261011.md` and `release-review/sql-accuracy.md`. No training, promotion, commit, push or deployment.
+
+## Independent latest-field review: 529 strict at `4edf791` (October 13 snapshot)
+
+Frozen `4edf791` plus the three previously present review repair files; all 304 tracked Python sources matched primary
+before execution. Fresh whole_db / served / SQL / cap 5,000 per table / 12s soft budget / seed 0 / external rewriting off;
+unchanged bundle `b11056f8…`. **529/1,034 (51.2%) strict / 576/1,034 (55.7%) lenient / 729/1,034 (70.5%) answered**.
+Against independently verified 527: 2 wins / 0 losses, 527 unchanged correct / 505 unchanged wrong;
+SQL changes [928, 929, 994, 995], wins [928, 929], no coverage change. Fresh versus saved package 12b: 0 SQL / 0 grade/status changes.
+Cumulative gain versus 497: +32; versus 386: +143, including earlier packages.
+
+Disjoint: 529 strict-correct / 74 lenient-only / 126 incorrect under both / 305 unanswered;
+27 strict-correct empty-gold cases have lenient-false. Refusal stages: {'ast_search': 9, 'completeness': 221, 'constraints': 75}.
+October 7 saved Sonnet 5.5 and Gemini 3.8 **Flash** SQL freshly reexecuted on identical capped rows/shared scorer:
+840 strict / 897 lenient / 1,023 answered and 872 strict / 904 lenient / 1,034 answered. No provider grade changes or API generation.
+Same task/data/scorer, different inputs/inference budgets; no current cost/speed comparison.
+
+Fresh same-120-case diagnostic: 98 raw strict-hit pools, 98 executable/grounded-flag hits,
+63 unfinalized selected-member hits; actual finalized serving 60 strict / 86 answered.
+Limited first 30/difficulty, not full certified recall. All 141/125 fingerprints match after execution,
+as do all 304 frozen Python sources and saved reference inputs. 396 focused checks, Ruff F/E9, high-severity Bandit,
+compilation and whitespace pass; live Postgres/Chrome/full release gates not run.
+
+Review/plan: `release-review/spider-review-20261011.md`, `release-review/sql-accuracy.md`.
+Evidence: `%LOCALAPPDATA%/Temp/prereasoner-spider-review-4edf791-20261013/`, tags `review-4edf791` and `review-4edf791-pool-120`.
+No new production edits, training, promotion, provider generation, commit, push or deployment by this follow-up.
+
+## Independent October 13 follow-up: 527 strict, latest Claude fixes and code-binding repair
+
+Frozen `b493126` plus package-11 dirty ranker/test snapshot captured at 17:40 Europe/Paris, then a separate repair in
+`sql_schema`, `sql_search`, `query_contract`. `whole_db`, production `served`, SQL, cap 5,000/table, 12s soft budget,
+seed 0, unchanged bundle `b11056f8…`, external rewriting off. Fresh DEV: **527/1,034 (51.0%) strict**,
+573/1,034 (55.4%) lenient, 729/1,034 (70.5%) answered. Pre-repair versus saved package 11:
+0 SQL / 0 grade/status changes. Versus independent 497:
+30 wins / 0 losses, 497 unchanged correct / 507 unchanged wrong.
+Repair versus pre-repair: 0 wins / 0 losses, 0 SQL /
+0 grade/status changes. Fixture hardening is not a claimed DEV gain.
+
+Disjoint: 527 strict-correct / 73 lenient-only / 129 incorrect under both / 305 unanswered;
+27 strict-correct empty-gold answers have lenient-false. Refusal stages: {'ast_search': 9, 'completeness': 221, 'constraints': 75}.
+Saved October 7 Sonnet 5.5 and Gemini 3.8 Flash SQL was reexecuted with identical capped rows and shared scoring:
+840 strict / 897 lenient / 1,023 answered; 872 strict / 904 lenient / 1,034 answered, all over 1,034.
+No provider grades changed; no new API generation. Same questions/data/scorer, different inputs/inference budgets.
+
+Current 120-case raw-pool diagnostic (first 30/difficulty): 98 raw strict hits,
+98 under executable/grounded flags, 63 unfinalized selected-member strict,
+60 actual finalized served strict. Not a certified ceiling or full census.
+All recorded fingerprints verified after execution (141/141/125 fields). Final focused suites: 395 checks; Ruff F/E9,
+high-severity Bandit, compilation and whitespace pass. Live Postgres/Chrome gates were not run.
+
+Artifacts: `%LOCALAPPDATA%/Temp/prereasoner-spider-review-b493126-20261013/`, tags `review-b493126-pkg11`,
+`review-code-bindings`, `review-code-bindings-pool-120`, plus `review-analysis.json` and `verified-*.json`.
+Review: `release-review/spider-review-20261011.md`. Existing implementation plan: `release-review/sql-accuracy.md`.
+No training, model promotion, commit, push or deployment by this review.
+
 ## Independent October 13 review: 497 strict, matched hosted SQL references
 
 Frozen source: `e709851` plus Claude's audited package-R source snapshot and the three review repairs in the attached

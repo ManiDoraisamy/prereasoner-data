@@ -3450,6 +3450,26 @@ question asks by "id" stays asked ("the full name of each car maker, along with 
 Measured on Spider (`spider/results/RESULTS.md`, 2026-10-13): DEV 525 → 527 strict, held out 354 → 356, the fresh
 holdout 351 → 353, Gemini on 612 → 614, with no loss on any set and fewer wrong answers on each.
 
+## Standard code words require field-kind and AST-bound evidence (2026-10-13)
+
+The October 13 independent review reproduced two wrong-answer paths in the new code aliases. A players table with
+only Size 'M' answered "How many male players?" as the number of medium-size entries; Stage F/M did the same. With
+Sex and Stage both present, completeness also read "male" from a Stage='M' predicate merely because SQL held the same
+literal as the Sex code. The production selector accepted that wrong candidate and returned 2 instead of 1.
+
+- `SchemaGraph._build_value_index` and the existing qualified-code constructor share
+  `sql_schema.code_word_matches_column`: M/F needs a sex/gender field, L/R a hand/side/direction/orientation field.
+  A single-code capped profile is sufficient only after that field evidence, never by itself. Unknown labels require
+  an explicit literal or separately established meaning; the existing Y/N and explicit boolean readings are unchanged.
+- `query_contract.read_question` reads aliases from typed comparisons on the bound field, through existing predicate
+  extraction. It preserves base-table aliases and LOWER and distinguishes a bare different-case literal. Projection
+  literals and codes compared on another field do not prove the reading.
+- The registered regression exercises ambiguous Size/Stage/Grade profiles, raw literal codes on those same profiles,
+  supported Sex/Gender and handedness, a confounding field beside Sex, alias resolution, and literal case.
+
+This is a bounded correctness repair in the existing owners, not a complete population/scope proof. Fresh Spider
+accuracy and paired changes are recorded in `spider/results/RESULTS.md`; fixture hardening is not itself an accuracy gain.
+
 ## A field is asked by its name without its kind (2026-10-13)
 
 The completeness check named a field the question asks for only by its whole name, while the search names it by the
@@ -3532,6 +3552,52 @@ Measured on Spider (`spider/results/RESULTS.md`, 2026-10-14): DEV 539 → 544 st
 holdout 358 → 359, Gemini on 626 → 632. The one loss, DEV 202 ("the names of airports in Aberdeen"), is an
 empty-result coincidence: Spider's gold compares City = 'Aberdeen' with the stored 'Aberdeen ' and returns no rows, which
 the old self-join reading also returned; the served answer now names the airport.
+
+
+## Repeated explicit field requests retain their output occurrences (2026-10-14)
+
+The production selector served only id and name for "Find all people. List the id, name and id." while claiming
+complete coverage. The shared output reader retained all three requests, but `ExpansionSupport.requested_fields` and
+`SQLSearcher._requested_projection` deduplicated their fields; `_in_list_order` could order the surviving outputs
+without realizing every repeated field.
+
+The existing constructors now preserve each field occurrence. List ordering may repeat a ColumnRef already bound to
+the requested slot; it never creates another aggregate from an anonymous count slot. The completeness owner counts
+actual output occurrences for repeated singleton field bindings and resolves table aliases. This is bounded field
+occurrence hardening, not a complete entity-role, count-population or scope proof.
+
+Registered production-selector controls cover repeated id, repeated name, a singleton repeated twice, the same-schema
+ordinary list, aliased incomplete/complete ASTs, and a count that cannot stand for two anonymous count requests. The
+regression fails on the frozen pre-repair selector. Repeated typed outputs also pass actual SQL/Python execution
+parity, preserving three result positions. Fresh DEV measurements and the distinction between fixture hardening and
+measured accuracy gains belong in `spider/results/RESULTS.md`. No SQL/AST generator or model change was introduced.
+
+
+## A scalar named population counts its qualified rows once (2026-10-14)
+
+The registered dogs/treatments fixture retained its treatment join but counted three treatment rows for two dogs.
+Join presence was insufficient: the regression now checks the value, and adds zero/one/many children, repeated
+display names, a NULL child foreign key, the reversed population and ordinary no-join counts.
+
+`sql_expansion.scalar_counted_table` binds one population for a simple top-level COUNT(*), excluding grouped, ranked,
+aliased, derived and distinct-request readings. The existing search retains the qualification joins but counts a
+proven unique, non-NULL identifying column of that population distinctly (`SchemaGraph.identifying_column`).
+`count_preserves_population` proves a plain COUNT(*) remains at its named root grain when each joined table matches
+at most one row by its joined key. Construction and checking share that proof; qualifying joins need not disappear
+or use DISTINCT when they cannot multiply rows. The completeness owner rejects the scalar raw row-count reading
+when it counts a different root or a potentially multiplying joined grain.
+Identity and cardinality are proved over the current request's table values; they do not establish uniqueness for
+unseen future rows. Request data changes rebuild the graph and its proofs.
+This is a bounded row-count policy; nullable field counts, composite identities, grouped/threshold counts, operation
+occurrences and relation-role scopes still need their richer bindings.
+
+The existing neutral plan represents distinct counting through `AggregateValue.distinct`. Both current emitters
+consume it: SQL COUNT(DISTINCT operand), and Python's named `DistinctCountState`, `COUNT_DISTINCT` and finalizer.
+Each state owns its set, excludes NULL and initializes empty counts at zero. The one AST lowerer accepts scalar
+single-column COUNT(DISTINCT column); unsupported grouped/ranked/sharing AST forms retain explicit rejection.
+Actual SQL/Python execution verifies the joined identity count and NULL/empty/group-state controls. No second
+planner, lowering route, runtime bundle, SQL/AST generator, training or promotion was introduced. Measurements
+belong in `spider/results/RESULTS.md`; fixture repairs are not presumed DEV gains.
 
 ## The opening sentence lists its coordinated outputs (2026-10-14)
 

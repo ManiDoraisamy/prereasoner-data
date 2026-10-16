@@ -2145,6 +2145,56 @@ def test_a_one_letter_code_holds_the_word_it_stands_for():
     assert "male" not in sizes.value_index and "left" not in sizes.value_index
 
 
+
+
+def test_code_words_need_the_named_kind_and_the_bound_field():
+    """One-letter values alone do not establish sex or handedness, including a capped single-code sample."""
+    from engine.query_contract import read_question
+    from engine.sql_ast import Aggregate, Comparison, Literal, Star
+    planner = _hermetic_planner()
+    for name, values, word in (("Size", ("M", "M", "M"), "male"),
+                               ("Stage", ("F", "M", "F"), "male"),
+                               ("Grade", ("L", "R", "L"), "left")):
+        sheet = {"name": "players", "columns": ["player_id", name],
+                 "rows": [[i, value] for i, value in enumerate(values, 1)]}
+        graph = SchemaGraph.from_tables([sheet], ())
+        assert word not in graph.value_index, (name, graph.value_index.get(word))
+        refused = planner.serve([sheet], f"How many {word} players are there?", [])
+        assert not refused.get("valid"), refused.get("sql")
+        # Explicit codes retain their literal interpretation on the same profile.
+        literal = planner.serve([sheet], f'How many players have {name} "{values[0]}"?', [])
+        assert literal.get("valid"), (literal.get("error"), literal.get("sql"))
+        assert list(map(list, literal["result"]["rows"])) == [[values.count(values[0])]], literal.get("sql")
+    # A supported field keeps the same code even in a single-value sample.
+    sheet = {"name": "players", "columns": ["player_id", "Sex", "Stage"],
+             "rows": [[1, "M", "F"], [2, "F", "M"], [3, "F", "M"]]}
+    gender = planner.serve([sheet], "How many male players are there?", [])
+    assert list(map(list, gender["result"]["rows"])) == [[1]], gender.get("sql")
+    graph = SchemaGraph.from_tables([sheet], ())
+    refs = {c.ref.name: c.ref for c in graph.columns}
+    for field, unread in (("Stage", True), ("Sex", False)):
+        query = SelectQuery(select=(SelectItem(Aggregate("COUNT", Star())),), from_table="players",
+                            where=Comparison(refs[field], "=", Literal("M", SQLType.TEXT)))
+        reading = read_question("How many male players are there?",
+                                ScoredQuery(query, render_query(query), 0.0, ()), graph)
+        assert ("male" in reading.unread) == unread, (field, reading)
+    # LOWER and aliases retain their meaning; an unlowered different-case literal does not.
+    from dataclasses import replace
+    from engine.sql_ast import Lower
+    for folded, alias, value, unread in ((True, None, "m", False), (False, None, "m", True),
+                                       (False, "p", "M", False)):
+        column = replace(refs["Sex"], table=alias or "players")
+        query = SelectQuery(select=(SelectItem(Aggregate("COUNT", Star())),), from_table="players",
+                            from_alias=alias, where=Comparison(Lower(column) if folded else column,
+                                                             "=", Literal(value, SQLType.TEXT)))
+        reading = read_question("How many male players are there?",
+                                ScoredQuery(query, render_query(query), 0.0, ()), graph)
+        assert ("male" in reading.unread) == unread, (folded, alias, reading)
+    single = {"name": "players", "columns": ["player_id", "Gender"], "rows": [[1, "F"], [2, "F"]]}
+    women = planner.serve([single], "How many female players are there?", [])
+    assert list(map(list, women["result"]["rows"])) == [[2]], women.get("sql")
+
+
 def test_a_noun_several_fields_share_counts_its_entity():
     """Spider DEV 485, 2026-10-13: "how many different winners" named winner_age, winner_entry, winner_hand, winner_ht,
     winner_id and winner_name, the first four were offered, and the count counted the hands it compared with 'L'. The
@@ -2266,6 +2316,46 @@ def test_a_field_asked_by_its_name_without_its_kind_is_requested():
         "Return the customer ids of all rentals.", customers, rental_graph))
     assert any("requested field" in violation for violation in constraint_violations(
         "What are the return dates and customer ids of all rentals?", customers, rental_graph))
+
+
+def test_explicit_list_preserves_repeated_bound_field_outputs():
+    """A repeated output is another occurrence, not another schema column or an invented count."""
+    from engine.query_contract import constraint_violations
+    from engine.sql_ast import Aggregate, Star
+    from engine.sql_expansion import ExpansionSupport, request_slots
+    from engine.sql_search import _in_list_order
+    people = {"name": "People", "columns": ["id", "name"], "rows": [[1, "Ann"], [2, "Bo"]]}
+    planner = _hermetic_planner()
+    question = "Find all people. List the id, name and id."
+    served = planner.serve([people], question, [])
+    assert served.get("valid"), served.get("reason")
+    assert [list(row) for row in served["result"]["rows"]] == [[1, "Ann", 1], [2, "Bo", 2]], served.get("sql")
+    graph = SchemaGraph.from_tables([people], ())
+    identity = graph.column_map[("People", "id")].ref
+    name = graph.column_map[("People", "name")].ref
+    assert ExpansionSupport(graph).requested_fields(question, "People") == (identity, name, identity)
+    missing = SelectQuery((SelectItem(identity), SelectItem(name)), "People")
+    assert any("output occurrence" in reason for reason in constraint_violations(question, missing, graph))
+    realized = _in_list_order(ScoredQuery(missing, render_query(missing), 0.0, ()), request_slots(question, graph))
+    assert realized and tuple(item.expression for item in realized.query.select) == (identity, name, identity)
+    assert not constraint_violations(question, realized.query, graph)
+    # The same schema preserves a different repeated position, and makes no unsaid copies.
+    for text, expected in (("Find all people. List the name, id and name.", [["Ann", 1, "Ann"], ["Bo", 2, "Bo"]]),
+                           ("Find all people. List the id and id.", [[1, 1], [2, 2]]),
+                           ("Find all people. List the id and name.", [[1, "Ann"], [2, "Bo"]])):
+        actual = planner.serve([people], text, [])
+        assert actual.get("valid"), actual.get("reason")
+        assert [list(row) for row in actual["result"]["rows"]] == expected, actual.get("sql")
+    # A table alias changes neither the field binding nor the number of displayed occurrences.
+    alias_id = ColumnRef("p", "id", identity.type)
+    alias_name = ColumnRef("p", "name", name.type)
+    aliased = SelectQuery((SelectItem(alias_id), SelectItem(alias_name)), "People", from_alias="p")
+    assert any("output occurrence" in reason for reason in constraint_violations(question, aliased, graph))
+    complete = SelectQuery(aliased.select + (SelectItem(alias_id),), "People", from_alias="p")
+    assert not constraint_violations(question, complete, graph)
+    # Anonymous count slots carry no counted population; one count cannot stand for two requests.
+    count = SelectQuery((SelectItem(Aggregate("COUNT", Star())),), "People")
+    assert _in_list_order(ScoredQuery(count, render_query(count), 0.0, ()), (None, None)) is None
 
 
 def test_a_count_counts_the_rows_of_the_table_its_noun_names():
@@ -2407,6 +2497,43 @@ def test_a_row_count_keeps_the_join_to_a_table_the_question_names():
     served = _hermetic_planner().serve([dogs, treatments], "How many dogs went through any treatments?", keys)
     assert served.get("valid"), (served.get("error"), served.get("sql"))
     assert '"Treatments"' in served["sql"], served["sql"]
+    assert [list(row) for row in served["result"]["rows"]] == [[2]], served["sql"]
+
+
+def test_scalar_named_population_counts_qualifying_rows_once():
+    from engine.query_contract import constraint_violations
+    from engine.sql_ast import Aggregate, Join, Star
+    dogs = {"name": "Dogs", "columns": ["dog_id", "name"],
+            "rows": [[1, "Rex"], [2, "Rex"], [3, "Bo"]]}
+    treatments = {"name": "Treatments", "columns": ["treatment_id", "dog_id", "cost"],
+                  "rows": [[10, 1, 50], [11, 1, 70], [12, 2, 30], [13, None, 90]]}
+    keys = [{"from_table": "Treatments", "from_col": "dog_id", "to_table": "Dogs", "to_col": "dog_id"}]
+    planner = _hermetic_planner()
+    for question, expected in (("How many dogs went through any treatments?", 2),
+                               ("How many treatments have a dog?", 3),
+                               ("How many dogs are there?", 3),
+                               ("How many treatments are there?", 4)):
+        served = planner.serve([dogs, treatments], question, keys)
+        assert served.get("valid"), (served.get("reason"), served.get("sql"))
+        assert [list(row) for row in served["result"]["rows"]] == [[expected]], served.get("sql")
+    for rows, expected in (([], 0), ([[10, 1, 50]], 1), ([[10, 1, 50], [11, 1, 70]], 1)):
+        served = planner.serve([dogs, {**treatments, "rows": rows}],
+                               "How many dogs went through any treatments?", keys)
+        assert served.get("valid"), (served.get("reason"), served.get("sql"))
+        assert [list(row) for row in served["result"]["rows"]] == [[expected]], served.get("sql")
+    graph = SchemaGraph.from_tables([dogs, treatments], keys)
+    parent = graph.column_map[("Dogs", "dog_id")].ref
+    child = graph.column_map[("Treatments", "dog_id")].ref
+    multiplied = SelectQuery((SelectItem(Aggregate("COUNT", Star())),), "Dogs",
+                             joins=(Join("Treatments", child, parent),))
+    assert any("own grain" in reason for reason in constraint_violations(
+        "How many dogs went through any treatments?", multiplied, graph))
+    assert any("own grain" in reason for reason in constraint_violations(
+        "How many dogs are there?", SelectQuery(multiplied.select, "Treatments"), graph))
+    # Reversing the count preserves treatment rows: each dog ID matches at most one dog.
+    preserves = SelectQuery(multiplied.select, "Treatments", joins=(Join("Dogs", child, parent),))
+    assert not any("own grain" in reason for reason in constraint_violations(
+        "How many treatments have a dog?", preserves, graph))
 
 
 def test_the_verb_a_sentence_opens_with_names_no_table():
@@ -5512,7 +5639,7 @@ def test_counted_table_beats_related_column_with_same_entity_word():
     )
     # The documents are counted: their rows, or a column of theirs (Documents.Template_ID is a mention
     # only where "template id" is said, test_a_key_named_by_the_table_it_references_needs_its_whole_name).
-    assert ('COUNT("Documents".' in candidate.sql
+    assert ('COUNT("Documents".' in candidate.sql or 'COUNT(DISTINCT "Documents".' in candidate.sql
             or candidate.sql.startswith('SELECT COUNT(*) FROM "Documents" JOIN "Templates"')), candidate.sql
     assert 'JOIN "Paragraphs"' not in candidate.sql
     assert execute([documents, templates, paragraphs], candidate.sql) == [(2,)]
@@ -7103,16 +7230,19 @@ TESTS = [
     test_a_nation_is_a_country,
     test_a_participle_before_a_year_the_answer_compares_is_read,
     test_a_one_letter_code_holds_the_word_it_stands_for,
+    test_code_words_need_the_named_kind_and_the_bound_field,
     test_a_noun_several_fields_share_counts_its_entity,
     test_in_total_closing_a_count_restates_it,
     test_a_field_inside_another_fields_name_is_not_named_there,
     test_a_field_beside_the_named_field_of_its_entity_is_not_asked,
     test_a_field_asked_by_its_name_without_its_kind_is_requested,
+    test_explicit_list_preserves_repeated_bound_field_outputs,
     test_a_count_counts_the_rows_of_the_table_its_noun_names,
     test_a_field_named_by_its_tables_abbreviation_is_matched_where_fields_are_shown,
     test_a_word_said_once_names_one_of_the_fields_ending_in_it,
     test_an_explicit_list_names_the_outputs_their_owner_and_order,
     test_a_row_count_keeps_the_join_to_a_table_the_question_names,
+    test_scalar_named_population_counts_qualifying_rows_once,
     test_the_verb_a_sentence_opens_with_names_no_table,
     test_a_list_item_that_is_only_the_count_asks_for_the_count,
     test_a_relationship_self_join_needs_a_word_besides_its_parent_table,

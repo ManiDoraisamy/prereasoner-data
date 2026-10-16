@@ -1,10 +1,287 @@
 # SQL accuracy: measured weaknesses and implementation plan
 
-## October 13 independent measurement and next implementation order
+## Active plan: encoder-only readings and deterministic SQL construction
 
-The frozen package-R snapshot plus review repairs measures **497/1,034 (48.1%) strict / 546/1,034 (52.8%) lenient / 704/1,034 (68.1%) answered**, external rewriting off. The earlier clean `e709851` fresh run verifies 493/543/701. Package R's 113 recorded serving files matched before repair, and final source/input/model fingerprints match after evaluation. Refer to the current [review](C:/work/prereasoner-data/release-review/spider-review-20261011.md) for source scope, hosted comparison and evidence. Later edits must receive their own run.
+**Plan date:** 2026-10-15. **Measured baseline:** October 14 independent run.
 
-The disjoint remaining cohorts are 330 unanswered, 132 incorrect under both scorers, and 75 lenient-only. The latter includes semantic failures, not just cosmetic output mismatches. Fixing every refusal alone would yield only 827/1,034; perfect correctness at today's answer coverage would yield 704/1,034. Both coverage and precision must improve to exceed the saved Sonnet 840 or Gemini 872 references. The engineering target for beating both references on this exact contract is at least 873/1,034, with a new untouched acceptance set and comparable coverage. That is a target, not a forecast.
+**Status:** proposed implementation plan, prepared against the independently verified October 14 snapshot. This update changes documentation only. The stages below are deliverables and acceptance criteria, not shipped capabilities or predicted accuracy gains. This is the active plan; the historical material below records previous proposals and reviews.
+
+**Objective:** raise strict accuracy from **546/1,034 (52.8%)** toward at least **873/1,034 (84.4%)** under the existing matched execution comparison, while preserving encoder-only learned readings, deterministic typed AST construction, and inspectable named decisions. Exceeding the saved Gemini point count is one engineering milestone. A durable accuracy advantage also requires independently held-out evidence and paired uncertainty estimates.
+
+### 1. Baseline, target and what counts as progress
+
+| System on the same 1,034 DEV questions | Strict | Lenient | Answered |
+|---|---:|---:|---:|
+| Latest verified engine, rewriting off | 546 (52.8%) | 590 (57.1%) | 728 (70.4%) |
+| Saved Sonnet 5.5 SQL, reexecuted | 840 (81.2%) | 897 (86.8%) | 1,023 (98.9%) |
+| Saved Gemini 3.8 Flash SQL, reexecuted | 872 (84.3%) | 904 (87.4%) | 1,034 (100.0%) |
+
+Source: [October 14 independent review](C:/work/prereasoner-data/release-review/spider-review-20261011.md). The source is `3e46a74` with documented local repairs and unchanged bundle `b11056f8…`. Reference predictions were generated October 7; they were freshly executed on the same capped rows and scorer. Inference inputs and budgets differ. These are local result scores, not official Spider leaderboard scores or new provider generations.
+
+There are **488 strict failures**: 306 unanswered, 112 answered incorrectly under both scorers, and 70 lenient-only. Of the 546 strict successes, 26 have empty gold results; independently audit such controls rather than assuming execution coincidence establishes meaning. The refusal-stage labels are 219 completeness, 72 constraints and 15 AST search. These labels describe where selection stopped, not necessarily the underlying cause.
+
+The engine's coverage of 70.4% multiplied by its 75.0% strict correctness among answered questions gives 52.8% overall. On that identical 728-question subset, Sonnet is strict-correct on 612 and Gemini on 626. Gemini is strict-correct on another 246 engine refusals. Both coverage and returned-answer quality need improvement.
+
+| Cumulative net recovery from 546 | Strict count | Strict percentage | Meaning |
+|---:|---:|---:|---|
+| +100 | 646 | 62.5% | First substantial checkpoint |
+| +200 | 746 | 72.1% | Broad recovery across several families |
+| +327 | 873 | 84.4% | Exceeds the saved Gemini point count |
+
+These are targets and arithmetic scenarios, not forecasts or dates. For example, 250 correctly recovered refusals plus 77 repaired returned answers, with no losses, reaches 873. That scenario assumes every one of those new answers is correct. Actual progress must subtract losses and include newly answered wrong cases. Perfect refusal recovery alone reaches 852 and still requires 21 returned answers repaired.
+
+Keep strict as the primary accuracy metric. Lenient containment can admit extra rows, wrong associations and missing output structure; it is diagnostic. Keep the scorer, gold, cap, denominator and failure accounting fixed for all systems. Engine evaluation must use its actual serving finalization; any change to that owned transformation requires fresh paired evaluation. Record adjudicated intent/reference conflicts separately, including question 202, without repairing the headline by changing its gold result.
+
+### 2. Architecture contract
+
+```mermaid
+flowchart LR
+    I[Question and available schema] --> E[Encoder and named readouts]
+    E --> B[Bounded semantic alternatives]
+    B --> C[Deterministic typed construction]
+    C --> V[Obligation checks and stable selection]
+    V --> F[Owned serving finalization]
+    F --> P[Shared executable plan]
+    P --> S[SQL execution]
+    P --> Y[Python execution]
+```
+
+The diagram describes the intended completed interface. Some readings and constructors already exist; complete occurrence, role and scope bindings are still proposed.
+
+- The model encodes input and scores **named alternatives over existing question spans and schema objects**. Labels may identify an operation, operand, entity role or scope relation.
+- Model outputs contain no SQL strings, AST token sequences, executable instructions, invented relationships or complete candidate programs. No autoregressive SQL/AST/action decoding is introduced. The model is not repeatedly prompted with partial programs to decide the next construction step.
+- Deterministic rules enumerate the available spans, schema references, permitted relationship paths, scope alternatives and supported operators. Stable structured search chooses compatible bindings and fixed constructors build every AST.
+- The existing `CandidateRanker` remains the one selector's inspectable scoring owner. Learned contributions are named semantic factors; there is no opaque learned score over a whole SQL string or AST.
+- The typed AST remains the only own-data SQL representation. `AnalysisPlan` remains the one lowering target for both emitters. New shipped operations require supported lowering and actual SQL/Python parity.
+- Production continues to have one encoder/readout pipeline, one model loader, one planner/selector/ranker/evaluator and one promoted bundle. The deterministic headline keeps external rewriting disabled. The separate existing labelled fallback is outside this claim.
+
+Interpretability means that each selected reading, factor contribution, construction rule and obligation-to-AST witness is inspectable. It does not claim every internal neural representation is understandable, or that a typed program by itself proves the English question was read correctly.
+
+For a fixed source snapshot, weights, tokenizer, data, device/runtime contract and work budget, completed inference must be reproducible. Test the actual runtime; do not silently claim bitwise equivalence across different precision or device configurations. Timeouts are reported outcomes, not permission to select whichever concurrent candidate happens to finish first.
+
+### 3. Shared semantic interface and migration
+
+Extend the current reading owner in [sql_expansion.py](C:/work/prereasoner-data/engine/sql_expansion.py), and extend [SemanticSignals](C:/work/prereasoner-data/engine/sql_rank.py:34) for occurrence-aware factors. The names below describe proposed records, not a new executable language or mandatory new module. Audit current callers before fixing exact field names.
+
+| Record | Information it must preserve | Mistake it prevents |
+|---|---|---|
+| Mention/occurrence | Original character/token span, occurrence ID, candidate schema references, named evidence and unresolved alternatives | Merging two counts because they share a word or bound |
+| Entity role | Schema entity, subject/reference role, relationship direction, scope | Taking an owner's phone for a professional; collapsing sender and receiver |
+| Operation | Occurrence, fixed operation enum, operand or counted population, grouping grain, NULL/distinct policy, displayed/filter/ranking use | Counting cars instead of models; treating stored counts as row counts |
+| Predicate | Occurrence, operand/operation reference, comparator, input-grounded literal and numeric role, polarity, Boolean parent, scope | Reusing top-3 as field = 3; converting OR across counts into WHERE plus HAVING AND |
+| Population/scope | Parent scope, subject/contribution identities, qualifying paths and filters, reference population, zero-inclusion semantics | Multiplying two child populations; losing a reference-average filter |
+| Output | Occurrence, bound owner/expression, position, bag/set requirement, displayed operation reference | Dropping repeated fields or a displayed count; wrong output positions |
+| Witness | Requirement ID, typed node/reference, identity/cardinality facts and their data extent, construction rule | Accepting a field merely because it occurs somewhere in nested SQL |
+
+The question reading contains alternatives until constraints resolve them. Unresolved meaning is explicit. A high model score cannot discharge a missing output, predicate or scope obligation.
+
+Illustrative reading for “Which makers designed more than three car models? List full name and the id.”:
+
+```text
+subject role: Maker
+operation occurrence: COUNT
+contribution population: Model belonging to Maker
+group identity: Maker.Id
+threshold occurrence: GREATER_THAN, input literal 3
+operation use: qualification, not displayed
+output occurrence 0: Maker.FullName
+output occurrence 1: Maker.Id
+```
+
+The deterministic constructor chooses an appropriate existing typed realization, such as a model aggregate at maker grain. An unrelated car-name fan-out cannot realize this count. Selection cannot rescue that mismatch with a higher similarity score.
+
+Preserve input-grounded numeric values and schema IDs; the model scores their roles and attachments rather than inventing their values. Scope nodes come from bounded input-derived alternatives, and constraints enforce a legal hierarchy. A missing scope alternative is a construction/enumeration deficit, not automatically an encoder failure.
+
+**Migration procedure:** extend the current records; make search, all relevant expanders, ranking, numeric-role readers and `query_contract` consume that same reading; preserve existing supported semantics; register contrasts; then remove the superseded flattened readers/duplicated interpretations in the same coherent slice. Do not leave an old parser and a new parser behind a production switch. Do not introduce a blanket required-field gate before the corresponding constructors can realize the requirements.
+
+### 4. Stage A — Reconcile all failures with actual serving
+
+**Owners:** `spider/probe/full_eval.py`, `TableQuery.select_query`, `PoolSelection`, `query_contract`. **Model:** unchanged. **Deliverable:** a full 1,034-question technical ledger and a preselected semantic diagnostic set.
+
+Reuse the verified frozen baseline if all recorded source/model/input fingerprints still match. Freeze and rerun only when the current source or evaluation contract differs. Preserve aggregate and per-example artifacts together.
+
+For every question record construction, observed pre-pruning drafts, retention, typed validity, execution, grounding, applicable constraints, completeness, selected member, final serving realization and result. Use the same owned finalization, including tie handling, for diagnostic candidate realizations. Gold comparisons stay exclusively in the evaluator.
+
+Define raw row-match recall, finalized row-match recall, production-admissible row-match recall and actual served accuracy separately. Independently audited semantic correctness is a further field. Neither an executable/grounded flag nor an unreviewed row match is a semantic certificate. Where independent adjudication is incomplete, retain that status instead of calling the whole ledger certified.
+
+Assign a primary loss cause plus secondary causes: missing reading; reading not consumed; no supported construction; useful partial interpretation pruned; correct realized plan falsely rejected; admissible correct plan loses selection; finalization changes the answer incorrectly; execution/lowering error; ambiguous or conflicting reference. Keep the final refusal stage as a separate observation.
+
+Preselect 60 diagnostic questions before measuring the proposed intervention: 20 unanswered, 20 returned strict failures spanning lenient-only and both-incorrect, and 20 strict-correct controls. Spread them over databases/difficulties and include count, output-owner and scope families where present. Add independent counterfactual fixtures separately. This deliberately stratified set is diagnostic; its recovery fraction is not a forecast for all 488 failures.
+
+**Exit gate:** technical ledger counts sum to 1,034; all 488 failures have an observed stage and recorded unresolved classification where needed; sample annotations are independently checked; finalization and raw-pool differences are explicit. The present first-30-per-difficulty pool result, 98 raw hits versus 69 served strict hits, remains limited evidence until this work is done.
+
+### 5. Stage B — Implement the first complete binding slice
+
+**Owners:** `sql_expansion`, `SQLSearcher`, relevant `sql_constraints`/`sql_extrema` consumers, `CandidateRanker`, `query_contract`, and `engine/deterministic`. **Model:** unchanged. **Deliverable:** shared occurrence/population/output records consumed by real construction and admission.
+
+Start with two connected families. Count bindings establish which entity contributes to each operation; output bindings establish what must be displayed and by whom. Complete one coherent slice, its consumer migration and its evaluation before moving to another.
+
+| Slice | Concrete work | Production controls |
+|---|---|---|
+| Count at a group/threshold grain | Extend the bounded scalar policy to each named grouped/HAVING count; distinguish subject from contribution population; preserve qualification joins | A maker with many cars but only two models must fail a >3-model condition; four models with one car each must pass |
+| Frequency/ranking count | Bind the ranking and displayed count to the requested entity, independently of downstream rows | Least-used channel language counts channels, not cartoons |
+| Output occurrence and owner | Read first-sentence lists; bind explicit/implicit role owners; preserve order/repetitions; give displayed counts their own operation references | Professionals and Owners have different phones; repeated student ID and the enrollment count are all shown |
+| Count quantity and NULL semantics | Distinguish entity rows, non-NULL field values, distinct values and sums of stored quantities | Quantities 8 and 5 total 13; NULL children do not turn into one counted entity |
+
+Audit current representation before adding nodes. AST support is not the same as constructor support or Python lowering support. The existing neutral plan already represents distinct COUNT, but its AST lowerer currently accepts only the bounded scalar form. Grouped/HAVING/ranking support must audit aggregate naming, reduction/finalization, filtering and ordering in both emitters.
+
+Use entity identity internally even when only a display label is projected. Duplicate labels must not merge distinct requested entities. Preserve bags unless the requested semantics justify a set. Choose plain COUNT, a justified distinct identity count, membership/semijoin or preaggregation through fixed rules and proven grain; do not apply DISTINCT indiscriminately.
+
+Key/cardinality proofs must record their authority and extent. Uniqueness observed over the same materialized request relation can justify a request-scoped identity. Sample-only uniqueness cannot prove a key for execution over a larger live relation. Separately prove join multiplication, row preservation and qualification: an at-most-one match does not prove every subject has a match.
+
+Regression tests must fail on the pre-change production owner for the documented reason, with independently derived expectations. Include ordinary serving, wrong-AST rejection, same-profile contrasts, alias/role contrasts and actual emitter parity. Keep prior repairs as controls.
+
+**Exit gate:** all requirements in the slice have constructor and checker witnesses; semantic controls pass; all consumers are migrated; obsolete readers are removed; fresh full `whole_db`/`served` results report wins/losses, coverage, newly answered correctness and finalization effects. A fixture-only gain or wrong-answer-to-refusal transition is reported separately from strict accuracy gains.
+
+### 6. Stage C — Measure correct-binding recovery before training
+
+**Owners:** the existing evaluator and encoder/readout input seam. **Deliverable:** paired current-reading and independently correct-binding runs using the same updated production constructors, selector, budgets and scorer.
+
+On the fixed 60-case diagnostic set, annotate mentions, schema references, operations, operands, populations, predicate attachment, Boolean/scope relations and output occurrences from question/schema semantics. Keep uncertain interpretations and gold conflicts explicit. Broad gold-column-role sets are insufficient.
+
+An evaluator-only adapter supplies those named bindings through the owned reading interface. It supplies no SQL or executable AST, introduces no serving endpoint/flag, and cannot invent a schema object or relationship. Use the real serving entry point. The adapter must stay outside production imports and expire after the experiment; retain compact labels, metrics and provenance.
+
+Compare current readings, correct complete bindings, and preregistered removal of individual signal channels. If useful interpretations are pruned, add a separately declared bounded-retention ablation. Candidate-oracle result grading remains evaluator-only and is not engine accuracy.
+
+| Observation under correct bindings | Next intervention |
+|---|---|
+| Correct plan appears and is served | Improve the named reading channel and its ordinary consumer |
+| Binding is correct but no plan can be built | Extend the existing deterministic constructor/expressivity |
+| Useful partial plan is observed then discarded | Repair retention within the same bounded search |
+| Correct final plan is rejected | Repair its obligation witness/admission |
+| Correct admissible plan loses | Repair named-factor selection, preserving hard requirements |
+| Selected plan changes or executes incorrectly | Repair finalization/lowering/runtime and parity |
+
+Correct bindings can change enumeration, pruning and ranking; their recovery is conditional headroom under this interface, not a pure measurement of encoder quality or a ceiling for all future grammars.
+
+**Initial training-eligibility gate:** preregister a proposed minimum of 10 net recoveries among the 40 diagnostic failures, across at least two families and three databases, with all 20 correct controls preserved and all mandatory semantic negatives passing. This is a diagnostic decision threshold, not an expected score increase. If a genuinely narrower family meets its own strong evidence but this aggregate gate fails, document that limited hypothesis; do not claim it supports the full 84.4% goal.
+
+If the interface still cannot represent many annotated meanings, repair construction first. Expand the audit when the selected sample lacks sufficient cases or uncertainty prevents a decision. Do not retrain repeatedly to compensate for an unused signal.
+
+### 7. Stage D — Broaden deterministic composition where the ledger requires it
+
+**Owners:** current search/expansion/recursive/extrema/constraint owners, AST validation/rendering and the shared lowerer. **Deliverable:** reusable construction across multiple related populations and scopes. Its order is chosen from the ledger; it can proceed independently of a justified reading experiment after their common interface is stable.
+
+| Family | Required construction/proof | Distinguishing cases |
+|---|---|---|
+| Multiple counts and Boolean conditions | Separate population variables and their complete AND/OR formula; aggregate children independently before combining qualification | >1 maker AND >1 airport versus OR; equal bounds must not merge counts |
+| Zero-inclusive and negative counts | Preserve the outer population and count absence explicitly; sound membership/existence or zero-preserving aggregation | Parents with zero, one and many qualifying children; NULL links; NONE versus NOT ALL |
+| Scoped reference aggregates | Bind both the compared row population and the reference population, including their filters and correlation | Global mean versus per-group mean; filtered mean versus all rows |
+| Membership/exclusion and self-relations | Prove correlated key mapping, role direction and retained population; use typed NULL-safe forms | Sender versus receiver; prerequisite direction; nullable child key; no unrequested MAX/MIN collapse |
+| Nested groups, rankings and sets | Preserve grouping identity, output shape, branch meaning and requested tie/bag/set policy | Duplicate labels; zero groups; unequal branches; explicit ties versus ambiguous references |
+| Numeric roles and units | Attach each number to its operation/field/scope; distinguish limit, threshold, year, ID and stored quantity | Equal literals in different roles; large cutoffs; year ranges versus degree totals |
+
+Avoid joining two independent child populations and counting their Cartesian fan-out. A country with two makers and two airports has two of each, not four. Keep parent filters outside and child filters inside their bound scopes.
+
+Count/range proofs operate on exact integer intervals and typed Boolean formulas, not enumeration up to a numeric literal. Distinct population variables remain distinct. Proof cost may depend on formula size and numeric representation length; it must not scale linearly with a bound such as 1,000,000,000.
+
+Emit one requirement-to-node witness per satisfied obligation. Check scope and entity role, not mere column presence. Finalization must preserve the witnesses or recompute them against the actual served realization. Ambiguous ties/reference defects remain adjudication fields; the comparator stays fixed.
+
+**Exit gate per family:** actual production construction and selection pass independent positive/negative/counterfactual fixtures; supported new operations pass both emitters; no duplicate planner or grammar path remains; fresh full serving results and retention/recall changes are recorded. Expressivity improvements alone do not count as serving gains.
+
+### 8. Stage E — Train interpretable readings when the evidence supports them
+
+**Owners:** `engine/encoder_model.py`, `encoder_overlay.py`, `SemanticSignals`, `TableQuery.ast_semantic_signals`, and `training/props/`. **Deliverable:** a gated candidate for the same encoder/readout pipeline. This stage requires a separately authorized training experiment and the repository's frozen contract; proposing this plan does not execute training or spend.
+
+Begin with one supported hypothesis, for example occurrence-to-counted-entity and scope attachment. Proposed named channels include mention/entity link, mention/field link, output owner, operation operand, counted entity, relationship direction, predicate scope and scope parent. Their inventory, units and masks must be versioned in the existing metadata contract; these are not already trained dimensions.
+
+The readout scores bounded input-derived candidates, including a no-valid-link/ambiguous outcome. Schema IDs are candidate references, not a closed vocabulary of memorized database names. Literal values remain input/profile-grounded. A complete AST or SQL string is never a training target or model-scoring input for this work.
+
+#### Data and annotation
+
+Start with a **200-item annotation pilot** from independently specified non-DEV tasks/fixtures. It tests label quality and signal learnability; it is not claimed sufficient to reach the accuracy target. Cover all roles required by the chosen hypothesis and matched negatives with similar words, types and profiles.
+
+Each item records question/schema/input provenance, occurrence spans, candidate objects, accepted/ambiguous bindings, scopes, relationships, operation/output roles and independently checked expected semantics. Include repeated outputs/operations, distractor owners, NULL/zero cases, duplicate names, changed cardinalities, conjunction/negation and quantity-versus-row counts. Expected answers must not be copied from the engine.
+
+Split by base source fixture/schema and composition provenance before creating variants; keep paraphrases, renamings and row perturbations of one base item together. Use a proposed 60/20/20 train/calibration/development-test split by group, report actual group counts, and reserve separate untouched schema and composition acceptance sets. Existing DEV and the repeatedly inspected 1,000-question samples remain development evidence and are excluded from binding-training labels. Audit prior model exposure; a renamed seen fixture is not an independent holdout.
+
+Scale beyond the pilot only after annotation review, error analysis and preregistered learning-curve evidence. More paraphrases of a few templates cannot substitute for more independent schema/meaning groups. Include human-authored questions for evaluation of wording beyond fixture templates.
+
+#### Controlled experiment sequence
+
+1. Freeze the existing encoder/LoRA and relational representations; train only the new bounded named readout needed for the hypothesis. Audit tensor layout, dimension allocation, thresholds, packing and loader metadata first. Preserve old named dimensions and their meanings.
+2. Define new shared output behavior once and use it in runtime and training. Audit `training/lib/relblock.py` and packing/collation under `training/train/`; do not add a third model class or duplicate the new channel computation.
+3. Preserve the existing graph-input contract for the head-only experiment. Adding new units/edges can change old outputs even with frozen weights; treat that as a separately declared representation/input change. Reuse the existing encoder's representations and cache where compatible.
+4. Supervise link/label and relation/scope factors with matched hard negatives and no-link cases. Measure joint binding correctness, not only per-coordinate AUC. Report errors by family, schema and occurrence count.
+5. Use calibration data to set weights, thresholds, ambiguity policy and stop conditions. Fix seeds, changed parameters, corpus hashes and resource budget before running. Do not tune those choices on DEV or the untouched acceptance set.
+6. Run the candidate through the same loader and production entry point using an explicit offline candidate directory. Compare baseline and candidate under identical code/data/search/scoring. Better head metrics without served gains require consumer/retention diagnosis.
+7. If sound labels and demonstrated binding headroom still expose a representation deficit, preregister a separate LoRA/readout adaptation experiment with replay of existing property, intent, calculation, typing and routing controls. Model size or context-layout changes are further separate hypotheses.
+
+Loss terms remain named binding/link and relation/scope supervision, plus existing objectives when their parameters are adapted. A combination penalty may reject contradictory bindings; it must not become an opaque whole-program score. No SQL/AST/action language-model objective is added.
+
+Candidates go to `training/props/data/experiments/<experiment-id>/`, never to `engine/data/`. Keep one pipeline/loader. Failed candidates expire after compact provenance/metrics are saved. Successful candidates remain unpromoted until all gates and the separate promotion authorization are satisfied.
+
+**Exit gate:** joint bindings improve on independent groups, improvements survive ordinary construction/admission/selection, mandatory semantic negatives pass, existing model responsibilities meet their preregistered replay gates, and latency/memory stay within the declared envelope. A small pilot or a DEV gain alone cannot justify the broad accuracy claim.
+
+### 9. Stage F — Improve selection and performance without weakening meaning
+
+**Owners:** `SQLSearcher`, `CandidateRanker`/`PoolSelection`, `TableQuery` and `request_timing`. **Deliverable:** greater capture of admissible correct plans under bounded, measured work.
+
+Apply established semantic constraints before scoring. Rank feasible interpretations by named evidence contributions and explicit structural preferences, with stable tie-breaks. A similarity bonus cannot override a wrong owner, missing predicate or unproved population. Do not select a plan because it matches gold or is first to finish.
+
+When the correct interpretation is discarded, preserve diversity by entity role, operation population, scope and relational structure within the existing bounded search. Instrument observed pruning and partial bindings. Budget changes are controlled ablations; bounded search is not a claim of global optimality or a full-program exhaustive solver.
+
+Compute shared question readings once and reuse them across construction, ranking and checking. Preserve the existing 8,192-entry vector cache and its weight-instance invalidation; audit schema-version invalidation for any added cache. Cache keys include scope, role, identity, filters and output semantics where relevant.
+
+Audit `MAX_LEN = 48` against the actual strings used for full-question, span/role and schema encoding. Measure required-span coverage and binding failures before changing it. Run a token-budget-only ablation under the same model and interface if truncation is implicated. Do not simultaneously change context length, model size, grammar and training.
+
+Use the existing phase instrumentation for encoding, schema preparation, construction, admission, finalization and execution. Compare warm/cold runs on an otherwise idle machine, recording hardware/runtime, median/p95, work counts, memory and over-budget outcomes. The last shared-CPU run's median 1.902s/p95 5.903s is context, not an isolated performance target. Set resource envelopes from an isolated baseline before each experiment.
+
+Detailed question/binding diagnostics remain controlled offline artifacts or the existing authorized user-visible trace. Runtime instrumentation keeps phase/count/reason summaries and does not log prompts, cells, questions or tokens. This work adds no notices or controls to add-on onboarding surfaces.
+
+**Exit gate:** served gains or equivalent quality with measured resource savings; admissible/finalized recall is reported; replay and semantic gates hold; no duplicate caches, selector or instrumentation mechanism is introduced.
+
+### 10. Acceptance scorecard and promotion
+
+| Gate | Required evidence |
+|---|---|
+| Architecture | Model output/input contract contains bounded named readings; no generated program or partial-program decoding; one production owner and promoted bundle per responsibility |
+| Semantic correctness | Independently expected positive, contrastive and negative serving tests; wrong-plan rejection; zero/one/many, NULL, duplicate-label and role/scope controls |
+| Construction | Actual selected plans, not manually injected AST acceptance; observed construction/retention/finalized/admissible recall by family |
+| Dual execution | Shared typed lowering and actual SQL/Python equality for newly supported operations; unsupported shapes fail explicitly |
+| Training | Frozen experiment contract, group split/exposure audit, joint binding metrics and existing property/intent/calculation/typing/routing replay gates |
+| Serving accuracy | Fresh all-1,034 `whole_db`/`served` run after coherent behavior changes; rewriting off; paired gains/losses and new-answer marginal correctness; every loss investigated |
+| Generalization | Untouched schema/composition data; variant groups stay together; no adaptive tuning on the locked final acceptance set |
+| Determinism | Repeat runs, hash-seed changes and benign permutations respecting active-source intent; recorded runtime/precision; stable tie-breaks and timeout accounting |
+| Performance | Isolated warm/cold timings, work/memory counts and preregistered envelope; no gain caused by changing comparison budgets silently |
+| Provenance | Source/dirty-state/model/data/schema/evaluator fingerprints before and after; complete per-example plus aggregate artifacts; stale predictions invalidated |
+
+For each batch report: strict, lenient, answered and unanswered; wins, losses, unchanged correct/wrong; new correct answers, new wrong answers and new refusals; current semantic cohorts; marginal correctness of newly answered questions; independently audited false admissions; candidate recall stages; timing/memory/work; and outstanding reference ambiguities. Distinguish technical row matches from independently validated meaning.
+
+Use [tests.test_sql_ast](C:/work/prereasoner-data/tests/test_sql_ast.py), [tests.test_query_contract](C:/work/prereasoner-data/tests/test_query_contract.py), [deterministic emitter tests](C:/work/prereasoner-data/tests/test_deterministic_emitters.py), compose/calculation suites where affected, and the applicable compile/repository/live gates in [CLAUDE.md](C:/work/prereasoner-data/CLAUDE.md). Register tests in explicit lists where required. A planning-only change does not rerun or claim those tests.
+
+Keep the current strict scorer as the primary comparison. At 873, report exceeding the saved point count rather than universal superiority. Before a stronger claim, preregister the primary comparator and compare per-question differences with uncertainty, including database-level dependence, on an untouched set. A future fresh provider comparison must lock prompts/input context, model IDs/settings, budgets, retries and failure accounting; current cached predictions establish neither today's alias performance nor current price/latency.
+
+Promotion uses [training/props/promote.py](C:/work/prereasoner-data/training/props/promote.py), the existing bundle validation and manifest. Pin the candidate's immutable hashes and replay results; obtain the separately required promotion authorization; perform one replacement; verify read-back fingerprints and serving smoke tests; retain a recoverable immutable prior artifact for the documented rollback mechanism without a second live bundle. Publish/deploy/commit actions remain separate from this plan.
+
+### 11. Concrete first work packet and dependency order
+
+1. Reuse or refresh the exact frozen baseline and build the complete technical ledger. Select and independently annotate the 60 diagnostic cases before intervention results are known.
+2. Register generic failures for threshold/model counts, channel frequency, displayed count/repeated outputs, first-sentence lists and explicit field ownership. Their expected values come from source data independently of the engine; the current repaired dogs/professionals cases remain controls.
+3. Extend shared occurrence/operation/population/output records in the existing owner. Migrate construction, ranking, numeric-role interpretation and checking together for the first slice; remove obsolete readings and confirm one active implementation.
+4. Implement grouped/threshold grain and output-owner construction, with actual lowerer/emitter parity where required. Run the focused suites and one fresh full serving evaluation for that coherent batch.
+5. Run current-reading versus correct-binding diagnostics through that same code. Publish the recovery/remaining-cause matrix and use it to choose construction, admission, retention, selection or named-reading work.
+6. If eligible, prepare the 200-item annotation pilot and frozen training contract. Training starts only as its separately authorized experiment. Continue independently justified composition work in the current owners without contaminating the comparison.
+7. Expand corpus/grammar coverage according to measured residual families and learning curves. Reevaluate coherent batches against all prior controls and the frozen development comparison.
+8. Choose one final candidate using development/calibration evidence, freeze it, then run the locked acceptance evaluation. Record targets reached and remaining limitations; promote through the existing owner only after its gates.
+
+Each packet closes its migration and records results before the next depends on it. One useful diagnostic negative result is progress if it prevents training or weight tuning aimed at the wrong bottleneck. Calendar and percentage forecasts are made only after measured family sizes, recoverability and implementation cost are available.
+
+The first substantive deliverable is therefore **a consumed semantic-binding interface plus a measured recovery experiment**, followed by evidence-directed implementation and conditional training. Reaching 84.4% requires 327 net recoveries from the verified baseline; this plan does not claim they already exist in the current pool or can all be obtained from one model change.
+
+## Historical reviews and superseded implementation proposals
+
+Everything below this heading is retained historical/reference material. The active plan above supersedes earlier implementation ordering, proposed acceptance targets and descriptions of what was still missing at older snapshots. Their measured results remain dated evidence. Read the original code/review snapshot before using an old failure as an unresolved task.
+
+## October 14 independent measurement and next implementation order
+
+Frozen Claude `3e46a74` reproduces **544/1,034 strict / 588 lenient / 728 answered**, versus verified 529: 16 wins / 1 loss, net +15. The final snapshot with bounded occurrence/count-grain and paired distinct-count repairs verifies **546/1,034 (52.8%) strict / 590/1,034 (57.1%) lenient / 728/1,034 (70.4%) answered**. Review repairs versus Claude: 2 wins / 0 losses; the occurrence-only ablation has no DEV accuracy gain. All recorded fingerprints and frozen source sets match after execution. The common saved Sonnet/Gemini Flash SQL reexecutes at 840/872 strict. See the [review](C:/work/prereasoner-data/release-review/spider-review-20261011.md) for pairings, scoring limitations and question 202's separately audited padded-value gold discrepancy.
+
+Remaining disjoint cohorts: 306 unanswered, 112 incorrect under both, 70 lenient-only. Perfect refusal recovery reaches 852/1034; perfect precision at present coverage reaches 728/1034. Beating saved Gemini needs 873 strict: ideal refusal recovery still needs 21 returned wrong answers repaired. These are arithmetic bounds, not forecasts.
+
+The shared constructor-consumed interface has now started: second-sentence `OutputRequest` spans/order and `request_fields` are consumed by construction, ranker and checker. Repeated unambiguous fields preserve their occurrences, and simple scalar COUNT(*) has a bounded named-population/identifying-column policy with both-emitter distinct COUNT support. Full relation-role/operation/predicate/scope bindings and independently correct-binding injection remain pending. First-sentence output lists, anonymous count slots, grouped/threshold populations and nullable field-count policies still need the richer records below. Train no SQL/AST decoder and add no second planner.
+
+Start the next slice with count-threshold populations and frequency counts; bind each output count to its own operation/population/scope. Broaden occurrence-bound outputs to first-sentence lists and explicit owners. Certify false refusals and returned semantic errors together, preserving qualification joins and auditing NULLs, duplicate names, multiplication and ties. Run correct-binding injection before named-head training; reserve a new untouched acceptance set.
 
 ### 1. Make population and output requirements a shared constructor input
 
@@ -25,7 +302,7 @@ First positive/negative fixtures: zero/one/many manufacturers with repeated down
 
 Produce a per-question ledger through the existing production selector. For each refusal, distinguish: correct plan exists and is rejected; correct plan exists only before pool pruning/finalization; correct plan is absent; or the question/data is genuinely ambiguous. Run the actual served realization, including `keep_ties`, on each proposed recovery and independently check its meaning. A table name, stem match or executable query is insufficient proof of an entity, predicate or scope binding.
 
-Prioritize recurring false refusals with a correct, fully witnessed plan. Add same-profile contrastive and negative fixtures before broadening a lexical witness. The current 120-case raw-pool diagnostic is limited to the first 30 questions per difficulty; historical 672 raw hits and the old 227 blocked cases are not today's certified recovery count. Recompute a full current ledger before using those numbers as an accuracy ceiling or a prioritization budget.
+Prioritize recurring false refusals with a correct, fully witnessed plan. Add same-profile contrastive and negative fixtures before broadening a lexical witness. The October 14 final 120-case diagnostic (first 30 per difficulty) has 98 raw strict hits and 98 under executable/grounded flags, 70 unfinalized selected-member hits, and 69 actual finalized served strict answers on those identical questions. The previous verified 529 snapshot had 98 raw / 63 unfinalized / 60 finalized hits. Raw eligibility does not certify completeness or all semantic obligations. Historical 672 raw hits and 227 blocked cases are not today's certified recovery count. Recompute a full current ledger before treating any count as a serving ceiling or prioritization budget.
 
 ### 3. Repair returned semantic errors alongside the refusal work
 
@@ -51,7 +328,7 @@ Freeze source, promoted bundle, question/database identities and evaluator contr
 
 This order follows semantics: fix returned wrong meanings and witnessed false refusals together; presentation-only corrections follow. The cohort labels by themselves do not identify root causes, and there is no evidence that next-token entropy makes a generator inherently more accurate than a complete, properly bound deterministic compiler.
 
-**Updated:** 2026-10-13. This updates the existing guide after the independent fix reviews, Spider artifact audit, and review of Claude's implementation of the plan. It supersedes the October 8 baseline and earlier first-batch ordering.
+**Updated:** 2026-10-14. This updates the existing guide after the independent fix reviews, Spider artifact audit, and review of Claude's implementation of the plan. It supersedes the October 8 baseline and earlier first-batch ordering.
 
 **Historical independent run, October 12:** local `f6fbf4d` plus the uncommitted Boolean-count repair verifies **386/1,034 strict (37.3%), 444/1,034 lenient (42.9%), 590/1,034 answered (57.1%)**, with 361 passing focused checks and all 113 tracked source fingerprints matching after evaluation. The selected SQL and all grades/statuses exactly match Claude's r127. The earlier S1–S6 examples are repaired; the new AND/OR contrast is repaired locally. This stage adds no DEV accuracy gain. See [the current review](C:/work/prereasoner-data/release-review/spider-review-20261011.md) and the assessment below. Detailed `3817b34` and `6263502` records remain historical evidence.
 

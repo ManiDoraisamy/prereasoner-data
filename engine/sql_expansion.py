@@ -323,7 +323,7 @@ class ExpansionSupport:
             if not realized:
                 return ()
             fields.append(realized[0])
-        return tuple(dict.fromkeys(fields))
+        return tuple(fields)
 
     def group_options(
         self,
@@ -1668,6 +1668,32 @@ def counted_noun_tables(said: Sequence[str], schema: Any) -> frozenset[str]:
             if name and tuple(said[start:start + len(name)]) == name:
                 found.add(table)
     return frozenset(found)
+
+
+def scalar_counted_table(query: Any, said: Sequence[str], schema: Any) -> str | None:
+    """The single named population of a simple scalar row count, shared by construction and checking.
+
+    Grouped, ranked, aliased, derived and distinct-count readings retain their own scope policies.
+    This binds COUNT(*) only; a count of a nullable field or stored quantity is a different reading.
+    """
+    if (not isinstance(query, SelectQuery) or not isinstance(query.from_table, str) or query.from_alias
+            or any(join.alias for join in query.joins) or len(query.select) != 1
+            or query.group_by or query.having is not None or query.order_by or query.limit is not None
+            or set(said) & {"different", "distinct", "unique"} or not top_level_count(said)):
+        return None
+    expression = query.select[0].expression
+    if not isinstance(expression, Aggregate) or expression.function != "COUNT" or not isinstance(expression.operand, Star):
+        return None
+    tables = counted_noun_tables(said, schema)
+    return next(iter(tables)) if len(tables) == 1 else None
+
+
+def count_preserves_population(query: SelectQuery, population: str, schema: Any) -> bool:
+    """Each joined table matches at most one row per input row, at the named root's grain."""
+    if query.from_table != population:
+        return False
+    return all(schema.identifies(tuple(column for left, right in join.predicates for column in (left, right)
+                                      if column.table == join.table)) for join in query.joins)
 
 
 def realizes_request(column: ColumnRef, said: Sequence[str], request: OutputRequest, schema: Any,

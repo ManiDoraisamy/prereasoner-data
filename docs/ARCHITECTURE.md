@@ -327,7 +327,11 @@ The own-data path serves one typed SQL AST chosen from the deterministic search'
    its kind (date_of_treatment), is named beside its table: "their apartment numbers", "the date of treatment". A
    sort verb opening the question is its command ("Sort employee names by their age"), and "number", "all" or
    "each" in lower case is no cell value. A nation is a country and a store a shop (`sql_schema.canon`); a field of
-   one-letter codes holds the words they stand for ("female" Sex 'F', "left handed" hand 'L'); a participle before
+   one-letter codes holds the words they stand for only with the field-kind evidence for M/F and L/R
+   (`sql_schema.code_word_matches_column`: sex/gender, hand/side/direction/orientation). A sampled Size 'M' or Stage F/M
+   is no sex. The qualified-code constructor uses the same rule, and completeness witnesses the word from the typed
+   comparison on that field, including aliases and LOWER, rather than a matching literal elsewhere in the SQL.
+   Explicit codes and the existing binary Y/N reading remain available. A participle before
    a compared year ("produced in 1980") is read by the answer; and a count of "different winners" counts the
    entity's name or key before the other fields the noun names. "In total" after "how many" restates the count,
    and a field whose words another field of its table spells whole is not named inside that spelling ("the ranking
@@ -349,10 +353,24 @@ The own-data path serves one typed SQL AST chosen from the deterministic search'
    ahead of one adding a field; "find" is a list verb, and an item followed by "of" and the rows of one table realizing
    it is that table's field; an item's last word may stand for the kind its field's name ends in ("the cell phone" is
    cell_number), and a "which" after a preposition opens a relative clause, not a command. An answer showing only
-   fields the question says only to filter on gets a twin showing the name of the
-   rows it lists (`SQLSearcher._display_twin`, `sql_rank.filter_only`: "the cities whose population is between ..."),
-   and a row count drops a leaf join to a table nothing reads, nothing counts and the question does
-   not name (`sql_expansion.counted_noun_tables`), which only multiplies the counted rows. The verb a sentence opens
+   fields the question says only to filter on gets a twin showing
+   the name of the rows it lists (`SQLSearcher._display_twin`, `sql_rank.filter_only`: "the cities whose population
+   is between ...").
+   Explicitly repeated fields retain each output occurrence in construction and list ordering;
+   the checker requires each occurrence of an unambiguous repeated field, resolving table aliases. List ordering
+   can copy an already bound column value; anonymous count slots never create another count. A row count drops a
+   leaf join to a table nothing reads, nothing counts and the question does
+   not name (`sql_expansion.counted_noun_tables`), which only multiplies the counted rows.
+   For a simple scalar COUNT(*) with one named population, construction and
+   admission share `sql_expansion.scalar_counted_table`: a potentially multiplying join counts the population's proven unique,
+   non-NULL identifying column distinctly, retaining the qualifying joins. This bounded policy excludes grouped,
+   ranked, aliased and distinct-request readings; field counts and threshold populations retain their own policies.
+   `count_preserves_population` retains plain row counting when every joined key identifies at most one row and the
+   root is the counted population, preserving qualification joins without unnecessary distinct counting.
+   These identity/cardinality proofs concern the current request's table values; changed data rebuilds the graph.
+   `AnalysisPlan.AggregateValue.distinct` represents distinct counting once for both emitters, with an explicit
+   `COUNT_DISTINCT` accumulator/finalizer in Python; AST lowering accepts the scalar single-column COUNT form.
+   The verb a sentence opens
    with is its command and names no table (`sql_expansion.command_positions`: "Show the names of conductors" joins no
    show table), and a relationship self-join is built only where a word of its key besides the parent table's name is
    said, whole or abbreviated (`sql_recursive`: "the course whose prerequisite is ..."). A grouped

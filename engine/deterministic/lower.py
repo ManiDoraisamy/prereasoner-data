@@ -257,9 +257,12 @@ def lower_select_query(
             if not isinstance(expression, Aggregate):
                 continue
             if expression.distinct:
-                raise UnsupportedDeterministicPlan(
-                    "DISTINCT aggregates are not supported"
-                )
+                if (expression.function != "COUNT" or not isinstance(expression.operand, ColumnRef)
+                        or len(query.select) != 1 or query.group_by or query.having is not None
+                        or query.order_by or query.limit is not None or shares):
+                    raise UnsupportedDeterministicPlan(
+                        "only a scalar COUNT(DISTINCT column) is supported"
+                    )
             if isinstance(expression.operand, Star):
                 operand = None
             elif isinstance(expression.operand, BinaryExpr):
@@ -271,7 +274,7 @@ def lower_select_query(
             else:
                 operand = _value(expression.operand)
             aggregate_values.append(
-                AggregateValue(output_name, expression.function, operand)
+                AggregateValue(output_name, expression.function, operand, distinct=expression.distinct)
             )
         if calculations:
             views.append(

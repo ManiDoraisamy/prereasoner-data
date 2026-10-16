@@ -387,7 +387,7 @@ class SQLEmitter:
             if aggregate.operand is None
             else self._value(aggregate.operand, tables, values)
         )
-        sql = f"{aggregate.function}({operand})"
+        sql = f"{aggregate.function}({'DISTINCT ' if aggregate.distinct else ''}{operand})"
         # ROUND cannot recover digits PostgreSQL's AVG(bigint) already discarded.
         # Give the operand the contract's decimal scale BEFORE division occurs.
         return (

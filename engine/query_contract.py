@@ -381,6 +381,10 @@ def _select_violations(question, query, graph, whole):
     if unreadable:
         violations.append(unreadable)
     question_tokens = tokens(question)
+    from engine.sql_expansion import count_preserves_population, scalar_counted_table
+    population = scalar_counted_table(query, question_tokens, graph)
+    if population is not None and not count_preserves_population(query, population, graph):
+        violations.append(f"the scalar count does not count rows of {population} at their own grain")
     phrases = served_date_phrases(question, question_tokens, graph)
     violations.extend(relational_operator_evidence(question, query, graph)[1])
     # The spreadsheet importer preserves duplicate headers with their original
@@ -512,11 +516,25 @@ def _select_violations(question, query, graph, whole):
     # The fields an explicit list instruction asks for are read as the search built them and the ranker reads them
     # (sql_expansion.request_fields): "List the continent id, continent name ..." is realized by ContId, and its "id"
     # asks for no other table's Id (Spider DEV 89, 2026-10-14: the reading showing exactly the list was refused).
-    from engine.sql_expansion import output_requests, request_fields, tokens as list_tokens
+    from engine.sql_expansion import output_requests, request_fields, request_slots, tokens as list_tokens
     said = list_tokens(question)
     listed = [request for request in output_requests(question, graph) if not request.count]
     realized_items = [set(said[request.start:request.end])
                       for request, refs in zip(listed, request_fields(question, graph)) if set(refs) & projected]
+    # An explicitly repeated, unambiguously bound field must be shown each time.
+    # A set of read columns cannot prove multiple output occurrences; aliases
+    # identify the same field but do not add an output of their own.
+    from collections import Counter
+    repeated = Counter(next(iter(slot)) for slot in request_slots(question, graph)
+                       if slot is not None and len(slot) == 1)
+    aliases = {join.alias: join.table for join in query.joins if join.alias}
+    if query.from_alias and isinstance(query.from_table, str):
+        aliases[query.from_alias] = query.from_table
+    shown = Counter(replace(item.expression, table=aliases.get(item.expression.table, item.expression.table))
+                    for item in query.select if isinstance(item.expression, ColumnRef))
+    for ref, required in repeated.items():
+        if required > 1 and 0 < shown[ref] < required:
+            violations.append(f"requested output occurrence is missing: {ref.name}")
     for label, refs in named_fields.items():
         if ' '+label+' ' not in table_masked:
             continue
@@ -1120,11 +1138,24 @@ def read_question(question, candidate, graph, *, calculation_satisfied=False):
         canon(number)
         for number in re.findall(r"(?<![A-Za-z0-9_])[+-]?\d[\d,]*(?:\.\d+)?(?![A-Za-z0-9_])", candidate.sql)
     )
-    # A word the value index holds for a value the query compares reads as that value: "left" for winner_hand 'L', a
-    # one-letter code, and "African" for Continent 'Africa', a place (SchemaGraph._build_value_index).
+    # A code word is read by a comparison on its bound field, never merely by a literal elsewhere in the SQL.
+    # Sex='M' realizes "male"; Stage='M' does not, even if this schema also holds Sex codes. A place's word for what
+    # is of it is read so too: "African" by Continent = 'Africa' (SchemaGraph._build_value_index).
+    compared_codes = set()
+    for select, _ in _select_queries(candidate.query, graph=graph):
+        aliases = {join.alias: join.table for join in select.joins if join.alias}
+        if select.from_alias and isinstance(select.from_table, str):
+            aliases[select.from_alias] = select.from_table
+        predicates = (*mandatory_predicates(select.where), *mandatory_predicates(select.having))
+        for column, value, folded, _ in _value_comparisons(predicates):
+            if isinstance(value, str):
+                compared_codes.add((aliases.get(column.table, column.table), column.name,
+                                    value.casefold() if folded else value, folded))
     sql_literals.update(word for word in set(words) if len(word) > 1 and any(
-        isinstance(value, str) and f"'{value}'" in candidate.sql
-        for _, value in graph.value_index.get(word, ())))
+        isinstance(value, str)
+        and ((column.table, column.name, value, False) in compared_codes
+             or (column.table, column.name, value.casefold(), True) in compared_codes)
+        for column, value in graph.value_index.get(word, ())))
     ordinary_words = {
         "a", "an", "am", "and", "are", "as", "at", "be", "been", "being", "by", "can", "could",
         "did", "do", "does", "for", "from", "give", "has", "have", "how", "in", "is", "it",

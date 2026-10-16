@@ -1086,7 +1086,7 @@ class PythonEmitter:
     def _aggregate_finalize(
         view: ReducedView, row_class: str, *, indent: str
     ) -> list[str]:
-        if not any(aggregate.function == "AVG" for aggregate in view.aggregates):
+        if not any(aggregate.function == "AVG" or aggregate.distinct for aggregate in view.aggregates):
             return []
         fields = [f"{item.name}=result.{item.name}" for item in view.group_by]
         fields.extend(
@@ -1094,6 +1094,7 @@ class PythonEmitter:
             + (
                 f"FINALIZE_AVG(result.{aggregate.name})"
                 if aggregate.function == "AVG"
+                else f"FINALIZE_COUNT_DISTINCT(result.{aggregate.name})" if aggregate.distinct
                 else f"result.{aggregate.name}"
             )
             for aggregate in view.aggregates
@@ -1116,10 +1117,13 @@ class PythonEmitter:
         operand = self._python_value(
             plan, aggregate.operand, "row", source_tables, source_values
         )
-        return f"{aggregate.function}(result.{aggregate.name}, {operand})"
+        function = "COUNT_DISTINCT" if aggregate.distinct else aggregate.function
+        return f"{function}(result.{aggregate.name}, {operand})"
 
     @staticmethod
     def _aggregate_initial(aggregate: AggregateValue) -> str:
+        if aggregate.distinct:
+            return "DistinctCountState()"
         if aggregate.function == "COUNT":
             return "0"
         if aggregate.function == "AVG":
@@ -1273,7 +1277,10 @@ def _operator_imports(plan: AnalysisPlan) -> tuple[str, ...]:
                 add_value(selected.value)
             for aggregate in view.aggregates:
                 if aggregate.function == "COUNT":
-                    names.add("COUNT_STAR" if aggregate.operand is None else "COUNT")
+                    names.add("COUNT_DISTINCT" if aggregate.distinct else
+                              "COUNT_STAR" if aggregate.operand is None else "COUNT")
+                    if aggregate.distinct:
+                        names.update({"DistinctCountState", "FINALIZE_COUNT_DISTINCT"})
                 else:
                     names.add(aggregate.function)
                 if aggregate.function == "AVG":

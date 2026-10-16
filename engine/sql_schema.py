@@ -366,7 +366,8 @@ class SchemaGraph:
                     for letter, words in pair.items():
                         if letter in letters:
                             for word in words:
-                                values.setdefault(word, []).append((column.ref, letters[letter]))
+                                if code_word_matches_column(word, column.ref.name):
+                                    values.setdefault(word, []).append((column.ref, letters[letter]))
         return {value: tuple(options) for value, options in values.items()}
 
 
@@ -376,6 +377,24 @@ class SchemaGraph:
 CODE_LETTERS = ({"m": ("male", "man"), "f": ("female", "woman")}, {"l": ("left",), "r": ("right",)},
                 {"y": ("yes",), "n": ("no",)})
 _UNKNOWN_CODES = frozenset({"u", "x", "o"})
+# A sampled code domain alone establishes no sex or direction: Size may hold only M, Stage F/M, Grade L/R.
+_CODE_WORD_KINDS = {
+    word: fields for pair, fields in zip(CODE_LETTERS[:2],
+                                       (frozenset({"sex", "gender"}),
+                                        frozenset({"hand", "side", "direction", "orientation"})))
+    for words in pair.values() for word in words
+}
+
+
+def code_word_matches_column(word: str, name: str) -> bool:
+    """Whether a standard code word's kind is named by the field, independently of its sampled values.
+
+    Unknown field labels need an explicit literal code or a separately established meaning; they do not acquire one
+    because a capped sheet happens to hold just M or L/R. Y/N and the existing explicit boolean descriptors keep their
+    binary reading. The value index and the qualified-code constructor use this same evidence.
+    """
+    fields = _CODE_WORD_KINDS.get(word)
+    return fields is None or bool(fields & {canon(part) for part in name_words(name)})
 
 
 def distinct_values(values: Sequence[Any]) -> Sequence[Any]:

@@ -755,6 +755,78 @@ def test_spider_scalar_gold_runner_executes_the_selected_ast_with_python():
     assert evaluated["python_sql_equal"] is True
 
 
+def test_repeated_bound_outputs_preserve_sql_python_parity():
+    from engine.tables import TableQuery
+    from spider.probe.full_eval import _execute_python_candidate
+
+    tables = [{"name": "people", "columns": ["id", "name"], "rows": [[1, "Ann"], [2, "Bo"]]}]
+    schema = [{"table": "people", "name": "id", "affinity": "INTEGER", "values": [1, 2]},
+              {"table": "people", "name": "name", "affinity": "TEXT", "values": ["Ann", "Bo"]}]
+    identity = ColumnRef("people", "id", SQLType.INTEGER)
+    name = ColumnRef("people", "name", SQLType.TEXT)
+    query = SelectQuery((SelectItem(identity), SelectItem(name), SelectItem(identity)), "people")
+    expected = [[1, "Ann", 1], [2, "Bo", 2]]
+    plan = lower_select_query("requested_people", query, schema, ())
+    python_rows = _execute_python_candidate(plan, tables, schema, 2, 10_000)
+    connection = TableQuery._sqlite_tables(None, {"people": tables[0]}, schema)
+    try:
+        from engine.sql_ast import render_query
+        sql_rows = [list(row) for row in connection.execute(render_query(query))]
+    finally:
+        connection.close()
+    assert python_rows == sql_rows == expected
+
+
+def test_named_population_identity_preserves_sql_python_parity():
+    from engine.sql_ast import render_query
+    from engine.tables import TableQuery
+    from spider.probe.full_eval import _execute_python_candidate
+    tables = [{"name": "dogs", "columns": ["id", "name"], "rows": [[1, "Rex"], [2, "Rex"], [3, "Bo"]]},
+              {"name": "treatments", "columns": ["id", "dog_id"], "rows": [[10, 1], [11, 1], [12, 2], [13, None]]}]
+    schema = [{"table": table["name"], "name": name, "affinity": "TEXT" if name == "name" else "INTEGER",
+               "values": [row[index] for row in table["rows"]]}
+              for table in tables for index, name in enumerate(table["columns"])]
+    identity = ColumnRef("dogs", "id", SQLType.INTEGER)
+    child = ColumnRef("treatments", "dog_id", SQLType.INTEGER)
+    query = SelectQuery((SelectItem(Aggregate("COUNT", identity, distinct=True)),), "dogs",
+                        joins=(Join("treatments", child, identity),))
+    plan = lower_select_query("treated_dogs", query, schema, ())
+    python_rows = _execute_python_candidate(plan, tables, schema, 7, 10_000)
+    connection = TableQuery._sqlite_tables(None, {table["name"]: table for table in tables}, schema)
+    try:
+        sql_rows = [list(row) for row in connection.execute(render_query(query))]
+    finally:
+        connection.close()
+    assert python_rows == sql_rows == [[2]]
+
+
+def test_distinct_count_excludes_null_and_keeps_group_states_separate():
+    table = TableSpec("items", "Item", "items", "conversation",
+                      (ColumnSpec("id", "id", SQLType.INTEGER, primary_key=True, nullable=False),
+                       ColumnSpec("kind", "kind", SQLType.TEXT), ColumnSpec("value", "value", SQLType.INTEGER)))
+    statements = ["CREATE TABLE conversation.items (id INTEGER PRIMARY KEY, kind TEXT, value INTEGER)",
+                  "INSERT INTO conversation.items VALUES (1, 'A', NULL), (2, 'A', 1), (3, 'A', 1), "
+                  "(4, 'B', 1), (5, 'B', 2), (6, 'B', NULL)"]
+    for grouped, expected in ((False, ({"n": 2},)), (True, ({"kind": "A", "n": 1}, {"kind": "B", "n": 2}))):
+        plan = AnalysisPlan("unique_values", (table,),
+                            (CombinedView("unique_values_combined", ("items",)),
+                             ReducedView("unique_values_counts", "unique_values_combined",
+                                         (AggregateValue("n", "COUNT", ColumnValue("items", "value"), distinct=True),),
+                                         (SelectedValue("kind", ColumnValue("items", "kind")),) if grouped else ())))
+        for mode in ("sql", "python", "verify"):
+            result = _execute_fixture(plan, statements, mode, 6)
+            assert result.rows == expected, (mode, result.rows)
+        if not grouped:
+            empty = _execute_fixture(plan, statements[:1], "verify", 0)
+            assert empty.rows == ({"n": 0},), empty.rows
+    try:
+        AggregateValue("n", "COUNT", distinct=True)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("distinct counting without an operand must be rejected")
+
+
 def test_spider_backend_parity_preserves_blank_text_and_null_as_different_cells():
     from engine.tables import TableQuery
     from spider.probe.full_eval import _execute_python_candidate

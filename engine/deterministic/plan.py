@@ -258,6 +258,7 @@ class AggregateValue:
     name: str
     function: str
     operand: Value | None = None
+    distinct: bool = False
 
     def __post_init__(self) -> None:
         function = self.function.upper()
@@ -265,6 +266,8 @@ class AggregateValue:
             raise ValueError(f"unsupported aggregate: {function}")
         if function != "COUNT" and self.operand is None:
             raise ValueError(f"{function} requires an operand")
+        if self.distinct and (function != "COUNT" or self.operand is None):
+            raise ValueError("distinct counting requires a COUNT operand")
         _require_identifier(self.name, "aggregate name")
         object.__setattr__(self, "function", function)
 

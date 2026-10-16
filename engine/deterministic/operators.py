@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
 from functools import cmp_to_key
@@ -229,6 +229,21 @@ def MIN(current, value):
 
 def COUNT(current: int, value) -> int:
     return current if value is None else current + 1
+
+
+@dataclass
+class DistinctCountState:
+    values: set[object] = field(default_factory=set)
+
+
+def COUNT_DISTINCT(current: DistinctCountState, value) -> DistinctCountState:
+    if value is not None:
+        current.values.add(value)
+    return current
+
+
+def FINALIZE_COUNT_DISTINCT(current: DistinctCountState) -> int:
+    return len(current.values)
 
 
 def COUNT_STAR(current: int) -> int:
