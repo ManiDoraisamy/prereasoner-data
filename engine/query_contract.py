@@ -385,21 +385,12 @@ def _select_violations(question, query, graph, whole):
     if unreadable:
         violations.append(unreadable)
     question_tokens = tokens(question)
-    from engine.sql_expansion import (
-        count_noun_starts, count_preserves_population, counted_field_values, counted_references, scalar_counted_table,
-    )
+    from engine.sql_expansion import count_preserves_population, counted_references, scalar_counted_table
     population = scalar_counted_table(query, question_tokens, graph)
     if population is not None and not count_preserves_population(query, population, graph):
         violations.append(f"the scalar count does not count rows of {population} at their own grain")
     for _, table in counted_references(query, question, graph)[:1]:
         violations.append(f"the count counts the {table} rows referring to what the question counts")
-    # A count of a field's values counts each value once: "How many continents speak Chinese?" (counted_field_values).
-    valued = {column for start in count_noun_starts(question, graph)
-              for column in counted_field_values(question_tokens, graph, start)}
-    for aggregate in aggregates((query.select, query.order_by, query.having)):
-        if aggregate.function == "COUNT" and not aggregate.distinct and aggregate.operand in valued:
-            violations.append(f"the count counts the rows holding {aggregate.operand.name}, not its values")
-            break
     phrases = served_date_phrases(question, question_tokens, graph)
     violations.extend(relational_operator_evidence(question, query, graph)[1])
     # The spreadsheet importer preserves duplicate headers with their original

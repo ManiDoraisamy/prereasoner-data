@@ -3956,14 +3956,14 @@ Measured on Spider (`spider/results/RESULTS.md`, 2026-10-17): DEV 588 → 632 st
   the answer keeps), and a row number named by a counted table is no measure ("the most number of matches" is no ranking
   by match_num, DEV 461). A field holding the number itself is compared, not counted ("markets with number of shops
   greater than 50", held out 832).
-- Counts of a field's values (`sql_expansion.counted_field_values`): a count whose noun names a text field whole, and no
-  table, counts its values once each, in the search and the gate ("How many continents speak Chinese?" counted the
-  countries, DEV 751). Of two keys a table holds to one other table the join is the one the question names, and the rows
-  a noun names are counted by their key ("How many different addresses do the students currently live?" by
-  current_address_id, DEV 577; "customers who hold an account" by customer_id, fresh holdout 44, 438;
-  `sql_rank.named_parallel_key`, `count_distinct_key`). A table named right after the one a count's noun starts with is
-  the noun's head (`counted_noun_tables`): "movie ratings" counts the ratings (held out 989), and a verb taking an
-  object is none ("instructors teach a course", fresh holdout 648).
+- Counts of a field's values (`sql_expansion.counted_field_values`, removed by the entry below: the formesign-intake
+  demo counts rows): a count whose noun names a text field whole, and no table, counts its values once each, in the
+  search and the gate ("How many continents speak Chinese?" counted the countries, DEV 751). Of two keys a table holds
+  to one other table the join is the one the question names, and the rows a noun names are counted by their key ("How
+  many different addresses do the students currently live?" by current_address_id, DEV 577; "customers who hold an
+  account" by customer_id, fresh holdout 44, 438; `sql_rank.named_parallel_key`, `count_distinct_key`). A table named
+  right after the one a count's noun starts with is the noun's head (`counted_noun_tables`): "movie ratings" counts the
+  ratings (held out 989), and a verb taking an object is none ("instructors teach a course", fresh holdout 648).
 - Relationships: a key named for a role references an entity's own named key only where the role names no table
   (`relations._name_boost`): Products.parent_product_id names a product and is no reference to Customers.customer_id
   (held out 546, a loss of the previous change).
@@ -4017,3 +4017,15 @@ holdout 405 → 412, Gemini on 704 → 732.
   count of keys, and "instructors teach a course" read as the teaches table).
 - No strict loss against 608fc98 on any set. Wrong answers fall on every set: DEV 166 to 138, held out 229 to 226, the
   fresh holdout 237 to 232, Gemini on 210 to 180.
+
+## A count whose noun names a text field counts the rows (2026-10-17)
+
+The release build of `1cd624d` failed its live demo-dataset suite: formesign-intake's "How many documents are still
+pending?" answered 2, the distinct document types pending, where its sheet's rows are the documents sent and 5 are
+pending. The entry above made a count whose noun names a text field whole, and no table, count the field's distinct
+values (`sql_expansion.counted_field_values`, in the search and the gate) for Spider DEV 751 ("How many continents speak
+Chinese?"). The data cannot tell the two readings apart, and the demo's answer is the product's contract, so the reading
+is removed and a count of a field's noun counts the rows again. DEV 751 goes back to its wrong answer.
+
+Measured on Spider (`spider/results/RESULTS.md`, 2026-10-17), against `608fc98`: DEV 632 → 663 strict, held out 405 →
+415, the fresh holdout 405 → 412, Gemini on 704 → 731.

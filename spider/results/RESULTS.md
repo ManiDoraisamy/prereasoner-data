@@ -107,6 +107,27 @@ Artifacts: `%LOCALAPPDATA%/Temp/prereasoner-spider-review-20261013/`, tags `revi
 Incomplete intermediate runs are excluded. The review hardens ranking-number roles, output counts (preserving stored-count SUM),
 and table-owned full-name construction; it does not introduce another planner or model bundle.
 
+## A count whose noun names a text field counts the rows: against `608fc98`, 632 → 663 strict, Gemini on 704 → 731, held out 405 → 415, fresh holdout 405 → 412 (2026-10-17)
+
+Runs `r5` are the entry below's change without its field-noun count reading (the `DECISIONS.md` entry of this title),
+against `608fc98`'s `c3` runs, on the same contract.
+
+- DEV, engine alone: 632 → **663 strict**; 31 wins (52, 94, 104, 109, 115, 147, 148, 149, 199, 245, 246, 310, 323, 379,
+  380, 389, 390, 439, 461, 468, 576, 577, 667, 695, 712, 768, 846, 918, 919, 976, 1011), no loss; wrong answers 166 →
+  139; 83 queries changed.
+- Held out: 405 → **415 strict**; 10 wins (68, 92, 110, 142, 363, 407, 505, 546, 617, 832), no loss; wrong answers 229 →
+  226; 33 queries changed.
+- Fresh holdout: 405 → **412 strict**; 7 wins (44, 272, 293, 438, 636, 656, 875), no loss; wrong answers 237 → 232; 27
+  queries changed.
+- Gemini on: 704 → 731 strict; 27 wins (52, 94, 109, 115, 130, 147, 148, 149, 199, 245, 246, 310, 323, 379, 380,
+  390, 439, 461, 468, 576, 577, 695, 768, 846, 918, 919, 1011), no loss; wrong answers 210 → 181; 84 queries changed.
+- Against the entry below (`1cd624d`, runs `r4`): DEV 664 → 663 and Gemini on 732 → 731, the one loss DEV 751; held out
+  and the fresh holdout unchanged. No strict loss against `608fc98` on any set.
+- The live demo-dataset suite (`tests.test_datasets`, all four execution modes) passes on this change; it failed on
+  `1cd624d` at formesign-intake.
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-remote-eval-20261017/full_eval_{,heldout-,holdout2-}r5.json` and `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_r5-gemini-dirty.json`.
+
 ## A condition's field is not shown; a count counts what its noun names, a field's values once each; superlatives, years and inflections name their fields; a set query shows the key said; a value is its display field's: 632 → 664 strict, Gemini on 704 → 732, held out 405 → 415, fresh holdout 405 → 412 (2026-10-17)
 
 Same contract as below (RunPod CPU pods, the evaluator ingesting declared and discovered keys). Runs `r4` are this

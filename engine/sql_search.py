@@ -61,7 +61,6 @@ from engine.sql_expansion import (
     asked_cues,
     by_groups,
     count_requested,
-    counted_field_values,
     entity_groups,
     field_numbers,
     implicit_sum_measures,
@@ -998,9 +997,6 @@ class SQLSearcher:
                 for column in self._distinct_counted_columns(tokens, position):
                     options.append((Aggregate("COUNT", column, distinct=True), 3.3,
                                     f"aggregate:COUNT(DISTINCT {column.table}.{column.name}):noun"))
-                for column in counted_field_values(tokens, self.schema, position + 2):
-                    options.append((Aggregate("COUNT", column, distinct=True), 3.9,
-                                    f"aggregate:COUNT(DISTINCT {column.table}.{column.name}):field-noun"))
                 # "the number of different series names and contents" counts each field's values.
                 counted = self._target_columns(mentions, position, numeric=False)
                 pair = _coordinated_targets(tokens, position, counted, numeric=False)

@@ -3957,29 +3957,6 @@ def test_a_measures_own_word_said_before_a_superlative_names_it():
     assert served.get("valid") and served["result"]["rows"] == [["Lee Mears"]], (served.get("error"), served.get("sql"))
 
 
-def test_a_count_of_a_fields_values_counts_each_once():
-    """Spider DEV 751, 2026-10-17: "How many continents speak Chinese?" counted the countries speaking it, each
-    country's continent again. A count whose noun names a text field whole, and no table, counts that field's values
-    once each, in the search and the gate (sql_expansion.counted_field_values). Contrast: "How many countries speak
-    Chinese?" counts the countries' rows."""
-    country = {"name": "country", "columns": ["Code", "Name", "Continent"], "rows": [
-        ["CHN", "China", "Asia"], ["SGP", "Singapore", "Asia"], ["TWN", "Taiwan", "Asia"], ["CAN", "Canada", "North America"],
-        ["FRA", "France", "Europe"]]}
-    languages = {"name": "countrylanguage", "columns": ["CountryCode", "Language"], "rows": [
-        ["CHN", "Chinese"], ["SGP", "Chinese"], ["TWN", "Chinese"], ["CAN", "Chinese"], ["FRA", "French"]]}
-    fks = [{"from_table": "countrylanguage", "from_col": "CountryCode", "to_table": "country", "to_col": "Code"}]
-    planner = _hermetic_planner()
-    served = planner.serve([country, languages], "How many continents speak Chinese?", fks)
-    assert served.get("valid") and served["result"]["rows"] == [[2]], (served.get("error"), served.get("sql"))
-    served = planner.serve([country, languages], "How many countries speak Chinese?", fks)
-    assert served.get("valid") and served["result"]["rows"] == [[4]], (served.get("error"), served.get("sql"))
-    graph = SchemaGraph.from_tables([country, languages], fks)
-    continent = ColumnRef("country", "Continent", SQLType.TEXT)
-    every_row = SelectQuery((SelectItem(Aggregate("COUNT", continent)),), "country")
-    assert any("not its values" in violation
-               for violation in constraint_violations("How many continents are there?", every_row, graph))
-
-
 def test_a_count_counts_its_nouns_head():
     """Held-out Spider train 989, 2026-10-17: "How many movie ratings have more than 3 stars?" counted the different
     movies: the counted noun was read as Movie, its first word, and the count of ratings was rewritten as a count of
@@ -4021,6 +3998,20 @@ def test_a_table_said_after_in_is_no_item_to_show():
     served = _hermetic_planner().serve([dorm, amenity, has], "What is the most common amenity in the dorms?", fks)
     assert served.get("valid") and served["result"]["rows"] and all(
         row[0] in {"TV Lounge", "Study Room", "Pub in Basement"} for row in served["result"]["rows"]), served.get("sql")
+
+
+def test_a_count_of_a_fields_noun_counts_the_rows():
+    """The formesign-intake demo (release build of 1cd624d, 2026-10-17): "How many documents are still pending?" answered
+    2, the distinct document types pending, where its sheet's rows are the documents sent and 5 are pending. A count
+    whose noun names a text field counts the rows, as before 1cd624d; reading it as the field's distinct values
+    (Spider DEV 751, "How many continents speak Chinese?") cannot tell the two apart from the data."""
+    import csv
+    from pathlib import Path
+    path = Path(__file__).resolve().parents[1] / "web" / "public" / "dataset" / "formesign-intake" / "intake.csv"
+    rows = list(csv.reader(path.open(encoding="utf-8")))
+    intake = {"name": "intake", "columns": rows[0], "rows": rows[1:]}
+    served = _hermetic_planner().serve([intake], "How many documents are still pending?", [])
+    assert served.get("valid") and served["result"]["rows"] == [[5]], (served.get("error"), served.get("sql"))
 
 
 def test_a_value_two_fields_of_a_table_hold_is_its_display_fields():
@@ -8402,7 +8393,7 @@ TESTS = [
     test_a_number_a_comparison_reads_states_no_stored_value,
     test_a_field_holding_a_number_is_compared_not_counted,
     test_a_measures_own_word_said_before_a_superlative_names_it,
-    test_a_count_of_a_fields_values_counts_each_once,
+    test_a_count_of_a_fields_noun_counts_the_rows,
     test_a_value_two_fields_of_a_table_hold_is_its_display_fields,
     test_a_count_counts_its_nouns_head,
     test_a_table_said_after_in_is_no_item_to_show,

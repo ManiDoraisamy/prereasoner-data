@@ -1969,23 +1969,6 @@ def counted_noun_tables(said: Sequence[str], schema: Any) -> frozenset[str]:
     return frozenset(found)
 
 
-def counted_field_values(said: tuple[str, ...], schema: Any, start: int) -> tuple[ColumnRef, ...]:
-    """The text fields the count noun at ``start`` names whole where it names no table: "How many continents speak
-    Chinese?" counts the values of country.Continent, once each (Spider DEV 751, 2026-10-17: the count counted the
-    countries). A noun naming a table counts its rows; "how many times" counts no field."""
-    while start < len(said) and said[start] in {"the", "a", "an", "all", "of"}:
-        start += 1
-    if start >= len(said) or said[start] in {"time", "row", "record", "entry", "item"}:
-        return ()
-    noun = said[start]
-    if any(noun in {canon(word) for word in name_words(table)} for table in schema.tables):
-        return ()
-    return tuple(sorted((schema_column.ref for schema_column in schema.columns
-                         if schema_column.ref.type == SQLType.TEXT and not is_surrogate_key(schema_column.ref.name)
-                         and tuple(canon(word) for word in name_words(schema_column.ref.name)) == (noun,)),
-                        key=lambda column: (column.table, column.name))[:2])
-
-
 def count_noun_starts(question: str, schema: Any) -> tuple[int, ...]:
     """Where each count's noun starts: after "how many", or after a "number of" or "count of" that is no field's
     number (``field_numbers``)."""
