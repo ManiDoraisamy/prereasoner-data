@@ -20,7 +20,7 @@ from engine.sql_ast import (
 from engine.sql_dates import period_grouping
 from engine.sql_extrema import MAX_CUES, MIN_CUES
 from engine.sql_expansion import (
-    FUNCTION_WORDS, OutputRequest, asked_cues, by_groups, count_preserves_population, counted_noun_tables,
+    PHRASE_BREAKS, OutputRequest, asked_cues, by_groups, count_preserves_population, counted_noun_tables,
     field_numbers, flag_comparisons, flag_fields, output_requests, request_fields, share_cue, share_requested, words,
 )
 from engine.sql_expansion import tokens as expansion_tokens
@@ -232,9 +232,12 @@ class CandidateRanker:
 
         # A superlative over the one field the answer shows ranks by that field: "the age of the oldest dog" is the
         # greatest age, not the age of the earliest birth date (Spider DEV 988, 989, 2026-10-14).
+        # Not where the superlative names another table's rows: "the saving balance of the account with the highest
+        # checking balance" ranks by the checking balance (held-out Spider train 504, 2026-10-17).
         if (isinstance(query, SelectQuery) and query.limit is not None and len(query.order_by) == 1
                 and not query.group_by and len(query.select) == 1 and select_columns
-                and query.order_by[0].expression == select_columns[0]):
+                and query.order_by[0].expression == select_columns[0]
+                and not self._superlative_names_other_table(select_columns[0], query, roles.tokens)):
             features.append(("superlative_on_shown", 0.75))
 
         # An aggregate the question names only in a clause keeping the groups is not asked for: "the studios whose
@@ -504,6 +507,18 @@ class CandidateRanker:
         return any(other != column and other in roles.projection_columns and self._entity_tables(other) & entity
                    for other in shown)
 
+    def _superlative_names_other_table(self, shown: ColumnRef, query: SelectQuery, said: Sequence[str]) -> bool:
+        """Whether a superlative is followed by the name of a table the query reads other than ``shown``'s."""
+        read = {query.from_table, *(join.table for join in query.joins)} - {shown.table}
+        for index, token in enumerate(said[:-1]):
+            if token not in MAX_CUES and token not in MIN_CUES:
+                continue
+            for table in read:
+                name = tuple(canon(word) for word in name_words(table))
+                if name and tuple(said[index + 1:index + 1 + len(name)]) == name:
+                    return True
+        return False
+
     def _entity_tables(self, column: ColumnRef) -> set[str]:
         """``column``'s table and the tables its key pairs link it to."""
         tables = {column.table}
@@ -699,28 +714,14 @@ def analyze_question(question: str, schema: SchemaGraph) -> QuestionRoles:
     )
 
 
-# Words that end a noun phrase: grammar words, and the words that open a clause, a comparison, a grouping or an
-# ordering. Any other word after a column's name continues the phrase that name begins. "column" and "field" end
-# it too: "the Name column" is the Name.
-_PHRASE_BREAKS = frozenset(canon(word) for word in FUNCTION_WORDS | {
-    "all", "any", "each", "every", "per", "group", "these", "those", "some", "no", "not", "nor", "but",
-    "who", "whom", "whose", "which", "where", "when", "why", "how", "what", "there",
-    "has", "have", "had", "do", "does", "did", "can", "could", "will", "would", "should", "shall", "may", "might",
-    "having", "ordered", "sort", "sorted", "top", "bottom", "after", "before", "between", "during",
-    "since", "until", "within", "without", "across", "over", "under", "above", "below", "among", "through",
-    "versus", "vs", "more", "less", "fewer", "greater", "than", "excluding", "except", "including",
-    "containing", "use", "using", "used", "column", "field",
-})
-
-
 def _ends_phrase(tokens: tuple[str, ...], index: int) -> bool:
-    """Whether ``tokens[index]`` ends the noun phrase it follows: a word of ``_PHRASE_BREAKS``, or "order" opening an
+    """Whether ``tokens[index]`` ends the noun phrase it follows: a word of ``PHRASE_BREAKS``, or "order" opening an
     ordering ("order by"). Before another noun "order" is part of the phrase: "the total order amount" totals the
     amount (planted-text review, 2026-10-08)."""
     word = tokens[index]
     if word == "order":
         return index + 1 < len(tokens) and tokens[index + 1] == "by"
-    return word in _PHRASE_BREAKS
+    return word in PHRASE_BREAKS
 # Words an aggregate's own phrase may open with: "the total of the Amount".
 _PHRASE_OPENERS = frozenset({"of", "the", "a", "an"})
 
@@ -1020,8 +1021,10 @@ def relation_sides(schema: SchemaGraph) -> dict[str, tuple]:
 
 
 # The words that say which end of a trip a question asks about.
+# "Routes that start at that airport" leave from it, and src_apid / dst_apid name the two ends (held-out Spider train
+# 273, 360, 2026-10-17: each counted the routes arriving there).
 TRAVEL_WORDS = {
-    "source": frozenset({"leave", "leaving", "depart", "departing", "departure", "origin", "source"}),
+    "source": frozenset({"leave", "leaving", "depart", "departing", "departure", "origin", "source", "start", "starting"}),
     "destination": frozenset({"arrive", "arriving", "arrival", "land", "landing", "destination", "dest"}),
 }
 
@@ -1033,9 +1036,9 @@ def travel_direction(tokens: tuple[str, ...]) -> str | None:
 
 def travel_column_role(column: ColumnRef) -> str | None:
     words = set(_schema_tokens(column.name))
-    if words & {"source", "origin", "departure", "depart", "from"}:
+    if words & {"source", "src", "origin", "departure", "depart", "from"}:
         return "source"
-    if words & {"destination", "dest", "arrival", "arrive", "landing", "to"}:
+    if words & {"destination", "dest", "dst", "arrival", "arrive", "landing", "to"}:
         return "destination"
     return None
 

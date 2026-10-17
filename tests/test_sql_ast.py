@@ -2225,6 +2225,23 @@ def test_a_noun_several_fields_share_counts_its_entity():
     assert [column.name for column in searcher._distinct_counted_columns(tokens, tokens.index("many"))] == ["country_code"]
 
 
+def test_a_noun_several_fields_share_counts_its_name_first():
+    """Spider DEV 520, 2026-10-17: "How many different degrees are offered?" counted degree_summary_description: the
+    noun's fields came name first, then key, but every one was offered at one prior, and the description won a tie
+    within 0.03. The order the noun names its fields in is their prior, and the noun is the last word of the phrase
+    after "different" that a field's name holds. Contrast: "different degree descriptions" counts the descriptions."""
+    degrees = {"name": "Degree_Programs", "columns": ["degree_program_id", "department_id", "degree_summary_name",
+                                                     "degree_summary_description"],
+               "rows": [[1, 13, "Master", "architecto"], [2, 2, "Master", "cumque"], [3, 13, "Master", "placeat"],
+                        [4, 8, "Bachelor", "unde"], [5, 11, "PHD", "officiis"]]}
+    planner = _hermetic_planner()
+    for question, expected in (("How many different degrees are offered?", [[3]]),
+                               ("How many different degree descriptions are there?", [[5]]),
+                               ("How many degree programs are there?", [[5]])):
+        served = planner.serve([degrees], question, [])
+        assert served.get("valid") and served["result"]["rows"] == expected, (question, served.get("sql"))
+
+
 def test_in_total_closing_a_count_restates_it():
     """Spider DEV 357, fresh holdout of Spider train 41, 83, 562, 598, 2026-10-13: "How many tasks are there in total?"
     counted the tasks and summed a field the question never names. "In total" after "how many" restates the count; a
@@ -3176,7 +3193,7 @@ def test_typographic_quotes_read_as_the_ascii_ones():
     """Held-out Spider train 202, Spider DEV 715 (2026-10-16): "the customer whose name includes the letter “a”" quoted
     nothing, and "Give me Brazil’s population and life expectancies." left a lone "s" unread: the readers parse the
     ASCII apostrophe and quotes only. Selection reads a question with its typographic marks written as the ASCII ones
-    (sql_expansion.plain_quotes). Contrast: the ASCII question is answered the same."""
+    (sql_expansion.plain_marks). Contrast: the ASCII question is answered the same."""
     customers = {"name": "customer", "columns": ["cust_id", "cust_name", "acc_bal"],
                  "rows": [[1, "Mary", 2000], [2, "Jack", 1000], [3, "Owen", 800]]}
     curly = _hermetic_planner().serve([customers], "Find the name of the customer whose name includes the letter "
@@ -3186,9 +3203,9 @@ def test_typographic_quotes_read_as_the_ascii_ones():
     assert curly.get("valid") and sorted(row[0] for row in curly["result"]["rows"]) == ["Jack", "Mary"], (
         curly.get("error"), curly.get("sql"))
     assert curly.get("sql") == plain.get("sql")
-    from engine.sql_expansion import plain_quotes, tokens
-    assert tokens(plain_quotes("Give me Brazil’s population")) == tokens("Give me Brazil's population")
-    assert plain_quotes("hometown is not `` Little Lever '' .") == 'hometown is not " Little Lever " .'
+    from engine.sql_expansion import plain_marks, tokens
+    assert tokens(plain_marks("Give me Brazil’s population")) == tokens("Give me Brazil's population")
+    assert plain_marks("hometown is not `` Little Lever '' .") == 'hometown is not " Little Lever " .'
 
 
 def test_a_possessive_is_its_word():
@@ -3955,6 +3972,322 @@ def test_a_measures_own_word_said_before_a_superlative_names_it():
     served = _hermetic_planner().serve([employees, evaluations],
                                        "find the name of employee who was awarded the most times in the evaluation.", fks)
     assert served.get("valid") and served["result"]["rows"] == [["Lee Mears"]], (served.get("error"), served.get("sql"))
+
+
+def test_both_branches_show_the_field_the_question_names():
+    """Held-out Spider train 278, 2026-10-17: "Show the names of customers who have both an order in completed status
+    and an order in part status." built the INTERSECT of the customers' addresses: a reading listing customer_address
+    kept its own projection unscored while the one showing customer_name scored by the words said. Every branch
+    projection scores by the words the question says of its fields (sql_recursive._said_overlap)."""
+    customers = {"name": "Customers", "columns": ["customer_id", "customer_name", "customer_address", "customer_email"],
+                 "rows": [[1, "Ann", "12 Elm", "ann@x.org"], [2, "Bo", "3 Oak", "bo@x.org"], [3, "Cy", "9 Pine", "cy@x.org"]]}
+    orders = {"name": "Customer_Orders", "columns": ["order_id", "customer_id", "order_status_code"],
+              "rows": [[10, 1, "Completed"], [11, 1, "Part"], [12, 2, "Completed"], [13, 3, "Part"]]}
+    fks = [{"from_table": "Customer_Orders", "from_col": "customer_id", "to_table": "Customers", "to_col": "customer_id"}]
+    served = _hermetic_planner().serve([customers, orders], "Show the names of customers who have both an order in "
+                                       "completed status and an order in part status.", fks)
+    assert served.get("valid") and served["result"]["rows"] == [["Ann"]], served.get("sql")
+
+
+def test_a_value_after_a_tables_name_is_that_tables_name():
+    """Held-out Spider train 386, 2026-10-17: "What are the titles of albums by the artist "AC/DC"?" compared a track's
+    Composer: 'AC/DC' is both an Artist's Name and a Composer, and the two readings tied. A value right after a table's
+    name is the field naming that table's rows (sql_search._value_predicate_groups). Contrast: "tracks composed by"
+    introduces neither."""
+    from engine.sql_expansion import tokens
+    artist = {"name": "Artist", "columns": ["ArtistId", "Name"], "rows": [[1, "AC/DC"], [2, "Accept"]]}
+    album = {"name": "Album", "columns": ["AlbumId", "Title", "ArtistId"],
+             "rows": [[1, "For Those About To Rock", 1], [2, "Balls to the Wall", 2]]}
+    track = {"name": "Track", "columns": ["TrackId", "Name", "AlbumId", "Composer"],
+             "rows": [[1, "Fast As a Shark", 2, "AC/DC"], [2, "Let There Be Rock", 1, "Angus Young"]]}
+    searcher = SQLSearcher.from_tables([artist, album, track], [])
+
+    def scores(question):
+        group, = searcher._value_predicate_groups(tokens(question), (), frozenset(), question)
+        return {f"{choice[0][0].left.table}.{choice[0][0].left.name}": choice[1] for choice in group}
+
+    by_artist = scores('What are the titles of albums by the artist "AC/DC"?')
+    assert by_artist["Artist.Name"] > by_artist["Track.Composer"], by_artist
+    composed = scores('What are the titles of albums with tracks composed by "AC/DC"?')
+    assert composed["Artist.Name"] == composed["Track.Composer"], composed
+
+
+def test_a_field_two_tables_share_is_the_one_whose_table_is_named_before_it():
+    """Held-out Spider train 504, 2026-10-17: "Find the saving balance of the account with the highest checking balance."
+    showed both balances and ranked by the savings: "balance" is a field of SAVINGS and of CHECKING, and each word read
+    both. The word is the field of the table named just before it, in the projection and the superlative alike
+    (sql_extrema._row_projection, _superlative_targets; sql_rank superlative_on_shown). Contrast: the reversed
+    question reverses the reading."""
+    accounts = {"name": "ACCOUNTS", "columns": ["custid", "name"], "rows": [[1, "Brown"], [2, "Wang"], [3, "O'mahony"]]}
+    savings = {"name": "SAVINGS", "columns": ["custid", "balance"], "rows": [[1, 200000.0], [2, 999999999.0], [3, 230000.0]]}
+    checking = {"name": "CHECKING", "columns": ["custid", "balance"], "rows": [[1, 10000.0], [2, 2000.0], [3, 3000.0]]}
+    fks = [{"from_table": "SAVINGS", "from_col": "custid", "to_table": "ACCOUNTS", "to_col": "custid"},
+           {"from_table": "CHECKING", "from_col": "custid", "to_table": "ACCOUNTS", "to_col": "custid"}]
+    planner = _hermetic_planner()
+    for question, expected in (("Find the saving balance of the account with the highest checking balance.", 200000),
+                               ("Find the checking balance of the account with the highest saving balance.", 2000)):
+        served = planner.serve([accounts, savings, checking], question, fks)
+        assert served.get("valid") and served["result"]["rows"] == [[expected]], (question, served.get("sql"))
+
+
+def test_most_before_a_tables_name_counts_its_rows():
+    """Spider DEV 462, 2026-10-17: "Which year had the most matches?" took the latest year: "most" ranked the shown
+    year itself and suppressed the count of matches by year. "Most" or "fewest" before a table's name counts that
+    table's rows (sql_extrema._superlative_targets). Contrast: "the longest match" still ranks a field."""
+    matches = {"name": "matches", "columns": ["match_num", "year", "winner_name", "minutes"], "rows": [
+        [1, 2013, "Ann", 90], [2, 2013, "Bo", 80], [3, 2013, "Ann", 70], [4, 2016, "Cy", 100]]}
+    planner = _hermetic_planner()
+    for question, expected in (("Which year had the most matches?", 2013), ("Which year had the longest match?", 2016)):
+        served = planner.serve([matches], question, [])
+        assert served.get("valid") and served["result"]["rows"] == [[expected]], (question, served.get("sql"))
+    # Spider DEV 27: the rows counted are the concerts, not the singers of each (sql_expansion.counted_noun_tables).
+    concert = {"name": "concert", "columns": ["concert_ID", "concert_Name", "Year"],
+               "rows": [[1, "Auditions", 2014], [2, "Super bootcamp", 2014], [3, "Home Visits", 2015]]}
+    singers = {"name": "singer_in_concert", "columns": ["concert_ID", "Singer_ID"],
+               "rows": [[3, 1], [3, 2], [3, 3], [3, 4], [1, 1], [2, 2]]}
+    fks = [{"from_table": "singer_in_concert", "from_col": "concert_ID", "to_table": "concert", "to_col": "concert_ID"}]
+    served = planner.serve([concert, singers], "What is the year that had the most concerts?", fks)
+    assert served.get("valid") and served["result"]["rows"] == [[2014]], served.get("sql")
+    from engine.sql_expansion import counted_noun_tables, tokens
+    assert counted_noun_tables(tokens("What is the year that had the most concerts?"),
+                               SchemaGraph.from_tables([concert, singers], fks)) == {"concert"}
+    # Held-out 348: a field holding the number is ranked instead ("the most hosts" by Number_of_hosts).
+    party = {"name": "party", "columns": ["Party_ID", "Location", "Number_of_hosts"],
+             "rows": [[1, "Hemkade 48 Zaandam", 5], [2, "Heineken Music Hall Amsterdam", 23], [3, "Ahoy Rotterdam", 7]]}
+    host = {"name": "host", "columns": ["Host_ID", "Name"], "rows": [[1, "Austin Daye"], [2, "Lloyd Daniels"]]}
+    party_host = {"name": "party_host", "columns": ["Party_ID", "Host_ID"], "rows": [[1, 1], [1, 2], [3, 1]]}
+    fks = [{"from_table": "party_host", "from_col": "Party_ID", "to_table": "party", "to_col": "Party_ID"},
+           {"from_table": "party_host", "from_col": "Host_ID", "to_table": "host", "to_col": "Host_ID"}]
+    from engine.sql_extrema import ExtremaQueryExpander
+    targets = ExtremaQueryExpander(SchemaGraph.from_tables([party, host, party_host], fks))._superlative_targets(
+        tokens("What is the location of the party with the most hosts?"))
+    assert targets and targets[0].column.name == "Number_of_hosts", targets
+
+
+def test_a_negated_verbs_agent_is_excluded():
+    """Spider DEV 636, 643, 644, 2026-10-17: "find the id of tv channels that do not play any cartoon directed by Ben
+    Jones." read Ben Jones as a kept value, the negation being more than three words before it, and the gate refused the
+    EXCEPT of Ben Jones's cartoons that answers. A value that is the agent ("by Ben Jones") of a negated verb's object
+    is excluded (sql_search._negated_matches). Contrast: "channels that play cartoons directed by Ben Jones" keeps it,
+    and a clause break ends the negation."""
+    from engine.sql_search import value_polarity
+    channels = {"name": "TV_Channel", "columns": ["id", "series_name", "Country"], "rows": [
+        ["700", "Sky Radio", "Italy"], ["701", "Sky Music", "Italy"], ["703", "Rock TV", "UK"]]}
+    cartoons = {"name": "Cartoon", "columns": ["id", "Title", "Directed_by", "Channel"], "rows": [
+        [1, "The Rise of the Blue Beetle!", "Ben Jones", "700"], [2, "Terror on Dinosaur Island!", "Brandon Vietti", "701"],
+        [3, "Day of the Dark Knight!", "Ben Jones", "703"], [4, "Invasion of the Secret Santas!", "Brandon Vietti", "703"]]}
+    fks = [{"from_table": "Cartoon", "from_col": "Channel", "to_table": "TV_Channel", "to_col": "id"}]
+    graph = SchemaGraph.from_tables([channels, cartoons], fks)
+    ben = ("Cartoon", "Directed_by", "Ben Jones")
+    for question in ("find the id of tv channels that do not play any cartoon directed by Ben Jones.",
+                     "What are the ids of the TV channels that do not have any cartoons directed by Ben Jones?"):
+        kept, excluded = value_polarity(question, graph)
+        assert ben not in kept and any(ben in group for group in excluded), (question, kept, excluded)
+        served = _hermetic_planner().serve([channels, cartoons], question, fks)
+        assert served.get("valid") and served["result"]["rows"] == [["701"]], (question, served.get("sql"))
+    for question in ("find the id of tv channels that play cartoons directed by Ben Jones.",
+                     "find the channels that do not play cartoons and were directed by Ben Jones."):
+        kept, _ = value_polarity(question, graph)
+        assert ben in kept, (question, kept)
+
+
+def test_a_comparison_symbol_is_its_word():
+    """Fresh holdout of Spider train 103, 2026-10-17: "Find the names of all instructors in Comp. Sci. department with
+    salary > 80000." compared salary = 80000: the question's words hold no ">". Selection reads a comparison symbol
+    before a number as its words (sql_expansion.plain_marks): ">" above, ">=" at least, "<" below, "<=" at most."""
+    instructor = {"name": "instructor", "columns": ["ID", "name", "dept_name", "salary"], "rows": [
+        [1, "Srinivasan", "Comp. Sci.", 65000], [2, "Katz", "Comp. Sci.", 75000], [3, "Brandt", "Comp. Sci.", 92000],
+        [4, "Wu", "Finance", 90000]]}
+    planner = _hermetic_planner()
+    for question, expected in (("Find the names of instructors with salary > 80000.", [["Brandt"], ["Wu"]]),
+                               ("Find the names of instructors with salary <= 75000.", [["Katz"], ["Srinivasan"]])):
+        served = planner.serve([instructor], question, [])
+        assert served.get("valid") and sorted(served["result"]["rows"]) == expected, (question, served.get("sql"))
+    from engine.sql_expansion import plain_marks
+    assert plain_marks("rated <5 or >= 8") == "rated  below 5 or  at least  8"
+    assert plain_marks("the A<B ratio") == "the A<B ratio"
+    # Fresh holdout 273: "prior to" is "before" ("exhibitions that happened prior to 2009" compared Year = 2009).
+    exhibition = {"name": "exhibition", "columns": ["Exhibition_ID", "Year", "Ticket_Price"],
+                  "rows": [[1, 2004, 15.0], [2, 2008, 20.0], [3, 2009, 30.0], [4, 2011, 9.0]]}
+    served = planner.serve([exhibition], "What is the average ticket price for exhibitions that happened prior to 2009?",
+                           [])
+    assert served.get("valid") and served["result"]["rows"] == [[17.5]], (served.get("error"), served.get("sql"))
+    assert plain_marks("the priority list") == "the priority list"
+
+
+def test_most_recently_ranks_by_a_date():
+    """Fresh holdout of Spider train 197, 2026-10-17: "Which problem log was created most recently? Give me the log id."
+    ranked the logs by a count, "most" read as a frequency: "recently" named no dimension. "Recently" ranks by a date
+    as "recent" does (sql_extrema.SUPERLATIVE_DIMENSIONS)."""
+    from engine.sql_expansion import tokens
+    from engine.sql_extrema import ExtremaQueryExpander
+    log = {"name": "Problem_Log", "columns": ["problem_log_id", "log_entry_date", "log_entry_description"], "rows": [
+        [1, "2011-03-13 13:11:19", "t"], [2, "2007-08-12 19:01:48", "a"], [3, "2017-12-10 11:57:01", "b"]]}
+    targets = ExtremaQueryExpander(SchemaGraph.from_tables([log], []))._superlative_targets(
+        tokens("Which problem log was created most recently? Give me the log id."))
+    assert targets and targets[0].column.name == "log_entry_date" and targets[0].direction == "DESC", targets
+
+
+def test_a_count_fields_name_counts_nothing():
+    """Fresh holdout of Spider train 180, 2026-10-17: "Sort the apartment numbers in ascending order of room count."
+    listed each apartment number with a count of its room_count values: "count" inside the field name it spells asked
+    for a count. A count word inside a spelled several-word field name names that field (sql_expansion.asked_cues), as
+    an average word does. Contrast: "the total room count" totals it."""
+    apartments = {"name": "Apartments", "columns": ["apt_id", "apt_number", "room_count"],
+                  "rows": [[1, "Suite 645", 7], [2, "Apt. 585", 4], [3, "Apt. 908", 9]]}
+    planner = _hermetic_planner()
+    served = planner.serve([apartments], "Sort the apartment numbers in ascending order of room count.", [])
+    assert served.get("valid") and served["result"]["rows"] == [["Apt. 585"], ["Suite 645"], ["Apt. 908"]], (
+        served.get("sql"))
+    served = planner.serve([apartments], "What is the total room count of all apartments?", [])
+    assert served.get("valid") and served["result"]["rows"] == [[20]], served.get("sql")
+
+
+def test_alphabetic_and_increasing_order_order_the_rows():
+    """Held-out Spider train 244, 980, 2026-10-17: "Find the last names of faculties in building Barton in alphabetic
+    order." built no ordering: the order instruction read "alphabetical" and "ascending order", not "alphabetic" or
+    "increasing order" (sql_expansion.ordering_requested). Contrast: "decreasing" reverses it."""
+    faculty = {"name": "Faculty", "columns": ["FacID", "Lname", "Building"], "rows": [
+        [1082, "Giuliano", "Barton"], [1121, "Brody", "Barton"], [1148, "Masson", "NEB"], [1172, "Runolfsson", "Barton"]]}
+    planner = _hermetic_planner()
+    served = planner.serve([faculty], "Find the last names of faculties in building Barton in alphabetic order.", [])
+    assert served.get("valid") and served["result"]["rows"] == [["Brody"], ["Giuliano"], ["Runolfsson"]], served.get("sql")
+    served = planner.serve([faculty], "List the last names of faculties in decreasing alphabetic order.", [])
+    assert served.get("valid") and [row[0] for row in served["result"]["rows"]] == [
+        "Runolfsson", "Masson", "Giuliano", "Brody"], served.get("sql")
+
+
+def test_an_inflection_of_an_inflected_name_word_names_it():
+    """Held-out Spider train 921, 2026-10-17: "What are the names, locations, and years of opening for tracks with seating
+    higher than average?" was refused for "opening" over Year_Opened. A field's name word that is itself an inflection
+    ("opened") is named by the other inflections of its stem (sql_expansion.inflects)."""
+    from engine.sql_expansion import inflects
+    assert inflects("opening", "opened") and inflects("founding", "founded") and inflects("aged", "age")
+    assert not inflects("opened", "opened") and not inflects("open", "pen")
+
+
+def test_any_comparative_before_the_average_compares_with_it():
+    """Fresh holdout of Spider train 753, Spider DEV 98, 2026-10-17: "Find the names of stadiums whose capacity is
+    smaller than the average capacity." was refused for the average the right answer compares with: only "older",
+    "above", "greater", "higher", "more" and their opposites compared with an average. Any comparative of
+    closed_class.COMPARATIVES does (sql_expansion.average_comparison). Contrast: "the average capacity" alone is an
+    average to show."""
+    from engine.sql_expansion import average_comparison
+    stadium = {"name": "stadium", "columns": ["Stadium_ID", "name", "Capacity"],
+               "rows": [[1, "Raith Rovers", 10104], [2, "Ayr United", 11998], [3, "East Fife", 2000]]}
+    planner = _hermetic_planner()
+    served = planner.serve([stadium], "Find the names of stadiums whose capacity is smaller than the average capacity.", [])
+    assert served.get("valid") and served["result"]["rows"] == [["East Fife"]], (served.get("error"), served.get("sql"))
+    assert average_comparison("which claims have a claimed amount larger than the average?") == ">"
+    assert average_comparison("What is the average capacity of the stadiums?") is None
+
+
+def test_a_number_after_id_is_the_named_tables_key():
+    """Held-out Spider train 336, 414, 435, 2026-10-17: "What is draft detail of the document with id 7?" kept the drafts
+    counted 7 times: the number after "with" read as a count, and no reading compared the key. A number after "id" is
+    the value of the key of the table named just before it (SQLSearcher._key_value_groups), and no count
+    (sql_expansion.count_thresholds). Contrast: "documents with 7 drafts" still counts."""
+    from engine.sql_expansion import count_thresholds, tokens
+    docs = {"name": "Documents", "columns": ["document_id", "document_status_code", "receipt_number"],
+            "rows": [[1, "working", "19"], [7, "done", "34"], [2, "overdue", "93"]]}
+    drafts = {"name": "Document_Drafts", "columns": ["document_id", "draft_number", "draft_details"],
+              "rows": [[1, 0, "e"], [7, 10, "m"], [7, 11, "x"], [2, 1, "k"]]}
+    fks = [{"from_table": "Document_Drafts", "from_col": "document_id", "to_table": "Documents", "to_col": "document_id"}]
+    planner = _hermetic_planner()
+    served = planner.serve([docs, drafts], "What is the status of the document with id 2?", fks)
+    assert served.get("valid") and served["result"]["rows"] == [["overdue"]], (served.get("error"), served.get("sql"))
+    served = planner.serve([docs, drafts], "What is draft detail of the document with id 7?", fks)
+    assert served.get("valid") and sorted(served["result"]["rows"]) == [["m"], ["x"]], served.get("sql")
+    assert not count_thresholds(tokens("the document with id 7"))
+    assert count_thresholds(tokens("documents with 7 drafts"))
+
+
+def test_routes_that_start_at_an_airport_leave_from_it():
+    """Held-out Spider train 273, 360, 2026-10-17: "For each airport name, how many routes start at that airport?" counted
+    the routes arriving there: "start" said no direction, and src_apid and dst_apid named none. "Start" is the source,
+    and "src" and "dst" name the two ends (sql_rank.TRAVEL_WORDS, travel_column_role). Contrast: "arrive" is the
+    destination."""
+    airports = {"name": "airports", "columns": ["apid", "name", "city"],
+                "rows": [[1, "Goroka", "Goroka"], [2, "Madang", "Madang"], [3, "Mount Hagen", "Hagen"]]}
+    routes = {"name": "routes", "columns": ["rid", "src_apid", "dst_apid", "airline"],
+              "rows": [[1, 1, 2, "AA"], [2, 1, 3, "AA"], [3, 2, 3, "BA"], [4, 3, 1, "BA"]]}
+    fks = [{"from_table": "routes", "from_col": "src_apid", "to_table": "airports", "to_col": "apid"},
+           {"from_table": "routes", "from_col": "dst_apid", "to_table": "airports", "to_col": "apid"}]
+    planner = _hermetic_planner()
+    for question, expected in (("For each airport name, how many routes start at that airport?",
+                                [["Goroka", 2], ["Madang", 1], ["Mount Hagen", 1]]),
+                               ("For each airport name, how many routes arrive at that airport?",
+                                [["Goroka", 1], ["Madang", 1], ["Mount Hagen", 2]])):
+        served = planner.serve([airports, routes], question, fks)
+        assert served.get("valid") and sorted(served["result"]["rows"]) == expected, (question, served.get("sql"))
+
+
+def test_one_value_bounded_both_ways_is_two_branches():
+    """Spider DEV 856, 857, 2026-10-17: "Show the record companies shared by orchestras founded before 2003 and after
+    2003." was served as Year_of_Founded > 2003 AND Year_of_Founded < 2003, which matches no row: the INTERSECT the two
+    bounds make was skipped for their one value, and the contradiction passed the filter that removes conflicting
+    equalities. One value bounded both ways is a conflicting pair (sql_recursive._best_conflicting_pair), and a
+    conjunction bounding a column below where it bounds it above is contradictory (sql_ast.contradictory). Contrast: a
+    range is no contradiction."""
+    from engine.sql_ast import and_predicates, contradictory
+    from engine.sql_recursive import _best_conflicting_pair
+    founded = ColumnRef("orchestra", "Year_of_Founded", SQLType.INTEGER)
+    after, before = Comparison(founded, ">", Literal(2003)), Comparison(founded, "<", Literal(2003))
+    question = "Show the record companies shared by orchestras founded before 2003 and after 2003."
+    assert _best_conflicting_pair([after, before], question) is not None
+    company = (SelectItem(ColumnRef("orchestra", "Record_Company", SQLType.TEXT)),)
+    assert contradictory(SelectQuery(company, "orchestra", where=and_predicates([after, before])))
+    assert not contradictory(SelectQuery(company, "orchestra", where=and_predicates([
+        after, Comparison(founded, "<", Literal(2010))])))
+
+
+def test_a_value_bounded_away_from_its_equality_is_contradictory():
+    """Fresh holdout 189, 2026-10-17: "Provide the full names of employees earning more than the employee with id 163."
+    was served as EMPLOYEE_ID = 163 AND EMPLOYEE_ID > 163, which matches no row: an equality bounds its column from both
+    sides, and the bound away from it passed the contradiction filter. Contrast: an equality inside the bound is no
+    contradiction, nor one of another column."""
+    from engine.sql_ast import and_predicates, contradictory
+    employee = ColumnRef("employees", "EMPLOYEE_ID", SQLType.INTEGER)
+    salary = ColumnRef("employees", "SALARY", SQLType.INTEGER)
+    names = (SelectItem(ColumnRef("employees", "FIRST_NAME", SQLType.TEXT)),)
+    equal = Comparison(employee, "=", Literal(163))
+
+    def where(*terms):
+        return SelectQuery(names, "employees", where=and_predicates(list(terms)))
+
+    assert contradictory(where(equal, Comparison(employee, ">", Literal(163))))
+    assert contradictory(where(Comparison(employee, "<", Literal(100)), equal))
+    assert not contradictory(where(equal, Comparison(employee, ">=", Literal(163))))
+    assert not contradictory(where(equal, Comparison(employee, ">", Literal(100))))
+    assert not contradictory(where(equal, Comparison(salary, ">", Literal(163))))
+
+
+def test_each_output_a_list_instruction_names_is_shown():
+    """Held-out Spider train 138, 2026-10-17: "Show names of technicians and the number of machines they are assigned to
+    repair." counted the technicians' names: the field asked to be shown was read as the count's argument, and the
+    answer was one number. An answer shows each output a list instruction names (sql_expansion.output_requests).
+    Contrast: "How many machines is each technician assigned to repair?" lists no outputs and groups as before."""
+    technician = {"name": "technician", "columns": ["technician_id", "Name", "Team"],
+                  "rows": [[1, "Joe Sewell", "NYY"], [2, "John Brown", "NYY"], [3, "Tony Sewell", "CLE"]]}
+    machine = {"name": "machine", "columns": ["Machine_ID", "Making_Year", "quality_rank"],
+               "rows": [[1, 1991, 2], [2, 1992, 1], [3, 1993, 3]]}
+    assignment = {"name": "repair_assignment", "columns": ["technician_id", "Machine_ID"],
+                  "rows": [[1, 1], [2, 2], [1, 3], [3, 1]]}
+    fks = [{"from_table": "repair_assignment", "from_col": "technician_id", "to_table": "technician",
+            "to_col": "technician_id"},
+           {"from_table": "repair_assignment", "from_col": "Machine_ID", "to_table": "machine", "to_col": "Machine_ID"}]
+    planner = _hermetic_planner()
+    for question in ("Show names of technicians and the number of machines they are assigned to repair.",
+                     "How many machines is each technician assigned to repair?"):
+        served = planner.serve([technician, machine, assignment], question, fks)
+        assert served.get("valid") and sorted(served["result"]["rows"]) == [
+            ["Joe Sewell", 2], ["John Brown", 1], ["Tony Sewell", 1]], (question, served.get("sql"))
+    # Values a list joins are no outputs: "the total surface area of the continents Asia and Europe" is one total
+    # (Spider DEV 726, 2026-10-17).
+    country = {"name": "country", "columns": ["Code", "Name", "Continent", "SurfaceArea"], "rows": [
+        ["AFG", "Afghanistan", "Asia", 652090.0], ["ALB", "Albania", "Europe", 28748.0], ["AGO", "Angola", "Africa", 1246700.0]]}
+    served = planner.serve([country], "What is the total surface area of the continents Asia and Europe?", [])
+    assert served.get("valid") and served["result"]["rows"] == [[680838.0]], served.get("sql")
 
 
 def test_a_count_counts_its_nouns_head():
@@ -8341,6 +8674,7 @@ TESTS = [
     test_a_one_letter_code_holds_the_word_it_stands_for,
     test_code_words_need_the_named_kind_and_the_bound_field,
     test_a_noun_several_fields_share_counts_its_entity,
+    test_a_noun_several_fields_share_counts_its_name_first,
     test_in_total_closing_a_count_restates_it,
     test_a_field_inside_another_fields_name_is_not_named_there,
     test_a_field_beside_the_named_field_of_its_entity_is_not_asked,
@@ -8393,6 +8727,22 @@ TESTS = [
     test_a_number_a_comparison_reads_states_no_stored_value,
     test_a_field_holding_a_number_is_compared_not_counted,
     test_a_measures_own_word_said_before_a_superlative_names_it,
+    test_both_branches_show_the_field_the_question_names,
+    test_a_value_after_a_tables_name_is_that_tables_name,
+    test_a_field_two_tables_share_is_the_one_whose_table_is_named_before_it,
+    test_most_before_a_tables_name_counts_its_rows,
+    test_a_negated_verbs_agent_is_excluded,
+    test_a_comparison_symbol_is_its_word,
+    test_most_recently_ranks_by_a_date,
+    test_a_count_fields_name_counts_nothing,
+    test_alphabetic_and_increasing_order_order_the_rows,
+    test_an_inflection_of_an_inflected_name_word_names_it,
+    test_any_comparative_before_the_average_compares_with_it,
+    test_a_number_after_id_is_the_named_tables_key,
+    test_routes_that_start_at_an_airport_leave_from_it,
+    test_one_value_bounded_both_ways_is_two_branches,
+    test_a_value_bounded_away_from_its_equality_is_contradictory,
+    test_each_output_a_list_instruction_names_is_shown,
     test_a_count_of_a_fields_noun_counts_the_rows,
     test_a_value_two_fields_of_a_table_hold_is_its_display_fields,
     test_a_count_counts_its_nouns_head,

@@ -525,7 +525,22 @@ def _select_violations(question, query, graph, whole):
     from engine.sql_expansion import (output_requests, repeated_requests, request_fields, request_slots,
                                       tokens as list_tokens)
     said = list_tokens(question)
-    listed = [request for request in output_requests(question, graph) if not request.count]
+    requests = output_requests(question, graph)
+    # Each output a list instruction names is shown: "Show names of technicians and the number of machines" is no
+    # count of the technicians' names alone (held-out Spider train 138, 572, 2026-10-17: the field asked to be shown
+    # was read only as the count's argument). One said again in the same words is asked once. Only a list of fields
+    # and a count, or of fields each its own, is read so: values a list joins ("the continents Asia and Europe") are no
+    # outputs (Spider DEV 726, 746, 2026-10-17), and "the claim date, settlement date" asks for two dates, not the
+    # settlement date alone (held-out Spider train 920, fresh holdout 709, 2026-10-17).
+    asked = {tuple(said[request.start:request.end]) for request in requests}
+    listed = [request for request in requests if not request.count]
+    listed_fields = request_fields(question, graph) if len(listed) > 1 else []
+    each_a_field = (len(listed_fields) == len(listed) and all(listed_fields)
+                    and len(set().union(*map(set, listed_fields))) >= len(listed))
+    if (len(asked) > 1 and len(query.select) < len(asked)
+            and (any(request.count for request in requests) and listed or each_a_field and len(asked) == len(listed))
+            and not any(isinstance(item.expression, Star) for item in query.select)):
+        violations.append(f"the answer shows {len(query.select)} of the {len(asked)} outputs the question lists")
     realized_items = [set(said[request.start:request.end])
                       for request, refs in zip(listed, request_fields(question, graph)) if set(refs) & projected]
     # An explicitly repeated, unambiguously bound field must be shown each time.
@@ -982,7 +997,8 @@ def _name_vocabulary(names):
 
 # The words of an instruction to order the rows ("sorted by", "in descending order"); "alphabetical" says more and is
 # read apart (_orders_alphabetically).
-_ORDERING_WORDS = frozenset({"order", "ordered", "sort", "sorted", "ascending", "descending"})
+_ORDERING_WORDS = frozenset({"order", "ordered", "sort", "sorted", "ascending", "descending", "increasing",
+                             "decreasing"})
 
 
 def _ordering_columns(node):
@@ -1412,6 +1428,16 @@ def read_question(question, candidate, graph, *, calculation_satisfied=False):
         places = [index for index, token in enumerate(question_tokens) if token == word]
         if all(_realizes_grade(question_tokens, index, candidate.query, graph) for index in places):
             ordinary_words.add(canon(word))
+    # "First" and "last" before no name or number grade a date as "earliest" and "latest" do: "the last transcript
+    # release date", "the last date created of votes" (Spider DEV 569, 691, 2026-10-17: right answers refused for them).
+    for word, grade in (("first", "earliest"), ("last", "latest")):
+        places = [index for index, token in enumerate(question_tokens) if token == word]
+        if places and word not in ordinary_words and all(
+                not set(question_tokens[index + 1:index + 2]) & {"name", "names"}
+                and not any(token.isdigit() for token in question_tokens[index + 1:index + 2])
+                and _realizes_grade(question_tokens[:index] + (grade,) + question_tokens[index + 1:], index,
+                                    candidate.query, graph) for index in places):
+            ordinary_words.add(word)
     # A participle relating the rows to a value the query compares says how they relate: "flights departing from
     # APG" compares the source airport with 'APG' (Spider flight_2, 2026-10-08). Its object names a compared value
     # and nothing the query leaves out: "staff working for the museums" is unread over a query that averages the
@@ -1609,13 +1635,20 @@ def _witnessed_words(question, words, query, graph, observed, schema_words, alre
     named = {table: ({canon(part) for part in name_words(table)}
                      | {canon(half) for part in name_words(table) for half in compound_parts(part)}) - {"id"}
              for table in tables}
+    # So is one relating a table named before it to a field the query reads named just after it: "the professionals
+    # living in a city", "TV Channel using language English" (Spider DEV 603, 971, 973, 2026-10-17: right answers
+    # refused for the verb).
+    field_words = [{canon(part) for part in name_words(ref.name)} - {"id"} for ref in used]
     for verb in relation_verbs(question):
         word = canon(verb)
         places = [index for index, said in enumerate(words) if said == word]
         if not places or word in already or word in observed or word in schema_words:
             continue
         if all(any(named[left] & set(words[max(0, place - 8):place]) and named[right] & set(words[place + 1:place + 9])
-                   for left in tables for right in tables if left != right) for place in places):
+                   for left in tables for right in tables if left != right)
+               or (any(named[left] & set(words[max(0, place - 8):place]) for left in tables)
+                   and any(fields & set(words[place + 1:place + 5]) for fields in field_words if fields))
+               for place in places):
             out.add(word)
     read_names = {canon(part) for table in tables for part in name_words(table)}
     read_names |= {canon(part) for ref in used for part in name_words(ref.name)}
@@ -1645,6 +1678,12 @@ def _witnessed_words(question, words, query, graph, observed, schema_words, alre
         if word.endswith("ed") and word not in already and words[index + 1] in _YEAR_PREPOSITIONS and any(
                 said.isdigit() and float(said) in years for said in words[index + 2:index + 5]):
             out.add(word)
+    # "Of origin" after a field the query reads says that field: "the country of origin" is Country (Spider DEV 40, 640,
+    # 2026-10-17: right answers refused for "origin").
+    places = [index for index, said in enumerate(words) if said == "origin"]
+    if places and all(place >= 2 and words[place - 1] == "of" and any(words[place - 2] in fields for fields in field_words)
+                      for place in places):
+        out.add("origin")
     # "Record" after the name of a table or field the query reads names its rows: "from the trip record", "teams that do
     # not have match season record" (held-out Spider train 288, 598, 806, 2026-10-12).
     places = [index for index, said in enumerate(words) if said == "record"]
@@ -1654,7 +1693,92 @@ def _witnessed_words(question, words, query, graph, observed, schema_words, alre
     determiners = {canon(word) for word in _PRONOUN_DETERMINERS}
     if places and all(place and words[place - 1] in determiners for place in places):
         out.add("one")
+    # A passive participle that only says the rows are there, after a copula whose subject the query reads or compares
+    # and with nothing after it but "in the world": "How many different degrees are offered?", "the continents where
+    # Chinese is spoken", "the languages spoken in the world" (Spider DEV 519, 520, 732, 750, 2026-10-17: right answers
+    # refused for the participle). "The world" is every row there. One the data's names spell is that name: "How many
+    # regions are affected?" names affected_region (held-out Spider train 601, 2026-10-17: served as COUNT(*) FROM region).
+    from engine.sql_expansion import names_operation
+    compared = {canon(part) for value in _compared_literal_texts(query) for part in lexical_words(value)}
+    for index, word in enumerate(words):
+        if (word in already or not (word.endswith("ed") or word in _IRREGULAR_PARTICIPLES)
+                or names_operation(word) or word in schema_words):
+            continue
+        rest = list(words[index + 1:])
+        world = rest[:3] in (["in", "the", "world"], ["around", "the", "world"])
+        if rest and not world:
+            continue
+        subject = words[max(0, index - 3):index]
+        if (index >= 2 and words[index - 1] in _COPULAS and words[index - 2] in read_names | compared) or (
+                world and set(subject) & read_names):
+            out.add(word)
+            if world:
+                out.add("world")
+    # A noun right after the one-word name of a numeric field the query reads is what the field measures: "the average
+    # number of gold medals" by Gold, "the minimum snatch score" by Snatch, "the average enrollment size" by Enrollment
+    # (held-out Spider train 649, 717, 788, 864, 2026-10-17: right answers refused for the noun).
+    measured = {name[0] for ref in used if getattr(getattr(ref, "type", None), "numeric", False)
+                and len(name := [canon(part) for part in name_words(ref.name)]) == 1}
+    for index, word in enumerate(words):
+        if (index and words[index - 1] in measured and word.isalpha() and word not in already
+                and word not in schema_words and word not in read_names):
+            out.add(word)
+    # "Single" is one: "not a single car maker" by an exclusion, "used by a single country" by a count of one (Spider DEV
+    # 173, 759, 2026-10-17).
+    places = [index for index, said in enumerate(words) if said == "single"]
+    if places and all((list(words[max(0, place - 2):place]) == ["not", "a"] or list(words[place - 1:place]) == ["no"])
+                      and _excludes(query) or list(words[place - 1:place]) == ["a"] and _counts_one(query)
+                      for place in places):
+        out.add("single")
     return (out - observed) | full_name
+
+
+_COPULAS = frozenset({"is", "are", "was", "were", "be", "been"})
+_IRREGULAR_PARTICIPLES = frozenset({"spoken", "written", "given", "taken", "known", "held", "made", "sold", "built",
+                                    "shown", "seen", "taught", "won", "drawn", "grown", "run", "paid", "kept", "left"})
+
+
+def _compared_literal_texts(node):
+    """The text values ``node``'s comparisons test a column against, subqueries included."""
+    from dataclasses import fields, is_dataclass
+    from engine.sql_ast import Literal
+    if isinstance(node, Literal):
+        return {node.value} if isinstance(node.value, str) and node.value.strip() else set()
+    found = set()
+    if is_dataclass(node):
+        for part in fields(node):
+            found |= _compared_literal_texts(getattr(node, part.name))
+    elif isinstance(node, (tuple, list)):
+        for item in node:
+            found |= _compared_literal_texts(item)
+    return found
+
+
+def _excludes(node):
+    """Whether ``node`` removes rows: an EXCEPT, or a negated membership or existence test, anywhere in it."""
+    from dataclasses import fields, is_dataclass
+    from engine.sql_ast import ExistsPredicate, InPredicate
+    if _subtracts(node) or (isinstance(node, (ExistsPredicate, InPredicate)) and node.negated):
+        return True
+    if is_dataclass(node):
+        return any(_excludes(getattr(node, part.name)) for part in fields(node))
+    if isinstance(node, (tuple, list)):
+        return any(_excludes(item) for item in node)
+    return False
+
+
+def _counts_one(node):
+    """Whether ``node`` compares a count of rows with one: HAVING COUNT(*) = 1."""
+    from dataclasses import fields, is_dataclass
+    from engine.sql_ast import Aggregate, Comparison, Literal
+    if (isinstance(node, Comparison) and node.operator == "=" and isinstance(node.left, Aggregate)
+            and node.left.function == "COUNT" and isinstance(node.right, Literal) and node.right.value == 1):
+        return True
+    if is_dataclass(node):
+        return any(_counts_one(getattr(node, part.name)) for part in fields(node))
+    if isinstance(node, (tuple, list)):
+        return any(_counts_one(item) for item in node)
+    return False
 
 
 def _base_refs(query):

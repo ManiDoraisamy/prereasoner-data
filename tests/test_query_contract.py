@@ -1390,6 +1390,116 @@ def test_an_adjective_after_most_is_read_in_its_direction():
                     "SELECT Name FROM people ORDER BY Age DESC LIMIT 1") == (False, ("youngest",))
 
 
+def test_a_verb_relating_a_table_to_a_field_it_reads_is_read():
+    """Spider DEV 603, 971, 973, 2026-10-17: "the professionals living in a city that contains the substring 'West'"
+    was refused for "living", read only between two tables. A verb relating a table named before it to a field the query
+    reads named just after it is read. Contrast: with no field after it, it stays unread."""
+    professionals = [{"name": "Professionals", "columns": ["professional_id", "role_code", "street", "city", "state"],
+                      "rows": [[1, "Employee", "6915 Oberbrunner", "West Heidi", "Indiana"],
+                               [2, "Veterenarian", "88665 Terence", "North Odellfurt", "Connecticut"]]}]
+    living = "Find the role, street, city and state of the professionals living in a city that contains the substring 'West'."
+    assert _reading(professionals, living, "SELECT role_code, street, city, state FROM Professionals "
+                    "WHERE city LIKE '%West%'") == (True, ())
+    assert _reading(professionals, "Which professionals are living?", "SELECT role_code FROM Professionals")[1] == (
+        "living",)
+
+
+def test_of_origin_after_a_field_is_that_field():
+    """Spider DEV 40, 640, 2026-10-17: "the pixel aspect ratio and country of origin for all TV channels" was refused
+    for "origin". "Of origin" after a field the query reads says that field. Contrast: "origin" alone asks for one."""
+    channels = [{"name": "TV_Channel", "columns": ["id", "Country", "Language", "Pixel_aspect_ratio_PAR"],
+                 "rows": [["700", "Italy", "Italian", "16:9"], ["701", "UK", "English", "4:3"]]}]
+    asked = "What is the pixel aspect ratio and country of origin for all TV channels that do not use English?"
+    sql = "SELECT Pixel_aspect_ratio_PAR, Country FROM TV_Channel WHERE Language != 'English'"
+    assert _reading(channels, asked, sql) == (True, ())
+    assert "origin" in _reading(channels, "What is the origin of each TV channel?", "SELECT Country FROM TV_Channel")[1]
+
+
+def test_first_and_last_grade_a_date():
+    """Spider DEV 565, 691, 2026-10-17: "What is last date created of votes from the state 'CA'?" was refused for
+    "last" over the latest created date. "First" and "last" before no name or number grade a date as "earliest" and
+    "latest" do, in their direction. Contrast: the other direction leaves it unread, and "the last name" is a name."""
+    votes = [{"name": "VOTES", "columns": ["vote_id", "phone_number", "state", "created"],
+              "rows": [[1, 7182887233, "NY", "2018-03-09 19:03:21"], [2, 7148407040, "CA", "2018-03-09 19:03:36"],
+                       [3, 6209389222, "CA", "2018-03-09 19:03:39"]]}]
+    asked = "What is last date created of votes from the state 'CA'?"
+    assert _reading(votes, asked, "SELECT created FROM VOTES WHERE state = 'CA' ORDER BY created DESC LIMIT 1") == (
+        True, ())
+    assert "last" in _reading(votes, asked, "SELECT created FROM VOTES WHERE state = 'CA' ORDER BY created LIMIT 1")[1]
+    assert _reading(votes, "When was the first vote from the state 'CA' created?",
+                    "SELECT MIN(created) FROM VOTES WHERE state = 'CA'") == (True, ())
+
+
+def test_a_participle_saying_the_rows_are_there_and_single_are_read():
+    """Spider DEV 173, 519, 520, 732, 750, 759, 2026-10-17: "How many different degrees are offered?", "How many unique
+    languages are spoken in the world?" and "countries where there is not a single car maker" were refused for the
+    participle, "world" and "single" over the queries answering them. A passive participle after a copula whose subject
+    the query reads, with nothing after it but "in the world", says only that the rows are there; "single" is one, by
+    an exclusion after "not a" or a count of one after "a". Contrast: a participle with an object stays unread."""
+    degrees = [{"name": "Degree_Programs", "columns": ["degree_program_id", "degree_summary_name", "department_id"],
+                "rows": [[1, "Master", 13], [2, "Bachelor", 2], [3, "Master", 13]]}]
+    assert _reading(degrees, "How many different degrees are offered?",
+                    "SELECT COUNT(DISTINCT degree_summary_name) FROM Degree_Programs") == (True, ())
+    assert "offered" in _reading(degrees, "How many different degrees are offered by department 13?",
+                                 "SELECT COUNT(DISTINCT degree_summary_name) FROM Degree_Programs")[1]
+    languages = [{"name": "countrylanguage", "columns": ["CountryCode", "Language", "IsOfficial"],
+                  "rows": [["ABW", "Dutch", "T"], ["ABW", "English", "F"], ["AFG", "Pashto", "T"]]}]
+    assert _reading(languages, "How many unique languages are spoken in the world?",
+                    "SELECT COUNT(DISTINCT Language) FROM countrylanguage") == (True, ())
+    cars = [{"name": "countries", "columns": ["CountryId", "CountryName"], "rows": [[1, "usa"], [2, "japan"], [3, "chile"]]},
+            {"name": "car_makers", "columns": ["Id", "Maker", "Country"], "rows": [[1, "ford", 1], [2, "toyota", 2]]}]
+    assert _reading(cars, "What are the name of the countries where there is not a single car maker?",
+                    "SELECT CountryName FROM countries EXCEPT SELECT countries.CountryName FROM car_makers JOIN countries "
+                    "ON car_makers.Country = countries.CountryId") == (True, ())
+    assert "single" in _reading(cars, "What are the name of the countries where there is not a single car maker?",
+                                "SELECT CountryName FROM countries")[1]
+
+
+def test_a_participle_naming_a_table_is_read_only_by_it():
+    """Held-out Spider train 601, 2026-10-17: "How many regions are affected?" was served as COUNT(*) FROM region, the
+    participle read as saying only that the regions are there, where it names affected_region, whose rows are the
+    regions a storm affected. A participle a table or field of the data spells is that name. Contrast: the count of
+    affected_region's regions reads it."""
+    storms = [{"name": "region", "columns": ["Region_id", "Region_name"],
+               "rows": [[1, "Afghanistan"], [2, "Albania"], [3, "Algeria"]]},
+              {"name": "affected_region", "columns": ["Region_id", "Storm_ID", "Number_city_affected"],
+               "rows": [[1, 1, 10], [2, 1, 15], [1, 2, 30]]}]
+    assert "affected" in _reading(storms, "How many regions are affected?", "SELECT COUNT(*) FROM region")[1]
+    assert _reading(storms, "How many regions are affected?",
+                    "SELECT COUNT(DISTINCT Region_id) FROM affected_region") == (True, ())
+
+
+def test_a_list_of_fields_each_its_own_shows_each():
+    """Held-out Spider train 920 and fresh holdout 709, 2026-10-17: "Give me the claim date, settlement date for all the
+    claims whose claimed amount is larger than the average." showed the settlement date alone. A list whose items each
+    name fields, more of them than the answer shows, asks for each. Contrast: values a list joins name no field, and a
+    count of one field asks for one output."""
+    claims = [{"name": "Claims", "columns": ["Claim_ID", "Date_Claim_Made", "Date_Claim_Settled", "Amount_Claimed"],
+               "rows": [[1, "2017-01-01", "2017-02-01", 100], [2, "2017-03-01", "2017-04-01", 300]]}]
+    question = ("Give me the claim date, settlement date for all the claims whose claimed amount is larger than the "
+                "average.")
+    average = "(SELECT AVG(Amount_Claimed) FROM Claims)"
+    assert "the answer shows 1 of the 2 outputs the question lists" in _violations(
+        claims, question, f"SELECT Date_Claim_Settled FROM Claims WHERE Amount_Claimed > {average}")
+    assert not any("outputs the question lists" in violation for violation in _violations(
+        claims, question, f"SELECT Date_Claim_Made, Date_Claim_Settled FROM Claims WHERE Amount_Claimed > {average}"))
+    countries = [{"name": "country", "columns": ["Code", "Name", "Continent", "SurfaceArea"],
+                  "rows": [["A", "x", "Asia", 1.0], ["B", "y", "Europe", 2.0], ["C", "z", "Africa", 4.0]]}]
+    assert not any("outputs the question lists" in violation for violation in _violations(
+        countries, "What is the total surface area of the continents Asia and Europe?",
+        "SELECT SUM(SurfaceArea) FROM country WHERE Continent = 'Asia' OR Continent = 'Europe'"))
+
+
+def test_a_noun_after_a_numeric_fields_name_is_its_measure():
+    """Held-out Spider train 649, 717, 788, 864, 2026-10-17: "What is the minimum snatch score?" was refused for "score"
+    over MIN(Snatch). A noun right after the one-word name of a numeric field the query reads is what it measures.
+    Contrast: after a text field's name it stays unread."""
+    builders = [{"name": "body_builder", "columns": ["Body_Builder_ID", "Snatch", "Clean_Jerk", "Nickname"],
+                 "rows": [[1, 142.5, 175.0, "Ace"], [2, 137.5, 177.5, "Bo"]]}]
+    assert _reading(builders, "What is the minimum snatch score?", "SELECT MIN(Snatch) FROM body_builder") == (True, ())
+    assert "score" in _reading(builders, "What is the nickname score?", "SELECT Nickname FROM body_builder")[1]
+
+
 PEOPLE_TABLE = {"name": "people", "columns": ["Person_ID", "Name", "Country", "Age"],
                 "rows": [[1, "Alice", "France", 30], [2, "Bob", "France", 20], [3, "Cara", "Spain", 40]]}
 

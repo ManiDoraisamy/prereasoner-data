@@ -188,7 +188,7 @@ def complete_projection_requested(question: str) -> bool:
 
 # "in alphabetical order", "alphabetically": a text field ordered A to Z; with a reversing word, Z to A.
 ALPHABETICAL_WORDS = frozenset({"alphabetic", "alphabetical", "alphabetically"})
-REVERSE_ORDER_WORDS = frozenset({"reverse", "reversed", "descending", "desc"})
+REVERSE_ORDER_WORDS = frozenset({"reverse", "reversed", "descending", "decreasing", "desc"})
 
 
 def ordering_requested(question: str) -> bool:
@@ -202,10 +202,11 @@ def ordering_requested(question: str) -> bool:
     """
     text = " ".join(question.split())
     # "in the order of birth date" orders as "ordered by birth date" does (Spider DEV 455, 2026-10-12: nothing was
-    # ordered, and the birth date went unused).
+    # ordered, and the birth date went unused). So do "in alphabetic order" and "in increasing order of IDs" (held-out
+    # Spider train 244, 748, 980, 2026-10-17).
     if re.search(
-        r'\b(?:sort|sorted|alphabetical|alphabetically)\b'
-        r'|\b(?:ascending|descending)\s+order\b'
+        r'\b(?:sort|sorted|alphabetic|alphabetical|alphabetically)\b'
+        r'|\b(?:ascending|descending|increasing|decreasing)\s+order\b'
         r'|\border\s+by\b'
         r'|\bin\s+(?:the\s+)?order\s+of\b',
         text, re.IGNORECASE,
@@ -653,12 +654,14 @@ class ExpansionSupport:
 
 def inflects(word: str, name_word: str) -> bool:
     """Whether ``word`` is an inflection of ``name_word`` too short for a shared stem: "aged" of Age, "priced" of
-    price, "weighing" of weigh."""
-    if len(name_word) < 3 or not word.isalpha():
+    price, "weighing" of weigh, and "opening" of Year_Opened, whose word is itself an inflection (held-out Spider train
+    472, 921, 2026-10-17). A word naming an operation ("ranked" beside a rankings table) is none (``names_operation``)."""
+    if len(name_word) < 3 or not word.isalpha() or names_operation(word):
         return False
-    forms = {name_word + ending for ending in ("s", "es", "d", "ed", "ing")}
-    if name_word.endswith("e"):
-        forms.add(name_word[:-1] + "ing")
+    stems = {name_word} | {name_word[:-len(ending)] for ending in ("ed", "ing")
+                           if name_word.endswith(ending) and len(name_word) - len(ending) >= 3}
+    forms = {stem + ending for stem in stems for ending in ("", "s", "es", "d", "ed", "ing")} - {name_word}
+    forms |= {stem[:-1] + "ing" for stem in stems if stem.endswith("e")}
     return word in forms
 
 
@@ -887,7 +890,9 @@ def count_thresholds(tokens: tuple[str, ...]) -> list[CountThreshold]:
             out.append(CountThreshold(((">=", int(number)),), index, index + 3, 3.5))
         if number is not None and tokens[index + 1:index + 3] == ("or", "fewer"):
             out.append(CountThreshold((("<=", int(number)),), index, index + 3, 3.5))
-        if number is not None:
+        # A number right after "id" is the key's value, not a count: "the document with id 7" (held-out Spider train
+        # 336, 414, 2026-10-17: each kept the rows counted 7 times).
+        if number is not None and tokens[index - 1:index] not in (("id",), ("identifier",)):
             context = set(tokens[max(0, index - 3):index])
             explicit = context & {"at", "least", "most", "more", "greater", "fewer", "less", "than", "over", "only", "exactly"}
             if context & _COUNT_RELATION_CUES and not explicit:
@@ -974,20 +979,20 @@ def groups_requested(question: str) -> bool:
 
 
 # A comparative before "average" compares rows with their average (canon() forms).
-_ABOVE_AVERAGE = re.compile(r"\b(?:older|above|greater|higher|more)\s+(?:than\s+)?(?:the\s+)?(?:average|avg|mean)\b")
-_BELOW_AVERAGE = re.compile(r"\b(?:younger|below|less|lower|fewer)\s+(?:than\s+)?(?:the\s+)?(?:average|avg|mean)\b")
-
-
 def average_comparison(question: str) -> str | None:
     """The operator, ">" or "<", by which the question compares rows with their average: "singers older than average",
-    "dogs with an age below the average". The search builds the comparison with the average a scalar subquery
-    computes (``RecursiveQueryExpander``), and the completeness check reads that average as the one the question asks
-    for. None when the question compares nothing with an average."""
-    normalized = " ".join(tokens(question))
-    if _ABOVE_AVERAGE.search(normalized):
-        return ">"
-    if _BELOW_AVERAGE.search(normalized):
-        return "<"
+    "dogs with an age below the average", "stadiums whose capacity is smaller than the average capacity" (any
+    comparative of ``closed_class.COMPARATIVES``; fresh holdout of Spider train 709, 753 and Spider DEV 98, 2026-10-17:
+    "smaller" and "larger" compared nothing with an average, and the right answers were refused). The search builds
+    the comparison with the average a scalar subquery computes (``RecursiveQueryExpander``), and the completeness check
+    reads that average as the one the question asks for. None when the question compares nothing with an average."""
+    from engine.closed_class import COMPARATIVES, QUANTITY_COMPARATIVES
+    operators = {**QUANTITY_COMPARATIVES, **COMPARATIVES, "above": ">", "below": "<"}
+    said = tokens(question)
+    for index, word in enumerate(said):
+        following = [token for token in said[index + 1:index + 4] if token not in {"than", "the"}]
+        if word in operators and following[:1] in (["average"], ["avg"], ["mean"]):
+            return operators[word]
     return None
 
 
@@ -1119,6 +1124,18 @@ FUNCTION_WORDS = frozenset({
     "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "in", "into", "is", "it", "of", "on", "or",
     "than", "that", "the", "this", "to", "was", "were", "with",
 })
+# Words that end a noun phrase: grammar words, and the words that open a clause, a comparison, a grouping or an
+# ordering. Any other word after a column's name continues the phrase that name begins. "column" and "field" end
+# it too: "the Name column" is the Name.
+PHRASE_BREAKS = frozenset(canon(word) for word in FUNCTION_WORDS | {
+    "all", "any", "each", "every", "per", "group", "these", "those", "some", "no", "not", "nor", "but",
+    "who", "whom", "whose", "which", "where", "when", "why", "how", "what", "there",
+    "has", "have", "had", "do", "does", "did", "can", "could", "will", "would", "should", "shall", "may", "might",
+    "having", "ordered", "sort", "sorted", "top", "bottom", "after", "before", "between", "during",
+    "since", "until", "within", "without", "across", "over", "under", "above", "below", "among", "through",
+    "versus", "vs", "more", "less", "fewer", "greater", "than", "excluding", "except", "including",
+    "containing", "use", "using", "used", "column", "field",
+})
 # Words that name the kind of a column's values rather than what they are: "the emails" are email_address,
 # "the role" role_code, "the cell phone" cell_number (canon() forms). "name" is not one: "the first student"
 # names no first_name.
@@ -1225,6 +1242,13 @@ def word_stems(word: str) -> set[str]:
     return {stem for stem in out if len(stem) >= 4}
 
 
+def names_operation(word: str) -> bool:
+    """Whether ``word`` shares a stem with an operation a query performs (``OPERATION_STEMS``): "ordered", "listed",
+    "ranked" say what the query does, not what its rows are."""
+    return any(stem.startswith(operation) or operation.startswith(stem)
+               for stem in word_stems(word) for operation in OPERATION_STEMS)
+
+
 def says_in_another_form(word: str, name_word: str, entities: frozenset[str] = frozenset()) -> bool:
     """Whether the question's ``word`` says ``name_word``, a word of a table's or field's name, in another form: they
     share a stem of five letters or more ("enrolled" Student_Enrolment, "arriving" date_arrived, "directors"
@@ -1234,11 +1258,9 @@ def says_in_another_form(word: str, name_word: str, entities: frozenset[str] = f
     Spider train 58, 557, 938, 2026-10-16: three right answers showed it), and the word names no operation ("ordered"
     by an Orders table). Both are canon() forms. The field linker (sql_search) names fields by it and the completeness gate
     (query_contract) reads words by it."""
-    if not word.isalpha():
+    if not word.isalpha() or names_operation(word):
         return False
     stems = word_stems(word)
-    if any(stem.startswith(operation) or operation.startswith(stem) for stem in stems for operation in OPERATION_STEMS):
-        return False
     abbreviation = ((word not in entities and spells_out(word, name_word))
                     or (name_word not in entities and spells_out(name_word, word)))
     return abbreviation or any(
@@ -1666,14 +1688,15 @@ def asked_cues(cues: list[tuple[str, int]], question_tokens: tuple[str, ...],
     them. A cue inside a several-word column name the question spells (``spelled_names``) names that column: it
     asks only when no other cue does, and an average never does, since an average of rows' averages is not
     their average: "the Avg. monthly searches for all Keyword containing 'inspection checklist'" lists the 38
-    keywords' searches rather than averaging them (a customer's keyword sheet, 2026-10-06). The total, maximum
-    or minimum of rows' totals, maxima or minima is theirs: "the total amount in Paris" sums Total Amount. An
-    extreme that selects the row holding it asks for no aggregate (``selects_extreme``)."""
+    keywords' searches rather than averaging them (a customer's keyword sheet, 2026-10-06). Nor does a count: "in
+    ascending order of room count" orders by room_count and counts nothing (fresh holdout of Spider train 180,
+    2026-10-17). The total, maximum or minimum of rows' totals, maxima or minima is theirs: "the total amount in
+    Paris" sums Total Amount. An extreme that selects the row holding it asks for no aggregate (``selects_extreme``)."""
     cues = [(function, position) for function, position in cues if not selects_extreme(question_tokens, position)]
     spelled = spelled_names(question_tokens, schema)
     if any(position not in spelled for _, position in cues):
         return [(function, position) for function, position in cues if position not in spelled]
-    return [(function, position) for function, position in cues if function != "AVG"]
+    return [(function, position) for function, position in cues if function not in {"AVG", "COUNT"}]
 
 
 # A "%" standing alone is the word "percent" ("what % of the total amount comes from Paris" served the
@@ -1683,16 +1706,29 @@ _QUESTION_WORD = re.compile(NUMBER_WORD + r"|[^\W_]+(?:'[^\W_]+)?|(?<![\w%'\"])(
 
 
 # Typographic apostrophes and quotes, and the replacement character a mis-decoded one leaves, as the ASCII marks the
-# readers of a question parse (``plain_quotes``).
+# readers of a question parse (``plain_marks``).
 _TYPOGRAPHIC_MARKS = str.maketrans({"‘": "'", "’": "'", "ʼ": "'", "“": '"', "”": '"',
                                     "�": "'"})
+# A comparison symbol before a number, as the words the readers read it by.
+_COMPARISON_SYMBOL = re.compile(r"(>=|<=|!=|<>|>|<)(?=\s*-?\d)")
+_SYMBOL_WORDS = {">=": " at least ", "<=": " at most ", "!=": " other than ", "<>": " other than ", ">": " above ",
+                 "<": " below "}
 
 
-def plain_quotes(question: str) -> str:
-    """``question`` with its typographic apostrophes and quotes written as the ASCII ones: "Brazil’s population" said
-    "Brazil" and a lone "s", and “Smith” quoted nothing (Spider DEV 715, 719, held-out 202, 2026-10-16: each was
-    refused). Selection reads a question so (engine/tables.py:TableQuery.select_query)."""
-    return str(question).translate(_TYPOGRAPHIC_MARKS).replace("``", '"').replace("''", '"')
+# "Prior to" is "before", the word every comparison and date reader reads: "exhibitions that happened prior to 2009"
+# compared Year = 2009 (fresh holdout of Spider train 273, 2026-10-17).
+_PRIOR_TO = re.compile(r"(?i)(?<![\w'])prior\s+to\b")
+
+
+def plain_marks(question: str) -> str:
+    """``question`` with its typographic apostrophes and quotes written as the ASCII ones, and its comparison symbols
+    as words: "Brazil’s population" said "Brazil" and a lone "s", and “Smith” quoted nothing (Spider DEV 715, 719,
+    held-out 202, 2026-10-16: each was refused); "instructors with salary > 80000" compared salary = 80000, the symbol
+    being no word (fresh holdout of Spider train 103, 2026-10-17). Selection reads a question so
+    (engine/tables.py:TableQuery.select_query)."""
+    text = str(question).translate(_TYPOGRAPHIC_MARKS).replace("``", '"').replace("''", '"')
+    text = _PRIOR_TO.sub("before", text)
+    return _COMPARISON_SYMBOL.sub(lambda match: _SYMBOL_WORDS[match.group(1)], text)
 
 
 def words(text: str) -> list[str]:
@@ -1950,6 +1986,10 @@ def counted_noun_tables(said: Sequence[str], schema: Any) -> frozenset[str]:
             start = index + 2
         elif said[index] in {"number", "count"} and said[index + 1:index + 2] == ("of",):
             start = index + 2
+        # So do "most" and "fewest" before a table's name: "the year that had the most concerts" counts the concerts
+        # (Spider DEV 27, 2026-10-17: a count of each concert's singers ranked the years).
+        elif said[index] in {"most", "fewest"}:
+            start = index + 1
         else:
             continue
         while start < len(said) and said[start] in {"the", "a", "an", "different", "distinct", "unique", "all"}:

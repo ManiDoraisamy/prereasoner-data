@@ -484,9 +484,9 @@ class TableQuery:
     def search_pool(self, question, norm, fks, sch, graph=None):
         """The deterministic search's candidates under the pool contract: ``select_query``'s
         first stage. Its top candidate is the search's structural reading of the question."""
-        from engine.sql_expansion import plain_quotes
+        from engine.sql_expansion import plain_marks
         from engine.sql_rank import SEARCH_CANDIDATES
-        return self.search_ast(plain_quotes(question), sch, norm, fks, max_candidates=SEARCH_CANDIDATES, graph=graph)
+        return self.search_ast(plain_marks(question), sch, norm, fks, max_candidates=SEARCH_CANDIDATES, graph=graph)
 
     def select_query(self, question, norm, fks, sch, tablemap, searched=None, allow_fallback=True,
                      graph=None):
@@ -519,11 +519,12 @@ class TableQuery:
         (``search_pool``); a caller that already ran that stage passes its pool as ``searched``.
         Decomposition leaves pass ``allow_fallback=False`` (engine/decomposition.py:_leaf_readings).
         """
-        from engine.sql_expansion import plain_quotes
+        from engine.sql_expansion import plain_marks
         from engine.sql_schema import SchemaGraph
 
-        # The question as its readers parse it: typographic quotes as the ASCII ones (sql_expansion.plain_quotes).
-        question = plain_quotes(question)
+        # The question as its readers parse it: typographic quotes as the ASCII ones, comparison symbols as words
+        # (sql_expansion.plain_marks).
+        question = plain_marks(question)
         # One schema graph serves the request: building one indexes every cell value, which
         # took seconds a build on a few thousand rows, four times a question (2026-10-04).
         if graph is None:

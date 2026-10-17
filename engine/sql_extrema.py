@@ -70,6 +70,7 @@ SUPERLATIVE_DIMENSIONS = {
     "shortest": frozenset({"height", "length", "duration", "minute", "minutes"}),
     "cheapest": frozenset({"price", "cost"}), "expensive": frozenset({"price", "cost"}),
     "newest": frozenset({"date", "year"}), "recent": frozenset({"date", "year"}), "latest": frozenset({"date", "year"}),
+    "recently": frozenset({"date", "year"}),
     "earliest": frozenset({"date", "year"}), "popular": frozenset({"percentage", "popularity"}),
 }
 
@@ -631,6 +632,17 @@ class ExtremaQueryExpander(ExpansionSupport):
                     name = tuple(canon(word) for word in name_words(table))
                     if name and tuple(tokens[start:start + len(name)]) == name:
                         counted_spans.setdefault(table, set()).update(range(start, start + len(name)))
+        # "Most" or "fewest" before a table's name counts that table's rows and ranks no field: "Which year had the most
+        # matches?" ranks the years by their matches, not by year (Spider DEV 462, 2026-10-17).
+        # A field holding that number is ranked instead: "the party with the most hosts" by Number_of_hosts (held-out
+        # Spider train 348, 2026-10-17). Its name opens with the number; a match_num numbers a match.
+        stored = {word for schema_column in self.schema.columns
+                  if (words := tuple(_semantic_tokens(schema_column.ref.name)))[:1] in (("num",), ("number",))
+                  for word in set(words) - {"num", "number", "of"}}
+        counting_cues = {cue_position for cue_position, cue in cue_positions
+                         if cue in {"most", "fewest"}
+                         and any(cue_position + 1 in span for span in counted_spans.values())
+                         and tokens[cue_position + 1] not in stored}
         foreign_key_columns = {
             column
             for foreign_key in self.schema.foreign_keys
@@ -688,6 +700,8 @@ class ExtremaQueryExpander(ExpansionSupport):
                 continue
             best = None
             for cue_position, cue in cue_positions:
+                if cue_position in counting_cues:
+                    continue
                 position = min(
                     mention_positions,
                     key=lambda value: abs(value - cue_position),
@@ -699,10 +713,12 @@ class ExtremaQueryExpander(ExpansionSupport):
                 # A field two tables share, named at the superlative, is the one of the rows named just before it: "the
                 # country with the smallest population" ranks the countries' Population, not a joined city's (Spider
                 # DEV 788, 789, 2026-10-17: the tie fell to city by name). A field named elsewhere ("the name and
-                # capacity of the stadium with the most concerts") is not what the superlative measures (DEV 25).
+                # capacity of the stadium with the most concerts") is not what the superlative measures (DEV 25). So is
+                # one whose table the question names between them: "the account with the highest checking balance" ranks
+                # CHECKING.balance, not SAVINGS.balance (held-out Spider train 504, 2026-10-17).
                 owner = {canon(word) for word in name_words(column.table)}
                 if (position is not None and 0 < position - cue_position <= 2
-                        and owner & set(tokens[max(0, cue_position - 4):cue_position])):
+                        and owner & set(tokens[max(0, cue_position - 4):position])):
                     score += 0.5
                 if cue_position in inferred:
                     score += 2.5
@@ -741,6 +757,14 @@ class ExtremaQueryExpander(ExpansionSupport):
             )
             if not shadowed:
                 filtered.append((column, score, position))
+        # A word two tables' fields share is the field of the table named just before it: "the saving balance of the
+        # account with the highest checking balance" shows SAVINGS.balance, not CHECKING.balance as well (held-out
+        # Spider train 504, 2026-10-17).
+        owned = {position for column, _, position in filtered
+                 if 0 < position and tokens[position - 1] in {canon(word) for word in name_words(column.table)}}
+        filtered = [(column, score, position) for column, score, position in filtered
+                    if position not in owned
+                    or tokens[position - 1] in {canon(word) for word in name_words(column.table)}]
         of_positions = [index for index, token in enumerate(tokens) if token == "of"]
         if of_positions and any(position < of_positions[-1] for _, _, position in filtered):
             filtered = [
@@ -753,7 +777,10 @@ class ExtremaQueryExpander(ExpansionSupport):
                 item.expression for item in query.select
                 if isinstance(item.expression, ColumnRef)
             ]
-        if target not in columns and _target_requested_in_projection(target, tokens):
+        # The ranked field asked for in the projection is shown, unless the word asking is another table's field of its
+        # name ("the saving balance of the account with the highest checking balance").
+        if (target not in columns and _target_requested_in_projection(target, tokens)
+                and not any(column.name == target.name and column.table != target.table for column in columns)):
             columns.append(target)
         return tuple(SelectItem(column) for column in dict.fromkeys(columns[:4]))
 

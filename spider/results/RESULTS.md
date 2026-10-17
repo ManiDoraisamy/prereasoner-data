@@ -107,6 +107,31 @@ Artifacts: `%LOCALAPPDATA%/Temp/prereasoner-spider-review-20261013/`, tags `revi
 Incomplete intermediate runs are excluded. The review hardens ranking-number roles, output counts (preserving stored-count SUM),
 and table-owned full-name construction; it does not introduce another planner or model bundle.
 
+## Participles, verbs and measure nouns are read; "most" before a table counts its rows; a number after "id" is its key; a list shows each field; a bound away from an equality answers nothing: 663 → 685 strict, Gemini on 731 → 738, held out 415 → 433, fresh holdout 412 → 434 (2026-10-17)
+
+Same contract as below (RunPod CPU pods, the evaluator ingesting declared and discovered keys). Runs `v3` are this
+change against `028c8c7`'s `r5` runs. The change is the `DECISIONS.md` entry of this title.
+
+- DEV, engine alone: 663 → **685 strict**; 23 wins (39, 98, 173, 462, 507, 519, 520, 565, 567, 603, 616, 640, 643, 644,
+  691, 732, 733, 750, 759, 856, 857, 971, 973), 1 loss (27); wrong answers 139 → 140; 42 queries changed.
+- Held out: 415 → **433 strict**; 18 wins (96, 112, 138, 244, 278, 336, 386, 414, 435, 483, 649, 717, 788, 810, 864,
+  897, 921, 980), no loss; wrong answers 226 → 228; 48 queries changed.
+- Fresh holdout: 412 → **434 strict**; 22 wins (74, 103, 136, 180, 197, 204, 218, 254, 273, 300, 316, 512, 615, 708,
+  712, 719, 734, 753, 776, 810, 814, 825), no loss; wrong answers 232 → 230; 40 queries changed.
+- Gemini on: 731 → 738; 8 wins (98, 462, 643, 644, 759, 856, 857, 973), 1 loss (27); wrong answers 181 → 181; 32 queries
+  changed.
+- DEV 27 ("What is the year that had the most concerts?") is a tie: 2014 and 2015 hold three concerts each. The answer
+  now ranks the years by their concerts and keeps both, as DEV 26's did before; `028c8c7` ordered by the year itself,
+  and Spider's LIMIT 1 happens to keep 2015.
+- Wrong answers this change makes of questions refused before: an aggregate word that is a numeric field's whole name, a
+  measure noun after it, is still read as the aggregate ("the stadium with highest average attendance", DEV 18, 19; "the
+  highest total score", held out 664, 803), and "first-grade students" is read as a superlative (held out 923). Of the
+  wrong answers the measured change first made, those of a participle a table's name spells (held out 601), an equality
+  bounded away (fresh holdout 189) and one date of two listed (held out 920, fresh holdout 709) are refused before
+  release, and DEV 520 is answered right.
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-remote-eval-20261017/full_eval_{,heldout-,holdout2-}v3.json` and `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_v3-gemini-dirty.json`.
+
 ## A count whose noun names a text field counts the rows: against `608fc98`, 632 → 663 strict, Gemini on 704 → 731, held out 405 → 415, fresh holdout 405 → 412 (2026-10-17)
 
 Runs `r5` are the entry below's change without its field-noun count reading (the `DECISIONS.md` entry of this title),

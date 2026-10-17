@@ -671,12 +671,41 @@ def contradictory(query: Query) -> bool:
     """Whether a WHERE of ``query``, in any of its SELECTs, holds one column equal to two different
     values: ``city = 'Paris' AND city = 'Lyon'`` matches no row. No Spider gold query conjoins two
     such values (2026-10-02); the search reads them as either value (``conjunction``), and the served
-    selection never grounds such a query (engine/sql_grounding.py)."""
+    selection never grounds such a query (engine/sql_grounding.py). Nor does one bounding a column below a value it
+    also bounds it above: "orchestras founded before 2003 and after 2003" (Spider DEV 856, 857, 2026-10-17: served as
+    Year_of_Founded > 2003 AND Year_of_Founded < 2003), nor one equal to a value it bounds the column away from:
+    "employees earning more than the employee with id 163" (fresh holdout 189, 2026-10-17: served as EMPLOYEE_ID = 163
+    AND EMPLOYEE_ID > 163)."""
     if isinstance(query, SetQuery):
         return contradictory(query.left) or contradictory(query.right)
     if isinstance(query.from_table, SubquerySource) and contradictory(query.from_table.query):
         return True
-    return bool(_equality_conflicts(tuple(_conjoined(query.where))))
+    terms = tuple(_conjoined(query.where))
+    return bool(_equality_conflicts(terms)) or _range_conflict(terms)
+
+
+def _range_conflict(terms: Sequence[Predicate]) -> bool:
+    """Whether ``terms`` bound one column from below at or above where they bound it from above, values of one kind;
+    an equality bounds it from both sides."""
+    bounds: dict[ScalarExpr, tuple[list, list]] = {}
+    for term in terms:
+        if (isinstance(term, Comparison) and term.operator in {"=", ">", ">=", "<", "<="}
+                and isinstance(term.left, ColumnRef) and isinstance(term.right, Literal) and term.right.value is not None):
+            lower, upper = bounds.setdefault(term.left, ([], []))
+            value = comparable_value(term.right.value)
+            if term.operator == "=":
+                lower.append((value, ">="))
+                upper.append((value, "<="))
+            else:
+                (lower if term.operator in {">", ">="} else upper).append((value, term.operator))
+    for lower, upper in bounds.values():
+        for low, low_operator in lower:
+            for high, high_operator in upper:
+                if type(low) is not type(high):
+                    continue
+                if low > high or (low == high and (low_operator == ">" or high_operator == "<")):
+                    return True
+    return False
 
 
 def conjunction(predicates: Iterable[Predicate]) -> Predicate | None:

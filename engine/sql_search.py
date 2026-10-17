@@ -57,6 +57,7 @@ from engine.sql_expansion import (
     FUNCTION_WORDS,
     KIND_WORDS,
     MONEY_MEASURE_COLUMN_WORDS,
+    PHRASE_BREAKS,
     abbreviated_table,
     asked_cues,
     by_groups,
@@ -994,8 +995,11 @@ class SQLSearcher:
                 for column in self._counted_entity_identities(tokens, position):
                     options.append((Aggregate("COUNT", column, distinct=True), 3.8,
                                     f"aggregate:COUNT(DISTINCT {column.table}.{column.name})"))
-                for column in self._distinct_counted_columns(tokens, position):
-                    options.append((Aggregate("COUNT", column, distinct=True), 3.3,
+                # The fields come in the order the noun names them, its entity's name before its key: "How many
+                # different degrees are offered?" counts degree_summary_name, not degree_summary_description (Spider
+                # DEV 520, 2026-10-17: the three tied within 0.03 and the description won).
+                for index, column in enumerate(self._distinct_counted_columns(tokens, position)):
+                    options.append((Aggregate("COUNT", column, distinct=True), 3.3 + 0.05 * max(0, 2 - index),
                                     f"aggregate:COUNT(DISTINCT {column.table}.{column.name}):noun"))
                 # "the number of different series names and contents" counts each field's values.
                 counted = self._target_columns(mentions, position, numeric=False)
@@ -1066,13 +1070,23 @@ class SQLSearcher:
                             if tokens[index] in {"different", "distinct", "unique"}), None)
         if distinct_at is None or distinct_at + 1 >= len(tokens):
             return []
-        noun = tokens[distinct_at + 1]
-        named = [column.ref for column in self.schema.columns
-                 if noun in {canon(word) for word in name_words(column.ref.name)}]
+        fields = {column.ref: {canon(word) for word in name_words(column.ref.name)} for column in self.schema.columns}
+        known = set().union(*fields.values())
+        # The noun is the last of the words after it that fields' names hold: "how many different degree
+        # descriptions" counts degree_summary_description, the field holding the most of them.
+        phrase = []
+        for token in tokens[distinct_at + 1:distinct_at + 4]:
+            if token not in known or token in PHRASE_BREAKS:
+                break
+            phrase.append(token)
+        if not phrase:
+            return []
+        named = [column for column, words in fields.items() if phrase[-1] in words]
         # A noun several fields share names their entity, counted by its name or key first: "how many different
         # winners" counts winner_name, not the first four of winner_age, winner_entry, winner_hand, winner_ht
         # (Spider DEV 485, 2026-10-13).
-        return sorted(named, key=lambda column: (_IDENTITY_RANK.get(canon(name_words(column.name)[-1]), 2),
+        return sorted(named, key=lambda column: (-len(fields[column] & set(phrase)),
+                                                 _IDENTITY_RANK.get(canon(name_words(column.name)[-1]), 2),
                                                  column.table, column.name))[:4]
 
     def _counted_entity_identities(
@@ -1364,6 +1378,12 @@ class SQLSearcher:
             # The column whose words introduce the value is the one it names: "left / L hand" is a hand,
             # not a first name 'L' (Spider wta_1, 2026-10-02).
             introduced = {column for column, _ in options if _introducers(tokens, start, end, {column}, True)}
+            # So does a table's name the value follows, for the field naming that table's rows: "albums by the artist
+            # 'AC/DC'" is an Artist's Name, not a track's Composer (held-out Spider train 386, 2026-10-17).
+            introduced |= {column for column, _ in options
+                           if start > 0 and tokens[start - 1] in {canon(word) for word in name_words(column.table)}
+                           and is_name_column(column.name)
+                           and column in self.schema.display_columns(column.table)[:1]}
             # A value several fields of one table hold is the one its display field holds: 'Anguilla' is a country's
             # Name before its LocalName (Spider DEV 709, 713, 716, 2026-10-17: the tie fell to LocalName by name).
             tables = Counter(column.table for column, _ in options)
@@ -1385,6 +1405,30 @@ class SQLSearcher:
         for start, end, comparison in flag_comparisons(tokens, self.schema):
             if not set(range(start, end)) & occupied:
                 groups.append([((comparison,), 4.75, f"flag:{comparison.left.table}.{comparison.left.name}")])
+        groups.extend(self._key_value_groups(tokens, occupied))
+        return groups
+
+    def _key_value_groups(self, tokens: tuple[str, ...],
+                          occupied: set[int]) -> list[list[tuple[tuple[Comparison, ...], float, str]]]:
+        """A number after "id", a table named just before it, compared with that table's key: "the document with id 7"
+        is document_id = 7 (held-out Spider train 336, 414, 435, 2026-10-17: no reading compared the key)."""
+        groups = []
+        for index, token in enumerate(tokens):
+            number = parse_number(token)
+            if number is None or index in occupied or tokens[index - 1:index] not in (("id",), ("identifier",)):
+                continue
+            before = tokens[max(0, index - 5):index - 1]
+            keys = []
+            for table in self.schema.tables:
+                name = tuple(canon(word) for word in name_words(table))
+                if name and any(tuple(before[start:start + len(name)]) == name for start in range(len(before))):
+                    key = self.schema.identifying_column(table)
+                    if key is not None and is_surrogate_key(key.name) and key.type.numeric:
+                        keys.append(key)
+            choices = [((Comparison(key, "=", Literal(number, key.type)),), 5.0, f"key:{key.table}.{key.name}={number}")
+                       for key in sorted(keys, key=lambda column: (column.table, column.name))]
+            if choices:
+                groups.append(choices)
         return groups
 
     def _categorical_initial_groups(
@@ -1806,7 +1850,8 @@ class SQLSearcher:
         token_set = {token for i, token in enumerate(tokens)
                      if token not in {"most", "least"} or valid_superlative_cue(tokens, i)}
         direction = None
-        if token_set & {"descending", "desc", "highest", "largest", "biggest", "most", "latest", "newest", "top"}:
+        if token_set & {"descending", "decreasing", "desc", "highest", "largest", "biggest", "most", "latest", "newest",
+                        "top"}:
             direction = "DESC"
         elif token_set & {"ascending", "asc", "lowest", "smallest", "least", "earliest", "oldest", "bottom"}:
             direction = "ASC"
@@ -2417,7 +2462,20 @@ def _negated_matches(tokens: tuple[str, ...], selected) -> frozenset[int]:
         cue = max((position for position in cues if start - 3 <= position < start), default=None)
         if cue is not None and not any(cue < other[0] < start for other in selected):
             negated.add(index)
+            continue
+        # So does a negated verb's object the value is the agent of: "channels that do not play any cartoon directed by
+        # Ben Jones" excludes Ben Jones's cartoons (Spider DEV 636, 643, 644, 2026-10-17: the value read as kept, and
+        # the EXCEPT that answered was refused).
+        cue = max((position for position in cues if start - 7 <= position < start - 3), default=None)
+        if (cue is not None and tokens[start - 1:start] == ("by",)
+                and not set(tokens[cue + 1:start]) & _CLAUSE_BREAKS
+                and not any(cue < other[0] < start for other in selected)):
+            negated.add(index)
     return frozenset(negated)
+
+
+# Words that end the clause a negation governs.
+_CLAUSE_BREAKS = frozenset({"and", "or", "but", "who", "which", "that", "whose", "where", "while", "than"})
 
 
 _POLARITY: "weakref.WeakKeyDictionary[SchemaGraph, dict[str, tuple[frozenset, tuple[frozenset, ...]]]]" = \

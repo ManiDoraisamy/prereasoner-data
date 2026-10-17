@@ -285,8 +285,8 @@ correct interpretation of the question.
 ## Own-Data SQL Planner
 
 The own-data path serves one typed SQL AST chosen from the deterministic search's candidates
-(`engine/tables.py:TableQuery.select_query`), reading a question's typographic apostrophes and quotes as the ASCII ones
-(`sql_expansion.plain_quotes`). No local model writes or scores SQL:
+(`engine/tables.py:TableQuery.select_query`), reading a question's typographic apostrophes and quotes as the ASCII ones, a comparison symbol before a number as its
+words and "prior to" as "before" (`sql_expansion.plain_marks`). No local model writes or scores SQL:
 
 | Owner | Responsibility |
 |---|---|
@@ -358,7 +358,9 @@ The own-data path serves one typed SQL AST chosen from the deterministic search'
    and a count asks the count in each of those fields' groups, and the reading showing exactly the list's fields starts
    ahead of one adding a field; "find" is a list verb, and an item followed by "of" and the rows of one table realizing
    it is that table's field; an item's last word may stand for the kind its field's name ends in ("the cell phone" is
-   cell_number), and a "which" after a preposition opens a relative clause, not a command. An answer showing only
+   cell_number), and a "which" after a preposition opens a relative clause, not a command. An answer shows each output
+   a list names where it lists a count beside fields, or fields each its own; values a list joins ("the continents Asia
+   and Europe") are no outputs. An answer showing only
    fields the question says only to filter on gets a twin showing
    the name of the rows it lists (`SQLSearcher._display_twin`, `sql_rank.filter_only`: "the cities whose population
    is between ...").
@@ -459,7 +461,12 @@ it spells them (`query_contract._witnessed_words`): a travel direction by the co
 departing from APG" by SourceAirport); a name's part a field abbreviates ("first name" by Fname); "name" by a field
 named as its table is (airlines.Airline); a verb relating two tables it reads, one named before the verb and the
 other after; a word sharing a stem of five letters or more with a table or field it reads ("students enrolled" by
-Student_Enrolment), a word of an operation excepted; and "one" after a determiner ("the one whose name"). "Available"
+Student_Enrolment), a word of an operation excepted; "one" after a determiner ("the one whose name"); a passive
+participle after a copula whose subject it reads, with nothing after it but "in the world" ("How many different degrees
+are offered?"), unless the data's names spell it ("How many regions are affected?" names affected_region); a verb
+relating a table named before it to a field it reads named after it; "of origin" after a field it reads; "first" and
+"last" grading a date as "earliest" and "latest" do; and a noun right after the one-word name of a numeric field it
+reads, which is what the field measures ("the minimum snatch score"). "Available"
 asks nothing where no table or field is named for availability, nor do "the results" a sort verb orders, and an
 ordering "from old to young" is read by an ordering in that grade's direction (`sql_extrema.span_grade`). A verb is
 read by the field its doer names ("won" by winner_id, `closed_class.agent_noun`), "corresponding" where it pairs an

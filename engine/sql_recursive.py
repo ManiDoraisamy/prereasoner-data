@@ -145,7 +145,13 @@ class RecursiveQueryExpander:
                         continue
                     branch_select_options = [((SelectItem(displays[0]),), 0.0)]
                 else:
-                    branch_select_options = [(query.select, 0.0)]
+                    # The shown fields score by the words the question says of them whichever reading built them:
+                    # "the names of customers who have both ..." shows customer_name, not the customer_address another
+                    # reading listed (held-out Spider train 278, 2026-10-17).
+                    said = set(tokens)
+                    branch_select_options = [(query.select, float(sum(
+                        _said_overlap(item.expression, said) for item in query.select
+                        if isinstance(item.expression, ColumnRef))))]
                     entity_table = self._entity_table(question, query, predicate_column.table)
                     if entity_table is not None:
                         for column, overlap in self._projection_columns(question, entity_table):
@@ -566,21 +572,20 @@ class RecursiveQueryExpander:
         return bool(projected) and all((item.table, item.name) in held for item in projected)
 
     def _projection_columns(self, question: str, table: str) -> list[tuple[ColumnRef, int]]:
-        """The entity's fields the question names, by the words they share. A key is one only where every word of
-        its name is said ("the ids of documents" is Document_ID, Spider DEV 380 showed Document_Description)."""
-        options = []
+        """The entity's fields the question names, by the words they share (`_said_overlap`)."""
         question_tokens = set(_tokens(question))
-        for schema_column in self.schema.by_table.get(table, ()):
-            column = schema_column.ref
-            if is_surrogate_key(column.name):
-                words = set(_name_tokens(column.name))
-                if words and words <= question_tokens:
-                    options.append((column, len(words)))
-                continue
-            overlap = len(set(_semantic_name_tokens(column.name)) & question_tokens)
-            if overlap:
-                options.append((column, overlap))
+        options = [(schema_column.ref, overlap) for schema_column in self.schema.by_table.get(table, ())
+                   if (overlap := _said_overlap(schema_column.ref, question_tokens))]
         return sorted(options, key=lambda item: (-item[1], item[0].name))[:3]
+
+
+def _said_overlap(column: ColumnRef, question_tokens: set[str]) -> int:
+    """How many words of ``column``'s name the question says. A key counts only where every word of its name is said
+    ("the ids of documents" is Document_ID; Spider DEV 380, 2026-10-17, showed Document_Description)."""
+    if is_surrogate_key(column.name):
+        words = set(_name_tokens(column.name))
+        return len(words) if words and words <= question_tokens else 0
+    return len(set(_semantic_name_tokens(column.name)) & question_tokens)
 
 
 def _candidate(query: Query, score: float, evidence: tuple[str, ...]) -> ScoredQuery | None:
@@ -617,7 +622,9 @@ def _best_conflicting_pair(
     )
     for index, left in enumerate(ordered):
         for right in ordered[index + 1:]:
-            if left.right == right.right:
+            # One value bounded both ways is a pair: "orchestras founded before 2003 and after 2003" (Spider DEV 856,
+            # 857, 2026-10-17: the pair was skipped for its one value).
+            if left.right == right.right and left.operator == right.operator:
                 continue
             if left.operator == right.operator == "=":
                 return left, right

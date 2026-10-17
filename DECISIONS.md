@@ -3796,7 +3796,7 @@ Questions typed on a phone or a Mac carry typographic marks: "Brazil’s populat
 readers of a question parse the ASCII apostrophe and quotes only, so "Brazil’s" said "Brazil" and a lone "s", and “a”
 quoted nothing. Selection reads a question with its typographic apostrophes and quotes, the replacement character a
 mis-decoded one leaves, and the doubled backquote and apostrophe pairs of tokenized text written as the ASCII marks
-(`sql_expansion.plain_quotes`, at the start of `tables.TableQuery.select_query` and `search_pool`).
+(`sql_expansion.plain_quotes`, now `plain_marks`, at the start of `tables.TableQuery.select_query` and `search_pool`).
 
 This is a correctness hardening, not an accuracy gain. Measured on Spider (`spider/results/RESULTS.md`, 2026-10-16),
 strict accuracy is unchanged in every set (DEV 583, held out 373, the fresh holdout 379, Gemini on
@@ -4029,3 +4029,54 @@ is removed and a count of a field's noun counts the rows again. DEV 751 goes bac
 
 Measured on Spider (`spider/results/RESULTS.md`, 2026-10-17), against `608fc98`: DEV 632 → 663 strict, held out 405 →
 415, the fresh holdout 405 → 412, Gemini on 704 → 731.
+
+## Participles, verbs and measure nouns are read; "most" before a table counts its rows; a number after "id" is its key; a list shows each field; a bound away from an equality answers nothing (2026-10-17)
+
+- Words the query realizes (`query_contract._witnessed_words`, `read_question`): a passive participle after a copula
+  whose subject the query reads, with nothing after it but "in the world", says only that the rows are there, and
+  "single" is one ("How many different degrees are offered?", "the languages spoken in the world", "not a single car
+  maker"; DEV 173, 519, 732, 750, 759), unless the data's names spell it: "How many regions are affected?" names
+  affected_region (held out 601, served as COUNT(*) FROM region before release, now refused). So are a verb relating a
+  table named before it to a field the query reads named after it (DEV 603, 971, 973), "of origin" after such a field
+  (DEV 640), "first" and "last" before no name or number grading a date as "earliest" and "latest" do (DEV 565, 691), a
+  noun right after the one-word name of a numeric field the query reads, which is what the field measures ("the minimum
+  snatch score", held out 649, 717, 788, 864), and the other inflections of a name word that is itself one ("years of
+  opening" by Year_Opened, held out 921).
+- Superlatives and counts (`sql_extrema._superlative_targets`, `sql_search`): "most" or "fewest" before a table's name
+  counts that table's rows ("Which year had the most matches?" took the latest year, DEV 462); "recently" ranks by a
+  date (fresh holdout 197); a field two tables share is the one whose table is named just before it, in the projection
+  and the superlative alike ("the saving balance of the account with the highest checking balance"); a count word inside
+  a several-word field name the question spells asks for no count ("in ascending order of room count", fresh holdout
+  180); and a noun several fields share is counted by them in the order it names them, its entity's name first, the noun
+  being the last word after "different" a field's name holds ("How many different degrees are offered?" counted the
+  descriptions, DEV 520, a loss of the Gemini-on run fixed before release).
+- Values and comparisons: a comparison symbol before a number is its words and "prior to" is "before"
+  (`sql_expansion.plain_marks`, formerly `plain_quotes`; "salary > 80000" compared salary = 80000, fresh holdout 103);
+  any comparative before "the average" compares with it (`sql_expansion.average_comparison`; DEV 98, fresh holdout 753);
+  a number after "id" is the key of the table named just before it, and no count (`SQLSearcher._key_value_groups`; "the
+  document with id 7", held out 336, 414, 435); a value right after a table's name is that table's display field's
+  ("albums by the artist 'AC/DC'" compared a track's Composer, held out 386); the agent of a negated verb's object is
+  excluded ("channels that do not play any cartoon directed by Ben Jones", DEV 643, 644); "start" is a route's source,
+  and "src" and "dst" name its two ends (`sql_rank.TRAVEL_WORDS`); and one value bounded both ways is two branches, a
+  conjunction bounding a column below where it bounds it above, or away from a value it equals, matching no row
+  (`sql_ast.contradictory`; DEV 856, 857; "employees earning more than the employee with id 163" was served as
+  EMPLOYEE_ID = 163 AND EMPLOYEE_ID > 163 before release, fresh holdout 189, now refused).
+- Outputs: an answer shows each output a list names where it lists a count beside fields, or fields each its own ("names
+  of technicians and the number of machines" counted the names, held out 138; "the claim date, settlement date" showed
+  one date before release, held out 920 and fresh holdout 709, now refused), values a list joins being no outputs; every
+  branch of a set query scores its projection by the words said of its fields (`sql_recursive._said_overlap`; held out
+  278); and "alphabetic" and "increasing" or "decreasing order" order the rows (`sql_expansion.ordering_requested`; held
+  out 244, 980).
+
+Measured on Spider (`spider/results/RESULTS.md`, 2026-10-17), against `028c8c7`: DEV 663 → 685 strict, held out 415 →
+433, the fresh holdout 412 → 434, Gemini on 731 → 738.
+
+- DEV 27 ("What is the year that had the most concerts?") is a tie: 2014 and 2015 hold three concerts each. The answer
+  now ranks the years by their concerts and keeps both, as DEV 26's did before; `028c8c7` ordered by the year itself,
+  and Spider's LIMIT 1 happens to keep 2015.
+- Wrong answers this change makes of questions refused before: an aggregate word that is a numeric field's whole name, a
+  measure noun after it, is still read as the aggregate ("the stadium with highest average attendance", DEV 18, 19; "the
+  highest total score", held out 664, 803), and "first-grade students" is read as a superlative (held out 923). Of the
+  wrong answers the measured change first made, those of a participle a table's name spells (held out 601), an equality
+  bounded away (fresh holdout 189) and one date of two listed (held out 920, fresh holdout 709) are refused before
+  release, and DEV 520 is answered right.
