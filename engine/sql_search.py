@@ -62,6 +62,8 @@ from engine.sql_expansion import (
     asked_cues,
     by_groups,
     count_requested,
+    counted_measure_columns,
+    cue_names,
     entity_groups,
     field_numbers,
     implicit_sum_measures,
@@ -726,6 +728,9 @@ class SQLSearcher:
                 modifiers.setdefault(words[1], set()).add(words[0])
         references = self._reference_keys()
         unaggregated = tuple("" if token in AGGREGATE_CUES else token for token in tokens)
+        # A superlative or aggregate word grading the field named after it names no field of its own: "the highest
+        # capacity" is no mention of Highest (sql_expansion.cue_names).
+        grading = cue_names(tokens, self.schema).grading
         for schema_column in self.schema.columns:
             column = schema_column.ref
             if is_surrogate_key(column.name) and not id_requested:
@@ -743,6 +748,8 @@ class SQLSearcher:
                 # copies of a subscriptions export, 2026-10-04). The name said whole stays the stronger mention.
                 contested = set(_column_link_positions(column, unaggregated, self.schema, meaningful)) - set(positions)
                 positions = sorted(set(positions) | contested)
+            positions = [position for position in positions
+                         if not (position in grading and tuple(meaningful) == (tokens[position],))]
             if not positions:
                 continue
             said = {word for i in positions for word in meaningful
@@ -988,6 +995,27 @@ class SQLSearcher:
             options: list[tuple[Aggregate | tuple[Aggregate, ...], float, str]] = []
             if function == "COUNT":
                 options.append((Aggregate("COUNT", Star()), 4.0, "aggregate:COUNT(*)"))
+                # A count of what a numeric field already counts is its total: "How many people live in Gelderland
+                # district?" totals the cities' Population (sql_expansion.counted_measure_columns; Spider DEV 723,
+                # 728, 766, 767, 2026-10-17: no reading totaled it), as the gate's count requirement reads it. Not
+                # where the counted noun names a table, whose rows it counts: "How many purchase orders are listed?"
+                # counts the purchase orders, whatever number a "Purchase order" field holds; nor a key, which
+                # numbers rows: "Count how many appointments have been made" is no total of Prescribes.Appointment
+                # (fresh holdout of Spider train 710, 2026-10-17).
+                table_words = {canon(word) for table in self.schema.tables for word in name_words(table)}
+                nouns = {tokens[index + 2] for index in range(len(tokens) - 2)
+                         if tokens[index:index + 2] in (("how", "many"), ("number", "of"), ("count", "of"))}
+                keys = {column for key in self.schema.foreign_keys for pair in key.column_pairs for column in pair}
+                stored = [] if nouns & table_words else (
+                    counted_measure_columns(question, [
+                        {"table": column.ref.table, "name": column.ref.name,
+                         "affinity": "REAL" if column.ref.type.numeric else "TEXT"} for column in self.schema.columns]))
+                for entry in stored:
+                    column = next(schema_column.ref for schema_column in self.schema.columns
+                                  if (schema_column.ref.table, schema_column.ref.name) == (entry["table"], entry["name"]))
+                    if column not in keys:
+                        options.append((Aggregate("SUM", column), 4.2,
+                                        f"aggregate:SUM({column.table}.{column.name}):stored-count"))
                 for option in self._target_columns(mentions, position, numeric=False)[:3]:
                     distinct = bool({"different", "distinct", "unique"} & set(tokens))
                     options.append((Aggregate("COUNT", option.column, distinct), 3.3 + option.score * 0.1,

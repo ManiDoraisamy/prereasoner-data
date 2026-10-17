@@ -1598,14 +1598,29 @@ def counted_measure_columns(question: str, sch: Sequence[dict]) -> list[dict]:
 
     In a sheet whose ``transfers`` column holds each row's number of transfers, "how many transfers"
     asks for that column's total, not for the number of rows. The counted noun must be the column's
-    whole name, right after "how many", "number of" or "count of".
+    whole name, or the people a population counts (``counted_population``: "how many people" totals
+    Population), right after "how many", "number of" or "count of".
     """
     question_tokens = tokens(question)
     starts = [index + 2 for index in range(len(question_tokens) - 1)
               if question_tokens[index:index + 2] in (("how", "many"), ("number", "of"), ("count", "of"))]
     return [entry for entry in _numeric_measures(sch)
             if (words := name_tokens(entry["name"]))
-            and any(question_tokens[start:start + len(words)] == words for start in starts)]
+            and any(question_tokens[start:start + len(words)] == words
+                    or counted_population(entry["name"], question_tokens[start:start + 1])
+                    for start in starts)]
+
+
+# The words for the people a population counts (``counted_population``).
+POPULATION_NOUNS = frozenset({"people"})
+
+
+def counted_population(name: str, said: Sequence[str]) -> bool:
+    """Whether the words ``said`` are the people the field ``name`` counts as a population: "How many people live in
+    Gelderland district?" totals Population, and "the 3 countries with the fewest people" ranks by it (Spider DEV 728,
+    767, 805, 2026-10-17: no reading read the people as it). Only as a quantity counted or graded: "the largest
+    percentage of people" names no Population (Spider DEV 816, 820)."""
+    return len(said) == 1 and said[0] in POPULATION_NOUNS and name_tokens(name) == ("population",)
 
 
 def measure_words_after(question_tokens: Sequence[str], position: int) -> frozenset[str] | None:
@@ -1658,6 +1673,54 @@ def spelled_names(question_tokens: tuple[str, ...], schema: Any) -> frozenset[in
                      for index in range(start, start + len(words)))
 
 
+@dataclass(frozen=True)
+class CueNames:
+    """The places a word that asks a superlative or an aggregate is also a numeric field's whole one-word name
+    ("Highest", "Average", "Total"), read by what follows it (``cue_names``).
+
+    ``grading``: the word grades the field named right after it, and names no field of its own: "the stadium with the
+    highest capacity" ranks Capacity, "the highest average attendance" ranks Average (Spider DEV 18, 19, 43,
+    2026-10-17: Highest was shown and ranked, and the count asked was lost). ``measured``: the word is the field, the
+    noun after it what the field measures, where a superlative or an ordering grades it: "the highest total score",
+    "in descending order of total scores" rank Total and total nothing (held-out Spider train 664, 803). Before a
+    noun no superlative or ordering grades ("the total sales in Paris"), the word still asks its aggregate."""
+    grading: frozenset[int]
+    measured: frozenset[int]
+
+
+_ORDER_LEADS = frozenset({"order", "ordered", "sorted", "sort"})
+
+
+def cue_names(question_tokens: Sequence[str], schema: Any) -> CueNames:
+    """Where the question's superlative and aggregate words are numeric fields' names (``CueNames``)."""
+    from engine.sql_extrema import MAX_CUES, MIN_CUES
+    names = {}
+    for column in schema.columns:
+        words = [canon(word) for word in name_words(column.ref.name)]
+        for word in words:
+            names.setdefault(word, set()).add(column.ref)
+    single = {words[0] for column in schema.columns if column.ref.type.numeric
+              and len(words := [canon(word) for word in name_words(column.ref.name)]) == 1}
+    table_words = {canon(word) for table in schema.tables for word in name_words(table)}
+    cues = (MAX_CUES | MIN_CUES | set(AGGREGATE_CUES)) & single
+    grading, measured = set(), set()
+    for index, token in enumerate(question_tokens[:-1]):
+        if token not in cues:
+            continue
+        after = question_tokens[index + 1]
+        others = {ref for ref in names.get(after, ()) if [canon(word) for word in name_words(ref.name)] != [token]}
+        if others:
+            grading.add(index)
+            continue
+        before = set(question_tokens[max(0, index - 2):index])
+        graded = bool(before & (MAX_CUES | MIN_CUES)) or (
+            index >= 2 and question_tokens[index - 1] in {"of", "by"} and question_tokens[index - 2] in _ORDER_LEADS)
+        if (token in AGGREGATE_CUES and graded and after.isalpha() and after not in names and after not in table_words
+                and after not in PHRASE_BREAKS):
+            measured.add(index)
+    return CueNames(frozenset(grading), frozenset(measured))
+
+
 # The words before "the" that make an extreme select the row holding it (``selects_extreme``).
 _SELECTOR_LEADS = frozenset({"with", "has", "have", "had", "having"})
 _EXTREME_WORDS = {"maximum": "MAX", "max": "MAX", "minimum": "MIN", "min": "MIN"}
@@ -1691,8 +1754,11 @@ def asked_cues(cues: list[tuple[str, int]], question_tokens: tuple[str, ...],
     keywords' searches rather than averaging them (a customer's keyword sheet, 2026-10-06). Nor does a count: "in
     ascending order of room count" orders by room_count and counts nothing (fresh holdout of Spider train 180,
     2026-10-17). The total, maximum or minimum of rows' totals, maxima or minima is theirs: "the total amount in
-    Paris" sums Total Amount. An extreme that selects the row holding it asks for no aggregate (``selects_extreme``)."""
-    cues = [(function, position) for function, position in cues if not selects_extreme(question_tokens, position)]
+    Paris" sums Total Amount. An extreme that selects the row holding it asks for no aggregate (``selects_extreme``), nor
+    does a word that is the field a superlative or an ordering grades ("the highest total score", ``cue_names``)."""
+    measured = cue_names(question_tokens, schema).measured
+    cues = [(function, position) for function, position in cues
+            if not selects_extreme(question_tokens, position) and position not in measured]
     spelled = spelled_names(question_tokens, schema)
     if any(position not in spelled for _, position in cues):
         return [(function, position) for function, position in cues if position not in spelled]

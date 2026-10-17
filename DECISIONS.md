@@ -4080,3 +4080,39 @@ Measured on Spider (`spider/results/RESULTS.md`, 2026-10-17), against `028c8c7`:
   wrong answers the measured change first made, those of a participle a table's name spells (held out 601), an equality
   bounded away (fresh holdout 189) and one date of two listed (held out 920, fresh holdout 709) are refused before
   release, and DEV 520 is answered right.
+
+## A superlative or aggregate word that names a field grades what follows it; the people counted are a population; a member is its table's row (2026-10-17)
+
+- Cue words that are fields' names (`sql_expansion.cue_names`): a word asking a superlative or an aggregate that is a
+  numeric field's whole one-word name (a stadium's Highest and Average, a body builder's Total) grades the field named
+  right after it and names no field of its own, in the search's mentions and the gate's requested fields ("the stadium
+  with the highest capacity", "the highest average attendance"; Spider DEV 18, 19, 43); before a noun no name of the
+  data holds, where a superlative or an ordering grades it, it is the field and asks no aggregate (`asked_cues`, the
+  gate's aggregate requests: "the highest total score", "in descending order of total scores", held out 664, 803).
+  Before a noun nothing grades it still asks: "the total sales in Paris" totals. "The number of" after a command or
+  "what is" asks for a count, as "how many" does (`query_contract._OPENS_WITH_COUNT`): "Find the number of concerts
+  happened in the stadium with the highest capacity" showed Highest and counted nothing (DEV 43); no answer right on
+  DEV, held out or the fresh holdout lacked a count.
+- People counted are a population (`sql_expansion.counted_population`): "How many people live in Gelderland district?"
+  totals the cities' Population (DEV 728, 767). A count of what a numeric field already counts is its total, as an
+  option of the search's count (`counted_measure_columns`, the gate's count requirement already read it so), except
+  where the counted noun names a table ("How many purchase orders are listed?" counts them, whatever a numeric "Purchase
+  order" holds) or the field is a key ("Count how many appointments have been made" is no total of
+  Prescribes.Appointment, fresh holdout 710, a loss the measured change first made, fixed before release). "The fewest
+  people" is read by an ordering on Population in the gate; the search does not yet build it (DEV 805), and "the largest
+  percentage of people" names no Population (DEV 816, 820).
+- "Member" after the name of a table the query reads names its rows, as "record" does
+  (`query_contract._witnessed_words`): every "staff member" and "faculty member" question was refused for it (DEV 415;
+  held out 785; fresh holdout 76, 343, 567).
+
+Measured on Spider (`spider/results/RESULTS.md`, 2026-10-17), against `76837a3`: DEV 685 → 691 strict, held out 433 →
+436, the fresh holdout 434 → 437, Gemini on 738 → 744, no loss.
+
+- Wrong answers this change makes of questions refused before, each wrong for another reason: "How many people live in
+  Asia, and what is the largest GNP among them?" totals the population grouped by GNP, the gate reading "the largest" by
+  any descending order (DEV 723, Gemini on too); and with "member" read, staff and faculty questions that need a set
+  query or another relationship are answered ("faculty members who do not advise any student", "the phone numbers of all
+  customers and all staff members", held out 627, 918; fresh holdout 31, 86, 888).
+- The measured change first also read "people" as Population wherever it was said: "the language spoken by the largest
+  percentage of people" showed Population (DEV 816, 820, wrong); it is read only counted or graded before release, which
+  also leaves DEV 805 ("the 3 countries with the fewest people") refused.

@@ -466,7 +466,12 @@ participle after a copula whose subject it reads, with nothing after it but "in 
 are offered?"), unless the data's names spell it ("How many regions are affected?" names affected_region); a verb
 relating a table named before it to a field it reads named after it; "of origin" after a field it reads; "first" and
 "last" grading a date as "earliest" and "latest" do; and a noun right after the one-word name of a numeric field it
-reads, which is what the field measures ("the minimum snatch score"). "Available"
+reads, which is what the field measures ("the minimum snatch score"); "member" after the name of a table it reads,
+its rows ("the staff member"); and the people a population it reads counts ("How many people live in Gelderland
+district?" by Population, `sql_expansion.counted_population`). A superlative or aggregate word that is a numeric field's
+whole one-word name grades the field named after it and asks for no field of its own ("the highest capacity" asks for
+no Highest), and before a noun a superlative or an ordering grades it is the field and asks no aggregate ("the highest
+total score", `sql_expansion.cue_names`). "Available"
 asks nothing where no table or field is named for availability, nor do "the results" a sort verb orders, and an
 ordering "from old to young" is read by an ordering in that grade's direction (`sql_extrema.span_grade`). A verb is
 read by the field its doer names ("won" by winner_id, `closed_class.agent_noun`), "corresponding" where it pairs an

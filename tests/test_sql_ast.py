@@ -4241,6 +4241,72 @@ def test_one_value_bounded_both_ways_is_two_branches():
         after, Comparison(founded, "<", Literal(2010))])))
 
 
+def test_a_cue_that_is_a_fields_name_grades_what_follows_it():
+    """Spider DEV 18, 19, 43 and held-out Spider train 664, 803, 2026-10-17: a stadium's Highest, Lowest and Average
+    attendance and a body builder's Total are fields named by words that ask a superlative or an aggregate. "the stadium
+    with the highest average attendance" showed Highest beside an AVG of Average, "the number of concerts happened in
+    the stadium with the highest capacity" showed Highest and counted nothing, and "the highest total score" and "in
+    descending order of total scores" totaled Total. Such a word grades the field named right after it and names no
+    field of its own; before a noun a superlative or an ordering grades, it is the field, the noun what it measures
+    (sql_expansion.cue_names); and "the number of" after a command asks for a count. Contrast: "the total snatch score"
+    totals Snatch, and "the average capacity" averages Capacity."""
+    stadium = {"name": "stadium", "columns": ["Stadium_ID", "Name", "Capacity", "Highest", "Lowest", "Average"],
+               "rows": [[1, "A", 1000, 900, 100, 950], [2, "B", 3000, 2000, 50, 400], [3, "C", 2000, 2600, 10, 800]]}
+    concert = {"name": "concert", "columns": ["concert_ID", "concert_Name", "Stadium_ID", "Year"],
+               "rows": [[1, "x", 1, 2014], [2, "y", 2, 2014], [3, "z", 2, 2015], [4, "u", 3, 2014], [5, "v", 3, 2015],
+                        [6, "w", 3, 2015]]}
+    builder = {"name": "body_builder", "columns": ["Body_Builder_ID", "People_ID", "Snatch", "Clean_Jerk", "Total"],
+               "rows": [[1, 1, 142, 175, 317], [2, 2, 137, 178, 315], [3, 3, 140, 162, 302]]}
+    people = {"name": "people", "columns": ["People_ID", "Name", "Height"],
+              "rows": [[1, "Jack", 182], [2, "Ty", 190], [3, "Sam", 175]]}
+    stadiums = ([stadium, concert], [{"from_table": "concert", "from_col": "Stadium_ID", "to_table": "stadium",
+                                      "to_col": "Stadium_ID"}])
+    builders = ([builder, people], [{"from_table": "body_builder", "from_col": "People_ID", "to_table": "people",
+                                     "to_col": "People_ID"}])
+    planner = _hermetic_planner()
+    for (tables, fks), question, expected in (
+            (stadiums, "What is the name and capacity for the stadium with the highest average attendance?", [["A", 1000]]),
+            (stadiums, "Find the number of concerts happened in the stadium with the highest capacity.", [[2]]),
+            (stadiums, "What is the average capacity of all stadiums?", [[2000]]),
+            (builders, "What are the clean and jerk score of the body builder with the highest total score?", [[175]]),
+            (builders, "What are the names of body builders in descending order of total scores?",
+             [["Jack"], ["Ty"], ["Sam"]]),
+            (builders, "What is the total snatch score?", [[419]])):
+        served = planner.serve(tables, question, fks)
+        assert served.get("valid") and [list(row) for row in served["result"]["rows"]] == expected, (
+            question, served.get("sql"), served.get("error"))
+
+
+def test_people_are_a_population_a_count_of_them_its_total():
+    """Spider DEV 728, 767, 2026-10-17: "How many people live in Gelderland district?" had no reading: no field is
+    named "people". The people counted are a population (sql_expansion.counted_population), and a count of what a
+    numeric field already counts is its total (counted_measure_columns, a COUNT cue's SUM option). Contrast: "How many
+    cities are in Gelderland district?" counts the cities; a counted noun naming a table counts its rows ("How many
+    purchase orders are listed?" over a numeric "Purchase order"), and a key is no count ("Count how many appointments
+    have been made in total." over Prescribes.Appointment, fresh holdout of Spider train 710)."""
+    country = {"name": "country", "columns": ["Code", "Name", "Continent", "Population", "GNP"],
+               "rows": [["AFG", "Afghanistan", "Asia", 22720000, 5976], ["NLD", "Netherlands", "Europe", 15864000, 371362],
+                        ["CHN", "China", "Asia", 1277558000, 982268], ["ABW", "Aruba", "North America", 103000, 828]]}
+    city = {"name": "city", "columns": ["ID", "Name", "CountryCode", "District", "Population"],
+            "rows": [[1, "Kabul", "AFG", "Kabol", 1780000], [5, "Amsterdam", "NLD", "Noord-Holland", 731200],
+                     [9, "Arnhem", "NLD", "Gelderland", 138020], [10, "Nijmegen", "NLD", "Gelderland", 152463]]}
+    fks = [{"from_table": "city", "from_col": "CountryCode", "to_table": "country", "to_col": "Code"}]
+    planner = _hermetic_planner()
+    for question, expected in (("How many people live in Gelderland district?", [[290483]]),
+                               ("How many cities are in Gelderland district?", [[2]])):
+        served = planner.serve([country, city], question, fks)
+        assert served.get("valid") and [list(row) for row in served["result"]["rows"]] == expected, (
+            question, served.get("sql"), served.get("error"))
+    appointment = {"name": "Appointment", "columns": ["AppointmentID", "Patient", "Start"],
+                   "rows": [[13216584, 100000001, "2008-04-24"], [26548913, 100000002, "2008-04-24"],
+                            [36549879, 100000001, "2008-04-25"]]}
+    prescribes = {"name": "Prescribes", "columns": ["Physician", "Patient", "Medication", "Appointment"],
+                  "rows": [[1, 100000001, 1, 13216584], [9, 100000004, 2, 86213939]]}
+    served = planner.serve([appointment, prescribes], "Count how many appointments have been made in total.", [
+        {"from_table": "Prescribes", "from_col": "Appointment", "to_table": "Appointment", "to_col": "AppointmentID"}])
+    assert served.get("valid") and served["result"]["rows"] == [[3]], (served.get("sql"), served.get("error"))
+
+
 def test_a_value_bounded_away_from_its_equality_is_contradictory():
     """Fresh holdout 189, 2026-10-17: "Provide the full names of employees earning more than the employee with id 163."
     was served as EMPLOYEE_ID = 163 AND EMPLOYEE_ID > 163, which matches no row: an equality bounds its column from both
@@ -8742,6 +8808,8 @@ TESTS = [
     test_routes_that_start_at_an_airport_leave_from_it,
     test_one_value_bounded_both_ways_is_two_branches,
     test_a_value_bounded_away_from_its_equality_is_contradictory,
+    test_a_cue_that_is_a_fields_name_grades_what_follows_it,
+    test_people_are_a_population_a_count_of_them_its_total,
     test_each_output_a_list_instruction_names_is_shown,
     test_a_count_of_a_fields_noun_counts_the_rows,
     test_a_value_two_fields_of_a_table_hold_is_its_display_fields,

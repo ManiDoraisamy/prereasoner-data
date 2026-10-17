@@ -1469,6 +1469,17 @@ def test_a_participle_naming_a_table_is_read_only_by_it():
                     "SELECT COUNT(DISTINCT Region_id) FROM affected_region") == (True, ())
 
 
+def test_a_member_after_a_tables_name_is_its_row():
+    """Held-out Spider train 197, 551, 627, 651, 785, 809, 918 and fresh holdout 15, 31, 76, 86, 314, 343, 544, 567,
+    730, 807, 888, 2026-10-17: every question saying "staff member" or "faculty member" was refused for "member" over
+    the query reading Staff or Faculty. "Member" after the name of a table the query reads names its rows, as "record"
+    does. Contrast: said alone it names no table the query reads."""
+    faculty = [{"name": "Faculty", "columns": ["FacID", "Lname", "Fname", "Rank", "Sex"],
+                "rows": [[1082, "Giuliano", "Mark", "Instructor", "M"], [1121, "Goodrich", "Michael", "Professor", "M"]]}]
+    assert _reading(faculty, "What are the last names of the faculty members?", "SELECT Lname FROM Faculty") == (True, ())
+    assert "members" in _reading(faculty, "What are the last names of the members?", "SELECT Lname FROM Faculty")[1]
+
+
 def test_a_list_of_fields_each_its_own_shows_each():
     """Held-out Spider train 920 and fresh holdout 709, 2026-10-17: "Give me the claim date, settlement date for all the
     claims whose claimed amount is larger than the average." showed the settlement date alone. A list whose items each

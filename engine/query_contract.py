@@ -312,7 +312,12 @@ def constraint_violations(question, query, graph):
                                for violation in _select_violations(question, branch, graph, query))) + uncounted
 
 
-_OPENS_WITH_COUNT = re.compile(r"\s*(?:how\s+many|count)\b", re.I)
+# A question asks how many by opening with it, or with a command or "what is" before "the number of": "Find the number
+# of concerts happened in the stadium with the highest capacity." showed the stadium's Highest attendance (Spider DEV
+# 43, 2026-10-17: no answer right on Spider DEV, held out or the fresh holdout lacked a count).
+_OPENS_WITH_COUNT = re.compile(
+    r"\s*(?:how\s+many|count|(?:(?:please\s+)?(?:find|give(?:\s+me)?|show(?:\s+me)?|return|tell\s+me|list|compute|"
+    r"display)|what\s+(?:is|are|was|were))\s+(?:the\s+|a\s+)?(?:total\s+)?number\s+of)\b", re.I)
 
 
 def _shows_count(query, quantities=frozenset()):
@@ -561,10 +566,18 @@ def _select_violations(question, query, graph, whole):
     for ref, required in repeated.items():
         if required > 1 and 0 < shown[ref] < required:
             violations.append(f"requested output occurrence is missing: {ref.name}")
+    # A superlative or aggregate word that is a field's name, grading the field named after it, asks for no field of its
+    # own: "the stadium with the highest capacity" asks for no Highest (sql_expansion.cue_names; Spider DEV 18, 19, 43,
+    # 2026-10-17).
+    from engine.sql_expansion import cue_names
+    grading = cue_names(question_tokens, graph).grading
     for label, refs in named_fields.items():
         if ' '+label+' ' not in table_masked:
             continue
         if any(set(label.split()) <= item for item in realized_items):
+            continue
+        places = [index for index, token in enumerate(question_tokens) if token == label]
+        if places and all(index in grading for index in places):
             continue
         # An aggregate word that is also a field's name (a stadium's "Average" attendance) is the aggregate when the
         # phrase it begins names another field the query aggregates that way: "singers above the average age"
@@ -1623,12 +1636,14 @@ def _witnessed_words(question, words, query, graph, observed, schema_words, alre
     # "the gender of each student" is Sex (Spider DEV 81, held-out train 335, 2026-10-12).
     # A word a read table or field spells is named, not witnessed: "country" by countries.country stays a name the
     # clarification of an unread word offers fields beside.
-    from engine.sql_expansion import column_matches
+    # So are the people a population the query reads counts: "How many people live in Gelderland district?" by
+    # Population (sql_expansion.counted_population).
+    from engine.sql_expansion import column_matches, counted_population
     tables = sorted(table for table in query.referenced_tables() if isinstance(table, str))
     spelled = {canon(part) for table in tables for part in name_words(table)}
     spelled |= {canon(part) for ref in used for part in name_words(ref.name)}
     out.update(word for word in set(words) - set(already) - spelled
-               if any(column_matches(ref.name, {word}) for ref in used))
+               if any(column_matches(ref.name, {word}) or counted_population(ref.name, (word,)) for ref in used))
     # A table whose name writes two words together is named by them: "the official language spoken in the country"
     # names countrylanguage and country around "spoken" (Spider DEV 768, 769, 770, 2026-10-17).
     from engine.closed_class import compound_parts
@@ -1685,10 +1700,13 @@ def _witnessed_words(question, words, query, graph, observed, schema_words, alre
                       for place in places):
         out.add("origin")
     # "Record" after the name of a table or field the query reads names its rows: "from the trip record", "teams that do
-    # not have match season record" (held-out Spider train 288, 598, 806, 2026-10-12).
-    places = [index for index, said in enumerate(words) if said == "record"]
-    if places and all(place and words[place - 1] in read_names for place in places):
-        out.add("record")
+    # not have match season record" (held-out Spider train 288, 598, 806, 2026-10-12). So does "member": "the staff
+    # member", "the faculty members" (held-out Spider train 197, 627, 651 and fresh holdout 76, 343, 544, 2026-10-17:
+    # every such question was refused for it).
+    for row_word in ("record", "member"):
+        places = [index for index, said in enumerate(words) if said == row_word]
+        if places and all(place and words[place - 1] in read_names for place in places):
+            out.add(row_word)
     places = [index for index, said in enumerate(words) if said == "one"]
     determiners = {canon(word) for word in _PRONOUN_DETERMINERS}
     if places and all(place and words[place - 1] in determiners for place in places):
@@ -2061,9 +2079,15 @@ def _realizes_grade(question_tokens, index, query, graph=None):
                     and not scope.unbound)
     cue = frequency_cue(question_tokens)
     if cue is not None and (index == cue.position or (index == cue.position + 1 and word in _FREQUENCY_WORDS)):
-        return any(select.order_by and isinstance(select.order_by[0].expression, Aggregate)
-                   and select.order_by[0].expression.function == "COUNT"
-                   and select.order_by[0].direction == cue.direction for select in selects)
+        # So is one ordering by a numeric field that counts what the noun after it names: "the 3 countries with the
+        # fewest people" by Population (sql_expansion.counted_population; Spider DEV 805, 2026-10-17).
+        from engine.sql_expansion import counted_population
+        noun = question_tokens[cue.position + 1:cue.position + 2]
+        return any(select.order_by and select.order_by[0].direction == cue.direction and (
+            (isinstance(select.order_by[0].expression, Aggregate) and select.order_by[0].expression.function == "COUNT")
+            or (isinstance(select.order_by[0].expression, ColumnRef) and select.order_by[0].expression.type.numeric
+                and counted_population(select.order_by[0].expression.name, noun)))
+            for select in selects)
     if word not in graded:
         return False
 

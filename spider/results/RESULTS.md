@@ -107,6 +107,27 @@ Artifacts: `%LOCALAPPDATA%/Temp/prereasoner-spider-review-20261013/`, tags `revi
 Incomplete intermediate runs are excluded. The review hardens ranking-number roles, output counts (preserving stored-count SUM),
 and table-owned full-name construction; it does not introduce another planner or model bundle.
 
+## A superlative or aggregate word that names a field grades what follows it; the people counted are a population; a member is its table's row: 685 → 691 strict, Gemini on 738 → 744, held out 433 → 436, fresh holdout 434 → 437 (2026-10-17)
+
+Same contract as below (RunPod CPU pods, the evaluator ingesting declared and discovered keys). Runs `v5` are this
+change against `76837a3`'s `v3` runs. The change is the `DECISIONS.md` entry of this title.
+
+- DEV, engine alone: 685 → **691 strict**; 6 wins (18, 19, 43, 415, 728, 767), no loss; wrong answers 140 → 137; 8
+  queries changed.
+- Held out: 433 → **436 strict**; 3 wins (664, 785, 803), no loss; wrong answers 228 → 228; 5 queries changed.
+- Fresh holdout: 434 → **437 strict**; 3 wins (76, 343, 567), no loss; wrong answers 230 → 233; 7 queries changed.
+- Gemini on: 738 → 744; 6 wins (18, 19, 43, 415, 728, 767), no loss; wrong answers 181 → 178; 8 queries changed.
+- Wrong answers this change makes of questions refused before, each wrong for another reason: "How many people live in
+  Asia, and what is the largest GNP among them?" totals the population grouped by GNP, the gate reading "the largest" by
+  any descending order (DEV 723, Gemini on too); and with "member" read, staff and faculty questions that need a set
+  query or another relationship are answered ("faculty members who do not advise any student", "the phone numbers of all
+  customers and all staff members", held out 627, 918; fresh holdout 31, 86, 888).
+- The measured change first also read "people" as Population wherever it was said: "the language spoken by the largest
+  percentage of people" showed Population (DEV 816, 820, wrong); it is read only counted or graded before release, which
+  also leaves DEV 805 ("the 3 countries with the fewest people") refused.
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-remote-eval-20261017/full_eval_{,heldout-,holdout2-}v5.json` and `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_v5-gemini-dirty.json`.
+
 ## Participles, verbs and measure nouns are read; "most" before a table counts its rows; a number after "id" is its key; a list shows each field; a bound away from an equality answers nothing: 663 → 685 strict, Gemini on 731 → 738, held out 415 → 433, fresh holdout 412 → 434 (2026-10-17)
 
 Same contract as below (RunPod CPU pods, the evaluator ingesting declared and discovered keys). Runs `v3` are this
