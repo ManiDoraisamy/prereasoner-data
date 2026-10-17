@@ -449,7 +449,9 @@ an arrival airport), when the column relating it carries the participle's travel
 (a comparative before "than" is a comparison with its operator, complemented when negated,
 `engine/sql_expansion.comparative_operator`; "the most common" orders groups by their count; any other superlative
 orders by, or takes the extreme of, a field in `engine/sql_extrema.superlative_direction`, so "the youngest" is the
-least age or the latest birth date, and "the maximum" after "with", "has" or "have the" selects the row holding it
+least age or the latest birth date and "the highest rank" the smallest one; an adjective naming its dimension ("the
+tallest", `sql_extrema.SUPERLATIVE_DIMENSIONS`) is read by a field of that dimension of the rows its noun names, where
+no field is named at it; and "the maximum" after "with", "has" or "have the" selects the row holding it
 as "the highest" does, `engine/sql_expansion.selects_extreme`); or when it is grammar, a counted noun naming the rows
 counted, or one of the closed lists
 the check keeps. A word that names only some other table's column is unread. The query also reads, though nothing of
@@ -460,8 +462,9 @@ other after; a word sharing a stem of five letters or more with a table or field
 Student_Enrolment), a word of an operation excepted; and "one" after a determiner ("the one whose name"). "Available"
 asks nothing where no table or field is named for availability, nor do "the results" a sort verb orders, and an
 ordering "from old to young" is read by an ordering in that grade's direction (`sql_extrema.span_grade`). A verb is
-read by the field its doer names ("won" by winner_id, `closed_class.agent_noun`), "corresponding" where the answer
-shows two outputs or more, "names" by the title of a table holding no name, and "time" by a date field it reads. A
+read by the field its doer names ("won" by winner_id, `closed_class.agent_noun`), "corresponding" where it pairs an
+output the answer shows ("corresponding to each", a shown field after it), "names" by the title of a table holding no
+name, and "time" by a date field it reads. A
 lower-case verb names no stored value in the search (`closed_class.predicate_words`), a measure's trailing unit is left
 unsaid in a field's name (`sql_expansion.naming_words`), and a yes/no flag field named by its words is the condition
 field = its true value (`sql_expansion.flag_comparisons`). Two words

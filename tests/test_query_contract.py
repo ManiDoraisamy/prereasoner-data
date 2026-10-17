@@ -978,7 +978,10 @@ def test_a_count_of_qualifying_groups_is_one_number_and_a_stated_total_is_compar
     per_group = "SELECT COUNT(*) FROM car_makers GROUP BY Country HAVING COUNT(*) > 1"
     from engine.sql_ast import Aggregate, ColumnRef, Comparison, Literal, SelectItem, SelectQuery, SQLType, Star
     from engine.sql_ast import SubquerySource
-    assert _violations(cars, asked, per_group) == ("the question counts the groups that qualify, not the rows in each",)
+    # It also counts the car makers referring to the countries counted (sql_expansion.counted_references).
+    assert _violations(cars, asked, per_group) == ("the count counts the car_makers rows referring to what the question "
+                                                   "counts", "the question counts the groups that qualify, not the rows "
+                                                   "in each")
     country = ColumnRef("car_makers", "Country", SQLType.INTEGER)
     count = Aggregate("COUNT", Star())
     qualifying = SelectQuery((SelectItem(country),), "car_makers", group_by=(country,),
@@ -1368,6 +1371,23 @@ def test_a_graded_word_is_read_in_its_direction_on_a_field_of_its_kind():
     # ascending on every field.
     served = _hermetic_planner().serve(tables, "List the names ordered by age from the oldest to the youngest.")
     assert [row[0] for row in served["result"]["rows"]] == ["Cara", "Alice", "Bob"], served.get("sql")
+
+
+def test_an_adjective_after_most_is_read_in_its_direction():
+    """Held-out Spider train 110, 355, 956, 2026-10-17: "the most expensive phone" ordered by Price was refused for
+    "expensive", and the reading added for it read "the youngest person" over a descending age as well. The adjective
+    after "most" or "least" is read by a field of its dimension ordered in that direction; a superlative of its own
+    keeps its own reading."""
+    products = [{"name": "product", "columns": ["product_id", "product_name", "price"],
+                 "rows": [[1, "Desk", 300], [2, "Lamp", 40], [3, "Chair", 120]]}]
+    cheapest = "List the names of the 2 least expensive products."
+    assert _reading(products, cheapest, "SELECT product_name FROM product ORDER BY price LIMIT 2") == (True, ())
+    assert _reading(products, cheapest, "SELECT product_name FROM product ORDER BY price DESC LIMIT 2") == (
+        False, ("expensive",))
+    dearest = "What is the name of the most expensive product?"
+    assert _reading(products, dearest, "SELECT product_name FROM product ORDER BY price DESC LIMIT 1") == (True, ())
+    assert _reading([PEOPLE_TABLE], "What is the name of the youngest person?",
+                    "SELECT Name FROM people ORDER BY Age DESC LIMIT 1") == (False, ("youngest",))
 
 
 PEOPLE_TABLE = {"name": "people", "columns": ["Person_ID", "Name", "Country", "Age"],

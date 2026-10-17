@@ -20,8 +20,8 @@ from engine.sql_ast import (
 from engine.sql_dates import period_grouping
 from engine.sql_extrema import MAX_CUES, MIN_CUES
 from engine.sql_expansion import (
-    FUNCTION_WORDS, OutputRequest, asked_cues, by_groups, counted_noun_tables, field_numbers, output_requests,
-    request_fields, share_cue, share_requested, words,
+    FUNCTION_WORDS, OutputRequest, asked_cues, by_groups, count_preserves_population, counted_noun_tables,
+    field_numbers, flag_comparisons, flag_fields, output_requests, request_fields, share_cue, share_requested, words,
 )
 from engine.sql_expansion import tokens as expansion_tokens
 from engine.sql_candidate import ScoredQuery
@@ -217,7 +217,8 @@ class CandidateRanker:
             features.append((f"projection_role:{_column_label(column)}", value))
             # A field the question names only to filter on is not asked for: "the name and results of the battles when
             # the bulgarian commander is not 'Boril'" showed every row's commander, Boril excluded (Spider DEV 497).
-            if filter_only(column, query, roles.tokens):
+            if filter_only(column, query, roles.tokens) or flag_condition_only(column, query, roles.tokens,
+                                                                                self.schema):
                 features.append((f"filter_only_output:{_column_label(column)}", -8.0))
             # So is one it names only to order the rows by: "the first name of students in the descending order of
             # age" showed each age beside the name (held-out Spider train 736, 2026-10-12).
@@ -257,6 +258,28 @@ class CandidateRanker:
         # right one (DEV 324, 962). A ranking keeps its number of rows whatever repeats.
         if not query.distinct and repeats_shown_rows(self.schema, query, roles.tokens):
             features.append(("repeated_rows", -3.0))
+        # A listing of one field's values, where the question names no table whose rows they are, shows each value
+        # once: "Show all product colors", "What are all the payment methods?" (held out 487, 644, 693, 849,
+        # 2026-10-17: each listed every row's value). The values of each row ("the location of each shop", "the
+        # names of all singers", a table's display field or key) stay one per row. Only the distinct listing is
+        # credited: a listing ordered by the field may have no distinct twin (Spider DEV 580).
+        # A field said with its owner ("the name of the mills") is that table's: "What are the distinct name of the mills
+        # built by the architects ...?" showed the architects' names (held-out Spider train 142, 2026-10-17).
+        owned = owner_phrase_fields(self.schema, select_columns, roles.tokens)
+        for column in owned:
+            features.append((f"owner_phrase:{_column_label(column)}", 1.0))
+        # Of two keys a table holds to one other table, the join is the one the question names: "How many different
+        # addresses do the students currently live?" joins Students.current_address_id, not permanent_address_id
+        # (Spider DEV 577, 2026-10-17: the two tied).
+        if isinstance(query, SelectQuery):
+            for join in query.joins:
+                for pair in join.predicates:
+                    side = named_parallel_key(self.schema, pair, roles.tokens, self.relations)
+                    if side is not None:
+                        features.append((f"named_key:{side[0]}", 0.5 if side[1] else -0.5))
+        values = listed_values(self.schema, query, roles.tokens)
+        if values is not None and query.distinct:
+            features.append((f"listed_values:{_column_label(values)}", 1.0))
 
         # A field's name the question says once binds one field: "the name of the employee who got the highest one
         # time bonus" is the employee's Name, not also the Name of a shop joined for nothing else (Spider DEV 279,
@@ -285,6 +308,19 @@ class CandidateRanker:
                 owner = set(_schema_tokens(column.name)[:-1]) | set(_schema_tokens(column.table))
                 if owner and not owner & set(said):
                     features.append((f"unsaid_owner:{_column_label(column)}", -6.0))
+        # A key shown from a table the question never names, where the table it refers to is named and read, is that
+        # table's own key read through a join that keeps only the rows referred to: "the ids of templates with
+        # template type code PP or PPT" showed Documents.Template_ID, the templates some document uses (Spider DEV 323,
+        # 2026-10-17: it tied the templates' own Template_ID and won by name).
+        if isinstance(query, SelectQuery) and isinstance(query.from_table, str):
+            read = {query.from_table, *(join.table for join in query.joins)}
+            references = {child: parent for key in self.schema.foreign_keys for child, parent in key.column_pairs}
+            for column in dict.fromkeys(select_columns):
+                parent = references.get(column)
+                if (parent is not None and parent.table in read and parent.table != column.table
+                        and not {canon(word) for word in name_words(column.table)} <= set(said)
+                        and {canon(word) for word in name_words(parent.table)} <= set(said)):
+                    features.append((f"referring_copy:{_column_label(column)}", -1.0))
 
         if roles.id_instead_of_name:
             id_columns = [column for column in select_columns + group_columns if is_surrogate_key(column.name)]
@@ -312,9 +348,28 @@ class CandidateRanker:
                 # where the noun only names a table further on ("How many sections does course ACCT-211 have?").
                 features.append((f"count_target:{_column_label(operand)}",
                                  1.5 if aligned else -1.5 if roles.counted_heads - {operand.table} else 0.0))
+                # The different rows a noun names are told apart by their key, or a key referring to it, not by a
+                # detail field: "How many different addresses do the students currently live?" counts address ids,
+                # not other_address_details (Spider DEV 577, 2026-10-17).
+                referred = {child: parent for key in self.schema.foreign_keys for child, parent in key.column_pairs}
+                keyed = (is_surrogate_key(operand.name) and operand.table in roles.counted_heads) or (
+                    operand in referred and referred[operand].table in roles.counted_heads
+                    and (named_parallel_key(self.schema, (operand, referred[operand]), roles.tokens, self.relations)
+                         or ("", True))[1])
+                if aggregate.distinct and keyed:
+                    features.append((f"count_distinct_key:{_column_label(operand)}", 0.5))
             elif targets:
                 features.append((f"aggregate_target:{aggregate.function}:{_column_label(operand)}",
                                  3.0 if operand in targets else -3.5))
+
+        # So are those a count ranking the groups counts: "Which year has most number of concerts?" ranks the years by
+        # their concerts, not by the singer_in_concert rows a join repeats each concert in (Spider DEV 26, 2026-10-17:
+        # the two readings tied within 0.05).
+        if (isinstance(query, SelectQuery) and not aggregates
+                and any(isinstance(term.expression, Aggregate) and term.expression.function == "COUNT"
+                        and isinstance(term.expression.operand, Star) for term in query.order_by)
+                and any(count_preserves_population(query, table, self.schema) for table in roles.counted_heads)):
+            features.append(("count_rows:counted_table", 1.5))
 
         from engine.calculations.registry import calculation_rank_features
         features.extend(calculation_rank_features(roles.question, query, self.schema, self.signals))
@@ -746,11 +801,18 @@ def filter_only(column: ColumnRef, query: SelectQuery, tokens: Sequence[str]) ->
     comparison: the value, or a comparison word, follows each place it names the field. The ranker does not prefer
     showing such a field, and the search adds a listing showing the rows' display field beside one that shows only such
     fields (sql_search._display_twin)."""
+    name = [canon(word) for word in name_words(column.name)]
+    # A key the query joins on, named as the field of another table it compares, says only that comparison: "flight
+    # numbers of Airline 'United Airlines'" compares airlines.Airline, and flights.Airline, the key of that name, shows
+    # the one airline's id beside each flight (Spider DEV 245, 246, 2026-10-17).
+    keyed = isinstance(query, SelectQuery) and any(
+        column in pair for join in query.joins for pair in join.predicates)
     values = [comparison.right for comparison in _comparisons(query.where)
-              if comparison.left == column and isinstance(comparison.right, Literal)]
+              if isinstance(comparison.right, Literal) and (comparison.left == column or (
+                  keyed and isinstance(comparison.left, ColumnRef) and comparison.left.table != column.table
+                  and [canon(word) for word in name_words(comparison.left.name)] == name))]
     if not values:
         return False
-    name = [canon(word) for word in name_words(column.name)]
     said = [index for index, token in enumerate(tokens) if name and token == name[-1]]
     value_words = {canon(word) for value in values for word in words(str(value.value))}
     comparing = {"is", "not", "named", "called", "than", "over", "under", "above", "below", "equal", "between",
@@ -767,6 +829,101 @@ def filter_only(column: ColumnRef, query: SelectQuery, tokens: Sequence[str]) ->
                     or before & value_words or before & {"between", "than"})
 
     return bool(said) and all(compared(index) for index in said)
+
+
+def owner_phrase_fields(schema: SchemaGraph, columns: Sequence[ColumnRef], tokens: Sequence[str]) -> tuple[ColumnRef, ...]:
+    """The shown fields the question says followed by "of" and their own table's name ("the name of the mills"), where
+    another shown or joinable table holds a field of that name too: the owner phrase says whose field it is."""
+    found = []
+    for column in dict.fromkeys(columns):
+        name = tuple(canon(word) for word in name_words(column.name))
+        owner = tuple(canon(word) for word in name_words(column.table))
+        if not name or not owner:
+            continue
+        rivals = [other for other in schema.columns if other.ref.table != column.table
+                  and tuple(canon(word) for word in name_words(other.ref.name)) == name]
+        if not rivals:
+            continue
+        for index in range(len(tokens) - len(name)):
+            if tuple(tokens[index:index + len(name)]) != name or tokens[index + len(name)] != "of":
+                continue
+            start = index + len(name) + 1
+            while start < len(tokens) and tokens[start] in {"the", "all", "each", "every", "a", "an"}:
+                start += 1
+            if tuple(tokens[start:start + len(owner)]) == owner:
+                found.append(column)
+                break
+    return tuple(found)
+
+
+def named_parallel_key(schema: SchemaGraph, pair, tokens: Sequence[str],
+                       relations: Mapping[str, tuple]) -> tuple[str, bool] | None:
+    """For a join on one of several keys a table holds to the same other table: (the key, True) where the question
+    says a word of its name the others lack and none of theirs, (the key, False) where it says only another's. None
+    where the join's key has no such sibling or the question names none of them."""
+    from engine.sql_expansion import says_in_another_form
+    keys = [(child, parent) for key in schema.foreign_keys for child, parent in key.column_pairs]
+    child = next((left for left, right in (pair, pair[::-1]) if (left, right) in keys), None)
+    # A relation's two keys are read by its owner and its named side (relation_sides), not here.
+    if child is None or child.table in relations:
+        return None
+    parent = dict(keys)[child]
+    siblings = [other for other, target in keys if other != child and other.table == child.table
+                and target.table == parent.table]
+    if not siblings:
+        return None
+
+    def words(column):
+        return {canon(word) for word in name_words(column.name)} - SURROGATE_KEY_WORDS - {
+            canon(word) for word in name_words(parent.table)}
+
+    def said(column, others):
+        own = words(column) - set().union(*(words(other) for other in others))
+        return any(says_in_another_form(token, word, frozenset()) or token == word for token in tokens for word in own)
+
+    mine, theirs = said(child, siblings), any(said(other, [child]) for other in siblings)
+    if mine and not theirs:
+        return f"{child.table}.{child.name}", True
+    if theirs and not mine:
+        return f"{child.table}.{child.name}", False
+    return None
+
+
+def listed_values(schema: SchemaGraph, query: Query, tokens: Sequence[str]) -> ColumnRef | None:
+    """The one field ``query`` lists the values of, where the question asks for that field's values and not for rows
+    of its table (sql_rank, listed_values): a plain listing of a repeating field that is neither its table's key nor
+    its display field, in a question naming no table as the rows' owner after "of" or "each"."""
+    if (not isinstance(query, SelectQuery) or not isinstance(query.from_table, str) or query.joins
+            or query.group_by or query.having is not None or query.limit is not None or len(query.select) != 1
+            or not isinstance(query.select[0].expression, ColumnRef)):
+        return None
+    column = query.select[0].expression
+    displays = schema.display_columns(column.table)
+    if is_surrogate_key(column.name) or (displays and displays[0] == column) or not schema.repeats((column,)):
+        return None
+    for index, token in enumerate(tokens):
+        if token not in {"of", "each", "every", "per"}:
+            continue
+        after = [word for word in tokens[index + 1:index + 4] if word not in {"the", "all", "each", "every", "its"}]
+        if any(after[:len(name)] == list(name) for table in schema.tables
+               if (name := tuple(canon(word) for word in name_words(table)))):
+            return None
+    return column
+
+
+def flag_condition_only(column: ColumnRef, query: Query, tokens: Sequence[str], schema: SchemaGraph) -> bool:
+    """Whether ``query`` keeps the rows where the flag ``column`` is true and the question says the flag only as that
+    condition (sql_expansion.flag_comparisons): "the official language spoken in the country whose head of state is
+    Beatrix" is the Language of rows with IsOfficial = 'T', not also that constant 'T' (Spider DEV 768, 769,
+    2026-10-17)."""
+    if not isinstance(query, SelectQuery):
+        return False
+    read = [comparison for start, end, comparison in flag_comparisons(tokens, schema) if comparison.left == column]
+    if not read or not set(read) & set(_comparisons(query.where)):
+        return False
+    words = next(named for field, _, named in flag_fields(schema) if field == column)
+    said = [start for start in range(len(tokens) - len(words) + 1) if tuple(tokens[start:start + len(words)]) == words]
+    return len(said) == len(read)
 
 
 def repeats_shown_rows(schema: SchemaGraph, query: Query, tokens: Sequence[str]) -> bool:

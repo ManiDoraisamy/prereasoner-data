@@ -290,6 +290,10 @@ def constraint_violations(question, query, graph):
     branch. Each branch once answered for the whole question, so every set-query answer to such a question was
     refused (Spider DEV, 2026-10-10)."""
     from engine.sql_ast import SelectQuery
+    from engine.sql_expansion import population_presence_reading, population_presence_witness
+    presence = population_presence_reading(question, graph)
+    if presence is not None and not population_presence_witness(query, presence):
+        return ("the requested common values require independently present populations",)
     branches = tuple(_select_branches(query))
     if not all(isinstance(branch, SelectQuery) for branch in branches):
         return ("unsupported interpretation scope",)
@@ -381,10 +385,21 @@ def _select_violations(question, query, graph, whole):
     if unreadable:
         violations.append(unreadable)
     question_tokens = tokens(question)
-    from engine.sql_expansion import count_preserves_population, scalar_counted_table
+    from engine.sql_expansion import (
+        count_noun_starts, count_preserves_population, counted_field_values, counted_references, scalar_counted_table,
+    )
     population = scalar_counted_table(query, question_tokens, graph)
     if population is not None and not count_preserves_population(query, population, graph):
         violations.append(f"the scalar count does not count rows of {population} at their own grain")
+    for _, table in counted_references(query, question, graph)[:1]:
+        violations.append(f"the count counts the {table} rows referring to what the question counts")
+    # A count of a field's values counts each value once: "How many continents speak Chinese?" (counted_field_values).
+    valued = {column for start in count_noun_starts(question, graph)
+              for column in counted_field_values(question_tokens, graph, start)}
+    for aggregate in aggregates((query.select, query.order_by, query.having)):
+        if aggregate.function == "COUNT" and not aggregate.distinct and aggregate.operand in valued:
+            violations.append(f"the count counts the rows holding {aggregate.operand.name}, not its values")
+            break
     phrases = served_date_phrases(question, question_tokens, graph)
     violations.extend(relational_operator_evidence(question, query, graph)[1])
     # The spreadsheet importer preserves duplicate headers with their original
@@ -792,10 +807,15 @@ def _select_violations(question, query, graph, whole):
                     violations.append("requested extremum or ordering is missing")
                 continue
             violations.append("requested aggregate is missing: " + function)
-    for pattern, function, direction in ((r"\b(?:highest|largest)\b", "MAX", "DESC"),
-                                         (r"\b(?:lowest|smallest)\b", "MIN", "ASC")):
+    # Its direction is the field's (sql_extrema.superlative_direction): the highest rank is the smallest number.
+    from engine.sql_extrema import superlative_direction
+    for pattern, function, cue in ((r"\b(?:highest|largest)\b", "MAX", "highest"),
+                                   (r"\b(?:lowest|smallest)\b", "MIN", "lowest")):
         if re.search(pattern, text) and function not in aggregates:
-            if not query.order_by or query.order_by[0].direction != direction:
+            first = query.order_by[0] if query.order_by else None
+            direction = (superlative_direction(cue, first.expression) if first is not None
+                         and isinstance(first.expression, ColumnRef) else "DESC" if function == "MAX" else "ASC")
+            if first is None or first.direction != direction:
                 violations.append("requested extremum or ordering is missing")
     # The rows a ranking keeps are read where the search reads them (sql_extrema.ranking_cutoff): "the top 3", "the two
     # people with the largest age".
@@ -879,10 +899,19 @@ def _select_violations(question, query, graph, whole):
     # word takes is the measure the groups are ranked by, not a grain: "top 2 cities by total
     # amount" groups the cities, and only the queries also grouped by amount met it (an owner's
     # replay, 2026-10-10: "Lyon 200, Lyon 160" for Lyon 470, Paris 270).
+    # A "by" naming who acted asks for no grain either (sql_expansion.by_groups): "How many car models were produced
+    # by the maker with full name American Motor Company?" counts that maker's models (Spider DEV 147, 148,
+    # 2026-10-17: every count was refused for not grouping by maker).
     lowered = question.casefold()
     grouped = set(query.group_by)
+    from engine.sql_expansion import by_groups, word_spans, words
+    spans = word_spans(question)
+    starts = {span[0]: index for index, span in enumerate(spans)} if len(spans) == len(question_tokens) else {}
     for match in re.finditer(r"\b(?:by|per|each)\s+([^?!.;,]+)", lowered):
         if re.search(r"\b(?:sort|sorted|order|ordered|rank|ranked)\s+$", lowered[:match.start()]):
+            continue
+        if match[0].startswith("by") and match.start() in starts and not by_groups(
+                question_tokens, words(question), starts[match.start()]):
             continue
         tail = re.split(r"\b(?:sort|sorted|order|ordered|rank|ranked)\s+by\b|\b(?:where|whose|having)\b",
                         match[1])[0]
@@ -963,6 +992,23 @@ def _name_vocabulary(names):
 # The words of an instruction to order the rows ("sorted by", "in descending order"); "alphabetical" says more and is
 # read apart (_orders_alphabetically).
 _ORDERING_WORDS = frozenset({"order", "ordered", "sort", "sorted", "ascending", "descending"})
+
+
+def _ordering_columns(node):
+    """The (field, direction) pairs every ORDER BY in ``node`` orders by, subqueries included (a ranking keeps its
+    order there)."""
+    from dataclasses import fields, is_dataclass
+    from engine.sql_ast import SelectQuery, column_refs
+    found = set()
+    if isinstance(node, SelectQuery):
+        found.update((ref, term.direction) for term in node.order_by for ref in column_refs((term.expression,)))
+    if is_dataclass(node):
+        for part in fields(node):
+            found |= _ordering_columns(getattr(node, part.name))
+    elif isinstance(node, (tuple, list)):
+        for item in node:
+            found |= _ordering_columns(item)
+    return found
 
 
 def _orders_rows(query):
@@ -1193,6 +1239,11 @@ def read_question(question, candidate, graph, *, calculation_satisfied=False):
                           if realizes_substring(candidate.query, request.text, request.subject)
                           for cue in request.cues)
     ordinary_words.update(canon(word) for word in action_words(question) if canon(word) not in observed)
+    # The presence words of two populations' common values are read by that set ("living there").
+    from engine.sql_expansion import population_presence_reading, population_presence_witness
+    presence = population_presence_reading(question, graph)
+    if presence is not None and population_presence_witness(candidate.query, presence):
+        ordinary_words.update(tokens(question))
     # A verb is read by the field or table its doer names, where the query uses one: "players who won in both 2013
     # and 2016" by matches.winner_id, not by loser_id (Spider DEV 448, 451, 452, 2026-10-17: once "won" named no
     # surname 'Won', only the winner's reading was right). It never makes another word required.
@@ -1205,9 +1256,30 @@ def read_question(question, candidate, graph, *, calculation_satisfied=False):
     # of paragraphs corresponding to each", "the cost of each treatment and the corresponding treatment type
     # description" (Spider DEV 368, 882, 948, 2026-10-17: each right answer was refused for it). An answer showing one
     # output pairs nothing, so "the lowest version number, along with its corresponding template type code" over the
-    # version alone stays refused (DEV 336, 848, 884).
-    if len(getattr(candidate.query, "select", ())) >= 2:
-        ordinary_words.update({"corresponding", "correspond"})
+    # version alone stays refused (DEV 336, 848, 884). The word pairs an output only where it says one: "corresponding
+    # to each" after it, or the words after it naming a field the answer shows or, for a count it shows, "number", or
+    # "corresponding to" the table whose fields it shows ("the ids and details corresponding to projects", fresh holdout
+    # 988); a misspelling ("corresonding", Spider DEV 841) is the word. "Two
+    # or more corresponding books", "its corresponding problem id" over a product id and "corresponding to the
+    # customer with the highest credit score" are read by no answer (held out 111, 223, 400, 430, 809, 844, 2026-10-17:
+    # each was answered wrong once the word was read wherever two outputs were shown).
+    selected = getattr(candidate.query, "select", ())
+    if len(selected) >= 2:
+        shown_words = {canon(word) for item in selected if isinstance(item.expression, ColumnRef)
+                       for word in lexical_words(item.expression.name)}
+        if any(isinstance(item.expression, Aggregate) and item.expression.function == "COUNT" for item in selected):
+            shown_words |= {"number", "count"}
+        shown_tables = {canon(word) for item in selected if isinstance(item.expression, ColumnRef)
+                        for word in lexical_words(item.expression.table)}
+        question_words = tokens(question)
+        for index, word in enumerate(question_words):
+            if word not in {"corresponding", "correspond"} and not _misspells(word, {"corresponding"}):
+                continue
+            after = [later for later in question_words[index + 1:index + 4] if later not in {"the", "its", "their"}]
+            if (tuple(question_words[index + 1:index + 3]) in {("to", "each"), ("to", "it"), ("to", "them")}
+                    or (after and after[0] in shown_words)
+                    or (after[:1] == ["to"] and after[1:2] and after[1] in shown_tables)):
+                ordinary_words.add(word)
     # The names of rows whose table holds no name but a title are their titles: "What are the names of all cartoons
     # directed by Ben Jones?" shows Cartoon.Title (Spider DEV 588, 2026-10-17: the right answer was refused for
     # "names"). A table that also holds a name field keeps "names" for it.
@@ -1320,6 +1392,27 @@ def read_question(question, candidate, graph, *, calculation_satisfied=False):
         reverse = bool(set(words) & REVERSE_ORDER_WORDS)
         if set(words) & ALPHABETICAL_WORDS and _orders_alphabetically(candidate.query, reverse):
             ordinary_words.update(ALPHABETICAL_WORDS | (REVERSE_ORDER_WORDS if reverse else frozenset()))
+        # A superlative's adjective is read by the field it measures where the query orders by it: "the most expensive
+        # phone" by Price (held-out Spider train 110, 355, 956, 2026-10-17: each right answer was refused for
+        # "expensive"; sql_extrema.SUPERLATIVE_DIMENSIONS).
+        from engine.sql_extrema import MAX_CUES, MIN_CUES, SUPERLATIVE_DIMENSIONS, superlative_direction
+        from engine.sql_expansion import semantic_tokens
+        from engine.sql_schema import name_words
+        # The field must be one of the rows the noun after it names, where it names a table: "the most recent
+        # appointment" ordered by a prescription's date is not read. It is the adjective after "most" or "least",
+        # ordered in that direction: "the least expensive invoices" is no descending total. A superlative of its own
+        # ("the youngest") is read in its direction below (_realizes_grade).
+        ordered = _ordering_columns(candidate.query)
+        for index, word in enumerate(words):
+            dimensions = SUPERLATIVE_DIMENSIONS.get(word, frozenset())
+            cue = words[index - 1] if index and words[index - 1] in {"most", "least"} else None
+            if not dimensions or cue is None or word in MAX_CUES or word in MIN_CUES:
+                continue
+            noun = set(words[index + 1:index + 4])
+            owners = {table for table in graph.tables if {canon(part) for part in name_words(table)} & noun}
+            if any(dimensions & set(semantic_tokens(column.name)) and (not owners or column.table in owners)
+                   and superlative_direction(cue, column) == direction for column, direction in ordered):
+                ordinary_words.add(word)
     # A graded word is read when the query realizes it at every place the question says it (_realizes_grade): "the
     # youngest singer" by an ascending age, "the most common citizenship" by groups ordered by their count.
     from engine.sql_extrema import MAX_CUES, MIN_CUES
@@ -1535,10 +1628,10 @@ def _witnessed_words(question, words, query, graph, observed, schema_words, alre
             out.add(word)
     read_names = {canon(part) for table in tables for part in name_words(table)}
     read_names |= {canon(part) for ref in used for part in name_words(ref.name)}
-    from engine.sql_expansion import entity_words, says_in_another_form
+    from engine.sql_expansion import entity_words, inflects, says_in_another_form
     entities = entity_words(graph)
     for word in set(words) - set(already):
-        if any(says_in_another_form(word, name, entities) for name in read_names):
+        if any(says_in_another_form(word, name, entities) or inflects(word, name) for name in read_names):
             out.add(word)
     # Spider DEV 397, 852, 853 and held-out Spider train 404, 609, 667, 850, 892, 2026-10-12: right answers were refused
     # for these words.
@@ -1923,7 +2016,7 @@ def realizes_numeric_comparisons(question, candidate, graph, *, exclude_position
         Aggregate, BinaryExpr, BooleanExpr, ColumnRef, Comparison, DatePart, SelectQuery, SetQuery, Star, SubquerySource,
     )
     from engine.sql_expansion import (
-        ExpansionSupport, count_admits, count_requirement_operator, counted_thresholds, tokens,
+        ExpansionSupport, count_admits, count_requirement_operator, counted_thresholds, name_tokens, tokens,
     )
     from engine.sql_extrema import MAX_CUES, MIN_CUES
     from engine.sql_search import _number
@@ -1958,9 +2051,12 @@ def realizes_numeric_comparisons(question, candidate, graph, *, exclude_position
 
     def counted(item, tables, grouped, targets):
         """A threshold on a number of rows ("countries with more than 2 car makers") is realized by a HAVING COUNT
-        over groups of a query that reads the counted rows' table."""
+        over groups of a query that reads the counted rows' table. A field holding the number itself is compared,
+        not counted: "markets with number of shops greater than 50" is Num_of_shops > 50 (held out 832, 2026-10-17:
+        a count of phone rows over 50 was accepted)."""
         return (grouped and isinstance(item.left, Aggregate) and item.left.function == "COUNT"
-                and any(target.table in tables for target in targets))
+                and any(target.table in tables and name_tokens(target.name)[:1] not in (("number",), ("num",), ("no",))
+                        for target in targets))
 
     def number(value):
         try:

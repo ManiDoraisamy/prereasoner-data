@@ -7,8 +7,8 @@ select a reading that was never proposed, so this expander adds, for each pooled
 actually use, (b) single-binding variants when a duplicate-named column is projected from
 several tables, (c) drop-one and drop-two column reductions (value-superset misses),
 (d) add-one-column variants from question-linked columns of already-joined tables
-(value-subset misses), (e) aggregate-operand swaps to question-linked same-table columns,
-and (f) a DISTINCT toggle — each re-reduced to its minimal join tree. A mentioned table can
+(value-subset misses), (e) aggregate-operand swaps to question-linked same-table columns, and a count's swap
+from a referring key to the key it refers to, and (f) a DISTINCT toggle — each re-reduced to its minimal join tree. A mentioned table can
 be a semantic restrictor ("names of poker players" joins poker_player to FILTER people),
 which lexical signals cannot separate from join noise, so every variant carries a generation
 penalty: pooled for selection, never outranking its parent on the prior alone. Converting
@@ -61,12 +61,13 @@ class ParsimonyQueryExpander(ExpansionSupport):
                 )
             return linked_cache[table]
 
+        references = {child: parent for key in self.schema.foreign_keys for child, parent in key.column_pairs}
         generated: list[ScoredQuery] = []
         for candidate in candidates:
             query = candidate.query
             if not isinstance(query, SelectQuery) or not _is_flat(query):
                 continue
-            for projected, binding_evidence in _projection_variants(query, linked):
+            for projected, binding_evidence in _projection_variants(query, linked, references):
                 reduced = self._minimal_tree(projected)
                 if reduced is None:
                     continue
@@ -132,8 +133,10 @@ def _replaced_select(query: SelectQuery, select, group_by=None, distinct=None):
     )
 
 
-def _projection_variants(query: SelectQuery, linked: Callable[[str], tuple[ColumnRef, ...]]):
-    """Yield the query plus bounded single-edit projection variants.
+def _projection_variants(query: SelectQuery, linked: Callable[[str], tuple[ColumnRef, ...]],
+                         references: dict[ColumnRef, ColumnRef]):
+    """Yield the query plus bounded single-edit projection variants. ``references`` maps each referring key to the
+    key it refers to.
 
     Families and their measured motivation are in the module docstring; yield order decides
     which derivation's evidence survives SQL dedup, most-specific first."""
@@ -214,6 +217,17 @@ def _projection_variants(query: SelectQuery, linked: Callable[[str], tuple[Colum
             yield (
                 _replaced_select(query, (swapped if it is item else it for it in query.select)),
                 (f"aggregate:operand:{column.table}.{column.name}",),
+            )
+        # A count of a key referring to a joined table counts the referred rows at their own key, where the referring
+        # rows need not be read: COUNT(car_names.Model) beside model_list is COUNT(model_list.Model)
+        # (sql_expansion.counted_references; Spider DEV 115, 148, 2026-10-17).
+        referred = references.get(operand)
+        joined = {query.from_table, *(join.table for join in query.joins)}
+        if item.expression.function == "COUNT" and referred is not None and referred.table in joined:
+            swapped = SelectItem(Aggregate("COUNT", referred, item.expression.distinct))
+            yield (
+                _replaced_select(query, (swapped if it is item else it for it in query.select)),
+                (f"aggregate:operand:{referred.table}.{referred.name}",),
             )
     # DISTINCT toggle for plain projections
     if not aggregate_items and plain_items:

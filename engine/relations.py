@@ -104,8 +104,15 @@ def _unique(keys):
     return len(nn) >= 2 and len(nn) == len(keys) and len(set(nn)) == len(nn)     # unique (exact), no nulls
 
 
-def _name_boost(ax, bname, by):
-    # Import at use time: sql_schema itself uses this module's layout helper.
+def _entity_words(tables):
+    """The last word of each table's name: what a key's role word names when it names a table."""
+    from engine.sql_schema import canon, name_words
+    return frozenset(words[-1] for table in tables if (words := [canon(word) for word in name_words(table["name"])]))
+
+
+def _name_boost(ax, bname, by, entities):
+    # Import at use time: sql_schema itself uses this module's layout helper. ``entities`` are the tables' names
+    # (_entity_words).
     from engine.sql_schema import SURROGATE_KEY_WORDS, canon, name_words
 
     source = tuple(canon(word) for word in name_words(ax))
@@ -143,10 +150,13 @@ def _name_boost(ax, bname, by):
     # namespaces shared by unrelated tables, so equality of their cells is not.
     same_key = source == target and bool(source) and any(word not in key_words for word in source)
     evidence = 0.35 * role_match + 0.10 * same_key
-    if not evidence and suffix and target_role and target_role[-1:] == entity[-1:]:
+    if (not evidence and suffix and target_role and target_role[-1:] == entity[-1:] and role
+            and role[-1] not in entities):
         # A key named for the role it plays references the entity's own named key: stores.Manager_ID ->
         # employees.Employee_ID (the shipped regression gate, regress/offline_cases.py). The value inclusion
-        # decides, and only a repeating column may (a unique one needs the stronger evidence of its name).
+        # decides, and only a repeating column may (a unique one needs the stronger evidence of its name). A role
+        # naming another table is that table's: Products.parent_product_id is a product, not a customer
+        # (held-out 546, 2026-10-17: its integers fell inside Customers.customer_id).
         return 0.15
     return evidence + (0.15 if evidence and source[-1] in SURROGATE_KEY_WORDS else 0.0)
 
@@ -184,6 +194,7 @@ def _discover_fks(tables, min_incl):
         return types[(id(table), index)]
 
     fks = []
+    entities = _entity_words(tables)
     for A in tables:
         for axi, ax in enumerate(A["columns"]):
             # The row-free conditions first; every condition below is required, so their order changes
@@ -203,7 +214,7 @@ def _discover_fks(tables, min_incl):
                 # unrelated unique key (qty -> warehouse.wh_id; a 0/1 flag -> a {0,1} lookup; severity -> priority.level)
                 # is faked into an FK. Require some name evidence in BOTH cases; a UNIQUE (1:1) child needs a STRONGER
                 # signal, since two independent keys overlap by chance more readily than a repeating column does.
-                nb = _name_boost(ax, bname, by)
+                nb = _name_boost(ax, bname, by, entities)
                 if nb > 0.0:
                     candidates.append((bname, by, bset, B, nb))
             if not candidates:
@@ -285,11 +296,12 @@ def relate(tables, explicit_fks=()):
     signatures = {_fk_signature(edge) for edge in explicit}
     # How strongly each declared local key's name names the parent it is declared to reference.
     declared_sources = {}
+    entities = _entity_words(tables)
     for edge in explicit:
         for column, target in zip(edge["from_cols"], edge["to_cols"]):
             key = (edge["from_table"], column)
             declared_sources[key] = max(declared_sources.get(key, 0.0),
-                                        _name_boost(column, edge["to_table"], target))
+                                        _name_boost(column, edge["to_table"], target, entities))
     for edge in discover_fks(tables):
         # A sampled inclusion may suggest another parent for the same local
         # key. It cannot override a trusted declaration (including a component
@@ -301,7 +313,8 @@ def relate(tables, explicit_fks=()):
         reverse = signature[2], signature[3], signature[0], signature[1]
         source = (edge["from_table"], edge["from_col"])
         overridden = (source in declared_sources and
-                      _name_boost(edge["from_col"], edge["to_table"], edge["to_col"]) <= declared_sources[source])
+                      _name_boost(edge["from_col"], edge["to_table"], edge["to_col"], entities)
+                      <= declared_sources[source])
         if not overridden and signature not in signatures and reverse not in signatures:
             merged.append(edge)
             signatures.add(signature)

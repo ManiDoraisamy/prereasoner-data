@@ -26,6 +26,7 @@ from engine.sql_ast import (
     SQLType,
     SelectItem,
     SelectQuery,
+    SetQuery,
     Star,
     and_predicates,
     render_query,
@@ -98,6 +99,81 @@ def flag_comparisons(said: Sequence[str], schema: Any) -> tuple[tuple[int, int, 
                 continue
             found.append((start, start + size, Comparison(column, "=", Literal(value, column.type))))
     return tuple(found)
+
+
+@dataclass(frozen=True)
+class PopulationPresenceReading:
+    """One known attribute two populations the question names both (or either) hold: "Which states have both owners
+    and professionals living there?" asks for the states of owners INTERSECT those of professionals (the Codex review's
+    population-presence reading, ported 2026-10-17; Spider DEV 918, 919)."""
+    operator: str
+    left: ColumnRef
+    right: ColumnRef
+
+
+_POPULATION_PRESENCE: "weakref.WeakKeyDictionary[Any, dict[str, PopulationPresenceReading | None]]" = (
+    weakref.WeakKeyDictionary())
+_PRESENCE_WORDS = frozenset({"present", "presence", "exist", "exists", "occur", "occurs", "found", "live", "living",
+                             "reside", "residing", "recorded", "listed", "appear"})
+
+
+def population_presence_reading(question: str, schema: Any) -> PopulationPresenceReading | None:
+    """The values two populations both or either hold, where the question says only that: one "both" or "either", two
+    tables named right after it and joined by "and" or "or", one field of the same name in both said before it, and no
+    other word but grammar and words of presence ("living there"). Values, numbers, another entity or an ambiguous
+    field leave the request unread; no relationship between the two populations is invented or used."""
+    memo = _POPULATION_PRESENCE.setdefault(schema, {}) if isinstance(schema, SchemaGraph) else {}
+    if question in memo:
+        return memo[question]
+    said = tokens(question)
+    cues = [index for index, token in enumerate(said) if token in {"both", "either"}]
+    reading = None
+    if len(cues) == 1:
+        cue = cues[0]
+
+        def tables_at(position):
+            if said[position:position + 1] == ("the",):
+                position += 1
+            return [(table, position + len(label)) for table in schema.tables
+                    if (label := name_tokens(table)) and said[position:position + len(label)] == label]
+
+        lefts = tables_at(cue + 1)
+        if len(lefts) == 1:
+            left, middle = lefts[0]
+            connector = "and" if said[cue] == "both" else "or"
+            rights = tables_at(middle + 1) if said[middle:middle + 1] == (connector,) else []
+            if len(rights) == 1:
+                right, end = rights[0]
+                pairs = [(a.ref, b.ref) for a in schema.by_table.get(left, ()) for b in schema.by_table.get(right, ())
+                         if left != right and not is_surrogate_key(a.ref.name)
+                         and name_tokens(a.ref.name) == name_tokens(b.ref.name)
+                         and set(name_tokens(a.ref.name)) <= set(said[:cue])
+                         and a.ref.type == b.ref.type and a.ref.type != SQLType.UNKNOWN]
+                if len(pairs) == 1:
+                    first, second = pairs[0]
+                    grammar = FUNCTION_WORDS | _PRESENCE_WORDS | {
+                        "which", "what", "where", "find", "list", "show", "give", "all", "there", "have", "has"}
+                    if set(said[:cue]) <= grammar | set(name_tokens(first.name)) and set(said[end:]) <= grammar:
+                        reading = PopulationPresenceReading("INTERSECT" if said[cue] == "both" else "UNION",
+                                                            first, second)
+    if isinstance(schema, SchemaGraph):
+        if len(memo) >= 128:
+            del memo[next(iter(memo))]
+        memo[question] = reading
+    return reading
+
+
+def population_presence_witness(query: Query, reading: PopulationPresenceReading) -> bool:
+    """Whether ``query`` is that set: each population's own known values of the field, nothing joined or filtered."""
+    if not isinstance(query, SetQuery) or query.operator != reading.operator:
+        return False
+    for branch, field in ((query.left, reading.left), (query.right, reading.right)):
+        if (not isinstance(branch, SelectQuery) or branch.from_table != field.table or branch.from_alias
+                or branch.joins or branch.group_by or branch.having is not None or branch.order_by
+                or branch.limit is not None or tuple(item.expression for item in branch.select) != (field,)
+                or branch.where != Comparison(field, "IS NOT", Literal(None))):
+            return False
+    return True
 
 
 def complete_projection_requested(question: str) -> bool:
@@ -320,6 +396,24 @@ class ExpansionSupport:
             specificity = len(words & token_set)
             position = min(coverage) if coverage else len(question_tokens) + 5
             matches.append((column, float(specificity), position, coverage, words))
+        # A table named as one of the items to show is shown by its display field: "customer and product category for
+        # each purchase", a decomposition leaf, asks for each purchase's customer (Chrome gate 2026-10-17: the leaf was
+        # refused for showing only the category, and complex-category-gaps could not be split). Not a table named as
+        # the rows' owner ("for each purchase", "of customers") nor one modifying a field ("product category"). An item
+        # is one "and" or "or" joins to another: "the most common amenity in the dorms" shows no dorm (held-out Spider
+        # train 882, 2026-10-17).
+        if not matches:
+            name = tuple(canon(word) for word in name_words(table))
+            positions = [index for index, _ in window]
+            displays = self.schema.display_columns(table)
+            for index in positions:
+                after = index + len(name)
+                if (name and displays and tuple(question_tokens[index:after]) == name
+                        and question_tokens[index - 1:index] not in (("each",), ("every",), ("per",), ("of",))
+                        and (question_tokens[after:after + 1] in (("and",), ("or",))
+                             or question_tokens[index - 1:index] in (("and",), ("or",)))):
+                    matches.append((displays[0], 1.0, index, {index}, set(semantic_tokens(displays[0].name))))
+                    break
         out = []
         for column, specificity, position, coverage, words in matches:
             shadowed = any(
@@ -429,7 +523,16 @@ class ExpansionSupport:
                     column.ref for column in self.schema.columns
                     if "year" in semantic_tokens(column.ref.name) or column.ref.type == SQLType.DATE
                 ]
-                targets = year_columns[:3]
+                # A year compares the year field the question names beside it, by a word not every year field's name
+                # holds, where it names one: "orchestras founded after 2008" is the orchestra's Year_of_Founded, not
+                # the conductor's Year_of_Work, the first of the schema's year fields (Spider DEV 846, 2026-10-17).
+                shared = set.intersection(*(set(name_tokens(column.name)) for column in year_columns)) if (
+                    year_columns) else set()
+                named = [column for position, column in sorted(
+                    mentions, key=lambda item: (abs(item[0] - index), item[1].table, item[1].name))
+                         if abs(position - index) <= 4 and column in year_columns
+                         and question_tokens[position] not in shared]
+                targets = list(dict.fromkeys(named))[:3] or year_columns[:3]
             else:
                 nearby = sorted(
                     mentions,
@@ -540,9 +643,23 @@ class ExpansionSupport:
                 continue
             words = set(semantic_tokens(column.name))
             for index, token in enumerate(question_tokens):
-                if token in words:
+                # A field is named in another form of its word too: "teachers aged either 32 or 33" compares Age
+                # (Spider DEV 389, 390, 2026-10-17: no reading compared it).
+                if token in words or (numeric and any(inflects(token, word) or says_in_another_form(token, word)
+                                                      for word in words)):
                     out.append((index, column))
         return out
+
+
+def inflects(word: str, name_word: str) -> bool:
+    """Whether ``word`` is an inflection of ``name_word`` too short for a shared stem: "aged" of Age, "priced" of
+    price, "weighing" of weigh."""
+    if len(name_word) < 3 or not word.isalpha():
+        return False
+    forms = {name_word + ending for ending in ("s", "es", "d", "ed", "ing")}
+    if name_word.endswith("e"):
+        forms.add(name_word[:-1] + "ing")
+    return word in forms
 
 
 def build_candidate(
@@ -1507,9 +1624,15 @@ def spelled_names(question_tokens: tuple[str, ...], schema: Any) -> frozenset[in
         for index, token in enumerate(phrase):
             if token in {"avg", "average"}:
                 phrases.add((*phrase[:index], "average" if token == "avg" else "avg", *phrase[index + 1:]))
+
+    # A word the name abbreviates spells it too: "the name, independence year, and surface area" names IndepYear and
+    # holds no city 'Independence' (Spider DEV 788, 789, 2026-10-17: both filtered on that city).
+    def spells(said, words):
+        return all(word == spelled or (len(word) >= 3 and abbreviates(word, spelled)) for spelled, word in zip(said, words))
+
     return frozenset(index for words in phrases if len(words) > 1
                      for start in range(len(question_tokens) - len(words) + 1)
-                     if question_tokens[start:start + len(words)] == words
+                     if spells(question_tokens[start:start + len(words)], words)
                      for index in range(start, start + len(words)))
 
 
@@ -1811,6 +1934,11 @@ def command_positions(question: str) -> frozenset[int]:
     return frozenset(found)
 
 
+# The words that open a verb's object: a word before one is no noun's head.
+_OBJECT_OPENERS = frozenset({("a",), ("an",), ("the",), ("any",), ("some",), ("all",), ("every",), ("each",), ("their",),
+                             ("its",), ("his",), ("her",), ("more",), ("at",)})
+
+
 def counted_noun_tables(said: Sequence[str], schema: Any) -> frozenset[str]:
     """The tables whose rows a count counts: those the noun right after "how many", "number of" or "count of" names
     ("How many countries does each continent have?" counts the countries). The ranker credits a count of them, and a
@@ -1829,8 +1957,88 @@ def counted_noun_tables(said: Sequence[str], schema: Any) -> frozenset[str]:
         for table in schema.tables:
             name = tuple(canon(word) for word in name_words(table))
             if name and tuple(said[start:start + len(name)]) == name:
-                found.add(table)
+                # A table's name right after it is the noun's head, which counts: "How many movie ratings have more than
+                # 3 stars?" counts the ratings (held-out Spider train 989, 2026-10-17: it counted the movies). Not a verb
+                # taking an object: "How many instructors teach a course" counts instructors (fresh holdout 648).
+                end = start + len(name)
+                heads = [other for other in schema.tables
+                         if (words := tuple(canon(word) for word in name_words(other)))
+                         and tuple(said[end:end + len(words)]) == words
+                         and said[end + len(words):end + len(words) + 1] not in _OBJECT_OPENERS]
+                found.update(heads or (table,))
     return frozenset(found)
+
+
+def counted_field_values(said: tuple[str, ...], schema: Any, start: int) -> tuple[ColumnRef, ...]:
+    """The text fields the count noun at ``start`` names whole where it names no table: "How many continents speak
+    Chinese?" counts the values of country.Continent, once each (Spider DEV 751, 2026-10-17: the count counted the
+    countries). A noun naming a table counts its rows; "how many times" counts no field."""
+    while start < len(said) and said[start] in {"the", "a", "an", "all", "of"}:
+        start += 1
+    if start >= len(said) or said[start] in {"time", "row", "record", "entry", "item"}:
+        return ()
+    noun = said[start]
+    if any(noun in {canon(word) for word in name_words(table)} for table in schema.tables):
+        return ()
+    return tuple(sorted((schema_column.ref for schema_column in schema.columns
+                         if schema_column.ref.type == SQLType.TEXT and not is_surrogate_key(schema_column.ref.name)
+                         and tuple(canon(word) for word in name_words(schema_column.ref.name)) == (noun,)),
+                        key=lambda column: (column.table, column.name))[:2])
+
+
+def count_noun_starts(question: str, schema: Any) -> tuple[int, ...]:
+    """Where each count's noun starts: after "how many", or after a "number of" or "count of" that is no field's
+    number (``field_numbers``)."""
+    said = tokens(question)
+    numbers = field_numbers(question, (column.ref for column in schema.columns))
+    return tuple(index + 2 for index in range(len(said))
+                 if said[index:index + 2] == ("how", "many")
+                 or (said[index] in {"number", "count"} and said[index + 1:index + 2] == ("of",)
+                     and index not in numbers))
+
+
+def counted_references(query: Any, question: str, schema: Any) -> tuple[tuple[Aggregate, str], ...]:
+    """The counts in ``query`` that count the rows of a table referring to what the question counts, each with that
+    table: "How many car models are produced in the usa?" counted car_names.Model, and then every row of car_names,
+    once per car name of each model, where model_list holds the models (Spider DEV 115, 147, 148, 2026-10-17). The
+    count's noun ("how many car models") says the referring key's own word and not its table's name; "How many flights
+    does airline JetBlue have?" counts the flights holding the airline key, and "the phone number of these patients"
+    counts nothing (field_numbers). A distinct count counts each row once."""
+    if not isinstance(query, SelectQuery) or not isinstance(query.from_table, str):
+        return ()
+    said = tokens(question)
+    counts = []
+    having = [query.having] if query.having is not None else []
+    while having:
+        term = having.pop()
+        having.extend(getattr(term, "terms", ()))
+        counts.extend(side for side in (getattr(term, "left", None), getattr(term, "right", None))
+                      if isinstance(side, Aggregate))
+    counts.extend(expression for expression in (*(item.expression for item in query.select),
+                                                *(term.expression for term in query.order_by))
+                  if isinstance(expression, Aggregate))
+    counts = [aggregate for aggregate in dict.fromkeys(counts) if aggregate.function == "COUNT" and not aggregate.distinct]
+    if not counts:
+        return ()
+    read = {query.from_table, *(join.table for join in query.joins)}
+    nouns = []
+    for start in count_noun_starts(question, schema):
+        while start < len(said) and said[start] in {"the", "a", "an", "all"}:
+            start += 1
+        nouns.append(set(said[start:start + 3]))
+    # So does the noun a threshold on a number of rows counts: "makers who designed more than 3 car models" (Spider DEV
+    # 149, 150, 2026-10-17: each kept the makers with more than 3 car names).
+    nouns.extend(set(said[threshold.end:threshold.end + 3]) for threshold in count_thresholds(said))
+    found = []
+    for key in getattr(schema, "foreign_keys", ()):
+        for child, _ in key.column_pairs:
+            if child.table not in read or not schema.repeats((child,)):
+                continue
+            name = [canon(word) for word in name_words(child.name)]
+            owner = {canon(word) for word in name_words(child.table)}
+            if name and any(name[-1] in noun and not owner <= noun for noun in nouns):
+                found.extend((aggregate, child.table) for aggregate in counts)
+    return tuple(dict.fromkeys(found))
 
 
 def scalar_counted_table(query: Any, said: Sequence[str], schema: Any) -> str | None:

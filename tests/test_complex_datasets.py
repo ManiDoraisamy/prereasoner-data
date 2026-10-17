@@ -122,6 +122,38 @@ def test_a_names_only_ranking_leaf_serves_its_own_ranking_with_the_measure():
     assert actual == expected["rows"], actual
 
 
+# The decomposition the production model proposed in the Chrome release gate of 2026-10-17: its evidence leaf names
+# the customer as an item ("customer and product category for each purchase"), not the customer's name.
+GATE_20261017_CATEGORY_GAPS_PROPOSAL = {
+    "subquestions": [
+        {"id": "top_customers", "question": "top 2 customers by total spend"},
+        {"id": "top_categories", "question": "top 2 product categories by total revenue"},
+        {"id": "purchase_evidence", "question": "customer and product category for each purchase"},
+    ],
+    "merges": [
+        {"id": "candidate_pairs", "op": "cross", "inputs": ["top_customers", "top_categories"]},
+        {"id": "missing_pairs", "op": "anti_join", "inputs": ["candidate_pairs", "purchase_evidence"]},
+    ],
+    "output": "missing_pairs",
+    "grain": "one customer-category pair per top customer and top category where the customer has never purchased "
+             "from that category",
+}
+
+
+def test_a_table_named_as_a_leaf_item_is_shown_by_its_display_field():
+    """The Chrome release gate of 2026-10-17 caught this. The model's evidence leaf "customer and product category for
+    each purchase" showed only the category, the gate refused it for not showing the customers asked for, and the
+    demo prompt answered "I couldn't split this question into parts". A table named as one of the items to show is
+    shown by its display field (ExpansionSupport.projection_columns)."""
+    planner = EncoderQuery()
+    _plan, result = _run_fixture(
+        planner, DATASET_DIR / "complex-category-gaps", GATE_20261017_CATEGORY_GAPS_PROPOSAL,
+    )
+    _kind, expected = EXPECTED["complex-category-gaps"]
+    actual = [[row[column] for column in expected["columns"]] for row in result.rows]
+    assert actual == expected["rows"], actual
+
+
 def test_a_value_binds_to_the_column_that_holds_it():
     """The Chrome pass (2026-09-24) caught this. For "how about customers from Lyon?" the
     orchestrator proposed the leaf "product names bought by Lyon customers"; the SQL proposer,
@@ -317,6 +349,7 @@ TESTS = [
     test_full_complex_prompts_request_decomposition_without_executing_a_partial_answer,
     test_shipped_complex_datasets_match_gold_in_python_and_sql,
     test_a_names_only_ranking_leaf_serves_its_own_ranking_with_the_measure,
+    test_a_table_named_as_a_leaf_item_is_shown_by_its_display_field,
     test_a_value_binds_to_the_column_that_holds_it,
     test_a_purchases_leaf_joins_through_the_bridge_table,
     test_a_decomposition_cannot_invent_a_cutoff,
@@ -326,6 +359,7 @@ TESTS = [
 MODEL_BACKED = (
     test_shipped_complex_datasets_match_gold_in_python_and_sql,
     test_a_names_only_ranking_leaf_serves_its_own_ranking_with_the_measure,
+    test_a_table_named_as_a_leaf_item_is_shown_by_its_display_field,
     test_a_value_binds_to_the_column_that_holds_it,
     test_a_purchases_leaf_joins_through_the_bridge_table,
     test_a_decomposition_cannot_invent_a_cutoff,

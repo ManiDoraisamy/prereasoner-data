@@ -107,6 +107,32 @@ Artifacts: `%LOCALAPPDATA%/Temp/prereasoner-spider-review-20261013/`, tags `revi
 Incomplete intermediate runs are excluded. The review hardens ranking-number roles, output counts (preserving stored-count SUM),
 and table-owned full-name construction; it does not introduce another planner or model bundle.
 
+## A condition's field is not shown; a count counts what its noun names, a field's values once each; superlatives, years and inflections name their fields; a set query shows the key said; a value is its display field's: 632 → 664 strict, Gemini on 704 → 732, held out 405 → 415, fresh holdout 405 → 412 (2026-10-17)
+
+Same contract as below (RunPod CPU pods, the evaluator ingesting declared and discovered keys). Runs `r4` are this
+change against the entry below's `c3` runs. The change is the `DECISIONS.md` entry of this title.
+
+- DEV, engine alone: 632 → **664 strict**; 32 wins (52, 94, 104, 109, 115, 147, 148, 149, 199, 245, 246, 310, 323, 379,
+  380, 389, 390, 439, 461, 468, 576, 577, 667, 695, 712, 751, 768, 846, 918, 919, 976, 1011), no loss; wrong answers 166
+  → 138; 84 queries changed.
+- Held out: 405 → **415 strict**; 10 wins (68, 92, 110, 142, 363, 407, 505, 546, 617, 832), no loss; wrong answers 229 →
+  226; 34 queries changed.
+- Fresh holdout: 405 → **412 strict**; 7 wins (44, 272, 293, 438, 636, 656, 875), no loss; wrong answers 237 → 232; 28
+  queries changed.
+- Gemini on: 704 → 732; 28 wins (52, 94, 109, 115, 130, 147, 148, 149, 199, 245, 246, 310, 323, 379, 380, 390, 439, 461,
+  468, 576, 577, 695, 751, 768, 846, 918, 919, 1011), no loss; wrong answers 210 → 180; 86 queries changed.
+- The Chrome gate of `608fc98` found complex-category-gaps answering "I couldn't split this question": Gemini's
+  decomposition leaf "customer and product category for each purchase" was refused, on `608fc98` and `6eed24e` alike. It
+  is answered now (a table joined to another item by "and" is shown by its display field).
+- Measured as one package (runs `r4`). The rounds before it found losses fixed here: Gemini on, DEV 565, 569, 976, 977
+  and 667 (a superlative's inferred dimension); DEV 277 ("awarded the most times"); held out 882 ("the most common
+  amenity in the dorms" shown by dorm) and 989 ("movie ratings" counted as movies); the fresh holdout 44, 438 and 648 (a
+  count of keys, and "instructors teach a course" read as the teaches table).
+- No strict loss against 608fc98 on any set. Wrong answers fall on every set: DEV 166 to 138, held out 229 to 226, the
+  fresh holdout 237 to 232, Gemini on 210 to 180.
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-remote-eval-20261017/full_eval_{,heldout-,holdout2-}r4.json` and `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_r4-gemini-dirty.json`.
+
 ## Relationships as serving discovers them; a measure's unit, a yes/no flag and a verb's doer are read; one closed field is the answer; "corresponding", titles and times are read: 588 → 632 strict, Gemini on 674 → 704, held out 385 → 405, fresh holdout 390 → 405 (2026-10-17)
 
 The change is the `DECISIONS.md` entry of this title. Engine-alone runs are the production evaluator on RunPod CPU pods:

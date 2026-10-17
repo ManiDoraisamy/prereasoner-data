@@ -227,6 +227,25 @@ def test_a_declaration_naming_nothing_does_not_hide_the_named_parent_and_a_bridg
                and edge["to_table"] == "branch" for edge in edges), edges
 
 
+def test_a_keys_role_naming_another_table_is_no_reference_to_a_third():
+    """Held-out 546, 2026-10-17: customers_and_invoices' Products.parent_product_id was discovered as a reference to
+    Customers.customer_id, its integers falling inside the customer keys, and "the number of customers having an order
+    on each product" joined products to customers by it. A key named for a role references an entity's own named key
+    only where the role names no table: parent_product_id names a product. Contrast: stores.Manager_ID still refers to
+    employees.Employee_ID, no table being named "manager"."""
+    from engine.relations import relate
+    customers = {"name": "Customers", "columns": ["customer_id", "customer_name"],
+                 "rows": [[1, "Ann"], [2, "Bo"], [3, "Cy"], [4, "Di"]]}
+    products = {"name": "Products", "columns": ["product_id", "parent_product_id", "product_name"],
+                "rows": [[1, 4, "Cup"], [2, 4, "Mug"], [3, 1, "Pen"], [4, 1, "Ink"]]}
+    edges = relate([customers, products])["fks"]
+    assert not any(edge["from_col"] == "parent_product_id" and edge["to_table"] == "Customers" for edge in edges), edges
+    employees = {"name": "employees", "columns": ["Employee_ID", "Name"], "rows": [[1, "Ann"], [2, "Bo"], [3, "Cy"]]}
+    stores = {"name": "stores", "columns": ["Store_ID", "Manager_ID"], "rows": [[10, 1], [11, 1], [12, 2]]}
+    edges = relate([employees, stores])["fks"]
+    assert any(edge["from_col"] == "Manager_ID" and edge["to_table"] == "employees" for edge in edges), edges
+
+
 def test_explicit_relationship_prevents_a_competing_inferred_parent():
     from engine.relations import relate
     left = {"name": "archived_codes", "columns": ["id", "label"], "rows": [[1, "A"], [2, "B"], [3, "C"]]}
@@ -844,6 +863,7 @@ TESTS = [
     test_foreign_key_names_keep_the_referenced_entity_namespace,
     test_explicit_relationship_prevents_a_competing_inferred_parent,
     test_a_declaration_naming_nothing_does_not_hide_the_named_parent_and_a_bridge_key_keeps_its_role,
+    test_a_keys_role_naming_another_table_is_no_reference_to_a_third,
 ]
 
 

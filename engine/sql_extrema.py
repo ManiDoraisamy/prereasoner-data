@@ -1,6 +1,8 @@
 """Deterministic arg-extrema, top-N, and set-difference expansion."""
 from __future__ import annotations
 
+from collections import Counter
+
 from dataclasses import dataclass, replace
 import re
 from typing import Sequence
@@ -49,13 +51,55 @@ from engine.numeric import parse_decimal
 
 
 MAX_CUES = frozenset({
-    "biggest", "commonest", "greatest", "highest", "largest", "latest",
-    "longest", "max", "maximum", "most", "oldest", "youngest",
+    "biggest", "commonest", "greatest", "heaviest", "highest", "largest", "latest",
+    "longest", "max", "maximum", "most", "newest", "oldest", "tallest", "youngest",
 })
 MIN_CUES = frozenset({
-    "earliest", "fewest", "least", "lowest", "min", "minimum", "rarest",
+    "cheapest", "earliest", "fewest", "least", "lightest", "lowest", "min", "minimum", "rarest",
     "shortest", "smallest",
 })
+# The fields a superlative adjective ranks by where the question names none, as words of a field's name: "the tallest
+# poker player" by Height, "the longest match" by minutes, "the most recent cartoon" by its date, "the most popular
+# language" by Percentage (Spider DEV 467, 630, 667, 712, 2026-10-17: no reading ranked by them). An adjective after
+# "most" or "least" names its field the same way ("the least expensive"). "Largest" and "smallest" say no one field.
+SUPERLATIVE_DIMENSIONS = {
+    "oldest": frozenset({"age", "birth", "birthday", "date"}),
+    "youngest": frozenset({"age", "birth", "birthday", "date"}),
+    "tallest": frozenset({"height"}), "heaviest": frozenset({"weight"}), "lightest": frozenset({"weight"}),
+    "longest": frozenset({"length", "duration", "minute", "minutes"}),
+    "shortest": frozenset({"height", "length", "duration", "minute", "minutes"}),
+    "cheapest": frozenset({"price", "cost"}), "expensive": frozenset({"price", "cost"}),
+    "newest": frozenset({"date", "year"}), "recent": frozenset({"date", "year"}), "latest": frozenset({"date", "year"}),
+    "earliest": frozenset({"date", "year"}), "popular": frozenset({"percentage", "popularity"}),
+}
+
+
+def superlative_dimensions(tokens, index):
+    """The field words the superlative at ``index`` ranks by (SUPERLATIVE_DIMENSIONS): its own word's, or for "most"
+    and "least" the adjective after it."""
+    token = tokens[index]
+    if token in {"most", "least"} and index + 1 < len(tokens):
+        return SUPERLATIVE_DIMENSIONS.get(tokens[index + 1], frozenset())
+    return SUPERLATIVE_DIMENSIONS.get(token, frozenset())
+
+
+def _names_measure_after(tokens, index, measures):
+    """Whether the words right after the superlative at ``index`` (past a "the") say every word of one of ``measures``'
+    names, starting with one of them: "the latest date of treatment", "the highest rank points". A measure its table's
+    name names whole (matches.match_num) is the rows: "the longest match" names no measure."""
+    start = index + 1 + (tokens[index + 1:index + 2] == ("the",))
+    if start >= len(tokens):
+        return False
+    for schema_column in measures:
+        words = set(_semantic_tokens(schema_column.ref.name)) - {"num", "number", "of"}
+        if words <= {canon(word) for word in name_words(schema_column.ref.table)}:
+            continue
+        if words and tokens[start] in words and words <= set(tokens[start:start + len(words) + 1]):
+            return True
+    return False
+# The words after "most" that make it a count of occurrences: "awarded the most times" counts the awards and names no
+# measure by "awarded" (Spider DEV 277, 2026-10-17: Year_awarded ranked the employees).
+_FREQUENCY_WORDS = frozenset({"time", "often", "frequent", "frequently", "common"})
 # Words between "by" and the measure it ranks by: "by the total", "by their average".
 _BY_DETERMINERS = frozenset({"the", "their", "its", "his", "her"})
 _NEGATIVE_RE = re.compile(
@@ -573,22 +617,50 @@ class ExtremaQueryExpander(ExpansionSupport):
             return []
         token_set = set(tokens)
         out = []
+        # The words of each "number of <table>" and "most <table>" the question says, by that table.
+        counted_spans: dict[str, set[int]] = {}
+        for index in range(len(tokens) - 1):
+            if tokens[index] in {"number", "count"} and tokens[index + 1:index + 2] == ("of",):
+                start = index + 2 + (tokens[index + 2:index + 3] in (("the",), ("all",)))
+            elif tokens[index] in {"most", "fewest"}:
+                start = index + 1
+            else:
+                continue
+            if start < len(tokens):
+                for table in self.schema.tables:
+                    name = tuple(canon(word) for word in name_words(table))
+                    if name and tuple(tokens[start:start + len(name)]) == name:
+                        counted_spans.setdefault(table, set()).update(range(start, start + len(name)))
         foreign_key_columns = {
             column
             for foreign_key in self.schema.foreign_keys
             for pair in foreign_key.column_pairs
             for column in pair
         }
-        for schema_column in self.schema.columns:
+        measures = [schema_column for schema_column in self.schema.columns
+                    if not is_surrogate_key(schema_column.ref.name) and schema_column.ref not in foreign_key_columns
+                    and (schema_column.ref.type.numeric or schema_column.ref.type == SQLType.DATE
+                         or _observed_numeric(schema_column.values))]
+        # How many measures each word names: a word one measure alone holds, said just before the superlative, names
+        # it ("the singer who is worth the most" is Net_Worth_Millions; Spider DEV 1011, 2026-10-17: a count of
+        # singers ranked them).
+        measure_words_named = Counter(word for schema_column in measures
+                                      for word in set(_semantic_tokens(schema_column.ref.name))
+                                      - {"num", "number", "of"})
+        # The superlatives a measure's whole name follows: "the treatment with the latest date of treatment" ranks by
+        # date_of_treatment and infers no other date (Spider DEV 565, 569, 976, 977, Gemini on, 2026-10-17: a dog's
+        # birth date ranked the treatments Gemini's rewording named by their date).
+        named_cues = {cue_position for cue_position, _ in cue_positions
+                      if _names_measure_after(tokens, cue_position, measures)}
+        # The superlatives that name their field by their own word ("the tallest" a height): a field the question names
+        # away from one, such as the field it shows, is not what it measures ("the money rank of the tallest poker
+        # player" is no ranking by Money_Rank; Spider DEV 667, Gemini on, 2026-10-17).
+        inferring_cues = {cue_position for cue_position, _ in cue_positions
+                          if cue_position not in named_cues
+                          and any(set(_semantic_tokens(schema_column.ref.name))
+                                  & superlative_dimensions(tokens, cue_position) for schema_column in measures)}
+        for schema_column in measures:
             column = schema_column.ref
-            if is_surrogate_key(column.name) or column in foreign_key_columns:
-                continue
-            if not (
-                column.type.numeric
-                or column.type == SQLType.DATE
-                or _observed_numeric(schema_column.values)
-            ):
-                continue
             semantic = set(_semantic_tokens(column.name))
             mention_positions = [
                 index for index, token in enumerate(tokens) if token in semantic
@@ -600,13 +672,19 @@ class ExtremaQueryExpander(ExpansionSupport):
             measure_words = semantic - {"num", "number", "of"}
             explicit = _column_matches(column.name, token_set) or bool(
                 measure_words and measure_words <= token_set
-            )
-            inferred_age = bool(
-                semantic & {"age", "birth", "birthday", "date"}
-                and any(cue in {"youngest", "oldest"} for _, cue in cue_positions)
-            )
+            ) or any(0 < cue_position - position <= 2 and measure_words_named[tokens[position]] == 1
+                     and tokens[position] in measure_words
+                     and not set(tokens[cue_position + 1:cue_position + 2]) & _FREQUENCY_WORDS
+                     for cue_position, _ in cue_positions for position in mention_positions)
+            inferred = {cue_position for cue_position, _ in cue_positions
+                        if cue_position not in named_cues and semantic & superlative_dimensions(tokens, cue_position)}
             inferred_mpg = compact == "mpg" and bool(token_set & {"fuel", "gas", "gasoline"})
-            if not explicit and not inferred_age and not inferred_mpg:
+            # A row number named by its table is no measure where the question counts that table's rows: "the year
+            # that has the most number of matches" counts the matches and does not rank by match_num (Spider DEV 461,
+            # 462, 2026-10-17).
+            if mention_positions and set(mention_positions) <= counted_spans.get(column.table, set()):
+                continue
+            if not explicit and not inferred and not inferred_mpg:
                 continue
             best = None
             for cue_position, cue in cue_positions:
@@ -615,9 +693,24 @@ class ExtremaQueryExpander(ExpansionSupport):
                     key=lambda value: abs(value - cue_position),
                 ) if mention_positions else None
                 distance = abs(position - cue_position) if position is not None else 2
+                if cue_position in inferring_cues and cue_position not in inferred and distance > 2:
+                    continue
                 score = 6.0 + min(2.0, len(semantic & token_set)) - 0.2 * distance
-                if inferred_age and cue in {"youngest", "oldest"}:
+                # A field two tables share, named at the superlative, is the one of the rows named just before it: "the
+                # country with the smallest population" ranks the countries' Population, not a joined city's (Spider
+                # DEV 788, 789, 2026-10-17: the tie fell to city by name). A field named elsewhere ("the name and
+                # capacity of the stadium with the most concerts") is not what the superlative measures (DEV 25).
+                owner = {canon(word) for word in name_words(column.table)}
+                if (position is not None and 0 < position - cue_position <= 2
+                        and owner & set(tokens[max(0, cue_position - 4):cue_position])):
+                    score += 0.5
+                if cue_position in inferred:
                     score += 2.5
+                    # The rows the superlative ranks are the noun after it: "the oldest player" by the players'
+                    # birth date, not a match's winner_age (Spider DEV 453, 454, 2026-10-17).
+                    noun = set(tokens[cue_position + 1:cue_position + 4])
+                    if {canon(word) for word in name_words(column.table)} & noun:
+                        score += 1.0
                 if inferred_mpg:
                     score += 2.0
                 direction = superlative_direction(cue, column)
@@ -792,7 +885,12 @@ def _observed_numeric(values: Sequence[object]) -> bool:
 
 
 def superlative_direction(cue: str, column: ColumnRef) -> str:
-    semantic = set(_semantic_tokens(column.name))
+    # A rank's first place is its smallest number: "the highest rank of losers" and "the best rank" are min(loser_rank)
+    # (Spider DEV 439, 440, 2026-10-17: both took the largest), while "the highest rank points" are points.
+    named = tuple(_semantic_tokens(column.name))
+    if named and named[-1] in {"rank", "ranking"}:
+        return "DESC" if cue in MIN_CUES else "ASC"
+    semantic = set(named)
     birth_like = "birth" in semantic or ({"date", "year"} & semantic and "age" not in semantic)
     if cue == "youngest":
         return "DESC" if birth_like else "ASC"

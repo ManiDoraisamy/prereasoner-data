@@ -79,6 +79,16 @@ class RecursiveQueryExpander:
 
     def _set_candidates(self, question: str, base: Sequence[ScoredQuery]) -> list[ScoredQuery]:
         out = []
+        from engine.sql_expansion import population_presence_reading
+        presence = population_presence_reading(question, self.schema)
+        if presence is not None:
+            branches = tuple(SelectQuery((SelectItem(field),), field.table,
+                                         where=Comparison(field, "IS NOT", Literal(None)))
+                             for field in (presence.left, presence.right))
+            built = _candidate(SetQuery(branches[0], presence.operator, branches[1]), 45.0,
+                               (f"population-presence:{presence.operator}",))
+            if built is not None:
+                out.append(built)
         tokens = _tokens(question)
         for candidate in base:
             query = candidate.query
@@ -556,11 +566,16 @@ class RecursiveQueryExpander:
         return bool(projected) and all((item.table, item.name) in held for item in projected)
 
     def _projection_columns(self, question: str, table: str) -> list[tuple[ColumnRef, int]]:
+        """The entity's fields the question names, by the words they share. A key is one only where every word of
+        its name is said ("the ids of documents" is Document_ID, Spider DEV 380 showed Document_Description)."""
         options = []
         question_tokens = set(_tokens(question))
         for schema_column in self.schema.by_table.get(table, ()):
             column = schema_column.ref
             if is_surrogate_key(column.name):
+                words = set(_name_tokens(column.name))
+                if words and words <= question_tokens:
+                    options.append((column, len(words)))
                 continue
             overlap = len(set(_semantic_name_tokens(column.name)) & question_tokens)
             if overlap:

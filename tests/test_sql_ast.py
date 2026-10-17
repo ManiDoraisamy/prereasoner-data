@@ -629,10 +629,10 @@ def test_duplicate_named_projection_keeps_single_binding_variant_in_pool():
     weight = ColumnRef("templates", "type_code")
     total = SelectQuery(select=(SelectItem(Aggregate("SUM", cost)),), from_table="templates")
     stub_linked = lambda table: (weight,)  # noqa: E731 - question-linking stubbed out
-    tags = [evidence for _, evidence in _projection_variants(total, stub_linked)]
+    tags = [evidence for _, evidence in _projection_variants(total, stub_linked, {})]
     assert any("aggregate:operand:templates.type_code" in evidence for evidence in tags), tags
     plain = SelectQuery(select=(SelectItem(cost),), from_table="templates")
-    tags = [evidence for _, evidence in _projection_variants(plain, stub_linked)]
+    tags = [evidence for _, evidence in _projection_variants(plain, stub_linked, {})]
     assert any("projection:add:templates.type_code" in evidence for evidence in tags), tags
 
 
@@ -3618,8 +3618,10 @@ def test_a_flag_field_the_question_names_is_a_condition():
 def test_corresponding_pairs_an_output_with_another():
     """Spider DEV 368, 882, 948, 2026-10-17: "List the cost of each treatment and the corresponding treatment type
     description." was refused, right, for "corresponding". The word pairs one output with another, so it is read where
-    the answer shows two or more (query_contract.read_question). Contrast: an answer showing one output pairs
-    nothing ("the lowest version number, along with its corresponding template type code" over the version alone)."""
+    the answer shows two or more and the word says one of them: "corresponding to each", or a shown field named after
+    it (query_contract.read_question). Contrast: an answer showing one output pairs nothing ("the lowest version
+    number, along with its corresponding template type code" over the version alone), nor does "two or more
+    corresponding dogs"."""
     from engine.query_contract import read_question
     treatments = {"name": "Treatments", "columns": ["treatment_id", "treatment_type_code", "cost_of_treatment"],
                   "rows": [[1, "EXAM", 300], [2, "VAC", 50]]}
@@ -3637,6 +3639,14 @@ def test_corresponding_pairs_an_output_with_another():
     assert "corresponding" not in read_question(question, ScoredQuery(both, render_query(both), 0.0, ()), graph).unread
     alone = SelectQuery((SelectItem(ref["Treatments", "cost_of_treatment"]),), "Treatments", joins=join)
     assert "corresponding" in read_question(question, ScoredQuery(alone, render_query(alone), 0.0, ()), graph).unread
+    # Held out 111, 400, 2026-10-17: the word pairs the output it says, not any two outputs. "Two or more corresponding
+    # dogs" says none, and "the corresponding description" over a treatment id is unread.
+    many = "Which treatment type descriptions have two or more corresponding dogs?"
+    assert "corresponding" in read_question(many, ScoredQuery(both, render_query(both), 0.0, ()), graph).unread
+    codes = SelectQuery((SelectItem(ref["Treatments", "cost_of_treatment"]),
+                         SelectItem(ref["Treatments", "treatment_id"])), "Treatments")
+    assert "corresponding" in read_question("List the cost of each treatment and the corresponding description.",
+                                            ScoredQuery(codes, render_query(codes), 0.0, ()), graph).unread
 
 
 def test_names_are_titles_where_a_table_holds_no_name_and_time_is_a_dates_kind():
@@ -3652,6 +3662,579 @@ def test_names_are_titles_where_a_table_holds_no_name_and_time_is_a_dates_kind()
              "rows": [[1, "NY", "2018-03-09"], [2, "CA", "2018-03-10"], [3, "NY", "2018-03-09"]]}
     served = _hermetic_planner().serve([votes], "What are the distinct states and create time of all votes?", [])
     assert served.get("valid") and len(served["result"]["rows"]) == 2, (served.get("error"), served.get("sql"))
+
+
+def test_a_condition_field_is_not_also_an_output():
+    """Spider DEV 245, 246, 768, 769, 2026-10-17: "What is the official language spoken in the country whose head of
+    state is Beatrix?" showed IsOfficial beside each Language, the constant 'T' the flag condition keeps, and "What are
+    flight numbers of Airline "United Airlines"?" showed flights.Airline, the one airline's id, beside each FlightNo.
+    A flag the question says only as its condition (sql_rank.flag_condition_only) and a key named as the field of
+    another table the query compares (sql_rank.filter_only) are not asked for. Contrast: a key the question names apart
+    from the comparison ("the flight number and airline of each flight") is asked for."""
+    countries = {"name": "country", "columns": ["Code", "Name", "HeadOfState"],
+                 "rows": [["NLD", "Netherlands", "Beatrix"], ["BEL", "Belgium", "Albert II"]]}
+    languages = {"name": "countrylanguage", "columns": ["CountryCode", "Language", "IsOfficial"],
+                 "rows": [["NLD", "Dutch", "T"], ["NLD", "Fries", "F"], ["BEL", "Dutch", "T"],
+                          ["BEL", "French", "T"], ["BEL", "German", "F"]]}
+    fks = [{"from_table": "countrylanguage", "from_col": "CountryCode", "to_table": "country", "to_col": "Code"}]
+    served = _hermetic_planner().serve(
+        [countries, languages], "What is the official language spoken in the country whose head of state is Beatrix?",
+        fks)
+    assert served.get("valid") and served["result"]["rows"] == [["Dutch"]], (served.get("error"), served.get("sql"))
+    airlines = {"name": "airlines", "columns": ["uid", "Airline", "Country"],
+                "rows": [[1, "United Airlines", "USA"], [2, "Delta Airlines", "USA"], [3, "JetBlue Airways", "USA"]]}
+    flights = {"name": "flights", "columns": ["Airline", "FlightNo", "SourceAirport"],
+               "rows": [[1, 28, "APG"], [1, 29, "ASY"], [2, 44, "ACV"], [3, 2, "AHD"], [1, 54, "CVO"]]}
+    keys = [{"from_table": "flights", "from_col": "Airline", "to_table": "airlines", "to_col": "uid"}]
+    served = _hermetic_planner().serve([airlines, flights], 'What are flight numbers of Airline "United Airlines"?', keys)
+    assert served.get("valid") and sorted(served["result"]["rows"]) == [[28], [29], [54]], (
+        served.get("error"), served.get("sql"))
+    from engine.sql_expansion import tokens
+    from engine.sql_rank import filter_only
+    graph = SchemaGraph.from_tables([airlines, flights], keys)
+    ref = {(column.ref.table, column.ref.name): column.ref for column in graph.columns}
+    query = SelectQuery((SelectItem(ref["flights", "FlightNo"]), SelectItem(ref["flights", "Airline"])), "flights",
+                        joins=(Join("airlines", ref["flights", "Airline"], ref["airlines", "uid"]),),
+                        where=Comparison(ref["airlines", "Airline"], "=", Literal("United Airlines")))
+    assert filter_only(ref["flights", "Airline"], query, tokens('flight numbers of Airline "United Airlines"'))
+    assert not filter_only(ref["flights", "Airline"], query, tokens(
+        "Show the flight number and airline of each flight for the airline United Airlines"))
+
+
+def test_a_count_of_what_a_key_names_counts_the_referred_rows():
+    """Spider DEV 115, 147, 148, 2026-10-17: "How many car models were produced by the maker with full name American
+    Motor Company?" counted car_names.Model through model_list, every car name of a model again, and the gate refused
+    every count for not grouping by maker. A count whose noun says a referring key's own word ("car models") and not
+    its table's name counts the referred rows (sql_expansion.counted_references), the noun of a threshold too ("more
+    than 3 car models"); the search swaps such a count to the key it refers to (sql_parsimony); and a "by" naming who
+    acted asks for no grain (sql_expansion.by_groups).
+    Contrast: "How many flights does airline JetBlue Airways have?" counts the flights holding the airline key."""
+    makers = {"name": "car_makers", "columns": ["Id", "Maker", "FullName", "Country"],
+              "rows": [[1, "amc", "American Motor Company", 1], [2, "volkswagen", "Volkswagen", 2],
+                       [3, "bmw", "BMW", 2]]}
+    models = {"name": "model_list", "columns": ["ModelId", "Maker", "Model"],
+              "rows": [[1, 1, "amc"], [2, 2, "audi"], [3, 1, "rambler"], [4, 3, "bmw"]]}
+    names = {"name": "car_names", "columns": ["MakeId", "Model", "Make"],
+             "rows": [[1, "amc", "amc ambassador dpl"], [2, "amc", "amc hornet"], [3, "amc", "amc gremlin"],
+                      [4, "audi", "audi 100ls"], [5, "rambler", "rambler rebel"], [6, "bmw", "bmw 2002"]]}
+    fks = [{"from_table": "model_list", "from_col": "Maker", "to_table": "car_makers", "to_col": "Id"},
+           {"from_table": "car_names", "from_col": "Model", "to_table": "model_list", "to_col": "Model"}]
+    served = _hermetic_planner().serve(
+        [makers, models, names],
+        "How many car models were produced by the maker with full name American Motor Company?", fks)
+    assert served.get("valid") and served["result"]["rows"] == [[2]], (served.get("error"), served.get("sql"))
+    from engine.sql_expansion import counted_references
+    graph = SchemaGraph.from_tables([makers, models, names], fks)
+    ref = {(column.ref.table, column.ref.name): column.ref for column in graph.columns}
+    question = "How many car models are produced by the maker American Motor Company?"
+    joined = (Join("model_list", ref["car_names", "Model"], ref["model_list", "Model"]),
+              Join("car_makers", ref["model_list", "Maker"], ref["car_makers", "Id"]))
+    where = Comparison(ref["car_makers", "FullName"], "=", Literal("American Motor Company"))
+    referring = SelectQuery((SelectItem(Aggregate("COUNT", ref["car_names", "Model"])),), "car_names", joins=joined,
+                            where=where)
+    assert [table for _, table in counted_references(referring, question, graph)] == ["car_names"]
+    referred = SelectQuery((SelectItem(Aggregate("COUNT", ref["model_list", "Model"])),), "model_list",
+                           joins=joined[1:], where=where)
+    assert not counted_references(referred, question, graph)
+    assert not counted_references(referring, "How many car names are there for American Motor Company?", graph)
+    # Spider DEV 149, 150: the noun a threshold counts ("more than 3 car models") is read the same way.
+    maker = ref["car_makers", "FullName"]
+    grouped = SelectQuery((SelectItem(maker),), "car_names", joins=joined, group_by=(maker,),
+                          having=Comparison(Aggregate("COUNT", Star()), ">", Literal(3)))
+    assert [table for _, table in counted_references(grouped, "Which makers designed more than 3 car models?", graph)
+            ] == ["car_names"]
+    airlines = {"name": "airlines", "columns": ["uid", "Airline", "Country"],
+                "rows": [[1, "United Airlines", "USA"], [2, "JetBlue Airways", "USA"]]}
+    flights = {"name": "flights", "columns": ["Airline", "FlightNo", "SourceAirport"],
+               "rows": [[1, 28, "APG"], [2, 29, "ASY"], [2, 44, "ACV"], [1, 2, "AHD"]]}
+    keys = [{"from_table": "flights", "from_col": "Airline", "to_table": "airlines", "to_col": "uid"}]
+    served = _hermetic_planner().serve([airlines, flights], "How many flights does airline 'JetBlue Airways' have?",
+                                       keys)
+    assert served.get("valid") and served["result"]["rows"] == [[2]], (served.get("error"), served.get("sql"))
+
+
+def test_a_year_compares_the_year_field_named_beside_it():
+    """Spider DEV 846, 2026-10-17: "Please show the name of the conductor that has conducted orchestras founded after
+    2008." compared the conductor's Year_of_Work, the schema's first year field, with 2008. A year compares the year
+    field the question names beside it where it names one (ExpansionSupport.numeric_comparisons); where it names none,
+    every year field stays a candidate. Contrast: "year of work after 2008" is Year_of_Work."""
+    conductors = {"name": "conductor", "columns": ["Conductor_ID", "Name", "Year_of_Work"],
+                  "rows": [[1, "Antal", 2010], [2, "Colin", 2005], [3, "Riccardo", 2012]]}
+    orchestras = {"name": "orchestra", "columns": ["Orchestra_ID", "Orchestra", "Conductor_ID", "Year_of_Founded"],
+                  "rows": [[1, "London Symphony", 1, 2003], [2, "Chicago Symphony", 2, 2009],
+                           [3, "Vienna Philharmonic", 3, 2002]]}
+    fks = [{"from_table": "orchestra", "from_col": "Conductor_ID", "to_table": "conductor", "to_col": "Conductor_ID"}]
+    served = _hermetic_planner().serve(
+        [conductors, orchestras], "Please show the name of the conductor that has conducted orchestras founded after 2008.",
+        fks)
+    assert served.get("valid") and served["result"]["rows"] == [["Colin"]], (served.get("error"), served.get("sql"))
+    from engine.sql_expansion import ExpansionSupport, tokens
+    support = ExpansionSupport(SchemaGraph.from_tables([conductors, orchestras], fks))
+    fields = lambda text: {comparison.left.name for comparison in support.numeric_comparisons(tokens(text))}
+    assert fields("conductors with a year of work after 2008") == {"Year_of_Work"}
+    assert fields("orchestras founded after 2008") == {"Year_of_Founded"}
+    assert fields("Which conductors are there in 2008?") == {"Year_of_Work", "Year_of_Founded"}
+
+
+def test_a_named_tables_key_is_its_own_not_a_copy_from_an_unnamed_join():
+    """Spider DEV 323, 2026-10-17: "What are the ids of templates with template type code PP or PPT?" showed
+    Documents.Template_ID, the templates some document uses: it tied the templates' own Template_ID and won by name. A
+    key shown from a table the question never names, where the table it refers to is named and read, gives way
+    (sql_rank, referring_copy). Contrast: "the template ids of the documents" names the documents, whose key it is."""
+    templates = {"name": "Templates", "columns": ["Template_ID", "Template_Type_Code", "Version_Number"],
+                 "rows": [[1, "PP", 5], [2, "PPT", 9], [3, "BK", 4], [4, "PP", 2]]}
+    documents = {"name": "Documents", "columns": ["Document_ID", "Template_ID", "Document_Name"],
+                 "rows": [[10, 1, "Intro"], [11, 1, "Guide"], [12, 3, "Notes"]]}
+    fks = [{"from_table": "Documents", "from_col": "Template_ID", "to_table": "Templates", "to_col": "Template_ID"}]
+    from engine.sql_ast import BooleanExpr
+    graph = SchemaGraph.from_tables([templates, documents], fks)
+    ref = {(column.ref.table, column.ref.name): column.ref for column in graph.columns}
+    where = BooleanExpr("OR", (Comparison(ref["Templates", "Template_Type_Code"], "=", Literal("PP")),
+                               Comparison(ref["Templates", "Template_Type_Code"], "=", Literal("PPT"))))
+    copy = SelectQuery((SelectItem(ref["Documents", "Template_ID"]),), "Templates",
+                       joins=(Join("Documents", ref["Templates", "Template_ID"], ref["Documents", "Template_ID"]),),
+                       where=where, distinct=True)
+    own = SelectQuery((SelectItem(ref["Templates", "Template_ID"]),), "Templates", where=where)
+    question = "What are the ids of templates with template type code PP or PPT?"
+    ranked = CandidateRanker(graph).rank(question, [ScoredQuery(copy, render_query(copy), 0.5, ()),
+                                                    ScoredQuery(own, render_query(own), 0.5, ())])
+    assert ranked[0].query == own, [candidate.sql for candidate in ranked]
+    features = [evidence for candidate in ranked for evidence in candidate.evidence if "referring_copy" in evidence]
+    assert features, [candidate.evidence for candidate in ranked]
+    ranked = CandidateRanker(graph).rank("Show the template ids of the documents of templates with code PP.",
+                                         [ScoredQuery(copy, render_query(copy), 0.5, ())])
+    assert not any("referring_copy" in evidence for evidence in ranked[0].evidence), ranked[0].evidence
+
+
+def test_a_word_a_fields_name_abbreviates_spells_that_field_and_states_no_value():
+    """Spider DEV 788, 789, 2026-10-17: "What are the name, independence year, and surface area of the country with the
+    smallest population?" filtered on a city named 'Independence'. A several-word field's name is spelled by words its
+    own words abbreviate ("independence year" for IndepYear), so they state no stored value
+    (sql_expansion.spelled_names). Contrast: "the cities named Independence" spells no field."""
+    from engine.sql_expansion import spelled_names, tokens
+    countries = {"name": "country", "columns": ["Code", "Name", "IndepYear", "SurfaceArea"],
+                 "rows": [["USA", "United States", 1776, 9363520.0]]}
+    cities = {"name": "city", "columns": ["ID", "Name", "CountryCode"], "rows": [[1, "Independence", "USA"]]}
+    graph = SchemaGraph.from_tables([countries, cities], [])
+    said = tokens("What are the name, independence year, and surface area of the country?")
+    assert {said[index] for index in spelled_names(said, graph)} >= {"independence", "year"}
+    said = tokens("Which cities are named Independence?")
+    assert not spelled_names(said, graph)
+
+
+def test_a_count_ranking_groups_counts_the_rows_its_noun_names():
+    """Spider DEV 26, 2026-10-17: "Which year has most number of concerts?" ranked the years by the singer_in_concert
+    rows a join repeats each concert in, grouped by concert too; the reading counting the concerts tied it within 0.05.
+    A count that ranks the groups is credited where it counts the rows of the table its noun names at their own grain
+    (sql_rank, count_rows:counted_table; sql_expansion.count_preserves_population)."""
+    concerts = {"name": "concert", "columns": ["concert_ID", "concert_Name", "Year"],
+                "rows": [[1, "Auditions", 2014], [2, "Super bootcamp", 2014], [3, "Home Visits", 2015]]}
+    entries = {"name": "singer_in_concert", "columns": ["concert_ID", "Singer_ID"],
+               "rows": [[1, 2], [1, 3], [1, 5], [3, 1], [3, 4], [3, 6], [3, 7]]}
+    fks = [{"from_table": "singer_in_concert", "from_col": "concert_ID", "to_table": "concert", "to_col": "concert_ID"}]
+    graph = SchemaGraph.from_tables([concerts, entries], fks)
+    ref = {(column.ref.table, column.ref.name): column.ref for column in graph.columns}
+    year = ref["concert", "Year"]
+    ranked_by = (OrderTerm(Aggregate("COUNT", Star()), "DESC"),)
+    joined = SelectQuery((SelectItem(year),), "singer_in_concert",
+                         joins=(Join("concert", ref["singer_in_concert", "concert_ID"], ref["concert", "concert_ID"]),),
+                         group_by=(year, ref["concert", "concert_ID"]), order_by=ranked_by, limit=1)
+    own = SelectQuery((SelectItem(year),), "concert", group_by=(year,), order_by=ranked_by, limit=1)
+    ranked = CandidateRanker(graph).rank("Which year has most number of concerts?",
+                                         [ScoredQuery(joined, render_query(joined), 0.05, ()),
+                                          ScoredQuery(own, render_query(own), 0.0, ())])
+    assert ranked[0].query == own, [(candidate.sql, candidate.evidence) for candidate in ranked]
+
+
+def test_a_row_number_named_by_its_counted_table_is_no_measure():
+    """Spider DEV 461, 2026-10-17: "Find the year that has the most number of matches." ranked the matches by
+    match_num, a row number named by its table's word. Where the question counts a table's rows ("number of
+    matches", "most matches"), a field named only by those words is no superlative's measure
+    (sql_extrema._superlative_targets). Contrast: "the match with the highest match number" ranks by it."""
+    matches = {"name": "matches", "columns": ["match_num", "year", "minutes", "winner_name"],
+               "rows": [[1, 2013, 90, "Ann"], [2, 2013, 100, "Bo"], [3, 2016, 120, "Cy"], [99, 2016, 80, "Di"]]}
+    from engine.sql_expansion import tokens
+    from engine.sql_extrema import ExtremaQueryExpander
+    expander = ExtremaQueryExpander(SchemaGraph.from_tables([matches], []))
+    targets = expander._superlative_targets(tokens("Find the year that has the most number of matches."))
+    assert "match_num" not in {target.column.name for target in targets}, targets
+    targets = expander._superlative_targets(tokens("Which match has the highest match number?"))
+    assert targets and targets[0].column.name == "match_num", targets
+
+
+def test_a_listing_of_a_fields_values_shows_each_value_once():
+    """Held out 487, 644, 693, 849, 2026-10-17: "What are all the payment methods?" and "Show all product colors."
+    listed every row's value. A listing of one field's values, where the question names no table whose rows they are,
+    shows each value once (sql_rank.listed_values). Contrast: "the payment method of each customer" lists the
+    customers' rows, and a table's display field ("the names of all customers") stays one per row."""
+    customers = {"name": "Customers", "columns": ["customer_id", "customer_name", "payment_method"],
+                 "rows": [[1, "Dora", "Cash"], [2, "Kai", "Visa"], [3, "Lee", "Cash"], [4, "Ann", "Cash"]]}
+    graph = SchemaGraph.from_tables([customers], [])
+    ref = {(column.ref.table, column.ref.name): column.ref for column in graph.columns}
+    plain = SelectQuery((SelectItem(ref["Customers", "payment_method"]),), "Customers")
+    once = SelectQuery((SelectItem(ref["Customers", "payment_method"]),), "Customers", distinct=True)
+    ranked = CandidateRanker(graph).rank("What are all the payment methods?",
+                                         [ScoredQuery(plain, render_query(plain), 0.5, ()),
+                                          ScoredQuery(once, render_query(once), 0.0, ())])
+    assert ranked[0].query == once, [(candidate.sql, candidate.evidence) for candidate in ranked]
+    from engine.sql_expansion import tokens
+    from engine.sql_rank import listed_values
+    assert listed_values(graph, plain, tokens("What is the payment method of each customer?")) is None
+    names = SelectQuery((SelectItem(ref["Customers", "customer_name"]),), "Customers")
+    assert listed_values(graph, names, tokens("What are the names of all customers?")) is None
+
+
+def test_a_number_a_comparison_reads_states_no_stored_value():
+    """Held out 68, 2026-10-17: "What are the names of regions with two or more storms?" filtered on a storm named
+    'Two'. A number a comparison reads ("two or more", "more than three") is no stored value unless quoted or
+    capitalized (SQLSearcher._value_matches). Contrast: "the storm named Two" is that storm."""
+    regions = {"name": "region", "columns": ["Region_id", "Region_name"],
+               "rows": [[1, "Afghanistan"], [2, "Albania"], [3, "Algeria"]]}
+    storms = {"name": "storm", "columns": ["Storm_ID", "Name", "Max_speed"],
+              "rows": [[1, "One", 995], [2, "Two", 972], [3, "Three", 961]]}
+    affected = {"name": "affected_region", "columns": ["Region_id", "Storm_ID"],
+                "rows": [[1, 1], [1, 2], [2, 2], [3, 1], [3, 3], [3, 2]]}
+    fks = [{"from_table": "affected_region", "from_col": "Region_id", "to_table": "region", "to_col": "Region_id"},
+           {"from_table": "affected_region", "from_col": "Storm_ID", "to_table": "storm", "to_col": "Storm_ID"}]
+    served = _hermetic_planner().serve([regions, storms, affected],
+                                       "What are the names of regions with two or more storms?", fks)
+    assert served.get("valid") and sorted(served["result"]["rows"]) == [["Afghanistan"], ["Algeria"]], (
+        served.get("error"), served.get("sql"))
+    served = _hermetic_planner().serve([regions, storms, affected], "What is the max speed of the storm named Two?",
+                                       fks)
+    assert served.get("valid") and served["result"]["rows"] == [[972]], (served.get("error"), served.get("sql"))
+
+
+def test_a_field_holding_a_number_is_compared_not_counted():
+    """Held out 832, 2026-10-17: "Show the names of phones that are on market with number of shops greater than 50."
+    was answered by phones with more than 50 rows, the gate taking a HAVING COUNT over the market's rows for the
+    comparison of Num_of_shops (query_contract.realizes_numeric_comparisons). A field holding the number itself is
+    compared, not counted. Contrast: "phones on more than 1 market" counts the markets."""
+    markets = {"name": "market", "columns": ["Market_ID", "District", "Num_of_shops"],
+               "rows": [[1, "Alberta", 40], [2, "British Columbia", 100], [3, "New Brunswick", 60]]}
+    phones = {"name": "phone", "columns": ["Phone_ID", "Name"],
+              "rows": [[1, "IPhone 5s"], [2, "IPhone 6"], [3, "Galaxy"]]}
+    stock = {"name": "phone_market", "columns": ["Market_ID", "Phone_ID", "Num_of_stock"],
+             "rows": [[1, 1, 2232], [2, 2, 4324], [1, 3, 874], [3, 3, 682], [2, 1, 908]]}
+    fks = [{"from_table": "phone_market", "from_col": "Market_ID", "to_table": "market", "to_col": "Market_ID"},
+           {"from_table": "phone_market", "from_col": "Phone_ID", "to_table": "phone", "to_col": "Phone_ID"}]
+    served = _hermetic_planner().serve(
+        [markets, phones, stock], "Show the names of phones that are on market with number of shops greater than 50.",
+        fks)
+    assert served.get("valid") and {row[0] for row in served["result"]["rows"]} == {"IPhone 6", "Galaxy", "IPhone 5s"}, (
+        served.get("error"), served.get("sql"))
+    assert "Num_of_shops" in served["sql"], served["sql"]
+    served = _hermetic_planner().serve([markets, phones, stock], "Show the names of phones on more than 1 market.", fks)
+    assert served.get("valid") and sorted(served["result"]["rows"]) == [["Galaxy"], ["IPhone 5s"]], (
+        served.get("error"), served.get("sql"))
+
+
+def test_a_measures_own_word_said_before_a_superlative_names_it():
+    """Spider DEV 1011, 2026-10-17: "What is the name of the singer who is worth the most?" ranked the singers by a count
+    of rows: "worth" alone did not name Net_Worth_Millions. A word only one measure's name holds, said just before the
+    superlative, names that measure (sql_extrema._superlative_targets). Contrast: a word two measures share names
+    neither."""
+    singers = {"name": "singer", "columns": ["Singer_ID", "Name", "Net_Worth_Millions", "Age"],
+               "rows": [[1, "Liliane Bettencourt", 30.0, 60], [2, "Christy Walton", 28.8, 51], [3, "Alice Walton", 26.3, 49]]}
+    served = _hermetic_planner().serve([singers], "What is the name of the singer who is worth the most?", [])
+    assert served.get("valid") and served["result"]["rows"] == [["Liliane Bettencourt"]], (
+        served.get("error"), served.get("sql"))
+    from engine.sql_expansion import tokens
+    from engine.sql_extrema import ExtremaQueryExpander
+    points = {"name": "player", "columns": ["Player_ID", "Points_Won", "Points_Lost"],
+              "rows": [[1, 10, 3], [2, 7, 9]]}
+    targets = ExtremaQueryExpander(SchemaGraph.from_tables([points], []))._superlative_targets(
+        tokens("Which player has points the most?"))
+    assert not targets, targets
+    # Contrast (DEV 277): "awarded the most times" counts the awards; Year_awarded is no measure of it.
+    employees = {"name": "employee", "columns": ["Employee_ID", "Name", "Age"],
+                 "rows": [[1, "George Chuter", 23], [2, "Lee Mears", 29], [3, "Mark Regan", 43]]}
+    evaluations = {"name": "evaluation", "columns": ["Employee_ID", "Year_awarded", "Bonus"],
+                   "rows": [[1, 2011, 3000.0], [2, 2015, 3200.0], [2, 2016, 3100.0], [3, 2017, 4000.0]]}
+    fks = [{"from_table": "evaluation", "from_col": "Employee_ID", "to_table": "employee", "to_col": "Employee_ID"}]
+    served = _hermetic_planner().serve([employees, evaluations],
+                                       "find the name of employee who was awarded the most times in the evaluation.", fks)
+    assert served.get("valid") and served["result"]["rows"] == [["Lee Mears"]], (served.get("error"), served.get("sql"))
+
+
+def test_a_count_of_a_fields_values_counts_each_once():
+    """Spider DEV 751, 2026-10-17: "How many continents speak Chinese?" counted the countries speaking it, each
+    country's continent again. A count whose noun names a text field whole, and no table, counts that field's values
+    once each, in the search and the gate (sql_expansion.counted_field_values). Contrast: "How many countries speak
+    Chinese?" counts the countries' rows."""
+    country = {"name": "country", "columns": ["Code", "Name", "Continent"], "rows": [
+        ["CHN", "China", "Asia"], ["SGP", "Singapore", "Asia"], ["TWN", "Taiwan", "Asia"], ["CAN", "Canada", "North America"],
+        ["FRA", "France", "Europe"]]}
+    languages = {"name": "countrylanguage", "columns": ["CountryCode", "Language"], "rows": [
+        ["CHN", "Chinese"], ["SGP", "Chinese"], ["TWN", "Chinese"], ["CAN", "Chinese"], ["FRA", "French"]]}
+    fks = [{"from_table": "countrylanguage", "from_col": "CountryCode", "to_table": "country", "to_col": "Code"}]
+    planner = _hermetic_planner()
+    served = planner.serve([country, languages], "How many continents speak Chinese?", fks)
+    assert served.get("valid") and served["result"]["rows"] == [[2]], (served.get("error"), served.get("sql"))
+    served = planner.serve([country, languages], "How many countries speak Chinese?", fks)
+    assert served.get("valid") and served["result"]["rows"] == [[4]], (served.get("error"), served.get("sql"))
+    graph = SchemaGraph.from_tables([country, languages], fks)
+    continent = ColumnRef("country", "Continent", SQLType.TEXT)
+    every_row = SelectQuery((SelectItem(Aggregate("COUNT", continent)),), "country")
+    assert any("not its values" in violation
+               for violation in constraint_violations("How many continents are there?", every_row, graph))
+
+
+def test_a_count_counts_its_nouns_head():
+    """Held-out Spider train 989, 2026-10-17: "How many movie ratings have more than 3 stars?" counted the different
+    movies: the counted noun was read as Movie, its first word, and the count of ratings was rewritten as a count of
+    distinct movie keys. A table named right after the one a count's noun starts with is the noun's head, which counts
+    (sql_expansion.counted_noun_tables). Contrast: a noun naming one table counts it, and a verb is no head."""
+    from engine.sql_expansion import counted_noun_tables, tokens
+    movie = {"name": "Movie", "columns": ["mID", "title", "year"],
+             "rows": [[101, "Gone with the Wind", 1939], [102, "Star Wars", 1977], [103, "Avatar", 2009]]}
+    rating = {"name": "Rating", "columns": ["rID", "mID", "stars"],
+              "rows": [[201, 101, 2], [201, 101, 4], [202, 102, 5], [203, 102, 4], [204, 103, 3]]}
+    fks = [{"from_table": "Rating", "from_col": "mID", "to_table": "Movie", "to_col": "mID"}]
+    served = _hermetic_planner().serve([movie, rating], "How many movie ratings have more than 3 stars?", fks)
+    assert served.get("valid") and served["result"]["rows"] == [[3]], (served.get("error"), served.get("sql"))
+    graph = SchemaGraph.from_tables([movie, rating], fks)
+    assert counted_noun_tables(tokens("How many ratings are there?"), graph) == {"Rating"}
+    assert counted_noun_tables(tokens("How many movie ratings are there?"), graph) == {"Rating"}
+    # A table named by a verb that takes an object is no head: "How many instructors teach a course" counts the
+    # instructors (fresh holdout of Spider train 648, 2026-10-17).
+    instructor = {"name": "instructor", "columns": ["ID", "name"], "rows": [[1, "Srinivasan"]]}
+    teaches = {"name": "teaches", "columns": ["ID", "course_id"], "rows": [[1, "CS-101"]]}
+    taught = SchemaGraph.from_tables([instructor, teaches], [])
+    assert counted_noun_tables(tokens("How many instructors teach a course in the Spring of 2010?"), taught) == {
+        "instructor"}
+
+
+def test_a_table_said_after_in_is_no_item_to_show():
+    """Held-out Spider train 882, 2026-10-17: "What is the most common amenity in the dorms?" showed the dorm with the
+    most amenities: a table named last in the question was read as an item to show by its display field, a reading
+    meant for "customer and product category for each purchase". An item is one "and" or "or" joins to another
+    (ExpansionSupport.projection_columns)."""
+    dorm = {"name": "Dorm", "columns": ["dormid", "dorm_name", "student_capacity"],
+            "rows": [[100, "Smith Hall", 85], [109, "Fawlty Towers", 355], [110, "Dorm-plex 2000", 400]]}
+    amenity = {"name": "Dorm_amenity", "columns": ["amenid", "amenity_name"],
+               "rows": [[900, "TV Lounge"], [901, "Study Room"], [902, "Pub in Basement"]]}
+    has = {"name": "Has_amenity", "columns": ["dormid", "amenid"],
+           "rows": [[109, 900], [109, 901], [110, 900], [100, 900], [100, 902]]}
+    fks = [{"from_table": "Has_amenity", "from_col": "dormid", "to_table": "Dorm", "to_col": "dormid"},
+           {"from_table": "Has_amenity", "from_col": "amenid", "to_table": "Dorm_amenity", "to_col": "amenid"}]
+    served = _hermetic_planner().serve([dorm, amenity, has], "What is the most common amenity in the dorms?", fks)
+    assert served.get("valid") and served["result"]["rows"] and all(
+        row[0] in {"TV Lounge", "Study Room", "Pub in Basement"} for row in served["result"]["rows"]), served.get("sql")
+
+
+def test_a_value_two_fields_of_a_table_hold_is_its_display_fields():
+    """Spider DEV 709, 713, 716, 2026-10-17: 'Angola' is both a country's Name and its LocalName, and "What are the
+    region and population of Angola?" compared LocalName, the tie falling to it by name: a country whose local name is
+    Angola answered too. A value several fields of one table hold is the one its display field holds. Contrast: a value
+    only another field holds ('Kongo', a local name) is that field's."""
+    country = {"name": "country", "columns": ["Code", "Name", "LocalName", "Region", "Population"], "rows": [
+        ["AGO", "Angola", "Angola", "Central Africa", 12878000], ["COG", "Congo", "Angola", "Central Africa", 2943000],
+        ["COD", "Zaire", "Kongo", "Central Africa", 51654000]]}
+    planner = _hermetic_planner()
+    served = planner.serve([country], "What are the region and population of Angola?", [])
+    assert served.get("valid") and served["result"]["rows"] == [["Central Africa", 12878000]], served.get("sql")
+    served = planner.serve([country], "What is the population of Kongo?", [])
+    assert served.get("valid") and served["result"]["rows"] == [[51654000]], served.get("sql")
+
+
+def test_a_superlative_infers_its_field_only_where_none_is_named_at_it():
+    """Spider DEV 565, 569, 976, 977 and 667, Gemini on, 2026-10-17: Gemini reworded "How much does the most recent
+    treatment cost?" as "... the treatment with the latest date_of_treatment", and the dates "latest" infers ranked the
+    treatments by a dog's birth date; "the money rank of the tallest poker player" ranked by Money_Rank, the field the
+    question shows, though "tallest" says a height. A superlative followed by a field's whole name ranks by that field
+    alone, and a field named away from a superlative that names its own dimension is not what it measures. Contrast:
+    "the most recent treatment", naming no field, still ranks by the treatment's date."""
+    dogs = {"name": "Dogs", "columns": ["dog_id", "name", "date_of_birth", "date_adopted"], "rows": [
+        [1, "Kacey", "2012-01-27", "2017-09-08"], [2, "Hipolito", "2013-02-13", "2017-04-29"],
+        [3, "Mavis", "2016-11-28", "2017-06-19"]]}
+    treatments = {"name": "Treatments", "columns": ["treatment_id", "dog_id", "date_of_treatment", "cost_of_treatment"],
+                  "rows": [[1, 1, "2018-03-19", 266], [2, 2, "2018-03-15", 147], [3, 3, "2018-03-08", 429],
+                           [4, 1, "2018-03-01", 567]]}
+    fks = [{"from_table": "Treatments", "from_col": "dog_id", "to_table": "Dogs", "to_col": "dog_id"}]
+    planner = _hermetic_planner()
+    for question in ("What is the cost of treatment for the treatment with the latest date of treatment?",
+                     "How much does the most recent treatment cost?"):
+        served = planner.serve([dogs, treatments], question, fks)
+        assert served.get("valid") and served["result"]["rows"] == [[266]], (
+            question, served.get("error"), served.get("sql"))
+    people = {"name": "people", "columns": ["People_ID", "Name", "Height"],
+              "rows": [[1, "Aleksey", 182], [2, "Maksim", 207], [3, "Semen", 196]]}
+    poker = {"name": "poker_player", "columns": ["Poker_Player_ID", "People_ID", "Money_Rank", "Earnings"],
+             "rows": [[1, 1, 58, 476090], [2, 2, 141, 189233], [3, 3, 166, 104871]]}
+    fks = [{"from_table": "poker_player", "from_col": "People_ID", "to_table": "people", "to_col": "People_ID"}]
+    served = planner.serve([people, poker], "What is the money rank of the tallest poker player?", fks)
+    assert served.get("valid") and served["result"]["rows"] == [[141]], (served.get("error"), served.get("sql"))
+
+
+def test_the_highest_rank_is_the_smallest_number():
+    """Spider DEV 439, 2026-10-17: "Find the highest rank of losers in all matches." took the largest loser_rank. A
+    rank's first place is its smallest number, in the search and the gate alike (sql_extrema.superlative_direction).
+    Contrast: "the highest rank points" are the most points."""
+    matches = {"name": "matches", "columns": ["match_num", "loser_rank", "winner_name", "winner_rank_points"],
+               "rows": [[1, 12, "Ann", 3000], [2, 3, "Bo", 5200], [3, 40, "Cy", 900]]}
+    served = _hermetic_planner().serve([matches], "Find the highest rank of losers in all matches.", [])
+    assert served.get("valid") and served["result"]["rows"] == [[3]], (served.get("error"), served.get("sql"))
+    served = _hermetic_planner().serve([matches], "Find the name of the winner who has the highest rank points.", [])
+    assert served.get("valid") and served["result"]["rows"] == [["Bo"]], (served.get("error"), served.get("sql"))
+
+
+def test_of_two_keys_to_one_table_the_named_one_joins_and_a_distinct_count_counts_keys():
+    """Spider DEV 577, 2026-10-17: "How many different addresses do the students currently live?" counted distinct
+    other_address_details through either address key. Of two keys a table holds to one other table, the join is the
+    one the question names ("currently": current_address_id, sql_rank.named_parallel_key), and the different rows a
+    noun names are counted by their key, not a detail field (count_distinct_key). Contrast: "permanently" joins the
+    permanent address."""
+    addresses = {"name": "Addresses", "columns": ["address_id", "line_1", "other_address_details"],
+                 "rows": [[1, "2294 Grant Square", "x"], [2, "3999 Aufderhar Ways", "x"], [3, "67942 Carlotta Ferry",
+                                                                                     "y"], [4, "0144 Lamar Plaza", "x"]]}
+    students = {"name": "Students", "columns": ["student_id", "current_address_id", "permanent_address_id",
+                                                "first_name"],
+                "rows": [[1, 1, 2, "Timmothy"], [2, 2, 2, "Hobart"], [3, 3, 4, "Warren"], [4, 1, 3, "Jarvis"]]}
+    fks = [{"from_table": "Students", "from_col": "current_address_id", "to_table": "Addresses",
+            "to_col": "address_id"},
+           {"from_table": "Students", "from_col": "permanent_address_id", "to_table": "Addresses",
+            "to_col": "address_id"}]
+    served = _hermetic_planner().serve([addresses, students],
+                                       "How many different addresses do the students currently live?", fks)
+    assert served.get("valid") and served["result"]["rows"] == [[3]], (served.get("error"), served.get("sql"))
+    served = _hermetic_planner().serve([addresses, students],
+                                       "How many different addresses do the students permanently live?", fks)
+    assert served.get("valid") and served["result"]["rows"] == [[3]] and "permanent_address_id" in served["sql"], (
+        served.get("error"), served.get("sql"))
+
+
+def test_a_value_stored_as_said_is_meant_before_a_padded_copy():
+    """Spider DEV 199, 2026-10-17: "What is the airport name for airport 'AKO'?" compared flights.DestAirport, which
+    stores the code padded (' AKO'), and found no airport. A value stored as said is the one meant before a padded copy
+    of it in another field (SQLSearcher._value_predicate_groups)."""
+    airports = {"name": "airports", "columns": ["City", "AirportCode", "AirportName"],
+                "rows": [["Akron", "AKO", "Colorado Plains Regional"], ["Aberdeen", "APG", "Phillips AAF"]]}
+    flights = {"name": "flights", "columns": ["Airline", "FlightNo", "SourceAirport", "DestAirport"],
+               "rows": [[1, 28, " APG", " AKO"], [1, 29, " AKO", " APG"], [2, 44, " APG", " AKO"]]}
+    fks = [{"from_table": "flights", "from_col": "DestAirport", "to_table": "airports", "to_col": "AirportCode"},
+           {"from_table": "flights", "from_col": "SourceAirport", "to_table": "airports", "to_col": "AirportCode"}]
+    served = _hermetic_planner().serve([airports, flights], "What is the airport name for airport 'AKO'?", fks)
+    assert served.get("valid") and served["result"]["rows"] == [["Colorado Plains Regional"]], (
+        served.get("error"), served.get("sql"))
+
+
+def test_a_field_said_with_its_owner_is_that_tables():
+    """Held-out Spider train 142, 2026-10-17: "What are the distinct name of the mills built by the architects who have
+    also built a bridge longer than 80 meters?" showed the architects' names. A field said with "of" and its own table
+    ("the name of the mills") is that table's where another table holds a field of that name (sql_rank,
+    owner_phrase)."""
+    architects = {"name": "architect", "columns": ["id", "name", "nationality"],
+                  "rows": [[1, "Frank Lloyd Wright", "American"], [2, "Frank Gehry", "Canadian"]]}
+    bridges = {"name": "bridge", "columns": ["architect_id", "id", "name", "length_meters"],
+               "rows": [[1, 1, "Xian Ren Qiao", 121.0], [2, 2, "Landscape Arch", 88.0], [2, 3, "Hazarchishma", 60.0]]}
+    mills = {"name": "mill", "columns": ["architect_id", "id", "name", "type"],
+             "rows": [[1, 1, "Le Vieux Molen", "Grondzeiler"], [2, 2, "Moulin Bertrand", "Bergmolen"]]}
+    fks = [{"from_table": "bridge", "from_col": "architect_id", "to_table": "architect", "to_col": "id"},
+           {"from_table": "mill", "from_col": "architect_id", "to_table": "architect", "to_col": "id"}]
+    graph = SchemaGraph.from_tables([architects, bridges, mills], fks)
+    ref = {(column.ref.table, column.ref.name): column.ref for column in graph.columns}
+    joins = (Join("bridge", ref["architect", "id"], ref["bridge", "architect_id"]),
+             Join("mill", ref["architect", "id"], ref["mill", "architect_id"]))
+    where = Comparison(ref["bridge", "length_meters"], ">", Literal(80))
+    rival = SelectQuery((SelectItem(ref["architect", "name"]),), "architect", joins=joins, where=where, distinct=True)
+    own = SelectQuery((SelectItem(ref["mill", "name"]),), "architect", joins=joins, where=where, distinct=True)
+    question = ("What are the distinct name of the mills built by the architects who have also built a bridge longer "
+                "than 80 meters?")
+    ranked = CandidateRanker(graph).rank(question, [ScoredQuery(rival, render_query(rival), 0.5, ()),
+                                                    ScoredQuery(own, render_query(own), 0.0, ())])
+    assert ranked[0].query == own, [(candidate.sql, candidate.evidence) for candidate in ranked]
+
+
+def test_a_short_fields_inflection_names_it():
+    """Spider DEV 389, 390, 2026-10-17: "Show the name of teachers aged either 32 or 33?" compared no field: a word
+    shares a stem with a field only from five letters, and "aged" is Age inflected. An inflection names a field too
+    (sql_expansion.inflects), where the search reads a number's field and where the completeness gate reads a word.
+    Contrast: a word merely beginning with the field's ("agenda") is none."""
+    from engine.sql_expansion import inflects
+    teacher = {"name": "teacher", "columns": ["Teacher_ID", "Name", "Age", "Hometown"],
+               "rows": [[1, "Ann", 32, "X"], [2, "Bo", 33, "Y"], [3, "Cy", 40, "Z"], [4, "Di", 29, "X"]]}
+    served = _hermetic_planner().serve([teacher], "Show the name of teachers aged either 32 or 33?", [])
+    assert served.get("valid") and Counter(map(tuple, served["result"]["rows"])) == Counter({("Ann",): 1, ("Bo",): 1}), (
+        served.get("error"), served.get("sql"))
+    assert inflects("aged", "age") and inflects("priced", "price") and inflects("pricing", "price")
+    assert not inflects("agenda", "age") and not inflects("ag", "a")
+
+
+def test_common_values_use_independent_populations_without_an_invented_join():
+    """Spider DEV 918, 919, 2026-10-17 (the Codex review's population-presence reading, ported): "Which states have
+    both owners and professionals living there?" read the states of owners joined through dogs and treatments to
+    professionals. Values two named populations both (or either) hold are the INTERSECT (or UNION) of each
+    population's own known values (sql_expansion.population_presence_reading), and the gate refuses another reading
+    (population_presence_witness). Contrast: a relationship between them changes nothing; another qualification, a
+    second output or a different field leaves the request unread."""
+    suppliers = {"name": "suppliers", "columns": ["id", "name", "city"],
+                 "rows": [[1, "S", "Rome"], [2, "T", "Rome"], [3, "U", "Paris"], [4, "V", None]]}
+    buyers = {"name": "buyers", "columns": ["id", "name", "city"],
+              "rows": [[11, "B", "Rome"], [12, "C", "Oslo"], [13, "D", None]]}
+    planner = _hermetic_planner()
+    question = "Which cities have both suppliers and buyers living there?"
+    answer = planner.serve([suppliers, buyers], question, [])
+    assert answer.get("valid") and list(map(list, answer["result"]["rows"])) == [["Rome"]], answer
+    contracts = {"name": "contracts", "columns": ["id", "supplier_id", "buyer_id"], "rows": [[21, 3, 12]]}
+    foreign_keys = [{"from_table": "contracts", "from_col": "supplier_id", "to_table": "suppliers", "to_col": "id"},
+                    {"from_table": "contracts", "from_col": "buyer_id", "to_table": "buyers", "to_col": "id"}]
+    connected = planner.serve([suppliers, buyers, contracts], question, foreign_keys)
+    assert connected.get("valid") and list(map(list, connected["result"]["rows"])) == [["Rome"]], connected
+    for asked, expected in (("Find cities where both buyers and suppliers live.", [["Rome"]]),
+                            ("List cities where either suppliers or buyers are present.",
+                             [["Oslo"], ["Paris"], ["Rome"]])):
+        answer = planner.serve([suppliers, buyers], asked, [])
+        assert answer.get("valid") and sorted(map(list, answer["result"]["rows"])) == expected, answer
+    from engine.sql_expansion import population_presence_reading
+    graph = SchemaGraph.from_tables([suppliers, buyers], ())
+    city = graph.column_map["suppliers", "city"].ref
+    other_city = graph.column_map["buyers", "city"].ref
+    wrong = SelectQuery((SelectItem(city),), "suppliers", joins=(Join("buyers", city, other_city),))
+    assert any("independently" in reason for reason in constraint_violations(question, wrong, graph))
+    assert population_presence_reading("List the name and city of both suppliers and buyers.", graph) is None
+    assert population_presence_reading(
+        "Which cities have both suppliers and buyers with ratings above 3?", graph) is None
+    changed = dict(buyers, columns=["id", "name", "region"])
+    assert population_presence_reading(question, SchemaGraph.from_tables([suppliers, changed], ())) is None
+
+
+def test_a_superlative_adjective_ranks_by_the_field_it_measures():
+    """Spider DEV 453, 454, 468, 2026-10-17: "What are the names of the winner and loser who played in the longest
+    match?" ranked by no field, and "the oldest player" by a match's winner_age. A superlative adjective ranks by the
+    field it measures where the question names none (sql_extrema.SUPERLATIVE_DIMENSIONS: longest by minutes, tallest
+    by height, oldest by age or birth date), preferring the field of the rows its noun names. Contrast: "largest" names
+    no one field."""
+    matches = {"name": "matches", "columns": ["match_num", "winner_name", "loser_name", "minutes"],
+               "rows": [[1, "Ann", "Bo", 90], [2, "Cy", "Di", 200], [3, "Ed", "Fy", 120]]}
+    served = _hermetic_planner().serve(
+        [matches], "What are the names of the winner and loser who played in the longest match?", [])
+    assert served.get("valid") and served["result"]["rows"] == [["Cy", "Di"]], (served.get("error"), served.get("sql"))
+    from engine.sql_extrema import superlative_dimensions
+    from engine.sql_expansion import tokens
+    assert superlative_dimensions(tokens("the tallest player"), 1) == frozenset({"height"})
+    assert superlative_dimensions(tokens("the most recent cartoon"), 1) == frozenset({"date", "year"})
+    assert not superlative_dimensions(tokens("the largest country"), 1)
+
+
+def test_a_superlative_over_a_shared_field_ranks_the_rows_named_before_it():
+    """Spider DEV 788, 789, 2026-10-17: "the country with the smallest population" ranked a joined city's Population:
+    both tables hold the field and the tie fell to city by name. A field two tables share is the one of the rows named
+    just before the superlative (sql_extrema._superlative_targets). Contrast: "the city with the largest population"
+    ranks the cities."""
+    countries = {"name": "country", "columns": ["Code", "Name", "Population"],
+                 "rows": [["ABW", "Aruba", 103000], ["AFG", "Afghanistan", 22720000], ["AIA", "Anguilla", 8000]]}
+    cities = {"name": "city", "columns": ["ID", "Name", "CountryCode", "Population"],
+              "rows": [[1, "Oranjestad", "ABW", 29034], [2, "Kabul", "AFG", 1780000], [3, "The Valley", "AIA", 595],
+                       [4, "Herat", "AFG", 186800]]}
+    fks = [{"from_table": "city", "from_col": "CountryCode", "to_table": "country", "to_col": "Code"}]
+    from engine.sql_expansion import tokens
+    from engine.sql_extrema import ExtremaQueryExpander
+    expander = ExtremaQueryExpander(SchemaGraph.from_tables([countries, cities], fks))
+    best = expander._superlative_targets(tokens("What is the name of the country with the smallest population?"))[0]
+    assert (best.column.table, best.column.name) == ("country", "Population"), best
+    best = expander._superlative_targets(tokens("What is the name of the city with the largest population?"))[0]
+    assert (best.column.table, best.column.name) == ("city", "Population"), best
 
 
 def test_a_rewording_keeps_the_operations_the_engine_reads():
@@ -4765,6 +5348,31 @@ def test_two_values_a_child_table_holds_are_both():
         [1, 10, "Brazil"], [2, 10, "Ireland"], [3, 20, "Brazil"]]}
     contained = best("What are the ids of documents that contain the paragraph text 'Brazil'?", [paragraphs])
     assert "LIKE" not in contained.sql and "= 'Brazil'" in contained.sql, contained.sql
+
+
+def test_a_key_said_whole_is_what_both_branches_show():
+    """Spider DEV 379, 380, 576, 2026-10-17: "What are the ids of documents that contain the paragraph text 'Brazil'
+    and 'Ireland'?" built the INTERSECT of the documents' descriptions, and "the id of the semester that had both
+    Masters and Bachelors students" of the semesters' descriptions: the branches showed the fields the question shares
+    a word with, never a key. A key every word of whose name is said ("ids of documents") is what each branch shows;
+    the documents' names, or the documents alone, show no key."""
+    documents = {"name": "Documents", "columns": ["Document_ID", "Document_Name", "Document_Description"], "rows": [
+        [10, "Plan", "Travel plan"], [20, "Notes", "Field notes"], [30, "Atlas", "Maps"]]}
+    paragraphs = {"name": "Paragraphs", "columns": ["Paragraph_ID", "Document_ID", "Paragraph_Text"], "rows": [
+        [1, 10, "Brazil"], [2, 10, "Ireland"], [3, 20, "Brazil"], [4, 30, "Ireland"]]}
+    fks = [{"from_table": "Paragraphs", "from_col": "Document_ID", "to_table": "Documents", "to_col": "Document_ID"}]
+    tables = [documents, paragraphs]
+    ids = best("What are the ids of documents that contain the paragraph text 'Brazil' and 'Ireland'?", tables, fks)
+    assert "INTERSECT" in ids.sql and execute(tables, ids.sql) == [(10,)], ids.sql
+    names = best("What are the names of documents that contain the paragraph text 'Brazil' and 'Ireland'?", tables, fks)
+    assert "INTERSECT" in names.sql and execute(tables, names.sql) != [(10,)], names.sql
+    from engine.sql_recursive import RecursiveQueryExpander
+    from engine.sql_schema import SchemaColumn, SchemaGraph
+    schema = SchemaGraph([SchemaColumn(ColumnRef("Documents", name, SQLType.TEXT)) for name in documents["columns"]],
+                         [])
+    shown = RecursiveQueryExpander(schema)._projection_columns
+    assert "Document_ID" in [column.name for column, _ in shown("the document ids", "Documents")]
+    assert "Document_ID" not in [column.name for column, _ in shown("Which documents mention Brazil?", "Documents")]
 
 
 def test_a_column_word_that_introduces_a_value_is_not_listed():
@@ -7782,6 +8390,28 @@ TESTS = [
     test_a_key_named_as_the_table_it_refers_to_names_that_table,
     test_available_results_and_compute_ask_nothing,
     test_an_ordering_from_old_to_young_starts_at_the_oldest,
+    test_common_values_use_independent_populations_without_an_invented_join,
+    test_a_condition_field_is_not_also_an_output,
+    test_a_count_of_what_a_key_names_counts_the_referred_rows,
+    test_a_year_compares_the_year_field_named_beside_it,
+    test_a_named_tables_key_is_its_own_not_a_copy_from_an_unnamed_join,
+    test_a_word_a_fields_name_abbreviates_spells_that_field_and_states_no_value,
+    test_a_count_ranking_groups_counts_the_rows_its_noun_names,
+    test_a_row_number_named_by_its_counted_table_is_no_measure,
+    test_a_listing_of_a_fields_values_shows_each_value_once,
+    test_a_number_a_comparison_reads_states_no_stored_value,
+    test_a_field_holding_a_number_is_compared_not_counted,
+    test_a_measures_own_word_said_before_a_superlative_names_it,
+    test_a_count_of_a_fields_values_counts_each_once,
+    test_a_value_two_fields_of_a_table_hold_is_its_display_fields,
+    test_a_count_counts_its_nouns_head,
+    test_a_table_said_after_in_is_no_item_to_show,
+    test_a_superlative_infers_its_field_only_where_none_is_named_at_it,
+    test_the_highest_rank_is_the_smallest_number,
+    test_of_two_keys_to_one_table_the_named_one_joins_and_a_distinct_count_counts_keys,
+    test_a_value_stored_as_said_is_meant_before_a_padded_copy,
+    test_a_field_said_with_its_owner_is_that_tables,
+    test_a_short_fields_inflection_names_it,
     test_names_are_titles_where_a_table_holds_no_name_and_time_is_a_dates_kind,
     test_corresponding_pairs_an_output_with_another,
     test_a_flag_field_the_question_names_is_a_condition,
@@ -7794,6 +8424,8 @@ TESTS = [
     test_missing_relationship_construction_requires_an_exact_parent_key,
     test_declared_self_relationship_keeps_unrelated_queries_and_source_rows,
     test_spider_ingestion_keeps_discovered_and_declared_relationships,
+    test_a_superlative_adjective_ranks_by_the_field_it_measures,
+    test_a_superlative_over_a_shared_field_ranks_the_rows_named_before_it,
     test_a_rewording_keeps_the_operations_the_engine_reads,
     test_gemini_rewrite_must_preserve_data_values_and_numbers,
     test_a_rewording_may_say_the_value_a_word_names,
@@ -7853,6 +8485,7 @@ TESTS = [
     test_a_year_column_compares_the_year_itself,
     test_an_unjoinable_projection_drops_out_of_the_reading,
     test_two_values_a_child_table_holds_are_both,
+    test_a_key_said_whole_is_what_both_branches_show,
     test_a_column_word_that_introduces_a_value_is_not_listed,
     test_the_words_of_a_column_name_are_no_value,
     test_a_several_word_column_name_is_a_mention_where_it_is_said,

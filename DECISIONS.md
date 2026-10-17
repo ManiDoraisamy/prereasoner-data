@@ -3939,3 +3939,81 @@ Measured on Spider (`spider/results/RESULTS.md`, 2026-10-17): DEV 588 → 632 st
   "north america" in lower case), 230 keeps tied airlines and 792 orders its columns as asked; 245, 246, 768 and 769
   show a condition's field beside the answer, 819 and 821 leave "predominantly" unread, 884 groups the students by name,
   and 922 reads "or" as "and".
+
+## A condition's field is not shown; a count counts what its noun names, a field's values once each; superlatives, years and inflections name their fields; a set query shows the key said; a value is its display field's (2026-10-17)
+
+- Condition fields (`sql_rank.flag_condition_only`, `filter_only`): a yes/no flag the question says only as its
+  condition is not also shown ("the official language spoken in the country whose head of state is Beatrix" showed
+  IsOfficial's constant 'T', DEV 768), nor a key the query joins on, named as the field of another table it compares
+  ("flight numbers of Airline 'United Airlines'" showed flights.Airline, DEV 245, 246).
+- Counts of what a key names (`sql_expansion.counted_references`): a count whose noun says a referring key's own word
+  and not its table's name counts the referred rows. "How many car models are produced in the usa?" counted car_names
+  rows, every car name of a model again (DEV 115, 147, 148, 109), and so did the noun of a threshold ("makers who
+  designed more than 3 car models", DEV 149). The gate refuses such a count, the parsimony expander adds its twin
+  counting the referred key (`sql_parsimony`), and the grain gate reads a "by" naming who acted ("produced by the maker
+  with full name ...") as no grain, through `sql_expansion.by_groups`. A count that ranks groups is credited where it
+  counts the rows its noun names at their own grain ("Which year has most number of concerts?", DEV 26, whose tied years
+  the answer keeps), and a row number named by a counted table is no measure ("the most number of matches" is no ranking
+  by match_num, DEV 461). A field holding the number itself is compared, not counted ("markets with number of shops
+  greater than 50", held out 832).
+- Counts of a field's values (`sql_expansion.counted_field_values`): a count whose noun names a text field whole, and no
+  table, counts its values once each, in the search and the gate ("How many continents speak Chinese?" counted the
+  countries, DEV 751). Of two keys a table holds to one other table the join is the one the question names, and the rows
+  a noun names are counted by their key ("How many different addresses do the students currently live?" by
+  current_address_id, DEV 577; "customers who hold an account" by customer_id, fresh holdout 44, 438;
+  `sql_rank.named_parallel_key`, `count_distinct_key`). A table named right after the one a count's noun starts with is
+  the noun's head (`counted_noun_tables`): "movie ratings" counts the ratings (held out 989), and a verb taking an
+  object is none ("instructors teach a course", fresh holdout 648).
+- Relationships: a key named for a role references an entity's own named key only where the role names no table
+  (`relations._name_boost`): Products.parent_product_id names a product and is no reference to Customers.customer_id
+  (held out 546, a loss of the previous change).
+- Fields named beside a number: a year compares the year field the question names beside it, by a word not every year
+  field holds (`ExpansionSupport.numeric_comparisons`; "orchestras founded after 2008", DEV 846), and a short field's
+  inflection names it (`sql_expansion.inflects`; "teachers aged either 32 or 33", DEV 389, 390).
+- Superlatives (`sql_extrema._superlative_targets`, `superlative_direction`): an adjective naming a dimension ranks by
+  the field of it where the question names none (`SUPERLATIVE_DIMENSIONS`; "the longest match" by minutes, DEV 468),
+  preferring the rows its noun names, and the gate reads an adjective after "most" or "least" by such a field of those
+  rows ordered in that direction ("the most expensive phone" by Price, held out 110; 355 and 956 were refused for the
+  same word). It infers nothing where a field's whole name follows it, and a field named away from it is not what it
+  measures: Gemini reworded "How much does the most recent treatment cost?" as "the treatment with the latest
+  date_of_treatment", which ranked by a dog's birth date, and "the money rank of the tallest poker player" ranked by
+  Money_Rank (DEV 565, 569, 976, 977, 667, Gemini on, losses this change caused and fixed before release). A word one
+  measure alone holds, said just before the superlative, names it ("the singer who is worth the most" by
+  Net_Worth_Millions, DEV 1011), not before "the most times" (DEV 277); a rank's first place is its smallest number
+  ("the highest rank of losers", DEV 439); and a field two tables share, named at the superlative, is the one of the
+  rows named just before it ("the country with the smallest population").
+- Values: a number a comparison reads is no stored value ("regions with two or more storms" holds no storm 'Two', held
+  out 68); a word a several-word field's name abbreviates spells that field ("independence year" holds no city
+  'Independence', DEV 788, now refused where it filtered on it); a value stored as said is meant before a padded copy of
+  it ('AKO' before flights' ' AKO', DEV 199); and a value several fields of one table hold is the one its display field
+  holds ('Angola' a country's Name before its LocalName; DEV 709, 713 and 716 compared LocalName).
+- Outputs: a listing of one field's values, where the question names no table whose rows they are, is credited for
+  showing each value once (`sql_rank.listed_values`; "Show all product colors", held out 644 and 693, still ranks the
+  plain listing first); a key shown from a table the question never names gives way to the named table's own key (DEV
+  323); a field said with "of" and its own table is that table's ("the distinct name of the mills", held out 142,
+  `sql_rank.owner_phrase_fields`); a key every word of whose name is said is what each branch of a set query shows ("the
+  ids of documents that contain the paragraph text 'Brazil' and 'Ireland'" showed descriptions, DEV 379, 380, 576); and
+  a table named as one of the items to show, joined to another by "and" or "or", is shown by its display field
+  (`ExpansionSupport.projection_columns`; "the most common amenity in the dorms" shows no dorm, held out 882): the
+  Chrome gate of `608fc98` found the model's decomposition leaf "customer and product category for each purchase"
+  refused, and the complex-category-gaps demo answered "I couldn't split this question" on `608fc98` and `6eed24e`
+  alike.
+- Population sets (the Codex review's population-presence reading): "Which states have both owners and professionals
+  living there?" is the owners' states INTERSECT the professionals' (`sql_expansion.population_presence_reading`, built
+  in `sql_recursive`, required by the gate; DEV 918, 919).
+- "Corresponding" is read only where it says the output it pairs: "corresponding to each", a shown field (or a shown
+  count's "number") named after it, or "corresponding to" the table whose fields are shown; a misspelling is the word.
+  Read wherever two outputs were shown, it answered held out 111, 223, 400 and 809 wrong.
+
+Measured on Spider (`spider/results/RESULTS.md`, 2026-10-17): DEV 632 → 664 strict, held out 405 → 415, the fresh
+holdout 405 → 412, Gemini on 704 → 732.
+
+- The Chrome gate of `608fc98` found complex-category-gaps answering "I couldn't split this question": Gemini's
+  decomposition leaf "customer and product category for each purchase" was refused, on `608fc98` and `6eed24e` alike. It
+  is answered now (a table joined to another item by "and" is shown by its display field).
+- Measured as one package (runs `r4`). The rounds before it found losses fixed here: Gemini on, DEV 565, 569, 976, 977
+  and 667 (a superlative's inferred dimension); DEV 277 ("awarded the most times"); held out 882 ("the most common
+  amenity in the dorms" shown by dorm) and 989 ("movie ratings" counted as movies); the fresh holdout 44, 438 and 648 (a
+  count of keys, and "instructors teach a course" read as the teaches table).
+- No strict loss against 608fc98 on any set. Wrong answers fall on every set: DEV 166 to 138, held out 229 to 226, the
+  fresh holdout 237 to 232, Gemini on 210 to 180.

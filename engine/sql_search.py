@@ -61,6 +61,7 @@ from engine.sql_expansion import (
     asked_cues,
     by_groups,
     count_requested,
+    counted_field_values,
     entity_groups,
     field_numbers,
     implicit_sum_measures,
@@ -75,7 +76,9 @@ from engine.sql_expansion import (
     counted_noun_tables,
     count_preserves_population,
     list_closed,
+    nearby_operator,
     output_requests,
+    parse_number,
     flag_comparisons,
     repeated_requests,
     request_fields,
@@ -995,6 +998,9 @@ class SQLSearcher:
                 for column in self._distinct_counted_columns(tokens, position):
                     options.append((Aggregate("COUNT", column, distinct=True), 3.3,
                                     f"aggregate:COUNT(DISTINCT {column.table}.{column.name}):noun"))
+                for column in counted_field_values(tokens, self.schema, position + 2):
+                    options.append((Aggregate("COUNT", column, distinct=True), 3.9,
+                                    f"aggregate:COUNT(DISTINCT {column.table}.{column.name}):field-noun"))
                 # "the number of different series names and contents" counts each field's values.
                 counted = self._target_columns(mentions, position, numeric=False)
                 pair = _coordinated_targets(tokens, position, counted, numeric=False)
@@ -1309,6 +1315,11 @@ class SQLSearcher:
                 if (size == 1 and tokens[start] in verbs and tokens[start] not in capitalized
                         and start not in quoted):
                     continue
+                # A number a comparison reads is no stored value: "regions with two or more storms" holds no storm
+                # named 'Two' (held out 68, 2026-10-17).
+                if (size == 1 and parse_number(tokens[start]) is not None and tokens[start] not in capitalized
+                        and start not in quoted and nearby_operator(tokens, start) != "="):
+                    continue
                 if (size == 1 and tokens[start] in _QUANTITY_WORDS and tokens[start] not in capitalized
                         and start not in quoted):
                     # "the number of tracks" holds no track named 'Numbers', "all airports" no IATA code 'ALL'
@@ -1357,11 +1368,21 @@ class SQLSearcher:
             # The column whose words introduce the value is the one it names: "left / L hand" is a hand,
             # not a first name 'L' (Spider wta_1, 2026-10-02).
             introduced = {column for column, _ in options if _introducers(tokens, start, end, {column}, True)}
+            # A value several fields of one table hold is the one its display field holds: 'Anguilla' is a country's
+            # Name before its LocalName (Spider DEV 709, 713, 716, 2026-10-17: the tie fell to LocalName by name).
+            tables = Counter(column.table for column, _ in options)
+            displayed = {column for column, _ in options if tables[column.table] > 1 and is_name_column(column.name)
+                         and column in self.schema.display_columns(column.table)[:1]}
             choices = []
             for column, value in sorted(options, key=lambda item: (item[0] not in introduced, item[0].table,
                                                                    item[0].name))[:4]:
                 literal = Literal(value, column.type)
-                choices.append(((Comparison(column, operator, literal),), 5.5 if column in introduced else 5.0,
+                # A value stored as said is the one meant before a padded copy of it: airports.AirportCode 'AKO', not
+                # flights.DestAirport ' AKO' (Spider DEV 199, 2026-10-17).
+                padded = isinstance(value, str) and value != value.strip()
+                choices.append(((Comparison(column, operator, literal),),
+                                (5.5 if column in introduced else 5.0) - (0.5 if padded else 0.0)
+                                + (0.25 if column in displayed else 0.0),
                                 f"value:{column.table}.{column.name}{operator}{phrase}"))
             groups.append(choices)
         groups.extend(self._categorical_initial_groups(tokens, mentions, occupied))
