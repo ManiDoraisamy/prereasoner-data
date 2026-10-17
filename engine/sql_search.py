@@ -46,7 +46,7 @@ from engine.numeric import NUMBER_TEXT, parse_decimal
 from engine.sql_candidate import ScoredQuery
 from engine.sql_dates import period_grouping, served_date_phrases
 from engine.sql_durations import duration_phrases, question_date, span_comparisons
-from engine.closed_class import COMPARATIVE_COLUMNS, COMPARATIVES
+from engine.closed_class import COMPARATIVE_COLUMNS, COMPARATIVES, predicate_words
 from engine.sql_expansion import tokens as _tokens
 from engine.sql_expansion import (
     AGGREGATE_CUES,
@@ -74,6 +74,9 @@ from engine.sql_expansion import (
     command_positions,
     counted_noun_tables,
     count_preserves_population,
+    list_closed,
+    output_requests,
+    flag_comparisons,
     repeated_requests,
     request_fields,
     request_slots,
@@ -430,8 +433,14 @@ class SQLSearcher:
         if not complete_projection:
             slots = request_slots(question, self.schema)
             repeats = repeated_requests(question, self.schema)
-            pool = _merge_candidates([], [_in_list_order(candidate, slots, repeats)
+            closed = list_closed(question, output_requests(question, self.schema))
+            pool = _merge_candidates([], [_in_list_order(candidate, slots, repeats, closed=closed)
                                           or _in_question_order(candidate, tokens)
+                                          for candidate in pool])
+            # A join only a left-out field read is read by nothing now: "the 5 largest countries" keeps no join
+            # to city once the city field it showed is gone (Spider DEV 801, 802, 804, 2026-10-17).
+            pool = _merge_candidates([], [self._simplified(candidate, named_here, counted, tokens)
+                                          if "output-slots:closed" in candidate.evidence else candidate
                                           for candidate in pool])
         from engine.sql_rank import repeats_shown_rows
         pool = _merge_candidates(pool, [_distinct_twin(candidate) for candidate in pool
@@ -1288,11 +1297,18 @@ class SQLSearcher:
         capitalized = _capitalized(question)
         quoted = _quoted_positions(question)
         named = spelled_names(tokens, self.schema)
+        # A verb saying what the rows did is no value: "players who won in both 2013 and 2016" holds no surname
+        # 'Won', "countries that do not speak English" no country code 'DO' (Spider DEV 448, 451, 452, 778, 779,
+        # 2026-10-17: each read the verb as a filter). Quoted or capitalized, the word is the value.
+        verbs = predicate_words(question)
         matches: list[tuple[int, int, str, tuple[tuple[ColumnRef, Any], ...]]] = []
         for start in range(len(tokens)):
             for size in range(1, min(6, len(tokens) - start) + 1):
                 if size == 1 and tokens[start] in FUNCTION_WORDS and tokens[start] not in capitalized:
                     continue                    # "in" alone is no Code2 'IN'; "Welcome to NY" stays one value
+                if (size == 1 and tokens[start] in verbs and tokens[start] not in capitalized
+                        and start not in quoted):
+                    continue
                 if (size == 1 and tokens[start] in _QUANTITY_WORDS and tokens[start] not in capitalized
                         and start not in quoted):
                     # "the number of tracks" holds no track named 'Numbers', "all airports" no IATA code 'ALL'
@@ -1349,6 +1365,9 @@ class SQLSearcher:
                                 f"value:{column.table}.{column.name}{operator}{phrase}"))
             groups.append(choices)
         groups.extend(self._categorical_initial_groups(tokens, mentions, occupied))
+        for start, end, comparison in flag_comparisons(tokens, self.schema):
+            if not set(range(start, end)) & occupied:
+                groups.append([((comparison,), 4.75, f"flag:{comparison.left.table}.{comparison.left.name}")])
         return groups
 
     def _categorical_initial_groups(
@@ -2085,11 +2104,14 @@ _GROUPING_WORDS = frozenset({"each", "per", "by", "every", "different"})
 
 
 def _in_list_order(candidate: ScoredQuery, slots: tuple[frozenset[ColumnRef] | None, ...],
-                   repeats: tuple[int | None, ...] = ()) -> ScoredQuery | None:
+                   repeats: tuple[int | None, ...] = (), *, closed: bool = False) -> ScoredQuery | None:
     """``candidate`` with its answer's outputs in the order an explicit list instruction asks for them
     (sql_expansion.request_slots): "How many countries does each continent have? List the continent id, continent name
     and the number of countries." shows the id, the name, then the count (Spider DEV 89, 2026-10-14). None unless each
-    output realizes one request of its own."""
+    output realizes one request of its own; where the list is ``closed`` (sql_expansion.list_closed), a field no item
+    asks for is left out instead, once every item is shown: "List the Episode of all TV series showed on TV Channel
+    with series name Sky Radio" does not also show the channel key its join repeats (Spider DEV 625). An aggregate no
+    item binds is never dropped."""
     query = candidate.query
     if (not slots or not isinstance(query, SelectQuery) or not query.select
             or (len(query.select) == 1 and not isinstance(query.select[0].expression, ColumnRef))):
@@ -2103,7 +2125,12 @@ def _in_list_order(candidate: ScoredQuery, slots: tuple[frozenset[ColumnRef] | N
                                   expression in slot if slot is not None
                                   else isinstance(expression, Aggregate) and expression.function == "COUNT")), None))
     if None in ordinals:
-        return None
+        unasked = [index for index, ordinal in enumerate(ordinals) if ordinal is None]
+        if (not closed or any(not isinstance(items[index].expression, ColumnRef) for index in unasked)
+                or {ordinal for ordinal in ordinals if ordinal is not None} != set(range(len(slots)))):
+            return None
+        items = [item for item, ordinal in zip(items, ordinals) if ordinal is not None]
+        ordinals = [ordinal for ordinal in ordinals if ordinal is not None]
     for index, slot in enumerate(slots):
         if index in ordinals or slot is None:
             continue
@@ -2121,9 +2148,11 @@ def _in_list_order(candidate: ScoredQuery, slots: tuple[frozenset[ColumnRef] | N
     if ordered == query.select:
         return candidate
     reordered = replace(query, select=ordered)
+    pruned = len(ordered) < len(query.select)
     try:
         validate_query(reordered)
-        return replace(candidate, query=reordered, sql=render_query(reordered))
+        return replace(candidate, query=reordered, sql=render_query(reordered),
+                       evidence=candidate.evidence + (("output-slots:closed",) if pruned else ()))
     except (TypeError, ValueError):
         return None
 

@@ -229,9 +229,11 @@ replay. The legacy Wikidata schema migration is still pending.
    cells and calls `/chat` and the conversation APIs server to server with the user's Firebase identity. It does not
    implement reasoning and never writes to the spreadsheet.
 4. `engine.master` validates or selects private references. `engine.relations.discover_fks()` is the canonical
-   relationship detector used here and by planning, and `engine.relations.join_keys` is how it and join grounding
-   (`engine/sql_grounding.py`) read a column's keys. Within one request, discovery, the planner's schema and the schema graph
-   are each derived once (`engine.relations.memoized`).
+   relationship detector used here and by planning (`relate` merges declared keys with it: a declaration blocks a
+   discovered parent for its column only where its name names its own parent at least as well), and
+   `engine.relations.join_keys` is how it and join grounding (`engine/sql_grounding.py`) read a column's keys. Within
+   one request, discovery, the planner's schema and the schema graph are each derived once
+   (`engine.relations.memoized`).
 5. `engine.server` resolves the conversation id and verifies ownership before selecting its working schema.
    Uploaded data changes advance a monotonic dataset version and mark prior analyses stale. `engine.pg` hashes
    each materialized working table and leaves unchanged uploaded, private-reference, and enrichment tables in place.
@@ -457,7 +459,12 @@ named as its table is (airlines.Airline); a verb relating two tables it reads, o
 other after; a word sharing a stem of five letters or more with a table or field it reads ("students enrolled" by
 Student_Enrolment), a word of an operation excepted; and "one" after a determiner ("the one whose name"). "Available"
 asks nothing where no table or field is named for availability, nor do "the results" a sort verb orders, and an
-ordering "from old to young" is read by an ordering in that grade's direction (`sql_extrema.span_grade`). Two words
+ordering "from old to young" is read by an ordering in that grade's direction (`sql_extrema.span_grade`). A verb is
+read by the field its doer names ("won" by winner_id, `closed_class.agent_noun`), "corresponding" where the answer
+shows two outputs or more, "names" by the title of a table holding no name, and "time" by a date field it reads. A
+lower-case verb names no stored value in the search (`closed_class.predicate_words`), a measure's trailing unit is left
+unsaid in a field's name (`sql_expansion.naming_words`), and a yes/no flag field named by its words is the condition
+field = its true value (`sql_expansion.flag_comparisons`). Two words
 that begin the name of a table it reads are read ("the high school student" by Highschooler), as is a
 word the English vocabulary lacks one letter from a word it reads, misspelled ("the cartools" by Cartoon). So is a word
 the search

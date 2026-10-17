@@ -25,6 +25,8 @@ candidate-pool recall — the ceiling any selection improvement can reach — an
 stay inside the evaluator and never reach prediction. Denotation is compared on the REAL gold rows; we report
 the clean SCALAR-gold accuracy (unambiguous), lenient containment (generous UB), and strict row-set equality
 (harsh LB) so the true number is bracketed.
+Spider's declared relationships enter `TableQuery.ingest` as explicit_fks; serving merges them with the
+relationships it discovers from the rows, so a partly declared schema never replaces that graph.
 """
 from __future__ import annotations
 
@@ -230,11 +232,10 @@ def ast_predict(
     `enc.select_query` is the production selection (engine/tables.py). `selection="pool_oracle"`
     additionally executes every pooled candidate so the evaluator can score the pool's best
     member (an oracle ablation, never serving)."""
-    cache_key = tuple(id(table) for table in tabs)
+    cache_key = (tuple(id(table) for table in tabs), repr(schema_fks))
     cached = schema_cache.get(cache_key) if schema_cache is not None else None
     if cached is None:
-        norm, discovered_fks = enc.ingest(tabs)
-        fks = schema_fks if schema_fks is not None else discovered_fks
+        norm, fks = enc.ingest(tabs, explicit_fks=schema_fks or ())
         sch, _, tmap = enc.schema(norm, fks)
         cached = (norm, fks, sch, tmap)
         if schema_cache is not None:
@@ -644,6 +645,7 @@ def main():
     )
     checkpoint_contract = {
         "picked": picked,
+        "ingestion": "production_declared_plus_discovered",
         "config": args.config,
         "selection": args.selection,
         "backend": args.backend,
@@ -838,6 +840,7 @@ def main():
     N = max(tot["n"], 1)
     summary = {
         "n": tot["n"], "config": args.config,
+        "ingestion": checkpoint_contract["ingestion"],
         "selection": args.selection,
         "backend": args.backend,
         "python_row_limit": args.python_row_limit,

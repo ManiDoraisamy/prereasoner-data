@@ -3325,6 +3325,335 @@ def test_an_ordering_from_old_to_young_starts_at_the_oldest():
         served.get("error"), served.get("sql"))
 
 
+def test_spider_ingestion_keeps_discovered_and_declared_relationships():
+    """A partial declared schema must not replace production's data-derived graph."""
+    from spider.probe.full_eval import ast_predict
+    carriers = {"name": "carriers", "columns": ["id", "name"], "rows": [[1, "Alpha"], [2, "Beta"]]}
+    ports = {"name": "ports", "columns": ["id", "name"], "rows": [["X", "East"], ["Y", "West"]]}
+    shipments = {"name": "shipments", "columns": ["id", "carrier", "destination_id", "weight"],
+                 "rows": [[10, 1, "X", 1], [11, 1, "Y", 2], [12, 2, "X", 1]]}
+    tables = [carriers, ports, shipments]
+    declared = [{"from_table": "shipments", "from_col": "destination_id", "to_table": "ports", "to_col": "id"}]
+    planner = _hermetic_planner()
+    cache = {}
+    with patch.object(planner, "schema", wraps=planner.schema) as schema:
+        actual = ast_predict(planner, tables, "How many shipments use carrier Alpha?", declared, cache)
+        merged = schema.call_args.args[1]
+        pairs = {(edge["from_table"], edge["from_col"], edge["to_table"], edge["to_col"]) for edge in merged}
+        assert ("shipments", "carrier", "carriers", "id") in pairs, merged
+        assert ("shipments", "destination_id", "ports", "id") in pairs, merged
+        assert not any(edge["from_col"] == "weight" for edge in merged), merged
+        assert actual.get("ok") and actual["rows"] == [[2]], actual
+        # A repeated question reuses that one schema; a changed declaration is
+        # a different ingestion input even for the same table object identities.
+        again = ast_predict(planner, tables, "How many shipments use carrier Alpha?", declared, cache)
+        assert again.get("rows") == actual["rows"] and schema.call_count == 1
+        ast_predict(planner, tables, "How many shipments are there?", [], cache)
+        assert schema.call_count == 2
+        discovered = schema.call_args.args[1]
+        assert any(edge["from_col"] == "carrier" for edge in discovered), discovered
+
+
+def test_declared_self_relationship_keeps_unrelated_queries_and_source_rows():
+    from spider.probe.full_eval import ast_predict
+    employees = {"name": "employees", "columns": ["Employee_ID", "Name", "ReportsTo"],
+                 "rows": [[1, "A", None], [2, "A", 1], [3, "B", 1]]}
+    artists = {"name": "artists", "columns": ["Artist_ID", "Name"],
+               "rows": [[10, "Nora"], [11, "Nico"]]}
+    tables = [employees, artists]
+    before = json.dumps(tables, sort_keys=True)
+    declared = [{"from_table": "employees", "from_col": "ReportsTo",
+                 "to_table": "employees", "to_col": "Employee_ID"}]
+    planner = _hermetic_planner()
+    norm, fks = planner.ingest(tables, explicit_fks=declared)
+    assert any(edge["from_table"] == edge["to_table"] == "employees"
+               and edge["from_col"] == "ReportsTo" and edge["to_col"] == "Employee_ID"
+               and edge["explicit"] for edge in fks), fks
+    units, _ = planner._schema_name_units(norm, fks)
+    assert next(unit for unit in units if unit["table"] == "employees"
+                and unit["colname"] == "ReportsTo")["ref"] == ("employees", "Employee_ID")
+    sch, _, _ = planner.schema(norm, fks)
+    graph = SchemaGraph.from_planner(sch, fks)
+    assert any(edge.from_column.table == edge.to_column.table == "employees"
+               for edge in graph.foreign_keys)
+    assert graph.reachable({"employees"}) == {"employees"}
+    assert graph.join_trees({"employees", "artists"}) == ()
+    assert graph.join_trees({"employees"})[0].joins == ()
+    unrelated = ast_predict(planner, tables, "List artist names", declared)
+    assert unrelated["ok"] and Counter(map(tuple, unrelated["rows"])) == Counter({("Nora",): 1, ("Nico",): 1}), unrelated
+    assert '"employees"' not in unrelated["sql"], unrelated
+    listed = ast_predict(planner, tables, "List employee names", declared)
+    assert listed["ok"] and Counter(map(tuple, listed["rows"])) == Counter({("A",): 2, ("B",): 1}), listed
+    assert "JOIN" not in listed["sql"], listed
+    counted = ast_predict(planner, tables, "How many employees are there?", declared)
+    assert counted["ok"] and counted["rows"] == [[3]], counted
+    assert json.dumps(tables, sort_keys=True) == before
+    for malformed in ({**declared[0], "to_table": "absent"},
+                      {**declared[0], "to_col": "absent"},
+                      {"from_table": "employees", "to_table": "employees", "from_cols": (), "to_cols": ()},
+                      {"from_table": "employees", "to_table": "employees", "from_cols": ("ReportsTo",),
+                       "to_cols": ("Employee_ID", "Name")}):
+        try:
+            planner.ingest(tables, explicit_fks=[malformed])
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("self-reference support must not admit malformed declarations")
+
+
+def test_missing_relationship_construction_requires_an_exact_parent_key():
+    from engine.sql_expansion import ExpansionSupport
+    carriers = {"name": "carriers", "columns": ["id", "name"],
+                "rows": [[index, f"C{index}"] for index in range(1, 21)] + [[1, "Duplicate"]]}
+    shipments = {"name": "shipments", "columns": ["id", "carrier"],
+                 "rows": [[100 + index, 1 + index % 3] for index in range(12)]}
+    graph = SchemaGraph.from_tables([carriers, shipments], [])
+    support = ExpansionSupport(graph)
+    assert support.inferred_entity_join("carriers", "shipments") is None
+    # Removing the duplicate establishes the same exact key required by the
+    # canonical ingestion owner; real construction still finds the link.
+    carriers = dict(carriers, rows=carriers["rows"][:-1])
+    graph = SchemaGraph.from_tables([carriers, shipments], [])
+    assert ExpansionSupport(graph).inferred_entity_join("carriers", "shipments") is not None
+    test_constraint_expansion_infers_high_confidence_missing_entity_fk()
+
+
+def test_unjoined_catalog_does_not_deduplicate_a_property_listing():
+    """Repeated stored properties do not prove that a join copied answer rows.
+
+    Independently, three qualifying cars have models A, A and B. The unused
+    model catalog is a schema distractor, not an instruction to merge cars.
+    """
+    names = {"name": "car_names", "columns": ["MakeId", "Model"],
+             "rows": [[1, "A"], [2, "A"], [3, "B"], [4, "C"]]}
+    measures = {"name": "cars_data", "columns": ["Id", "Weight"],
+                "rows": [[1, 2], [2, 4], [3, 6], [4, 40]]}
+    catalog = {"name": "model_list", "columns": ["Model"], "rows": [["A"], ["B"], ["C"]]}
+    fks = [
+        {"from_table": "car_names", "from_col": "MakeId", "to_table": "cars_data", "to_col": "Id"},
+        {"from_table": "car_names", "from_col": "Model", "to_table": "model_list", "to_col": "Model"},
+    ]
+    tables = [names, measures, catalog]
+    for question in (
+        "What is the model for the car with a weight smaller than the average?",
+        "Find the model of the car whose weight is below the average weight.",
+    ):
+        candidate = best(question, tables, fks)
+        assert Counter(execute(tables, candidate.sql)) == Counter({("A",): 2, ("B",): 1}), candidate.sql
+        assert not candidate.query.distinct, candidate.sql
+    # A requested set of values remains a set on the identical input profile.
+    served = _hermetic_planner().serve(
+        tables, "List the distinct models for cars with weight below the average weight.", fks)
+    assert served.get("valid"), served
+    assert Counter(map(tuple, served["result"]["rows"])) == Counter({("A",): 1, ("B",): 1}), served
+    # A genuinely multiplying parent listing still uses the existing policy.
+    test_constraint_disjunction_deduplicates_entities_across_relation()
+
+
+def test_a_closed_opening_request_for_one_field_is_the_answer():
+    """Spider DEV 625, 2026-10-17 (ported from the Codex review's single-field reader): "List the Episode of all TV
+    series showed on TV Channel with series name 'Sky Radio'." also showed TV_series.Channel, the key its join repeats.
+    An opening instruction naming exactly one field, bound unambiguously, whose owner phrase names that field's table
+    and ends there, closes the answer's outputs (sql_expansion._one_closed_field, list_closed), and the search leaves
+    out a field no item asks for (sql_search._in_list_order). Contrast: asking for the episode and the channel shows
+    both; a list that goes on after its owner ("and the number of ...") is not closed."""
+    channels = {"name": "TV_Channel", "columns": ["id", "series_name", "Language"],
+                "rows": [["700", "Sky Radio", "Italian"], ["701", "Sky Music", "English"]]}
+    series = {"name": "TV_series", "columns": ["id", "Episode", "Channel"],
+              "rows": [[1, "A Love of a Lifetime", "700"], [2, "Friendly Skies", "700"], [3, "Blowback", "701"]]}
+    fks = [{"from_table": "TV_series", "from_col": "Channel", "to_table": "TV_Channel", "to_col": "id"}]
+    served = _hermetic_planner().serve(
+        [channels, series], 'List the Episode of all TV series showed on TV Channel with series name "Sky Radio".', fks)
+    assert served.get("valid") and Counter(map(tuple, served["result"]["rows"])) == Counter(
+        {("A Love of a Lifetime",): 1, ("Friendly Skies",): 1}), (served.get("error"), served.get("sql"))
+    served = _hermetic_planner().serve(
+        [channels, series], 'List the Episode and channel of all TV series showed on TV Channel with series name '
+                            '"Sky Radio".', fks)
+    assert served.get("valid") and {len(row) for row in served["result"]["rows"]} == {2}, served.get("sql")
+    from engine.sql_expansion import list_closed, output_requests
+    graph = SchemaGraph.from_tables([channels, series], fks)
+    question = "List the Episode of all TV series and the number of channels."
+    assert not list_closed(question, output_requests(question, graph))
+    # A join only the left-out field read goes with it (Spider DEV 801, 802, 804: a closed list kept a city join
+    # whose field it had dropped, and the join repeated each country).
+    from engine.sql_search import SQLSearcher, _in_list_order
+    searcher = SQLSearcher.from_tables([channels, series], fks)
+    ref = {(column.ref.table, column.ref.name): column.ref for column in searcher.schema.columns}
+    both = SelectQuery((SelectItem(ref["TV_Channel", "series_name"]), SelectItem(ref["TV_series", "Episode"])),
+                       "TV_Channel", joins=(Join("TV_series", ref["TV_series", "Channel"], ref["TV_Channel", "id"]),))
+    pruned = _in_list_order(ScoredQuery(both, render_query(both), 0.0, ()),
+                            (frozenset({ref["TV_Channel", "series_name"]}),), closed=True)
+    assert pruned is not None and "output-slots:closed" in pruned.evidence, pruned
+    simplified = searcher._simplified(pruned, set(), frozenset(), ("list", "the", "series", "name"))
+    assert not simplified.query.joins, simplified.sql
+
+
+def test_a_measures_unit_is_left_unsaid():
+    """Spider DEV 1016, 1017, 2026-10-17: "Show different citizenships and the maximum net worth of singers of each
+    citizenship." took the maximum of Citizenship, and "For each citizenship, what is the maximum net worth?" was
+    refused: no reading named Net_Worth_Millions, whose last word only says the unit. A measure's trailing unit, with
+    an "in" before it, is left unsaid (sql_expansion.naming_words, read by the search's mentions and the completeness
+    gate alike). Contrast: where two fields of a table differ only by the unit (length_feet, length_meters), "the
+    length" still names neither, and a unit said picks its field."""
+    from engine.sql_expansion import naming_context, naming_words
+    singers = {"name": "singer", "columns": ["Singer_ID", "Name", "Citizenship", "Net_Worth_Millions"],
+               "rows": [[1, "Ann", "France", 30.0], [2, "Bo", "France", 12.5], [3, "Cy", "Chile", 8.0]]}
+    for question in ("Show different citizenships and the maximum net worth of singers of each citizenship.",
+                     "For each citizenship, what is the maximum net worth?"):
+        served = _hermetic_planner().serve([singers], question, [])
+        assert served.get("valid") and Counter(map(tuple, served["result"]["rows"])) == Counter(
+            {("France", 30.0): 1, ("Chile", 8.0): 1}), (question, served.get("error"), served.get("sql"))
+    bridges = {"name": "bridge", "columns": ["id", "name", "length_feet", "length_meters"],
+               "rows": [[1, "A", 100.0, 30.5], [2, "B", 200.0, 61.0]]}
+    graph = SchemaGraph.from_tables([bridges], [])
+    context = naming_context(graph)["bridge"]
+    assert naming_words(("length", "feet"), context) == ("length", "feet")
+    assert naming_words(("net", "worth", "million"), frozenset()) == ("net", "worth")
+    assert naming_words(("sale", "in", "billion"), frozenset({"in", "billion"})) == ("sale",)
+    served = _hermetic_planner().serve([bridges], "What is the maximum length in meters?", [])
+    assert served.get("valid") and served["result"]["rows"] == [[61.0]], served.get("sql")
+
+
+def test_a_verb_the_question_says_names_no_stored_value():
+    """Spider DEV 448, 451, 452, 778, 779, 2026-10-17: "What are the names of players who won in both 2013 and 2016?"
+    filtered on a surname 'Won', and "What are the country codes for countries that do not speak English?" on a country
+    code 'DO'. A word the tagger reads as an auxiliary or a finite verb, said in lower case and unquoted, names no
+    stored value (closed_class.predicate_words, sql_search._value_matches). Contrast: quoted, the same word is the
+    value; a participle may still name a status ("the closed stores")."""
+    players = {"name": "players", "columns": ["player_id", "first_name", "last_name"],
+               "rows": [[1, "Ann", "Won"], [2, "Bo", "Lee"], [3, "Cy", "Park"]]}
+    matches = {"name": "matches", "columns": ["match_id", "winner_id", "year"],
+               "rows": [[1, 2, 2013], [2, 2, 2016], [3, 3, 2013], [4, 1, 2015]]}
+    fks = [{"from_table": "matches", "from_col": "winner_id", "to_table": "players", "to_col": "player_id"}]
+    candidate = best("What are the first names of players who won in 2013?", [players, matches], fks)
+    assert "'Won'" not in candidate.sql, candidate.sql
+    quoted = best("What are the first names of players with last name 'Won'?", [players, matches], fks)
+    assert "'Won'" in quoted.sql, quoted.sql
+    from engine.closed_class import predicate_words
+    assert {"won", "do"} <= predicate_words("players who won the cup in countries that do not speak English")
+    assert "closed" not in predicate_words("Find the closed stores.")
+
+
+def test_a_verb_is_read_by_the_field_its_doer_names():
+    """Spider DEV 448, 451, 452, 2026-10-17: "What are the names of players who won in both 2013 and 2016?" built the
+    right INTERSECT over winner_id and over loser_id, and refused both for "won". A verb is read by the field or table
+    its agent noun names where the query uses one (closed_class.verb_lemmas, agent_noun; query_contract.read_question):
+    "won" by winner_id. Contrast: the loser's reading leaves "won" unread; "owned" is read by an owner's field."""
+    from engine.query_contract import read_question
+    # A stored surname 'Won' makes "won" a word of the data, so only a field may read it.
+    players = {"name": "players", "columns": ["player_id", "first_name", "last_name"],
+               "rows": [[1, "Ann", "Won"], [2, "Bo", "Lee"]]}
+    matches = {"name": "matches", "columns": ["match_id", "winner_id", "loser_id", "year"],
+               "rows": [[1, 1, 2, 2013], [2, 1, 2, 2016], [3, 2, 1, 2013]]}
+    fks = [{"from_table": "matches", "from_col": "winner_id", "to_table": "players", "to_col": "player_id"},
+           {"from_table": "matches", "from_col": "loser_id", "to_table": "players", "to_col": "player_id"}]
+    graph = SchemaGraph.from_tables([players, matches], fks)
+    ref = {(column.ref.table, column.ref.name): column.ref for column in graph.columns}
+    question = "What are the first names of players who won in 2013?"
+    for key, read in (("winner_id", True), ("loser_id", False)):
+        query = SelectQuery((SelectItem(ref["players", "first_name"]),), "players",
+                            joins=(Join("matches", ref["matches", key], ref["players", "player_id"]),),
+                            where=Comparison(ref["matches", "year"], "=", Literal(2013, SQLType.INTEGER)))
+        candidate = ScoredQuery(query, render_query(query), 0.0, ())
+        assert ("won" not in read_question(question, candidate, graph).unread) == read, key
+    from engine.closed_class import agent_noun
+    assert agent_noun("win", "winner") and agent_noun("lose", "loser") and agent_noun("direct", "director")
+    assert agent_noun("create", "creator") and not agent_noun("win", "window") and not agent_noun("own", "town")
+
+
+def test_a_table_named_by_two_words_written_together_is_named_by_them():
+    """Spider DEV 768, 769, 770, 2026-10-17: "What is the official language spoken in the country whose head of state is
+    Beatrix?" was refused for "spoken": a relation verb is read between the names of two tables the query reads, and
+    countrylanguage was named by no word of the question. A name writing two words together is named by them too
+    (closed_class.compound_parts). Contrast: a word of its own is no compound; a name with an unknown half is none."""
+    from engine.query_contract import read_question
+    from engine.sql_ast import BooleanExpr
+    countries = {"name": "country", "columns": ["Code", "Name", "HeadOfState"], "rows": [["NLD", "Netherlands", "Beatrix"]]}
+    languages = {"name": "countrylanguage", "columns": ["CountryCode", "Language", "IsOfficial"],
+                 "rows": [["NLD", "Dutch", "T"], ["NLD", "Fries", "F"]]}
+    fks = [{"from_table": "countrylanguage", "from_col": "CountryCode", "to_table": "country", "to_col": "Code"}]
+    graph = SchemaGraph.from_tables([countries, languages], fks)
+    ref = {(column.ref.table, column.ref.name): column.ref for column in graph.columns}
+    query = SelectQuery((SelectItem(ref["countrylanguage", "Language"]),), "country",
+                        joins=(Join("countrylanguage", ref["countrylanguage", "CountryCode"], ref["country", "Code"]),),
+                        where=BooleanExpr("AND", (
+                            Comparison(ref["country", "HeadOfState"], "=", Literal("Beatrix", SQLType.TEXT)),
+                            Comparison(ref["countrylanguage", "IsOfficial"], "=", Literal("T", SQLType.TEXT)))))
+    candidate = ScoredQuery(query, render_query(query), 0.0, ())
+    question = "What is the official language spoken in the country whose head of state is Beatrix?"
+    assert "spoken" not in read_question(question, candidate, graph).unread
+    from engine.closed_class import compound_parts
+    assert compound_parts("countrylanguage") == ("country", "language")
+    assert compound_parts("language") == () and compound_parts("qzxwvt") == ()
+
+
+def test_a_flag_field_the_question_names_is_a_condition():
+    """Spider DEV 738, 748, 754, 771, 2026-10-17: "How many official languages does Afghanistan have?" counted every
+    language, and "What are the names of nations where both English and French are official languages?" was refused:
+    no reading compared countrylanguage.IsOfficial ('T'/'F'). A field holding only yes/no codes, named by its words
+    without the flag affix ("official" for IsOfficial, "abandoned" for abandoned_yn), is the condition field = its true
+    value where the question says those words (sql_expansion.flag_fields, flag_comparisons), in the search and the
+    constraint expander alike. Contrast: without the word nothing is filtered; a 0/1 field with no flag affix is no
+    flag; a negated word ("English is not the official language") adds no positive flag."""
+    countries = {"name": "country", "columns": ["Code", "Name"], "rows": [["AFG", "Afghanistan"], ["BEL", "Belgium"]]}
+    languages = {"name": "countrylanguage", "columns": ["CountryCode", "Language", "IsOfficial"],
+                 "rows": [["AFG", "Pashto", "T"], ["AFG", "Dari", "T"], ["AFG", "Uzbek", "F"],
+                          ["BEL", "Dutch", "T"], ["BEL", "French", "T"], ["BEL", "German", "F"]]}
+    fks = [{"from_table": "countrylanguage", "from_col": "CountryCode", "to_table": "country", "to_col": "Code"}]
+    served = _hermetic_planner().serve([countries, languages], "How many official languages does Afghanistan have?", fks)
+    assert served.get("valid") and served["result"]["rows"] == [[2]], (served.get("error"), served.get("sql"))
+    served = _hermetic_planner().serve([countries, languages], "How many languages does Afghanistan have?", fks)
+    assert served.get("valid") and served["result"]["rows"] == [[3]], (served.get("error"), served.get("sql"))
+    from engine.sql_expansion import flag_comparisons, flag_fields, tokens
+    graph = SchemaGraph.from_tables([countries, languages], fks)
+    assert [(column.name, value, words) for column, value, words in flag_fields(graph)] == [
+        ("IsOfficial", "T", ("official",))]
+    assert not flag_comparisons(tokens("countries where English is not the official language"), graph)
+    ranks = {"name": "teams", "columns": ["id", "playoff"], "rows": [[1, 0], [2, 1]]}
+    assert flag_fields(SchemaGraph.from_tables([ranks], ())) == ()
+    dogs = {"name": "Dogs", "columns": ["dog_id", "name", "abandoned_yn"], "rows": [[1, "Rex", 1], [2, "Bo", 0]]}
+    assert [words for _, _, words in flag_fields(SchemaGraph.from_tables([dogs], ()))] == [("abandoned",)]
+
+
+def test_corresponding_pairs_an_output_with_another():
+    """Spider DEV 368, 882, 948, 2026-10-17: "List the cost of each treatment and the corresponding treatment type
+    description." was refused, right, for "corresponding". The word pairs one output with another, so it is read where
+    the answer shows two or more (query_contract.read_question). Contrast: an answer showing one output pairs
+    nothing ("the lowest version number, along with its corresponding template type code" over the version alone)."""
+    from engine.query_contract import read_question
+    treatments = {"name": "Treatments", "columns": ["treatment_id", "treatment_type_code", "cost_of_treatment"],
+                  "rows": [[1, "EXAM", 300], [2, "VAC", 50]]}
+    kinds = {"name": "Treatment_Types", "columns": ["treatment_type_code", "treatment_type_description"],
+             "rows": [["EXAM", "Physical examination"], ["VAC", "Vaccination"]]}
+    fks = [{"from_table": "Treatments", "from_col": "treatment_type_code", "to_table": "Treatment_Types",
+            "to_col": "treatment_type_code"}]
+    graph = SchemaGraph.from_tables([treatments, kinds], fks)
+    ref = {(column.ref.table, column.ref.name): column.ref for column in graph.columns}
+    join = (Join("Treatment_Types", ref["Treatments", "treatment_type_code"],
+                 ref["Treatment_Types", "treatment_type_code"]),)
+    question = "List the cost of each treatment and the corresponding treatment type description."
+    both = SelectQuery((SelectItem(ref["Treatments", "cost_of_treatment"]),
+                        SelectItem(ref["Treatment_Types", "treatment_type_description"])), "Treatments", joins=join)
+    assert "corresponding" not in read_question(question, ScoredQuery(both, render_query(both), 0.0, ()), graph).unread
+    alone = SelectQuery((SelectItem(ref["Treatments", "cost_of_treatment"]),), "Treatments", joins=join)
+    assert "corresponding" in read_question(question, ScoredQuery(alone, render_query(alone), 0.0, ()), graph).unread
+
+
+def test_names_are_titles_where_a_table_holds_no_name_and_time_is_a_dates_kind():
+    """Spider DEV 588, 693, 2026-10-17: "What are the names of all cartoons directed by Ben Jones?" showed the titles
+    and "What are the distinct states and create time of all votes?" the created dates; both were refused, right, for
+    "names" and "time". A table holding a title and no name is named by it, and "time" is the kind of a date field the
+    query reads (query_contract.read_question)."""
+    cartoons = {"name": "Cartoon", "columns": ["id", "Title", "Directed_by"],
+                "rows": [[1, "The Rise", "Ben Jones"], [2, "Day Out", "Ann Lee"]]}
+    served = _hermetic_planner().serve([cartoons], "What are the names of all cartoons directed by Ben Jones?", [])
+    assert served.get("valid") and served["result"]["rows"] == [["The Rise"]], (served.get("error"), served.get("sql"))
+    votes = {"name": "VOTES", "columns": ["vote_id", "state", "created"],
+             "rows": [[1, "NY", "2018-03-09"], [2, "CA", "2018-03-10"], [3, "NY", "2018-03-09"]]}
+    served = _hermetic_planner().serve([votes], "What are the distinct states and create time of all votes?", [])
+    assert served.get("valid") and len(served["result"]["rows"]) == 2, (served.get("error"), served.get("sql"))
+
+
 def test_a_rewording_keeps_the_operations_the_engine_reads():
     """Spider DEV, 2026-10-13: rewordings were refused for losing words the engine does not read as operations: "per" in
     "miles per gallon", "number of" before the field Number_products, "no less than" said "at least". The engine's own
@@ -7453,6 +7782,18 @@ TESTS = [
     test_a_key_named_as_the_table_it_refers_to_names_that_table,
     test_available_results_and_compute_ask_nothing,
     test_an_ordering_from_old_to_young_starts_at_the_oldest,
+    test_names_are_titles_where_a_table_holds_no_name_and_time_is_a_dates_kind,
+    test_corresponding_pairs_an_output_with_another,
+    test_a_flag_field_the_question_names_is_a_condition,
+    test_a_table_named_by_two_words_written_together_is_named_by_them,
+    test_a_verb_is_read_by_the_field_its_doer_names,
+    test_a_verb_the_question_says_names_no_stored_value,
+    test_a_measures_unit_is_left_unsaid,
+    test_a_closed_opening_request_for_one_field_is_the_answer,
+    test_unjoined_catalog_does_not_deduplicate_a_property_listing,
+    test_missing_relationship_construction_requires_an_exact_parent_key,
+    test_declared_self_relationship_keeps_unrelated_queries_and_source_rows,
+    test_spider_ingestion_keeps_discovered_and_declared_relationships,
     test_a_rewording_keeps_the_operations_the_engine_reads,
     test_gemini_rewrite_must_preserve_data_values_and_numbers,
     test_a_rewording_may_say_the_value_a_word_names,

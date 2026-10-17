@@ -84,6 +84,54 @@ def action_words(text):
 
 
 @lru_cache(maxsize=1024)
+def predicate_words(text):
+    """The lowercased words the tagger reads in ``text`` as an auxiliary or a finite verb (past or present tense): "do"
+    in "countries that do not speak English", "won" in "players who won in both 2013 and 2016". They say what the
+    rows did, so the search reads no stored value from them (a country code 'DO', a surname 'Won'). Participles, base
+    forms and modals stay out: "the closed stores" and "the approved claims" may name a status value, and "contacts
+    reached in may" a month."""
+    return frozenset(
+        token.text.lower() for token in spacy_model()(text or "")
+        if (token.pos_ == "AUX" and token.tag_ != "MD") or (token.pos_ == "VERB" and token.tag_ in {"VBD", "VBP", "VBZ"})
+    )
+
+
+@lru_cache(maxsize=1024)
+def verb_lemmas(text):
+    """For each lowercased word the tagger reads in ``text`` as a full verb, its lemma: "won" -> "win", "owned" ->
+    "own", "taught" -> "teach". The pipeline loads its lemmatizer disabled; it runs here, on demand."""
+    model = spacy_model()
+    doc = model.get_pipe("lemmatizer")(model(text or ""))
+    return {token.text.lower(): token.lemma_.lower() for token in doc if token.pos_ == "VERB" and token.lemma_}
+
+
+@lru_cache(maxsize=4096)
+def compound_parts(word):
+    """The two words a name writes together, where it is no word of its own and both halves are: "countrylanguage" ->
+    ("country", "language"), "playlisttrack" -> ("playlist", "track"); () otherwise. The longest first half wins."""
+    vocab = spacy_model().vocab
+    word = str(word).lower()
+    if len(word) < 6 or not word.isalpha() or not vocab[word].is_oov:
+        return ()
+    for split in range(len(word) - 3, 2, -1):
+        head, tail = word[:split], word[split:]
+        if not vocab[head].is_oov and not vocab[tail].is_oov:
+            return (head, tail)
+    return ()
+
+
+def agent_noun(lemma, word):
+    """Whether ``word`` names who does what ``lemma`` says: "winner" of win, "loser" of lose, "owner" of own,
+    "director" of direct, "creator" of create."""
+    if len(lemma) < 3 or not word.startswith(lemma[:-1]):
+        return False
+    forms = {lemma + "er", lemma + "r", lemma + "or", lemma + lemma[-1] + "er"}
+    if lemma.endswith("e"):
+        forms.add(lemma[:-1] + "or")
+    return word in forms
+
+
+@lru_cache(maxsize=1024)
 def relation_verbs(text):
     """The lowercased words the tagger reads in ``text`` as a full verb, a participle included, not an auxiliary or
     an exclusion cue: "used" in "templates used by documents", "conducted" in "the conductor that has conducted the

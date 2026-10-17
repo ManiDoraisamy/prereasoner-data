@@ -180,6 +180,76 @@ def test_name_signaled_foreign_keys_still_resolve():
     assert ("orders", "customer", "customers", "name") in discover_fks([CUSTOMERS, ORDERS_FK])
 
 
+def test_foreign_key_names_keep_the_referenced_entity_namespace():
+    from engine.relations import discover_fks as relationships
+    students = {"name": "Students", "columns": ["student_id", "name"],
+                "rows": [[1, "Ann"], [2, "Bo"], [3, "Cy"]]}
+    enrolments = {"name": "Student_Enrolment", "columns": ["student_enrolment_id", "student_id", "term"],
+                  "rows": [[1, 1, "A"], [2, 1, "B"], [3, 2, "A"]]}
+    edges = relationships([students, enrolments])
+    assert not any(edge["from_table"] == "Students" for edge in edges), edges
+    assert not any(edge["from_col"] == "student_enrolment_id" for edge in edges), edges
+    assert any(edge["from_col"] == "student_id" and edge["to_table"] == "Students" for edge in edges), edges
+    # The same overlapping integers in another namespace cannot establish a key.
+    warehouses = {"name": "warehouses", "columns": ["id", "label"], "rows": [[1, "N"], [2, "S"], [3, "E"]]}
+    events = {"name": "events", "columns": ["event_id", "unrelated_id"],
+              "rows": [[10, 1], [11, 1], [12, 2]]}
+    assert relationships([warehouses, events]) == []
+    # Qualifying prefixes and camel case still name the final entity role.
+    ships = {"name": "ships", "columns": ["id", "name"], "rows": [[1, "One"], [2, "Two"], [3, "Three"]]}
+    for column in ("caused_by_ship_id", "homeShipId", "shipid"):
+        events = {"name": "events", "columns": ["event_id", column], "rows": [[10, 1], [11, 1], [12, 2]]}
+        edges = relationships([warehouses, ships, events])
+        assert any(edge["from_col"] == column and edge["to_table"] == "ships" for edge in edges), edges
+        assert not any(edge["to_table"] == "warehouses" for edge in edges), edges
+
+
+def test_a_declaration_naming_nothing_does_not_hide_the_named_parent_and_a_bridge_key_keeps_its_role():
+    """Held-out 324 and holdout2 411, 2026-10-17. Spider musical declares actor.Musical_ID -> actor.Actor_ID; the
+    declaration blocked the parent the key's own word names, musical.Musical_ID, and every actor-musical join was lost.
+    A declared key blocks a discovered parent only where its name names its declared parent at least as well. And
+    shop_membership's branch.Branch_ID was discovered as a reference to membership_register_branch.Member_ID because
+    the bridge table's name ends in "branch": a referenced key naming another role (member) is no target for it."""
+    from engine.relations import relate
+    actors = {"name": "actor", "columns": ["Actor_ID", "Name", "Musical_ID"],
+              "rows": [[1, "Ann", 1], [2, "Bo", 1], [3, "Cy", 2], [4, "Di", 3]]}
+    musicals = {"name": "musical", "columns": ["Musical_ID", "Name"], "rows": [[1, "Cats"], [2, "Rent"], [3, "Hair"]]}
+    declared = {"from_table": "actor", "from_col": "Musical_ID", "to_table": "actor", "to_col": "Actor_ID"}
+    edges = relate([actors, musicals], explicit_fks=[declared])["fks"]
+    assert any(edge["from_col"] == "Musical_ID" and edge["to_table"] == "musical" for edge in edges), edges
+    branches = {"name": "branch", "columns": ["Branch_ID", "Name"], "rows": [[1, "North"], [2, "South"]]}
+    members = {"name": "member", "columns": ["Member_ID", "Name"], "rows": [[1, "A"], [2, "B"], [3, "C"]]}
+    bridge = {"name": "membership_register_branch", "columns": ["Member_ID", "Branch_ID"],
+              "rows": [[1, 1], [2, 2], [3, 1]]}
+    edges = relate([branches, members, bridge])["fks"]
+    assert not any(edge["from_table"] == "branch" and edge["to_col"] == "Member_ID" for edge in edges), edges
+    assert any(edge["from_table"] == "membership_register_branch" and edge["from_col"] == "Branch_ID"
+               and edge["to_table"] == "branch" for edge in edges), edges
+
+
+def test_explicit_relationship_prevents_a_competing_inferred_parent():
+    from engine.relations import relate
+    left = {"name": "archived_codes", "columns": ["id", "label"], "rows": [[1, "A"], [2, "B"], [3, "C"]]}
+    right = {"name": "codes", "columns": ["id", "description"], "rows": [[1, "D"], [2, "E"], [3, "F"]]}
+    records = {"name": "records", "columns": ["id", "code_id"], "rows": [[10, 1], [11, 1], [12, 2]]}
+    declared = {"from_table": "records", "from_col": "code_id", "to_table": "archived_codes", "to_col": "id"}
+    result = relate([left, right, records], explicit_fks=[declared])
+    edges = [edge for edge in result["fks"] if edge["from_table"] == "records" and edge["from_col"] == "code_id"]
+    assert len(edges) == 1 and edges[0]["to_table"] == "archived_codes" and edges[0]["explicit"], edges
+    # An unrelated source column may still discover its own relationship.
+    carriers = {"name": "carriers", "columns": ["id", "name"], "rows": [[1, "Alpha"], [2, "Beta"]]}
+    records = dict(records, columns=["id", "code_id", "carrier"], rows=[[10, 1, 1], [11, 1, 1], [12, 2, 2]])
+    result = relate([left, right, carriers, records], explicit_fks=[declared])
+    assert any(edge["from_col"] == "carrier" and edge["to_table"] == "carriers" for edge in result["fks"]), result
+    # A current 1:1 extent does not require a reverse discovery to re-label the
+    # parent's own identity as a reference back into its declared child.
+    pets = {"name": "Pets", "columns": ["PetID", "name"], "rows": [[1, "A"], [2, "B"]]}
+    owned = {"name": "Has_Pet", "columns": ["StudentID", "PetID"], "rows": [[10, 1], [11, 2]]}
+    result = relate([pets, owned], explicit_fks=[
+        {"from_table": "Has_Pet", "from_col": "PetID", "to_table": "Pets", "to_col": "PetID"}])
+    assert len(result["fks"]) == 1 and result["fks"][0]["explicit"], result
+
+
 
 def _agg_result(rows, functions=("SUM",), columns=("sum",)):
     """The serve() payload shape as it exists BEFORE provenance decoration: the typed planner has
@@ -771,6 +841,9 @@ TESTS = [
     test_no_name_signal_column_is_not_a_foreign_key,
     test_tabs_with_the_same_columns_are_not_foreign_keys_of_each_other,
     test_name_signaled_foreign_keys_still_resolve,
+    test_foreign_key_names_keep_the_referenced_entity_namespace,
+    test_explicit_relationship_prevents_a_competing_inferred_parent,
+    test_a_declaration_naming_nothing_does_not_hide_the_named_parent_and_a_bridge_key_keeps_its_role,
 ]
 
 

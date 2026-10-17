@@ -169,6 +169,31 @@ class SchemaGraph:
         return cls(columns, (edge for edge in edges if edge is not None))
 
     @cached_property
+    def discovered_foreign_keys(self) -> tuple[ForeignKey, ...]:
+        """Canonical relationship hypotheses over these aligned request values.
+
+        Bounded constructors sometimes receive a graph without trusted edges.
+        They consume ingestion's exact-key/name/inclusion rule rather than
+        implementing a weaker key test. Missing/misaligned profiles supply no
+        reconstructed relation and therefore no discovery proof.
+        """
+        from engine.relations import relate
+        tables = []
+        for table, columns in self.by_table.items():
+            lengths = {len(column.values) for column in columns}
+            tables.append({"name": table, "columns": [column.ref.name for column in columns],
+                           "rows": list(zip(*(column.values for column in columns)))
+                           if len(lengths) == 1 else []})
+        declared = [{"from_table": key.from_column.table,
+                     "from_cols": tuple(left.name for left, _ in key.column_pairs),
+                     "to_table": key.to_column.table,
+                     "to_cols": tuple(right.name for _, right in key.column_pairs),
+                     "conf": key.confidence} for key in self.foreign_keys]
+        refs = {key: column.ref for key, column in self.column_map.items()}
+        return tuple(key for edge in relate(tables, explicit_fks=declared)["fks"] if not edge.get("explicit")
+                     and (key := _foreign_key(edge, refs)) is not None)
+
+    @cached_property
     def layout_copies(self) -> tuple[tuple[str, ...], ...]:
         """The tables that are copies of one layout (`relations.layout`), as groups in the tables' order: an
         export of several columns kept per product or month, such as NT, SI and FF subscriptions. A table of

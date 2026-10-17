@@ -107,6 +107,55 @@ Artifacts: `%LOCALAPPDATA%/Temp/prereasoner-spider-review-20261013/`, tags `revi
 Incomplete intermediate runs are excluded. The review hardens ranking-number roles, output counts (preserving stored-count SUM),
 and table-owned full-name construction; it does not introduce another planner or model bundle.
 
+## Relationships as serving discovers them; a measure's unit, a yes/no flag and a verb's doer are read; one closed field is the answer; "corresponding", titles and times are read: 588 → 632 strict, Gemini on 674 → 704, held out 385 → 405, fresh holdout 390 → 405 (2026-10-17)
+
+The change is the `DECISIONS.md` entry of this title. Engine-alone runs are the production evaluator on RunPod CPU pods:
+`requirements.lock.txt` on CPython 3.11.17 (the container's Python), the bundle fetched and verified by
+`engine.fetch_weights` (`b11056f8ce8b`), each set split round robin into four evaluator processes and merged by index.
+That environment reproduced `6eed24e` exactly (DEV 588, held out 385, fresh holdout 390; runs `b0`). The evaluator now
+ingests Spider's declared keys as serving does (the ingestion contract `production_declared_plus_discovered`); alone on
+`6eed24e` it measures DEV 588 → 602 strict (16 wins, 2 losses: 535, 536), held out 385 → 373 and the fresh holdout 390 →
+380: serving's discovery as `6eed24e` read relationships cost the held-out sets what the evaluator, reading the
+declarations only, never saw. The relationship family recovers them. Gemini on is the local run as before.
+
+- DEV, engine alone: 588 → **632 strict**; 44 wins (97, 213, 214, 215, 216, 217, 218, 219, 220, 233, 234, 235, 236, 237,
+  238, 239, 240, 362, 368, 451, 588, 625, 645, 646, 693, 738, 739, 748, 749, 770, 771, 778, 779, 787, 815, 841, 848,
+  882, 948, 956, 1002, 1003, 1016, 1017), no loss; wrong answers 165 → 166; 77 queries changed.
+- Held out: 385 → **405 strict**; 22 wins (113, 183, 194, 234, 236, 259, 476, 498, 599, 682, 726, 811, 863, 889, 898,
+  913, 926, 932, 933, 947, 976, 997), 2 losses (546, 872); wrong answers 232 → 229; 74 queries changed.
+- Fresh holdout: 390 → **405 strict**; 19 wins (170, 282, 441, 461, 561, 597, 627, 669, 746, 750, 751, 754, 797, 805,
+  856, 889, 890, 940, 988), 4 losses (24, 488, 650, 673); wrong answers 235 → 237; 64 queries changed.
+- Gemini on: 674 → 704; 32 wins (97, 213, 214, 215, 216, 217, 218, 219, 220, 233, 234, 235, 236, 237, 238, 239, 240,
+  362, 451, 558, 625, 645, 646, 770, 771, 778, 779, 815, 882, 948, 956, 1016), 2 losses (768, 884); wrong answers 216 →
+  210; 76 queries changed.
+
+Each family alone against `6eed24e` (DEV / held out / fresh holdout, strict wins - losses):
+
+- Relationships, with the ingestion contract: +16 (16 wins, 0 losses) / +6 (6, 0) / +6 (8, 2: bike_1 488 and 673, where
+  the true trip keys crowd the pool).
+- Listing grain: +1 / 0 / +1.
+- One closed field: +4 (4, 0) on DEV; not run alone on the held-out sets.
+- A measure's unit: +4 / +3 / 0.
+- Verbs: +5 / +1 / 0; alone it answered DEV 768-770 wrong, which the flags family reads.
+- Flags: +6 / +1 / 0.
+- Rule words: +7 / +4 / +2.
+
+- Fourteen of the DEV wins (flight_2 215-220 and 233-240) are no capability. Their gold answers are 0 or empty because
+  flight_2 stores its airport codes with a leading space (' AHD'), and the engine's answers, joining flights to airlines
+  as the gold queries do, are 0 or empty too; several read the wrong airport side. Without them the DEV gain is +30. DEV
+  213 and 214 (JetBlue's 100 flights) are real.
+- Losses: held out 546 (Products.parent_product_id discovered as a reference to Customers.customer_id, its role naming
+  no customer) and 872 (a count of cards joined through the customers the new relationships connect); fresh holdout 488
+  and 673 (bike_1) and 24 and 650 (a discovered relationship adds a join the answer does not need); Gemini on 768 (the
+  flag condition's field shown beside the language) and 884.
+- Newly answered wrong on DEV (12): 186 and 811 compare values the gold queries miss (a city stored as 'Anthony ',
+  "north america" in lower case), 230 keeps tied airlines and 792 orders its columns as asked; 245, 246, 768 and 769
+  show a condition's field beside the answer, 819 and 821 leave "predominantly" unread, 884 groups the students by name,
+  and 922 reads "or" as "and".
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-remote-eval-20261017/full_eval_{,heldout-,holdout2-}c3.json` and
+`%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_c3-gemini-dirty.json`.
+
 ## "Available", "the results" and "compute" ask nothing; an ordering from old to young starts at the oldest: 587 → 588 strict, Gemini on 674 → 674, held out 377 → 385, fresh holdout 390 → 390 (2026-10-16)
 
 Same contract as below. Runs `p28-dirty`, `p28-gemini-dirty`, `heldout-p28-dirty` and `holdout2-p28-dirty` are

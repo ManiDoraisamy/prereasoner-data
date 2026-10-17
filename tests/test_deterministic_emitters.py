@@ -726,8 +726,8 @@ def test_spider_scalar_gold_runner_executes_the_selected_ast_with_python():
     from spider.probe.full_eval import ast_predict
 
     class FakeEncoder:
-        def ingest(self, input_tables):
-            return input_tables, ()
+        def ingest(self, input_tables, explicit_fks=()):
+            return input_tables, tuple(explicit_fks)
 
         def schema(self, _tables, _foreign_keys):
             return schema, {}, {}
@@ -907,8 +907,8 @@ def test_auto_grades_the_served_python_answer_when_a_limit_cutoff_ties():
     )
 
     class TiedEncoder:
-        def ingest(self, input_tables):
-            return input_tables, ()
+        def ingest(self, input_tables, explicit_fks=()):
+            return input_tables, tuple(explicit_fks)
 
         def schema(self, _tables, _foreign_keys):
             return schema, {}, {}

@@ -58,6 +58,7 @@ from engine.sql_expansion import (
     parse_number as _parse_number,
     physical_tables as _physical_tables,
     projection_window as _projection_window,
+    flag_comparisons,
     semantic_tokens as _semantic_tokens,
     tokens as _tokens,
     top_level_count as _top_level_count,
@@ -1022,7 +1023,7 @@ class ConstraintQueryExpander(ExpansionSupport):
                 and not term.right.type.numeric and not _linker_noise(term)
             )
         predicates = _unique_predicates(
-            categorical + numeric + self._semantic_common_comparisons(tokens)
+            categorical + numeric + [comparison for _, _, comparison in flag_comparisons(tokens, self.schema)]
         )
         if len(predicates) < 2:
             return []
@@ -1106,25 +1107,6 @@ class ConstraintQueryExpander(ExpansionSupport):
                     out.append(built)
         return out
 
-    def _semantic_common_comparisons(self, tokens: tuple[str, ...]) -> list[Comparison]:
-        if "official" not in tokens:
-            return []
-        out = []
-        truthy = {"1", "t", "true", "y", "yes"}
-        for schema_column in self.schema.columns:
-            column = schema_column.ref
-            if "official" not in _semantic_tokens(column.name):
-                continue
-            value = next(
-                (
-                    value for value in schema_column.values
-                    if str(value).strip().lower() in truthy
-                ),
-                None,
-            )
-            if value is not None:
-                out.append(Comparison(column, "=", Literal(value, column.type)))
-        return out
 
 def _explicit_aggregate_constraint(
     tokens: tuple[str, ...], aggregate: Aggregate, literal: Literal

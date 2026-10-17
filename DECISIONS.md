@@ -3877,3 +3877,65 @@ Measured on Spider (`spider/results/RESULTS.md`, 2026-10-16): DEV 587 → 588 st
   gate left unread.
 - Held out 924 and DEV 414 order the ages descending; the search ordered them ascending before, and those answers were
   refused for "old" and "young" (Spider's strict grade, a multiset of rows, would have scored them).
+
+## Relationships as serving discovers them; a measure's unit, a yes/no flag and a verb's doer are read; one closed field is the answer; "corresponding", titles and times are read (2026-10-17)
+
+Families ported from the Codex review's frozen step worktrees (`.codex/worktrees/spider-<step>-2026101x`), each
+re-implemented on main's owners rather than applied, and families the census of `6eed24e` ranked (every pool member,
+its violations and unread words, on DEV and the held-out set):
+
+- Relationships (the Codex steps relationship-proofs and self-relationships). `spider/probe/full_eval.py` gives
+  Spider's declared keys to `TableQuery.ingest(explicit_fks=...)`, which merges them with the relationships it
+  discovers from the rows, as serving does; the evaluator had replaced discovery with the declarations, so a partly
+  declared database lost every undeclared relationship (flight_2's `flights.Airline` -> `airlines.uid`).
+  `relations._name_boost` reads a key's role by canonical words ("caused_by_ship_id", "homeShipId" and "shipid" name
+  ships; a bare `id` names no namespace, so overlapping integers prove nothing); a key named for the role it plays
+  still references an entity's own named key (`stores.Manager_ID` -> `employees.Employee_ID`, the shipped regression
+  gate); and a referenced key naming another role is no target (`membership_register_branch.Member_ID` is no branch,
+  holdout2 411). Declared self-references are kept. A declared key blocks a discovered parent for the same column only
+  where its name names its declared parent at least as well: Spider declares `actor.Musical_ID` -> `actor.Actor_ID`
+  (held out 324), and the key's own word names `musical.Musical_ID`. `ExpansionSupport.inferred_entity_join` reads
+  `SchemaGraph.discovered_foreign_keys`, the one discovery rule, instead of its own 95%-unique inference.
+- Listing grain (the Codex step property-bags): a key into a catalog the query does not join sets no answer grain
+  (`sql_rank.repeats_shown_rows`), so three qualifying cars with models A, A and B are three rows (DEV 97).
+- One closed field (the Codex single-field reader): an opening instruction asking for one field, bound unambiguously,
+  whose owner phrase names that field's table and ends there (`sql_expansion._one_closed_field`), with nothing
+  coordinated after it (`list_closed`), is the answer's one output. The search drops a field no item asks for
+  (`sql_search._in_list_order`) and then the join only that field read (DEV 625, 645, 646).
+- A measure's unit: `sql_expansion.naming_words` leaves a measure's trailing unit or scale, with an "in" before it,
+  unsaid ("the maximum net worth" is Net_Worth_Millions, DEV 1016), unless another field of the table differs only by
+  it (length_feet and length_meters).
+- Verbs: a word the tagger reads as an auxiliary or a finite verb, said in lower case and unquoted, names no stored
+  value (`closed_class.predicate_words`; "players who won" filtered on a surname 'Won', "countries that do not speak
+  English" on a code 'DO'); a modal is excepted ("contacts reached in may"). A verb is read by the field or table its
+  agent noun names where the query uses one (`closed_class.verb_lemmas`, `agent_noun`): "won" by winner_id, not by
+  loser_id. A relation verb's tables are named by the halves of a name written as one word
+  (`closed_class.compound_parts`: countrylanguage).
+- Flags: a field holding only yes/no codes and named as a flag (`IsOfficial`, `abandoned_yn`) is the condition field =
+  its true value where the question says its words without the affix (`sql_expansion.flag_fields`,
+  `flag_comparisons`): "How many official languages does Afghanistan have?" counts IsOfficial = 'T'. The search reads
+  it among its value groups and the constraint expander alike; the expander's own "official" special case is removed.
+  A negated word ("English is not the official language") and a code said after the word state no positive flag.
+- Rule words (`query_contract.read_question`): "corresponding" pairs one output with another and is read where the
+  answer shows two or more; "names" are read by the title of a table holding no name field; "time" by a date field
+  the query reads.
+
+Left as it was: grouped answers keep their groups first. The owner allowed the question's order if it made sense to
+users; a table is read group first ("Month, Total", "Pet type, Average weight"), and Spider's official execution
+metric ignores column order, so the 13 DEV answers right but for their order stay as they are.
+
+Measured on Spider (`spider/results/RESULTS.md`, 2026-10-17): DEV 588 → 632 strict, held out
+385 → 405, the fresh holdout 390 → 405, Gemini on 674 → 704.
+
+- Fourteen of the DEV wins (flight_2 215-220 and 233-240) are no capability. Their gold answers are 0 or empty because
+  flight_2 stores its airport codes with a leading space (' AHD'), and the engine's answers, joining flights to airlines
+  as the gold queries do, are 0 or empty too; several read the wrong airport side. Without them the DEV gain is +30. DEV
+  213 and 214 (JetBlue's 100 flights) are real.
+- Losses: held out 546 (Products.parent_product_id discovered as a reference to Customers.customer_id, its role naming
+  no customer) and 872 (a count of cards joined through the customers the new relationships connect); fresh holdout 488
+  and 673 (bike_1) and 24 and 650 (a discovered relationship adds a join the answer does not need); Gemini on 768 (the
+  flag condition's field shown beside the language) and 884.
+- Newly answered wrong on DEV (12): 186 and 811 compare values the gold queries miss (a city stored as 'Anthony ',
+  "north america" in lower case), 230 keeps tied airlines and 792 orders its columns as asked; 245, 246, 768 and 769
+  show a condition's field beside the answer, 819 and 821 leave "predominantly" unread, 884 groups the students by name,
+  and 922 reads "or" as "and".

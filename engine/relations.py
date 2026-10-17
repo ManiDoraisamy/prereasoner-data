@@ -105,17 +105,50 @@ def _unique(keys):
 
 
 def _name_boost(ax, bname, by):
-    axl, bl, byl = ax.lower(), bname.lower(), by.lower()
-    root = (bl[:-3] + "y") if bl.endswith("ies") else bl.rstrip("s")    # cities->city, orders->order
-    pre = axl[:-3] if axl.endswith("_id") else (axl[:-2] if axl.endswith("id") else axl)
-    b = 0.0
-    if axl.endswith("id"):
-        b += 0.15
-    if pre and (pre == root or pre == bl or (len(pre) >= 3 and (root.startswith(pre) or pre.startswith(root)))):
-        b += 0.35
-    if axl == byl:
-        b += 0.10
-    return b
+    # Import at use time: sql_schema itself uses this module's layout helper.
+    from engine.sql_schema import SURROGATE_KEY_WORDS, canon, name_words
+
+    source = tuple(canon(word) for word in name_words(ax))
+    target = tuple(canon(word) for word in name_words(by))
+    entity = tuple(canon(word) for word in name_words(bname))
+    # Lowercase compact keys lack a word boundary. Split one only when its
+    # prefix exactly names the candidate entity, so "shipid" still links to
+    # ships while an ordinary word such as "valid" supplies no "val" role.
+    if (len(source) == 1 and source[0].endswith("id") and entity
+            and canon(source[0][:-2]) == entity[-1]):
+        source = (source[0][:-2], "id")
+    key_words = SURROGATE_KEY_WORDS | {"code"}
+    suffix = bool(source) and (source[-1] in SURROGATE_KEY_WORDS
+                               or len(source) > 1 and source[-1] == "code")
+    role = source[:-1] if suffix else source
+    width = min(len(role), len(entity))
+    # Compare the referenced role's suffix. A student ID cannot name an
+    # enrolment ID merely because both namespaces begin with "student".
+    # Qualifiers such as "home" and "caused by" may precede the actual role.
+    def matches(short, full):
+        return short == full or (len(short) >= 3 and len(short) < len(full) and full.startswith(short))
+
+    role_match = bool(width) and all(matches(short, full)
+                                     for short, full in zip(role[-width:], entity[-width:]))
+    # The referenced field names whose identity it holds: a bridge table's Member_ID is a member, so a branch's key
+    # names no reference to it, however the bridge table is named (shop_membership's membership_register_branch,
+    # holdout2 411, 2026-10-17: Branch_ID -> Member_ID was discovered and changed every branch join).
+    target_suffix = bool(target) and (target[-1] in SURROGATE_KEY_WORDS or len(target) > 1 and target[-1] == "code")
+    target_role = target[:-1] if target_suffix else ()
+    if role_match and target_role and target_role[-1:] != entity[-1:]:
+        target_width = min(len(role), len(target_role))
+        role_match = bool(target_width) and all(matches(short, full) for short, full in
+                                                zip(role[-target_width:], target_role[-target_width:]))
+    # Identically named natural/qualified keys are evidence; bare ID/code are
+    # namespaces shared by unrelated tables, so equality of their cells is not.
+    same_key = source == target and bool(source) and any(word not in key_words for word in source)
+    evidence = 0.35 * role_match + 0.10 * same_key
+    if not evidence and suffix and target_role and target_role[-1:] == entity[-1:]:
+        # A key named for the role it plays references the entity's own named key: stores.Manager_ID ->
+        # employees.Employee_ID (the shipped regression gate, regress/offline_cases.py). The value inclusion
+        # decides, and only a repeating column may (a unique one needs the stronger evidence of its name).
+        return 0.15
+    return evidence + (0.15 if evidence and source[-1] in SURROGATE_KEY_WORDS else 0.0)
 
 
 def layout(columns):
@@ -214,8 +247,8 @@ def _explicit_fk(raw, tables):
     if not from_cols or len(from_cols) != len(to_cols) or None in from_cols + to_cols:
         raise ValueError("explicit foreign keys require equally sized, non-empty column tuples")
     columns = {str(table["name"]): set(map(str, table["columns"])) for table in tables}
-    if from_table not in columns or to_table not in columns or from_table == to_table:
-        raise ValueError("explicit foreign key references an unknown or identical table")
+    if from_table not in columns or to_table not in columns:
+        raise ValueError("explicit foreign key references an unknown table")
     if not set(map(str, from_cols)) <= columns[from_table] or not set(map(str, to_cols)) <= columns[to_table]:
         raise ValueError("explicit foreign key references an unknown column")
     confidence = raw.get("conf", raw.get("confidence", 1.0))
@@ -250,8 +283,26 @@ def relate(tables, explicit_fks=()):
     explicit = [_explicit_fk(edge, tables) for edge in explicit_fks]
     merged = list(explicit)
     signatures = {_fk_signature(edge) for edge in explicit}
+    # How strongly each declared local key's name names the parent it is declared to reference.
+    declared_sources = {}
+    for edge in explicit:
+        for column, target in zip(edge["from_cols"], edge["to_cols"]):
+            key = (edge["from_table"], column)
+            declared_sources[key] = max(declared_sources.get(key, 0.0),
+                                        _name_boost(column, edge["to_table"], target))
     for edge in discover_fks(tables):
-        if _fk_signature(edge) not in signatures:
+        # A sampled inclusion may suggest another parent for the same local
+        # key. It cannot override a trusted declaration (including a component
+        # of a composite key) or replace the encoder unit's declared referent,
+        # unless the declaration's name names its parent less than the key names
+        # the discovered one: Spider musical declares actor.Musical_ID -> actor.Actor_ID
+        # (held-out 324, 2026-10-17), and the key's own word names musical.Musical_ID.
+        signature = _fk_signature(edge)
+        reverse = signature[2], signature[3], signature[0], signature[1]
+        source = (edge["from_table"], edge["from_col"])
+        overridden = (source in declared_sources and
+                      _name_boost(edge["from_col"], edge["to_table"], edge["to_col"]) <= declared_sources[source])
+        if not overridden and signature not in signatures and reverse not in signatures:
             merged.append(edge)
-            signatures.add(_fk_signature(edge))
+            signatures.add(signature)
     return {"tables": tables, "fks": merged}

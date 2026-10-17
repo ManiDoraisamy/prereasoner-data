@@ -771,8 +771,9 @@ def filter_only(column: ColumnRef, query: SelectQuery, tokens: Sequence[str]) ->
 
 def repeats_shown_rows(schema: SchemaGraph, query: Query, tokens: Sequence[str]) -> bool:
     """Whether a joined, unaggregated listing shows a row once per row of what it joins: a joined table refers to a
-    shown table by a key its rows repeat (each shown row once per referring row), or a shown field refers to another
-    table's key and repeats (its value once per row holding it). A ranking keeps its number of rows whatever repeats,
+    shown table by a key its rows repeat (each shown row once per referring row), or a shown field refers to a joined
+    table's key and repeats (its value once per row holding it). A key in an unjoined catalog does not establish
+    answer grain: ordinary repeated property values remain separate rows. A ranking keeps its number of rows whatever repeats,
     and rows the question asks for one by one are its own ("the country name for each registration"). The search
     adds such a listing's DISTINCT twin and the ranker prefers it (Spider DEV 99, 351, 535)."""
     if (not isinstance(query, SelectQuery) or not query.joins or query.group_by or query.limit is not None
@@ -786,7 +787,7 @@ def repeats_shown_rows(schema: SchemaGraph, query: Query, tokens: Sequence[str])
             if before in {"each", "every", "per"}}
     for key in schema.foreign_keys:
         for child, parent in key.column_pairs:
-            if child.table not in read or not schema.repeats((child,)):
+            if child.table not in read or parent.table not in read or not schema.repeats((child,)):
                 continue
             if {canon(word) for word in name_words(child.table)} & each:
                 continue

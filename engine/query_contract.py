@@ -1096,7 +1096,7 @@ class Reading:
 def read_question(question, candidate, graph, *, calculation_satisfied=False):
     """The ``Reading`` of ``question`` by ``candidate``, a runnable pool member."""
     from engine.sql_ast import (
-        Aggregate, ColumnRef, SelectQuery, SetQuery, Star, SubquerySource, column_refs, share_aggregate,
+        Aggregate, ColumnRef, SelectQuery, SetQuery, SQLType, Star, SubquerySource, column_refs, share_aggregate,
     )
     from engine.sql_schema import canon
     from engine.closed_class import (
@@ -1193,6 +1193,36 @@ def read_question(question, candidate, graph, *, calculation_satisfied=False):
                           if realizes_substring(candidate.query, request.text, request.subject)
                           for cue in request.cues)
     ordinary_words.update(canon(word) for word in action_words(question) if canon(word) not in observed)
+    # A verb is read by the field or table its doer names, where the query uses one: "players who won in both 2013
+    # and 2016" by matches.winner_id, not by loser_id (Spider DEV 448, 451, 452, 2026-10-17: once "won" named no
+    # surname 'Won', only the winner's reading was right). It never makes another word required.
+    from engine.closed_class import agent_noun, verb_lemmas
+    used_words = {canon(word) for name in (*read_tables, *(column.name for column in column_refs(candidate.query)))
+                  for word in lexical_words(name)}
+    ordinary_words.update(canon(verb) for verb, lemma in verb_lemmas(question).items()
+                          if any(agent_noun(lemma, word) for word in used_words))
+    # "Corresponding" pairs an output with another the answer shows: "the different document ids along with the number
+    # of paragraphs corresponding to each", "the cost of each treatment and the corresponding treatment type
+    # description" (Spider DEV 368, 882, 948, 2026-10-17: each right answer was refused for it). An answer showing one
+    # output pairs nothing, so "the lowest version number, along with its corresponding template type code" over the
+    # version alone stays refused (DEV 336, 848, 884).
+    if len(getattr(candidate.query, "select", ())) >= 2:
+        ordinary_words.update({"corresponding", "correspond"})
+    # The names of rows whose table holds no name but a title are their titles: "What are the names of all cartoons
+    # directed by Ben Jones?" shows Cartoon.Title (Spider DEV 588, 2026-10-17: the right answer was refused for
+    # "names"). A table that also holds a name field keeps "names" for it.
+    from engine.sql_schema import name_words as _schema_name_words
+    for column in column_refs(candidate.query):
+        own = {canon(word) for word in _schema_name_words(column.name)}
+        if own & {"title", "label"} and not any(
+                "name" in {canon(word) for word in _schema_name_words(other.ref.name)}
+                for other in graph.by_table.get(column.table, ())):
+            ordinary_words.update({"name", "names"})
+    # "Time" beside a date field's other words is that field's kind: "the distinct states and create time of all
+    # votes" is VOTES.created (Spider DEV 693, 2026-10-17). It is read where the query reads a date field and no cell
+    # says "time".
+    if "time" not in observed and any(column.type == SQLType.DATE for column in column_refs(candidate.query)):
+        ordinary_words.add("time")
     has_aggregate = any(isinstance(item.expression, Aggregate)
                         for item in getattr(candidate.query, 'select', ()))
     if any(isinstance(expression, Aggregate) and expression.function == 'COUNT'
@@ -1489,7 +1519,12 @@ def _witnessed_words(question, words, query, graph, observed, schema_words, alre
     spelled |= {canon(part) for ref in used for part in name_words(ref.name)}
     out.update(word for word in set(words) - set(already) - spelled
                if any(column_matches(ref.name, {word}) for ref in used))
-    named = {table: {canon(part) for part in name_words(table)} - {"id"} for table in tables}
+    # A table whose name writes two words together is named by them: "the official language spoken in the country"
+    # names countrylanguage and country around "spoken" (Spider DEV 768, 769, 770, 2026-10-17).
+    from engine.closed_class import compound_parts
+    named = {table: ({canon(part) for part in name_words(table)}
+                     | {canon(half) for part in name_words(table) for half in compound_parts(part)}) - {"id"}
+             for table in tables}
     for verb in relation_verbs(question):
         word = canon(verb)
         places = [index for index, said in enumerate(words) if said == word]

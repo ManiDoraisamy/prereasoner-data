@@ -36,6 +36,70 @@ from engine.sql_candidate import ScoredQuery
 from engine.sql_schema import SchemaGraph, canon, is_surrogate_key, name_words
 
 
+# The stored codes of a flag's two values, and the words a flag's name opens or ends with that say it is one
+# ("IsOfficial", "has_parking", "abandoned_yn", "chargeable_flag").
+_FLAG_TRUE = ("t", "true", "y", "yes", "1")
+_FLAG_FALSE = frozenset({"f", "false", "n", "no", "0"})
+_FLAG_LEADS = frozenset({"is", "has"})
+_FLAG_ENDS = frozenset({"yn", "flag", "ind"})
+_FLAG_NEGATIONS = frozenset({"not", "no", "non", "never", "nt"})
+_FLAG_FIELDS: "weakref.WeakKeyDictionary[Any, tuple[tuple[Any, Any, tuple[str, ...]], ...]]" = weakref.WeakKeyDictionary()
+
+
+def flag_fields(schema: Any) -> tuple[tuple[Any, Any, tuple[str, ...]], ...]:
+    """The fields of ``schema`` that hold a yes/no flag, each with its stored true value and the words that name it:
+    world_1's countrylanguage.IsOfficial ('T'/'F') is named "official", dog_kennels' abandoned_yn ('1'/'0')
+    "abandoned". A field's stored values must all be one flag code set with its true value among them, and its name
+    must say it is a flag (an affix): a Newsletter field holding Yes and No is a value the question states ("responses
+    with Newsletter No"), and a count holding 0 and 1 is no flag. Read once per schema."""
+    known = _FLAG_FIELDS.get(schema)
+    if known is not None:
+        return known
+    found = []
+    for schema_column in getattr(schema, "columns", ()):
+        stored = {str(value).strip().lower(): value for value in schema_column.values
+                  if value is not None and str(value).strip()}
+        truthy = next((code for code in _FLAG_TRUE if code in stored), None)
+        if truthy is None or not set(stored) <= set(_FLAG_TRUE) | _FLAG_FALSE:
+            continue
+        words = [canon(word) for word in name_words(schema_column.ref.name)]
+        affixed = bool(words) and (words[0] in _FLAG_LEADS or words[-1] in _FLAG_ENDS)
+        if words and words[0] in _FLAG_LEADS:
+            words = words[1:]
+        if words and words[-1] in _FLAG_ENDS:
+            words = words[:-1]
+        if not words or not affixed:
+            continue
+        found.append((schema_column.ref, stored[truthy], tuple(words)))
+    result = tuple(found)
+    try:
+        _FLAG_FIELDS[schema] = result
+    except TypeError:
+        pass
+    return result
+
+
+def flag_comparisons(said: Sequence[str], schema: Any) -> tuple[tuple[int, int, Any], ...]:
+    """The flags ``said`` (tokens) names as true, each as (start, end, the comparison ``field = true value``): "How many
+    official languages does Afghanistan have?" counts only countrylanguage rows with IsOfficial = 'T' (Spider DEV 738,
+    748, 768, 770, 786, 2026-10-17: 14 world_1 questions saying "official" were refused or wrong without it). A
+    negation just before the word ("English is not the official language") leaves the flag to the exclusion that
+    reads it."""
+    found = []
+    for column, value, words in flag_fields(schema):
+        size = len(words)
+        for start in range(len(said) - size + 1):
+            if tuple(said[start:start + size]) != words:
+                continue
+            if _FLAG_NEGATIONS & set(said[max(0, start - 3):start]):
+                continue
+            # A code said after the word states the flag's value itself: "official 'F'", "abandoned yes".
+            if said[start + size:start + size + 1] and said[start + size] in set(_FLAG_TRUE) | _FLAG_FALSE:
+                continue
+            found.append((start, start + size, Comparison(column, "=", Literal(value, column.type))))
+    return tuple(found)
+
+
 def complete_projection_requested(question: str) -> bool:
     """An explicit request to display complete records, including their fields: "show all records", and "all the
     information about hiring", "display all the details of employees", "return all columns of the albums" (Spider DEV
@@ -226,37 +290,13 @@ class ExpansionSupport:
         return sorted(dedup.values(), key=lambda item: (-item[3], repr(item)))
 
     def inferred_entity_join(self, entity_table: str, counted_table: str) -> Join | None:
-        """Infer a missing FK only from a unique parent key and near-subset child values."""
-        entity_words = set(semantic_tokens(entity_table))
-        options = []
-        for parent in self.schema.by_table.get(entity_table, ()):
-            parent_values = value_set(parent.values)
-            if len(parent_values) < 2 or len(parent_values) < 0.95 * value_count(parent.values):
-                continue
-            for child in self.schema.by_table.get(counted_table, ()):
-                if not compatible_types(parent.ref.type, child.ref.type):
-                    continue
-                child_values = value_set(child.values)
-                if len(child_values) < 2 or value_count(child.values) < 1.2 * len(child_values):
-                    continue
-                overlap = len(parent_values & child_values) / len(child_values)
-                if overlap < 0.9:
-                    continue
-                child_words = set(semantic_tokens(child.ref.name))
-                parent_words = set(semantic_tokens(parent.ref.name))
-                role_match = bool(child_words & entity_words)
-                name_match = bool(child_words & parent_words)
-                if not role_match and not name_match:
-                    continue
-                score = 4.0 * overlap + 2.0 * role_match + name_match
-                options.append((score, parent.ref, child.ref))
+        """Construct a join from the canonical discovery owner's exact-key proof."""
+        options = [key for key in self.schema.discovered_foreign_keys
+                   if key.from_column.table == counted_table and key.to_column.table == entity_table]
         if not options:
             return None
-        _, parent, child = max(
-            options,
-            key=lambda item: (item[0], item[1].name, item[2].name),
-        )
-        return Join(entity_table, child, parent)
+        key = min(options, key=lambda key: (-key.confidence, key.signature))
+        return Join(entity_table, key.from_column, key.to_column, additional=key.additional_columns)
 
     def projection_columns(
         self, question_tokens: tuple[str, ...], table: str
@@ -1000,11 +1040,25 @@ def naming_context(schema: Any) -> dict[str, frozenset[str]]:
     return context
 
 
+# The words a measure's name ends in that say its unit or scale, not what it measures (canon forms): "the maximum
+# net worth" is Net_Worth_Millions, "the sales" Sales_in_Billion, "the wind speed" wind_speed_mph.
+UNIT_WORDS = frozenset({"million", "billion", "thousand", "percent", "pct", "mph", "inch", "feet", "foot", "ft",
+                        "dollar", "usd", "km", "kg", "meter", "metre", "mm", "cm"})
+
+
 def naming_words(link_words: tuple[str, ...], context: frozenset[str]) -> tuple[str, ...]:
     """The words of a column's name a question must say to name the column: all but the words of its
     kind, when the others say what its values are ("email" names email_address): no function word ("of" of
-    date_of_treatment) and none of ``context``, its table's naming_context."""
-    content = tuple(word for word in link_words if word not in KIND_WORDS)
+    date_of_treatment) and none of ``context``, its table's naming_context. A measure's trailing unit, with an "in"
+    before it, is left unsaid as well: "Show different citizenships and the maximum net worth of singers of each
+    citizenship" asks for Net_Worth_Millions (Spider DEV 1016, 1017, 2026-10-17), unless the words left are shared
+    with another field of the table (``context``): "the length" of length_feet and length_meters names neither."""
+    measured = link_words
+    if len(measured) > 1 and measured[-1] in UNIT_WORDS:
+        measured = measured[:-1]
+        if len(measured) > 1 and measured[-1] == "in":
+            measured = measured[:-1]
+    content = tuple(word for word in measured if word not in KIND_WORDS)
     if content and not set(content) & (FUNCTION_WORDS | context):
         return content
     return link_words
@@ -1430,14 +1484,6 @@ def measure_words_after(question_tokens: Sequence[str], position: int) -> frozen
     return None
 
 
-def value_set(values: Sequence[object]) -> set[object]:
-    return {value for value in values if value is not None and str(value).strip()}
-
-
-def value_count(values: Sequence[object]) -> int:
-    return sum(value is not None and bool(str(value).strip()) for value in values)
-
-
 def compatible_types(left: SQLType, right: SQLType) -> bool:
     return left == right or (left.numeric and right.numeric)
 
@@ -1669,9 +1715,69 @@ def output_requests(question: str, schema: Any = None) -> tuple[OutputRequest, .
             joined = said[found[position].start - 1:found[position].start] in (("and",), ("&",))
             if found[position - 1].count and joined:
                 found[position] = OutputRequest(found[position].start, found[position].end, True)
-        if found and (len(found) > 1 or not opening):
+        if found and (len(found) > 1 or not opening or (
+                schema is not None and _one_closed_field(question, said, spans, gaps, found, schema, numbers))):
             return tuple(found)
     return ()
+
+
+# The words between an output and the name of the rows it is read from ("the Episode of all TV series").
+_OUTPUT_OWNER_LEADS = frozenset({"the", "all", "each", "every", "a", "an", "its", "their", "his", "her", "these", "those"})
+
+
+def _one_closed_field(question, said, spans, gaps, found, schema, numbers) -> bool:
+    """Whether an opening instruction asking for one item asks for exactly one field and nothing else: "List the
+    Episode of all TV series showed on TV Channel with series name Sky Radio" shows the Episode, not also the channel
+    key its join repeats (Spider DEV 625; the Codex review's single-field reader, 2026-10-16). The item must name one
+    field the schema binds unambiguously, no table ("show countries" stays the general display reading), and no later
+    item may follow it (list_closed). An owner phrase after it ("of all TV series") must name that field's own table and
+    end there, at a verb, preposition or relative word, so "the book type of each book" is not a field of each book."""
+    if len(found) != 1 or found[0].count:
+        return False
+    request = found[0]
+    label = tuple(said[position] for position in range(request.start, request.end)
+                  if position not in numbers and said[position] not in FUNCTION_WORDS | _LIST_LEADS)
+    if not label or any(label in (name_tokens(table), name_tokens(table)[-1:]) for table in schema.tables):
+        return False
+    if not list_closed(question, found):
+        return False
+    bound = _bound_fields(question, schema, tuple(found))
+    if len(bound) != 1 or len(bound[0]) != 1 or realizes_request(bound[0][0], said, request, schema, numbers) < 2:
+        return False
+    field = bound[0][0]
+    if said[request.end:request.end + 1] not in (("of",), ("for",)):
+        return label == (name_part_words(field.name) or name_tokens(field.name))
+    owner_start = request.end + 1
+    while owner_start < len(said) and said[owner_start] in _OUTPUT_OWNER_LEADS:
+        owner_start += 1
+    owner = name_tokens(field.table)
+    boundary = owner_start + len(owner)
+    if not owner or said[owner_start:boundary] != owner:
+        return False
+    if boundary >= len(said) or re.search(r"[.?!;]", gaps[boundary]):
+        return True
+    offset = spans[boundary][0]
+    following = next((token for token in spacy_model()(question)
+                      if token.idx <= offset < token.idx + len(token.text)), None)
+    return following is not None and (following.pos_ in {"VERB", "AUX", "ADP", "SCONJ", "PRON", "ADV"}
+                                      or following.tag_ in {"WDT", "WP", "WP$", "WRB"})
+
+
+def list_closed(question: str, requests: Sequence[OutputRequest]) -> bool:
+    """Whether an instruction's list of outputs ends before any later coordinated output: "the name and theme for all
+    concerts and the number of singers" asks for another output after its owner phrase, so the parsed fields cannot
+    stand for the whole answer. Only a closed list may remove an output no item asks for."""
+    if not requests:
+        return False
+    said, spans = tokens(question), word_spans(question)
+    if len(said) != len(spans):
+        return False
+    for index in range(requests[-1].end, len(said)):
+        if index and re.search(r"[.!?;]", question[spans[index - 1][1]:spans[index][0]]):
+            break
+        if said[index] in {"and", "or", "also", "together", "plus"}:
+            return False
+    return True
 
 
 def _joins_items(said: Sequence[str], position: int) -> int:
@@ -1797,9 +1903,13 @@ def request_fields(question: str, schema: Any) -> tuple[tuple[ColumnRef, ...], .
     does, realizes each it can ("List full name and the id" of makers is the makers' FullName and Id, not a model's
     ModelId; Spider DEV 149, 2026-10-14). Empty where any requested field has none. The search builds them, and the
     ranker reads whether an answer shows them, from this one reading."""
+    return _bound_fields(question, schema, output_requests(question, schema))
+
+
+def _bound_fields(question: str, schema: Any, listed: Sequence[OutputRequest]) -> tuple[tuple[ColumnRef, ...], ...]:
+    """request_fields over the requests ``listed``: output_requests reads them before it has returned them."""
     said = tokens(question)
     numbers = field_numbers(question, (column.ref for column in schema.columns))
-    listed = output_requests(question, schema)
     requests = [request for request in listed if not request.count]
     # A foreign key realizing a request gives way to the key it references, which names the same thing: "the club id"
     # of a count of coaches per club is the club's Club_ID, not also the coach's (fresh holdout 119, 2026-10-14).
