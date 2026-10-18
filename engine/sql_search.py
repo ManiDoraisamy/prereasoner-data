@@ -63,6 +63,7 @@ from engine.sql_expansion import (
     by_groups,
     count_requested,
     counted_measure_columns,
+    graph_measures,
     cue_names,
     entity_groups,
     field_numbers,
@@ -1007,9 +1008,7 @@ class SQLSearcher:
                          if tokens[index:index + 2] in (("how", "many"), ("number", "of"), ("count", "of"))}
                 keys = {column for key in self.schema.foreign_keys for pair in key.column_pairs for column in pair}
                 stored = [] if nouns & table_words else (
-                    counted_measure_columns(question, [
-                        {"table": column.ref.table, "name": column.ref.name,
-                         "affinity": "REAL" if column.ref.type.numeric else "TEXT"} for column in self.schema.columns]))
+                    counted_measure_columns(question, graph_measures(self.schema)))
                 for entry in stored:
                     column = next(schema_column.ref for schema_column in self.schema.columns
                                   if (schema_column.ref.table, schema_column.ref.name) == (entry["table"], entry["name"]))

@@ -4116,3 +4116,53 @@ Measured on Spider (`spider/results/RESULTS.md`, 2026-10-17), against `76837a3`:
 - The measured change first also read "people" as Population wherever it was said: "the language spoken by the largest
   percentage of people" showed Population (DEV 816, 820, wrong); it is read only counted or graded before release, which
   also leaves DEV 805 ("the 3 countries with the fewest people") refused.
+
+## An extreme a compared subquery finds, a longer name's part and the rows a count counts are read; a referring key counts the rows it refers to; "how many total" asks one number (2026-10-18)
+
+- Extremes a scalar subquery finds (`query_contract._select_violations`): the row holding "the highest", "the largest"
+  or a selecting "the maximum" may be the one a scalar subquery the rows are compared with finds, by its aggregate or
+  its first ordering with a row cutoff, where the subquery keeps every row the query keeps (its filters, and the tables
+  its joins read): "What are the number of concerts that occurred in the stadium with the largest capacity?" and "How
+  many cars have a larger accelerate than the car with the largest horsepower?" were refused for an ordering missing
+  from the outer query (Spider DEV 44, 159). The maximum of every keyword is no maximum of those containing 'inspection
+  checklist', nor the least populated country of all the one a join to a city keeps (DEV 789, a wrong answer the first
+  measured version made, fixed before release).
+- A name inside a longer one after "by", "per" or "each" is part of it, and a field's name after its table's names that
+  field (the output-grain check): "Count the number of likes for each student id." asks for no other table's id, "For
+  each country and airline name, how many routes are there?" the airline's name and no airline code, "How many phones
+  belongs to each accreditation type?" no screen mode's Type (DEV 902, 903; held out 243, 655: all refused).
+- The rows a row count counts (`query_contract._row_count_table`): a COUNT(*) in the answer, its ordering or its HAVING,
+  over joins that each follow a foreign key, counts the rows of the one table no join refers to, and a field of it
+  holding no numbers, named as the noun counted (after a threshold's number, "how many", "number of" or "count of"), is
+  counted by it: "What is name of the country that speaks the largest number of languages?", "Which counties have two or
+  more delegates?" (DEV 740, held out 573: refused for the Language and Delegate fields the counts count). A number
+  before a numeric field's name compares it: "cities whose regional population is over 10000000", "employees who earn
+  more than 30000 in salary" and "stations that have had more than 12 bikes available" count nothing (held out 912 and
+  fresh holdout 9, 51, 488, 673: a loss or a wrong answer the first measured version made, fixed before release).
+- Names the gate reads as the field they are: a one-word name the question says as two words ("What is the partition id
+  of the user named Iron Man", partitionid, held out 612: refused for the tweets' id); "maximum" or "minimum" before the
+  rest of a max_ or min_ field the query reads, as "average" before an avg_ one's ("the products with the maximum page
+  size A4", max_page_size, held out 666: refused for an extreme it does not ask), while "the maximum page size" of
+  products the query does not read is still asked (held out 625); and a key whose references lead to an asked table
+  holds that table's keys ("List the id of students who attended some courses?", the attendance rows' student_id, which
+  refers to the registrations' and they to Students', held out 506: refused for showing attendance fields).
+- A key that repeats in its table, referring to another table's rows, tells those rows apart, not its own table's
+  (`sql_rank` count_distinct_key): "Show the number of cities in counties that have a population more than 20000."
+  counted the cities' distinct County_ID, the counties (held out 349).
+- The table a list names right after its items owns them where they tie, by its name or the noun that ends it
+  (`sql_expansion.request_fields`): "What are the names and ids of all makers with more than 3 models?" tied the
+  countries' and car_makers' fields and read no list, so a maker's name alone was shown (DEV 150).
+- "How many total" asks one number (`sql_expansion.asked_cues`, `counted_measure_columns`): "How many total tours were
+  there for each ranking date?" is the total of tours, the count tours holds, and was answered with a count of tours
+  beside that total (DEV 480); of a noun naming no numeric field it is the count.
+
+Measured on Spider (`spider/results/RESULTS.md`, 2026-10-18), against `5cc3d95`: DEV 691 → 696 strict, held out 436 →
+441, the fresh holdout 437 → 438, Gemini on 744 → 751.
+
+- Wrong answers this change makes of questions refused before: "How many total tours were there for each ranking date?"
+  shows each date's total, the reading asked, in the groups-first column order the gold reverses (DEV 480, Gemini on 479
+  and 480); and Gemini on, a rewording of "the transcript which shows the least number of results" is answered with the
+  earliest transcript's date (DEV 573): "most" and "least" are read without the count ordering they ask being verified,
+  and the gate before this change accepts the same rewording and query.
+- The first measured version (runs `w2`) lost fresh holdout 9 and 51 and answered fresh holdout 488 and 673 wrong,
+  reading a number before a numeric field's name as a count of rows; runs `w3` are after its fix.

@@ -8683,6 +8683,72 @@ def test_a_requested_count_is_shown_not_only_computed_in_a_filter():
 
 
 
+def test_a_key_referring_to_another_tables_rows_counts_those_rows():
+    """Held-out Spider train 349, 2026-10-17: "Show the number of cities in counties that have a population more than
+    20000." counted the distinct County_ID of the cities, the counties: both keys earned count_distinct_key, and the
+    model preferred County_ID. A key that repeats in its table, referring to another table's rows, tells those rows
+    apart, not its own table's: the cities are counted by City_ID. Contrast: "the number of counties" is counted by
+    the County_ID the cities refer to."""
+    from engine.sql_ast import Aggregate
+    city = {"name": "city", "columns": ["City_ID", "County_ID", "Name"],
+            "rows": [[1, 1, "Adelanto"], [2, 1, "Apple Valley"], [3, 1, "Barstow"], [4, 3, "Big Bear"],
+                     [5, 2, "Chino"]]}
+    county = {"name": "county_public_safety", "columns": ["County_ID", "Name", "Population"],
+              "rows": [[1, "Abbotsford", 30000], [2, "Burnaby", 10000], [3, "Campbell River", 50000]]}
+    graph = SchemaGraph.from_tables([city, county], [("city", "County_ID", "county_public_safety", "County_ID")])
+
+    def counted(name):
+        query = SelectQuery((SelectItem(Aggregate("COUNT", ColumnRef("city", name, SQLType.INTEGER), True)),), "city")
+        return query
+
+    referring, own = counted("County_ID"), counted("City_ID")
+    ranked = CandidateRanker(graph).rank("Show the number of cities in the counties.",
+                                         [ScoredQuery(referring, render_query(referring), 0.3, ()),
+                                          ScoredQuery(own, render_query(own), 0.0, ())])
+    assert ranked[0].query == own, [(candidate.sql, candidate.evidence) for candidate in ranked]
+    features = {candidate.query: candidate.evidence for candidate in ranked}
+    assert "rank:count_distinct_key:city.County_ID=+0.500" not in features[referring], features[referring]
+    ranked = CandidateRanker(graph).rank("Show the number of counties with cities.",
+                                         [ScoredQuery(own, render_query(own), 0.3, ()),
+                                          ScoredQuery(referring, render_query(referring), 0.0, ())])
+    assert ranked[0].query == referring, [(candidate.sql, candidate.evidence) for candidate in ranked]
+
+
+def test_the_table_a_list_names_after_its_items_by_its_last_word_owns_them():
+    """Spider DEV 150, 2026-10-18: "What are the names and ids of all makers with more than 3 models?" read no list:
+    countries' CountryName and CountryId realized the items as well as car_makers' FullName and Id, and the makers
+    named after the items ("of all makers") did not say the table's whole name, so a maker's name alone was shown.
+    The table the list names right after its items owns them, by its name or the noun that ends it. Contrast: a noun
+    no table's name ends with decides nothing."""
+    from engine.sql_expansion import request_fields
+    countries = {"name": "countries", "columns": ["CountryId", "CountryName"], "rows": [[1, "usa"], [2, "germany"]]}
+    makers = {"name": "car_makers", "columns": ["Id", "Maker", "FullName", "Country"],
+              "rows": [[1, "amc", "American Motor Company", 1], [2, "volkswagen", "Volkswagen", 2]]}
+    models = {"name": "model_list", "columns": ["ModelId", "Maker", "Model"],
+              "rows": [[1, 1, "amc"], [2, 2, "audi"], [3, 2, "bmw"]]}
+    graph = SchemaGraph.from_tables([countries, makers, models], [("car_makers", "Country", "countries", "CountryId"),
+                                                                 ("model_list", "Maker", "car_makers", "Id")])
+    fields = request_fields("What are the names and ids of all makers with more than 3 models?", graph)
+    assert [[(ref.table, ref.name) for ref in item] for item in fields] == [[("car_makers", "FullName")],
+                                                                            [("car_makers", "Id")]], fields
+    assert request_fields("What are the names and ids of all entries with more than 3 models?", graph) == ()
+
+
+def test_how_many_total_asks_one_number():
+    """Spider DEV 480, 2026-10-18: "How many total tours were there for each ranking date?" showed a count of the
+    tours beside their total. "How many total" asks one number: the total of the numeric field the noun after "total"
+    names whole, the count it holds (sql_expansion.asked_cues, counted_measure_columns). Contrast: of a noun naming
+    no numeric field, the count."""
+    rankings = {"name": "rankings", "columns": ["ranking_date", "player_id", "ranking", "tours"],
+                "rows": [[20000101, 1, 3, 5], [20000101, 2, 7, 2], [20000108, 1, 2, 4]]}
+    served = _hermetic_planner().serve([rankings], "How many total tours were there for each ranking date?", [])
+    assert served.get("valid") and sorted(served["result"]["rows"]) == [[20000101, 7], [20000108, 4]], (
+        served.get("error"), served.get("sql"))
+    served = _hermetic_planner().serve([rankings], "How many total players were there for each ranking date?", [])
+    assert served.get("valid") and sorted(served["result"]["rows"]) == [[20000101, 2], [20000108, 1]], (
+        served.get("error"), served.get("sql"))
+
+
 TESTS = [
     test_shared_ranking_rule_preserves_calculation_then_money_precedence,
     test_pool_oracle_counts_only_eligible_denotation_hits_and_validates_checkpoints,
@@ -9019,6 +9085,9 @@ TESTS = [
     test_world_target_uses_the_synced_iso_currency_column,
     test_schema_graph_resolves_normalized_foreign_key_names,
     test_spider_evaluator_does_not_count_all_errors_as_answered,
+    test_a_key_referring_to_another_tables_rows_counts_those_rows,
+    test_the_table_a_list_names_after_its_items_by_its_last_word_owns_them,
+    test_how_many_total_asks_one_number,
 ]
 
 

@@ -352,7 +352,9 @@ words and "prior to" as "before" (`sql_expansion.plain_marks`). No local model w
    order once for construction, ranking, the answer's order and the completeness check (`sql_expansion.output_requests`,
    `request_fields`), and so does an opening sentence that asks for two or more coordinated outputs ("What are the
    names, themes, and number of singers for every concert?"), the owner decided over all items before an item prefers
-   the field its words name exactly, and so does a clause a list verb opens after a comma ("..., and return the name,
+   the field its words name exactly (where the items tie, the table named right after them, by its name or the noun
+   ending it: "the names and ids of all makers"), and so does a clause a list verb opens after a comma ("..., and
+   return the name,
    location and district of each shop"; `sql_expansion.instruction_starts`), a possessive opening its items naming
    their owner; "along with", "together with" and "as well as" add an item as "and" does, a list asking for fields
    and a count asks the count in each of those fields' groups, and the reading showing exactly the list's fields starts
@@ -402,13 +404,18 @@ words and "prior to" as "before" (`sql_expansion.plain_marks`). No local model w
    for it in that same table (`SQLSearcher._full_names`); an unrelated table's FullName cannot suppress the
    requested table's name parts. A name's part a field abbreviates is listed where the question
    says its two words ("the first name and age" lists Fname first), and "the full name" lists the first name before the
-   last, wherever else the question says a part. A field the question compares
+   last, wherever else the question says a part. A one-word name the question says as two words is that name ("the
+   partition id" is partitionid), and "maximum" or "minimum" before the rest of a max_ or min_ field the query reads
+   says that field, as "average" does an avg_ one ("the maximum page size A4"). After "by", "per" or "each", a name
+   inside a longer one the clause says is part of it, and a field's name after its table's names that field ("for each
+   student id", "for each country and airline name"). A field the question compares
    before naming it ("projects that require between 100 and 300 hours") or picks the row by after
    "with the highest" is not shown, nor an aggregate it says only in a relative clause keeping the
    groups ("the studios whose average gross is above 4500000"), for which the search builds the
    reading without it (`sql_search._condition_twin`); "cities with total sales over 100" still shows
    each total. Questions opening with "how many" or "count" must show COUNT in an output, including a projected
-   scalar query, or SUM of an explicitly requested stored-count field (`query_contract._shows_count`, sharing
+   scalar query, or SUM of an explicitly requested stored-count field ("how many total tours" asks that one number, a
+   noun naming no numeric field its count; `sql_expansion.asked_cues`, `query_contract._shows_count`, sharing
    `sql_expansion.counted_measure_columns` with the operand reader). An unrelated aggregate in a filter,
    ordering, HAVING or source subquery supplies no count output.
 2. Every candidate runs on an in-memory SQLite copy of the request's tables under the SELECT guard
@@ -454,7 +461,9 @@ orders by, or takes the extreme of, a field in `engine/sql_extrema.superlative_d
 least age or the latest birth date and "the highest rank" the smallest one; an adjective naming its dimension ("the
 tallest", `sql_extrema.SUPERLATIVE_DIMENSIONS`) is read by a field of that dimension of the rows its noun names, where
 no field is named at it; and "the maximum" after "with", "has" or "have the" selects the row holding it
-as "the highest" does, `engine/sql_expansion.selects_extreme`); or when it is grammar, a counted noun naming the rows
+as "the highest" does, `engine/sql_expansion.selects_extreme`, or by the scalar subquery the rows are compared with,
+where it keeps every row the query keeps: "the number of concerts in the stadium with the largest capacity"); or when
+it is grammar, a counted noun naming the rows
 counted, or one of the closed lists
 the check keeps. A word that names only some other table's column is unread. The query also reads, though nothing of
 it spells them (`query_contract._witnessed_words`): a travel direction by the column of that direction ("flights
@@ -511,11 +520,16 @@ for its table and itself, never a computed value, and a largest or smallest valu
 an extremum; an EXISTS that refers to the outer row, `query_contract._binds`),
 and never counts from a scalar subquery or an unbound one, which filter no returned row. A count grouped by the key
 of the one table it reads, which other tables refer to, counts one row in each group and is refused, and so is a
-count of a group's own distinct values, a key its joins equate with the group's included (1 in every group). Groups
+count of a group's own distinct values, a key its joins equate with the group's included (1 in every group). A
+COUNT(*) over joins that each follow a foreign key counts the rows of the one table no join refers to, wherever the
+query counts, and so counts a field of that table holding no numbers named as the noun counted ("the country that
+speaks the largest number of languages", `query_contract._row_count_table`); a number before a numeric field's name
+compares it ("more than 30000 in salary"). Groups
 list each value once, so "different" is read by a grouped answer, the counts beside its groups included. A listing
 answers the rows the question's opening names, after a command it opens with ("what are airlines | that have
 flights"): it shows a field of such a table, of one a foreign key joins to it, or a key referring to it
-(`query_contract._asked_tables`), so airport names do not answer for airlines. A "number"
+(`query_contract._asked_tables`), so airport names do not answer for airlines; a key whose references lead to such a
+table holds its keys ("the id of students who attended some courses" is the attendance rows' student_id). A "number"
 ending a field's name ("the phone number") asks for the field, not a count (`sql_expansion.field_numbers`, read by
 `count_requested`, the search's aggregate cues and the ranker's question roles), and so does a "number of" before a
 numeric field's whole name ("the maximum number of floors", "in order of number of police officers"), the fields'

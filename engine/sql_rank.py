@@ -354,8 +354,14 @@ class CandidateRanker:
                 # The different rows a noun names are told apart by their key, or a key referring to it, not by a
                 # detail field: "How many different addresses do the students currently live?" counts address ids,
                 # not other_address_details (Spider DEV 577, 2026-10-17).
+                # A key that repeats in its table, referring to another one's rows, tells those apart: "the number of
+                # cities in counties that have a population more than 20000" counts City_ID, not the counties each
+                # city's County_ID names (held-out Spider train 349, 2026-10-17).
                 referred = {child: parent for key in self.schema.foreign_keys for child, parent in key.column_pairs}
-                keyed = (is_surrogate_key(operand.name) and operand.table in roles.counted_heads) or (
+                refers_away = (operand in referred and referred[operand].table not in roles.counted_heads
+                               and self.schema.repeats((operand,)))
+                keyed = (is_surrogate_key(operand.name) and operand.table in roles.counted_heads
+                         and not refers_away) or (
                     operand in referred and referred[operand].table in roles.counted_heads
                     and (named_parallel_key(self.schema, (operand, referred[operand]), roles.tokens, self.relations)
                          or ("", True))[1])

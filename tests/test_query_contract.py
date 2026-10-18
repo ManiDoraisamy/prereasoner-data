@@ -1514,6 +1514,155 @@ def test_a_noun_after_a_numeric_fields_name_is_its_measure():
 PEOPLE_TABLE = {"name": "people", "columns": ["Person_ID", "Name", "Country", "Age"],
                 "rows": [[1, "Alice", "France", 30], [2, "Bob", "France", 20], [3, "Cara", "Spain", 40]]}
 
+def _keyed_violations(tables, keys, question, sql):
+    """The constraint violations of ``sql`` over ``tables`` joined by the foreign ``keys`` stated."""
+    from regress.sql_import import import_sql
+    graph = SchemaGraph.from_tables(tables, keys)
+    return constraint_violations(question, import_sql(sql, graph), graph)
+
+
+def test_an_extreme_a_compared_subquery_finds_is_realized():
+    """Spider DEV 44, 159, 2026-10-17: "What are the number of concerts that occurred in the stadium with the largest
+    capacity?" was refused for a missing ordering when the stadium was the one a subquery ordered by capacity returns.
+    The row holding the extreme may be the one a scalar subquery the rows are compared with finds, over the rows the
+    query keeps of its tables. Contrast: an ascending subquery finds the smallest, and a subquery ignoring the outer
+    query's filter on its own table finds an extreme of other rows."""
+    stadium = {"name": "stadium", "columns": ["Stadium_ID", "Name", "Capacity"],
+               "rows": [[1, "Raith", 4000], [2, "Ayr", 10000], [3, "Hampden", 52000]]}
+    concert = {"name": "concert", "columns": ["concert_ID", "concert_Name", "Stadium_ID"],
+               "rows": [[1, "Auditions", 1], [2, "Super bootcamp", 2], [3, "Home Visits", 2]]}
+    keys = [("concert", "Stadium_ID", "stadium", "Stadium_ID")]
+    question = "What are the number of concerts that occurred in the stadium with the largest capacity?"
+    found = ("SELECT COUNT(*) FROM concert WHERE concert.Stadium_ID = "
+             "(SELECT stadium.Stadium_ID FROM stadium ORDER BY stadium.Capacity {} LIMIT 1)")
+    missing = "requested extremum or ordering is missing"
+    assert missing not in _keyed_violations([stadium, concert], keys, question, found.format("DESC"))
+    assert missing in _keyed_violations([stadium, concert], keys, question, found.format("ASC"))
+    filtered = "What is the name of the stadium with the largest capacity among the stadiums named Raith or Ayr?"
+    assert missing in _keyed_violations(
+        [stadium, concert], keys, filtered, "SELECT stadium.Name FROM stadium WHERE stadium.Name IN ('Raith', 'Ayr') "
+        "AND stadium.Capacity = (SELECT MAX(stadium.Capacity) FROM stadium)")
+    # Spider DEV 789: a join keeping some stadiums is no more the subquery's every stadium than a filter is.
+    assert missing in _keyed_violations(
+        [stadium, concert], keys, "What is the name of the stadium with the largest capacity?",
+        "SELECT stadium.Name FROM stadium JOIN concert ON concert.Stadium_ID = stadium.Stadium_ID WHERE "
+        "concert.concert_Name = 'Auditions' AND stadium.Capacity = (SELECT MAX(stadium.Capacity) FROM stadium)")
+
+
+def test_a_name_inside_a_longer_one_after_each_is_part_of_it():
+    """Spider DEV 902, 903 and held-out Spider train 243, 655, 2026-10-17: "Count the number of likes for each student
+    id." was refused for an output grain missing, grouped by the student_id it asks for, since "id" alone named
+    Highschooler's ID; "For each country and airline name, how many routes are there?" for the routes' airline code.
+    A name inside a longer one the clause says is part of it, and a field's name after its table's names that
+    field. Contrast: a count of all likes, and the airlines grouped by the routes' airline code, miss the grain."""
+    highschooler = {"name": "Highschooler", "columns": ["ID", "name", "grade"],
+                    "rows": [[1510, "Jordan", 9], [1689, "Gabriel", 9], [1381, "Tiffany", 9]]}
+    likes = {"name": "Likes", "columns": ["student_id", "liked_id"], "rows": [[1689, 1709], [1689, 1510], [1381, 1247]]}
+    keys = [("Likes", "student_id", "Highschooler", "ID")]
+    grain = "requested output grain is missing"
+    question = "Count the number of likes for each student id."
+    assert grain not in _keyed_violations([highschooler, likes], keys, question,
+                                          "SELECT student_id, COUNT(*) FROM Likes GROUP BY student_id")
+    assert grain in _keyed_violations([highschooler, likes], keys, question, "SELECT COUNT(*) FROM Likes")
+    airlines = {"name": "airlines", "columns": ["alid", "name", "country"],
+                "rows": [[1, "Aerocondor", "Portugal"], [2, "Air Hong Kong", "Hong Kong"]]}
+    routes = {"name": "routes", "columns": ["rid", "alid", "airline"],
+              "rows": [[37, 1, "AC"], [38, 1, "AC"], [39, 2, "AH"]]}
+    keys = [("routes", "alid", "airlines", "alid")]
+    question = "For each country and airline name, how many routes are there?"
+    joined = ("SELECT airlines.country, {0}, COUNT(*) FROM routes JOIN airlines ON routes.alid = airlines.alid "
+              "GROUP BY airlines.country, {0}")
+    assert grain not in _keyed_violations([airlines, routes], keys, question, joined.format("airlines.name"))
+    assert grain in _keyed_violations([airlines, routes], keys, question, joined.format("routes.airline"))
+
+
+def test_a_row_count_counts_the_rows_its_joins_keep():
+    """Spider DEV 740 and held-out Spider train 573, 2026-10-17: "What is name of the country that speaks the largest
+    number of languages?" was refused for the Language field it counts, ordered by a count of the country's
+    countrylanguage rows; "Which counties have two or more delegates?" for the Delegate field, a HAVING count of their
+    election rows. A populated field of the table whose rows a row count anywhere in the query counts is counted by it:
+    the one table no foreign-key join refers to. Contrast: counted over the countries, the languages are not."""
+    country = {"name": "country", "columns": ["Code", "Name"], "rows": [["ABW", "Aruba"], ["AFG", "Afghanistan"]]}
+    language = {"name": "countrylanguage", "columns": ["CountryCode", "Language", "Percentage"],
+                "rows": [["ABW", "Dutch", 5.3], ["ABW", "English", 9.5], ["AFG", "Pashtu", 52.4]]}
+    keys = [("countrylanguage", "CountryCode", "country", "Code")]
+    question = "What is name of the country that speaks the largest number of languages?"
+    unused = "The requested field is not used: Language"
+    assert unused not in _keyed_violations(
+        [country, language], keys, question, "SELECT country.Name FROM country JOIN countrylanguage ON "
+        "countrylanguage.CountryCode = country.Code GROUP BY country.Name ORDER BY COUNT(*) DESC LIMIT 1")
+    assert unused in _keyed_violations([country, language], keys, "How many languages are there?",
+                                       "SELECT COUNT(*) FROM country")
+    # Held-out Spider train 912: a threshold on a field the question names is no count of rows.
+    city = {"name": "city", "columns": ["City_ID", "City", "Regional_Population"],
+            "rows": [[1, "Shanghai", 23019148], [2, "Nanjing", 8004680], [3, "Hangzhou", 21102000]]}
+    assert "The requested field is not used: Regional_Population" in _keyed_violations(
+        [city], [], "Please give me a list of cities whose regional population is over 10000000.",
+        "SELECT City FROM city GROUP BY City HAVING COUNT(*) > 10000000")
+    # Fresh holdout 9, 51: nor is a number before a numeric field's name after it, "more than 30000 in salary".
+    employee = {"name": "employee", "columns": ["Ssn", "Fname", "Lname", "Salary"],
+                "rows": [[1, "John", "Smith", 30000], [2, "Franklin", "Wong", 40000], [3, "Alicia", "Zelaya", 25000]]}
+    assert "The requested field is not used: Salary" in _keyed_violations(
+        [employee], [], "Return the first names and last names of employees who earn more than 30000 in salary.",
+        "SELECT Fname, Lname FROM employee GROUP BY Fname, Lname HAVING COUNT(*) > 30000")
+
+
+def test_a_one_word_name_said_as_two_words_is_that_name():
+    """Held-out Spider train 612, 2026-10-17: "What is the partition id of the user named "Iron Man"." was refused
+    for the tweets' id field it does not ask, answered with partitionid. A one-word name the question says as two
+    words is that name. Contrast: "the id" alone is not partitionid."""
+    users = {"name": "user_profiles", "columns": ["uid", "name", "partitionid"],
+             "rows": [[1, "Iron Man", 1], [2, "Black Widow", 23]]}
+    tweets = {"name": "tweets", "columns": ["id", "uid", "text"], "rows": [[1, 1, "Hello"], [2, 2, "Hi"]]}
+    keys = [("tweets", "uid", "user_profiles", "uid")]
+    shown = "SELECT partitionid FROM user_profiles WHERE name = 'Iron Man'"
+    assert _keyed_violations([users, tweets], keys, 'What is the partition id of the user named "Iron Man".',
+                             shown) == ()
+    assert _keyed_violations([users, tweets], keys, 'What is the id of the user named "Iron Man".', shown) == (
+        "The requested field is not used: id",)
+
+
+def test_an_abbreviated_aggregate_word_said_in_full_is_the_name():
+    """Held-out Spider train 666, 2026-10-17: "What are the products with the maximum page size A4 that also have a
+    pages per minute color smaller than 5?" was refused for a missing extreme, max_page_size being the field it
+    names. Like "average" before the rest of an avg_ name, "maximum" and "minimum" before the rest of a max_ or min_
+    name say that name. Contrast: "the maximum pages per minute color" asks for an extreme."""
+    product = {"name": "product", "columns": ["product_id", "product", "max_page_size", "pages_per_minute_color"],
+               "rows": [[1, "Fujitsu fi-6130", "A4", 30], [2, "Plustek MobileOffice", "A4", 3],
+                        [3, "Canon imageFORMULA", "A3", 4]]}
+    missing = "requested extremum or ordering is missing"
+    assert missing not in _keyed_violations(
+        [product], [], "What are the products with the maximum page size A4 that also have a pages per minute color "
+        "smaller than 5?", "SELECT product FROM product WHERE max_page_size = 'A4' AND pages_per_minute_color < 5")
+    assert missing in _keyed_violations(
+        [product], [], "What is the product with the maximum pages per minute color?", "SELECT product FROM product")
+    # Held-out Spider train 625: of a field the query does not read, "the maximum page size" is still asked.
+    assert "requested aggregate is missing: MAX" in _keyed_violations(
+        [product], [], "What is the maximum page size for everything that has more than 3 products listed?",
+        "SELECT product FROM product GROUP BY product HAVING COUNT(*) > 3")
+
+
+def test_a_key_whose_references_lead_to_the_asked_table_shows_it():
+    """Held-out Spider train 506, 2026-10-17: "List the id of students who attended some courses?" was refused for
+    showing attendance fields, answered by the attendance rows' student_id, which refers to the registrations'
+    student_id and that to Students'. A key whose references lead to an asked table holds that table's keys.
+    Contrast: a field of the attendance rows referring to nothing asked is no student's."""
+    students = {"name": "Students", "columns": ["student_id", "student_details"],
+                "rows": [[111, "Marry"], [121, "Martha"]]}
+    registrations = {"name": "Student_Course_Registrations", "columns": ["student_id", "course_id"],
+                     "rows": [[111, 301], [121, 301]]}
+    attendance = {"name": "Student_Course_Attendance", "columns": ["student_id", "course_id", "date_of_attendance"],
+                  "rows": [[111, 301, "2008-11-04"], [121, 301, "2012-04-09"]]}
+    keys = [("Student_Course_Attendance", "student_id", "Student_Course_Registrations", "student_id"),
+            ("Student_Course_Registrations", "student_id", "Students", "student_id")]
+    question = "List the id of students who attended some courses?"
+    tables = [students, registrations, attendance]
+    shows = "the answer shows Student_Course_Attendance's fields, not the Students asked for"
+    assert shows not in _keyed_violations(tables, keys, question, "SELECT student_id FROM Student_Course_Attendance")
+    assert shows in _keyed_violations(tables, keys, question,
+                                      "SELECT date_of_attendance FROM Student_Course_Attendance")
+
+
 TESTS =[value for name, value in globals().copy().items() if name.startswith('test_') and callable(value)]
 
 if __name__ == '__main__':

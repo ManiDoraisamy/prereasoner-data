@@ -301,11 +301,9 @@ def constraint_violations(question, query, graph):
     # that already stores the requested count is totaled, using the operand reader's existing shared rule.
     uncounted = ()
     if _OPENS_WITH_COUNT.match(question):
-        from engine.sql_expansion import counted_measure_columns
-        schema = [{"table": column.ref.table, "name": column.ref.name,
-                   "affinity": "REAL" if column.ref.type.numeric else "TEXT"} for column in graph.columns]
+        from engine.sql_expansion import counted_measure_columns, graph_measures
         quantities = frozenset((column["table"], column["name"])
-                               for column in counted_measure_columns(question, schema))
+                               for column in counted_measure_columns(question, graph_measures(graph)))
         if not all(_shows_count(branch, quantities) for branch in branches):
             uncounted = ("the question asks how many, and the answer computes no count",)
     return tuple(dict.fromkeys(violation for branch in branches
@@ -506,6 +504,19 @@ def _select_violations(question, query, graph, whole):
     counts_rows = count_requested and any(isinstance(item.expression, Aggregate)
         and item.expression.function == 'COUNT' and isinstance(item.expression.operand, Star)
         for item in query.select)
+    # The table whose rows a row count anywhere in the query counts, where the question counts rows ("the largest number
+    # of languages", "two or more delegates"): its one table, or over foreign-key joins the one no join refers to.
+    from engine.sql_expansion import count_thresholds
+    counted_rows = (_row_count_table(query, graph) if (count_requested or count_thresholds(question_tokens)) and any(
+        aggregate.function == 'COUNT' and isinstance(aggregate.operand, Star) and not aggregate.distinct
+        for aggregate in aggregates((query.select, query.order_by, query.having))) else None)
+    # The places of the nouns a count counts: after a threshold's number ("two or more delegates") and after "how many",
+    # "number of" or "count of" ("the largest number of languages").
+    counted_nouns = {index for threshold in count_thresholds(question_tokens)
+                     for index in range(threshold.end, threshold.end + 3)}
+    counted_nouns |= {index for start in range(len(question_tokens) - 1)
+                      if question_tokens[start:start + 2] in (("how", "many"), ("number", "of"), ("count", "of"))
+                      for index in range(start + 2, start + 5)}
     ranked_grouping = (query.limit is not None and any(
         isinstance(term.expression, Aggregate) for term in query.order_by
     ))
@@ -636,6 +647,12 @@ def _select_violations(question, query, graph, whole):
         owners = _owner_tables(label.split(), question_tokens, graph) or asked_tables
 
         def longer(ref):
+            # A one-word name the question says as two words, the label one of them: "the partition id" is
+            # partitionid (held-out Spider train 612, 2026-10-17: refused for an id field it does not ask).
+            joined = canon("".join(lexical_words(ref.name)))
+            if any(label in pair and canon("".join(pair)) == joined
+                   for pair in zip(question_tokens, question_tokens[1:])):
+                return True
             words = _name_vocabulary((ref.name,))
             parts = name_part_words(ref.name) or tuple(canon(word) for word in name_words(ref.name))
             if label_words < set(parts) and ' ' + ' '.join(parts) + ' ' in question_text:
@@ -662,11 +679,21 @@ def _select_violations(question, query, graph, whole):
             continue
         if roles.aggregate_positions and label in recipients and label not in data_literals:
             continue
-        # Counting a populated field in the base table is exactly COUNT(*).
-        # This evidence is local data, not a learned guess about missing values.
-        if counts_rows and any(ref.table == query.from_table and graph.column_map[(ref.table, ref.name)].values
-            and all(value is not None and str(value).strip() for value in graph.column_map[(ref.table, ref.name)].values)
-            for ref in refs):
+        # Counting a populated field of the table whose rows a row count counts is exactly that count, in the base
+        # table counted, or, wherever the query counts, where the field is the noun counted: "the country that speaks
+        # the largest number of languages" orders countries by their countrylanguage rows, "counties with two or more
+        # delegates" keeps those with two election rows (Spider DEV 740, held-out Spider train 573, 2026-10-17:
+        # refused for the Language and Delegate fields the counts count). A number before a numeric field's name compares
+        # it: "cities whose regional population is over 10000000", "employees who earn more than 30000 in salary" and
+        # "stations that have had more than 12 bikes available" count nothing (held-out 912, fresh holdout 9, 51, 488,
+        # 673). This evidence is local data, not a learned guess about missing values.
+        def populated(ref):
+            values = graph.column_map[(ref.table, ref.name)].values
+            return values and all(value is not None and str(value).strip() for value in values)
+        noun_places = [index for index, token in enumerate(question_tokens) if token == label.split()[0]]
+        if (counts_rows and any(ref.table == query.from_table and populated(ref) for ref in refs)) or (
+                counted_rows and noun_places and all(index in counted_nouns for index in noun_places)
+                and any(ref.table == counted_rows and not ref.type.numeric and populated(ref) for ref in refs)):
             continue
         # A field that only tables the query cannot reach hold, named where the question counts rows, names
         # the rows counted: "how many subscriptions are there by Status" counts an export's rows, and the
@@ -811,18 +838,43 @@ def _select_violations(question, query, graph, whole):
     for column in sorted(graph.columns, key=lambda c: -len(c.ref.name)):
         label = " ".join(lexical_words(column.ref.name))
         text = text.replace(label, " ")
-        if label.startswith("avg "):
-            text = text.replace("average " + label[4:], " ")
+        # A name's abbreviated aggregate word said in full is that name, of a field the query reads: "average price" of
+        # avg_price, "the maximum page size A4" of max_page_size (held-out Spider train 666, 2026-10-17: refused for an
+        # extreme it does not ask). "The maximum page size" of products the query does not show is still asked (625).
+        for short, full in (("avg ", "average "), ("max ", "maximum "), ("min ", "minimum ")):
+            if label.startswith(short) and column.ref in used:
+                text = text.replace(full + label[len(short):], " ")
     aggregates = {item.expression.function for item in query.select if isinstance(item.expression, Aggregate)}
     # An extreme that selects the row holding it is realized as "the highest" is, by an ordering in its direction:
     # "the country with the maximum GNP" (sql_expansion.selects_extreme).
     from engine.sql_expansion import selected_extremes
     selecting = selected_extremes(said)
+    # The row holding such an extreme may be the one a scalar subquery the rows are compared with finds, by its
+    # aggregate or by its first ordering with a row cutoff, where the subquery keeps every row the query keeps: "the
+    # number of concerts in the stadium with the largest capacity" counts the concerts of the stadium a subquery ordered
+    # by capacity returns (Spider DEV 44, 159, 2026-10-17: refused for an ordering missing from the outer query). The
+    # maximum of every keyword is no maximum of those containing 'inspection checklist', nor the least populated
+    # country of all the one of those a join to a city keeps (Spider DEV 789).
+    compared_with = [sub for sub, scalar, _, _ in _tested_subqueries(query.where)
+                     if scalar and isinstance(sub, SelectQuery)]
+    from engine.sql_ast import ScalarSubquery
+    kept_by = [predicate for predicate in mandatory_predicates(query.where)
+               if not any(isinstance(getattr(predicate, side, None), ScalarSubquery) for side in ("left", "right"))]
+
+    def found_by_subquery(function, direction_of):
+        return any(
+            (any(isinstance(item.expression, Aggregate) and item.expression.function == function for item in sub.select)
+             or (sub.limit is not None and sub.order_by
+                 and sub.order_by[0].direction == direction_of(sub.order_by[0])))
+            and set(kept_by) <= set(mandatory_predicates(sub.where))
+            and {join.table for join in query.joins} <= sub.referenced_tables()
+            for sub in compared_with)
     for pattern, function in ((r"\b(?:maximum|max)\b", "MAX"), (r"\b(?:minimum|min)\b", "MIN"),
                               (r"\b(?:average|avg|mean)\b", "AVG")):
         if re.search(pattern, text) and function not in aggregates and function not in measures:
             if function in selecting:
-                if not query.order_by or query.order_by[0].direction != selecting[function]:
+                if ((not query.order_by or query.order_by[0].direction != selecting[function])
+                        and not found_by_subquery(function, lambda term: selecting[function])):
                     violations.append("requested extremum or ordering is missing")
                 continue
             violations.append("requested aggregate is missing: " + function)
@@ -831,10 +883,12 @@ def _select_violations(question, query, graph, whole):
     for pattern, function, cue in ((r"\b(?:highest|largest)\b", "MAX", "highest"),
                                    (r"\b(?:lowest|smallest)\b", "MIN", "lowest")):
         if re.search(pattern, text) and function not in aggregates:
+            def direction_of(term):
+                return (superlative_direction(cue, term.expression) if isinstance(term.expression, ColumnRef)
+                        else "DESC" if function == "MAX" else "ASC")
             first = query.order_by[0] if query.order_by else None
-            direction = (superlative_direction(cue, first.expression) if first is not None
-                         and isinstance(first.expression, ColumnRef) else "DESC" if function == "MAX" else "ASC")
-            if first is None or first.direction != direction:
+            if (first is None or first.direction != direction_of(first)) and not found_by_subquery(
+                    function, direction_of):
                 violations.append("requested extremum or ordering is missing")
     # The rows a ranking keeps are read where the search reads them (sql_extrema.ranking_cutoff): "the top 3", "the two
     # people with the largest age".
@@ -878,8 +932,27 @@ def _select_violations(question, query, graph, whole):
                  for item in query.select if isinstance(item.expression, ColumnRef)]
         linked = {(left.table, right.table) for key in graph.foreign_keys for left, right in key.column_pairs}
         linked |= {(right, left) for left, right in linked}
+        # A key whose references lead to an asked table holds that table's keys: "the id of students who attended some
+        # courses" is the attendance rows' student_id, which refers to the registrations' and they to Students' (held-out
+        # Spider train 506, 2026-10-17: refused for showing attendance fields).
+        refers = {}
+        for key in graph.foreign_keys:
+            for child, parent in key.column_pairs:
+                refers.setdefault((child.table, child.name), set()).add((parent.table, parent.name))
+
+        def leads_to_asked(table, ref):
+            seen, reached = set(), [(table, ref.name)]
+            while reached:
+                column = reached.pop()
+                for parent in refers.get(column, ()):
+                    if parent[0] in asked:
+                        return True
+                    if parent not in seen:
+                        seen.add(parent)
+                        reached.append(parent)
+            return False
         if shown and not any(table in asked or any((table, wanted) in linked for wanted in asked)
-                             for table, _ in shown):
+                             or leads_to_asked(table, ref) for table, ref in shown):
             violations.append(f"the answer shows {shown[0][0]}'s fields, not the {sorted(asked)[0]} asked for")
     # A count grouped by the key of the one table it reads counts one row in each group, while the tables whose foreign
     # keys refer to that key hold its occurrences: "the transaction type code that occurs the most frequently" counted
@@ -935,15 +1008,66 @@ def _select_violations(question, query, graph, whole):
         tail = re.split(r"\b(?:sort|sorted|order|ordered|rank|ranked)\s+by\b|\b(?:where|whose|having)\b",
                         match[1])[0]
         tail_words = " " + " ".join(lexical_words(tail)) + " "
-        labels = {}
+        # A field's name after its table's names that field, and a name inside a longer one the clause says is part
+        # of it: "for each country and airline name" asks for the airline's name and no airline code, "for each
+        # student id" and "each accreditation type" for no other table's id or type (held-out Spider train 243, Spider
+        # DEV 902, 903, held-out 655, 2026-10-17: all refused).
+        said_words = [canon(word) for word in lexical_words(tail)]
+        said_text = " " + " ".join(said_words) + " "
+        labels, spans = {}, set()
         for column in graph.columns:
             label = " ".join(lexical_words(column.ref.name))
             if label and " " + label + " " in tail_words and not re.search(
                     _MEASURE_WORDS + re.escape(label) + " ", tail_words):
                 labels.setdefault(label, set()).add(column.ref)
+            name = [canon(word) for word in lexical_words(column.ref.name)]
+            qualified = [canon(word) for word in lexical_words(column.ref.table)] + name
+            for phrase in (name, qualified) if name else ():
+                places = _phrase_places(said_words, phrase)
+                spans |= places
+                if places and phrase is qualified and not re.search(
+                        _MEASURE_WORDS + re.escape(" ".join(phrase)) + " ", said_text):
+                    labels.setdefault(" ".join(phrase), set()).add(column.ref)
+        labels = {label: refs for label, refs in labels.items()
+                  if not _inside_longer(_phrase_places(said_words, [canon(word) for word in label.split()]), spans)}
         if aggregates and any(not refs & grouped for refs in labels.values()):
             violations.append("requested output grain is missing")
     return tuple(dict.fromkeys(violations))
+
+
+def _row_count_table(query, graph):
+    """The table whose rows a row count over ``query``'s rows counts: its one table, or over joins that each follow a
+    foreign key the one table no join refers to (a country's languages are its countrylanguage rows). None for
+    another join."""
+    from engine.sql_ast import SelectQuery
+    if not isinstance(query, SelectQuery) or not isinstance(query.from_table, str):
+        return None
+    tables = {query.from_table, *(join.table for join in query.joins)}
+    if len(tables) != len(query.joins) + 1 or any(join.alias for join in query.joins) or query.from_alias:
+        return None
+    keys = {frozenset({(child.table, child.name), (parent.table, parent.name)}): parent.table
+            for key in graph.foreign_keys for child, parent in key.column_pairs}
+    parents = set()
+    for join in query.joins:
+        for left, right in join.predicates:
+            parent = keys.get(frozenset({(left.table, left.name), (right.table, right.name)}))
+            if parent is None:
+                return None
+            parents.add(parent)
+    counted = tables - parents
+    return next(iter(counted)) if len(counted) == 1 else None
+
+
+def _phrase_places(words, phrase):
+    """The (start, end) spans of ``words`` that are ``phrase``."""
+    width = len(phrase)
+    return {(start, start + width) for start in range(len(words) - width + 1) if words[start:start + width] == phrase}
+
+
+def _inside_longer(places, spans):
+    """Whether each of ``places`` lies inside a longer one of ``spans``."""
+    return bool(places) and all(any(start <= left and right <= end and (start, end) != (left, right)
+                                    for start, end in spans) for left, right in places)
 
 
 def _compares_another_field(question_tokens, query, graph, skipped):

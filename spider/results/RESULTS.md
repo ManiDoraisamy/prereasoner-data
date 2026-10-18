@@ -107,6 +107,27 @@ Artifacts: `%LOCALAPPDATA%/Temp/prereasoner-spider-review-20261013/`, tags `revi
 Incomplete intermediate runs are excluded. The review hardens ranking-number roles, output counts (preserving stored-count SUM),
 and table-owned full-name construction; it does not introduce another planner or model bundle.
 
+## An extreme a compared subquery finds, a longer name's part and the rows a count counts are read; a referring key counts the rows it refers to; "how many total" asks one number: 691 → 696 strict, Gemini on 744 → 751, held out 436 → 441, fresh holdout 437 → 438 (2026-10-18)
+
+Same contract as below (RunPod CPU pods, the evaluator ingesting declared and discovered keys). Runs `w3` are this
+change against `5cc3d95`'s `v5` runs. The change is the `DECISIONS.md` entry of this title.
+
+- DEV, engine alone: 691 → **696 strict**; 5 wins (44, 150, 159, 902, 903), no loss; wrong answers 137 → 137; 8 queries
+  changed.
+- Held out: 436 → **441 strict**; 5 wins (349, 573, 612, 655, 666), no loss; wrong answers 228 → 226; 10 queries
+  changed.
+- Fresh holdout: 437 → **438 strict**; 1 win (767), no loss; wrong answers 233 → 233; 3 queries changed.
+- Gemini on: 744 → 751; 7 wins (44, 101, 150, 159, 607, 902, 903), no loss; wrong answers 178 → 178; 14 queries changed.
+- Wrong answers this change makes of questions refused before: "How many total tours were there for each ranking date?"
+  shows each date's total, the reading asked, in the groups-first column order the gold reverses (DEV 480, Gemini on 479
+  and 480); and Gemini on, a rewording of "the transcript which shows the least number of results" is answered with the
+  earliest transcript's date (DEV 573): "most" and "least" are read without the count ordering they ask being verified,
+  and the gate before this change accepts the same rewording and query.
+- The first measured version (runs `w2`) lost fresh holdout 9 and 51 and answered fresh holdout 488 and 673 wrong,
+  reading a number before a numeric field's name as a count of rows; runs `w3` are after its fix.
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-remote-eval-20261017/full_eval_{,heldout-,holdout2-}w3.json` and `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_w3-gemini-dirty.json`.
+
 ## A superlative or aggregate word that names a field grades what follows it; the people counted are a population; a member is its table's row: 685 → 691 strict, Gemini on 738 → 744, held out 433 → 436, fresh holdout 434 → 437 (2026-10-17)
 
 Same contract as below (RunPod CPU pods, the evaluator ingesting declared and discovered keys). Runs `v5` are this

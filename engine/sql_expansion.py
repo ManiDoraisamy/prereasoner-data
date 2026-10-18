@@ -1547,6 +1547,12 @@ def share_cue(question_tokens: Sequence[str], schema: SchemaGraph) -> tuple[str,
 QUANTITY_SUPERLATIVES = frozenset({"most", "least", "fewest"})
 
 
+def graph_measures(graph: Any) -> list[dict]:
+    """A schema graph's columns as the planner-schema entries the measure readers take ({table, name, affinity})."""
+    return [{"table": column.ref.table, "name": column.ref.name,
+             "affinity": "REAL" if column.ref.type.numeric else "TEXT"} for column in graph.columns]
+
+
 def _numeric_measures(sch: Sequence[dict]) -> list[dict]:
     return [entry for entry in sch
             if entry.get("affinity") in ("INTEGER", "REAL") and not is_surrogate_key(entry["name"])]
@@ -1604,6 +1610,8 @@ def counted_measure_columns(question: str, sch: Sequence[dict]) -> list[dict]:
     question_tokens = tokens(question)
     starts = [index + 2 for index in range(len(question_tokens) - 1)
               if question_tokens[index:index + 2] in (("how", "many"), ("number", "of"), ("count", "of"))]
+    # "How many total tours" counts the tours as "how many tours" does (Spider DEV 480, 2026-10-18).
+    starts += [start + 1 for start in starts if question_tokens[start:start + 1] == ("total",)]
     return [entry for entry in _numeric_measures(sch)
             if (words := name_tokens(entry["name"]))
             and any(question_tokens[start:start + len(words)] == words
@@ -1759,6 +1767,17 @@ def asked_cues(cues: list[tuple[str, int]], question_tokens: tuple[str, ...],
     measured = cue_names(question_tokens, schema).measured
     cues = [(function, position) for function, position in cues
             if not selects_extreme(question_tokens, position) and position not in measured]
+    # "How many total tours" asks one number: the total of the numeric field the noun after "total" names whole, the
+    # count it holds, else the count of what the noun names (Spider DEV 480, 2026-10-18: a count of tours was shown
+    # beside their total).
+    for index in range(len(question_tokens) - 3):
+        if tuple(question_tokens[index:index + 3]) == ("how", "many", "total"):
+            stored = any(question_tokens[index + 3:index + 3 + len(words)] == words
+                         for entry in counted_measure_columns(" ".join(question_tokens), graph_measures(schema))
+                         if (words := name_tokens(entry["name"])))
+            cues = [(function, position) for function, position in cues
+                    if not ((function == "COUNT" and position in (index, index + 1)) if stored
+                            else (function == "SUM" and position == index + 2))]
     spelled = spelled_names(question_tokens, schema)
     if any(position not in spelled for _, position in cues):
         return [(function, position) for function, position in cues if position not in spelled]
@@ -2244,12 +2263,14 @@ def _bound_fields(question: str, schema: Any, listed: Sequence[OutputRequest]) -
     if not all(candidates):
         return ()
     coverage = Counter(table for options in deciding for table in {ref.table for _, ref in options})
-    # The table the list names right after its items owns them where the items alone tie: "the names and descriptions
-    # of all the sections" are the sections' (Spider DEV 523, 524, 2026-10-14).
+    # The table the list names right after its items owns them where the items alone tie, by its name or the noun that
+    # ends it: "the names and descriptions of all the sections" are the sections' (Spider DEV 523, 524, 2026-10-14),
+    # "the names and ids of all makers" car_makers' (Spider DEV 150, 2026-10-18: tied with the countries' and read no
+    # list, so a maker's name alone was shown).
     after = [word for word in said[listed[-1].end:listed[-1].end + 6] if word not in FUNCTION_WORDS | _LIST_LEADS]
     for table in schema.tables:
         name = [canon(word) for word in name_words(table)]
-        if name and coverage.get(table) and after[:len(name)] == name:
+        if name and coverage.get(table) and (after[:len(name)] == name or after[:1] == name[-1:]):
             coverage[table] += 0.5
     ranked = sorted(coverage.items(), key=lambda item: (-item[1], item[0]))
     owner = ranked[0][0] if len(ranked) == 1 or ranked[0][1] > ranked[1][1] else None
