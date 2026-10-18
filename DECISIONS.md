@@ -4308,3 +4308,33 @@ Measured on Spider (`spider/results/RESULTS.md`, 2026-10-18), against `e7fc8d4`:
   times, the surnames listed not shown). A first version's losses were fixed before these runs: a self-join's shown
   title read as an alias's (fresh holdout 539, 790), and the readings of "the largest area" displacing Spider DEV 800's
   answer from the pool.
+
+## The pool holds no exclusion the gate refuses for its shape; "never" and what rows do not have are exclusions; a list's "for" names its names' owner (2026-10-18)
+
+- Past its top reading, which stays first for the decomposition probe (`decomposition.compound_candidate`), the search
+  keeps no reading whose exclusion or difference the completeness gate refuses for its shape in its pool
+  (`query_contract.exclusion_refusals`, the one predicate the gate and `sql_search.SQLSearcher` read: an exclusion
+  narrowed by a table the question does not name, a difference keeping rows that are not those asked for, a difference
+  subtracting every row it keeps), so none takes the place of a reading the gate may serve: "What are the ids of courses
+  without prerequisites?" filled the 25 places with exclusions narrowed by sections, departments and teaching (fresh
+  holdout 635, 855, 178: refused).
+- "Never" excludes as "not" does (`closed_class.EXCLUSION_CUES`): "the artists that have produced a song in English but
+  have never received a rating higher than 8" was answered by the songs rated over 8 (held out 48, a wrong answer a
+  first version of the pool change made), and "the average credit score for customers who have never taken a loan" and
+  "the mean longitude for all stations that have never had more than 10 bikes available" by readings excluding nothing
+  (held out 826, 409: now answered by their differences).
+- What the rows "do not have" (or are "without", or "never" have) is absent from every row they relate to: an inequality
+  on a table the shown rows reach through rows referring to them is refused (`query_contract._inequality_across_many`):
+  "the students who are living in the dorms that do not have amenity TV Lounge" kept every dorm with another amenity
+  (held out 72, a wrong answer the pool change made).
+- The names a list asks "for" a table are its own, past a determiner or none (`query_contract._named_name_owners`):
+  "What are the names and average salaries for departments with average salary higher than 42000?" showed the
+  instructors' names (fresh holdout 848, now answered by another reading that is still wrong).
+
+Measured on Spider (`spider/results/RESULTS.md`, 2026-10-18), against `037405d`: DEV 708 → 708 strict, held out 454 →
+456, the fresh holdout 466 → 469, Gemini on 762 → 763.
+
+- No loss on any set. Answers it now refuses that were wrong: held out 48 and 72 (wrong answers a first version made of
+  questions refused before, once the pool held other readings). A first version's losses were fixed before these runs:
+  dropping refused readings before ranking changed the search's top reading the decomposition probe reads
+  (tests.test_complex_datasets), and "never" as an exclusion cue left the word unread by a difference (Spider DEV 282).

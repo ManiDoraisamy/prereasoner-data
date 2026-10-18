@@ -1967,6 +1967,22 @@ def test_the_names_a_list_asks_for_each_table_are_its_own():
     assert not [violation for violation in constraint_violations(
         "What are the names of the artist's songs?", import_sql("SELECT song.song_name FROM song", music), music)
         if "name" in violation]
+    # So are the names a list asks "for" a table: "What are the names and average salaries for departments with average
+    # salary higher than 42000?" showed the instructors' names (fresh holdout 848, 2026-10-18).
+    department = {"name": "department", "columns": ["dept_name", "building", "budget"],
+                  "rows": [["Physics", "Watson", 70000], ["Finance", "Painter", 120000]]}
+    instructor = {"name": "instructor", "columns": ["ID", "name", "dept_name", "salary"],
+                  "rows": [["10101", "Srinivasan", "Physics", 65000], ["12121", "Wu", "Finance", 90000]]}
+    school = SchemaGraph.from_tables([department, instructor], [("instructor", "dept_name", "department", "dept_name")])
+    question = "What are the names and average salaries for departments with average salary higher than 42000?"
+    grouped = (" FROM instructor JOIN department ON instructor.dept_name = department.dept_name GROUP BY {0} "
+               "HAVING AVG(instructor.salary) > 42000")
+    assert "the answer shows the names of instructor, not of the department asked for" in constraint_violations(
+        question, import_sql("SELECT instructor.name, AVG(instructor.salary)" + grouped.format("instructor.name"),
+                             school), school)
+    assert not [violation for violation in constraint_violations(question, import_sql(
+        "SELECT department.dept_name, AVG(instructor.salary)" + grouped.format("department.dept_name"), school),
+        school) if "the names of" in violation]
     # Each name a list asks for is its own table's ("titles of songs and names of singers"), and names said after a
     # possessive ("their instructors' names for courses") or of what no table names are not read.
     singer = {"name": "singer", "columns": ["Singer_ID", "Name"], "rows": [[1, "Liliane Bettencourt"], [2, "Tabea"]]}
@@ -1998,6 +2014,65 @@ def test_each_listed_output_is_shown_by_a_field_it_names():
     areas = "SELECT country.Name, country.SurfaceArea FROM country ORDER BY country.SurfaceArea DESC LIMIT 2"
     assert not [violation for violation in constraint_violations(question, import_sql(areas, graph), graph)
                 if "the question lists" in violation]
+
+
+
+def test_never_and_what_rows_do_not_have_are_exclusions():
+    """Held-out Spider train 48, 72, 2026-10-18: "the artists that have produced a song in English but have never
+    received a rating higher than 8" was answered by the songs rated over 8, "never" asking no exclusion, and "the
+    students who are living in the dorms that do not have amenity TV Lounge" by an inequality on the amenity's name,
+    which keeps every dorm with another amenity. "Never" excludes as "not" does (closed_class.EXCLUSION_CUES), and what
+    the rows do not have is subtracted from the rows they relate to. Contrast: the set difference, and an inequality on
+    the rows shown ("the dorms whose name is not Smith Hall")."""
+    artist = {"name": "artist", "columns": ["artist_name", "country"], "rows": [["Enrique", "USA"], ["Prity", "India"]]}
+    song = {"name": "song", "columns": ["song_name", "artist_name", "languages", "rating"],
+            "rows": [["Tumi", "Prity", "english", 9], ["Hola", "Enrique", "english", 7]]}
+    music = SchemaGraph.from_tables([artist, song], [("song", "artist_name", "artist", "artist_name")])
+    question = ("What are the names of the different artists that have produced a song in English but have never "
+                "received a rating higher than 8?")
+    rated = ("SELECT DISTINCT artist.artist_name FROM artist JOIN song ON song.artist_name = artist.artist_name "
+             "WHERE song.languages = 'english' AND song.rating > 8")
+    assert "requested exclusion is missing" in constraint_violations(question, import_sql(rated, music), music)
+    difference = ("SELECT DISTINCT artist_name FROM song WHERE languages = 'english' EXCEPT "
+                  "SELECT DISTINCT artist_name FROM song WHERE rating > 8")
+    assert "requested exclusion is missing" not in constraint_violations(
+        question, import_sql(difference, music), music)
+    # A difference reads "never" as it reads "not" (Spider DEV 282: "the employees who never received any evaluation",
+    # a loss the first version made, "never" left unread).
+    employees = [{"name": "employee", "columns": ["Employee_ID", "Name"], "rows": [[1, "George"], [2, "Lee"]]},
+                 {"name": "evaluation", "columns": ["Employee_ID", "Year_awarded", "Bonus"],
+                  "rows": [[1, "2011", 3000]]}]
+    assert _reading(employees, "What are the names of the employees who never received any evaluation?",
+                    "SELECT employee.Name FROM employee EXCEPT SELECT employee.Name FROM employee JOIN evaluation ON "
+                    "evaluation.Employee_ID = employee.Employee_ID") == (True, ())
+    tables = [{"name": "Student", "columns": ["StuID", "Fname", "Age"],
+               "rows": [[1001, "Linda", 18], [1002, "Tracy", 19]]},
+              {"name": "Dorm", "columns": ["dormid", "dorm_name"],
+               "rows": [[100, "Smith Hall"], [109, "Fawlty Towers"]]},
+              {"name": "Dorm_amenity", "columns": ["amenid", "amenity_name"],
+               "rows": [[900, "TV Lounge"], [901, "Gym"]]},
+              {"name": "Has_amenity", "columns": ["dormid", "amenid"], "rows": [[100, 900], [100, 901], [109, 901]]},
+              {"name": "Lives_in", "columns": ["stuid", "dormid", "room_number"],
+               "rows": [[1001, 100, 112], [1002, 109, 105]]}]
+    dorms = SchemaGraph.from_tables(tables, [("Has_amenity", "dormid", "Dorm", "dormid"),
+                                             ("Has_amenity", "amenid", "Dorm_amenity", "amenid"),
+                                             ("Lives_in", "stuid", "Student", "StuID"),
+                                             ("Lives_in", "dormid", "Dorm", "dormid")])
+    question = "Find the first name and age of students who are living in the dorms that do not have amenity TV Lounge."
+    unequal = ("SELECT Student.Fname, Student.Age FROM Dorm JOIN Has_amenity ON Has_amenity.dormid = Dorm.dormid "
+               "JOIN Dorm_amenity ON Has_amenity.amenid = Dorm_amenity.amenid JOIN Lives_in ON Lives_in.dormid = "
+               "Dorm.dormid JOIN Student ON Lives_in.stuid = Student.StuID "
+               "WHERE Dorm_amenity.amenity_name != 'TV Lounge'")
+    message = "the exclusion keeps rows having some Dorm_amenity other than the one excluded"
+    assert message in constraint_violations(question, import_sql(unequal, dorms), dorms)
+    subtracted = ("SELECT Student.Fname, Student.Age FROM Student JOIN Lives_in ON Lives_in.stuid = Student.StuID "
+                  "WHERE Lives_in.dormid NOT IN (SELECT Has_amenity.dormid FROM Has_amenity JOIN Dorm_amenity ON "
+                  "Has_amenity.amenid = Dorm_amenity.amenid WHERE Dorm_amenity.amenity_name = 'TV Lounge')")
+    assert message not in constraint_violations(question, import_sql(subtracted, dorms), dorms)
+    assert not [violation for violation in constraint_violations(
+        "Find the names of the dorms that do not have the name Smith Hall.",
+        import_sql("SELECT Dorm.dorm_name FROM Dorm WHERE Dorm.dorm_name != 'Smith Hall'", dorms), dorms)
+        if "keeps rows having" in violation]
 
 
 def test_a_table_named_only_inside_a_longer_name_is_not_joined():

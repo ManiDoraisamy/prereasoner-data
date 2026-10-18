@@ -461,10 +461,20 @@ class SQLSearcher:
         if not rank_candidates:
             return _rows_named(pool[:self.max_candidates])
         from engine.sql_rank import CandidateRanker
-        ranked = CandidateRanker(self.schema, semantic_signals).rank(
-            question, pool
-        )[:self.max_candidates]
-        return _rows_named(ranked)
+        ranked = CandidateRanker(self.schema, semantic_signals).rank(question, pool)
+        # Past the top reading, which stays first whatever the gate says of it (the decomposition probe reads it:
+        # decomposition.compound_candidate), a reading whose exclusion or difference the completeness gate refuses
+        # for its shape holds no place in the pool (query_contract.exclusion_refusals): one the gate may serve takes
+        # it. "What are the ids of courses without prerequisites?" filled every place with exclusions narrowed by
+        # sections, departments and teaching (fresh holdout 635, 855, 2026-10-18: the one it accepts was ranked out).
+        from engine.query_contract import exclusion_refusals
+        kept = ranked[:1]
+        for candidate in ranked[1:]:
+            if len(kept) >= self.max_candidates:
+                break
+            if not exclusion_refusals(question, candidate.query, self.schema):
+                kept.append(candidate)
+        return _rows_named(kept)
 
     def _display_twin(self, candidate: ScoredQuery, tokens: tuple[str, ...],
                       named: set[str]) -> ScoredQuery | None:

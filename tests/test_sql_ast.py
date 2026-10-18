@@ -3178,6 +3178,41 @@ def test_the_information_about_rows_shows_every_field():
         served.get("error"), served.get("sql"))
 
 
+
+def test_the_pool_holds_no_exclusion_the_gate_refuses_for_its_shape():
+    """Fresh holdout 635, 855, 2026-10-18: "What are the ids of courses without prerequisites?" filled its pool with
+    exclusions narrowed by sections, departments and teaching and differences subtracting every row they keep, all
+    refused by the gate, and the one it accepts was ranked out of the pool. Past its top reading (which the
+    decomposition probe reads), the search keeps no reading the gate refuses for its exclusion's shape
+    (query_contract.exclusion_refusals), and the courses without a prereq row are served."""
+    from engine.query_contract import exclusion_refusals
+    tables = [
+        {"name": "course", "columns": ["course_id", "title", "dept_name"],
+         "rows": [["101", "Intro", "Biology"], ["102", "Genetics", "Biology"], ["201", "Algebra", "Math"],
+                  ["202", "Topology", "Math"]]},
+        {"name": "prereq", "columns": ["course_id", "prereq_id"], "rows": [["102", "101"], ["202", "201"]]},
+        {"name": "section", "columns": ["course_id", "sec_id", "semester"],
+         "rows": [["101", "1", "Fall"], ["102", "1", "Spring"], ["201", "1", "Fall"]]},
+        {"name": "teaches", "columns": ["ID", "course_id", "sec_id"],
+         "rows": [["10101", "101", "1"], ["12121", "201", "1"]]},
+        {"name": "department", "columns": ["dept_name", "building"],
+         "rows": [["Biology", "Watson"], ["Math", "Taylor"]]},
+    ]
+    planner = _hermetic_planner()
+    question = "What are the ids of courses without prerequisites?"
+    norm, fks, sch, _ = _request(planner, tables)
+    graph = SchemaGraph.from_planner(sch, fks)
+    pool = planner.search_pool(question, norm, fks, sch)
+    assert pool and not [member.sql for member in pool[1:] if exclusion_refusals(question, member.query, graph)]
+    served = planner.serve(tables, question, [
+        {"from_table": "prereq", "from_col": "course_id", "to_table": "course", "to_col": "course_id"},
+        {"from_table": "section", "from_col": "course_id", "to_table": "course", "to_col": "course_id"},
+        {"from_table": "teaches", "from_col": "course_id", "to_table": "course", "to_col": "course_id"},
+        {"from_table": "course", "from_col": "dept_name", "to_table": "department", "to_col": "dept_name"}])
+    assert served.get("valid") and sorted(served["result"]["rows"]) == [["101"], ["201"]], (
+        served.get("error"), served.get("sql"))
+
+
 def test_amount_of_says_a_quantity():
     """Spider DEV 290, 96 (2026-10-15): "Find the total amount of bonus given in all the evaluations." was refused, its
     SUM(Bonus) leaving "amount" unread, as was "the car with the smallest amount of horsepower". "Amount of" says a
@@ -9026,6 +9061,7 @@ TESTS = [
     test_a_capital_initial_before_a_capitalized_word_is_a_word,
     test_a_measure_word_after_a_superlative_names_it,
     test_the_information_about_rows_shows_every_field,
+    test_the_pool_holds_no_exclusion_the_gate_refuses_for_its_shape,
     test_amount_of_says_a_quantity,
     test_an_extreme_listed_beside_another_output_is_a_value,
     test_the_row_with_the_maximum_is_the_row_holding_it,

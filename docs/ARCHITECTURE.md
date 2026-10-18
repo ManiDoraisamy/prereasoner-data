@@ -575,8 +575,12 @@ prereq, `sql_expansion.says_in_another_form`), narrows it and is refused
 (`sql_extrema.denial_position`): a table named there that only the subtracted part reads is refused unless a field of a
 kept table has its name, a key the kept part shows refers to it, or it follows "whose"
 (`query_contract._unkept_named_tables`), and so is a difference subtracting every row it keeps
-(`_subtracts_every_row`). A set difference subtracts entities by fields that tell them apart
-(`SchemaGraph.identifies`: together they hold no combination twice in their own table, a missing value counting as
+(`_subtracts_every_row`); past its top reading, which the decomposition probe reads, the search keeps no reading
+any of these refuse in its pool (`query_contract.exclusion_refusals`), so none takes a place a servable reading
+could. What the rows "do not have" is absent from every row they relate to: an inequality on a table the shown rows
+reach through rows referring to them is refused (`query_contract._inequality_across_many`), and "never" asks for an
+exclusion as "not" does (`closed_class.EXCLUSION_CUES`). A set difference subtracts entities by fields that tell them
+apart (`SchemaGraph.identifies`: together they hold no combination twice in their own table, a missing value counting as
 one; a foreign key to a unique lookup names the lookup's rows, not its own): the projected values when they do,
 else the entity's key, filled in every row, NOT IN the related rows', where the question asks for fields of the
 entity's rows ("the major and age of each student who ...", `sql_extrema._describes_rows`).
@@ -587,12 +591,12 @@ is the one the question names as the owner after "of" ("the name of the breed", 
 where it names none, the rows it asks for; a camel-cased name split further needs one of those ("at least 2 models ... the id" is no
 ModelId). A field named as its table answers "the names of orchestras", and a self-join's shown field is its table's.
 The names of a table that holds a name are that name, not a joined table's ("the names of the albums" are their titles,
-`query_contract._named_name_owners`), the owner being the table after the name word's "of" or "for" or a later "for
-each"; that field answers a request for another table's field called a name. Each output a list names is shown by a
-field it names or whose name says its words. A table joined to one other that the query reads nothing from and does not
-count, whose rows the join narrows and repeats, is named only where the question says its name outside the longer names
-of tables and fields the query reads ("document type codes" names no Documents,
-`query_contract._join_named_inside_longer`).
+`query_contract._named_name_owners`), the owner being the table after the name word's "of" or "for" or a later "for"
+("for each artist", "for departments"); that field answers a request for another table's field called a name. Each
+output a list names is shown by a field it names or whose name says its words. A table joined to one other that the
+query reads nothing from and does not count, whose rows the join narrows and repeats, is named only where the question
+says its name outside the longer names of tables and fields the query reads ("document type codes" names no
+Documents, `query_contract._join_named_inside_longer`).
 A question opening "how many" or "count" is answered by an aggregate, never a listing. The column an aggregate phrase
 names most fully ("the total amount", "the total estimated amount") is its operand
 (`engine/sql_rank.aggregate_operand`); when it is text and its cells are not all numbers the question is

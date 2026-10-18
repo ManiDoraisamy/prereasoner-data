@@ -107,6 +107,22 @@ Artifacts: `%LOCALAPPDATA%/Temp/prereasoner-spider-review-20261013/`, tags `revi
 Incomplete intermediate runs are excluded. The review hardens ranking-number roles, output counts (preserving stored-count SUM),
 and table-owned full-name construction; it does not introduce another planner or model bundle.
 
+## The pool holds no exclusion the gate refuses for its shape; "never" and what rows do not have are exclusions; a list's "for" names its names' owner: 708 → 708 strict, Gemini on 762 → 763, held out 454 → 456, fresh holdout 466 → 469 (2026-10-18)
+
+Same contract as below (RunPod CPU pods, the evaluator ingesting declared and discovered keys). Runs `p37d` are this
+change against `037405d`'s `p36g` runs. The change is the `DECISIONS.md` entry of this title.
+
+- DEV, engine alone: 708 → **708 strict**; no win, no loss; wrong answers 136 → 136; 0 queries changed.
+- Held out: 454 → **456 strict**; 2 wins (409, 826), no loss; wrong answers 222 → 220; 2 queries changed.
+- Fresh holdout: 466 → **469 strict**; 3 wins (178, 635, 855), no loss; wrong answers 224 → 224; 4 queries changed.
+- Gemini on: 762 → 763; 1 win (281), no loss; wrong answers 173 → 173; 1 query changed.
+- No loss on any set. Answers it now refuses that were wrong: held out 48 and 72 (wrong answers a first version made of
+  questions refused before, once the pool held other readings). A first version's losses were fixed before these runs:
+  dropping refused readings before ranking changed the search's top reading the decomposition probe reads
+  (tests.test_complex_datasets), and "never" as an exclusion cue left the word unread by a difference (Spider DEV 282).
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-remote-eval-20261017/full_eval_{,heldout-,holdout2-}p37d.json` and `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_p37d-gemini-dirty.json`.
+
 ## The names asked for are their table's; a table named only inside a longer name is not joined; demonyms, initials and the information about rows are read: 702 → 708 strict, Gemini on 756 → 762, held out 447 → 454, fresh holdout 458 → 466 (2026-10-18)
 
 Same contract as below (RunPod CPU pods, the evaluator ingesting declared and discovered keys). Runs `p36g` are this

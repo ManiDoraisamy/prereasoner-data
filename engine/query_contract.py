@@ -838,17 +838,17 @@ def _select_violations(question, query, graph, whole):
                 (isinstance(p, Comparison) and p.operator in {"!=", "<>", "NOT LIKE", "IS NOT"})
                 or (isinstance(p, (ExistsPredicate, InPredicate)) and p.negated) for p in every):
             violations.append("requested exclusion is missing")
-    # The rows an exclusion removes are the ones the question names: a table joined to them that the question never
-    # names, reads nothing from and connects nothing narrows them, and its rows' absence keeps what should go. "Templates
-    # that are not used in any documents" subtracted only documents that have paragraphs (Spider DEV 316, 2026-10-10).
-    question_words = {canon(word) for word in lexical_words(question)}
-    for branch, scope in _select_queries(whole, graph=graph):
-        if scope.negated and (table := _dangling_unnamed_join(branch, question_words)) is not None:
-            violations.append(f"the exclusion is narrowed by {table}, which the question does not name")
-    # A difference keeps rows of the tables its first part reads, and they are the rows the question names before its
-    # denial (sql_extrema.denial_position): a table named there that only the subtracted part reads leaves the first
-    # keeping rows that are not those. "Return the names of gymnasts who did not grow up in Santo Domingo." was every
-    # person's name less the gymnasts from there (held out 368, 2026-10-18, once the denial reached Santo Domingo).
+    # What the rows "do not have" is absent from all the rows they relate to: an inequality on a table the shown rows
+    # reach through rows of theirs keeps those having any other value. "the students who are living in the dorms that
+    # do not have amenity TV Lounge" kept every dorm with an amenity besides TV Lounge (held-out Spider train 72,
+    # 2026-10-18). A set difference or a NOT IN subtracts the rows that have it.
+    if _POSSESSION_DENIAL.search(question):
+        for branch, scope in _select_queries(whole, graph=graph):
+            table = None if scope.negated else _inequality_across_many(branch, graph)
+            if table is not None:
+                violations.append(f"the exclusion keeps rows having some {table} other than the one excluded")
+                break
+    violations.extend(exclusion_refusals(question, whole, graph))
     # A table the query joins to one other and reads nothing from is named where the question says its name alone, not
     # where every word of it the question says lies inside the longer name of a table or field the query reads: "Show
     # all document type codes, document type names, document type descriptions." joined the documents and showed only
@@ -857,12 +857,6 @@ def _select_violations(question, query, graph, whole):
     for branch, _ in _select_queries(whole, graph=graph):
         if (table := _join_named_inside_longer(branch, said, graph)) is not None:
             violations.append(f"the query joins {table}, which the question names only inside a longer name")
-    for table in _unkept_named_tables(question, whole, graph):
-        violations.append(f"the difference keeps rows that are not the {table} asked for")
-    # A difference subtracting every row it keeps answers nothing: "the ids of courses without prerequisites" kept the
-    # prereq rows' course ids less those of the prereq rows joined to their courses (fresh holdout 635, 855, 2026-10-18).
-    if _subtracts_every_row(whole, graph):
-        violations.append("the difference subtracts every row it keeps")
     # An exclusion is the one the question makes: in "orders not Done in France", status != 'Done' with
     # country = 'France', and neither another field's exclusion nor the excluded value kept stands for it
     # (sql_search.value_polarity; a release review, 2026-10-07). A column is read through LOWER, whose
@@ -1432,7 +1426,7 @@ def read_question(question, candidate, graph, *, calculation_satisfied=False):
         "current", "row", "rows", "header", "headers", "blank", "empty", "non",
         "average", "avg", "mean", "maximum", "minimum", "max", "min", "count", "highest", "lowest", "largest", "smallest", "most",
         "least", "top", "bottom", "per", "each", "than", "more", "less", "greater", "above", "below",
-        "before", "after", "between", "not", "no", "except", "excluding", "without", "month", "year",
+        "before", "after", "between", "not", "no", "never", "except", "excluding", "without", "month", "year",
         "day", "date", "value", "values", "column", "field", "data", "sheet", "spreadsheet", "tell",
         "find", "list", "get", "return", "display", "calculate", "compute", "bought", "ordered",
     }
@@ -1783,12 +1777,12 @@ _OPENING_COMMANDS = frozenset({"find", "give", "list", "return", "show", "what",
 
 def _named_name_owners(question, question_tokens, graph):
     """The tables whose names (or titles, or labels: sql_schema.is_name_column) the question asks for: the table named
-    after the name word and "of" or "for", or after a later "for each", "for every" or "for all" before a clause
-    ("the name and country of origin for each artist"), past a determiner, a number or "different", whole or but its
-    first word ("the names of the workshop groups" names Drama_Workshop_Groups). A table named before another ("the
-    album tracks") or a possessive ("the singer's songs") is not one. None when a name word follows a possessive or a
-    table's name ("their instructors' names for courses"), or names no table it is "of" ("the names of the counties"
-    over county_public_safety): whose names those are is not read."""
+    after the name word and "of" or "for", or after a later "for" before a clause ("the name and country of origin for
+    each artist", "the names and average salaries for departments"), past a determiner, a number or "different",
+    whole or but its first word ("the names of the workshop groups" names Drama_Workshop_Groups). A table named before
+    another ("the album tracks") or a possessive ("the singer's songs") is not one. None when a name word follows a
+    possessive or a table's name ("their instructors' names for courses"), or names no table it is "of" ("the names of
+    the counties" over county_public_safety): whose names those are is not read."""
     from engine.sql_expansion import WORD_NUMBERS, word_spans
     from engine.sql_schema import canon, is_name_column, name_words
     said = [canon(token) for token in question_tokens]
@@ -1837,7 +1831,7 @@ def _named_name_owners(question, question_tokens, graph):
         for position in range(index + 1, len(said) - 1):
             if said[position] in _NAME_OWNER_BREAKS:
                 break
-            if said[position] == "for" and said[position + 1] in ("each", "every", "all"):
+            if said[position] == "for":
                 if (table := owner_after(position + 1)) is not None:
                     owners.add(table)
                 break
@@ -2425,6 +2419,84 @@ def _dangling_unnamed_join(query, question_words):
                 and not any(word in question_words or any(says_in_another_form(said, word) for said in question_words)
                             for word in {canon(part) for part in name_words(table)})):
             return table
+    return None
+
+
+def exclusion_refusals(question, query, graph):
+    """What the completeness gate refuses in the shape of ``query``'s exclusion or difference, whatever else it reads.
+    Past its top reading, the search keeps no reading with one in its pool (sql_search.SQLSearcher.search), so no such
+    reading takes the place of one the gate may serve: "What are the ids of courses without prerequisites?" filled the
+    pool with exclusions narrowed by sections, departments and teaching, and differences subtracting every row they
+    keep (fresh holdout 635, 855, 2026-10-18: the one the gate accepts was ranked out)."""
+    from engine.sql_schema import canon
+    refusals = []
+    # The rows an exclusion removes are the ones the question names: a table joined to them that the question never
+    # names, reads nothing from and connects nothing narrows them, and its rows' absence keeps what should go.
+    # "Templates that are not used in any documents" subtracted only documents that have paragraphs (Spider DEV 316,
+    # 2026-10-10).
+    question_words = {canon(word) for word in lexical_words(question)}
+    for branch, scope in _select_queries(query, graph=graph):
+        if scope.negated and (table := _dangling_unnamed_join(branch, question_words)) is not None:
+            refusals.append(f"the exclusion is narrowed by {table}, which the question does not name")
+    # A difference keeps rows of the tables its first part reads, and they are the rows the question names before its
+    # denial (sql_extrema.denial_position): a table named there that only the subtracted part reads leaves the first
+    # keeping rows that are not those. "Return the names of gymnasts who did not grow up in Santo Domingo." was every
+    # person's name less the gymnasts from there (held out 368, 2026-10-18, once the denial reached Santo Domingo).
+    for table in _unkept_named_tables(question, query, graph):
+        refusals.append(f"the difference keeps rows that are not the {table} asked for")
+    # A difference subtracting every row it keeps answers nothing: "the ids of courses without prerequisites" kept the
+    # prereq rows' course ids less those of the prereq rows joined to their courses (fresh holdout 635, 855,
+    # 2026-10-18).
+    if _subtracts_every_row(query, graph):
+        refusals.append("the difference subtracts every row it keeps")
+    return refusals
+
+
+# The words denying the rows have something: "do not have", "without", "never".
+_POSSESSION_DENIAL = re.compile(r"\b(?:do|does|did)\s+not\s+(?:have|own)\b|\b(?:don't|doesn't|didn't)\s+(?:have|own)\b"
+                                r"|\bwithout\b|\bnever\b", re.I)
+
+
+def _inequality_across_many(query, graph):
+    """The table of a field ``query`` compares with != (or NOT LIKE) where the tables it shows reach that table through
+    rows of theirs: a step of the join path from a shown table to it goes from a table to rows referring to it (the
+    students' Lives_in rows, a dorm's Has_amenity rows). None when there is no such comparison."""
+    from engine.sql_ast import ColumnRef, Comparison, column_refs
+    aliases = _aliases(query)
+    shown = {aliases.get(ref.table, ref.table) for item in getattr(query, "select", ())
+             for ref in column_refs(item.expression) if isinstance(ref, ColumnRef)}
+    pairs = [(join.left, join.right) for join in getattr(query, "joins", ())]
+    pairs += [pair for join in getattr(query, "joins", ()) for pair in join.additional]
+    if not shown or not pairs:
+        return None
+    references = {(key.from_column.table, key.to_column.table) for key in graph.foreign_keys}
+    neighbours = {}
+    for left, right in pairs:
+        a, b = aliases.get(left.table, left.table), aliases.get(right.table, right.table)
+        neighbours.setdefault(a, set()).add(b)
+        neighbours.setdefault(b, set()).add(a)
+    for predicate in mandatory_predicates(query.where):
+        if not (isinstance(predicate, Comparison) and predicate.operator in {"!=", "<>", "NOT LIKE"}):
+            continue
+        refs = [ref for ref in column_refs(predicate.left) if isinstance(ref, ColumnRef)]
+        if len(refs) != 1:
+            continue
+        target = aliases.get(refs[0].table, refs[0].table)
+        if target in shown:
+            continue
+        # The join tree's path from a shown table to the compared one, and whether a step reaches referring rows.
+        for start in sorted(shown):
+            frontier, seen = [(start, False)], {start}
+            while frontier:
+                table, many = frontier.pop()
+                if table == target:
+                    if many:
+                        return target
+                    break
+                for other in sorted(neighbours.get(table, ())):
+                    if other not in seen:
+                        seen.add(other)
+                        frontier.append((other, many or (other, table) in references))
     return None
 
 

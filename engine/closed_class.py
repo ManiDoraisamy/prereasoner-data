@@ -68,9 +68,12 @@ COMPARATIVE_COLUMNS = {
 # comparative is a bound, not an exclusion: "weighing no less than 3000 and no more than 4000" is between them
 # (Spider DEV 153, 2026-10-10: it asked for an exclusion, and a set difference was served), and so is any comparative
 # the comparison parser reads ("not older than 35" was refused for a missing exclusion while "not higher than 35"
-# passed: a second list missed half of them, review of 2026-10-10).
+# passed: a second list missed half of them, review of 2026-10-10). "Never" excludes as "not" does: "artists that have
+# produced a song in English but have never received a rating higher than 8" was answered by the songs rated over 8
+# (held-out Spider train 48, 2026-10-18).
 _BOUND = r'(?!\s+(?:' + '|'.join(sorted({**QUANTITY_COMPARATIVES, **COMPARATIVES})) + r')\s+than\b)'
-EXCLUSION_CUES = re.compile(r'exclud\w*|without|\bno\b' + _BOUND + r'|\bnot\b' + _BOUND + r'|ignoring|not counting', re.I)
+EXCLUSION_CUES = re.compile(r'exclud\w*|without|\bno\b' + _BOUND + r'|\bnot\b' + _BOUND
+                            + r'|\bnever\b|ignoring|not counting', re.I)
 
 _MODEL = None
 _LOCK = threading.Lock()
