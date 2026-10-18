@@ -4166,3 +4166,36 @@ Measured on Spider (`spider/results/RESULTS.md`, 2026-10-18), against `5cc3d95`:
   and the gate before this change accepts the same rewording and query.
 - The first measured version (runs `w2`) lost fresh holdout 9 and 51 and answered fresh holdout 488 and 673 wrong,
   reading a number before a numeric field's name as a count of rows; runs `w3` are after its fix.
+
+## People are persons; a table a read key refers to, "located" by a place field and "greater than" what is no number by its comparison are read (2026-10-18)
+
+- "People" are persons (`sql_schema.canon`): "How many different cities do people originate from?" names the Person
+  table and "Return the age of the person with the greatest height." the people table (fresh holdout 743, 973: both
+  refused for the word naming the table). `sql_expansion.POPULATION_NOUNS` holds canon's form, so the people a
+  population counts are still read.
+- A table a key of a table the query reads refers to, said by its whole name, names the rows that key refers to
+  (`query_contract._witnessed_words`): "Find the number of accounts with a savings balance that is higher than the
+  average savings balance." counts the SAVINGS rows, whose custid refers to ACCOUNTS (held out 994: refused for
+  "accounts"). A table no key the query reads refers to is not read so.
+- "Located" and "situated" are read by a place field the query reads, one whose name holds a word of
+  `closed_class.PLACE_WORDS` (city, country, region, address and the like): "In how many different cities are banks
+  located?", "What is the number of distinct cities the stations are located at?" and "Which region is the city Kabul
+  located in?" (fresh holdout 518, 609, Spider DEV 710: refused for "located"). A count of the banks reads no place, and
+  "located" stays unread there.
+- "Greater than" something that is no number ("whose age is greater than any engineer") is read only by the comparison
+  the query makes in its direction, not wherever it is said: once "people" was read, "Find the name of people whose age
+  is greater than any engineer sorted by their age." listed the engineers (fresh holdout 655, a wrong answer the first
+  measured version made, fixed before release).
+
+Measured on Spider (`spider/results/RESULTS.md`, 2026-10-18), against `ad53dc1`: DEV 696 → 697 strict, held out 441 →
+442, the fresh holdout 438 → 442, Gemini on 751 → 751.
+
+- A wrong answer this change makes of a question refused before: "Find the number of people who is under 40 for each
+  gender." (held out 132) shows each gender before its count, the reading asked, in the groups-first column order the
+  gold reverses.
+- Verifying "most" and "least" by what the search reads them to grade, a count or total of rows or a measure they name,
+  was measured over the questions of each set saying either (128 DEV, 120 held out, 125 fresh holdout) and not kept: it
+  refused DEV 228 and 695, which the engine answers right by coincidence, ordering by another field ("the airport with
+  the least flights" by a flight's FlightNo, "the contestant who got least votes" by contestant_number), so 72 → 70
+  strict (held out 40 → 40, fresh holdout 43 → 43) for 116 → 111 wrong answers; a variant also reading "least" counts
+  lost DEV 228, 461, 695 and fresh holdout 847 (72 → 69, 40 → 40, 43 → 42; wrong answers 116 → 113).

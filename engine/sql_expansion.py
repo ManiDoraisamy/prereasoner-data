@@ -1620,7 +1620,7 @@ def counted_measure_columns(question: str, sch: Sequence[dict]) -> list[dict]:
 
 
 # The words for the people a population counts (``counted_population``).
-POPULATION_NOUNS = frozenset({"people"})
+POPULATION_NOUNS = frozenset({"person"})                  # canon's form of "people"
 
 
 def counted_population(name: str, said: Sequence[str]) -> bool:

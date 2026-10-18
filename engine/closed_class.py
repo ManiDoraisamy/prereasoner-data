@@ -28,6 +28,10 @@ LIGHT_VERB_PARTICIPLES = frozenset({"made", "done", "had", "taken", "given", "go
 # Degree words: "the most expensive event", "the least popular workshop", "more expensive than 4000".
 DEGREE_MODIFIERS = frozenset({"most", "least", "more", "less"})
 
+# The words a field naming where something is holds (canon() forms): "where the banks are located" is their city.
+PLACE_WORDS = frozenset({"address", "area", "city", "continent", "country", "county", "district", "location", "place",
+                         "province", "region", "state", "street", "town"})
+
 # Comparatives and the operator each makes with the number after "than"; the measure some describe. The quantity
 # comparatives compare a count or an amount ("more than 3 models"). sql_expansion.comparative_operator reads both, and
 # the search builds a comparison for each of COMPARATIVES (sql_search).

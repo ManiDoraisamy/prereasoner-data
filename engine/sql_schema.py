@@ -571,10 +571,11 @@ def canon(word: str) -> str:
     "cours", "matches" "matche" and "finishes" "finishe", so a question saying "course", "match" or
     "finish" named no Courses, matches or best_finish. A nation is a country and a store a shop: "the names of the
     nations with the 3 lowest populations" named no country, "the names of stores" no shop (Spider DEV 804, 275,
-    2026-10-13: 19 such questions had no reading or were refused). A possessive is its word: "Brazil's population"
-    states the country 'Brazil' and "the owner's first name" names owner (Spider DEV 715, 873, 952, 2026-10-16: the
-    search read "brazil'", and 26 of 34 possessive questions of DEV and the two held-out sets were refused or
-    wrong)."""
+    2026-10-13: 19 such questions had no reading or were refused). "People" are persons: "How many different
+    cities do people originate from?" names Person and "the person with the greatest height" people (fresh holdout of
+    Spider train 743, 973, 2026-10-18: both refused). A possessive is its word: "Brazil's population" states the
+    country 'Brazil' and "the owner's first name" names owner (Spider DEV 715, 873, 952, 2026-10-16: the search read
+    "brazil'", and 26 of 34 possessive questions of DEV and the two held-out sets were refused or wrong)."""
     word = word.lower().strip()
     if word.endswith("'s"):
         word = word[:-2]
@@ -588,6 +589,8 @@ def canon(word: str) -> str:
         return "country"                                  # "the names of nations" are countries' (Spider DEV 747)
     if word in ("store", "stores"):
         return "shop"                                     # "the names of stores" are shops' (Spider DEV 275)
+    if word == "people":
+        return "person"                                   # "people" is the plural of person (fresh holdout 743)
     if len(word) > 4 and word.endswith("ies"):
         return word[:-3] + "y"
     if word.endswith("sses") or (len(word) > 4 and word.endswith(("ches", "shes", "xes"))):

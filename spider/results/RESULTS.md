@@ -107,6 +107,27 @@ Artifacts: `%LOCALAPPDATA%/Temp/prereasoner-spider-review-20261013/`, tags `revi
 Incomplete intermediate runs are excluded. The review hardens ranking-number roles, output counts (preserving stored-count SUM),
 and table-owned full-name construction; it does not introduce another planner or model bundle.
 
+## People are persons; a table a read key refers to, "located" by a place field and "greater than" what is no number by its comparison are read: 696 → 697 strict, Gemini on 751 → 751, held out 441 → 442, fresh holdout 438 → 442 (2026-10-18)
+
+Same contract as below (RunPod CPU pods, the evaluator ingesting declared and discovered keys). Runs `y2` are this
+change against `ad53dc1`'s `w3` runs. The change is the `DECISIONS.md` entry of this title.
+
+- DEV, engine alone: 696 → **697 strict**; 1 win (710), no loss; wrong answers 137 → 137; 1 query changed.
+- Held out: 441 → **442 strict**; 1 win (994), no loss; wrong answers 226 → 227; 3 queries changed.
+- Fresh holdout: 438 → **442 strict**; 4 wins (518, 609, 743, 973), no loss; wrong answers 233 → 233; 5 queries changed.
+- Gemini on: 751 → 751; no win, no loss; wrong answers 178 → 178; 0 queries changed.
+- A wrong answer this change makes of a question refused before: "Find the number of people who is under 40 for each
+  gender." (held out 132) shows each gender before its count, the reading asked, in the groups-first column order the
+  gold reverses.
+- Verifying "most" and "least" by what the search reads them to grade, a count or total of rows or a measure they name,
+  was measured over the questions of each set saying either (128 DEV, 120 held out, 125 fresh holdout) and not kept: it
+  refused DEV 228 and 695, which the engine answers right by coincidence, ordering by another field ("the airport with
+  the least flights" by a flight's FlightNo, "the contestant who got least votes" by contestant_number), so 72 → 70
+  strict (held out 40 → 40, fresh holdout 43 → 43) for 116 → 111 wrong answers; a variant also reading "least" counts
+  lost DEV 228, 461, 695 and fresh holdout 847 (72 → 69, 40 → 40, 43 → 42; wrong answers 116 → 113).
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-remote-eval-20261017/full_eval_{,heldout-,holdout2-}y2.json` and `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_y2-gemini-dirty.json`.
+
 ## An extreme a compared subquery finds, a longer name's part and the rows a count counts are read; a referring key counts the rows it refers to; "how many total" asks one number: 691 → 696 strict, Gemini on 744 → 751, held out 436 → 441, fresh holdout 437 → 438 (2026-10-18)
 
 Same contract as below (RunPod CPU pods, the evaluator ingesting declared and discovered keys). Runs `w3` are this

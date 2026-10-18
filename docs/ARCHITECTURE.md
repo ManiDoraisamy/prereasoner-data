@@ -331,8 +331,8 @@ words and "prior to" as "before" (`sql_expansion.plain_marks`). No local model w
    field whose first word abbreviates its table's name (cust_name, stu_gpa), or whose name is its table's word but for
    its kind (date_of_treatment), is named beside its table: "their apartment numbers", "the date of treatment". A
    sort verb opening the question is its command ("Sort employee names by their age"), and "number", "all" or
-   "each" in lower case is no cell value. A nation is a country, a store a shop and a possessive its word ("Brazil's
-   population" states 'Brazil'; `sql_schema.canon`); a field of
+   "each" in lower case is no cell value. A nation is a country, a store a shop, people persons and a possessive its
+   word ("Brazil's population" states 'Brazil'; `sql_schema.canon`); a field of
    one-letter codes holds the words they stand for only with the field-kind evidence for M/F and L/R
    (`sql_schema.code_word_matches_column`: sex/gender, hand/side/direction/orientation). A sampled Size 'M' or Stage F/M
    is no sex. The qualified-code constructor uses the same rule, and completeness witnesses the word from the typed
@@ -456,7 +456,8 @@ the participle as no value and the value has one relationship to the rows, or, w
 an arrival airport), when the column relating it carries the participle's travel direction
 (`engine/sql_rank.travel_direction`); a graded word the query realizes in its direction on a field of its kind
 (a comparative before "than" is a comparison with its operator, complemented when negated,
-`engine/sql_expansion.comparative_operator`; "the most common" orders groups by their count; any other superlative
+`engine/sql_expansion.comparative_operator`, and "greater than" what is no number only so,
+"greater than any engineer"; "the most common" orders groups by their count; any other superlative
 orders by, or takes the extreme of, a field in `engine/sql_extrema.superlative_direction`, so "the youngest" is the
 least age or the latest birth date and "the highest rank" the smallest one; an adjective naming its dimension ("the
 tallest", `sql_extrema.SUPERLATIVE_DIMENSIONS`) is read by a field of that dimension of the rows its noun names, where
@@ -473,7 +474,10 @@ other after; a word sharing a stem of five letters or more with a table or field
 Student_Enrolment), a word of an operation excepted; "one" after a determiner ("the one whose name"); a passive
 participle after a copula whose subject it reads, with nothing after it but "in the world" ("How many different degrees
 are offered?"), unless the data's names spell it ("How many regions are affected?" names affected_region); a verb
-relating a table named before it to a field it reads named after it; "of origin" after a field it reads; "first" and
+relating a table named before it to a field it reads named after it; "of origin" after a field it reads;
+the whole name of a table a key it reads refers to, as the rows that key refers to ("the number of accounts with a
+savings balance" counts SAVINGS rows by their custid); "located" or "situated" by a place field
+(`closed_class.PLACE_WORDS`: "In how many different cities are banks located?"); "first" and
 "last" grading a date as "earliest" and "latest" do; and a noun right after the one-word name of a numeric field it
 reads, which is what the field measures ("the minimum snatch score"); "member" after the name of a table it reads,
 its rows ("the staff member"); and the people a population it reads counts ("How many people live in Gelderland

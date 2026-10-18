@@ -1663,6 +1663,71 @@ def test_a_key_whose_references_lead_to_the_asked_table_shows_it():
                                       "SELECT date_of_attendance FROM Student_Course_Attendance")
 
 
+def _keyed_reading(tables, keys, question, sql):
+    """The completeness reading of ``sql`` over ``tables`` joined by the foreign ``keys`` stated: (complete, unread)."""
+    from engine.query_contract import read_question
+    from engine.sql_ast import render_query
+    from engine.sql_rank import ScoredQuery
+    from regress.sql_import import import_sql
+    graph = SchemaGraph.from_tables(tables, keys)
+    query = import_sql(sql, graph)
+    candidate = ScoredQuery(query, render_query(query), 0.0, ())
+    return coverage(question, candidate, graph).complete, read_question(question, candidate, graph).unread
+
+
+def test_people_are_persons():
+    """Fresh holdout of Spider train 743, 973, 2026-10-18: "How many different cities do people originate from?" was
+    refused for "people" over a Person table, and "the person with the greatest height" for "person" over a people
+    table. People are persons (sql_schema.canon). Contrast: a noun no table or field names is still unread."""
+    person = {"name": "Person", "columns": ["name", "age", "city", "job"],
+              "rows": [["Alice", 25, "New York City", "student"], ["Bob", 35, "Salt Lake City", "engineer"]]}
+    sql = "SELECT COUNT(DISTINCT city) FROM Person"
+    assert _keyed_reading([person], [], "How many different cities do people originate from?", sql) == (True, ())
+    assert "pupils" in _keyed_reading([person], [], "How many different cities do pupils originate from?", sql)[1]
+
+
+def test_a_table_a_read_key_refers_to_names_its_rows():
+    """Fresh holdout of Spider train 364, 2026-10-18: "How many students are affected by cat allergies?" was refused for
+    "students", answered by a count of the Has_Allergy rows, whose StuID refers to Student. A table a key of a table the
+    query reads refers to, said by its whole name, names the rows that key refers to. Contrast: a table no read key
+    refers to is not read so."""
+    student = {"name": "Student", "columns": ["StuID", "LName", "Age"], "rows": [[1001, "Smith", 18], [1002, "Kim", 19]]}
+    allergy = {"name": "Has_Allergy", "columns": ["StuID", "Allergy"], "rows": [[1001, "Cat"], [1002, "Cat"]]}
+    teacher = {"name": "Teacher", "columns": ["TeacherID", "LName"], "rows": [[1, "Lee"]]}
+    keys = [("Has_Allergy", "StuID", "Student", "StuID")]
+    sql = "SELECT COUNT(Allergy) FROM Has_Allergy WHERE Allergy = 'Cat'"
+    assert _keyed_reading([student, allergy, teacher], keys, "How many students are affected by cat allergies?",
+                          sql) == (True, ())
+    assert "teachers" in _keyed_reading([student, allergy, teacher], keys,
+                                       "How many teachers are affected by cat allergies?", sql)[1]
+
+
+def test_located_is_read_by_a_place_field():
+    """Fresh holdout of Spider train 518, 609, 2026-10-18: "In how many different cities are banks located?" was refused
+    for "located", answered by the banks' distinct cities. "Located" is read by a place field the query reads
+    (closed_class.PLACE_WORDS). Contrast: the banks' distinct names read no place."""
+    bank = {"name": "bank", "columns": ["branch_ID", "bname", "no_of_customers", "city"],
+            "rows": [[1, "morningside", 203, "New York City"], [2, "downtown", 123, "Salt Lake City"]]}
+    question = "In how many different cities are banks located?"
+    assert _keyed_reading([bank], [], question, "SELECT COUNT(DISTINCT city) FROM bank") == (True, ())
+    assert "located" in _keyed_reading([bank], [], "In how many different branches are banks located?",
+                                       "SELECT COUNT(DISTINCT bname) FROM bank")[1]
+
+
+def test_greater_than_no_number_is_read_by_its_comparison():
+    """Fresh holdout of Spider train 655, 2026-10-18: "Find the name of people whose age is greater than any engineer
+    sorted by their age." listed the engineers, "greater" read wherever said. "Greater than" something that is no
+    number is read by the comparison it makes. Contrast: compared with an engineer's age it is read."""
+    person = {"name": "Person", "columns": ["name", "age", "job"],
+              "rows": [["Alice", 25, "student"], ["Bob", 35, "engineer"], ["Zach", 45, "doctor"]]}
+    question = "Find the names of persons whose age is greater than any engineer sorted by their age."
+    listed = "SELECT name FROM Person WHERE job = 'engineer' ORDER BY age ASC"
+    compared = ("SELECT name FROM Person WHERE age > (SELECT MIN(age) FROM Person WHERE job = 'engineer') "
+                "ORDER BY age ASC")
+    assert "greater" in _keyed_reading([person], [], question, listed)[1]
+    assert _keyed_reading([person], [], question, compared) == (True, ())
+
+
 TESTS =[value for name, value in globals().copy().items() if name.startswith('test_') and callable(value)]
 
 if __name__ == '__main__':

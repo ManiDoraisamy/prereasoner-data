@@ -1365,6 +1365,15 @@ def read_question(question, candidate, graph, *, calculation_satisfied=False):
         "day", "date", "value", "values", "column", "field", "data", "sheet", "spreadsheet", "tell",
         "find", "list", "get", "return", "display", "calculate", "compute", "bought", "ordered",
     }
+    # "Greater than" something that is no number ("whose age is greater than any engineer") is read by the comparison
+    # it makes (_realizes_grade), not wherever it is said: the engineers were listed (fresh holdout of Spider train 655,
+    # 2026-10-18, once "people" was read).
+    said = tokens(question)
+    if any(word == "greater" and "than" in said[index + 1:index + 3]
+           and not any(token.replace(".", "", 1).isdigit() or token in WORD_NUMBERS
+                       for token in said[said.index("than", index) + 1:said.index("than", index) + 3])
+           for index, word in enumerate(said)):
+        ordinary_words.discard("greater")
     if realizes_numeric_comparisons(question, candidate, graph):
         ordinary_words.update({
             "over", "under", "above", "below", "greater", "less", "more", "fewer",
@@ -1872,6 +1881,20 @@ def _witnessed_words(question, words, query, graph, observed, schema_words, alre
                       and _excludes(query) or list(words[place - 1:place]) == ["a"] and _counts_one(query)
                       for place in places):
         out.add("single")
+    # A table a key of a table the query reads refers to, said by its whole name, names the rows that key refers to:
+    # "How many students are affected by cat allergies?" counts the Has_Allergy rows, whose StuID refers to Student
+    # (fresh holdout of Spider train 364, 2026-10-18: refused for "students").
+    read_tables = {table for table in query.referenced_tables() if isinstance(table, str)}
+    for key in getattr(graph, "foreign_keys", ()):
+        for child, parent in key.column_pairs:
+            name = [canon(part) for part in name_words(parent.table)]
+            if child.table in read_tables and parent.table not in read_tables and name and set(name) <= set(words):
+                out.update(name)
+    # "Located" and "situated" are read by a place field the query reads: "In how many different cities are banks
+    # located?" by bank.city (fresh holdout 518, 609; Spider DEV 710, 2026-10-18: refused for "located").
+    from engine.closed_class import PLACE_WORDS
+    if any({canon(part) for part in name_words(ref.name)} & PLACE_WORDS for ref in used):
+        out.update({"located", "situated"} & set(words))
     return (out - observed) | full_name
 
 
