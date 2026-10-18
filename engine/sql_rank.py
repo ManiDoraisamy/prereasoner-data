@@ -25,7 +25,9 @@ from engine.sql_expansion import (
 )
 from engine.sql_expansion import tokens as expansion_tokens
 from engine.sql_candidate import ScoredQuery
-from engine.sql_schema import SURROGATE_KEY_WORDS, SchemaGraph, canon, is_name_column, is_surrogate_key, name_words
+from engine.sql_schema import (
+    SURROGATE_KEY_WORDS, SchemaGraph, canon, is_name_column, is_surrogate_key, name_words, spaced_name,
+)
 
 
 ColumnKey = tuple[str, str]
@@ -999,7 +1001,7 @@ def _tokens(text: str) -> tuple[str, ...]:
 
 
 def _schema_tokens(name: str) -> tuple[str, ...]:
-    spaced = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", str(name))
+    spaced = spaced_name(name)
     return tuple(
         "number" if token.lower() == "no" else canon(token)
         for token in re.findall(r"[A-Za-z0-9]+", spaced)

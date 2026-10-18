@@ -35,6 +35,19 @@ PLACE_WORDS = frozenset({"address", "area", "city", "continent", "country", "cou
 # Kabul located in?", "How many employees are living in Canada?".
 PLACE_VERBS = frozenset({"located", "situated", "live", "living", "lived", "reside", "residing", "resided"})
 
+# The words for what is of a country that its name does not begin (a regular one, "Australian" or "Kenyan", the value
+# index derives itself: sql_schema.SchemaGraph.value_index): "French singers" are of 'France'.
+COUNTRY_DEMONYMS = {
+    "Belgium": "Belgian", "Brazil": "Brazilian", "Canada": "Canadian", "Chile": "Chilean", "China": "Chinese",
+    "Czech Republic": "Czech", "Denmark": "Danish", "Egypt": "Egyptian", "Finland": "Finnish", "France": "French",
+    "Germany": "German", "Greece": "Greek", "Hungary": "Hungarian", "Iceland": "Icelandic", "Iran": "Iranian",
+    "Iraq": "Iraqi", "Ireland": "Irish", "Israel": "Israeli", "Italy": "Italian", "Japan": "Japanese",
+    "Mexico": "Mexican", "Netherlands": "Dutch", "Norway": "Norwegian", "Pakistan": "Pakistani", "Peru": "Peruvian",
+    "Philippines": "Filipino", "Poland": "Polish", "Portugal": "Portuguese", "Scotland": "Scottish",
+    "Spain": "Spanish", "Sweden": "Swedish", "Switzerland": "Swiss", "Thailand": "Thai", "Turkey": "Turkish",
+    "Ukraine": "Ukrainian", "Vietnam": "Vietnamese", "Wales": "Welsh",
+}
+
 # Comparatives and the operator each makes with the number after "than"; the measure some describe. The quantity
 # comparatives compare a count or an amount ("more than 3 models"). sql_expansion.comparative_operator reads both, and
 # the search builds a comparison for each of COMPARATIVES (sql_search).

@@ -4255,3 +4255,56 @@ Measured on Spider (`spider/results/RESULTS.md`, 2026-10-18), against `5979e87`:
 - The first measured version (runs `z3`) lost Spider DEV 778, 779 and held out 597, and Gemini on DEV 62, to the
   difference check and the "each" reading; runs `z4` are after their fixes (a key the kept part shows, a name after
   "whose", `_describes_rows`). Its fresh holdout run was lost to a RunPod host that exposed no SSH and was not measured.
+
+## The names asked for are their table's; a table named only inside a longer name is not joined; demonyms, initials and the information about rows are read (2026-10-18)
+
+- "The names of" a table that holds a name of its own are that name (`query_contract._named_name_owners`): "What are the
+  names of the albums that have more than 10 tracks?" showed the tracks' names and "the names of the 3 departments with
+  the most courses" the instructors' (fresh holdout 600, 910), and "the name and country of origin for each artist" a
+  song's (fresh holdout 582); the owner is the table named after the name word's "of" or "for", or after a later "for
+  each", "for every" or "for all", past determiners and numbers. A table named before another ("the album tracks") or a
+  possessive ("the singer's songs") is not it, and where a name word follows a possessive or a table's name, or its "of"
+  names no table, whose names they are is not read. The field that names the owner's rows answers such a request where
+  another table's field is called a name (the albums' titles beside tracks.name), and a self-join's shown field is its
+  table's.
+- Each output a list names is shown by a field it names, or by a field whose name says its words: "What are the names
+  and areas of countries with the top 5 largest area?" answered by the cities' and countries' names is refused.
+- A table the query joins to one other and reads nothing from, whose rows the join narrows and repeats, is named only
+  where the question says its name outside the longer names of tables and fields the query reads
+  (`query_contract._join_named_inside_longer`): "Show all document type codes, document type names, document type
+  descriptions." joined the documents and showed only the types some document has (fresh holdout 917), and "the pixel
+  aspect ratio and nation of the tv channels that do not use English" subtracted only the channels a series names
+  (Spider DEV 639). A query that counts reads every joined row and is exempt ("the transaction type code that occurs the
+  most frequently").
+- Past a word opening the condition its rows meet ("with", "where", "whose", "who", "that"), "and" joins conditions and
+  closes an instruction's list (`sql_expansion.list_closed`): "Find the districts in which there are both shops selling
+  less than 3000 products and shops selling more than 10000 products." asks for the districts alone (Spider DEV 294:
+  refused), "List the document ids of documents with the status done and type Paper" for the ids.
+- A country's cell holds the word for what is of it where its name does not begin that word
+  (`closed_class.COUNTRY_DEMONYMS`, read into `SchemaGraph.value_index`): "the average, minimum, and maximum age for all
+  French singers", "the singers who are not French citizens" (Spider DEV 5, 1007: refused), unless a field holds the
+  word itself (a language 'French').
+- A capital initial before a capitalized word is a word of its own (`sql_schema.spaced_name`, now the one camel-case
+  split every reader of names makes, seven copies of the expression before): CName is a course's name and DName a
+  department's ("What are the course names, ordered by credits?", held out 267; fresh holdout 696, 914), GNPOld "GNP
+  Old"; and a field holding a part of a person's name (Fname, emp_lname) names its rows (`sql_schema.is_name_column`).
+- A word one measure alone holds, said right after a superlative and nowhere else, names it, as one said just before
+  does (`sql_extrema`): "the country that has the largest area" ranks by SurfaceArea (Spider DEV 791). Said as an output
+  too, the ordering the output's request builds ranks by it ("the names and areas of countries with the top 5 largest
+  area", Spider DEV 800, where the first version's readings displaced that answer from the pool).
+- The information of, about or on rows, and all the information after up to two words, is their every field
+  (`sql_expansion.complete_projection_requested`): "List the information of all instructors ordered by their salary in
+  ascending order.", "What information do you have on colleges sorted by increasing enrollment numbers?" (fresh holdout
+  527, held out 422: refused).
+
+Measured on Spider (`spider/results/RESULTS.md`, 2026-10-18), against `e7fc8d4`: DEV 702 → 708 strict, held out 447 →
+454, the fresh holdout 458 → 466, Gemini on 756 → 762.
+
+- Wrong answers it makes of questions refused before: Spider DEV 80 ("list their ids instead of names" is a count beside
+  the students' last names, LName now naming them), held out 658 ("in the order of their names" ordered by a sport's
+  name), fresh holdout 880 (the authors' every field, joined to their courses) and 693 (gold's own query, whose rows the
+  grader does not match). Answers it now refuses that were wrong: held out 628, fresh holdout 106, 134, 921.
+- Fresh holdout 574 is the one loss: a coincidence the gate now refuses (it compared surname = 'Driver' and showed lap
+  times, the surnames listed not shown). A first version's losses were fixed before these runs: a self-join's shown
+  title read as an alias's (fresh holdout 539, 790), and the readings of "the largest area" displacing Spider DEV 800's
+  answer from the pool.

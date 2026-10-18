@@ -124,7 +124,8 @@ def duration_phrases(question: str, tokens: Sequence[str]) -> tuple[DurationPhra
 
 
 def _words(name: str) -> frozenset[str]:
-    spaced = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", str(name))
+    from engine.sql_schema import spaced_name
+    spaced = spaced_name(name)
     return frozenset(word.lower() for word in re.findall(r"[A-Za-z]+", spaced))
 
 

@@ -662,7 +662,11 @@ class ExtremaQueryExpander(ExpansionSupport):
                          or _observed_numeric(schema_column.values))]
         # How many measures each word names: a word one measure alone holds, said just before the superlative, names
         # it ("the singer who is worth the most" is Net_Worth_Millions; Spider DEV 1011, 2026-10-17: a count of
-        # singers ranked them).
+        # singers ranked them), as it does right after it where the question says it nowhere else ("the country that
+        # has the largest area" is SurfaceArea; Spider DEV 791, 2026-10-18: Population ranked the countries and "area"
+        # was unread). Said as an output too, the ordering the output's request builds ranks by it: "the names and
+        # areas of countries with the top 5 largest area" (Spider DEV 800, where the readings this rule made displaced
+        # that answer from the pool).
         measure_words_named = Counter(word for schema_column in measures
                                       for word in set(_semantic_tokens(schema_column.ref.name))
                                       - {"num", "number", "of"})
@@ -691,8 +695,8 @@ class ExtremaQueryExpander(ExpansionSupport):
             measure_words = semantic - {"num", "number", "of"}
             explicit = _column_matches(column.name, token_set) or bool(
                 measure_words and measure_words <= token_set
-            ) or any(0 < cue_position - position <= 2 and measure_words_named[tokens[position]] == 1
-                     and tokens[position] in measure_words
+            ) or any((0 < cue_position - position <= 2 or position == cue_position + 1 and len(mention_positions) == 1)
+                     and measure_words_named[tokens[position]] == 1 and tokens[position] in measure_words
                      and not set(tokens[cue_position + 1:cue_position + 2]) & _FREQUENCY_WORDS
                      for cue_position, _ in cue_positions for position in mention_positions)
             inferred = {cue_position for cue_position, _ in cue_positions

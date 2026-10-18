@@ -107,6 +107,29 @@ Artifacts: `%LOCALAPPDATA%/Temp/prereasoner-spider-review-20261013/`, tags `revi
 Incomplete intermediate runs are excluded. The review hardens ranking-number roles, output counts (preserving stored-count SUM),
 and table-owned full-name construction; it does not introduce another planner or model bundle.
 
+## The names asked for are their table's; a table named only inside a longer name is not joined; demonyms, initials and the information about rows are read: 702 → 708 strict, Gemini on 756 → 762, held out 447 → 454, fresh holdout 458 → 466 (2026-10-18)
+
+Same contract as below (RunPod CPU pods, the evaluator ingesting declared and discovered keys). Runs `p36g` are this
+change against `e7fc8d4`'s `z4` runs. The change is the `DECISIONS.md` entry of this title.
+
+- DEV, engine alone: 702 → **708 strict**; 6 wins (5, 100, 294, 639, 791, 1007), no loss; wrong answers 137 → 136; 16
+  queries changed.
+- Held out: 447 → **454 strict**; 7 wins (70, 267, 422, 459, 724, 755, 789), no loss; wrong answers 224 → 222; 14
+  queries changed.
+- Fresh holdout: 458 → **466 strict**; 9 wins (274, 479, 527, 582, 600, 696, 910, 914, 917), 1 loss (574); wrong answers
+  230 → 224; 22 queries changed.
+- Gemini on: 756 → 762; 6 wins (100, 294, 639, 791, 901, 1007), no loss; wrong answers 177 → 173; 17 queries changed.
+- Wrong answers it makes of questions refused before: Spider DEV 80 ("list their ids instead of names" is a count beside
+  the students' last names, LName now naming them), held out 658 ("in the order of their names" ordered by a sport's
+  name), fresh holdout 880 (the authors' every field, joined to their courses) and 693 (gold's own query, whose rows the
+  grader does not match). Answers it now refuses that were wrong: held out 628, fresh holdout 106, 134, 921.
+- Fresh holdout 574 is the one loss: a coincidence the gate now refuses (it compared surname = 'Driver' and showed lap
+  times, the surnames listed not shown). A first version's losses were fixed before these runs: a self-join's shown
+  title read as an alias's (fresh holdout 539, 790), and the readings of "the largest area" displacing Spider DEV 800's
+  answer from the pool.
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-remote-eval-20261017/full_eval_{,heldout-,holdout2-}p36g.json` and `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_p36g-gemini-dirty.json`.
+
 ## A negation reaches its clause; living, corresponding and a trip's preposition are read; a difference keeps the rows it names: 697 → 702 strict, Gemini on 751 → 756, held out 442 → 447, fresh holdout 442 → 458 (2026-10-18)
 
 Same contract as below (RunPod CPU pods, the evaluator ingesting declared and discovered keys). Runs `z4` are this

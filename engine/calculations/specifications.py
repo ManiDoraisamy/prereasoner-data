@@ -30,7 +30,7 @@ from engine.currency_intent import (
 from engine.dataset_semantics import is_synthetic_currency_column, synthetic_currency_column
 from engine.enrichment.value_types import ISO4217_CODES
 from engine.sql_ast import Aggregate, BinaryExpr, ColumnRef, Literal, SQLType
-from engine.sql_schema import SchemaGraph
+from engine.sql_schema import SchemaGraph, spaced_name
 
 
 _ID_WORDS = frozenset({"id", "identifier", "key", "code"})
@@ -45,7 +45,7 @@ OperandScores = Mapping[str, Mapping[tuple[str, str], float]]
 
 
 def _words(value: str) -> tuple[str, ...]:
-    spaced = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", str(value))
+    spaced = spaced_name(value)
     return tuple(word.lower() for word in re.findall(r"[A-Za-z0-9]+", spaced))
 
 

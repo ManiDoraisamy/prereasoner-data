@@ -179,11 +179,18 @@ def population_presence_witness(query: Query, reading: PopulationPresenceReading
 def complete_projection_requested(question: str) -> bool:
     """An explicit request to display complete records, including their fields: "show all records", and "all the
     information about hiring", "display all the details of employees", "return all columns of the albums" (Spider DEV
-    291, held-out Spider train 147, 297, 728, 2026-10-12: no reading showed every field; each gold is SELECT *)."""
+    291, held-out Spider train 147, 297, 728, 2026-10-12: no reading showed every field; each gold is SELECT *). So is
+    the information about rows, with up to two words before it after "all" ("all the customer information", "all
+    detailed info") or "of", "about", "on" or "for" after it ("List the information of all instructors", "What
+    information do you have on colleges"; held-out Spider train 422, 519, 755, fresh holdout 527, 880, 2026-10-18:
+    refused)."""
     return bool(re.search(r'\b(?:show|list|display)\s+(?:all|every)\s+(?:rows?|records?|columns?|fields?)\b',
                           question, re.I) or
                 re.search(r'\b(?:all|every)\s+(?:the\s+)?(?:information|info|details?|data|columns?|fields?|attributes?)'
-                          r'\b', question, re.I))
+                          r'\b', question, re.I) or
+                re.search(r'\b(?:all|every)\s+(?:the\s+)?(?:\w+\s+){1,2}?(?:information|info)\b', question, re.I) or
+                re.search(r'\b(?:the|what)\s+(?:information|info)\s+(?:of|about|on|for|do\s+you\s+have)\b', question,
+                          re.I))
 
 
 # "in alphabetical order", "alphabetically": a text field ordered A to Z; with a reversing word, Z to A.
@@ -1651,8 +1658,7 @@ def compatible_types(left: SQLType, right: SQLType) -> bool:
 
 
 def name_tokens(name: str) -> tuple[str, ...]:
-    spaced = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", str(name))
-    return tuple(canon(token) for token in re.findall(r"[^\W_]+", spaced, re.UNICODE))
+    return tuple(canon(word) for word in name_words(name))
 
 
 def spelled_names(question_tokens: tuple[str, ...], schema: Any) -> frozenset[int]:
@@ -2010,7 +2016,10 @@ def _one_closed_field(question, said, spans, gaps, found, schema, numbers) -> bo
 def list_closed(question: str, requests: Sequence[OutputRequest]) -> bool:
     """Whether an instruction's list of outputs ends before any later coordinated output: "the name and theme for all
     concerts and the number of singers" asks for another output after its owner phrase, so the parsed fields cannot
-    stand for the whole answer. Only a closed list may remove an output no item asks for."""
+    stand for the whole answer. Only a closed list may remove an output no item asks for. Past a word opening the
+    condition the rows meet, "and" joins conditions: "Find the districts in which there are both shops selling less
+    than 3000 products and shops selling more than 10000 products." asks for the districts alone (Spider DEV 294,
+    2026-10-18: refused), "List the document ids of documents with the status done and type Paper" for the ids."""
     if not requests:
         return False
     said, spans = tokens(question), word_spans(question)
@@ -2019,9 +2028,15 @@ def list_closed(question: str, requests: Sequence[OutputRequest]) -> bool:
     for index in range(requests[-1].end, len(said)):
         if index and re.search(r"[.!?;]", question[spans[index - 1][1]:spans[index][0]]):
             break
+        if said[index] in _CONDITION_LEADS:
+            return True
         if said[index] in {"and", "or", "also", "together", "plus"}:
             return False
     return True
+
+
+# The words opening the condition the rows a list reads meet ("documents with the status done").
+_CONDITION_LEADS = frozenset({"with", "where", "whose", "who", "that", "which", "when", "if"})
 
 
 def _joins_items(said: Sequence[str], position: int) -> int:

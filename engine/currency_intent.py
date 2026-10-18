@@ -214,7 +214,8 @@ def is_currency_source_column(name: str) -> bool:
 
 def is_currency_measure_column(name: str) -> bool:
     """Whether a numeric column name carries monetary rather than physical quantity semantics."""
-    spaced = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", str(name))
+    from engine.sql_schema import spaced_name
+    spaced = spaced_name(name)
     words = {word.lower() for word in re.findall(r"[A-Za-z0-9]+", spaced)}
     return bool(words & _MONETARY_MEASURE_WORDS)
 

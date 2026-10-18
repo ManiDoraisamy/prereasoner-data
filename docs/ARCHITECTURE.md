@@ -332,7 +332,10 @@ words and "prior to" as "before" (`sql_expansion.plain_marks`). No local model w
    its kind (date_of_treatment), is named beside its table: "their apartment numbers", "the date of treatment". A
    sort verb opening the question is its command ("Sort employee names by their age"), and "number", "all" or
    "each" in lower case is no cell value. A nation is a country, a store a shop, people persons and a possessive its
-   word ("Brazil's population" states 'Brazil'; `sql_schema.canon`); a field of
+   word ("Brazil's population" states 'Brazil'; `sql_schema.canon`); a country's cell holds the word for what is of it
+   where its name does not begin that word ("French singers" are of 'France', `closed_class.COUNTRY_DEMONYMS`), unless
+   a field holds the word itself; a capital initial before a capitalized word is a word of its own in every reader of
+   names ("CName" is a course's name, `sql_schema.spaced_name`); a field of
    one-letter codes holds the words they stand for only with the field-kind evidence for M/F and L/R
    (`sql_schema.code_word_matches_column`: sex/gender, hand/side/direction/orientation). A sampled Size 'M' or Stage F/M
    is no sex. The qualified-code constructor uses the same rule, and completeness witnesses the word from the typed
@@ -350,8 +353,10 @@ words and "prior to" as "before" (`sql_expansion.plain_marks`). No local model w
    word said once, the one whose owner the question never says is not asked. A sentence after the first that lists the
    outputs ("List the continent id, continent name and the number of countries.") names them, their owner and their
    order once for construction, ranking, the answer's order and the completeness check (`sql_expansion.output_requests`,
-   `request_fields`), and so does an opening sentence that asks for two or more coordinated outputs ("What are the
-   names, themes, and number of singers for every concert?"), the owner decided over all items before an item prefers
+   `request_fields`; past a word opening the condition its rows meet, "and" joins conditions and the list is closed,
+   `list_closed`: "the document ids of documents with the status done and type Paper"), and so does an opening
+   sentence that asks for two or more coordinated outputs ("What are the names, themes, and number of singers for
+   every concert?"), the owner decided over all items before an item prefers
    the field its words name exactly (where the items tie, the table named right after them, by its name or the noun
    ending it: "the names and ids of all makers"), and so does a clause a list verb opens after a comma ("..., and
    return the name,
@@ -463,12 +468,12 @@ query realizes in its direction on a field of its kind
 orders by, or takes the extreme of, a field in `engine/sql_extrema.superlative_direction`, so "the youngest" is the
 least age or the latest birth date and "the highest rank" the smallest one; an adjective naming its dimension ("the
 tallest", `sql_extrema.SUPERLATIVE_DIMENSIONS`) is read by a field of that dimension of the rows its noun names, where
-no field is named at it; and "the maximum" after "with", "has" or "have the" selects the row holding it
-as "the highest" does, `engine/sql_expansion.selects_extreme`, or by the scalar subquery the rows are compared with,
-where it keeps every row the query keeps: "the number of concerts in the stadium with the largest capacity"); or when
-it is grammar, a counted noun naming the rows
-counted, or one of the closed lists
-the check keeps. A word that names only some other table's column is unread. The query also reads, though nothing of
+no field is named at it; a word one measure alone holds, said just before the superlative or right after it and nowhere
+else, names that measure ("the largest area" is SurfaceArea); and "the maximum" after "with", "has" or "have the"
+selects the row holding it as "the highest" does, `engine/sql_expansion.selects_extreme`, or by the scalar subquery
+the rows are compared with, where it keeps every row the query keeps: "the number of concerts in the stadium with the
+largest capacity"); or when it is grammar, a counted noun naming the rows counted, or one of the closed lists the check
+keeps. A word that names only some other table's column is unread. The query also reads, though nothing of
 it spells them (`query_contract._witnessed_words`): a travel direction by the column of that direction ("flights
 departing from APG" by SourceAirport); a name's part a field abbreviates ("first name" by Fname); "name" by a field
 named as its table is (airlines.Airline); a verb relating two tables it reads, one named before the verb and the
@@ -542,7 +547,8 @@ ending a field's name ("the phone number") asks for the field, not a count (`sql
 `count_requested`, the search's aggregate cues and the ranker's question roles), and so does a "number of" before a
 numeric field's whole name ("the maximum number of floors", "in order of number of police officers"), the fields'
 types coming from the schema; a table's name or a text field's after it is still counted. "All the information about
-hiring", "all the details", "all columns" ask for every field (`sql_expansion.complete_projection_requested`), and a
+hiring", "all the details", "all columns", "all the customer information" and the information of, about or on rows
+("List the information of all instructors") ask for every field (`sql_expansion.complete_projection_requested`), and a
 superlative states the cutoff such an answer may keep. A threshold on an aggregate a thing has ("customers with a total amount
 over 10", `ExpansionSupport.aggregate_thresholds`) is met only on that aggregate, and a filter moves into a HAVING
 only where the aggregate's word stands before its field's name near the number ("whose average life expectancy is
@@ -580,6 +586,13 @@ inside a table's name the query reads ("car makers") asks for that longer field 
 is the one the question names as the owner after "of" ("the name of the breed", `query_contract._owner_tables`) or,
 where it names none, the rows it asks for; a camel-cased name split further needs one of those ("at least 2 models ... the id" is no
 ModelId). A field named as its table answers "the names of orchestras", and a self-join's shown field is its table's.
+The names of a table that holds a name are that name, not a joined table's ("the names of the albums" are their titles,
+`query_contract._named_name_owners`), the owner being the table after the name word's "of" or "for" or a later "for
+each"; that field answers a request for another table's field called a name. Each output a list names is shown by a
+field it names or whose name says its words. A table joined to one other that the query reads nothing from and does not
+count, whose rows the join narrows and repeats, is named only where the question says its name outside the longer names
+of tables and fields the query reads ("document type codes" names no Documents,
+`query_contract._join_named_inside_longer`).
 A question opening "how many" or "count" is answered by an aggregate, never a listing. The column an aggregate phrase
 names most fully ("the total amount", "the total estimated amount") is its operand
 (`engine/sql_rank.aggregate_operand`); when it is text and its cells are not all numbers the question is

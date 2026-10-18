@@ -35,7 +35,7 @@ from engine.numeric import parse_decimal
 from engine.sql_candidate import ScoredQuery
 from engine.sql_expansion import average_comparison, count_requested, name_part_words, positive_predicate
 from engine.sql_expansion import tokens as _tokens
-from engine.sql_schema import ForeignKey, SchemaGraph, canon, is_surrogate_key
+from engine.sql_schema import ForeignKey, SchemaGraph, canon, is_surrogate_key, spaced_name
 
 
 # "have not gone through any treatment" and "have not treated any dogs" negate as "do not" does (Spider DEV 978, 983,
@@ -909,7 +909,7 @@ def _text_table_position(question: str, table: str) -> int | None:
 
 
 def _name_tokens(name: str) -> tuple[str, ...]:
-    spaced = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", str(name))
+    spaced = spaced_name(name)
     return tuple(canon(token) for token in re.findall(r"[A-Za-z0-9]+", spaced))
 
 

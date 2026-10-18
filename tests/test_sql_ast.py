@@ -3085,6 +3085,99 @@ def test_a_place_names_what_is_of_it():
     assert "african" not in lower.value_index
 
 
+
+def test_a_country_holds_its_irregular_demonym():
+    """Spider DEV 5, 1007 (2026-10-18): "What is the average, minimum, and maximum age for all French singers?" and "the
+    singers who are not French citizens" were refused: no value says "French", the word for what is of 'France' that its
+    name does not begin (closed_class.COUNTRY_DEMONYMS, read into SchemaGraph.value_index). Contrast: where a field
+    holds the word itself (a language 'French'), the word is that value."""
+    singer = {"name": "singer", "columns": ["Singer_ID", "Name", "Country", "Citizenship", "Age"],
+              "rows": [[1, "Joe Sharp", "Netherlands", "Netherlands", 52],
+                       [2, "Timbaland", "United States", "United States", 32],
+                       [3, "Justin Brown", "France", "France", 29], [4, "Rose White", "France", "France", 41]]}
+    served = _hermetic_planner().serve([singer], "What is the average, minimum, and maximum age for all French "
+                                                 "singers?", [])
+    assert served.get("valid") and served["result"]["rows"] == [[35, 29, 41]], (served.get("error"), served.get("sql"))
+    graph = SchemaGraph.from_tables([singer], [])
+    assert {value for _, value in graph.value_index.get("french", ())} == {"France"}
+    assert {value for _, value in graph.value_index.get("dutch", ())} == {"Netherlands"}
+    language = {"name": "countrylanguage", "columns": ["CountryCode", "Language", "Country"],
+                "rows": [["FRA", "French", "France"], ["BEL", "Dutch", "Belgium"]]}
+    spoken = SchemaGraph.from_tables([language], [])
+    assert {value for _, value in spoken.value_index.get("french", ())} == {"French"}
+    assert {value for _, value in spoken.value_index.get("dutch", ())} == {"Dutch"}
+
+
+
+def test_a_capital_initial_before_a_capitalized_word_is_a_word():
+    """Held-out Spider train 737, 2026-10-18: "Give the names of the courses with at least five enrollments." was
+    refused over Course.CName, read as the one word "cname": a capital initial before a capitalized word is a word of
+    its own (sql_schema.spaced_name, the split every reader of names makes), so CName is a course's name. Contrast:
+    GNPOld is "GNP Old", and "the largest GNP" is still GNP's."""
+    from engine.sql_schema import name_words
+    course = {"name": "Course", "columns": ["CID", "CName", "Credits"],
+              "rows": [["600.101", "COMPUTER LITERACY", 3], ["600.103", "INTRODUCTION TO COMPUTER SCIENCE", 1]]}
+    enrolled = {"name": "Enrolled_in", "columns": ["StuID", "CID", "Grade"],
+                "rows": [[student, "600.101", "A"] for student in range(1001, 1007)] + [[1001, "600.103", "B"]]}
+    served = _hermetic_planner().serve([course, enrolled], "Give the names of the courses with at least five "
+                                                           "enrollments.", [
+        {"from_table": "Enrolled_in", "from_col": "CID", "to_table": "Course", "to_col": "CID"}])
+    assert served.get("valid") and served["result"]["rows"] == [["COMPUTER LITERACY"]], (
+        served.get("error"), served.get("sql"))
+    assert name_words("CName") == ("c", "name") and name_words("GNPOld") == ("gnp", "old")
+    country = {"name": "country", "columns": ["Code", "Name", "GNP", "GNPOld"],
+               "rows": [["ABW", "Aruba", 828.0, 793.0], ["AFG", "Afghanistan", 5976.0, 7984.0]]}
+    served = _hermetic_planner().serve([country], "What is the largest GNP?", [])
+    assert served.get("valid") and served["result"]["rows"] == [[5976.0]], (served.get("error"), served.get("sql"))
+
+
+
+def test_a_measure_word_after_a_superlative_names_it():
+    """Spider DEV 791 (2026-10-18): "Give the name, population, and head of state for the country that has the largest
+    area." was refused: no reading ranked by SurfaceArea, and "area" was unread. A word one measure alone holds, said
+    right after the superlative, names it, as it does just before one (sql_extrema). Contrast: "the largest
+    population" ranks the countries by Population."""
+    country = {"name": "country", "columns": ["Code", "Name", "Continent", "SurfaceArea", "IndepYear", "Population",
+                                              "LifeExpectancy", "GNP", "HeadOfState"],
+               "rows": [["RUS", "Russian Federation", "Europe", 17075400.0, 1991, 146934000, 67.2, 276608.0,
+                         "Vladimir Putin"],
+                        ["CHN", "China", "Asia", 9572900.0, -1523, 1277558000, 71.4, 982268.0, "Jiang Zemin"],
+                        ["ABW", "Aruba", "North America", 193.0, None, 103000, 78.4, 828.0, "Beatrix"]]}
+    city = {"name": "city", "columns": ["ID", "Name", "CountryCode", "District", "Population"],
+            "rows": [[1, "Kabul", "CHN", "Kabol", 1780000], [2, "Moscow", "RUS", "Moscow (City)", 8389200],
+                     [3, "Oranjestad", "ABW", "-", 29034]]}
+    keys = [{"from_table": "city", "from_col": "CountryCode", "to_table": "country", "to_col": "Code"}]
+    served = _hermetic_planner().serve([country, city], "Give the name, population, and head of state for the "
+                                                        "country that has the largest area.", keys)
+    assert served.get("valid") and served["result"]["rows"] == [["Russian Federation", 146934000, "Vladimir Putin"]], (
+        served.get("error"), served.get("sql"))
+    served = _hermetic_planner().serve([country, city], "Give the name and head of state for the country that has the "
+                                                        "largest population.", keys)
+    assert served.get("valid") and served["result"]["rows"] == [["China", "Jiang Zemin"]], (
+        served.get("error"), served.get("sql"))
+
+
+
+def test_the_information_about_rows_shows_every_field():
+    """Fresh holdout of Spider train 527, held-out Spider train 422, 2026-10-18: "List the information of all
+    instructors ordered by their salary in ascending order." and "What information do you have on colleges sorted by
+    increasing enrollment numbers?" were refused for "information": the information of, about or on rows is their every
+    field, as "all the information" is (sql_expansion.complete_projection_requested). Contrast: "the names of all
+    instructors" shows their names."""
+    instructor = {"name": "instructor", "columns": ["ID", "name", "dept_name", "salary"],
+                  "rows": [["10101", "Srinivasan", "Comp. Sci.", 65000], ["12121", "Wu", "Finance", 90000],
+                           ["15151", "Mozart", "Music", 40000]]}
+    served = _hermetic_planner().serve([instructor], "List the information of all instructors ordered by their salary "
+                                                     "in ascending order.", [])
+    assert served.get("valid") and served["result"]["rows"] == [
+        ["15151", "Mozart", "Music", 40000], ["10101", "Srinivasan", "Comp. Sci.", 65000],
+        ["12121", "Wu", "Finance", 90000]], (served.get("error"), served.get("sql"))
+    served = _hermetic_planner().serve([instructor], "List the names of all instructors ordered by their salary in "
+                                                     "ascending order.", [])
+    assert served.get("valid") and served["result"]["rows"] == [["Mozart"], ["Srinivasan"], ["Wu"]], (
+        served.get("error"), served.get("sql"))
+
+
 def test_amount_of_says_a_quantity():
     """Spider DEV 290, 96 (2026-10-15): "Find the total amount of bonus given in all the evaluations." was refused, its
     SUM(Bonus) leaving "amount" unread, as was "the car with the smallest amount of horsepower". "Amount of" says a
@@ -7468,6 +7561,25 @@ def test_world_path_reads_quantity_superlatives_and_counted_measures():
     assert reader(None).read_op_all("which bank has the most recent deposits?", deposits) is None
 
 
+
+def test_and_past_a_condition_joins_conditions():
+    """Held out 5, 2026-10-18: "List the document ids of documents with the status done and type Paper" read no request
+    for the ids: an "and" after the list was read as another output (sql_expansion.list_closed). Past a word opening
+    the condition the rows meet ("with", "where", "whose", "who", "that", "which"), "and" joins conditions. Contrast:
+    after an owner phrase ("for all concerts and the number of singers") it adds an output."""
+    from engine.sql_expansion import list_closed, output_requests
+    documents = {"name": "Documents", "columns": ["document_id", "document_status_code", "document_type_code"],
+                 "rows": [[1, "working", "CD"], [2, "done", "Paper"], [3, "done", "Hard Drive"]]}
+    graph = SchemaGraph.from_tables([documents], [])
+    question = "List the document ids of documents with the status done and type Paper."
+    requests = output_requests(question, graph)
+    assert requests and list_closed(question, requests), requests
+    concerts = {"name": "concert", "columns": ["concert_ID", "concert_Name", "Theme"],
+                "rows": [[1, "Auditions", "Free choice"], [2, "Super bootcamp", "Free choice 2"]]}
+    question = "What are the name and theme for all concerts and the number of singers?"
+    assert not list_closed(question, output_requests(question, SchemaGraph.from_tables([concerts], [])))
+
+
 def test_operator_readout_never_reads_an_aggregate_off_a_closed_class_word():
     """Production, 2026-09-27: 'who ordered a trench coat in France' was answered with COUNT = 5. The
     COUNT threshold is 0.05, and the article 'a' read 0.15 (the real cue 'many' reads 0.92), so a listing
@@ -8910,6 +9022,10 @@ TESTS = [
     test_an_items_last_word_may_stand_for_its_fields_kind,
     test_a_which_after_a_preposition_opens_no_command,
     test_a_place_names_what_is_of_it,
+    test_a_country_holds_its_irregular_demonym,
+    test_a_capital_initial_before_a_capitalized_word_is_a_word,
+    test_a_measure_word_after_a_superlative_names_it,
+    test_the_information_about_rows_shows_every_field,
     test_amount_of_says_a_quantity,
     test_an_extreme_listed_beside_another_output_is_a_value,
     test_the_row_with_the_maximum_is_the_row_holding_it,
@@ -8971,6 +9087,7 @@ TESTS = [
     test_a_verb_the_question_says_names_no_stored_value,
     test_a_measures_unit_is_left_unsaid,
     test_a_closed_opening_request_for_one_field_is_the_answer,
+    test_and_past_a_condition_joins_conditions,
     test_unjoined_catalog_does_not_deduplicate_a_property_listing,
     test_missing_relationship_construction_requires_an_exact_parent_key,
     test_declared_self_relationship_keeps_unrelated_queries_and_source_rows,

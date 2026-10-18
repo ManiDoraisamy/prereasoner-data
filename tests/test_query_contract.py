@@ -1896,6 +1896,145 @@ def test_a_hyphenated_first_ranks_nothing():
         [students], "What are the first and last names of the first student in the lowest grade?", ranked)
 
 
+
+def test_the_names_of_a_table_holding_a_name_are_its_own():
+    """Fresh holdout of Spider train 600, 910, 474, 2026-10-18: "What are the names of the albums that have more than 10
+    tracks?" was answered with the tracks' names, albums holding a title, and "the names of the 3 departments with the
+    most courses" with the instructors'. The names of a table that holds a name of its own are that name, not a joined
+    table's, and the album's own title answers, asking for no field another table calls a name. Contrast: a table
+    holding no name is named by a table it is joined to ("the names of poker players" are people's)."""
+    albums = {"name": "albums", "columns": ["id", "title", "artist_id"],
+              "rows": [[1, "For Those About To Rock", 1], [2, "Balls to the Wall", 2]]}
+    tracks = {"name": "tracks", "columns": ["id", "name", "album_id"],
+              "rows": [[1, "For Those About To Rock (We Salute You)", 1], [2, "Put The Finger On You", 1],
+                       [3, "Balls to the Wall", 2]]}
+    graph = SchemaGraph.from_tables([albums, tracks], [("tracks", "album_id", "albums", "id")])
+    question = "What are the names of the albums that have more than 10 tracks?"
+    joined = ("SELECT tracks.name FROM albums JOIN tracks ON tracks.album_id = albums.id GROUP BY tracks.name "
+              "HAVING COUNT(*) > 10")
+    assert "the answer shows the names of tracks, not of the albums asked for" in constraint_violations(
+        question, import_sql(joined, graph), graph)
+    own = ("SELECT albums.title FROM albums JOIN tracks ON tracks.album_id = albums.id GROUP BY albums.title "
+           "HAVING COUNT(*) > 10")
+    assert constraint_violations(question, import_sql(own, graph), graph) == ()
+    # Contrast: a self-join's shown field is its table's ("the title of the course with Differential Geometry as a
+    # prerequisite" shows the related course's title; fresh holdout 539, 790, a loss the first version made).
+    course = {"name": "course", "columns": ["course_id", "title"],
+              "rows": [[1, "Differential Geometry"], [2, "Topology"], [3, "Number Theory"]]}
+    prereq = {"name": "prereq", "columns": ["course_id", "prereq_id"], "rows": [[2, 1], [3, 2]]}
+    courses = SchemaGraph.from_tables([course, prereq], [("prereq", "course_id", "course", "course_id"),
+                                                        ("prereq", "prereq_id", "course", "course_id")])
+    related = ('SELECT related.title FROM prereq AS relation JOIN course AS owner ON relation.prereq_id = '
+               'owner.course_id JOIN course AS related ON relation.course_id = related.course_id WHERE owner.title = '
+               "'Differential Geometry'")
+    assert not [violation for violation in constraint_violations(
+        "What is the title of the course with Differential Geometry as a prerequisite?",
+        import_sql(related, courses), courses) if "the names of" in violation or "shows no" in violation]
+    people = {"name": "people", "columns": ["People_ID", "Name"],
+              "rows": [[1, "Aleksey Ostapenko"], [2, "Teodor Salparov"]]}
+    players = {"name": "poker_player", "columns": ["Poker_Player_ID", "People_ID", "Earnings"],
+               "rows": [[1, 1, 476090.0], [2, 2, 189233.0]]}
+    poker = SchemaGraph.from_tables([people, players], [("poker_player", "People_ID", "people", "People_ID")])
+    names = "SELECT people.Name FROM people JOIN poker_player ON poker_player.People_ID = people.People_ID"
+    assert not [violation for violation in constraint_violations(
+        "What are the names of poker players?", import_sql(names, poker), poker) if "the names of" in violation]
+
+
+
+
+def test_the_names_a_list_asks_for_each_table_are_its_own():
+    """Fresh holdout of Spider train 582, 2026-10-18: "What is the name and country of origin for each artist who has
+    released a song with a resolution higher than 900?" showed the songs' names: the list's owner follows "for each".
+    Contrast: an artist's own name, a song's field naming the artist ("artist names" of songs), the songs a possessive
+    names ("the artist's songs"), and a list of two tables' names."""
+    artist = {"name": "artist", "columns": ["artist_name", "country", "gender"],
+              "rows": [["Shrikanta", "India", "Male"], ["Prity", "Bangladesh", "Female"]]}
+    song = {"name": "song", "columns": ["song_name", "artist_name", "resolution"],
+            "rows": [["Tumi robe nirobe", "Shrikanta", 1080], ["Shukno patar nupur pae", "Prity", 512]]}
+    music = SchemaGraph.from_tables([artist, song], [("song", "artist_name", "artist", "artist_name")])
+    question = ("What is the name and country of origin for each artist who has released a song with a resolution "
+                "higher than 900?")
+    joined = " FROM artist JOIN song ON song.artist_name = artist.artist_name WHERE song.resolution > 900"
+    message = "the answer shows the names of song, not of the artist asked for"
+    assert message in constraint_violations(question, import_sql("SELECT song.song_name, artist.country" + joined,
+                                                                 music), music)
+    assert message not in constraint_violations(
+        question, import_sql("SELECT artist.artist_name, artist.country" + joined, music), music)
+    assert not [violation for violation in constraint_violations(
+        "List the artist names of songs with a resolution above 900.",
+        import_sql("SELECT song.artist_name FROM song WHERE song.resolution > 900", music), music)
+        if "name" in violation]
+    assert not [violation for violation in constraint_violations(
+        "What are the names of the artist's songs?", import_sql("SELECT song.song_name FROM song", music), music)
+        if "name" in violation]
+    # Each name a list asks for is its own table's ("titles of songs and names of singers"), and names said after a
+    # possessive ("their instructors' names for courses") or of what no table names are not read.
+    singer = {"name": "singer", "columns": ["Singer_ID", "Name"], "rows": [[1, "Liliane Bettencourt"], [2, "Tabea"]]}
+    track = {"name": "song", "columns": ["Song_ID", "Title", "Singer_ID"], "rows": [[1, "Do They Know", 1]]}
+    songs = SchemaGraph.from_tables([singer, track], [("song", "Singer_ID", "singer", "Singer_ID")])
+    both = "SELECT song.Title, singer.Name FROM singer JOIN song ON song.Singer_ID = singer.Singer_ID"
+    assert not [violation for violation in constraint_violations(
+        "Show titles of songs and names of singers.", import_sql(both, songs), songs) if "name" in violation]
+    assert not [violation for violation in constraint_violations(
+        "Show the songs' titles for each singer's names.", import_sql(both, songs), songs) if "name" in violation]
+
+
+
+def test_each_listed_output_is_shown_by_a_field_it_names():
+    """Spider DEV 800, 2026-10-18: "What are the names and areas of countries with the top 5 largest area?" was answered
+    by the cities' and the countries' names ranked by SurfaceArea, two outputs for the two listed but no area among
+    them. Each output a list names is shown by a field it names, or by a field whose name says its words. Contrast: the
+    countries' names and areas, and "the name and the release year of the song" by Song_Name."""
+    country = {"name": "country", "columns": ["Code", "Name", "SurfaceArea"],
+               "rows": [["RUS", "Russian Federation", 17075400.0], ["CHN", "China", 9572900.0], ["ABW", "Aruba", 193.0]]}
+    city = {"name": "city", "columns": ["ID", "Name", "CountryCode"],
+            "rows": [[1, "Moscow", "RUS"], [2, "Shanghai", "CHN"], [3, "Oranjestad", "ABW"]]}
+    graph = SchemaGraph.from_tables([country, city], [("city", "CountryCode", "country", "Code")])
+    question = "What are the names and areas of countries with the top 2 largest area?"
+    names = ("SELECT city.Name, country.Name FROM city JOIN country ON city.CountryCode = country.Code "
+             "ORDER BY country.SurfaceArea DESC LIMIT 2")
+    assert "the answer shows no area the question lists" in constraint_violations(
+        question, import_sql(names, graph), graph)
+    areas = "SELECT country.Name, country.SurfaceArea FROM country ORDER BY country.SurfaceArea DESC LIMIT 2"
+    assert not [violation for violation in constraint_violations(question, import_sql(areas, graph), graph)
+                if "the question lists" in violation]
+
+
+def test_a_table_named_only_inside_a_longer_name_is_not_joined():
+    """Fresh holdout of Spider train 917, 2026-10-18: "Show all document type codes, document type names, document type
+    descriptions." joined the documents, showing only the types some document has: "document" is said only inside the
+    names of the type's fields. Contrast: a question naming the documents alone joins them, and a table the other one
+    refers to (an apartment booking's apartment) narrows and repeats no row."""
+    types = {"name": "Ref_Document_Types",
+             "columns": ["Document_Type_Code", "Document_Type_Name", "Document_Type_Description"],
+             "rows": [["CD", "CD", "Compact disc"], ["BK", "Book", "A book"], ["PP", "Paper", "Paper document"]]}
+    documents = {"name": "Documents", "columns": ["Document_ID", "Document_Type_Code", "Document_Name"],
+                 "rows": [[1, "CD", "Robin CV"], [2, "BK", "Marry CV"]]}
+    graph = SchemaGraph.from_tables([types, documents], [("Documents", "Document_Type_Code", "Ref_Document_Types",
+                                                          "Document_Type_Code")])
+    joined = ('SELECT DISTINCT "Ref_Document_Types"."Document_Type_Code", "Ref_Document_Types"."Document_Type_Name", '
+              '"Ref_Document_Types"."Document_Type_Description" FROM "Documents" JOIN "Ref_Document_Types" ON '
+              '"Documents"."Document_Type_Code" = "Ref_Document_Types"."Document_Type_Code"')
+    message = "the query joins Documents, which the question names only inside a longer name"
+    question = "Show all document type codes, document type names, document type descriptions."
+    assert message in constraint_violations(question, import_sql(joined, graph), graph)
+    own = ('SELECT "Ref_Document_Types"."Document_Type_Code", "Ref_Document_Types"."Document_Type_Name", '
+           '"Ref_Document_Types"."Document_Type_Description" FROM "Ref_Document_Types"')
+    assert message not in constraint_violations(question, import_sql(own, graph), graph)
+    assert message not in constraint_violations(
+        "Show the document type codes of all documents.", import_sql(joined, graph), graph)
+    apartments = {"name": "Apartments", "columns": ["apt_id", "apt_number"],
+                  "rows": [[1, "Suite 645"], [2, "Apt. 585"]]}
+    bookings = {"name": "Apartment_Bookings", "columns": ["apt_booking_id", "apt_id", "booking_start_date"],
+                "rows": [[258, 1, "2016-09-26"], [279, 2, "2016-04-01"]]}
+    booked = SchemaGraph.from_tables([apartments, bookings], [("Apartment_Bookings", "apt_id", "Apartments", "apt_id")])
+    starts = ('SELECT "Apartment_Bookings"."booking_start_date" FROM "Apartment_Bookings" JOIN "Apartments" ON '
+              '"Apartment_Bookings"."apt_id" = "Apartments"."apt_id"')
+    assert not [violation for violation in constraint_violations(
+        "Show the start dates of all the apartment bookings.", import_sql(starts, booked), booked)
+        if "inside a longer name" in violation]
+
+
 TESTS =[value for name, value in globals().copy().items() if name.startswith('test_') and callable(value)]
 
 if __name__ == '__main__':

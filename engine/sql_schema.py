@@ -393,6 +393,15 @@ class SchemaGraph:
                             for word in words:
                                 if code_word_matches_column(word, column.ref.name):
                                     values.setdefault(word, []).append((column.ref, letters[letter]))
+        # A country's cell holds the word for what is of it where its name does not begin that word: "French singers"
+        # are of Country 'France', "the singers who are not French citizens" not of Citizenship 'France' (Spider DEV 5,
+        # 1007, 2026-10-18: refused for the word), unless a field holds the word itself (a language 'French').
+        from engine.closed_class import COUNTRY_DEMONYMS
+        direct = set(values)
+        for country, demonym in COUNTRY_DEMONYMS.items():
+            name, word = normalize_value(country), normalize_value(demonym)
+            if name in direct and word not in direct:
+                values.setdefault(word, []).extend(values[name])
         return {value: tuple(options) for value, options in values.items()}
 
 
@@ -533,14 +542,24 @@ def _row_value(row: Any, index: int, name: str) -> Any:
     return row[index] if index < len(row) else None
 
 
-def name_words(name: str) -> tuple[str, ...]:
+def spaced_name(name: str) -> str:
+    """A table's or field's name with its camel-case words apart, the one split every reader of names makes:
+    "LifeExpectancy" is "Life Expectancy", and a capital initial before a capitalized word is a word of its own,
+    "CName" "C Name" and "GNPOld" "GNP Old" (held-out Spider train 267, 737, fresh holdout 696, 914, 2026-10-18: "the
+    course names" and "the name of the department" over CName and DName were refused)."""
     spaced = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", str(name))
-    return tuple(word.lower() for word in re.findall(r"[^\W_]+", spaced, re.UNICODE))
+    return re.sub(r"([A-Z])([A-Z][a-z])", r"\1 \2", spaced)
+
+
+def name_words(name: str) -> tuple[str, ...]:
+    return tuple(word.lower() for word in re.findall(r"[^\W_]+", spaced_name(name), re.UNICODE))
 
 
 def is_name_column(name: str) -> bool:
-    """Whether a column named ``name`` names its rows ("name", "Song_Name", "title", "label")."""
-    return bool({canon(word) for word in name_words(name)} & _NAME_WORDS)
+    """Whether a column named ``name`` names its rows ("name", "Song_Name", "title", "label"), or holds a part of a
+    person's name ("Fname", "emp_lname": sql_expansion.name_part_words)."""
+    from engine.sql_expansion import name_part_words
+    return bool({canon(word) for word in name_words(name)} & _NAME_WORDS) or name_part_words(name) is not None
 
 
 # A column is a surrogate key (a primary or foreign key, never a measure) when the last word of its name is

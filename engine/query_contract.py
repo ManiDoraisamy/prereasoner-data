@@ -557,6 +557,26 @@ def _select_violations(question, query, graph, whole):
             and (any(request.count for request in requests) and listed or each_a_field and len(asked) == len(listed))
             and not any(isinstance(item.expression, Star) for item in query.select)):
         violations.append(f"the answer shows {len(query.select)} of the {len(asked)} outputs the question lists")
+    # And each is shown by a field it names, its own or the one an aggregate shown reads, or by a field whose name says
+    # its words ("the name ... of the song" by Song_Name): "What are the names and areas of countries with the top 5
+    # largest area?" is no city's and country's names (Spider DEV 800, 2026-10-18, once "the largest area" ranked by
+    # SurfaceArea). A self-join's "related"."title" shows course.title.
+    from engine.sql_schema import canon, name_words
+    shown_refs = [ref for ref in _unaliased(query, [item.expression.operand if isinstance(item.expression, Aggregate)
+                                                    else item.expression for item in query.select])
+                  if isinstance(ref, ColumnRef)]
+    shown_keys = {(ref.table, ref.name) for ref in shown_refs}
+    shown_words = [{canon(word) for word in name_words(ref.name)} for ref in shown_refs]
+
+    def shown(request, fields):
+        words = set(said[request.start:request.end])
+        return bool({(ref.table, ref.name) for ref in fields} & shown_keys) or any(words <= names for names in shown_words)
+
+    if each_a_field and not any(isinstance(item.expression, Star) for item in query.select):
+        unshown = [request for request, fields in zip(listed, listed_fields) if not shown(request, fields)]
+        if unshown:
+            violations.append(f"the answer shows no {' '.join(said[unshown[0].start:unshown[0].end])} the question "
+                              "lists")
     realized_items = [set(said[request.start:request.end])
                       for request, refs in zip(listed, request_fields(question, graph)) if set(refs) & projected]
     # An explicitly repeated, unambiguously bound field must be shown each time.
@@ -667,6 +687,17 @@ def _select_violations(question, query, graph, whole):
         if label_words <= {"name", "title"} and any(
                 ref.table in owners and [canon(word) for word in name_words(ref.name)]
                 == [canon(word) for word in name_words(ref.table)][-1:] for ref in read_fields):
+            continue
+        # Nor do "the names of the albums" ask for another table's field called a name where the query shows the field
+        # that names the albums' rows, a name (sql_schema.is_name_column): "What are the names of the albums that have
+        # more than 10 tracks?" is answered by their titles, "the names of the 3 departments" by dept_name (fresh
+        # holdout 600, 910, 2026-10-18: refused for tracks.name and instructor.name). A singer's Song_Name is no name of
+        # the singer.
+        from engine.sql_schema import is_name_column
+        if label_words <= {"name", "title"} and any(
+                isinstance(item.expression, ColumnRef) and is_name_column(item.expression.name)
+                and item.expression in {ref for owner in owners for ref in graph.display_columns(owner)[:1]}
+                for item in query.select):
             continue
         # "The full name" is a first and a last name the query reads, not a Name field of another table.
         if label_words == {"name"} and _full_name_read(list(question_tokens), read_fields):
@@ -818,6 +849,14 @@ def _select_violations(question, query, graph, whole):
     # denial (sql_extrema.denial_position): a table named there that only the subtracted part reads leaves the first
     # keeping rows that are not those. "Return the names of gymnasts who did not grow up in Santo Domingo." was every
     # person's name less the gymnasts from there (held out 368, 2026-10-18, once the denial reached Santo Domingo).
+    # A table the query joins to one other and reads nothing from is named where the question says its name alone, not
+    # where every word of it the question says lies inside the longer name of a table or field the query reads: "Show
+    # all document type codes, document type names, document type descriptions." joined the documents and showed only
+    # the types some document has (fresh holdout of Spider train 917, 2026-10-18).
+    said = [canon(word) for word in lexical_words(question)]
+    for branch, _ in _select_queries(whole, graph=graph):
+        if (table := _join_named_inside_longer(branch, said, graph)) is not None:
+            violations.append(f"the query joins {table}, which the question names only inside a longer name")
     for table in _unkept_named_tables(question, whole, graph):
         violations.append(f"the difference keeps rows that are not the {table} asked for")
     # A difference subtracting every row it keeps answers nothing: "the ids of courses without prerequisites" kept the
@@ -973,6 +1012,19 @@ def _select_violations(question, query, graph, whole):
         if shown and not any(table in asked or any((table, wanted) in linked for wanted in asked)
                              or leads_to_asked(table, ref) for table, ref in shown):
             violations.append(f"the answer shows {shown[0][0]}'s fields, not the {sorted(asked)[0]} asked for")
+    # "The names of" a table that holds a name of its own are that name, not the name of a table joined to it: "What
+    # are the names of the albums that have more than 10 tracks?" showed the tracks' names, albums holding a title,
+    # and "the names of the 3 departments with the most courses" the instructors' (fresh holdout 600, 910, 2026-10-18).
+    # A table holding no name is named by a table it is joined to ("the names of poker players" are people's).
+    from engine.sql_schema import is_name_column
+    shown_columns = _unaliased(query, [item.expression for item in getattr(query, "select", ())
+                                       if isinstance(item.expression, ColumnRef)])
+    owners = _named_name_owners(question, question_tokens, graph)
+    for table in sorted(owners):
+        own = [ref for ref in graph.display_columns(table)[:1] if is_name_column(ref.name)]
+        others = [ref for ref in shown_columns if is_name_column(ref.name) and ref.table not in owners]
+        if own and others:
+            violations.append(f"the answer shows the names of {others[0].table}, not of the {table} asked for")
     # A count grouped by the key of the one table it reads counts one row in each group, while the tables whose foreign
     # keys refer to that key hold its occurrences: "the transaction type code that occurs the most frequently" counted
     # each type's own row, and every type tied at 1 (held-out Spider train 370, 2026-10-11). A key that itself refers
@@ -1729,6 +1781,75 @@ _OPENING_COMMANDS = frozenset({"find", "give", "list", "return", "show", "what",
                                "count"})
 
 
+def _named_name_owners(question, question_tokens, graph):
+    """The tables whose names (or titles, or labels: sql_schema.is_name_column) the question asks for: the table named
+    after the name word and "of" or "for", or after a later "for each", "for every" or "for all" before a clause
+    ("the name and country of origin for each artist"), past a determiner, a number or "different", whole or but its
+    first word ("the names of the workshop groups" names Drama_Workshop_Groups). A table named before another ("the
+    album tracks") or a possessive ("the singer's songs") is not one. None when a name word follows a possessive or a
+    table's name ("their instructors' names for courses"), or names no table it is "of" ("the names of the counties"
+    over county_public_safety): whose names those are is not read."""
+    from engine.sql_expansion import WORD_NUMBERS, word_spans
+    from engine.sql_schema import canon, is_name_column, name_words
+    said = [canon(token) for token in question_tokens]
+    spans = word_spans(question)
+    if len(spans) != len(said):
+        return set()
+    forms = []
+    for table in graph.tables:
+        label = tuple(canon(part) for part in name_words(table))
+        forms += [(label, table)] + ([(label[1:], table)] if len(label) > 2 else [])
+    forms.sort(key=lambda form: -len(form[0]))
+
+    def named(position):
+        return next(((table, position + len(form)) for form, table in forms
+                     if form and tuple(said[position:position + len(form)]) == form), None)
+
+    def possessive(position):
+        return question[spans[position][1]:spans[position][1] + 1] in ("'", "\u2019")
+
+    def owner_after(position):
+        while position < len(said) and (said[position] in _NAME_OWNER_LEADS or said[position].isdigit()
+                                        or said[position] in WORD_NUMBERS):
+            position += 1
+        found = named(position) if position < len(said) else None
+        while found is not None:
+            table, end = found
+            if end < len(said) and (named(end) is not None or possessive(end - 1)):
+                found = named(end)
+                continue
+            return None if possessive(end - 1) else table
+        return None
+
+    owners = set()
+    for index, word in enumerate(said):
+        if not is_name_column(word):
+            continue
+        if index and (possessive(index - 1) or any(form and tuple(said[max(0, index - len(form)):index]) == form
+                                                   for form, _ in forms)):
+            return set()
+        if said[index + 1:index + 2] in (["of"], ["for"]):
+            table = owner_after(index + 2)
+            if table is None:
+                return set()
+            owners.add(table)
+            continue
+        for position in range(index + 1, len(said) - 1):
+            if said[position] in _NAME_OWNER_BREAKS:
+                break
+            if said[position] == "for" and said[position + 1] in ("each", "every", "all"):
+                if (table := owner_after(position + 1)) is not None:
+                    owners.add(table)
+                break
+    return owners
+
+
+# The words that open a clause, which a list's owner does not follow, and the words before an owner that name none.
+_NAME_OWNER_BREAKS = frozenset({"who", "whom", "that", "which", "whose", "with", "where", "when", "in", "by", "from",
+                                "at", "on", "if", "than", "order", "ordered", "sorted", "sort"})
+_NAME_OWNER_LEADS = frozenset({"the", "all", "each", "every", "different", "distinct", "a", "an"})
+
+
 def _asked_tables(question_tokens, graph):
     """The tables whose whole name the question's opening says (canon() forms), after a command it opens with and up
     to its first relative, condition or preposition word; a "which" after its first two words starts a relative clause:
@@ -2010,18 +2131,34 @@ def _base_refs(query):
     """The fields ``query`` shows from an aliased table, as its table's: a self-join's "related"."name" shows
     Highschooler.name. A field an alias only joins on or compares is not counted: "owner"."ID" joining Kyle to his
     friends answers no "id" (Spider DEV 872, 2026-10-12)."""
-    from dataclasses import replace
     from engine.sql_ast import ColumnRef, SelectQuery, column_refs
     out = set()
     for select, _ in _select_queries(query):
         if not isinstance(select, SelectQuery):
             continue
-        aliases = {join.alias: join.table for join in select.joins if join.alias}
-        if select.from_alias and isinstance(select.from_table, str):
-            aliases[select.from_alias] = select.from_table
-        out.update(replace(ref, table=aliases[ref.table]) for item in select.select
-                   for ref in column_refs(item.expression) if isinstance(ref, ColumnRef) and ref.table in aliases)
+        aliases = _aliases(select)
+        out.update(_unaliased(select, [ref for item in select.select for ref in column_refs(item.expression)
+                                       if isinstance(ref, ColumnRef) and ref.table in aliases]))
     return out
+
+
+def _aliases(query):
+    """The tables ``query`` reads under an alias, by alias ("related" for a self-join's course)."""
+    aliases = {join.alias: join.table for join in getattr(query, "joins", ()) if join.alias}
+    if getattr(query, "from_alias", None) and isinstance(query.from_table, str):
+        aliases[query.from_alias] = query.from_table
+    return aliases
+
+
+def _unaliased(query, expressions):
+    """``expressions`` with each field ``query`` reads from an aliased table as its table's: a self-join's
+    "related"."title" is course.title."""
+    from dataclasses import replace
+    from engine.sql_ast import ColumnRef
+    aliases = _aliases(query)
+    return [replace(expression, table=aliases[expression.table])
+            if isinstance(expression, ColumnRef) and expression.table in aliases else expression
+            for expression in expressions]
 
 
 def _owner_tables(label, question_tokens, graph):
@@ -2287,6 +2424,48 @@ def _dangling_unnamed_join(query, question_words):
         if (table not in outside and len(neighbours) == 1 and isinstance(table, str)
                 and not any(word in question_words or any(says_in_another_form(said, word) for said in question_words)
                             for word in {canon(part) for part in name_words(table)})):
+            return table
+    return None
+
+
+def _join_named_inside_longer(query, said, graph):
+    """A table ``query`` joins to one other table and reads no column of outside the joins, the other table's key
+    referring to none of its rows (so its rows narrow and repeat the other's), where every place ``said`` (the
+    question's canon() words) has a word of its name lies inside the longer name of another table the query reads
+    (whole, or its last two or more words) or of a column it reads (bare or after its table's name). None when there is
+    no such table, or when the query counts, a count reading every joined row ("the transaction type code that occurs
+    the most frequently" counts the transactions)."""
+    from engine.sql_ast import column_refs
+    from engine.sql_schema import canon, name_words
+    joins = getattr(query, "joins", ())
+    if (not joins or not isinstance(query.from_table, str) or any(join.alias for join in joins)
+            or _counts_rows(query)):
+        return None
+    pairs = [(join.left, join.right) for join in joins] + [pair for join in joins for pair in join.additional]
+    refs = column_refs((query.select, query.where, query.group_by, query.having, query.order_by))
+    outside = {ref.table for ref in refs}
+    tables = [query.from_table, *(join.table for join in joins)]
+    if len(set(tables)) != len(tables):
+        return None
+    references = {(key.from_column, key.to_column) for key in graph.foreign_keys}
+    label = {table: [canon(word) for word in name_words(table)] for table in tables}
+    for table in tables:
+        edges = [(left, right) for left, right in pairs if table in {left.table, right.table}]
+        if table in outside or len(edges) != 1:
+            continue
+        left, right = edges[0]
+        if (left, right) in references and right.table == table or (right, left) in references and left.table == table:
+            continue
+        spans = set()
+        for other in tables:
+            if other != table:
+                spans |= {place for start in range(len(label[other]) - 1 if len(label[other]) > 1 else 1)
+                          for place in _phrase_places(said, label[other][start:])}
+        for ref in refs:
+            name = [canon(word) for word in name_words(ref.name)]
+            spans |= _phrase_places(said, name) | _phrase_places(said, label.get(ref.table, []) + name)
+        places = {(index, index + 1) for index, word in enumerate(said) if word in set(label[table])}
+        if _inside_longer(places, spans):
             return table
     return None
 
