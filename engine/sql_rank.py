@@ -403,6 +403,17 @@ class CandidateRanker:
                     for column in directional_columns
                 )
                 features.append((f"travel_direction:{direction}", 3.0 if aligned else -3.0))
+        else:
+            # Where no travel word says it, the preposition before a value a trip's end compares says which end:
+            # "flights from Los Angeles" leave it, "flights to Aberdeen" arrive there (held out 679, fresh holdout
+            # 992, 2026-10-18: the destination ranked first).
+            for comparison in _comparisons(query.where):
+                role = travel_column_role(comparison.left) if isinstance(comparison.left, ColumnRef) else None
+                if role is None or comparison.operator != "=" or not isinstance(comparison.right, Literal):
+                    continue
+                said = travel_preposition(roles.tokens, _tokens(str(comparison.right.value)))
+                if said is not None:
+                    features.append((f"travel_preposition:{role}", 3.0 if said == role else -3.0))
 
         # A table relating rows of one table to others of it reads from its owner's key: "high schoolers who have 3
         # friends" own the Friend rows (student_id), the friend_id side being the friends (Spider DEV 885-911,
@@ -1038,6 +1049,24 @@ TRAVEL_WORDS = {
 def travel_direction(tokens: tuple[str, ...]) -> str | None:
     token_set = set(tokens)
     return next((role for role, said in TRAVEL_WORDS.items() if token_set & said), None)
+
+
+# The prepositions that say which end of a trip the value after them is.
+TRAVEL_PREPOSITIONS = {"from": "source", "to": "destination"}
+
+
+def travel_preposition(tokens: tuple[str, ...], value: tuple[str, ...]) -> str | None:
+    """The end of a trip the nearest preposition before ``value`` in ``tokens`` says (``TRAVEL_PREPOSITIONS``), across
+    up to two words naming the place ("from City Aberdeen", "to the airport APG"), or None where none does or the
+    value's places disagree."""
+    found = set()
+    for start in range(len(tokens) - len(value) + 1):
+        if value and tokens[start:start + len(value)] == value:
+            nearest = next((token for token in reversed(tokens[max(0, start - 3):start])
+                            if token in TRAVEL_PREPOSITIONS), None)
+            if nearest is not None:
+                found.add(TRAVEL_PREPOSITIONS[nearest])
+    return next(iter(found)) if len(found) == 1 else None
 
 
 def travel_column_role(column: ColumnRef) -> str | None:

@@ -109,6 +109,15 @@ _NEGATIVE_RE = re.compile(
 )
 
 
+def denial_position(question: str) -> int | None:
+    """The position, among the question's words (``sql_expansion.tokens``), of the word a difference starts its denial
+    at ("not", "no", "never", "without", "except"), or None where none is said. A difference subtracts what the words
+    after it name (``ExtremaQueryExpander._difference_candidates``) and keeps the rows the words before it name, which
+    the completeness gate (query_contract) requires its first branch to read."""
+    match = _NEGATIVE_RE.search(question)
+    return None if match is None else len(_tokens(question[:match.start()]))
+
+
 @dataclass(frozen=True)
 class SuperlativeTarget:
     column: ColumnRef
@@ -527,8 +536,8 @@ class ExtremaQueryExpander(ExpansionSupport):
     def _difference_candidates(
         self, question: str, candidates: Sequence[ScoredQuery]
     ) -> list[ScoredQuery]:
-        match = _NEGATIVE_RE.search(question)
-        if match is None or "but" in _tokens(question):
+        negative_position = denial_position(question)
+        if negative_position is None or "but" in _tokens(question):
             return []
         tokens = _tokens(question)
         # A difference lists the values of the rows left. "The average age of students who do not have any
@@ -544,8 +553,6 @@ class ExtremaQueryExpander(ExpansionSupport):
         best = next((candidate.query for candidate in candidates if isinstance(candidate.query, SelectQuery)), None)
         if best is not None and _lists_and_denies(best):
             return []
-        normalized_prefix = _tokens(question[:match.start()])
-        negative_position = len(normalized_prefix)
         pseudo = CountThreshold((("=", 1),), negative_position, negative_position + 1, 0.0)
         out = []
         for entity_table, entity_score in self.entity_tables(tokens, pseudo)[:3]:
@@ -1042,13 +1049,15 @@ def _target_requested_in_projection(target: ColumnRef, tokens: tuple[str, ...]) 
 
 def _describes_rows(tokens: tuple[str, ...], table: str) -> bool:
     """Whether the question asks for fields of ``table``'s rows that a clause then selects: its name after "of" and
-    before "who", "that", "which" or "whose", as "the major and age of students who do not have a cat"."""
+    before "who", "that", "which" or "whose", as "the major and age of students who do not have a cat" and "the Major
+    and Age of each student who does not have a pet" (a Gemini rewording of Spider DEV 62, 2026-10-18: "each" was read
+    as the name, and a difference of the shared values was built)."""
     label = [canon(word) for word in name_words(table)]
     said = [canon(token) for token in tokens]
     for index, word in enumerate(said):
         if word != "of":
             continue
-        rest = [token for token in said[index + 1:index + 4 + len(label)] if token not in {"the", "all", "every"}]
+        rest = [token for token in said[index + 1:index + 4 + len(label)] if token not in {"the", "all", "every", "each"}]
         if rest[:len(label)] == label and rest[len(label):len(label) + 1] in (["who"], ["that"], ["which"], ["whose"]):
             return True
     return False

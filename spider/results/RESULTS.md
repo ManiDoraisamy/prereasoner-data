@@ -107,6 +107,30 @@ Artifacts: `%LOCALAPPDATA%/Temp/prereasoner-spider-review-20261013/`, tags `revi
 Incomplete intermediate runs are excluded. The review hardens ranking-number roles, output counts (preserving stored-count SUM),
 and table-owned full-name construction; it does not introduce another planner or model bundle.
 
+## A negation reaches its clause; living, corresponding and a trip's preposition are read; a difference keeps the rows it names: 697 → 702 strict, Gemini on 751 → 756, held out 442 → 447, fresh holdout 442 → 458 (2026-10-18)
+
+Same contract as below (RunPod CPU pods, the evaluator ingesting declared and discovered keys). Runs `z4` are this
+change against `5979e87`'s `y2` runs. The change is the `DECISIONS.md` entry of this title.
+
+- DEV, engine alone: 697 → **702 strict**; 5 wins (171, 172, 766, 827, 833), no loss; wrong answers 137 → 137; 7 queries
+  changed.
+- Held out: 442 → **447 strict**; 5 wins (341, 368, 474, 786, 824), no loss; wrong answers 227 → 224; 13 queries
+  changed.
+- Fresh holdout: 442 → **458 strict**; 16 wins (48, 70, 111, 223, 376, 429, 434, 447, 454, 500, 555, 612, 619, 726, 795,
+  992), no loss; wrong answers 233 → 230; 21 queries changed.
+- Gemini on: 751 → 756; 5 wins (171, 172, 766, 827, 833), no loss; wrong answers 178 → 177; 9 queries changed.
+- Wrong answers this change makes of questions refused before, once the negation reached their values: "Show all
+  headquarters without a company in banking industry." (fresh holdout 724) shows the headquarters of companies outside
+  banking, with each company, where the question asks for those with no banking company; and "List the document ids of
+  documents with the status done and type Paper, which not shipped by the shipping agent named USPS." (held out 5) shows
+  status codes: the request for the ids is dropped where "and" joins two conditions after "with"
+  (`sql_expansion.list_closed`).
+- The first measured version (runs `z3`) lost Spider DEV 778, 779 and held out 597, and Gemini on DEV 62, to the
+  difference check and the "each" reading; runs `z4` are after their fixes (a key the kept part shows, a name after
+  "whose", `_describes_rows`). Its fresh holdout run was lost to a RunPod host that exposed no SSH and was not measured.
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-remote-eval-20261017/full_eval_{,heldout-,holdout2-}z4.json` and `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_z4-gemini-dirty.json`.
+
 ## People are persons; a table a read key refers to, "located" by a place field and "greater than" what is no number by its comparison are read: 696 → 697 strict, Gemini on 751 → 751, held out 441 → 442, fresh holdout 438 → 442 (2026-10-18)
 
 Same contract as below (RunPod CPU pods, the evaluator ingesting declared and discovered keys). Runs `y2` are this

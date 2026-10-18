@@ -454,7 +454,9 @@ order word in a query that orders its rows, and "alphabetical" only over an orde
 unless reversed; a participle relating the rows to a compared value ("departing from APG") when the data holds
 the participle as no value and the value has one relationship to the rows, or, with several (a departure and
 an arrival airport), when the column relating it carries the participle's travel direction
-(`engine/sql_rank.travel_direction`); a graded word the query realizes in its direction on a field of its kind
+(`engine/sql_rank.travel_direction`; where no travel word is said, the ranker reads a value's end of the trip by
+the preposition before it, "flights from Los Angeles" by the origin, `sql_rank.travel_preposition`); a graded word the
+query realizes in its direction on a field of its kind
 (a comparative before "than" is a comparison with its operator, complemented when negated,
 `engine/sql_expansion.comparative_operator`, and "greater than" what is no number only so,
 "greater than any engineer"; "the most common" orders groups by their count; any other superlative
@@ -476,8 +478,9 @@ participle after a copula whose subject it reads, with nothing after it but "in 
 are offered?"), unless the data's names spell it ("How many regions are affected?" names affected_region); a verb
 relating a table named before it to a field it reads named after it; "of origin" after a field it reads;
 the whole name of a table a key it reads refers to, as the rows that key refers to ("the number of accounts with a
-savings balance" counts SAVINGS rows by their custid); "located" or "situated" by a place field
-(`closed_class.PLACE_WORDS`: "In how many different cities are banks located?"); "first" and
+savings balance" counts SAVINGS rows by their custid); a verb saying where something is or lives by a place field that
+is no key (`closed_class.PLACE_VERBS`, `PLACE_WORDS`: "In how many different cities are banks located?"), one a value
+is compared in being of a table named before the verb ("employees living in Canada" by employees.country); "first" and
 "last" grading a date as "earliest" and "latest" do; and a noun right after the one-word name of a numeric field it
 reads, which is what the field measures ("the minimum snatch score"); "member" after the name of a table it reads,
 its rows ("the staff member"); and the people a population it reads counts ("How many people live in Gelderland
@@ -488,7 +491,8 @@ total score", `sql_expansion.cue_names`). "Available"
 asks nothing where no table or field is named for availability, nor do "the results" a sort verb orders, and an
 ordering "from old to young" is read by an ordering in that grade's direction (`sql_extrema.span_grade`). A verb is
 read by the field its doer names ("won" by winner_id, `closed_class.agent_noun`), "corresponding" where it pairs an
-output the answer shows ("corresponding to each", a shown field after it), "names" by the title of a table holding no
+output the answer shows ("corresponding to each", a shown field after it) or comes before the name of a table it reads
+("two or more corresponding books"), "names" by the title of a table holding no
 name, and "time" by a date field it reads. A
 lower-case verb names no stored value in the search (`closed_class.predicate_words`), a measure's trailing unit is left
 unsaid in a field's name (`sql_expansion.naming_words`), and a yes/no flag field named by its words is the condition
@@ -551,15 +555,25 @@ HAVING keeps, without "each", "per", "by" or "for different" (`sql_expansion.gro
 that qualify, one number (`ConstraintQueryExpander.qualifying_count` builds it as a COUNT over the grouped query);
 a count in each group is refused. The rows a ranking keeps are read in one place by the search and the check
 (`sql_extrema.ranking_cutoff`: "the top 3", "the 3 oldest", "the two people with the largest age"), and a ranking
-whose number names a table shows its rows, not only the field that ranks them (`sql_extrema.ranked_table`). An
+whose number names a table shows its rows, not only the field that ranks them (`sql_extrema.ranked_table`).
+"First" or "last" joined to the next word by a hyphen ranks nothing ("the first-grade students"): where the question
+ranks by nothing else, a query keeping only its top rows is refused. An
 EXCEPT makes an exclusion, its subtracted branch keeping the values
 excluded; a comparison there, or in a NOT IN or NOT EXISTS, realizes its complement, or itself when the question
-negates before it (`query_contract._select_queries`, `_scoped_match`). An exclusion removes the rows the question
-names: a table joined inside it only to filter, which the question does not name, narrows it and is refused
-(`query_contract._dangling_unnamed_join`). A set difference subtracts entities by fields that tell them apart
+negates before it (`query_contract._select_queries`, `_scoped_match`). A negation excludes the first value within
+seven words after it in its clause, and "never" negates (`sql_search._negated_matches`: "ships that are not steered by
+any captain with Midshipman rank"). An exclusion removes the rows the question
+names: a table joined inside it only to filter, which the question does not name in any form ("prerequisites" names
+prereq, `sql_expansion.says_in_another_form`), narrows it and is refused
+(`query_contract._dangling_unnamed_join`). A difference keeps the rows the question names before its denial
+(`sql_extrema.denial_position`): a table named there that only the subtracted part reads is refused unless a field of a
+kept table has its name, a key the kept part shows refers to it, or it follows "whose"
+(`query_contract._unkept_named_tables`), and so is a difference subtracting every row it keeps
+(`_subtracts_every_row`). A set difference subtracts entities by fields that tell them apart
 (`SchemaGraph.identifies`: together they hold no combination twice in their own table, a missing value counting as
 one; a foreign key to a unique lookup names the lookup's rows, not its own): the projected values when they do,
-else the entity's key, filled in every row, NOT IN the related rows'.
+else the entity's key, filled in every row, NOT IN the related rows', where the question asks for fields of the
+entity's rows ("the major and age of each student who ...", `sql_extrema._describes_rows`).
 A field's name inside a longer field's name the question also says ("the name of the song" is `Song_Name`) or
 inside a table's name the query reads ("car makers") asks for that longer field or table: said together and in order
 ("first name and last name") whatever other table holds the shorter name, said apart where the longer field's table

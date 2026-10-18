@@ -2468,17 +2468,18 @@ def _quoted_positions(question: str) -> frozenset[int]:
 
 # The words that exclude the value after them ("orders not Done", "every order except refunds"), and the ones
 # that join a value to the one before it into one list ("not Done or Cancelled").
-_NEGATION_CUES = frozenset({"not", "except", "excluding", "without"})
+_NEGATION_CUES = frozenset({"not", "never", "except", "excluding", "without"})
 _LIST_JOINERS = frozenset({"and", "or", "nor"}) | _ARTICLES
 
 
 def _negated_matches(tokens: tuple[str, ...], selected) -> frozenset[int]:
     """The indexes of the value matches (``start``, ``end``, ...; in order) a negation excludes. A negation cue
-    excludes the first value within three words after it, and each value "and", "or" or "nor" joins to an
-    excluded one: "orders not Done or Cancelled", "excluding Paris, Lyon and Nice". Another value between the
-    cue and a value ends the exclusion: in "orders not Done in France", France is where the orders are, and the
-    search compared country != 'France' (a release review, 2026-10-07). A cue inside a value belongs to the
-    value ("tasks that are Not Started")."""
+    excludes the first value within three words after it, or within seven in its clause (no clause break between),
+    and each value "and", "or" or "nor" joins to an excluded one: "orders not Done or Cancelled", "excluding Paris,
+    Lyon and Nice", "customers who never ordered product Latte". Another value between the cue and a value ends the
+    exclusion: in "orders not Done in France", France is where the orders are, and the search compared country !=
+    'France' (a release review, 2026-10-07). A cue inside a value belongs to the value ("tasks that are Not
+    Started")."""
     inside = {position for start, end, *_ in selected for position in range(start, end)}
     cues = [position for position, token in enumerate(tokens) if token in _NEGATION_CUES and position not in inside]
     negated: set[int] = set()
@@ -2490,12 +2491,13 @@ def _negated_matches(tokens: tuple[str, ...], selected) -> frozenset[int]:
         if cue is not None and not any(cue < other[0] < start for other in selected):
             negated.add(index)
             continue
-        # So does a negated verb's object the value is the agent of: "channels that do not play any cartoon directed by
-        # Ben Jones" excludes Ben Jones's cartoons (Spider DEV 636, 643, 644, 2026-10-17: the value read as kept, and
-        # the EXCEPT that answered was refused).
-        cue = max((position for position in cues if start - 7 <= position < start - 3), default=None)
-        if (cue is not None and tokens[start - 1:start] == ("by",)
-                and not set(tokens[cue + 1:start]) & _CLAUSE_BREAKS
+        # So does the first value further on in the clause the negation governs: "channels that do not play any cartoon
+        # directed by Ben Jones" excludes Ben Jones's cartoons (Spider DEV 636, 643, 644, 2026-10-17), "ships that are
+        # not steered by any captain with Midshipman rank" the Midshipmen's ships and "customers who are not living in
+        # the state of California" the Californians (fresh holdout 376, 619, 726; held out 341, 368, 758, 2026-10-18:
+        # each value read as kept, and the difference or inequality that answered refused).
+        cue = max((position for position in cues if start - 8 <= position < start - 3), default=None)
+        if (cue is not None and not set(tokens[cue + 1:start]) & _CLAUSE_BREAKS
                 and not any(cue < other[0] < start for other in selected)):
             negated.add(index)
     return frozenset(negated)

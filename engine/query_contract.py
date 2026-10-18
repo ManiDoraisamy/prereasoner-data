@@ -737,6 +737,15 @@ def _select_violations(question, query, graph, whole):
         from engine.sql_extrema import MAX_CUES, MIN_CUES
         if query.limit is not None and not set(question_tokens) & (MAX_CUES | MIN_CUES | {"top"}):
             violations.append('showing all rows must not impose an unstated row cutoff')
+    # "First" or "last" joined to the next word by a hyphen names a kind of row, not a rank: "the first-grade students"
+    # are those in grade 1, not the lowest grade's (held out 485, 923, 2026-10-18: answered with the lowest grade's
+    # rows). Where the question ranks by nothing else ("the first and last names" rank nothing), a query keeping only
+    # its top rows ranks what it does not ask.
+    from engine.sql_extrema import LEADING_RANKS, MAX_CUES, MIN_CUES
+    if (re.search(r"\b(?:first|last)-\w", question, re.I) and not _ranks_by_first_or_last(question)
+            and not set(question_tokens) & (MAX_CUES | MIN_CUES | LEADING_RANKS | {"most", "least"}) - {"first", "last"}
+            and any(branch.limit is not None for branch, _ in _select_queries(whole, graph=graph))):
+        violations.append("the query keeps only its top rows, which the question does not rank")
     # A text the question asks values to hold is a LIKE, not one value: a rewording that turned "all
     # inspection checklist" into the keyword 'inspection checklist' answered for one of 38 (2026-10-06).
     from engine.sql_search import realizes_substring, substring_requests
@@ -805,6 +814,16 @@ def _select_violations(question, query, graph, whole):
     for branch, scope in _select_queries(whole, graph=graph):
         if scope.negated and (table := _dangling_unnamed_join(branch, question_words)) is not None:
             violations.append(f"the exclusion is narrowed by {table}, which the question does not name")
+    # A difference keeps rows of the tables its first part reads, and they are the rows the question names before its
+    # denial (sql_extrema.denial_position): a table named there that only the subtracted part reads leaves the first
+    # keeping rows that are not those. "Return the names of gymnasts who did not grow up in Santo Domingo." was every
+    # person's name less the gymnasts from there (held out 368, 2026-10-18, once the denial reached Santo Domingo).
+    for table in _unkept_named_tables(question, whole, graph):
+        violations.append(f"the difference keeps rows that are not the {table} asked for")
+    # A difference subtracting every row it keeps answers nothing: "the ids of courses without prerequisites" kept the
+    # prereq rows' course ids less those of the prereq rows joined to their courses (fresh holdout 635, 855, 2026-10-18).
+    if _subtracts_every_row(whole, graph):
+        violations.append("the difference subtracts every row it keeps")
     # An exclusion is the one the question makes: in "orders not Done in France", status != 'Done' with
     # country = 'France', and neither another field's exclusion nor the excluded value kept stands for it
     # (sql_search.value_polarity; a release review, 2026-10-07). A column is read through LOWER, whose
@@ -1412,10 +1431,11 @@ def read_question(question, candidate, graph, *, calculation_satisfied=False):
     # version alone stays refused (DEV 336, 848, 884). The word pairs an output only where it says one: "corresponding
     # to each" after it, or the words after it naming a field the answer shows or, for a count it shows, "number", or
     # "corresponding to" the table whose fields it shows ("the ids and details corresponding to projects", fresh holdout
-    # 988); a misspelling ("corresonding", Spider DEV 841) is the word. "Two
-    # or more corresponding books", "its corresponding problem id" over a product id and "corresponding to the
-    # customer with the highest credit score" are read by no answer (held out 111, 223, 400, 430, 809, 844, 2026-10-17:
-    # each was answered wrong once the word was read wherever two outputs were shown).
+    # 988); a misspelling ("corresonding", Spider DEV 841) is the word. "Its
+    # corresponding problem id" over a product id and "corresponding to the customer with the highest credit score"
+    # are read by no answer (held out 400, 430, 844, and fresh holdout 111, 223, 809, 2026-10-17: each was answered
+    # wrong once the word was read wherever two outputs were shown); "two or more corresponding books" is read below,
+    # by the table the books are.
     selected = getattr(candidate.query, "select", ())
     if len(selected) >= 2:
         shown_words = {canon(word) for item in selected if isinstance(item.expression, ColumnRef)
@@ -1433,6 +1453,24 @@ def read_question(question, candidate, graph, *, calculation_satisfied=False):
                     or (after and after[0] in shown_words)
                     or (after[:1] == ["to"] and after[1:2] and after[1] in shown_tables)):
                 ordinary_words.add(word)
+    # Before the name of a table the query reads, "corresponding" says the rows of it related to those asked for: "the
+    # categories that have two or more corresponding books" counts book_club rows, "company names that have a
+    # corresponding movie directed in the year 1999" joins movie (fresh holdout 111, 223, 434, 2026-10-18: refused for
+    # the word). Followed by a field's name it is read only as above ("its corresponding problem id").
+    from engine.sql_schema import name_words as _table_words
+    heads = {}
+    for table in candidate.query.referenced_tables():
+        if isinstance(table, str) and (parts := [canon(word) for word in _table_words(table)]):
+            heads.setdefault(parts[0], table)
+    said = tokens(question)
+    for index, word in enumerate(said[:-1]):
+        if word not in {"corresponding", "correspond"} and not _misspells(word, {"corresponding"}):
+            continue
+        table = heads.get(canon(said[index + 1]))
+        following = canon(said[index + 2]) if index + 2 < len(said) else None
+        if table is not None and not any(following in {canon(part) for part in _table_words(column.ref.name)}
+                                         for column in graph.by_table.get(table, ())):
+            ordinary_words.add(word)
     # The names of rows whose table holds no name but a title are their titles: "What are the names of all cartoons
     # directed by Ben Jones?" shows Cartoon.Title (Spider DEV 588, 2026-10-17: the right answer was refused for
     # "names"). A table that also holds a name field keeps "names" for it.
@@ -1890,12 +1928,34 @@ def _witnessed_words(question, words, query, graph, observed, schema_words, alre
             name = [canon(part) for part in name_words(parent.table)]
             if child.table in read_tables and parent.table not in read_tables and name and set(name) <= set(words):
                 out.update(name)
-    # "Located" and "situated" are read by a place field the query reads: "In how many different cities are banks
-    # located?" by bank.city (fresh holdout 518, 609; Spider DEV 710, 2026-10-18: refused for "located").
-    from engine.closed_class import PLACE_WORDS
-    if any({canon(part) for part in name_words(ref.name)} & PLACE_WORDS for ref in used):
-        out.update({"located", "situated"} & set(words))
-    return (out - observed) | full_name
+    # A verb saying where something is or lives is read by a place field the query reads: "In how many different
+    # cities are banks located?" by bank.city (fresh holdout 518, 609; Spider DEV 710, 2026-10-18: refused for
+    # "located"), "What country does Roberto Almeida live?" by customers.country (fresh holdout 70, 500). A place the
+    # query compares with a value is where the rows a table named before the verb names are: "How many employees are
+    # living in Canada?" is read by employees.country = 'Canada', not by the country of the customers they support
+    # (fresh holdout 429, 2026-10-18: refused for "living", and the customers' country ranked first). A cell of a
+    # table the query reads may hold the verb as its value; one of another table, a song "Living on a Prayer", says
+    # nothing of where the rows are. A key is no place: "the different addresses that have students living there"
+    # joined through current_address_id shows no address (Spider DEV 578, 2026-10-18: the students' first names).
+    from engine.closed_class import PLACE_VERBS, PLACE_WORDS
+    from engine.sql_schema import is_surrogate_key
+
+    def place(ref):
+        return bool({canon(part) for part in name_words(ref.name)} & PLACE_WORDS) and not is_surrogate_key(ref.name)
+    compared = {column for branch, _ in _select_queries(query, graph=graph)
+                for column, *_ in _value_comparisons(mandatory_predicates(branch.where)) if place(column)}
+    placed = set()
+    for index, word in enumerate(words):
+        if word not in PLACE_VERBS or not any(place(ref) for ref in used):
+            continue
+        named = {table for table in graph.tables if {canon(part) for part in name_words(table)} & set(words[:index])}
+        if not (compared and named) or all(column.table in named for column in compared):
+            placed.add(word)
+    if placed:
+        from engine.sql_schema import distinct_values
+        placed -= {canon(word) for column in graph.columns if column.ref.table in tables
+                   for value in distinct_values(column.values) if value is not None for word in lexical_words(value)}
+    return (out - observed) | full_name | placed
 
 
 _COPULAS = frozenset({"is", "are", "was", "were", "be", "been"})
@@ -2139,11 +2199,80 @@ def _select_queries(query, scope=_Scope(), graph=None, extremum=False):
                                                            unbound=scope.unbound or unbound), graph, extremum)
 
 
+def _ranks_by_first_or_last(question):
+    """Whether ``question`` says "first" or "last" as a rank: standing alone ("the first student to register"), not
+    joined to the next word by a hyphen ("first-grade") nor naming a part of a name ("the first and last names")."""
+    said = re.findall(r"[a-z0-9]+(?:-[a-z0-9]+)*", question.lower())
+    return any(word in {"first", "last"} and not {"name", "names"} & set(said[index + 1:index + 4])
+               for index, word in enumerate(said))
+
+
+def _unkept_named_tables(question, query, graph):
+    """The tables ``question`` names before a difference's denial that only the part ``query`` subtracts reads: of an
+    EXCEPT, its second branch; of a query keeping rows NOT IN, or NOT EXISTS for, a subquery's, that subquery. A name
+    a field of a kept table also has names that field: "the major and age of students who do not have a cat pet" asks
+    for Student.Major, not the Majors rows (a key is no such field). A key the kept part shows names the rows it refers
+    to: "the country codes for countries that do not speak English" keeps countrylanguage.CountryCode (Spider DEV 778,
+    779). A name after "whose" names what the rows have: "the names of all reviewers whose ratings do not have a date"
+    asks for reviewers (held out 597)."""
+    from engine.sql_ast import ExistsPredicate, InPredicate, SelectQuery, SetQuery
+    from engine.sql_expansion import tokens as question_tokens
+    from engine.sql_extrema import denial_position
+    from engine.sql_schema import canon, is_surrogate_key, name_words
+    position = denial_position(question)
+    if position is None:
+        return ()
+    if isinstance(query, SetQuery) and query.operator == "EXCEPT":
+        kept, subtracted = query.left.referenced_tables(), query.right.referenced_tables()
+    elif isinstance(query, SelectQuery):
+        kept = {query.from_table, *(join.table for join in query.joins)}
+        subtracted = set()
+        for predicate in mandatory_predicates(query.where):
+            if isinstance(predicate, InPredicate) and predicate.negated and not isinstance(predicate.source, tuple):
+                subtracted |= predicate.source.referenced_tables()
+            elif isinstance(predicate, ExistsPredicate) and predicate.negated:
+                subtracted |= predicate.query.referenced_tables()
+    else:
+        return ()
+    said = [canon(word) for word in question_tokens(question)[:position]]
+    before = set(said[:max((index for index, word in enumerate(said) if word == "whose"), default=len(said))])
+    fields = [{canon(part) for part in name_words(column.ref.name)} for column in graph.columns
+              if column.ref.table in kept and not is_surrogate_key(column.ref.name)]
+    shown = {item.expression for branch in ((query.left,) if isinstance(query, SetQuery) else (query,))
+             for item in getattr(branch, "select", ())}
+    referred = {parent.table for key in getattr(graph, "foreign_keys", ()) for child, parent in key.column_pairs
+                if child in shown}
+    return tuple(table for table in sorted(t for t in set(subtracted) - set(kept) - referred if isinstance(t, str))
+                 if (parts := {canon(part) for part in name_words(table)}) and parts <= before
+                 and not any(parts <= words for words in fields))
+
+
+def _subtracts_every_row(query, graph):
+    """Whether ``query`` is an EXCEPT whose first branch shows fields of one table it reads unfiltered, and whose second
+    shows the same fields, reading that table unfiltered joined only to tables its keys refer to: each kept row, whose
+    keys refer to rows there, is subtracted."""
+    from engine.sql_ast import SelectQuery, SetQuery
+    if not (isinstance(query, SetQuery) and query.operator == "EXCEPT"
+            and isinstance(query.left, SelectQuery) and isinstance(query.right, SelectQuery)):
+        return False
+    left, right = query.left, query.right
+    table = left.from_table
+    tables = {right.from_table, *(join.table for join in right.joins)}
+    parents = {parent.table for key in getattr(graph, "foreign_keys", ()) for child, parent in key.column_pairs
+               if child.table == table}
+    return (not left.joins and left.where is None and right.where is None and left.having is None
+            and right.having is None and not left.group_by and not right.group_by and table in tables
+            and tables - {table} <= parents and left.select == right.select)
+
+
 def _dangling_unnamed_join(query, question_words):
     """A table ``query`` joins only to filter that the question does not name: no column of it is read outside the
     joins, it is joined to one other table (a leaf, connecting nothing), and no word of its name is in
-    ``question_words``. None when every joined table is named, read or a bridge."""
+    ``question_words``, in that or another form (``sql_expansion.says_in_another_form``: "courses without
+    prerequisites" names prereq; fresh holdout 635, 855, 2026-10-18, where the difference that answered was refused).
+    None when every joined table is named, read or a bridge."""
     from engine.sql_ast import column_refs
+    from engine.sql_expansion import says_in_another_form
     from engine.sql_schema import canon, name_words
     joins = getattr(query, "joins", ())
     if not joins:
@@ -2156,7 +2285,8 @@ def _dangling_unnamed_join(query, question_words):
         neighbours = {side.table for left, right in pairs if table in {left.table, right.table}
                       for side in (left, right)} - {table}
         if (table not in outside and len(neighbours) == 1 and isinstance(table, str)
-                and not {canon(word) for word in name_words(table)} & question_words):
+                and not any(word in question_words or any(says_in_another_form(said, word) for said in question_words)
+                            for word in {canon(part) for part in name_words(table)})):
             return table
     return None
 

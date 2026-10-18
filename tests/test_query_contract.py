@@ -2,6 +2,7 @@
 from engine.query_contract import coverage, constraint_violations
 from engine.question_rewrite import _preserves_explicit_constraints
 from engine.sql_schema import SchemaGraph
+from regress.sql_import import import_sql
 from tests.test_sql_ast import _hermetic_planner, _gemini_planner, _model_query, _request, _select
 
 TABLE = {"name": "orders", "columns": ["Amount", "city", "signed", "created"], "rows": [
@@ -1726,6 +1727,173 @@ def test_greater_than_no_number_is_read_by_its_comparison():
                 "ORDER BY age ASC")
     assert "greater" in _keyed_reading([person], [], question, listed)[1]
     assert _keyed_reading([person], [], question, compared) == (True, ())
+
+
+
+def test_living_is_read_by_a_place_field():
+    """Fresh holdout of Spider train 70, 429, 2026-10-18: "How many employees are living in Canada?" was refused for
+    "living", answered by the employees' country, a track's name holding the word. A verb saying where something lives
+    or is is read by a place field the query reads (closed_class.PLACE_VERBS), one compared with a value being of a
+    table named before the verb; a cell of a table the query does not read says nothing of it. Contrast: the country of
+    the customers the employees support does not say where they live, a count of the employees reads no place, a key
+    naming an address is no place (Spider DEV 578: the first version answered "the different addresses that have
+    students living there" with the students' first names), and a status of the employees holding the word asks for
+    it."""
+    employees = {"name": "employees", "columns": ["id", "last_name", "first_name", "country"],
+                 "rows": [[1, "Adams", "Andrew", "Canada"], [2, "Gill", "Jane", "USA"]]}
+    customers = {"name": "customers", "columns": ["id", "first_name", "country", "support_rep_id"],
+                 "rows": [[1, "Luis", "Canada", 2], [2, "Leonie", "Germany", 1]]}
+    tracks = {"name": "tracks", "columns": ["id", "name"], "rows": [[1, "Living on a Prayer"], [2, "Hey Jude"]]}
+    keys = [("customers", "support_rep_id", "employees", "id")]
+    tables = [employees, customers, tracks]
+    question = "How many employees are living in Canada?"
+    assert _keyed_reading(tables, keys, question, "SELECT COUNT(*) FROM employees WHERE country = 'Canada'") == (
+        True, ())
+    supported = ("SELECT COUNT(DISTINCT employees.id) FROM employees JOIN customers ON customers.support_rep_id = "
+                 "employees.id WHERE customers.country = 'Canada'")
+    assert "living" in _keyed_reading(tables, keys, question, supported)[1]
+    assert "living" in _keyed_reading(tables, keys, "How many employees are living?",
+                                      "SELECT COUNT(*) FROM employees")[1]
+    addresses = {"name": "Addresses", "columns": ["address_id", "city"], "rows": [[1, "Lake Ryan"], [2, "Port Kimberly"]]}
+    students = {"name": "Students", "columns": ["student_id", "first_name", "current_address_id"],
+                "rows": [[1, "Timmothy", 1], [2, "Hobart", 2]]}
+    assert "living" in _keyed_reading(
+        [addresses, students], [("Students", "current_address_id", "Addresses", "address_id")],
+        "What are the different addresses that have students living there?",
+        "SELECT DISTINCT Students.first_name FROM Addresses JOIN Students ON Students.current_address_id = "
+        "Addresses.address_id")[1]
+    staff = {"name": "employees", "columns": ["id", "last_name", "country", "status"],
+             "rows": [[1, "Adams", "Canada", "Living"], [2, "Gill", "USA", "Retired"]]}
+    assert "living" in _keyed_reading([staff], [], question,
+                                      "SELECT COUNT(*) FROM employees WHERE country = 'Canada'")[1]
+
+
+def test_corresponding_before_a_read_table_names_its_rows():
+    """Fresh holdout of Spider train 111, 223, 434, 2026-10-18: "What categories have two or more corresponding books
+    that were made after 1989?" was refused for "corresponding", answered by the categories of two or more book_club
+    rows. Before the name of a table the query reads, "corresponding" says its rows related to those asked for.
+    Contrast: before a noun naming no table the query reads it is unread, and so before a field's name ("its
+    corresponding problem id")."""
+    books = {"name": "book_club", "columns": ["book_club_id", "Year", "Author", "Book_Title", "Category"],
+             "rows": [[1, 1989, "Michael Nava", "Goldenboy", "Gay M/SF"], [2, 1990, "Lev Raphael", "Somebody", "Gay M/SF"],
+                      [3, 1991, "Nikki Baker", "In the Game", "Lesb. M/SF"]]}
+    sql = "SELECT Category FROM book_club WHERE Year > 1989 GROUP BY Category HAVING COUNT(*) >= 2"
+    asked = "What categories have two or more corresponding books that were made after 1989?"
+    assert _keyed_reading([books], [], asked, sql) == (True, ())
+    assert "corresponding" in _keyed_reading(
+        [books], [], "What categories have two or more corresponding films that were made after 1989?", sql)[1]
+    problems = {"name": "Problems", "columns": ["problem_id", "product_id", "date_reported"],
+                "rows": [[1, 4, "2010-01-01"], [2, 5, "2011-02-02"]]}
+    assert "corresponding" in _keyed_reading(
+        [problems], [], "What is the oldest problem and its corresponding problem product?",
+        "SELECT problem_id FROM Problems ORDER BY date_reported ASC LIMIT 1")[1]
+
+
+def test_a_table_named_in_another_form_does_not_narrow_an_exclusion():
+    """Fresh holdout of Spider train 635, 855, 2026-10-18: "What are the ids of courses without prerequisites?" refused
+    the courses NOT IN those a prereq row names, as narrowed by prereq, "which the question does not name", and answered
+    with prereq rows less themselves (none). A table the question names in another form (sql_expansion.
+    says_in_another_form: "prerequisites" spells out prereq) is named. Contrast: a table named in no form still
+    narrows the exclusion."""
+    course = {"name": "course", "columns": ["course_id", "title", "credits"],
+              "rows": [["BIO-101", "Intro. to Biology", 4], ["BIO-301", "Genetics", 4], ["CS-101", "Intro. to CS", 4]]}
+    prereq = {"name": "prereq", "columns": ["course_id", "prereq_id"], "rows": [["BIO-301", "BIO-101"]]}
+    sql = ("SELECT course_id FROM course WHERE course_id NOT IN "
+           "(SELECT course.course_id FROM course JOIN prereq ON prereq.course_id = course.course_id)")
+    assert _violations([course, prereq], "What are the ids of courses without prerequisites?", sql) == ()
+    assert _violations([course, prereq], "What are the ids of courses without requirements?", sql) == (
+        "the exclusion is narrowed by prereq, which the question does not name",)
+
+
+
+def test_a_difference_keeps_the_rows_named_before_its_denial():
+    """Held out 368, 2026-10-18: "Return the names of gymnasts who did not grow up in Santo Domingo." was answered,
+    once the denial reached Santo Domingo, by every person's name less the gymnasts from there: the gymnasts were read
+    only by the subtracted branch. A table the question names before a difference's denial (sql_extrema.
+    denial_position) is read by the part the difference keeps, an EXCEPT's first branch or the query a NOT IN keeps.
+    Contrast: the rows named after the denial ("the people who are not gymnasts") may be read by the subtracted part
+    alone, and the gymnasts' own rows kept answer it."""
+    people = {"name": "people", "columns": ["People_ID", "Name", "Hometown"],
+              "rows": [[1, "Paul Hamm", "Santo Domingo"], [2, "Lorraine Sutton", "Bonao"], [3, "Ruby Sanchez", "Bonao"]]}
+    gymnast = {"name": "gymnast", "columns": ["Gymnast_ID", "Floor_Exercise_Points"], "rows": [[1, 9.725], [2, 9.7]]}
+    from engine.sql_ast import render_query
+    from regress.sql_import import import_sql
+    graph = SchemaGraph.from_tables([people, gymnast], [("gymnast", "Gymnast_ID", "people", "People_ID")])
+
+    def violations(question, sql):
+        return constraint_violations(question, import_sql(sql, graph), graph)
+    question = "Return the names of gymnasts who did not grow up in Santo Domingo."
+    unkept = "the difference keeps rows that are not the gymnast asked for"
+    subtracted = ("SELECT people.Name FROM people EXCEPT SELECT people.Name FROM gymnast JOIN people ON "
+                  "gymnast.Gymnast_ID = people.People_ID WHERE people.Hometown = 'Santo Domingo'")
+    assert unkept in violations(question, subtracted)
+    kept_out = ("SELECT Name FROM people WHERE People_ID NOT IN (SELECT gymnast.Gymnast_ID FROM gymnast JOIN people "
+                "ON gymnast.Gymnast_ID = people.People_ID WHERE people.Hometown = 'Santo Domingo')")
+    assert unkept in violations(question, kept_out)
+    kept = ("SELECT people.Name FROM gymnast JOIN people ON gymnast.Gymnast_ID = people.People_ID "
+            "WHERE people.Hometown != 'Santo Domingo'")
+    assert violations(question, kept) == (), render_query(import_sql(kept, graph))
+    assert unkept not in violations("Return the names of the people who are not gymnasts.",
+                                    "SELECT Name FROM people EXCEPT SELECT people.Name FROM gymnast JOIN people ON "
+                                    "gymnast.Gymnast_ID = people.People_ID")
+    # A key the kept part shows names the rows it refers to (Spider DEV 778, 779: the first version refused "the
+    # country codes for countries that do not speak English" over countrylanguage.CountryCode), and a name after
+    # "whose" names what the rows have (held out 597: "reviewers whose ratings do not have a date").
+    country = {"name": "country", "columns": ["Code", "Name"], "rows": [["ABW", "Aruba"], ["AFG", "Afghanistan"]]}
+    language = {"name": "countrylanguage", "columns": ["CountryCode", "Language"],
+                "rows": [["ABW", "Dutch"], ["ABW", "English"], ["AFG", "Pashto"]]}
+    spoken = SchemaGraph.from_tables([country, language], [("countrylanguage", "CountryCode", "country", "Code")])
+    codes = ("SELECT countrylanguage.CountryCode FROM countrylanguage EXCEPT SELECT countrylanguage.CountryCode FROM "
+             "country JOIN countrylanguage ON countrylanguage.CountryCode = country.Code WHERE "
+             "countrylanguage.Language = 'English'")
+    assert "the difference keeps rows that are not the country asked for" not in constraint_violations(
+        "What are the country codes for countries that do not speak English?", import_sql(codes, spoken), spoken)
+    reviewer = {"name": "Reviewer", "columns": ["rID", "name"], "rows": [[201, "Sarah Martinez"], [202, "Daniel Lewis"]]}
+    rating = {"name": "Rating", "columns": ["rID", "mID", "stars"], "rows": [[201, 101, 2], [201, 106, 4]]}
+    rated = SchemaGraph.from_tables([reviewer, rating], [("Rating", "rID", "Reviewer", "rID")])
+    unrated = ("SELECT DISTINCT Reviewer.name FROM Reviewer WHERE Reviewer.rID NOT IN (SELECT Reviewer.rID FROM Rating "
+               "JOIN Reviewer ON Rating.rID = Reviewer.rID)")
+    assert "the difference keeps rows that are not the Rating asked for" not in constraint_violations(
+        "What are the different names of all reviewers whose ratings do not have a date field?",
+        import_sql(unrated, rated), rated)
+
+
+def test_a_difference_subtracting_every_row_it_keeps_answers_nothing():
+    """Fresh holdout of Spider train 635, 855, 2026-10-18: "What are the ids of courses without prerequisites?" was
+    answered with the prereq rows' course ids less those of the prereq rows joined to their courses, which is no row.
+    An EXCEPT whose second branch reads its first branch's table unfiltered, joined only to tables that table's keys
+    refer to, subtracts every row it keeps, and is refused. Contrast: a filter in the second branch subtracts only the
+    rows it keeps."""
+    course = {"name": "course", "columns": ["course_id", "title"],
+              "rows": [["BIO-101", "Intro. to Biology"], ["BIO-301", "Genetics"], ["CS-101", "Intro. to CS"]]}
+    prereq = {"name": "prereq", "columns": ["course_id", "prereq_id"], "rows": [["BIO-301", "BIO-101"]]}
+    graph = SchemaGraph.from_tables([course, prereq], [("prereq", "course_id", "course", "course_id"),
+                                                       ("prereq", "prereq_id", "course", "course_id")])
+    question = "What are the ids of courses without prerequisites?"
+    empty = ("SELECT prereq.course_id FROM prereq EXCEPT SELECT prereq.course_id FROM course JOIN prereq ON "
+             "prereq.course_id = course.course_id")
+    assert "the difference subtracts every row it keeps" in constraint_violations(
+        question, import_sql(empty, graph), graph)
+    filtered = empty + " WHERE course.title = 'Genetics'"
+    assert "the difference subtracts every row it keeps" not in constraint_violations(
+        "What are the ids of courses with prerequisites other than Genetics?", import_sql(filtered, graph), graph)
+
+
+def test_a_hyphenated_first_ranks_nothing():
+    """Held out 485, 923, 2026-10-18: "What are the first and last names of the first-grade students who are NOT taught
+    by teacher OTHA MOYER?" was answered by the lowest grade's rows: "first" was read as a rank, the query's
+    FirstName spelling the word. "First" or "last" joined to the next word by a hyphen names a kind of row, and where
+    the question ranks by nothing else a query keeping its top rows is refused. Contrast: "the first student to
+    register" ranks."""
+    students = {"name": "list", "columns": ["LastName", "FirstName", "Grade", "Classroom"],
+                "rows": [["CAR", "MAUDE", 1, 101], ["KRISTENSEN", "STORMY", 6, 112], ["VANDERWOUDE", "SHERWOOD", 3, 107]]}
+    question = "What are the first and last names of the first-grade students?"
+    ranked = "SELECT FirstName, LastName FROM list ORDER BY Grade ASC LIMIT 1"
+    assert _violations([students], question, ranked) == (
+        "the query keeps only its top rows, which the question does not rank",)
+    assert _violations([students], question, "SELECT FirstName, LastName FROM list WHERE Grade = 1") == ()
+    assert "the query keeps only its top rows, which the question does not rank" not in _violations(
+        [students], "What are the first and last names of the first student in the lowest grade?", ranked)
 
 
 TESTS =[value for name, value in globals().copy().items() if name.startswith('test_') and callable(value)]

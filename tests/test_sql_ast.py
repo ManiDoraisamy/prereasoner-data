@@ -4091,6 +4091,59 @@ def test_a_negated_verbs_agent_is_excluded():
         assert ben in kept, (question, kept)
 
 
+
+def test_a_value_in_a_negated_clause_is_excluded():
+    """Fresh holdout of Spider train 376, 447, 619, 726 and held out 341, 368, 758, 2026-10-18: "Find the name and flag
+    of ships that are not steered by any captain with Midshipman rank." read Midshipman as a kept value, the negation
+    more than three words before it and no "by" before the value, and the gate refused the difference that answers;
+    "customers who never ordered product Latte" read no negation at all. The first value within seven words of a
+    negation in its clause is excluded, and "never" negates (sql_search._negated_matches). Contrast: a clause break or
+    another value between them ends the negation, and without one the value is kept."""
+    from engine.sql_search import value_polarity
+    ships = {"name": "Ship", "columns": ["Ship_ID", "Name", "Flag"], "rows": [
+        [1, "HMS Atalanta", "Panama"], [2, "HMS Bacchus", "Malta"], [3, "HMS Cerberus", "Panama"], [4, "HMS Dido", "Malta"]]}
+    captains = {"name": "captain", "columns": ["Captain_ID", "Name", "Ship_ID", "Rank"], "rows": [
+        [1, "Captain Sir Henry Langford", 1, "Midshipman"], [2, "Captain Beves Conway", 2, "Lieutenant"],
+        [3, "Lieutenant Hugh Bolitho", 3, "Midshipman"]]}
+    fks = [{"from_table": "captain", "from_col": "Ship_ID", "to_table": "Ship", "to_col": "Ship_ID"}]
+    graph = SchemaGraph.from_tables([ships, captains], fks)
+    rank = ("captain", "Rank", "Midshipman")
+    question = "Find the name and flag of ships that are not steered by any captain with Midshipman rank."
+    kept, excluded = value_polarity(question, graph)
+    assert rank not in kept and any(rank in group for group in excluded), (kept, excluded)
+    served = _hermetic_planner().serve([ships, captains], question, fks)
+    assert served.get("valid") and sorted(served["result"]["rows"]) == [["HMS Bacchus", "Malta"], ["HMS Dido", "Malta"]], (
+        served.get("sql"), served.get("reason"))
+    for question in ("Find the name of ships that are steered by a captain with Midshipman rank.",
+                     "Find the name of ships that are not new and are steered by a captain with Midshipman rank.",
+                     "Find the name of ships that are not from Panama steered by a captain with Midshipman rank."):
+        kept, _ = value_polarity(question, graph)
+        assert rank in kept, (question, kept)
+    orders = {"name": "Orders", "columns": ["order_id", "customer_name", "product"],
+              "rows": [[1, "Ann", "Latte"], [2, "Bob", "Espresso"]]}
+    kept, excluded = value_polarity("Which customers never ordered a Latte?", SchemaGraph.from_tables([orders], []))
+    assert any(("Orders", "product", "Latte") in group for group in excluded), (kept, excluded)
+
+
+
+def test_a_preposition_says_a_trips_end():
+    """Held out 679 and fresh holdout of Spider train 992, 2026-10-18: "What is the average distance and average price
+    for flights from Los Angeles." compared the destination with 'Los Angeles', which both ends hold: no travel word
+    was said, and the model's reading ranked the destination first. The preposition before a value a trip's end
+    compares says which end (sql_rank.travel_preposition): "from" the origin, "to" the destination."""
+    flight = {"name": "flight", "columns": ["flno", "origin", "destination", "distance", "price"], "rows": [
+        [7, "Los Angeles", "Sydney", 7487, 1000.0], [13, "Los Angeles", "Chicago", 1749, 220.98],
+        [346, "Los Angeles", "Dallas", 1251, 182.0], [387, "Los Angeles", "Boston", 2606, 261.56],
+        [33, "Los Angeles", "Honolulu", 2551, 375.23], [34, "Chicago", "Los Angeles", 1749, 425.98],
+        [68, "Chicago", "New York", 802, 202.45], [76, "Dallas", "Los Angeles", 1251, 220.98]]}
+    served = _hermetic_planner().serve([flight], "What is the average distance and average price for flights from Los "
+                                                "Angeles.", [])
+    assert served.get("valid") and "\"origin\" = 'Los Angeles'" in served["sql"], served.get("sql")
+    served = _hermetic_planner().serve([flight], "What is the average distance and average price for flights to Los "
+                                                "Angeles.", [])
+    assert served.get("valid") and "\"destination\" = 'Los Angeles'" in served["sql"], served.get("sql")
+
+
 def test_a_comparison_symbol_is_its_word():
     """Fresh holdout of Spider train 103, 2026-10-17: "Find the names of all instructors in Comp. Sci. department with
     salary > 80000." compared salary = 80000: the question's words hold no ">". Selection reads a comparison symbol
@@ -8281,6 +8334,27 @@ def test_identity_for_an_exclusion_is_the_entitys_own():
     assert SchemaGraph.from_tables([keyless], []).identifying_column("Student").name == "Name"
 
 
+
+def test_the_rows_of_each_entity_are_kept_by_their_key():
+    """A Gemini rewording of Spider DEV 62, 2026-10-18: "What is the Major and Age of each student who does not have a
+    pet ..." was answered by an EXCEPT of (major, age), which removed Bo with Ann, who shares both: "each" was read as
+    the table's name, so the question was not read as asking for fields of students' rows
+    (sql_extrema._describes_rows). Contrast: the values a question asks for are a difference of values."""
+    student = {"name": "Student", "columns": ["StuID", "Name", "Major", "Age"],
+               "rows": [[1, "Ann", 600, 19], [2, "Bo", 600, 19], [3, "Cy", 520, 20]]}
+    pets = {"name": "Pets", "columns": ["PetID", "PetType"], "rows": [[10, "cat"], [11, "dog"]]}
+    has_pet = {"name": "Has_Pet", "columns": ["StuID", "PetID"], "rows": [[1, 10], [3, 11]]}
+    keys = [{"from_table": "Has_Pet", "from_col": "StuID", "to_table": "Student", "to_col": "StuID"},
+            {"from_table": "Has_Pet", "from_col": "PetID", "to_table": "Pets", "to_col": "PetID"}]
+    served = _hermetic_planner().serve([student, pets, has_pet],
+                                       "What is the Major and Age of each student who does not have a cat pet?", keys)
+    assert sorted(tuple(row) for row in served["result"]["rows"]) == [(520, 20), (600, 19)], served.get("sql")
+    from engine.sql_extrema import _describes_rows
+    from engine.sql_expansion import tokens
+    assert _describes_rows(tokens("the major and age of each student who does not have a cat"), "Student")
+    assert not _describes_rows(tokens("the majors that each student has"), "Student")
+
+
 def test_a_ranking_keeps_the_rows_its_number_says_and_shows_them():
     """The review of 2026-10-11 (F5): "the names of the two people with the largest Age" was refused: the search kept
     one row unless the number stood beside "largest" or after "top", while the question contract read "two" as the
@@ -8864,6 +8938,8 @@ TESTS = [
     test_a_field_two_tables_share_is_the_one_whose_table_is_named_before_it,
     test_most_before_a_tables_name_counts_its_rows,
     test_a_negated_verbs_agent_is_excluded,
+    test_a_value_in_a_negated_clause_is_excluded,
+    test_a_preposition_says_a_trips_end,
     test_a_comparison_symbol_is_its_word,
     test_most_recently_ranks_by_a_date,
     test_a_count_fields_name_counts_nothing,
@@ -9075,6 +9151,7 @@ TESTS = [
     test_how_many_entities_with_a_count_threshold_counts_the_ones_that_qualify,
     test_each_count_the_question_requires_is_met_on_its_own_rows,
     test_identity_for_an_exclusion_is_the_entitys_own,
+    test_the_rows_of_each_entity_are_kept_by_their_key,
     test_a_ranking_keeps_the_rows_its_number_says_and_shows_them,
     test_each_coordinated_aggregate_word_takes_its_own_field,
     test_extrema_expansion_guards_multi_aggregate_and_can_be_disabled,

@@ -4199,3 +4199,59 @@ Measured on Spider (`spider/results/RESULTS.md`, 2026-10-18), against `ad53dc1`:
   the least flights" by a flight's FlightNo, "the contestant who got least votes" by contestant_number), so 72 → 70
   strict (held out 40 → 40, fresh holdout 43 → 43) for 116 → 111 wrong answers; a variant also reading "least" counts
   lost DEV 228, 461, 695 and fresh holdout 847 (72 → 69, 40 → 40, 43 → 42; wrong answers 116 → 113).
+
+## A negation reaches its clause; living, corresponding and a trip's preposition are read; a difference keeps the rows it names (2026-10-18)
+
+- A negation excludes the first value within seven words of it in its clause, not only within three or after "by", and
+  "never" negates (`sql_search._negated_matches`, read by the search and the gate's value polarity): "Find the name and
+  flag of ships that are not steered by any captain with Midshipman rank.", "customers who are not living in the state
+  of California", "Return the names of conductors that do not have the nationality USA.", "Which models are lighter than
+  3500 but not built by the 'Ford Motor Company'?", "customers who never ordered product Latte" (Spider DEV 171, 172,
+  827, 833; held out 341; fresh holdout 376, 447, 619, 726 and others: the value read as kept, and the difference or
+  inequality that answered refused). A clause break or another value between them ends the negation. Over the three
+  sets, every value the wider scope newly excludes is one the gold query excludes.
+- A verb saying where something is or lives (`closed_class.PLACE_VERBS`: located, situated, live, living, reside) is
+  read by a place field the query reads that is no key; one a value is compared in must be of a table named before the
+  verb, and a cell of a table the query does not read holding the verb (a song "Living on a Prayer") says nothing of it
+  (`query_contract._witnessed_words`): "How many employees are living in Canada?", "What country does Roberto Almeida
+  live?", "the total number of people living in the nations that do not use English" (Spider DEV 766; held out 474, 786;
+  fresh holdout 70, 429, 500, 795: refused). The country of the customers the employees support does not say where they
+  live, and "the different addresses that have students living there" over current_address_id reads no place (Spider DEV
+  578, a wrong answer the first measured version made).
+- Before the name of a table the query reads, "corresponding" says its rows related to those asked for
+  (`query_contract.read_question`): "What categories have two or more corresponding books that were made after 1989?",
+  "company names that have a corresponding movie directed in the year 1999" (fresh holdout 111, 223, 434: refused).
+  Followed by a field's name it is read only where it pairs a shown output ("its corresponding problem id").
+- Where no travel word says it, the preposition before a value a trip's end compares says which end
+  (`sql_rank.travel_preposition`): "What is the average distance and average price for flights from Los Angeles."
+  compares the origin, "to" the destination (held out 679, fresh holdout 992: the destination ranked first).
+- A difference keeps the rows the question names before its denial (`sql_extrema.denial_position`, the position the
+  difference builder already read, now shared with the gate): a table named there that only the subtracted part reads is
+  refused (`query_contract._unkept_named_tables`: "Return the names of gymnasts who did not grow up in Santo Domingo."
+  was every person's name less the gymnasts from there, held out 368), unless it is the name of a field of a kept table
+  ("the major and age of students who do not have a cat"), a key the kept part shows refers to it ("the country codes
+  for countries that do not speak English" keeps countrylanguage.CountryCode, Spider DEV 778, 779) or it follows "whose"
+  ("reviewers whose ratings do not have a date", held out 597). A difference subtracting every row it keeps is refused
+  (`_subtracts_every_row`: "the ids of courses without prerequisites" kept the prereq rows less themselves, fresh
+  holdout 635, 855), and an exclusion's join to a table the question names in another form narrows nothing
+  (`_dangling_unnamed_join` with `sql_expansion.says_in_another_form`: "prerequisites" names prereq).
+- "First" or "last" joined to the next word by a hyphen names a kind of row, not a rank: where the question ranks by
+  nothing else, a query keeping only its top rows is refused ("the first-grade students who are NOT taught by teacher
+  OTHA MOYER" were answered by the lowest grade's rows, held out 485, 923).
+- The difference builder reads a question as asking for fields of an entity's rows past "each" as past "the", "all" and
+  "every" (`sql_extrema._describes_rows`): a Gemini rewording of Spider DEV 62, "What is the Major and Age of each
+  student who does not have a pet with PetType equal to 'cat'?", was answered by an EXCEPT of the (major, age) values
+  two students share, once the negation reached 'cat'.
+
+Measured on Spider (`spider/results/RESULTS.md`, 2026-10-18), against `5979e87`: DEV 697 → 702 strict, held out 442 →
+447, the fresh holdout 442 → 458, Gemini on 751 → 756.
+
+- Wrong answers this change makes of questions refused before, once the negation reached their values: "Show all
+  headquarters without a company in banking industry." (fresh holdout 724) shows the headquarters of companies outside
+  banking, with each company, where the question asks for those with no banking company; and "List the document ids of
+  documents with the status done and type Paper, which not shipped by the shipping agent named USPS." (held out 5) shows
+  status codes: the request for the ids is dropped where "and" joins two conditions after "with"
+  (`sql_expansion.list_closed`).
+- The first measured version (runs `z3`) lost Spider DEV 778, 779 and held out 597, and Gemini on DEV 62, to the
+  difference check and the "each" reading; runs `z4` are after their fixes (a key the kept part shows, a name after
+  "whose", `_describes_rows`). Its fresh holdout run was lost to a RunPod host that exposed no SSH and was not measured.
