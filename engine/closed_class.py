@@ -31,6 +31,9 @@ DEGREE_MODIFIERS = frozenset({"most", "least", "more", "less"})
 # The determiners saying whose a noun is: "the size of his or her dog" names no dog by "her".
 POSSESSIVE_DETERMINERS = frozenset({"my", "your", "his", "her", "its", "our", "their"})
 
+# The modifiers saying more of a noun, not whose it is: "what other details can you tell me" asks no other_details.
+GENERIC_MODIFIERS = frozenset({"other", "more", "additional", "further", "extra"})
+
 # The words a field naming where something is holds (canon() forms): "where the banks are located" is their city.
 PLACE_WORDS = frozenset({"address", "area", "city", "continent", "country", "county", "district", "location", "place",
                          "province", "region", "state", "street", "town"})

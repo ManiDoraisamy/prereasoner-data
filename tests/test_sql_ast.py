@@ -3254,6 +3254,31 @@ def test_lexicographical_order_is_alphabetical():
     assert served.get("valid") and served["result"]["rows"] == [["a"], ["c"], ["h"], ["o"]], (
         served.get("error"), served.get("sql"))
 
+
+def test_a_number_before_a_fields_two_word_name_compares_the_field():
+    """Fresh holdout 488, 673, 2026-10-19: "What are the id and name of the stations that have ever had more than 12
+    bikes available?" filled its pool with stations counted more than 12 times, every one refused, the field's name
+    following the number in two words (ExpansionSupport.threshold_targets_column). The stations whose status rows hold
+    more than 12 bikes available are served. Contrast: "more than 1 status" counts the status rows."""
+    station = {"name": "station", "columns": ["id", "name", "dock_count"],
+               "rows": [[2, "San Jose Diridon", 27], [3, "San Jose Civic Center", 15], [4, "Santa Clara", 11]]}
+    status = {"name": "status", "columns": ["station_id", "bikes_available", "docks_available"],
+              "rows": [[2, 13, 14], [2, 2, 25], [3, 9, 6], [3, 5, 10], [4, 7, 4]]}
+    fks = [{"from_table": "status", "from_col": "station_id", "to_table": "station", "to_col": "id"}]
+    planner = _hermetic_planner()
+    question = "What are the id and name of the stations that have ever had more than 12 bikes available?"
+    norm, keys, sch, _ = _request(planner, [station, status])
+    counted = [member.sql for member in planner.search_pool(question, norm, keys, sch)
+               if "HAVING" in member.sql and "COUNT" in member.sql]
+    assert not counted, counted[:2]
+    served = planner.serve([station, status], question, fks)
+    assert served.get("valid") and served["result"]["rows"] == [[2, "San Jose Diridon"]], (
+        served.get("error"), served.get("sql"))
+    served = planner.serve([station, status], "What are the names of the stations with more than 1 status?", fks)
+    assert served.get("valid") and sorted(served["result"]["rows"]) == [["San Jose Civic Center"],
+                                                                        ["San Jose Diridon"]], (
+        served.get("error"), served.get("sql"))
+
 def test_amount_of_says_a_quantity():
     """Spider DEV 290, 96 (2026-10-15): "Find the total amount of bonus given in all the evaluations." was refused, its
     SUM(Bonus) leaving "amount" unread, as was "the car with the smallest amount of horsepower". "Amount of" says a
@@ -9105,6 +9130,7 @@ TESTS = [
     test_the_pool_holds_no_exclusion_the_gate_refuses_for_its_shape,
     test_a_most_common_value_is_ranked_once,
     test_lexicographical_order_is_alphabetical,
+    test_a_number_before_a_fields_two_word_name_compares_the_field,
     test_amount_of_says_a_quantity,
     test_an_extreme_listed_beside_another_output_is_a_value,
     test_the_row_with_the_maximum_is_the_row_holding_it,

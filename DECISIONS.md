@@ -4380,3 +4380,21 @@ Measured on Spider (`spider/results/RESULTS.md`, 2026-10-19), against `bf1c242`:
   question states as a value; the gold intersects two sets of investors.
 - Spider DEV 579 ("all the student details in reversed lexicographical order") is answered now that "lexicographical" is
   read, by the students' first names rather than their other_student_details: a new wrong answer.
+
+## A table's descriptions and details are its own; a number before a field's two-word name compares the field (2026-10-19)
+
+- A table's descriptions and details are its own, by the reading that finds the owner of the names asked for
+  (`query_contract._named_name_owners` with a field of `_FIELD_KINDS`), a table holding none being described by a table
+  its keys refer to, joined to it: "What is the description of the product category with the code 'Spices'?" showed the
+  products' description, "the different descriptions for templates" the documents' (the template types' are asked), and
+  "the project details of the project" the outcomes' details (held out 265, Spider DEV 354, fresh holdout 33). A table
+  named right before the word is its owner ("the document type description"), and so is the table of a field the words
+  before it name, by the longest name they end: "the color description for the product" is Ref_Colors' and "the draft
+  detail of the document" a draft's (held out 536, 336); "other" names no owner (`closed_class.GENERIC_MODIFIERS`,
+  Spider DEV 580).
+- A number before a numeric field's name compares the field where the name follows it in two words
+  (`ExpansionSupport.threshold_targets_column`): "the stations that have ever had more than 12 bikes available" filled
+  its pool with stations counted more than 12 times (fresh holdout 488, 673).
+
+Measured on Spider (`spider/results/RESULTS.md`, 2026-10-19), against `b0d9108`: DEV 710 → 711 strict, held out 462 →
+463, the fresh holdout 473 → 476, Gemini on 765 → 766.

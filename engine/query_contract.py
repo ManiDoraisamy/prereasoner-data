@@ -1043,6 +1043,25 @@ def _select_violations(question, query, graph, whole):
         others = [ref for ref in shown_columns if is_name_column(ref.name) and ref.table not in owners | namers]
         if (own or referred) and others:
             violations.append(f"the answer shows the names of {others[0].table}, not of the {table} asked for")
+    # So are a table's descriptions and details its own, a table holding none being described by a table its keys
+    # refer to, joined to it: "What is the description of the product category with the code 'Spices'?" showed the
+    # products' description, "the project details of the project" the outcomes' details, and "the descriptions for
+    # templates" the documents' (held out 265, fresh holdout 33, 155, 340, Spider DEV 354, 2026-10-19).
+    from engine.sql_schema import canon, name_words
+    for kind, plural in _FIELD_KINDS.items():
+        def says(name, kind=kind):
+            return kind in {canon(word) for word in name_words(name)}
+        described = _named_name_owners(question, question_tokens, graph, says)
+        for table in sorted(described):
+            own = [column.ref for column in graph.by_table.get(table, ()) if says(column.ref.name)]
+            referred = set() if own else {
+                parent.table for key in graph.foreign_keys for child, parent in key.column_pairs
+                if child.table == table and parent.table != table
+                and any(says(column.ref.name) for column in graph.by_table.get(parent.table, ()))}
+            describers = {other for one, other in joined if one == table and other in referred}
+            others = [ref for ref in shown_columns if says(ref.name) and ref.table not in described | describers]
+            if (own or referred) and others:
+                violations.append(f"the answer shows the {plural} of {others[0].table}, not of the {table} asked for")
     # A count grouped by the key of the one table it reads counts one row in each group, while the tables whose foreign
     # keys refer to that key hold its occurrences: "the transaction type code that occurs the most frequently" counted
     # each type's own row, and every type tied at 1 (held-out Spider train 370, 2026-10-11). A key that itself refers
@@ -1831,15 +1850,17 @@ _OPENING_COMMANDS = frozenset({"find", "give", "list", "return", "show", "what",
                                "count"})
 
 
-def _named_name_owners(question, question_tokens, graph):
+def _named_name_owners(question, question_tokens, graph, field=None):
     """The tables whose names (or titles, or labels: sql_schema.is_name_column) the question asks for: the table named
     after the name word and "of" or "for", or after a later "for" before a clause ("the name and country of origin for
     each artist", "the names and average salaries for departments"), past a determiner, a number or "different",
     whole or but its first word ("the names of the workshop groups" names Drama_Workshop_Groups). A table named before
     another ("the album tracks") or a possessive ("the singer's songs") is not one. None when a name word follows a
     possessive or a table's name ("their instructors' names for courses"), or names no table it is "of" ("the names of
-    the counties" over county_public_safety): whose names those are is not read."""
-    from engine.closed_class import POSSESSIVE_DETERMINERS
+    the counties" over county_public_safety): whose names those are is not read. With ``field``, a word naming
+    another kind of field (_FIELD_KINDS: a description, a detail), the owners of that field instead, a table named
+    right before the word being one: "the document type description" is the document type's."""
+    from engine.closed_class import GENERIC_MODIFIERS, POSSESSIVE_DETERMINERS
     from engine.sql_expansion import WORD_NUMBERS, word_spans
     from engine.sql_schema import canon, is_name_column, name_words
     said = [canon(token) for token in question_tokens]
@@ -1867,7 +1888,7 @@ def _named_name_owners(question, question_tokens, graph):
         # One modifier before the table's name is the table's too: "the first and last name of all biology professors"
         # (held out 304, fresh holdout 481, 2026-10-18: the students of the department were named).
         if (found is None and position + 1 < len(said) and said[position] not in _NAME_OWNER_BREAKS
-                and said[position] not in POSSESSIVE_DETERMINERS and not is_name_column(said[position])):
+                and said[position] not in POSSESSIVE_DETERMINERS and not (field or is_name_column)(said[position])):
             found = named(position + 1)
         while found is not None:
             table, end = found
@@ -1877,12 +1898,36 @@ def _named_name_owners(question, question_tokens, graph):
             return None if possessive(end - 1) else table
         return None
 
+    asked_field = field or is_name_column
     owners = set()
     for index, word in enumerate(said):
-        if not is_name_column(word):
+        if not asked_field(word):
             continue
-        if index and (possessive(index - 1) or any(form and tuple(said[max(0, index - len(form)):index]) == form
-                                                   for form, _ in forms)):
+        before = next((table for form, table in forms
+                       if form and tuple(said[max(0, index - len(form)):index]) == form), None) if index else None
+        if field is not None and index and not possessive(index - 1):
+            # A field the words before name is its table's, by the longest name they end: "the color description for the
+            # product" is Ref_Colors' color_description, "the draft detail of the document" a draft's, and "the
+            # document type description" no budget type's (held out 536, 336, fresh holdout 155, 2026-10-19). "Other"
+            # says no field's owner ("what other details can you tell me about students", Spider DEV 580).
+            matched = {}
+            for column in graph.columns:
+                words = [canon(part) for part in name_words(column.ref.name)]
+                if words[-1:] != [word]:
+                    continue
+                length = 0
+                while (length + 1 < len(words) and length < index
+                       and words[-2 - length] == said[index - 1 - length]):
+                    length += 1
+                if length and not set(words[-1 - length:-1]) <= GENERIC_MODIFIERS:
+                    matched.setdefault(length, set()).add(column.ref.table)
+            explicit = matched[max(matched)] if matched else set()
+            if len(explicit) > 1:
+                continue
+            if explicit or before is not None:
+                owners |= explicit or {before}
+                continue
+        if index and (possessive(index - 1) or before is not None):
             return set()
         if said[index + 1:index + 2] in (["of"], ["for"]):
             table = owner_after(index + 2)
@@ -1898,6 +1943,11 @@ def _named_name_owners(question, question_tokens, graph):
                     owners.add(table)
                 break
     return owners
+
+
+# The kinds of field beside names (sql_schema.is_name_column) a question asks a table's own of, by the word naming them
+# (canon() forms), with the word saying them in a refusal: "the description of the product category".
+_FIELD_KINDS = {"description": "descriptions", "detail": "details"}
 
 
 # The words that open a clause, which a list's owner does not follow, and the words before an owner that name none.

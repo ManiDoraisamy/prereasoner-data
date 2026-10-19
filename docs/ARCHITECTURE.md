@@ -544,7 +544,8 @@ it, or "count", "a count of" or "the number of" before it; a number its sentence
 COUNT(*) over joins that each follow a foreign key counts the rows of the one table no join refers to, wherever the
 query counts, and so counts a field of that table holding no numbers named as the noun counted ("the country that
 speaks the largest number of languages", `query_contract._row_count_table`); a number before a numeric field's name
-compares it ("more than 30000 in salary"). Groups
+compares it ("more than 30000 in salary", "more than 12 bikes available": the name may follow the number in two
+words, `ExpansionSupport.threshold_targets_column`). Groups
 list each value once, so "different" is read by a grouped answer, the counts beside its groups included. A listing
 answers the rows the question's opening names, after a command it opens with ("what are airlines | that have
 flights"): it shows a field of such a table, of one a foreign key joins to it, or a key referring to it
@@ -603,7 +604,11 @@ The names of a table that holds a name are that name, not a joined table's ("the
 `query_contract._named_name_owners`), the owner being the table after the name word's "of" or "for" or a later "for"
 ("for each artist", "for departments"), past one modifier that is no possessive ("all biology professors"); a table
 holding no name is named by a table its keys refer to, joined to it (a professor by the EMPLOYEE row its EMP_NUM
-refers to); that field answers a request for another table's field called a name. Each
+refers to); that field answers a request for another table's field called a name. A table's descriptions and
+details are its own by the same reading (`query_contract._FIELD_KINDS`), a table holding none being described by a
+table its keys refer to, joined to it; a field the words before the word name, by the longest name they end, is its
+table's ("the color description for the product" is Ref_Colors'), and "other" names none
+(`closed_class.GENERIC_MODIFIERS`). Each
 output a list names is shown by a field it names or whose name says its words. A table joined to one other that the
 query reads nothing from and does not count, whose rows the join narrows and repeats, is named only where the question
 says its name outside the longer names of tables and fields the query reads ("document type codes" names no

@@ -623,13 +623,16 @@ class ExpansionSupport:
         ]
         if not number_positions:
             return False
+        # The field's name may follow the number in two words: "stations that have ever had more than 12 bikes
+        # available" compares bikes_available, and its count readings filled the pool (fresh holdout 488, 673,
+        # 2026-10-19).
         for schema_column in self.schema.columns:
             column = schema_column.ref
             if is_surrogate_key(column.name) or not column.type.numeric:
                 continue
             for number_position in number_positions:
                 local = set(question_tokens[
-                    max(0, number_position - 3):min(len(question_tokens), number_position + 2)
+                    max(0, number_position - 3):min(len(question_tokens), number_position + 3)
                 ])
                 if column_matches(column.name, local):
                     return True

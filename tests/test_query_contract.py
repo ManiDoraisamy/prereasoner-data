@@ -2205,6 +2205,63 @@ def test_a_table_holding_no_name_is_named_by_the_key_it_refers_by():
         "SELECT Owners.first_name, Owners.last_name, Dogs.size_code FROM Owners JOIN Dogs ON Dogs.owner_id = "
         "Owners.owner_id", "List each owner's first name, last name, and the size of his or her dog.", dogs)
 
+
+def test_a_tables_descriptions_and_details_are_its_own():
+    """Held out 265, Spider DEV 354, fresh holdout 33, 2026-10-19: "What is the description of the product category with
+    the code 'Spices'?" showed the products' description, "the different descriptions for templates" the documents',
+    and "the project details of the project" the outcomes' details. A table's descriptions and details are its own, a
+    table holding none being described by a table its keys refer to, joined to it (the template types' description).
+    Contrast: a field the words before name is its table's ("the color description for the product" is Ref_Colors'),
+    and "other" names no field's owner."""
+    tables = [
+        {"name": "Ref_Product_Categories", "columns": ["product_category_code", "product_category_description"],
+         "rows": [["Spices", "Spices"], ["Herbs", "Herbs"]]},
+        {"name": "Ref_Colors", "columns": ["color_code", "color_description"], "rows": [["9", "red"], ["5", "green"]]},
+        {"name": "Products", "columns": ["product_id", "color_code", "product_category_code", "product_name",
+                                         "product_description"],
+         "rows": [[1, "9", "Spices", "cumin", "cumin seeds"], [2, "5", "Herbs", "catnip", "dried leaves"]]},
+    ]
+    shop = SchemaGraph.from_tables(tables, [("Products", "color_code", "Ref_Colors", "color_code"),
+                                            ("Products", "product_category_code", "Ref_Product_Categories",
+                                             "product_category_code")])
+
+    def described_otherwise(question, sql, graph=shop):
+        return [violation for violation in constraint_violations(question, import_sql(sql, graph), graph)
+                if violation.startswith("the answer shows the descriptions of")
+                or violation.startswith("the answer shows the details of")]
+    category = "What is the description of the product category with the code 'Spices'?"
+    assert described_otherwise(category, "SELECT Products.product_description FROM Products "
+                                         "WHERE Products.product_category_code = 'Spices'")
+    assert not described_otherwise(category, "SELECT Ref_Product_Categories.product_category_description FROM "
+                                             "Ref_Product_Categories WHERE "
+                                             "Ref_Product_Categories.product_category_code = 'Spices'")
+    assert not described_otherwise(
+        "Give the color description for the product 'catnip'.",
+        "SELECT Ref_Colors.color_description FROM Products JOIN Ref_Colors ON Products.color_code = "
+        "Ref_Colors.color_code WHERE Products.product_name = 'catnip'")
+    templates = SchemaGraph.from_tables(
+        [{"name": "Ref_Template_Types", "columns": ["Template_Type_Code", "Template_Type_Description"],
+          "rows": [["PPT", "Presentation"], ["BK", "Book"]]},
+         {"name": "Templates", "columns": ["Template_ID", "Template_Type_Code", "Template_Details"],
+          "rows": [[0, "PP", ""], [1, "BK", ""]]},
+         {"name": "Documents", "columns": ["Document_ID", "Template_ID", "Document_Description"],
+          "rows": [[0, 0, "n"], [1, 1, "y"]]}],
+        [("Templates", "Template_Type_Code", "Ref_Template_Types", "Template_Type_Code"),
+         ("Documents", "Template_ID", "Templates", "Template_ID")])
+    question = "Return the different descriptions for templates that have been used in a document."
+    assert described_otherwise(question, "SELECT DISTINCT Documents.Document_Description FROM Documents JOIN "
+                                         "Templates ON Documents.Template_ID = Templates.Template_ID", templates)
+    assert not described_otherwise(
+        question, "SELECT DISTINCT Ref_Template_Types.Template_Type_Description FROM Documents JOIN Templates ON "
+                  "Documents.Template_ID = Templates.Template_ID JOIN Ref_Template_Types ON "
+                  "Templates.Template_Type_Code = Ref_Template_Types.Template_Type_Code", templates)
+    students = SchemaGraph.from_tables(
+        [{"name": "Students", "columns": ["student_id", "other_student_details"], "rows": [[1, "a"], [2, "b"]]},
+         {"name": "Courses", "columns": ["course_id", "other_details"], "rows": [[1, "x"]]}], [])
+    assert not described_otherwise(
+        "What other details can you tell me about students in reverse alphabetical order?",
+        "SELECT Students.other_student_details FROM Students ORDER BY Students.other_student_details DESC", students)
+
 def test_never_and_what_rows_do_not_have_are_exclusions():
     """Held-out Spider train 48, 72, 2026-10-18: "the artists that have produced a song in English but have never
     received a rating higher than 8" was answered by the songs rated over 8, "never" asking no exclusion, and "the
