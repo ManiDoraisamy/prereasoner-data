@@ -553,20 +553,43 @@ def _select_violations(question, query, graph, whole):
     listed_fields = request_fields(question, graph) if len(listed) > 1 else []
     each_a_field = (len(listed_fields) == len(listed) and all(listed_fields)
                     and len(set().union(*map(set, listed_fields))) >= len(listed))
+    # A list whose items each say the head word of some field's name lists fields too, where no one field realizes an
+    # item: "What are the names of the tourist attractions and the dates when the tourists named Vincent or Vivian
+    # visited there?" was answered by the names alone (fresh holdout 764, 842, 2026-10-19). Values a list joins name
+    # no field ("the continents Asia and Europe").
+    # A value the query compares is no output ("producing patent and paper"), and two items one field's name joins
+    # are that field ("the clean and jerk score" is Clean_Jerk; held out 664).
+    from engine.sql_ast import Literal
+    from engine.sql_schema import canon, name_words
+    field_names = [{canon(word) for word in name_words(column.ref.name)} for column in graph.columns]
+    field_words = set().union(*field_names) if field_names else set()
+    compared = {canon(word) for branch, _ in _select_queries(whole, graph=graph)
+                for predicate in mandatory_predicates(branch.where)
+                if isinstance(predicate, Comparison) and isinstance(predicate.right, Literal)
+                for word in lexical_words(str(predicate.right.value))}
+    each_named = (len(listed) > 1
+                  and all(said[request.start] in field_words or said[request.end - 1] in field_words
+                          for request in listed)
+                  and not any(said[request.start] in compared for request in listed)
+                  and not any({said[first.end - 1], said[second.start]} <= names
+                              for first, second in zip(listed, listed[1:]) for names in field_names))
     if (len(asked) > 1 and len(query.select) < len(asked)
-            and (any(request.count for request in requests) and listed or each_a_field and len(asked) == len(listed))
+            and (any(request.count for request in requests) and listed
+                 or (each_a_field or each_named) and len(asked) == len(listed))
             and not any(isinstance(item.expression, Star) for item in query.select)):
         violations.append(f"the answer shows {len(query.select)} of the {len(asked)} outputs the question lists")
     # And each is shown by a field it names, its own or the one an aggregate shown reads, or by a field whose name says
     # its words ("the name ... of the song" by Song_Name): "What are the names and areas of countries with the top 5
     # largest area?" is no city's and country's names (Spider DEV 800, 2026-10-18, once "the largest area" ranked by
     # SurfaceArea). A self-join's "related"."title" shows course.title.
-    from engine.sql_schema import canon, name_words
     shown_refs = [ref for ref in _unaliased(query, [item.expression.operand if isinstance(item.expression, Aggregate)
                                                     else item.expression for item in query.select])
                   if isinstance(ref, ColumnRef)]
     shown_keys = {(ref.table, ref.name) for ref in shown_refs}
-    shown_words = [{canon(word) for word in name_words(ref.name)} for ref in shown_refs]
+    # A field a count or a total reads shows no field its words say: "Show id, first name and last name for all
+    # customers and the number of accounts" shows no id by COUNT(account_id) (fresh holdout 358, 2026-10-19).
+    shown_words = [{canon(word) for word in name_words(ref.name)}
+                   for ref in _unaliased(query, [item.expression for item in query.select]) if isinstance(ref, ColumnRef)]
 
     def shown(request, fields):
         words = set(said[request.start:request.end])

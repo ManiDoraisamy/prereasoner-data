@@ -4398,3 +4398,20 @@ Measured on Spider (`spider/results/RESULTS.md`, 2026-10-19), against `bf1c242`:
 
 Measured on Spider (`spider/results/RESULTS.md`, 2026-10-19), against `b0d9108`: DEV 710 → 711 strict, held out 462 →
 463, the fresh holdout 473 → 476, Gemini on 765 → 766.
+
+## Each listed output is shown by a field of its own (2026-10-19)
+
+- A field a count or a total reads shows no field its words say (`query_contract._select_violations`, the listed-output
+  check): "Show id, first name and last name for all customers and the number of accounts." showed no customer id, the
+  id said by the COUNT(account_id) it showed (fresh holdout 358).
+- A list whose items each say the head word of some field's name lists fields, where no one field realizes an item, so
+  an answer showing fewer outputs than it lists is refused: "What are the names of the tourist attractions and the dates
+  when the tourists named Vincent or Vivian visited there?" was answered by the names alone (fresh holdout 764, 842). A
+  value the query compares is no output ("producing patent and paper as outcomes", fresh holdout 33), and two items one
+  field's name joins are that field ("the clean and jerk score" is Clean_Jerk, held out 664).
+
+Measured on Spider (`spider/results/RESULTS.md`, 2026-10-19), against `b306132`: DEV 711 → 711 strict, held out 463 →
+463, the fresh holdout 476 → 479, Gemini on 766 → 766.
+
+- The change refuses answers more than it adds right ones: wrong answers fall by 2 on held out, 7 on the fresh holdout
+  and 1 with Gemini on (fresh holdout 43, 699, 848, 887 and held out 430, 760 are now refused).

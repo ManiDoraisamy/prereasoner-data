@@ -2262,6 +2262,68 @@ def test_a_tables_descriptions_and_details_are_its_own():
         "What other details can you tell me about students in reverse alphabetical order?",
         "SELECT Students.other_student_details FROM Students ORDER BY Students.other_student_details DESC", students)
 
+
+def test_each_listed_field_is_shown_by_a_field_of_its_own():
+    """Fresh holdout 358, 764, 842, 2026-10-19: "Show id, first name and last name for all customers and the number of
+    accounts." showed no customer id, the id said by the COUNT(account_id) it showed, and "What are the names of the
+    tourist attractions and the dates when the tourists named Vincent visited there?" showed the names alone, no one
+    field realizing "the dates". A field a count reads shows no field its words say, and a list whose items each say the
+    head word of some field's name lists fields. Contrast: the answers showing each, "the clean and jerk score" (one
+    field, Clean_Jerk), and "projects producing patent and paper as outcomes" (values compared, no outputs)."""
+    bank = SchemaGraph.from_tables(
+        [{"name": "Customers", "columns": ["customer_id", "customer_first_name", "customer_last_name"],
+          "rows": [[1, "Aniyah", "Feest"], [2, "Susie", "Wiza"]]},
+         {"name": "Accounts", "columns": ["account_id", "customer_id", "account_name"],
+          "rows": [[1, 1, "338"], [2, 1, "562"], [3, 2, "162"]]}],
+        [("Accounts", "customer_id", "Customers", "customer_id")])
+    question = "Show id, first name and last name for all customers and the number of accounts."
+    join = "FROM Accounts JOIN Customers ON Accounts.customer_id = Customers.customer_id"
+    groups = "GROUP BY Customers.customer_id, Customers.customer_first_name, Customers.customer_last_name"
+    missing = (f"SELECT Customers.customer_first_name, Customers.customer_last_name, COUNT(Accounts.account_id) {join} "
+               f"{groups}")
+    assert "the answer shows no id the question lists" in constraint_violations(
+        question, import_sql(missing, bank), bank)
+    shown = (f"SELECT Customers.customer_id, Customers.customer_first_name, Customers.customer_last_name, "
+             f"COUNT(Accounts.account_id) {join} {groups}")
+    assert not [violation for violation in constraint_violations(question, import_sql(shown, bank), bank)
+                if "the question lists" in violation]
+    visits = SchemaGraph.from_tables(
+        [{"name": "Tourist_Attractions", "columns": ["Tourist_Attraction_ID", "Name"],
+          "rows": [[2113, "art museum"], [2701, "UK gallery"]]},
+         {"name": "Visitors", "columns": ["Tourist_ID", "Tourist_Details"], "rows": [[164, "Vincent"], [189, "Toby"]]},
+         {"name": "Visits", "columns": ["Visit_ID", "Tourist_Attraction_ID", "Tourist_ID", "Visit_Date"],
+          "rows": [[183, 2113, 164, "2004-08-21"], [268, 2701, 189, "2013-08-06"]]}],
+        [("Visits", "Tourist_Attraction_ID", "Tourist_Attractions", "Tourist_Attraction_ID"),
+         ("Visits", "Tourist_ID", "Visitors", "Tourist_ID")])
+    question = ("What are the names of the tourist attractions and the dates when the tourists named Vincent visited "
+                "there?")
+    join = ("FROM Tourist_Attractions JOIN Visits ON Visits.Tourist_Attraction_ID = "
+            "Tourist_Attractions.Tourist_Attraction_ID JOIN Visitors ON Visits.Tourist_ID = Visitors.Tourist_ID "
+            "WHERE Visitors.Tourist_Details = 'Vincent'")
+    assert "the answer shows 1 of the 2 outputs the question lists" in constraint_violations(
+        question, import_sql(f"SELECT Tourist_Attractions.Name {join}", visits), visits)
+    assert not [violation for violation in constraint_violations(
+        question, import_sql(f"SELECT Tourist_Attractions.Name, Visits.Visit_Date {join}", visits), visits)
+        if "the question lists" in violation]
+    gym = SchemaGraph.from_tables(
+        [{"name": "body_builder", "columns": ["Body_Builder_ID", "Clean_Jerk", "Total"],
+          "rows": [[1, 142.5, 317.5], [2, 137.5, 315.0]]}], [])
+    assert not [violation for violation in constraint_violations(
+        "What are the clean and jerk score of the body builder with the highest total score?",
+        import_sql("SELECT body_builder.Clean_Jerk FROM body_builder ORDER BY body_builder.Total DESC LIMIT 1", gym),
+        gym) if "the question lists" in violation]
+    projects = SchemaGraph.from_tables(
+        [{"name": "Projects", "columns": ["project_id", "project_details"], "rows": [[4, "ea"], [7, "deserunt"]]},
+         {"name": "Project_Outcomes", "columns": ["project_id", "outcome_code", "outcome_details"],
+          "rows": [[4, "Paper", None], [4, "Patent", None], [7, "Paper", None]]}],
+        [("Project_Outcomes", "project_id", "Projects", "project_id")])
+    branch = ("SELECT Projects.project_details FROM Project_Outcomes JOIN Projects ON Project_Outcomes.project_id = "
+              "Projects.project_id WHERE Project_Outcomes.outcome_code = '{}'")
+    assert not [violation for violation in constraint_violations(
+        "List the project details of the project both producing patent and paper as outcomes.",
+        import_sql(branch.format("Patent") + " INTERSECT " + branch.format("Paper"), projects), projects)
+        if "the question lists" in violation]
+
 def test_never_and_what_rows_do_not_have_are_exclusions():
     """Held-out Spider train 48, 72, 2026-10-18: "the artists that have produced a song in English but have never
     received a rating higher than 8" was answered by the songs rated over 8, "never" asking no exclusion, and "the

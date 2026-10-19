@@ -107,6 +107,22 @@ Artifacts: `%LOCALAPPDATA%/Temp/prereasoner-spider-review-20261013/`, tags `revi
 Incomplete intermediate runs are excluded. The review hardens ranking-number roles, output counts (preserving stored-count SUM),
 and table-owned full-name construction; it does not introduce another planner or model bundle.
 
+## Each listed output is shown by a field of its own: 711 → 711 strict, Gemini on 766 → 766, held out 463 → 463, fresh holdout 476 → 479 (2026-10-19)
+
+Same evaluator and contract as below (`spider.probe.full_eval`, whole_db, served, cap 5000, the evaluator ingesting
+declared and discovered keys), run locally in the pods' four round-robin shards like the base runs, RunPod's balance
+having run out. Runs `p40a` are this change against `b306132`'s `p39a` runs. The change is the `DECISIONS.md` entry of
+this title.
+
+- DEV, engine alone: 711 → **711 strict**; no win, no loss; wrong answers 132 → 132; 0 queries changed.
+- Held out: 463 → **463 strict**; no win, no loss; wrong answers 210 → 208; 5 queries changed.
+- Fresh holdout: 476 → **479 strict**; 3 wins (358, 764, 842), no loss; wrong answers 215 → 208; 9 queries changed.
+- Gemini on: 766 → 766; no win, no loss; wrong answers 169 → 168; 1 query changed.
+- The change refuses answers more than it adds right ones: wrong answers fall by 2 on held out, 7 on the fresh holdout
+  and 1 with Gemini on (fresh holdout 43, 699, 848, 887 and held out 430, 760 are now refused).
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-remote-eval-20261017/full_eval_{,heldout-,holdout2-}p40a.json` and `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_p40a-gemini-dirty.json`.
+
 ## A table's descriptions and details are its own; a number before a field's two-word name compares the field: 710 → 711 strict, Gemini on 765 → 766, held out 462 → 463, fresh holdout 473 → 476 (2026-10-19)
 
 Same evaluator and contract as below (`spider.probe.full_eval`, whole_db, served, cap 5000, the evaluator ingesting

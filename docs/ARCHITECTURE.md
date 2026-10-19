@@ -609,7 +609,10 @@ details are its own by the same reading (`query_contract._FIELD_KINDS`), a table
 table its keys refer to, joined to it; a field the words before the word name, by the longest name they end, is its
 table's ("the color description for the product" is Ref_Colors'), and "other" names none
 (`closed_class.GENERIC_MODIFIERS`). Each
-output a list names is shown by a field it names or whose name says its words. A table joined to one other that the
+output a list names is shown by a field it names or whose name says its words, a field a count or a total reads
+saying none; a list whose items each say the head word of some field's name lists fields where no one field realizes
+an item ("the names of the tourist attractions and the dates"), a value the query compares or two items one field's name
+joins ("the clean and jerk score") being no such item. A table joined to one other that the
 query reads nothing from and does not count, whose rows the join narrows and repeats, is named only where the question
 says its name outside the longer names of tables and fields the query reads ("document type codes" names no
 Documents, `query_contract._join_named_inside_longer`).
