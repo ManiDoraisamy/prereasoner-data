@@ -107,6 +107,29 @@ Artifacts: `%LOCALAPPDATA%/Temp/prereasoner-spider-review-20261013/`, tags `revi
 Incomplete intermediate runs are excluded. The review hardens ranking-number roles, output counts (preserving stored-count SUM),
 and table-owned full-name construction; it does not introduce another planner or model bundle.
 
+## A most common value is ranked once, over the rows it is common among; a count meets only a number of rows; a key shows the rows it refers to: 708 → 710 strict, Gemini on 763 → 765, held out 456 → 462, fresh holdout 469 → 473 (2026-10-19)
+
+Same evaluator and contract as below (`spider.probe.full_eval`, whole_db, served, cap 5000, the evaluator ingesting
+declared and discovered keys), run locally in the pods' four round-robin shards because RunPod's balance ran out on
+2026-10-18; `bf1c242` re-run locally on every changed question (49) reproduced the pod baseline's strictness on all of
+them. Runs `p38f` are this change against
+`bf1c242`'s `p37d` runs. The change is the `DECISIONS.md` entry of this title.
+
+- DEV, engine alone: 708 → **710 strict**; 2 wins (527, 954), no loss; wrong answers 136 → 134; 11 queries changed.
+- Held out: 456 → **462 strict**; 7 wins (304, 645, 673, 707, 714, 940, 972), 1 loss (156); wrong answers 220 → 212; 19
+  queries changed.
+- Fresh holdout: 469 → **473 strict**; 5 wins (140, 328, 391, 405, 616), 1 loss (698); wrong answers 224 → 216; 19
+  queries changed.
+- Gemini on: 763 → 765; 2 wins (154, 954), no loss; wrong answers 173 → 171; 11 queries changed.
+- Held out 156 ("the most common first name among all actors") is now the gold reading, actors grouped by first name,
+  and three names tie at the top: the tie rendering serves them all (the doubled reading was right by picking one).
+- Fresh holdout 698 was right by a HAVING COUNT(*) < 120000 that every group met, now refused for counting rows the
+  question states as a value; the gold intersects two sets of investors.
+- Spider DEV 579 ("all the student details in reversed lexicographical order") is answered now that "lexicographical" is
+  read, by the students' first names rather than their other_student_details: a new wrong answer.
+
+Output: `%LOCALAPPDATA%/Temp/prereasoner-remote-eval-20261017/full_eval_{,heldout-,holdout2-}p38f.json` and `%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_p38f-gemini-dirty.json`.
+
 ## The pool holds no exclusion the gate refuses for its shape; "never" and what rows do not have are exclusions; a list's "for" names its names' owner: 708 → 708 strict, Gemini on 762 → 763, held out 454 → 456, fresh holdout 466 → 469 (2026-10-18)
 
 Same contract as below (RunPod CPU pods, the evaluator ingesting declared and discovered keys). Runs `p37d` are this

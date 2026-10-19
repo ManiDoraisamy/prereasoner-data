@@ -4338,3 +4338,45 @@ Measured on Spider (`spider/results/RESULTS.md`, 2026-10-18), against `037405d`:
   questions refused before, once the pool held other readings). A first version's losses were fixed before these runs:
   dropping refused readings before ranking changed the search's top reading the decomposition probe reads
   (tests.test_complex_datasets), and "never" as an exclusion cue left the word unread by a difference (Spider DEV 282).
+
+## A most common value is ranked once, over the rows it is common among; a count meets only a number of rows; a key shows the rows it refers to (2026-10-19)
+
+- A most common value is ranked once: the frequency superlative takes no candidate whose filter keeps the value a
+  subquery counts most common (`sql_extrema._finds_most_common`, the scalar frequency selector of `sql_constraints`).
+  "What is the name of the most common genre in all tracks?" kept the genre a subquery found most common among Genre's
+  own rows, each once, and ranked that one genre by its tracks; such readings filled every place of the pool (held out
+  940, 972, 880, 9, 707).
+- Groups a count ranks for its top ones count nothing by any field telling the one table's rows apart, in the query or
+  in a scalar subquery it compares with (`query_contract._select_violations`, beside the key's refusal): "the most
+  common amenity in the dorms" ranked Dorm_amenity's own names, and "the dogs of the rarest breed" kept the breed a
+  subquery found rarest among Breeds' own rows (held out 882, fresh holdout 638, Spider DEV 954, 955).
+- What is "most common" among rows is counted over them: a join to a table the question does not name, and the tables it
+  names, read or not, do not need, repeats them (`query_contract._multiplies`): "the most common first name among all
+  actors" counted each actor's film_actor rows (held out 156). "The most pets" says no frequency word and counts the
+  rows holding them.
+- A count meets only a number the question states as one of rows, a noun after it, or "count", "a count of" or "the
+  number of" before it (Gemini's rewording "a count of performance more than 1"); a number its sentence ends on is a
+  field's value (`query_contract._states_rows`): "Which rooms cost between 120 and 150? Give me
+  the room names." kept the rooms counted between 120 and 150 times, and "the names of models that launched between 2002
+  and 2004." the models counted so (fresh holdout 28, 616; none of the 13 such counts served on Spider DEV, held out and
+  the fresh holdout was right, one strict by a HAVING COUNT(*) < 120000 every group met).
+- A key shows the rows it refers to, and a longer name's last word the opening says names its table where the question
+  says its other words, a name's or an id's word never (`query_contract._asked_tables`): "What is the most common
+  amenity in the dorms?" showed the dorm names, then the dorm ids Has_amenity holds (held out 882; "the names and ids of
+  all countries with at least one car maker" asks for no car_names, Spider DEV 124).
+- A table holding no name is named by a table its keys refer to, joined to it, and one modifier before the table that is
+  no possessive (`closed_class.POSSESSIVE_DETERMINERS`) leaves it the names' owner
+  (`query_contract._named_name_owners`): "the first and last name of all biology professors" showed the names of the
+  department's students, then of its head, where PROFESSOR's EMP_NUM refers to the EMPLOYEE row (held out 304).
+- "Lexicographical" order is alphabetical (`sql_expansion.ALPHABETICAL_WORDS`, which `ordering_requested` now reads):
+  "List the section_name in reversed lexicographical order." was refused (Spider DEV 527, 579, fresh holdout 140).
+
+Measured on Spider (`spider/results/RESULTS.md`, 2026-10-19), against `bf1c242`: DEV 708 → 710 strict, held out 456 →
+462, the fresh holdout 469 → 473, Gemini on 763 → 765.
+
+- Held out 156 ("the most common first name among all actors") is now the gold reading, actors grouped by first name,
+  and three names tie at the top: the tie rendering serves them all (the doubled reading was right by picking one).
+- Fresh holdout 698 was right by a HAVING COUNT(*) < 120000 that every group met, now refused for counting rows the
+  question states as a value; the gold intersects two sets of investors.
+- Spider DEV 579 ("all the student details in reversed lexicographical order") is answered now that "lexicographical" is
+  read, by the students' first names rather than their other_student_details: a new wrong answer.

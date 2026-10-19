@@ -455,7 +455,7 @@ the query reads or a column of one, with the tables and the columns it uses spli
 ("LifeExpectancy" is "life expectancy", `engine/sql_schema.name_words`), or spells such a name in two words
 ("high schoolers"); when it is a value the query compares; a spelled number realized in its role (a cutoff in a
 question that ranks is the query's LIMIT, "the two oldest"; after a comparison cue it is a compared number); an
-order word in a query that orders its rows, and "alphabetical" only over an order on a text field, A to Z
+order word in a query that orders its rows, and "alphabetical" (or "lexicographical") only over an order on a text field, A to Z
 unless reversed; a participle relating the rows to a compared value ("departing from APG") when the data holds
 the participle as no value and the value has one relationship to the rows, or, with several (a departure and
 an arrival airport), when the column relating it carries the participle's travel direction
@@ -464,7 +464,8 @@ the preposition before it, "flights from Los Angeles" by the origin, `sql_rank.t
 query realizes in its direction on a field of its kind
 (a comparative before "than" is a comparison with its operator, complemented when negated,
 `engine/sql_expansion.comparative_operator`, and "greater than" what is no number only so,
-"greater than any engineer"; "the most common" orders groups by their count; any other superlative
+"greater than any engineer"; "the most common" orders groups by their count, once: the frequency superlative takes no candidate whose filter
+keeps the value a subquery counts most common (`sql_extrema._finds_most_common`); any other superlative
 orders by, or takes the extreme of, a field in `engine/sql_extrema.superlative_direction`, so "the youngest" is the
 least age or the latest birth date and "the highest rank" the smallest one; an adjective naming its dimension ("the
 tallest", `sql_extrema.SUPERLATIVE_DIMENSIONS`) is read by a field of that dimension of the rows its noun names, where
@@ -532,8 +533,14 @@ that binds the returned rows (an IN of the operand's own column, a foreign-key p
 for its table and itself, never a computed value, and a largest or smallest value only where the question asks for
 an extremum; an EXISTS that refers to the outer row, `query_contract._binds`),
 and never counts from a scalar subquery or an unbound one, which filter no returned row. A count grouped by the key
-of the one table it reads, which other tables refer to, counts one row in each group and is refused, and so is a
-count of a group's own distinct values, a key its joins equate with the group's included (1 in every group). A
+of the one table it reads, which other tables refer to, counts one row in each group and is refused, as are the
+groups such a count ranks for its top ones by any field telling the table's rows apart, in the query or a scalar
+subquery it compares with ("the dogs of the rarest breed"), and so is a count of a group's own distinct values, a key
+its joins equate with the group's included (1 in every group). What is "most common" among rows is counted over them:
+a join to a table the question does not name, and the tables it names, read or not, do not need, repeats them and is
+refused (`query_contract._multiplies`). A count meets only a number the question states as one of rows, a noun after
+it, or "count", "a count of" or "the number of" before it; a number its sentence ends on is a field's value
+(`query_contract._states_rows`). A
 COUNT(*) over joins that each follow a foreign key counts the rows of the one table no join refers to, wherever the
 query counts, and so counts a field of that table holding no numbers named as the noun counted ("the country that
 speaks the largest number of languages", `query_contract._row_count_table`); a number before a numeric field's name
@@ -541,8 +548,10 @@ compares it ("more than 30000 in salary"). Groups
 list each value once, so "different" is read by a grouped answer, the counts beside its groups included. A listing
 answers the rows the question's opening names, after a command it opens with ("what are airlines | that have
 flights"): it shows a field of such a table, of one a foreign key joins to it, or a key referring to it
-(`query_contract._asked_tables`), so airport names do not answer for airlines; a key whose references lead to such a
-table holds its keys ("the id of students who attended some courses" is the attendance rows' student_id). A "number"
+(`query_contract._asked_tables`; a longer name's last word the opening says names its table where the question says
+its other words, "the most common amenity in the dorms", a name's or an id's word never), so airport names do not
+answer for airlines; a key shows the rows it refers to (Has_amenity's dormid shows dorms), and a key whose references
+lead to such a table holds its keys ("the id of students who attended some courses" is the attendance rows' student_id). A "number"
 ending a field's name ("the phone number") asks for the field, not a count (`sql_expansion.field_numbers`, read by
 `count_requested`, the search's aggregate cues and the ranker's question roles), and so does a "number of" before a
 numeric field's whole name ("the maximum number of floors", "in order of number of police officers"), the fields'
@@ -592,7 +601,9 @@ where it names none, the rows it asks for; a camel-cased name split further need
 ModelId). A field named as its table answers "the names of orchestras", and a self-join's shown field is its table's.
 The names of a table that holds a name are that name, not a joined table's ("the names of the albums" are their titles,
 `query_contract._named_name_owners`), the owner being the table after the name word's "of" or "for" or a later "for"
-("for each artist", "for departments"); that field answers a request for another table's field called a name. Each
+("for each artist", "for departments"), past one modifier that is no possessive ("all biology professors"); a table
+holding no name is named by a table its keys refer to, joined to it (a professor by the EMPLOYEE row its EMP_NUM
+refers to); that field answers a request for another table's field called a name. Each
 output a list names is shown by a field it names or whose name says its words. A table joined to one other that the
 query reads nothing from and does not count, whose rows the join narrows and repeats, is named only where the question
 says its name outside the longer names of tables and fields the query reads ("document type codes" names no

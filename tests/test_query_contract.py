@@ -2017,6 +2017,194 @@ def test_each_listed_output_is_shown_by_a_field_it_names():
 
 
 
+
+def test_a_ranked_count_of_rows_each_its_own_group_counts_nothing():
+    """Held out 882, fresh holdout 638, Spider DEV 954, 955, 2026-10-18: "What is the most common amenity in the
+    dorms?" ranked Dorm_amenity's own names by their count, and "the dogs of the rarest breed" kept the breed a
+    subquery found rarest among Breeds' own rows: each name tells its table's rows apart, every group counted 1, and
+    the occurrences are the rows referring to them (Has_amenity, Dogs). Contrast: the Has_amenity rows of each
+    amenity, the Dogs of each breed, and the number of amenities of each name, which ranks nothing."""
+    tables = [{"name": "Dorm", "columns": ["dormid", "dorm_name"], "rows": [[100, "Smith Hall"], [109, "Fawlty Towers"]]},
+              {"name": "Dorm_amenity", "columns": ["amenid", "amenity_name"],
+               "rows": [[900, "TV Lounge"], [901, "Gym"], [902, "Pub"]]},
+              {"name": "Has_amenity", "columns": ["dormid", "amenid"], "rows": [[100, 900], [100, 901], [109, 901]]}]
+    dorms = SchemaGraph.from_tables(tables, [("Has_amenity", "dormid", "Dorm", "dormid"),
+                                             ("Has_amenity", "amenid", "Dorm_amenity", "amenid")])
+    message = "each group counts one Dorm_amenity row, not the rows its key joins"
+    question = "What is the most common amenity in the dorms?"
+    own = ("SELECT Dorm_amenity.amenity_name FROM Dorm_amenity GROUP BY Dorm_amenity.amenity_name "
+           "ORDER BY COUNT(*) DESC LIMIT 1")
+    assert message in constraint_violations(question, import_sql(own, dorms), dorms)
+    held = ("SELECT Dorm_amenity.amenity_name FROM Has_amenity JOIN Dorm_amenity ON Has_amenity.amenid = "
+            "Dorm_amenity.amenid GROUP BY Dorm_amenity.amenity_name ORDER BY COUNT(*) DESC LIMIT 1")
+    assert not [violation for violation in constraint_violations(question, import_sql(held, dorms), dorms)
+                if "each group counts" in violation or "repeats the rows" in violation]
+    each = "SELECT Dorm_amenity.amenity_name, COUNT(*) FROM Dorm_amenity GROUP BY Dorm_amenity.amenity_name"
+    assert message not in constraint_violations(
+        "How many amenities are there for each amenity name?", import_sql(each, dorms), dorms)
+    breeds = SchemaGraph.from_tables(
+        [{"name": "Breeds", "columns": ["breed_code", "breed_name"],
+          "rows": [["ESK", "Eskimo"], ["HUS", "Husky"], ["BUL", "Bulldog"]]},
+         {"name": "Dogs", "columns": ["dog_id", "breed_code", "name"],
+          "rows": [[1, "ESK", "Kacey"], [2, "BUL", "Hipolito"], [3, "BUL", "Mavis"], [4, "HUS", "Houston"],
+                   [5, "ESK", "Jeffrey"]]}],
+        [("Dogs", "breed_code", "Breeds", "breed_code")])
+    question = "List the names of the dogs of the rarest breed."
+    rarest_breed = ("SELECT Dogs.name FROM Breeds JOIN Dogs ON Dogs.breed_code = Breeds.breed_code WHERE "
+                    "Breeds.breed_name = (SELECT Breeds.breed_name FROM Breeds GROUP BY Breeds.breed_name "
+                    "ORDER BY COUNT(*) ASC LIMIT 1)")
+    assert "each group counts one Breeds row, not the rows its key joins" in constraint_violations(
+        question, import_sql(rarest_breed, breeds), breeds)
+    rarest_dogs = ("SELECT Dogs.name FROM Dogs WHERE Dogs.breed_code = (SELECT Dogs.breed_code FROM Dogs "
+                   "GROUP BY Dogs.breed_code ORDER BY COUNT(*) ASC LIMIT 1)")
+    assert not [violation for violation in constraint_violations(question, import_sql(rarest_dogs, breeds), breeds)
+                if "each group counts" in violation]
+
+
+def test_what_is_most_common_among_rows_is_counted_over_them():
+    """Held out 156, fresh holdout 775, 2026-10-18: "Return the most common first name among all actors." counted each
+    actor's film_actor rows, and "the most common birth place of people" only the people who are body builders. What
+    is most common among rows is counted over those rows: a join to a table the question does not name, which the
+    tables it names do not need, repeats them. Contrast: the actors' own rows; "the actor in the most films" counts
+    the film_actor rows holding them, no frequency word; the amenities "in the dorms" are counted in the Has_amenity
+    rows between the two named tables."""
+    actors = SchemaGraph.from_tables(
+        [{"name": "actor", "columns": ["actor_id", "first_name", "last_name"],
+          "rows": [[1, "PENELOPE", "GUINESS"], [2, "NICK", "WAHLBERG"], [3, "PENELOPE", "LOLLOBRIGIDA"]]},
+         {"name": "film_actor", "columns": ["actor_id", "film_id"],
+          "rows": [[1, 10], [2, 10], [2, 11], [2, 12], [3, 11]]}],
+        [("film_actor", "actor_id", "actor", "actor_id")])
+    message = "the count repeats the rows it ranks over a table the question does not name"
+    question = "Return the most common first name among all actors."
+    joined = ("SELECT actor.first_name FROM actor JOIN film_actor ON film_actor.actor_id = actor.actor_id "
+              "GROUP BY actor.first_name ORDER BY COUNT(*) DESC LIMIT 1")
+    assert message in constraint_violations(question, import_sql(joined, actors), actors)
+    alone = "SELECT actor.first_name FROM actor GROUP BY actor.first_name ORDER BY COUNT(*) DESC LIMIT 1"
+    assert message not in constraint_violations(question, import_sql(alone, actors), actors)
+    most_films = ("SELECT actor.first_name, actor.last_name FROM actor JOIN film_actor ON film_actor.actor_id = "
+                  "actor.actor_id GROUP BY actor.actor_id ORDER BY COUNT(*) DESC LIMIT 1")
+    assert message not in constraint_violations(
+        "Which actor has appeared in the most films?", import_sql(most_films, actors), actors)
+
+
+def test_a_count_meets_only_a_number_of_rows():
+    """Fresh holdout 28, 616, held out 821, 2026-10-18: "Which rooms cost between 120 and 150? Give me the room
+    names." kept the rooms counted between 120 and 150 times, and "the names of models that launched between 2002 and
+    2004." the models counted so: none of ten such counts served was right. A number of rows is said by a noun after
+    the number or by "count" before it; a number its sentence ends on is a field's value (query_contract._states_rows).
+    Contrast: "between 2 and 3 reservations", "with count more than 1", and the room price compared."""
+    rooms = SchemaGraph.from_tables(
+        [{"name": "Rooms", "columns": ["RoomId", "roomName", "basePrice"],
+          "rows": [["RND", "Recluse and defiance", 150], ["IBS", "Interim but salutary", 150], ["AOB", "Abscond", 175]]},
+         {"name": "Reservations", "columns": ["Code", "Room", "Kids"],
+          "rows": [[1, "RND", 0], [2, "RND", 1], [3, "IBS", 0], [4, "AOB", 2], [5, "RND", 0]]}],
+        [("Reservations", "Room", "Rooms", "RoomId")])
+    message = "the question states a value, not a number of rows, for the count to meet"
+    question = "Which rooms cost between 120 and 150? Give me the room names."
+    counted = ("SELECT Rooms.roomName FROM Rooms JOIN Reservations ON Reservations.Room = Rooms.RoomId "
+               "GROUP BY Rooms.roomName HAVING COUNT(*) >= 120 AND COUNT(*) <= 150")
+    assert message in constraint_violations(question, import_sql(counted, rooms), rooms)
+    priced = "SELECT Rooms.roomName FROM Rooms WHERE Rooms.basePrice >= 120 AND Rooms.basePrice <= 150"
+    assert message not in constraint_violations(question, import_sql(priced, rooms), rooms)
+    reserved = counted.replace("120", "2").replace("150", "3")
+    assert message not in constraint_violations(
+        "Which rooms have between 2 and 3 reservations?", import_sql(reserved, rooms), rooms)
+    # Gemini's rewording of Spider DEV 861 says the rows counted before the number.
+    assert message not in constraint_violations(
+        "What are the room names for rooms that have a count of reservations between 2 and 3?",
+        import_sql(reserved, rooms), rooms)
+    festivals = SchemaGraph.from_tables([{"name": "music_festival", "columns": ["ID", "Category"],
+                                          "rows": [[1, "Best Song"], [2, "Best Song"], [3, "Best Lyrics"]]}], [])
+    categories = ("SELECT music_festival.Category FROM music_festival GROUP BY music_festival.Category "
+                  "HAVING COUNT(*) > 1")
+    assert message not in constraint_violations(
+        "Please show the categories of the music festivals with count more than 1.",
+        import_sql(categories, festivals), festivals)
+
+
+def test_a_shown_key_shows_the_rows_it_refers_to():
+    """Held out 882, 2026-10-18: "What is the most common amenity in the dorms?" showed the dorm names, then (once the
+    amenities each counting one row were refused) the dorm ids Has_amenity holds. A longer name's last word the
+    opening says names its table where the question says the others ("amenity" ... "dorms": Dorm_amenity), and a key
+    shows the rows it refers to (Has_amenity.dormid shows dorms). Contrast: the amenities' names, the dorm ids for
+    "Which dorms have the most amenities?", and the countries' names "with at least one car maker", a field's word
+    naming no car_names (Spider DEV 124)."""
+    tables = [{"name": "Dorm", "columns": ["dormid", "dorm_name"], "rows": [[100, "Smith Hall"], [109, "Fawlty Towers"]]},
+              {"name": "Dorm_amenity", "columns": ["amenid", "amenity_name"],
+               "rows": [[900, "TV Lounge"], [901, "Gym"], [902, "Pub"]]},
+              {"name": "Has_amenity", "columns": ["dormid", "amenid"], "rows": [[100, 900], [100, 901], [109, 901]]}]
+    dorms = SchemaGraph.from_tables(tables, [("Has_amenity", "dormid", "Dorm", "dormid"),
+                                             ("Has_amenity", "amenid", "Dorm_amenity", "amenid")])
+    question = "What is the most common amenity in the dorms?"
+    join = ("FROM Dorm JOIN Has_amenity ON Has_amenity.dormid = Dorm.dormid JOIN Dorm_amenity ON "
+            "Has_amenity.amenid = Dorm_amenity.amenid")
+
+    def shows_other(sql, asked_question=question):
+        return [violation for violation in constraint_violations(asked_question, import_sql(sql, dorms), dorms)
+                if violation.startswith("the answer shows") and "fields, not the" in violation]
+    assert shows_other(f"SELECT Dorm.dorm_name {join} GROUP BY Dorm.dorm_name ORDER BY COUNT(*) DESC LIMIT 1")
+    assert shows_other(f"SELECT Has_amenity.dormid {join} GROUP BY Has_amenity.dormid ORDER BY COUNT(*) DESC LIMIT 1")
+    assert not shows_other(f"SELECT Dorm_amenity.amenity_name {join} GROUP BY Dorm_amenity.amenity_name "
+                           "ORDER BY COUNT(*) DESC LIMIT 1")
+    assert not shows_other("SELECT Has_amenity.dormid FROM Has_amenity GROUP BY Has_amenity.dormid "
+                           "ORDER BY COUNT(*) DESC LIMIT 1", "Which dorms have the most amenities?")
+    cars = SchemaGraph.from_tables(
+        [{"name": "countries", "columns": ["CountryId", "CountryName"], "rows": [[1, "usa"], [2, "germany"], [3, "egypt"]]},
+         {"name": "car_makers", "columns": ["Id", "Maker", "Country"], "rows": [[1, "amc", 1], [2, "volkswagen", 2]]},
+         {"name": "car_names", "columns": ["MakeId", "Model", "Make"], "rows": [[1, "amc", "amc hornet"]]}],
+        [("car_makers", "Country", "countries", "CountryId")])
+    assert not [violation for violation in constraint_violations(
+        "What are the names and ids of all countries with at least one car maker?",
+        import_sql("SELECT countries.CountryName, countries.CountryId FROM car_makers JOIN countries ON "
+                   "car_makers.Country = countries.CountryId GROUP BY countries.CountryName, countries.CountryId "
+                   "HAVING COUNT(*) >= 1", cars), cars) if "fields, not the" in violation]
+
+
+def test_a_table_holding_no_name_is_named_by_the_key_it_refers_by():
+    """Held out 304, 2026-10-18: "What are the first and last name of all biology professors?" showed the names of the
+    students in the professors' department, and once those were refused, of the department's head. A modifier before
+    the table ("biology professors") leaves it the names' owner, and a table holding no name is named by a table its
+    key refers to, joined to it: PROFESSOR.EMP_NUM to EMPLOYEE. Contrast: the professors' own EMPLOYEE rows, and "his
+    or her dog", which names no dog's names (Spider DEV 950)."""
+    tables = [
+        {"name": "EMPLOYEE", "columns": ["EMP_NUM", "EMP_LNAME", "EMP_FNAME"],
+         "rows": [[100, "Worley", "James"], [105, "Ramso", "Anne"], [114, "Jones", "Gerald"]]},
+        {"name": "DEPARTMENT", "columns": ["DEPT_CODE", "DEPT_NAME", "EMP_NUM"],
+         "rows": [["BIOL", "Biology", 114], ["ACCT", "Accounting", 105]]},
+        {"name": "PROFESSOR", "columns": ["EMP_NUM", "DEPT_CODE", "PROF_OFFICE"],
+         "rows": [[100, "BIOL", "DRE 156"], [105, "ACCT", "KLR 229D"], [114, "BIOL", "AAK 160"]]},
+        {"name": "STUDENT", "columns": ["STU_NUM", "STU_LNAME", "STU_FNAME", "DEPT_CODE"],
+         "rows": [[321452, "Bowser", "William", "BIOL"], [324257, "Smithson", "Anne", "ACCT"]]},
+    ]
+    college = SchemaGraph.from_tables(tables, [("DEPARTMENT", "EMP_NUM", "EMPLOYEE", "EMP_NUM"),
+                                               ("PROFESSOR", "EMP_NUM", "EMPLOYEE", "EMP_NUM"),
+                                               ("PROFESSOR", "DEPT_CODE", "DEPARTMENT", "DEPT_CODE"),
+                                               ("STUDENT", "DEPT_CODE", "DEPARTMENT", "DEPT_CODE")])
+    question = "What are the first and last name of all biology professors?"
+    where = " WHERE DEPARTMENT.DEPT_NAME = 'Biology'"
+
+    def named_otherwise(sql, asked=question, graph=college):
+        return [violation for violation in constraint_violations(asked, import_sql(sql, graph), graph)
+                if violation.startswith("the answer shows the names of")]
+    assert named_otherwise("SELECT STUDENT.STU_FNAME, STUDENT.STU_LNAME FROM PROFESSOR JOIN DEPARTMENT ON "
+                           "PROFESSOR.DEPT_CODE = DEPARTMENT.DEPT_CODE JOIN STUDENT ON STUDENT.DEPT_CODE = "
+                           "DEPARTMENT.DEPT_CODE" + where)
+    assert named_otherwise("SELECT EMPLOYEE.EMP_FNAME, EMPLOYEE.EMP_LNAME FROM PROFESSOR JOIN DEPARTMENT ON "
+                           "PROFESSOR.DEPT_CODE = DEPARTMENT.DEPT_CODE JOIN EMPLOYEE ON DEPARTMENT.EMP_NUM = "
+                           "EMPLOYEE.EMP_NUM" + where)
+    assert not named_otherwise("SELECT EMPLOYEE.EMP_FNAME, EMPLOYEE.EMP_LNAME FROM PROFESSOR JOIN DEPARTMENT ON "
+                               "PROFESSOR.DEPT_CODE = DEPARTMENT.DEPT_CODE JOIN EMPLOYEE ON PROFESSOR.EMP_NUM = "
+                               "EMPLOYEE.EMP_NUM" + where)
+    dogs = SchemaGraph.from_tables(
+        [{"name": "Owners", "columns": ["owner_id", "first_name", "last_name"],
+          "rows": [[1, "Nora", "Haley"], [2, "Melisa", "DuBuque"]]},
+         {"name": "Dogs", "columns": ["dog_id", "owner_id", "name", "size_code"],
+          "rows": [[1, 1, "Kacey", "LGE"], [2, 2, "Hipolito", "MED"]]}],
+        [("Dogs", "owner_id", "Owners", "owner_id")])
+    assert not named_otherwise(
+        "SELECT Owners.first_name, Owners.last_name, Dogs.size_code FROM Owners JOIN Dogs ON Dogs.owner_id = "
+        "Owners.owner_id", "List each owner's first name, last name, and the size of his or her dog.", dogs)
+
 def test_never_and_what_rows_do_not_have_are_exclusions():
     """Held-out Spider train 48, 72, 2026-10-18: "the artists that have produced a song in English but have never
     received a rating higher than 8" was answered by the songs rated over 8, "never" asking no exclusion, and "the

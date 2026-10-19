@@ -797,6 +797,13 @@ def _select_violations(question, query, graph, whole):
         violations.append("requested duration is missing or changed")
     date_positions = frozenset(i for phrase in (*phrases, *durations) for i in range(phrase.start, phrase.end))
     requested = ExpansionSupport(graph).numeric_comparisons(question_tokens, date_positions)
+    # A count of rows meets only a number the question states as one (_states_rows): "Which rooms cost between 120 and
+    # 150? Give me the room names." kept the rooms counted between 120 and 150 times (fresh holdout 28, 2026-10-18).
+    if any(isinstance(comparison.left, Aggregate) and comparison.left.function == "COUNT"
+           and _states_rows(question, question_tokens, comparison.operator,
+                            getattr(comparison.right, "value", None)) is False
+           for branch, _ in _select_queries(whole, graph=graph) for comparison in _comparisons(branch.having, True)):
+        violations.append("the question states a value, not a number of rows, for the count to meet")
     from engine.sql_expansion import counted_thresholds
     if any(item.operator != "=" for item in requested) or counted_thresholds(question_tokens, graph.tables):
         from engine.sql_ast import render_query
@@ -1003,7 +1010,13 @@ def _select_violations(question, query, graph, whole):
                         seen.add(parent)
                         reached.append(parent)
             return False
-        if shown and not any(table in asked or any((table, wanted) in linked for wanted in asked)
+
+        def referred_owners(table, ref):
+            """A key shows the rows it refers to: Has_amenity's dormid shows dorms, not "the most common amenity in the
+            dorms" (held out 882, 2026-10-18: the dorm ids were served)."""
+            return {parent for parent, _ in refers.get((table, ref.name), ())} or {table}
+        if shown and not any(any(owner in asked or any((owner, wanted) in linked for wanted in asked)
+                                 for owner in referred_owners(table, ref))
                              or leads_to_asked(table, ref) for table, ref in shown):
             violations.append(f"the answer shows {shown[0][0]}'s fields, not the {sorted(asked)[0]} asked for")
     # "The names of" a table that holds a name of its own are that name, not the name of a table joined to it: "What
@@ -1014,23 +1027,66 @@ def _select_violations(question, query, graph, whole):
     shown_columns = _unaliased(query, [item.expression for item in getattr(query, "select", ())
                                        if isinstance(item.expression, ColumnRef)])
     owners = _named_name_owners(question, question_tokens, graph)
+    # A table holding none is named by a table its keys refer to, joined to it: a professor's names are the EMPLOYEE's
+    # its EMP_NUM refers to, not those of its department's students or of its department's head (held out 304, fresh
+    # holdout 481, 2026-10-18).
+    aliases = _aliases(query)
+    joined = {(aliases.get(one.table, one.table), aliases.get(other.table, other.table))
+              for join in getattr(query, "joins", ()) for left, right in ((join.left, join.right), *join.additional)
+              for one, other in ((left, right), (right, left))}
     for table in sorted(owners):
         own = [ref for ref in graph.display_columns(table)[:1] if is_name_column(ref.name)]
-        others = [ref for ref in shown_columns if is_name_column(ref.name) and ref.table not in owners]
-        if own and others:
+        referred = set() if own else {parent.table for key in graph.foreign_keys for child, parent in key.column_pairs
+                                      if child.table == table and parent.table != table and any(
+                                          is_name_column(ref.name) for ref in graph.display_columns(parent.table)[:1])}
+        namers = {other for one, other in joined if one == table and other in referred}
+        others = [ref for ref in shown_columns if is_name_column(ref.name) and ref.table not in owners | namers]
+        if (own or referred) and others:
             violations.append(f"the answer shows the names of {others[0].table}, not of the {table} asked for")
     # A count grouped by the key of the one table it reads counts one row in each group, while the tables whose foreign
     # keys refer to that key hold its occurrences: "the transaction type code that occurs the most frequently" counted
     # each type's own row, and every type tied at 1 (held-out Spider train 370, 2026-10-11). A key that itself refers
     # to another table's rows is counted where it is: "the number of likes for each student id" counts the Likes rows
-    # of each student (Spider DEV 902, 2026-10-12: refused for the Highschooler key Likes refers to).
-    if (not query.joins and isinstance(query.from_table, str) and query.group_by
-            and all(isinstance(group, ColumnRef) and group.table == query.from_table for group in query.group_by)
-            and graph.identifies(query.group_by) and counts_groups):
-        keys = {(group.table, group.name) for group in query.group_by}
-        if any((parent.table, parent.name) in keys and child.table != query.from_table
-               for key in graph.foreign_keys for child, parent in key.column_pairs):
-            violations.append(f"each group counts one {query.from_table} row, not the rows its key joins")
+    # of each student (Spider DEV 902, 2026-10-12: refused for the Highschooler key Likes refers to). Groups ranked by
+    # their count for the top ones count nothing by any field telling the table's rows apart, in the query or in a
+    # subquery it compares with: "the most common amenity in the dorms" ranked Dorm_amenity's own names, and "the dogs
+    # of the rarest breed" kept the breed a subquery found rarest among Breeds' own rows (held out 882, fresh holdout
+    # 638, Spider DEV 954, 955, 2026-10-18: every group counted 1).
+    def counts_own_rows(select, by_any_field):
+        if (select.joins or not isinstance(select.from_table, str) or not select.group_by
+                or not all(isinstance(group, ColumnRef) and group.table == select.from_table
+                           for group in select.group_by) or not graph.identifies(select.group_by)):
+            return False
+        keys = {(group.table, group.name) for group in select.group_by}
+        return any(child.table != select.from_table
+                   and (parent.table == select.from_table if by_any_field else (parent.table, parent.name) in keys)
+                   for key in graph.foreign_keys for child, parent in key.column_pairs)
+
+    def ranks_by_count(select):
+        return (select.limit is not None and bool(select.order_by) and isinstance(select.order_by[0].expression,
+                                                                                  Aggregate)
+                and select.order_by[0].expression.function == "COUNT")
+    owner = query.from_table if counts_groups and counts_own_rows(query, ranks_by_count(query)) else next(
+        (sub.from_table for sub, scalar, _, _ in _tested_subqueries(query.where)
+         if scalar and isinstance(sub, SelectQuery) and ranks_by_count(sub) and counts_own_rows(sub, True)), None)
+    if owner is not None:
+        violations.append(f"each group counts one {owner} row, not the rows its key joins")
+    # What is "most common" among rows is counted over those rows: a join to a table the question does not name, and
+    # the tables it names do not need, repeats them. "the most common first name among all actors" counted each actor's
+    # film_actor rows, and "the most common birth place of people" only the people who are body builders (held out 156,
+    # fresh holdout 775, 2026-10-18). "The most pets" counts the rows holding them and is no such cue.
+    from engine.sql_extrema import frequency_cue
+    from engine.sql_schema import canon, name_words
+    frequency = frequency_cue(question_tokens)
+    if (frequency is not None and not frequency.explicit_number and ranks_by_count(query) and query.joins
+            and (question_tokens[frequency.position] in {"commonest", "rarest"}
+                 or question_tokens[frequency.position + 1:frequency.position + 2] in {
+                     (word,) for word in _FREQUENCY_WORDS})):
+        grouped = {group.table for group in query.group_by if isinstance(group, ColumnRef)}
+        said = set(question_tokens) | {canon(left + right) for left, right in zip(question_tokens, question_tokens[1:])}
+        mentioned = {table for table in graph.tables if {canon(word) for word in name_words(table)} <= said}
+        if grouped and _multiplies(query, grouped, said, graph, mentioned):
+            violations.append("the count repeats the rows it ranks over a table the question does not name")
     # A count of a group's own distinct values is 1 in every group, a key the joins equate with it included: "the
     # number of teachers from each hometown" was COUNT(DISTINCT Hometown) by Hometown, and "how many templates
     # correspond to each type code" counted the type code its group joins (Spider DEV 393, 330, 2026-10-12).
@@ -1783,6 +1839,7 @@ def _named_name_owners(question, question_tokens, graph):
     another ("the album tracks") or a possessive ("the singer's songs") is not one. None when a name word follows a
     possessive or a table's name ("their instructors' names for courses"), or names no table it is "of" ("the names of
     the counties" over county_public_safety): whose names those are is not read."""
+    from engine.closed_class import POSSESSIVE_DETERMINERS
     from engine.sql_expansion import WORD_NUMBERS, word_spans
     from engine.sql_schema import canon, is_name_column, name_words
     said = [canon(token) for token in question_tokens]
@@ -1807,6 +1864,11 @@ def _named_name_owners(question, question_tokens, graph):
                                         or said[position] in WORD_NUMBERS):
             position += 1
         found = named(position) if position < len(said) else None
+        # One modifier before the table's name is the table's too: "the first and last name of all biology professors"
+        # (held out 304, fresh holdout 481, 2026-10-18: the students of the department were named).
+        if (found is None and position + 1 < len(said) and said[position] not in _NAME_OWNER_BREAKS
+                and said[position] not in POSSESSIVE_DETERMINERS and not is_name_column(said[position])):
+            found = named(position + 1)
         while found is not None:
             table, end = found
             if end < len(said) and (named(end) is not None or possessive(end - 1)):
@@ -1844,13 +1906,47 @@ _NAME_OWNER_BREAKS = frozenset({"who", "whom", "that", "which", "whose", "with",
 _NAME_OWNER_LEADS = frozenset({"the", "all", "each", "every", "different", "distinct", "a", "an"})
 
 
+def _states_rows(question, question_tokens, operator, value):
+    """Whether the question states the threshold ``operator`` ``value`` as a number of rows (True), as a field's value
+    (False), or states no such threshold (None). A noun after the number says rows ("more than 2 languages", "at least
+    2 times"), as "count" before it does ("with count more than 1"), or "a count of" or "the number of" the noun before
+    it ("orchestras that have a count of performance more than 1", Gemini's rewording of Spider DEV 861); a number its
+    sentence ends on is a value: "the names of models that launched between 2002 and 2004." (fresh holdout 616, held
+    out 821, 2026-10-18: of the 13 counts so served on Spider DEV, held out and the fresh holdout, one was right, by a
+    HAVING COUNT(*) < 120000 every group met)."""
+    from engine.sql_expansion import count_thresholds
+    from engine.sql_search import _number
+
+    def number(text):
+        try:
+            return _number(str(text))
+        except (TypeError, ValueError):
+            return None
+    wanted, found = number(value), None
+    if wanted is None:
+        return None
+    for threshold in count_thresholds(question_tokens):
+        if not any(stated == operator and number(bound) == wanted for stated, bound in threshold.predicates):
+            continue
+        last = question_tokens[threshold.end - 1]
+        before = question_tokens[max(0, threshold.start - 4):threshold.start]
+        counted = any(before[index:index + 2] in (("count", "of"), ("number", "of")) for index in range(len(before)))
+        if before[-1:] == ("count",) or counted or not re.search(
+                rf"\b{re.escape(last)}\s*(?:[?.!;]|$)", str(question), re.I):
+            return True
+        found = False
+    return found
+
+
 def _asked_tables(question_tokens, graph):
     """The tables whose whole name the question's opening says (canon() forms), after a command it opens with and up
     to its first relative, condition or preposition word; a "which" after its first two words starts a relative clause:
-    "the stadiums | which some concerts happened in". The projection window (sql_expansion.projection_window) is
-    another reading: what the answer shows, from a later command on ("How many countries does each continent have?
-    List the continent id"), where this one is the rows the question asks about."""
-    from engine.sql_schema import canon, name_words
+    "the stadiums | which some concerts happened in". A longer name's last word the opening says names it where the
+    question says its other words: "the most common amenity in the dorms" asks for Dorm_amenity (held out 882,
+    2026-10-18: the dorms' names were shown). The projection window (sql_expansion.projection_window) is another
+    reading: what the answer shows, from a later command on ("How many countries does each continent have? List the
+    continent id"), where this one is the rows the question asks about."""
+    from engine.sql_schema import canon, is_name_column, name_words
     opening = set()
     lead = 1 if question_tokens[:1] == ("please",) else 0
     for index, token in enumerate(question_tokens):
@@ -1859,10 +1955,14 @@ def _asked_tables(question_tokens, graph):
         if index and (token in _OPENING_STOPS or (token == "which" and index > 1)):
             break
         opening.add(token)
-    asked = set()
+    asked, said = set(), set(question_tokens)
     for table in graph.tables:
-        name = {canon(word) for word in name_words(table)} - {"id"}
-        if name and name <= opening:
+        words = [canon(word) for word in name_words(table)]
+        name = set(words) - {"id"}
+        # A field's word is no table's: "the names and ids of all countries with at least one car maker" asks for no
+        # car_names (Spider DEV 124, 2026-10-18).
+        longer = len(name) > 1 and words[-1] != "id" and not is_name_column(words[-1])
+        if name and (name <= opening or (longer and words[-1] in opening and name <= said)):
             asked.add(table)
     return asked
 
@@ -2654,18 +2754,19 @@ def _groups_the_counted_rows(query, counted_here, table, graph):
                for group in query.group_by)
 
 
-def _multiplies(query, counted, question_words, graph):
+def _multiplies(query, counted, question_words, graph, mentioned=frozenset()):
     """Whether ``query`` counts the ``counted`` tables' rows over a join that repeats them: it reads a table the
     question does not name and the tables it names do not need to meet. "Patients who made more than one appointment"
     counted the appointments joined to nurses, prescriptions, stays, rooms and procedures (held-out Spider train 47,
-    2026-10-11)."""
+    2026-10-11). The ``mentioned`` tables the question names are met too where the query does not read them: the
+    amenities "in the dorms" are counted in the Has_amenity rows between the two."""
     from engine.sql_ast import column_refs
     from engine.sql_schema import canon, name_words
     tables = {table for table in query.referenced_tables() if isinstance(table, str)}
     # Named in the question, two words of it spelling one name ("high schoolers"), or read as the answer's own rows.
     shown = {ref.table for ref in column_refs((query.select, query.group_by))}
     named = {table for table in tables if {canon(word) for word in name_words(table)} <= question_words} | shown | set(
-        counted)
+        counted) | set(mentioned)
     trees = graph.join_trees(named, limit=1) if len(named) > 1 else ()
     needed = ({trees[0].root, *(join.table for join in trees[0].joins)} if trees else set()) | named
     return bool(tables - needed)

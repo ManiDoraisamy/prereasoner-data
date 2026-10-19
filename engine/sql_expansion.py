@@ -193,8 +193,10 @@ def complete_projection_requested(question: str) -> bool:
                           re.I))
 
 
-# "in alphabetical order", "alphabetically": a text field ordered A to Z; with a reversing word, Z to A.
-ALPHABETICAL_WORDS = frozenset({"alphabetic", "alphabetical", "alphabetically"})
+# "in alphabetical order", "alphabetically": a text field ordered A to Z; with a reversing word, Z to A. "In reversed
+# lexicographical order" says the same (Spider DEV 527, 579, fresh holdout 140, 2026-10-18: each refused for it).
+ALPHABETICAL_WORDS = frozenset({"alphabetic", "alphabetical", "alphabetically", "lexicographic", "lexicographical",
+                                "lexicographically"})
 REVERSE_ORDER_WORDS = frozenset({"reverse", "reversed", "descending", "decreasing", "desc"})
 
 
@@ -212,7 +214,7 @@ def ordering_requested(question: str) -> bool:
     # ordered, and the birth date went unused). So do "in alphabetic order" and "in increasing order of IDs" (held-out
     # Spider train 244, 748, 980, 2026-10-17).
     if re.search(
-        r'\b(?:sort|sorted|alphabetic|alphabetical|alphabetically)\b'
+        r'\b(?:sort|sorted|' + '|'.join(sorted(ALPHABETICAL_WORDS)) + r')\b'
         r'|\b(?:ascending|descending|increasing|decreasing)\s+order\b'
         r'|\border\s+by\b'
         r'|\bin\s+(?:the\s+)?order\s+of\b',
@@ -237,7 +239,7 @@ def ordering_requested(question: str) -> bool:
         if word not in {"ordered", "ranked"}:
             continue
         suffix = words[index + 1:index + 4]
-        if suffix[:2] == ["according", "to"] or suffix[:1] == ["alphabetically"]:
+        if suffix[:2] == ["according", "to"] or suffix[:1] in (["alphabetically"], ["lexicographically"]):
             return True
         if "by" in suffix:
             prior = index - 1

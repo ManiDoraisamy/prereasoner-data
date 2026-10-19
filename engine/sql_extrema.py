@@ -449,11 +449,16 @@ class ExtremaQueryExpander(ExpansionSupport):
             )[:3]:
                 if relation_score <= 0:
                     continue
+                # The cue is read once: a filter keeping the value a subquery counts most common (sql_constraints'
+                # scalar frequency selector) is no structure to rank by count again. "the most common genre in all
+                # tracks" kept the genre a subquery found most common among Genre's own rows and ranked it by its
+                # count (held-out Spider train 940, 972, 880, 2026-10-18: every place of the pool so doubled).
                 structures = [
                     (*structure, Star())
                     for structure in self.having_structures(
                         candidates, entity_table, counted_table, pseudo
                     )
+                    if not _finds_most_common(structure[2])
                 ]
                 if cue.direction == "ASC" and entity_table != counted_table:
                     zero_inclusive = []
@@ -831,6 +836,18 @@ def _measure_extreme(query: SelectQuery, target, where, tokens: tuple[str, ...])
     function = "MAX" if target.direction == "DESC" else "MIN"
     return replace(query, select=(SelectItem(Aggregate(function, target.column)),), where=where,
                    order_by=(), limit=None, distinct=False)
+
+
+def _finds_most_common(where: Predicate | None) -> bool:
+    """Whether a filter compares with a scalar subquery keeping the value its count ranks first or last:
+    ``= (SELECT name ... GROUP BY name ORDER BY COUNT(*) DESC LIMIT 1)``."""
+    return any(
+        isinstance(term, Comparison) and isinstance(term.right, ScalarSubquery)
+        and isinstance(term.right.query, SelectQuery) and term.right.query.limit is not None
+        and bool(term.right.query.order_by)
+        and isinstance(term.right.query.order_by[0].expression, Aggregate)
+        and term.right.query.order_by[0].expression.function == "COUNT"
+        for term in _and_terms(where))
 
 
 def _has_dual_extrema(tokens: tuple[str, ...]) -> bool:

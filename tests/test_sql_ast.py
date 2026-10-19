@@ -3213,6 +3213,47 @@ def test_the_pool_holds_no_exclusion_the_gate_refuses_for_its_shape():
         served.get("error"), served.get("sql"))
 
 
+
+def test_a_most_common_value_is_ranked_once():
+    """Held-out Spider train 940, 972, 880, 2026-10-18: "What is the name of the most common genre in all tracks?"
+    kept the genre a subquery found most common among Genre's own rows (every one of them once) and ranked that one
+    genre by its tracks, the frequency superlative reusing the scalar frequency selector's filter as a structure; such
+    readings filled every place of the pool. The cue is read once (sql_extrema._finds_most_common): the tracks are
+    counted in each genre, and Metal, with three, is served."""
+    tables = [
+        {"name": "Genre", "columns": ["GenreId", "Name"], "rows": [[1, "Rock"], [2, "Jazz"], [3, "Metal"]]},
+        {"name": "Track", "columns": ["TrackId", "Name", "GenreId"],
+         "rows": [[1, "For Those About To Rock", 3], [2, "Balls to the Wall", 3], [3, "Fast As a Shark", 3],
+                  [4, "Restless and Wild", 1], [5, "Princess of the Dawn", 2], [6, "Put The Finger On You", 1]]},
+    ]
+    planner = _hermetic_planner()
+    question = "What is the name of the most common genre in all tracks?"
+    norm, fks, sch, _ = _request(planner, tables)
+    pool = planner.search_pool(question, norm, fks, sch)
+    selector = re.compile(r'= \(SELECT [^()]* GROUP BY [^()]* ORDER BY COUNT\(\*\) (?:ASC|DESC) LIMIT 1\)')
+    doubled = [member.sql for member in pool
+               if selector.search(member.sql.replace('"', ''))
+               and "ORDER BY COUNT" in selector.sub("", member.sql.replace('"', ''))]
+    assert pool and not doubled, doubled[:2]
+    served = planner.serve(tables, question, [
+        {"from_table": "Track", "from_col": "GenreId", "to_table": "Genre", "to_col": "GenreId"}])
+    assert served.get("valid") and served["result"]["rows"] == [["Metal"]], (served.get("error"), served.get("sql"))
+
+
+def test_lexicographical_order_is_alphabetical():
+    """Spider DEV 527, 579, fresh holdout 140, 2026-10-18: "List the section_name in reversed lexicographical order."
+    was refused for "lexicographical", which says what "alphabetical" says (sql_expansion.ALPHABETICAL_WORDS): the
+    names are served Z to A. Contrast: "in lexicographical order" is A to Z."""
+    sections = {"name": "Sections", "columns": ["section_id", "section_name"],
+                "rows": [[1, "a"], [2, "h"], [3, "o"], [4, "c"]]}
+    planner = _hermetic_planner()
+    served = planner.serve([sections], "List the section_name in reversed lexicographical order.", [])
+    assert served.get("valid") and served["result"]["rows"] == [["o"], ["h"], ["c"], ["a"]], (
+        served.get("error"), served.get("sql"))
+    served = planner.serve([sections], "List the section_name in lexicographical order.", [])
+    assert served.get("valid") and served["result"]["rows"] == [["a"], ["c"], ["h"], ["o"]], (
+        served.get("error"), served.get("sql"))
+
 def test_amount_of_says_a_quantity():
     """Spider DEV 290, 96 (2026-10-15): "Find the total amount of bonus given in all the evaluations." was refused, its
     SUM(Bonus) leaving "amount" unread, as was "the car with the smallest amount of horsepower". "Amount of" says a
@@ -9062,6 +9103,8 @@ TESTS = [
     test_a_measure_word_after_a_superlative_names_it,
     test_the_information_about_rows_shows_every_field,
     test_the_pool_holds_no_exclusion_the_gate_refuses_for_its_shape,
+    test_a_most_common_value_is_ranked_once,
+    test_lexicographical_order_is_alphabetical,
     test_amount_of_says_a_quantity,
     test_an_extreme_listed_beside_another_output_is_a_value,
     test_the_row_with_the_maximum_is_the_row_holding_it,
