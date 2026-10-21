@@ -4,8 +4,8 @@ the decisions it took, for the builder (engine.readers.readings) to make into ty
 
 The decisions are explicit: a table's use, a column's role, aggregate and operator, a value span, how many items
 of each kind a block holds, structure, direction, limit. Generic semantics shape them: a column a condition pins
-to one value is not shown again, and a condition on a date column reads its days as the engine reads dates
-(engine.sql_dates).
+to one value is not shown again, a column matched with the question's value is not counted distinct, and a
+condition on a date column reads its days as the engine reads dates (engine.sql_dates).
 """
 import heapq
 import json
@@ -248,6 +248,8 @@ def decode_block(output, example, graph, b, nested, choices):
               if operator == "=" and not isinstance(value, dict)
               and sum(1 for c, o, _ in where if c == column) == 1}
 
+    matched = {column for column, operator, value in where if operator in ("=", "LIKE") and not isinstance(value, dict)}
+
     def unpinned(items, plain_of):
         kept = [(score, item) for score, item in items if not (plain_of(item) and plain_of(item) in pinned)]
         return kept or items
@@ -260,7 +262,10 @@ def decode_block(output, example, graph, b, nested, choices):
         a = AGGREGATES.index(aggregate)
         p = columns[column]
         slot = choices.pick(("slot", b, column, aggregate), list(enumerate(output["slots"][column][b][a])))
-        distinct = aggregate == "COUNT" and column != "*" and choices.yes(
+        # A column a condition matches with the question's own value (= or LIKE) is counted by its rows, not by its
+        # distinct values: those are the one value, or the few that contain it ("How many Intake Consent documents are
+        # there?" counts documents). Of 16,254 gold blocks of Spider and BIRD train, one counts such a column distinct.
+        distinct = aggregate == "COUNT" and column != "*" and column not in matched and choices.yes(
             ("distinct-aggregate", b, column), field(p[b], "distinct_aggregate")[0])
         select.append([slot, aggregate, column, distinct])
     select.sort(key=lambda item: (item[0], order_of[item[2]]))

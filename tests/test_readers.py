@@ -234,6 +234,37 @@ def test_a_pinned_column_is_not_shown_again():
     assert readings["blocks"][0]["where"] == [["players.college", "=", "UCLA"]]
 
 
+def test_a_matched_column_is_not_counted_distinct():
+    """"How many players are from college UCLA?" counts the UCLA rows: the distinct colleges of rows pinned to UCLA
+    are always one, and of those whose college contains it, few. A column the conditions leave free keeps its
+    distinct count."""
+    graph = graph_of(PEOPLE)
+    names = ["*", "players.player_id", "players.player", "players.college", "players.position"]
+    question = "How many players are from college UCLA?"
+    start = question.index("UCLA")
+    values = {"0|players.college": [[0, start, start + len("UCLA"), 9.0]]}
+    g = counts({}, tables=1, select=1, where=1)
+
+    def read(counted):
+        picks = {(counted, "select", AGGREGATES.index("COUNT")): 0.9, (counted, "distinct_aggregate", 0): 0.9,
+                 ("players.college", "where", OPERATORS.index("=")): 0.95}
+        readings = decode(output_for(names, ["players"], picks, g, values=values), {"question": question, "text": ""},
+                          graph)
+        return readings, render_query(build(readings, graph))
+
+    readings, sql = read("players.college")
+    assert readings["blocks"][0]["select"] == [[0, "COUNT", "players.college", False]], readings
+    assert rows_of(sql, PEOPLE) == [(2,)], sql
+    readings, sql = read("players.position")
+    assert readings["blocks"][0]["select"] == [[0, "COUNT", "players.position", True]], readings
+    assert rows_of(sql, PEOPLE) == [(2,)], sql                       # Guard and Forward
+    contained = output_for(names, ["players"], {
+        ("players.college", "select", AGGREGATES.index("COUNT")): 0.9, ("players.college", "distinct_aggregate", 0): 0.9,
+        ("players.college", "where", OPERATORS.index("LIKE")): 0.95}, g, values=values)
+    readings = decode(contained, {"question": question, "text": ""}, graph)
+    assert readings["blocks"][0]["select"] == [[0, "COUNT", "players.college", False]], readings
+
+
 def test_a_date_condition_reads_the_days_the_question_names():
     graph = graph_of(ORDERS)
     where = dated([["orders.placed", "<", "July 10"]], graph, "How many orders were placed before July 10, 2026?")
@@ -305,6 +336,7 @@ TESTS = [
     test_a_share_needs_one_aggregate,
     test_a_contained_text_matches_in_any_case,
     test_a_pinned_column_is_not_shown_again,
+    test_a_matched_column_is_not_counted_distinct,
     test_a_date_condition_reads_the_days_the_question_names,
     test_a_stored_date_keeps_its_exact_value,
     test_a_date_range_is_not_read_under_or,

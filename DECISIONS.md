@@ -4450,7 +4450,9 @@ upload lacks (`knowledge_query.asked_world_types`, `WORLD_MEASURES`), not the de
 **Generic semantics only.** The decoder and builder keep rules that hold across schemas and wording: a date the
 question names is read through `engine/sql_dates`, and so is a period it groups by ("per month" groups by the date's
 year-month); a stored date literal stays exact; a column an equality pins is not shown, grouped or sorted by again; a
-pointed value drops the marks of its list; two values of one column the question names (matched on the data) are also
+column a condition matches with the question's value (= or LIKE) is counted by its rows, not its distinct values (one
+of 16,254 gold blocks of Spider and BIRD train counts such a column distinct); a pointed value drops the marks of its
+list; two values of one column the question names (matched on the data) are also
 read as either, since a row holds one value of a column; a grouped block's plain number sort column is each group's
 total, and groups computing nothing are distinct rows; the first row of the one column shown and ranked is its MAX or
 MIN; a contained text compares `LOWER(column)` with the lower-cased text (SQLite's LIKE ignores ASCII case and
@@ -4495,12 +4497,12 @@ answered against the engine's 418 of 712, the same 294 wrong.
   1,875 answered with the refusal on.
 - Calibration (1,053): engine 418 → readers 617 strict; 274 wins, 75 losses.
 - The live demo-dataset gate (`tests.test_datasets`, 2026-10-21, this bundle, no connection errors): `b8bedde`
-  passes every case; the readers fail 6. The three compound demos' prompts: a ranking leaf "by total spend" or "by
+  passes every case; the readers fail 5 (6 before the matched-column count rule). The three compound demos' prompts: a ranking leaf "by total spend" or "by
   total revenue" is read as a ranking by row count, since no column is named so and the re-scorer prefers the count
   to the `SUM(line_total)` reading in the pool. "What is the highest purchase cost?" ranks by another column (the
   right value, by chance, in SQL; the Python emitter cannot sort by a column it does not show). "What is the highest
   Net PO Value?" is read right and declined (confidence 0.247 against the threshold 0.251). "How many Intake Consent
-  documents are there?" counts the distinct document types (1).
+  documents are there?" counted the distinct document types (1) until the matched-column rule; it answers 6.
 - With the bundle installed, the hermetic suite fails `tests.test_complex_datasets` (5: the same leaves, and "List the
   product names that no customer from Paris has bought" read as one query without its negation) and the enrichment
   benchmarks, now graded on the served answer instead of the pool's first candidate: the currency-symbol join is in

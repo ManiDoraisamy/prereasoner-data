@@ -294,7 +294,7 @@ builder makes each reading a typed AST.
 | `engine/readers/text.py` | The schema as each model reads it: tables, columns, types, sample values, the question's values beside their columns (anchors), fitted to the token budget |
 | `engine/readers/models.py` | The three model kinds (schema items, readings, re-scorer) and their inputs; serving runs each encoder in bfloat16 |
 | `engine/readers/layout.py` | The readings' output layout, shared by training, serving and decoding |
-| `engine/readers/decode.py` | Outputs to the most probable distinct readings, with generic semantics (dates, a pinned column not shown again, list marks) |
+| `engine/readers/decode.py` | Outputs to the most probable distinct readings, with generic semantics (dates, a pinned column not shown again, a matched column not counted distinct, list marks) |
 | `engine/readers/readings.py` | The readings form and the deterministic builder (`build`, foreign-key joins, groups, set operations, nested conditions, shares) and its inverse (`readings_of`, for training labels) |
 | `engine/readers/read_as.py` | The plain-English "read as" line of a reading |
 | `engine/sql_ast.py` | Immutable query nodes, type/visibility validation, rendering |
@@ -319,7 +319,8 @@ builder makes each reading a typed AST.
    (`decode.candidates`, up to 16 per reader, above a probability floor); its generic semantics: a date the
    question names is read through `engine/sql_dates`, and so is a period it groups by ("per month" groups by the
    date's year-month, `decode.periodic`); a stored date literal is kept exact; a column an equality pins is not
-   shown, grouped or sorted by again; and a pointed value drops the marks of the list it stood in. A reading that
+   shown, grouped or sorted by again; a column a condition matches with the question's value (= or LIKE) is
+   counted by its rows, never by its distinct values; and a pointed value drops the marks of the list it stood in. A reading that
    compares one column with one value, when the question names more of that column's values (matched on the data),
    also enters the pool read as either value (`search.either`: a row holds one value of a column).
 3. The builder (`readings.build`) makes each reading a typed AST: the tables a block uses are joined along

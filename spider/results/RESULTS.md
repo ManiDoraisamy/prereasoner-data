@@ -5,6 +5,16 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
+## A column matched with the question's value is counted by its rows: no Spider change; one demo case fixed (2026-10-21)
+
+The decoder no longer reads COUNT(DISTINCT column) when a condition compares that column with the question's own value
+(= or LIKE): its distinct values are that value or the few containing it. Same bundle (HF `b9bb652`), evaluator and
+flags as the entry below, at `b54e2a2` plus this change (`worktree_dirty: true`), refusal off. Calibration (1,053):
+617 strict / 714 lenient, unchanged, with no calibration answer's SQL changed. Frozen test (2,147, totals only): 1,351
+strict / 1,535 lenient, unchanged. The live demo-dataset gate on the three datasets it touches: "How many Intake
+Consent documents are there?" 1 → 6 (right); the other two datasets' failures are unchanged. Records:
+`C:/work/prereasoner-readers-artifacts/evals/g/`, `evals/gate_g_subset.log`.
+
 ## Learned readers replace the lexical search: frozen Spider test 939 → 1,351 strict; calibration 418 → 617 (2026-10-21)
 
 The readers bundle installed by `training/readers/promote.py` (stage 1; reader v7a, anchored; reader v5
