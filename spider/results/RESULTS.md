@@ -5,6 +5,30 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
+## Independent October 16 review: current checkout 584 strict; matched Sonnet 5.5 and Gemini 3.8 Flash
+
+Fresh `whole_db` / production `served` / SQL / cap 5,000 per table / 12s soft prediction budget / seed 0 / external
+rewriting off; current HEAD `e4a549e` plus the pre-existing dirty worktree, unchanged bundle
+`b11056f8…`. DEV **584/1,034 strict (56.5%), 622/1,034 lenient (60.2%), 750/1,034 answered (72.5%)**;
+284 unanswered (202 completeness, 63 constraints, 19 AST search); scalar-gold 282/408 (69.1%). Against the
+October 14 accepted snapshot (546 strict / 590 lenient / 728 answered): 39 strict wins / 1 loss (+38), with 58 SQL
+changes, 23 newly answered and 1 newly refused. Strict loss 688; newly refused 787. This paired delta includes all
+intervening committed and pre-existing dirty changes; it is not attributed to one Claude commit.
+
+Saved October 7 provider SQL was re-executed by the same capped loader, SQL executor and scorer on the same 1,034
+questions/DBs: Sonnet 5.5 **840 strict / 897 lenient / 1,023 answered**; Gemini 3.8 Flash **872 / 904 / 1,034**.
+On the identical 750 cases the engine answered, engine was 584 strict / 622 lenient; Sonnet 630 / 662 (747 answered),
+Gemini 644 / 664 (750 answered). Inputs and generation budgets differ, so this is a same-task/data/scorer comparison,
+not a fully controlled model-only comparison. No provider API calls were made.
+
+Engine prediction time on the shared machine: median 5.91s, p90 12.62s, p95 15.04s, max 31.49s; 115 examples exceeded
+the 12s soft budget. Other evaluation processes were active, so timing is not isolated. `python -m tests.test_sql_ast`:
+272 passed. No live Postgres/Chrome release gates were run.
+
+Evidence: `%LOCALAPPDATA%/Temp/prereasoner-spider-review-e4a549e-20261016/`, tag `review-e4a549e`; provider regrades
+and identity checks: `%LOCALAPPDATA%/Temp/prereasoner-spider-review-3e46a74-20261014/`. Current run recorded DEV/table,
+DB, scorer/executor, source and weight hashes; code commit `e4a549e7a7994f9c1fade8311990ae827734fb82`, dirty worktree.
+
 ## Independent October 14 review: Claude 544 strict; final repaired snapshot 546 strict
 
 Frozen `3e46a74` plus the nine initially dirty files, then separate occurrence-only and final count/paired-emitter repair snapshots.
