@@ -4500,7 +4500,8 @@ answered against the engine's 418 of 712, the same 294 wrong.
   passes every case; the readers fail 5 (6 before the matched-column count rule). The three compound demos' prompts: a ranking leaf "by total spend" or "by
   total revenue" is read as a ranking by row count, since no column is named so and the re-scorer prefers the count
   to the `SUM(line_total)` reading in the pool. "What is the highest purchase cost?" ranks by another column (the
-  right value, by chance, in SQL; the Python emitter cannot sort by a column it does not show). "What is the highest
+  right value by chance; until the sort could keep only the shown columns, the Python program refused it, as it did
+  230 of the readers' 1,052 chosen calibration queries). "What is the highest
   Net PO Value?" is read right and declined (confidence 0.247 against the threshold 0.251). "How many Intake Consent
   documents are there?" counted the distinct document types (1) until the matched-column rule; it answers 6.
 - With the bundle installed, the hermetic suite fails `tests.test_complex_datasets` (5: the same leaves, and "List the
@@ -4515,6 +4516,6 @@ answered against the engine's 418 of 712, the same 294 wrong.
 
 **Known gaps.** Each failure above is a reading the training data does not cover: measures named by a business
 word the schema does not use, negated existence, joins to an enrichment's lookup table, and wide spreadsheet tables.
-The next step is training data for those families on the training databases (never the demo questions), and the
-Python emitter's sort by a column it does not show. The weights are published at Hugging Face revision
+The next step is training data for those families on the training databases (never the demo questions). The
+weights are published at Hugging Face revision
 `b9bb6521799ca603845a8e41248ff3abfe70fb40`, verified file by file by an anonymous download against the manifest.

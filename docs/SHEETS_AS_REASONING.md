@@ -64,7 +64,9 @@ strip remains a flat topological list because it is a workbook navigator, not a 
    reference is needed).
 4. **Projection may narrow, usage may not widen.** A later sheet may drop columns it no longer
    needs (`calculated` need not re-show `country`), but it may never *use* a column that no
-   earlier sheet displayed (rule 2).
+   earlier sheet displayed (rule 2). A sort may rank by a value the previous sheet shows and keep
+   only the question's columns ("the 2 customers by total spend": `total` shows each customer's
+   spend, `top_results` the two names).
 5. **Entity values display as human labels.** Reference columns store QIDs (`Q142`); displayed
    rows and step labels resolve them (`France`) via `knowledgebase."words"`. Both emitted programs
    keep the storage literal—the executed source is the proof, the label is the explanation, and

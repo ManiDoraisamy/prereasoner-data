@@ -99,6 +99,19 @@ def lower_select_query(
         )
     if any(join.alias is not None or join.kind != "INNER" for join in query.joins):
         raise UnsupportedDeterministicPlan("only unaliased inner joins are supported")
+    # A query may rank by a value it does not show ("the customers' names, by total spend"): each such term is
+    # computed beside the shown values under a name of its own, and the sort keeps only the shown ones.
+    shown_names = _select_names(query.select)
+    ranking_only = () if harmless_scalar_order else tuple(dict.fromkeys(
+        term.expression for term in query.order_by
+        if term.expression not in {item.expression for item in query.select}
+    ))
+    if ranking_only:
+        used = set(shown_names)
+        query = replace(query, select=query.select + tuple(
+            SelectItem(expression, _next_unique(f"rank_{index}", used))
+            for index, expression in enumerate(ranking_only, 1)
+        ))
 
     table_order = (query.from_table,) + tuple(join.table for join in query.joins)
     if len(table_order) != len(set(table_order)):
@@ -392,6 +405,7 @@ def lower_select_query(
                 tuple(order),
                 query.limit,
                 len(query.order_by) if query.with_ties else 0,
+                shown_names if ranking_only else (),
             )
         )
     try:

@@ -1230,6 +1230,61 @@ def test_a_top_1_ranking_keeps_every_tied_row_in_both_programs():
         raise AssertionError("rendered WITH TIES without an ORDER BY")
 
 
+def test_a_ranking_by_a_value_it_does_not_show_runs_in_both_programs():
+    # 230 of the readers' 1,052 chosen calibration queries (2026-10-21) rank by a value they do not show ("the 2
+    # customer names by total spend" sorts by SUM(amount) and shows the names; "What is the highest purchase cost?"
+    # read as the cost of the most valuable asset), and the Python program refused every one. The ranking value
+    # is computed beside the shown values and the sort keeps only the shown ones, in the same step, so both
+    # programs return what the query does, in its order.
+    import sqlite3
+
+    from engine.deterministic.plan import SortedView, SortValue
+    from engine.sql_ast import keep_ties, render_query
+
+    customer = ColumnRef("orders", "customer", SQLType.TEXT)
+    amount = ColumnRef("orders", "amount", SQLType.INTEGER)
+    spend = Aggregate("SUM", amount)
+    schema = [{"table": "orders", "name": "order_id", "affinity": "INTEGER", "values": [1, 2, 3, 4, 5]},
+              {"table": "orders", "name": "customer", "affinity": "TEXT", "values": ["Bo", "Ada", "Cy"]},
+              {"table": "orders", "name": "amount", "affinity": "INTEGER", "values": [40, 25, 60]}]
+    rows = [(1, "Bo", 40), (2, "Ada", 25), (3, "Cy", 60), (4, "Ada", 50), (5, "Bo", 10)]
+    statements = ["CREATE TABLE conversation.orders (order_id INTEGER, customer TEXT, amount INTEGER)",
+                  "INSERT INTO conversation.orders VALUES " + ", ".join(map(str, rows))]
+
+    def served(query):
+        connection = sqlite3.connect(":memory:")
+        connection.execute("CREATE TABLE orders (order_id INTEGER, customer TEXT, amount INTEGER)")
+        connection.executemany("INSERT INTO orders VALUES (?, ?, ?)", rows)
+        return connection.execute(render_query(query)).fetchall()
+
+    top_spenders = SelectQuery((SelectItem(customer),), "orders", group_by=(customer,),
+                               order_by=(OrderTerm(spend, "DESC"),), limit=2)
+    largest_order = SelectQuery((SelectItem(customer),), "orders", order_by=(OrderTerm(amount, "DESC"),), limit=1)
+    leader = keep_ties(replace(top_spenders, limit=1))
+    for name, query, expected in (("top_spenders", top_spenders, [("Ada",), ("Cy",)]),
+                                  ("largest_order", largest_order, [("Cy",)]),
+                                  ("leader", leader, [("Ada",)])):
+        plan = lower_select_query(name, query, schema, ())
+        assert plan.views[-1].shown == ("customer",), plan.views[-1]
+        result = _execute_fixture(plan, statements, estimated_rows=5)
+        assert result.mode.value == "verify", (name, result.mode)       # both programs ran and agreed, in order
+        assert [tuple(row.values()) for row in result.rows] == expected == served(query), (name, result.rows)
+    # Contrast: a ranking that shows its value keeps a plain sort, with the value in the result.
+    shown = lower_select_query("shown", replace(top_spenders, select=(SelectItem(customer), SelectItem(spend))),
+                               schema, ())
+    assert shown.views[-1].shown == ()
+    # Negative: a sort shows only values of the view it sorts.
+    plan = lower_select_query("top_spenders", top_spenders, schema, ())
+    try:
+        replace(plan, views=plan.views[:-1] + (
+            SortedView(plan.views[-1].name, plan.views[-1].source, (SortValue(ViewValue("rank_1"), True),),
+                       2, 0, ("nowhere",)),))
+    except ValueError as exc:
+        assert "shows only values" in str(exc), exc
+    else:
+        raise AssertionError("a sort showed a value its source lacks")
+
+
 def test_a_month_comparison_runs_in_both_programs():
     # "How many transfers were signed in August?" (2026-10-02): the month of each date, read from its
     # ISO text by the SQL program and from the date by the Python program.

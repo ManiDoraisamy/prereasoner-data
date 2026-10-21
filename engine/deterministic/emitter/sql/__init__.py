@@ -195,19 +195,25 @@ class SQLEmitter:
                     for item in view.order
                 ]
                 order = ", ".join(terms)
+                # A sort that shows fewer values than it ranks by selects them in the same statement, so the
+                # ranking values order the rows and are dropped without a later step losing the order.
+                shown = ", ".join(_q(name) for name in view.shown) if view.shown else None
                 if view.ties_on:
                     # FETCH FIRST n ROWS WITH TIES, which SQLite lacks: rank by the leading terms and keep
                     # the rows ranked within the limit, in the full order.
                     columns = ", ".join(_q(name) for name in columns_by_view[view.source])
                     sql = (
-                        f"SELECT {columns} FROM (SELECT *, RANK() OVER (ORDER BY {', '.join(terms[:view.ties_on])}) "
+                        f"SELECT {shown or columns} FROM (SELECT *, RANK() OVER (ORDER BY {', '.join(terms[:view.ties_on])}) "
                         f"AS {_q('__rank')} FROM {relation(view.source)}) AS {_q(view.source)} "
                         f"WHERE {_q('__rank')} <= {view.limit} ORDER BY {order}"
                     )
                 else:
-                    sql = f"SELECT * FROM {relation(view.source)} ORDER BY {order}"
+                    sql = f"SELECT {shown or '*'} FROM {relation(view.source)} ORDER BY {order}"
                     if view.limit is not None:
                         sql += f" LIMIT {view.limit}"
+                if view.shown:
+                    available_tables = set()
+                    available_values = set(view.shown)
             elif isinstance(view, WindowView):
                 available_tables = set(tables_by_view[view.source])
                 available_values = set(values_by_view[view.source])

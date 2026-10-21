@@ -381,13 +381,16 @@ class SortValue:
 class SortedView:
     """ORDER BY, with an optional LIMIT. ``ties_on`` is the number of leading order terms that rank the
     rows: a row equal to the last kept row on those terms is kept too (FETCH FIRST n ROWS WITH TIES).
-    The later terms only order the kept rows, so both programs show them alike."""
+    The later terms only order the kept rows, so both programs show them alike. ``shown``, when given,
+    names the values the sorted rows keep, in order: a query may rank by a value it does not show ("the
+    customers' names, by total spend"), and the sort drops it in the same step, keeping the row order."""
 
     name: str
     source: str
     order: tuple[SortValue, ...]
     limit: int | None = None
     ties_on: int = 0
+    shown: tuple[str, ...] = ()
 
     def __post_init__(self):
         _require_identifier(self.name, "view name")
@@ -401,6 +404,11 @@ class SortedView:
             self.ties_on and self.limit is None
         ):
             raise ValueError("ties rank by leading sort keys under a limit")
+        object.__setattr__(self, "shown", tuple(self.shown))
+        for shown in self.shown:
+            _require_identifier(shown, "shown value name")
+        if len(set(self.shown)) != len(self.shown):
+            raise ValueError("a sort shows each value once")
 
 
 @dataclass(frozen=True)
@@ -792,6 +800,11 @@ class AnalysisPlan:
                 elif isinstance(view, SortedView):
                     for item in view.order:
                         self._validate_value(item.value, stage_tables, stage_values)
+                    if view.shown:
+                        if stage_tables or not set(view.shown) <= stage_values:
+                            raise ValueError("a sort shows only values of the view it sorts")
+                        stage_text = stage_text & set(view.shown)
+                        stage_values = set(view.shown)
                 elif isinstance(view, WindowView):
                     for value in (
                         view.measure,
@@ -927,6 +940,8 @@ class AnalysisPlan:
             return tuple(value.name for value in view.group_by) + tuple(
                 value.name for value in view.aggregates
             )
+        if isinstance(view, SortedView) and view.shown:
+            return view.shown
         return current
 
     def view_columns(self) -> dict[str, tuple[str, ...]]:

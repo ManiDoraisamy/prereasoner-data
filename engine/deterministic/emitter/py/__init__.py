@@ -197,6 +197,7 @@ class PythonEmitter:
                 _class_name(view.name)
                 for view in plan.views
                 if not isinstance(view, (AntiJoinView, FilteredView, SortedView))
+                or (isinstance(view, SortedView) and view.shown)
             ),
             wrapper_class,
         ]
@@ -469,6 +470,9 @@ class PythonEmitter:
                         enrichment.target_table
                     ].attribute
                 current_values = set(stage_values[view.source])
+            elif isinstance(view, SortedView) and view.shown:
+                current_tables = {}
+                current_values = set(view.shown)
             elif isinstance(view, (FilteredView, SortedView)):
                 stage_tables[view.name] = dict(stage_tables[view.source])
                 stage_values[view.name] = set(stage_values[view.source])
@@ -667,6 +671,29 @@ class PythonEmitter:
                         "        )",
                     ]
                 )
+                if view.shown:
+                    # The rows keep the values the query shows, in their sorted order.
+                    lines[-1] += ".for_each("
+                    lines.extend(
+                        [
+                            f"            name={view.name!r},",
+                            f"            emit=lambda row: {row_classes[view.name]}(",
+                            *(
+                                f"                {name}="
+                                + self._python_value(
+                                    plan,
+                                    ViewValue(name),
+                                    "row",
+                                    stage_tables[view.source],
+                                    stage_values[view.source],
+                                )
+                                + ","
+                                for name in view.shown
+                            ),
+                            "            ),",
+                            "        )",
+                        ]
+                    )
             elif isinstance(view, WindowView):
                 lines.extend(
                     self._emit_window(
