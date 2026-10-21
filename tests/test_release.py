@@ -49,9 +49,19 @@ def test_public_artifact_boundary():
     assert not any("spider/results/" in path and "per_example" in path for path in folded)
     assert "training/world/build_wikipedia_schema.py" not in folded
     assert not any(path.endswith((".pt", ".tfstate", ".env")) for path in folded)
-    gitleaks = _text(".gitleaks.toml")
-    assert "web/public/lib/config" in gitleaks
-    assert gitleaks.count("paths =") == 1
+    import tomllib
+
+    # Two narrow exemptions and no other: the public browser configuration, and the weight manifest's lines that map
+    # a file to its digest (generic-api-key reads a tokenizer file's name as a credential).
+    allowlists = tomllib.loads(_text(".gitleaks.toml"))["allowlists"]
+    assert [entry.get("paths") for entry in allowlists] == [
+        ["^web/public/lib/config\\.js$"], ["^engine/data/weights_manifest\\.json$"]]
+    manifest = allowlists[1]
+    assert manifest["condition"] == "AND" and manifest["regexTarget"] == "line" and len(manifest["regexes"]) == 1
+    digest_line = re.compile(manifest["regexes"][0])
+    assert digest_line.match('  "readers/stage1/tokenizer.json": "' + "0" * 64 + '",')
+    assert not digest_line.match('  "github_token": "ghp_' + "a" * 36 + '",')
+    assert not digest_line.match('  "api_key": "' + "0" * 63 + 'g",')
 
     workflow = _text(".github/workflows/ci.yml")
     assert "gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e" in workflow
