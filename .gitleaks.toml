@@ -6,3 +6,10 @@ useDefault = true
 [[allowlists]]
 description = "Firebase and Picker browser identifiers are public client configuration; server authorization never trusts them."
 paths = ['''^web/public/lib/config\.js$''']
+
+[[allowlists]]
+description = "The weight manifest maps each published model file to its public SHA-256; a tokenizer file's name is no credential."
+condition = "AND"
+paths = ['''^engine/data/weights_manifest\.json$''']
+regexTarget = "line"
+regexes = ['''^\+?\s*"[A-Za-z0-9_./-]+": "[0-9a-f]{64}",?$''']
