@@ -18,11 +18,8 @@ import math
 import threading
 from pathlib import Path
 
-import torch
-
 from engine.config import DATA_DIR
 from engine.readers import decode as decoding
-from engine.readers import models
 from engine.readers.read_as import read_as
 from engine.readers.readings import build
 from engine.readers.text import TOP_TABLES, Schema, fit, table_text
@@ -38,6 +35,8 @@ CANDIDATES = 16                                    # per stage-2 model
 class ReadingSearch:
     def __init__(self, directory=READERS_DIR):
         from transformers import AutoTokenizer
+
+        from engine.readers import models
         directory = Path(directory)
         self.tokenizer = AutoTokenizer.from_pretrained(directory / "stage1")
         self.stage1 = models.load("schema_items", directory / "stage1")
@@ -57,6 +56,10 @@ class ReadingSearch:
             text, spans = table_text(schema, table)
             rows.append({"question": question, "table": table, "text": text,
                          "columns": [{"start": s, "end": e, "name": c} for c, s, e in spans]})
+        import torch
+
+        from engine.readers import models
+
         scores = {}
         with torch.no_grad():
             for begin in range(0, len(rows), 16):
@@ -114,6 +117,8 @@ class ReadingSearch:
         kept = self.prune(schema, self.schema_items(question, schema))
         named = {f"{table}.{column}": values for (table, column), values in schema.anchors(question).items()
                  if len(values) > 1}
+        from engine.readers import models
+
         pooled, seen = [], set()
         for model, anchored in self.stage2:
             row = self.row(question, schema, *kept, anchored=anchored)
@@ -146,6 +151,8 @@ class ReadingSearch:
         with _LOCK:
             logits = _SCORES.get(key)
         if logits is None:
+            from engine.readers import models
+
             logits = tuple(models.rescore(self.rescorer, self.tokenizer, question, records))
             _keep(_SCORES, key, logits)
         scores = [None] * len(pool)

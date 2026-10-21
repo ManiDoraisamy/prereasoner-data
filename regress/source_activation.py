@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from engine.enrichment import (
     EnrichmentRuntime, LoadedDataset, RuntimeIdentity, SnapshotPin,
 )
-from engine.readers.search import reading_search
 from regress.domain_enrichment import served_rows
 from engine.sql_schema import SchemaGraph
 
@@ -91,6 +90,8 @@ def _execute(tables, sql: str):
 
 
 def run_iana_country_activation_benchmark() -> ActivationMetrics:
+    from engine.readers.search import reading_search    # the readers' model stack loads only when it runs
+
     identity = RuntimeIdentity("benchmark", "model", "planner", "ranker")
     runtime = EnrichmentRuntime(
         _CountryStore(), enabled_datasets={"iana_country"}, identity=identity,

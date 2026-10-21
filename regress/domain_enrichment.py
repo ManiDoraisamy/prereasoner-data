@@ -9,7 +9,6 @@ from engine.domain_profiles import PROFILES
 from engine.domain_typing import detect_profiles, detect_roles
 from engine.enrichment.runtime import EnrichmentRuntime, RuntimeIdentity
 from engine.enrichment.store import SnapshotStore
-from engine.readers.search import reading_search
 from engine.sql_schema import SchemaGraph
 
 
@@ -215,6 +214,8 @@ def run_serving_benchmark() -> ServingMetrics:
         tables, "Show the currency symbol for every order", as_of="2026-08-17",
         private_reference_versions={"merchant_catalog": "sha256:catalog"},
     )
+    from engine.readers.search import reading_search    # the readers' model stack loads only when the benchmark runs
+
     fks = [edge.as_foreign_key(1.0) for edge in plan.explicit_fks]
     candidates = reading_search().pool(
         "Show the currency symbol for every order", SchemaGraph.from_tables(plan.tables, fks)
