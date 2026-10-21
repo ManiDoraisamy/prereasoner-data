@@ -628,6 +628,52 @@ def test_runpod_resume_requires_ownership_and_never_creates_a_pod():
             terminate.assert_not_called()
 
 
+def test_runpod_downloads_match_the_pods_files_before_termination():
+    # 2026-10-21: scp returned success with 223 MB of a stage-2 run's 668 MB small.pt, the lease terminated the pod,
+    # and the weights were lost. Every downloaded file is now compared with the pod's size and re-fetched when it
+    # differs; a file still short keeps the pod for another pull instead of deleting it.
+    from training.tools import runpod_api
+
+    def lease(remote_sizes, writes):
+        events = []
+        with tempfile.TemporaryDirectory() as directory:
+            out = Path(directory) / "out"
+
+            def transfer(command, remaining, attempts=3):
+                target = Path(command[-1])
+                if target == out:
+                    (out / "stage2").mkdir(parents=True, exist_ok=True)
+                    target = out / "stage2" / "small.pt"
+                size = writes.pop(0) if writes else 0
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(b"x" * size)
+                events.append(("transfer", size))
+
+            listing = "".join(f"{name}\t{size}\n" for name, size in remote_sizes.items())
+            with patch.object(runpod_api, "reconcile"), \
+                    patch.object(runpod_api, "create", return_value="pod-verify"), \
+                    patch.object(runpod_api, "poll", return_value=("127.0.0.1", 22)), \
+                    patch.object(runpod_api.subprocess, "run",
+                                 return_value=subprocess.CompletedProcess([], 0, stdout=listing)), \
+                    patch.object(runpod_api, "_run_transfer", side_effect=transfer), \
+                    patch.object(runpod_api, "terminate", side_effect=lambda *args: events.append("terminate")):
+                try:
+                    runpod_api.run_lease(30, [], downloads=(("/workspace/out", str(out)),))
+                except runpod_api.IncompleteDownload as exc:
+                    events.append(("incomplete", str(exc)))
+        return events
+
+    # A truncated file is fetched again, and the lease ends normally once it matches.
+    events = lease({"stage2/small.pt": 10}, [4, 10])
+    assert events == [("transfer", 4), ("transfer", 10), "terminate"], events
+    # A file that stays short keeps the pod: three re-fetches, no termination, the shortfall named.
+    events = lease({"stage2/small.pt": 10}, [4, 4, 4, 4])
+    assert [e for e in events if e == "terminate"] == [], events
+    assert events[-1][0] == "incomplete" and "4 of 10 bytes" in events[-1][1], events
+    # Contrast: a complete download is checked once and terminated as before.
+    assert lease({"stage2/small.pt": 10}, [10]) == [("transfer", 10), "terminate"]
+
+
 def test_runpod_transfers_are_inside_the_owned_lease():
     from training.tools import runpod_api
 
@@ -655,10 +701,12 @@ def test_runpod_transfers_are_inside_the_owned_lease():
             uploads=((str(source), "/workspace/input.jsonl"),),
             downloads=(("/workspace/output", str(Path(directory) / "output")),),
         )
-        assert run.call_count == 3
+        assert run.call_count == 4
         assert "input.jsonl" in run.call_args_list[0].args[0][-2]
         assert "train_property_head" in run.call_args_list[1].args[0][-1]
         assert "/workspace/output" in run.call_args_list[2].args[0][-2]
+        # The pod's file sizes, read after the download and before termination (_verify_download).
+        assert run.call_args_list[3].args[0][-1].startswith("find /workspace/output -type f")
         assert events[-1] == ("DELETE", "/pods/pod-3")
         assert not runpod_api.STATE.exists()
         try:
@@ -1213,6 +1261,7 @@ TESTS = [
     test_runpod_transfers_are_inside_the_owned_lease,
     test_runpod_price_cap_terminates_before_any_work,
     test_runpod_failed_command_downloads_before_termination,
+    test_runpod_downloads_match_the_pods_files_before_termination,
     test_runpod_resume_requires_ownership_and_never_creates_a_pod,
     test_runpod_retries_only_idempotent_transfers,
     test_cloud_build_context_is_git_archive_plus_manifested_weights,

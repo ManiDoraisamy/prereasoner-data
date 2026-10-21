@@ -216,6 +216,47 @@ def _run_transfer(command: list[str], remaining, attempts: int = 3) -> None:
     raise last_error or RuntimeError("transfer failed without an error")
 
 
+class IncompleteDownload(RuntimeError):
+    """A downloaded file is still shorter or longer than the pod's after re-fetching it. The lease keeps the pod
+    (its provider-side watchdog still deletes it at the deadline) so the files can be pulled another way, since a
+    terminated pod takes them with it."""
+
+
+def _remote_sizes(ssh: list[str], remote: str, remaining) -> dict[str, int]:
+    """{path under ``remote`` ("" when ``remote`` is a file): size in bytes} of every file the pod holds there."""
+    listing = subprocess.run(
+        [*ssh, shlex.join(["find", _remote_path(remote), "-type", "f", "-printf", "%P\\t%s\\n"])],
+        check=True, capture_output=True, text=True, timeout=min(remaining(), 120),
+    ).stdout
+    sizes = {}
+    for line in listing.splitlines():
+        relative, _, size = line.rpartition("\t")
+        if size.isdigit():
+            sizes[relative] = int(size)
+    return sizes
+
+
+def _verify_download(ssh: list[str], scp: list[str], ip: str, remote: str, destination: Path, remaining) -> None:
+    """Compare every downloaded file with the pod's size and re-fetch each one that differs, up to three times: scp
+    has returned success with a third of a file (2026-10-21, a stage-2 run's small.pt, lost with its pod)."""
+    short = []
+    for relative, size in sorted(_remote_sizes(ssh, remote, remaining).items()):
+        local = destination / relative if relative else destination
+        source = f"{_remote_path(remote)}/{relative}" if relative else _remote_path(remote)
+        for _ in range(3):
+            if local.is_file() and local.stat().st_size == size:
+                break
+            local.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                _run_transfer([*scp, f"root@{ip}:{source}", str(local)], remaining, attempts=1)
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+                pass
+        if not (local.is_file() and local.stat().st_size == size):
+            short.append(f"{source} ({local.stat().st_size if local.is_file() else 0} of {size} bytes)")
+    if short:
+        raise IncompleteDownload("downloads differ from the pod's files: " + ", ".join(short))
+
+
 def reconcile() -> None:
     """Terminate only pods THIS machine's lease record owns and lost track of.
 
@@ -318,6 +359,7 @@ def run_lease(max_minutes: int, command: list[str], keep: bool = False,
                 [*scp, f"root@{ip}:{_remote_path(remote)}", str(destination)],
                 remaining,
             )
+            _verify_download(ssh, scp, ip, remote, destination, remaining)
             downloaded.add((remote, local))
         return pid
     finally:
@@ -334,10 +376,12 @@ def run_lease(max_minutes: int, command: list[str], keep: bool = False,
                                   remaining, attempts=2)
                 except Exception as recovery_error:
                     print(f"artifact recovery failed: {remote}: {recovery_error}", file=sys.stderr)
-        if keep:
+        incomplete = isinstance(sys.exc_info()[1], IncompleteDownload)
+        if keep or incomplete:
             print(
-                f"WARNING: --keep left billable pod {pid} running until its provider deadline; "
-                "terminate it sooner when work completes",
+                f"WARNING: {'an incomplete download' if incomplete else '--keep'} left billable pod {pid} running "
+                f"until its provider deadline (ssh root@{ip}); pull its files (training/readers/pull_parts.sh), "
+                "then terminate it",
                 file=sys.stderr,
             )
         else:
