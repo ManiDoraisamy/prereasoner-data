@@ -70,21 +70,14 @@ def load_encoder(obj, deploy_dir=DATA_DIR):
     obj.hdim = base.config.hidden_size
 
 
-def attach_question_rewriter(obj):
-    """Give the planner selection's labelled Gemini fallback (engine/question_rewrite.py). Nothing is
-    loaded: it calls Gemini only when the operator enabled it and the search found no runnable query."""
-    from engine.question_rewrite import QuestionRewriter
-    obj.question_rewriter = QuestionRewriter()
-
-
 class EncoderQuery(TableQuery):
     """TableQuery with the complete runtime bundle loaded: the unified (LoRA-fine-tuned) Qwen encoder and
-    the trained relational readout, whose named dimensions drive the deterministic SQL search."""
+    the trained relational readout, whose named dimensions type columns and read the intent of composition
+    and world questions. Own-data SQL selection reads questions with the readers (engine/readers/)."""
 
     def __init__(self, deploy_dir=DATA_DIR):
         super().__init__(deploy_dir)
         load_encoder(self, deploy_dir)
-        attach_question_rewriter(self)
 
     # ---------- operator FROM THE MODEL (retires the keyword AGG_CUES) ----------
     INTENT_OPS: ClassVar[dict[str, str]] = {
@@ -160,7 +153,7 @@ class EncoderQuery(TableQuery):
             (the reason the encoder is unified: 'sell'/'earn'/'revenue'/'amount' land together), restricted to
             non-id numeric columns. An explicitly-named column/table wins; a single measure is taken directly.
           - a money noun that names the table ("sales") reads as its money-named measure column unless the question
-            counts or lists it — the same rule as the own-data search (sql_expansion.money_total_position).
+            counts or lists it (sql_expansion.money_total_position).
           - a quantity superlative ranks totals of the column it names ("which country has the most deposits",
             sql_expansion.ranked_measure_columns) or counts of the rows it names ("the most banks",
             sql_expansion.ranked_row_tables), and a count of a noun a numeric column already counts is that

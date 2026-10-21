@@ -137,6 +137,24 @@ def single_branch(candidate) -> bool:
     return isinstance(candidate.query, SelectQuery)
 
 
+# Questions longer than this many words lie past what the readers were trained to read as one query: 99% of their
+# training questions have at most 27 words, and the multi-goal prompts the shipped complex datasets ask have 39 to 44.
+ONE_QUERY_WORDS = 30
+
+
+def declined_compound(selection, question) -> dict[str, Any] | None:
+    """The decomposition a long question needs when the readers' refusal declined every reading of it, or None.
+
+    A question longer than ``ONE_QUERY_WORDS`` words that the readers cannot read confidently as one query is read
+    as the bounded subquestions of a decomposition proposal instead, each short enough to read; a short one is
+    asked about (engine/tables.py:unsure_clarification)."""
+    if selection is None or selection.selected is not None or selection.declined is None:
+        return None
+    if len(re.findall(r"[^\W_]+", str(question))) <= ONE_QUERY_WORDS:
+        return None
+    return {"reason": "the readers read this long compound question as no one query confidently"}
+
+
 def selected_decomposition_required(candidate) -> dict[str, Any] | None:
     """One selected-AST predicate, shared by the delegate and compose probe."""
     if candidate is not None and not single_branch(candidate):
@@ -147,12 +165,12 @@ def selected_decomposition_required(candidate) -> dict[str, Any] | None:
 
 
 def compound_candidate(searched):
-    """The search's compound reading that makes a named request need decomposition, or None.
+    """The readers' compound reading that makes a named request need decomposition, or None.
 
-    Compound structure is the deterministic search's own reading of the question: the top
-    candidate of its pool (``search_pool``), from a grammar that models set operations, read before
-    any candidate runs. A single-query answer to a multi-goal question is only a fragment of it; the
-    decomposition proposal owns such questions.
+    Compound structure is the readers' most probable reading of the question: the top candidate
+    of the pool (``search_pool``, engine/readers/search.py), whose readings form models set
+    operations, read before any candidate runs. A single-query answer to a multi-goal question is
+    only a fragment of it; the decomposition proposal owns such questions.
     """
     top = searched[0] if searched else None
     return top if selected_decomposition_required(top) is not None else None
@@ -304,33 +322,37 @@ def leaf_candidates(selection, node_id: str, question: str, feeds_cross: bool):
 
 @dataclass(frozen=True)
 class SearchProbe:
-    """The search's reading of a question over a request's tables, without execution (``search_probe``):
-    whether it is compound, its pool, and the schema graph that pool was searched on."""
+    """The readers' reading of a question over a request's tables (``search_probe``): whether it is compound,
+    the one own-data selection over a single-query reading (None for a compound one), and the planner's column
+    records it was read on."""
     decomposition_required: dict[str, Any] | None
-    pool: tuple
-    graph: Any
+    selection: Any
+    schema: tuple
 
 
 def search_probe(planner, tables, question) -> SearchProbe:
-    """Execution-free probe: does the search read the question as compound, and how?
+    """Probe: do the readers read the question as compound, and do they read it from the upload?
 
     Compound is the same predicate the own-data serve path applies (``compound_candidate``: the
-    search's top candidate is a set operation). The compose path must consult it BEFORE
+    readers' most probable reading is a set operation). The compose path must consult it BEFORE
     building a composition: a multi-goal question's surface ("top ...") can satisfy the
     compose gate, and a composed top-N would then answer one fragment of the question.
-    Compound structure is the search's reading alone, so the probe runs only the search stage
-    of the one own-data selection (``search_pool``): no execution, no fallback. A
-    failed probe must not authorize a partial composed answer. Its pool also tells routing
-    whether the upload reads the question whole (``engine.routing.reads_upload_whole``).
+    A single-query reading runs the one own-data selection (``select_query``), whose accepted
+    reading tells routing that the upload answers the question (``engine.routing.reads_upload_whole``);
+    the delegate's own selection reuses the readers' pool and scores. A failed probe must not
+    authorize a partial composed answer.
     """
     from engine.sql_schema import SchemaGraph
 
     try:
         norm, inferred_fks = planner.ingest(tables)
-        schema, _, _ = planner.schema(norm, inferred_fks)
+        schema, _, tablemap = planner.schema(norm, inferred_fks)
         graph = SchemaGraph.from_planner(schema, inferred_fks)
         searched = tuple(planner.search_pool(question, norm, inferred_fks, schema, graph=graph))
-        return SearchProbe(selected_decomposition_required(compound_candidate(searched)), searched, graph)
+        required = selected_decomposition_required(compound_candidate(searched))
+        selection = None if required is not None else planner.select_query(
+            question, norm, inferred_fks, schema, tablemap, searched=searched, graph=graph)
+        return SearchProbe(required or declined_compound(selection, question), selection, tuple(schema))
     except Exception as exc:
         raise DecompositionError(
             "could not check the selected query for decomposition"
@@ -623,11 +645,8 @@ def _leaf_readings(planner, slug, node, tables, schema, foreign_keys, tablemap, 
     """Yield a leaf's contract-compatible readings, lowered and named for the root slug.
 
     Readings come in the selection's order (`leaf_candidates`). Raises DecompositionError,
-    naming the first reason a reading failed, when the leaf has none.
-
-    A leaf never takes the Gemini fallback: its question is already the chat model's wording, and a
-    leaf with no runnable query rejects the decomposition with that reason so the model restates
-    the leaf (a bounded correction), instead of fusing an unlabelled Gemini reading into the answer.
+    naming the first reason a reading failed, when the leaf has none: the model restates the leaf
+    (a bounded correction).
     """
     from engine.analysis import analysis_view_name
     from engine.deterministic.lower import (
@@ -635,9 +654,7 @@ def _leaf_readings(planner, slug, node, tables, schema, foreign_keys, tablemap, 
         lower_select_query,
     )
 
-    selection = planner.select_query(
-        node["question"], tables, foreign_keys, schema, tablemap, allow_fallback=False
-    )
+    selection = planner.select_query(node["question"], tables, foreign_keys, schema, tablemap)
     candidates = selection.pool
     if not candidates:
         raise DecompositionError(

@@ -154,15 +154,10 @@ function dedent(src){
   const pad=Math.min(...lines.filter(l=>l.trim()).map(l=>l.match(/^ */)[0].length));
   return lines.map(l=>l.slice(pad)).join('\n');
 }
-// When Gemini rewrote the question (engine/question_rewrite.py), the settled status repeats the label.
-let FALLBACK=null;
-function noteFallback(value){ if(value&&value.kind==='rewrite')FALLBACK=value; }
-function answeredStatus(n){
-  const f=FALLBACK;
-  return 'Answered in '+n+' step'+(n===1?'':'s')+(!f?'':f.kind==='rewrite'
-    ?' · read as “'+f.question+'”, reworded by Gemini'
-    :'');
-}
+// How the engine read the question (its read_as line), for a turn that called it directly.
+let READ_AS=null;
+function noteReading(value){ if(typeof value==='string'&&value)READ_AS=value; }
+function answeredStatus(n){ return 'Answered in '+n+' step'+(n===1?'':'s'); }
 function noteAnalysis(value){
   if(!value||!value.slug)return;
   TURN_ANALYSIS=Object.assign({},value);
@@ -499,7 +494,11 @@ function derivTree(d){
 }
 function derivLinks(){ const d=BOOK.filter(s=>s.cls==='deriv'&&!s.stale); if(!d.length)return '';
   const tree=derivTree(d); return tree||('<div class=steps>'+d.map(stepLink).join('')+'</div>'); }
-function asksLine(){ return window.PrereasonerTurnRenderer.renderAsks(CALLS.map(c=>c.question),question); }
+function asksLine(){
+  const asks=CALLS.map(c=>c.read_as||c.question);
+  if(!asks.length&&READ_AS)asks.push(READ_AS);
+  return window.PrereasonerTurnRenderer.renderAsks(asks,question);
+}
 // The executable derivation tree — collapsed under a "Reasoning steps" toggle. COTOPEN persists the open state so a
 // re-render (e.g. clicking a step to open its sheet) doesn't snap it shut.
 let COTOPEN=false;
@@ -975,7 +974,7 @@ function renderFromJSON(j,executionKey=null){
   if(!BOOK.some(s=>s.id===ACTIVE))AUTO=true;
   SETTLED=false; FAILMSG=null; TRANSPORT_ERROR=null;
   const execution=noteExecution(executionOf(j),executionKey);
-  J=j; noteDatasetSemantics(j.dataset_semantics); noteAnalysis(j.analysis); noteFallback(j.fallback);
+  J=j; noteDatasetSemantics(j.dataset_semantics); noteAnalysis(j.analysis); noteReading(j.read_as);
   (j.views||[]).forEach(v=>appendView(v,execution,executionKey));
   if(j.present) PRESENT=true;                                 // flag BEFORE finalize so it triggers the present reply
   DONE=true; finalize();
@@ -1047,7 +1046,7 @@ function runProposed(){ if(!CONVPROP)return; const p=CONVPROP; archiveTurn(); qu
 // under its own jobId (rendered by the same appendView/appendResolve as the direct path). The turn's answer
 // is rendered directly from the engine result (shown in the rail); the derivation (every call's steps) stays in the panel.
 async function startTurn(){
-  const myRun=++RUN; FALLBACK=null;
+  const myRun=++RUN; READ_AS=null;
   const live=()=>RUN===myRun&&!SETTLED;
   LASTQ=question; if(EDITED){ syncInputsToSheets(); EDITED=false; showRecalc(false); } stampBaseline();   // pick up any input-cell edits; re-baseline what we're about to compute
   let token;
@@ -1094,7 +1093,8 @@ async function startTurn(){
     if(j&&Array.isArray(j.history)){ HISTORY=j.history; HTTPHIST=true; }
     if(!j){ if(!streaming&&!SETTLED) fail('the assistant did not respond — please try again'); return; }
     if(Array.isArray(j.traces)) j.traces.forEach(t=>{ const engine=t.engine||{};
-      noteDatasetSemantics(engine.dataset_semantics); noteAnalysis(engine.analysis); noteFallback(engine.fallback);
+      const call=CALLS.find(c=>c.jobId===t.jobId); if(call&&t.read_as)call.read_as=t.read_as;
+      noteDatasetSemantics(engine.dataset_semantics); noteAnalysis(engine.analysis);
       noteExecution(engine.execution,t.jobId); });            // metadata even when views streamed live
     if(EXEC&&BOOK.some(s=>s.cls==='deriv')) paint();
     if(j.error&&!VIEWS.length&&!REPLY){ REPLY='⚠ '+j.error; }
@@ -1201,7 +1201,7 @@ async function startRun(){
   try{ await autosaveRefs(); }                                // reference state is part of this turn: never reason against a stale saved copy
   catch(e){ fail('Could not save reference data, so the query was not run: '+(e&&e.message||e)); return; }
   if(ORCH) return startTurn();                                // orchestrated front door; ?chat=0 falls through to the direct path below, which uses no external LLM
-  const myRun=++RUN; FALLBACK=null;                           // supersede guard: an old run's async callbacks must not paint
+  const myRun=++RUN; READ_AS=null;                           // supersede guard: an old run's async callbacks must not paint
   const live=()=>RUN===myRun&&!SETTLED;
   LASTQ=question; if(EDITED){ syncInputsToSheets(); EDITED=false; showRecalc(false); } stampBaseline();   // pick up any input-cell edits; re-baseline what we're about to compute
   let token;

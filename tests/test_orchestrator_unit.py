@@ -1647,30 +1647,27 @@ def test_the_model_sees_the_rows_the_answer_covers():
     assert "you do not receive source cells, answer rows or sql" in prompt
 
 
-def test_a_gemini_reworded_question_is_the_turns_reading_not_part_of_the_reply():
-    """The engine builds every query itself; only when its search cannot read the question does Gemini
-    reword it (engine/question_rewrite.py). The reworded question is what the engine read, so it is the
-    call's "read as" line. Appended to the answer it was a second paragraph to read under "5,000"
-    (owner, 2026-10-04)."""
+def test_the_trace_carries_the_engines_reading_beside_the_asked_question():
+    """The engine builds every query itself, and its readers say how they read the question (the response's
+    "read_as", engine/tables.py read_as_of). That is the call's "read as" line, kept in the turn's trace beside the
+    question the call asked, never part of the reply: appended to the answer, a reading was a second paragraph to
+    read under "5,000" (owner, 2026-10-04)."""
     from mcp_server.engine_client import shape_reason_response
 
-    reworded = shape_reason_response({
-        "result": {"columns": ["total"], "rows": [[42]]},
-        "fallback": {"kind": "rewrite", "model": "gemini-3.8-flash",
-                     "question": "total amount by city"},
-    }, "job")
-    assert "fallback" not in orchestrator._model_feedback(reworded)
-    assert orchestrator._terminal_fallback(reworded) == "42"
-    assert orchestrator.reading(reworded, "amounts per town") == "total amount by city"
-    nothing = shape_reason_response({
-        "result": {"columns": ["n"], "rows": [[3]]},
-        "fallback": {"kind": "none", "model": "gemini-3.8-flash", "note": "Gemini unavailable"},
-    }, "job")
-    assert "fallback" not in orchestrator._model_feedback(nothing)
-    assert orchestrator.reading(nothing, "how many orders") == "how many orders"
-    plain = shape_reason_response({"result": {"columns": ["n"], "rows": [[3]]}}, "job")
-    assert orchestrator.reading(plain, "how many orders") == "how many orders"
-    assert "Gemini" not in orchestrator._terminal_fallback(plain)
+    line = "the total amount after each customer's tier discount"
+    result, _model_calls, engine_calls = asyncio.run(_run("answered", shaped_extra={"read_as": line}))
+    (trace,) = result["traces"]
+    asked = engine_calls[0][0][0]
+    assert asked == "total amount after the customer tier discount", engine_calls
+    assert trace["question"] == asked and trace["read_as"] == line and trace["engine"]["read_as"] == line, trace
+    assert result["reply"] == "876.50" and line not in result["reply"], result["reply"]
+    assert "read_as" not in orchestrator._model_feedback(trace["engine"])
+    # The MCP shape carries the engine's line through to the trace and the tool output alike.
+    shaped = shape_reason_response({"result": {"columns": ["total"], "rows": [[42]]}, "read_as": line}, "job")
+    assert shaped["read_as"] == line and orchestrator._terminal_fallback(shaped) == "42"
+    # Contrast: a response the readers did not read carries no line, and the trace says so.
+    result, _model_calls, _engine_calls = asyncio.run(_run("answered"))
+    assert result["traces"][0]["read_as"] is None and result["traces"][0]["question"] == asked
 
 
 def test_rows_whose_entity_matched_nothing_reach_the_reply():
@@ -1838,7 +1835,7 @@ TESTS = [
     test_a_yes_can_accept_the_question_a_clarification_offered,
     test_an_acknowledgment_is_answered_without_an_engine_query,
     test_rows_whose_entity_matched_nothing_reach_the_reply,
-    test_a_gemini_reworded_question_is_the_turns_reading_not_part_of_the_reply,
+    test_the_trace_carries_the_engines_reading_beside_the_asked_question,
     test_a_turn_over_stored_sheets_reads_them_once_and_names_them_in_each_engine_call,
     test_the_engine_client_names_stored_sheets_and_caches_them_per_user,
     test_request_execution_mode_reaches_each_orchestrated_engine_call,

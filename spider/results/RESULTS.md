@@ -5,6 +5,75 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
+## Learned readers replace the lexical search: frozen Spider test 939 → 1,351 strict; calibration 418 → 617 (2026-10-21)
+
+The readers bundle installed by `training/readers/promote.py` (stage 1; reader v7a, anchored; reader v5
+after the relayout, plain; the "f" re-scorer; refusal threshold 0.2511) in the readers worktree at `b8bedde` plus the
+uncommitted migration (`worktree_dirty: true`). `spider.probe.full_eval`, whole_db / served / SQL / cap 5,000 per
+table / 12 s soft budget / compose on / external models off. The refusal threshold was off for these runs: each answer
+records its confidence, so the refusal's totals follow exactly. The readers trained on Spider train and dev and BIRD
+train, never on the 20 calibration databases or the 40 test databases; DEV is training data for them and is not
+reported. Records: `C:/work/prereasoner-readers-artifacts/evals/f/` (per-example calibration; the test's totals
+only).
+
+**Frozen Spider test** (2,147 questions, 40 databases; totals only, as at every milestone):
+
+| System | Strict | Lenient | Answered |
+|---|---|---|---|
+| Engine alone `b8bedde` (milestone of 2026-10-20) | 939 (43.7%) | | |
+| Production, the engine with the Gemini rewording | 1,126 (52.4%) | | |
+| Readers, first bundle (re-scorer "u", before the share/period/either/MAX rules) | 1,330 (61.9%) | 1,519 (70.7%) | 2,145 |
+| Readers, second bundle (re-scorer "us", with those rules) | 1,319 (61.4%) | 1,500 (69.9%) | 2,145 |
+| **Readers, shipped bundle (re-scorer "f"), refusal off** | **1,351 (62.9%)** | 1,535 (71.5%) | 2,145 |
+| Readers, shipped bundle, refusal at 0.2511 | 1,314 (61.2%) | | 1,875 (561 wrong) |
+
+Each bundle was chosen on calibration and the product's demo questions, not on the test. The second added the
+share, either-or, period and extreme rules (11 fewer right on the test, 10 more on calibration); the third trained the
+re-scorer on the shipped recipes' own cross-fold pools.
+
+**Calibration** (20 held-out Spider train databases, 1,053 questions), same evaluator and question set:
+
+| System | Strict | Answered | Wrong |
+|---|---|---|---|
+| Engine `b8bedde` | 418 (39.7%) | 712 | 294 |
+| Readers, first bundle, refusal off | 597 (56.7%) | 1,052 | 455 |
+| Readers, second bundle, refusal off | 607 (57.6%) | 1,052 | 445 |
+| **Readers, shipped bundle, refusal off** | **617 (58.6%)** | 1,052 | 435 |
+| Readers, shipped bundle, refusal at 0.2511 | 587 (55.7%) | 881 | 294 |
+
+Transitions, shipped readers (refusal off) against the engine: 274 wins, 75 losses, 343 unchanged right, 361 unchanged
+wrong. The threshold is the lowest at which the readers answer no more questions wrongly than the engine they replace
+(`python -m training.readers.refusal match`). Prediction seconds on the development machine (4 threads, bfloat16): the
+first calibration run, beside one other evaluation, median 2.39 and p90 4.72 against the engine's 2.24 and 6.09; the
+final runs shared the machine with each other and read slower (calibration median 3.73, p90 6.98).
+
+Offline (calibration candidates, the re-scorer's choice, refusal off; the pools behind the choice of readers):
+
+| Readers | Right of 1,028 | Right answer in the pool |
+|---|---|---|
+| v7a alone / v7b alone / v5 alone | 565 / 556 / 555 | 629 / 638 / 645 |
+| v7a + v7b | 589 | 704 |
+| v7a + v6 | 590 | 707 |
+| v7a + v5 (shipped): re-scorer v2 / "u" / "us" / "f" (the shipped recipes' own cross-fold pools) | 601 / 611 / 612 / 624 | 721 |
+| v7a + v7b + v5 + v6, re-scorer with a five-feature combiner (about 9 GiB in all) | 621 | 767 |
+
+The evaluated bundle was installed `--local-only`; the same files were then published at Hugging Face revision
+`b9bb6521799ca603845a8e41248ff3abfe70fb40` and promoted at that revision (every file's hash checked against the
+manifest by an anonymous download). The live demo-dataset gate fails 6 cases with this bundle (`DECISIONS.md`,
+"Learned readers replace the lexical search"), so it is not deployed.
+
+**Against hosted models on the same 2,147 frozen test questions** (2026-10-19; each model wrote SQL from the schema,
+graded by the same capped loader, executor and `spider_eval.compare` as `full_eval`; the models' inputs and budgets
+differ from the engine's, so this compares the task, not the models alone):
+
+| System | Strict | Lenient | Cost |
+|---|---|---|---|
+| Gemini 3.8 Flash writing SQL | 1,821 (84.8%) | 1,946 (90.6%) | $1.59 |
+| Sonnet 5.5 writing SQL | 1,806 (84.1%) | 1,950 (90.8%) | $6.08 |
+| Readers (no model writes SQL), refusal off | 1,351 (62.9%) | 1,535 (71.5%) | local CPU |
+
+Records: `C:/work/prereasoner-readers-artifacts/llm_bench/` (`bench.py`, summaries and per-question SQL).
+
 ## Independent October 16 review: current checkout 584 strict; matched Sonnet 5.5 and Gemini 3.8 Flash
 
 Fresh `whole_db` / production `served` / SQL / cap 5,000 per table / 12s soft prediction budget / seed 0 / external

@@ -355,7 +355,7 @@
         function finishedTurn(question, response) {
           var views = [], asks = [], analysis = null;
           (response.traces || []).forEach(function (trace) {
-            if (trace.question) asks.push(trace.question);
+            if (trace.read_as || trace.question) asks.push(trace.read_as || trace.question);
             if (trace.analysis) analysis = trace.analysis;
             (trace.views || []).forEach(function (view) {
               views.push(Object.assign({}, view, {execution: view.execution || trace.execution}));

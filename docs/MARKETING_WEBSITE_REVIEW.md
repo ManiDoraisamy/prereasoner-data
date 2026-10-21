@@ -52,20 +52,18 @@ are not public yet.
 Determinism means fixed inputs, configuration, database snapshot, and model artifacts produce the
 same ranked plan and result. It does not mean every plan is correct.
 
-### Accurate again, with one qualifier, now that local SQL models are removed
+### "No autoregressive SQL generation" holds, but "Qwen core" is incomplete
 
 "Qwen2.5-0.5B core used without autoregressive SQL generation" was contradicted from the 2026-09-23
 planner change, when a local SQL proposer shipped (a 0.5B LoRA, later a pinned 7B GGUF). Both
-proposers and their arbiter have since been removed. For the engine's own models the claim holds
-again: the encoder is used without its decoder, and no local model writes SQL. The qualifier is the
-optional Gemini fallback. When the operator enables it and the search finds no runnable query, Gemini
-may reword the current question once; the deterministic typed search still constructs and validates
-SQL, and the answer says when it used that rewrite. The accurate wording: "No model writes SQL. When
-the engine cannot build a query, it can ask Gemini to reword it, and the answer says so." The chat
-service also uses Gemini, and no model
-writes the numbers. The wording assumes the open gap in `docs/ARCHITECTURE.md` is closed first: a
-decomposed question whose leaf Gemini answered does not yet carry the label. This is a finding for
-the website owner; see `docs/MODEL_CARD.md`.
+proposers and their arbiter have since been removed, and no model writes SQL. Own-data questions are
+now read by separate XLM-R encoder readers, whose readings a deterministic builder makes into typed
+queries; the Qwen encoder serves column typing and composition and world questions. Own-data selection
+calls no external model, and a question the readers are not confident of is answered with how they read
+it rather than a number. The accurate wording: "No model writes SQL. Learned readers read your
+question, the engine builds and checks the query, and when it is unsure it tells you how it read the
+question." The chat service uses Gemini, and no model writes the numbers. This is a finding for the
+website owner; see `docs/MODEL_CARD.md`.
 
 ## Launch Gaps In The Current Marketing Copy
 

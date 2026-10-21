@@ -51,10 +51,9 @@ dimensions; the named dims *are the product* — they drive the typing, the oper
 the entity resolution that assemble the query. Concretely, "total amount in France" over
 `customers + orders` becomes
 `… JOIN knowledgebase."city" ON "city".qid = bridge.world_key WHERE "city".country = 'Q142'`
-and computes **270** — no autoregressive generation anywhere in the loop. No local model writes SQL
-for any question. An optional labelled Gemini fallback may reword the question when the operator
-enables it and the search finds no runnable query; the deterministic search still writes the SQL.
-Section 4 describes the boundary.
+and computes **270** — no autoregressive generation anywhere in the loop. No model writes SQL for any
+question. An own-data question is read by learned encoder readers as named readings, and a
+deterministic builder makes each reading a typed query. Section 4 describes the boundary.
 
 **Scope, stated honestly.** This is valuable and shippable for the **declarative** slice
 (CSV/Sheets Q&A → SQL): declarative targets work with small models because the parse tree is
@@ -116,10 +115,9 @@ write `WHERE dim_247 = …`). Anchor the dimension and the approximate-retrieve-
 stack collapses into one exact query. RAG searches; this queries.*
 
 **One honest caveat.** The optional hosted language assistant can present results, resolve
-ambiguity, and orchestrate tools, but it does not own the executed query or numeric result. (The
-engine's own labelled Gemini fallback, section 4, is the one case where an external model's query
-can be served.)
-Learned, *soft* engine steps include **type classification + entity
+ambiguity, and orchestrate tools, but it does not own the executed query or numeric result.
+Learned, *soft* engine steps include the own-data readers' readings of a question (section 4),
+**type classification + entity
 resolution** — which world table a column proposes via Schema.org named-property class scores and
 calibrated thresholds, and which world entity a cell resolves to (`knowledgebase."words"` exact-norm
 match first, then a bge-small cosine nearest-neighbour above threshold). Both steps are
@@ -138,35 +136,26 @@ to *emit a SQL string* autoregressively (optionally in an agent loop with retrie
 self-critique). That string is a black-box generation: it can hallucinate columns, silently drop
 a clause, or invent a join, and the only "explanation" available is a second after-the-fact
 rationalization from the same model. Prereasoner inverts this. **No model's text is executed, and
-no local model writes SQL.** The query is assembled from typed parts by (a) the learned-yet-legible
-readout — *what each column/cell is* and *what the question asks for* — and (b) the specified FK +
-world structure. A bounded search builds candidate trees from those parts, runs each on a copy of
-the data, and serves the best-ranked one that runs and is grounded; its ranking rules are
-hand-written, and every adjustment is a named feature. The operator (`SUM`/`COUNT`/`AVG`) is read
-off the anchored `intent_agg_*` dims, not decoded as tokens; the world filter is a QID equality, not
-a generated literal. Because every piece is read from a named dimension or computed by an audited
-rule, a wrong answer is a **traceable wrong query**, not an unexplained hallucination — and the
-**clarify gate** refuses
-rather than bluffs: if a content word resolved but never reached the SQL (an entity that resolved
-but isn't filtered, or a measure word with no aggregate), the system returns a "did you mean?"
-rephrasing instead of a confidently wrong number.
+no model writes SQL.** For an own-data question, learned encoder readers (XLM-R, `engine/readers/`)
+read the question beside the schema and classify named facts about each schema item: whether a table
+is used, which aggregate a column is selected under, which operator compares it with which span of the
+question, what is grouped, sorted and limited, and whether two blocks combine by a set operation or a
+nested condition. A deterministic builder makes each reading a typed tree, joining tables along the
+specified FK structure; the candidates run on a copy of the data, the ones that fail or are not grounded
+are dropped, and a learned re-scorer orders the rest. For composition and world questions the operator
+(`SUM`/`COUNT`/`AVG`) is read off the anchored `intent_agg_*` dims, and the world filter is a QID
+equality, not a generated literal. Because every piece is a classified reading or computed by an
+audited rule, a wrong answer is a **traceable wrong query** whose reading is shown as its "read as"
+line, not an unexplained hallucination — and the system declines rather than bluffs: the readers'
+learned refusal, fitted on held-out databases, replies "I read this as …" instead of serving a reading
+it is unsure of, and the world routes keep a wording gate that returns a "did you mean?" rephrasing when
+a content word resolved but never reached the SQL.
 
-**The one place an LLM may reword a question.** A bounded search cannot enumerate every shape. When
-none of its candidates runs or the selected plan leaves request wording unresolved, and the operator
-enabled Gemini, the engine may ask for one isolated wording rewrite (`engine/question_rewrite.py`). The
-deterministic search runs again on that wording and remains the only owner of SQL construction and
-selection. The rewriter preserves recognized source values, quoted text, and numbers. Gemini sees
-table and column names, inferred types, and foreign keys; it receives no cell values or conversation
-history and cannot provide SQL or a result. With the operator's switch off, its default, Gemini is not
-used for own-data selection.
-
-**What this costs.** Earlier designs pooled a local SQL-writing model with the search and scored
-higher on Spider than the search alone; those runs are history in `spider/results/RESULTS.md`.
-Removing that model trades recall for answers whose every step the engine builds. Without it the engine
-alone scored 497/1,034 strict on Spider DEV, against 866 with a 7B SQL-writing model, and the search
-already pooled a correct query for 544 questions (2026-10-02). A completeness check added since refuses
-a question whose wording it cannot read rather than answer a different one: 524 answered and 315 strict
-on 2026-10-08 (`spider/results/RESULTS.md`).
+**What this costs.** Classifying readings over a fixed form trades the open-endedness of generated SQL
+for answers whose every step the engine builds: a shape the readings form cannot hold (a self-join, a
+derived table, three blocks) is never a candidate. Recorded results are in
+`spider/results/RESULTS.md`; the readers' training sources include Spider's dev questions, so the Spider
+test set is their held-out measurement.
 
 **Versus post-hoc probing / SAEs.** The standard interpretability move trains a *separate*
 linear probe (or a sparse autoencoder) on a frozen model's activations *after* training, then
@@ -257,29 +246,33 @@ The tabular system's load-bearing fragilities, stated plainly:
    then embedding NN ≥ threshold. A value missing from the pinned snapshot is not fetched during
    serving; it is an explicit abstention. Measure the near-miss band and the coverage of each
    released snapshot before relying on a new type under load.
-5. **The fallback's share.** Where the Gemini fallback is enabled, count the answers it serves
-   (`served_by`). A growing share marks question families the search does not cover, and each such
-   answer depends on an external model's reply rather than a named rule.
+5. **The readers' training distribution.** The own-data readers are fine-tuned on Spider, BIRD and
+   Spider-Syn questions (`training/readers/README.md`), and the refusal's threshold is fitted on
+   held-out Spider databases. Spreadsheet wording and schemas unlike those benchmarks may read worse
+   or be declined more often; measure the refusal rate and the answered accuracy on such data
+   separately.
 
-> Note: the operator/plan is read from the anchored `intent_*` dims; there is no separate
-> auxiliary "small model on a handful of golden pairs." The generalization risk is real but lives
-> in (1)–(5), not in a hidden side model.
+> Note: the own-data readers are encoders that classify readings; none of them generates text, and
+> the composition and world operator is read from the anchored `intent_*` dims. The generalization
+> risk is real but lives in (1)–(5), not in a hidden side model.
 
 ---
 
 ## 8. Reproducing the models
 
-There are two model tracks and one historical warm start:
+There are three model tracks and one historical warm start:
 
 1. **Source databases** — `db/README.md` and `SOURCE_DATA.md` build the Wikidata entity store and
    publisher-owned releases.
-2. **Shared intent and ranking encoder** — `training/props/pipeline.md` maps capped Wikidata
+2. **Shared intent encoder** — `training/props/pipeline.md` maps capped Wikidata
    observations into a historical property-named basis, adds intent and calculation supervision,
    and promotes the encoder bundle consumed by serving.
 3. **Schema.org named-dimension model** — `python -m training.schema_org.corpus` builds the
    group-disjoint multi-source corpus; `train_property_head.py` trains the URI-indexed head;
    `promote.py` installs calibrated property and class artifacts used by `engine/router.py`.
-4. **Historical gen20 taxonomy** — `training/train/`, `training/taxonomy/`, and
+4. **Own-data readers** — `training/readers/README.md` records the labels, examples, stage-1 and
+   stage-2 trainers, re-scorer, refusal fit, and the one promotion step (`training/readers/promote.py`).
+5. **Historical gen20 taxonomy** — `training/train/`, `training/taxonomy/`, and
    `training/anchor/` supply the warm-start lineage. They do not reproduce the shipped property
    model by themselves.
 
@@ -295,10 +288,11 @@ boundary.
 > Prereasoner combines learned semantic signals with specified relational structure. The current
 > production class vocabulary is the multi-source Schema.org 30.0 head: named property probabilities
 > form calibrated class proposals, and exact source-key grounding authorizes a world join. The shared
-> Qwen/LoRA representation also supplies structural intent, ranking, and calculation retrieval.
-> Foreign-key discovery, typed AST search, calculation verification, and execution are deterministic,
-> and no model writes SQL. An optional, labelled Gemini fallback may reword a question when the search
-> finds no runnable query; the deterministic search still constructs and validates SQL.
+> Qwen/LoRA representation also supplies structural intent for composition and the world routes.
+> Own-data questions are read by learned encoder readers as named readings, which a deterministic
+> builder makes into typed ASTs; a learned re-scorer orders the candidates that run and a learned
+> refusal declines a reading it is unsure of. Foreign-key discovery, AST construction, calculation
+> verification, and execution are deterministic, and no model writes SQL.
 > Schema.org defines the semantic vocabulary; Wikidata and publisher datasets provide observations,
 > QID bridges, and pinned facts. All ontology classes are representable, while only the calibrated
 > supported subset is servable and the rest abstain. Historical taxonomy experiments remain lineage,

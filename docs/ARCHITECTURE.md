@@ -10,14 +10,12 @@ rows and trace. For the supported own-data subset, one immutable plan emits both
 stack and readable SQLAlchemy/Python source; see
 [DETERMINISTIC_EMITTERS.md](DETERMINISTIC_EMITTERS.md). One frozen encoder (Qwen2.5-0.5B with a LoRA
 adapter and a relational readout) supplies model evidence: it reads intent and schema signals as named
-coordinates. No local model writes SQL. A deterministic search builds every own-data query as a typed
-AST, and selection serves the best-ranked one that runs. Only when no candidate runs, and the operator
-enabled Gemini, may Gemini rewrite the current question for the deterministic search; Gemini cannot
-propose SQL, and the answer is labelled (see
-[Labelled Gemini fallback](#labelled-gemini-fallback)). No model writes Python or a numeric answer, and
-model text never reaches a database. AST construction, routing, joins, validation, selection,
-emission, and execution are deterministic for fixed inputs, configuration, database state, and model
-files. An answer the fallback supplied also depends on Gemini's reply.
+coordinates. No model writes SQL. Learned encoder readers (XLM-R) read each own-data question beside its
+schema as named readings, a deterministic builder makes every own-data query a typed AST from them, and a
+learned re-scorer and refusal choose among the ones that run (see [Own-Data SQL Planner](#own-data-sql-planner)).
+No model writes Python or a numeric answer, and model text never reaches a database. AST construction,
+routing, joins, validation, selection, emission, and execution are deterministic for fixed inputs,
+configuration, database state, and model files.
 
 Read [GETTING_STARTED.md](GETTING_STARTED.md) first when setting up the repository. Read
 [SQL_AST.md](SQL_AST.md) for planner internals, [SOURCE_DATA.md](SOURCE_DATA.md) for
@@ -284,385 +282,87 @@ correct interpretation of the question.
 
 ## Own-Data SQL Planner
 
-The own-data path serves one typed SQL AST chosen from the deterministic search's candidates
-(`engine/tables.py:TableQuery.select_query`), reading a question's typographic apostrophes and quotes as the ASCII ones, a comparison symbol before a number as its
-words and "prior to" as "before" (`sql_expansion.plain_marks`). No local model writes or scores SQL:
+The own-data path serves one typed SQL AST chosen among the readers' candidates
+(`engine/tables.py:TableQuery.select_query`), reading a question's typographic apostrophes and quotes as the ASCII
+ones, a comparison symbol before a number as its words and "prior to" as "before" (`sql_expansion.plain_marks`).
+No model writes SQL: learned encoders read the question beside the schema as named readings, and a deterministic
+builder makes each reading a typed AST.
 
 | Owner | Responsibility |
 |---|---|
+| `engine/readers/search.py` | `ReadingSearch`: schema items, the stage-2 readers' pooled candidates, re-scoring and the refusal |
+| `engine/readers/text.py` | The schema as each model reads it: tables, columns, types, sample values, the question's values beside their columns (anchors), fitted to the token budget |
+| `engine/readers/models.py` | The three model kinds (schema items, readings, re-scorer) and their inputs; serving runs each encoder in bfloat16 |
+| `engine/readers/layout.py` | The readings' output layout, shared by training, serving and decoding |
+| `engine/readers/decode.py` | Outputs to the most probable distinct readings, with generic semantics (dates, a pinned column not shown again, list marks) |
+| `engine/readers/readings.py` | The readings form and the deterministic builder (`build`, foreign-key joins, groups, set operations, nested conditions, shares) and its inverse (`readings_of`, for training labels) |
+| `engine/readers/read_as.py` | The plain-English "read as" line of a reading |
 | `engine/sql_ast.py` | Immutable query nodes, type/visibility validation, rendering |
 | `engine/sql_schema.py` | Typed schema graph and deterministic join-tree enumeration |
-| `engine/sql_search.py` | Projection, filter, aggregate, grouping, order, limit, and base candidate expansion |
 | `engine/sql_dates.py` | Calendar phrases ("in August", "after August 10, 2026") as typed comparisons on a date column |
 | `engine/sql_durations.py` | Duration phrases ("more than 6 months") as comparisons of how long each row lasted (`DateSpan`) |
-| `engine/sql_recursive.py` | Subqueries, `EXISTS`/`IN`, set operations, and self-join shapes |
-| `engine/sql_constraints.py` | HAVING, disjunction, and relationship constraints |
-| `engine/sql_extrema.py` | Row, aggregate, frequency, and zero-inclusive extrema |
-| `engine/sql_parsimony.py` | Bounded projection/table variants of pooled candidates (minimal join, binding, drop/add column, operand swap, DISTINCT) |
-| `engine/sql_rank.py` | Search ranking features (`CandidateRanker`), the pool contract (`SEARCH_CANDIDATES`, `execution_op_limit`), and the selection record (`PoolSelection`, `FallbackRecord`) |
+| `engine/sql_rank.py` | The pool contract (`execution_op_limit`), the selection record (`PoolSelection`) and its post-ranking rule (`select_ranked_candidate`); `analyze_question` for the calculations |
 | `engine/sql_grounding.py` | Pool eligibility: text literals that fit their column, and joins the foreign keys allow; which SUM or AVG reads only rows its joins repeat (a selection preference) |
+| `engine/calculations/` | Registered calculations (a currency conversion, a rate) expanded from the readers' candidates |
 | `engine/tables.py` | Planner facade (`select_query`), SQL guard, pool and local SQLite execution |
-| `engine/question_rewrite.py` | The labelled, stateless Gemini wording rewrite; deterministic search still owns SQL |
-| `engine/sql_prompt.py` | The schema text and rewrite prompt sent to Gemini |
 | `engine/decomposition.py` | Closed model proposal validation and fusion of planner-selected leaf ASTs into one shared DAG |
 
-1. The deterministic search builds up to 25 validated candidates (`SEARCH_CANDIDATES`) and orders
-   them with named rules; the encoder contributes table, column-role, and structural-profile
-   similarities. Rows grouped by columns that repeat, joined to the rows they count, are grouped by
-   their own key too (`engine/sql_expansion.entity_groups`; in the search only beside the name of a
-   table the question says, so a shared job title stays one group), and a table holding two keys to one
-   other table is read from its owner's key (`engine/sql_rank.relation_sides`): "high schoolers who
-   have 3 friends" own the Friend rows, and the two named Jordan count apart. An average per the rows'
-   own noun ("average amount per order" over a table of orders) averages the rows, and a number the
-   question names no field for, after a noun naming a table, compares that table's money measure
-   ("orders over 20": amount, not unit price). In a workbook of one table a count counts its rows
-   whatever the question calls them ("which country has the most leads"). One aggregate word takes
-   every field it coordinates, after "of" too when the words before it are both fields' ("the average
-   age of losers and winners", "the number of different series names and contents",
-   `sql_search._coordinated_targets`), several aggregate words coordinated before one field share it ("the
-   average, minimum, and maximum age", `sql_rank._heads_phrase`) whatever field an aggregate word itself names
-   (a stadium's Average), and a "number" that begins a field's name with the rest of the
-   name after it asks for the field ("the number of tickets" of Num_of_Ticket; "No" and "Num" read
-   "number"). A word of a field's name said in another form names the field, by the shared stem reading the
-   completeness check reads words by (`sql_expansion.says_in_another_form`): "the arriving date" date_arrived,
-   "their directors" Directed_by, unless the word names another field itself ("the gradepoints" is no Grade); and a
-   word of seven letters or more spells out a three- or four-letter name word that begins it ("account balance"
-   acc_bal, "latitude" lat; `sql_expansion.spells_out`), unless it names a table ("students" is no ENROLL.STU_NUM). A
-   field whose first word abbreviates its table's name (cust_name, stu_gpa), or whose name is its table's word but for
-   its kind (date_of_treatment), is named beside its table: "their apartment numbers", "the date of treatment". A
-   sort verb opening the question is its command ("Sort employee names by their age"), and "number", "all" or
-   "each" in lower case is no cell value. A nation is a country, a store a shop, people persons and a possessive its
-   word ("Brazil's population" states 'Brazil'; `sql_schema.canon`); a country's cell holds the word for what is of it
-   where its name does not begin that word ("French singers" are of 'France', `closed_class.COUNTRY_DEMONYMS`), unless
-   a field holds the word itself; a capital initial before a capitalized word is a word of its own in every reader of
-   names ("CName" is a course's name, `sql_schema.spaced_name`); a field of
-   one-letter codes holds the words they stand for only with the field-kind evidence for M/F and L/R
-   (`sql_schema.code_word_matches_column`: sex/gender, hand/side/direction/orientation). A sampled Size 'M' or Stage F/M
-   is no sex. The qualified-code constructor uses the same rule, and completeness witnesses the word from the typed
-   comparison on that field, including aliases and LOWER, rather than a matching literal elsewhere in the SQL.
-   Explicit codes and the existing binary Y/N reading remain available. A participle before
-   a compared year ("produced in 1980") is read by the answer; and a count of "different winners" counts the
-   entity's name or key before the other fields the noun names. "In total" after "how many" restates the count,
-   and a field whose words another field of its table spells whole is not named inside that spelling ("the ranking
-   date" is no ranking). The ranker credits no field the question does not ask to show as the group it asks when
-   the answer shows a field the question asks of the same entity (`CandidateRanker._named_beside`). The
-   completeness check reads a requested field by its name without its kind too ("role" of role_code), never by the
-   question's command ("Return ..."). A count counts the rows of the table the noun after its count word
-   names ("how many countries"), a field whose first word abbreviates its table's name is shown where the question
-   says the table (`sql_expansion.abbreviated_table`: "the id of students" is StuID), and of shown fields ending in a
-   word said once, the one whose owner the question never says is not asked. A sentence after the first that lists the
-   outputs ("List the continent id, continent name and the number of countries.") names them, their owner and their
-   order once for construction, ranking, the answer's order and the completeness check (`sql_expansion.output_requests`,
-   `request_fields`; past a word opening the condition its rows meet, "and" joins conditions and the list is closed,
-   `list_closed`: "the document ids of documents with the status done and type Paper"), and so does an opening
-   sentence that asks for two or more coordinated outputs ("What are the names, themes, and number of singers for
-   every concert?"), the owner decided over all items before an item prefers
-   the field its words name exactly (where the items tie, the table named right after them, by its name or the noun
-   ending it: "the names and ids of all makers"), and so does a clause a list verb opens after a comma ("..., and
-   return the name,
-   location and district of each shop"; `sql_expansion.instruction_starts`), a possessive opening its items naming
-   their owner; "along with", "together with" and "as well as" add an item as "and" does, a list asking for fields
-   and a count asks the count in each of those fields' groups, and the reading showing exactly the list's fields starts
-   ahead of one adding a field; "find" is a list verb, and an item followed by "of" and the rows of one table realizing
-   it is that table's field; an item's last word may stand for the kind its field's name ends in ("the cell phone" is
-   cell_number), and a "which" after a preposition opens a relative clause, not a command. An answer shows each output
-   a list names where it lists a count beside fields, or fields each its own; values a list joins ("the continents Asia
-   and Europe") are no outputs. An answer showing only
-   fields the question says only to filter on gets a twin showing
-   the name of the rows it lists (`SQLSearcher._display_twin`, `sql_rank.filter_only`: "the cities whose population
-   is between ...").
-   A key named as the table it refers to names that table: "the name of the project for which a scientist ... is
-   assigned to" shows Projects.Name, not also AssignedTo.Project (`SQLSearcher._simplified`).
-   Fields asked again in the same words (`sql_expansion.repeated_requests`: "List the id, name and id.") retain each
-   output occurrence in construction and list ordering; two requests one field could realize ask for two fields;
-   the checker requires each occurrence of an unambiguous repeated field, resolving table aliases. List ordering
-   can copy an already bound column value; anonymous count slots never create another count. A row count drops a
-   leaf join to a table nothing reads, nothing counts and the question does
-   not name (`sql_expansion.counted_noun_tables`), which only multiplies the counted rows.
-   For a simple scalar COUNT(*) with one named population, construction and
-   admission share `sql_expansion.scalar_counted_table`: a potentially multiplying join counts the population's proven unique,
-   non-NULL identifying column distinctly, retaining the qualifying joins. This bounded policy excludes grouped,
-   ranked, aliased and distinct-request readings; field counts and threshold populations retain their own policies.
-   `count_preserves_population` retains plain row counting when every joined key identifies at most one row and the
-   root is the counted population, preserving qualification joins without unnecessary distinct counting.
-   These identity/cardinality proofs concern the current request's table values; changed data rebuilds the graph.
-   `AnalysisPlan.AggregateValue.distinct` represents distinct counting once for both emitters, with an explicit
-   `COUNT_DISTINCT` accumulator/finalizer in Python; AST lowering accepts the scalar single-column COUNT form.
-   The verb a sentence opens
-   with is its command and names no table (`sql_expansion.command_positions`: "Show the names of conductors" joins no
-   show table), and a relationship self-join is built only where a word of its key besides the parent table's name is
-   said, whole or abbreviated (`sql_recursive`: "the course whose prerequisite is ..."). A grouped
-   answer that names a group as a field to show lists its fields in the question's
-   order (`sql_search._in_question_order`); a joined listing whose join repeats its rows gets a DISTINCT twin, and
-   the ranker prefers it (`sql_rank.repeats_shown_rows`), and a field the
-   question names only to filter on is not shown, nor one it names only in the phrase that orders the
-   rows ("the first name of students in the descending order of age"), nor a field named as its table
-   where the question says that name only after "of", as the owner of the fields it asks for ("the
-   carriers of devices"). A count over an exclusion counts the rows kept ("how many dogs have not gone
-   through any treatment"), a count beside a comparison with the average counts the rows on its side,
-   in the groups the table's own field makes ("the number of cities in each district whose population
-   is greater than the average"; `sql_expansion.average_comparison`), and a number said beside a
-   numeric field's name is that field's value ("high schoolers in grade 10", "a cat that is age 3"),
-   unless the shared `sql_extrema.ranking_cutoff` reader reserves that occurrence for a ranking ("the mountains
-   with the top 3 prominence"). A separate occurrence of the same number can still supply its own filter.
-   "The full name" of rows holding a first and a last name is both fields, unless a field is named
-   for it in that same table (`SQLSearcher._full_names`); an unrelated table's FullName cannot suppress the
-   requested table's name parts. A name's part a field abbreviates is listed where the question
-   says its two words ("the first name and age" lists Fname first), and "the full name" lists the first name before the
-   last, wherever else the question says a part. A one-word name the question says as two words is that name ("the
-   partition id" is partitionid), and "maximum" or "minimum" before the rest of a max_ or min_ field the query reads
-   says that field, as "average" does an avg_ one ("the maximum page size A4"). After "by", "per" or "each", a name
-   inside a longer one the clause says is part of it, and a field's name after its table's names that field ("for each
-   student id", "for each country and airline name"). A field the question compares
-   before naming it ("projects that require between 100 and 300 hours") or picks the row by after
-   "with the highest" is not shown, nor an aggregate it says only in a relative clause keeping the
-   groups ("the studios whose average gross is above 4500000"), for which the search builds the
-   reading without it (`sql_search._condition_twin`); "cities with total sales over 100" still shows
-   each total. Questions opening with "how many" or "count" must show COUNT in an output, including a projected
-   scalar query, or SUM of an explicitly requested stored-count field ("how many total tours" asks that one number, a
-   noun naming no numeric field its count; `sql_expansion.asked_cues`, `query_contract._shows_count`, sharing
-   `sql_expansion.counted_measure_columns` with the operand reader). An unrelated aggregate in a filter,
-   ordering, HAVING or source subquery supplies no count output.
-2. Every candidate runs on an in-memory SQLite copy of the request's tables under the SELECT guard
-   and a budget of SQLite VM steps that grows with the cells of the tables it reads: 20 a cell, at
-   least 10,000,000 and at most 100,000,000 (`execution_op_limit`). The Gemini rewording's pool runs
-   on the same copy and reruns no query the first pool ran. A query that fails
-   cannot be chosen. Neither can one that tests a text column against a literal the column never
-   holds while another column does (`engine/sql_grounding.py`): a SQL model once wrote
-   `customer_name = 'Lyon'` for "Lyon customers". Nor can one that equates two columns the foreign
-   keys keep apart, between tables they connect: two foreign-key columns of different keys, or a key
-   and a column that shares no value with it. A SQL model once joined
-   `orders.order_id = products.product_id`, skipping the `order_items` bridge; the query ran and
-   matched no row. Eligibility is not evidence that the query answers the question.
-3. The best-ranked eligible candidate is served. A date the question names keeps the choice to
-   the candidates that realize it, when one does (`engine/sql_dates`). A candidate whose SUM or AVG
-   reads only rows its joins repeat is served only when every eligible candidate does
-   (`engine/sql_grounding.double_counted`): the best-ranked reading of "the total Amount by Plan and
-   Currency" once summed a report's Total Amount once per subscription the report row matched. A
-   registered calculation intent (`engine/calculations`) takes the best-ranked eligible candidate
-   that satisfies it, and a money noun that names its table ("what's the sales in London") takes the
-   best-ranked eligible candidate that aggregates a money column
-   (`engine/sql_expansion.money_total_columns`). These preferences,
-   the single-branch serving contract, and the decomposition leaf contract filter the ranking; none
-   rescores it. A served top-1 ranking keeps every row tied with its first row (`sql_ast.keep_ties`,
-   rendered with `RANK() OVER`), unless it shows only what it is ordered by: its tied rows show the same values.
-4. For a named request, the search's top candidate is read first, before any candidate runs: a
-   set operation (a compound question) requests decomposition instead of executing a single query.
-   Otherwise one dual-emitter branch serves the request: the best-ranked eligible single query.
+1. Stage 1 (`ReadingSearch.schema_items`, XLM-R base) reads the question beside each table and scores the table's
+   use and each column's; the six most probable tables are kept, and a wide table's 20 most probable columns.
+2. Each stage-2 reader (XLM-R large, `engine/data/readers/stage2_*`) reads the question beside the kept tables
+   and scores every reading the builder uses: the structure (one block, or two joined by UNION, INTERSECT, EXCEPT or
+   a nested condition), per block each column's select aggregate and position, condition operator, grouping,
+   having, ordering, whether its condition makes the part of a share, each table's use, the counts of each kind,
+   DISTINCT, AND/OR, direction and limit, and pointers to the question's value and limit spans. A reader with
+   `reader.json` `{"anchored": true}` also reads the question's values listed first beside the columns that hold
+   them (`Schema.anchors`, matched on the data). Decoding keeps the most probable distinct readings
+   (`decode.candidates`, up to 16 per reader, above a probability floor); its generic semantics: a date the
+   question names is read through `engine/sql_dates`, and so is a period it groups by ("per month" groups by the
+   date's year-month, `decode.periodic`); a stored date literal is kept exact; a column an equality pins is not
+   shown, grouped or sorted by again; and a pointed value drops the marks of the list it stood in. A reading that
+   compares one column with one value, when the question names more of that column's values (matched on the data),
+   also enters the pool read as either value (`search.either`: a row holds one value of a column).
+3. The builder (`readings.build`) makes each reading a typed AST: the tables a block uses are joined along
+   foreign keys; plain shown and sorted columns join a grouped block's GROUP BY, except a number column it sorts by
+   but neither groups nor shows, which is each group's total ("the top 2 customers by total spend"); groups with no
+   aggregate anywhere are the block's distinct rows; the first row of the one column a block shows and ranks is that
+   column's MAX or MIN; a contained text compares `LOWER(column)`; and a share divides the aggregate over the part's
+   conditions by the same aggregate over the whole (its read-as line says "share of …, out of …"). The readers' candidates are pooled,
+   each SQL once, most probable first, and the registered calculations add their expansions (`search_pool`).
+4. Every candidate that passes the guard runs on an in-memory SQLite copy of the request's tables under a step
+   budget that grows with the cells of the tables it reads (`execution_op_limit`). A candidate that fails, tests a
+   text column against a literal it never holds while another column does, or joins two columns the foreign keys
+   keep apart is not eligible (`engine/sql_grounding.py`).
+5. The re-scorer (XLM-R base) reads the question beside each eligible candidate's read-as line and result shape,
+   with the decoder's log probability and rank, and orders them. A date the question names keeps the choice to the
+   candidates that realize it when one does, a candidate whose SUM or AVG reads only rows its joins repeat is
+   chosen only when every one does, and a registered calculation intent takes the best-ranked candidate that
+   satisfies it (`select_ranked_candidate`).
+6. The refusal (`engine/data/readers/refusal.json`, a logistic model over the re-scorer's probability, the
+   decoder's log probability, the margin to the next candidate, the rank and an empty result, fitted on held-out
+   databases) serves the choice only when it is confident. Otherwise nothing is selected and the reply says how the
+   best-ranked candidate read the question: "I read this as “…”, but I'm not confident that is what you asked"
+   (`engine/tables.py:unsure_clarification`). In an analysis (the chat), a declined question longer than
+   `decomposition.ONE_QUERY_WORDS` words, past what the readers were trained to read as one query, asks for a
+   decomposition proposal instead (`decomposition.declined_compound`), as a set-operation reading does.
 
-A candidate reads a question word (`engine/query_contract.py:read_question`) when the word names a table
-the query reads or a column of one, with the tables and the columns it uses split as the search splits names
-("LifeExpectancy" is "life expectancy", `engine/sql_schema.name_words`), or spells such a name in two words
-("high schoolers"); when it is a value the query compares; a spelled number realized in its role (a cutoff in a
-question that ranks is the query's LIMIT, "the two oldest"; after a comparison cue it is a compared number); an
-order word in a query that orders its rows, and "alphabetical" (or "lexicographical") only over an order on a text field, A to Z
-unless reversed; a participle relating the rows to a compared value ("departing from APG") when the data holds
-the participle as no value and the value has one relationship to the rows, or, with several (a departure and
-an arrival airport), when the column relating it carries the participle's travel direction
-(`engine/sql_rank.travel_direction`; where no travel word is said, the ranker reads a value's end of the trip by
-the preposition before it, "flights from Los Angeles" by the origin, `sql_rank.travel_preposition`); a graded word the
-query realizes in its direction on a field of its kind
-(a comparative before "than" is a comparison with its operator, complemented when negated,
-`engine/sql_expansion.comparative_operator`, and "greater than" what is no number only so,
-"greater than any engineer"; "the most common" orders groups by their count, once: the frequency superlative takes no candidate whose filter
-keeps the value a subquery counts most common (`sql_extrema._finds_most_common`); any other superlative
-orders by, or takes the extreme of, a field in `engine/sql_extrema.superlative_direction`, so "the youngest" is the
-least age or the latest birth date and "the highest rank" the smallest one; an adjective naming its dimension ("the
-tallest", `sql_extrema.SUPERLATIVE_DIMENSIONS`) is read by a field of that dimension of the rows its noun names, where
-no field is named at it; a word one measure alone holds, said just before the superlative or right after it and nowhere
-else, names that measure ("the largest area" is SurfaceArea); and "the maximum" after "with", "has" or "have the"
-selects the row holding it as "the highest" does, `engine/sql_expansion.selects_extreme`, or by the scalar subquery
-the rows are compared with, where it keeps every row the query keeps: "the number of concerts in the stadium with the
-largest capacity"); or when it is grammar, a counted noun naming the rows counted, or one of the closed lists the check
-keeps. A word that names only some other table's column is unread. The query also reads, though nothing of
-it spells them (`query_contract._witnessed_words`): a travel direction by the column of that direction ("flights
-departing from APG" by SourceAirport); a name's part a field abbreviates ("first name" by Fname); "name" by a field
-named as its table is (airlines.Airline); a verb relating two tables it reads, one named before the verb and the
-other after; a word sharing a stem of five letters or more with a table or field it reads ("students enrolled" by
-Student_Enrolment), a word of an operation excepted; "one" after a determiner ("the one whose name"); a passive
-participle after a copula whose subject it reads, with nothing after it but "in the world" ("How many different degrees
-are offered?"), unless the data's names spell it ("How many regions are affected?" names affected_region); a verb
-relating a table named before it to a field it reads named after it; "of origin" after a field it reads;
-the whole name of a table a key it reads refers to, as the rows that key refers to ("the number of accounts with a
-savings balance" counts SAVINGS rows by their custid); a verb saying where something is or lives by a place field that
-is no key (`closed_class.PLACE_VERBS`, `PLACE_WORDS`: "In how many different cities are banks located?"), one a value
-is compared in being of a table named before the verb ("employees living in Canada" by employees.country); "first" and
-"last" grading a date as "earliest" and "latest" do; and a noun right after the one-word name of a numeric field it
-reads, which is what the field measures ("the minimum snatch score"); "member" after the name of a table it reads,
-its rows ("the staff member"); and the people a population it reads counts ("How many people live in Gelderland
-district?" by Population, `sql_expansion.counted_population`). A superlative or aggregate word that is a numeric field's
-whole one-word name grades the field named after it and asks for no field of its own ("the highest capacity" asks for
-no Highest), and before a noun a superlative or an ordering grades it is the field and asks no aggregate ("the highest
-total score", `sql_expansion.cue_names`). "Available"
-asks nothing where no table or field is named for availability, nor do "the results" a sort verb orders, and an
-ordering "from old to young" is read by an ordering in that grade's direction (`sql_extrema.span_grade`). A verb is
-read by the field its doer names ("won" by winner_id, `closed_class.agent_noun`), "corresponding" where it pairs an
-output the answer shows ("corresponding to each", a shown field after it) or comes before the name of a table it reads
-("two or more corresponding books"), "names" by the title of a table holding no
-name, and "time" by a date field it reads. A
-lower-case verb names no stored value in the search (`closed_class.predicate_words`), a measure's trailing unit is left
-unsaid in a field's name (`sql_expansion.naming_words`), and a yes/no flag field named by its words is the condition
-field = its true value (`sql_expansion.flag_comparisons`). Two words
-that begin the name of a table it reads are read ("the high school student" by Highschooler), as is a
-word the English vocabulary lacks one letter from a word it reads, misspelled ("the cartools" by Cartoon). So is a word
-the search
-names a read field by ("gender" by Sex, `sql_expansion.column_matches`), "the full name" by a first and a last name of
-one table, and a word saying how rows are counted by a query counting them: "times" and "records" after a word of a
-count, and a verb a count follows after "by" ("the hometowns shared by at least two teachers") by one that groups them.
-"Equal to" is read by a query comparing for equality, "record" after the name of a table or field the query reads
-names its rows ("from the trip record"), and the words of a request for every field ("all the information") by a
-query showing every field of its table.
+The served response carries `read_as`, the readers' plain reading of the served query, which the thread shows as
+the turn's "read as" line, and a `coverage` record certifying the reading (the readers' acceptance; the world
+routes keep their own wording gate in `KnowledgeQuery._uncovered`). A one-table reading of a workbook whose other
+tables share its layout says which table it read (`layout_copies`). A total or average of a named column whose
+cells are not all numbers is refused naming them (`engine/query_contract.unreadable_operand`) before any route
+reads it (`KnowledgeQuery.serve`), by compose and the currency check alike.
 
-The constraint check (`engine/query_contract.constraint_violations`) judges a set query branch by branch for the
-result's shape (aggregates, projection, ordering, grain; a field an aggregate word takes, as in "top 2 cities by
-total amount", is the measure the groups are ranked by and asks no grain) and as a whole for what the question asks
-of the rows: a
-comparison may sit in either branch of an INTERSECT, in an OR or a UNION only of alternatives the question offers, in
-a HAVING COUNT for a threshold on counted rows (the only place a number the name of a table follows is met: "more
-than 1 car maker", `sql_expansion.counted_thresholds`, each threshold stated needing its own count, which
-construction builds as one membership test per requirement, `ConstraintQueryExpander._requirement_candidates`,
-connected by the explicitly read AND or OR (`sql_expansion.count_requirement_operator`). Mixed/unbound coordination
-remains unresolved. The checker also proves the joint Boolean relationship between distinct counted populations;
-individually correct membership counts do not justify substituting AND for OR. The HAVING is
-read as a formula, AND and OR, of the counts of the counted rows, COUNT(*) or a column of theirs, a distinct one
-telling them apart, and must admit the same numbers of rows, tried at the boundaries its bounds make, over the
-counted table without joins that repeat its rows or groups that hold its key; one admitting none, "fewer than 2",
-only as a NOT IN of the groups failing it, which keeps the entities without rows, or the counted table grouped alone
-where no other table holds what it groups by), or in an IN or EXISTS subquery
-that binds the returned rows (an IN of the operand's own column, a foreign-key pair, a same-named column or one named
-for its table and itself, never a computed value, and a largest or smallest value only where the question asks for
-an extremum; an EXISTS that refers to the outer row, `query_contract._binds`),
-and never counts from a scalar subquery or an unbound one, which filter no returned row. A count grouped by the key
-of the one table it reads, which other tables refer to, counts one row in each group and is refused, as are the
-groups such a count ranks for its top ones by any field telling the table's rows apart, in the query or a scalar
-subquery it compares with ("the dogs of the rarest breed"), and so is a count of a group's own distinct values, a key
-its joins equate with the group's included (1 in every group). What is "most common" among rows is counted over them:
-a join to a table the question does not name, and the tables it names, read or not, do not need, repeats them and is
-refused (`query_contract._multiplies`). A count meets only a number the question states as one of rows, a noun after
-it, or "count", "a count of" or "the number of" before it; a number its sentence ends on is a field's value
-(`query_contract._states_rows`). A
-COUNT(*) over joins that each follow a foreign key counts the rows of the one table no join refers to, wherever the
-query counts, and so counts a field of that table holding no numbers named as the noun counted ("the country that
-speaks the largest number of languages", `query_contract._row_count_table`); a number before a numeric field's name
-compares it ("more than 30000 in salary", "more than 12 bikes available": the name may follow the number in two
-words, `ExpansionSupport.threshold_targets_column`). Groups
-list each value once, so "different" is read by a grouped answer, the counts beside its groups included. A listing
-answers the rows the question's opening names, after a command it opens with ("what are airlines | that have
-flights"): it shows a field of such a table, of one a foreign key joins to it, or a key referring to it
-(`query_contract._asked_tables`; a longer name's last word the opening says names its table where the question says
-its other words, "the most common amenity in the dorms", a name's or an id's word never), so airport names do not
-answer for airlines; a key shows the rows it refers to (Has_amenity's dormid shows dorms), and a key whose references
-lead to such a table holds its keys ("the id of students who attended some courses" is the attendance rows' student_id). A "number"
-ending a field's name ("the phone number") asks for the field, not a count (`sql_expansion.field_numbers`, read by
-`count_requested`, the search's aggregate cues and the ranker's question roles), and so does a "number of" before a
-numeric field's whole name ("the maximum number of floors", "in order of number of police officers"), the fields'
-types coming from the schema; a table's name or a text field's after it is still counted. "All the information about
-hiring", "all the details", "all columns", "all the customer information" and the information of, about or on rows
-("List the information of all instructors") ask for every field (`sql_expansion.complete_projection_requested`), and a
-superlative states the cutoff such an answer may keep. A threshold on an aggregate a thing has ("customers with a total amount
-over 10", `ExpansionSupport.aggregate_thresholds`) is met only on that aggregate, and a filter moves into a HAVING
-only where the aggregate's word stands before its field's name near the number ("whose average life expectancy is
-longer than 72", not "the average weight of the cars with 4 cylinders"). An average the rows are compared with
-("how many dogs have an age below the average") is computed by the query, in its scalar subquery. A number said right after a field
-whose cells are not all numbers ("horsepower more than 150") is compared with that field and no other
-(`query_contract._compares_another_field`), and a field named after its table's name ("the highest savings
-balances") is that table's, not a same-named field of a table the question does not name. "How many" answered by groups a
-HAVING keeps, without "each", "per", "by" or "for different" (`sql_expansion.groups_requested`), counts the groups
-that qualify, one number (`ConstraintQueryExpander.qualifying_count` builds it as a COUNT over the grouped query);
-a count in each group is refused. The rows a ranking keeps are read in one place by the search and the check
-(`sql_extrema.ranking_cutoff`: "the top 3", "the 3 oldest", "the two people with the largest age"), and a ranking
-whose number names a table shows its rows, not only the field that ranks them (`sql_extrema.ranked_table`).
-"First" or "last" joined to the next word by a hyphen ranks nothing ("the first-grade students"): where the question
-ranks by nothing else, a query keeping only its top rows is refused. An
-EXCEPT makes an exclusion, its subtracted branch keeping the values
-excluded; a comparison there, or in a NOT IN or NOT EXISTS, realizes its complement, or itself when the question
-negates before it (`query_contract._select_queries`, `_scoped_match`). A negation excludes the first value within
-seven words after it in its clause, and "never" negates (`sql_search._negated_matches`: "ships that are not steered by
-any captain with Midshipman rank"). An exclusion removes the rows the question
-names: a table joined inside it only to filter, which the question does not name in any form ("prerequisites" names
-prereq, `sql_expansion.says_in_another_form`), narrows it and is refused
-(`query_contract._dangling_unnamed_join`). A difference keeps the rows the question names before its denial
-(`sql_extrema.denial_position`): a table named there that only the subtracted part reads is refused unless a field of a
-kept table has its name, a key the kept part shows refers to it, or it follows "whose"
-(`query_contract._unkept_named_tables`), and so is a difference subtracting every row it keeps
-(`_subtracts_every_row`); past its top reading, which the decomposition probe reads, the search keeps no reading
-any of these refuse in its pool (`query_contract.exclusion_refusals`), so none takes a place a servable reading
-could. What the rows "do not have" is absent from every row they relate to: an inequality on a table the shown rows
-reach through rows referring to them is refused (`query_contract._inequality_across_many`), and "never" asks for an
-exclusion as "not" does (`closed_class.EXCLUSION_CUES`). A set difference subtracts entities by fields that tell them
-apart (`SchemaGraph.identifies`: together they hold no combination twice in their own table, a missing value counting as
-one; a foreign key to a unique lookup names the lookup's rows, not its own): the projected values when they do,
-else the entity's key, filled in every row, NOT IN the related rows', where the question asks for fields of the
-entity's rows ("the major and age of each student who ...", `sql_extrema._describes_rows`).
-A field's name inside a longer field's name the question also says ("the name of the song" is `Song_Name`) or
-inside a table's name the query reads ("car makers") asks for that longer field or table: said together and in order
-("first name and last name") whatever other table holds the shorter name, said apart where the longer field's table
-is the one the question names as the owner after "of" ("the name of the breed", `query_contract._owner_tables`) or,
-where it names none, the rows it asks for; a camel-cased name split further needs one of those ("at least 2 models ... the id" is no
-ModelId). A field named as its table answers "the names of orchestras", and a self-join's shown field is its table's.
-The names of a table that holds a name are that name, not a joined table's ("the names of the albums" are their titles,
-`query_contract._named_name_owners`), the owner being the table after the name word's "of" or "for" or a later "for"
-("for each artist", "for departments"), past one modifier that is no possessive ("all biology professors"); a table
-holding no name is named by a table its keys refer to, joined to it (a professor by the EMPLOYEE row its EMP_NUM
-refers to); that field answers a request for another table's field called a name. A table's descriptions and
-details are its own by the same reading (`query_contract._FIELD_KINDS`), a table holding none being described by a
-table its keys refer to, joined to it; a field the words before the word name, by the longest name they end, is its
-table's ("the color description for the product" is Ref_Colors'), and "other" names none
-(`closed_class.GENERIC_MODIFIERS`). Each
-output a list names is shown by a field it names or whose name says its words, a field a count or a total reads
-saying none; a list whose items each say the head word of some field's name lists fields where no one field realizes
-an item ("the names of the tourist attractions and the dates"), a value the query compares or two items one field's name
-joins ("the clean and jerk score") being no such item. A table joined to one other that the
-query reads nothing from and does not count, whose rows the join narrows and repeats, is named only where the question
-says its name outside the longer names of tables and fields the query reads ("document type codes" names no
-Documents, `query_contract._join_named_inside_longer`).
-A question opening "how many" or "count" is answered by an aggregate, never a listing. The column an aggregate phrase
-names most fully ("the total amount", "the total estimated amount") is its operand
-(`engine/sql_rank.aggregate_operand`); when it is text and its cells are not all numbers the question is
-refused naming them (`engine/query_contract.unreadable_operand`), by compose, the planner, both world routes
-(`KnowledgeQuery.serve`) and the currency check alike, and no other column, a saved reference's included,
-nor a row count stands in for it. `engine/routing.route` makes compose's refusal the answer in serving and
-the Spider evaluator.
+The response's `planner.selection` records the pool counts (`pool_size`, `executable`, `misgrounded`, `eligible`),
+the served member's place among the eligible ones, its log probability, and whether a date, double-counting or
+calculation preference chose it. The winning AST then executes against the conversation schema through the shared
+SQL/Python plan.
 
-The response's `planner.selection` records the pool counts (`pool_size`, `executable`,
-`misgrounded`, `eligible`), the served member's place among the eligible ones and its search score,
-whether a date, double-counting, calculation or money-total preference chose it, and `served_by`. The winning AST then
-executes against the conversation schema through the shared SQL/Python plan.
-
-### Labelled Gemini fallback
-
-When no candidate is eligible or the selected plan leaves request wording unresolved, and the operator
-enabled Gemini (`EXTERNAL_LLM_ENABLED` plus a Vertex AI project, checked by `engine/llm.py`),
-`select_query` may call `engine/question_rewrite.py` once. Gemini receives the current question and a
-schema description containing table and column names, inferred types, and declared foreign keys. In the
-question, the phrases the search reads as cell values are quoted, and one it reads as held inside a column's
-values ("all inspection checklist") is spelled as that column containing the value
-(`engine/sql_prompt.py:prompt_question`): with only names to go on, Gemini read tabs named Inspection and
-Checklist into "all inspection checklist". It receives no other cell value, no full rows and no conversation
-history, and it is told not to name a table the question does not name. The call asks for LOW thinking and
-stops after 20 s: at the model's default thinking a rewording once outlasted the 30 s client timeout. Gemini is asked for a plain English question: comparisons of size or order in
-words, never > or <, and columns without their table ("Student with Age > 20" lost the "more than" the next check holds). The
-rewriter checks that numbers, quoted text, and the source values the search recognized in the question remain in
-its rewrite (a value a word names may stand for the word: "Asian countries" as "countries in Asia"), and so does every source value in a script the search cannot read (東京); an ASCII cell value said as a
-word ("IN", a country code) is the search's to recognize. It also keeps the computations the question asks: an
-aggregate, comparison, ranking or share word, and a count as the engine itself reads one
-(`sql_expansion.count_requested`); the grain a grouping word asks is held by the answer check after the reworded
-search. Replies are not cached. The deterministic typed search alone builds candidates and SQL. A rewritten reading is served
-only when it runs, keeps every constraint of the original question and leaves no word of the rewording
-unread.
-
-The response labels an answer served after a rewrite with `fallback.kind: rewrite`, the model name,
-and the rewritten question. Gemini cannot write SQL, choose a candidate, or provide a result. When no
-eligible candidate is found after rewriting, a rewrite is unsafe, or Gemini is unavailable for an
-unreadable baseline, no query is served. If the best-ranked runnable reading reads some of the question's
-tables, columns or values, the reply names the words it left unread and offers the columns of its tables they
-could mean, numeric ones for a quantity word such as "volume" (`engine/tables.py:unread_clarification`).
-Decomposition leaves continue to use `allow_fallback=False`.
-
-`EXTERNAL_LLM_ENABLED` defaults to off, and with it off selection is deterministic and no model
-writes SQL. The guided Community deployment turns Gemini on together with chat, so its engine has
-the fallback. The Spider headline is measured with it off; the evaluator records the setting in its
-contract ([`spider/README.md`](../spider/README.md)).
+The readers' pool and scores depend only on the question and the data, so a request reads them once
+(`ReadingSearch.pool`, `ReadingSearch.rescore` keep them) although the decomposition probe, compose's routing
+probe and the delegate each select. Selection is deterministic: the models run in fixed precision with no
+sampling, ties keep pool order, and nothing depends on hash order. The readers are trained by
+`training/readers/` and installed only by `training/readers/promote.py`.
 
 ## World Grounding And Composition
 
@@ -896,8 +596,10 @@ The repository has one owner per decision:
 - routing: `engine.routing.route()`;
 - relationship discovery: `engine.relations.discover_fks()`;
 - own-data SQL representation: the typed AST;
-- own-data query selection (search, pool execution, grounding, and the labelled Gemini fallback):
+- own-data query selection (the readers' candidates, pool execution, grounding, re-scoring and refusal):
   `engine.tables.TableQuery.select_query`;
+- the readers (schema items, readings, builder, re-scorer, refusal): `engine.readers`; their training
+  `training.readers`, and their installation `training.readers.promote`;
 - the one external model client (Gemini on Vertex AI): `engine.llm`;
 - dual SQL/Python plan, source emission, and parity: `engine.deterministic`;
 - bounded compound-question proposal validation and typed-plan fusion: `engine.decomposition`;

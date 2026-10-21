@@ -2,9 +2,8 @@
 
 Gemini is the only external model. Two surfaces share this module:
 
-- The synchronous calls of the engine's threaded HTTP server: ``generate_text`` (the labelled
-  wording rewrite, engine/question_rewrite.py) and ``stream_text`` (reference
-  generation, /api/master/generate). One ``genai.Client`` per process, created lazily under a lock.
+- The synchronous calls: ``generate_text`` (starter questions, orchestrator/suggestions.py) and
+  ``stream_text`` (reference generation, /api/master/generate). One ``genai.Client`` per process, created lazily under a lock.
   Every call runs at temperature 0 with seed 0, and every failure, "not enabled" included, reaches
   the caller as ``LLMUnavailable``.
 - ``AsyncGeminiClient``, driven by the chat orchestrator's tool loop (orchestrator/orchestrator.py).

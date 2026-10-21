@@ -604,7 +604,7 @@ class ComposedKnowledgeQuery:
                         "model": "engine - typed AST decomposition requested",
                     }
                 # A question the upload reads whole builds no compose plan, so it needs no world lookup.
-                own_data = reads_upload_whole(question, probe.pool, probe.graph)
+                own_data = reads_upload_whole(question, probe.selection, probe.schema)
                 if own_data:
                     request_timing.count("world_lookup_skipped")
             if not own_data:

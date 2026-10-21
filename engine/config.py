@@ -33,8 +33,8 @@ Env contract:
   BASE_MODEL_REVISION  Immutable Hugging Face commit for that base model
   KB_MODEL_ROUTE    "0" disables model-driven column routing (falls back to value membership; default on)
 
-  --- External model: Gemini on Vertex AI (engine/llm.py) — reference generation, the
-      stateless wording rewrite, and the chat orchestrator ---
+  --- External model: Gemini on Vertex AI (engine/llm.py) — reference generation, starter
+      questions, and the chat orchestrator ---
   EXTERNAL_LLM_ENABLED Authoritative deployment switch for every Gemini call; default false. See PRIVACY.md.
   GEMINI_MODEL         Vertex AI Gemini model id (default gemini-3.8-flash)
   GEMINI_LOCATION      Vertex AI location (default global)

@@ -16,7 +16,7 @@ prepares Firebase Hosting and publishes the `web/public` CDN files after the Clo
 
 ```
 browser ── Firebase Hosting (web/) ── /api/** rewrite ──> Cloud Run "prereasoner-api"
-   │                                                        │ 8Gi / 4 vCPU, up to 4 instances
+   │                                                        │ 16Gi / 4 vCPU, up to 4 instances
    │                                                        │ (min_instances 2 by default, or 0)
    ├── Firebase Auth (ID tokens, verified in-app)           │ unix socket /cloudsql/...
    └── Firebase RTDB  (live trace stream, optional) <───────┤
@@ -142,8 +142,8 @@ easier to babysit interactively.
 The engine does not require an external model. Terraform can create the chat service and its
 dedicated service account. The chat model is Gemini on Vertex AI in this project (`gemini_model`,
 default `gemini-3.8-flash`; `gemini_location`, default `global`); no API key or secret is involved.
-Enabling chat enables Gemini for the engine too (reference generation and the
-stateless wording rewrite): Terraform enables the Vertex AI API, grants both service accounts
+Enabling chat enables Gemini for the engine too (reference generation): Terraform enables the
+Vertex AI API, grants both service accounts
 `roles/aiplatform.user`, and sets `EXTERNAL_LLM_ENABLED=true` on both services.
 
 ```bash
@@ -215,8 +215,8 @@ Community deployment explicitly enables the reviewed `iana_country` dataset.
 - `serving_db_role` — name of the mandatory non-superuser Cloud SQL role.
 - `admin_emails` - explicit Firebase email allowlist for `/api/admin/*`. Empty (the default)
   disables admin API access; forks never inherit a maintainer identity.
-- `enable_external_llm` - explicit opt-in for the engine's Gemini features (reference generation
-  and stateless wording rewriting) in a deployment without chat. It defaults to false;
+- `enable_external_llm` - explicit opt-in for the engine's Gemini feature (reference generation)
+  in a deployment without chat. It defaults to false;
   `enable_orchestrator=true` enables them regardless, because chat needs Gemini.
 - `gemini_model`, `gemini_location` - the Vertex AI Gemini model and location both services use.
 - `enrichment_active_datasets` — the deployment **allowlist** (2nd activation key; the 1st is

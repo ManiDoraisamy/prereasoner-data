@@ -172,9 +172,17 @@ def test_public_weight_bundle_is_manifested_and_documented():
     manifest = json.loads(_text("engine/data/weights_manifest.json"))
     assert manifest["repository"] == "prereasoner/prereasoner-weights"
     assert re.fullmatch(r"[0-9a-f]{40}", manifest["revision"])
-    assert len(manifest["files"]) == 7
-    # No SQL-writing model or fitted selector is part of the runtime bundle: the typed search builds
-    # every query (CLAUDE.md, SQL planner rules).
+    encoder = {name for name in manifest["files"] if not name.startswith("readers/")}
+    assert encoder == {"anchor_assignment.npz", "encoder.pt", "encoder_meta.pt", "primitives.npz",
+                       "qwen_lora/adapter_config.json", "qwen_lora/adapter_model.safetensors",
+                       "schema_property_head.pt"}, encoder
+    # The readers' bundle (training/readers/promote.py): stage 1, at least one stage-2 reader that says how it reads,
+    # the re-scorer and the refusal.
+    readers = {name for name in manifest["files"] if name.startswith("readers/")}
+    assert {"readers/stage1/model.pt", "readers/rescorer/model.pt", "readers/refusal.json"} <= readers, readers
+    assert any(name.endswith("/reader.json") and name.startswith("readers/stage2_") for name in readers), readers
+    # No SQL-writing model is part of the runtime bundle: the readers read questions as named readings and the
+    # deterministic builder makes every query (CLAUDE.md, SQL planner rules).
     assert "sql_proposer/adapter_model.safetensors" not in manifest["files"]
     assert not {"xiyan_sql_proposer.json", "sql_arbiter.json"} & set(manifest["committed_artifacts"])
 
@@ -782,7 +790,7 @@ def test_engine_release_build_runs_the_real_server_until_health_ready():
         "  # Exercise the full live-product suite", 1
     )[0]
     cpus, memory = _engine_container_size()
-    assert (cpus, memory) == ("--cpus=4", "--memory=8g")
+    assert (cpus, memory) == ("--cpus=4", "--memory=16g")
     assert cpus in offline and memory in offline
     assert "offline_case_latency_ms" in _text("regress/run_regression.py")
     assert "offline_process_peak_rss_mb" in _text("regress/run_regression.py")

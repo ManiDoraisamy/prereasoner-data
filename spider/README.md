@@ -1,21 +1,19 @@
 # Spider Benchmark — Diagnose and Measure
 
 > **Current planner note.** The own-data SQL layer is one typed-AST planner
-> (`engine/tables.py:select_query`): a bounded deterministic search over typed ASTs ranks up to 25
-> candidates, each runs on an in-memory copy of the database and is grounded, and the best-ranked
-> eligible candidate is served. No local model writes SQL. A labelled Gemini fallback runs only when
-> no candidate is eligible and the operator enabled it; the headline is measured with it off. Start
-> with [`docs/SQL_AST.md`](../docs/SQL_AST.md) for the implementation contract; this document explains
-> the benchmark and its failure taxonomy. The probe sections below come from earlier runs and describe
-> the deterministic search's failure families.
+> (`engine/tables.py:select_query`): learned encoder readers (`engine/readers/`) read the question
+> beside the schema as named readings, a deterministic builder makes each reading a typed AST, each
+> candidate runs on an in-memory copy of the database and is grounded, a learned re-scorer orders the
+> eligible ones, and a learned refusal serves the first only when it is confident. No model writes SQL,
+> and selection calls no external model. Start with [`docs/SQL_AST.md`](../docs/SQL_AST.md) for the
+> implementation contract; this document explains the benchmark and its failure taxonomy. The probe
+> sections below come from earlier runs and describe the failure families of earlier planners.
 
 > **Current whole-database result.** [`results/RESULTS.md`](results/RESULTS.md) is the only place
 > accuracy numbers are maintained; it records each served pipeline's `whole_db` result with its source
-> commit, artifact hashes, and the `gold_tables` oracle ablation. Every number there measured an
-> earlier design: the search under an older selector, then the search pooled with a local
-> SQL-writing model and a fitted arbiter. They also predate the rule that a served top-1 ranking keeps
-> every tied row (`sql_ast.keep_ties`). The engine-alone number for the current selection needs a
-> fresh `whole_db` run with the fallback off.
+> commit, artifact hashes, and the `gold_tables` oracle ablation. The readers' training sources include
+> Spider's dev questions (all but 20 calibration databases; `training/readers/README.md`), so a DEV run
+> is not a held-out measurement of them; the Spider test set appears in no training step.
 
 > **Audience: contributors.** This is both the reproducible benchmark contract and a diagnostic guide.
 > The goal is to localize *why* Prereasoner scores low on Spider before changing anything. This is
@@ -47,20 +45,20 @@ There are **two SQL routes** and a router between them (`engine/knowledge_compos
 | Path | File | Emits | Executes on |
 |---|---|---|---|
 | **Compose** (view-stacking) | `engine/compose.py` + `engine/primitives.py` | one flattened base (single table / FK star-join / world join) → `filter · time_filter · group_agg · having · topn · sort · yoy · running · share · divide`, agg ∈ COUNT/SUM/AVG/MIN/MAX | in-memory **SQLite** |
-| **Typed-AST planner** (own-data) | `engine/tables.py :: TableQuery.search_ast` → `engine/sql_search.py` | a bounded search over valid SQL ASTs: projections + `DISTINCT`, `WHERE`, aggregates, `GROUP BY`/`HAVING`, `ORDER BY`/`LIMIT`, multi-hop and self-joins, scalar subqueries, `IN`/`EXISTS`, derived tables, and `UNION`/`INTERSECT`/`EXCEPT` — ranked by hand-written deterministic features | in-memory **SQLite** (offline) / **Postgres** (live) |
+| **Typed-AST planner** (own-data) | `engine/tables.py :: TableQuery.select_query` → `engine/readers/` | learned readers' readings built into typed ASTs: projections + `DISTINCT`, `WHERE`, aggregates, `GROUP BY`/`HAVING`, `ORDER BY`/`LIMIT`, FK joins, a nested condition (scalar subquery, `IN`/`NOT IN`), `UNION`/`INTERSECT`/`EXCEPT`, and shares — ordered by a learned re-scorer, with a learned refusal | in-memory **SQLite** (offline) / **Postgres** (live) |
 
 Routing: a question whose **learned primitive head** fires a *depth* primitive
 (`EXCL/RATIO/TOPN/SHARE/TIME/HAVING/SORT/DIVIDE/RUNNING`) → **Compose**; everything else → the
-deterministic typed-AST planner for a self-contained table. The live full stack (`KnowledgeReasoner →
+typed-AST planner for a self-contained table. The live full stack (`KnowledgeReasoner →
 ComposedKnowledgeQuery → KnowledgeQuery`) additionally does world resolution + a **clarify gate**, and
 executes on **Postgres**.
 
 **Note on the original diagnostic.** The route this diagnostic measured through `engine/tables.py` was an
 earlier template/slot-filler delegate with **no nested-subquery, set-operation
 (`INTERSECT/UNION/EXCEPT`), or self-join** support — those were hard structural ceilings for that route.
-That delegate has since been **replaced by the deterministic typed-AST planner**, which does cover
-subqueries, set operations, and self-joins; the ceilings below are the earlier route's, not the current
-planner's.
+That delegate has since been **replaced by the typed-AST planner**, whose readings cover a nested
+condition and set operations (a self-join, a derived table or three blocks are outside its form); the
+ceilings below are the earlier route's, not the current planner's.
 
 The generalized Schema.org class head is used by the world-enrichment path for named property evidence. It
 does not change Spider routing: Spider databases are self-contained, so every example uses the AST planner.
@@ -77,7 +75,7 @@ a "12%." Instead we run the parts that *are* faithful and Postgres-free:
 
 - **Both SQL routes ran on SQLite** (compose via `ComposeEngine.run(..., world=None)`; the delegate — at
   the time of this diagnostic, the earlier slot-filler — via its `plan → assemble → execute` path; the
-  current tree runs the deterministic typed-AST planner here instead). For self-contained Spider DBs `world` **is** `None`, so the
+  current tree runs the typed-AST planner here instead). For self-contained Spider DBs `world` **is** `None`, so the
   **assembled SQL is identical to what the live system would emit** — only the *executor* differs
   (SQLite vs Postgres), which does not change denotation. This yields a **faithful offline reproduction**
   of the system's SQL (Probe D+), missing only: world resolution (irrelevant to Spider) and the clarify
@@ -127,7 +125,7 @@ All under `spider/probe/`. Data (`dev.json`, `tables.json`, the 20 dev SQLite DB
   over representative Spider columns to test the v1 Phase-4 worry: does the router **abstain** on
   out-of-taxonomy columns, or **silently mis-fire** (false resolution)?
 - **Probe D+ — full offline system** (`full_eval.py`, model on CPU; **the headline**). Reproduces the
-  live own-data path (the compose route and the deterministic typed-AST planner), executes the selected
+  live own-data path (the compose route and the typed-AST planner), executes the selected
   candidate with SQL or, when lowerable, the shared-plan Python emitter, and compares denotation to the
   real gold rows. Gold execution and correctness always reuse `spider_eval.compare`. Reports the
   three-outcome split, a stage-attributed error histogram, and optional Python coverage/parity fields.
@@ -148,7 +146,8 @@ v1's best idea, kept. Every example lands in exactly one bucket:
 
 - **answered-correct** — SQL emitted, executes to the gold denotation.
 - **answered-wrong** — SQL emitted, wrong denotation (or execution error).
-- **refused** — the clarify gate declined (live only; **not reproducible here** — noted, not faked).
+- **refused** — the readers' refusal declined (the evaluator records it as stage `refusal`), or the live
+  clarify gate declined (live only; **not reproducible here** — noted, not faked).
 
 Report **answered-accuracy = correct/(correct+wrong)**, **coverage = (correct+wrong)/total**, and
 **refusal-rate** separately. A correct refusal is *not* a pipeline error but *is* scored wrong by Spider;
@@ -198,7 +197,8 @@ shows it is inert on Spider — verify that claim, don't assume it.
 ## 6. Motivated-reasoning guard
 
 The three-outcome frame can flatter: every wrong answer reclassified as "correct refusal" inflates the
-honest number. Guards: (a) refusals are **not reproducible here**, so we make **no** refusal credit; (b)
+honest number. Guards: (a) **no** refusal earns credit: the readers' refusal scores wrong, and the live
+clarify gate is not reproduced here; (b)
 the headline is the **scalar-gold** number (unambiguous) plus the strict↔lenient bracket, not a
 cherry-picked bound; (c) `whole_db` is reported next to `gold_tables` so oracle-table-selection advantage
 is visible; (d) hand spot-checks gate the histogram.
@@ -230,8 +230,8 @@ is visible; (d) hand spot-checks gate the histogram.
 
 ```bash
 # from repo root; deps already present: torch(cpu), transformers, peft, sqlglot (requirements.lock.txt).
-# weights in engine/data/ (python -m engine.fetch_weights). Leave EXTERNAL_LLM_ENABLED unset: the
-# headline is the engine alone, with no Gemini fallback.
+# weights in engine/data/ (python -m engine.fetch_weights) and the readers in engine/data/readers/
+# (installed by training/readers/promote.py).
 python -m spider.probe.fetch_data          # dev.json, tables.json, 20 dev SQLite DBs -> spider/data
 python -m spider.probe.static_probe        # Probe A + B
 
@@ -256,10 +256,9 @@ python -m spider.probe.full_eval --dbs spider/data/dbs --config whole_db --backe
 python -m spider.probe.typing_probe --dbs spider/data/dbs   # Probe C
 ```
 
-Each per-example record carries `served_by` (`search` or `gemini-rewrite`) beside the
-selection record. The run's contract and summary carry `fallback` (`enabled`, `model`), and
-`--resume` refuses a checkpoint written under a different setting. The contract also hashes every Python file under
-`engine/` and `spider/probe/`, the questions and schemas, each database the run reads, and the whole validated model
-bundle, so a checkpoint written by other code, data or models is refused too. A headline run shows
-`fallback.enabled: false`, so every example is `served_by: search`. A run with the fallback on is a
-separate measurement and must be reported as one.
+Each per-example record carries the selection record, and a question nothing was served for names its
+stage (`ast_search`, `grounding`, or `refusal`). `--resume` refuses a checkpoint written under a different
+contract: the contract records the run's settings and hashes every Python file under `engine/` and
+`spider/probe/`, the questions and schemas, each database the run reads, and the validated weight bundle
+(every file `engine/data/weights_manifest.json` lists), so a checkpoint written by other code, data or
+models is refused too.

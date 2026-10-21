@@ -19,19 +19,16 @@ from engine.sql_schema import SchemaGraph
 
 
 class CalculationQueryExpander:
-    def __init__(self, schema: SchemaGraph, max_candidates: int = 64, semantic_signals=None):
+    def __init__(self, schema: SchemaGraph, max_candidates: int = 64):
         self.schema = schema
         self.max_candidates = max(1, max_candidates)
-        self.semantic_signals = semantic_signals
 
     def expand(self, question: str, candidates) -> list[ScoredQuery]:
         intents = detect_calculations(question)
         if not intents:
             return []
-        learned = getattr(self.semantic_signals, "calculation_intents", {}) or {}
         generated = {}
-        plans = composed_plans_for(question, self.schema, self.semantic_signals)
-        learned_score = sum(float(learned.get(intent.specification, 0.0)) for intent in intents)
+        plans = composed_plans_for(question, self.schema)
         roles = analyze_question(question, self.schema)
         for plan in plans:
             for candidate in candidates[:12]:
@@ -80,7 +77,7 @@ class CalculationQueryExpander:
                         sql = render_query(query)
                     except (TypeError, ValueError):
                         continue
-                    score = candidate.score + plan.score + min(max(learned_score, -1.0), 1.0)
+                    score = candidate.score + plan.score
                     result = ScoredQuery(
                         query,
                         sql,

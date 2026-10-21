@@ -368,7 +368,7 @@ MODEL_BACKED = (
 )
 
 
-def _runtime_bundle_missing() -> str | None:
+def runtime_bundle_missing() -> str | None:
     """Why the real planner cannot load here, or None. The weights are external (fetched by
     engine.fetch_weights and pinned by the manifest), and public CI installs no model stack."""
     import importlib.util
@@ -387,7 +387,7 @@ def _runtime_bundle_missing() -> str | None:
 
 def main() -> int:
     failed, skipped = [], []
-    missing = _runtime_bundle_missing()
+    missing = runtime_bundle_missing()
     for test in TESTS:
         if missing and test in MODEL_BACKED:
             skipped.append(test.__name__)

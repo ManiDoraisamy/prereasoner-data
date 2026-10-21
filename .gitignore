@@ -19,6 +19,8 @@ engine/data/*.npz
 engine/data/*.gguf
 engine/data/qwen_lora/
 engine/data/sql_proposer/
+# The readers' bundle: fetched by its manifest entries, installed only by training/readers/promote.py
+engine/data/readers/
 engine/data/*.previous
 !engine/data/README.md
 

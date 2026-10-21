@@ -45,7 +45,7 @@ HTTP, authentication, and private-reference selection
 canonical request validation and conversation ownership
         |
         v
-route ownership and typed SQL candidate search
+route ownership; learned readers' readings built into typed SQL candidates
         |
         v
 guarded execution over uploaded and approved reference rows
@@ -67,15 +67,14 @@ database releases.
 
 | Boundary | Mechanism | Authority |
 |---|---|---|
-| Column, intent, profile, and similarity signals | Frozen Qwen encoder plus calibrated heads | Learned evidence; it scores or types candidates |
-| SQL representation and expansion | Typed AST and schema graph | Deterministic |
+| Column, intent, profile, and similarity signals | Frozen Qwen encoder plus calibrated heads | Learned evidence; it types columns and reads intent for composition and world questions |
+| Own-data readings | XLM-R readers: stage-1 schema items, stage-2 reading models | Learned evidence; they classify readings, never write SQL |
+| SQL representation and construction | Typed AST, schema graph, and the deterministic builder that makes each reading a typed AST | Deterministic |
 | Named-analysis SQL/Python emission | One immutable feed-forward plan and two source emitters | Deterministic for the supported subset |
-| Candidate ordering | Named structural and encoder-derived features with stable tie-breaking | Deterministic for fixed artifacts and inputs |
-| Own-data query choice | The best-ranked search candidate that runs on a copy of the data and is grounded; calculation and money-total preferences filter that ranking | Deterministic for fixed artifacts and inputs; no local model writes SQL |
-| Selection fallback | Optional, stateless Gemini rewording when no candidate runs; the deterministic typed search still builds and validates SQL | External model, opt-in; rewritten answers are labelled, and decomposition leaves never take it |
+| Own-data query choice | Every candidate runs on a copy of the data; a learned re-scorer orders the grounded ones, date, double-counting and calculation preferences filter that order, and a learned refusal declines ("I read this as …") when it is not confident | Deterministic for fixed artifacts and inputs; no model writes SQL |
 | Joins, calculations, validation, and execution | Typed rules, calculation specifications, guarded emitters, and PostgreSQL | Deterministic |
 | Entity fallback | Exact lookup, then similarity, followed by grounding checks | Retrieval signal plus deterministic gates |
-| Factual answer presentation | Shared deterministic renderer | Displays structured engine results; Gemini may route or rewrite questions using schema context |
+| Factual answer presentation | Shared deterministic renderer | Displays structured engine results; the optional chat's Gemini may make a follow-up's wording explicit using schema context |
 
 Determinism removes sampling variance. It does not remove ambiguous wording, missing candidates,
 schema-linking mistakes, selection mistakes, source gaps, or entity-resolution errors.
@@ -96,7 +95,7 @@ schema-linking mistakes, selection mistakes, source gaps, or entity-resolution e
 | IANA country enrichment | **Current in guided Community deploy** | Raw Terraform remains opt-in; the guided deployment applies grants and activates it |
 | Other synchronized publisher datasets | **Current storage, not serving** | Planner activation remains gated |
 | Firebase trace streaming | **Opt-in** | Completed HTTP responses still render when RTDB is disabled |
-| Gemini on Vertex AI: conversational orchestration and the labelled selection fallback | **Opt-in** | Requires the `EXTERNAL_LLM_ENABLED` deployment switch and a Vertex AI project; the guided Community deploy enables both together with chat |
+| Gemini on Vertex AI: conversational orchestration, starter questions, and reference generation | **Opt-in** | Requires the `EXTERNAL_LLM_ENABLED` deployment switch and a Vertex AI project; the guided Community deploy enables both together with chat |
 | Runtime weights | **External** | Public, manifest-pinned Hugging Face bundle |
 | Seeded knowledge database | **External** | Community restores a minimal pinned seed dump; the production database is built through source ETL and not distributed |
 | `wikidata` migration, organization tenancy, and generic temporal enrichment | **Planned** | Do not describe these as shipped |
@@ -107,7 +106,7 @@ schema-linking mistakes, selection mistakes, source gaps, or entity-resolution e
 |---|---|
 | How do I install, test, and make a first request? | [GETTING_STARTED.md](GETTING_STARTED.md) |
 | What runs for a request, and which module owns each decision? | [ARCHITECTURE.md](ARCHITECTURE.md) |
-| How does typed SQL search work? | [SQL_AST.md](SQL_AST.md) |
+| How are own-data questions read and built into typed SQL? | [SQL_AST.md](SQL_AST.md) |
 | How do the matching SQL and Python emitters work? | [DETERMINISTIC_EMITTERS.md](DETERMINISTIC_EMITTERS.md) |
 | How are arithmetic semantics represented and checked? | [CALCULATIONS.md](CALCULATIONS.md) |
 | Which source schemas and releases exist? | [SOURCE_DATA.md](SOURCE_DATA.md) |

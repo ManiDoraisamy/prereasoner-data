@@ -94,13 +94,11 @@ strip remains a flat topological list because it is a workbook navigator, not a 
     Operators are visible in the generated function at that transition. Grouping is one
     named `group_reduce` stage even though its implementation maintains an in-memory group map.
 12. **Decomposition does not author computation.** A model may propose only bounded natural-language
-    leaf questions and a closed merge topology after the engine requests it. The existing deterministic
-    planner binds every leaf to schema, and one typed DAG supplies both emitters. No text of the
-    decomposition proposal becomes SQL, Python, a table name, a column name, or a join key. A leaf the
-    search cannot read, or a runnable plan leaves request wording unresolved, can reach the labelled
-    Gemini wording rewrite; deterministic search still builds every SQL plan and preserves recognized
-    values and numbers from the request
-    ([ARCHITECTURE.md](ARCHITECTURE.md#labelled-gemini-fallback)).
+    leaf questions and a closed merge topology after the engine requests it. The one own-data
+    selection binds every leaf to schema, and one typed DAG supplies both emitters. No text of the
+    decomposition proposal becomes SQL, Python, a table name, a column name, or a join key. A leaf with
+    no reading the leaf contract accepts rejects the proposal, and the model restates that leaf
+    ([ARCHITECTURE.md](ARCHITECTURE.md#own-data-sql-planner)).
 
 ## Verification checklist (run against a live conversation)
 

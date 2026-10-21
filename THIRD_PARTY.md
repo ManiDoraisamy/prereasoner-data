@@ -10,9 +10,10 @@ system; no source's facts are relicensed merely because they are used for traini
 | Component | Use | Upstream terms |
 |---|---|---|
 | [Qwen2.5-0.5B](https://huggingface.co/Qwen/Qwen2.5-0.5B) | Base encoder for the trained LoRA adapter | Apache-2.0 |
+| [XLM-RoBERTa base and large](https://huggingface.co/FacebookAI/xlm-roberta-large) | Base encoders of the fine-tuned own-data readers (`engine/data/readers/`) | MIT |
 | [BAAI/bge-small-en-v1.5](https://huggingface.co/BAAI/bge-small-en-v1.5) | Entity-resolution embeddings | MIT |
 | [spaCy en_core_web_md](https://spacy.io/models/en#en_core_web_md) | English parsing and entity candidates | MIT; the installed wheel contains its license and source notices |
-| [Gemini on Vertex AI](https://cloud.google.com/vertex-ai/generative-ai/docs/models), called through the `google-genai` SDK (Apache-2.0) | Hosted model for the chat assistant, `/api/converse`, reference generation, and the labelled selection fallback, in the operator's own Google Cloud project and only when `EXTERNAL_LLM_ENABLED` is true | The operator's Google Cloud agreement and the [Service Specific Terms](https://cloud.google.com/terms/service-terms) that apply to Vertex AI |
+| [Gemini on Vertex AI](https://cloud.google.com/vertex-ai/generative-ai/docs/models), called through the `google-genai` SDK (Apache-2.0) | Hosted model for the chat assistant, `/api/converse`, starter questions, and reference generation, in the operator's own Google Cloud project and only when `EXTERNAL_LLM_ENABLED` is true | The operator's Google Cloud agreement and the [Service Specific Terms](https://cloud.google.com/terms/service-terms) that apply to Vertex AI |
 | [Wikidata](https://www.wikidata.org/wiki/Wikidata:Copyright) | Entity identifiers and the largest current set of property-labelled training observations | Structured data is CC0; other Wikidata content can have different terms |
 | [Schema.org](https://schema.org/docs/terms.html) | Versioned ontology shell: named classes, properties, and inheritance used by training and evidence | CC BY-SA 3.0 |
 | [SheetJS Community Edition 0.20.3](https://cdn.sheetjs.com/) | Sandboxed browser parsing for attached Excel workbooks; `web/public/vendor/xlsx-0.20.3.full.min.js` is pinned at SHA-256 `cc015130aa8521e7f088f88898eba949ccdcbfb38df0bd129b44b7273c3a6f41` | Apache-2.0 |
@@ -43,7 +44,12 @@ aggregate evaluation measurements; questions, gold SQL, databases, and per-examp
 part of the source distribution. Follow the dataset owner's terms and cite the Spider paper when
 downloading it through the instructions in `docs/SQL_AST.md`.
 
-No runtime artifact is fitted on Spider. Spider DEV is used for measurement only.
+The own-data readers (`engine/data/readers/`) are fine-tuned on questions with readings derived from gold SQL:
+Spider's train and dev questions (20 train databases held out for calibration; the Spider test set appears in
+no training step), [BIRD](https://bird-bench.github.io/) train (Li et al., NeurIPS 2023; CC BY-SA 4.0), and
+[Spider-Syn](https://github.com/ygan/Spider-Syn) (Gan et al., ACL 2021; MIT), whose questions reword Spider's.
+Keep those attributions when redistributing the readers. A Spider DEV result is therefore not a held-out
+measurement of them; the Spider test set is.
 
 Python packages installed from the requirement files and browser libraries loaded by the frontend retain their
 upstream licenses. Before publishing a model bundle or container image, preserve the notices shipped by those

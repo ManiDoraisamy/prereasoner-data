@@ -230,7 +230,7 @@ resource "google_project_iam_member" "run_rtdb" {
   member  = "serviceAccount:${google_service_account.run.email}"
 }
 
-# Gemini on Vertex AI (engine/llm.py): reference generation and the selection fallback.
+# Gemini on Vertex AI (engine/llm.py): the engine's reference generation.
 resource "google_project_iam_member" "run_vertex_ai" {
   count   = local.external_llm_enabled ? 1 : 0
   project = var.project_id
@@ -285,16 +285,16 @@ resource "google_cloud_run_v2_service" "api" {
     containers {
       image = local.image
 
-      # Sizing: 4 vCPU / 8Gi. 8 vCPU / 16Gi was set for the in-engine SQL proposers (2026-09-23),
-      # removed on 2026-10-02 (DECISIONS.md); without them an instance holds 3-3.5 GiB. On the 91
-      # demo-dataset questions and the six-tab workbook, 4 vCPU answered within 3% of 8 vCPU in
-      # total (+5% on the median question) with the same answers, peaking at 3.4 GiB (2026-10-05).
-      # Leave memory headroom for request-time tensors, 10 MB request bodies, and the in-memory
-      # SQLite copies of uploaded sheets, for three requests at once.
+      # Sizing: 4 vCPU / 16Gi. On the 91 demo-dataset questions and the six-tab workbook, 4 vCPU
+      # answered within 3% of 8 vCPU in total (+5% on the median question) with the same answers,
+      # peaking at 3.4 GiB before the readers (2026-10-05). The own-data readers add about 3.4 GB in
+      # bfloat16 (two large reading models, two base models; DECISIONS.md, 2026-10-21), which 8Gi held
+      # with little room; 16Gi leaves headroom for request-time tensors, 10 MB request bodies, and the
+      # in-memory SQLite copies of uploaded sheets, for three requests at once.
       resources {
         limits = {
           cpu    = "4"
-          memory = "8Gi"
+          memory = "16Gi"
         }
         startup_cpu_boost = true # model load is CPU-bound; boost cuts cold-start time
       }
@@ -331,8 +331,7 @@ resource "google_cloud_run_v2_service" "api" {
         value = tostring(local.external_llm_enabled)
       }
       # Gemini on Vertex AI in this project, authorized by the service account (run_vertex_ai). With
-      # the switch off, /api/master/generate answers 503 and the UI falls back to local text;
-      # selection runs without its Gemini fallback.
+      # the switch off, /api/master/generate answers 503 and the UI falls back to local text.
       env {
         name  = "GEMINI_MODEL"
         value = var.gemini_model

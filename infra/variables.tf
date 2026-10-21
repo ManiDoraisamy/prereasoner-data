@@ -246,7 +246,7 @@ variable "min_instances" {
     loaded). One heavy question can fill an instance's CPU, and Cloud Run then holds or refuses
     other requests until another instance is up; a second warm instance takes them at once. With
     0, the first question after an idle period waits for a start. The engine runs with CPU always
-    allocated (instance-based billing), so each warm 4-CPU/8Gi instance costs about $230 a month at
+    allocated (instance-based billing), so each warm 4-CPU/16Gi instance costs about $275 a month at
     list prices. Use 0 for disposable dev environments. The service grows to at most four instances
     (see main.tf).
   EOT

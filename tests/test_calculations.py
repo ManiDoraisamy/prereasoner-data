@@ -23,13 +23,13 @@ from engine.calculations import (
     detect_calculations,
     select_calculation_candidate,
 )
+from engine.calculations.search import CalculationQueryExpander
 from engine.sql_ast import (
     Aggregate, BinaryExpr, BooleanExpr, ColumnRef, Comparison, Join, Literal, SQLType,
     SelectItem, SelectQuery, SetQuery, render_query,
 )
+from engine.sql_candidate import ScoredQuery
 from engine.sql_schema import SchemaGraph
-from engine.sql_rank import SemanticSignals
-from engine.sql_search import SQLSearcher
 from engine.tables import TableQuery, table_from_rows
 from engine.trace import stream_final
 from engine.artifact_provenance import (
@@ -37,6 +37,7 @@ from engine.artifact_provenance import (
 )
 from engine.model_revisions import QWEN_MODEL_ID, QWEN_REVISION
 from mcp_server.engine_client import shape_reason_response
+from regress.sql_import import import_sql
 from training.props.calculation_contrastive import build_rows, write_rows
 from training.props.eval_intent import read_op_mirror, thresholds_from_score_rows
 from training.props.promote import promote
@@ -72,10 +73,25 @@ EDGE = {
 }
 
 
-def _assessment(question, tables=(ORDERS, USD_RATES), fks=(EDGE,)):
+SUM_AMOUNT = 'SELECT SUM("orders"."amount") FROM "orders"'
+AVG_AMOUNT = 'SELECT AVG("orders"."amount") FROM "orders"'
+
+
+def _pool(question, graph, *base_sql):
+    """The pool engine/tables.py:TableQuery.search_pool builds: the readers' plain readings of the
+    question, most probable first (written here as SQL and imported into the typed AST, so the suite
+    never loads the readers' weights), followed by the registered calculations' expansions of them."""
+    base = [
+        ScoredQuery(query, render_query(query), float(len(base_sql) - rank), ("reading",))
+        for rank, query in enumerate(import_sql(sql, graph) for sql in base_sql)
+    ]
+    return base + CalculationQueryExpander(graph).expand(question, base)
+
+
+def _assessment(question, *base_sql, tables=(ORDERS, USD_RATES), fks=(EDGE,)):
     graph = SchemaGraph.from_tables(tables, fks)
     candidate, assessments, _ = select_calculation_candidate(
-        question, tables, graph, SQLSearcher(graph).search(question),
+        question, tables, graph, _pool(question, graph, *base_sql),
     )
     assessment = next(row for row in assessments if row["specification"] == "currency")
     return candidate, assessment
@@ -127,32 +143,39 @@ def test_intent_is_not_a_bare_currency_phrase():
 
 
 def test_filter_conversion_and_annotation_matrix():
-    count, count_result = _assessment("how many orders in USD")
+    count, count_result = _assessment(
+        "how many orders in USD",
+        'SELECT COUNT(*) FROM "orders" WHERE "orders"."currency" = \'USD\'')
     ok(count_result["status"] == "satisfied"
        and count_result["realization"] == "currency_filter",
        "typed WHERE currency=USD satisfies the count filter")
     ok("WHERE" in count.sql and "'USD'" in count.sql,
        "filter evidence agrees with rendered SQL")
 
-    excluded, excluded_result = _assessment("how many orders not in USD")
+    excluded, excluded_result = _assessment(
+        "how many orders not in USD",
+        'SELECT COUNT(*) FROM "orders" EXCEPT SELECT COUNT(*) FROM "orders" WHERE "orders"."currency" = \'USD\'',
+        'SELECT COUNT(*) FROM "orders" WHERE "orders"."currency" != \'USD\'')
     ok(excluded_result["status"] == "satisfied"
        and excluded_result["realization"] == "currency_exclusion",
        "negated currency filters preserve their polarity")
     ok(excluded.sql.startswith("SELECT COUNT") and "!=" in excluded.sql and "'USD'" in excluded.sql,
        "post-ranking admissibility skips the invalid EXCEPT candidate for the typed exclusion")
 
-    _, ambiguous = _assessment("average amount in GBP")
+    _, ambiguous = _assessment(
+        "average amount in GBP",
+        'SELECT AVG("orders"."amount") FROM "orders" WHERE "orders"."currency" = \'GBP\'')
     ok(ambiguous["status"] == "ambiguous"
        and ambiguous["proposal"] == "average amount where currency is GBP",
        "a scalable aggregate resolved as a filter asks instead of silently choosing a reading")
 
-    _, missing = _assessment("total order amount in euros")
+    _, missing = _assessment("total order amount in euros", SUM_AMOUNT)
     ok(missing["status"] == "unmet" and missing["available_targets"] == ["USD"],
        "mixed-currency raw SUM cannot masquerade as an EUR total")
     ok(missing["proposal"] == "total order amount in US dollars",
        "proposal names a target genuinely joinable from the measure table")
 
-    converted, satisfied = _assessment("total order amount in US dollars")
+    converted, satisfied = _assessment("total order amount in US dollars", SUM_AMOUNT)
     ok(satisfied["status"] == "satisfied" and satisfied["realization"] == "converted",
        "typed SUM(amount*rate_to_usd) satisfies conversion")
     ok("rate_to_usd" in converted.sql and " * " in converted.sql,
@@ -160,17 +183,19 @@ def test_filter_conversion_and_annotation_matrix():
 
     products = {"name": "products", "columns": ["product", "revenue"],
                 "rows": [["A", 100], ["B", 250]]}
-    _, annotation = _assessment("total revenue in euros", (products,), ())
+    _, annotation = _assessment("total revenue in euros", 'SELECT SUM("products"."revenue") FROM "products"',
+                                tables=(products,), fks=())
     ok(annotation["status"] == "satisfied" and annotation["realization"] == "unit_annotation",
        "a measure with no currency dimension accepts the user's stated unit")
 
     eur_orders = {**ORDERS, "rows": [["EUR", 10], ["EUR", 20]]}
-    _, identity = _assessment("total order amount in euros", (eur_orders,), ())
+    _, identity = _assessment("total order amount in euros", SUM_AMOUNT, tables=(eur_orders,), fks=())
     ok(identity["status"] == "satisfied" and identity["realization"] == "identity",
        "an all-EUR measure needs no rate multiplication")
 
     incomplete_orders = {**ORDERS, "rows": [["EUR", 10], ["", 20], ["unknown", 30]]}
-    _, incomplete = _assessment("total order amount in euros", (incomplete_orders,), ())
+    _, incomplete = _assessment("total order amount in euros", SUM_AMOUNT,
+                                tables=(incomplete_orders,), fks=())
     ok(incomplete["status"] == "unmet"
        and incomplete["source_currency"]["state"] == "incomplete",
        "blank or non-ISO source values cannot falsely certify an identity conversion")
@@ -178,7 +203,8 @@ def test_filter_conversion_and_annotation_matrix():
     jpy_rates = {"name": "jpy_fx", "columns": ["currency_code", "rate_to_jpy"],
                  "rows": [["EUR", 160.0], ["GBP", 190.0], ["USD", 150.0]]}
     jpy_edge = {**EDGE, "to_table": "jpy_fx"}
-    _, jpy = _assessment("total order amount in JPY", (ORDERS, jpy_rates), (jpy_edge,))
+    _, jpy = _assessment("total order amount in JPY", SUM_AMOUNT,
+                         tables=(ORDERS, jpy_rates), fks=(jpy_edge,))
     ok(jpy["status"] == "satisfied" and jpy["realization"] == "converted",
        "typed direct-rate conversion works for any pinned ISO currency code")
 
@@ -504,11 +530,11 @@ def test_an_average_converts_every_row_before_averaging():
     ok(maximum["status"] != "satisfied", "only a SUM or an AVG of converted rows is certified")
     # The own-data selection keeps the question's aggregate around the registered row factor: it served
     # SUM(amount * rate_to_usd) AS total_usd for the average.
-    chosen, selected = _assessment(question)
+    chosen, selected = _assessment(question, AVG_AMOUNT)
     ok(chosen.sql.startswith('SELECT AVG(("orders"."amount" * "fx"."rate_to_usd")) AS "average_usd"')
        and selected["status"] == "satisfied" and selected["realization"] == "converted",
        f"the average of converted rows is selected for the average (got {chosen.sql})")
-    total, _ = _assessment("total order amount in US dollars")
+    total, _ = _assessment("total order amount in US dollars", SUM_AMOUNT)
     ok(total.sql.startswith('SELECT SUM(("orders"."amount" * "fx"."rate_to_usd")) AS "total_usd"'),
        f"a total keeps the registered SUM (got {total.sql})")
 
@@ -600,8 +626,8 @@ def test_filter_evidence_is_guaranteed_on_every_path():
 def test_unjoinable_rate_is_not_advertised():
     archive = {"name": "legacy_archive", "columns": ["code", "rate_to_eur"],
                "rows": [["EUR", 1.0], ["USD", 0.9]]}
-    _, result = _assessment("total order amount in British pounds",
-                            (ORDERS, USD_RATES, archive), (EDGE,))
+    _, result = _assessment("total order amount in British pounds", SUM_AMOUNT,
+                            tables=(ORDERS, USD_RATES, archive), fks=(EDGE,))
     ok(result["available_targets"] == ["USD"],
        "availability uses the same typed edge as planner binding")
     ok("euros" not in result["proposal"].lower(),
@@ -611,8 +637,8 @@ def test_unjoinable_rate_is_not_advertised():
                  "rows": [["EUR", 1.0], ["USD", 1.1]]}
     malformed_edge = {**EDGE, "to_table": "bad_fx"}
     _, malformed_result = _assessment(
-        "total order amount in British pounds",
-        (ORDERS, USD_RATES, malformed), (EDGE, malformed_edge),
+        "total order amount in British pounds", SUM_AMOUNT,
+        tables=(ORDERS, USD_RATES, malformed), fks=(EDGE, malformed_edge),
     )
     ok(malformed_result["available_targets"] == ["USD"],
        "an invalid rate_to suffix is ignored rather than crashing availability")
@@ -635,7 +661,7 @@ def test_asserted_currency_join_is_scoped_to_its_measure():
     graph = SchemaGraph.from_tables((sales, USD_RATES), edges)
     candidate, assessments, _ = select_calculation_candidate(
         "total cost in US dollars", (sales, USD_RATES), graph,
-        SQLSearcher(graph).search("total cost in US dollars"),
+        _pool("total cost in US dollars", graph, 'SELECT SUM("sales"."cost") FROM "sales"'),
     )
     assessment = next(row for row in assessments if row["specification"] == "currency")
     ok(candidate is not None and cost_ccy in candidate.sql and budget_ccy not in candidate.sql,
@@ -649,15 +675,17 @@ def test_only_monetary_measures_can_convert():
                  "rows": [["EUR", 10], ["USD", 20]]}
     edge = {**EDGE, "from_table": "inventory"}
     graph = SchemaGraph.from_tables((inventory, USD_RATES), (edge,))
-    candidates = SQLSearcher(graph).search("total quantity in USD")
+    candidates = _pool(
+        "total quantity in USD", graph,
+        'SELECT SUM("inventory"."quantity") FROM "inventory" WHERE "inventory"."currency" = \'USD\'',
+        'SELECT SUM("inventory"."quantity") FROM "inventory"')
     ok(candidates and all("rate_to_usd" not in candidate.sql for candidate in candidates),
        "FX generation cannot multiply a physical quantity by an exchange rate")
-    assessment = _currency_assessment(
-        "total quantity in USD", (inventory, USD_RATES), graph,
-        describe_computation(candidates[0].query),
-    )
-    ok(assessment["status"] in {"ambiguous", "unmet"},
-       "a non-monetary aggregate cannot be certified as converted or currency-denominated")
+    statuses = [_currency_assessment("total quantity in USD", (inventory, USD_RATES), graph,
+                                     describe_computation(candidate.query))["status"]
+                for candidate in candidates]
+    ok(all(status in {"ambiguous", "unmet"} for status in statuses),
+       f"a non-monetary aggregate cannot be certified as converted or currency-denominated ({statuses})")
 
 
 def test_missing_typed_evidence_fails_closed():
@@ -674,7 +702,7 @@ def test_missing_typed_evidence_fails_closed():
 
 
 def test_decline_contract_reaches_stream_and_mcp():
-    _, assessment = _assessment("total order amount in euros")
+    _, assessment = _assessment("total order amount in euros", SUM_AMOUNT)
     response = calculation_clarify(
         "total order amount in euros",
         {"sql": 'SELECT SUM("orders"."amount") FROM "orders"'},
@@ -703,11 +731,10 @@ def test_decline_contract_reaches_stream_and_mcp():
        "MCP output preserves the same reason")
 
 
-def _run_calculation(question, tables, fks):
+def _run_calculation(question, tables, fks, *base_sql):
     graph = SchemaGraph.from_tables(tables, fks)
-    candidates = SQLSearcher(graph).search(question)
     candidate, assessments, index = select_calculation_candidate(
-        question, tables, graph, candidates,
+        question, tables, graph, _pool(question, graph, *base_sql),
     )
     return graph, candidate, assessments, index
 
@@ -719,11 +746,12 @@ def test_ratio_uses_composite_keys_and_derives_units():
                   "rows": [["FR", 2024, 60], ["DE", 2024, 80]]}
     edge = {"from_table": "economy", "from_cols": ["country", "year"],
             "to_table": "population", "to_cols": ["country", "year"]}
+    # The pool's one plain reading computes no ratio; the expander's best plan over it is selected.
     _, candidate, assessments, index = _run_calculation(
-        "GDP per capita", (economy, population), (edge,),
+        "GDP per capita", (economy, population), (edge,), 'SELECT "economy"."gdp" FROM "economy"',
     )
     ratio = next(row for row in assessments if row["specification"] == "ratio")
-    ok(index == 0 and ratio["status"] == "satisfied" and ratio["output_unit"] == "currency/person",
+    ok(index == 1 and ratio["status"] == "satisfied" and ratio["output_unit"] == "currency/person",
        "ratio verification derives a named output unit from bound operands")
     ok("SUM(\"economy\".\"gdp\")" in candidate.sql
        and "SUM(\"population\".\"population\")" in candidate.sql
@@ -737,49 +765,6 @@ def test_ratio_uses_composite_keys_and_derives_units():
        "ordinary for-each grouping is not a division request")
 
 
-def test_learned_operand_signal_orders_only_typed_eligible_plans():
-    economy = {
-        "name": "economy",
-        "columns": ["gdp", "revenue", "population", "country_id"],
-        "rows": [[3000, 2000, 60, 1]],
-    }
-    graph = SchemaGraph.from_tables((economy,), ())
-    signals = SemanticSignals(
-        {},
-        {},
-        calculation_operands={
-            "ratio:numerator": {
-                ("economy", "gdp"): 0.95,
-                ("economy", "revenue"): 0.10,
-                ("economy", "country_id"): 1.0,
-            },
-            "ratio:denominator": {("economy", "population"): 0.95},
-        },
-    )
-    candidates = SQLSearcher(graph).search("economic output per capita", semantic_signals=signals)
-    candidate, assessments, _ = select_calculation_candidate(
-        "economic output per capita", (economy,), graph, candidates,
-    )
-    ok(assessments[0]["status"] == "satisfied" and '"economy"."gdp"' in candidate.sql,
-       "learned operand similarity orders typed ratio bindings")
-    ok('"economy"."country_id"' not in candidate.sql,
-       "learned similarity cannot make an identifier an eligible operand")
-    adversarial = SemanticSignals(
-        {},
-        {},
-        calculation_operands={
-            "ratio:numerator": {
-                ("economy", "gdp"): -1.0,
-                ("economy", "revenue"): 1.0,
-            },
-            "ratio:denominator": {("economy", "population"): 1.0},
-        },
-    )
-    explicit = SQLSearcher(graph).search("GDP per capita", semantic_signals=adversarial)[0]
-    ok('"economy"."gdp"' in explicit.sql and '"economy"."revenue"' not in explicit.sql,
-       "learned similarity cannot override an exact lexical operand binding")
-
-
 def test_rate_application_supports_percent_and_fraction_units():
     payments = {"name": "payments", "columns": ["instrument", "amount"],
                 "rows": [["card", 100], ["bank", 200]]}
@@ -789,6 +774,7 @@ def test_rate_application_supports_percent_and_fraction_units():
             "to_table": "commission_rates", "to_col": "instrument"}
     _, commission_query, commission_rows, _ = _run_calculation(
         "total commission amount", (payments, commissions), (edge,),
+        'SELECT SUM("payments"."amount") FROM "payments"',
     )
     commission = commission_rows[0]
     ok(commission["status"] == "satisfied" and commission["rule"] == "commission_fraction"
@@ -803,6 +789,7 @@ def test_rate_application_supports_percent_and_fraction_units():
                 "to_table": "tax_rates", "to_col": "country"}
     _, tax_query, tax_rows, _ = _run_calculation(
         "total tax amount", (transactions, taxes), (tax_edge,),
+        'SELECT SUM("transactions"."amount") FROM "transactions"',
     )
     tax = tax_rows[0]
     ok(tax["status"] == "satisfied" and tax["rule"] == "tax_percent"
@@ -813,6 +800,7 @@ def test_rate_application_supports_percent_and_fraction_units():
              "rows": [[1, 1000, 5], [2, 2000, 4]]}
     _, interest_query, interest_rows, _ = _run_calculation(
         "total annual simple interest amount", (loans,), (),
+        'SELECT SUM("loans"."interest_percent") FROM "loans"',
     )
     interest = interest_rows[0]
     ok(interest["status"] == "satisfied" and interest["rule"] == "interest_percent"
@@ -825,7 +813,7 @@ def test_rate_application_supports_percent_and_fraction_units():
         "rows": [[100, 2.5], [200, 1.5]],
     }
     _, fee_query, fee_rows, _ = _run_calculation(
-        "compute merchant fee amount", (fees,), (),
+        "compute merchant fee amount", (fees,), (), 'SELECT * FROM "merchant_fees"',
     )
     ok(fee_rows[0]["status"] == "satisfied" and "merchant_fee_percent" in fee_query.sql,
        "commission intent and bindings recognize explicit merchant-fee terminology")
@@ -836,7 +824,7 @@ def test_rate_application_supports_percent_and_fraction_units():
         "rows": [[1000, 5]],
     }
     _, financing_query, financing_rows, _ = _run_calculation(
-        "compute yearly simple financing charge", (financing,), (),
+        "compute yearly simple financing charge", (financing,), (), 'SELECT * FROM "financing"',
     )
     ok(financing_rows[0]["status"] == "satisfied" and "financing_percent" in financing_query.sql,
        "explicit yearly simple-financing terminology maps to the interest rule")
@@ -850,7 +838,8 @@ def test_a_percentage_cell_applies_the_percent_it_shows():
 
     sales = csv_table("item,price,tax_percent\nA,100,20%\nB,50,7.5%\n", "sales")
     ok([row[2] for row in sales["rows"]] == [20, Decimal("7.5")], "a percentage cell reads as its percent")
-    graph, candidate, assessments, _ = _run_calculation("total price including tax", (sales,), ())
+    graph, candidate, assessments, _ = _run_calculation(
+        "total price including tax", (sales,), (), 'SELECT SUM("sales"."price") FROM "sales"')
     ok(assessments[0]["status"] == "satisfied" and assessments[0]["rule"] == "tax_add_percent",
        "a percent-named rate column is applied as a percent")
     schema = [{
@@ -887,10 +876,15 @@ def test_joined_discount_and_currency_compose_as_one_typed_calculation():
          "to_table": "exchange_rate", "to_col": "currency_code"},
     )
     question = "total amount in US dollars after customer tier discount"
+    # The plain readings apply neither factor, and one of them shows the total per tier because the
+    # question names the tier; the expander's best plan over them is the one selected.
+    by_tier = ('SELECT "orders"."tier", SUM("orders"."amount") FROM "orders" '
+               'JOIN "tier" ON "orders"."tier" = "tier"."tier" GROUP BY "orders"."tier"')
     graph, candidate, assessments, index = _run_calculation(
         question, (orders, tiers, rates), fks,
+        'SELECT SUM("orders"."amount") FROM "orders" JOIN "tier" ON "orders"."tier" = "tier"."tier"', by_tier,
     )
-    ok(index == 0 and len(assessments) == 2
+    ok(index == 2 and len(assessments) == 2
        and all(row["status"] == "satisfied" for row in assessments),
        "currency conversion and a joined tier discount are certified together")
     ok("rate_to_usd" in candidate.sql and "discount_percent" in candidate.sql
@@ -914,7 +908,7 @@ def test_joined_discount_and_currency_compose_as_one_typed_calculation():
 
     discount_only = "reduce the discount from total amount based on customer's tier"
     _, net_candidate, net_assessments, _ = _run_calculation(
-        discount_only, (orders, tiers), fks[:1],
+        discount_only, (orders, tiers), fks[:1], by_tier,
     )
     ok(net_assessments[0]["realization"] == "rate_subtraction"
        and "GROUP BY" not in net_candidate.sql,
@@ -971,7 +965,7 @@ def test_temporal_rate_requires_and_accepts_composite_alignment():
     edge = {"from_table": "sales", "from_cols": ["country", "effective_date"],
             "to_table": "tax_rates", "to_cols": ["country", "effective_date"]}
     _, candidate, assessments, _ = _run_calculation(
-        "total tax amount", (sales, rates), (edge,),
+        "total tax amount", (sales, rates), (edge,), 'SELECT SUM("sales"."amount") FROM "sales"',
     )
     ok(assessments[0]["status"] == "satisfied"
        and '"sales"."effective_date" = "tax_rates"."effective_date"' in candidate.sql,
@@ -1037,8 +1031,8 @@ def test_grain_check_accepts_a_dimension_grouped_by_its_display_column():
     # LEXICALLY bound. "by customer" binds customers.customer_id (analyze_question strips the "id"
     # token) but the correct query groups by customers.name, which is not a join key and so was
     # unreachable. Every candidate in the pool became inadmissible and a correct, correctly-grouped
-    # answer turned into a decline. CandidateRanker._group_alignment already accepts a grouping
-    # column by TABLE — and ranks this very query first — so the verifier must not contradict it.
+    # answer turned into a decline. A grouping column of the bound TABLE answers the grain, so the
+    # verifier must accept it.
     orders = {"name": "orders", "columns": ["order_id", "customer_id", "currency", "amount"],
               "rows": [["o1", "c1", "EUR", 310.0], ["o2", "c1", "GBP", 100.0],
                        ["o3", "c2", "USD", 95.0]]}
@@ -1055,7 +1049,10 @@ def test_grain_check_accepts_a_dimension_grouped_by_its_display_column():
 
     question = "total order amount in US dollars by customer"
     candidate, rows, _ = select_calculation_candidate(
-        question, tables, graph, SQLSearcher(graph).search(question),
+        question, tables, graph, _pool(
+            question, graph,
+            'SELECT "customers"."name", SUM("orders"."amount") FROM "orders" '
+            'JOIN "customers" ON "orders"."customer_id" = "customers"."customer_id" GROUP BY "customers"."name"'),
     )
     ok(bool(rows) and all(row["status"] == "satisfied" for row in rows),
        "a dimension grouped by its display column realizes the requested grain")
@@ -1148,8 +1145,11 @@ def test_complex_and_temporally_unbound_rates_abstain():
     tiers = {"name": "tax_rates", "columns": ["country", "tax_percent"], "rows": [["FR", 20]]}
     edge = {"from_table": "sales", "from_col": "country", "to_table": "tax_rates", "to_col": "country"}
     graph = SchemaGraph.from_tables((sales, tiers), (edge,))
-    evidence = describe_computation(SQLSearcher(graph).search("total tiered tax amount")[0].query)
-    tiered = assess_calculations("total tiered tax amount", (sales, tiers), graph, evidence)[0]
+    _, tiered_rows, _ = select_calculation_candidate(
+        "total tiered tax amount", (sales, tiers), graph,
+        _pool("total tiered tax amount", graph, 'SELECT SUM("sales"."amount") FROM "sales"'),
+    )
+    tiered = tiered_rows[0]
     ok(tiered["status"] == "unmet" and "piecewise" in tiered["reason"],
        "tiered statutory schedules abstain instead of applying one flat rate")
 
@@ -1158,7 +1158,7 @@ def test_complex_and_temporally_unbound_rates_abstain():
     dated_graph = SchemaGraph.from_tables((sales, dated), (
         {**edge, "to_table": "dated_tax"},
     ))
-    candidates = SQLSearcher(dated_graph).search("total tax amount")
+    candidates = _pool("total tax amount", dated_graph, 'SELECT SUM("sales"."amount") FROM "sales"')
     _, assessments, _ = select_calculation_candidate(
         "total tax amount", (sales, dated), dated_graph, candidates,
     )
@@ -1273,18 +1273,23 @@ def test_an_amount_that_is_no_number_is_the_reason_a_conversion_fails():
     question = "convert the total order amount to US dollars"
     bad = {"name": "orders", "columns": ["currency", "amount"],
            "rows": [["EUR", "310"], ["GBP", "118 (accounting says 11800)"], ["USD", "95"]]}
-    candidate, assessment = _assessment(question, (bad, USD_RATES))
+    # The amount column is text, so no typed reading totals it; the reading a typed AST can build totals the
+    # rate the question's "US dollars" names.
+    rates_read = 'FROM "fx" JOIN "orders" ON "orders"."currency" = "fx"."currency_code"'
+    candidate, assessment = _assessment(question, f'SELECT SUM("fx"."rate_to_usd") {rates_read}',
+                                        tables=(bad, USD_RATES))
     reply = calculation_clarify(question, {"sql": candidate.sql if candidate else None}, (assessment,))["reason"]
     ok(reply == "The amount column has a value that isn't a number ('118 (accounting says 11800)'), so it can't "
                 "be totaled.", f"the unreadable amount is the reason: {reply}")
     # An average says so (2026-10-09: the currency check named every refusal a total).
     question = "convert the average order amount to US dollars"
-    candidate, assessment = _assessment(question, (bad, USD_RATES))
+    candidate, assessment = _assessment(question, f'SELECT AVG("fx"."rate_to_usd") {rates_read}',
+                                        tables=(bad, USD_RATES))
     reply = calculation_clarify(question, {"sql": candidate.sql if candidate else None}, (assessment,))["reason"]
     ok(reply.endswith("so it can't be averaged."), f"an average is not called a total: {reply}")
     # Contrast: a sheet that really has no currency still says so.
     no_currency = {"name": "orders", "columns": ["region", "amount"], "rows": [["EU", 310], ["UK", 118], ["US", 95]]}
-    candidate, assessment = _assessment(question, (no_currency, USD_RATES), ())
+    candidate, assessment = _assessment(question, AVG_AMOUNT, tables=(no_currency, USD_RATES), fks=())
     reply = calculation_clarify(question, {"sql": candidate.sql if candidate else None}, (assessment,))["reason"]
     ok(reply.startswith("Your data doesn't say which currency the amounts are in"),
        f"a missing currency column is still the reason: {reply}")
@@ -1504,7 +1509,6 @@ TESTS = [
     test_missing_typed_evidence_fails_closed,
     test_decline_contract_reaches_stream_and_mcp,
     test_ratio_uses_composite_keys_and_derives_units,
-    test_learned_operand_signal_orders_only_typed_eligible_plans,
     test_rate_application_supports_percent_and_fraction_units,
     test_a_percentage_cell_applies_the_percent_it_shows,
     test_joined_discount_and_currency_compose_as_one_typed_calculation,

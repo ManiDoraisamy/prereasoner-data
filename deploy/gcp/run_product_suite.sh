@@ -34,7 +34,7 @@ docker run --rm --volume "$node_volume:/node" node:22-bookworm-slim@sha256:43ac6
 # The focused offline planner gate is not a substitute for the complete hermetic
 # source suite. Run it on the candidate's Python/model image, adding CI-only tools
 # in this disposable container; the shipped runtime stays unchanged.
-docker run --rm --cpus=4 --memory=8g \
+docker run --rm --cpus=4 --memory=16g \
   --volume "$node_volume:/opt/node:ro" --volume /workspace:/workspace:ro \
   --workdir /app \
   --env PATH=/opt/node:/opt/venv/bin:/usr/local/bin:/usr/bin:/bin \
@@ -109,7 +109,7 @@ docker update --memory=2g --memory-swap=2g "$db_name" >/dev/null
 # and model bundle. RUN_ENGINE_TESTS=1 is deliberate: any skipped live suite is a failed gate.
 suite_status=0
 if [[ "${RUN_PRODUCT_SUITES:-1}" == "1" ]]; then
-  docker run --rm --network "$network" --cpus=4 --memory=8g \
+  docker run --rm --network "$network" --cpus=4 --memory=16g \
     --volume "$node_volume:/opt/node:ro" --volume /workspace:/workspace:ro \
     --workdir /app \
     --env PATH=/opt/node:/opt/venv/bin:/usr/local/bin:/usr/bin:/bin \
@@ -130,7 +130,7 @@ fi
 # read-only world joins at concurrency 1/2/4/8 run in parallel in one process, each in its own
 # conversation; Cloud Run sends an instance at most 2 (infra/main.tf), so 4 and 8 are deliberate
 # overload. This bounded smoke is not a sustained-load SLA.
-docker run -d --name "$server_name" --network "$network" --cpus=4 --memory=8g \
+docker run -d --name "$server_name" --network "$network" --cpus=4 --memory=16g \
   --env KB_PG_HOST=product-db --env KB_PG_PORT=5432 --env KB_PG_DB=world \
   --env KB_PG_USER=serving --env "KB_PG_PASSWORD=$role_password" --env KB_PG_SSLMODE=disable \
   --env APP_ENV=development --env AUTH_TEST_SUB=localdev --env DEVICE=cpu \

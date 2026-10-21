@@ -13,7 +13,6 @@ from engine.calculations.core import (
 from engine.calculations.registry import (
     assess_calculations,
     calculation_clarify,
-    calculation_rank_features,
     composed_plans_for,
     detect_calculations,
     select_calculation_candidate,
@@ -29,7 +28,6 @@ __all__ = [
     "PredicateFact",
     "assess_calculations",
     "calculation_clarify",
-    "calculation_rank_features",
     "composed_plans_for",
     "describe_computation",
     "detect_calculations",

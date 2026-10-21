@@ -77,7 +77,7 @@ Options:
 ```
 
 The Community profile uses Zonal Cloud SQL `db-custom-2-7680` and `min_instances=0`. Its required chat
-service and the engine (reference generation and the selection fallback) use Vertex AI
+service and the engine (reference generation) use Vertex AI
 `gemini-3.8-flash` in this project; Terraform enables the Vertex AI API and grants both service accounts
 `roles/aiplatform.user`, so no model key is collected or written to Secret Manager.
 It keeps deletion protection on, activates only the reviewed `iana_country` enrichment dataset, and
@@ -121,7 +121,7 @@ gcloud builds submit --project <PROJECT_ID> \
   --config=cloudbuild.hermetic.yaml .
 ```
 
-This executes `tests.run_all` with the production image capped at 4 vCPU / 8 GiB. Live Postgres,
+This executes `tests.run_all` with the production image capped at 4 vCPU / 16 GiB. Live Postgres,
 world-data, and external-orchestrator tests remain separate; this gate cannot be reported as live
 product acceptance and does not deploy or change Cloud Run traffic.
 
@@ -132,7 +132,7 @@ inside Cloud Build. It restores only the public, SHA-256-pinned Community seed, 
 ECB series for the current as-of date inside that disposable database, creates a temporary
 non-superuser `serving` role, runs `regress.run_regression --require-world`, and runs all configured
 engine/world/dataset tests with the **production image's unchanged hash-locked Python 3.11
-environment**. It then runs the actual HTTP server under the production 4-vCPU/8-GiB container cap,
+environment**. It then runs the actual HTTP server under the production 4-vCPU/16-GiB container cap,
 checks a customers+orders-to-France knowledgebase join, and records CPU-only request latency and
 container RSS/CPU. The Cloud Build worker has enough host memory for the test containers; each
 container remains capped at its tested serving limit. The PostgreSQL container, volume, network, and

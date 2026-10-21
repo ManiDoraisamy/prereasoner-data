@@ -662,11 +662,6 @@ def _equality_conflicts(terms: Sequence[Predicate]) -> dict[ScalarExpr, list[Com
             if any(comparable_value(term.right.value) != comparable_value(group[0].right.value) for term in group)}
 
 
-def equality_conflicts(predicate: Predicate | None) -> dict[ScalarExpr, list[Comparison]]:
-    """The expressions the conjunction ``predicate`` holds equal to two different values."""
-    return _equality_conflicts(tuple(_conjoined(predicate)))
-
-
 def contradictory(query: Query) -> bool:
     """Whether a WHERE of ``query``, in any of its SELECTs, holds one column equal to two different
     values: ``city = 'Paris' AND city = 'Lyon'`` matches no row. No Spider gold query conjoins two

@@ -1,50 +1,29 @@
-"""Candidate scoring for the own-data SQL planner.
+"""The own-data pool contract and selection record.
 
-``CandidateRanker`` orders the typed-AST search pool with hand-written structural rules and encoder
-similarities (engine/sql_search.py applies it). Every adjustment is a named feature, so model
-similarity can improve ordering without hiding why a candidate won. ``PoolSelection`` records the
-served choice: the best-ranked candidate that executes and is grounded, under the pool contract
-(``SEARCH_CANDIDATES``, ``execution_op_limit``). No model writes or scores SQL here; the labelled
-Gemini fallback (engine/question_rewrite.py) is recorded as ``FallbackRecord`` when it took part.
+``PoolSelection`` records the served choice among the readers' candidates (engine/readers/search.py): the
+best re-scored candidate that executes and is grounded, under the pool contract (``execution_op_limit``).
+``analyze_question`` reads the roles a question's words give the schema, for the registered calculations
+(engine/calculations).
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, replace
 import re
 from typing import Mapping, Sequence
 
 from engine.sql_ast import (
-    Aggregate, ColumnRef, Comparison, DatePart, Literal, Query, SelectQuery, SetQuery, Star, keep_ties, render_query,
-    share_aggregate,
+    ColumnRef, Comparison, keep_ties, render_query,
 )
 from engine.sql_dates import period_grouping
-from engine.sql_extrema import MAX_CUES, MIN_CUES
 from engine.sql_expansion import (
-    PHRASE_BREAKS, OutputRequest, asked_cues, by_groups, count_preserves_population, counted_noun_tables,
-    field_numbers, flag_comparisons, flag_fields, output_requests, request_fields, share_cue, share_requested, words,
+    PHRASE_BREAKS, OutputRequest, asked_cues, by_groups, counted_noun_tables,
+    field_numbers, output_requests, request_fields, share_cue, words,
 )
 from engine.sql_expansion import tokens as expansion_tokens
 from engine.sql_candidate import ScoredQuery
 from engine.sql_schema import (
-    SURROGATE_KEY_WORDS, SchemaGraph, canon, is_name_column, is_surrogate_key, name_words, spaced_name,
+    SchemaGraph, canon, spaced_name,
 )
-
-
-ColumnKey = tuple[str, str]
-
-
-@dataclass(frozen=True)
-class SemanticSignals:
-    """Fixed encoder similarities, keyed by semantic role and schema object."""
-
-    column_roles: Mapping[str, Mapping[ColumnKey, float]]
-    table_global: Mapping[str, float]
-    calculation_intents: Mapping[str, float] = field(default_factory=dict)
-    calculation_operands: Mapping[str, Mapping[ColumnKey, float]] = field(default_factory=dict)
-
-    @classmethod
-    def empty(cls) -> "SemanticSignals":
-        return cls({}, {}, {}, {})
 
 
 @dataclass(frozen=True)
@@ -67,534 +46,6 @@ class QuestionRoles:
     aggregate_targets: Mapping[str, frozenset[ColumnRef]]
     projection_columns: frozenset[ColumnRef]
     id_instead_of_name: bool
-
-
-def semantic_role_phrases(question: str) -> dict[str, str]:
-    """Extract compact role phrases for encoder-to-column cosine signals."""
-    words = re.findall(r"[A-Za-z0-9]+(?:'[A-Za-z0-9]+)?", question)
-    low = [word.lower() for word in words]
-    if not words:
-        return {"global": question}
-
-    aggregate = next((
-        i for i, token in enumerate(low)
-        if token in {"count", "sum", "total", "average", "avg", "mean",
-                     "minimum", "min", "maximum", "max"}
-        or (token == "number" and i + 1 < len(low) and low[i + 1] == "of")
-        or (token == "how" and i + 1 < len(low) and low[i + 1] == "many")
-    ), None)
-    group = next((i for i, token in enumerate(low) if token in {"each", "per"}), None)
-    filter_pos = next((i for i, token in enumerate(low)
-                       if token in {"where", "with", "whose", "from", "after", "before", "between"}), None)
-    order = next((i for i, token in enumerate(low)
-                  if token in {"order", "ordered", "sort", "sorted", "top", "bottom", "highest",
-                               "lowest", "most", "least"}), None)
-
-    first_clause = min((i for i in (aggregate, group, filter_pos, order) if i is not None), default=len(words))
-    phrases = {"global": " ".join(words)}
-    if first_clause:
-        phrases["projection"] = " ".join(words[:first_clause])
-    if aggregate is not None:
-        end = min((i for i in (group, filter_pos, order) if i is not None and i > aggregate), default=len(words))
-        phrases["aggregate"] = " ".join(words[aggregate:end])
-    if group is not None:
-        end = min((i for i in (filter_pos, order) if i is not None and i > group), default=len(words))
-        phrases["group"] = " ".join(words[group:end])
-    if filter_pos is not None:
-        phrases["filter"] = " ".join(words[filter_pos:])
-    if order is not None:
-        phrases["order"] = " ".join(words[order:])
-    return {role: phrase for role, phrase in phrases.items() if phrase.strip()}
-
-
-class CandidateRanker:
-    def __init__(self, schema: SchemaGraph, signals: SemanticSignals | None = None):
-        self.schema = schema
-        self.signals = signals or SemanticSignals.empty()
-        self.column_words = frozenset(
-            token for column in schema.columns for token in _schema_tokens(column.ref.name))
-        self.relations = relation_sides(schema)
-
-    def rank(self, question: str, candidates: Sequence[ScoredQuery]) -> list[ScoredQuery]:
-        roles = analyze_question(question, self.schema)
-        ranked = []
-        for candidate in candidates:
-            features = self._semantic_features(candidate.query, roles)
-            score = candidate.score + sum(value for _, value in features)
-            evidence = candidate.evidence + tuple(f"rank:{name}={value:+.3f}" for name, value in features if value)
-            ranked.append(replace(candidate, score=score, evidence=evidence,
-                                  features=candidate.features + features))
-        return sorted(ranked, key=lambda candidate: (-candidate.score, candidate.sql))
-
-    def _semantic_features(self, query: Query, roles: QuestionRoles) -> tuple[tuple[str, float], ...]:
-        if isinstance(query, SetQuery):
-            if query.operator == "INTERSECT":
-                aligned = "both" in roles.tokens or "and" in roles.tokens
-            elif query.operator == "UNION":
-                aligned = "either" in roles.tokens or "or" in roles.tokens
-            else:
-                aligned = bool(set(roles.tokens) & {"except", "without", "no", "not", "never"})
-            left = self._semantic_features(query.left, roles)
-            right = self._semantic_features(query.right, roles)
-            return (
-                (f"set_operator:{query.operator.lower()}", 6.0 if aligned else -5.0),
-                *((f"left:{name}", 0.5 * value) for name, value in left),
-                *((f"right:{name}", 0.5 * value) for name, value in right),
-            )
-        select_columns = tuple(item.expression for item in query.select if isinstance(item.expression, ColumnRef))
-        # A share (sql_ast.share_of) answers with the aggregate it divides, as the total it shares out.
-        shares = tuple(part for item in query.select
-                       if (part := share_aggregate(item.expression, query)) is not None)
-        aggregates = tuple(item.expression for item in query.select
-                           if isinstance(item.expression, Aggregate)) + shares
-        group_columns = query.group_by
-        count_ranked = any(
-            isinstance(term.expression, Aggregate) and term.expression.function == "COUNT"
-            for term in query.order_by
-        )
-        features: list[tuple[str, float]] = [("base", 0.0)]
-        asked = share_requested(roles.tokens, self.column_words)
-        if shares or asked:
-            # "what share of the total amount comes from Paris" asks for the fraction, not the total.
-            features.append(("share_of_whole", 6.0 if shares and asked else -6.0))
-
-        if roles.count_requested:
-            if count_ranked:
-                features.append((
-                    "count_ranked_entity",
-                    4.0 if group_columns and query.limit is not None and select_columns else -3.0,
-                ))
-            elif roles.group_requested:
-                features.append(("count_group_present", 2.5 if group_columns else -4.0))
-            else:
-                features.append(("count_without_spurious_group", 2.5 if not group_columns else -5.0))
-                features.append(("count_without_raw_projection", -4.0 * len(select_columns)))
-
-        count_aggregates = [aggregate for aggregate in aggregates if aggregate.function == "COUNT"]
-        if roles.distinct_requested and count_aggregates:
-            has_distinct = any(aggregate.distinct and isinstance(aggregate.operand, ColumnRef)
-                               for aggregate in count_aggregates)
-            features.append(("count_distinct", 5.0 if has_distinct else -4.0))
-            if group_columns:
-                features.append(("distinct_not_grouped", -3.0))
-
-        if roles.count_requested and set(roles.tokens) & {"who", "that", "which"}:
-            distinct_identities = [
-                aggregate.operand
-                for aggregate in count_aggregates
-                if aggregate.distinct
-                and isinstance(aggregate.operand, ColumnRef)
-                and (is_surrogate_key(aggregate.operand.name) or is_name_column(aggregate.operand.name))
-            ]
-            features.append(("count_distinct_entity", 4.0 if distinct_identities else 0.0))
-
-        shown_columns = [column for column in (*select_columns, *group_columns) if isinstance(column, ColumnRef)]
-        requested = {ref for refs in roles.requested_fields for ref in refs}
-        if roles.output_requests:
-            features.extend(self._output_request_features(select_columns, aggregates, roles))
-
-        for column in group_columns:
-            if (isinstance(column, ColumnRef) and is_surrogate_key(column.name) and column not in select_columns
-                    and any(isinstance(other, ColumnRef) and other.table == column.table and other != column
-                            for other in group_columns)):
-                continue    # an unlisted key beside its table's other groups tells their rows apart (entity_groups)
-            alignment = column in requested or (self._group_alignment(column, roles) and not (
-                column not in roles.group_columns and self._named_beside(column, shown_columns, roles))) or (
-                count_ranked and any(
-                    selected == column or selected.table == column.table
-                    for selected in select_columns
-                )
-            )
-            features.append((f"group_role:{_column_label(column)}", 2.5 if alignment else -4.0))
-
-        for column in select_columns:
-            if column in roles.projection_columns or column in requested:
-                value = 1.0
-            elif self._group_alignment(column, roles) and not self._named_beside(column, shown_columns, roles):
-                value = 1.5
-            elif column.table in roles.counted_tables:
-                value = -3.5
-            else:
-                value = -1.25 if aggregates else 0.0
-            features.append((f"projection_role:{_column_label(column)}", value))
-            # A field the question names only to filter on is not asked for: "the name and results of the battles when
-            # the bulgarian commander is not 'Boril'" showed every row's commander, Boril excluded (Spider DEV 497).
-            if filter_only(column, query, roles.tokens) or flag_condition_only(column, query, roles.tokens,
-                                                                                self.schema):
-                features.append((f"filter_only_output:{_column_label(column)}", -8.0))
-            # So is one it names only to order the rows by: "the first name of students in the descending order of
-            # age" showed each age beside the name (held-out Spider train 736, 2026-10-12).
-            if self._order_only(column, query, roles):
-                features.append((f"order_only_output:{_column_label(column)}", -8.0))
-            # A field named as its table is not asked for where the question names the table only as the owner of
-            # other fields: "the carriers of devices" showed device.Device beside each carrier, and "the locations
-            # and nicknames of schools" school.School (held-out Spider train 300, 105, 2026-10-12).
-            if self._owner_only(column, roles):
-                features.append((f"owner_only_output:{_column_label(column)}", -8.0))
-
-        # A superlative over the one field the answer shows ranks by that field: "the age of the oldest dog" is the
-        # greatest age, not the age of the earliest birth date (Spider DEV 988, 989, 2026-10-14).
-        # Not where the superlative names another table's rows: "the saving balance of the account with the highest
-        # checking balance" ranks by the checking balance (held-out Spider train 504, 2026-10-17).
-        if (isinstance(query, SelectQuery) and query.limit is not None and len(query.order_by) == 1
-                and not query.group_by and len(query.select) == 1 and select_columns
-                and query.order_by[0].expression == select_columns[0]
-                and not self._superlative_names_other_table(select_columns[0], query, roles.tokens)):
-            features.append(("superlative_on_shown", 0.75))
-
-        # An aggregate the question names only in a clause keeping the groups is not asked for: "the studios whose
-        # average gross is above 4500000", "the job ids for those jobs which average salary is above 8000" (held-out
-        # Spider train 743, 746, 750, 2026-10-12: each showed the average it kept the groups by); one it also asks
-        # for is shown, and so is one it says after "with" ("cities with total sales over 100" shows each total).
-        if isinstance(query, SelectQuery) and query.having is not None:
-            kept = {comparison.left for comparison in _comparisons(query.having) if isinstance(comparison.left, Aggregate)}
-            shown = {item.expression for item in query.select}
-            for aggregate in sorted(kept, key=repr):
-                said = self._condition_said(aggregate, roles)
-                if aggregate in shown and said == "condition":
-                    features.append((f"condition_only_output:{aggregate.function}", -8.0))
-                elif aggregate not in shown and said == "asked":
-                    features.append((f"asked_aggregate_unshown:{aggregate.function}", -8.0))
-
-        # Rows a join repeats are one answer each: "the makers that produced some cars in 1970" listed a maker once per
-        # car, and "the template type code for description 'Book'" once per template (Spider DEV 99, 351). Only where
-        # a joined table refers to a shown one, or a shown field is itself a reference to another table's key, and
-        # only against the answer that repeats them: a bonus for DISTINCT lifted unrelated joined readings over a
-        # right one (DEV 324, 962). A ranking keeps its number of rows whatever repeats.
-        if not query.distinct and repeats_shown_rows(self.schema, query, roles.tokens):
-            features.append(("repeated_rows", -3.0))
-        # A listing of one field's values, where the question names no table whose rows they are, shows each value
-        # once: "Show all product colors", "What are all the payment methods?" (held out 487, 644, 693, 849,
-        # 2026-10-17: each listed every row's value). The values of each row ("the location of each shop", "the
-        # names of all singers", a table's display field or key) stay one per row. Only the distinct listing is
-        # credited: a listing ordered by the field may have no distinct twin (Spider DEV 580).
-        # A field said with its owner ("the name of the mills") is that table's: "What are the distinct name of the mills
-        # built by the architects ...?" showed the architects' names (held-out Spider train 142, 2026-10-17).
-        owned = owner_phrase_fields(self.schema, select_columns, roles.tokens)
-        for column in owned:
-            features.append((f"owner_phrase:{_column_label(column)}", 1.0))
-        # Of two keys a table holds to one other table, the join is the one the question names: "How many different
-        # addresses do the students currently live?" joins Students.current_address_id, not permanent_address_id
-        # (Spider DEV 577, 2026-10-17: the two tied).
-        if isinstance(query, SelectQuery):
-            for join in query.joins:
-                for pair in join.predicates:
-                    side = named_parallel_key(self.schema, pair, roles.tokens, self.relations)
-                    if side is not None:
-                        features.append((f"named_key:{side[0]}", 0.5 if side[1] else -0.5))
-        values = listed_values(self.schema, query, roles.tokens)
-        if values is not None and query.distinct:
-            features.append((f"listed_values:{_column_label(values)}", 1.0))
-
-        # A field's name the question says once binds one field: "the name of the employee who got the highest one
-        # time bonus" is the employee's Name, not also the Name of a shop joined for nothing else (Spider DEV 279,
-        # 2026-10-10: the employee's and the shop's names ranked first).
-        said = [canon(token) for token in roles.tokens]
-        bound: dict[str, set[str]] = {}
-        for column in select_columns:
-            bound.setdefault(column.name.casefold(), set()).add(column.table)
-        for name, tables in sorted(bound.items()):
-            head = canon((_schema_tokens(name) or (name,))[-1])
-            if len(tables) > 1 and said.count(head) < len(tables):
-                features.append((f"one_binding:{name}", -6.0))
-        # So does the word several shown fields' names end in, said fewer times than they are shown: "the name and the
-        # release year of the song by the youngest singer" is Song_Name, not also the concert_Name of a concert the
-        # question never mentions (Spider DEV 6, 7, 2026-10-13). The field whose other words and table it never says is
-        # the one not asked.
-        heads: dict[str, list[ColumnRef]] = {}
-        for column in dict.fromkeys(select_columns):
-            name_tokens = _schema_tokens(column.name)
-            if name_tokens:
-                heads.setdefault(canon(name_tokens[-1]), []).append(column)
-        for head, columns in sorted(heads.items()):
-            if len({column.name.casefold() for column in columns}) < 2 or said.count(head) >= len(columns):
-                continue
-            for column in columns:
-                owner = set(_schema_tokens(column.name)[:-1]) | set(_schema_tokens(column.table))
-                if owner and not owner & set(said):
-                    features.append((f"unsaid_owner:{_column_label(column)}", -6.0))
-        # A key shown from a table the question never names, where the table it refers to is named and read, is that
-        # table's own key read through a join that keeps only the rows referred to: "the ids of templates with
-        # template type code PP or PPT" showed Documents.Template_ID, the templates some document uses (Spider DEV 323,
-        # 2026-10-17: it tied the templates' own Template_ID and won by name).
-        if isinstance(query, SelectQuery) and isinstance(query.from_table, str):
-            read = {query.from_table, *(join.table for join in query.joins)}
-            references = {child: parent for key in self.schema.foreign_keys for child, parent in key.column_pairs}
-            for column in dict.fromkeys(select_columns):
-                parent = references.get(column)
-                if (parent is not None and parent.table in read and parent.table != column.table
-                        and not {canon(word) for word in name_words(column.table)} <= set(said)
-                        and {canon(word) for word in name_words(parent.table)} <= set(said)):
-                    features.append((f"referring_copy:{_column_label(column)}", -1.0))
-
-        if roles.id_instead_of_name:
-            id_columns = [column for column in select_columns + group_columns if is_surrogate_key(column.name)]
-            name_columns = [column for column in select_columns + group_columns if is_name_column(column.name)]
-            features.append(("requested_id", 4.0 if id_columns else -3.0))
-            features.append(("rejected_name", -6.0 if name_columns else 1.0))
-
-        for aggregate in aggregates:
-            if not isinstance(aggregate.operand, ColumnRef):
-                # The rows of the table the counted noun names are what it counts: "How many countries are listed?"
-                # counts the countries (Spider DEV 91, 92, 2026-10-13: car_makers' Country values were counted).
-                if (aggregate.function == "COUNT" and isinstance(aggregate.operand, Star)
-                        and query.from_table in roles.counted_heads):
-                    features.append(("count_rows:counted_table", 1.5))
-                continue
-            operand = aggregate.operand
-            targets = roles.aggregate_targets.get(aggregate.function, frozenset())
-            if aggregate.function == "COUNT":
-                aligned = (
-                    operand.table in roles.counted_tables
-                    if roles.counted_tables
-                    else operand in roles.counted_columns
-                )
-                # A field of another table than the one the counted noun names is not what the question counts: not
-                # where the noun only names a table further on ("How many sections does course ACCT-211 have?").
-                features.append((f"count_target:{_column_label(operand)}",
-                                 1.5 if aligned else -1.5 if roles.counted_heads - {operand.table} else 0.0))
-                # The different rows a noun names are told apart by their key, or a key referring to it, not by a
-                # detail field: "How many different addresses do the students currently live?" counts address ids,
-                # not other_address_details (Spider DEV 577, 2026-10-17).
-                # A key that repeats in its table, referring to another one's rows, tells those apart: "the number of
-                # cities in counties that have a population more than 20000" counts City_ID, not the counties each
-                # city's County_ID names (held-out Spider train 349, 2026-10-17).
-                referred = {child: parent for key in self.schema.foreign_keys for child, parent in key.column_pairs}
-                refers_away = (operand in referred and referred[operand].table not in roles.counted_heads
-                               and self.schema.repeats((operand,)))
-                keyed = (is_surrogate_key(operand.name) and operand.table in roles.counted_heads
-                         and not refers_away) or (
-                    operand in referred and referred[operand].table in roles.counted_heads
-                    and (named_parallel_key(self.schema, (operand, referred[operand]), roles.tokens, self.relations)
-                         or ("", True))[1])
-                if aggregate.distinct and keyed:
-                    features.append((f"count_distinct_key:{_column_label(operand)}", 0.5))
-            elif targets:
-                features.append((f"aggregate_target:{aggregate.function}:{_column_label(operand)}",
-                                 3.0 if operand in targets else -3.5))
-
-        # So are those a count ranking the groups counts: "Which year has most number of concerts?" ranks the years by
-        # their concerts, not by the singer_in_concert rows a join repeats each concert in (Spider DEV 26, 2026-10-17:
-        # the two readings tied within 0.05).
-        if (isinstance(query, SelectQuery) and not aggregates
-                and any(isinstance(term.expression, Aggregate) and term.expression.function == "COUNT"
-                        and isinstance(term.expression.operand, Star) for term in query.order_by)
-                and any(count_preserves_population(query, table, self.schema) for table in roles.counted_heads)):
-            features.append(("count_rows:counted_table", 1.5))
-
-        from engine.calculations.registry import calculation_rank_features
-        features.extend(calculation_rank_features(roles.question, query, self.schema, self.signals))
-
-        direction = travel_direction(roles.tokens)
-        if direction:
-            role_columns = {
-                column
-                for comparison in _comparisons(query.where)
-                if isinstance(comparison.left, ColumnRef)
-                for column in (comparison.left,)
-            }
-            role_columns.update(
-                column for join in query.joins for pair in join.predicates for column in pair
-            )
-            directional_columns = [
-                column for column in role_columns if travel_column_role(column) is not None
-            ]
-            if directional_columns:
-                aligned = any(
-                    travel_column_role(column) == direction
-                    for column in directional_columns
-                )
-                features.append((f"travel_direction:{direction}", 3.0 if aligned else -3.0))
-        else:
-            # Where no travel word says it, the preposition before a value a trip's end compares says which end:
-            # "flights from Los Angeles" leave it, "flights to Aberdeen" arrive there (held out 679, fresh holdout
-            # 992, 2026-10-18: the destination ranked first).
-            for comparison in _comparisons(query.where):
-                role = travel_column_role(comparison.left) if isinstance(comparison.left, ColumnRef) else None
-                if role is None or comparison.operator != "=" or not isinstance(comparison.right, Literal):
-                    continue
-                said = travel_preposition(roles.tokens, _tokens(str(comparison.right.value)))
-                if said is not None:
-                    features.append((f"travel_preposition:{role}", 3.0 if said == role else -3.0))
-
-        # A table relating rows of one table to others of it reads from its owner's key: "high schoolers who have 3
-        # friends" own the Friend rows (student_id), the friend_id side being the friends (Spider DEV 885-911,
-        # 2026-10-10: the two readings tied and the friend's side came first by name). The question saying the
-        # other key's participle ("liked by Kyle") asks for that side.
-        joined = {frozenset(pair) for join in query.joins for pair in join.predicates}
-        for relation, (owner, other, participle) in sorted(self.relations.items()):
-            used = [key for key in (owner, other) if frozenset((key.from_column, key.to_column)) in joined]
-            if len(used) == 1:
-                wanted = other if participle is not None and participle in roles.tokens else owner
-                features.append((f"relation_side:{relation}", 0.0 if used[0] == wanted else -1.0))
-
-        features.extend(self._model_features(query))
-        return tuple(features)
-
-    @staticmethod
-    def _owner_only(column: ColumnRef, roles: QuestionRoles) -> bool:
-        """Whether ``column`` is named as its table is (device.Device, school.School) and the question says that name
-        only after "of", as the owner of the fields it asks for ("the carriers of devices"). "The names of schools"
-        asks for that field: it is the schools' name."""
-        name = [canon(word) for word in name_words(column.name)]
-        if not name or name != [canon(word) for word in name_words(column.table)]:
-            return False
-        said = [index for index, token in enumerate(roles.tokens) if token == name[-1]]
-
-        def owner(index):
-            start = index - len(name) + 1
-            before = [token for token in roles.tokens[max(0, start - 4):max(0, start)]
-                      if token not in {"the", "all", "a", "an", "their", "its", "each", "every", "these", "those"}]
-            return bool(before) and before[-1] == "of" and (len(before) < 2 or before[-2] not in {"name", "title"})
-
-        return bool(said) and all(owner(index) for index in said)
-
-    def _order_only(self, column: ColumnRef, query: SelectQuery, roles: QuestionRoles) -> bool:
-        """Whether ``query`` orders its rows by ``column`` and the question says the field only in the phrase that
-        orders them: an ordering word ("order", "sorted", "ranked") and its "of", "by" or "to" before each place it
-        names the field ("in the descending order of age", "sorted by their age")."""
-        if not any(term.expression == column for term in query.order_by):
-            return False
-        name = [canon(word) for word in name_words(column.name)]
-        said = [index for index, token in enumerate(roles.tokens) if name and token == name[-1]]
-
-        # A place another table's word qualifies names that table's field: "the saving balance of the account with
-        # the highest checking balance" names the savings' balance first.
-        own = {canon(word) for word in name_words(column.table)}
-        others = {canon(word) for table in self.schema.tables if table != column.table
-                  for word in name_words(table)} - own
-        said = [index for index in said
-                if index - len(name) < 0 or roles.tokens[index - len(name)] not in others]
-
-        def ordering(index):
-            before = [token for token in roles.tokens[max(0, index - 6):index - len(name) + 1]
-                      if token not in {"the", "their", "its", "his", "her", "a"} and token not in own]
-            # The field a superlative after "with" picks the row by: "the account with the highest checking balance"
-            # and "the stadium with highest average attendance" ask for the account and the stadium (held-out Spider
-            # train 504). "Which 2 products have the highest price" shows the prices it ranks by (review F5).
-            return (len(before) >= 2 and before[-1] in {"of", "by", "to"}
-                    and bool(set(before[-4:-1]) & {"order", "ordered", "sort", "sorted", "rank", "ranked",
-                                                   "according"})
-                    or len(before) >= 2 and before[-1] in MAX_CUES | MIN_CUES and before[-2] == "with")
-
-        return bool(said) and all(ordering(index) for index in said)
-
-    @staticmethod
-    def _condition_said(aggregate: Aggregate, roles: QuestionRoles) -> str | None:
-        """How the question says ``aggregate``: "condition" when each word saying it opens a relative clause that
-        compares it ("whose average gross is above", "which average salary is above"), "asked" when one does not,
-        None when no word says it."""
-        cues = _CONDITION_CUES.get(aggregate.function, frozenset())
-        said = [index for index, token in enumerate(roles.tokens) if token in cues]
-        if not said:
-            return None
-        return "condition" if all(
-            set(roles.tokens[max(0, index - 3):index]) & _RELATIVE_WORDS
-            and set(roles.tokens[index + 1:index + 6]) & _CONDITION_COMPARISONS for index in said) else "asked"
-
-    def _output_request_features(self, select_columns: Sequence[ColumnRef], aggregates: Sequence[Aggregate],
-                                 roles: QuestionRoles) -> list[tuple[str, float]]:
-        """An explicit list instruction names the outputs (sql_expansion.output_requests, request_fields): an answer
-        leaving a requested one out, or showing a field no request asks for, is not the answer asked. "List the continent
-        id, continent name and the number of countries" shows no car maker's Country, and "List full name and the id"
-        of makers shows their Id, not a model's ModelId (Spider DEV 89, 149, 2026-10-14)."""
-        features: list[tuple[str, float]] = []
-        if any(request.count for request in roles.output_requests) and not any(
-                aggregate.function == "COUNT" for aggregate in aggregates):
-            features.append(("output_request_missing:count", -4.0))
-        if not roles.requested_fields:
-            return features
-        requested = {ref for refs in roles.requested_fields for ref in refs}
-        for refs in roles.requested_fields:
-            if not set(refs) & set(select_columns):
-                features.append((f"output_request_missing:{_column_label(refs[0])}", -4.0))
-        for column in dict.fromkeys(select_columns):
-            if column not in requested:
-                features.append((f"output_unrequested:{_column_label(column)}", -4.0))
-        return features
-
-    def _named_beside(self, column: ColumnRef | DatePart, shown: Sequence[ColumnRef], roles: QuestionRoles) -> bool:
-        """Whether ``column``, which the question does not ask to show, stands beside a field it asks to show of the
-        same entity (a table and the tables its keys link). The question asks for that entity by the field it names,
-        and ``column`` is not asked: "all template ids and the number of documents using each template" shows the
-        ids, not their type code too (Spider DEV 309, 367, 33, 2026-10-13: an entity's other field was shown)."""
-        if not isinstance(column, ColumnRef) or column in roles.projection_columns:
-            return False
-        if is_surrogate_key(column.name) and {"id", "ids", "identifier"} & set(roles.tokens):
-            return False    # "the full name of each car maker, along with its id" asks for the key (Spider DEV 94)
-        entity = self._entity_tables(column)
-        return any(other != column and other in roles.projection_columns and self._entity_tables(other) & entity
-                   for other in shown)
-
-    def _superlative_names_other_table(self, shown: ColumnRef, query: SelectQuery, said: Sequence[str]) -> bool:
-        """Whether a superlative is followed by the name of a table the query reads other than ``shown``'s."""
-        read = {query.from_table, *(join.table for join in query.joins)} - {shown.table}
-        for index, token in enumerate(said[:-1]):
-            if token not in MAX_CUES and token not in MIN_CUES:
-                continue
-            for table in read:
-                name = tuple(canon(word) for word in name_words(table))
-                if name and tuple(said[index + 1:index + 1 + len(name)]) == name:
-                    return True
-        return False
-
-    def _entity_tables(self, column: ColumnRef) -> set[str]:
-        """``column``'s table and the tables its key pairs link it to."""
-        tables = {column.table}
-        for fk in self.schema.foreign_keys:
-            for from_column, to_column in fk.column_pairs:
-                if column == from_column:
-                    tables.add(to_column.table)
-                elif column == to_column:
-                    tables.add(from_column.table)
-        return tables
-
-    def _group_alignment(self, column: ColumnRef | DatePart, roles: QuestionRoles) -> bool:
-        if isinstance(column, DatePart):
-            return roles.group_period and column.part == "year_month"
-        if column in roles.group_columns or column.table in roles.group_tables:
-            return True
-        # "Show supplier and total amount" names an output dimension before the
-        # measure. "Total amount paid to suppliers" does not. COUNT has its own
-        # entity/cardinality interpretation and must not gain implicit groups.
-        if not roles.count_requested and column in roles.projection_columns:
-            return True
-        for fk in self.schema.foreign_keys:
-            for from_column, to_column in fk.column_pairs:
-                if column == from_column and to_column.table in roles.group_tables:
-                    return True
-                if column == to_column and from_column.table in roles.group_tables:
-                    return True
-        return False
-
-    def _model_features(self, query: SelectQuery) -> list[tuple[str, float]]:
-        features: list[tuple[str, float]] = []
-        role_columns: dict[str, list[ColumnRef]] = {
-            "projection": [item.expression for item in query.select if isinstance(item.expression, ColumnRef)],
-            "aggregate": [item.expression.operand for item in query.select
-                          if isinstance(item.expression, Aggregate)
-                          and isinstance(item.expression.operand, ColumnRef)],
-            "group": list(query.group_by),
-            "order": [term.expression for term in query.order_by if isinstance(term.expression, ColumnRef)],
-        }
-        predicate_columns = []
-        for predicate in _comparisons(query.where):
-            if isinstance(predicate.left, ColumnRef):
-                predicate_columns.append(predicate.left)
-        role_columns["filter"] = predicate_columns
-
-        for role, columns in role_columns.items():
-            scores = self.signals.column_roles.get(role) or self.signals.column_roles.get("global") or {}
-            if not columns or not scores:
-                continue
-            value = sum(float(scores.get((column.table, column.name), 0.0)) for column in columns) / len(columns)
-            features.append((f"model_{role}", 2.0 * value))
-
-        referenced = sorted(query.referenced_tables())
-        if referenced and self.signals.table_global:
-            value = sum(float(self.signals.table_global.get(table, 0.0)) for table in referenced) / len(referenced)
-            features.append(("model_tables", 0.75 * value))
-        return features
 
 
 def analyze_question(question: str, schema: SchemaGraph) -> QuestionRoles:
@@ -816,178 +267,6 @@ def _tables_in_windows(schema: SchemaGraph, tokens: tuple[str, ...], windows: Se
     return out
 
 
-def filter_only(column: ColumnRef, query: SelectQuery, tokens: Sequence[str]) -> bool:
-    """Whether ``query`` compares ``column`` with a value and the question says the field only where it says that
-    comparison: the value, or a comparison word, follows each place it names the field. The ranker does not prefer
-    showing such a field, and the search adds a listing showing the rows' display field beside one that shows only such
-    fields (sql_search._display_twin)."""
-    name = [canon(word) for word in name_words(column.name)]
-    # A key the query joins on, named as the field of another table it compares, says only that comparison: "flight
-    # numbers of Airline 'United Airlines'" compares airlines.Airline, and flights.Airline, the key of that name, shows
-    # the one airline's id beside each flight (Spider DEV 245, 246, 2026-10-17).
-    keyed = isinstance(query, SelectQuery) and any(
-        column in pair for join in query.joins for pair in join.predicates)
-    values = [comparison.right for comparison in _comparisons(query.where)
-              if isinstance(comparison.right, Literal) and (comparison.left == column or (
-                  keyed and isinstance(comparison.left, ColumnRef) and comparison.left.table != column.table
-                  and [canon(word) for word in name_words(comparison.left.name)] == name))]
-    if not values:
-        return False
-    said = [index for index, token in enumerate(tokens) if name and token == name[-1]]
-    value_words = {canon(word) for value in values for word in words(str(value.value))}
-    comparing = {"is", "not", "named", "called", "than", "over", "under", "above", "below", "equal", "between",
-                 "more", "less", "greater", "smaller", "after", "before"}
-
-    # "the name and population of cities that have a population between ..." asks for the population once. The
-    # comparison may come first: "projects that require between 100 and 300 hours", "customers who do not use Cash
-    # as payment method" (held-out Spider train 396, 420, 2026-10-12: each showed the field compared).
-    def compared(index):
-        start = index - len(name) + 1
-        before = set(tokens[max(0, start - 4):max(0, start)])
-        return bool(set(tokens[index + 1:index + 5]) & value_words
-                    or (index + 1 < len(tokens) and tokens[index + 1] in comparing)
-                    or before & value_words or before & {"between", "than"})
-
-    return bool(said) and all(compared(index) for index in said)
-
-
-def owner_phrase_fields(schema: SchemaGraph, columns: Sequence[ColumnRef], tokens: Sequence[str]) -> tuple[ColumnRef, ...]:
-    """The shown fields the question says followed by "of" and their own table's name ("the name of the mills"), where
-    another shown or joinable table holds a field of that name too: the owner phrase says whose field it is."""
-    found = []
-    for column in dict.fromkeys(columns):
-        name = tuple(canon(word) for word in name_words(column.name))
-        owner = tuple(canon(word) for word in name_words(column.table))
-        if not name or not owner:
-            continue
-        rivals = [other for other in schema.columns if other.ref.table != column.table
-                  and tuple(canon(word) for word in name_words(other.ref.name)) == name]
-        if not rivals:
-            continue
-        for index in range(len(tokens) - len(name)):
-            if tuple(tokens[index:index + len(name)]) != name or tokens[index + len(name)] != "of":
-                continue
-            start = index + len(name) + 1
-            while start < len(tokens) and tokens[start] in {"the", "all", "each", "every", "a", "an"}:
-                start += 1
-            if tuple(tokens[start:start + len(owner)]) == owner:
-                found.append(column)
-                break
-    return tuple(found)
-
-
-def named_parallel_key(schema: SchemaGraph, pair, tokens: Sequence[str],
-                       relations: Mapping[str, tuple]) -> tuple[str, bool] | None:
-    """For a join on one of several keys a table holds to the same other table: (the key, True) where the question
-    says a word of its name the others lack and none of theirs, (the key, False) where it says only another's. None
-    where the join's key has no such sibling or the question names none of them."""
-    from engine.sql_expansion import says_in_another_form
-    keys = [(child, parent) for key in schema.foreign_keys for child, parent in key.column_pairs]
-    child = next((left for left, right in (pair, pair[::-1]) if (left, right) in keys), None)
-    # A relation's two keys are read by its owner and its named side (relation_sides), not here.
-    if child is None or child.table in relations:
-        return None
-    parent = dict(keys)[child]
-    siblings = [other for other, target in keys if other != child and other.table == child.table
-                and target.table == parent.table]
-    if not siblings:
-        return None
-
-    def words(column):
-        return {canon(word) for word in name_words(column.name)} - SURROGATE_KEY_WORDS - {
-            canon(word) for word in name_words(parent.table)}
-
-    def said(column, others):
-        own = words(column) - set().union(*(words(other) for other in others))
-        return any(says_in_another_form(token, word, frozenset()) or token == word for token in tokens for word in own)
-
-    mine, theirs = said(child, siblings), any(said(other, [child]) for other in siblings)
-    if mine and not theirs:
-        return f"{child.table}.{child.name}", True
-    if theirs and not mine:
-        return f"{child.table}.{child.name}", False
-    return None
-
-
-def listed_values(schema: SchemaGraph, query: Query, tokens: Sequence[str]) -> ColumnRef | None:
-    """The one field ``query`` lists the values of, where the question asks for that field's values and not for rows
-    of its table (sql_rank, listed_values): a plain listing of a repeating field that is neither its table's key nor
-    its display field, in a question naming no table as the rows' owner after "of" or "each"."""
-    if (not isinstance(query, SelectQuery) or not isinstance(query.from_table, str) or query.joins
-            or query.group_by or query.having is not None or query.limit is not None or len(query.select) != 1
-            or not isinstance(query.select[0].expression, ColumnRef)):
-        return None
-    column = query.select[0].expression
-    displays = schema.display_columns(column.table)
-    if is_surrogate_key(column.name) or (displays and displays[0] == column) or not schema.repeats((column,)):
-        return None
-    for index, token in enumerate(tokens):
-        if token not in {"of", "each", "every", "per"}:
-            continue
-        after = [word for word in tokens[index + 1:index + 4] if word not in {"the", "all", "each", "every", "its"}]
-        if any(after[:len(name)] == list(name) for table in schema.tables
-               if (name := tuple(canon(word) for word in name_words(table)))):
-            return None
-    return column
-
-
-def flag_condition_only(column: ColumnRef, query: Query, tokens: Sequence[str], schema: SchemaGraph) -> bool:
-    """Whether ``query`` keeps the rows where the flag ``column`` is true and the question says the flag only as that
-    condition (sql_expansion.flag_comparisons): "the official language spoken in the country whose head of state is
-    Beatrix" is the Language of rows with IsOfficial = 'T', not also that constant 'T' (Spider DEV 768, 769,
-    2026-10-17)."""
-    if not isinstance(query, SelectQuery):
-        return False
-    read = [comparison for start, end, comparison in flag_comparisons(tokens, schema) if comparison.left == column]
-    if not read or not set(read) & set(_comparisons(query.where)):
-        return False
-    words = next(named for field, _, named in flag_fields(schema) if field == column)
-    said = [start for start in range(len(tokens) - len(words) + 1) if tuple(tokens[start:start + len(words)]) == words]
-    return len(said) == len(read)
-
-
-def repeats_shown_rows(schema: SchemaGraph, query: Query, tokens: Sequence[str]) -> bool:
-    """Whether a joined, unaggregated listing shows a row once per row of what it joins: a joined table refers to a
-    shown table by a key its rows repeat (each shown row once per referring row), or a shown field refers to a joined
-    table's key and repeats (its value once per row holding it). A key in an unjoined catalog does not establish
-    answer grain: ordinary repeated property values remain separate rows. A ranking keeps its number of rows whatever repeats,
-    and rows the question asks for one by one are its own ("the country name for each registration"). The search
-    adds such a listing's DISTINCT twin and the ranker prefers it (Spider DEV 99, 351, 535)."""
-    if (not isinstance(query, SelectQuery) or not query.joins or query.group_by or query.limit is not None
-            or not isinstance(query.from_table, str)
-            or not all(isinstance(item.expression, ColumnRef) for item in query.select)):
-        return False
-    shown_columns = [item.expression for item in query.select]
-    shown = {column.table for column in shown_columns}
-    read = {query.from_table, *(join.table for join in query.joins)}
-    each = {canon(token) for index, token in enumerate(tokens) for before in tokens[max(0, index - 2):index]
-            if before in {"each", "every", "per"}}
-    for key in schema.foreign_keys:
-        for child, parent in key.column_pairs:
-            if child.table not in read or parent.table not in read or not schema.repeats((child,)):
-                continue
-            if {canon(word) for word in name_words(child.table)} & each:
-                continue
-            if child.table not in shown and parent.table in shown:
-                return True
-            if any(column.table == child.table and column.name == child.name for column in shown_columns):
-                return True
-    return False
-
-
-# The words that say an aggregate, and the comparison words after one that make it a condition (canon() forms).
-_CONDITION_CUES = {
-    "AVG": frozenset({"average", "avg", "mean"}),
-    "SUM": frozenset({"total", "sum"}),
-    "MAX": frozenset({"maximum", "max"}),
-    "MIN": frozenset({"minimum", "min"}),
-    "COUNT": frozenset({"count", "number", "many"}),
-}
-_CONDITION_COMPARISONS = frozenset({"above", "below", "over", "under", "more", "less", "greater", "higher", "lower",
-                                    "larger", "smaller", "bigger", "fewer", "exceed", "exceeds", "least", "than"})
-_RELATIVE_WORDS = frozenset({"which", "whose", "where", "that"})
-
-
 def _comparisons(predicate):
     if predicate is None:
         return ()
@@ -1009,77 +288,6 @@ def _schema_tokens(name: str) -> tuple[str, ...]:
     )
 
 
-
-
-def relation_sides(schema: SchemaGraph) -> dict[str, tuple]:
-    """Each table holding exactly two keys to one other table, as (owner key, other key, the other's participle or
-    None): the other key is named for the relation ("Friend"."friend_id", "Likes"."liked_id", "PersonFriend"."friend"),
-    the owner is the remaining one ("student_id"). A table whose keys neither or both name it relates no owner."""
-    pairs: dict[tuple[str, str], list] = {}
-    for key in schema.foreign_keys:
-        if key.from_column.table != key.to_column.table and not key.additional_columns:
-            pairs.setdefault((key.from_column.table, key.to_column.table), []).append(key)
-    sides = {}
-    for (relation, _), keys in sorted(pairs.items()):
-        if len(keys) != 2:
-            continue
-        relation_words = {canon(word) for word in name_words(relation)}
-
-        def role(key):
-            words = [word for word in name_words(key.from_column.name) if word not in SURROGATE_KEY_WORDS]
-            return next((word for word in words if canon(word) in relation_words
-                         or (word.endswith("ed") and {word[:-1], word[:-2]} & relation_words)), None)
-
-        named = [(key, role(key)) for key in keys]
-        others = [(key, word) for key, word in named if word is not None]
-        if len(others) == 1:
-            other, word = others[0]
-            owner = next(key for key, _ in named if key is not other)
-            sides[relation] = (owner, other, word if word.endswith("ed") else None)
-    return sides
-
-
-# The words that say which end of a trip a question asks about.
-# "Routes that start at that airport" leave from it, and src_apid / dst_apid name the two ends (held-out Spider train
-# 273, 360, 2026-10-17: each counted the routes arriving there).
-TRAVEL_WORDS = {
-    "source": frozenset({"leave", "leaving", "depart", "departing", "departure", "origin", "source", "start", "starting"}),
-    "destination": frozenset({"arrive", "arriving", "arrival", "land", "landing", "destination", "dest"}),
-}
-
-
-def travel_direction(tokens: tuple[str, ...]) -> str | None:
-    token_set = set(tokens)
-    return next((role for role, said in TRAVEL_WORDS.items() if token_set & said), None)
-
-
-# The prepositions that say which end of a trip the value after them is.
-TRAVEL_PREPOSITIONS = {"from": "source", "to": "destination"}
-
-
-def travel_preposition(tokens: tuple[str, ...], value: tuple[str, ...]) -> str | None:
-    """The end of a trip the nearest preposition before ``value`` in ``tokens`` says (``TRAVEL_PREPOSITIONS``), across
-    up to two words naming the place ("from City Aberdeen", "to the airport APG"), or None where none does or the
-    value's places disagree."""
-    found = set()
-    for start in range(len(tokens) - len(value) + 1):
-        if value and tokens[start:start + len(value)] == value:
-            nearest = next((token for token in reversed(tokens[max(0, start - 3):start])
-                            if token in TRAVEL_PREPOSITIONS), None)
-            if nearest is not None:
-                found.add(TRAVEL_PREPOSITIONS[nearest])
-    return next(iter(found)) if len(found) == 1 else None
-
-
-def travel_column_role(column: ColumnRef) -> str | None:
-    words = set(_schema_tokens(column.name))
-    if words & {"source", "src", "origin", "departure", "depart", "from"}:
-        return "source"
-    if words & {"destination", "dest", "dst", "arrival", "arrive", "landing", "to"}:
-        return "destination"
-    return None
-
-
 def _column_label(column: ColumnRef) -> str:
     return f"{column.table}.{column.name}"
 
@@ -1088,17 +296,6 @@ def _column_label(column: ColumnRef) -> str:
 # Pool selection: the served choice among the search's candidates.
 # ---------------------------------------------------------------------------------------------
 
-# The pool contract (engine/tables.py:TableQuery.select_query): how many ranked search candidates
-# are pooled, and the SQLite VM steps a pooled query may take before it counts as not running. The
-# step budget is deterministic and machine-independent; it stops a pathological join, not a normal
-# query. It grows with the cells of the tables a query reads (``execution_op_limit``): a query that
-# reads its tables once or twice takes a few steps a cell (all 50,000 rows of a 22-column tab, ordered,
-# take 2.3), while a join on a value most rows of two tabs share takes steps in proportion to the
-# product of their rows. Two customer subscription exports joined on their currency ran to the old
-# flat 100M steps, about 2.4 s each in production, for 110 s of one question (2026-10-05). The floor
-# covers joins that fan small tables out: the heaviest of the 14,079 readings Spider's dev questions
-# pool, cities joined to their countries' languages, takes 1.1M steps (39 a cell).
-SEARCH_CANDIDATES = 25
 EXECUTION_OPS_PER_CELL = 20
 EXECUTION_OP_FLOOR = 10_000_000
 EXECUTION_OP_LIMIT = 100_000_000
@@ -1119,45 +316,19 @@ def execution_op_limit(query, tables) -> int:
 
 
 @dataclass(frozen=True)
-class FallbackRecord:
-    """How the labelled Gemini fallback (engine/question_rewrite.py) took part in one selection.
-
-    ``kind`` is "rewrite" when the search answered Gemini's one-request rewording, and "none" when
-    the rewording could not produce a query. "model" is the Gemini model id; ``note`` explains an
-    unsuccessful rewrite.
-    """
-    kind: str
-    model: str
-    question: str | None = None
-    note: str = ""
-
-    def __post_init__(self):
-        if self.kind not in {"rewrite", "none"}:
-            raise ValueError(f"unknown fallback kind: {self.kind}")
-
-    def record(self) -> dict:
-        out = {"kind": self.kind, "model": self.model}
-        if self.question is not None:
-            out["question"] = self.question
-        if self.note:
-            out["note"] = self.note
-        return out
-
-
-@dataclass(frozen=True)
 class PoolSelection:
     """How one question's query was chosen. Serving, decomposition leaves, the Spider evaluator and
     the offline regression gate read this record.
 
-    ``pool`` is the deterministic search's candidates in its ranked order (``CandidateRanker``), or the
-    fallback's when ``fallback`` says so. ``executable`` records which members ran within their
-    SQLite step budget (``execution_op_limit``) and ``grounded`` which compare every text literal with a column
-    that can hold it and join no two columns the foreign keys keep apart (engine/sql_grounding.py).
-    ``ranking`` lists the eligible members, where both hold, in pool order. ``selected`` is usually
-    ``ranking[0]``; a query that keeps the question's dates, counts no row twice in a SUM or AVG
-    (``double_counted``), satisfies a registered calculation intent or totals a named money column can
-    prefer a later eligible member (``select_ranked_candidate``). The first pool member is the search's
-    own structural reading of the question (engine/decomposition.compound_candidate).
+    ``pool`` is the readers' candidates, most probable first (engine/readers/search.py). ``executable``
+    records which members ran within their SQLite step budget (``execution_op_limit``) and ``grounded``
+    which compare every text literal with a column that can hold it and join no two columns the foreign
+    keys keep apart (engine/sql_grounding.py). ``ranking`` lists the eligible members, where both hold, in
+    the re-scorer's order. ``selected`` is usually ``ranking[0]``; a query that keeps the question's dates,
+    counts no row twice in a SUM or AVG (``double_counted``) or satisfies a registered calculation intent
+    can prefer a later eligible member (``select_ranked_candidate``), and the readers' refusal leaves it
+    None when it is not confident of the choice. The first pool member is the readers' most probable
+    reading of the question (engine/decomposition.compound_candidate).
     """
     pool: tuple[ScoredQuery, ...]
     executable: tuple[bool, ...]
@@ -1165,11 +336,12 @@ class PoolSelection:
     ranking: tuple[int, ...]
     selected: int | None
     calculation_satisfied: tuple[bool, ...] = ()
-    money_total: tuple[bool, ...] = ()
     date_satisfied: tuple[bool, ...] = ()
     # Which members SUM or AVG only rows their joins repeat (engine/sql_grounding.double_counted).
     double_counted: tuple[bool, ...] = ()
-    fallback: FallbackRecord | None = None
+    # The readers' refusal: its confidence in the choice, and the choice it declined when it was not confident.
+    confidence: float | None = None
+    declined: int | None = None
 
     @property
     def candidate(self) -> ScoredQuery | None:
@@ -1183,33 +355,21 @@ class PoolSelection:
             return member
         return ScoredQuery(served, render_query(served), member.score, member.evidence)
 
-    @property
-    def served_by(self) -> str:
-        """``search`` for its own reading or ``gemini-rewrite`` for a search over one rewording."""
-        if self.selected is None or self.fallback is None or self.fallback.kind == "none":
-            return "search"
-        return f"gemini-{self.fallback.kind}"
-
     def constrained(self, admissible) -> PoolSelection:
         """This selection under a caller's contract, a filter on the ranking and never a rescore.
 
         Unchanged when the selected member satisfies ``admissible``; otherwise re-selected to the
         best-ranked eligible member that does (``selected`` is None when none does), so the record
-        always describes the member that was actually served. A fallback whose reading the contract
-        refuses served nothing, and its record says so.
+        always describes the member that was actually served.
         """
         if self.selected is not None and admissible(self.pool[self.selected]):
             return self
         selected = next((index for index in self.ranking if admissible(self.pool[index])), None)
-        fallback = self.fallback
-        if selected is None and fallback is not None and fallback.kind != "none":
-            fallback = replace(fallback, kind="none",
-                               note="the caller's contract refuses the fallback's reading")
-        return replace(self, selected=selected, fallback=fallback)
+        return replace(self, selected=selected)
 
     def record(self) -> dict:
-        """JSON evidence: pool counts, the winner's place among the eligible members and its search
-        score, which preference chose it, and the fallback when it took part."""
+        """JSON evidence: pool counts, the winner's place among the eligible members, its readers' log
+        probability, which preference chose it, and the refusal's confidence (with the member it declined)."""
         evidence = {
             "pool_size": len(self.pool),
             "executable": sum(self.executable),
@@ -1217,7 +377,8 @@ class PoolSelection:
                                for ran, sound in zip(self.executable, self.grounded)),
             "eligible": len(self.ranking),
             "selected": self.selected,
-            "served_by": self.served_by,
+            "confidence": None if self.confidence is None else round(self.confidence, 4),
+            "declined": self.declined,
         }
         if self.selected is not None:
             evidence.update(
@@ -1225,17 +386,13 @@ class PoolSelection:
                 score=round(self.pool[self.selected].score, 6),
                 calculation_satisfied=bool(self.calculation_satisfied
                                            and self.calculation_satisfied[self.selected]),
-                money_total=bool(self.money_total and self.money_total[self.selected]),
                 date_satisfied=bool(self.date_satisfied and self.date_satisfied[self.selected]),
                 double_counted=bool(self.double_counted and self.double_counted[self.selected]),
             )
-        if self.fallback is not None:
-            evidence["fallback"] = self.fallback.record()
         return evidence
 
 
 def select_ranked_candidate(ranking: Sequence[int], calculation_satisfied: Sequence[bool],
-                            money_total: Sequence[bool],
                             date_satisfied: Sequence[bool] = (),
                             double_counted: Sequence[bool] = ()) -> int | None:
     """The shared post-ranking serving rule; inputs are gold-blind candidate facts.
@@ -1246,15 +403,10 @@ def select_ranked_candidate(ranking: Sequence[int], calculation_satisfied: Seque
     AVG reads only rows its joins repeat (engine/sql_grounding.double_counted) is served only when
     every one does: "the total Amount by Plan and Currency" ranked first a sum of a report's Total
     Amount once per subscription it matched (2026-10-05). Among those, prefer a satisfied
-    calculation, if any. A named money total then constrains that choice, retaining it when
-    compatible or taking the first ranked total.
+    calculation, if any.
     """
     if not ranking:
         return None
     ranking = [i for i in ranking if date_satisfied and date_satisfied[i]] or list(ranking)
     ranking = [i for i in ranking if not (double_counted and double_counted[i])] or ranking
-    selected = next((i for i in ranking if calculation_satisfied[i]), ranking[0])
-    totals = [i for i in ranking if money_total[i]]
-    if totals and not money_total[selected]:
-        selected = totals[0]
-    return selected
+    return next((i for i in ranking if calculation_satisfied[i]), ranking[0])

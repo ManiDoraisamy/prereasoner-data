@@ -2,8 +2,7 @@
 
 Literal grounding: a text literal compared with a column must be a value that column can hold.
 
-Question values are linked against the request's data locally; they are not sent to Gemini for
-rewriting (engine/sql_prompt.py). A comparison is mis-grounded when its literal occurs in no row of
+Question values are linked against the request's data locally. A comparison is mis-grounded when its literal occurs in no row of
 its own column but does occur in another column of the request's tables. Such a query answers a
 different question, so it is never eligible for selection (``TableQuery.select_query``). A literal
 that occurs in no column is left alone: the question may name a value the data does not hold, and the

@@ -1,9 +1,10 @@
 """Calendar phrases of a question: the dates and months it filters a date column by.
 
 "How many transfers were signed in August?", "leads submitted after August 10, 2026" and "contracts
-signed before July 10, 2026" were planned without their date (2026-10-02): the search read no month
-name, and read "10" and "2026" as a number and a year. Each phrase here becomes typed comparisons on a
-date column (engine/sql_search.py), the served selection prefers a query that realizes them
+signed before July 10, 2026" were planned without their date (2026-10-02): no month name was read, and
+"10" and "2026" were read as a number and a year. The readers' date condition on a date column becomes the
+typed comparisons of the phrase it names (engine/readers/decode.py), the served selection prefers a query
+that realizes them
 (TableQuery.select_query), and the coverage gate (KnowledgeQuery._uncovered) reads from the same
 comparisons which calendar words a query realized.
 
@@ -408,7 +409,7 @@ def period_grouping(tokens: Sequence[str], schema) -> int | None:
     month", "how many orders per month", "which month had the highest total"). "The month of August" names a
     month, not a grouping; a column's own name is that column ("total balance by month" over a text month
     column, "the avg. monthly searches"). A month groups by its year-month, '2026-08', so August 2025 and
-    August 2026 stay two rows. The search (sql_search) and the ranker (sql_rank) read it alike."""
+    August 2026 stay two rows."""
     from engine.sql_expansion import name_tokens, spelled_names
 
     if not any(column.ref.type == SQLType.DATE for column in schema.columns):

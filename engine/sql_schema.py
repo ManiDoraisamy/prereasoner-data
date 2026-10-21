@@ -406,8 +406,7 @@ class SchemaGraph:
 
 
 # The standard one-letter codes a field holds and the words each stands for (canon() forms), and the letters such a
-# field also holds for an unknown or other value. The search reads a word before a field's name by them too
-# (sql_search._CATEGORICAL_INITIALS).
+# field also holds for an unknown or other value.
 CODE_LETTERS = ({"m": ("male", "man"), "f": ("female", "woman")}, {"l": ("left",), "r": ("right",)},
                 {"y": ("yes",), "n": ("no",)})
 _UNKNOWN_CODES = frozenset({"u", "x", "o"})
@@ -553,13 +552,6 @@ def spaced_name(name: str) -> str:
 
 def name_words(name: str) -> tuple[str, ...]:
     return tuple(word.lower() for word in re.findall(r"[^\W_]+", spaced_name(name), re.UNICODE))
-
-
-def is_name_column(name: str) -> bool:
-    """Whether a column named ``name`` names its rows ("name", "Song_Name", "title", "label"), or holds a part of a
-    person's name ("Fname", "emp_lname": sql_expansion.name_part_words)."""
-    from engine.sql_expansion import name_part_words
-    return bool({canon(word) for word in name_words(name)} & _NAME_WORDS) or name_part_words(name) is not None
 
 
 # A column is a surrogate key (a primary or foreign key, never a measure) when the last word of its name is

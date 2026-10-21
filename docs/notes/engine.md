@@ -18,7 +18,8 @@ the modules, the env-var contract, and the data files the serving path opens.
 | `server.py` | ONE ThreadingHTTPServer. `POST /api/reason`, `POST /api/knowledge` (Firebase auth + RTDB streaming, shared `KnowledgeReasoner`), `POST /api/dimension` (authenticated stateless readout on the shared world encoder), `POST /api/converse` (deterministic answer rendering), `GET /healthz`. Exact-origin CORS, body/rate/row limits. Requests run in parallel; Cloud Run bounds how many an instance serves. |
 | `auth.py` | `_verify_principal`, `_bearer` (security-critical). Test bypass via `AUTH_TEST_SUB`. |
 | `config.py` | the ONE env-var reader (see contract below). |
-| `tables.py` | `TableQuery`; canonical `table_name`, `csv_table` / `table_from_rows`, SQL quoting and table parsing. `TableQuery.__init__` defers encoder loading (the encoder overlay supplies the model at serve time). |
+| `tables.py` | `TableQuery`; the one own-data selection (`search_pool`, `select_query`), canonical `table_name`, `csv_table` / `table_from_rows`, SQL quoting and table parsing. `TableQuery.__init__` defers encoder loading (the encoder overlay supplies the model at serve time). |
+| `readers/` | The own-data readers: `search.py` (`ReadingSearch`, loaded once per process by `reading_search()`), `text.py`, `models.py`, `layout.py`, `decode.py`, `readings.py` (the builder), `read_as.py`. |
 | `knowledge_tables.py` | `KnowledgeTableQuery` (implicit world `word_*` tables, meaning graph, freshness). |
 | `pg.py` | `PgQuery`, `_TableQueryPg`; `_pg()` is fully config-driven (host/port/db/user/sslmode/password). |
 | `resolve_base.py` | `RoutedQuery` (generalized routing + country aliases + States/Elements configs). |
@@ -42,7 +43,6 @@ the modules, the env-var contract, and the data files the serving path opens.
 | `joins.py` | compose's join assembly: `join_plan` (fact selection + flatten-safe keep-lists). FK discovery delegates to `relations.discover_fks` (one shared detector). |
 | `taxonomy.py` | `snake`, `name_like`, and the taxonomy constants (`TAX`/`LEAF_PATH`/`LEAF_QID`/`LEAF_TABLES`) loaded from `taxonomy.csv`. |
 | `answer_presentation.py` | Shared deterministic factual answer and recovery text. |
-| `question_rewrite.py` | Optional schema-only question rewording followed by the same typed planner. |
 | `reference_generation.py` | Separate explicit reference-fill feature. |
 | `conversations.py` | the `chat` schema (conversation identity + ownership; IDOR-safe). |
 | `master.py` | Per-user reference persistence, validation, and direct/multi-hop request selection through `relations.discover_fks`. |
@@ -72,7 +72,7 @@ The engine is a proper package run from the repo root (no `sys.path` hacks).
 | `BASE_MODEL_ID` | `Qwen/Qwen2.5-0.5B` | the Qwen base the LoRA adapter attaches to; matches the training/ package. |
 | `KB_MODEL_ROUTE` | `1` | `0` disables model-driven column routing (value-membership fallback). |
 | `EXTERNAL_LLM_ENABLED` | `false` | Authoritative switch for every Gemini call (`engine/llm.py`). |
-| `GOOGLE_CLOUD_PROJECT` | *(unset)* | OPTIONAL. The Vertex AI project for Gemini (ADC credentials, no key): `/api/master/generate` and stateless wording rewriting. Factual presentation does not need Gemini. |
+| `GOOGLE_CLOUD_PROJECT` | *(unset)* | OPTIONAL. The Vertex AI project for Gemini (ADC credentials, no key): `/api/master/generate`. Own-data selection and factual presentation do not need Gemini. |
 | `GEMINI_MODEL` / `GEMINI_LOCATION` | `gemini-3.8-flash` / `global` | the Vertex AI model and location. |
 | `GEO_TEST_SUB` | `geotest` | tests only. |
 
@@ -81,7 +81,9 @@ The engine is a proper package run from the repo root (no `sys.path` hacks).
 The serving path opens: `qwen_lora/` (PEFT adapter for the Qwen base), `encoder.pt`
 (the relational-content readout state_dict) + `encoder_meta.pt` (`{"alloc", "cfg"}`),
 `taxonomy.csv`, `anchor_assignment.npz`, `dim_thresholds.json`, `primitives.npz`, and the
-`word_*.json` world-table metadata. `alloc.json`, `families.json`, and `props_thr.json` are training
+`word_*.json` world-table metadata. The own-data readers load from `engine/data/readers/` (`stage1/`,
+`stage2_*/`, `rescorer/`, `refusal.json`), located relative to the package
+(`engine/readers/search.py:READERS_DIR`). `alloc.json`, `families.json`, and `props_thr.json` are training
 outputs kept beside the bundle; no `engine/` module reads them (see engine/data/README.md). The `*.pt`, `*.npz`, and `qwen_lora/` weights are gitignored (a fresh clone
 has none) — the entrypoint gate reports missing weights at startup (see
 `infra/README.md`).
@@ -145,18 +147,18 @@ layout.
 
 ## Conversational layer
 
-The engine side of stateless wording assistance and factual answer presentation. Full design
-in docs/ARCHITECTURE.md §10; this note records the engine surface for maintainers.
+The engine side of factual answer presentation. Full design in docs/ARCHITECTURE.md §10; this note
+records the engine surface for maintainers.
 
 - **`engine/answer_presentation.py`**: the shared deterministic renderer for engine and orchestrator
   answers. Structured values, nulls, currency and percentage evidence determine factual text;
   clarification and retry messages come from the engine envelope. No computed results are sent to Gemini.
 - **`engine/server.py`**: `POST /api/converse` (`_post_converse`) — Firebase-auth'd like the reason
   routes; uses the shared deterministic renderer. The Gemini switch does not disable factual rendering.
-- **`engine/question_rewrite.py`**: optional stateless schema/question wording assistance. It receives
-  field names and types, never source values or computed answers; the engine builds and validates SQL.
-  **`engine/reference_generation.py`** is the separate explicit reference-fill feature. Both external
-  paths use the single `engine/llm.py` client and honor the deployment switch.
+- **`engine/reference_generation.py`**: the explicit reference-fill feature, the engine's one Gemini
+  path. It uses the single `engine/llm.py` client and honors the deployment switch. Own-data query
+  selection calls no external model; how the question was read is the response's `read_as`, shown as
+  the turn's "read as" line.
 - **`engine/knowledge.py`** (`KnowledgeReasoner.serve`): the COVERAGE PRE-GATE (`_has_data_signal` → return
   `low_confidence` before reasoning) and `_tag_present` (apply the `present` flag when a real answer
   is human-toned), applied across both the geo and composed paths. `KnowledgeReasoner` also lives here.
@@ -166,4 +168,4 @@ in docs/ARCHITECTURE.md §10; this note records the engine surface for maintaine
 - **`engine/trace.py`** (`stream_final`): streams `low_confidence` and `present` alongside the
   existing terminal nodes.
 - **`engine/config.py`**: `GOOGLE_CLOUD_PROJECT` (with `EXTERNAL_LLM_ENABLED`) is OPTIONAL for the
-  engine — they enable external wording/reference assistance. `/api/converse` renders facts locally.
+  engine — they enable reference generation. `/api/converse` renders facts locally.

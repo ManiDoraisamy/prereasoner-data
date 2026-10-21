@@ -1,6 +1,9 @@
 ---
 license: apache-2.0
-base_model: Qwen/Qwen2.5-0.5B
+base_model:
+  - Qwen/Qwen2.5-0.5B
+  - FacebookAI/xlm-roberta-base
+  - FacebookAI/xlm-roberta-large
 library_name: peft
 tags:
   - text-to-sql
@@ -14,9 +17,10 @@ tags:
 This repository contains the public, manifest-pinned runtime weights for
 [Prereasoner](https://github.com/ManiDoraisamy/prereasoner-data), an interpretable
 table-question-answering system. Learned components produce semantic evidence: named coordinates
-for columns and question words, and Schema.org property and class scores. A deterministic typed AST
-planner builds every query and owns joins, calculation verification, selection, rendering, and
-execution. No model in this bundle writes SQL, and the bundle is not a standalone text-to-SQL model.
+for columns and question words, Schema.org property and class scores, and the own-data readers'
+readings of a question (which tables, columns, values, groups, orders and calculations it asks for).
+A deterministic typed AST builder makes every query from those readings and owns joins, calculation
+verification, rendering, and execution. No model in this bundle writes SQL, and the bundle is not a standalone text-to-SQL model.
 
 ## Install
 
@@ -43,21 +47,27 @@ the complete bundle, and only then installs it.
 | `anchor_assignment.npz` | Calibrated named-dimension thresholds |
 | `primitives.npz` | Learned primitive-composition head |
 | `schema_property_head.pt` | Calibrated Schema.org named-property evidence head |
+| `readers/stage1/` | Own-data schema-item model (XLM-R base): scores each table's and column's use |
+| `readers/stage2_a/`, `readers/stage2_b/` | Own-data reading models (XLM-R large), one with the question's values beside their columns and one without |
+| `readers/rescorer/` | Re-scorer (XLM-R base): orders the readings' queries that ran |
+| `readers/refusal.json` | Logistic refusal over the re-scorer's confidence, fitted on held-out calibration databases |
 
 The source repository contains the small ontology, calibration, taxonomy, and manifest artifacts.
-The base Qwen model is downloaded separately from its publisher. `python -m engine.fetch_weights`
+The base Qwen model is downloaded separately from its publisher. The readers' directories hold their
+complete fine-tuned weights (encoders in bfloat16, heads in float32) and tokenizer files. `python -m engine.fetch_weights`
 downloads only the files the source manifest lists. Prereasoner loads no SQL-generating model; the
 retired SQL proposer adapter (`sql_proposer/`) was removed from this repository on 2026-10-02 and
 remains in its history.
 
 ## Model Boundary
 
-The encoder adapter emits named Schema.org property probabilities, calibrated class proposals,
-embeddings for structural intent and ranking, and calculation operand signals. A released class may
-propose a coarse resolver family, but no score can authorize a table, join, calculation, or answer.
-Prereasoner's deterministic search builds every query from these signals, and the engine serves the
-best-ranked query that runs on the data. An operator may enable an external Gemini fallback for
-questions the search cannot answer; it is not part of this bundle, and its answers are labelled.
+The encoder adapter emits named Schema.org property probabilities, calibrated class proposals, and
+embeddings for column typing and the structural intent of composition and world questions. A released
+class may propose a coarse resolver family, but no score can authorize a table, join, calculation, or
+answer. Own-data questions are read by separate XLM-R readers (`engine/data/readers/`); a deterministic
+builder makes each of their readings a typed query, and no model writes SQL. The optional Gemini model
+serves only the chat orchestrator, starter questions and reference generation, and is not part of
+this bundle.
 Deterministic code applies ontology mapping, exact source grounding, typed constraints, abstention
 rules, and execution checks.
 
@@ -95,6 +105,9 @@ servable. Unsupported and under-calibrated coordinates abstain.
 ## License
 
 The Prereasoner weight bundle is released under Apache-2.0. The base model and source datasets retain
-their own licenses and terms. The retired `sql_proposer/` adapter in earlier revisions was trained on
+their own licenses and terms. The readers in `readers/` are fine-tuned from XLM-RoBERTa (MIT) on Spider's
+train and dev questions (Yu et al., EMNLP 2018; CC BY-SA 4.0), BIRD train (Li et al., NeurIPS 2023;
+CC BY-SA 4.0) and Spider-Syn (Gan et al., ACL 2021; MIT); keep those attributions when redistributing
+them. The Spider test set appears in no training step. The retired `sql_proposer/` adapter in earlier revisions was trained on
 Spider TRAIN (Yu et al., EMNLP 2018; CC BY-SA 4.0); keep that attribution when redistributing it. See
 [`THIRD_PARTY.md`](https://github.com/ManiDoraisamy/prereasoner-data/blob/main/THIRD_PARTY.md).

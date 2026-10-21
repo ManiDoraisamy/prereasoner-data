@@ -34,7 +34,7 @@ from engine.config import DATA_DIR, kb_model_route_enabled
 from engine.entities import EntityQuery, PLACE_TYPES, WORLD_TABLE_TYPE
 from engine.dataset_semantics import is_synthetic_currency_column
 from engine.embeddings import Embedder, demonym_stems, pgvector_literal, normalize_surface
-from engine.encoder_overlay import EncoderQuery, attach_question_rewriter, load_encoder
+from engine.encoder_overlay import EncoderQuery, load_encoder
 from engine.knowledge_bridges import KnowledgeBridgeMixin
 from engine.knowledge_typing import KnowledgeTypingMixin
 from engine.knowledge_tables import COUNT_CUE
@@ -135,17 +135,6 @@ def _coverage_sql(response):
     response = response or {}
     program = (response.get("deterministic") or {}).get("sql") or {}
     return program.get("source") or response.get("sql")
-
-
-def _coverage_questions(response, question):
-    """Check both the user's wording and any Gemini rewrite against the executed SQL.
-
-    A rewrite is only a retrieval aid; it must not erase a condition from the user's question.
-    """
-    fallback = (response or {}).get("fallback") or {}
-    if fallback.get("kind") == "rewrite" and fallback.get("question"):
-        return list(dict.fromkeys((question, fallback["question"])))
-    return [question]
 
 
 def verify_nonempty(res, question):
@@ -298,6 +287,19 @@ def _word_forms(word):
     return forms
 
 
+def asked_world_types(question, sch, sql=""):
+    """The world types ``question`` asks for by name ("which country", "by continent") that neither the uploaded
+    tables' names nor ``sql`` provide: only a world join can bring one. "which country has the most deposits"
+    ranked the banks, and "total amount by country" summed every restaurant into one total (Chrome exploration,
+    2026-10-01). A type noun that only names the rows ("total amount for cities in France") is not asked for."""
+    sch_words = _schema_vocabulary(sch)
+    sqll = (sql or "").lower()
+    return [word for word in _WORLD_TYPE_WORDS
+            if re.search(r"\b(?:which|what|by|per|each)\s+" + word + r"\b", str(question or "").lower())
+            and word not in sch_words and _WORLD_TYPE_WORDS[word] not in sch_words
+            and _WORLD_TYPE_WORDS[word] not in sqll]
+
+
 def _schema_vocabulary(sch):
     """The words the uploaded tables' own names and column names contribute, with plural forms and the
     comparable form the search reads them in (sql_schema.canon): a question's word is the schema's when it
@@ -361,13 +363,11 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
     FREETEXT_MIN_AVGLEN = 12       # a non-connected text column is "free text" (embed it) if avg cell length > this
     HYBRID_LIMIT = 10
 
-    _SHARE = ("alloc", "nc", "dims", "sid", "thr", "model", "nL", "tok", "qwen", "hdim",
-              "question_rewriter")
+    _SHARE = ("alloc", "nc", "dims", "sid", "thr", "model", "nL", "tok", "qwen", "hdim")
 
     def __init__(self, deploy_dir=DATA_DIR):
         EntityQuery.__init__(self, deploy_dir)       # bge + Postgres + world metadata + spaCy
         load_encoder(self, deploy_dir)               # ONE MODEL: the trained encoder (operator+bridge+typing)
-        attach_question_rewriter(self)                    # selection's labelled Gemini fallback
         self._schema_interpreter()                   # Schema.org head: a bundle it cannot load fails here
         # The planner composes a TableQuery (self.q11) for the single-table delegate path. Point it at the SAME
         # models (shared refs — one copy of each in memory) so EVERY path goes through the same weights.
@@ -778,13 +778,8 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
             # sch_words, so this only closes the operator-language false-positive.
             CUE |= {"distinct", "unique", "different", "value", "values"}
         # A world type the question asks for ("which country", "by country") is realized only by a column of that
-        # name or by a world join that brings one: "which country has the most deposits" ranked the banks, and
-        # "total amount by country" summed every restaurant into one total (Chrome exploration, 2026-10-01). A
-        # type noun that only names the rows ("total amount for cities in France") stays exempt.
-        asked = [word for word in _WORLD_TYPE_WORDS
-                 if _re.search(r"\b(?:which|what|by|per|each)\s+" + word + r"\b", question.lower())
-                 and word not in sch_words and _WORLD_TYPE_WORDS[word] not in sch_words
-                 and _WORLD_TYPE_WORDS[word] not in sqll]
+        # name or by a world join that brings one (asked_world_types).
+        asked = asked_world_types(question, sch, sql)
         # Closed-class words carry grammar, not a constraint: 'everything in France' drops nothing. Negation and
         # exclusion cues are never closed-class here (engine.closed_class), so a dropped 'not' is still caught.
         closed = closed_class_words(question)
@@ -1049,7 +1044,7 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         norm, fks = self.ingest(tables, explicit_fks=explicit_fks)
         sch, _, _ = self.schema(norm, fks)
         # A total or average of a column the question names whose cells are not all numbers is refused naming the
-        # cells, as the own-data planner refuses it (query_contract.unreadable_operand). Both world routes read their
+        # cells (query_contract.unreadable_operand), before any route reads it. Both world routes read their
         # measure with read_op_all, which counted the rows when the named column was text ("total amount in France"
         # was 5 orders) and totaled a saved reference's `estimated amount` beside it (2026-10-09).
         unreadable = unreadable_measure_violation(question, SchemaGraph.from_planner(sch, fks))
@@ -1131,10 +1126,7 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         if schema and not certified:
             try:
                 sql = _coverage_sql(res)
-                dropped = list(dict.fromkeys(
-                    word for coverage_question in _coverage_questions(res, question)
-                    for word in self._uncovered(coverage_question, sch, sql)
-                ))
+                dropped = list(dict.fromkeys(self._uncovered(question, sch, sql)))
                 if currency and currency.get("status") == "satisfied":
                     realized = currency_conversion_words(currency["target"])
                     dropped = [word for word in dropped if word not in realized]

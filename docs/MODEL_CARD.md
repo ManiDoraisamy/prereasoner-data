@@ -3,13 +3,14 @@
 ## Summary
 
 Prereasoner is a tabular question-answering system with a learned semantic layer and a typed SQL
-layer. Learned components provide embeddings, Schema.org property probabilities, class scores, and
-structural relevance signals. No local model writes SQL: a deterministic search builds every
-own-data query as a typed AST, and the engine validates, renders, and executes it. Typed SQL search,
-selection, route ownership, source-key authorization, calculation semantics, SQL rendering, and
-execution are deterministic for fixed inputs and pinned artifacts. One external model, Gemini, is
-optional. When the operator enables it, it can rewrite unresolved wording, including when a runnable
-candidate fails completeness. Accepted rewrites are labelled ([Gemini fallback](#gemini-fallback-external-optional)).
+layer. Learned components provide embeddings, Schema.org property probabilities, class scores,
+structural relevance signals, and the own-data readers' readings of a question. No model writes SQL:
+a deterministic builder makes every own-data query a typed AST from the readers' readings, and the
+engine validates, renders, and executes it. Selection, route ownership, source-key authorization,
+calculation semantics, SQL rendering, and execution are deterministic for fixed inputs and pinned
+artifacts. Gemini, an optional external model, serves the chat orchestrator, starter questions and
+reference generation; it takes no part in own-data query selection
+([Gemini](#gemini-external-optional)).
 
 Schema.org 30.0 is the semantic coordinate system. Wikidata and publisher-owned releases provide
 observations projected into that vocabulary; they do not define it. Mutable facts remain in
@@ -30,14 +31,35 @@ versioned database releases and are not intended to be memorized in model weight
   types (`is_str`, `is_num`, `is_time`, `is_key`, `currency`, ...), 71 property names such as
   `addressCountry`, `birthDate`, `brand`, and `postalCode`, and 10 query intents (`intent_agg_sum`,
   `intent_filter_gt`, `intent_sort_desc`, `intent_limit`, ...).
-- Active uses: structural intent, deterministic candidate-ranking features, calculation operand
-  retrieval, and the representation consumed by the Schema.org property head.
+- Active uses: structural intent for composition and the world routes (the operator from
+  `read_op_model`, the primitive head), column typing, and the representation consumed by the
+  Schema.org property head. The own-data SQL planner does not use it; the readers below read those
+  questions.
 - Historical compatibility output: `alloc.json` still exposes 71 property-named coordinates. Two
   labels in that old basis are not valid Schema.org 30.0 properties (`GeoCoordinates` is a class;
   `taxonName` is absent). They are not the active class-routing vocabulary.
 - Limitation: the historical encoder/LoRA training run predates the current immutable corpus
   manifest. Its exact runtime bytes and base revision are pinned, but its original source corpus and
   split provenance are incomplete. Do not claim a from-scratch reproduction of that checkpoint.
+
+### Own-data readers
+
+- Models (`engine/data/readers/`): a stage-1 schema-item model (XLM-R base) that scores each table's and
+  column's use; stage-2 reading models (XLM-R large, one directory per reader, `stage2_*`) that score
+  every reading the deterministic builder uses; a re-scorer (XLM-R base) that orders the candidates that
+  ran; and a refusal, a logistic model over the re-scorer's confidence (`refusal.json`). Each model is an
+  encoder with linear heads, defined once in `engine/readers/models.py`; serving runs the encoders in
+  bfloat16. No decoder is used.
+- Inputs: the question and the schema as the engine receives it: table and column names, inferred types,
+  sample values, and the question's own values beside the columns that hold them
+  (`engine/readers/text.py`).
+- Boundary: the readers emit readings, never SQL. `engine/readers/readings.py:build` makes each reading
+  a typed AST, the engine runs and grounds every candidate, and when the refusal is not confident the
+  reply says how the question was read ("I read this as …") instead of serving an answer.
+- Training: Spider, BIRD and Spider-Syn questions with gold readings derived from gold SQL.
+  `training/readers/` trains them, and only `training/readers/promote.py` installs them, recording each
+  file's SHA-256 in `engine/data/weights_manifest.json`. The recipe, inputs and split are in
+  [training/readers/README.md](../training/readers/README.md).
 
 ### Generalized Schema.org named-dimension model
 
@@ -65,31 +87,17 @@ The exact per-property and per-class support, thresholds, precision, recall, F1,
 counts are in `engine/data/schema_property_model.json`. Training identity, dependencies, source
 releases, split policy, seed, and metrics are in `engine/data/schema_training_manifest.json`.
 
-### Gemini fallback (external, optional)
+### Gemini (external, optional)
 
 - Model: Gemini on Vertex AI (`GEMINI_MODEL`, default `gemini-3.8-flash`), called through
   `engine/llm.py`. It is an external service, not part of the weight bundle, and Prereasoner does not
   train or fine-tune it.
 - Gate: it runs only when the operator enabled external models (`EXTERNAL_LLM_ENABLED`, default
   off; the guided Community deployment turns it on together with chat) and configured a Vertex AI
-  project. It is called when no own-data candidate is eligible or the selected plan leaves question
-  wording unresolved (`engine/question_rewrite.py`, called by `engine/tables.py:TableQuery.select_query`).
-- What it sees: the current question and schema text from `engine/sql_prompt.py`: table and column
-  names, inferred column types, and foreign keys. It receives no cell values, full rows, or
-  conversation history.
-- What it can do: reword the current question once in the tables' own words, which the deterministic
-  search then reads. Gemini cannot propose SQL, a query plan, or a result.
-- Labels: the response's `fallback` record (`kind`, `model`, and the rewording),
-  `planner.selection.served_by` (`gemini-rewrite`), and the response's `model`
-  string. The workbook's status line and the chat reply repeat it. Decomposition leaves never take
-  the fallback.
-- Repeatability: the rewrite is request-scoped, receives no conversation history, and is never cached.
-  Gemini can return different wording on separate requests, so a fallback answer is outside the
-  determinism statement in the summary.
-
-The chat orchestrator and explicit reference-table generation also use Gemini
-through `engine/llm.py`, under the same switch. They sit outside the SQL planner; see
-[MCP.md](MCP.md).
+  project.
+- Uses: the chat orchestrator's tool loop, starter questions, and explicit reference-table generation.
+  All sit outside the SQL planner; see [MCP.md](MCP.md). Own-data query selection calls no external
+  model.
 
 ### Entity-resolution embedder
 
@@ -129,16 +137,16 @@ does not list it, the fetcher does not download it, and current Prereasoner load
 ## Evaluation And Limitations
 
 Determinism removes sampling variance; it does not guarantee correctness. Remaining error classes
-include ambiguous schema linking, missing AST candidates, ranking errors, incomplete entity
-resolution, source gaps, and unsupported Schema.org coordinates. Without a SQL model, Spider
-prediction takes under 2 seconds per question at the median on a workstation CPU
-(`spider/results/RESULTS.md`).
+include misread questions, shapes the readings form cannot hold, ranking and refusal errors,
+incomplete entity resolution, source gaps, and unsupported Schema.org coordinates. Recorded accuracy
+and latency are in `spider/results/RESULTS.md`.
 
 The Schema.org head has group-disjoint validation and untouched-test metrics. The shared historical
 encoder does not have equivalent original-training provenance, so their metrics must not be merged.
 SQL accuracy belongs in `spider/results/RESULTS.md`, and source-backed behavior belongs in
-`world_eval/RESULTS.md`; neither is implied by the class-head metrics. The recorded Spider runs
-measured earlier designs and the current selection, with the fallback off.
+`world_eval/RESULTS.md`; neither is implied by the class-head metrics. The readers' training sources
+include Spider's dev questions, so a Spider DEV result is not a held-out measurement of them; the Spider
+test set appears in no readers training step.
 
 ## Checkpoint Release Contract
 

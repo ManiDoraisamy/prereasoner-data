@@ -45,7 +45,8 @@ composition of every detected specification; proving either factor alone is insu
 that merely asks for a tax, commission, or discount *rate* is an ordinary projection, not a request to
 apply that rate.
 
-Own-data AST search and scalar world-filter queries consume the same registered calculation plan.
+Own-data selection (which expands the readers' candidates) and scalar world-filter queries consume the
+same registered calculation plan.
 The world adapter owns its request-local entity bridge, but it renders the registry's typed scalar
 expression and returns that same expression as verification evidence; it does not maintain a separate
 currency-only formula. A total grouped or ranked by a world attribute or an uploaded column ("total

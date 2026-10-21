@@ -10,7 +10,8 @@ runtime bundle, `tests.test_complex_datasets` reports its model-backed cases as 
 
 | Command | Covers |
 |---|---|
-| `python -m tests.test_sql_ast` | Typed AST validation/rendering, search, ranking, execution checks, and failure profiles |
+| `python -m tests.test_readers` | The readers' deterministic half (`engine/readers`): the readings form and its builder, the decoder's generic semantics, and the schema serialization; no weights load |
+| `python -m tests.test_sql_ast` | Typed AST validation/rendering and execution, grounding, SQL import, the planner's lexical helpers, and the own-data selection's plumbing over a stubbed readers' pool |
 | `python -m tests.test_calculations` | Typed calculation intent, operands, joins, grain, evidence, and abstention |
 | `python -m tests.test_analysis` | Slug/identity validation, effective table/relationship/semantic hashing, bounded unique view names, executed-SQL preservation, and HTTP/live-stream parity |
 | `python -m tests.test_deterministic_emitters` | Shared-plan validation, generated ORM execution, composite/missing-reference parity, mode policy, identity coercion, and full-result/preview separation |

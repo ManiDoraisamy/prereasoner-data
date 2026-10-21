@@ -1,28 +1,32 @@
 # Own-Data SQL Planner
 
 This is the own-data SQL planner: the path from a question over uploaded tables to executed SQL.
-Every query it can run is a validated typed abstract syntax tree (AST). A bounded deterministic
-search builds and ranks the candidates; selection runs them and serves the best-ranked one that runs
-and is grounded in the data. No local model writes or scores SQL, and no step samples: the search is
-rule-based, and selection filters its ranking with a stable order. Only when no candidate is
-eligible, and the operator enabled Gemini, does the labelled fallback run
-([below](#labelled-gemini-fallback)).
+Every query it can run is a validated typed abstract syntax tree (AST). Learned encoder readers read
+the question beside the schema as named readings, and a deterministic builder makes each reading a
+typed AST. Selection runs the candidates, keeps the ones that are grounded in the data, and lets a
+learned re-scorer order them and a learned refusal decide whether to serve the best one. No model
+writes SQL, and no step samples.
 
 ## What it does
 
 Given a question, tables, and foreign keys, the planner:
 
-1. Builds a typed schema graph.
-2. Links question roles to tables, columns, operators, and values.
-3. Constructs, validates and ranks search candidates with named deterministic features.
-4. Expands recursive queries, constraints, extrema, and set operations when applicable.
-5. Runs up to 25 ranked candidates on an in-memory copy of the tables. A query that fails, compares
-   a text column with a value it never holds while another column does, or joins columns the foreign
-   keys keep apart is ineligible.
-6. Serves the best-ranked eligible candidate. Named dates, a SUM or AVG that reads only rows its joins
-   repeat (served only when every eligible candidate does), calculation intents, a named money total,
-   and the decomposition leaf contract constrain that ranking; they never rescore it.
-7. Only when no candidate is eligible and Gemini is enabled, runs the labelled fallback.
+1. Builds a typed schema graph (`engine/sql_schema.py:SchemaGraph`).
+2. Stage 1 (XLM-R base) scores each table's use and each column's; the six most probable tables are
+   kept, and a wide table's 20 most probable columns.
+3. Each stage-2 reader (XLM-R large) reads the question beside the kept tables and scores every
+   reading the builder uses. Decoding keeps up to 16 of the most probable distinct readings per reader.
+4. The builder (`engine/readers/readings.py:build`) makes each reading a typed AST, joining the tables
+   a block uses along the foreign keys. The readers' candidates are pooled, each SQL once, most probable
+   first, and the registered calculations add their expansions (`TableQuery.search_pool`).
+5. Runs every pooled candidate on an in-memory copy of the tables. A query that fails, compares a
+   text column with a value it never holds while another column does, or joins columns the foreign keys
+   keep apart is ineligible.
+6. The re-scorer (XLM-R base) orders the eligible candidates. Named dates, a SUM or AVG that reads only
+   rows its joins repeat (served only when every eligible candidate does), calculation intents, and the
+   decomposition leaf contract constrain that order; they never rescore it.
+7. The refusal (`engine/data/readers/refusal.json`) serves the choice only when it is confident;
+   otherwise the reply says how the best-ranked candidate read the question.
 8. Renders only validated ASTs to SQL. A served top-1 ranking keeps every row tied with its first
    row (`sql_ast.keep_ties`, rendered with `RANK() OVER`); a larger `LIMIT` keeps exactly that many rows.
 
@@ -31,15 +35,15 @@ one immutable `AnalysisPlan`. SQL and readable SQLAlchemy/Python are emitted ind
 plan; neither source is parsed to create the other. See
 [DETERMINISTIC_EMITTERS.md](DETERMINISTIC_EMITTERS.md).
 
-When a named request is compound — the search reads the question as a set operation — the engine
+When a named request is compound — the readers' most probable reading is a set operation — the engine
 requests one bounded decomposition retry instead of running a query that answers a fragment.
-Compound structure is the search's own reading, taken before any candidate runs: a named request
-that is not compound is served by the best-ranked single query. A conversational model proposes
-only natural-language leaf questions and a closed `cross`/`anti_join` topology. The same planner
-selects every leaf, under the leaf contract; `engine/decomposition.py` fuses their typed outputs into
-one DAG. No text of the decomposition proposal becomes SQL, Python, an identifier, a join key, or an
-intermediate result. A leaf never takes the Gemini fallback (`select_query(..., allow_fallback=False)`):
-a leaf with no runnable query rejects the decomposition, and the chat model restates the leaf.
+Compound structure is read from the pool before any candidate runs
+(`engine/decomposition.py:compound_candidate`): a named request that is not compound is served by the
+best-ranked single query. A conversational model proposes only natural-language leaf questions and a
+closed `cross`/`anti_join` topology. The same selection chooses every leaf, under the leaf contract;
+`engine/decomposition.py` fuses their typed outputs into one DAG. No text of the decomposition proposal
+becomes SQL, Python, an identifier, a join key, or an intermediate result. A leaf with no reading the
+contract accepts rejects the decomposition, and the chat model restates the leaf.
 
 AST validity is broader than dual-emitter coverage. The lowering adapter requires proven ORM row
 identities and scalar join targets. Unsupported ASTs retain SQL execution under the default policy
@@ -51,9 +55,9 @@ logical graph edge and one `Join`; rendering produces an atomic conjunction such
 `ON child.country = parent.country AND child.postal = parent.postal`. The validator rejects
 any component that does not connect the new table to the existing join graph.
 
-With the fallback off, the same inputs produce the same selection. That removes sampling variance,
-not natural-language ambiguity, schema-linking errors, missing search rules, or ranking errors. A
-fallback answer also depends on Gemini's reply.
+The same inputs and model files produce the same selection: the models run in fixed precision with no
+sampling, ties keep pool order, and nothing depends on hash order. That removes sampling variance, not
+natural-language ambiguity, schema-linking errors, or ranking errors.
 
 ## Architecture
 
@@ -66,8 +70,12 @@ question + tables + foreign keys
       SchemaGraph
           |
           v
-  typed bounded AST search + named deterministic ranking (CandidateRanker)
-  -> up to 25 ranked candidates (SEARCH_CANDIDATES)
+  stage 1: schema items -> six tables, a wide table's 20 columns
+          |
+          v
+  stage-2 readers -> up to 16 distinct readings each (decode.candidates)
+  builder: each reading -> a typed AST (readings.build)
+  pool: each SQL once, most probable first, + calculation expansions
           |
           v
   run each candidate on an in-memory SQLite copy
@@ -78,66 +86,61 @@ question + tables + foreign keys
   equate columns the foreign keys keep apart (sql_grounding.py)
           |
           v
-  serve the best-ranked eligible candidate          served_by: search
-  (named dates, a total that counts no row twice,
-   a calculation intent or a named money total may
-   prefer a later eligible one)
+  re-scorer orders the eligible candidates
+  (named dates, a total that counts no row twice, or a
+   calculation intent may prefer a later eligible one)
           |
-          |   none eligible, and the operator enabled Gemini
-          +------------------------------------------------+
-          |                                                v
-          |                       one request-scoped wording rewrite
-          |                       search again -> run/ground/serve
-          |                       (original wording also coverage-checked)
-          |                                                served_by: gemini-rewrite
-          v                                                |
-  validated AST -> SQL (or SQL + Python) <-----------------+
+          v
+  refusal: confident -> serve        not confident -> "I read this as ..."
+          |
+          v
+  validated AST -> SQL (or SQL + Python)
   a top-1 ranking keeps its ties (keep_ties)
 ```
 
-The search's construction and ranking rules are hand-written; the frozen encoder supplies role and
-schema similarities to them. Each candidate carries its named ranking features and evidence
-(`ScoredQuery.features`, `ScoredQuery.evidence`), so its place in the order can be explained term by
-term. Selection adds no score of its own: it walks the ranking and serves the first eligible member,
-subject to the date, double-counting, calculation and money-total preferences
-(`engine/sql_rank.py:select_ranked_candidate`).
-`PoolSelection.record()` reports the decision:
+Each candidate carries its read-as line as its evidence and its rank among its reader's readings as a
+feature (`ScoredQuery.evidence`, `ScoredQuery.features`); its score is the decoder's log probability.
+The pool and the re-scorer's scores depend only on the question and the data, so a request reads them
+once (`ReadingSearch.pool`, `ReadingSearch.rescore`) although the decomposition probe, compose's routing
+probe and the delegate each select. `PoolSelection.record()` reports the decision:
 
 | Selection field | Meaning |
 |---|---|
-| `pool_size` | Ranked search candidates pooled (at most 25) |
+| `pool_size` | Candidates pooled |
 | `executable` | Members that ran within the step budget |
 | `misgrounded` | Members that ran but bind a literal or a join the data or the foreign keys contradict |
 | `eligible` | Members that ran and are grounded |
-| `selected` | Pool index of the served member, or `null` when none is eligible |
-| `rank` | The served member's place among the eligible members (0 is the best ranked) |
-| `score` | The served member's search score |
-| `calculation_satisfied`, `money_total` | Whether a calculation intent or a named money total chose it |
+| `selected` | Pool index of the served member, or `null` when none is eligible or the refusal declined |
+| `rank` | The served member's place among the eligible members in the re-scorer's order (0 is first) |
+| `score` | The served member's log probability from the decoder |
+| `calculation_satisfied` | Whether a calculation intent chose it |
 | `date_satisfied`, `double_counted` | Whether it keeps the dates the question names, and whether a SUM or AVG of it reads only rows its joins repeat |
-| `served_by` | `search` or `gemini-rewrite` |
-| `fallback` | Present when the rewriter ran: `kind`, `model`, the rewording, and why nothing was served |
 
-When the fallback served the answer, the counts describe the deterministic search pool for the
-reworded question.
+### Readers and builder
 
-### Labelled Gemini fallback
+| Module | Responsibility |
+|---|---|
+| `engine/readers/search.py` | `ReadingSearch`: schema items, pruning, the stage-2 readers' pooled candidates, re-scoring, and the refusal (`confident`) |
+| `engine/readers/text.py` | The schema as each model reads it: tables, columns, types, sample values, and the question's values beside the columns that hold them (`Schema.anchors`), fitted to the token budget |
+| `engine/readers/models.py` | The three model kinds (schema items, readings, re-scorer) and their inputs, shared by serving and training |
+| `engine/readers/layout.py` | The readings' output layout |
+| `engine/readers/decode.py` | Outputs to the most probable distinct readings, with generic semantics: a date the question names is read through `engine/sql_dates`, a column an equality pins is not shown again, and a pointed value drops the marks of the list it stood in |
+| `engine/readers/readings.py` | The readings form, the builder (`build`), and its inverse (`readings_of`, used for training labels) |
+| `engine/readers/read_as.py` | The plain-English "read as" line of a reading |
 
-`engine/question_rewrite.py` runs when no candidate is eligible or the selected plan leaves request words
-unresolved, and `engine/llm.py` reports Gemini available (`EXTERNAL_LLM_ENABLED` and a Vertex AI
-project). It makes one request-scoped rewrite; the
-deterministic search then builds, runs, and grounds candidates as usual:
+A reader whose `reader.json` says `{"anchored": true}` reads the question's values listed first beside
+their columns; matching is on the data, not on a word list. The weights live in `engine/data/readers/`
+(`stage1/`, `stage2_*/`, `rescorer/`, `refusal.json`). `training/readers/` trains them, and only
+`training/readers/promote.py` installs them ([training/readers/README.md](../training/readers/README.md)).
 
-1. `rewrite`: Gemini returns one rewording of the question in the tables' own words
-   (`engine/sql_prompt.py:REWRITE_SYSTEM`). A rewording equal to the question, ignoring case and
-   spacing, is discarded. The search runs on the rewording, so the SQL is still the search's.
-The prompt carries the question and schema text from `engine/sql_prompt.py`: table and column names,
-inferred types, and foreign keys. In the question, the phrases the search reads as cell values are quoted, and one
-it reads as held inside a column's values ("all inspection checklist") is spelled as that column containing the
-value (`sql_prompt.prompt_question`). It carries no other cell value, no conversation history, and no rows.
-Replies are JSON objects of a fixed shape and bounded in length. Recognized source values, quoted
-text, and numbers from the question must remain in the rewrite; the reply is not cached.
-[ARCHITECTURE.md](ARCHITECTURE.md#labelled-gemini-fallback)
-describes the data Gemini receives and the answer labels.
+### Refusal and the read-as line
+
+The refusal is a logistic model over the re-scorer's probability, the decoder's log probability, the
+margin to the next candidate, the rank, and whether the result is empty, with a threshold fitted on
+held-out databases (`training/readers/refusal.py`). When it declines, nothing is selected and the reply
+is a clarification: "I read this as “…”, but I'm not confident that is what you asked"
+(`engine/tables.py:unsure_clarification`). A served answer carries `read_as`, the readers' plain reading
+of the served query (`engine/readers/read_as.py`), which the thread shows as the turn's "read as" line.
 
 ## Public API
 
@@ -147,8 +150,10 @@ Live serving goes through `engine/tables.py`. `TableQuery.serve(tables, question
 full own-data pipeline (ingest → schema → `_serve_ast` → guard → execute) and returns the
 answer plus the winning candidate. `_serve_ast` calls `select_query`, the one own-data selection
 also used by decomposition leaves, the Spider evaluator, and the offline regression gate. The compose
-host's search probe (`engine/decomposition.search_probe`) reads only its first stage, `search_pool`: whether
-the question is compound, and whether the upload reads it whole (`engine/routing.reads_upload_whole`):
+host's probe (`engine/decomposition.search_probe`) reads its first stage, `search_pool`, to decide
+whether the question is compound, and otherwise selects, so routing can ask whether the upload reads
+the question whole (`engine/routing.reads_upload_whole`: the refusal accepted a reading and the
+question names no world type or measure the upload lacks):
 
 ```python
 from engine.encoder_overlay import EncoderQuery
@@ -166,11 +171,11 @@ tables = [
     },
 ]
 
-engine = EncoderQuery()          # loads the runtime bundle: the encoder and its heads
+engine = EncoderQuery()          # the runtime bundle; the readers load on first use
 result = engine.serve(tables, "list each customer name and total order amount")
 print(result["sql"])
-print(result["selection"])       # pool counts, the served member's rank and score, served_by
-print(result["fallback"])        # None unless the labelled Gemini fallback ran
+print(result["read_as"])         # how the readers read the question
+print(result["selection"])       # pool counts, the served member's rank and log probability
 ```
 
 To see the whole decision, call `select_query` on normalized tables:
@@ -180,109 +185,61 @@ norm, fks = engine.ingest(tables)
 sch, colidx, tablemap = engine.schema(norm, fks)
 selection = engine.select_query("list each customer name and total order amount",
                                 norm, fks, sch, tablemap)
-for index in selection.ranking:                 # eligible members, best ranked first
-    print(selection.pool[index].score, selection.pool[index].sql)
-print(selection.selected, selection.served_by)  # the served pool index and what built it
+for index in selection.ranking:                 # eligible members, in the re-scorer's order
+    print(selection.pool[index].evidence[0], selection.pool[index].sql)
+print(selection.selected)                       # the served pool index, or None
 ```
 
-### Direct AST search
-
-To call only the deterministic search, build the typed schema and foreign keys and call
-`search_ast`:
-
-```python
-from engine.encoder_overlay import EncoderQuery
-
-engine = EncoderQuery()
-norm, fks = engine.ingest(tables)
-sch, colidx, tablemap = engine.schema(norm, fks)
-
-candidates = engine.search_ast(
-    "list each customer name and total order amount",
-    sch, norm, fks,
-    max_candidates=25,
-)
-
-print(candidates[0].sql)         # rendered SQL
-print(candidates[0].query)       # typed AST
-print(candidates[0].evidence)    # generation and ranking trace
-print(candidates[0].features)    # numeric ranking features
-```
+`search_pool(question, norm, fks, sch)` returns the pool alone, most probable first, before anything
+runs.
 
 Trusted internal callers may pass tuple edges to `ingest(tables, explicit_fks=...)` using
 `from_cols` and `to_cols`. This parameter is an internal planner boundary; serving does not
 read foreign keys from uploaded table dictionaries.
 
-`search_ast` builds a `SchemaGraph` (`engine/sql_search.py: SchemaGraph.from_planner`), runs
-`SQLSearcher(graph, ...).search(...)`, and returns ranked, validated candidates. The search uses
-the encoder's similarities but no generative model.
-
-The own-data `/api/knowledge` response keeps its existing SQL and result fields and adds a
+The own-data `/api/knowledge` response keeps its SQL and result fields and adds `read_as`, a
 `planner` object with `ast`, `candidate_count`, `evidence`, `features`, and `selection` (the fields
-above). A fallback answer also carries the top-level `fallback` record, and its `model` string names
-the Gemini model.
+above), and a `coverage` record certifying the reading. A declined question carries `clarify`,
+`reason`, and the best-ranked candidate's `read_as` instead of a result.
 
 ## Supported SQL
 
-The AST, validator, renderer, and search rules support:
+The AST, validator, and renderer support:
 
 - multiple projections and `DISTINCT`;
 - `COUNT`, `SUM`, `AVG`, `MIN`, and `MAX`;
 - typed `+`, `-`, `*`, and real-valued `/` expressions, including aggregates over expressions;
-- typed comparisons, ranges, dates, categorical values, `AND`, and `OR`; a number in a question is one value
-  however it is written (`numeric.NUMBER_WORD`): "over 1,000" compares with 1000 and "over 2.5" with 2.5, never
-  with 1, 000, 2 or 5;
-- value exclusions: "not", "except", "excluding" or "without" excludes (`!=`) the first value named after it,
-  within three words, and each value "and", "or" or "nor" joins to that one ("orders not Done or Cancelled");
-  a value named after another value is kept ("orders not Done in France"), and a negation word inside a value
-  is the value's ("Not Started"). The completeness check refuses a query that excludes a value the question
-  keeps, keeps one it excludes, or leaves an excluded value unexcluded (`sql_search.value_polarity`, read by
-  `query_contract.constraint_violations`), whether the column is compared bare or through `LOWER`, on either
-  side, or in an `IN`/`NOT IN` list; a negated subquery ("customers who never bought X") makes its exclusion
-  inside the subquery;
-- substring filters: `LOWER(column) LIKE '%text%'` (`Lower`), for the texts a question asks values to hold
-  (`sql_search.substring_requests`): a quoted text or the word after "substring", "letter" or "word"; a
-  text right after "contain" or "include", whole value or not ("keywords containing 'inspection checklist'"),
-  while a column's words between them keep a whole value one value ("contain the paragraph text 'Brazil'");
-  and a whole value after "all" or "every" that one row holds while other values hold it ("all inspection
-  checklist", not "all Paris orders"). The completeness check requires each such text compared with LIKE, in
-  the column the question names right before "contain" or "include" when it names one ("a city containing",
-  "the state whose name contains") or in the column whose value "all" quantified, and reads the words that
-  asked for it once it is;
-- aggregate operands: a text column is an aggregate's operand only where its name ends the phrase the
-  aggregate word begins ("the total of the Amount"; "total keyword volume" totals a volume), and an average a
-  spelled column name holds ("Avg. monthly searches") asks for none by itself (`sql_expansion.asked_cues`, which
-  the search, the ranker and the constraint expansion's "X or Y" readings all read);
-- rows a listing names: a listing of numbers alone shows first the text column its filter keeps several values
-  of (a LIKE pattern, `NOT LIKE`, `!=`, `IN` over two or more values or `NOT IN`, or an `OR` of one column's
-  values), so "the Avg. monthly searches for all Keyword containing 'inspection checklist'" lists each keyword
-  beside its searches (`sql_search._rows_named`, applied after the ranking). A filter on one value, a listing
-  that shows a text or key column, a total or other aggregate, a group, `DISTINCT` and a single row are
-  unchanged;
-- calendar phrases on a date column (`engine/sql_dates.py`): a month without a year compares
-  `DatePart('month')`, and a dated phrase ("after August 10, 2026") compares the date itself;
-- grouping by a column, or by the year-month of a date column (`DatePart('year_month')`, '2026-08'):
-  "total amount by month", "monthly", "per month", "which month" (`sql_dates.period_grouping`);
-- durations (`engine/sql_durations.py`): "more than 6 months", "at least 2 weeks", "over a year ago" compare
-  `DateSpan`, the days from a row's start date to its end date, or to the question's date while it has none,
-  over the unit's length (a month is 30.4375 days, a year 365.25);
+- typed comparisons, ranges, dates, categorical values, `AND`, and `OR`;
+- substring filters, including `LOWER(column) LIKE '%text%'` (`Lower`);
+- `DatePart('month')` and `DatePart('year_month')` of a date column, compared or grouped by;
+- `DateSpan`, the days from a row's start date to its end date (or to an ISO date), over a day, week,
+  month or year (`engine/sql_durations.py`, used by the world routes);
 - grouping, `HAVING`, ordering, and limits;
 - direct and multi-hop foreign-key joins;
 - aliases and self-joins;
 - scalar subqueries, `IN`, `NOT IN`, `EXISTS`, and `NOT EXISTS`;
 - derived tables and nested aggregation;
 - `UNION`, `INTERSECT`, and `EXCEPT`;
-- row extrema, frequency extrema, zero-inclusive counts, dual extrema, and top-N, with a served
-  top 1 keeping its ties (`SelectQuery.with_ties`).
+- a served top 1 keeping its ties (`SelectQuery.with_ties`).
+
+The readers' form (`engine/readers/readings.py`) holds a subset: one block, or two joined by `UNION`,
+`INTERSECT`, `EXCEPT`, or a nested condition (a scalar subquery, `IN` or `NOT IN`); per block the
+selected columns with their aggregates, conditions under one `AND` or `OR` with `=`, `!=`, `>`, `<`,
+`>=`, `<=`, `LIKE`, `NOT LIKE`, `IN`, or `NOT IN`, a date column's month or year-month, grouping, `HAVING`,
+ordering in one direction, a limit, `DISTINCT`, and a share (an aggregate over the part's conditions
+divided by the same aggregate over the whole). A plain column a grouped block shows or sorts by joins its
+`GROUP BY`. `readings_of` names the reason a query falls outside the form (a self-join, a derived table,
+`EXISTS`, a literal `IN` list, two columns compared, mixed `AND`/`OR`, three blocks), and the builder adds
+nothing the readings do not say except the joins.
 
 Grammar support does not imply perfect language coverage. A valid AST can still be absent
-because the question was linked to the wrong role or no search rule proposed that shape.
+because the readers read the question wrongly or the form cannot hold its shape.
 
 Arithmetic is handled by `engine/calculations/`, not by SQL-string templates. A specification
-detects explicit syntax, binds role-named numeric columns, and proposes a `BinaryExpr` tree. The
-shared expander obtains complete join trees from `SchemaGraph`; composite keys remain one typed
-foreign-key edge. The post-ranking verifier describes the selected AST and requires the expected
-expression plus a complete registered-key path between its bound operands on every `UNION`,
+detects explicit syntax, binds role-named numeric columns, and expands the readers' candidates into a
+`BinaryExpr` tree. The shared expander obtains complete join trees from `SchemaGraph`; composite keys
+remain one typed foreign-key edge. The post-ranking verifier describes the selected AST and requires the
+expected expression plus a complete registered-key path between its bound operands on every `UNION`,
 `INTERSECT`, or `EXCEPT` branch before a number can be released.
 
 Registered forms are `SUM(amount * rate_to_<target>)` for direct currency conversion (`AVG` when
@@ -294,10 +251,6 @@ when the typed foreign key includes its temporal coordinate. Piecewise tax sched
 interest periods, and latest-prior/as-of joins are not silently approximated; they clarify. Currency
 also retains its filter, identity, and stated-unit realizations. ISO parsing and the canonical
 `rate_to_<code>` convention live in `engine/currency_intent.py`.
-
-Qwen similarities can order eligible operand bindings. They do not create intent by themselves,
-change unit normalization, supply a missing key, or satisfy verification. This is why retraining can
-improve recognition without moving arithmetic correctness into a stochastic decoder.
 
 ## Validation and safety
 
@@ -322,35 +275,27 @@ SQL statements. Serving also retains its SELECT-only execution guard.
 
 | Module | Responsibility |
 |---|---|
+| `engine/readers/` | The learned readers, the decoder, and the deterministic builder ([above](#readers-and-builder)). |
 | `engine/sql_ast.py` | Immutable AST, validation, and rendering. |
 | `engine/sql_dates.py` | Calendar phrases of a question as typed date comparisons; the month words a query realized. |
 | `engine/sql_durations.py` | Duration phrases of a question, the date columns a span runs between, and the duration words a query realized. |
 | `engine/sql_grounding.py` | Pool eligibility: text literals that fit their column and joins the foreign keys allow; which SUM or AVG reads only rows its joins repeat (a selection preference). |
 | `engine/sql_schema.py` | Typed schema and join-path search. |
-| `engine/sql_search.py` | `SQLSearcher`: base beam, capability ordering, and candidate assembly. |
 | `engine/sql_candidate.py` | Scored-candidate container and evidence. |
-| `engine/sql_expansion.py` | Shared AST construction helpers. |
-| `engine/sql_recursive.py` | Recursive queries, sets, aliases, and self-joins. |
-| `engine/sql_constraints.py` | `HAVING`, disjunction, scalar, and membership rules. |
-| `engine/sql_extrema.py` | Extrema, top-N, and set difference. |
-| `engine/sql_parsimony.py` | Bounded projection/table variants of pooled candidates (minimal join, binding, drop/add column, operand swap, DISTINCT). |
-| `engine/sql_rank.py` | Hand-written search ranking features (`CandidateRanker`), the pool contract (`SEARCH_CANDIDATES`, `execution_op_limit`), and the selection record (`PoolSelection`, `FallbackRecord`). |
-| `engine/question_rewrite.py` | The labelled, request-scoped Gemini wording rewriter; the deterministic search still owns SQL. |
-| `engine/sql_prompt.py` | The schema text and instructions Gemini reads in the fallback. |
-| `regress/sql_import.py` | SQL text importer used by offline evaluation and migration tools; not used by serving fallback. |
+| `engine/sql_expansion.py` | Question-word helpers shared by the date and duration readers, the calculations, decomposition and the world routes; `plain_marks`. |
+| `engine/sql_rank.py` | The pool contract (`execution_op_limit`), the selection record (`PoolSelection`) and its post-ranking rule (`select_ranked_candidate`); `analyze_question` for the calculations. |
+| `engine/query_contract.py` | The unreadable-measure checks (`unreadable_operand`) and the `Coverage` record. |
+| `regress/sql_import.py` | SQL text importer used by offline evaluation, training labels and tests; never used by serving. |
 | `engine/calculations/core.py` | Typed plans and branch-preserving computation evidence. |
 | `engine/calculations/specifications.py` | Registered currency, ratio, and rate-application semantics. |
-| `engine/calculations/search.py` | Calculation-plan expansion into validated AST candidates. |
-| `engine/calculations/registry.py` | Shared selection, verification, ranking features, and clarify policy. |
+| `engine/calculations/search.py` | Calculation-plan expansion of the readers' candidates into validated AST candidates. |
+| `engine/calculations/registry.py` | Shared selection, verification, and clarify policy. |
 | `engine/currency_intent.py` | Currency syntax and canonical rate-column rules used by the currency specification. |
 | `engine/deterministic/plan.py` | Immutable topologically ordered plan shared by both source emitters. |
 | `engine/deterministic/lower.py` | Strict lowering from the supported typed-AST subset; unsupported shapes remain on SQL. |
 | `engine/deterministic/emitter/` | Deterministic SQL view-stack and readable SQLAlchemy/Python source emitters. |
 | `engine/deterministic/runtime.py` | In-memory Python loading, execution policy, and SQL/Python parity checking. |
 | `engine/decomposition.py` | Closed compound proposal validation and typed leaf-plan fusion. |
-
-`SQLSearcher.search` remains the low-level ablation boundary. The capability modules do
-not depend on one another's private internals.
 
 ## Spider results
 
@@ -360,10 +305,12 @@ Do not copy changing accuracy figures into architecture documentation. The stand
 the serving-faithful `whole_db` run: all database tables, the served selection, and no gold table
 hints. `gold_tables` is an oracle table-selection diagnostic, not a standard Spider result.
 
-A measured accuracy belongs to the whole served selection: search, pool execution and grounding,
-loaded from the same runtime bundle the service loads, with the Gemini fallback off. The recorded
-runs measured earlier designs, the search alone and then the search with a local SQL-writing model
-and a fitted arbiter, and then the current selection (2026-10-02).
+A measured accuracy belongs to the whole served selection: the readers, pool execution and grounding,
+the re-scorer and the refusal, loaded from the same runtime bundle the service loads. The readers'
+training sources include Spider's train and dev questions (all but 20 calibration databases), BIRD
+and Spider-Syn, so a Spider DEV run reads databases the readers trained on; the Spider test set
+appears in no training step and is scored only in totals
+([training/readers/README.md](../training/readers/README.md)).
 
 ## Reproduction
 
@@ -374,10 +321,8 @@ python spider/probe/fetch_data.py --include-train
 ```
 
 Run the serving-faithful evaluation. It calls `TableQuery.select_query`, the serving selection,
-with the runtime bundle in `engine/data` (fetch it with `python -m engine.fetch_weights`); there is
-no planner-mode flag and no model to pass. Leave `EXTERNAL_LLM_ENABLED` unset for the headline: the
-evaluator records `fallback.enabled` and `fallback.model` in its contract, so a run with the
-fallback on is a separate, labelled measurement.
+with the runtime bundle in `engine/data` and the readers in `engine/data/readers`; there is no
+planner-mode flag and no model to pass.
 
 Standard Spider (whole_db — the headline comparison number):
 
@@ -390,7 +335,8 @@ python -m spider.probe.full_eval \
 Oracle table selection (gold_tables — the product-analogue upper bound): rerun the same
 command with `--config gold_tables`. `--selection pool_oracle` additionally executes the whole
 pool and scores each question by its best member: the ceiling any selection change could reach.
-Model training and promotion are covered in [`docs/TRAINING.md`](TRAINING.md).
+Model training and promotion are covered in [`docs/TRAINING.md`](TRAINING.md) and, for the readers,
+[`training/readers/README.md`](../training/readers/README.md).
 
 The same evaluator can execute a lowerable selected AST through the readable Python emitter
 without changing candidate generation, ranking, gold execution, or comparison:
@@ -410,14 +356,15 @@ Python fields extend the existing scalar-gold report rather than defining anothe
 ## Tests
 
 ```bash
+python -m tests.test_readers
 python -m tests.test_sql_ast
 ```
 
-The hermetic tests execute generated SQL against in-memory SQLite and cover AST typing,
-rendering, joins, recursion, constraints, extrema, profiles, deterministic candidate
-expansion, deterministic ordering, pool execution and grounding, and the SQL import gate. They
-stub the encoder, and their planner has no fallback attached, so they need no weights and make no
-Gemini call.
+`tests.test_readers` covers the readers' deterministic half: the readings form and its builder, the
+decoder's generic semantics, and the serialization, with outputs written as a model would write them.
+`tests.test_sql_ast` executes SQL against in-memory SQLite and covers AST typing, rendering, joins,
+grounding, the SQL import gate, and the plumbing of the one own-data selection over a pool written as
+SQL and imported into the typed AST, with the re-scorer and refusal stubbed. Neither loads weights.
 
 Run the repository aggregate suite with:
 
@@ -427,16 +374,14 @@ python -m tests.run_all
 
 ## What remains
 
-The planner is deterministic, and Spider is not solved. The next work should be measured against these bottlenecks (see RESULTS.md
+Spider is not solved. The next work should be measured against these bottlenecks (see RESULTS.md
 for recorded numbers):
 
-1. Coverage: add search rules for question families with no correct pool member. The fallback is
-   not a substitute for a search rule, and the headline is measured without it.
-2. Ranking: measure pool recall (`--selection pool_oracle`) separately from the served top-1. Where
-   a correct candidate is pooled but outranked, fix the named ranking rule that put another first.
-3. Latency: read the request's `[timing]` line (`pool_execute`, `pool_grounding`, `fallback`)
+1. Recall: measure pool recall (`--selection pool_oracle`) separately from the served top-1. A question
+   with no correct pool member needs a reading the readers do not make or a shape the form cannot hold.
+2. Ranking and refusal: where a correct candidate is pooled but not served, separate the re-scorer's
+   order from the refusal's decision.
+3. Latency: read the request's `[timing]` line (`pool_execute`, `pool_grounding`, `rescore`)
    before optimizing.
-4. Treat a larger encoder as a controlled capacity experiment after objective and data changes.
-
-Search controls and evidence use functional names (`recursive`, `constraint`, and `extrema`) rather
-than historical implementation phases; these capabilities are one planner, not separate architectures.
+4. Treat a larger reader or a new training mix as a controlled experiment under
+   [training/readers/README.md](../training/readers/README.md).

@@ -722,9 +722,7 @@ def test_anti_join_evidence_takes_the_first_reading_that_keeps_the_left_grain():
     def plan_with(*readings):
         planner = Mock()
         planner.postgres_row_identity = False
-        def select_query(leaf, *_, allow_fallback=True):
-            # A leaf is the chat model's wording: it never takes the Gemini fallback.
-            assert allow_fallback is False, "a decomposition leaf asked for the Gemini fallback"
+        def select_query(leaf, *_):
             return leaves[leaf] if leaf in leaves else pool_selection(*readings)
 
         planner.select_query.side_effect = select_query

@@ -6,12 +6,10 @@ from typing import Any, Sequence
 
 from engine.calculations.core import (
     ComputationEvidence,
-    branch_realizes_plan,
     compose_row_plans,
     describe_computation,
 )
 from engine.calculations.specifications import SPECIFICATIONS
-from engine.sql_ast import Query
 from engine.sql_schema import SchemaGraph
 
 
@@ -38,34 +36,15 @@ def detect_calculations(question: str):
     )
 
 
-def calculation_operand_queries(question: str) -> tuple[tuple[str, str], ...]:
-    """Role-specific retrieval probes for the shared encoder."""
-    return tuple(
-        (f"{intent.specification}:{role}", f"{phrase} | {question}")
-        for intent in detect_calculations(question)
-        for role, phrase in sorted(intent.operands.items())
-    )
-
-
-def calculation_operand_scores(intent, semantic_signals):
-    available = getattr(semantic_signals, "calculation_operands", {}) or {}
-    return {
-        role: available.get(f"{intent.specification}:{role}", {})
-        for role in intent.operands
-    }
-
-
-def plans_for(question: str, graph: SchemaGraph, semantic_signals=None):
+def plans_for(question: str, graph: SchemaGraph):
     return tuple(
         plan
         for intent in detect_calculations(question)
-        for plan in _BY_NAME[intent.specification].plans(
-            intent, graph, calculation_operand_scores(intent, semantic_signals)
-        )
+        for plan in _BY_NAME[intent.specification].plans(intent, graph)
     )
 
 
-def composed_plans_for(question: str, graph: SchemaGraph, semantic_signals=None):
+def composed_plans_for(question: str, graph: SchemaGraph):
     """Return plans that realize every detected intent in one typed expression.
 
     One intent retains its registered plans. Multiple intents are admissible only when their
@@ -74,12 +53,7 @@ def composed_plans_for(question: str, graph: SchemaGraph, semantic_signals=None)
     intents = detect_calculations(question)
     if not intents:
         return ()
-    groups = tuple(
-        _BY_NAME[intent.specification].plans(
-            intent, graph, calculation_operand_scores(intent, semantic_signals)
-        )
-        for intent in intents
-    )
+    groups = tuple(_BY_NAME[intent.specification].plans(intent, graph) for intent in intents)
     if any(not group for group in groups):
         return ()
     if len(groups) == 1:
@@ -142,9 +116,8 @@ def _unrealized_grain(question: str, graph: SchemaGraph, evidence: ComputationEv
             continue
         # A dimension is routinely grouped by its DISPLAY column while the phrase binds to its key:
         # "by customer" binds customers.customer_id (the "id" token is stripped) but the right query
-        # groups by customers.name. CandidateRanker._group_alignment already accepts a grouping
-        # column by TABLE for exactly this reason, and ranks that query first — so requiring a column
-        # match here contradicted the ranker and turned correct answers into declines.
+        # groups by customers.name, so a grouping column is accepted by its TABLE: requiring a column
+        # match here turned correct answers into declines.
         if any(column.table in roles.group_tables for column in branch.grouping):
             continue
         return tuple(sorted(requested, key=key))
@@ -189,37 +162,6 @@ def assess_calculations(
                 "reason": "the selected query does not exactly compose every requested calculation",
             } for row in rows]
     return tuple(rows)
-
-
-def _query_realizes_plan(query: Query, plan, graph: SchemaGraph) -> bool:
-    evidence = describe_computation(query)
-    return bool(evidence.branches) and all(
-        branch_realizes_plan(branch, plan, graph) for branch in evidence.branches
-    )
-
-
-def calculation_rank_features(
-    question: str,
-    query: Query,
-    graph: SchemaGraph,
-    semantic_signals=None,
-) -> tuple[tuple[str, float], ...]:
-    """Inspectable preference only; release admissibility remains post-ranking."""
-    features = []
-    for intent in detect_calculations(question):
-        if intent.operation == "filter":
-            continue
-        plans = _BY_NAME[intent.specification].plans(
-            intent, graph, calculation_operand_scores(intent, semantic_signals)
-        )
-        if not plans:
-            continue
-        realized = any(_query_realizes_plan(query, plan, graph) for plan in plans)
-        features.append((
-            f"calculation:{intent.specification}:{intent.operation}",
-            8.0 if realized else -8.0,
-        ))
-    return tuple(features)
 
 
 def select_calculation_candidate(

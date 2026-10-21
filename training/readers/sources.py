@@ -1,0 +1,94 @@
+"""Where the readers' training steps find questions, schemas and databases: the one place that knows.
+
+- Spider: questions and schemas from the official spider_data.zip (train_spider, train_others, dev, tables.json);
+  databases from the checkout's spider/data/dbs and the train_others databases the evaluator does not keep
+  (spider_official/train_dbs_extra). Override with --spider-zip and --db-dir.
+- BIRD's training set (``add_bird``): train.json, train_tables.json, train_databases/<db>/<db>.sqlite. Its
+  databases are disjoint from Spider's.
+- Spider-Syn (``add_syn``): train_spider.json and dev.json, Spider's questions reworded (SpiderSynQuestion) over
+  Spider's databases.
+
+Every database is read as the evaluator reads it: at most 5,000 rows per table (spider.probe.evalutil.load_capped),
+its foreign keys from the dataset's schema file.
+"""
+from __future__ import annotations
+
+import json
+import os
+import zipfile
+from pathlib import Path
+
+from engine.sql_schema import SchemaGraph
+from spider.probe.evalutil import build_mem_db, load_capped
+from spider.probe.spider_eval import spider_foreign_keys
+
+ROOT = Path(__file__).resolve().parents[2]
+SPIDER_ZIP = r"C:\work\datasets\spider_official\spider_data.zip"
+SPIDER_DB_DIRS = (str(ROOT / "spider" / "data" / "dbs"), r"C:\work\datasets\spider_official\train_dbs_extra")
+SPIDER_SETS = ("train_spider.json", "train_others.json", "dev.json")
+TOKENIZER = r"C:\work\datasets\models\xlm-roberta-base"   # XLM-R base and large share one tokenizer
+CAP = 5000
+
+
+def add_arguments(parser):
+    """The --spider-zip and --db-dir options every step that reads Spider takes."""
+    parser.add_argument("--spider-zip", default=SPIDER_ZIP, help=f"Spider's spider_data.zip (default {SPIDER_ZIP})")
+    parser.add_argument("--db-dir", action="append", dest="db_dirs", default=None,
+                        help="a folder of <db_id>.sqlite files, repeatable (default: " + ", ".join(SPIDER_DB_DIRS) + ")")
+
+
+def capped_graph(path, meta):
+    """The schema graph of a database read with at most CAP rows per table."""
+    capped = load_capped(path, cap=CAP)
+    return SchemaGraph.from_tables(list(capped.values()), spider_foreign_keys(meta))
+
+
+def capped_database(path, meta):
+    """(in-memory connection, schema graph) of a database read with at most CAP rows per table."""
+    capped = load_capped(path, cap=CAP)
+    return (build_mem_db(list(capped.values())),
+            SchemaGraph.from_tables(list(capped.values()), spider_foreign_keys(meta)))
+
+
+class Sources:
+    """Questions by source ("train_spider", "train_others", "dev", and "bird_train", "syn_train", "syn_dev" when
+    added), schema metadata by database, and the folders the databases are in."""
+
+    def __init__(self, spider_zip=SPIDER_ZIP, db_dirs=None):
+        with zipfile.ZipFile(spider_zip) as z:
+            self.questions = {name.split(".")[0]: json.loads(z.read("spider_data/" + name)) for name in SPIDER_SETS}
+            self.tables = {t["db_id"]: t for t in json.loads(z.read("spider_data/tables.json"))}
+        self.db_dirs = list(db_dirs or SPIDER_DB_DIRS)
+
+    @classmethod
+    def from_args(cls, args):
+        return cls(args.spider_zip, args.db_dirs)
+
+    def add_syn(self, directory):
+        """Spider-Syn: Spider's questions reworded with synonyms (sources "syn_train", "syn_dev"); the databases
+        are Spider's."""
+        for name, source in (("train_spider.json", "syn_train"), ("dev.json", "syn_dev")):
+            self.questions[source] = [dict(q, question=q["SpiderSynQuestion"])
+                                      for q in json.load(open(os.path.join(directory, name), encoding="utf-8"))]
+
+    def add_bird(self, directory):
+        """BIRD's training set: its questions (source "bird_train"), schemas and databases."""
+        tables = {t["db_id"]: t for t in json.load(open(os.path.join(directory, "train_tables.json"),
+                                                        encoding="utf-8"))}
+        assert not set(tables) & set(self.tables), "BIRD and Spider database names overlap"
+        self.tables.update(tables)
+        self.questions["bird_train"] = json.load(open(os.path.join(directory, "train.json"), encoding="utf-8"))
+        self.db_dirs.extend(os.path.join(directory, "train_databases", db) for db in sorted(tables))
+
+    def db_path(self, db_id):
+        for folder in self.db_dirs:
+            path = os.path.join(folder, db_id + ".sqlite")
+            if os.path.exists(path):
+                return path
+        raise FileNotFoundError(db_id)
+
+    def graph(self, db_id):
+        return capped_graph(self.db_path(db_id), self.tables[db_id])
+
+    def database(self, db_id):
+        return capped_database(self.db_path(db_id), self.tables[db_id])

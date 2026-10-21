@@ -214,19 +214,24 @@ def test_injected_attribute_cannot_make_its_own_join_necessary():
 _REPEAT_SCRIPT = (
     "import os, sys\n"
     "sys.path.insert(0, os.environ['PR_ROOT'])\n"
+    "from engine.readers.readings import build\n"
+    "from engine.sql_ast import render_query\n"
+    "from engine.sql_schema import SchemaGraph\n"
     "from engine.tables import TableQuery\n"
-    "from engine.sql_search import SQLSearcher\n"
     "planner = TableQuery()\n"
     "tables=[{'name':'t','columns':['city','amount'],'rows':[['Paris',100],['Lyon',80],['Paris',50]]}]\n"
     "norm,fks=planner.ingest(tables)\n"
-    "c=SQLSearcher.from_tables(norm,fks,max_candidates=25).search('total amount in Paris')\n"
-    "print('SQL::' + (c[0].sql if c else 'NONE'))\n"
+    "block={'tables':['t'],'distinct':False,'select':[[0,'SUM','t.amount',False]],'where':[['t.city','=','Paris']],"
+    "'conj':'AND','group':[],'having':[],'order':[],'dir':None,'limit':None}\n"
+    "q=build({'structure':'single','blocks':[block]}, SchemaGraph.from_tables(norm,fks))\n"
+    "print('SQL::' + render_query(q))\n"
 )
 
 
 def test_cross_process_sql_repeatability():
-    # The typed-AST planner's SELECTION must be deterministic ACROSS processes (review Finding 4): two fresh
-    # interpreters, same input, byte-identical SQL. Pin threads/hashseed so ordering can't drift.
+    # Every own-data candidate is a reading the deterministic builder (engine/readers/readings.build) makes a typed
+    # AST, and that construction must be deterministic ACROSS processes (review Finding 4): two fresh interpreters,
+    # same input and reading, byte-identical SQL. Pin threads/hashseed so ordering can't drift.
     root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     env = {**os.environ, "PR_ROOT": root, "OMP_NUM_THREADS": "1", "MKL_NUM_THREADS": "1", "PYTHONHASHSEED": "0"}
     outs, err = [], ""
@@ -257,13 +262,15 @@ def test_a_compose_refusal_is_the_answer_in_serving_and_evaluation_alike():
     sheet = {"name": "orders", "columns": ["city", "amount"],
              "rows": [["Paris", "not-a-number"], ["Lyon", "310"], ["Paris", "95"]]}
     reader = SimpleNamespace(present=lambda question: {"GROUP"})
-    record = full_eval.predict(_hermetic_planner(), ComposeEngine(reader=None), reader, [sheet],
+    planner = _hermetic_planner()
+    planner.pool = []                                    # the readers build no reading the upload answers
+    record = full_eval.predict(planner, ComposeEngine(reader=None), reader, [sheet],
                                "total amount by city in Europe")
     assert record["stage"] == "compose_clarify" and record["ok"] is False, record
     assert record["error"].startswith("The amount column has a value that isn't a number"), record["error"]
     # Contrast: a clean amount column is not refused by compose.
     clean = {**sheet, "rows": [["Paris", "120"], ["Lyon", "310"], ["Paris", "95"]]}
-    record = full_eval.predict(_hermetic_planner(), ComposeEngine(reader=None), reader, [clean],
+    record = full_eval.predict(planner, ComposeEngine(reader=None), reader, [clean],
                                "total amount by city in Europe")
     assert record.get("stage") != "compose_clarify", record
 

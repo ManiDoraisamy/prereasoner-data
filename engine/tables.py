@@ -101,8 +101,7 @@ def affinity(struct):
 DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}([ T].+)?$")      # ISO dates (sort + substr-year safe as TEXT)
 # The planner's reply when no runnable reading reads the whole question (engine/answer_presentation.UNREAD_REPLY).
 NO_EXECUTABLE_CANDIDATE = "planner: no executable AST candidate"
-# A year in a column name marks a dated copy of a measure ("Searches: Oct 2025").
-_YEAR_IN_NAME = re.compile(r"(?<!\d)(?:19|20)\d{2}(?!\d)")
+READERS_MODEL = "engine - learned readers + typed SQL AST builder"
 
 
 def name_words(name):
@@ -208,13 +207,15 @@ def table_from_rows(name, columns, rows):
 
 class _PoolRuns:
     """The in-memory SQLite copy of one request's tables that ``TableQuery.select_query`` runs its pools
-    on, and whether each query it ran there finished: the rewording's pool (step 4) copies no table again
-    and reruns no query the first pool ran."""
+    on, and whether each query it ran there finished and the shape of what it returned: a pool member is run
+    once per selection."""
 
     def __init__(self, planner, tablemap, sch):
         self._planner, self._tablemap, self._sch = planner, tablemap, sch
         self._connection = None
         self.outcomes = {}
+        # (rows, columns) of each query that ran: the result shape the re-scorer reads
+        self.shapes = {}
 
     def connection(self):
         if self._connection is None:
@@ -244,8 +245,6 @@ class TableQuery:
         self.tok = None
         self.qwen = None
         self.hdim = None
-        # The labelled Gemini fallback of select_query (engine/question_rewrite.py); EncoderQuery sets it.
-        self.question_rewriter = None
 
     # ---------- encoding ----------
     # The vector for a text depends only on the text and the loaded weights, so encoded texts are
@@ -398,126 +397,44 @@ class TableQuery:
         return sims[0][0] if sims and sims[0][1] > 0.3 else None
 
     # ---------- planning ----------
-    def ast_semantic_signals(self, question, sch):
-        """Encode role-specific question phrases in the same metric space as schema columns."""
-        from engine.calculations.registry import (
-            CALCULATION_INTENT_PROTOTYPES,
-            calculation_operand_queries,
-        )
-        from engine.sql_rank import SemanticSignals, semantic_role_phrases
-        phrases = semantic_role_phrases(question)
-        columns = [c for c in sch if c.get("qvec") is not None]
-        if not columns or getattr(self, "qwen", None) is None:
-            return SemanticSignals.empty()
-        tables = sorted({c["table"] for c in sch})
-        roles = list(phrases)
-        calculation_names = list(CALCULATION_INTENT_PROTOTYPES)
-        calculation_phrases = [CALCULATION_INTENT_PROTOTYPES[name] for name in calculation_names]
-        operand_queries = calculation_operand_queries(question)
-        vectors = self._encode(
-            [phrases[role] for role in roles]
-            + tables
-            + calculation_phrases
-            + [phrase for _, phrase in operand_queries]
-        )
-        role_vectors = {role: vectors[i] for i, role in enumerate(roles)}
-        table_vectors = {table: vectors[len(roles) + i] for i, table in enumerate(tables)}
-
-        def cosine(a, b):
-            av = np.asarray(a, np.float32); bv = np.asarray(b, np.float32)
-            return float(av @ bv / ((np.linalg.norm(av) * np.linalg.norm(bv)) + 1e-9))
-
-        column_roles = {
-            role: {(c["table"], c["name"]): cosine(vector, c["qvec"]) for c in columns}
-            for role, vector in role_vectors.items()
-        }
-        global_vector = role_vectors["global"]
-        table_global = {table: cosine(global_vector, vector) for table, vector in table_vectors.items()}
-        calculation_start = len(roles) + len(tables)
-        calculation_intents = {
-            name: cosine(global_vector, vectors[calculation_start + index])
-            for index, name in enumerate(calculation_names)
-        }
-        operand_start = calculation_start + len(calculation_names)
-        calculation_operands = {
-            key: {
-                (column["table"], column["name"]): cosine(
-                    vectors[operand_start + index], column["qvec"]
-                )
-                for column in columns
-            }
-            for index, (key, _) in enumerate(operand_queries)
-        }
-        return SemanticSignals(
-            column_roles,
-            table_global,
-            calculation_intents=calculation_intents,
-            calculation_operands=calculation_operands,
-        )
-
-    def search_ast(self, question, sch, tables, fks, beam_size=64, max_candidates=25,
-                   use_semantic_signals=True, rank_candidates=True, expand_recursive=True,
-                   expand_constraints=True, expand_extrema=True, graph=None):
-        """Return ranked, typed SQL AST candidates from the deterministic search.
-
-        Bounded typed-AST search with hand-written, inspectable ranking. This is the first half of
-        own-data planning; ``select_query`` runs the candidates and serves the best one that runs.
-        ``tables`` stays in the signature to make the boundary explicit; the rich ``sch`` already
-        carries its values and inferred types.
-        """
-        from engine.sql_search import SQLSearcher, SchemaGraph
+    def search_pool(self, question, norm, fks, sch, graph=None):
+        """The readers' candidates under the pool contract: ``select_query``'s first stage
+        (engine.readers.search.ReadingSearch.pool), with the registered calculations' expansions of them
+        (engine.calculations.search). Its top candidate is the readers' most probable reading."""
+        from engine.calculations.search import CalculationQueryExpander
+        from engine.readers.search import reading_search
+        from engine.sql_expansion import plain_marks
+        from engine.sql_schema import SchemaGraph
+        question = plain_marks(question)
         if graph is None:
             graph = SchemaGraph.from_planner(sch, fks)
-        searcher = SQLSearcher(graph, beam_size=beam_size, max_candidates=max_candidates)
-        baseline_signals = (
-            self.ast_semantic_signals(question, sch)
-            if use_semantic_signals else None
-        )
-        return searcher.search(
-            question, semantic_signals=baseline_signals,
-            rank_candidates=rank_candidates,
-            expand_recursive=expand_recursive,
-            expand_constraints=expand_constraints,
-            expand_extrema=expand_extrema,
-        )
+        with request_timing.span("readers"):
+            pool = reading_search().pool(question, graph)
+        return pool + CalculationQueryExpander(graph).expand(question, pool)
 
-    def search_pool(self, question, norm, fks, sch, graph=None):
-        """The deterministic search's candidates under the pool contract: ``select_query``'s
-        first stage. Its top candidate is the search's structural reading of the question."""
-        from engine.sql_expansion import plain_marks
-        from engine.sql_rank import SEARCH_CANDIDATES
-        return self.search_ast(plain_marks(question), sch, norm, fks, max_candidates=SEARCH_CANDIDATES, graph=graph)
-
-    def select_query(self, question, norm, fks, sch, tablemap, searched=None, allow_fallback=True,
-                     graph=None):
+    def select_query(self, question, norm, fks, sch, tablemap, searched=None, graph=None):
         """Choose the query to serve for an own-data question; returns a ``PoolSelection``.
 
-        1. The deterministic search ranks up to ``SEARCH_CANDIDATES`` typed ASTs (``search_pool``).
+        1. The readers read the question against the schema and build their most probable readings as
+           typed ASTs (``search_pool``, engine/readers/search.py).
         2. Every candidate that passes the guard is run on an in-memory SQLite copy of the
            request's tables, under a step budget that grows with the cells of the tables it reads
-           (engine/sql_rank.execution_op_limit); the rewording's pool shares the copy and reruns no
-           query the first pool ran. A query that fails cannot be chosen, and
+           (engine/sql_rank.execution_op_limit). A query that fails cannot be chosen, and
            neither can one that tests a text column against a literal the column never holds
            while another column does, or one that joins two columns the foreign keys keep apart
            (engine/sql_grounding.py).
-        3. The best-ranked eligible candidate is served. A date the question names
-           (engine/sql_dates) keeps the choice to the candidates that realize it, when one does; a
-           candidate whose SUM or AVG reads only rows its joins repeat (engine/sql_grounding.py) is
-           chosen only when every one does; a
-           registered calculation intent (engine/calculations) takes the best-ranked candidate that
-           satisfies it, when one exists; and a money noun that names its table ("what's the sales in
-           London") takes the best-ranked candidate that aggregates a money column
-           (engine/sql_expansion.money_total_columns).
-        4. When no candidate is eligible or the selected plan leaves request words unread, and the
-           operator enabled Gemini, it may reword the question once (engine/question_rewrite.py). Gemini
-           sees schema names and types, never cell values or conversation history. The deterministic
-           typed search runs on that wording; its reading is served only when it runs, keeps every
-           constraint of the original question and leaves no word of the rewording unread.
+        3. The readers' re-scorer orders the eligible candidates by the question, each one's read-as line
+           and the shape of its result. A date the question names (engine/sql_dates) keeps the choice to
+           the candidates that realize it, when one does; a candidate whose SUM or AVG reads only rows its
+           joins repeat (engine/sql_grounding.py) is chosen only when every one does; and a registered
+           calculation intent (engine/calculations) takes the best-ranked candidate that satisfies it.
+        4. The readers' learned refusal serves the choice only when it is confident of it
+           (``ReadingSearch.confidence``, recorded as ``confidence``); otherwise nothing is selected, the
+           refused choice is recorded as ``declined``, and the reply says how it read the question.
 
         This is the one own-data selection: serving, decomposition leaves, the Spider evaluator and
         the offline regression gate all call it. The decomposition probe reads only its first stage
         (``search_pool``); a caller that already ran that stage passes its pool as ``searched``.
-        Decomposition leaves pass ``allow_fallback=False`` (engine/decomposition.py:_leaf_readings).
         """
         from engine.sql_expansion import plain_marks
         from engine.sql_schema import SchemaGraph
@@ -533,45 +450,17 @@ class TableQuery:
             searched = self.search_pool(question, norm, fks, sch, graph=graph)
         runs = _PoolRuns(self, tablemap, sch)
         try:
-            return self._select(question, norm, fks, sch, tablemap, graph, searched, allow_fallback, runs)
+            return self._choose(question, norm, sch, tablemap, graph, searched, runs)
         finally:
             runs.close()
 
-    def _select(self, question, norm, fks, sch, tablemap, graph, searched, allow_fallback, runs):
-        """Steps 2 to 4 of ``select_query`` on ``runs``, its one copy of the request's tables."""
-        from dataclasses import replace
-
-        selection = self._choose(question, norm, sch, tablemap, graph, searched, runs)
-        fallback = self.question_rewriter
-        selected_index = selection.selected
-        calculation_satisfied = (selected_index is not None and
-                                  selection.calculation_satisfied[selected_index])
-        unread = _query_has_unread_terms(
-            question, selection.candidate, graph,
-            calculation_satisfied=calculation_satisfied,
-        )
-        needs_rewrite = selection.selected is None or unread
-        if not needs_rewrite:
-            return selection
-        if not allow_fallback or fallback is None:
-            return replace(selection, selected=None) if unread else selection
-        if not fallback.available:
-            if selection.selected is None or not unread:
-                return selection
-            from engine.sql_rank import FallbackRecord
-
-            return replace(selection, selected=None, fallback=FallbackRecord(
-                "none", fallback.model, note="Gemini unavailable"))
-        return self._fall_back(question, norm, fks, sch, tablemap, graph, selection, fallback, runs,
-                               reject_baseline=selection.selected is not None and unread)
-
     def _choose(self, question, norm, sch, tablemap, graph, pool, runs):
-        """Run, ground and choose among one pool (steps 2 and 3 of ``select_query``)."""
+        """Run, ground, re-score and choose among one pool (steps 2 to 4 of ``select_query``)."""
         from dataclasses import replace
 
         from engine.calculations import select_calculation_candidate, detect_calculations
+        from engine.readers.search import reading_search
         from engine.sql_dates import realizes_dates, served_date_phrases
-        from engine.sql_expansion import aggregates_money_column, money_total_columns
         from engine.sql_expansion import tokens as question_tokens
         from engine.sql_grounding import double_counted_members, grounded_members
         from engine.sql_rank import PoolSelection, select_ranked_candidate
@@ -581,8 +470,13 @@ class TableQuery:
         with request_timing.span("pool_grounding"):
             grounded = grounded_members(pool, tablemap, graph)
             double_counted = double_counted_members(pool, tablemap)
-        ranking = tuple(index for index, (ran, sound) in enumerate(zip(executable, grounded))
-                        if ran and sound)
+        readers = reading_search()
+        shapes = [runs.shapes.get(member.sql) if ran else None for member, ran in zip(pool, executable)]
+        with request_timing.span("rescore"):
+            scores = readers.rescore(question, pool, shapes)
+        ranking = tuple(sorted((index for index, (ran, sound) in enumerate(zip(executable, grounded))
+                                if ran and sound),
+                               key=lambda i: (-(scores[i] if scores[i] is not None else -1e9), i)))
         calculation_satisfied = [False] * len(pool)
         if detect_calculations(question):
             for index in ranking:
@@ -590,79 +484,16 @@ class TableQuery:
                     question, norm, graph, [pool[index]])
                 calculation_satisfied[index] = bool(assessments) and all(
                     row.get("status") == "satisfied" for row in assessments)
-        money_total = [False] * len(pool)
-        money = money_total_columns(question, sch)
-        if money is not None:
-            table, columns = money
-            names = [column["name"] for column in columns]
-            for index in ranking:
-                money_total[index] = aggregates_money_column(pool[index].query, table, names)
         phrases = served_date_phrases(question, question_tokens(question), graph)
         date_satisfied = [realizes_dates(member.query, phrases) for member in pool]
-        from engine.query_contract import constraint_violations, coverage
-        ranking = tuple(index for index in ranking
-                        if not constraint_violations(question, pool[index].query, graph))
         request_timing.count("pool", len(pool))
         selection = PoolSelection(pool, tuple(executable), tuple(grounded), ranking, None,
-                                  tuple(calculation_satisfied), tuple(money_total),
-                                  tuple(date_satisfied), double_counted)
-        selected = select_ranked_candidate(ranking, calculation_satisfied, money_total, date_satisfied,
-                                           double_counted)
-        if selected is not None and not coverage(question, pool[selected], graph,
-                calculation_satisfied=calculation_satisfied[selected]).complete:
-            complete = tuple(index for index in ranking if coverage(question, pool[index], graph,
-                calculation_satisfied=calculation_satisfied[index]).complete)
-            if complete:
-                selected = select_ranked_candidate(complete, calculation_satisfied, money_total, date_satisfied,
-                                                   double_counted)
-        return replace(selection, selected=selected)
-
-    def _fall_back(self, question, norm, fks, sch, tablemap, graph, selection, fallback, runs,
-                   reject_baseline=False):
-        """Step 4 of ``select_query``: one isolated rewrite, followed by the same typed search."""
-        from dataclasses import replace
-
-        from engine.sql_rank import FallbackRecord
-
-        with request_timing.span("fallback"):
-            rewritten, note = fallback.rewrite(question, graph)
-            if rewritten is None:
-                baseline = replace(selection, selected=None) if reject_baseline else selection
-                return replace(baseline, fallback=FallbackRecord("none", fallback.model, note=note))
-            reread = self._choose(rewritten, norm, sch, tablemap, graph,
-                                  self.search_pool(rewritten, norm, fks, sch, graph=graph), runs)
-            if reread.selected is not None:
-                # Rewording may resolve a language/schema mismatch, but it may
-                # not choose between repeated source fields or reinterpret a
-                # named measure. Prove the original request against the returned
-                # AST too; cell values never go to Gemini for this check.
-                from engine.query_contract import constraint_violations
-                original_violations = constraint_violations(
-                    question, reread.candidate.query, graph
-                )
-                if original_violations:
-                    baseline = replace(selection, selected=None)
-                    return replace(baseline, fallback=FallbackRecord(
-                        "none", fallback.model, question=rewritten,
-                        note=original_violations[0]))
-                rewritten_is_complete = not _query_has_unread_terms(
-                    rewritten, reread.candidate, graph,
-                    calculation_satisfied=(
-                        reread.selected is not None and
-                        reread.calculation_satisfied[reread.selected]
-                    ),
-                )
-                if not rewritten_is_complete:
-                    baseline = replace(selection, selected=None) if reject_baseline else selection
-                    return replace(baseline, fallback=FallbackRecord(
-                        "none", fallback.model, question=rewritten,
-                        note="the rewritten question still has unread terms"))
-                return replace(reread, fallback=FallbackRecord(
-                    "rewrite", fallback.model, question=rewritten))
-            baseline = replace(selection, selected=None) if reject_baseline else selection
-            return replace(baseline, fallback=FallbackRecord(
-                "none", fallback.model, question=rewritten,
-                note="the search found no runnable query for the rewording"))
+                                  tuple(calculation_satisfied), tuple(date_satisfied), double_counted)
+        selected = select_ranked_candidate(ranking, calculation_satisfied, date_satisfied, double_counted)
+        confidence = readers.confidence(pool, scores, shapes, selected) if selected is not None else None
+        if not readers.confident(confidence):
+            return replace(selection, confidence=confidence, declined=selected)
+        return replace(selection, selected=selected, confidence=confidence)
 
     def _serve_ast(self, question, norm, fks, sch, tablemap, graph=None):
         """Select the own-data query (``select_query``) and execute it through this executor."""
@@ -684,18 +515,6 @@ class TableQuery:
         candidates = selection.pool
         candidate = selection.candidate
         if candidate is None:
-            from engine.query_contract import constraint_violations, explains_refusal, unreadable_measure_violation
-            from engine.sql_schema import SchemaGraph
-            if graph is None:
-                graph = SchemaGraph.from_planner(sch, fks)
-            for member in candidates:
-                for violation in constraint_violations(question, member.query, graph):
-                    if explains_refusal(violation):
-                        return None, None, violation, candidates, selection
-            # A measure the question names with cells that are not numbers explains a refusal with no candidate.
-            unreadable = unreadable_measure_violation(question, graph)
-            if unreadable:
-                return None, None, unreadable, candidates, selection
             if not candidates:
                 return None, None, "planner: no valid AST candidate", candidates, selection
             return None, None, NO_EXECUTABLE_CANDIDATE, candidates, selection
@@ -810,8 +629,11 @@ class TableQuery:
                         # Eligibility needs completion, but not a second materialized copy
                         # of tens of thousands of result rows for each candidate.
                         cursor = con.execute(candidate.sql)
-                        while cursor.fetchmany(1024):
+                        rows = 0
+                        while chunk := cursor.fetchmany(1024):
+                            rows += len(chunk)
                             remaining()
+                        runs.shapes[candidate.sql] = (rows, len(cursor.description or ()))
                         ran = True
                     except sqlite3.Error:
                         ran = False
@@ -911,19 +733,18 @@ class TableQuery:
         except Exception as exc:
             candidate, result, candidates, selection = None, None, (), None
             err = f"{type(exc).__name__}: {exc}"
-        clarification = None
+        clarification = declined = None
         if candidate is None and err == NO_EXECUTABLE_CANDIDATE and selection is not None and selection.ranking:
-            clarification = unread_clarification(question, selection.pool[selection.ranking[0]], graph)
-            if clarification is not None:
-                err = None
-        fallback = selection.fallback if selection is not None else None
-        served_by = selection.served_by if selection is not None else "search"
-        # The question the served query answers: Gemini's rewording when the search answered that.
-        answered = fallback.question if served_by == "gemini-rewrite" else question
-        model = "engine - typed SQL AST planner (deterministic search)"
-        if served_by == "gemini-rewrite":
-            model = (f"engine - typed SQL AST planner; the search read {fallback.model}'s rewording "
-                     "of the question")
+            from engine.decomposition import declined_compound
+            from engine.deterministic.context import current_analysis_context
+
+            if current_analysis_context() is not None:
+                declined = declined_compound(selection, question)
+            if declined is None:
+                clarification = unsure_clarification(selection.pool[
+                    selection.declined if selection.declined is not None else selection.ranking[0]])
+            err = None
+        model = READERS_MODEL
         sql = candidate.sql if candidate is not None else None
         computation = None
         if candidate is not None:
@@ -956,19 +777,16 @@ class TableQuery:
             "features": dict(candidate.features) if candidate is not None else {},
             "computation": computation.record() if computation is not None else None,
             "selection": selection.record() if selection is not None else None,
-            "fallback": fallback.record() if fallback is not None else None,
+            "read_as": read_as_of(candidate),
             "model": model,
         }
         if clarification is not None:
             response.update(clarification)
         if candidate is not None:
-            from engine.query_contract import coverage
-            checked_question = fallback.question if fallback is not None and fallback.kind == 'rewrite' else question
-            response['coverage'] = coverage(
-                checked_question, candidate, graph,
-                calculation_satisfied=bool(selection is not None and selection.selected is not None
-                                           and selection.calculation_satisfied[selection.selected]),
-            ).record()
+            # The readers' learned refusal accepted this reading: it is the own-data planner's certificate
+            # (engine/knowledge_query.py keeps its residual wording gate for the routes without one).
+            from engine.query_contract import Coverage
+            response['coverage'] = Coverage(True).record()
             from engine.sql_ast import share_output
             if share_output(candidate.query):
                 response["unit"] = "percent"         # a share of a whole: 0.3 is stated as 30%
@@ -978,7 +796,7 @@ class TableQuery:
             from engine.calculations import assess_calculations
             from engine.calculations.registry import attach_calculation_evidence
             assessments = assess_calculations(
-                answered,
+                question,
                 norm,
                 graph,
                 computation,
@@ -993,6 +811,8 @@ class TableQuery:
                 key: value for key, value in deterministic.items()
                 if key not in {"views", "final_sql"}
             }
+        elif declined is not None:
+            response["decomposition_required"] = declined
         elif candidate is not None:
             from engine.deterministic.context import current_analysis_context
             from engine.decomposition import selected_decomposition_required
@@ -1031,39 +851,25 @@ def _unread_copies(question, query, graph):
     return {"read": [table], "others": others}
 
 
-def unread_clarification(question, candidate, graph):
-    """The clarification for a question no runnable reading reads whole, from ``candidate``, the best-ranked
-    one: the words it leaves unread and the columns of its tables it does not read that could be what they
-    mean (``clarify``, ``reason``, ``dropped``). None when it reads every word, or none of the question's tables,
-    columns or values, as for a question in another language.
-
-    "keyword volume for home inspection checklist" read Keyword and the keyword but not "volume", and the reply
-    asked "Which interpretation should I use?" with nothing to choose (2026-10-05). A quantity word ("volume",
-    "amount") asks for a number, so it is offered numeric columns; a dated copy of a measure ("Searches: Oct
-    2025") only when no undated one is left."""
-    from engine.answer_presentation import unread_words_reply
-    from engine.query_contract import QUANTITY_WORDS, read_question
-    from engine.sql_ast import column_refs
-    from engine.sql_schema import is_surrogate_key
-
-    reading = read_question(question, candidate, graph)
-    if not reading.unread or not reading.named:
-        return None
-    tables = candidate.query.referenced_tables()
-    read = {(column.table, column.name) for column in column_refs(candidate.query)}
-    numeric = any(word in QUANTITY_WORDS for word in reading.unread)
-    options = [column.ref.name for column in graph.columns
-               if column.ref.table in tables and (column.ref.table, column.ref.name) not in read
-               and not is_surrogate_key(column.ref.name) and (column.ref.type.numeric or not numeric)]
-    undated = [name for name in options if not _YEAR_IN_NAME.search(name)]
-    options = list(dict.fromkeys(undated or options))[:4]
-    return {"clarify": True, "reason": unread_words_reply(reading.unread, options), "dropped": list(reading.unread)}
+def read_as_of(candidate):
+    """The readers' plain reading of ``candidate`` (engine/readers/read_as.py), or None for a query the readers
+    did not build."""
+    evidence = getattr(candidate, "evidence", None) or ()
+    first = evidence[0] if evidence else None
+    return first if isinstance(first, str) and first else None
 
 
-def _query_has_unread_terms(question, candidate, graph, *, calculation_satisfied=False):
-    from engine.query_contract import coverage
-    return not coverage(question, candidate, graph,
-                        calculation_satisfied=calculation_satisfied).complete
+def unsure_clarification(candidate):
+    """The reply when the readers' refusal is not confident of any runnable reading: how the best-ranked one read
+    the question, so the person can see what was understood and ask again in the sheet's own terms."""
+    read_as = read_as_of(candidate)
+    if read_as:
+        reason = (f"I read this as “{read_as}”, but I'm not confident that is what you asked. "
+                  "Ask again with the column names as your sheet spells them.")
+    else:
+        reason = ("I'm not confident I read this question right. "
+                  "Ask again with the column names as your sheet spells them.")
+    return {"clarify": True, "reason": reason, "dropped": [], "read_as": read_as}
 
 
 def sch_col_of(agg, sch):

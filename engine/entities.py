@@ -64,7 +64,7 @@ VALUE_ROUTE_MIN = 0.80   # a column routes to a world table when >= this fractio
 # (`world request failed: OperationalError`, 2026-08-30..09-25) came 5-57 s after the connector
 # refreshed its certificate (cloudsql.instances.connect), 8 s to 41 min after the connection's last
 # successful use, when one connection served every request. psycopg2 reports a connection closed only
-# after a statement fails on it. A request idle for longer than this (a Gemini rewording, a long pool
+# after a statement fails on it. A request idle for longer than this (reading a question, a long pool
 # run) is checked, while statements milliseconds apart are not.
 RCONN_IDLE_CHECK_S = 1.0
 

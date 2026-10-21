@@ -59,8 +59,8 @@ def test_dimension_reuses_world_encoder_and_copies_thresholds():
 
 
 def test_dimension_standalone_loads_only_the_encoder():
-    """The dimension endpoint is a readout over the encoder bundle. It once constructed the own-data
-    planner's SQL proposer without using it; it attaches no part of own-data selection."""
+    """The dimension endpoint is a readout over the encoder bundle: standalone, it loads that bundle once and
+    nothing else."""
     calls = []
     original = dimension_module.load_encoder
 
@@ -79,7 +79,6 @@ def test_dimension_standalone_loads_only_the_encoder():
     ok(len(calls) == 1, "standalone dimension loads the shared encoder bundle once")
     ok(calls[0][0] is model, "standalone loader initializes the dimension model")
     ok(calls[0][1] == deploy_dir, "standalone loader receives the selected bundle directory")
-    ok(model.question_rewriter is None, "dimension endpoint attaches no own-data SQL selection fallback")
 
 
 def test_dimension_requests_run_side_by_side():

@@ -30,10 +30,9 @@ decisions belong in `DECISIONS.md`, and measured SQL results belong in
   replacing external models are operator responsibilities. Do not make users manage architecture.
 - Replace external presentation/orchestration with a local model only through the controlled model
   experiment and promotion rules below. Keep SQL construction, calculation semantics, and
-  verification deterministic, and make provider migration transparent to users. The one exception
-  is the labelled Gemini wording rewrite of own-data selection (`engine/question_rewrite.py`): it runs
-  only when the search finds no runnable query, the deterministic search runs again, and the turn's
-  read-as line shows the rewording (never a paragraph in the answer).
+  verification deterministic, and make provider migration transparent to users. Own-data selection uses
+  no external model: the turn's read-as line shows the readers' plain reading (never a paragraph in the
+  answer).
 
 ## Non-negotiable outcome
 
@@ -68,15 +67,16 @@ Extend these owners. Do not build parallel replacements.
 | Own-data typed SQL AST and rendering | `engine/sql_ast.py` and the focused `engine/sql_*.py` modules |
 | Dual SQL/Python source plan, emission, and parity runtime | `engine/deterministic/`; it consumes the typed-AST winner and never becomes a second planner |
 | Bounded compound-question proposal validation and typed leaf-plan fusion | `engine/decomposition.py`; the existing AST planner still owns every leaf and `engine/deterministic/` still owns the one executable DAG |
-| Own-data AST search orchestration | `engine/sql_search.py`, called by `engine/tables.py:TableQuery.select_query` |
-| Own-data query selection (search + pool execution + grounding, then the labelled Gemini fallback only when nothing is eligible) — the ONE selection used by serving, decomposition leaves, the Spider evaluator, and the offline regression gate; the decomposition probe reads its first stage (`search_pool`) | `engine/tables.py:TableQuery.select_query` |
-| Labelled Gemini rewrite-only fallback of own-data selection; stateless request-scoped rewrite, then deterministic typed search | `engine/question_rewrite.py` + `engine/sql_prompt.py` |
-| The one LLM client (Gemini on Vertex AI) for the chat orchestrator, reference generation, and the selection fallback, gated by `EXTERNAL_LLM_ENABLED` | `engine/llm.py` |
+| Own-data readers: schema items, readings, the deterministic builder, re-scorer and refusal | `engine/readers/`, called by `engine/tables.py:TableQuery.search_pool` and `select_query`; weights in `engine/data/readers/` |
+| Own-data query selection (the readers' candidates + pool execution + grounding + re-scoring + refusal) — the ONE selection used by serving, decomposition leaves, the Spider evaluator, and the offline regression gate; the decomposition probe reads its first stage (`search_pool`) | `engine/tables.py:TableQuery.select_query` |
+| Readers training pipeline (labels, examples, training, cross-fold candidates, re-scorer, refusal) | `training/readers/` (candidates only in `training/readers/data/experiments/<id>/`) |
+| Promotion of a readers bundle into the runtime | `training/readers/promote.py` — the ONE writer of `engine/data/readers/` |
+| The one LLM client (Gemini on Vertex AI) for the chat orchestrator, starter questions and reference generation, gated by `EXTERNAL_LLM_ENABLED` | `engine/llm.py` |
 | Composition DAG, view execution, and the world-dependency record | `engine/compose.py` |
 | World/compose routing decision (the ONE shared `route()`) | `engine/routing.py` |
 | Compose serving host + world-grounding lookup | `engine/knowledge_compose.py` |
 | World grounding and knowledge joins | `engine/knowledge_query.py` |
-| Candidate scoring: search ranking (`CandidateRanker`), the pool contract, and the selection record (`PoolSelection`, `FallbackRecord`) | `engine/sql_rank.py` |
+| The pool contract, the selection record (`PoolSelection`) and its post-ranking rule | `engine/sql_rank.py` |
 | Table normalization and canonical planner table names | `engine/tables.py` |
 | World-table maintenance catalog (what is maintained, its cadence, when it last refreshed) | `db/sync/schedule.py` — the ONE writer of `knowledgebase.schedule`, read at serving time by `engine/pg.py:PgQuery._table_freshness` |
 | Private reference validation, persistence, and request selection | `engine/master.py` |
@@ -90,7 +90,7 @@ Extend these owners. Do not build parallel replacements.
 | Wikidata type QID -> schema.org class, ROUTER side | `engine/data/families.json` (canonical QIDs; 17 of its 27 resolve to zero rows in the snapshot) |
 | Promotion of a Schema.org candidate into the runtime bundle | `training/schema_org/promote.py` — the ONE writer of `engine/data/schema_{property_head.pt,property_model.json,class_signatures.json}` |
 | Serving-faithful Spider evaluation | `spider/probe/full_eval.py` |
-| Hermetic SQL planner regression suite | `tests/test_sql_ast.py` |
+| Hermetic own-data planner regression suites | `tests/test_readers.py` (the readers' deterministic half) and `tests/test_sql_ast.py` (AST, grounding, selection plumbing) |
 | Workbook and reference-data browser lifecycle | `web/public/lib/workbook.js` |
 | Sheets-as-reasoning derivation contract (step grammar, naming, rendering rules) | `docs/SHEETS_AS_REASONING.md` — every view emitter (`engine/compose.py`, the conversion trail in `engine/knowledge_tables.py`) and `web/public/lib/workbook.js` follow it; fix the path, never fork the grammar |
 | Per-request phase timing (the ONE `[timing]` line per served request) | `engine/request_timing.py` — instrument by calling its `span`/`count`/`mark`; do not add a second timing mechanism, and never log prompts, cells, questions or tokens |
@@ -161,10 +161,13 @@ Consolidation is part of each phase, not a future cleanup phase.
 
 ## SQL planner and routing rules
 
-- No model writes SQL. The typed search builds every served query from the encoder's named
-  readings; raise accuracy by extending that search, never by adding a SQL-generating model, a
-  learned ranker over model output, or a second selection path. Gemini may only provide a labelled
-  wording rewrite when the search finds no runnable query.
+- No model writes SQL. Encoder-only readers read each question beside its schema as named
+  readings, the deterministic builder makes every served query a typed AST from them, and the
+  readers' re-scorer and refusal choose among the built candidates that run. Raise accuracy through
+  the readers (data, training, decoding) and the builder, never by adding a SQL-generating model, a
+  generative model in selection, or a second selection path. No question-specific word lists or
+  patches: a rule in the decoder or builder must be generic semantics (dates, a pinned column, list
+  marks) that hold across schemas.
 - The typed AST is the only own-data SQL representation. New SQL behavior must
   be expressed as typed AST nodes, constraints, expansions, and renderer
   support, with focused tests.
@@ -213,7 +216,8 @@ The following are mandatory:
 - Run one controlled experiment per hypothesis. Do not repeatedly retrain while
   also changing code, data, objective, and evaluation.
 - Never train into `engine/data/`. Candidate weights go only to
-  `training/props/data/experiments/<experiment-id>/`, which is disposable and
+  `training/props/data/experiments/<experiment-id>/` or
+  `training/readers/data/experiments/<experiment-id>/`, which are disposable and
   gitignored.
 - Never overwrite the promoted runtime bundle during an experiment.
 - Never create `backup`, `old`, numbered, or side-by-side production model
@@ -259,7 +263,7 @@ not coverage.
 
 Minimum validation:
 
-- Planner/search/ranker change: `python -m tests.test_sql_ast`
+- Planner/readers/selection change: `python -m tests.test_readers` and `python -m tests.test_sql_ast`
 - Compose/routing change: `python -m tests.test_compose`
 - General Python change: `python -m compileall -q engine db training tests orchestrator mcp_server`
 - Repository-wide change: `python -m tests.run_all`

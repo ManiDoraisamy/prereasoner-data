@@ -138,8 +138,8 @@ def terminal_reply(shaped: dict[str, Any]) -> str:
         notes.append(f"From {read}. {_listed_names(others)} could answer this too; "
                      f"name {'it' if len(others) == 1 else 'one'} in your question to read "
                      f"{'it' if len(others) == 1 else 'that one'} instead.")
-    # A question Gemini reworded is the turn's reading, shown on its "read as" line
-    # (orchestrator.reading); appended to the answer, it was a second answer to read (2026-10-04).
+    # How the question was read is the turn's "read as" line (the engine's ``read_as``), never a paragraph here:
+    # appended to the answer, it was a second answer to read (2026-10-04).
     suffix = ("\n\n" + " ".join(notes)) if notes else ""
     if len(rows) == 1 and len(rows[0]) == 1:
         if _blank(rows[0][0]):

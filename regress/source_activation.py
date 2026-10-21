@@ -7,7 +7,9 @@ from dataclasses import dataclass
 from engine.enrichment import (
     EnrichmentRuntime, LoadedDataset, RuntimeIdentity, SnapshotPin,
 )
-from engine.sql_search import SQLSearcher
+from engine.readers.search import reading_search
+from regress.domain_enrichment import served_rows
+from engine.sql_schema import SchemaGraph
 
 
 @dataclass(frozen=True)
@@ -128,13 +130,13 @@ def run_iana_country_activation_benchmark() -> ActivationMetrics:
             continue
         selected += 1
         fks = [edge.as_foreign_key(1.0) for edge in first.explicit_fks]
-        candidates = SQLSearcher.from_tables(first.tables, fks).search(question)
+        candidates = reading_search().pool(question, SchemaGraph.from_tables(first.tables, fks))
         results = [_execute(first.tables, candidate.sql) for candidate in candidates]
         if expected in results:
             correct_pool += 1
         else:
             failures.append(f"positive-{index}: gold result absent from candidate pool")
-        if results and results[0] == expected:
+        if served_rows(first.tables, question, first.explicit_fks) == expected:
             correct_top1 += 1
         else:
             failures.append(f"positive-{index}: top-1 result is wrong")

@@ -10,7 +10,7 @@ must be fetched/produced separately; the small CSV/JSON artifacts are committed.
 python -m engine.fetch_weights
 ```
 This downloads `encoder.pt`, `encoder_meta.pt`, `qwen_lora/`, `anchor_assignment.npz`,
-`primitives.npz`, and `schema_property_head.pt` into this directory (see
+`primitives.npz`, `schema_property_head.pt` and `readers/` into this directory (see
 `engine/fetch_weights.py`). That is the whole runtime bundle: the engine loads no SQL model.
 `weights_manifest.json` pins the source revision and SHA-256 of every runtime weight; both existing and downloaded bundles
 must validate completely before use. The default source repo is the public
@@ -36,6 +36,7 @@ A local-only manifest intentionally refuses fresh-clone download. To retrain fro
 | `word_exchange_rate.json` | 1 KB | World word-table metadata for the ECB `exchange_rate` table; loaded with the other `word_*.json` files by `engine.knowledge_tables` and `engine.resolve_base`. | yes |
 | `taxonomy.csv` | 5 KB | The Wikidata P279 taxonomy (qid, category_1..N root->leaf, status, world_tables). Source of `engine.taxonomy.LEAF_PATH/LEAF_QID/LEAF_TABLES` and the non-geo type map. | yes |
 | `primitives.npz` | 72 KB | The learned 10-primitive linear head (`W`, `prims`, `thr`) read by `engine.primitive_head.PrimitiveReader`. | no (gitignored, `*.npz`) |
+| `readers/` | ~3.2 GB | The own-data readers (`engine.readers`): `stage1/` (XLM-R base schema items), `stage2_a/` and `stage2_b/` (XLM-R large reading models, each with a `reader.json` saying whether it reads the question's values beside their columns), `rescorer/` (XLM-R base) and `refusal.json`. Encoders stored in bfloat16, heads in float32. Installed only by `python -m training.readers.promote` (`training/readers/README.md`); every file is in the manifest's `files` map. | no (gitignored; fetched) |
 | `weights_manifest.json` | 1 KB | Pinned weight-repository revision and immutable hashes for the complete runtime bundle. | yes |
 | `word_city.json` | 5 KB | World word-table metadata (key/concepts/filter attrs/links) for the meaning-graph planner, loaded by the `word_*.json` glob in `engine.knowledge_tables` and `engine.resolve_base`. | yes |
 | `word_country.json` | 4 KB | ditto | yes |
@@ -46,7 +47,7 @@ A local-only manifest intentionally refuses fresh-clone download. To retrain fro
 | `schema_property_model.json` | 110 KB | Property-head metadata, read by `engine.schema_model` and `engine.router`. | yes |
 | `schema_class_signatures.json` | 424 KB | Class signatures for deterministic class scoring, read by `engine.schema_decode`. | yes |
 | `schema_training_manifest.json` | 63 KB | Training provenance for the Schema.org head. Hash-pinned under `committed_artifacts`; no `engine/` module reads it beyond bundle validation. | yes |
-| `sql_proposer/` | — | Retired 0.5B LoRA "d2" SQL adapter. It may still exist in old local copies (and is in the published bundle revision), but it is not in `weights_manifest.json`, `engine.fetch_weights` does not download it, and no code reads it. | no (gitignored) |
+| `sql_proposer/` | — | Retired 0.5B LoRA "d2" SQL adapter. It may still exist in old local copies (and in the weight repository's history before 2026-10-02), but it is not in `weights_manifest.json`, `engine.fetch_weights` does not download it, and no code reads it. | no (gitignored) |
 
 Notes:
 

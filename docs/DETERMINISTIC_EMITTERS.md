@@ -6,12 +6,11 @@ the source tree; deployment and evaluation evidence must identify the tested rev
 
 ## One planner, two readable programs
 
-The engine constructs and ranks typed SQL AST candidates. For a supported winner,
+The engine builds typed SQL AST candidates from the own-data readers' readings and selects one
+([ARCHITECTURE.md](ARCHITECTURE.md#own-data-sql-planner)). For a supported winner,
 `lower_select_query()` constructs one immutable `AnalysisPlan`. SQL and Python emitters independently
-consume that plan. No model writes Python source, and neither emitter translates the other's source.
-The labelled Gemini fallback can only rewrite a question; it cannot provide an AST or SQL. The search
-builds and ranks the typed AST that this shared plan consumes
-([ARCHITECTURE.md](ARCHITECTURE.md#labelled-gemini-fallback)).
+consume that plan. No model writes SQL or Python source, and neither emitter translates the other's
+source.
 
 The chat orchestrator's model proposes a named analysis action and slug. It does not normally split a
 question. If the engine's selected typed AST is compound and cannot be represented as one shared-plan
@@ -250,7 +249,7 @@ Operators propagate SQL nulls, ignore null aggregate operands, return zero for e
 return null for empty sums/averages/minima/maxima. Division by zero returns null. Python execution
 uses a local 128-digit Decimal context; division and averages round to 20 decimal places with ties
 away from zero, matching the emitted PostgreSQL `ROUND(..., 20)` policy. `LIKE` matches `%` (any run) and
-`_` (one character) over the whole text as both SQL engines do; the search always compares `LOWER(column)`
+`_` (one character) over the whole text as both SQL engines do; a `Lower` operand compares `LOWER(column)`
 with a lower-case pattern, so case never decides it.
 
 Verification compares each ordinary stage as an unordered multiset, preserving duplicates and column names.

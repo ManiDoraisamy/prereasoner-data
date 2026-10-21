@@ -28,18 +28,6 @@ LIGHT_VERB_PARTICIPLES = frozenset({"made", "done", "had", "taken", "given", "go
 # Degree words: "the most expensive event", "the least popular workshop", "more expensive than 4000".
 DEGREE_MODIFIERS = frozenset({"most", "least", "more", "less"})
 
-# The determiners saying whose a noun is: "the size of his or her dog" names no dog by "her".
-POSSESSIVE_DETERMINERS = frozenset({"my", "your", "his", "her", "its", "our", "their"})
-
-# The modifiers saying more of a noun, not whose it is: "what other details can you tell me" asks no other_details.
-GENERIC_MODIFIERS = frozenset({"other", "more", "additional", "further", "extra"})
-
-# The words a field naming where something is holds (canon() forms): "where the banks are located" is their city.
-PLACE_WORDS = frozenset({"address", "area", "city", "continent", "country", "county", "district", "location", "place",
-                         "province", "region", "state", "street", "town"})
-# The verbs saying where something is or lives, which such a field answers (canon() forms): "Which region is the city
-# Kabul located in?", "How many employees are living in Canada?".
-PLACE_VERBS = frozenset({"located", "situated", "live", "living", "lived", "reside", "residing", "resided"})
 
 # The words for what is of a country that its name does not begin (a regular one, "Australian" or "Kenyan", the value
 # index derives itself: sql_schema.SchemaGraph.value_index): "French singers" are of 'France'.
@@ -55,18 +43,12 @@ COUNTRY_DEMONYMS = {
 }
 
 # Comparatives and the operator each makes with the number after "than"; the measure some describe. The quantity
-# comparatives compare a count or an amount ("more than 3 models"). sql_expansion.comparative_operator reads both, and
-# the search builds a comparison for each of COMPARATIVES (sql_search).
+# comparatives compare a count or an amount ("more than 3 models"). sql_expansion.comparative_operator reads both.
 QUANTITY_COMPARATIVES = {"more": ">", "less": "<", "fewer": "<"}
 COMPARATIVES = {
     "greater": ">", "higher": ">", "bigger": ">", "larger": ">", "older": ">", "heavier": ">", "taller": ">",
     "longer": ">", "later": ">", "lower": "<", "smaller": "<", "younger": "<", "lighter": "<", "shorter": "<",
     "cheaper": "<", "earlier": "<",
-}
-COMPARATIVE_COLUMNS = {
-    "older": frozenset({"age"}), "younger": frozenset({"age"}), "heavier": frozenset({"weight"}),
-    "lighter": frozenset({"weight"}), "taller": frozenset({"height"}), "shorter": frozenset({"height", "length"}),
-    "longer": frozenset({"length", "duration"}), "cheaper": frozenset({"price", "cost"}),
 }
 
 # Negation and exclusion cues. Compose's exclusion detector reads this pattern, and a semantic search never
@@ -109,65 +91,6 @@ def action_words(text):
         if ((token.pos_ == "VERB" and (token.tag_ in FINITE_VERB_TAGS or token.lower_ in LIGHT_VERB_PARTICIPLES))
             or token.pos_ == "ADV")
         and not EXCLUSION_CUES.fullmatch(token.text)
-    )
-
-
-@lru_cache(maxsize=1024)
-def predicate_words(text):
-    """The lowercased words the tagger reads in ``text`` as an auxiliary or a finite verb (past or present tense): "do"
-    in "countries that do not speak English", "won" in "players who won in both 2013 and 2016". They say what the
-    rows did, so the search reads no stored value from them (a country code 'DO', a surname 'Won'). Participles, base
-    forms and modals stay out: "the closed stores" and "the approved claims" may name a status value, and "contacts
-    reached in may" a month."""
-    return frozenset(
-        token.text.lower() for token in spacy_model()(text or "")
-        if (token.pos_ == "AUX" and token.tag_ != "MD") or (token.pos_ == "VERB" and token.tag_ in {"VBD", "VBP", "VBZ"})
-    )
-
-
-@lru_cache(maxsize=1024)
-def verb_lemmas(text):
-    """For each lowercased word the tagger reads in ``text`` as a full verb, its lemma: "won" -> "win", "owned" ->
-    "own", "taught" -> "teach". The pipeline loads its lemmatizer disabled; it runs here, on demand."""
-    model = spacy_model()
-    doc = model.get_pipe("lemmatizer")(model(text or ""))
-    return {token.text.lower(): token.lemma_.lower() for token in doc if token.pos_ == "VERB" and token.lemma_}
-
-
-@lru_cache(maxsize=4096)
-def compound_parts(word):
-    """The two words a name writes together, where it is no word of its own and both halves are: "countrylanguage" ->
-    ("country", "language"), "playlisttrack" -> ("playlist", "track"); () otherwise. The longest first half wins."""
-    vocab = spacy_model().vocab
-    word = str(word).lower()
-    if len(word) < 6 or not word.isalpha() or not vocab[word].is_oov:
-        return ()
-    for split in range(len(word) - 3, 2, -1):
-        head, tail = word[:split], word[split:]
-        if not vocab[head].is_oov and not vocab[tail].is_oov:
-            return (head, tail)
-    return ()
-
-
-def agent_noun(lemma, word):
-    """Whether ``word`` names who does what ``lemma`` says: "winner" of win, "loser" of lose, "owner" of own,
-    "director" of direct, "creator" of create."""
-    if len(lemma) < 3 or not word.startswith(lemma[:-1]):
-        return False
-    forms = {lemma + "er", lemma + "r", lemma + "or", lemma + lemma[-1] + "er"}
-    if lemma.endswith("e"):
-        forms.add(lemma[:-1] + "or")
-    return word in forms
-
-
-@lru_cache(maxsize=1024)
-def relation_verbs(text):
-    """The lowercased words the tagger reads in ``text`` as a full verb, a participle included, not an auxiliary or
-    an exclusion cue: "used" in "templates used by documents", "conducted" in "the conductor that has conducted the
-    most orchestras"."""
-    return frozenset(
-        token.text.lower() for token in spacy_model()(text or "")
-        if token.pos_ == "VERB" and token.tag_.startswith("VB") and not EXCLUSION_CUES.fullmatch(token.text)
     )
 
 
@@ -234,68 +157,6 @@ def measured_rows(text, measures):
         if token.dep_ == "pobj" and token.pos_ == "NOUN" and not token.ent_type_
         and token.head.lower_ == "of" and token.head.head.lower_ in measures
     )
-
-
-@lru_cache(maxsize=1024)
-def recipient_classes(text):
-    """Unqualified plural recipient nouns of a verb, as in 'paid to suppliers'.
-
-    This is a grammatical role, not a business-field synonym. A singular/named
-    recipient or one carrying a modifier remains a potential row constraint.
-    """
-    return frozenset(token.text.casefold() for token in spacy_model()(text or '')
-                     if token.pos_ == 'NOUN' and token.tag_ == 'NNS' and not token.ent_type_
-                     and token.dep_ == 'pobj' and token.head.lower_ == 'to'
-                     and token.head.head.pos_ == 'VERB'
-                     and not any(child.dep_ in {'amod', 'compound', 'nmod', 'acl', 'appos'}
-                                 for child in token.children))
-
-
-@lru_cache(maxsize=1024)
-def value_participles(text):
-    """The participles ``text`` relates its rows to a value with, each with the words of its prepositional
-    object's own noun phrase: ("departing", ("apg",)) in "flights departing from APG", ("used", ("document",
-    "with", "the", "name", "data", "base")) in "used by a document with the name Data base". A clause attached
-    to the object is not part of it: in "staff working for the museums that were opened before 2009" the object
-    is "the museums". Exclusion cues ("excluding France") are never one."""
-    found = []
-    for token in spacy_model()(text or ""):
-        if token.tag_ not in {"VBN", "VBG"} or EXCLUSION_CUES.fullmatch(token.text):
-            continue
-        for preposition in token.children:
-            if preposition.dep_ not in {"prep", "agent"}:
-                continue
-            for target in preposition.children:
-                if target.dep_ == "pobj":
-                    found.append((token.text.lower(), tuple(part.text.lower() for part in _noun_phrase(target)
-                                                            if not part.is_punct)))
-    return tuple(found)
-
-
-# The attachments that start a clause of their own, or another conjunct, outside the noun phrase they attach to.
-_ATTACHED = frozenset({"relcl", "advcl", "conj", "cc", "punct"})
-
-
-def _noun_phrase(token):
-    """``token`` and its own modifiers, in order: its determiners, adjectives, compounds, appositions,
-    participles and prepositional phrases, not a relative or adverbial clause attached to it."""
-    phrase = []
-    for child in token.lefts:
-        if child.dep_ not in _ATTACHED:
-            phrase.extend(_noun_phrase(child))
-    phrase.append(token)
-    for child in token.rights:
-        if child.dep_ not in _ATTACHED:
-            phrase.extend(_noun_phrase(child))
-    return phrase
-
-
-@lru_cache(maxsize=1024)
-def number_words(text):
-    """The lowercased words the tagger reads as a spelled number somewhere in ``text``: "two" in "the two
-    oldest", never "single" in "single customers"."""
-    return frozenset(token.text.lower() for token in spacy_model()(text or "")
-                     if token.pos_ == "NUM" and token.text.isalpha())
 
 
 @lru_cache(maxsize=1024)

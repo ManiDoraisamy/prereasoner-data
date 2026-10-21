@@ -61,11 +61,14 @@ python -m engine.fetch_weights
 The default [weight repository](https://huggingface.co/prereasoner/prereasoner-weights) is public and
 requires no account or token. The fetch command pins an immutable repository commit and validates every
 file hash before installation. `HF_TOKEN` is only needed for an explicitly configured private replacement.
-The engine has no other model to fetch: no local model writes SQL.
+The own-data readers in `engine/data/readers/` are installed only by `training/readers/promote.py`,
+which records each file's SHA-256 in the same manifest
+([../training/readers/README.md](../training/readers/README.md)). No model writes SQL.
 
 ## 3. Run fast tests first
 
 ```powershell
+python -m tests.test_readers
 python -m tests.test_sql_ast
 python -m tests.test_deterministic_emitters
 python -m tests.test_calculations
@@ -195,10 +198,11 @@ The lifecycle is:
 3. Before each query, the browser auto-saves dirty references. Failure stops the query.
 4. `engine.master.relevant_tables` loads saved references through one database connection.
 5. The production FK detector selects direct and multi-hop references connected to the upload.
-6. Selected rows become typed planner tables; the normal AST search plans and executes the join.
+6. Selected rows become typed planner tables; the own-data selection reads them like any other table, and
+   the builder joins them along the same foreign keys.
 
 Reference selection does not scan question words, use gold SQL, or create a second planner. It uses the same
-relationship graph that will be handed to AST search.
+relationship graph that the planner's builder joins along.
 
 ## 7. Preview Firebase Hosting files directly (optional)
 
@@ -228,8 +232,9 @@ release browser test.
 |---|---|---|
 | AST nodes/rendering | `engine/sql_ast.py` | `tests.test_sql_ast` |
 | Dual SQL/Python analysis emission | `engine/deterministic/` | `tests.test_deterministic_emitters` |
-| Candidate expansion/search | `engine/sql_search.py` | `tests.test_sql_ast` |
-| Candidate scoring | `engine/sql_rank.py` | `tests.test_sql_ast` |
+| Own-data readers: schema text, decoding, readings form and builder | `engine/readers/` | `tests.test_readers` |
+| Own-data selection: pool execution, grounding, re-scoring, refusal | `engine/tables.py` (`select_query`), `engine/sql_rank.py` | `tests.test_sql_ast` |
+| Readers training and promotion | `training/readers/` | `tests.test_readers`, a fresh Spider evaluation |
 | FK inference | `engine/relations.py` | `tests.test_sql_ast`, `tests.test_master_ingest` |
 | Saved references | `engine/master.py` | `tests.test_master_ingest` |
 | Routing | `engine/routing.py` | `tests.test_routing` |

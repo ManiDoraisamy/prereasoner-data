@@ -356,9 +356,10 @@ python -m spider.probe.full_eval `
   --out spider/results/<unique-tag>/whole_db/full_eval_whole_db
 ```
 
-No SQL model runs, so a full run takes under an hour on a workstation CPU: the 2026-10-02 runs in
-[RESULTS.md](../spider/results/RESULTS.md) measured a median under 2 s per question. Leave
-`EXTERNAL_LLM_ENABLED` unset for the headline; the summary records whether the Gemini fallback ran.
+The selection runs the own-data readers from `engine/data/readers/` and calls no external model, so
+`EXTERNAL_LLM_ENABLED` does not change the result. Recorded run times are in
+[RESULTS.md](../spider/results/RESULTS.md). The readers' training sources include Spider's dev
+questions, so a DEV run is not a held-out measurement of them.
 
 To exercise the production backend policy on the clean scalar-gold subset, keep the same runner and
 comparison contract:

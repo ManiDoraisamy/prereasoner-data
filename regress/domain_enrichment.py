@@ -3,12 +3,14 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass
+from functools import lru_cache
 
 from engine.domain_profiles import PROFILES
 from engine.domain_typing import detect_profiles, detect_roles
 from engine.enrichment.runtime import EnrichmentRuntime, RuntimeIdentity
 from engine.enrichment.store import SnapshotStore
-from engine.sql_search import SQLSearcher
+from engine.readers.search import reading_search
+from engine.sql_schema import SchemaGraph
 
 
 @dataclass(frozen=True)
@@ -182,6 +184,21 @@ def _execute(tables, sql):
         connection.close()
 
 
+@lru_cache(maxsize=1)
+def _planner():
+    from engine.encoder_overlay import EncoderQuery
+
+    return EncoderQuery()
+
+
+def served_rows(tables, question, explicit_fks=()):
+    """The rows the production own-data entry point (engine/tables.py:TableQuery.serve) answers for ``question``,
+    with the enrichment's joins, or None when it answers nothing: a benchmark's top-1 is what serving selects."""
+    response = _planner().serve(list(tables), question, explicit_fks=explicit_fks)
+    result = response.get("result")
+    return [tuple(row) for row in result["rows"]] if result else None
+
+
 def run_serving_benchmark() -> ServingMetrics:
     tables = ({
         "name": "orders", "columns": ["order_id", "currency", "amount"],
@@ -199,12 +216,12 @@ def run_serving_benchmark() -> ServingMetrics:
         private_reference_versions={"merchant_catalog": "sha256:catalog"},
     )
     fks = [edge.as_foreign_key(1.0) for edge in plan.explicit_fks]
-    candidates = SQLSearcher.from_tables(plan.tables, fks).search(
-        "Show the currency symbol for every order"
+    candidates = reading_search().pool(
+        "Show the currency symbol for every order", SchemaGraph.from_tables(plan.tables, fks)
     )
     gold = [("USD", "$"), ("EUR", "EUR"), ("GBP", "GBP")]
     strict = [candidate for candidate in candidates if _execute(plan.tables, candidate.sql) == gold]
-    top1 = bool(candidates and _execute(plan.tables, candidates[0].sql) == gold)
+    top1 = served_rows(plan.tables, "Show the currency symbol for every order", plan.explicit_fks) == gold
     record = plan.manifest.record() if plan.manifest else {}
     complete = bool(
         record.get("digest") and record.get("domain_profile_version")

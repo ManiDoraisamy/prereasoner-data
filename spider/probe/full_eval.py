@@ -3,11 +3,11 @@
 The live stack routes each question (ComposedKnowledgeQuery._composed):
   * a question whose LEARNED primitive head fires a DEPTH primitive
     (EXCL/RATIO/TOPN/SHARE/TIME/HAVING/SORT/DIVIDE/RUNNING) -> the ComposeEngine view stack;
-  * everything else -> the delegate, whose SQL for a self-contained (no-world) table is the deterministic
-    typed-AST planner (tables.py search_ast -> engine.sql_search): a beam over a typed SQL AST that emits
-    projection, value-matched WHERE, >/<, dates, GROUP BY, ORDER BY, LIMIT, argmax, FK JOINs,
-    COUNT/SUM/AVG/MIN/MAX, plus recursive subqueries, aggregate constraints, disjunctions, and set/extrema
-    shapes, then ranks the pool with sql_rank.
+  * everything else -> the delegate, whose SQL for a self-contained (no-world) table is the own-data
+    planner (tables.py select_query -> engine/readers): learned encoder readers read the question beside the
+    schema, a deterministic builder makes each reading a typed SQL AST (FK joins, conditions, groups, order,
+    limits, set operations, nested conditions, shares), the pool runs, and a learned re-scorer and refusal
+    choose.
 
 The default `--backend sql` preserves the established selected-SQL evaluation. `python` lowers the same
 selected typed AST to the shared deterministic plan and executes its generated ORM/Python program on an
@@ -17,7 +17,7 @@ model, candidate pool, ranking, gold query, input cap, or the existing `spider_e
 contract. World resolution is irrelevant to self-contained Spider and the live clarify gate remains omitted;
 a refusal would still score wrong, so that omission can only make the benchmark an upper bound.
 
-Selection is the served one: `TableQuery.select_query` (search + pool execution + grounding), loaded
+Selection is the served one: `TableQuery.select_query` (readers + pool execution + grounding + re-scorer), loaded
 from the same runtime bundle the service loads, so the evaluator measures the shipped pipeline and cannot
 drift from it. --selection pool_oracle runs that same selection, then executes the ENTIRE pool and scores the
 example by its best member: an explicitly labeled oracle ablation (like --config gold_tables) that measures
@@ -360,7 +360,6 @@ def ast_predict(
                      "grounded": chosen.grounded[rank],
                      "eligible": chosen.executable[rank] and chosen.grounded[rank],
                      "calculation_satisfied": chosen.calculation_satisfied[rank],
-                     "money_total": chosen.money_total[rank],
                      "date_satisfied": chosen.date_satisfied[rank],
                      "double_counted": chosen.double_counted[rank]}
             ok, why = enc.guard(candidate.sql)
@@ -382,13 +381,12 @@ def ast_predict(
         return result
     candidate = chosen.candidate
     if candidate is None:
-        # Why nothing is served: no candidate ran, none ran within the question's constraints
-        # (query_contract.constraint_violations), or the eligible one leaves question words unread
-        # (the completeness gate). All three read "no executable candidate" once (review, 2026-10-09).
+        # Why nothing is served: no candidate ran, none that ran is grounded, or the readers' refusal is not
+        # confident of the eligible ones.
         if chosen.ranking:
-            error, stage = "the eligible candidate leaves question words unread", "completeness"
+            error, stage = "the readers are not confident of any eligible candidate", "refusal"
         elif any(chosen.executable):
-            error, stage = "no candidate meets the question's constraints", "constraints"
+            error, stage = "no executable candidate is grounded", "grounding"
         else:
             error, stage = "no executable candidate", "ast_search"
         return {"ok": False, "error": error, "stage": stage, "path": "ast", **evidence}
@@ -410,7 +408,6 @@ def ast_predict(
         "path": "ast",
         **backend,
         "plan": list(candidate.evidence),
-        "served_by": chosen.served_by,
         "candidate_score": round(candidate.score, 4),
         **evidence,
     }
@@ -441,7 +438,6 @@ def _score_pool_oracle(record, gold_rows):
                 "grounded": bool(entry.get("grounded")),
                 "eligible": bool(entry.get("eligible")),
                 "calculation_satisfied": bool(entry.get("calculation_satisfied")),
-                "money_total": bool(entry.get("money_total")),
                 "date_satisfied": bool(entry.get("date_satisfied")),
                 "double_counted": bool(entry.get("double_counted")),
             }
@@ -540,13 +536,13 @@ def predict(enc, eng, reader, tabs, question, schema_fks=None,
         except Exception:                        # noqa: BLE001
             depth = False
         if depth:
-            # As serving does: a question some search reading reads whole from the upload builds no compose
+            # As serving does: a question the readers read confidently from the upload builds no compose
             # plan (engine.routing.reads_upload_whole).
             from engine.decomposition import search_probe
             from engine.routing import reads_upload_whole
             try:
                 probe = search_probe(enc, tabs, question)
-                depth = not reads_upload_whole(question, probe.pool, probe.graph)
+                depth = not reads_upload_whole(question, probe.selection, probe.schema)
             except Exception:                    # noqa: BLE001 — serving declines a failed probe; compose runs
                 pass
         if depth:
@@ -655,13 +651,8 @@ def main():
         "cap": args.cap,
         "timeout": args.timeout,
     }
-    from engine import llm
     from engine.artifact_provenance import adapter_sha256, fingerprint_paths, validate_weight_bundle
     from engine.config import DATA_DIR
-
-    # The labelled Gemini fallback runs only when the operator enabled Gemini. The headline is the
-    # engine alone (EXTERNAL_LLM_ENABLED unset); a run with the fallback says so and names its model.
-    checkpoint_contract["fallback"] = {"enabled": llm.available(), "model": llm.model_id()}
 
     # Fingerprint every input the run reads (_input_paths) and the whole validated model bundle, whose
     # thresholds (anchor_assignment.npz) change answers without touching the encoder: any edit must
@@ -690,8 +681,7 @@ def main():
     enc = EncoderQuery()
     reader = PrimitiveReader(encoder=enc)
     eng = ComposeEngine(reader=reader)
-    print(f"loaded. evaluating {len(picked)} examples (config={args.config}, "
-          f"fallback={'on: ' + llm.model_id() if enc.question_rewriter.available else 'off'})\n", flush=True)
+    print(f"loaded. evaluating {len(picked)} examples (config={args.config})\n", flush=True)
 
     db_cache = {}
     ast_schema_cache = {}
@@ -846,7 +836,6 @@ def main():
         "python_row_limit": args.python_row_limit,
         "scalar_only": args.scalar_only,
         "compose": not args.no_compose,
-        "fallback": checkpoint_contract["fallback"],
         "cap": args.cap,
         "timeout": args.timeout,
         "prediction_seconds": _latency_summary(

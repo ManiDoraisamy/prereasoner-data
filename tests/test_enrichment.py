@@ -731,7 +731,11 @@ def test_runtime_order_shaped_table_abstains_when_values_are_not_currencies():
 
 def test_currency_conversion_attaches_fx_rates_and_planner_converts():
     # Rates are deliberately test-local. Production abstains until the ECB temporal join exists.
-    from engine.sql_search import SQLSearcher
+    from engine.calculations.search import CalculationQueryExpander
+    from engine.sql_ast import render_query
+    from engine.sql_candidate import ScoredQuery
+    from engine.sql_schema import SchemaGraph
+    from regress.sql_import import import_sql
     fx = _dataset(
         name="currency_fx_usd", keys=("currency_code",), attributes=("rate_to_usd",),
         rows=(("USD", 1.0), ("EUR", 1.08), ("GBP", 1.27)),
@@ -749,8 +753,14 @@ def test_currency_conversion_attaches_fx_rates_and_planner_converts():
     assert {(e.from_table, e.from_col, e.to_table, e.to_col) for e in plan.explicit_fks} == {
         ("orders", "currency", "currency_fx_usd", "currency_code")}
     normalized, fks = TableQuery().ingest(plan.tables, explicit_fks=plan.explicit_fks)
-    top = SQLSearcher.from_tables(normalized, fks).search("total order amount in US dollars")[0]
-    assert "rate_to_usd" in top.sql and " * " in top.sql, top.sql          # planner converts
+    # The planner converts over the attached table: the registered currency calculation expands the readers' plain
+    # total (TableQuery.search_pool) through the explicit edge the enrichment declared.
+    graph = SchemaGraph.from_tables(normalized, fks)
+    total = import_sql('SELECT SUM("orders"."amount") FROM "orders"', graph)
+    converted = CalculationQueryExpander(graph).expand(
+        "total order amount in US dollars", [ScoredQuery(total, render_query(total), 0.0, ())])
+    assert any("rate_to_usd" in candidate.sql and " * " in candidate.sql for candidate in converted), [
+        candidate.sql for candidate in converted]
     # a plain total (no conversion cue) does not attach the FX rates
     plain = EnrichmentRuntime(
         SnapshotStore(lambda: None), registry=registry, allow_evaluation=True,
@@ -952,16 +962,32 @@ TESTS = [
 ]
 
 
+# The benchmarks grade what the own-data readers serve, and the readers' weights are external (public CI installs
+# no model stack): without the bundle they are skipped and reported as skipped.
+MODEL_BACKED = (
+    test_domain_and_serving_faithful_benchmarks_pass_their_contracts,
+    test_iana_country_clears_the_dataset_activation_gate,
+)
+
+
 def main():
-    failed = []
+    from tests.test_complex_datasets import runtime_bundle_missing
+
+    failed, skipped = [], []
+    missing = runtime_bundle_missing()
     for test in TESTS:
+        if missing and test in MODEL_BACKED:
+            skipped.append(test.__name__)
+            print(f"  SKIP {test.__name__}: {missing}")
+            continue
         try:
             test()
             print(f"  ok   {test.__name__}")
         except Exception as exc:  # noqa: BLE001
             failed.append(test.__name__)
             print(f"  FAIL {test.__name__}: {type(exc).__name__}: {exc}")
-    print(f"\nenrichment M0: {len(TESTS) - len(failed)} passed, {len(failed)} failed")
+    print(f"\nenrichment M0: {len(TESTS) - len(failed) - len(skipped)} passed, {len(failed)} failed, "
+          f"{len(skipped)} skipped")
     sys.exit(1 if failed else 0)
 
 

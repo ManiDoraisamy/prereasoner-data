@@ -482,28 +482,35 @@ def test_a_learned_ranking_needs_a_ranking_word():
 def test_a_question_the_upload_reads_whole_skips_the_world_lookup():
     """An eight-tab workbook (2026-10-05): an own-data question that tripped the compose gate (a grouping, a
     top-N) first looked the upload up in the world, typing every text column of every tab, for 32 s; compose
-    then could not own the plan. A question some search reading reads whole from the upload goes straight to
-    the delegate (engine.routing.reads_upload_whole). One with a word the upload does not read still builds
-    the compose plan, world lookup included."""
+    then could not own the plan. A question whose reading the readers' refusal accepts, and that names no world
+    type the upload lacks, goes straight to the delegate (engine.decomposition.search_probe's selection,
+    engine.routing.reads_upload_whole). One naming a world type the upload lacks ("continent"), or one whose
+    reading the readers are not confident of, still builds the compose plan, world lookup included."""
     from unittest.mock import Mock
 
     from engine.deterministic.context import analysis_execution_context
     from engine.knowledge_compose import ComposedKnowledgeQuery
-    from tests.test_sql_ast import _hermetic_planner
+    from tests.test_sql_ast import _hermetic_planner, _model_query
 
     orders = {"name": "orders", "columns": ["city", "plan", "amount"],
               "rows": [["Paris", "basic", 10], ["Lyon", "pro", 20], ["Paris", "pro", 5]]}
     served = {"question": "q", "result": {"columns": ["plan", "total"], "rows": [["basic", 10], ["pro", 25]]}}
-    host = ComposedKnowledgeQuery.__new__(ComposedKnowledgeQuery)
-    host.qw = _hermetic_planner()
-    host.qw.serve = Mock(return_value=served)
-    host._composed = Mock(return_value=True)
-    host._world_lookup = Mock(return_value=None)
-    host._emit_response_views = Mock()
-    host.reason = Mock()
-    host.reason.run.return_value = {"views": [], "world_dependency": None, "plan": [], "primitives": [],
-                                    "bindings": {}, "answer": {"columns": [], "rows": []}}
+
+    def host_of(planner):
+        planner.pool = [_model_query(planner, 'SELECT "plan", SUM("amount") FROM "orders" GROUP BY "plan"', [orders])]
+        planner.serve = Mock(return_value=served)
+        host = ComposedKnowledgeQuery.__new__(ComposedKnowledgeQuery)
+        host.qw = planner
+        host._composed = Mock(return_value=True)
+        host._world_lookup = Mock(return_value=None)
+        host._emit_response_views = Mock()
+        host.reason = Mock()
+        host.reason.run.return_value = {"views": [], "world_dependency": None, "plan": [], "primitives": [],
+                                        "bindings": {}, "answer": {"columns": [], "rows": []}}
+        return host
+
     sub = "c_" + "5" * 32
+    host = host_of(_hermetic_planner())
     with analysis_execution_context({"slug": "totals", "revision": 1}, sub):
         assert host._serve_locked([orders], "total amount by plan", sub) is served
         host._world_lookup.assert_not_called()
@@ -511,6 +518,10 @@ def test_a_question_the_upload_reads_whole_skips_the_world_lookup():
         # Contrast: "continent" is no column or value of the upload, so the world may hold it.
         host._serve_locked([orders], "total amount by continent", sub)
         host._world_lookup.assert_called_once()
+        # Contrast: a reading the readers are not confident of does not say the upload answers the question.
+        unsure = host_of(_hermetic_planner(confident=False))
+        unsure._serve_locked([orders], "total amount by plan", sub)
+        unsure._world_lookup.assert_called_once()
 
 
 def test_serving_hands_an_own_data_composition_to_the_planner():

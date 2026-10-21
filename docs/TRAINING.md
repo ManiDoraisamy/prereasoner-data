@@ -21,7 +21,7 @@ table summary
     v
 pinned Qwen 0.5B + LoRA shared representation
     |                         |
-    |                         +-> structural/ranking/calculation signals
+    |                         +-> structural intent signals (composition, world routes)
     v
 80-URI Schema.org property head
     |
@@ -45,8 +45,8 @@ entity route.
 ### Shared encoder (`training/props/`)
 
 This track produced the Qwen LoRA and relational readout loaded by serving. It supplies structural
-intent, ranking features, calculation operand retrieval, and the representation consumed by the
-Schema.org head.
+intent for composition and the world routes, column typing, and the representation consumed by the
+Schema.org head. The own-data SQL planner reads questions with the readers below instead.
 
 Its `alloc.json` retains a historical 90-content-dimension allocation: 9 structural, 71
 property-named, and 10 intent dimensions. Two old labels are not valid Schema.org 30.0 properties.
@@ -75,13 +75,17 @@ The class layer is deterministic once property probabilities are known. Each cla
 bias, signed property weights, a validation-calibrated threshold, support, and validation/test
 metrics. Selection uses train and validation only. Test is untouched until final evaluation.
 
-### Own-data SQL selection: nothing to train
+### Own-data readers (`training/readers/`)
 
-No model trained here writes SQL or picks the served query. The own-data search builds typed ASTs
-with hand-written rules, the shared encoder supplies the similarities its named ranking features
-read, and selection serves the best-ranked candidate that runs and is grounded
-(`engine/tables.py:TableQuery.select_query`). Selection has no fitted parameters to train or
-promote. Raise its accuracy by extending the search for a named failure family, with tests.
+The own-data SQL planner (`engine/tables.py:TableQuery.select_query`) is read by four learned parts:
+a stage-1 schema-item model (XLM-R base), stage-2 reading models (XLM-R large), a re-scorer (XLM-R
+base), and a logistic refusal fitted on held-out calibration databases. They classify readings of a
+question; the deterministic builder in `engine/readers/readings.py` makes each reading a typed AST, so
+no model trained here writes SQL. `training/readers/` trains them from Spider, BIRD and Spider-Syn
+questions whose gold SQL is converted to readings, and only `python -m training.readers.promote`
+installs a bundle into `engine/data/readers/`, recording each file's SHA-256 in
+`engine/data/weights_manifest.json`. The modules, inputs, split, and the recipe of the shipped bundle
+are in [`training/readers/README.md`](../training/readers/README.md).
 
 History: earlier designs trained a 0.5B LoRA SQL proposer (`training/proposer/`) and fit a linear
 arbiter on its pools (`training/rank/`). Both pipelines were removed with the models they served;
@@ -162,6 +166,7 @@ behavior. Never use an ad hoc pod-creation command for repository training.
 | `engine/data/schema_property_model.json` | thresholds, metrics, fingerprints, release gates |
 | `engine/data/schema_class_signatures.json` | all 926 class definitions and released class scores |
 | `engine/data/schema_training_manifest.json` | immutable corpus/trainer/runtime/evaluation provenance |
+| `engine/data/readers/` | own-data readers: `stage1/`, `stage2_*/`, `rescorer/`, `refusal.json` (written only by `training/readers/promote.py`) |
 | `engine/data/weights_manifest.json` | public weight revision and every runtime SHA-256 |
 
 The public bundle is `prereasoner/prereasoner-weights` at immutable revision

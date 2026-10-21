@@ -1,11 +1,15 @@
-"""Hermetic execution tests for deterministic SQL AST search and ranking.
+"""Hermetic tests for the typed SQL AST (validation, rendering, execution), grounding, SQL import, the lexical readings
+the planner's helpers keep, and the plumbing of the one own-data selection (engine/tables.py:select_query).
+
+The readers (engine/readers) build every own-data candidate; their weights never load here. A test's pool is the
+queries the readers would build for its question, written as SQL and imported into the typed AST
+(regress/sql_import.py), and the readers' re-scorer and refusal are a stub (``StubReaders``).
 
 Run: python -m tests.test_sql_ast
 """
 from __future__ import annotations
 
 from collections import Counter
-import inspect
 import json
 import os
 import re
@@ -38,15 +42,14 @@ from engine.sql_ast import (
     render_query,
     validate_query,
 )
-from engine import llm
 from engine.artifact_provenance import sha256_file, validate_weight_bundle
-from engine.query_contract import constraint_violations
+from engine.sql_candidate import ScoredQuery
 from engine.sql_grounding import double_counted, grounded_members, join_pairs, literal_bindings
-from engine.sql_rank import CandidateRanker, FallbackRecord, SemanticSignals, analyze_question, relation_sides
+from engine.sql_rank import analyze_question
+from engine.sql_schema import SchemaGraph
 from regress.sql_import import import_sql, normalize_decoded_sql
-from engine.sql_search import SQLSearcher, SchemaGraph, ScoredQuery
 from spider.probe.evalutil import run_with_budget
-from engine.tables import TableQuery
+from engine.tables import READERS_MODEL, TableQuery
 from spider.probe.spider_eval import (
     compare as compare_spider_rows,
     record_integrated_result,
@@ -61,94 +64,20 @@ PEOPLE = {
     "columns": ["Person_ID", "Name", "Country", "Age"],
     "rows": [[1, "Alice", "France", 30], [2, "Bob", "France", 20], [3, "Cara", "Spain", 40]],
 }
+
+
 CUSTOMERS = {
     "name": "customers",
     "columns": ["Customer_ID", "Name"],
     "rows": [[1, "Alice"], [2, "Bob"]],
 }
+
+
 ORDERS = {
     "name": "orders",
     "columns": ["Order_ID", "Customer_ID"],
     "rows": [[10, 1], [11, 2]],
 }
-ITEMS = {
-    "name": "items",
-    "columns": ["Item_ID", "Order_ID", "Price"],
-    "rows": [[100, 10, 8], [101, 10, 12], [102, 11, 30]],
-}
-COMMERCE_FKS = [
-    {"from_table": "orders", "from_col": "Customer_ID", "to_table": "customers", "to_col": "Customer_ID"},
-    {"from_table": "items", "from_col": "Order_ID", "to_table": "orders", "to_col": "Order_ID"},
-]
-# Retail fact-table fixture for transactional measure phrases ("units sold",
-# "revenue", "total spend"). Rows are chosen so the summed ranking, the raw
-# row ranking, and each candidate measure column all produce DIFFERENT answers:
-# quantity sums Beta 9 > Alpha 8 > Gamma 6, revenue sums Beta 180 > Gamma 90 >
-# Alpha 80, raw quantity rows rank Beta then Gamma, and shopper spend ranks
-# Bob 180 > Alice 170 while shopper quantity ranks Alice first.
-SHOPPERS = {
-    "name": "shoppers",
-    "columns": ["shopper_id", "name"],
-    "rows": [[1, "Alice"], [2, "Bob"]],
-}
-PURCHASES = {
-    "name": "purchases",
-    "columns": ["purchase_id", "shopper_id"],
-    "rows": [[1001, 1], [1002, 2]],
-}
-RETAIL_PRODUCTS = {
-    "name": "products",
-    "columns": ["product_id", "product_name"],
-    "rows": [[101, "Alpha"], [102, "Beta"], [103, "Gamma"]],
-}
-PURCHASE_ITEMS = {
-    "name": "purchase_items",
-    "columns": ["purchase_item_id", "purchase_id", "product_id", "quantity", "unit_price", "line_total"],
-    "rows": [
-        [1, 1001, 101, 5, 10, 50],
-        [2, 1001, 101, 3, 10, 30],
-        [3, 1002, 102, 9, 20, 180],
-        [4, 1001, 103, 6, 15, 90],
-    ],
-}
-RETAIL = [SHOPPERS, PURCHASES, RETAIL_PRODUCTS, PURCHASE_ITEMS]
-RETAIL_FKS = [
-    {"from_table": "purchases", "from_col": "shopper_id", "to_table": "shoppers", "to_col": "shopper_id"},
-    {"from_table": "purchase_items", "from_col": "purchase_id", "to_table": "purchases", "to_col": "purchase_id"},
-    {"from_table": "purchase_items", "from_col": "product_id", "to_table": "products", "to_col": "product_id"},
-]
-STADIUM = {
-    "name": "stadium",
-    "columns": ["Stadium_ID", "Name", "Capacity"],
-    "rows": [[1, "Alpha", 6000], [2, "Beta", 9000], [3, "Gamma", 12000]],
-}
-CONCERT = {
-    "name": "concert",
-    "columns": ["Concert_ID", "Stadium_ID"],
-    "rows": [[1, 1], [2, 1], [3, 2]],
-}
-STADIUM_FKS = [
-    {"from_table": "concert", "from_col": "Stadium_ID", "to_table": "stadium", "to_col": "Stadium_ID"},
-]
-PETS = {
-    "name": "Pets",
-    "columns": ["PetID", "PetType", "pet_age"],
-    "rows": [[1, "dog", 3], [2, "cat", 5], [3, "dog", 7]],
-}
-AIRPORTS = {
-    "name": "airports",
-    "columns": ["AirportCode", "City"],
-    "rows": [["ABZ", "Aberdeen"], ["ASY", "Ashley"], ["LAX", "Los Angeles"]],
-}
-FLIGHTS = {
-    "name": "flights",
-    "columns": ["Flight_ID", "SourceAirport", "DestAirport"],
-    "rows": [[1, "ABZ", "ASY"], [2, "ASY", "ABZ"], [3, "ABZ", "LAX"]],
-}
-FLIGHT_FKS = [
-    {"from_table": "flights", "from_col": "SourceAirport", "to_table": "airports", "to_col": "AirportCode"},
-    {"from_table": "flights", "from_col": "DestAirport", "to_table": "airports", "to_col": "AirportCode"},
-]
 
 
 def _qident(value):
@@ -165,12 +94,6 @@ def execute(tables, sql):
     rows = con.execute(sql).fetchall()
     con.close()
     return rows
-
-
-def best(question, tables, fks=()):
-    candidates = SQLSearcher.from_tables(tables, fks).search(question)
-    assert candidates, f"no candidates for {question!r}"
-    return candidates[0]
 
 
 def test_typed_ast_rejects_invalid_aggregate():
@@ -300,38 +223,6 @@ def test_composite_join_validation_rejects_disconnected_predicate():
     raise AssertionError("disconnected composite predicate passed AST validation")
 
 
-def test_composite_self_join_helpers_render_complete_predicates():
-    # The is_composite guard in _self_join_candidates keeps composite FKs out of the self-join
-    # helpers today, so this is unreachable via search. It pins the OWNER invariant (cleanup #1
-    # from the 349a4ae review): if a composite FK ever reaches these helpers they must emit a
-    # COMPLETE join (ON a=b AND c=d), never a silent partial join.
-    from engine.sql_schema import ForeignKey
-    from engine.sql_recursive import _route_self_join, _relationship_self_join
-
-    def _fk(child_code, child_region):
-        return ForeignKey(
-            ColumnRef("flights", child_code, SQLType.TEXT),
-            ColumnRef("airports", "code", SQLType.TEXT),
-            additional_columns=((ColumnRef("flights", child_region, SQLType.TEXT),
-                                 ColumnRef("airports", "region", SQLType.TEXT)),),
-        )
-
-    source_fk, destination_fk = _fk("source_code", "source_region"), _fk("dest_code", "dest_region")
-    assert source_fk.is_composite and destination_fk.is_composite
-    name = ColumnRef("airports", "name", SQLType.TEXT)
-
-    route = render_query(_route_self_join(
-        "flights", "airports", source_fk, destination_fk,
-        (0, name, "Aberdeen"), (1, name, "Ashley"), True, None))
-    assert '"base"."source_region" = "source"."region"' in route, route
-    assert '"base"."dest_region" = "destination"."region"' in route, route
-
-    relation = render_query(_relationship_self_join(
-        "flights", "airports", source_fk, destination_fk, (0, name, "Aberdeen"), name))
-    assert '"relation"."source_region" = "owner"."region"' in relation, relation
-    assert '"relation"."dest_region" = "related"."region"' in relation, relation
-
-
 def test_arithmetic_expression_sum_renders_and_executes():
     # M3a: SUM(amount * rate) — the prerequisite for currency conversion. The AST must render valid
     # SQL and execute to the per-row-weighted sum, NOT the currency-blind raw SUM(amount).
@@ -377,26 +268,12 @@ def test_currency_conversion_query_executes_end_to_end():
     assert execute([orders, fx], render_query(query)) == [(980.0,)]
 
 
-def test_planner_emits_currency_conversion_when_requested():
-    # M3c: "... in US dollars" + a joinable FX-rate table -> the planner OFFERS SUM(amount * rate)
-    # over the discovered orders.currency -> fx.currency_code join. Proves the planner produces the
-    # conversion the M3a AST made representable, and that it does NOT fire without a currency cue.
-    orders = {"name": "orders", "columns": ["currency", "amount"],
-              "rows": [["EUR", 310], ["EUR", 210], ["GBP", 100], ["EUR", 95]]}
-    fx = {"name": "fx", "columns": ["currency_code", "rate_to_usd"],
-          "rows": [["EUR", 1.5], ["GBP", 2.0], ["USD", 1.0]]}
-    fks = [{"from_table": "orders", "from_col": "currency", "to_table": "fx", "to_col": "currency_code"}]
-    top = best("total order amount in US dollars", [orders, fx], fks)          # ranker must PREFER conversion
-    assert top.sql.startswith('SELECT SUM(("orders"."amount" * "fx"."rate_to_usd"))'), top.sql
-    assert 'JOIN "fx"' in top.sql, top.sql
-    # 310*1.5 + 210*1.5 + 100*2.0 + 95*1.5 = 465 + 315 + 200 + 142.5 = 1122.5
-    assert execute([orders, fx], top.sql) == [(1122.5,)], top.sql
-    # no currency/convert cue -> raw sum wins; the arithmetic conversion must NOT appear (no false positive)
-    plain = best("total order amount", [orders, fx], fks)
-    assert "rate_to_usd" not in plain.sql and "*" not in plain.sql, plain.sql
-
-
 def test_planner_discovers_and_executes_same_name_currency_edge():
+    """Ingestion keys an FX sheet's same-named currency column to the orders' currency, and the conversion the
+    registered calculations build over that edge (engine/calculations/search.py, the expansions search_pool adds to
+    the readers' plain total) executes to the converted total."""
+    from engine.calculations.search import CalculationQueryExpander
+
     orders = {"name": "orders", "columns": ["currency", "amount"],
               "rows": [["EUR", 520], ["EUR", 450], ["GBP", 100]]}
     rates = {"name": "illustrative fx rates", "columns": ["currency", "rate_to_usd"],
@@ -408,7 +285,11 @@ def test_planner_discovers_and_executes_same_name_currency_edge():
         for fk in fks
     ), fks
 
-    top = SQLSearcher.from_tables(tables, fks).search("total order amount in US dollars")[0]
+    graph = SchemaGraph.from_tables(tables, fks)
+    plain = import_sql('SELECT SUM("orders"."amount") FROM "orders"', graph)
+    converted = CalculationQueryExpander(graph).expand(
+        "total order amount in US dollars", [ScoredQuery(plain, render_query(plain), 0.0, ())])
+    top = next(candidate for candidate in converted if "rate_to_usd" in candidate.sql)
     assert 'SUM(("orders"."amount" * "illustrative_fx_rates"."rate_to_usd"))' in top.sql, top.sql
     rows = execute(tables, top.sql)
     assert len(rows) == 1 and abs(rows[0][0] - 1174.6) < 1e-9, (top.sql, rows)
@@ -419,13 +300,20 @@ def test_currency_conversion_survives_uploaded_column_case():
     # synthesized lowercase ("rate_to_usd"). An exact-case membership test therefore bound nothing for an FX
     # sheet headed "Rate_To_USD", and the planner silently answered with the UNCONVERTED SUM — a wrong
     # number, no clarify. Same rows as the lowercase test above, headers cased the way a spreadsheet export
-    # actually arrives.
+    # actually arrives; the conversion is the calculations' expansion of the readers' plain total.
+    from engine.calculations.search import CalculationQueryExpander
+
     orders = {"name": "orders", "columns": ["Currency", "Amount"],
               "rows": [["EUR", 520], ["EUR", 450], ["GBP", 100]]}
     rates = {"name": "illustrative fx rates", "columns": ["Currency", "Rate_To_USD"],
              "rows": [["USD", 1.0], ["EUR", 1.08], ["GBP", 1.27], ["INR", 0.012]]}
     tables, fks = TableQuery().ingest([orders, rates])
-    top = SQLSearcher.from_tables(tables, fks).search("total order amount in US dollars")[0]
+    graph = SchemaGraph.from_tables(tables, fks)
+    plain = import_sql('SELECT SUM("orders"."Amount") FROM "orders"', graph)
+    converted = CalculationQueryExpander(graph).expand(
+        "total order amount in US dollars", [ScoredQuery(plain, render_query(plain), 0.0, ())])
+    top = next((candidate for candidate in converted if "Rate_To_USD" in candidate.sql), None)
+    assert top is not None, [candidate.sql for candidate in converted]
     # the identifier must be rendered as the schema spells it, or the SQL will not execute
     assert 'SUM(("orders"."Amount" * "illustrative_fx_rates"."Rate_To_USD"))' in top.sql, top.sql
     rows = execute(tables, top.sql)
@@ -456,42 +344,6 @@ def test_world_aggregate_currency_binding_is_typed_and_unambiguous():
     assert KnowledgeTableQuery._currency_conversion_binding(
         "total amount in US dollars", aggregate, duplicate_schema, [edge, duplicate_edge]
     ) is None
-
-
-def test_planner_requires_exact_currency_target_and_key_shape():
-    orders = {"name": "orders", "columns": ["currency", "amount"],
-              "rows": [["USD", 100], ["EUR", 100]]}
-    fx = {"name": "fx", "columns": ["currency_code", "rate_to_usd", "rate_to_eur"],
-          "rows": [["USD", 1.0, 0.9], ["EUR", 1.1, 1.0]]}
-    edge = [{"from_table": "orders", "from_col": "currency",
-             "to_table": "fx", "to_col": "currency_code"}]
-    eur = best("convert total order amount to EUR", [orders, fx], edge)
-    assert "rate_to_eur" in eur.sql and "rate_to_usd" not in eur.sql, eur.sql
-
-    only_usd = {"name": "fx", "columns": ["currency_code", "rate_to_usd"],
-                "rows": [["USD", 1.0], ["EUR", 1.1]]}
-    unsupported = best("total order amount in EUR", [orders, only_usd], edge)
-    assert "rate_to_usd" not in unsupported.sql and "*" not in unsupported.sql, unsupported.sql
-    ambiguous = best("total order amount in dollars", [orders, only_usd], edge)
-    assert "rate_to_usd" not in ambiguous.sql and "*" not in ambiguous.sql, ambiguous.sql
-    untargeted = best("convert total order amount", [orders, only_usd], edge)
-    assert "rate_to_usd" not in untargeted.sql and "*" not in untargeted.sql, untargeted.sql
-
-    tax = {"name": "tax_rates", "columns": ["tax_code", "tax_rate"],
-           "rows": [["USD", 0.2], ["EUR", 0.1]]}
-    tax_edge = [{"from_table": "orders", "from_col": "currency",
-                 "to_table": "tax_rates", "to_col": "tax_code"}]
-    not_fx = best("total order amount in US dollars", [orders, tax], tax_edge)
-    assert "tax_rate" not in not_fx.sql and "*" not in not_fx.sql, not_fx.sql
-
-    other_fx = {"name": "other_fx", "columns": ["currency", "rate_to_usd"],
-                "rows": [["USD", 1.0], ["EUR", 1.2]]}
-    other_edge = [{"from_table": "orders", "from_col": "currency",
-                   "to_table": "other_fx", "to_col": "currency"}]
-    ambiguous_rates = best(
-        "total order amount in US dollars", [orders, only_usd, other_fx], edge + other_edge
-    )
-    assert "rate_to_usd" not in ambiguous_rates.sql and "*" not in ambiguous_rates.sql, ambiguous_rates.sql
 
 
 def test_arithmetic_expression_validation():
@@ -526,120 +378,38 @@ def test_arithmetic_expression_validation():
             pass
 
 
-def test_projection_filter_and_order():
-    candidate = best(
-        "Show name, country and age for people from France ordered by age descending",
-        [PEOPLE],
-    )
-    assert execute([PEOPLE], candidate.sql) == [("Alice", "France", 30), ("Bob", "France", 20)]
-    assert candidate.sql.endswith('ORDER BY "people"."Age" DESC')
+class StubReaders:
+    """engine/readers/search.py:ReadingSearch as search_pool and select_query read it, without its weights.
+
+    ``pool`` returns the planner's ``pool``: the queries its readers would build, a list for every question or a dict
+    by question (a planner without one reads no question). ``rescore`` gives each candidate that ran its pool
+    ``score`` (0.0 for a query written for a test, so ties keep the pool's order), and the learned refusal
+    (``confidence``, ``confident``) accepts every choice unless built with ``confident=False``."""
+
+    def __init__(self, planner, confident=True):
+        self.planner = planner
+        self.accepts = confident
+
+    def pool(self, question, graph):
+        readings = self.planner.pool
+        if readings is None:
+            raise AssertionError("the hermetic planner has no readers: give it the pool its readers would build")
+        return list(readings.get(question, ()) if isinstance(readings, dict) else readings)
+
+    def rescore(self, question, pool, shapes):
+        return [member.score if shape is not None else None for member, shape in zip(pool, shapes)]
+
+    def confidence(self, pool, scores, shapes, chosen):
+        return 0.9 if self.accepts else 0.1
+
+    def confident(self, confidence):
+        return confidence is None or confidence >= 0.5
 
 
-def test_scalar_aggregate_does_not_group_by_recipient_mention():
-    payments = {"name": "payments", "columns": ["Supplier", "Amount"],
-                "rows": [["A", 10], ["A", 20], ["B", 40]]}
-    for question in ("What is the total amount paid to suppliers?",
-                     "What is the average amount paid to suppliers?"):
-        candidate = best(question, [payments])
-        assert not candidate.query.group_by, candidate.sql
-        want = 70 if "total" in question else 70 / 3
-        assert execute([payments], candidate.sql) == [(want,)], candidate.sql
-    for question in ("Show suppliers and total amount", "Total amount by supplier",
-                     "Total amount for each supplier"):
-        candidate = best(question, [payments])
-        assert candidate.query.group_by, (question, candidate.sql)
-        assert execute([payments], candidate.sql) == [("A", 30), ("B", 40)]
-
-
-def test_mentioned_table_join_keeps_minimal_variant_in_pool():
-    """A table the question merely NAMES must not be force-joined into every candidate: the
-    parsimonious variant touching only tables whose columns the query uses has to exist in the
-    pool alongside the mention-widened join (Spider over-join family, 215/669 strict misses)."""
-    dogs = {"name": "dogs", "columns": ["dog_id", "name"],
-            "rows": [[1, "Rex"], [2, "Ace"], [3, "Ivy"]]}
-    treatments = {"name": "treatments", "columns": ["treatment_id", "dog_id", "cost"],
-                  "rows": [[1, 1, 50], [2, 1, 30], [3, 2, 20]]}
-    fks = [{"from_table": "treatments", "from_col": "dog_id",
-            "to_table": "dogs", "to_col": "dog_id"}]
-    candidates = SQLSearcher.from_tables([dogs, treatments], fks).search(
-        "What is the total cost of treatments for dogs?")
-    assert candidates
-    minimal = [c for c in candidates if "tables:minimal" in c.evidence]
-    assert minimal, "parsimonious variant missing from the pool"
-    assert all('"dogs"' not in c.sql for c in minimal), [c.sql for c in minimal]
-    assert any("SUM" in c.sql.upper() for c in minimal), [c.sql for c in minimal]
-    top_minimal = next(c for c in minimal if "SUM" in c.sql.upper())
-    assert execute([dogs, treatments], top_minimal.sql) == [(100,)], top_minimal.sql
-    joined = [c for c in candidates if '"dogs"' in c.sql and "JOIN" in c.sql.upper()]
-    assert joined, "mention-widened join reading must remain pooled"
-
-
-def test_duplicate_named_projection_keeps_single_binding_variant_in_pool():
-    """When one canonical column name is projected from several tables, the expander must emit
-    each single-binding reduction, pruning tables the reduction stops using (Spider over-join
-    family: the distractor is bound into the projection, so pruning tables alone cannot reach
-    the gold reading)."""
-    from engine.sql_ast import ColumnRef, Join, SelectItem, SelectQuery, render_query
-    from engine.sql_parsimony import ParsimonyQueryExpander
-
-    templates = {"name": "templates", "columns": ["template_id", "type_code"],
-                 "rows": [[1, "PPT"], [2, "CV"]]}
-    ref_types = {"name": "ref_types", "columns": ["type_code", "type_name"],
-                 "rows": [["PPT", "Presentation"], ["CV", "Resume"]]}
-    fks = [{"from_table": "templates", "from_col": "type_code",
-            "to_table": "ref_types", "to_col": "type_code"}]
-    graph = SchemaGraph.from_tables([templates, ref_types], fks)
-    t_id = ColumnRef("templates", "template_id")
-    t_code = ColumnRef("templates", "type_code")
-    r_code = ColumnRef("ref_types", "type_code")
-    double = SelectQuery(
-        select=(SelectItem(t_id), SelectItem(t_code), SelectItem(r_code)),
-        from_table="templates",
-        joins=(Join("ref_types", t_code, r_code),),
-    )
-    base = ScoredQuery(double, render_query(double), 10.0, ())
-    variants = ParsimonyQueryExpander(graph).expand("show template type codes", [base])
-    assert variants, "no parsimony variants emitted"
-    assert all(v.score < base.score for v in variants)
-    kept_templates = [v for v in variants
-                     if "projection:binding:templates.type_code" in v.evidence]
-    kept_ref = [v for v in variants
-                if "projection:binding:ref_types.type_code" in v.evidence]
-    assert kept_templates and kept_ref, [v.sql for v in variants]
-    minimal = kept_templates[0]
-    assert "tables:minimal" in minimal.evidence
-    assert minimal.sql == 'SELECT "templates"."template_id", "templates"."type_code" FROM "templates"'
-    assert execute([templates, ref_types], minimal.sql) == [(1, "PPT"), (2, "CV")]
-    assert 'JOIN "ref_types"' in kept_ref[0].sql, kept_ref[0].sql
-    dropped = [v for v in variants
-               if "projection:drop:templates.template_id" in v.evidence]
-    assert any(
-        v.sql == 'SELECT "templates"."type_code", "ref_types"."type_code" FROM "templates" '
-                 'JOIN "ref_types" ON "templates"."type_code" = "ref_types"."type_code"'
-        for v in dropped
-    ), [v.sql for v in dropped]
-    assert any(any(tag.startswith("projection:drop2:") for tag in v.evidence)
-               for v in variants), "drop-two reductions missing"
-    assert any("projection:distinct-toggle" in v.evidence for v in variants)
-
-    from engine.sql_ast import Aggregate
-    from engine.sql_parsimony import _projection_variants
-
-    cost = ColumnRef("templates", "template_id")
-    weight = ColumnRef("templates", "type_code")
-    total = SelectQuery(select=(SelectItem(Aggregate("SUM", cost)),), from_table="templates")
-    stub_linked = lambda table: (weight,)  # noqa: E731 - question-linking stubbed out
-    tags = [evidence for _, evidence in _projection_variants(total, stub_linked, {})]
-    assert any("aggregate:operand:templates.type_code" in evidence for evidence in tags), tags
-    plain = SelectQuery(select=(SelectItem(cost),), from_table="templates")
-    tags = [evidence for _, evidence in _projection_variants(plain, stub_linked, {})]
-    assert any("projection:add:templates.type_code" in evidence for evidence in tags), tags
-
-
-def _hermetic_planner(fallback=None):
-    """The production TableQuery without its encoder: ``schema`` types columns from their values and
-    the search reads no encoder signals. ``fallback`` is selection's labelled Gemini fallback
-    (engine/question_rewrite.py); a planner without one serves the search alone."""
+def _hermetic_planner(confident=True):
+    """The production TableQuery without its encoder or the readers' weights: ``schema`` types columns from their
+    values, and search_pool and select_query read ``StubReaders`` (``planner.pool``, ``planner.readers``) where
+    serving reads the readers; the calculations' expansions, execution, grounding and choice are production's."""
     class HermeticPlanner(TableQuery):
         def schema(self, tables, fks):
             columns, index = [], 0
@@ -657,11 +427,17 @@ def _hermetic_planner(fallback=None):
                     index += 1
             return columns, {}, {table["name"]: table for table in tables}
 
-        def ast_semantic_signals(self, question, sch):
-            return SemanticSignals.empty()
+        def search_pool(self, *args, **kwargs):
+            with patch("engine.readers.search.reading_search", return_value=self.readers):
+                return super().search_pool(*args, **kwargs)
+
+        def select_query(self, *args, **kwargs):
+            with patch("engine.readers.search.reading_search", return_value=self.readers):
+                return super().select_query(*args, **kwargs)
 
     planner = HermeticPlanner()
-    planner.question_rewriter = fallback
+    planner.pool = None
+    planner.readers = StubReaders(planner, confident)
     return planner
 
 
@@ -673,71 +449,19 @@ def _request(planner, tables=None):
 
 
 def _select(planner, question, tables=None, searched=None):
-    """The production own-data selection. ``searched`` is the pool select_query ranks, runs and
-    grounds; None runs the deterministic search for it, as serving does."""
+    """The production own-data selection. ``searched`` is the pool select_query runs, grounds and chooses from;
+    None reads the planner's readers for it, as serving does."""
     return planner.select_query(question, *_request(planner, tables), searched=searched)
 
 
-def _searched(planner, question, tables=None):
-    """The deterministic search's own pool for ``question`` (select_query's first stage)."""
-    norm, fks, sch, _ = _request(planner, tables)
-    return planner.search_pool(question, norm, fks, sch)
-
-
-def _model_query(planner, sql, tables=None):
-    """A query a SQL model wrote, imported into the typed AST against the request's schema and
-    re-rendered (regress/sql_import.py): a pool member select_query can rank, run and ground."""
+def _model_query(planner, sql, tables=None, score=0.0, read_as="model:query"):
+    """A query the readers could build, written as SQL and imported into the typed AST against the request's schema
+    (regress/sql_import.py): a pool member select_query can run, ground and choose. ``score`` is the re-scorer's
+    logit for it (``StubReaders.rescore``) and ``read_as`` its read-as line, the first item of its evidence."""
     norm, fks, sch, _ = _request(planner, tables)
     query = import_sql(sql, SchemaGraph.from_planner(sch, fks))
     validate_query(query)
-    return ScoredQuery(query, render_query(query), 0.0, ("model:query",))
-
-
-class FakeGemini:
-    """engine/llm.py's surface as selection's labelled fallback uses it (engine/question_rewrite.py),
-    with scripted replies and every call recorded. It never touches the network.
-
-    ``question`` is the rewording Gemini returns; None is a reply without the field. ``enabled`` is
-    ``available()`` and ``outage`` makes every call raise LLMUnavailable."""
-
-    LLMUnavailable = llm.LLMUnavailable
-
-    def __init__(self, question=None, *, enabled=True, outage=False):
-        self.replies = {"question": question}
-        self.enabled = enabled
-        self.outage = outage
-        self.calls = []
-        self.requests = []
-
-    def available(self):
-        return self.enabled
-
-    def model_id(self):
-        return "gemini-test"
-
-    def generate_text(self, **request):
-        inspect.signature(llm.generate_text).bind(**request)   # the call engine/llm.py accepts
-        field = next(iter(request["json_schema"]["properties"]))
-        self.calls.append((field, request["prompt"]))
-        self.requests.append(request)
-        if self.outage:
-            raise self.LLMUnavailable("Gemini call failed (TimeoutError)")
-        reply = self.replies[field]
-        return json.dumps({field: reply} if reply is not None else {}, ensure_ascii=False)
-
-
-def _gemini_planner(question=None, **state):
-    """A hermetic planner whose selection falls back to a FakeGemini; returns (planner, client)."""
-    from engine.question_rewrite import QuestionRewriter
-
-    client = FakeGemini(question, **state)
-    return _hermetic_planner(QuestionRewriter(client=client)), client
-
-
-# The search reads words; a question in a script it has no words for gives it an empty pool.
-JAPANESE_FRANCE = "フランス出身の人は何人ですか？"   # "How many people are from France?"
-RUSSIAN_FRANCE = "Сколько людей из Франции?"          # the same, in Russian
-FRANCE_COUNT = "SELECT COUNT(*) FROM \"people\" WHERE \"people\".\"Country\" = 'France'"
+    return ScoredQuery(query, render_query(query), score, (read_as,))
 
 
 def test_select_query_serves_the_reading_that_keeps_the_named_date():
@@ -748,17 +472,16 @@ def test_select_query_serves_the_reading_that_keeps_the_named_date():
         ["NDA", 5000, "2026-07-06"], ["License", 900000, "2026-07-05"], ["Lease", 30000, "2026-07-12"]]}
     planner = _hermetic_planner()
     question = "How many contracts were signed before July 10, 2026?"
-    undated = _model_query(planner, "SELECT COUNT(*) FROM contracts", [contracts])
-    selection = _select(planner, question, [contracts],
-                        searched=[undated, *_searched(planner, question, [contracts])])
-    assert 0 not in selection.ranking, "a dropped date is ineligible even when scored first"
+    undated = _model_query(planner, "SELECT COUNT(*) FROM contracts", [contracts], score=1.0)
+    dated = _model_query(planner, "SELECT COUNT(*) FROM contracts WHERE signed < '2026-07-10'", [contracts])
+    selection = _select(planner, question, [contracts], searched=[undated, dated])
+    assert selection.ranking[0] == 0, "the undated reading is ranked first"
     served = selection.candidate
-    assert "'2026-07-10'" in served.sql and selection.date_satisfied[selection.selected], served.sql
+    assert selection.selected == 1 and "'2026-07-10'" in served.sql, served.sql
+    assert selection.date_satisfied[selection.selected] and not selection.date_satisfied[0]
     assert selection.record()["date_satisfied"] is True
     # Contrast: without a date in the question the ranking's choice stands.
-    plain_question = "How many contracts are there?"
-    plain = _select(planner, plain_question, [contracts],
-                    searched=[undated, *_searched(planner, plain_question, [contracts])])
+    plain = _select(planner, "How many contracts are there?", [contracts], searched=[undated, dated])
     assert plain.candidate.sql == undated.sql and not any(plain.date_satisfied)
 
 
@@ -766,13 +489,14 @@ def test_select_query_never_chooses_a_query_that_does_not_run():
     """A pooled query that does not finish within the SQLite step budget (EXECUTION_OP_LIMIT) is
     never chosen, and a question whose pool holds none that runs is not answered."""
     planner = _hermetic_planner()
+    planner.pool = [_model_query(planner, 'SELECT "Name" FROM "people"')]
     with patch("engine.sql_rank.EXECUTION_OP_LIMIT", 1):
         selection = _select(planner, "list person names")
         response = planner.serve([PEOPLE], "list person names")
     assert selection.pool and not any(selection.executable)
     assert selection.ranking == () and selection.selected is None and selection.candidate is None
-    assert selection.record()["executable"] == 0 and selection.served_by == "search"
-    assert response["valid"] is False and response["fallback"] is None
+    assert selection.record()["executable"] == 0
+    assert response["valid"] is False and response["read_as"] is None and "clarify" not in response
     assert response["error"] == "planner: no executable AST candidate"
 
 
@@ -827,28 +551,29 @@ def test_a_join_that_multiplies_two_tables_rows_stops_at_their_cells_budget():
     assert execution_op_limit(wide_listed, wide) == EXECUTION_OP_LIMIT               # the ceiling
 
 
-def test_the_rewording_pool_shares_the_tables_copy_and_reruns_no_query():
-    """select_query copies the request's tables into SQLite once and runs each distinct query once:
-    the rewording's pool (step 4) copied every table again and reran every query the first pool had
-    run, a second full copy of a large workbook on every question Gemini rewords (2026-10-05)."""
-    planner, _ = _gemini_planner(question="what is total Amount")
+def test_select_query_copies_the_tables_once_and_runs_each_query_once():
+    """select_query copies the request's tables into SQLite once and runs each distinct query once
+    (engine/tables.py _PoolRuns): a second copy of a large workbook per pool member, or a query run again,
+    is time no answer needs (2026-10-05)."""
+    planner = _hermetic_planner()
     amounts = {"name": "orders", "columns": ["Amount"], "rows": [[100], [200]]}
-    candidate = _model_query(planner, 'SELECT SUM("orders"."Amount") FROM "orders"', [amounts])
-    planner.search_pool = lambda *_args, **_kwargs: [candidate]
+    total = _model_query(planner, 'SELECT SUM("orders"."Amount") FROM "orders"', [amounts])
+    listed = _model_query(planner, 'SELECT "orders"."Amount" FROM "orders"', [amounts])
     copies, guarded = [], []
     copy, guard = planner._sqlite_tables, planner.guard
     planner._sqlite_tables = lambda *args: copies.append(args) or copy(*args)
     planner.guard = lambda sql: guarded.append(sql) or guard(sql)
-    selection = _select(planner, "what is total turnover", [amounts], searched=[candidate])
-    assert selection.served_by == "gemini-rewrite" and selection.candidate.sql == candidate.sql
+    selection = _select(planner, "what is total Amount", [amounts], searched=[total, listed, total])
+    assert selection.candidate.sql == total.sql and selection.executable == (True, True, True)
     assert len(copies) == 1, f"{len(copies)} copies of the request's tables"
-    assert guarded == [candidate.sql], guarded
+    assert guarded == [total.sql, listed.sql], guarded
 
 
 def test_a_duration_is_how_long_rows_lasted_not_a_quantity_and_an_interval():
     """"how many users wanted neartail for greater than 6 months" read "6 months" as Interval = 'month' and
     Quantity > 6 (2026-10-05). A comparison word, a number and a unit compare how long each row lasted: the days
-    from its start date to its end date, or to the question's date while it runs (engine/sql_durations.py)."""
+    from its start date to its end date, or to the question's date while it runs (engine/sql_durations.py,
+    sql_ast.DateSpan)."""
     from datetime import date
     from engine.sql_ast import DateSpan
     from engine.sql_durations import duration_phrases
@@ -880,28 +605,32 @@ def test_a_duration_is_how_long_rows_lasted_not_a_quantity_and_an_interval():
         return columns, extra, tablemap
     planner.schema = schema
 
-    with patch("engine.sql_durations.question_date", return_value=today.isoformat()):
-        longer = planner.serve([subscriptions], "how many subscriptions lasted more than 6 months")
-        assert longer["result"]["rows"] == [[sum(lasted(row) / 30.4375 > 6 for row in subscriptions["rows"])]] == [[3]]
-        selection = _select(planner, "how many subscriptions lasted more than 6 months", [subscriptions])
-        span = selection.candidate.query.where.left
-        assert isinstance(span, DateSpan) and (span.start.name, span.end.name, span.unit) == (
-            "Start Date (UTC)", "Ended At (UTC)", "month"), selection.candidate.sql
-        # "ago" runs from the date to the question's date, whatever the row's end.
-        older = planner.serve([subscriptions], "how many subscriptions started more than a year ago")
-        assert older["result"]["rows"] == [[sum((today - date.fromisoformat(row[5][:10])).days / 365.25 > 1
-                                                 for row in subscriptions["rows"])]] == [[3]]
-        # Same profile, no unit: a quantity is still a quantity.
-        quantity = _select(planner, "how many subscriptions with quantity more than 6", [subscriptions])
-        assert quantity.candidate.sql.endswith('WHERE "subscriptions"."Quantity" > 6'), quantity.candidate.sql
-        # The customer's question reads its duration and asks about the words it cannot read.
-        asked = planner.serve([subscriptions], "how many users wanted neartail for Greater than 6 months")
-        assert asked.get("clarify") and asked["dropped"] == ["users", "neartail"], asked
-        # A window is no duration, and a table without dates answers no duration with a quantity.
-        assert duration_phrases("orders in the last 6 months", tokens("orders in the last 6 months")) == ()
-        undated = {"name": "plans", "columns": ["id", "Interval", "Quantity"],
-                   "rows": [[1, "month", 7], [2, "year", 1]]}
-        assert _select(planner, "how many plans lasted more than 6 months", [undated]).candidate is None
+    def phrase(question):
+        return [(found.operator, found.amount, found.unit, found.ago)
+                for found in duration_phrases(question, tokens(question))]
+
+    assert phrase("how many subscriptions lasted more than 6 months") == [(">", 6, "month", False)]
+    assert phrase("how many subscriptions started more than a year ago") == [(">", 1, "year", True)]
+    # Same profile, no unit: a quantity is still a quantity; and a window is no duration.
+    assert phrase("how many subscriptions with quantity more than 6") == []
+    assert duration_phrases("orders in the last 6 months", tokens("orders in the last 6 months")) == ()
+
+    _, fks, sch, tablemap = _request(planner, [subscriptions])
+    column = SchemaGraph.from_planner(sch, fks).column_map
+
+    def counted(end, unit, amount):
+        span = DateSpan(column[("subscriptions", "Start Date (UTC)")].ref,
+                        column[("subscriptions", end)].ref if end else None, unit, today.isoformat())
+        query = SelectQuery((SelectItem(Aggregate("COUNT", Star())),), "subscriptions",
+                            where=Comparison(span, ">", Literal(amount, SQLType.INTEGER)))
+        validate_query(query)
+        return planner.execute(tablemap, sch, render_query(query), query=query)[1]
+
+    assert counted("Ended At (UTC)", "month", 6) == [(sum(lasted(row) / 30.4375 > 6
+                                                          for row in subscriptions["rows"]),)] == [(3,)]
+    # "ago" runs from the date to the question's date, whatever the row's end.
+    assert counted(None, "year", 1) == [(sum((today - date.fromisoformat(row[5][:10])).days / 365.25 > 1
+                                             for row in subscriptions["rows"]),)] == [(3,)]
 
 
 # complex-unsold-products: 'Lyon' occurs only in purchases.city.
@@ -981,15 +710,15 @@ def test_literal_grounding_names_the_column_a_value_actually_occupies():
 def test_select_query_never_serves_a_misgrounded_query():
     """A SQL model reads the schema and a few example values, never the data its filter tests. For
     "Lyon customers" a model's query filtered customer_name = 'Lyon', which matches no row because
-    'Lyon' is a city, and it was ranked first. Ranked first, it is still never served: the search's
-    own reading, which binds 'Lyon' to the column that holds it, is."""
+    'Lyon' is a city, and it was ranked first. Ranked first, it is still never served: the reading
+    that binds 'Lyon' to the column that holds it is."""
     misbound, bound = "\"customer_name\" = 'Lyon'", "\"city\" = 'Lyon'"
     planner = _hermetic_planner()
     question = "product names bought by Lyon customers"
     model = _model_query(planner, "SELECT product_name FROM purchases WHERE customer_name = 'Lyon'",
                          [PURCHASES])
-    selection = _select(planner, question, [PURCHASES],
-                        searched=[model, *_searched(planner, question, [PURCHASES])])
+    held = _model_query(planner, "SELECT product_name FROM purchases WHERE city = 'Lyon'", [PURCHASES])
+    selection = _select(planner, question, [PURCHASES], searched=[model, held])
     assert misbound in selection.pool[0].sql
     assert selection.executable[0] and not selection.grounded[0] and 0 not in selection.ranking
     assert selection.selected == 1 and bound in selection.candidate.sql, selection.candidate.sql
@@ -1000,8 +729,7 @@ def test_select_query_never_serves_a_misgrounded_query():
     question = "product names bought by Alice"
     model = _model_query(planner, "SELECT product_name FROM purchases WHERE customer_name = 'Alice'",
                          [PURCHASES])
-    selection = _select(planner, question, [PURCHASES],
-                        searched=[model, *_searched(planner, question, [PURCHASES])])
+    selection = _select(planner, question, [PURCHASES], searched=[model, held])
     assert selection.selected == 0 and alice in selection.candidate.sql and all(selection.grounded)
 
 
@@ -1026,8 +754,11 @@ def test_select_query_never_serves_a_join_the_foreign_keys_contradict():
     model = _model_query(planner, (
         "SELECT T1.customer_name , T3.product_name FROM customers AS T1 JOIN orders AS T2 "
         "ON T1.customer_id = T2.customer_id JOIN products AS T3 ON T2.order_id = T3.product_id"), tables)
-    selection = _select(planner, question, tables,
-                        searched=[model, *_searched(planner, question, tables)])
+    bridged = _model_query(planner, (
+        "SELECT T1.customer_name , T4.product_name FROM customers AS T1 JOIN orders AS T2 ON "
+        "T1.customer_id = T2.customer_id JOIN order_items AS T3 ON T2.order_id = T3.order_id "
+        "JOIN products AS T4 ON T3.product_id = T4.product_id"), tables)
+    selection = _select(planner, question, tables, searched=[model, bridged])
     assert bypass in selection.pool[0].sql
     assert selection.executable[0], "it runs: execution is not evidence"
     assert not selection.grounded[0], "two keys the foreign keys tell apart"
@@ -1068,7 +799,8 @@ def test_select_query_serves_the_bridge_join_the_foreign_keys_state():
         "SELECT T1.customer_name , T4.product_name FROM customers AS T1 JOIN orders AS T2 ON "
         "T1.customer_id = T2.customer_id JOIN order_items AS T3 ON T2.order_id = T3.order_id "
         "JOIN products AS T4 ON T3.product_id = T4.product_id"), tables)
-    selection = _select(planner, question, tables, searched=[model, *_searched(planner, question, tables)])
+    names = _model_query(planner, "SELECT customer_name FROM customers", tables)
+    selection = _select(planner, question, tables, searched=[model, names])
     assert all(selection.grounded)
     assert selection.selected == 0 and bridge in selection.candidate.sql
 
@@ -1235,24 +967,11 @@ def test_double_counting_reads_the_rows_each_join_repeats():
                                derived, joins=(on,))) == []
 
 
-def _ranked_first(planner, member):
-    """select_query over the search's own pool with ``member`` ranked ahead of it: the production
-    selection, given a pool in which a model's query outranks the search's readings."""
-    select = planner.select_query
-
-    def selection(question, norm, fks, sch, tablemap, searched=None, graph=None):
-        if searched is None:
-            searched = planner.search_pool(question, norm, fks, sch, graph=graph)
-        return select(question, norm, fks, sch, tablemap, searched=[member, *searched], graph=graph)
-
-    return selection
-
-
 def test_named_request_decomposes_a_compound_question_a_single_query_answers_in_part():
-    """The search reads "products no Paris customer bought" as a set difference; a SQL model offered
-    one join that lists what Paris DID buy, and it was ranked first. Evaluation (no analysis context)
-    serves selection's choice. A named product request must instead ask for decomposition and
-    execute nothing: a single query cannot answer a compound question."""
+    """The readers read "products no Paris customer bought" as a set difference, and a single join listing
+    what Paris DID buy is ranked first. A named product request must ask for decomposition and execute
+    nothing: a single query cannot answer a compound question. Evaluation (no analysis context) serves
+    selection's choice."""
 
     from engine.decomposition import search_probe
     from engine.deterministic.context import analysis_execution_context
@@ -1261,40 +980,45 @@ def test_named_request_decomposes_a_compound_question_a_single_query_answers_in_
     tables = _tables(DATASET_DIR / "complex-unsold-products")
     question = "List the product names that no customer from Paris has bought, ordered by product name."
     planner = _hermetic_planner()
-    assert isinstance(_searched(planner, question, tables)[0].query, SetQuery)
+    unsold = _model_query(planner, ("SELECT product_name FROM products EXCEPT "
+                                    "SELECT product_name FROM purchases WHERE city = 'Paris'"), tables)
     one_join = _model_query(planner, (
         "SELECT products.product_name FROM products JOIN purchases "
         "ON products.product_name = purchases.product_name "
-        "WHERE purchases.city = 'Paris' ORDER BY products.product_name"), tables)
+        "WHERE purchases.city = 'Paris' ORDER BY products.product_name"), tables, score=1.0)
+    planner.pool = [unsold, one_join]
+    assert isinstance(unsold.query, SetQuery)
 
-    with patch.object(planner, "select_query", side_effect=_ranked_first(planner, one_join)):
-        evaluated = planner.serve(tables, question)
-        assert evaluated["valid"] and "NOT IN" in evaluated["sql"], "the positive-only candidate must not satisfy an exclusion"
-        assert evaluated["result"]["rows"]
-        with analysis_execution_context({"slug": "unsold", "revision": 1}, "c_" + "9" * 32), \
-                patch.object(planner, "execute", side_effect=AssertionError("partial answer executed")):
-            named = planner.serve(tables, question)
+    evaluated = planner.serve(tables, question)
+    assert evaluated["valid"] and evaluated["sql"] == one_join.sql, evaluated
+    assert evaluated["result"]["rows"]
+    with analysis_execution_context({"slug": "unsold", "revision": 1}, "c_" + "9" * 32), \
+            patch.object(planner, "execute", side_effect=AssertionError("partial answer executed")):
+        named = planner.serve(tables, question)
     assert named.get("decomposition_required"), named
     assert named["result"] is None and named["error"] is None
 
-    # The compose path's probe asks the same question of the search alone: no selection runs.
+    # The compose path's probe asks the same question of the readers' reading alone: no selection runs.
     with patch.object(planner, "select_query", side_effect=AssertionError("the probe ran selection")):
-        assert search_probe(planner, tables, question).decomposition_required
+        probe = search_probe(planner, tables, question)
+    assert probe.decomposition_required and probe.selection is None
 
 
 def test_a_compound_named_request_asks_for_decomposition_before_selection_runs():
     """tests.test_complex_datasets failed on the CPU 7B SQL model (2026-09-30): a named compound
-    request decoded the whole prompt before asking whether the search read it as compound, the
-    decode ran past its CPU budget, and the request failed instead of asking for a decomposition.
-    The search's top alone decides compound structure, so a named compound request runs no
-    selection: no pool execution and no fallback call."""
+    request decoded the whole prompt before asking whether it was read as compound, the decode ran
+    past its CPU budget, and the request failed instead of asking for a decomposition. The readers'
+    most probable reading alone decides compound structure, so a named compound request runs no
+    selection: no pool execution."""
 
     from engine.deterministic.context import analysis_execution_context
     from tests.test_datasets import DATASET_DIR, _tables
 
     tables = _tables(DATASET_DIR / "complex-unsold-products")
     question = "List the product names that no customer from Paris has bought, ordered by product name."
-    planner, gemini = _gemini_planner()
+    planner = _hermetic_planner()
+    planner.pool = [_model_query(planner, ("SELECT product_name FROM products EXCEPT "
+                                           "SELECT product_name FROM purchases WHERE city = 'Paris'"), tables)]
     with patch.object(planner, "select_query", wraps=planner.select_query) as select:
         with analysis_execution_context({"slug": "unsold", "revision": 1}, "c_" + "9" * 32), \
                 patch.object(planner, "execute", side_effect=AssertionError("partial answer executed")):
@@ -1305,16 +1029,14 @@ def test_a_compound_named_request_asks_for_decomposition_before_selection_runs()
         # Contrast: evaluation (no analysis context) serves selection's choice, so it runs it.
         assert planner.serve(tables, question)["valid"]
         assert select.call_count == 1
-    assert gemini.calls == [], "the search's runnable readings never reach the fallback"
 
 
-def test_named_request_never_serves_or_decomposes_a_model_only_set_operation():
+def test_named_request_never_serves_or_decomposes_a_lower_read_set_operation():
     """The live demo gate caught this after a SQL model's queries could be served. "total amount for
-    restaurants in United States" is a world question; the catering sheet has no country column. A
-    model read it as an INTERSECT over invented values and it was ranked first, so every named
-    request asked for a decomposition and the world join never ran. Compound structure is the
-    search's reading: a named request neither decomposes nor serves that set operation, it serves
-    the best-ranked single query. Evaluation still serves selection's choice."""
+    restaurants in United States" read as an INTERSECT over invented values, ranked first, made every
+    named request ask for a decomposition. Compound structure is the readers' most probable reading: when it
+    is one goal, a named request neither decomposes nor serves a set operation the re-scorer ranks first, it
+    serves the best-ranked single query. Evaluation still serves selection's choice."""
 
     from engine.decomposition import search_probe
     from engine.deterministic.context import analysis_execution_context
@@ -1324,18 +1046,20 @@ def test_named_request_never_serves_or_decomposes_a_model_only_set_operation():
     tables = [dict(sheet, rows=[[name, event, int(amount)] for name, event, amount in sheet["rows"]])]
     question = "total amount for restaurants in United States"
     planner = _hermetic_planner()
+    total = _model_query(planner, "SELECT SUM(amount) FROM catering", tables)
     invented = _model_query(planner, ("SELECT SUM(amount) FROM catering WHERE event = 'breakfast' "
                                       "INTERSECT SELECT SUM(amount) FROM catering WHERE event = 'lunch'"),
-                            tables)
-    searched = _searched(planner, question, tables)
-    assert isinstance(searched[0].query, SelectQuery), "the search reads one goal"
-    selection = _select(planner, question, tables, searched=[invented, *searched])
-    assert selection.candidate is None, "invented values do not realize the requested country"
-    assert not search_probe(planner, tables, question).decomposition_required
+                            tables, score=1.0)
+    planner.pool = [total, invented]
+    selection = _select(planner, question, tables)
+    assert selection.candidate.sql == invented.sql, "evaluation serves the re-scorer's choice"
+    probe = search_probe(planner, tables, question)
+    assert not probe.decomposition_required and probe.selection.selected == 1
     with analysis_execution_context({"slug": "catering", "revision": 1}, "c_" + "8" * 32):
         named = planner.serve(tables, question)
     assert not named.get("decomposition_required"), named
-    assert named["result"] is None and not named["valid"], "the world route must supply the missing country"
+    assert named["valid"] and named["sql"] == total.sql, named
+    assert named["selection"]["selected"] == 0
 
 
 def test_proposal_import_rejects_malformed_model_text():
@@ -1361,97 +1085,12 @@ def test_decoded_sql_normalizer_preserves_multiline_statements_and_strips_fences
     )
 
 
-def test_the_fallback_is_not_asked_when_the_search_covers_the_question():
-    """A runnable, grounded, lexically covered question stays on deterministic search."""
-    planner, gemini = _gemini_planner(question="How many people are from France?")
-    selection = _select(planner, "How many people are from France?")
-    assert selection.selected == 0 and selection.served_by == "search" and selection.fallback is None
-    served = planner.serve([PEOPLE], "How many people are from France?")
-    assert served["sql"] == FRANCE_COUNT and served["result"]["rows"] == [[2]]
-    assert served["fallback"] is None
-    assert served["model"] == "engine - typed SQL AST planner (deterministic search)"
-    assert gemini.calls == []
-
-
-def test_a_question_the_search_cannot_read_is_answered_through_geminis_rewording():
-    """The search reads words, and a question in Japanese gives it none: its pool is empty. The
-    fallback asks Gemini once to reword the question in the tables' own words and the search answers
-    the rewording, so the SQL is still the search's. The answer names the question it answered and
-    says Gemini reworded it."""
-    rewording = "How many people are from France?"
-    planner, gemini = _gemini_planner(question=rewording)
-    assert not _select(_hermetic_planner(), JAPANESE_FRANCE).candidate
-    selection = _select(planner, JAPANESE_FRANCE)
-    assert selection.served_by == "gemini-rewrite"
-    assert selection.fallback == FallbackRecord("rewrite", "gemini-test", question=rewording)
-    assert selection.candidate.sql == _searched(planner, rewording)[0].sql == FRANCE_COUNT
-    served = planner.serve([PEOPLE], JAPANESE_FRANCE)
-    assert served["valid"] and served["question"] == JAPANESE_FRANCE
-    assert served["sql"] == FRANCE_COUNT and served["result"]["rows"] == [[2]]
-    assert served["fallback"] == {"kind": "rewrite", "model": "gemini-test", "question": rewording}
-    assert served["selection"]["served_by"] == "gemini-rewrite"
-    assert served["selection"]["fallback"] == served["fallback"]
-    assert served["model"] == ("engine - typed SQL AST planner; the search read gemini-test's "
-                               "rewording of the question")
-    assert [step for step, _ in gemini.calls] == ["question", "question"]
-
-
-def test_rewriter_recovers_when_a_runnable_plan_ignores_part_of_the_question():
-    """A runnable projection of Keyword is not accepted when the question also asks for volume."""
-    sheet = {"name": "Checklist", "columns": [
-        "Keyword", "shortlist", "Currency", "Avg. monthly searches",
-    ], "rows": [
-        ["home inspection checklist", "", "USD", 5000],
-        ["fire extinguisher audit checklist", "", "USD", 5000],
-    ]}
-    rewording = "show the column Avg. monthly searches for the keyword home inspection checklist"
-    for question in (
-        "keyword volume for home inspection checklist",
-        "Suchvolumen für home inspection checklist",
-    ):
-        planner, gemini = _gemini_planner(question=rewording)
-        baseline = _select(_hermetic_planner(), question, [sheet])
-        assert baseline.candidate is None, "an incomplete baseline cannot answer without rewriting"
-        selection = _select(planner, question, [sheet])
-        assert selection.served_by == "gemini-rewrite"
-        assert "Avg. monthly searches" in selection.candidate.sql
-        assert "AVG(" not in selection.candidate.sql
-        assert selection.candidate.sql.endswith("WHERE \"Checklist\".\"Keyword\" = 'home inspection checklist'")
-        assert selection.fallback.question == rewording
-        assert [step for step, _ in gemini.calls] == ["question"]
-        prompt = gemini.calls[0][1]
-        assert "5000" not in prompt and "home inspection checklist" in prompt
-        served = planner.serve([sheet], question)
-        assert served["valid"] and served["result"]["rows"] == [[5000]], served
-
-
-def test_schema_rewrite_can_resolve_a_synonym_without_changing_the_sql_reading():
-    """A safe rewrite that maps an unknown measure phrase onto a schema column can confirm the
-    same correct AST; it need not manufacture a different SQL string to count as a better reading."""
-    planner, gemini = _gemini_planner(question="what is total Amount")
-    amounts = {"name": "orders", "columns": ["Amount"], "rows": [[100], [200]]}
-    candidate = _model_query(planner, 'SELECT SUM("orders"."Amount") FROM "orders"', [amounts])
-    # The typed search is stubbed at its canonical-column result so this test isolates the
-    # selection rule; the real search and schema rewrite are exercised in neighboring tests.
-    planner.search_pool = lambda *_args, **_kwargs: [candidate]
-    searched = [candidate]
-    original = _select(_hermetic_planner(), "what is total turnover", [amounts], searched=searched)
-    assert original.candidate is None
-    selection = _select(planner, "what is total turnover", [amounts], searched=searched)
-    assert selection.served_by == "gemini-rewrite"
-    assert selection.candidate.sql == candidate.sql
-    assert selection.candidate.sql == 'SELECT SUM("orders"."Amount") FROM "orders"'
-    assert selection.fallback.question == "what is total Amount"
-    assert [step for step, _ in gemini.calls] == ["question"]
-
-
 # A customer's keyword-planner tab (2026-10-06), cut down: 'inspection checklist' is one keyword, and three others
 # hold it inside them (10,550 searches in all).
 KEYWORDS = {"name": "Checklist", "columns": ["Keyword", "Avg. monthly searches", "Competition"], "rows": [
     ["inspection checklist", 500, "Low"], ["home inspection checklist", 5000, "Low"],
     ["house inspection checklist", 5000, "High"], ["roof inspection checklist", 50, "Low"],
     ["fire extinguisher inspection list", 5000, "High"], ["forklift training", 500, "Medium"]]}
-HELD_INSIDE = "WHERE LOWER(\"Checklist\".\"Keyword\") LIKE '%inspection checklist%'"
 
 
 def test_a_text_column_is_an_aggregate_operand_only_where_it_ends_the_aggregate_phrase():
@@ -1486,213 +1125,23 @@ def test_a_text_column_is_an_aggregate_operand_only_where_it_ends_the_aggregate_
     assert targets("total Amount value for Paris", orders) == {"SUM": ["Amount"]}
 
 
-def test_a_text_right_after_contain_or_all_is_compared_inside_values():
-    """A customer's keyword sheet (2026-10-06): "...for all inspection checklist" and "...containing
-    'inspection checklist'" both meant every keyword holding the phrase, but 'inspection checklist' is also one
-    keyword, so both compared that one value (500 of 10,550 here). Right after "contain" or "include", a text is
-    one that values hold, whole value or not; after "all" or "every", a value only one row holds while others
-    hold it inside them is too. The words that ask are read once the query compares the text: "containing"
-    had left every substring reading unread, so Spider's "names contain the substring 'Al'" went unanswered."""
-    planner = _hermetic_planner()
-    for question in ("What is the sum of Avg. monthly searches for all Keyword containing 'inspection checklist'?",
-                     "total Avg. monthly searches for keywords containing inspection checklist",
-                     "total Avg. monthly searches for all inspection checklist",
-                     "total Avg. monthly searches for all inspection checklists",
-                     "total Avg. monthly searches for every inspection checklist"):
-        served = planner.serve([KEYWORDS], question)
-        assert served["valid"] and served["sql"].endswith(HELD_INSIDE), (question, served)
-        assert served["result"]["rows"] == [[10550]], (question, served)
-    # Contrast, the same sheet: the phrase named as the one keyword, without "all", is that keyword.
-    for question in ("total Avg. monthly searches for the Keyword 'inspection checklist'",
-                     "total Avg. monthly searches for inspection checklist"):
-        served = planner.serve([KEYWORDS], question)
-        assert served["result"]["rows"] == [[500]] and "LIKE" not in served["sql"], (question, served)
-    # Negative: "all" over a value many rows hold is those rows ('Paris Nord' is another city), and a column's
-    # words between "contain" and a whole value keep it one value (Spider's "contain the paragraph text").
-    orders = {"name": "orders", "columns": ["City", "Amount"],
-              "rows": [["Paris", 10], ["Paris", 20], ["Lyon", 5], ["Paris Nord", 7]]}
-    served = planner.serve([orders], "total Amount for all Paris orders")
-    assert served["result"]["rows"] == [[30]] and "LIKE" not in served["sql"], served
-    paragraphs = {"name": "paragraphs", "columns": ["document_id", "paragraph_text"],
-                  "rows": [[1, "Brazil"], [2, "Brazil and Chile"], [3, "Ireland"]]}
-    served = planner.serve([paragraphs], "What are the ids of documents that contain the paragraph text 'Brazil'?")
-    assert served["result"]["rows"] == [[1]] and "LIKE" not in served["sql"], served
-    contestants = {"name": "contestants", "columns": ["contestant_name", "votes"],
-                   "rows": [["Alice", 3], ["Bob", 4], ["Kaleb", 5]]}
-    for question in ("Return the names of the contestants whose names contain the substring 'Al'.",
-                     "Which contestants have names containing 'Al'?"):
-        served = planner.serve([contestants], question)
-        assert sorted(served["result"]["rows"]) == [["Alice"], ["Kaleb"]], (question, served)
-
-
-def test_an_average_a_column_name_spells_is_the_column():
-    """A customer's keyword sheet (2026-10-06): Gemini reworded "keyword volume for all inspection checklist" as
-    "What is the Avg. monthly searches for all Keyword containing 'inspection checklist'?", and "Avg." in the
-    column's name averaged the 38 keywords' searches: 1,115.79, an average of averages nobody asked for. An
-    average a spelled column name holds never asks for one by itself; another word that asks still does, and a
-    spelled total still totals ("the total amount in Paris"), in every reading the search builds."""
-    planner = _hermetic_planner()
-    served = planner.serve([KEYWORDS], "What is the Avg. monthly searches for Low competition?")
-    assert "AVG(" not in served["sql"] and sorted(served["result"]["rows"]) == [[50], [500], [5000]], served
-    served = planner.serve([KEYWORDS], "What is the Avg. monthly searches for all Keyword containing 'inspection checklist'?")
-    assert "AVG(" not in served["sql"] and served["sql"].endswith(HELD_INSIDE), served
-    assert sorted(row[-1] for row in served["result"]["rows"]) == [50, 500, 5000, 5000], served
-    served = planner.serve([KEYWORDS], "What is the Avg. monthly searches for the Keyword 'home inspection checklist'?")
-    assert served["result"]["rows"] == [[5000]], served
-    # Two keywords joined by "or" are read by the constraint expansion, which averaged them too.
-    either = "home inspection checklist or roof inspection checklist"
-    served = planner.serve([KEYWORDS], f"Avg. monthly searches for {either}")
-    assert "AVG(" not in served["sql"] and sorted(row[-1] for row in served["result"]["rows"]) == [50, 5000], served
-    # Contrast: a word outside the name asks for the average.
-    served = planner.serve(
-        [KEYWORDS], "What is the average Avg. monthly searches for all Keyword containing 'inspection checklist'?")
-    assert "AVG(" in served["sql"] and float(served["result"]["rows"][0][0]) == 2637.5, served
-    assert planner.serve([KEYWORDS], f"average Avg. monthly searches for {either}")["result"]["rows"] == [[2525]]
-    assert planner.serve([KEYWORDS], f"total Avg. monthly searches for {either}")["result"]["rows"] == [[5050]]
-    # Negative: a spelled total still totals.
-    orders = {"name": "orders", "columns": ["City", "Total Amount"],
-              "rows": [["Paris", 10], ["Paris", 20], ["Lyon", 5]]}
-    assert planner.serve([orders], "What is the total amount in Paris?")["result"]["rows"] == [[30]]
-
-
-def test_the_rewording_of_a_keyword_volume_keeps_every_keyword_holding_the_phrase():
-    """The conversation that failed (2026-10-06). The search cannot read "volume" without Gemini, which sees
-    names, not cells: with tabs named Inspection and Checklist it reworded "keyword volume for all inspection
-    checklist" into keywords of the Inspection tab containing 'checklist', every time; the literal check
-    refused that, and the user was asked which column "volume" means. Production's rewording dropped "all"
-    ("the Keyword 'inspection checklist'") and answered 500 for one keyword; and the right rewording of "total
-    keyword volume for all inspection checklist" was refused against the question's Keyword total. Gemini now
-    sees the question's own value quoted, and one the search reads as held inside a column's values spelled as
-    that column containing it; a rewording that compares one keyword is refused, and the right one is served."""
-    listed = "What is the Avg. monthly searches for each Keyword containing 'inspection checklist'?"
-    planner, gemini = _gemini_planner(question=listed)
-    selection = _select(planner, "keyword volume for all inspection checklist", [KEYWORDS])
-    assert selection.served_by == "gemini-rewrite" and HELD_INSIDE in selection.candidate.sql, selection.record()
-    prompt = gemini.calls[0][1]
-    assert prompt.endswith("Question:\nkeyword volume for all Keyword containing 'inspection checklist'"), prompt
-    assert "home inspection checklist" not in prompt and "5000" not in prompt
-    # The prompt keeps the user's own words; a plural names the keyword all the same, and is compared as the
-    # sheet writes it (LIKE '%inspection checklists%' would hold no keyword).
-    plural = "What is the Avg. monthly searches for all Keyword containing 'inspection checklists'?"
-    planner, gemini = _gemini_planner(question=plural)
-    selection = _select(planner, "keyword volume for all inspection checklists", [KEYWORDS])
-    assert gemini.calls[0][1].endswith(
-        "Question:\nkeyword volume for all Keyword containing 'inspection checklists'"), gemini.calls
-    assert selection.served_by == "gemini-rewrite" and HELD_INSIDE in selection.candidate.sql, selection.record()
-    # Contrast: the one keyword, asked without "all", is only quoted.
-    planner, gemini = _gemini_planner(question=listed)
-    _select(planner, "keyword volume for inspection checklist", [KEYWORDS])
-    assert gemini.calls[0][1].endswith("Question:\nkeyword volume for 'inspection checklist'"), gemini.calls
-    served = planner.serve([KEYWORDS], "keyword volume for all inspection checklist")
-    assert sorted(row[-1] for row in served["result"]["rows"]) == [50, 500, 5000, 5000], served
-    # The rewording production served compares the one keyword: not all of them.
-    planner, _ = _gemini_planner(question="What is the Avg. monthly searches for the Keyword 'inspection checklist'?")
-    selection = _select(planner, "keyword volume for all inspection checklist", [KEYWORDS])
-    assert selection.candidate is None and selection.fallback.kind == "none", selection.record()
-    # "total" after it: the right rewording is served, and totals every keyword holding the phrase.
-    total = "What is the sum of Avg. monthly searches for all Keyword containing 'inspection checklist'?"
-    planner, _ = _gemini_planner(question=total)
-    for question in ("total keyword volume for all inspection checklist",
-                     "total keyword volume for all inspection checklist keywords"):
-        served = planner.serve([KEYWORDS], question)
-        assert served["valid"] and served["result"]["rows"] == [[10550]], (question, served)
-        assert served["sql"].endswith(HELD_INSIDE) and served["fallback"]["question"] == total
-
-
-def test_a_listing_of_numbers_names_the_rows_its_text_filter_picked():
-    """A customer's keyword sheet (2026-10-06): "All inspection checklist?" was served as the Avg. monthly searches
-    of every keyword containing 'inspection checklist', and the reply listed 38 numbers ("- 5000", "- 5000", ...)
-    with nothing to say which keyword each was. A listing of numbers alone whose rows a text filter picked with more
-    than one value (a pattern, values joined by "or" or "and", a value excluded) shows that column first; a filter
-    on one value, a listing that already names its rows, a total, DISTINCT and a single row stay as they are."""
-    from engine.answer_presentation import terminal_reply
-
-    planner = _hermetic_planner()
-    holding = [["inspection checklist", 500], ["home inspection checklist", 5000],
-               ["house inspection checklist", 5000], ["roof inspection checklist", 50]]
-    for question in ("What is the Avg. monthly searches for all Keyword containing 'inspection checklist'?",
-                     "Avg. monthly searches for keywords containing inspection checklist"):
-        served = planner.serve([KEYWORDS], question)
-        assert served["sql"].endswith(HELD_INSIDE), (question, served)
-        assert served["result"]["columns"] == ["Keyword", "Avg. monthly searches"], (question, served)
-        assert served["result"]["rows"] == holding, (question, served)
-    reply = terminal_reply({"status": "answered", "answer": served["result"]})
-    assert reply.splitlines()[1] == "- Keyword: home inspection checklist; Avg. monthly searches: 5000", reply
-    for joined in ("and", "or"):
-        served = planner.serve(
-            [KEYWORDS], f"Avg. monthly searches for home inspection checklist {joined} roof inspection checklist")
-        assert served["result"]["rows"] == [
-            ["home inspection checklist", 5000], ["roof inspection checklist", 50]], (joined, served)
-    served = planner.serve([KEYWORDS], "Avg. monthly searches for keywords except inspection checklist")
-    assert served["result"]["columns"][0] == "Keyword" and len(served["result"]["rows"]) == 5, served
-    served = planner.serve([KEYWORDS], "top 2 Avg. monthly searches for keywords containing 'inspection checklist'")
-    assert served["result"]["rows"] == [
-        ["home inspection checklist", 5000], ["house inspection checklist", 5000]], served
-    orders = {"name": "orders", "columns": ["City", "Amount", "Year"],
-              "rows": [["Paris", 10, 2024], ["Paris Nord", 20, 2025], ["Lyon", 5, 2024], ["Nice", 7, 2025]]}
-    assert planner.serve([orders], "amounts for cities containing 'Paris'")["result"]["rows"] == [
-        ["Paris", 10], ["Paris Nord", 20]]
-    assert planner.serve([orders], "amounts for orders not from Paris")["result"]["rows"] == [
-        ["Paris Nord", 20], ["Lyon", 5], ["Nice", 7]]
-    # Contrast, the same sheets: one value filtered on names no row, and a listing that names its rows keeps them.
-    for question, columns in (
-            ("Avg. monthly searches for the Keyword 'home inspection checklist'", ["Avg. monthly searches"]),
-            ("Avg. monthly searches for Low competition", ["Avg. monthly searches"]),
-            ("keywords containing 'inspection checklist'", ["Keyword"]),
-            ("Keyword and Avg. monthly searches for keywords containing 'inspection checklist'",
-             ["Keyword", "Avg. monthly searches"]),
-            ("the different Avg. monthly searches for keywords containing 'inspection checklist'",
-             ["Avg. monthly searches"])):
-        served = planner.serve([KEYWORDS], question)
-        assert served["result"]["columns"] == columns, (question, served)
-    # Negative: a total, the one highest value and a numeric filter ask for values, not rows.
-    assert planner.serve([KEYWORDS], "total Avg. monthly searches for all inspection checklist")["result"]["rows"] == [
-        [10550]]
-    served = planner.serve(
-        [KEYWORDS], "the highest Avg. monthly searches for keywords containing 'inspection checklist'")
-    assert served["result"]["columns"] == ["Avg. monthly searches"], served
-    assert planner.serve([orders], "Amount for orders with Amount above 6")["result"]["columns"] == ["Amount"]
-
-
-def test_a_negation_excludes_the_value_after_it_and_the_values_listed_with_it():
-    """A release review (2026-10-07): "orders not Done in France" was served as the orders outside France that are
-    not Done. A negation word within three words before a value excluded it, past another value between them. A
-    negation excludes the first value after it and each value "and", "or" or "nor" joins to that one; a negation
-    word inside a value is the value's ("Not Started")."""
-    planner = _hermetic_planner()
-    orders = {"name": "orders", "columns": ["order_id", "status", "country", "Amount"],
-              "rows": [[1, "Done", "France", 10], [2, "Open", "France", 15], [3, "Done", "Spain", 30],
-                       [4, "Open", "Italy", 5], [5, "Cancelled", "France", 7], [6, "Not Started", "Spain", 9]]}
-
-    def rows(question):
-        return sorted(map(tuple, planner.serve([orders], question)["result"]["rows"]))
-
-    assert rows("orders not Done in France") == [(2, "Open", "France", 15), (5, "Cancelled", "France", 7)]
-    assert rows("orders not Done or Cancelled") == [
-        (2, "Open", "France", 15), (4, "Open", "Italy", 5), (6, "Not Started", "Spain", 9)]
-    assert rows("orders excluding France and Spain") == [(4, "Open", "Italy", 5)]
-    # Contrast: the same filters in the other order.
-    assert rows("how many orders in France are not Done") == [(2,)]
-    # Negative: the value's own negation word is the value.
-    assert rows("orders Not Started in Spain") == [(6, "Not Started", "Spain", 9)]
-
-
 def test_a_decimal_comma_amount_is_not_totalled_as_hundreds():
     """A release review (2026-10-07): ingestion dropped every comma, so amounts written "1,50", "12,34" and
     "2,00" totalled 1584 instead of 15.84. A comma is read only where it groups digits, so such a column stays
-    text and is not summed; amounts grouped in thousands, or in Indian lakhs, still total."""
+    text and is not summed (the planner types a column numeric only when its cells are stored as numbers,
+    engine/numeric.stored_as_numbers); amounts grouped in thousands, or in Indian lakhs, still total."""
+    from engine.numeric import stored_as_numbers
     from engine.tables import csv_table
-    planner = _hermetic_planner()
 
     def total(csv):
-        result = planner.serve([csv_table(csv, "sales")], "total amount").get("result")
-        return result and result["rows"]
+        amounts = [row[1] for row in csv_table(csv, "sales")["rows"]]
+        return sum(amounts) if stored_as_numbers(amounts) else None
 
-    assert not total('item,amount\nA,"1,50"\nB,"12,34"\nC,"2,00"\n')
-    assert total('item,amount\nA,"1,500"\nB,"12,340"\nC,"2,000"\n') == [[15840]]
-    assert total('item,amount\nA,"1,23,456"\nB,"12,34,567"\n') == [[1358023]]
+    assert total('item,amount\nA,"1,50"\nB,"12,34"\nC,"2,00"\n') is None
+    assert total('item,amount\nA,"1,500"\nB,"12,340"\nC,"2,000"\n') == 15840
+    assert total('item,amount\nA,"1,23,456"\nB,"12,34,567"\n') == 1358023
     # A column mixing the formats is not totalled from its grouped cells alone.
-    assert not total('item,amount\nA,"1,234"\nB,"1,50"\n')
+    assert total('item,amount\nA,"1,234"\nB,"1,50"\n') is None
 
 
 def test_join_keys_are_read_as_the_executed_join_compares_them():
@@ -1708,14 +1157,23 @@ def test_join_keys_are_read_as_the_executed_join_compares_them():
     planner = _hermetic_planner()
     orders = {"name": "orders", "columns": ["order_id", "customer_id", "amount"],
               "rows": [[1, "ABC", 10], [2, "ABC", 20], [3, "DEF", 30]]}
+    by_name = ("SELECT customers.name, SUM(orders.amount) FROM orders JOIN customers "
+               "ON orders.customer_id = customers.customer_id GROUP BY customers.name")
+
+    def joined(tables):
+        """The total by customer name over the discovered key, run by the production executor; None unlinked."""
+        if not discover_fks(tables):
+            return None
+        _, fks, sch, tablemap = _request(planner, tables)
+        query = import_sql(by_name, SchemaGraph.from_planner(sch, fks))
+        return sorted(map(tuple, planner.execute(tablemap, sch, render_query(query), query=query)[1]))
 
     def customers(*rows):
         return {"name": "customers", "columns": ["customer_id", "name"], "rows": [list(row) for row in rows]}
 
     def answer(table):
         edges = [(e["from_table"], e["from_col"], e["to_table"], e["to_col"]) for e in discover_fks([orders, table])]
-        result = planner.serve([orders, table], "total amount by customer name").get("result")
-        return edges, sorted(map(tuple, result["rows"])) if result else None
+        return edges, joined([orders, table])
 
     linked = [("orders", "customer_id", "customers", "customer_id")]
     assert answer(customers(("abc", "Ann"), ("def", "Bo"))) == ([], None)
@@ -1734,9 +1192,8 @@ def test_join_keys_are_read_as_the_executed_join_compares_them():
                            ("1.0,Alice\n2.0,Bob\nABC,Chris", [("Alice", 30), ("Bob", 30), ("Chris", 40)])):
         mixed_customers = csv_table("customer_id,name\n" + keys + "\n", "customers")
         edges = discover_fks([mixed_orders, mixed_customers])
-        result = planner.serve([mixed_orders, mixed_customers], "total amount by customer name").get("result")
-        assert bool(edges) == bool(expected) and (sorted(map(tuple, result["rows"])) if result else None) == expected, (
-            keys, edges, result)
+        result = joined([mixed_orders, mixed_customers])
+        assert bool(edges) == bool(expected) and result == expected, (keys, edges, result)
     accounts = {"name": "accounts", "columns": ["account_id", "owner"], "rows": [[2**53, "Ann"], [2**53 + 1, "Bo"]]}
     payments = {"name": "payments", "columns": ["payment_id", "account_id", "amount"],
                 "rows": [[1, 2**53, 5], [2, 2**53 + 1, 7], [3, 2**53, 1]]}
@@ -1747,30 +1204,6 @@ def test_join_keys_are_read_as_the_executed_join_compares_them():
     # Contrast: an account listed twice does repeat each payment the join matches to it.
     twice = {**accounts, "rows": accounts["rows"] + [[2**53, "Ann"]]}
     assert len(double_counted(total, {"accounts": twice, "payments": payments})) == 1
-
-
-def test_a_number_in_a_question_is_one_word_however_it_is_written():
-    """Revision 2 of a release review (2026-10-07): the question splitter cut "1,000" into 1 and 000 and "2.5"
-    into 2 and 5, so "orders with Amount over 1,000" and "over 2.5" found no query while "over 1000" did. A
-    number is one word, grouped or decimal, in the question, the cells and the completeness check alike."""
-    planner = _hermetic_planner()
-    orders = {"name": "orders", "columns": ["order_id", "Amount", "product"],
-              "rows": [[1, 2, "Kit 2.0"], [2, 999, "Kit 1.5"], [3, 1001, "Kit 2.0"], [4, 2000, "Pad"],
-                       [5, 150000, "Pad"]]}
-
-    def answer(question):
-        out = planner.serve([orders], question)
-        return out.get("sql"), sorted(map(tuple, out["result"]["rows"])) if out.get("result") else None
-
-    plain = answer("orders with Amount over 1000")
-    assert plain[1] == [(1001,), (2000,), (150000,)], plain
-    assert answer("orders with Amount over 1,000") == plain
-    assert answer("how many orders with Amount over 1,000?")[1] == [(3,)]
-    assert answer("how many orders with Amount over 1,00,000?")[1] == [(1,)]        # Indian grouping
-    assert answer("how many orders with Amount below 2.5?")[1] == [(1,)]
-    assert answer("how many orders of Kit 2.0")[1] == [(2,)]                      # a value holding a decimal
-    # Negative: a comma that does not group digits names no number.
-    assert answer("orders with Amount over 1,00")[1] is None
 
 
 def test_an_explicit_zero_foreign_key_confidence_stays_zero():
@@ -1786,220 +1219,23 @@ def test_an_explicit_zero_foreign_key_confidence_stays_zero():
     assert confidence(conf=0.0) == 0.0 and confidence(confidence=0.4) == 0.4 and confidence() == 1.0
 
 
-def test_unread_check_accepts_a_threshold_only_when_the_ast_realizes_it():
-    from engine.tables import _query_has_unread_terms
-
-    sales = {"name": "s", "columns": ["city", "sales"],
-             "rows": [["Tokyo", 100], ["Osaka", 200], ["Nagoya", 50]]}
-    planner = _hermetic_planner()
-    question = "cities with total sales over 100"
-    norm, fks, sch, tablemap = _request(planner, [sales])
-    graph = SchemaGraph.from_planner(sch, fks)
-    selected = planner.select_query(question, norm, fks, sch, tablemap)
-    assert selected.candidate is not None
-    assert not _query_has_unread_terms(question, selected.candidate, graph)
-
-    reversed_comparison = _model_query(
-        planner, "SELECT city, SUM(sales) FROM s GROUP BY city HAVING SUM(sales) < 100", [sales],
-    )
-    assert _query_has_unread_terms(question, reversed_comparison, graph)
-
-
-def test_unread_check_treats_sheet_scope_words_as_context_not_filters():
-    from engine.tables import _query_has_unread_terms
-
-    sheet = {"name": "customers", "columns": ["order ID", "customer", "city", "amount"],
-             "rows": [[101, "Poirot", "Brussels", 38], [102, "Lupin", "Paris", 180]]}
-    planner = _hermetic_planner()
-    norm, fks, sch, _tablemap = _request(planner, [sheet])
-    graph = SchemaGraph.from_planner(sch, fks)
-    candidate = _model_query(planner, 'SELECT COUNT(*) FROM "customers"', [sheet])
-    for question in (
-        "How many orders are in the current sheet?",
-        "Count all non-empty Order ID rows below the header in the Customers sheet",
-    ):
-        assert not _query_has_unread_terms(question, candidate, graph), question
-
-
-def test_gemini_rewording_cannot_drop_a_user_constraint_from_coverage():
-    """The rewrite is only a retrieval aid: coverage checks the original question too."""
-    from unittest.mock import patch
-    from engine.knowledge_query import KnowledgeQuery, _coverage_questions
-
-    original = "total amount for Germany"
-    response = {"fallback": {"kind": "rewrite", "question": "total amount"}}
-    questions = _coverage_questions(response, original)
-    assert questions == [original, "total amount"]
-    schema = [{"table": "orders", "name": "amount", "values": ["100"]}]
-    sql = "SELECT SUM(amount) FROM orders WHERE country = 'France'"
-    checked = []
-    def uncovered(_self, question, _schema, _sql):
-        checked.append(question)
-        return ["germany"] if question == original else []
-    owner = object.__new__(KnowledgeQuery)
-    with patch.object(KnowledgeQuery, "_uncovered", uncovered):
-        dropped = list(dict.fromkeys(
-            word for question in questions for word in owner._uncovered(question, schema, sql)
-        ))
-    assert checked == [original, "total amount"]
-    assert "germany" in dropped
-
-
-def test_gemini_cannot_write_sql_when_its_rewrite_is_not_searchable():
-    """When neither the typed search nor the reworded search can read a question, no SQL is served."""
-    planner, gemini = _gemini_planner(question=RUSSIAN_FRANCE)
-    selection = _select(planner, JAPANESE_FRANCE)
-    assert selection.selected is None and selection.served_by == "search"
-    assert selection.fallback == FallbackRecord(
-        "none", "gemini-test", question=RUSSIAN_FRANCE,
-        note="the rewritten question still has unread terms")
-    assert [step for step, _ in gemini.calls] == ["question"]
-    served = planner.serve([PEOPLE], JAPANESE_FRANCE)
-    assert served["valid"] is False and served["sql"] is None
-
-
-def test_a_disabled_fallback_is_never_asked():
-    """With external models off (EXTERNAL_LLM_ENABLED unset, or Gemini unconfigured) selection is the
-    search alone: no call and no fallback record, and a question it cannot read is not answered."""
-    planner, gemini = _gemini_planner(question="How many people are from France?", enabled=False)
-    selection = _select(planner, JAPANESE_FRANCE)
-    assert selection.selected is None and selection.fallback.kind == "none"
-    served = planner.serve([PEOPLE], JAPANESE_FRANCE)
-    assert served["error"] == "planner: no executable AST candidate" and served["fallback"]["kind"] == "none"
-    assert served["model"] == "engine - typed SQL AST planner (deterministic search)"
-    assert gemini.calls == []
-
-
-def test_a_gemini_outage_serves_nothing_and_is_not_cached():
-    """engine.llm raises LLMUnavailable for a failed call or a timeout. That is not the prompt's
-    answer: selection serves nothing and says Gemini was unavailable, and once Gemini answers again
-    the same question is asked afresh."""
-    planner, gemini = _gemini_planner(question="How many people are from France?", outage=True)
-    selection = _select(planner, JAPANESE_FRANCE)
-    assert selection.selected is None and selection.served_by == "search"
-    assert selection.fallback.kind == "none"
-    gemini.outage = False
-    recovered = _select(planner, JAPANESE_FRANCE)
-    assert recovered.served_by == "gemini-rewrite" and recovered.candidate.sql == FRANCE_COUNT
-    assert selection.fallback == FallbackRecord("none", "gemini-test", note="Gemini unavailable"), (
-        selection.fallback)
-
-
-def test_unreadable_runnable_baseline_is_not_served_when_rewriting_fails():
-    sheet = {"name": "Checklist", "columns": ["Keyword", "Avg. monthly searches"],
-             "rows": [["home inspection checklist", 5000]]}
-    planner, _gemini = _gemini_planner(outage=True)
-    selection = _select(planner, "keyword volume for home inspection checklist", [sheet])
-    assert selection.selected is None
-    assert selection.fallback == FallbackRecord("none", "gemini-test", note="Gemini unavailable")
-
-
-def test_the_fallback_is_stateless_across_repeated_requests():
-    """Every request is rewritten independently; process-local answers are never reused."""
-    planner, gemini = _gemini_planner(question="How many people are from France?")
-    first = _select(planner, RUSSIAN_FRANCE)
-    again = _select(planner, RUSSIAN_FRANCE)
-    assert first.served_by == again.served_by == "gemini-rewrite"
-    assert again.candidate.sql == first.candidate.sql == FRANCE_COUNT
-    assert [step for step, _ in gemini.calls] == ["question", "question"]
-    _select(planner, RUSSIAN_FRANCE, [PEOPLE, PURCHASES])
-    assert [step for step, _ in gemini.calls] == ["question"] * 3
-
-
-def test_gemini_reads_schema_names_but_not_cell_values():
-    """The fallback sends names and types, never workbook cell values or conversation history."""
-    question = "リヨンの客が買った商品は？"
-    planner, gemini = _gemini_planner()
-    _select(planner, question, [PURCHASES])
-    (rewrite_step, rewrite), = gemini.calls
-    assert rewrite_step == "question"
-    assert rewrite.startswith("Tables:\n【DB_ID】 SQLite database\n【Schema】\n# Table: purchases\n[")
-    assert rewrite.endswith("\n\nQuestion:\n" + question)
-    assert "(purchase_id:INTEGER)" in rewrite
-    assert "(customer_name:TEXT)" in rewrite
-    for unsent in ("Alice", "Cara", "Dan", "Eve", "Berlin", "Delta", "Examples:"):
-        assert unsent not in rewrite, unsent
-
-    planner, gemini = _gemini_planner()
-    _select(planner, question, [CUSTOMERS, ORDERS, ITEMS])
-    prompt = gemini.calls[0][1]
-    assert "]\n【Foreign keys】\n" in prompt
-    assert "orders.Customer_ID=customers.Customer_ID" in prompt and "items.Order_ID=orders.Order_ID" in prompt
-    assert not [char for char in prompt if 0xE000 <= ord(char) <= 0xF8FF], "private-use characters"
-
-
-def test_gemini_is_asked_for_words_not_sql_symbols():
-    """Spider DEV, 2026-10-12: 129 cached rewordings read like SQL ("Student with Age > 20", "PetType = 'dog'"), and
-    a comparison said as a symbol fails the check that the rewording keeps the question's operations ("more than" is
-    gone), so 98 rewordings were refused. Gemini is asked for plain words; a rewording with a symbol is still refused."""
-    question = "Which people have an age of more than 20?"
-    planner, gemini = _gemini_planner(question="Which people have Age > 20?")
-    _norm, fks, sch, _tablemap = _request(planner, [PEOPLE])
-    graph = SchemaGraph.from_planner(sch, fks)
-    rewritten, note = planner.question_rewriter.rewrite(question, graph)
-    system = gemini.requests[0]["system"]
-    assert "never with a symbol" in system and "not Student.Age" in system, system
-    assert rewritten is None and note == "rewording changed a stated value or number", (rewritten, note)
-
-
-def test_a_code_spelled_as_a_word_does_not_hold_a_rewording():
-    """Spider DEV 710, 724, 2026-10-12: "Which region is the city Kabul located in?" was refused its rewording because a
-    country's Code2 is 'IN', and "countries that are republics" because a CountryCode is 'ARE': every cell value said
-    as a word had to survive. A value the search reads is checked as before, and a name it cannot read (東京) too."""
-    from engine.question_rewrite import _preserves_explicit_constraints
-    country = {"name": "country", "columns": ["Code", "Code2", "Name", "Region"],
-               "rows": [["AFG", "AF", "Afghanistan", "Southern Asia"], ["IND", "IN", "India", "Southern Asia"],
-                        ["ARE", "AE", "United Arab Emirates", "Middle East"]]}
-    city = {"name": "city", "columns": ["ID", "Name", "CountryCode"], "rows": [[1, "Kabul", "AFG"], [2, "東京", "ARE"]]}
-    graph = SchemaGraph.from_tables([country, city], [("city", "CountryCode", "country", "Code")])
-    assert _preserves_explicit_constraints("Which region is the city Kabul located in?",
-                                           "What is the Region of the city Kabul?", graph)
-    # Negative: a stated value and a name the search cannot read still hold the rewording.
-    assert not _preserves_explicit_constraints("Which region is the city Kabul located in?",
-                                               "What is the Region of each city?", graph)
-    assert not _preserves_explicit_constraints("Which region is the city 東京 in?",
-                                               "What is the Region of the city Tokyo?", graph)
-
-
 def test_coordinated_aggregate_words_share_the_field_after_them():
     """Spider DEV 4, 17, 2026-10-13: "the average, minimum, and maximum age of all singers from France" was refused as no
     average of stadium.Average, a field named for the word, though the query averaged Age: the words coordinated after
-    "average" share the field after them. "The highest average attendance" still names the Average field."""
-    stadium = {"name": "stadium", "columns": ["Stadium_ID", "Name", "Capacity", "Average"],
-               "rows": [[1, "Hampden", 52500, 864], [2, "Ibrox", 50000, 4000]]}
-    singer = {"name": "singer", "columns": ["Singer_ID", "Name", "Country", "Age"],
-              "rows": [[1, "Ann", "France", 30], [2, "Bo", "France", 40], [3, "Cy", "Spain", 50]]}
-    planner = _hermetic_planner()
-    served = planner.serve([stadium, singer], "What is the average, minimum, and maximum age of all singers from France?",
-                           [])
-    assert served.get("valid"), (served.get("error"), served.get("sql"))
-    assert [list(row) for row in served["result"]["rows"]] == [[35.0, 30, 40]], served.get("sql")
-    capacities = planner.serve([stadium, singer], "What is the average and maximum capacities for all stadiums?", [])
-    assert [list(row) for row in capacities["result"]["rows"]] == [[51250.0, 52500]], capacities.get("sql")
+    "average" share the field after them (sql_rank.aggregate_operand). "The highest average attendance" names no
+    Average operand."""
     from engine.sql_rank import aggregate_operand
+    names = ["Stadium_ID", "Name", "Capacity", "Average", "Singer_ID", "Country", "Age"]
+    assert aggregate_operand("What is the average, minimum, and maximum age of all singers from France?", names,
+                             "AVG") == "Age"
     assert aggregate_operand("the stadium with the highest average attendance", ["Average", "Capacity"], "AVG") is None
 
 
 def test_a_field_is_named_by_another_form_of_its_word():
     """Spider DEV 958, 861, held-out Spider train 920, 2026-10-13: "the arriving date and the departing date of the dogs"
     showed no date_arrived or date_departed, and "years of founding" no Year_of_Founded: a word of a field's name said in
-    another form names the field, each where its own word is. A word naming an operation names no field ("ordered"
-    by an Orders field), and a short shared start is no shared stem ("named" is not "name")."""
-    dogs = {"name": "Dogs", "columns": ["dog_id", "name", "date_arrived", "date_departed"],
-            "rows": [[1, "Rex", "2017-09-08", "2018-03-25"], [2, "Bo", "2017-12-22", "2018-03-25"]]}
-    orchestra = {"name": "orchestra", "columns": ["Orchestra_ID", "Orchestra", "Year_of_Founded"],
-                 "rows": [[1, "London", 2003], [2, "Berlin", 2008]]}
-    treatments = {"name": "Treatments", "columns": ["treatment_id", "dog_id", "date_of_treatment"],
-                  "rows": [[1, 1, "2018-03-19"], [2, 2, "2018-03-15"]]}
-    fks = [{"from_table": "Treatments", "from_col": "dog_id", "to_table": "Dogs", "to_col": "dog_id"}]
-    planner = _hermetic_planner()
-    # date_of_treatment is "the treatment date": the departing date "of all the dogs" names no such field (DEV 964).
-    served = planner.serve([dogs, treatments], "What are the arriving date and the departing date of all the dogs?", fks)
-    assert served.get("valid"), (served.get("error"), served.get("sql"))
-    assert sorted(list(row) for row in served["result"]["rows"]) == [
-        ["2017-09-08", "2018-03-25"], ["2017-12-22", "2018-03-25"]], served.get("sql")
-    founded = planner.serve([orchestra], "What are the years of founding of the orchestras?", [])
-    assert sorted(list(row) for row in founded["result"]["rows"]) == [[2003], [2008]], founded.get("sql")
+    another form names the field (sql_expansion.says_in_another_form). A word naming an operation names no field
+    ("ordered" by an Orders field), and a short shared start is no shared stem ("named" is not "name")."""
     from engine.sql_expansion import says_in_another_form
     assert says_in_another_form("arriving", "arrived") and says_in_another_form("departure", "departed")
     assert says_in_another_form("directors", "directed") and says_in_another_form("settlement", "settled")
@@ -2007,481 +1243,25 @@ def test_a_field_is_named_by_another_form_of_its_word():
     assert not says_in_another_form("named", "name") and not says_in_another_form("country", "count")
     # A "d" alone ends only a past form: "amenity" says no amenid (held-out 531).
     assert not says_in_another_form("amenity", "amenid") and says_in_another_form("created", "create")
-    # A word naming a field names no other in another form: "the gradepoints" is no Grade (held-out 962).
-    from engine.sql_search import _column_link_positions
-    grades = SchemaGraph.from_tables([
-        {"name": "Enrolled_in", "columns": ["StuID", "Grade"], "rows": [[1, "A"]]},
-        {"name": "Gradeconversion", "columns": ["lettergrade", "gradepoint"], "rows": [["A", 4.0]]}], ())
-    grade = next(column.ref for column in grades.columns if column.ref.name == "Grade")
-    assert _column_link_positions(grade, ("the", "maximum", "gradepoint"), grades, ("grade",)) == []
-    # "The date of treatment" still names date_of_treatment, its "of" with it (DEV 947, reworded).
-    treated = SchemaGraph.from_tables([treatments], ())
-    when = next(column.ref for column in treated.columns if column.ref.name == "date_of_treatment")
-    assert _column_link_positions(when, ("the", "date", "of", "treatment"), treated, ("date", "of")) == [1, 2]
 
 
 def test_a_field_named_with_its_tables_abbreviation():
     """Held-out Spider train, 2026-10-13: 19 questions asked for cust_name, stu_gpa, crs_description, dept_name or
     apt_number by their other words ("the name of customers", "their apartment numbers") and none was shown: a field's
-    first word abbreviating its own table's name is that table's word, as "customer" of customer_name is. The same word
-    in another table's field, or one that abbreviates no word of its table, still has to be said."""
-    customer = {"name": "customer", "columns": ["cust_ID", "cust_name", "credit_score"],
-                "rows": [[1, "Mary", 30], [2, "Jack", 70], [3, "Owen", 210]]}
-    apartments = {"name": "Apartments", "columns": ["apt_id", "apt_number", "apt_type_code"],
-                  "rows": [[1, "Suite 645", "Flat"], [2, "Apt. 585", "Studio"], [3, "Suite 088", "Flat"]]}
-    planner = _hermetic_planner()
-    served = planner.serve([customer], "Find the name of customers whose credit score is below 100.", [])
-    assert served.get("valid"), (served.get("error"), served.get("sql"))
-    assert sorted(list(row) for row in served["result"]["rows"]) == [["Jack"], ["Mary"]], served.get("sql")
-    flats = planner.serve([apartments], 'Which apartments have type code "Flat"? Give me their apartment numbers.', [])
-    assert sorted(list(row) for row in flats["result"]["rows"]) == [["Suite 088"], ["Suite 645"]], flats.get("sql")
-    # The field read without its table's abbreviation is named beside its table: a building's "phone number" names no
-    # apt_number, and "managed by" a stated name compares building_manager without showing it (held-out 29).
-    buildings = {"name": "Apartment_Buildings",
-                 "columns": ["building_id", "building_address", "building_phone", "building_manager"],
-                 "rows": [[133, "1 High St", "1-724-982", "Brenden"], [153, "9 Low Rd", "540-244", "Melyssa"]]}
-    apartments_of = {"name": "Apartments", "columns": ["apt_id", "building_id", "apt_number"],
-                     "rows": [[1, 133, "Suite 645"], [2, 153, "Apt. 585"]]}
-    fks = [{"from_table": "Apartments", "from_col": "building_id", "to_table": "Apartment_Buildings",
-            "to_col": "building_id"}]
-    managed = planner.serve([buildings, apartments_of],
-                            'What are the address and phone number of the buildings managed by "Brenden"?', fks)
-    assert managed.get("valid"), (managed.get("error"), managed.get("sql"))
-    assert [list(row) for row in managed["result"]["rows"]] == [["1 High St", "1-724-982"]], managed.get("sql")
-    # A lone "number of" a table counts its rows: "the number of apartments" is no apt_number (fresh holdout 530).
-    counted = planner.serve([apartments], 'Find the number of apartments that have type code "Flat".', [])
-    assert [list(row) for row in counted["result"]["rows"]] == [[2]], counted.get("sql")
-    from engine.sql_ast import ColumnRef, SQLType
+    first word abbreviating its own table's name is that table's word, as "customer" of customer_name is
+    (sql_expansion.abbreviates). A word that abbreviates no word of its table still has to be said."""
     from engine.sql_expansion import abbreviates
-    from engine.sql_search import _column_link_words
     assert abbreviates("cust", "customer") and abbreviates("crs", "course") and abbreviates("dept", "department")
     assert not abbreviates("acc", "customer") and not abbreviates("cs", "course") and not abbreviates("stu", "course")
-    assert _column_link_words(ColumnRef("customer", "cust_name", SQLType.TEXT), False) == ("name",)
-    assert _column_link_words(ColumnRef("loan", "cust_name", SQLType.TEXT), False) == ("cust", "name")
-
-
-def test_a_sort_verb_opening_the_question_is_its_command():
-    """Spider DEV 261, held-out Spider train 924, 2026-10-13: "Sort employee names by their age in ascending order"
-    showed every field of every employee: the opening "Sort" was read as the ordering clause, so the names before "by"
-    were only the ordering's. The ordering opens at "by"; a sort verb later in the question still opens it."""
-    employee = {"name": "employee", "columns": ["Employee_ID", "Name", "Age", "City"],
-                "rows": [[1, "George", 23, "Bristol"], [2, "Lee", 29, "Bath"], [3, "Mark", 21, "Bristol"]]}
-    planner = _hermetic_planner()
-    served = planner.serve([employee], "Sort employee names by their age in ascending order.", [])
-    assert served.get("valid"), (served.get("error"), served.get("sql"))
-    assert [list(row) for row in served["result"]["rows"]] == [["Mark"], ["George"], ["Lee"]], served.get("sql")
-    listed = planner.serve([employee], "List the names of employees in Bristol sorted by age.", [])
-    assert [list(row) for row in listed["result"]["rows"]] == [["Mark"], ["George"]], listed.get("sql")
-
-
-def test_a_quantity_word_is_no_value():
-    """Held-out Spider train 282, 135, 237, 2026-10-13: 8 answers filtered on a value the question only counted or
-    quantified with: "the number of tracks in each genre" kept the track named 'Numbers', "all airports" the IATA code
-    'ALL'. Quoted or in capitals, the word is the value."""
-    genres = {"name": "genres", "columns": ["id", "name"], "rows": [[1, "Rock"], [2, "Jazz"]]}
-    tracks = {"name": "tracks", "columns": ["id", "name", "genre_id"],
-              "rows": [[1, "Numbers", 1], [2, "Blue", 1], [3, "So What", 2]]}
-    fks = [{"from_table": "tracks", "from_col": "genre_id", "to_table": "genres", "to_col": "id"}]
-    planner = _hermetic_planner()
-    served = planner.serve([genres, tracks], "Find the number of tracks in each genre.", fks)
-    assert served.get("valid"), (served.get("error"), served.get("sql"))
-    assert sorted(list(row) for row in served["result"]["rows"]) == [["Jazz", 1], ["Rock", 2]], served.get("sql")
-    quoted = planner.serve([genres, tracks], 'How many tracks are named "Numbers"?', fks)
-    assert [list(row) for row in quoted["result"]["rows"]] == [[1]], quoted.get("sql")
-
-
-def test_a_nation_is_a_country():
-    """Spider DEV 747, 804, 703, 2026-10-13: 14 questions said "nation" for a country table ("the names of the nations
-    with the 3 lowest populations") and none had a reading. A nationality stays its own word."""
-    country = {"name": "country", "columns": ["Code", "Name", "Population"],
-               "rows": [["ABW", "Aruba", 103000], ["AFG", "Afghanistan", 22720000], ["AIA", "Anguilla", 8000]]}
-    people = {"name": "people", "columns": ["People_ID", "Name", "Nationality"],
-              "rows": [[1, "Ann", "Russia"], [2, "Bo", "Bulgaria"], [3, "Cy", "Russia"]]}
-    planner = _hermetic_planner()
-    served = planner.serve([country], "What are the names of the nations with the 2 lowest populations?", [])
-    assert served.get("valid"), (served.get("error"), served.get("sql"))
-    assert sorted(list(row) for row in served["result"]["rows"]) == [["Anguilla"], ["Aruba"]], served.get("sql")
-    distinct = planner.serve([people], "How many different nationalities are there?", [])
-    assert [list(row) for row in distinct["result"]["rows"]] == [[2]], distinct.get("sql")
-
-
-def test_a_participle_before_a_year_the_answer_compares_is_read():
-    """Spider DEV 145, 103, 2026-10-13: "how many cars were produced in 1980?" was refused for "produced", though the
-    count compares the Year with 1980: a past participle before a year the query compares says how that year relates to
-    the rows. A store is a shop (DEV 275). Negative: the participle stays unread when the query compares no such year."""
-    cars = {"name": "cars_data", "columns": ["Id", "MPG", "Year"], "rows": [[1, 18.0, 1970], [2, 30.0, 1980], [3, 25.0, 1980]]}
-    shop = {"name": "shop", "columns": ["Shop_ID", "Name", "Location", "Number_products"],
-            "rows": [[1, "A", "Paris", 10], [2, "B", "Lyon", 20], [3, "C", "Paris", 30]]}
-    planner = _hermetic_planner()
-    served = planner.serve([cars], "How many cars were produced in 1980?", [])
-    assert served.get("valid"), (served.get("error"), served.get("sql"))
-    assert [list(row) for row in served["result"]["rows"]] == [[2]], served.get("sql")
-    stores = planner.serve([shop], "How many different store locations are there?", [])
-    assert [list(row) for row in stores["result"]["rows"]] == [[2]], stores.get("sql")
-    from engine.query_contract import read_question
-    graph = SchemaGraph.from_tables([cars], ())
-    from engine.sql_ast import Aggregate, Star, SelectItem, SelectQuery
-    unfiltered = SelectQuery(select=(SelectItem(Aggregate("COUNT", Star())),), from_table="cars_data")
-    assert "produced" in read_question("How many cars were produced in 1980?",
-                                       ScoredQuery(unfiltered, render_query(unfiltered), 0.0, ()), graph).unread
-
-
-def test_a_one_letter_code_holds_the_word_it_stands_for():
-    """Spider DEV 54, 486, held-out Spider train 50, 337, 2026-10-13: 14 questions said "female", "male" or "left handed"
-    of a field holding F/M or L/R codes, and none compared the code. A field of one-letter codes holds the words they
-    stand for, and a query comparing the code reads the word. Sizes S/M/L are no sex code: "male" names no size."""
-    dependent = {"name": "dependent", "columns": ["Essn", "Name", "Sex"],
-                 "rows": [[1, "Alice", "F"], [2, "Theodore", "M"], [3, "Joy", "F"]]}
-    players = {"name": "players", "columns": ["player_id", "first_name", "hand"],
-               "rows": [[1, "Ann", "R"], [2, "Bo", "L"], [3, "Cy", "U"]]}
-    shirts = {"name": "shirts", "columns": ["id", "Size"], "rows": [[1, "S"], [2, "M"], [3, "L"]]}
-    planner = _hermetic_planner()
-    female = planner.serve([dependent], "How many female dependents are there?", [])
-    assert female.get("valid"), (female.get("error"), female.get("sql"))
-    assert [list(row) for row in female["result"]["rows"]] == [[2]], female.get("sql")
-    left = planner.serve([players], "What are the first names of the left handed players?", [])
-    assert [list(row) for row in left["result"]["rows"]] == [["Bo"]], left.get("sql")
-    sizes = SchemaGraph.from_tables([shirts], ())
-    assert "male" not in sizes.value_index and "left" not in sizes.value_index
-
-
-
-
-def test_code_words_need_the_named_kind_and_the_bound_field():
-    """One-letter values alone do not establish sex or handedness, including a capped single-code sample."""
-    from engine.query_contract import read_question
-    from engine.sql_ast import Aggregate, Comparison, Literal, Star
-    planner = _hermetic_planner()
-    for name, values, word in (("Size", ("M", "M", "M"), "male"),
-                               ("Stage", ("F", "M", "F"), "male"),
-                               ("Grade", ("L", "R", "L"), "left")):
-        sheet = {"name": "players", "columns": ["player_id", name],
-                 "rows": [[i, value] for i, value in enumerate(values, 1)]}
-        graph = SchemaGraph.from_tables([sheet], ())
-        assert word not in graph.value_index, (name, graph.value_index.get(word))
-        refused = planner.serve([sheet], f"How many {word} players are there?", [])
-        assert not refused.get("valid"), refused.get("sql")
-        # Explicit codes retain their literal interpretation on the same profile.
-        literal = planner.serve([sheet], f'How many players have {name} "{values[0]}"?', [])
-        assert literal.get("valid"), (literal.get("error"), literal.get("sql"))
-        assert list(map(list, literal["result"]["rows"])) == [[values.count(values[0])]], literal.get("sql")
-    # A supported field keeps the same code even in a single-value sample.
-    sheet = {"name": "players", "columns": ["player_id", "Sex", "Stage"],
-             "rows": [[1, "M", "F"], [2, "F", "M"], [3, "F", "M"]]}
-    gender = planner.serve([sheet], "How many male players are there?", [])
-    assert list(map(list, gender["result"]["rows"])) == [[1]], gender.get("sql")
-    graph = SchemaGraph.from_tables([sheet], ())
-    refs = {c.ref.name: c.ref for c in graph.columns}
-    for field, unread in (("Stage", True), ("Sex", False)):
-        query = SelectQuery(select=(SelectItem(Aggregate("COUNT", Star())),), from_table="players",
-                            where=Comparison(refs[field], "=", Literal("M", SQLType.TEXT)))
-        reading = read_question("How many male players are there?",
-                                ScoredQuery(query, render_query(query), 0.0, ()), graph)
-        assert ("male" in reading.unread) == unread, (field, reading)
-    # LOWER and aliases retain their meaning; an unlowered different-case literal does not.
-    from dataclasses import replace
-    from engine.sql_ast import Lower
-    for folded, alias, value, unread in ((True, None, "m", False), (False, None, "m", True),
-                                       (False, "p", "M", False)):
-        column = replace(refs["Sex"], table=alias or "players")
-        query = SelectQuery(select=(SelectItem(Aggregate("COUNT", Star())),), from_table="players",
-                            from_alias=alias, where=Comparison(Lower(column) if folded else column,
-                                                             "=", Literal(value, SQLType.TEXT)))
-        reading = read_question("How many male players are there?",
-                                ScoredQuery(query, render_query(query), 0.0, ()), graph)
-        assert ("male" in reading.unread) == unread, (folded, alias, reading)
-    single = {"name": "players", "columns": ["player_id", "Gender"], "rows": [[1, "F"], [2, "F"]]}
-    women = planner.serve([single], "How many female players are there?", [])
-    assert list(map(list, women["result"]["rows"])) == [[2]], women.get("sql")
-
-
-def test_a_noun_several_fields_share_counts_its_entity():
-    """Spider DEV 485, 2026-10-13: "how many different winners" named winner_age, winner_entry, winner_hand, winner_ht,
-    winner_id and winner_name, the first four were offered, and the count counted the hands it compared with 'L'. The
-    noun counts its entity by its name or key first; a noun no name or key carries still counts the field it names."""
-    from engine.sql_search import _tokens
-    matches = {"name": "matches",
-               "columns": ["tourney_name", "winner_age", "winner_entry", "winner_hand", "winner_ht", "winner_id",
-                           "winner_name"],
-               "rows": [["WTA Championships", 25, "Q", "L", 170, 1, "Ann"],
-                        ["WTA Championships", 27, "Q", "L", 175, 2, "Bea"],
-                        ["WTA Championships", 27, "WC", "R", 180, 3, "Cat"],
-                        ["Other", 30, "Q", "L", 165, 4, "Dee"],
-                        ["WTA Championships", 25, "Q", "L", 170, 1, "Ann"]]}
-    graph = SchemaGraph.from_tables([matches], ())
-    searcher = SQLSearcher(graph)
-    tokens = _tokens("How many different winners both participated in the WTA Championships and were left handed?")
-    counted = searcher._distinct_counted_columns(tokens, tokens.index("many"))
-    assert [column.name for column in counted[:2]] == ["winner_name", "winner_id"], counted
-    planner = _hermetic_planner()
-    served = planner.serve([matches], "How many different winners both participated in the WTA Championships and "
-                                      "were left handed?", [])
-    assert [list(row) for row in served["result"]["rows"]] == [[2]], served.get("sql")
-    # Contrast: a noun no name or key carries counts the field it names.
-    players = {"name": "players", "columns": ["player_id", "first_name", "country_code"],
-               "rows": [[1, "Ann", "USA"], [2, "Bo", "USA"], [3, "Cy", "FRA"]]}
-    searcher = SQLSearcher(SchemaGraph.from_tables([players], ()))
-    tokens = _tokens("How many different countries do players come from?")
-    assert [column.name for column in searcher._distinct_counted_columns(tokens, tokens.index("many"))] == ["country_code"]
-
-
-def test_a_noun_several_fields_share_counts_its_name_first():
-    """Spider DEV 520, 2026-10-17: "How many different degrees are offered?" counted degree_summary_description: the
-    noun's fields came name first, then key, but every one was offered at one prior, and the description won a tie
-    within 0.03. The order the noun names its fields in is their prior, and the noun is the last word of the phrase
-    after "different" that a field's name holds. Contrast: "different degree descriptions" counts the descriptions."""
-    degrees = {"name": "Degree_Programs", "columns": ["degree_program_id", "department_id", "degree_summary_name",
-                                                     "degree_summary_description"],
-               "rows": [[1, 13, "Master", "architecto"], [2, 2, "Master", "cumque"], [3, 13, "Master", "placeat"],
-                        [4, 8, "Bachelor", "unde"], [5, 11, "PHD", "officiis"]]}
-    planner = _hermetic_planner()
-    for question, expected in (("How many different degrees are offered?", [[3]]),
-                               ("How many different degree descriptions are there?", [[5]]),
-                               ("How many degree programs are there?", [[5]])):
-        served = planner.serve([degrees], question, [])
-        assert served.get("valid") and served["result"]["rows"] == expected, (question, served.get("sql"))
-
-
-def test_in_total_closing_a_count_restates_it():
-    """Spider DEV 357, fresh holdout of Spider train 41, 83, 562, 598, 2026-10-13: "How many tasks are there in total?"
-    counted the tasks and summed a field the question never names. "In total" after "how many" restates the count; a
-    total of a field the question names is still a sum."""
-    tasks = {"name": "Tasks", "columns": ["task_id", "project_id", "task_details"],
-             "rows": [[1, 1, "a"], [2, 1, "b"], [3, 2, "c"]]}
-    grants = {"name": "Grants", "columns": ["grant_id", "project_id", "grant_amount"],
-              "rows": [[1, 1, 100.0], [2, 2, 250.0]]}
-    planner = _hermetic_planner()
-    served = planner.serve([tasks, grants], "How many tasks are there in total?", [])
-    assert [list(row) for row in served["result"]["rows"]] == [[3]], served.get("sql")
-    assert "SUM" not in served["sql"], served["sql"]
-    # Contrast: a total the question names is a sum.
-    total = planner.serve([tasks, grants], "What is the total grant amount?", [])
-    assert [list(row) for row in total["result"]["rows"]] == [[350.0]], total.get("sql")
-
-
-def test_a_field_inside_another_fields_name_is_not_named_there():
-    """Spider DEV 471, 480, held-out Spider train 108, 2026-10-13: "for each bed type" grouped by beds as well as bedType,
-    and "the total ranking points" showed the ranking beside them. A field whose words another field of its table
-    spells whole is not named inside that spelling; said on its own it still is."""
-    from engine.sql_search import _column_link_positions, _tokens
-    rooms = {"name": "Rooms", "columns": ["RoomId", "beds", "bedType", "basePrice"],
-             "rows": [["R1", 1, "King", 150.0], ["R2", 2, "Queen", 100.0], ["R3", 1, "Queen", 120.0],
-                      ["R4", 2, "King", 170.0]]}
-    planner = _hermetic_planner()
-    served = planner.serve([rooms], "For each bed type, find the average base price.", [])
-    assert sorted(map(list, served["result"]["rows"])) == [["King", 160.0], ["Queen", 110.0]], served.get("sql")
-    rankings = {"name": "rankings", "columns": ["player_id", "ranking", "ranking_date", "ranking_points"],
-                "rows": [[1, 3, 20000101, 100], [2, 1, 20000101, 300]]}
-    graph = SchemaGraph.from_tables([rankings], ())
-    ranking = next(column.ref for column in graph.columns if column.ref.name == "ranking")
-    assert _column_link_positions(ranking, _tokens("the total ranking points of each ranking date"), graph,
-                                  ("ranking",)) == []
-    # Said on its own, the field is still named.
-    assert _column_link_positions(ranking, _tokens("the ranking and the ranking date"), graph, ("ranking",)) == [1]
-
-
-def test_a_field_beside_the_named_field_of_its_entity_is_not_asked():
-    """Spider DEV 309, 367, 2026-10-13: "all template ids and the number of documents using each template" showed and
-    grouped the template's type code beside the ids. A field the question does not ask to show, beside a field it asks
-    of the same entity, earns no group credit; a key the question asks by "id" is still asked."""
-    templates = {"name": "Templates", "columns": ["Template_ID", "Template_Type_Code", "Version_Number"],
-                 "rows": [[1, "PP", 5], [2, "BK", 3], [3, "PP", 1]]}
-    documents = {"name": "Documents", "columns": ["Document_ID", "Template_ID", "Document_Name"],
-                 "rows": [[10, 1, "a"], [11, 1, "b"], [12, 2, "c"]]}
-    fks = [{"from_table": "Documents", "from_col": "Template_ID", "to_table": "Templates", "to_col": "Template_ID"}]
-    planner = _hermetic_planner()
-    served = planner.serve([templates, documents], "Show all template ids and number of documents using each template.",
-                           fks)
-    assert sorted(map(list, served["result"]["rows"])) == [[1, 2], [2, 1]], served.get("sql")
-    # Contrast: the field the question names is shown.
-    codes = planner.serve([templates, documents],
-                          "Show all template type codes and number of documents using each template type code.", fks)
-    assert sorted(map(list, codes["result"]["rows"])) == [["BK", 1], ["PP", 2]], codes.get("sql")
-    # A key asked by "its id" stays beside the name.
-    makers = {"name": "car_makers", "columns": ["Id", "FullName"],
-              "rows": [[1, "American Motor Company"], [2, "Volkswagen"]]}
-    models = {"name": "model_list", "columns": ["ModelId", "Maker", "Model"],
-              "rows": [[1, 1, "amc"], [2, 2, "audi"], [3, 2, "vw"]]}
-    full = planner.serve([makers, models], "What is the full name of each car maker, along with its id and how many "
-                                           "models it produces?",
-                         [{"from_table": "model_list", "from_col": "Maker", "to_table": "car_makers", "to_col": "Id"}])
-    assert sorted(map(list, full["result"]["rows"])) == [["American Motor Company", 1, 1], ["Volkswagen", 2, 2]],         full.get("sql")
-
-
-def test_a_field_asked_by_its_name_without_its_kind_is_requested():
-    """Spider DEV 928, 929, 2026-10-13: "the professional's id, role and email" passed with the ids alone, because the
-    completeness check named role_code and email_address only by their whole names. A field is asked by the words the
-    search names it by too, its kind left unsaid; a word that names no field asks for nothing."""
-    from engine.query_contract import constraint_violations
-    professionals = {"name": "Professionals", "columns": ["professional_id", "role_code", "email_address"],
-                     "rows": [[1, "Vet", "a@x.org"], [2, "Nurse", "b@x.org"]]}
-    graph = SchemaGraph.from_tables([professionals], ())
-    ref = {name: ColumnRef("Professionals", name, SQLType.TEXT) for name in professionals["columns"]}
-    ids = SelectQuery((SelectItem(ref["professional_id"]),), "Professionals")
-    question = "List the professional's id, role and email."
-    assert any("requested field is not used" in violation for violation in constraint_violations(question, ids, graph))
-    every = SelectQuery(tuple(SelectItem(ref[name]) for name in professionals["columns"]), "Professionals")
-    assert not constraint_violations(question, every, graph)
-    # Negative: a question naming only the ids asks for no role.
-    assert not constraint_violations("List the professional's id.", ids, graph)
-    # Negative: the question's command names no field (held-out Spider train 156: "Return" is no return_date).
-    rentals = {"name": "rental", "columns": ["rental_id", "return_date", "customer_id"],
-               "rows": [[1, "2005-05-26", 7], [2, "2005-05-28", 7], [3, "2005-05-29", 9]]}
-    rental_graph = SchemaGraph.from_tables([rentals], ())
-    customers = SelectQuery((SelectItem(ColumnRef("rental", "customer_id", SQLType.INTEGER)),), "rental")
-    assert not any("requested field" in violation for violation in constraint_violations(
-        "Return the customer ids of all rentals.", customers, rental_graph))
-    assert any("requested field" in violation for violation in constraint_violations(
-        "What are the return dates and customer ids of all rentals?", customers, rental_graph))
-
-
-def test_explicit_list_preserves_repeated_bound_field_outputs():
-    """A repeated output is another occurrence, not another schema column or an invented count."""
-    from engine.query_contract import constraint_violations
-    from engine.sql_ast import Aggregate, Star
-    from engine.sql_expansion import ExpansionSupport, repeated_requests, request_slots
-    from engine.sql_search import _in_list_order
-    people = {"name": "People", "columns": ["id", "name"], "rows": [[1, "Ann"], [2, "Bo"]]}
-    planner = _hermetic_planner()
-    question = "Find all people. List the id, name and id."
-    served = planner.serve([people], question, [])
-    assert served.get("valid"), served.get("reason")
-    assert [list(row) for row in served["result"]["rows"]] == [[1, "Ann", 1], [2, "Bo", 2]], served.get("sql")
-    graph = SchemaGraph.from_tables([people], ())
-    identity = graph.column_map[("People", "id")].ref
-    name = graph.column_map[("People", "name")].ref
-    assert ExpansionSupport(graph).requested_fields(question, "People") == (identity, name, identity)
-    missing = SelectQuery((SelectItem(identity), SelectItem(name)), "People")
-    assert any("output occurrence" in reason for reason in constraint_violations(question, missing, graph))
-    realized = _in_list_order(ScoredQuery(missing, render_query(missing), 0.0, ()), request_slots(question, graph),
-                              repeated_requests(question, graph))
-    assert realized and tuple(item.expression for item in realized.query.select) == (identity, name, identity)
-    assert not constraint_violations(question, realized.query, graph)
-    # The same schema preserves a different repeated position, and makes no unsaid copies.
-    for text, expected in (("Find all people. List the name, id and name.", [["Ann", 1, "Ann"], ["Bo", 2, "Bo"]]),
-                           ("Find all people. List the id and id.", [[1, 1], [2, 2]]),
-                           ("Find all people. List the id and name.", [[1, "Ann"], [2, "Bo"]])):
-        actual = planner.serve([people], text, [])
-        assert actual.get("valid"), actual.get("reason")
-        assert [list(row) for row in actual["result"]["rows"]] == expected, actual.get("sql")
-    # A table alias changes neither the field binding nor the number of displayed occurrences.
-    alias_id = ColumnRef("p", "id", identity.type)
-    alias_name = ColumnRef("p", "name", name.type)
-    aliased = SelectQuery((SelectItem(alias_id), SelectItem(alias_name)), "People", from_alias="p")
-    assert any("output occurrence" in reason for reason in constraint_violations(question, aliased, graph))
-    complete = SelectQuery(aliased.select + (SelectItem(alias_id),), "People", from_alias="p")
-    assert not constraint_violations(question, complete, graph)
-    # Anonymous count slots carry no counted population; one count cannot stand for two requests.
-    count = SelectQuery((SelectItem(Aggregate("COUNT", Star())),), "People")
-    assert _in_list_order(ScoredQuery(count, render_query(count), 0.0, ()), (None, None)) is None
-
-
-def test_only_a_request_said_again_repeats_its_field():
-    """Spider DEV 688, held-out Spider train 269, 2026-10-16: "List the contestant numbers and names" showed
-    contestant_name twice, and "the names of cities, as well as the names of the counties they correspond to" the
-    city's Name twice, the right answer refused as missing the repetition: two requests one field could realize were
-    read as one request said twice. Only a request said again in the same words repeats its field
-    (sql_expansion.repeated_requests). Contrast: "List the id, name and id." still shows the id twice."""
-    from engine.query_contract import constraint_violations
-    from engine.sql_expansion import repeated_requests
-    contestants = {"name": "CONTESTANTS", "columns": ["contestant_number", "contestant_name"],
-                   "rows": [[1, "Edwina"], [2, "Tabatha"]]}
-    served = _hermetic_planner().serve([contestants], "List the contestant numbers and names, ordered by contestant "
-                                                      "name descending.", [])
-    assert served.get("valid") and [list(row) for row in served["result"]["rows"]] == [[2, "Tabatha"], [1, "Edwina"]], (
-        served.get("error"), served.get("sql"))
-    assert repeated_requests("Find all people. List the id, name and id.") == (None, None, 0)
-    assert repeated_requests("List the contestant numbers and names.") == (None, None)
-    city = {"name": "city", "columns": ["City_ID", "County_ID", "Name"], "rows": [[1, 1, "Oak"], [2, 2, "Elm"]]}
-    county = {"name": "county_public_safety", "columns": ["County_ID", "Name"], "rows": [[1, "Abbot"], [2, "Burr"]]}
-    graph = SchemaGraph.from_tables([city, county], [("city", "County_ID", "county_public_safety", "County_ID")])
-    ref = {(column.ref.table, column.ref.name): column.ref for column in graph.columns}
-    question = "What are the names of cities, as well as the names of the counties they correspond to?"
-    both = SelectQuery((SelectItem(ref["city", "Name"]), SelectItem(ref["county_public_safety", "Name"])), "city",
-                       joins=(Join("county_public_safety", ref["city", "County_ID"],
-                                   ref["county_public_safety", "County_ID"]),))
-    assert not any("output occurrence" in reason for reason in constraint_violations(question, both, graph))
-
-
-def test_a_count_counts_the_rows_of_the_table_its_noun_names():
-    """Spider DEV 91, 92, 2026-10-13: "How many countries are listed?" counted the car makers' Country values. The rows of
-    the table the counted noun names are what it counts; another table's field is not; a count of the named table's own
-    field still is."""
-    from engine.sql_ast import Aggregate, Star
-    countries = {"name": "countries", "columns": ["CountryId", "CountryName"],
-                 "rows": [[1, "usa"], [2, "germany"], [3, "japan"]]}
-    makers = {"name": "car_makers", "columns": ["Id", "Maker", "Country"], "rows": [[1, "amc", 1], [2, "vw", 2]]}
-    graph = SchemaGraph.from_tables([countries, makers], ())
-    rows = SelectQuery((SelectItem(Aggregate("COUNT", Star())),), "countries")
-    other = SelectQuery((SelectItem(Aggregate("COUNT", ColumnRef("car_makers", "Country", SQLType.INTEGER))),),
-                        "car_makers")
-    own = SelectQuery((SelectItem(Aggregate("COUNT", ColumnRef("countries", "CountryName", SQLType.TEXT))),),
-                      "countries")
-    for question in ("How many countries are listed?", "How many countries exist?"):
-        ranked = CandidateRanker(graph).rank(question, [ScoredQuery(other, render_query(other), 0.5, ()),
-                                                        ScoredQuery(rows, render_query(rows), 0.0, ())])
-        assert ranked[0].query == rows, [candidate.sql for candidate in ranked]
-        # Contrast: the counted table's own field is a count of it.
-        ranked = CandidateRanker(graph).rank(question, [ScoredQuery(other, render_query(other), 0.5, ()),
-                                                        ScoredQuery(own, render_query(own), 0.0, ())])
-        assert ranked[0].query == own, [candidate.sql for candidate in ranked]
-
-
-def test_a_field_named_by_its_tables_abbreviation_is_matched_where_fields_are_shown():
-    """Spider DEV 63, 64, 2026-10-13: "Find the id of students who do not have a cat pet" showed the students' last names:
-    the reading of the fields to show (sql_expansion.column_matches) did not know "stu" of StuID abbreviates Student,
-    which the search's linker reads (abbreviated_table, one shared reading). A word of another table's name is no
-    abbreviation of this one."""
-    from engine.sql_expansion import column_matches
-    from engine.sql_search import _tokens
-    said = set(_tokens("Find the id of students who do not have a cat pet."))
-    assert column_matches("StuID", said, "Student")
-    assert column_matches("stu_id", said, "Student")
-    assert not column_matches("crs_id", said, "Student")
-    assert not column_matches("StuID", set(_tokens("Find the name of students.")), "Student")
-    # Negative: the abbreviation reads only beside its table (fresh holdout of Spider train 183).
-    assert not column_matches("DEPT_NAME", set(_tokens("What are the first names of all professors?")), "DEPARTMENT")
-    assert column_matches("DEPT_NAME", set(_tokens("What are the names of all departments?")), "DEPARTMENT")
-
-
-def test_a_word_said_once_names_one_of_the_fields_ending_in_it():
-    """Spider DEV 6, 7, 2026-10-13: "the name and the release year of the song by the youngest singer" showed a concert's
-    concert_Name beside Song_Name. Of several shown fields ending in a word the question says fewer times, the one whose
-    other words and table it never says is not asked; a question naming both owners asks for both."""
-    from engine.sql_ast import Join
-    singer = {"name": "singer", "columns": ["Singer_ID", "Song_Name", "Song_release_year", "Age"],
-              "rows": [[1, "Love", "2016", 29], [2, "Dance", "2008", 41]]}
-    concert = {"name": "concert", "columns": ["concert_ID", "concert_Name"], "rows": [[1, "Auditions"]]}
-    link = {"name": "singer_in_concert", "columns": ["concert_ID", "Singer_ID"], "rows": [[1, 1], [1, 2]]}
-    graph = SchemaGraph.from_tables([singer, concert, link], ())
-    ref = lambda table, name, kind=SQLType.TEXT: ColumnRef(table, name, kind)  # noqa: E731
-    joins = (Join("singer_in_concert", ref("singer_in_concert", "Singer_ID", SQLType.INTEGER),
-                  ref("singer", "Singer_ID", SQLType.INTEGER)),
-             Join("concert", ref("concert", "concert_ID", SQLType.INTEGER),
-                  ref("singer_in_concert", "concert_ID", SQLType.INTEGER)))
-    song = (SelectItem(ref("singer", "Song_Name")), SelectItem(ref("singer", "Song_release_year")))
-    both = SelectQuery((song[0], SelectItem(ref("concert", "concert_Name")), song[1]), "singer", joins=joins)
-    only = SelectQuery(song, "singer", joins=joins)
-    question = "Show the name and the release year of the song by the youngest singer."
-    ranked = CandidateRanker(graph).rank(question, [ScoredQuery(both, render_query(both), 0.5, ()),
-                                                    ScoredQuery(only, render_query(only), 0.0, ())])
-    assert ranked[0].query == only, [candidate.sql for candidate in ranked]
-    # Contrast: the question naming the concert asks for its name too.
-    named = "Show the song names and the concert names of the singers."
-    ranked = CandidateRanker(graph).rank(named, [ScoredQuery(both, render_query(both), 0.5, ()),
-                                                 ScoredQuery(only, render_query(only), 0.0, ())])
-    assert ranked[0].query == both, [candidate.sql for candidate in ranked]
 
 
 def test_an_explicit_list_names_the_outputs_their_owner_and_order():
     """Spider DEV 89, 149, 2026-10-14: "How many countries does each continent have? List the continent id, continent
     name and the number of countries." showed a car maker's Country beside the continent and the count first, and "List
-    full name and the id" of makers showed a model's ModelId. An explicit list instruction names the outputs
-    (sql_expansion.output_requests): one owner's fields unless an item names another (request_fields), read the same
-    way by the search, the ranker and the order of the answer. A question with no such sentence lists nothing."""
-    from engine.sql_ast import Aggregate, Join, Star
-    from engine.sql_expansion import output_requests, request_fields, request_slots, tokens
-    from engine.sql_search import _in_list_order
+    full name and the id" of makers showed a model's ModelId. An explicit list instruction names the outputs, in its
+    order (sql_expansion.output_requests): one owner's fields unless an item names another (request_fields). A
+    question with no such sentence lists nothing."""
+    from engine.sql_expansion import output_requests, request_fields, tokens
     question = ("How many countries does each continent have? List the continent id, continent name and the number "
                 "of countries.")
     said = tokens(question)
@@ -2514,98 +1294,6 @@ def test_an_explicit_list_names_the_outputs_their_owner_and_order():
     club = {(column.ref.table, column.ref.name): column.ref for column in clubs_graph.columns}
     assert request_fields("How many coaches does each club has? List the club id, name and the number of coaches.",
                           clubs_graph) == ((club["club", "Club_ID"],), (club["club", "Club_name"],))
-    # The answer shows the list's order: the id, the name, then the count.
-    shown = SelectQuery((SelectItem(Aggregate("COUNT", Star())), SelectItem(ref["continents", "Continent"]),
-                         SelectItem(ref["continents", "ContId"])), "continents",
-                        joins=(Join("countries", ref["countries", "Continent"], ref["continents", "ContId"]),),
-                        group_by=(ref["continents", "ContId"], ref["continents", "Continent"]))
-    ordered = _in_list_order(ScoredQuery(shown, render_query(shown), 0.0, ()), request_slots(question, graph))
-    assert [item.expression for item in ordered.query.select] == [
-        ref["continents", "ContId"], ref["continents", "Continent"], Aggregate("COUNT", Star())], ordered.sql
-    # The ranker prefers the answer showing exactly what the list asks over one showing another field too.
-    extra = SelectQuery(ordered.query.select + (SelectItem(ref["countries", "CountryName"]),), "continents",
-                        joins=ordered.query.joins, group_by=ordered.query.group_by + (ref["countries", "CountryName"],))
-    ranked = CandidateRanker(graph).rank(question, [ScoredQuery(extra, render_query(extra), 1.0, ()),
-                                                    ScoredQuery(ordered.query, ordered.sql, 0.0, ())])
-    assert ranked[0].query == ordered.query, [candidate.sql for candidate in ranked]
-
-
-def test_a_row_count_keeps_the_join_to_a_table_the_question_names():
-    """Held-out Spider train 654, DEV 966 (2026-10-14): "How many dogs went through any treatments?" was refused once the
-    row count dropped its join to the treatments, which leaves the treatments unread. A count drops only a leaf join
-    to a table nothing reads and the question does not name (SQLSearcher._simplified): "How many countries does each
-    continent have?" counts no car makers (test_an_explicit_list_names_the_outputs_their_owner_and_order)."""
-    dogs = {"name": "Dogs", "columns": ["dog_id", "name"], "rows": [[1, "Rex"], [2, "Fido"], [3, "Bo"]]}
-    treatments = {"name": "Treatments", "columns": ["treatment_id", "dog_id", "cost"],
-                  "rows": [[10, 1, 50], [11, 1, 70], [12, 2, 30]]}
-    keys = [{"from_table": "Treatments", "from_col": "dog_id", "to_table": "Dogs", "to_col": "dog_id"}]
-    served = _hermetic_planner().serve([dogs, treatments], "How many dogs went through any treatments?", keys)
-    assert served.get("valid"), (served.get("error"), served.get("sql"))
-    assert '"Treatments"' in served["sql"], served["sql"]
-    assert [list(row) for row in served["result"]["rows"]] == [[2]], served["sql"]
-
-
-def test_scalar_named_population_counts_qualifying_rows_once():
-    from engine.query_contract import constraint_violations
-    from engine.sql_ast import Aggregate, Join, Star
-    dogs = {"name": "Dogs", "columns": ["dog_id", "name"],
-            "rows": [[1, "Rex"], [2, "Rex"], [3, "Bo"]]}
-    treatments = {"name": "Treatments", "columns": ["treatment_id", "dog_id", "cost"],
-                  "rows": [[10, 1, 50], [11, 1, 70], [12, 2, 30], [13, None, 90]]}
-    keys = [{"from_table": "Treatments", "from_col": "dog_id", "to_table": "Dogs", "to_col": "dog_id"}]
-    planner = _hermetic_planner()
-    for question, expected in (("How many dogs went through any treatments?", 2),
-                               ("How many treatments have a dog?", 3),
-                               ("How many dogs are there?", 3),
-                               ("How many treatments are there?", 4)):
-        served = planner.serve([dogs, treatments], question, keys)
-        assert served.get("valid"), (served.get("reason"), served.get("sql"))
-        assert [list(row) for row in served["result"]["rows"]] == [[expected]], served.get("sql")
-    for rows, expected in (([], 0), ([[10, 1, 50]], 1), ([[10, 1, 50], [11, 1, 70]], 1)):
-        served = planner.serve([dogs, {**treatments, "rows": rows}],
-                               "How many dogs went through any treatments?", keys)
-        assert served.get("valid"), (served.get("reason"), served.get("sql"))
-        assert [list(row) for row in served["result"]["rows"]] == [[expected]], served.get("sql")
-    graph = SchemaGraph.from_tables([dogs, treatments], keys)
-    parent = graph.column_map[("Dogs", "dog_id")].ref
-    child = graph.column_map[("Treatments", "dog_id")].ref
-    multiplied = SelectQuery((SelectItem(Aggregate("COUNT", Star())),), "Dogs",
-                             joins=(Join("Treatments", child, parent),))
-    assert any("own grain" in reason for reason in constraint_violations(
-        "How many dogs went through any treatments?", multiplied, graph))
-    assert any("own grain" in reason for reason in constraint_violations(
-        "How many dogs are there?", SelectQuery(multiplied.select, "Treatments"), graph))
-    # Reversing the count preserves treatment rows: each dog ID matches at most one dog.
-    preserves = SelectQuery(multiplied.select, "Treatments", joins=(Join("Dogs", child, parent),))
-    assert not any("own grain" in reason for reason in constraint_violations(
-        "How many treatments have a dog?", preserves, graph))
-
-
-def test_the_verb_a_sentence_opens_with_names_no_table():
-    """Spider DEV 840, 846 (2026-10-14): "Show the names of conductors and the orchestras they have conducted" joined
-    the orchestra database's show table, which the command names; "Please show ..." too. The verb a sentence opens
-    with is its command (sql_expansion.command_positions), for the search's table linking and the completeness check's
-    asked tables alike. Contrast: a show the question names after its command is still a table it asks about."""
-    from engine.query_contract import _asked_tables
-    from engine.sql_expansion import command_positions, tokens
-    assert command_positions("Show the names of conductors and the orchestras they have conducted.") == {0}
-    assert command_positions("Please show the different record companies.") == {1}
-    assert command_positions("How many shows had attendance above 100? List the show ids.") == {7}
-    conductors = {"name": "conductor", "columns": ["Conductor_ID", "Name"], "rows": [[1, "Ann"], [2, "Bo"]]}
-    orchestras = {"name": "orchestra", "columns": ["Orchestra_ID", "Orchestra", "Conductor_ID"],
-                  "rows": [[1, "LSO", 1], [2, "BPO", 2], [3, "NYP", 1]]}
-    performances = {"name": "performance", "columns": ["Performance_ID", "Orchestra_ID", "Type"],
-                    "rows": [[1, 1, "Live"], [2, 1, "Studio"]]}
-    shows = {"name": "show", "columns": ["Show_ID", "Performance_ID", "Attendance"], "rows": [[1, 1, 900], [2, 2, 50]]}
-    keys = [("orchestra", "Conductor_ID", "conductor", "Conductor_ID"),
-            ("performance", "Orchestra_ID", "orchestra", "Orchestra_ID"),
-            ("show", "Performance_ID", "performance", "Performance_ID")]
-    candidate = best("Show the names of conductors and the orchestras they have conducted.",
-                     [conductors, orchestras, performances, shows], keys)
-    assert '"show"' not in candidate.sql and '"performance"' not in candidate.sql, candidate.sql
-    graph = SchemaGraph.from_tables([conductors, orchestras, performances, shows], keys)
-    assert "show" not in _asked_tables(tokens("Please show the names of conductors."), graph)
-    assert "show" in _asked_tables(tokens("Which show had the largest attendance?"), graph)
 
 
 def test_a_list_item_that_is_only_the_count_asks_for_the_count():
@@ -2621,46 +1309,11 @@ def test_a_list_item_that_is_only_the_count_asks_for_the_count():
         False, True]
 
 
-def test_a_relationship_self_join_needs_a_word_besides_its_parent_table():
-    """Spider DEV 199, 200 (2026-10-14): "Return the name of the airport with code 'AKO'." named the destination
-    airports of flights from AKO: SourceAirport's "airport" read as the flights relationship, though it is only the
-    airports table's own name. A relationship is named by another word of its key (sql_recursive): "Kyle's friends"
-    by friend_id still read the Friend relationship."""
-    airports = {"name": "airports", "columns": ["AirportCode", "AirportName", "City"],
-                "rows": [["AKO", "Akron", "Akron"], ["APG", "Aberdeen", "Aberdeen"], ["LAX", "Los Angeles", "LA"]]}
-    flights = {"name": "flights", "columns": ["FlightNo", "SourceAirport", "DestAirport"],
-               "rows": [[1, "AKO", "APG"], [2, "APG", "LAX"], [3, "AKO", "LAX"]]}
-    keys = [("flights", "SourceAirport", "airports", "AirportCode"),
-            ("flights", "DestAirport", "airports", "AirportCode")]
-    candidate = best("Return the name of the airport with code 'AKO'.", [airports, flights], keys)
-    assert '"flights"' not in candidate.sql, candidate.sql
-    students = {"name": "Highschooler", "columns": ["ID", "name"], "rows": [[1, "Kyle"], [2, "Ann"], [3, "Bo"]]}
-    friends = {"name": "Friend", "columns": ["student_id", "friend_id"], "rows": [[1, 2], [1, 3], [2, 3]]}
-    friend_keys = [("Friend", "student_id", "Highschooler", "ID"), ("Friend", "friend_id", "Highschooler", "ID")]
-    candidate = best("Show the names of all of Kyle's friends.", [students, friends], friend_keys)
-    assert '"Friend"' in candidate.sql, candidate.sql
-    # A key's word abbreviating the said one names the relationship too: prereq_id for "prerequisite" (fresh holdout
-    # 539, 790).
-    courses = {"name": "course", "columns": ["course_id", "title"],
-               "rows": [[1, "Geometry"], [2, "Topology"], [3, "Algebra"]]}
-    prereqs = {"name": "prereq", "columns": ["course_id", "prereq_id"], "rows": [[2, 1], [3, 2]]}
-    prereq_keys = [("prereq", "course_id", "course", "course_id"), ("prereq", "prereq_id", "course", "course_id")]
-    candidate = best("Find the title of the course whose prerequisite is course Geometry.", [courses, prereqs],
-                     prereq_keys)
-    assert '"prereq"' in candidate.sql, candidate.sql
-
-
 def test_a_superlative_over_the_shown_field_is_one_value():
     """Spider DEV 988, 989 (2026-10-14): "What is the age of the oldest dog?" ranked the dogs by birth date and served
-    every dog tied at the earliest one. A superlative over the one field the answer shows ranks by that field
-    (CandidateRanker), and a ranking showing only what it is ordered by serves one row, its ties showing the same
-    value (sql_ast.keep_ties). Contrast: a ranking showing another field keeps every tied row."""
-    from engine.sql_ast import OrderTerm, keep_ties
-    dogs = {"name": "Dogs", "columns": ["dog_id", "name", "age", "date_of_birth"],
-            "rows": [[1, "Rex", 9, "2015-03-01"], [2, "Fido", 9, "2015-07-09"], [3, "Bo", 4, "2020-01-01"]]}
-    served = _hermetic_planner().serve([dogs], "What is the age of the oldest dog?", [])
-    assert served.get("valid"), (served.get("error"), served.get("sql"))
-    assert served["result"]["rows"] == [[9]] or [list(row) for row in served["result"]["rows"]] == [[9]], served
+    every dog tied at the earliest one. A ranking showing only what it is ordered by serves one row, its ties showing
+    the same value (sql_ast.keep_ties). Contrast: a ranking showing another field keeps every tied row."""
+    from engine.sql_ast import keep_ties
     age = ColumnRef("Dogs", "age", SQLType.INTEGER)
     name = ColumnRef("Dogs", "name", SQLType.TEXT)
     oldest = SelectQuery((SelectItem(age),), "Dogs", order_by=(OrderTerm(age, "DESC"),), limit=1)
@@ -2751,64 +1404,13 @@ def test_the_opening_sentence_lists_its_coordinated_outputs():
     assert request_fields("What are the first name and last name of those who advise a student?", campus) == ()
 
 
-def test_an_ordering_word_said_with_a_fields_name_is_that_field():
-    """Spider DEV 621, 622 (2026-10-15): "What is the weekly rank for the episode 'A Love of a Lifetime'?" was refused:
-    "rank" ended the words that name the outputs, as an ordering does, and every reading showed every field. An ordering
-    word said with the rest of a field's name is that field. Contrast: an ordering word that is not a field's still
-    orders the rows by the field named after it."""
-    series = {"name": "TV_series", "columns": ["id", "Episode", "Weekly_Rank", "Rating"],
-              "rows": [[1, "A Love of a Lifetime", 43, 5.8], [2, "Friendly Skies", 50, 5.3], [3, "Blowback", 61, 4.4]]}
-    served = _hermetic_planner().serve([series], "What is the weekly rank for the episode 'A Love of a Lifetime'?", [])
-    assert served.get("valid"), (served.get("error"), served.get("sql"))
-    assert [list(row) for row in served["result"]["rows"]] == [[43]], served["sql"]
-    served = _hermetic_planner().serve([series], "What is Weekly Rank of TV series with Episode 'Blowback'?", [])
-    assert [list(row) for row in served["result"]["rows"]] == [[61]], served["sql"]
-    # Contrast: an ordering word apart from the field still orders the rows by it, and shows what the list names.
-    served = _hermetic_planner().serve([series], "List the episodes in descending order of weekly rank.", [])
-    assert served.get("valid") and served["sql"] == (
-        'SELECT "TV_series"."Episode" FROM "TV_series" ORDER BY "TV_series"."Weekly_Rank" DESC'), served.get("sql")
-
-
-def test_an_answer_showing_only_its_compared_field_shows_the_rows_asked_for():
-    """Spider DEV 812, 587 (2026-10-15): "What are the cities whose population is between 160000 and 900000?" listed the
-    populations and "List all cartoon directed by 'Ben Jones'" the director, in every reading built. Where an answer
-    shows only fields of a table the question names that it says only to filter on (sql_rank.filter_only), the search
-    adds the listing of that table's display field, and the ranker prefers it. Contrast: a field the question asks for
-    as well as compares ("the populations of cities whose population ...") is shown."""
-    cities = {"name": "city", "columns": ["ID", "Name", "Population"],
-              "rows": [[1, "Kabul", 1780000], [2, "Qandahar", 237500], [3, "Herat", 186800], [4, "Haarlem", 148772]]}
-    served = _hermetic_planner().serve([cities], "What are the cities whose population is between 160000 and 900000?",
-                                       [])
-    assert served.get("valid"), (served.get("error"), served.get("sql"))
-    assert sorted(row[0] for row in served["result"]["rows"]) == ["Herat", "Qandahar"], served["sql"]
-    cartoons = {"name": "Cartoon", "columns": ["id", "Title", "Directed_by"],
-                "rows": [[1, "The Rise of the Blue Beetle!", "Ben Jones"], [2, "Terror on Dinosaur Island!", "Brandon"],
-                         [3, "Day of the Dark Knight!", "Ben Jones"]]}
-    served = _hermetic_planner().serve([cartoons], 'List all cartoon directed by "Ben Jones".', [])
-    assert served.get("valid"), (served.get("error"), served.get("sql"))
-    assert sorted(row[0] for row in served["result"]["rows"]) == [
-        "Day of the Dark Knight!", "The Rise of the Blue Beetle!"], served["sql"]
-    # Contrast: the populations are asked for before the condition compares them.
-    from engine.sql_expansion import tokens
-    from engine.sql_rank import filter_only
-    population = ColumnRef("city", "Population", SQLType.INTEGER)
-    query = SelectQuery((SelectItem(population),), "city", where=Comparison(population, ">", Literal(160000)))
-    assert filter_only(population, query, tokens("What are the cities whose population is above 160000?"))
-    assert not filter_only(population, query, tokens("What are the populations of cities whose population is above "
-                                                     "160000?"))
-    served = _hermetic_planner().serve([cities], "What are the populations of cities whose population is above 160000?",
-                                       [])
-    assert served.get("valid") and sorted(row[0] for row in served["result"]["rows"]) == [186800, 237500, 1780000], (
-        served.get("sql"))
-
-
 def test_a_list_verb_after_a_comma_lists_the_outputs():
     """Spider DEV 274, 970 (2026-10-15): "Sort all the shops by number products in descending order, and return the
     name, location and district of each shop." was refused, every reading showing every field, and "List his or her
     role, street, city and state." listed the fields in no order asked. A clause a list verb opens after a comma lists
     the outputs as a sentence does (sql_expansion.instruction_starts), and a possessive before an item asks nothing.
     Negative: a comma before no list verb opens no list."""
-    from engine.sql_expansion import command_positions, output_requests, tokens
+    from engine.sql_expansion import instruction_starts, output_requests, request_fields, tokens
 
     def items(question):
         said = tokens(question)
@@ -2821,12 +1423,10 @@ def test_a_list_verb_after_a_comma_lists_the_outputs():
                  "city and state.") == [("role", False), ("street", False), ("city", False), ("state", False)]
     assert items("Which dogs are of the rarest breed? Show their names and treatment dates.") == [
         ("name", False), ("treatment date", False)]
-    # The list verb after the comma is a command and names no table ("list" is not model_list), and the possessive
-    # opening the items names their owner, the continent named before them (DEV 90), not the countries whose fields
-    # say "id" and "name" more nearly. Without a possessive the countries own them.
-    from engine.sql_expansion import instruction_starts, request_fields
+    # The possessive opening the items names their owner, the continent named before them (DEV 90), not the
+    # countries whose fields say "id" and "name" more nearly. Without a possessive the countries own them.
     question = "For each continent, list its id, name, and how many countries it has?"
-    assert instruction_starts(question) == (0, 3) and 3 in command_positions(question)
+    assert instruction_starts(question) == (0, 3)
     countries = {"name": "countries", "columns": ["CountryId", "CountryName", "Continent"],
                  "rows": [[1, "France", 10], [2, "Germany", 10]]}
     continents = {"name": "continents", "columns": ["ContId", "Continent"], "rows": [[10, "Europe"]]}
@@ -2838,15 +1438,6 @@ def test_a_list_verb_after_a_comma_lists_the_outputs():
     # Negative: a comma that no list verb follows opens nothing.
     assert items("For each shop, how many employees are there?") == []
     assert instruction_starts("For each shop, how many employees are there?") == (0,)
-    shops = {"name": "shop", "columns": ["Shop_ID", "Name", "Location", "District", "Number_products"],
-             "rows": [[1, "FC Haka", "Valkeakoski", "Tehtaan kentta", 3516],
-                      [2, "HJK", "Helsinki", "Finnair Stadium", 10770],
-                      [3, "FC Inter", "Turku", "Veritas Stadion", 9372]]}
-    served = _hermetic_planner().serve([shops], sort + "each shop.", [])
-    assert served.get("valid"), (served.get("error"), served.get("sql"))
-    assert [list(row) for row in served["result"]["rows"]] == [
-        ["HJK", "Helsinki", "Finnair Stadium"], ["FC Inter", "Turku", "Veritas Stadion"],
-        ["FC Haka", "Valkeakoski", "Tehtaan kentta"]], served["sql"]
 
 
 def test_along_with_adds_an_item_to_a_list():
@@ -2885,82 +1476,12 @@ def test_along_with_adds_an_item_to_a_list():
     assert request_fields(question, cars) == ((maker["car_makers", "FullName"],), (maker["car_makers", "Id"],))
 
 
-def test_a_list_of_fields_and_a_count_counts_each_group():
-    """Held-out Spider train 532, 495 (2026-10-15): "Show different publishers together with the number of publications
-    they have." served one count of distinct publishers. A list asking for fields and a count asks the count in each of
-    those fields' groups, and its "different" before a field says each group once (sql_rank.QuestionRoles). Contrast:
-    "different" inside the count still counts distinct values, and a lone count of different values is one number."""
-    pubs = {"name": "publication", "columns": ["Publication_ID", "Book_ID", "Publisher", "Price"],
-            "rows": [[1, 1, "Pearson", 15.0], [2, 3, "Thomson Reuters", 6.0], [3, 4, "Wiley", 4.1],
-                     [4, 5, "Pearson", 2.0], [5, 5, "Pearson", 3.0]]}
-    served = _hermetic_planner().serve([pubs], "Show different publishers together with the number of publications "
-                                               "they have.", [])
-    assert served.get("valid"), (served.get("error"), served.get("sql"))
-    assert sorted(map(tuple, served["result"]["rows"])) == [("Pearson", 3), ("Thomson Reuters", 1), ("Wiley", 1)], (
-        served["sql"])
-    served = _hermetic_planner().serve([pubs], "Show the publishers and the number of different books they have.", [])
-    assert sorted(map(tuple, served["result"]["rows"])) == [("Pearson", 2), ("Thomson Reuters", 1), ("Wiley", 1)], (
-        served["sql"])
-    served = _hermetic_planner().serve([pubs], "How many different publishers are there?", [])
-    assert [list(row) for row in served["result"]["rows"]] == [[3]], served["sql"]
-    # Negative (DEV 597): a bare noun added to the count by "and" is counted too, so nothing is grouped.
+def test_a_noun_joined_to_a_count_by_and_is_counted_too():
+    """Spider DEV 597: "List the number of different series names and contents in the TV Channel table." counts both:
+    a bare noun added to a count by "and" is counted too (sql_expansion.output_requests), so nothing is grouped."""
     from engine.sql_expansion import output_requests
     question = "List the number of different series names and contents in the TV Channel table."
     assert [request.count for request in output_requests(question)] == [True, True]
-    channels = {"name": "TV_Channel", "columns": ["id", "series_name", "Content"],
-                "rows": [[1, "Sky Radio", "music"], [2, "Sky Music", "music"], [3, "Rock TV", "music"],
-                         [4, "Sky News", "news"]]}
-    served = _hermetic_planner().serve([channels], question, [])
-    assert served.get("valid") and [list(row) for row in served["result"]["rows"]] == [[4, 2]], served.get("sql")
-
-
-def test_a_reading_showing_exactly_the_list_outranks_one_adding_a_field():
-    """Spider DEV 972 (2026-10-15): "Which owners live in the state whose name contains the substring 'North'? List his
-    first name, last name and email." showed the state beside the three fields: the reading naming every mention
-    scored above the list's own. The reading showing exactly the list's fields starts ahead of one adding a field
-    (SQLSearcher.search). Contrast (held-out Spider train 269, 977): where two items read one field, "the names of
-    climbers and the names of mountains", the list asks for the second name too, and both are shown."""
-    owners = {"name": "Owners", "columns": ["owner_id", "first_name", "last_name", "state", "email_address"],
-              "rows": [[1, "Nora", "Haley", "North Carolina", "nora@example.com"],
-                       [2, "Melisa", "DuBuque", "Kansas", "mel@example.com"],
-                       [3, "Lorenz", "Nicolas", "North Dakota", "lorenz@example.com"]]}
-    served = _hermetic_planner().serve([owners], "Which owners live in the state whose name contains the substring "
-                                                 "'North'? List his first name, last name and email.", [])
-    assert served.get("valid"), (served.get("error"), served.get("sql"))
-    assert sorted(map(tuple, served["result"]["rows"])) == [
-        ("Lorenz", "Nicolas", "lorenz@example.com"), ("Nora", "Haley", "nora@example.com")], served["sql"]
-    climbers = {"name": "climber", "columns": ["Climber_ID", "Name", "Mountain_ID"],
-                "rows": [[1, "Klaus Enders", 1], [2, "Siegfried Schauzu", 2]]}
-    mountains = {"name": "mountain", "columns": ["Mountain_ID", "Name", "Height"],
-                 "rows": [[1, "Kibo (Uhuru Pk)", 5895.0], [2, "Mount Kenya (Batian)", 5199.0]]}
-    keys = [{"from_table": "climber", "from_col": "Mountain_ID", "to_table": "mountain", "to_col": "Mountain_ID"}]
-    served = _hermetic_planner().serve([climbers, mountains], "Show names of climbers and the names of mountains they "
-                                                              "climb.", keys)
-    assert served.get("valid"), (served.get("error"), served.get("sql"))
-    assert sorted(map(tuple, served["result"]["rows"])) == [
-        ("Klaus Enders", "Kibo (Uhuru Pk)"), ("Siegfried Schauzu", "Mount Kenya (Batian)")], served["sql"]
-
-
-def test_listed_says_the_rows_are_in_the_data():
-    """Spider DEV 552, 627 (2026-10-15): "Find the number of cartoons directed by each of the listed directors." was
-    refused, "listed" unread: it was read as asking nothing only in "is/are listed" beside an aggregate. Where no field
-    holds a state, "listed" says the rows are in the data and asks no condition (query_contract.read_question).
-    Contrast: where a status field holds 'listed', the word is that value."""
-    cartoons = {"name": "Cartoon", "columns": ["id", "Title", "Directed_by"],
-                "rows": [[1, "The Rise of the Blue Beetle!", "Ben Jones"], [2, "Terror on Dinosaur Island!", "Brandon"],
-                         [3, "Day of the Dark Knight!", "Ben Jones"]]}
-    served = _hermetic_planner().serve([cartoons], "Find the number of cartoons directed by each of the listed "
-                                                   "directors.", [])
-    assert served.get("valid"), (served.get("error"), served.get("sql"))
-    assert sorted(map(tuple, served["result"]["rows"])) == [(1, "Brandon"), (2, "Ben Jones")], served["sql"]
-    courses = {"name": "Courses", "columns": ["course_id", "course_name"], "rows": [[1, "math"], [2, "art"], [3, "os"]]}
-    served = _hermetic_planner().serve([courses], "Show the names of the listed courses.", [])
-    assert served.get("valid") and sorted(row[0] for row in served["result"]["rows"]) == ["art", "math", "os"], (
-        served.get("sql"))
-    properties = {"name": "properties", "columns": ["property_id", "address", "status"],
-                  "rows": [[1, "1 Main", "listed"], [2, "2 Oak", "sold"], [3, "3 Elm", "listed"]]}
-    served = _hermetic_planner().serve([properties], "How many properties are listed?", [])
-    assert [list(row) for row in served["result"]["rows"]] == [[2]], served["sql"]
 
 
 def test_find_opens_a_list_of_outputs():
@@ -3039,51 +1560,11 @@ def test_an_items_last_word_may_stand_for_its_fields_kind():
     assert request_fields(question, graph) == (
         (ref["Professionals", "email_address"],), (ref["Professionals", "cell_number"],),
         (ref["Professionals", "home_phone"],))
-    served = _hermetic_planner().serve([professionals, owners], question, [])
-    assert served["result"]["rows"][0] == ["a@x.com", "555-0101", "555-0100"], served.get("sql")
     # Contrast: a field named by the item's own words is it, before the field its kind stands for.
     phones = {"name": "Professionals", "columns": columns + ["cell_phone"],
               "rows": [row + ["x"] for row in professionals["rows"]]}
     named = SchemaGraph.from_tables([phones], [])
     assert request_fields(question, named)[1] == (named.by_table["Professionals"][4].ref,)
-
-
-def test_a_which_after_a_preposition_opens_no_command():
-    """Spider DEV 678, 398 (2026-10-15): "Return the nationalities for which there are two or more people." grouped the
-    people by name: the "which" of "for which" was read as a second command, and the field before it fell out of what
-    the question shows (sql_expansion.projection_window). A "which" after a preposition opens a relative clause.
-    Contrast: a command after the first sentence still opens what is shown."""
-    from engine.sql_expansion import projection_window, tokens
-    people = {"name": "people", "columns": ["People_ID", "Nationality", "Name"],
-              "rows": [[1, "Russia", "Aleksey Ostapenko"], [2, "Bulgaria", "Teodor Salparov"],
-                       [3, "Russia", "Yevgeni Sivozhelez"], [4, "Russia", "Maksim Botin"]]}
-    served = _hermetic_planner().serve([people], "Return the nationalities for which there are two or more people.", [])
-    assert served["result"]["rows"] == [["Russia"]], served.get("sql")
-    window = [word for _, word in projection_window(tokens("What are the towns from which at least two teachers come "
-                                                           "from?"))]
-    assert "town" in window
-    window = [word for _, word in projection_window(tokens("Which address holds the most students? List the address id "
-                                                           "and all lines."))]
-    assert window[:3] == ["the", "address", "id"]
-
-
-def test_a_place_names_what_is_of_it():
-    """Spider DEV 724, 757 (2026-10-15): "What is the average life expectancy in African countries that are republics?"
-    was refused: no value says "African". A capitalized place's name ending in "a" or "e" holds the word for what is of
-    it (SchemaGraph._build_value_index), and the completeness gate reads it by the comparison on that value
-    (query_contract.read_question). Contrast: a value written in lower case adds no word."""
-    country = {"name": "country", "columns": ["Code", "Name", "Continent", "GovernmentForm", "LifeExpectancy"],
-               "rows": [["AGO", "Angola", "Africa", "Republic", 38], ["BEN", "Benin", "Africa", "Republic", 50],
-                        ["MAR", "Morocco", "Africa", "Monarchy", 69], ["JPN", "Japan", "Asia", "Monarchy", 80]]}
-    served = _hermetic_planner().serve([country], "What is the average life expectancy in African countries that are "
-                                                  "republics?", [])
-    assert served.get("valid") and served["result"]["rows"] == [[44]], (served.get("error"), served.get("sql"))
-    graph = SchemaGraph.from_tables([country], [])
-    assert {value for _, value in graph.value_index.get("african", ())} == {"Africa"}
-    lower = SchemaGraph.from_tables([dict(country, rows=[[row[0], row[1], row[2].lower(), *row[3:]]
-                                                         for row in country["rows"]])], [])
-    assert "african" not in lower.value_index
-
 
 
 def test_a_country_holds_its_irregular_demonym():
@@ -3095,9 +1576,6 @@ def test_a_country_holds_its_irregular_demonym():
               "rows": [[1, "Joe Sharp", "Netherlands", "Netherlands", 52],
                        [2, "Timbaland", "United States", "United States", 32],
                        [3, "Justin Brown", "France", "France", 29], [4, "Rose White", "France", "France", 41]]}
-    served = _hermetic_planner().serve([singer], "What is the average, minimum, and maximum age for all French "
-                                                 "singers?", [])
-    assert served.get("valid") and served["result"]["rows"] == [[35, 29, 41]], (served.get("error"), served.get("sql"))
     graph = SchemaGraph.from_tables([singer], [])
     assert {value for _, value in graph.value_index.get("french", ())} == {"France"}
     assert {value for _, value in graph.value_index.get("dutch", ())} == {"Netherlands"}
@@ -3108,321 +1586,40 @@ def test_a_country_holds_its_irregular_demonym():
     assert {value for _, value in spoken.value_index.get("dutch", ())} == {"Dutch"}
 
 
-
 def test_a_capital_initial_before_a_capitalized_word_is_a_word():
     """Held-out Spider train 737, 2026-10-18: "Give the names of the courses with at least five enrollments." was
     refused over Course.CName, read as the one word "cname": a capital initial before a capitalized word is a word of
     its own (sql_schema.spaced_name, the split every reader of names makes), so CName is a course's name. Contrast:
-    GNPOld is "GNP Old", and "the largest GNP" is still GNP's."""
+    GNPOld is "GNP Old"."""
     from engine.sql_schema import name_words
-    course = {"name": "Course", "columns": ["CID", "CName", "Credits"],
-              "rows": [["600.101", "COMPUTER LITERACY", 3], ["600.103", "INTRODUCTION TO COMPUTER SCIENCE", 1]]}
-    enrolled = {"name": "Enrolled_in", "columns": ["StuID", "CID", "Grade"],
-                "rows": [[student, "600.101", "A"] for student in range(1001, 1007)] + [[1001, "600.103", "B"]]}
-    served = _hermetic_planner().serve([course, enrolled], "Give the names of the courses with at least five "
-                                                           "enrollments.", [
-        {"from_table": "Enrolled_in", "from_col": "CID", "to_table": "Course", "to_col": "CID"}])
-    assert served.get("valid") and served["result"]["rows"] == [["COMPUTER LITERACY"]], (
-        served.get("error"), served.get("sql"))
     assert name_words("CName") == ("c", "name") and name_words("GNPOld") == ("gnp", "old")
-    country = {"name": "country", "columns": ["Code", "Name", "GNP", "GNPOld"],
-               "rows": [["ABW", "Aruba", 828.0, 793.0], ["AFG", "Afghanistan", 5976.0, 7984.0]]}
-    served = _hermetic_planner().serve([country], "What is the largest GNP?", [])
-    assert served.get("valid") and served["result"]["rows"] == [[5976.0]], (served.get("error"), served.get("sql"))
-
-
-
-def test_a_measure_word_after_a_superlative_names_it():
-    """Spider DEV 791 (2026-10-18): "Give the name, population, and head of state for the country that has the largest
-    area." was refused: no reading ranked by SurfaceArea, and "area" was unread. A word one measure alone holds, said
-    right after the superlative, names it, as it does just before one (sql_extrema). Contrast: "the largest
-    population" ranks the countries by Population."""
-    country = {"name": "country", "columns": ["Code", "Name", "Continent", "SurfaceArea", "IndepYear", "Population",
-                                              "LifeExpectancy", "GNP", "HeadOfState"],
-               "rows": [["RUS", "Russian Federation", "Europe", 17075400.0, 1991, 146934000, 67.2, 276608.0,
-                         "Vladimir Putin"],
-                        ["CHN", "China", "Asia", 9572900.0, -1523, 1277558000, 71.4, 982268.0, "Jiang Zemin"],
-                        ["ABW", "Aruba", "North America", 193.0, None, 103000, 78.4, 828.0, "Beatrix"]]}
-    city = {"name": "city", "columns": ["ID", "Name", "CountryCode", "District", "Population"],
-            "rows": [[1, "Kabul", "CHN", "Kabol", 1780000], [2, "Moscow", "RUS", "Moscow (City)", 8389200],
-                     [3, "Oranjestad", "ABW", "-", 29034]]}
-    keys = [{"from_table": "city", "from_col": "CountryCode", "to_table": "country", "to_col": "Code"}]
-    served = _hermetic_planner().serve([country, city], "Give the name, population, and head of state for the "
-                                                        "country that has the largest area.", keys)
-    assert served.get("valid") and served["result"]["rows"] == [["Russian Federation", 146934000, "Vladimir Putin"]], (
-        served.get("error"), served.get("sql"))
-    served = _hermetic_planner().serve([country, city], "Give the name and head of state for the country that has the "
-                                                        "largest population.", keys)
-    assert served.get("valid") and served["result"]["rows"] == [["China", "Jiang Zemin"]], (
-        served.get("error"), served.get("sql"))
-
-
-
-def test_the_information_about_rows_shows_every_field():
-    """Fresh holdout of Spider train 527, held-out Spider train 422, 2026-10-18: "List the information of all
-    instructors ordered by their salary in ascending order." and "What information do you have on colleges sorted by
-    increasing enrollment numbers?" were refused for "information": the information of, about or on rows is their every
-    field, as "all the information" is (sql_expansion.complete_projection_requested). Contrast: "the names of all
-    instructors" shows their names."""
-    instructor = {"name": "instructor", "columns": ["ID", "name", "dept_name", "salary"],
-                  "rows": [["10101", "Srinivasan", "Comp. Sci.", 65000], ["12121", "Wu", "Finance", 90000],
-                           ["15151", "Mozart", "Music", 40000]]}
-    served = _hermetic_planner().serve([instructor], "List the information of all instructors ordered by their salary "
-                                                     "in ascending order.", [])
-    assert served.get("valid") and served["result"]["rows"] == [
-        ["15151", "Mozart", "Music", 40000], ["10101", "Srinivasan", "Comp. Sci.", 65000],
-        ["12121", "Wu", "Finance", 90000]], (served.get("error"), served.get("sql"))
-    served = _hermetic_planner().serve([instructor], "List the names of all instructors ordered by their salary in "
-                                                     "ascending order.", [])
-    assert served.get("valid") and served["result"]["rows"] == [["Mozart"], ["Srinivasan"], ["Wu"]], (
-        served.get("error"), served.get("sql"))
-
-
-
-def test_the_pool_holds_no_exclusion_the_gate_refuses_for_its_shape():
-    """Fresh holdout 635, 855, 2026-10-18: "What are the ids of courses without prerequisites?" filled its pool with
-    exclusions narrowed by sections, departments and teaching and differences subtracting every row they keep, all
-    refused by the gate, and the one it accepts was ranked out of the pool. Past its top reading (which the
-    decomposition probe reads), the search keeps no reading the gate refuses for its exclusion's shape
-    (query_contract.exclusion_refusals), and the courses without a prereq row are served."""
-    from engine.query_contract import exclusion_refusals
-    tables = [
-        {"name": "course", "columns": ["course_id", "title", "dept_name"],
-         "rows": [["101", "Intro", "Biology"], ["102", "Genetics", "Biology"], ["201", "Algebra", "Math"],
-                  ["202", "Topology", "Math"]]},
-        {"name": "prereq", "columns": ["course_id", "prereq_id"], "rows": [["102", "101"], ["202", "201"]]},
-        {"name": "section", "columns": ["course_id", "sec_id", "semester"],
-         "rows": [["101", "1", "Fall"], ["102", "1", "Spring"], ["201", "1", "Fall"]]},
-        {"name": "teaches", "columns": ["ID", "course_id", "sec_id"],
-         "rows": [["10101", "101", "1"], ["12121", "201", "1"]]},
-        {"name": "department", "columns": ["dept_name", "building"],
-         "rows": [["Biology", "Watson"], ["Math", "Taylor"]]},
-    ]
-    planner = _hermetic_planner()
-    question = "What are the ids of courses without prerequisites?"
-    norm, fks, sch, _ = _request(planner, tables)
-    graph = SchemaGraph.from_planner(sch, fks)
-    pool = planner.search_pool(question, norm, fks, sch)
-    assert pool and not [member.sql for member in pool[1:] if exclusion_refusals(question, member.query, graph)]
-    served = planner.serve(tables, question, [
-        {"from_table": "prereq", "from_col": "course_id", "to_table": "course", "to_col": "course_id"},
-        {"from_table": "section", "from_col": "course_id", "to_table": "course", "to_col": "course_id"},
-        {"from_table": "teaches", "from_col": "course_id", "to_table": "course", "to_col": "course_id"},
-        {"from_table": "course", "from_col": "dept_name", "to_table": "department", "to_col": "dept_name"}])
-    assert served.get("valid") and sorted(served["result"]["rows"]) == [["101"], ["201"]], (
-        served.get("error"), served.get("sql"))
-
-
-
-def test_a_most_common_value_is_ranked_once():
-    """Held-out Spider train 940, 972, 880, 2026-10-18: "What is the name of the most common genre in all tracks?"
-    kept the genre a subquery found most common among Genre's own rows (every one of them once) and ranked that one
-    genre by its tracks, the frequency superlative reusing the scalar frequency selector's filter as a structure; such
-    readings filled every place of the pool. The cue is read once (sql_extrema._finds_most_common): the tracks are
-    counted in each genre, and Metal, with three, is served."""
-    tables = [
-        {"name": "Genre", "columns": ["GenreId", "Name"], "rows": [[1, "Rock"], [2, "Jazz"], [3, "Metal"]]},
-        {"name": "Track", "columns": ["TrackId", "Name", "GenreId"],
-         "rows": [[1, "For Those About To Rock", 3], [2, "Balls to the Wall", 3], [3, "Fast As a Shark", 3],
-                  [4, "Restless and Wild", 1], [5, "Princess of the Dawn", 2], [6, "Put The Finger On You", 1]]},
-    ]
-    planner = _hermetic_planner()
-    question = "What is the name of the most common genre in all tracks?"
-    norm, fks, sch, _ = _request(planner, tables)
-    pool = planner.search_pool(question, norm, fks, sch)
-    selector = re.compile(r'= \(SELECT [^()]* GROUP BY [^()]* ORDER BY COUNT\(\*\) (?:ASC|DESC) LIMIT 1\)')
-    doubled = [member.sql for member in pool
-               if selector.search(member.sql.replace('"', ''))
-               and "ORDER BY COUNT" in selector.sub("", member.sql.replace('"', ''))]
-    assert pool and not doubled, doubled[:2]
-    served = planner.serve(tables, question, [
-        {"from_table": "Track", "from_col": "GenreId", "to_table": "Genre", "to_col": "GenreId"}])
-    assert served.get("valid") and served["result"]["rows"] == [["Metal"]], (served.get("error"), served.get("sql"))
-
-
-def test_lexicographical_order_is_alphabetical():
-    """Spider DEV 527, 579, fresh holdout 140, 2026-10-18: "List the section_name in reversed lexicographical order."
-    was refused for "lexicographical", which says what "alphabetical" says (sql_expansion.ALPHABETICAL_WORDS): the
-    names are served Z to A. Contrast: "in lexicographical order" is A to Z."""
-    sections = {"name": "Sections", "columns": ["section_id", "section_name"],
-                "rows": [[1, "a"], [2, "h"], [3, "o"], [4, "c"]]}
-    planner = _hermetic_planner()
-    served = planner.serve([sections], "List the section_name in reversed lexicographical order.", [])
-    assert served.get("valid") and served["result"]["rows"] == [["o"], ["h"], ["c"], ["a"]], (
-        served.get("error"), served.get("sql"))
-    served = planner.serve([sections], "List the section_name in lexicographical order.", [])
-    assert served.get("valid") and served["result"]["rows"] == [["a"], ["c"], ["h"], ["o"]], (
-        served.get("error"), served.get("sql"))
-
-
-def test_a_number_before_a_fields_two_word_name_compares_the_field():
-    """Fresh holdout 488, 673, 2026-10-19: "What are the id and name of the stations that have ever had more than 12
-    bikes available?" filled its pool with stations counted more than 12 times, every one refused, the field's name
-    following the number in two words (ExpansionSupport.threshold_targets_column). The stations whose status rows hold
-    more than 12 bikes available are served. Contrast: "more than 1 status" counts the status rows."""
-    station = {"name": "station", "columns": ["id", "name", "dock_count"],
-               "rows": [[2, "San Jose Diridon", 27], [3, "San Jose Civic Center", 15], [4, "Santa Clara", 11]]}
-    status = {"name": "status", "columns": ["station_id", "bikes_available", "docks_available"],
-              "rows": [[2, 13, 14], [2, 2, 25], [3, 9, 6], [3, 5, 10], [4, 7, 4]]}
-    fks = [{"from_table": "status", "from_col": "station_id", "to_table": "station", "to_col": "id"}]
-    planner = _hermetic_planner()
-    question = "What are the id and name of the stations that have ever had more than 12 bikes available?"
-    norm, keys, sch, _ = _request(planner, [station, status])
-    counted = [member.sql for member in planner.search_pool(question, norm, keys, sch)
-               if "HAVING" in member.sql and "COUNT" in member.sql]
-    assert not counted, counted[:2]
-    served = planner.serve([station, status], question, fks)
-    assert served.get("valid") and served["result"]["rows"] == [[2, "San Jose Diridon"]], (
-        served.get("error"), served.get("sql"))
-    served = planner.serve([station, status], "What are the names of the stations with more than 1 status?", fks)
-    assert served.get("valid") and sorted(served["result"]["rows"]) == [["San Jose Civic Center"],
-                                                                        ["San Jose Diridon"]], (
-        served.get("error"), served.get("sql"))
-
-def test_amount_of_says_a_quantity():
-    """Spider DEV 290, 96 (2026-10-15): "Find the total amount of bonus given in all the evaluations." was refused, its
-    SUM(Bonus) leaving "amount" unread, as was "the car with the smallest amount of horsepower". "Amount of" says a
-    quantity as "number of" does, read by a query aggregating or ordering its rows (query_contract.read_question).
-    Contrast: where a table the query reads has an amount field, "the total amount of payments" is that field's sum,
-    never a count of the payments."""
-    evaluation = {"name": "evaluation", "columns": ["Employee_ID", "Year_awarded", "Bonus"],
-                  "rows": [[1, "2011", 3000.0], [2, "2015", 3200.0], [1, "2016", 2900.0]]}
-    served = _hermetic_planner().serve([evaluation], "Find the total amount of bonus given in all the evaluations.", [])
-    assert served.get("valid") and served["result"]["rows"] == [[9100.0]], (served.get("error"), served.get("sql"))
-    cars = {"name": "cars_data", "columns": ["Id", "Model", "Horsepower"],
-            "rows": [[1, "chevelle", 130], [2, "skylark", 165], [3, "pinto", 46]]}
-    served = _hermetic_planner().serve([cars], "What is the model of the car with the smallest amount of horsepower?", [])
-    assert served.get("valid") and served["result"]["rows"] == [["pinto"]], (served.get("error"), served.get("sql"))
-    payments = {"name": "Payments", "columns": ["payment_id", "customer_id", "amount"],
-                "rows": [[1, 1, 10], [2, 1, 20], [3, 2, 7]]}
-    served = _hermetic_planner().serve([payments], "What is the total amount of payments?", [])
-    assert served.get("valid") and served["result"]["rows"] == [[37]], (served.get("error"), served.get("sql"))
-
-
-def test_an_extreme_listed_beside_another_output_is_a_value():
-    """Spider DEV 722 (2026-10-15): "What is the total population and maximum GNP in Asia?" was refused: every reading
-    the pool kept selected the countries whose GNP equals the largest, and SUM(Population), MAX(GNP) fell out of it. An
-    extreme the question lists beside another output is a value it asks for (sql_constraints
-    ._scalar_aggregate_candidates). Contrast: a lone extreme is the value too."""
-    country = {"name": "country", "columns": ["Code", "Name", "Continent", "Population", "GNP"],
-               "rows": [["AFG", "Afghanistan", "Asia", 22720000, 5976], ["CHN", "China", "Asia", 1277558000, 982268],
-                        ["JPN", "Japan", "Asia", 126714000, 3787042], ["NLD", "Netherlands", "Europe", 15864000, 371362]]}
-    city = {"name": "city", "columns": ["ID", "Name", "CountryCode", "District", "Population"],
-            "rows": [[1, "Kabul", "AFG", "Kabol", 1780000], [2, "Shanghai", "CHN", "Shanghai", 9696300],
-                     [3, "Tokyo", "JPN", "Tokyo-to", 7980230], [4, "Amsterdam", "NLD", "Noord-Holland", 731200]]}
-    languages = {"name": "countrylanguage", "columns": ["CountryCode", "Language", "IsOfficial", "Percentage"],
-                 "rows": [["AFG", "Pashto", "T", 52], ["CHN", "Chinese", "T", 92], ["JPN", "Japanese", "T", 99],
-                          ["NLD", "Dutch", "T", 95]]}
-    keys = [{"from_table": "city", "from_col": "CountryCode", "to_table": "country", "to_col": "Code"},
-            {"from_table": "countrylanguage", "from_col": "CountryCode", "to_table": "country", "to_col": "Code"}]
-    served = _hermetic_planner().serve([country, city, languages], "What is the total population and maximum GNP in "
-                                                                   "Asia?", keys)
-    assert served.get("valid") and served["result"]["rows"] == [[1426992000, 3787042]], (
-        served.get("error"), served.get("sql"))
-    served = _hermetic_planner().serve([country], "What is the maximum GNP of countries in Asia?", [])
-    assert served.get("valid") and served["result"]["rows"] == [[3787042]], (served.get("error"), served.get("sql"))
 
 
 def test_the_row_with_the_maximum_is_the_row_holding_it():
     """Spider DEV 95, fresh holdout 896 (2026-10-15): "What is the name of the country with the maximum GNP?" listed
-    every country beside its own GNP: the contract asked for a MAX aggregate and refused the reading ordering by GNP.
-    An extreme after "with/has/have the" selects the row holding it, as "the highest" does
-    (sql_expansion.selects_extreme), read so by the search, the ranker and the contract. Contrast: "the maximum GNP of
-    countries" asks for the value."""
-    country = {"name": "country", "columns": ["Code", "Name", "Continent", "Population", "GNP"],
-               "rows": [["AFG", "Afghanistan", "Asia", 22720000, 5976], ["CHN", "China", "Asia", 1277558000, 982268],
-                        ["JPN", "Japan", "Asia", 126714000, 3787042], ["NLD", "Netherlands", "Europe", 15864000, 371362]]}
-    served = _hermetic_planner().serve([country], "What is the name of the country with the maximum GNP?", [])
-    assert served.get("valid") and served["result"]["rows"] == [["Japan"]], (served.get("error"), served.get("sql"))
-    served = _hermetic_planner().serve([country], "What are the name and population of the country with the minimum "
-                                                  "GNP?", [])
-    assert served.get("valid") and served["result"]["rows"] == [["Afghanistan", 22720000]], (
-        served.get("error"), served.get("sql"))
+    every country beside its own GNP. An extreme after "with/has/have the" selects the row holding it, as "the highest"
+    does (sql_expansion.selects_extreme). Contrast: "the maximum GNP of countries" asks for the value."""
     from engine.sql_expansion import selects_extreme, tokens
     said = tokens("What is the maximum GNP of countries that have the minimum population?")
     assert not selects_extreme(said, said.index("maximum")) and selects_extreme(said, said.index("minimum"))
-
-
-def test_a_word_one_letter_from_a_read_word_is_it_misspelled():
-    """Spider DEV 612, 498 (2026-10-16): "What is the title of all the cartools that are on the TV Channel ...?" was
-    refused, its correct reading leaving "cartools" unread. A word of five letters or more one edit (a letter added,
-    dropped or changed, or two neighbours swapped) from a word the query reads, and of no use the language knows, is
-    that word misspelled (query_contract.read_question). Contrast: one only near a word the query does not read stays
-    unread ("odrer" by a query that orders nothing), and so does a word the language knows (held-out Spider train 78:
-    "the country of all appelations" is no County)."""
-    from engine.query_contract import read_question
-    cartoons = {"name": "Cartoon", "columns": ["id", "Title", "Directed_by"],
-                "rows": [[1, "The Rise of the Blue Beetle!", "Ben Jones"], [2, "Day of the Dark Knight!", "Brandon"]]}
-    searcher = SQLSearcher.from_tables([cartoons], [])
-    reading = searcher.search("List the titles of all the cartoons.")[0]
-    assert read_question("List the titles of all the cartools.", reading, searcher.schema).unread == (), reading.sql
-    assert "odrer" in read_question("List the titles of all the cartools in odrer.", reading, searcher.schema).unread
-    wines = {"name": "wine", "columns": ["No", "Name", "County"], "rows": [[1, "Pinot", "Napa"], [2, "Syrah", "Sonoma"]]}
-    by_county = SQLSearcher.from_tables([wines], [])
-    county = by_county.search("List the county of all wines.")[0]
-    assert "country" in read_question("List the country of all wines.", county, by_county.schema).unread, county.sql
-    from engine.query_contract import _misspells
-    assert _misspells("alphaetical", {"alphabetical"}) and _misspells("langauge", {"language"})
-    assert _misspells("shipe", {"ship"}) and not _misspells("older", {"name", "age"})
-    assert not _misspells("card", {"car"})
-
-
-def test_listed_says_the_rows_are_in_the_data_beside_an_address_state():
-    """Spider DEV 509, 552, 568 (2026-10-16): "How many transcripts are listed?" was still refused: any field named for a
-    state (an address's state_province_county) kept "listed" a condition. Only a field holding a listing or named for a
-    status does (query_contract.read_question). Contrast: beside a status field, "listed" still asks a state."""
-    transcripts = {"name": "Transcripts", "columns": ["transcript_id", "transcript_date"],
-                   "rows": [[1, "1988-04-30"], [2, "1975-10-28"], [3, "1984-12-19"]]}
-    addresses = {"name": "Addresses", "columns": ["address_id", "city", "state_province_county"],
-                 "rows": [[1, "Port Chelsea", "Virginia"], [2, "Lake Laishafurt", "Kentucky"]]}
-    served = _hermetic_planner().serve([transcripts, addresses], "How many transcripts are listed?", [])
-    assert served.get("valid") and served["result"]["rows"] == [[3]], (served.get("error"), served.get("sql"))
-    properties = {"name": "properties", "columns": ["property_id", "address", "status"],
-                  "rows": [[1, "1 Main", "sold"], [2, "2 Oak", "for sale"], [3, "3 Elm", "sold"]]}
-    served = _hermetic_planner().serve([properties], "How many properties are listed?", [])
-    assert not served.get("valid"), served.get("sql")
 
 
 def test_typographic_quotes_read_as_the_ascii_ones():
     """Held-out Spider train 202, Spider DEV 715 (2026-10-16): "the customer whose name includes the letter “a”" quoted
     nothing, and "Give me Brazil’s population and life expectancies." left a lone "s" unread: the readers parse the
     ASCII apostrophe and quotes only. Selection reads a question with its typographic marks written as the ASCII ones
-    (sql_expansion.plain_marks). Contrast: the ASCII question is answered the same."""
-    customers = {"name": "customer", "columns": ["cust_id", "cust_name", "acc_bal"],
-                 "rows": [[1, "Mary", 2000], [2, "Jack", 1000], [3, "Owen", 800]]}
-    curly = _hermetic_planner().serve([customers], "Find the name of the customer whose name includes the letter "
-                                                   "“a”.", [])
-    plain = _hermetic_planner().serve([customers], 'Find the name of the customer whose name includes the letter "a".',
-                                      [])
-    assert curly.get("valid") and sorted(row[0] for row in curly["result"]["rows"]) == ["Jack", "Mary"], (
-        curly.get("error"), curly.get("sql"))
-    assert curly.get("sql") == plain.get("sql")
+    (sql_expansion.plain_marks)."""
     from engine.sql_expansion import plain_marks, tokens
     assert tokens(plain_marks("Give me Brazil’s population")) == tokens("Give me Brazil's population")
     assert plain_marks("hometown is not `` Little Lever '' .") == 'hometown is not " Little Lever " .'
+    assert plain_marks("the letter “a”.") == 'the letter "a".'
 
 
 def test_a_possessive_is_its_word():
-    """Spider DEV 715, 873, 952, 2026-10-16: the search read "Brazil's" as "brazil'", so "Give me Brazil's population"
-    stated no country and "the owner's first name" named no owner; the completeness gate, reading "brazil", refused
-    every reading. A possessive is its word (sql_schema.canon). Contrast: the question said with "of" is answered the
-    same; a possessive naming a table, not a value, filters nothing."""
+    """Spider DEV 715, 873, 952, 2026-10-16: "Brazil's" was read as "brazil'", so "Give me Brazil's population" stated
+    no country and "the owner's first name" named no owner. A possessive is its word (sql_schema.canon)."""
     from engine.sql_schema import canon
     assert canon("Brazil's") == "brazil" and canon("dogs's") == "dog" and canon("owners") == "owner"
-    country = {"name": "country", "columns": ["Code", "Name", "Population", "LifeExpectancy"],
-               "rows": [["BRA", "Brazil", 170115000, 62], ["PER", "Peru", 25662000, 70]]}
-    owned = _hermetic_planner().serve([country], "Give me Brazil's population and life expectancy.", [])
-    said = _hermetic_planner().serve([country], "Give me the population and life expectancy of Brazil.", [])
-    assert owned.get("valid") and owned["result"]["rows"] == [[170115000, 62]], (owned.get("error"), owned.get("sql"))
-    assert owned.get("sql") == said.get("sql")
-    owners = {"name": "Owners", "columns": ["owner_id", "first_name", "state"],
-              "rows": [[1, "Nora", "Virginia"], [2, "Ivan", "Ohio"]]}
-    dogs = {"name": "Dogs", "columns": ["dog_id", "owner_id", "name"], "rows": [[10, 1, "Rex"], [11, 2, "Bo"]]}
-    fks = [{"from_table": "Dogs", "from_col": "owner_id", "to_table": "Owners", "to_col": "owner_id"}]
-    served = _hermetic_planner().serve([owners, dogs], "List each owner's first name and the dog's name.", fks)
-    assert served.get("valid") and sorted(map(tuple, served["result"]["rows"])) == [("Ivan", "Bo"), ("Nora", "Rex")], (
-        served.get("error"), served.get("sql"))
-    assert "WHERE" not in served["sql"]
 
 
 def test_a_word_spelling_out_a_fields_abbreviation_names_it():
@@ -3432,12 +1629,6 @@ def test_a_word_spelling_out_a_fields_abbreviation_names_it():
     more that a field's three- or four-letter name word begins spells it out (sql_expansion.spells_out). Contrast: a
     form of the short word ("longest"), an ordering word ("descending") and a stop word ("per") spell out nothing."""
     from engine.sql_expansion import says_in_another_form, spells_out
-    customers = {"name": "customer", "columns": ["cust_id", "cust_name", "acc_bal"],
-                 "rows": [[1, "Mary", 2000], [2, "Jack", 1000], [3, "Owen", 800]]}
-    served = _hermetic_planner().serve([customers], "Find the name and account balance of the customer whose name "
-                                                    "includes the letter 'a'.", [])
-    assert served.get("valid") and sorted(map(tuple, served["result"]["rows"])) == [("Jack", 1000), ("Mary", 2000)], (
-        served.get("error"), served.get("sql"))
     assert spells_out("account", "acc") and spells_out("longitude", "long") and spells_out("institution", "inst")
     assert says_in_another_form("balance", "bal") and says_in_another_form("enrollment", "enr")
     assert not spells_out("longest", "long") and not spells_out("descending", "desc")
@@ -3446,94 +1637,6 @@ def test_a_word_spelling_out_a_fields_abbreviation_names_it():
     # ENROLL.STU_NUM (held-out Spider train 58, 2026-10-16); "institution" still spells out the table Inst.
     assert not says_in_another_form("student", "stu", frozenset({"student", "enroll"}))
     assert says_in_another_form("institution", "inst", frozenset({"inst", "paper"}))
-    student = {"name": "STUDENT", "columns": ["STU_NUM", "STU_FNAME"], "rows": [[1, "Ann"], [2, "Bo"]]}
-    enroll = {"name": "ENROLL", "columns": ["CLASS_CODE", "STU_NUM", "ENROLL_GRADE"],
-              "rows": [[10, 1, "C"], [10, 2, "A"]]}
-    keys = [{"from_table": "ENROLL", "from_col": "STU_NUM", "to_table": "STUDENT", "to_col": "STU_NUM"}]
-    graded = _hermetic_planner().serve([student, enroll], "What is the first name of students who got grade C?", keys)
-    assert graded.get("valid") and [list(row) for row in graded["result"]["rows"]] == [["Ann"]], (
-        graded.get("error"), graded.get("sql"))
-
-
-def test_a_key_named_as_the_table_it_refers_to_names_that_table():
-    """Fresh holdout 742, 2026-10-16: "Find the name of the project for which a scientist whose name contains 'Smith' is
-    assigned to." showed AssignedTo.Project beside Projects.Name: the root table's key echoing a table the answer reads
-    was kept as the question's own rows (22 of 23 such answers in DEV and the two held-out sets were wrong). A key named
-    as the table it refers to names that table (SQLSearcher._simplified). Contrast: a key of the root table named
-    otherwise ("the currency symbol for every order", tests.test_enrichment) keeps its column."""
-    projects = {"name": "Projects", "columns": ["Code", "Name", "Hours"],
-                "rows": [["AE1", "Winds", 156], ["AE2", "Tides", 189], ["AE3", "Sands", 300]]}
-    scientists = {"name": "Scientists", "columns": ["SSN", "Name"],
-                  "rows": [[1, "Ann Smith"], [2, "Bo Lee"], [3, "Cy Smithers"]]}
-    assigned = {"name": "AssignedTo", "columns": ["Scientist", "Project"],
-                "rows": [[1, "AE1"], [2, "AE2"], [3, "AE1"], [3, "AE3"]]}
-    fks = [{"from_table": "AssignedTo", "from_col": "Scientist", "to_table": "Scientists", "to_col": "SSN"},
-           {"from_table": "AssignedTo", "from_col": "Project", "to_table": "Projects", "to_col": "Code"}]
-    served = _hermetic_planner().serve([projects, scientists, assigned], "Find the name of the project for which "
-                                       "the scientist 'Bo Lee' is assigned to.", fks)
-    assert served.get("valid") and served["result"]["rows"] == [["Tides"]], (served.get("error"), served.get("sql"))
-
-
-def test_available_results_and_compute_ask_nothing():
-    """Held-out Spider train 443, 447, 477, 2026-10-16: "How many available hotels are there in total?", "... and sort
-    the results by the number of followers" and "Compute the total amount of payment processed." were refused, the
-    selected reading right, for "available", "results" and "compute". Where no table or field is named for
-    availability, "available" says the rows are in the data; "the results" a sort verb orders are the answer's rows; and
-    "compute" is a command (query_contract.read_question). Contrast: beside an availability field "available" still
-    asks a condition (a table's availability the count does not read), and "the least number of results" still asks for
-    results."""
-    from engine.query_contract import read_question
-    hotels = {"name": "Hotels", "columns": ["hotel_id", "star_rating"], "rows": [[1, 5], [2, 3], [3, 4]]}
-    served = _hermetic_planner().serve([hotels], "How many available hotels are there in total?", [])
-    assert served.get("valid") and served["result"]["rows"] == [[3]], (served.get("error"), served.get("sql"))
-    users = {"name": "user_profiles", "columns": ["uid", "name", "followers"],
-             "rows": [[1, "Ann", 30], [2, "Bo", 90], [3, "Cy", 60]]}
-    served = _hermetic_planner().serve([users], "List the name and number of followers for each user, and sort the "
-                                                "results by the number of followers in descending order.", [])
-    assert served.get("valid") and [list(row) for row in served["result"]["rows"]] == [
-        ["Bo", 90], ["Cy", 60], ["Ann", 30]], (served.get("error"), served.get("sql"))
-    payments = {"name": "Payments", "columns": ["payment_id", "amount_payment"], "rows": [[1, 20], [2, 30]]}
-    served = _hermetic_planner().serve([payments], "Compute the total amount of payment processed.", [])
-    assert served.get("valid") and served["result"]["rows"] == [[50]], (served.get("error"), served.get("sql"))
-    rooms = {"name": "Rooms", "columns": ["room_id", "beds"], "rows": [[1, 2], [2, 1]]}
-    slots = {"name": "Room_Slots", "columns": ["room_id", "availability"], "rows": [[1, "open"], [2, "booked"]]}
-    graph = SchemaGraph.from_tables([rooms, slots], ())
-    every = SelectQuery((SelectItem(Aggregate("COUNT", Star())),), "Rooms")
-    candidate = ScoredQuery(every, render_query(every), 0.0, ())
-    assert "available" in read_question("How many available rooms are there?", candidate, graph).unread
-    graph = SchemaGraph.from_tables([users], ())
-    ref = {(column.ref.table, column.ref.name): column.ref for column in graph.columns}
-    least = SelectQuery((SelectItem(ref["user_profiles", "name"]),), "user_profiles",
-                        order_by=(OrderTerm(ref["user_profiles", "followers"], "ASC"),), limit=1)
-    candidate = ScoredQuery(least, render_query(least), 0.0, ())
-    assert "results" in read_question("Show the user with the least number of results.", candidate, graph).unread
-
-
-def test_an_ordering_from_old_to_young_starts_at_the_oldest():
-    """Held-out Spider train 924, 715, Spider DEV 414, 2026-10-16: "Sort all captain names by their ages from old to
-    young." ordered the ages ascending, from the youngest, and was refused for "old" and "young". An ordering from one
-    age end to the other starts at the first one's grade (sql_extrema.span_grade), an age descending and a birth date
-    ascending from the oldest, and the completeness gate reads its words by an ordering in that direction. Contrast:
-    "from young to old" starts at the youngest; "how old are they" asks for something."""
-    from engine.sql_extrema import span_grade
-    from engine.sql_expansion import tokens
-    assert span_grade(tokens("sorted by their ages from old to young")) == "oldest"
-    assert span_grade(tokens("from younger to older")) == "youngest"
-    assert span_grade(tokens("how old are they")) is None
-    captains = {"name": "captain", "columns": ["Captain_ID", "Name", "age"],
-                "rows": [[1, "Ann", 40], [2, "Bo", 60], [3, "Cy", 50]]}
-    served = _hermetic_planner().serve([captains], "Sort all captain names by their ages from old to young.", [])
-    assert served.get("valid") and [row[0] for row in served["result"]["rows"]] == ["Bo", "Cy", "Ann"], (
-        served.get("error"), served.get("sql"))
-    served = _hermetic_planner().serve([captains], "Sort all captain names by their ages from young to old.", [])
-    assert served.get("valid") and [row[0] for row in served["result"]["rows"]] == ["Ann", "Cy", "Bo"], (
-        served.get("error"), served.get("sql"))
-    people = {"name": "people", "columns": ["People_ID", "Name", "Date_of_Birth"],
-              "rows": [[1, "Ann", "1990-01-01"], [2, "Bo", "1950-01-01"], [3, "Cy", "1970-01-01"]]}
-    served = _hermetic_planner().serve([people], "List all people names in the order of their date of birth from old to "
-                                                 "young.", [])
-    assert served.get("valid") and [row[0] for row in served["result"]["rows"]] == ["Bo", "Cy", "Ann"], (
-        served.get("error"), served.get("sql"))
 
 
 def test_spider_ingestion_keeps_discovered_and_declared_relationships():
@@ -3546,6 +1649,8 @@ def test_spider_ingestion_keeps_discovered_and_declared_relationships():
     tables = [carriers, ports, shipments]
     declared = [{"from_table": "shipments", "from_col": "destination_id", "to_table": "ports", "to_col": "id"}]
     planner = _hermetic_planner()
+    planner.pool = [_model_query(planner, ("SELECT COUNT(*) FROM shipments JOIN carriers "
+                                           "ON shipments.carrier = carriers.id WHERE carriers.name = 'Alpha'"), tables)]
     cache = {}
     with patch.object(planner, "schema", wraps=planner.schema) as schema:
         actual = ast_predict(planner, tables, "How many shipments use carrier Alpha?", declared, cache)
@@ -3590,12 +1695,14 @@ def test_declared_self_relationship_keeps_unrelated_queries_and_source_rows():
     assert graph.reachable({"employees"}) == {"employees"}
     assert graph.join_trees({"employees", "artists"}) == ()
     assert graph.join_trees({"employees"})[0].joins == ()
+    planner.pool = {question: [_model_query(planner, sql, tables)] for question, sql in (
+        ("List artist names", 'SELECT "Name" FROM "artists"'),
+        ("List employee names", 'SELECT "Name" FROM "employees"'),
+        ("How many employees are there?", 'SELECT COUNT(*) FROM "employees"'))}
     unrelated = ast_predict(planner, tables, "List artist names", declared)
     assert unrelated["ok"] and Counter(map(tuple, unrelated["rows"])) == Counter({("Nora",): 1, ("Nico",): 1}), unrelated
-    assert '"employees"' not in unrelated["sql"], unrelated
     listed = ast_predict(planner, tables, "List employee names", declared)
     assert listed["ok"] and Counter(map(tuple, listed["rows"])) == Counter({("A",): 2, ("B",): 1}), listed
-    assert "JOIN" not in listed["sql"], listed
     counted = ast_predict(planner, tables, "How many employees are there?", declared)
     assert counted["ok"] and counted["rows"] == [[3]], counted
     assert json.dumps(tables, sort_keys=True) == before
@@ -3612,409 +1719,23 @@ def test_declared_self_relationship_keeps_unrelated_queries_and_source_rows():
             raise AssertionError("self-reference support must not admit malformed declarations")
 
 
-def test_missing_relationship_construction_requires_an_exact_parent_key():
-    from engine.sql_expansion import ExpansionSupport
-    carriers = {"name": "carriers", "columns": ["id", "name"],
-                "rows": [[index, f"C{index}"] for index in range(1, 21)] + [[1, "Duplicate"]]}
-    shipments = {"name": "shipments", "columns": ["id", "carrier"],
-                 "rows": [[100 + index, 1 + index % 3] for index in range(12)]}
-    graph = SchemaGraph.from_tables([carriers, shipments], [])
-    support = ExpansionSupport(graph)
-    assert support.inferred_entity_join("carriers", "shipments") is None
-    # Removing the duplicate establishes the same exact key required by the
-    # canonical ingestion owner; real construction still finds the link.
-    carriers = dict(carriers, rows=carriers["rows"][:-1])
-    graph = SchemaGraph.from_tables([carriers, shipments], [])
-    assert ExpansionSupport(graph).inferred_entity_join("carriers", "shipments") is not None
-    test_constraint_expansion_infers_high_confidence_missing_entity_fk()
-
-
-def test_unjoined_catalog_does_not_deduplicate_a_property_listing():
-    """Repeated stored properties do not prove that a join copied answer rows.
-
-    Independently, three qualifying cars have models A, A and B. The unused
-    model catalog is a schema distractor, not an instruction to merge cars.
-    """
-    names = {"name": "car_names", "columns": ["MakeId", "Model"],
-             "rows": [[1, "A"], [2, "A"], [3, "B"], [4, "C"]]}
-    measures = {"name": "cars_data", "columns": ["Id", "Weight"],
-                "rows": [[1, 2], [2, 4], [3, 6], [4, 40]]}
-    catalog = {"name": "model_list", "columns": ["Model"], "rows": [["A"], ["B"], ["C"]]}
-    fks = [
-        {"from_table": "car_names", "from_col": "MakeId", "to_table": "cars_data", "to_col": "Id"},
-        {"from_table": "car_names", "from_col": "Model", "to_table": "model_list", "to_col": "Model"},
-    ]
-    tables = [names, measures, catalog]
-    for question in (
-        "What is the model for the car with a weight smaller than the average?",
-        "Find the model of the car whose weight is below the average weight.",
-    ):
-        candidate = best(question, tables, fks)
-        assert Counter(execute(tables, candidate.sql)) == Counter({("A",): 2, ("B",): 1}), candidate.sql
-        assert not candidate.query.distinct, candidate.sql
-    # A requested set of values remains a set on the identical input profile.
-    served = _hermetic_planner().serve(
-        tables, "List the distinct models for cars with weight below the average weight.", fks)
-    assert served.get("valid"), served
-    assert Counter(map(tuple, served["result"]["rows"])) == Counter({("A",): 1, ("B",): 1}), served
-    # A genuinely multiplying parent listing still uses the existing policy.
-    test_constraint_disjunction_deduplicates_entities_across_relation()
-
-
 def test_a_closed_opening_request_for_one_field_is_the_answer():
-    """Spider DEV 625, 2026-10-17 (ported from the Codex review's single-field reader): "List the Episode of all TV
-    series showed on TV Channel with series name 'Sky Radio'." also showed TV_series.Channel, the key its join repeats.
-    An opening instruction naming exactly one field, bound unambiguously, whose owner phrase names that field's table
-    and ends there, closes the answer's outputs (sql_expansion._one_closed_field, list_closed), and the search leaves
-    out a field no item asks for (sql_search._in_list_order). Contrast: asking for the episode and the channel shows
-    both; a list that goes on after its owner ("and the number of ...") is not closed."""
+    """Spider DEV 625, 2026-10-17: "List the Episode of all TV series showed on TV Channel with series name 'Sky
+    Radio'." also showed TV_series.Channel, the key its join repeats. An opening instruction naming exactly one field,
+    bound unambiguously, whose owner phrase names that field's table and ends there, closes the answer's outputs
+    (sql_expansion._one_closed_field, list_closed). Negative: a list that goes on after its owner ("and the number of
+    ...") is not closed."""
+    from engine.sql_expansion import list_closed, output_requests
     channels = {"name": "TV_Channel", "columns": ["id", "series_name", "Language"],
                 "rows": [["700", "Sky Radio", "Italian"], ["701", "Sky Music", "English"]]}
     series = {"name": "TV_series", "columns": ["id", "Episode", "Channel"],
               "rows": [[1, "A Love of a Lifetime", "700"], [2, "Friendly Skies", "700"], [3, "Blowback", "701"]]}
     fks = [{"from_table": "TV_series", "from_col": "Channel", "to_table": "TV_Channel", "to_col": "id"}]
-    served = _hermetic_planner().serve(
-        [channels, series], 'List the Episode of all TV series showed on TV Channel with series name "Sky Radio".', fks)
-    assert served.get("valid") and Counter(map(tuple, served["result"]["rows"])) == Counter(
-        {("A Love of a Lifetime",): 1, ("Friendly Skies",): 1}), (served.get("error"), served.get("sql"))
-    served = _hermetic_planner().serve(
-        [channels, series], 'List the Episode and channel of all TV series showed on TV Channel with series name '
-                            '"Sky Radio".', fks)
-    assert served.get("valid") and {len(row) for row in served["result"]["rows"]} == {2}, served.get("sql")
-    from engine.sql_expansion import list_closed, output_requests
     graph = SchemaGraph.from_tables([channels, series], fks)
+    closed = 'List the Episode of all TV series showed on TV Channel with series name "Sky Radio".'
+    assert list_closed(closed, output_requests(closed, graph))
     question = "List the Episode of all TV series and the number of channels."
     assert not list_closed(question, output_requests(question, graph))
-    # A join only the left-out field read goes with it (Spider DEV 801, 802, 804: a closed list kept a city join
-    # whose field it had dropped, and the join repeated each country).
-    from engine.sql_search import SQLSearcher, _in_list_order
-    searcher = SQLSearcher.from_tables([channels, series], fks)
-    ref = {(column.ref.table, column.ref.name): column.ref for column in searcher.schema.columns}
-    both = SelectQuery((SelectItem(ref["TV_Channel", "series_name"]), SelectItem(ref["TV_series", "Episode"])),
-                       "TV_Channel", joins=(Join("TV_series", ref["TV_series", "Channel"], ref["TV_Channel", "id"]),))
-    pruned = _in_list_order(ScoredQuery(both, render_query(both), 0.0, ()),
-                            (frozenset({ref["TV_Channel", "series_name"]}),), closed=True)
-    assert pruned is not None and "output-slots:closed" in pruned.evidence, pruned
-    simplified = searcher._simplified(pruned, set(), frozenset(), ("list", "the", "series", "name"))
-    assert not simplified.query.joins, simplified.sql
-
-
-def test_a_measures_unit_is_left_unsaid():
-    """Spider DEV 1016, 1017, 2026-10-17: "Show different citizenships and the maximum net worth of singers of each
-    citizenship." took the maximum of Citizenship, and "For each citizenship, what is the maximum net worth?" was
-    refused: no reading named Net_Worth_Millions, whose last word only says the unit. A measure's trailing unit, with
-    an "in" before it, is left unsaid (sql_expansion.naming_words, read by the search's mentions and the completeness
-    gate alike). Contrast: where two fields of a table differ only by the unit (length_feet, length_meters), "the
-    length" still names neither, and a unit said picks its field."""
-    from engine.sql_expansion import naming_context, naming_words
-    singers = {"name": "singer", "columns": ["Singer_ID", "Name", "Citizenship", "Net_Worth_Millions"],
-               "rows": [[1, "Ann", "France", 30.0], [2, "Bo", "France", 12.5], [3, "Cy", "Chile", 8.0]]}
-    for question in ("Show different citizenships and the maximum net worth of singers of each citizenship.",
-                     "For each citizenship, what is the maximum net worth?"):
-        served = _hermetic_planner().serve([singers], question, [])
-        assert served.get("valid") and Counter(map(tuple, served["result"]["rows"])) == Counter(
-            {("France", 30.0): 1, ("Chile", 8.0): 1}), (question, served.get("error"), served.get("sql"))
-    bridges = {"name": "bridge", "columns": ["id", "name", "length_feet", "length_meters"],
-               "rows": [[1, "A", 100.0, 30.5], [2, "B", 200.0, 61.0]]}
-    graph = SchemaGraph.from_tables([bridges], [])
-    context = naming_context(graph)["bridge"]
-    assert naming_words(("length", "feet"), context) == ("length", "feet")
-    assert naming_words(("net", "worth", "million"), frozenset()) == ("net", "worth")
-    assert naming_words(("sale", "in", "billion"), frozenset({"in", "billion"})) == ("sale",)
-    served = _hermetic_planner().serve([bridges], "What is the maximum length in meters?", [])
-    assert served.get("valid") and served["result"]["rows"] == [[61.0]], served.get("sql")
-
-
-def test_a_verb_the_question_says_names_no_stored_value():
-    """Spider DEV 448, 451, 452, 778, 779, 2026-10-17: "What are the names of players who won in both 2013 and 2016?"
-    filtered on a surname 'Won', and "What are the country codes for countries that do not speak English?" on a country
-    code 'DO'. A word the tagger reads as an auxiliary or a finite verb, said in lower case and unquoted, names no
-    stored value (closed_class.predicate_words, sql_search._value_matches). Contrast: quoted, the same word is the
-    value; a participle may still name a status ("the closed stores")."""
-    players = {"name": "players", "columns": ["player_id", "first_name", "last_name"],
-               "rows": [[1, "Ann", "Won"], [2, "Bo", "Lee"], [3, "Cy", "Park"]]}
-    matches = {"name": "matches", "columns": ["match_id", "winner_id", "year"],
-               "rows": [[1, 2, 2013], [2, 2, 2016], [3, 3, 2013], [4, 1, 2015]]}
-    fks = [{"from_table": "matches", "from_col": "winner_id", "to_table": "players", "to_col": "player_id"}]
-    candidate = best("What are the first names of players who won in 2013?", [players, matches], fks)
-    assert "'Won'" not in candidate.sql, candidate.sql
-    quoted = best("What are the first names of players with last name 'Won'?", [players, matches], fks)
-    assert "'Won'" in quoted.sql, quoted.sql
-    from engine.closed_class import predicate_words
-    assert {"won", "do"} <= predicate_words("players who won the cup in countries that do not speak English")
-    assert "closed" not in predicate_words("Find the closed stores.")
-
-
-def test_a_verb_is_read_by_the_field_its_doer_names():
-    """Spider DEV 448, 451, 452, 2026-10-17: "What are the names of players who won in both 2013 and 2016?" built the
-    right INTERSECT over winner_id and over loser_id, and refused both for "won". A verb is read by the field or table
-    its agent noun names where the query uses one (closed_class.verb_lemmas, agent_noun; query_contract.read_question):
-    "won" by winner_id. Contrast: the loser's reading leaves "won" unread; "owned" is read by an owner's field."""
-    from engine.query_contract import read_question
-    # A stored surname 'Won' makes "won" a word of the data, so only a field may read it.
-    players = {"name": "players", "columns": ["player_id", "first_name", "last_name"],
-               "rows": [[1, "Ann", "Won"], [2, "Bo", "Lee"]]}
-    matches = {"name": "matches", "columns": ["match_id", "winner_id", "loser_id", "year"],
-               "rows": [[1, 1, 2, 2013], [2, 1, 2, 2016], [3, 2, 1, 2013]]}
-    fks = [{"from_table": "matches", "from_col": "winner_id", "to_table": "players", "to_col": "player_id"},
-           {"from_table": "matches", "from_col": "loser_id", "to_table": "players", "to_col": "player_id"}]
-    graph = SchemaGraph.from_tables([players, matches], fks)
-    ref = {(column.ref.table, column.ref.name): column.ref for column in graph.columns}
-    question = "What are the first names of players who won in 2013?"
-    for key, read in (("winner_id", True), ("loser_id", False)):
-        query = SelectQuery((SelectItem(ref["players", "first_name"]),), "players",
-                            joins=(Join("matches", ref["matches", key], ref["players", "player_id"]),),
-                            where=Comparison(ref["matches", "year"], "=", Literal(2013, SQLType.INTEGER)))
-        candidate = ScoredQuery(query, render_query(query), 0.0, ())
-        assert ("won" not in read_question(question, candidate, graph).unread) == read, key
-    from engine.closed_class import agent_noun
-    assert agent_noun("win", "winner") and agent_noun("lose", "loser") and agent_noun("direct", "director")
-    assert agent_noun("create", "creator") and not agent_noun("win", "window") and not agent_noun("own", "town")
-
-
-def test_a_table_named_by_two_words_written_together_is_named_by_them():
-    """Spider DEV 768, 769, 770, 2026-10-17: "What is the official language spoken in the country whose head of state is
-    Beatrix?" was refused for "spoken": a relation verb is read between the names of two tables the query reads, and
-    countrylanguage was named by no word of the question. A name writing two words together is named by them too
-    (closed_class.compound_parts). Contrast: a word of its own is no compound; a name with an unknown half is none."""
-    from engine.query_contract import read_question
-    from engine.sql_ast import BooleanExpr
-    countries = {"name": "country", "columns": ["Code", "Name", "HeadOfState"], "rows": [["NLD", "Netherlands", "Beatrix"]]}
-    languages = {"name": "countrylanguage", "columns": ["CountryCode", "Language", "IsOfficial"],
-                 "rows": [["NLD", "Dutch", "T"], ["NLD", "Fries", "F"]]}
-    fks = [{"from_table": "countrylanguage", "from_col": "CountryCode", "to_table": "country", "to_col": "Code"}]
-    graph = SchemaGraph.from_tables([countries, languages], fks)
-    ref = {(column.ref.table, column.ref.name): column.ref for column in graph.columns}
-    query = SelectQuery((SelectItem(ref["countrylanguage", "Language"]),), "country",
-                        joins=(Join("countrylanguage", ref["countrylanguage", "CountryCode"], ref["country", "Code"]),),
-                        where=BooleanExpr("AND", (
-                            Comparison(ref["country", "HeadOfState"], "=", Literal("Beatrix", SQLType.TEXT)),
-                            Comparison(ref["countrylanguage", "IsOfficial"], "=", Literal("T", SQLType.TEXT)))))
-    candidate = ScoredQuery(query, render_query(query), 0.0, ())
-    question = "What is the official language spoken in the country whose head of state is Beatrix?"
-    assert "spoken" not in read_question(question, candidate, graph).unread
-    from engine.closed_class import compound_parts
-    assert compound_parts("countrylanguage") == ("country", "language")
-    assert compound_parts("language") == () and compound_parts("qzxwvt") == ()
-
-
-def test_a_flag_field_the_question_names_is_a_condition():
-    """Spider DEV 738, 748, 754, 771, 2026-10-17: "How many official languages does Afghanistan have?" counted every
-    language, and "What are the names of nations where both English and French are official languages?" was refused:
-    no reading compared countrylanguage.IsOfficial ('T'/'F'). A field holding only yes/no codes, named by its words
-    without the flag affix ("official" for IsOfficial, "abandoned" for abandoned_yn), is the condition field = its true
-    value where the question says those words (sql_expansion.flag_fields, flag_comparisons), in the search and the
-    constraint expander alike. Contrast: without the word nothing is filtered; a 0/1 field with no flag affix is no
-    flag; a negated word ("English is not the official language") adds no positive flag."""
-    countries = {"name": "country", "columns": ["Code", "Name"], "rows": [["AFG", "Afghanistan"], ["BEL", "Belgium"]]}
-    languages = {"name": "countrylanguage", "columns": ["CountryCode", "Language", "IsOfficial"],
-                 "rows": [["AFG", "Pashto", "T"], ["AFG", "Dari", "T"], ["AFG", "Uzbek", "F"],
-                          ["BEL", "Dutch", "T"], ["BEL", "French", "T"], ["BEL", "German", "F"]]}
-    fks = [{"from_table": "countrylanguage", "from_col": "CountryCode", "to_table": "country", "to_col": "Code"}]
-    served = _hermetic_planner().serve([countries, languages], "How many official languages does Afghanistan have?", fks)
-    assert served.get("valid") and served["result"]["rows"] == [[2]], (served.get("error"), served.get("sql"))
-    served = _hermetic_planner().serve([countries, languages], "How many languages does Afghanistan have?", fks)
-    assert served.get("valid") and served["result"]["rows"] == [[3]], (served.get("error"), served.get("sql"))
-    from engine.sql_expansion import flag_comparisons, flag_fields, tokens
-    graph = SchemaGraph.from_tables([countries, languages], fks)
-    assert [(column.name, value, words) for column, value, words in flag_fields(graph)] == [
-        ("IsOfficial", "T", ("official",))]
-    assert not flag_comparisons(tokens("countries where English is not the official language"), graph)
-    ranks = {"name": "teams", "columns": ["id", "playoff"], "rows": [[1, 0], [2, 1]]}
-    assert flag_fields(SchemaGraph.from_tables([ranks], ())) == ()
-    dogs = {"name": "Dogs", "columns": ["dog_id", "name", "abandoned_yn"], "rows": [[1, "Rex", 1], [2, "Bo", 0]]}
-    assert [words for _, _, words in flag_fields(SchemaGraph.from_tables([dogs], ()))] == [("abandoned",)]
-
-
-def test_corresponding_pairs_an_output_with_another():
-    """Spider DEV 368, 882, 948, 2026-10-17: "List the cost of each treatment and the corresponding treatment type
-    description." was refused, right, for "corresponding". The word pairs one output with another, so it is read where
-    the answer shows two or more and the word says one of them: "corresponding to each", or a shown field named after
-    it (query_contract.read_question). Contrast: an answer showing one output pairs nothing ("the lowest version
-    number, along with its corresponding template type code" over the version alone), nor does "two or more
-    corresponding dogs"."""
-    from engine.query_contract import read_question
-    treatments = {"name": "Treatments", "columns": ["treatment_id", "treatment_type_code", "cost_of_treatment"],
-                  "rows": [[1, "EXAM", 300], [2, "VAC", 50]]}
-    kinds = {"name": "Treatment_Types", "columns": ["treatment_type_code", "treatment_type_description"],
-             "rows": [["EXAM", "Physical examination"], ["VAC", "Vaccination"]]}
-    fks = [{"from_table": "Treatments", "from_col": "treatment_type_code", "to_table": "Treatment_Types",
-            "to_col": "treatment_type_code"}]
-    graph = SchemaGraph.from_tables([treatments, kinds], fks)
-    ref = {(column.ref.table, column.ref.name): column.ref for column in graph.columns}
-    join = (Join("Treatment_Types", ref["Treatments", "treatment_type_code"],
-                 ref["Treatment_Types", "treatment_type_code"]),)
-    question = "List the cost of each treatment and the corresponding treatment type description."
-    both = SelectQuery((SelectItem(ref["Treatments", "cost_of_treatment"]),
-                        SelectItem(ref["Treatment_Types", "treatment_type_description"])), "Treatments", joins=join)
-    assert "corresponding" not in read_question(question, ScoredQuery(both, render_query(both), 0.0, ()), graph).unread
-    alone = SelectQuery((SelectItem(ref["Treatments", "cost_of_treatment"]),), "Treatments", joins=join)
-    assert "corresponding" in read_question(question, ScoredQuery(alone, render_query(alone), 0.0, ()), graph).unread
-    # Held out 111, 400, 2026-10-17: the word pairs the output it says, not any two outputs. "Two or more corresponding
-    # dogs" says none, and "the corresponding description" over a treatment id is unread.
-    many = "Which treatment type descriptions have two or more corresponding dogs?"
-    assert "corresponding" in read_question(many, ScoredQuery(both, render_query(both), 0.0, ()), graph).unread
-    codes = SelectQuery((SelectItem(ref["Treatments", "cost_of_treatment"]),
-                         SelectItem(ref["Treatments", "treatment_id"])), "Treatments")
-    assert "corresponding" in read_question("List the cost of each treatment and the corresponding description.",
-                                            ScoredQuery(codes, render_query(codes), 0.0, ()), graph).unread
-
-
-def test_names_are_titles_where_a_table_holds_no_name_and_time_is_a_dates_kind():
-    """Spider DEV 588, 693, 2026-10-17: "What are the names of all cartoons directed by Ben Jones?" showed the titles
-    and "What are the distinct states and create time of all votes?" the created dates; both were refused, right, for
-    "names" and "time". A table holding a title and no name is named by it, and "time" is the kind of a date field the
-    query reads (query_contract.read_question)."""
-    cartoons = {"name": "Cartoon", "columns": ["id", "Title", "Directed_by"],
-                "rows": [[1, "The Rise", "Ben Jones"], [2, "Day Out", "Ann Lee"]]}
-    served = _hermetic_planner().serve([cartoons], "What are the names of all cartoons directed by Ben Jones?", [])
-    assert served.get("valid") and served["result"]["rows"] == [["The Rise"]], (served.get("error"), served.get("sql"))
-    votes = {"name": "VOTES", "columns": ["vote_id", "state", "created"],
-             "rows": [[1, "NY", "2018-03-09"], [2, "CA", "2018-03-10"], [3, "NY", "2018-03-09"]]}
-    served = _hermetic_planner().serve([votes], "What are the distinct states and create time of all votes?", [])
-    assert served.get("valid") and len(served["result"]["rows"]) == 2, (served.get("error"), served.get("sql"))
-
-
-def test_a_condition_field_is_not_also_an_output():
-    """Spider DEV 245, 246, 768, 769, 2026-10-17: "What is the official language spoken in the country whose head of
-    state is Beatrix?" showed IsOfficial beside each Language, the constant 'T' the flag condition keeps, and "What are
-    flight numbers of Airline "United Airlines"?" showed flights.Airline, the one airline's id, beside each FlightNo.
-    A flag the question says only as its condition (sql_rank.flag_condition_only) and a key named as the field of
-    another table the query compares (sql_rank.filter_only) are not asked for. Contrast: a key the question names apart
-    from the comparison ("the flight number and airline of each flight") is asked for."""
-    countries = {"name": "country", "columns": ["Code", "Name", "HeadOfState"],
-                 "rows": [["NLD", "Netherlands", "Beatrix"], ["BEL", "Belgium", "Albert II"]]}
-    languages = {"name": "countrylanguage", "columns": ["CountryCode", "Language", "IsOfficial"],
-                 "rows": [["NLD", "Dutch", "T"], ["NLD", "Fries", "F"], ["BEL", "Dutch", "T"],
-                          ["BEL", "French", "T"], ["BEL", "German", "F"]]}
-    fks = [{"from_table": "countrylanguage", "from_col": "CountryCode", "to_table": "country", "to_col": "Code"}]
-    served = _hermetic_planner().serve(
-        [countries, languages], "What is the official language spoken in the country whose head of state is Beatrix?",
-        fks)
-    assert served.get("valid") and served["result"]["rows"] == [["Dutch"]], (served.get("error"), served.get("sql"))
-    airlines = {"name": "airlines", "columns": ["uid", "Airline", "Country"],
-                "rows": [[1, "United Airlines", "USA"], [2, "Delta Airlines", "USA"], [3, "JetBlue Airways", "USA"]]}
-    flights = {"name": "flights", "columns": ["Airline", "FlightNo", "SourceAirport"],
-               "rows": [[1, 28, "APG"], [1, 29, "ASY"], [2, 44, "ACV"], [3, 2, "AHD"], [1, 54, "CVO"]]}
-    keys = [{"from_table": "flights", "from_col": "Airline", "to_table": "airlines", "to_col": "uid"}]
-    served = _hermetic_planner().serve([airlines, flights], 'What are flight numbers of Airline "United Airlines"?', keys)
-    assert served.get("valid") and sorted(served["result"]["rows"]) == [[28], [29], [54]], (
-        served.get("error"), served.get("sql"))
-    from engine.sql_expansion import tokens
-    from engine.sql_rank import filter_only
-    graph = SchemaGraph.from_tables([airlines, flights], keys)
-    ref = {(column.ref.table, column.ref.name): column.ref for column in graph.columns}
-    query = SelectQuery((SelectItem(ref["flights", "FlightNo"]), SelectItem(ref["flights", "Airline"])), "flights",
-                        joins=(Join("airlines", ref["flights", "Airline"], ref["airlines", "uid"]),),
-                        where=Comparison(ref["airlines", "Airline"], "=", Literal("United Airlines")))
-    assert filter_only(ref["flights", "Airline"], query, tokens('flight numbers of Airline "United Airlines"'))
-    assert not filter_only(ref["flights", "Airline"], query, tokens(
-        "Show the flight number and airline of each flight for the airline United Airlines"))
-
-
-def test_a_count_of_what_a_key_names_counts_the_referred_rows():
-    """Spider DEV 115, 147, 148, 2026-10-17: "How many car models were produced by the maker with full name American
-    Motor Company?" counted car_names.Model through model_list, every car name of a model again, and the gate refused
-    every count for not grouping by maker. A count whose noun says a referring key's own word ("car models") and not
-    its table's name counts the referred rows (sql_expansion.counted_references), the noun of a threshold too ("more
-    than 3 car models"); the search swaps such a count to the key it refers to (sql_parsimony); and a "by" naming who
-    acted asks for no grain (sql_expansion.by_groups).
-    Contrast: "How many flights does airline JetBlue Airways have?" counts the flights holding the airline key."""
-    makers = {"name": "car_makers", "columns": ["Id", "Maker", "FullName", "Country"],
-              "rows": [[1, "amc", "American Motor Company", 1], [2, "volkswagen", "Volkswagen", 2],
-                       [3, "bmw", "BMW", 2]]}
-    models = {"name": "model_list", "columns": ["ModelId", "Maker", "Model"],
-              "rows": [[1, 1, "amc"], [2, 2, "audi"], [3, 1, "rambler"], [4, 3, "bmw"]]}
-    names = {"name": "car_names", "columns": ["MakeId", "Model", "Make"],
-             "rows": [[1, "amc", "amc ambassador dpl"], [2, "amc", "amc hornet"], [3, "amc", "amc gremlin"],
-                      [4, "audi", "audi 100ls"], [5, "rambler", "rambler rebel"], [6, "bmw", "bmw 2002"]]}
-    fks = [{"from_table": "model_list", "from_col": "Maker", "to_table": "car_makers", "to_col": "Id"},
-           {"from_table": "car_names", "from_col": "Model", "to_table": "model_list", "to_col": "Model"}]
-    served = _hermetic_planner().serve(
-        [makers, models, names],
-        "How many car models were produced by the maker with full name American Motor Company?", fks)
-    assert served.get("valid") and served["result"]["rows"] == [[2]], (served.get("error"), served.get("sql"))
-    from engine.sql_expansion import counted_references
-    graph = SchemaGraph.from_tables([makers, models, names], fks)
-    ref = {(column.ref.table, column.ref.name): column.ref for column in graph.columns}
-    question = "How many car models are produced by the maker American Motor Company?"
-    joined = (Join("model_list", ref["car_names", "Model"], ref["model_list", "Model"]),
-              Join("car_makers", ref["model_list", "Maker"], ref["car_makers", "Id"]))
-    where = Comparison(ref["car_makers", "FullName"], "=", Literal("American Motor Company"))
-    referring = SelectQuery((SelectItem(Aggregate("COUNT", ref["car_names", "Model"])),), "car_names", joins=joined,
-                            where=where)
-    assert [table for _, table in counted_references(referring, question, graph)] == ["car_names"]
-    referred = SelectQuery((SelectItem(Aggregate("COUNT", ref["model_list", "Model"])),), "model_list",
-                           joins=joined[1:], where=where)
-    assert not counted_references(referred, question, graph)
-    assert not counted_references(referring, "How many car names are there for American Motor Company?", graph)
-    # Spider DEV 149, 150: the noun a threshold counts ("more than 3 car models") is read the same way.
-    maker = ref["car_makers", "FullName"]
-    grouped = SelectQuery((SelectItem(maker),), "car_names", joins=joined, group_by=(maker,),
-                          having=Comparison(Aggregate("COUNT", Star()), ">", Literal(3)))
-    assert [table for _, table in counted_references(grouped, "Which makers designed more than 3 car models?", graph)
-            ] == ["car_names"]
-    airlines = {"name": "airlines", "columns": ["uid", "Airline", "Country"],
-                "rows": [[1, "United Airlines", "USA"], [2, "JetBlue Airways", "USA"]]}
-    flights = {"name": "flights", "columns": ["Airline", "FlightNo", "SourceAirport"],
-               "rows": [[1, 28, "APG"], [2, 29, "ASY"], [2, 44, "ACV"], [1, 2, "AHD"]]}
-    keys = [{"from_table": "flights", "from_col": "Airline", "to_table": "airlines", "to_col": "uid"}]
-    served = _hermetic_planner().serve([airlines, flights], "How many flights does airline 'JetBlue Airways' have?",
-                                       keys)
-    assert served.get("valid") and served["result"]["rows"] == [[2]], (served.get("error"), served.get("sql"))
-
-
-def test_a_year_compares_the_year_field_named_beside_it():
-    """Spider DEV 846, 2026-10-17: "Please show the name of the conductor that has conducted orchestras founded after
-    2008." compared the conductor's Year_of_Work, the schema's first year field, with 2008. A year compares the year
-    field the question names beside it where it names one (ExpansionSupport.numeric_comparisons); where it names none,
-    every year field stays a candidate. Contrast: "year of work after 2008" is Year_of_Work."""
-    conductors = {"name": "conductor", "columns": ["Conductor_ID", "Name", "Year_of_Work"],
-                  "rows": [[1, "Antal", 2010], [2, "Colin", 2005], [3, "Riccardo", 2012]]}
-    orchestras = {"name": "orchestra", "columns": ["Orchestra_ID", "Orchestra", "Conductor_ID", "Year_of_Founded"],
-                  "rows": [[1, "London Symphony", 1, 2003], [2, "Chicago Symphony", 2, 2009],
-                           [3, "Vienna Philharmonic", 3, 2002]]}
-    fks = [{"from_table": "orchestra", "from_col": "Conductor_ID", "to_table": "conductor", "to_col": "Conductor_ID"}]
-    served = _hermetic_planner().serve(
-        [conductors, orchestras], "Please show the name of the conductor that has conducted orchestras founded after 2008.",
-        fks)
-    assert served.get("valid") and served["result"]["rows"] == [["Colin"]], (served.get("error"), served.get("sql"))
-    from engine.sql_expansion import ExpansionSupport, tokens
-    support = ExpansionSupport(SchemaGraph.from_tables([conductors, orchestras], fks))
-    fields = lambda text: {comparison.left.name for comparison in support.numeric_comparisons(tokens(text))}
-    assert fields("conductors with a year of work after 2008") == {"Year_of_Work"}
-    assert fields("orchestras founded after 2008") == {"Year_of_Founded"}
-    assert fields("Which conductors are there in 2008?") == {"Year_of_Work", "Year_of_Founded"}
-
-
-def test_a_named_tables_key_is_its_own_not_a_copy_from_an_unnamed_join():
-    """Spider DEV 323, 2026-10-17: "What are the ids of templates with template type code PP or PPT?" showed
-    Documents.Template_ID, the templates some document uses: it tied the templates' own Template_ID and won by name. A
-    key shown from a table the question never names, where the table it refers to is named and read, gives way
-    (sql_rank, referring_copy). Contrast: "the template ids of the documents" names the documents, whose key it is."""
-    templates = {"name": "Templates", "columns": ["Template_ID", "Template_Type_Code", "Version_Number"],
-                 "rows": [[1, "PP", 5], [2, "PPT", 9], [3, "BK", 4], [4, "PP", 2]]}
-    documents = {"name": "Documents", "columns": ["Document_ID", "Template_ID", "Document_Name"],
-                 "rows": [[10, 1, "Intro"], [11, 1, "Guide"], [12, 3, "Notes"]]}
-    fks = [{"from_table": "Documents", "from_col": "Template_ID", "to_table": "Templates", "to_col": "Template_ID"}]
-    from engine.sql_ast import BooleanExpr
-    graph = SchemaGraph.from_tables([templates, documents], fks)
-    ref = {(column.ref.table, column.ref.name): column.ref for column in graph.columns}
-    where = BooleanExpr("OR", (Comparison(ref["Templates", "Template_Type_Code"], "=", Literal("PP")),
-                               Comparison(ref["Templates", "Template_Type_Code"], "=", Literal("PPT"))))
-    copy = SelectQuery((SelectItem(ref["Documents", "Template_ID"]),), "Templates",
-                       joins=(Join("Documents", ref["Templates", "Template_ID"], ref["Documents", "Template_ID"]),),
-                       where=where, distinct=True)
-    own = SelectQuery((SelectItem(ref["Templates", "Template_ID"]),), "Templates", where=where)
-    question = "What are the ids of templates with template type code PP or PPT?"
-    ranked = CandidateRanker(graph).rank(question, [ScoredQuery(copy, render_query(copy), 0.5, ()),
-                                                    ScoredQuery(own, render_query(own), 0.5, ())])
-    assert ranked[0].query == own, [candidate.sql for candidate in ranked]
-    features = [evidence for candidate in ranked for evidence in candidate.evidence if "referring_copy" in evidence]
-    assert features, [candidate.evidence for candidate in ranked]
-    ranked = CandidateRanker(graph).rank("Show the template ids of the documents of templates with code PP.",
-                                         [ScoredQuery(copy, render_query(copy), 0.5, ())])
-    assert not any("referring_copy" in evidence for evidence in ranked[0].evidence), ranked[0].evidence
 
 
 def test_a_word_a_fields_name_abbreviates_spells_that_field_and_states_no_value():
@@ -4033,525 +1754,43 @@ def test_a_word_a_fields_name_abbreviates_spells_that_field_and_states_no_value(
     assert not spelled_names(said, graph)
 
 
-def test_a_count_ranking_groups_counts_the_rows_its_noun_names():
-    """Spider DEV 26, 2026-10-17: "Which year has most number of concerts?" ranked the years by the singer_in_concert
-    rows a join repeats each concert in, grouped by concert too; the reading counting the concerts tied it within 0.05.
-    A count that ranks the groups is credited where it counts the rows of the table its noun names at their own grain
-    (sql_rank, count_rows:counted_table; sql_expansion.count_preserves_population)."""
-    concerts = {"name": "concert", "columns": ["concert_ID", "concert_Name", "Year"],
-                "rows": [[1, "Auditions", 2014], [2, "Super bootcamp", 2014], [3, "Home Visits", 2015]]}
-    entries = {"name": "singer_in_concert", "columns": ["concert_ID", "Singer_ID"],
-               "rows": [[1, 2], [1, 3], [1, 5], [3, 1], [3, 4], [3, 6], [3, 7]]}
-    fks = [{"from_table": "singer_in_concert", "from_col": "concert_ID", "to_table": "concert", "to_col": "concert_ID"}]
-    graph = SchemaGraph.from_tables([concerts, entries], fks)
-    ref = {(column.ref.table, column.ref.name): column.ref for column in graph.columns}
-    year = ref["concert", "Year"]
-    ranked_by = (OrderTerm(Aggregate("COUNT", Star()), "DESC"),)
-    joined = SelectQuery((SelectItem(year),), "singer_in_concert",
-                         joins=(Join("concert", ref["singer_in_concert", "concert_ID"], ref["concert", "concert_ID"]),),
-                         group_by=(year, ref["concert", "concert_ID"]), order_by=ranked_by, limit=1)
-    own = SelectQuery((SelectItem(year),), "concert", group_by=(year,), order_by=ranked_by, limit=1)
-    ranked = CandidateRanker(graph).rank("Which year has most number of concerts?",
-                                         [ScoredQuery(joined, render_query(joined), 0.05, ()),
-                                          ScoredQuery(own, render_query(own), 0.0, ())])
-    assert ranked[0].query == own, [(candidate.sql, candidate.evidence) for candidate in ranked]
-
-
-def test_a_row_number_named_by_its_counted_table_is_no_measure():
-    """Spider DEV 461, 2026-10-17: "Find the year that has the most number of matches." ranked the matches by
-    match_num, a row number named by its table's word. Where the question counts a table's rows ("number of
-    matches", "most matches"), a field named only by those words is no superlative's measure
-    (sql_extrema._superlative_targets). Contrast: "the match with the highest match number" ranks by it."""
-    matches = {"name": "matches", "columns": ["match_num", "year", "minutes", "winner_name"],
-               "rows": [[1, 2013, 90, "Ann"], [2, 2013, 100, "Bo"], [3, 2016, 120, "Cy"], [99, 2016, 80, "Di"]]}
-    from engine.sql_expansion import tokens
-    from engine.sql_extrema import ExtremaQueryExpander
-    expander = ExtremaQueryExpander(SchemaGraph.from_tables([matches], []))
-    targets = expander._superlative_targets(tokens("Find the year that has the most number of matches."))
-    assert "match_num" not in {target.column.name for target in targets}, targets
-    targets = expander._superlative_targets(tokens("Which match has the highest match number?"))
-    assert targets and targets[0].column.name == "match_num", targets
-
-
-def test_a_listing_of_a_fields_values_shows_each_value_once():
-    """Held out 487, 644, 693, 849, 2026-10-17: "What are all the payment methods?" and "Show all product colors."
-    listed every row's value. A listing of one field's values, where the question names no table whose rows they are,
-    shows each value once (sql_rank.listed_values). Contrast: "the payment method of each customer" lists the
-    customers' rows, and a table's display field ("the names of all customers") stays one per row."""
-    customers = {"name": "Customers", "columns": ["customer_id", "customer_name", "payment_method"],
-                 "rows": [[1, "Dora", "Cash"], [2, "Kai", "Visa"], [3, "Lee", "Cash"], [4, "Ann", "Cash"]]}
-    graph = SchemaGraph.from_tables([customers], [])
-    ref = {(column.ref.table, column.ref.name): column.ref for column in graph.columns}
-    plain = SelectQuery((SelectItem(ref["Customers", "payment_method"]),), "Customers")
-    once = SelectQuery((SelectItem(ref["Customers", "payment_method"]),), "Customers", distinct=True)
-    ranked = CandidateRanker(graph).rank("What are all the payment methods?",
-                                         [ScoredQuery(plain, render_query(plain), 0.5, ()),
-                                          ScoredQuery(once, render_query(once), 0.0, ())])
-    assert ranked[0].query == once, [(candidate.sql, candidate.evidence) for candidate in ranked]
-    from engine.sql_expansion import tokens
-    from engine.sql_rank import listed_values
-    assert listed_values(graph, plain, tokens("What is the payment method of each customer?")) is None
-    names = SelectQuery((SelectItem(ref["Customers", "customer_name"]),), "Customers")
-    assert listed_values(graph, names, tokens("What are the names of all customers?")) is None
-
-
-def test_a_number_a_comparison_reads_states_no_stored_value():
-    """Held out 68, 2026-10-17: "What are the names of regions with two or more storms?" filtered on a storm named
-    'Two'. A number a comparison reads ("two or more", "more than three") is no stored value unless quoted or
-    capitalized (SQLSearcher._value_matches). Contrast: "the storm named Two" is that storm."""
-    regions = {"name": "region", "columns": ["Region_id", "Region_name"],
-               "rows": [[1, "Afghanistan"], [2, "Albania"], [3, "Algeria"]]}
-    storms = {"name": "storm", "columns": ["Storm_ID", "Name", "Max_speed"],
-              "rows": [[1, "One", 995], [2, "Two", 972], [3, "Three", 961]]}
-    affected = {"name": "affected_region", "columns": ["Region_id", "Storm_ID"],
-                "rows": [[1, 1], [1, 2], [2, 2], [3, 1], [3, 3], [3, 2]]}
-    fks = [{"from_table": "affected_region", "from_col": "Region_id", "to_table": "region", "to_col": "Region_id"},
-           {"from_table": "affected_region", "from_col": "Storm_ID", "to_table": "storm", "to_col": "Storm_ID"}]
-    served = _hermetic_planner().serve([regions, storms, affected],
-                                       "What are the names of regions with two or more storms?", fks)
-    assert served.get("valid") and sorted(served["result"]["rows"]) == [["Afghanistan"], ["Algeria"]], (
-        served.get("error"), served.get("sql"))
-    served = _hermetic_planner().serve([regions, storms, affected], "What is the max speed of the storm named Two?",
-                                       fks)
-    assert served.get("valid") and served["result"]["rows"] == [[972]], (served.get("error"), served.get("sql"))
-
-
-def test_a_field_holding_a_number_is_compared_not_counted():
-    """Held out 832, 2026-10-17: "Show the names of phones that are on market with number of shops greater than 50."
-    was answered by phones with more than 50 rows, the gate taking a HAVING COUNT over the market's rows for the
-    comparison of Num_of_shops (query_contract.realizes_numeric_comparisons). A field holding the number itself is
-    compared, not counted. Contrast: "phones on more than 1 market" counts the markets."""
-    markets = {"name": "market", "columns": ["Market_ID", "District", "Num_of_shops"],
-               "rows": [[1, "Alberta", 40], [2, "British Columbia", 100], [3, "New Brunswick", 60]]}
-    phones = {"name": "phone", "columns": ["Phone_ID", "Name"],
-              "rows": [[1, "IPhone 5s"], [2, "IPhone 6"], [3, "Galaxy"]]}
-    stock = {"name": "phone_market", "columns": ["Market_ID", "Phone_ID", "Num_of_stock"],
-             "rows": [[1, 1, 2232], [2, 2, 4324], [1, 3, 874], [3, 3, 682], [2, 1, 908]]}
-    fks = [{"from_table": "phone_market", "from_col": "Market_ID", "to_table": "market", "to_col": "Market_ID"},
-           {"from_table": "phone_market", "from_col": "Phone_ID", "to_table": "phone", "to_col": "Phone_ID"}]
-    served = _hermetic_planner().serve(
-        [markets, phones, stock], "Show the names of phones that are on market with number of shops greater than 50.",
-        fks)
-    assert served.get("valid") and {row[0] for row in served["result"]["rows"]} == {"IPhone 6", "Galaxy", "IPhone 5s"}, (
-        served.get("error"), served.get("sql"))
-    assert "Num_of_shops" in served["sql"], served["sql"]
-    served = _hermetic_planner().serve([markets, phones, stock], "Show the names of phones on more than 1 market.", fks)
-    assert served.get("valid") and sorted(served["result"]["rows"]) == [["Galaxy"], ["IPhone 5s"]], (
-        served.get("error"), served.get("sql"))
-
-
-def test_a_measures_own_word_said_before_a_superlative_names_it():
-    """Spider DEV 1011, 2026-10-17: "What is the name of the singer who is worth the most?" ranked the singers by a count
-    of rows: "worth" alone did not name Net_Worth_Millions. A word only one measure's name holds, said just before the
-    superlative, names that measure (sql_extrema._superlative_targets). Contrast: a word two measures share names
-    neither."""
-    singers = {"name": "singer", "columns": ["Singer_ID", "Name", "Net_Worth_Millions", "Age"],
-               "rows": [[1, "Liliane Bettencourt", 30.0, 60], [2, "Christy Walton", 28.8, 51], [3, "Alice Walton", 26.3, 49]]}
-    served = _hermetic_planner().serve([singers], "What is the name of the singer who is worth the most?", [])
-    assert served.get("valid") and served["result"]["rows"] == [["Liliane Bettencourt"]], (
-        served.get("error"), served.get("sql"))
-    from engine.sql_expansion import tokens
-    from engine.sql_extrema import ExtremaQueryExpander
-    points = {"name": "player", "columns": ["Player_ID", "Points_Won", "Points_Lost"],
-              "rows": [[1, 10, 3], [2, 7, 9]]}
-    targets = ExtremaQueryExpander(SchemaGraph.from_tables([points], []))._superlative_targets(
-        tokens("Which player has points the most?"))
-    assert not targets, targets
-    # Contrast (DEV 277): "awarded the most times" counts the awards; Year_awarded is no measure of it.
-    employees = {"name": "employee", "columns": ["Employee_ID", "Name", "Age"],
-                 "rows": [[1, "George Chuter", 23], [2, "Lee Mears", 29], [3, "Mark Regan", 43]]}
-    evaluations = {"name": "evaluation", "columns": ["Employee_ID", "Year_awarded", "Bonus"],
-                   "rows": [[1, 2011, 3000.0], [2, 2015, 3200.0], [2, 2016, 3100.0], [3, 2017, 4000.0]]}
-    fks = [{"from_table": "evaluation", "from_col": "Employee_ID", "to_table": "employee", "to_col": "Employee_ID"}]
-    served = _hermetic_planner().serve([employees, evaluations],
-                                       "find the name of employee who was awarded the most times in the evaluation.", fks)
-    assert served.get("valid") and served["result"]["rows"] == [["Lee Mears"]], (served.get("error"), served.get("sql"))
-
-
-def test_both_branches_show_the_field_the_question_names():
-    """Held-out Spider train 278, 2026-10-17: "Show the names of customers who have both an order in completed status
-    and an order in part status." built the INTERSECT of the customers' addresses: a reading listing customer_address
-    kept its own projection unscored while the one showing customer_name scored by the words said. Every branch
-    projection scores by the words the question says of its fields (sql_recursive._said_overlap)."""
-    customers = {"name": "Customers", "columns": ["customer_id", "customer_name", "customer_address", "customer_email"],
-                 "rows": [[1, "Ann", "12 Elm", "ann@x.org"], [2, "Bo", "3 Oak", "bo@x.org"], [3, "Cy", "9 Pine", "cy@x.org"]]}
-    orders = {"name": "Customer_Orders", "columns": ["order_id", "customer_id", "order_status_code"],
-              "rows": [[10, 1, "Completed"], [11, 1, "Part"], [12, 2, "Completed"], [13, 3, "Part"]]}
-    fks = [{"from_table": "Customer_Orders", "from_col": "customer_id", "to_table": "Customers", "to_col": "customer_id"}]
-    served = _hermetic_planner().serve([customers, orders], "Show the names of customers who have both an order in "
-                                       "completed status and an order in part status.", fks)
-    assert served.get("valid") and served["result"]["rows"] == [["Ann"]], served.get("sql")
-
-
-def test_a_value_after_a_tables_name_is_that_tables_name():
-    """Held-out Spider train 386, 2026-10-17: "What are the titles of albums by the artist "AC/DC"?" compared a track's
-    Composer: 'AC/DC' is both an Artist's Name and a Composer, and the two readings tied. A value right after a table's
-    name is the field naming that table's rows (sql_search._value_predicate_groups). Contrast: "tracks composed by"
-    introduces neither."""
-    from engine.sql_expansion import tokens
-    artist = {"name": "Artist", "columns": ["ArtistId", "Name"], "rows": [[1, "AC/DC"], [2, "Accept"]]}
-    album = {"name": "Album", "columns": ["AlbumId", "Title", "ArtistId"],
-             "rows": [[1, "For Those About To Rock", 1], [2, "Balls to the Wall", 2]]}
-    track = {"name": "Track", "columns": ["TrackId", "Name", "AlbumId", "Composer"],
-             "rows": [[1, "Fast As a Shark", 2, "AC/DC"], [2, "Let There Be Rock", 1, "Angus Young"]]}
-    searcher = SQLSearcher.from_tables([artist, album, track], [])
-
-    def scores(question):
-        group, = searcher._value_predicate_groups(tokens(question), (), frozenset(), question)
-        return {f"{choice[0][0].left.table}.{choice[0][0].left.name}": choice[1] for choice in group}
-
-    by_artist = scores('What are the titles of albums by the artist "AC/DC"?')
-    assert by_artist["Artist.Name"] > by_artist["Track.Composer"], by_artist
-    composed = scores('What are the titles of albums with tracks composed by "AC/DC"?')
-    assert composed["Artist.Name"] == composed["Track.Composer"], composed
-
-
-def test_a_field_two_tables_share_is_the_one_whose_table_is_named_before_it():
-    """Held-out Spider train 504, 2026-10-17: "Find the saving balance of the account with the highest checking balance."
-    showed both balances and ranked by the savings: "balance" is a field of SAVINGS and of CHECKING, and each word read
-    both. The word is the field of the table named just before it, in the projection and the superlative alike
-    (sql_extrema._row_projection, _superlative_targets; sql_rank superlative_on_shown). Contrast: the reversed
-    question reverses the reading."""
-    accounts = {"name": "ACCOUNTS", "columns": ["custid", "name"], "rows": [[1, "Brown"], [2, "Wang"], [3, "O'mahony"]]}
-    savings = {"name": "SAVINGS", "columns": ["custid", "balance"], "rows": [[1, 200000.0], [2, 999999999.0], [3, 230000.0]]}
-    checking = {"name": "CHECKING", "columns": ["custid", "balance"], "rows": [[1, 10000.0], [2, 2000.0], [3, 3000.0]]}
-    fks = [{"from_table": "SAVINGS", "from_col": "custid", "to_table": "ACCOUNTS", "to_col": "custid"},
-           {"from_table": "CHECKING", "from_col": "custid", "to_table": "ACCOUNTS", "to_col": "custid"}]
-    planner = _hermetic_planner()
-    for question, expected in (("Find the saving balance of the account with the highest checking balance.", 200000),
-                               ("Find the checking balance of the account with the highest saving balance.", 2000)):
-        served = planner.serve([accounts, savings, checking], question, fks)
-        assert served.get("valid") and served["result"]["rows"] == [[expected]], (question, served.get("sql"))
-
-
 def test_most_before_a_tables_name_counts_its_rows():
-    """Spider DEV 462, 2026-10-17: "Which year had the most matches?" took the latest year: "most" ranked the shown
-    year itself and suppressed the count of matches by year. "Most" or "fewest" before a table's name counts that
-    table's rows (sql_extrema._superlative_targets). Contrast: "the longest match" still ranks a field."""
-    matches = {"name": "matches", "columns": ["match_num", "year", "winner_name", "minutes"], "rows": [
-        [1, 2013, "Ann", 90], [2, 2013, "Bo", 80], [3, 2013, "Ann", 70], [4, 2016, "Cy", 100]]}
-    planner = _hermetic_planner()
-    for question, expected in (("Which year had the most matches?", 2013), ("Which year had the longest match?", 2016)):
-        served = planner.serve([matches], question, [])
-        assert served.get("valid") and served["result"]["rows"] == [[expected]], (question, served.get("sql"))
-    # Spider DEV 27: the rows counted are the concerts, not the singers of each (sql_expansion.counted_noun_tables).
+    """Spider DEV 27, 462, 2026-10-17: "What is the year that had the most concerts?" ranked the shown year itself.
+    "Most" or "fewest" before a table's name counts that table's rows: the concerts, not the singers of each
+    (sql_expansion.counted_noun_tables)."""
+    from engine.sql_expansion import counted_noun_tables, tokens
     concert = {"name": "concert", "columns": ["concert_ID", "concert_Name", "Year"],
                "rows": [[1, "Auditions", 2014], [2, "Super bootcamp", 2014], [3, "Home Visits", 2015]]}
     singers = {"name": "singer_in_concert", "columns": ["concert_ID", "Singer_ID"],
                "rows": [[3, 1], [3, 2], [3, 3], [3, 4], [1, 1], [2, 2]]}
     fks = [{"from_table": "singer_in_concert", "from_col": "concert_ID", "to_table": "concert", "to_col": "concert_ID"}]
-    served = planner.serve([concert, singers], "What is the year that had the most concerts?", fks)
-    assert served.get("valid") and served["result"]["rows"] == [[2014]], served.get("sql")
-    from engine.sql_expansion import counted_noun_tables, tokens
     assert counted_noun_tables(tokens("What is the year that had the most concerts?"),
                                SchemaGraph.from_tables([concert, singers], fks)) == {"concert"}
-    # Held-out 348: a field holding the number is ranked instead ("the most hosts" by Number_of_hosts).
-    party = {"name": "party", "columns": ["Party_ID", "Location", "Number_of_hosts"],
-             "rows": [[1, "Hemkade 48 Zaandam", 5], [2, "Heineken Music Hall Amsterdam", 23], [3, "Ahoy Rotterdam", 7]]}
-    host = {"name": "host", "columns": ["Host_ID", "Name"], "rows": [[1, "Austin Daye"], [2, "Lloyd Daniels"]]}
-    party_host = {"name": "party_host", "columns": ["Party_ID", "Host_ID"], "rows": [[1, 1], [1, 2], [3, 1]]}
-    fks = [{"from_table": "party_host", "from_col": "Party_ID", "to_table": "party", "to_col": "Party_ID"},
-           {"from_table": "party_host", "from_col": "Host_ID", "to_table": "host", "to_col": "Host_ID"}]
-    from engine.sql_extrema import ExtremaQueryExpander
-    targets = ExtremaQueryExpander(SchemaGraph.from_tables([party, host, party_host], fks))._superlative_targets(
-        tokens("What is the location of the party with the most hosts?"))
-    assert targets and targets[0].column.name == "Number_of_hosts", targets
-
-
-def test_a_negated_verbs_agent_is_excluded():
-    """Spider DEV 636, 643, 644, 2026-10-17: "find the id of tv channels that do not play any cartoon directed by Ben
-    Jones." read Ben Jones as a kept value, the negation being more than three words before it, and the gate refused the
-    EXCEPT of Ben Jones's cartoons that answers. A value that is the agent ("by Ben Jones") of a negated verb's object
-    is excluded (sql_search._negated_matches). Contrast: "channels that play cartoons directed by Ben Jones" keeps it,
-    and a clause break ends the negation."""
-    from engine.sql_search import value_polarity
-    channels = {"name": "TV_Channel", "columns": ["id", "series_name", "Country"], "rows": [
-        ["700", "Sky Radio", "Italy"], ["701", "Sky Music", "Italy"], ["703", "Rock TV", "UK"]]}
-    cartoons = {"name": "Cartoon", "columns": ["id", "Title", "Directed_by", "Channel"], "rows": [
-        [1, "The Rise of the Blue Beetle!", "Ben Jones", "700"], [2, "Terror on Dinosaur Island!", "Brandon Vietti", "701"],
-        [3, "Day of the Dark Knight!", "Ben Jones", "703"], [4, "Invasion of the Secret Santas!", "Brandon Vietti", "703"]]}
-    fks = [{"from_table": "Cartoon", "from_col": "Channel", "to_table": "TV_Channel", "to_col": "id"}]
-    graph = SchemaGraph.from_tables([channels, cartoons], fks)
-    ben = ("Cartoon", "Directed_by", "Ben Jones")
-    for question in ("find the id of tv channels that do not play any cartoon directed by Ben Jones.",
-                     "What are the ids of the TV channels that do not have any cartoons directed by Ben Jones?"):
-        kept, excluded = value_polarity(question, graph)
-        assert ben not in kept and any(ben in group for group in excluded), (question, kept, excluded)
-        served = _hermetic_planner().serve([channels, cartoons], question, fks)
-        assert served.get("valid") and served["result"]["rows"] == [["701"]], (question, served.get("sql"))
-    for question in ("find the id of tv channels that play cartoons directed by Ben Jones.",
-                     "find the channels that do not play cartoons and were directed by Ben Jones."):
-        kept, _ = value_polarity(question, graph)
-        assert ben in kept, (question, kept)
-
-
-
-def test_a_value_in_a_negated_clause_is_excluded():
-    """Fresh holdout of Spider train 376, 447, 619, 726 and held out 341, 368, 758, 2026-10-18: "Find the name and flag
-    of ships that are not steered by any captain with Midshipman rank." read Midshipman as a kept value, the negation
-    more than three words before it and no "by" before the value, and the gate refused the difference that answers;
-    "customers who never ordered product Latte" read no negation at all. The first value within seven words of a
-    negation in its clause is excluded, and "never" negates (sql_search._negated_matches). Contrast: a clause break or
-    another value between them ends the negation, and without one the value is kept."""
-    from engine.sql_search import value_polarity
-    ships = {"name": "Ship", "columns": ["Ship_ID", "Name", "Flag"], "rows": [
-        [1, "HMS Atalanta", "Panama"], [2, "HMS Bacchus", "Malta"], [3, "HMS Cerberus", "Panama"], [4, "HMS Dido", "Malta"]]}
-    captains = {"name": "captain", "columns": ["Captain_ID", "Name", "Ship_ID", "Rank"], "rows": [
-        [1, "Captain Sir Henry Langford", 1, "Midshipman"], [2, "Captain Beves Conway", 2, "Lieutenant"],
-        [3, "Lieutenant Hugh Bolitho", 3, "Midshipman"]]}
-    fks = [{"from_table": "captain", "from_col": "Ship_ID", "to_table": "Ship", "to_col": "Ship_ID"}]
-    graph = SchemaGraph.from_tables([ships, captains], fks)
-    rank = ("captain", "Rank", "Midshipman")
-    question = "Find the name and flag of ships that are not steered by any captain with Midshipman rank."
-    kept, excluded = value_polarity(question, graph)
-    assert rank not in kept and any(rank in group for group in excluded), (kept, excluded)
-    served = _hermetic_planner().serve([ships, captains], question, fks)
-    assert served.get("valid") and sorted(served["result"]["rows"]) == [["HMS Bacchus", "Malta"], ["HMS Dido", "Malta"]], (
-        served.get("sql"), served.get("reason"))
-    for question in ("Find the name of ships that are steered by a captain with Midshipman rank.",
-                     "Find the name of ships that are not new and are steered by a captain with Midshipman rank.",
-                     "Find the name of ships that are not from Panama steered by a captain with Midshipman rank."):
-        kept, _ = value_polarity(question, graph)
-        assert rank in kept, (question, kept)
-    orders = {"name": "Orders", "columns": ["order_id", "customer_name", "product"],
-              "rows": [[1, "Ann", "Latte"], [2, "Bob", "Espresso"]]}
-    kept, excluded = value_polarity("Which customers never ordered a Latte?", SchemaGraph.from_tables([orders], []))
-    assert any(("Orders", "product", "Latte") in group for group in excluded), (kept, excluded)
-
-
-
-def test_a_preposition_says_a_trips_end():
-    """Held out 679 and fresh holdout of Spider train 992, 2026-10-18: "What is the average distance and average price
-    for flights from Los Angeles." compared the destination with 'Los Angeles', which both ends hold: no travel word
-    was said, and the model's reading ranked the destination first. The preposition before a value a trip's end
-    compares says which end (sql_rank.travel_preposition): "from" the origin, "to" the destination."""
-    flight = {"name": "flight", "columns": ["flno", "origin", "destination", "distance", "price"], "rows": [
-        [7, "Los Angeles", "Sydney", 7487, 1000.0], [13, "Los Angeles", "Chicago", 1749, 220.98],
-        [346, "Los Angeles", "Dallas", 1251, 182.0], [387, "Los Angeles", "Boston", 2606, 261.56],
-        [33, "Los Angeles", "Honolulu", 2551, 375.23], [34, "Chicago", "Los Angeles", 1749, 425.98],
-        [68, "Chicago", "New York", 802, 202.45], [76, "Dallas", "Los Angeles", 1251, 220.98]]}
-    served = _hermetic_planner().serve([flight], "What is the average distance and average price for flights from Los "
-                                                "Angeles.", [])
-    assert served.get("valid") and "\"origin\" = 'Los Angeles'" in served["sql"], served.get("sql")
-    served = _hermetic_planner().serve([flight], "What is the average distance and average price for flights to Los "
-                                                "Angeles.", [])
-    assert served.get("valid") and "\"destination\" = 'Los Angeles'" in served["sql"], served.get("sql")
 
 
 def test_a_comparison_symbol_is_its_word():
     """Fresh holdout of Spider train 103, 2026-10-17: "Find the names of all instructors in Comp. Sci. department with
     salary > 80000." compared salary = 80000: the question's words hold no ">". Selection reads a comparison symbol
-    before a number as its words (sql_expansion.plain_marks): ">" above, ">=" at least, "<" below, "<=" at most."""
-    instructor = {"name": "instructor", "columns": ["ID", "name", "dept_name", "salary"], "rows": [
-        [1, "Srinivasan", "Comp. Sci.", 65000], [2, "Katz", "Comp. Sci.", 75000], [3, "Brandt", "Comp. Sci.", 92000],
-        [4, "Wu", "Finance", 90000]]}
-    planner = _hermetic_planner()
-    for question, expected in (("Find the names of instructors with salary > 80000.", [["Brandt"], ["Wu"]]),
-                               ("Find the names of instructors with salary <= 75000.", [["Katz"], ["Srinivasan"]])):
-        served = planner.serve([instructor], question, [])
-        assert served.get("valid") and sorted(served["result"]["rows"]) == expected, (question, served.get("sql"))
+    before a number as its words (sql_expansion.plain_marks): ">" above, ">=" at least, "<" below, "<=" at most, and
+    "prior to" is "before" (fresh holdout 273)."""
     from engine.sql_expansion import plain_marks
     assert plain_marks("rated <5 or >= 8") == "rated  below 5 or  at least  8"
     assert plain_marks("the A<B ratio") == "the A<B ratio"
-    # Fresh holdout 273: "prior to" is "before" ("exhibitions that happened prior to 2009" compared Year = 2009).
-    exhibition = {"name": "exhibition", "columns": ["Exhibition_ID", "Year", "Ticket_Price"],
-                  "rows": [[1, 2004, 15.0], [2, 2008, 20.0], [3, 2009, 30.0], [4, 2011, 9.0]]}
-    served = planner.serve([exhibition], "What is the average ticket price for exhibitions that happened prior to 2009?",
-                           [])
-    assert served.get("valid") and served["result"]["rows"] == [[17.5]], (served.get("error"), served.get("sql"))
     assert plain_marks("the priority list") == "the priority list"
 
 
-def test_most_recently_ranks_by_a_date():
-    """Fresh holdout of Spider train 197, 2026-10-17: "Which problem log was created most recently? Give me the log id."
-    ranked the logs by a count, "most" read as a frequency: "recently" named no dimension. "Recently" ranks by a date
-    as "recent" does (sql_extrema.SUPERLATIVE_DIMENSIONS)."""
-    from engine.sql_expansion import tokens
-    from engine.sql_extrema import ExtremaQueryExpander
-    log = {"name": "Problem_Log", "columns": ["problem_log_id", "log_entry_date", "log_entry_description"], "rows": [
-        [1, "2011-03-13 13:11:19", "t"], [2, "2007-08-12 19:01:48", "a"], [3, "2017-12-10 11:57:01", "b"]]}
-    targets = ExtremaQueryExpander(SchemaGraph.from_tables([log], []))._superlative_targets(
-        tokens("Which problem log was created most recently? Give me the log id."))
-    assert targets and targets[0].column.name == "log_entry_date" and targets[0].direction == "DESC", targets
-
-
-def test_a_count_fields_name_counts_nothing():
-    """Fresh holdout of Spider train 180, 2026-10-17: "Sort the apartment numbers in ascending order of room count."
-    listed each apartment number with a count of its room_count values: "count" inside the field name it spells asked
-    for a count. A count word inside a spelled several-word field name names that field (sql_expansion.asked_cues), as
-    an average word does. Contrast: "the total room count" totals it."""
-    apartments = {"name": "Apartments", "columns": ["apt_id", "apt_number", "room_count"],
-                  "rows": [[1, "Suite 645", 7], [2, "Apt. 585", 4], [3, "Apt. 908", 9]]}
-    planner = _hermetic_planner()
-    served = planner.serve([apartments], "Sort the apartment numbers in ascending order of room count.", [])
-    assert served.get("valid") and served["result"]["rows"] == [["Apt. 585"], ["Suite 645"], ["Apt. 908"]], (
-        served.get("sql"))
-    served = planner.serve([apartments], "What is the total room count of all apartments?", [])
-    assert served.get("valid") and served["result"]["rows"] == [[20]], served.get("sql")
-
-
-def test_alphabetic_and_increasing_order_order_the_rows():
-    """Held-out Spider train 244, 980, 2026-10-17: "Find the last names of faculties in building Barton in alphabetic
-    order." built no ordering: the order instruction read "alphabetical" and "ascending order", not "alphabetic" or
-    "increasing order" (sql_expansion.ordering_requested). Contrast: "decreasing" reverses it."""
-    faculty = {"name": "Faculty", "columns": ["FacID", "Lname", "Building"], "rows": [
-        [1082, "Giuliano", "Barton"], [1121, "Brody", "Barton"], [1148, "Masson", "NEB"], [1172, "Runolfsson", "Barton"]]}
-    planner = _hermetic_planner()
-    served = planner.serve([faculty], "Find the last names of faculties in building Barton in alphabetic order.", [])
-    assert served.get("valid") and served["result"]["rows"] == [["Brody"], ["Giuliano"], ["Runolfsson"]], served.get("sql")
-    served = planner.serve([faculty], "List the last names of faculties in decreasing alphabetic order.", [])
-    assert served.get("valid") and [row[0] for row in served["result"]["rows"]] == [
-        "Runolfsson", "Masson", "Giuliano", "Brody"], served.get("sql")
-
-
-def test_an_inflection_of_an_inflected_name_word_names_it():
-    """Held-out Spider train 921, 2026-10-17: "What are the names, locations, and years of opening for tracks with seating
-    higher than average?" was refused for "opening" over Year_Opened. A field's name word that is itself an inflection
-    ("opened") is named by the other inflections of its stem (sql_expansion.inflects)."""
-    from engine.sql_expansion import inflects
-    assert inflects("opening", "opened") and inflects("founding", "founded") and inflects("aged", "age")
-    assert not inflects("opened", "opened") and not inflects("open", "pen")
-
-
-def test_any_comparative_before_the_average_compares_with_it():
-    """Fresh holdout of Spider train 753, Spider DEV 98, 2026-10-17: "Find the names of stadiums whose capacity is
-    smaller than the average capacity." was refused for the average the right answer compares with: only "older",
-    "above", "greater", "higher", "more" and their opposites compared with an average. Any comparative of
-    closed_class.COMPARATIVES does (sql_expansion.average_comparison). Contrast: "the average capacity" alone is an
-    average to show."""
-    from engine.sql_expansion import average_comparison
-    stadium = {"name": "stadium", "columns": ["Stadium_ID", "name", "Capacity"],
-               "rows": [[1, "Raith Rovers", 10104], [2, "Ayr United", 11998], [3, "East Fife", 2000]]}
-    planner = _hermetic_planner()
-    served = planner.serve([stadium], "Find the names of stadiums whose capacity is smaller than the average capacity.", [])
-    assert served.get("valid") and served["result"]["rows"] == [["East Fife"]], (served.get("error"), served.get("sql"))
-    assert average_comparison("which claims have a claimed amount larger than the average?") == ">"
-    assert average_comparison("What is the average capacity of the stadiums?") is None
-
-
-def test_a_number_after_id_is_the_named_tables_key():
-    """Held-out Spider train 336, 414, 435, 2026-10-17: "What is draft detail of the document with id 7?" kept the drafts
-    counted 7 times: the number after "with" read as a count, and no reading compared the key. A number after "id" is
-    the value of the key of the table named just before it (SQLSearcher._key_value_groups), and no count
-    (sql_expansion.count_thresholds). Contrast: "documents with 7 drafts" still counts."""
-    from engine.sql_expansion import count_thresholds, tokens
-    docs = {"name": "Documents", "columns": ["document_id", "document_status_code", "receipt_number"],
-            "rows": [[1, "working", "19"], [7, "done", "34"], [2, "overdue", "93"]]}
-    drafts = {"name": "Document_Drafts", "columns": ["document_id", "draft_number", "draft_details"],
-              "rows": [[1, 0, "e"], [7, 10, "m"], [7, 11, "x"], [2, 1, "k"]]}
-    fks = [{"from_table": "Document_Drafts", "from_col": "document_id", "to_table": "Documents", "to_col": "document_id"}]
-    planner = _hermetic_planner()
-    served = planner.serve([docs, drafts], "What is the status of the document with id 2?", fks)
-    assert served.get("valid") and served["result"]["rows"] == [["overdue"]], (served.get("error"), served.get("sql"))
-    served = planner.serve([docs, drafts], "What is draft detail of the document with id 7?", fks)
-    assert served.get("valid") and sorted(served["result"]["rows"]) == [["m"], ["x"]], served.get("sql")
-    assert not count_thresholds(tokens("the document with id 7"))
-    assert count_thresholds(tokens("documents with 7 drafts"))
-
-
-def test_routes_that_start_at_an_airport_leave_from_it():
-    """Held-out Spider train 273, 360, 2026-10-17: "For each airport name, how many routes start at that airport?" counted
-    the routes arriving there: "start" said no direction, and src_apid and dst_apid named none. "Start" is the source,
-    and "src" and "dst" name the two ends (sql_rank.TRAVEL_WORDS, travel_column_role). Contrast: "arrive" is the
-    destination."""
-    airports = {"name": "airports", "columns": ["apid", "name", "city"],
-                "rows": [[1, "Goroka", "Goroka"], [2, "Madang", "Madang"], [3, "Mount Hagen", "Hagen"]]}
-    routes = {"name": "routes", "columns": ["rid", "src_apid", "dst_apid", "airline"],
-              "rows": [[1, 1, 2, "AA"], [2, 1, 3, "AA"], [3, 2, 3, "BA"], [4, 3, 1, "BA"]]}
-    fks = [{"from_table": "routes", "from_col": "src_apid", "to_table": "airports", "to_col": "apid"},
-           {"from_table": "routes", "from_col": "dst_apid", "to_table": "airports", "to_col": "apid"}]
-    planner = _hermetic_planner()
-    for question, expected in (("For each airport name, how many routes start at that airport?",
-                                [["Goroka", 2], ["Madang", 1], ["Mount Hagen", 1]]),
-                               ("For each airport name, how many routes arrive at that airport?",
-                                [["Goroka", 1], ["Madang", 1], ["Mount Hagen", 2]])):
-        served = planner.serve([airports, routes], question, fks)
-        assert served.get("valid") and sorted(served["result"]["rows"]) == expected, (question, served.get("sql"))
-
-
-def test_one_value_bounded_both_ways_is_two_branches():
+def test_one_value_bounded_both_ways_is_contradictory():
     """Spider DEV 856, 857, 2026-10-17: "Show the record companies shared by orchestras founded before 2003 and after
-    2003." was served as Year_of_Founded > 2003 AND Year_of_Founded < 2003, which matches no row: the INTERSECT the two
-    bounds make was skipped for their one value, and the contradiction passed the filter that removes conflicting
-    equalities. One value bounded both ways is a conflicting pair (sql_recursive._best_conflicting_pair), and a
-    conjunction bounding a column below where it bounds it above is contradictory (sql_ast.contradictory). Contrast: a
-    range is no contradiction."""
+    2003." was served as Year_of_Founded > 2003 AND Year_of_Founded < 2003, which matches no row. A conjunction
+    bounding a column below where it bounds it above is contradictory (sql_ast.contradictory). Contrast: a range is
+    no contradiction."""
     from engine.sql_ast import and_predicates, contradictory
-    from engine.sql_recursive import _best_conflicting_pair
     founded = ColumnRef("orchestra", "Year_of_Founded", SQLType.INTEGER)
     after, before = Comparison(founded, ">", Literal(2003)), Comparison(founded, "<", Literal(2003))
-    question = "Show the record companies shared by orchestras founded before 2003 and after 2003."
-    assert _best_conflicting_pair([after, before], question) is not None
     company = (SelectItem(ColumnRef("orchestra", "Record_Company", SQLType.TEXT)),)
     assert contradictory(SelectQuery(company, "orchestra", where=and_predicates([after, before])))
     assert not contradictory(SelectQuery(company, "orchestra", where=and_predicates([
         after, Comparison(founded, "<", Literal(2010))])))
-
-
-def test_a_cue_that_is_a_fields_name_grades_what_follows_it():
-    """Spider DEV 18, 19, 43 and held-out Spider train 664, 803, 2026-10-17: a stadium's Highest, Lowest and Average
-    attendance and a body builder's Total are fields named by words that ask a superlative or an aggregate. "the stadium
-    with the highest average attendance" showed Highest beside an AVG of Average, "the number of concerts happened in
-    the stadium with the highest capacity" showed Highest and counted nothing, and "the highest total score" and "in
-    descending order of total scores" totaled Total. Such a word grades the field named right after it and names no
-    field of its own; before a noun a superlative or an ordering grades, it is the field, the noun what it measures
-    (sql_expansion.cue_names); and "the number of" after a command asks for a count. Contrast: "the total snatch score"
-    totals Snatch, and "the average capacity" averages Capacity."""
-    stadium = {"name": "stadium", "columns": ["Stadium_ID", "Name", "Capacity", "Highest", "Lowest", "Average"],
-               "rows": [[1, "A", 1000, 900, 100, 950], [2, "B", 3000, 2000, 50, 400], [3, "C", 2000, 2600, 10, 800]]}
-    concert = {"name": "concert", "columns": ["concert_ID", "concert_Name", "Stadium_ID", "Year"],
-               "rows": [[1, "x", 1, 2014], [2, "y", 2, 2014], [3, "z", 2, 2015], [4, "u", 3, 2014], [5, "v", 3, 2015],
-                        [6, "w", 3, 2015]]}
-    builder = {"name": "body_builder", "columns": ["Body_Builder_ID", "People_ID", "Snatch", "Clean_Jerk", "Total"],
-               "rows": [[1, 1, 142, 175, 317], [2, 2, 137, 178, 315], [3, 3, 140, 162, 302]]}
-    people = {"name": "people", "columns": ["People_ID", "Name", "Height"],
-              "rows": [[1, "Jack", 182], [2, "Ty", 190], [3, "Sam", 175]]}
-    stadiums = ([stadium, concert], [{"from_table": "concert", "from_col": "Stadium_ID", "to_table": "stadium",
-                                      "to_col": "Stadium_ID"}])
-    builders = ([builder, people], [{"from_table": "body_builder", "from_col": "People_ID", "to_table": "people",
-                                     "to_col": "People_ID"}])
-    planner = _hermetic_planner()
-    for (tables, fks), question, expected in (
-            (stadiums, "What is the name and capacity for the stadium with the highest average attendance?", [["A", 1000]]),
-            (stadiums, "Find the number of concerts happened in the stadium with the highest capacity.", [[2]]),
-            (stadiums, "What is the average capacity of all stadiums?", [[2000]]),
-            (builders, "What are the clean and jerk score of the body builder with the highest total score?", [[175]]),
-            (builders, "What are the names of body builders in descending order of total scores?",
-             [["Jack"], ["Ty"], ["Sam"]]),
-            (builders, "What is the total snatch score?", [[419]])):
-        served = planner.serve(tables, question, fks)
-        assert served.get("valid") and [list(row) for row in served["result"]["rows"]] == expected, (
-            question, served.get("sql"), served.get("error"))
-
-
-def test_people_are_a_population_a_count_of_them_its_total():
-    """Spider DEV 728, 767, 2026-10-17: "How many people live in Gelderland district?" had no reading: no field is
-    named "people". The people counted are a population (sql_expansion.counted_population), and a count of what a
-    numeric field already counts is its total (counted_measure_columns, a COUNT cue's SUM option). Contrast: "How many
-    cities are in Gelderland district?" counts the cities; a counted noun naming a table counts its rows ("How many
-    purchase orders are listed?" over a numeric "Purchase order"), and a key is no count ("Count how many appointments
-    have been made in total." over Prescribes.Appointment, fresh holdout of Spider train 710)."""
-    country = {"name": "country", "columns": ["Code", "Name", "Continent", "Population", "GNP"],
-               "rows": [["AFG", "Afghanistan", "Asia", 22720000, 5976], ["NLD", "Netherlands", "Europe", 15864000, 371362],
-                        ["CHN", "China", "Asia", 1277558000, 982268], ["ABW", "Aruba", "North America", 103000, 828]]}
-    city = {"name": "city", "columns": ["ID", "Name", "CountryCode", "District", "Population"],
-            "rows": [[1, "Kabul", "AFG", "Kabol", 1780000], [5, "Amsterdam", "NLD", "Noord-Holland", 731200],
-                     [9, "Arnhem", "NLD", "Gelderland", 138020], [10, "Nijmegen", "NLD", "Gelderland", 152463]]}
-    fks = [{"from_table": "city", "from_col": "CountryCode", "to_table": "country", "to_col": "Code"}]
-    planner = _hermetic_planner()
-    for question, expected in (("How many people live in Gelderland district?", [[290483]]),
-                               ("How many cities are in Gelderland district?", [[2]])):
-        served = planner.serve([country, city], question, fks)
-        assert served.get("valid") and [list(row) for row in served["result"]["rows"]] == expected, (
-            question, served.get("sql"), served.get("error"))
-    appointment = {"name": "Appointment", "columns": ["AppointmentID", "Patient", "Start"],
-                   "rows": [[13216584, 100000001, "2008-04-24"], [26548913, 100000002, "2008-04-24"],
-                            [36549879, 100000001, "2008-04-25"]]}
-    prescribes = {"name": "Prescribes", "columns": ["Physician", "Patient", "Medication", "Appointment"],
-                  "rows": [[1, 100000001, 1, 13216584], [9, 100000004, 2, 86213939]]}
-    served = planner.serve([appointment, prescribes], "Count how many appointments have been made in total.", [
-        {"from_table": "Prescribes", "from_col": "Appointment", "to_table": "Appointment", "to_col": "AppointmentID"}])
-    assert served.get("valid") and served["result"]["rows"] == [[3]], (served.get("sql"), served.get("error"))
 
 
 def test_a_value_bounded_away_from_its_equality_is_contradictory():
@@ -4575,47 +1814,17 @@ def test_a_value_bounded_away_from_its_equality_is_contradictory():
     assert not contradictory(where(equal, Comparison(salary, ">", Literal(163))))
 
 
-def test_each_output_a_list_instruction_names_is_shown():
-    """Held-out Spider train 138, 2026-10-17: "Show names of technicians and the number of machines they are assigned to
-    repair." counted the technicians' names: the field asked to be shown was read as the count's argument, and the
-    answer was one number. An answer shows each output a list instruction names (sql_expansion.output_requests).
-    Contrast: "How many machines is each technician assigned to repair?" lists no outputs and groups as before."""
-    technician = {"name": "technician", "columns": ["technician_id", "Name", "Team"],
-                  "rows": [[1, "Joe Sewell", "NYY"], [2, "John Brown", "NYY"], [3, "Tony Sewell", "CLE"]]}
-    machine = {"name": "machine", "columns": ["Machine_ID", "Making_Year", "quality_rank"],
-               "rows": [[1, 1991, 2], [2, 1992, 1], [3, 1993, 3]]}
-    assignment = {"name": "repair_assignment", "columns": ["technician_id", "Machine_ID"],
-                  "rows": [[1, 1], [2, 2], [1, 3], [3, 1]]}
-    fks = [{"from_table": "repair_assignment", "from_col": "technician_id", "to_table": "technician",
-            "to_col": "technician_id"},
-           {"from_table": "repair_assignment", "from_col": "Machine_ID", "to_table": "machine", "to_col": "Machine_ID"}]
-    planner = _hermetic_planner()
-    for question in ("Show names of technicians and the number of machines they are assigned to repair.",
-                     "How many machines is each technician assigned to repair?"):
-        served = planner.serve([technician, machine, assignment], question, fks)
-        assert served.get("valid") and sorted(served["result"]["rows"]) == [
-            ["Joe Sewell", 2], ["John Brown", 1], ["Tony Sewell", 1]], (question, served.get("sql"))
-    # Values a list joins are no outputs: "the total surface area of the continents Asia and Europe" is one total
-    # (Spider DEV 726, 2026-10-17).
-    country = {"name": "country", "columns": ["Code", "Name", "Continent", "SurfaceArea"], "rows": [
-        ["AFG", "Afghanistan", "Asia", 652090.0], ["ALB", "Albania", "Europe", 28748.0], ["AGO", "Angola", "Africa", 1246700.0]]}
-    served = planner.serve([country], "What is the total surface area of the continents Asia and Europe?", [])
-    assert served.get("valid") and served["result"]["rows"] == [[680838.0]], served.get("sql")
-
-
 def test_a_count_counts_its_nouns_head():
     """Held-out Spider train 989, 2026-10-17: "How many movie ratings have more than 3 stars?" counted the different
-    movies: the counted noun was read as Movie, its first word, and the count of ratings was rewritten as a count of
-    distinct movie keys. A table named right after the one a count's noun starts with is the noun's head, which counts
-    (sql_expansion.counted_noun_tables). Contrast: a noun naming one table counts it, and a verb is no head."""
+    movies: the counted noun was read as Movie, its first word. A table named right after the one a count's noun
+    starts with is the noun's head, which counts (sql_expansion.counted_noun_tables). Contrast: a noun naming one
+    table counts it, and a verb is no head."""
     from engine.sql_expansion import counted_noun_tables, tokens
     movie = {"name": "Movie", "columns": ["mID", "title", "year"],
              "rows": [[101, "Gone with the Wind", 1939], [102, "Star Wars", 1977], [103, "Avatar", 2009]]}
     rating = {"name": "Rating", "columns": ["rID", "mID", "stars"],
               "rows": [[201, 101, 2], [201, 101, 4], [202, 102, 5], [203, 102, 4], [204, 103, 3]]}
     fks = [{"from_table": "Rating", "from_col": "mID", "to_table": "Movie", "to_col": "mID"}]
-    served = _hermetic_planner().serve([movie, rating], "How many movie ratings have more than 3 stars?", fks)
-    assert served.get("valid") and served["result"]["rows"] == [[3]], (served.get("error"), served.get("sql"))
     graph = SchemaGraph.from_tables([movie, rating], fks)
     assert counted_noun_tables(tokens("How many ratings are there?"), graph) == {"Rating"}
     assert counted_noun_tables(tokens("How many movie ratings are there?"), graph) == {"Rating"}
@@ -4628,312 +1837,18 @@ def test_a_count_counts_its_nouns_head():
         "instructor"}
 
 
-def test_a_table_said_after_in_is_no_item_to_show():
-    """Held-out Spider train 882, 2026-10-17: "What is the most common amenity in the dorms?" showed the dorm with the
-    most amenities: a table named last in the question was read as an item to show by its display field, a reading
-    meant for "customer and product category for each purchase". An item is one "and" or "or" joins to another
-    (ExpansionSupport.projection_columns)."""
-    dorm = {"name": "Dorm", "columns": ["dormid", "dorm_name", "student_capacity"],
-            "rows": [[100, "Smith Hall", 85], [109, "Fawlty Towers", 355], [110, "Dorm-plex 2000", 400]]}
-    amenity = {"name": "Dorm_amenity", "columns": ["amenid", "amenity_name"],
-               "rows": [[900, "TV Lounge"], [901, "Study Room"], [902, "Pub in Basement"]]}
-    has = {"name": "Has_amenity", "columns": ["dormid", "amenid"],
-           "rows": [[109, 900], [109, 901], [110, 900], [100, 900], [100, 902]]}
-    fks = [{"from_table": "Has_amenity", "from_col": "dormid", "to_table": "Dorm", "to_col": "dormid"},
-           {"from_table": "Has_amenity", "from_col": "amenid", "to_table": "Dorm_amenity", "to_col": "amenid"}]
-    served = _hermetic_planner().serve([dorm, amenity, has], "What is the most common amenity in the dorms?", fks)
-    assert served.get("valid") and served["result"]["rows"] and all(
-        row[0] in {"TV Lounge", "Study Room", "Pub in Basement"} for row in served["result"]["rows"]), served.get("sql")
-
-
-def test_a_count_of_a_fields_noun_counts_the_rows():
-    """The formesign-intake demo (release build of 1cd624d, 2026-10-17): "How many documents are still pending?" answered
-    2, the distinct document types pending, where its sheet's rows are the documents sent and 5 are pending. A count
-    whose noun names a text field counts the rows, as before 1cd624d; reading it as the field's distinct values
-    (Spider DEV 751, "How many continents speak Chinese?") cannot tell the two apart from the data."""
-    import csv
-    from pathlib import Path
-    path = Path(__file__).resolve().parents[1] / "web" / "public" / "dataset" / "formesign-intake" / "intake.csv"
-    rows = list(csv.reader(path.open(encoding="utf-8")))
-    intake = {"name": "intake", "columns": rows[0], "rows": rows[1:]}
-    served = _hermetic_planner().serve([intake], "How many documents are still pending?", [])
-    assert served.get("valid") and served["result"]["rows"] == [[5]], (served.get("error"), served.get("sql"))
-
-
-def test_a_value_two_fields_of_a_table_hold_is_its_display_fields():
-    """Spider DEV 709, 713, 716, 2026-10-17: 'Angola' is both a country's Name and its LocalName, and "What are the
-    region and population of Angola?" compared LocalName, the tie falling to it by name: a country whose local name is
-    Angola answered too. A value several fields of one table hold is the one its display field holds. Contrast: a value
-    only another field holds ('Kongo', a local name) is that field's."""
-    country = {"name": "country", "columns": ["Code", "Name", "LocalName", "Region", "Population"], "rows": [
-        ["AGO", "Angola", "Angola", "Central Africa", 12878000], ["COG", "Congo", "Angola", "Central Africa", 2943000],
-        ["COD", "Zaire", "Kongo", "Central Africa", 51654000]]}
-    planner = _hermetic_planner()
-    served = planner.serve([country], "What are the region and population of Angola?", [])
-    assert served.get("valid") and served["result"]["rows"] == [["Central Africa", 12878000]], served.get("sql")
-    served = planner.serve([country], "What is the population of Kongo?", [])
-    assert served.get("valid") and served["result"]["rows"] == [[51654000]], served.get("sql")
-
-
-def test_a_superlative_infers_its_field_only_where_none_is_named_at_it():
-    """Spider DEV 565, 569, 976, 977 and 667, Gemini on, 2026-10-17: Gemini reworded "How much does the most recent
-    treatment cost?" as "... the treatment with the latest date_of_treatment", and the dates "latest" infers ranked the
-    treatments by a dog's birth date; "the money rank of the tallest poker player" ranked by Money_Rank, the field the
-    question shows, though "tallest" says a height. A superlative followed by a field's whole name ranks by that field
-    alone, and a field named away from a superlative that names its own dimension is not what it measures. Contrast:
-    "the most recent treatment", naming no field, still ranks by the treatment's date."""
-    dogs = {"name": "Dogs", "columns": ["dog_id", "name", "date_of_birth", "date_adopted"], "rows": [
-        [1, "Kacey", "2012-01-27", "2017-09-08"], [2, "Hipolito", "2013-02-13", "2017-04-29"],
-        [3, "Mavis", "2016-11-28", "2017-06-19"]]}
-    treatments = {"name": "Treatments", "columns": ["treatment_id", "dog_id", "date_of_treatment", "cost_of_treatment"],
-                  "rows": [[1, 1, "2018-03-19", 266], [2, 2, "2018-03-15", 147], [3, 3, "2018-03-08", 429],
-                           [4, 1, "2018-03-01", 567]]}
-    fks = [{"from_table": "Treatments", "from_col": "dog_id", "to_table": "Dogs", "to_col": "dog_id"}]
-    planner = _hermetic_planner()
-    for question in ("What is the cost of treatment for the treatment with the latest date of treatment?",
-                     "How much does the most recent treatment cost?"):
-        served = planner.serve([dogs, treatments], question, fks)
-        assert served.get("valid") and served["result"]["rows"] == [[266]], (
-            question, served.get("error"), served.get("sql"))
-    people = {"name": "people", "columns": ["People_ID", "Name", "Height"],
-              "rows": [[1, "Aleksey", 182], [2, "Maksim", 207], [3, "Semen", 196]]}
-    poker = {"name": "poker_player", "columns": ["Poker_Player_ID", "People_ID", "Money_Rank", "Earnings"],
-             "rows": [[1, 1, 58, 476090], [2, 2, 141, 189233], [3, 3, 166, 104871]]}
-    fks = [{"from_table": "poker_player", "from_col": "People_ID", "to_table": "people", "to_col": "People_ID"}]
-    served = planner.serve([people, poker], "What is the money rank of the tallest poker player?", fks)
-    assert served.get("valid") and served["result"]["rows"] == [[141]], (served.get("error"), served.get("sql"))
-
-
-def test_the_highest_rank_is_the_smallest_number():
-    """Spider DEV 439, 2026-10-17: "Find the highest rank of losers in all matches." took the largest loser_rank. A
-    rank's first place is its smallest number, in the search and the gate alike (sql_extrema.superlative_direction).
-    Contrast: "the highest rank points" are the most points."""
-    matches = {"name": "matches", "columns": ["match_num", "loser_rank", "winner_name", "winner_rank_points"],
-               "rows": [[1, 12, "Ann", 3000], [2, 3, "Bo", 5200], [3, 40, "Cy", 900]]}
-    served = _hermetic_planner().serve([matches], "Find the highest rank of losers in all matches.", [])
-    assert served.get("valid") and served["result"]["rows"] == [[3]], (served.get("error"), served.get("sql"))
-    served = _hermetic_planner().serve([matches], "Find the name of the winner who has the highest rank points.", [])
-    assert served.get("valid") and served["result"]["rows"] == [["Bo"]], (served.get("error"), served.get("sql"))
-
-
-def test_of_two_keys_to_one_table_the_named_one_joins_and_a_distinct_count_counts_keys():
-    """Spider DEV 577, 2026-10-17: "How many different addresses do the students currently live?" counted distinct
-    other_address_details through either address key. Of two keys a table holds to one other table, the join is the
-    one the question names ("currently": current_address_id, sql_rank.named_parallel_key), and the different rows a
-    noun names are counted by their key, not a detail field (count_distinct_key). Contrast: "permanently" joins the
-    permanent address."""
-    addresses = {"name": "Addresses", "columns": ["address_id", "line_1", "other_address_details"],
-                 "rows": [[1, "2294 Grant Square", "x"], [2, "3999 Aufderhar Ways", "x"], [3, "67942 Carlotta Ferry",
-                                                                                     "y"], [4, "0144 Lamar Plaza", "x"]]}
-    students = {"name": "Students", "columns": ["student_id", "current_address_id", "permanent_address_id",
-                                                "first_name"],
-                "rows": [[1, 1, 2, "Timmothy"], [2, 2, 2, "Hobart"], [3, 3, 4, "Warren"], [4, 1, 3, "Jarvis"]]}
-    fks = [{"from_table": "Students", "from_col": "current_address_id", "to_table": "Addresses",
-            "to_col": "address_id"},
-           {"from_table": "Students", "from_col": "permanent_address_id", "to_table": "Addresses",
-            "to_col": "address_id"}]
-    served = _hermetic_planner().serve([addresses, students],
-                                       "How many different addresses do the students currently live?", fks)
-    assert served.get("valid") and served["result"]["rows"] == [[3]], (served.get("error"), served.get("sql"))
-    served = _hermetic_planner().serve([addresses, students],
-                                       "How many different addresses do the students permanently live?", fks)
-    assert served.get("valid") and served["result"]["rows"] == [[3]] and "permanent_address_id" in served["sql"], (
-        served.get("error"), served.get("sql"))
-
-
-def test_a_value_stored_as_said_is_meant_before_a_padded_copy():
-    """Spider DEV 199, 2026-10-17: "What is the airport name for airport 'AKO'?" compared flights.DestAirport, which
-    stores the code padded (' AKO'), and found no airport. A value stored as said is the one meant before a padded copy
-    of it in another field (SQLSearcher._value_predicate_groups)."""
-    airports = {"name": "airports", "columns": ["City", "AirportCode", "AirportName"],
-                "rows": [["Akron", "AKO", "Colorado Plains Regional"], ["Aberdeen", "APG", "Phillips AAF"]]}
-    flights = {"name": "flights", "columns": ["Airline", "FlightNo", "SourceAirport", "DestAirport"],
-               "rows": [[1, 28, " APG", " AKO"], [1, 29, " AKO", " APG"], [2, 44, " APG", " AKO"]]}
-    fks = [{"from_table": "flights", "from_col": "DestAirport", "to_table": "airports", "to_col": "AirportCode"},
-           {"from_table": "flights", "from_col": "SourceAirport", "to_table": "airports", "to_col": "AirportCode"}]
-    served = _hermetic_planner().serve([airports, flights], "What is the airport name for airport 'AKO'?", fks)
-    assert served.get("valid") and served["result"]["rows"] == [["Colorado Plains Regional"]], (
-        served.get("error"), served.get("sql"))
-
-
-def test_a_field_said_with_its_owner_is_that_tables():
-    """Held-out Spider train 142, 2026-10-17: "What are the distinct name of the mills built by the architects who have
-    also built a bridge longer than 80 meters?" showed the architects' names. A field said with "of" and its own table
-    ("the name of the mills") is that table's where another table holds a field of that name (sql_rank,
-    owner_phrase)."""
-    architects = {"name": "architect", "columns": ["id", "name", "nationality"],
-                  "rows": [[1, "Frank Lloyd Wright", "American"], [2, "Frank Gehry", "Canadian"]]}
-    bridges = {"name": "bridge", "columns": ["architect_id", "id", "name", "length_meters"],
-               "rows": [[1, 1, "Xian Ren Qiao", 121.0], [2, 2, "Landscape Arch", 88.0], [2, 3, "Hazarchishma", 60.0]]}
-    mills = {"name": "mill", "columns": ["architect_id", "id", "name", "type"],
-             "rows": [[1, 1, "Le Vieux Molen", "Grondzeiler"], [2, 2, "Moulin Bertrand", "Bergmolen"]]}
-    fks = [{"from_table": "bridge", "from_col": "architect_id", "to_table": "architect", "to_col": "id"},
-           {"from_table": "mill", "from_col": "architect_id", "to_table": "architect", "to_col": "id"}]
-    graph = SchemaGraph.from_tables([architects, bridges, mills], fks)
-    ref = {(column.ref.table, column.ref.name): column.ref for column in graph.columns}
-    joins = (Join("bridge", ref["architect", "id"], ref["bridge", "architect_id"]),
-             Join("mill", ref["architect", "id"], ref["mill", "architect_id"]))
-    where = Comparison(ref["bridge", "length_meters"], ">", Literal(80))
-    rival = SelectQuery((SelectItem(ref["architect", "name"]),), "architect", joins=joins, where=where, distinct=True)
-    own = SelectQuery((SelectItem(ref["mill", "name"]),), "architect", joins=joins, where=where, distinct=True)
-    question = ("What are the distinct name of the mills built by the architects who have also built a bridge longer "
-                "than 80 meters?")
-    ranked = CandidateRanker(graph).rank(question, [ScoredQuery(rival, render_query(rival), 0.5, ()),
-                                                    ScoredQuery(own, render_query(own), 0.0, ())])
-    assert ranked[0].query == own, [(candidate.sql, candidate.evidence) for candidate in ranked]
-
-
-def test_a_short_fields_inflection_names_it():
-    """Spider DEV 389, 390, 2026-10-17: "Show the name of teachers aged either 32 or 33?" compared no field: a word
-    shares a stem with a field only from five letters, and "aged" is Age inflected. An inflection names a field too
-    (sql_expansion.inflects), where the search reads a number's field and where the completeness gate reads a word.
-    Contrast: a word merely beginning with the field's ("agenda") is none."""
-    from engine.sql_expansion import inflects
-    teacher = {"name": "teacher", "columns": ["Teacher_ID", "Name", "Age", "Hometown"],
-               "rows": [[1, "Ann", 32, "X"], [2, "Bo", 33, "Y"], [3, "Cy", 40, "Z"], [4, "Di", 29, "X"]]}
-    served = _hermetic_planner().serve([teacher], "Show the name of teachers aged either 32 or 33?", [])
-    assert served.get("valid") and Counter(map(tuple, served["result"]["rows"])) == Counter({("Ann",): 1, ("Bo",): 1}), (
-        served.get("error"), served.get("sql"))
-    assert inflects("aged", "age") and inflects("priced", "price") and inflects("pricing", "price")
-    assert not inflects("agenda", "age") and not inflects("ag", "a")
-
-
-def test_common_values_use_independent_populations_without_an_invented_join():
-    """Spider DEV 918, 919, 2026-10-17 (the Codex review's population-presence reading, ported): "Which states have
-    both owners and professionals living there?" read the states of owners joined through dogs and treatments to
-    professionals. Values two named populations both (or either) hold are the INTERSECT (or UNION) of each
-    population's own known values (sql_expansion.population_presence_reading), and the gate refuses another reading
-    (population_presence_witness). Contrast: a relationship between them changes nothing; another qualification, a
-    second output or a different field leaves the request unread."""
-    suppliers = {"name": "suppliers", "columns": ["id", "name", "city"],
-                 "rows": [[1, "S", "Rome"], [2, "T", "Rome"], [3, "U", "Paris"], [4, "V", None]]}
-    buyers = {"name": "buyers", "columns": ["id", "name", "city"],
-              "rows": [[11, "B", "Rome"], [12, "C", "Oslo"], [13, "D", None]]}
-    planner = _hermetic_planner()
-    question = "Which cities have both suppliers and buyers living there?"
-    answer = planner.serve([suppliers, buyers], question, [])
-    assert answer.get("valid") and list(map(list, answer["result"]["rows"])) == [["Rome"]], answer
-    contracts = {"name": "contracts", "columns": ["id", "supplier_id", "buyer_id"], "rows": [[21, 3, 12]]}
-    foreign_keys = [{"from_table": "contracts", "from_col": "supplier_id", "to_table": "suppliers", "to_col": "id"},
-                    {"from_table": "contracts", "from_col": "buyer_id", "to_table": "buyers", "to_col": "id"}]
-    connected = planner.serve([suppliers, buyers, contracts], question, foreign_keys)
-    assert connected.get("valid") and list(map(list, connected["result"]["rows"])) == [["Rome"]], connected
-    for asked, expected in (("Find cities where both buyers and suppliers live.", [["Rome"]]),
-                            ("List cities where either suppliers or buyers are present.",
-                             [["Oslo"], ["Paris"], ["Rome"]])):
-        answer = planner.serve([suppliers, buyers], asked, [])
-        assert answer.get("valid") and sorted(map(list, answer["result"]["rows"])) == expected, answer
-    from engine.sql_expansion import population_presence_reading
-    graph = SchemaGraph.from_tables([suppliers, buyers], ())
-    city = graph.column_map["suppliers", "city"].ref
-    other_city = graph.column_map["buyers", "city"].ref
-    wrong = SelectQuery((SelectItem(city),), "suppliers", joins=(Join("buyers", city, other_city),))
-    assert any("independently" in reason for reason in constraint_violations(question, wrong, graph))
-    assert population_presence_reading("List the name and city of both suppliers and buyers.", graph) is None
-    assert population_presence_reading(
-        "Which cities have both suppliers and buyers with ratings above 3?", graph) is None
-    changed = dict(buyers, columns=["id", "name", "region"])
-    assert population_presence_reading(question, SchemaGraph.from_tables([suppliers, changed], ())) is None
-
-
-def test_a_superlative_adjective_ranks_by_the_field_it_measures():
-    """Spider DEV 453, 454, 468, 2026-10-17: "What are the names of the winner and loser who played in the longest
-    match?" ranked by no field, and "the oldest player" by a match's winner_age. A superlative adjective ranks by the
-    field it measures where the question names none (sql_extrema.SUPERLATIVE_DIMENSIONS: longest by minutes, tallest
-    by height, oldest by age or birth date), preferring the field of the rows its noun names. Contrast: "largest" names
-    no one field."""
-    matches = {"name": "matches", "columns": ["match_num", "winner_name", "loser_name", "minutes"],
-               "rows": [[1, "Ann", "Bo", 90], [2, "Cy", "Di", 200], [3, "Ed", "Fy", 120]]}
-    served = _hermetic_planner().serve(
-        [matches], "What are the names of the winner and loser who played in the longest match?", [])
-    assert served.get("valid") and served["result"]["rows"] == [["Cy", "Di"]], (served.get("error"), served.get("sql"))
-    from engine.sql_extrema import superlative_dimensions
-    from engine.sql_expansion import tokens
-    assert superlative_dimensions(tokens("the tallest player"), 1) == frozenset({"height"})
-    assert superlative_dimensions(tokens("the most recent cartoon"), 1) == frozenset({"date", "year"})
-    assert not superlative_dimensions(tokens("the largest country"), 1)
-
-
-def test_a_superlative_over_a_shared_field_ranks_the_rows_named_before_it():
-    """Spider DEV 788, 789, 2026-10-17: "the country with the smallest population" ranked a joined city's Population:
-    both tables hold the field and the tie fell to city by name. A field two tables share is the one of the rows named
-    just before the superlative (sql_extrema._superlative_targets). Contrast: "the city with the largest population"
-    ranks the cities."""
-    countries = {"name": "country", "columns": ["Code", "Name", "Population"],
-                 "rows": [["ABW", "Aruba", 103000], ["AFG", "Afghanistan", 22720000], ["AIA", "Anguilla", 8000]]}
-    cities = {"name": "city", "columns": ["ID", "Name", "CountryCode", "Population"],
-              "rows": [[1, "Oranjestad", "ABW", 29034], [2, "Kabul", "AFG", 1780000], [3, "The Valley", "AIA", 595],
-                       [4, "Herat", "AFG", 186800]]}
-    fks = [{"from_table": "city", "from_col": "CountryCode", "to_table": "country", "to_col": "Code"}]
-    from engine.sql_expansion import tokens
-    from engine.sql_extrema import ExtremaQueryExpander
-    expander = ExtremaQueryExpander(SchemaGraph.from_tables([countries, cities], fks))
-    best = expander._superlative_targets(tokens("What is the name of the country with the smallest population?"))[0]
-    assert (best.column.table, best.column.name) == ("country", "Population"), best
-    best = expander._superlative_targets(tokens("What is the name of the city with the largest population?"))[0]
-    assert (best.column.table, best.column.name) == ("city", "Population"), best
-
-
-def test_a_rewording_keeps_the_operations_the_engine_reads():
-    """Spider DEV, 2026-10-13: rewordings were refused for losing words the engine does not read as operations: "per" in
-    "miles per gallon", "number of" before the field Number_products, "no less than" said "at least". The engine's own
-    reading of a count decides, and a dropped count or comparison still refuses the rewording."""
-    from engine.question_rewrite import _preserves_explicit_constraints
-    cars = {"name": "cars_data", "columns": ["Id", "MPG", "Cylinders", "Weight"],
-            "rows": [[1, 18.0, 8, 3504], [2, 30.0, 4, 2200]]}
-    shop = {"name": "shop", "columns": ["Shop_ID", "Name", "Number_products"], "rows": [[1, "A", 10], [2, "B", 20]]}
-    graph = SchemaGraph.from_tables([cars, shop], ())
-    for question, rewording in (
-            ("What is the average miles per gallon of the cars with 4 cylinders?",
-             "What is the average MPG of cars_data with Cylinders equal to 4?"),
-            ("Find the minimum and maximum number of products of all stores.",
-             "Find the minimum and maximum Number_products of all shops."),
-            ("In which years were cars produced weighing no less than 3000 and no more than 4000?",
-             "Which years have cars with Weight at least 3000 and Weight at most 4000?")):
-        assert _preserves_explicit_constraints(question, rewording, graph), (question, rewording)
-    # Negative: a count or a comparison the rewording drops still refuses it.
-    assert not _preserves_explicit_constraints("How many cars have 4 cylinders?", "Show the cars with 4 Cylinders.", graph)
-    assert not _preserves_explicit_constraints("Which cars weigh more than 3000?", "Which cars have Weight 3000?", graph)
-
-
-def test_gemini_rewrite_must_preserve_data_values_and_numbers():
-    question = "top 5 customers in France"
-    planner, gemini = _gemini_planner(question="top 3 customers")
-    _norm, fks, sch, _tablemap = _request(planner, [PEOPLE])
-    graph = SchemaGraph.from_planner(sch, fks)
-    rewritten, note = planner.question_rewriter.rewrite(question, graph)
-    assert rewritten is None
-    assert note == "rewording changed a stated value or number"
-    assert [step for step, _ in gemini.calls] == ["question"]
-
-
-def test_a_rewording_may_say_the_value_a_word_names():
-    """Spider DEV 762, 763 with Gemini on (2026-10-15): "Find the name, population and expected life length of asian
-    country with the largest area?" was refused once "asian" read as Continent 'Asia': the rewording said "in Asia",
-    and the check asked it to keep the word "asian" (question_rewrite._preserves_explicit_constraints). A rewording
-    keeps a value it says itself. Contrast: one that drops the value still changes the question."""
-    country = {"name": "country", "columns": ["Code", "Name", "Continent", "Population"],
-               "rows": [["AFG", "Afghanistan", "Asia", 22720000], ["NLD", "Netherlands", "Europe", 15864000]]}
-    question = "What is the average population of Asian countries?"
-    planner, _ = _gemini_planner(question="What is the average population of countries in Asia?")
-    _norm, fks, sch, _tablemap = _request(planner, [country])
-    graph = SchemaGraph.from_planner(sch, fks)
-    assert planner.question_rewriter.rewrite(question, graph) == (
-        "What is the average population of countries in Asia?", "")
-    planner, _ = _gemini_planner(question="What is the average population of countries?")
-    assert planner.question_rewriter.rewrite(question, graph) == (None, "rewording changed a stated value or number")
-
-
 def test_evaluator_grades_the_served_selection():
     from spider.probe.full_eval import ast_predict
 
     planner = _hermetic_planner()
+    planner.pool = [_model_query(planner, 'SELECT "Name" FROM "people"'),
+                    _model_query(planner, 'SELECT COUNT(*) FROM "people"')]
     served = _select(planner, "list person names")
     record = ast_predict(planner, [PEOPLE], "list person names")
     assert record["ok"] and record["sql"] == served.candidate.sql
     assert record["selected_candidate_rank"] == served.selected
     assert record["selection"] == served.record()
-    assert record["served_by"] == served.served_by == "search"
+    assert "served_by" not in record
     oracle = ast_predict(planner, [PEOPLE], "list person names", selection="pool_oracle")
     assert [entry["sql"] for entry in oracle["pool_execution"]] == [c.sql for c in served.pool]
     for rank, entry in enumerate(oracle["pool_execution"]):
@@ -4941,14 +1856,6 @@ def test_evaluator_grades_the_served_selection():
         assert entry["executable"] == served.executable[rank]
         assert entry["grounded"] == served.grounded[rank]
         assert entry["eligible"] == (served.executable[rank] and served.grounded[rank])
-
-    # An answer the fallback produced is graded as served and labelled as Gemini's, so a run with
-    # the fallback enabled can never pass for the engine alone.
-    planner, _ = _gemini_planner(question="How many people are from France?")
-    record = ast_predict(planner, [PEOPLE], JAPANESE_FRANCE)
-    assert record["ok"] and record["rows"] == [[2]] and record["served_by"] == "gemini-rewrite"
-    assert record["selection"]["fallback"] == {
-        "kind": "rewrite", "model": "gemini-test", "question": "How many people are from France?"}
 
 
 def test_pool_oracle_counts_only_eligible_denotation_hits_and_validates_checkpoints():
@@ -4960,14 +1867,13 @@ def test_pool_oracle_counts_only_eligible_denotation_hits_and_validates_checkpoi
         "pool_execution": [
             {"rank": 0, "sql": "SELECT 1", "rows": [["gold"]], "score": 0.0,
              "features": {}, "evidence": [], "eligible": False, "executable": True,
-             "grounded": False, "calculation_satisfied": False, "money_total": False},
+             "grounded": False, "calculation_satisfied": False},
             {"rank": 1, "sql": "SELECT 2", "rows": [["gold"]], "score": -5.0,
              "features": {"projection": 1.0}, "evidence": ["extrema:projection"], "eligible": True,
-             "executable": True, "grounded": True, "calculation_satisfied": False,
-             "money_total": True},
+             "executable": True, "grounded": True, "calculation_satisfied": False},
             {"rank": 2, "sql": "SELECT 3", "score": -6.0,
              "features": {}, "evidence": [], "eligible": True, "executable": True,
-             "grounded": True, "calculation_satisfied": False, "money_total": False,
+             "grounded": True, "calculation_satisfied": False,
              "error": "OperationalError: interrupted"},
         ],
     }
@@ -4979,7 +1885,6 @@ def test_pool_oracle_counts_only_eligible_denotation_hits_and_validates_checkpoi
     assert record["pool"][1]["features"] == {"projection": 1.0}
     assert record["pool"][1]["evidence"] == ["extrema:projection"]
     assert record["pool"][1]["calculation_satisfied"] is False
-    assert record["pool"][1]["money_total"] is True
     assert record["pool"][1]["oracle_executed"] is True
     assert record["pool"][2]["eligible"] is True and not record["pool"][2]["oracle_executed"]
 
@@ -4995,23 +1900,20 @@ def test_pool_oracle_counts_only_eligible_denotation_hits_and_validates_checkpoi
             raise AssertionError("duplicate, out-of-denominator, or malformed checkpoint accepted")
 
 
-def test_shared_ranking_rule_preserves_calculation_then_money_precedence():
+def test_shared_ranking_rule_preserves_date_then_double_count_then_calculation_precedence():
     from engine.sql_rank import select_ranked_candidate
-    assert select_ranked_candidate((), (), ()) is None
+    assert select_ranked_candidate((), ()) is None
+    assert select_ranked_candidate((2, 1, 0), (False, True, False)) == 1
+    # A query that keeps the named dates comes first; the calculation rule applies among them.
+    assert select_ranked_candidate((2, 1, 0), (False,) * 3, (True, False, False)) == 0
+    assert select_ranked_candidate((2, 1, 0), (False, True, False), (True, True, False)) == 1
     assert select_ranked_candidate((2, 1, 0), (False, True, False), (False,) * 3) == 1
-    assert select_ranked_candidate((2, 1, 0), (False, True, False), (True, False, True)) == 2
-    assert select_ranked_candidate((2, 1, 0), (False, True, False), (False, True, True)) == 1
-    # A query that keeps the named dates comes first; the calculation and money rules apply among them.
-    assert select_ranked_candidate((2, 1, 0), (False,) * 3, (False,) * 3, (True, False, False)) == 0
-    assert select_ranked_candidate((2, 1, 0), (False, True, False), (False,) * 3, (True, True, False)) == 1
-    assert select_ranked_candidate((2, 1, 0), (False, True, False), (False,) * 3, (False,) * 3) == 1
     # Among those, a query whose SUM or AVG reads only rows its joins repeat gives way to one that does not, even
     # to a satisfied calculation; when every one does, the order stands.
-    assert select_ranked_candidate((2, 1, 0), (False,) * 3, (False,) * 3, (), (False, True, True)) == 0
-    assert select_ranked_candidate((2, 1, 0), (False,) * 3, (False,) * 3, (), (True,) * 3) == 2
-    assert select_ranked_candidate((2, 1, 0), (False,) * 3, (False,) * 3, (False, False, True),
-                                   (False, False, True)) == 2
-    assert select_ranked_candidate((2, 1, 0), (False, True, False), (False,) * 3, (), (False, True, False)) == 2
+    assert select_ranked_candidate((2, 1, 0), (False,) * 3, (), (False, True, True)) == 0
+    assert select_ranked_candidate((2, 1, 0), (False,) * 3, (), (True,) * 3) == 2
+    assert select_ranked_candidate((2, 1, 0), (False,) * 3, (False, False, True), (False, False, True)) == 2
+    assert select_ranked_candidate((2, 1, 0), (False, True, False), (), (False, True, False)) == 2
 
 
 def test_sql_import_maps_numeric_arithmetic_but_refuses_nonnumeric():
@@ -5099,286 +2001,31 @@ def test_sql_import_round_trip_executes_and_matches():
         assert execute([city, mayor], render_query(query)) == execute([city, mayor], gold), gold
 
 
-
-def test_order_noun_does_not_request_sort_or_group():
-    tables = [{"name": "purchase_orders_over_5000",
-               "columns": ["Purchase order", "Supplier name", "Net PO Value"],
-               "rows": [[4001, "A", 7], [4002, "B", 9]]},
-              {"name": "contracts_register", "columns": ["Number", "Supplier", "Est Value"],
-               "rows": [["C1", "A", 5]]}]
-    for question in ('How many purchase orders are listed?', 'Count purchase orders'):
-        candidate = best(question, tables)
-        assert execute(tables, candidate.sql) == [(2,)], candidate.sql
-        assert not candidate.query.group_by and not candidate.query.order_by, candidate.sql
-    from engine.sql_expansion import ordering_requested
-    # `order`, `ordered` and `rank` are business nouns at least as often as they
-    # are instructions. Spider's "highest rank points" and "the money rank of the
-    # player" regressed when bare `rank` counted as a sort request: it suppressed
-    # the row-superlative candidates and left an unscoped MAX subquery to win.
-    for question in ('What is the value of the purchase order?',
-                     'Find the name of the winner who has the highest rank points.',
-                     'Return the money rank of the player with the greatest earnings.',
-                     'What is the rank of the player?',
-                     'top 3 products by quantity ordered',
-                     'How many units were ordered by each customer?'):
-        assert not ordering_requested(question), question
-    for question in ('Order purchase orders by value', 'List purchase orders ordered by value',
-                     'List purchases in descending order', 'Sort the orders',
-                     'Rank the players by earnings', 'List the players ranked by earnings',
-                     'Can you rank people by age?',
-                     'Show people ranked according to age',
-                     'Show people ordered alphabetically by name'):
-        assert ordering_requested(question), question
-
-    unsorted_people = {
-        **PEOPLE,
-        "rows": [[3, "Cara", "Spain", 40], [1, "Alice", "France", 30],
-                 [2, "Bob", "France", 20]],
-    }
-    ranked = best("Can you rank people by age?", [unsorted_people])
-    assert ranked.query.order_by, ranked.sql
-    assert execute([unsorted_people], ranked.sql) == [(20,), (30,), (40,)]
-    alphabetical = best("Show names for people ordered alphabetically", [unsorted_people])
-    assert alphabetical.query.order_by, alphabetical.sql
-    assert execute([unsorted_people], alphabetical.sql) == [("Alice",), ("Bob",), ("Cara",)]
-
-
-def test_shared_table_words_do_not_collapse_distinct_projection_mentions():
-    documents = {
-        "name": "Documents",
-        "columns": ["Document_ID", "Document_Name", "Document_Description"],
-        "rows": [[1, "Plan", "Annual plan"]],
-    }
-    searcher = SQLSearcher.from_tables([documents], [], max_candidates=180)
-    candidates = searcher.search(
-        "What are the ids, names, and descriptions for all documents?",
-        expand_recursive=False,
-        expand_constraints=False,
-        expand_extrema=False,
-    )
-    expected = (
-        'SELECT "Documents"."Document_ID", "Documents"."Document_Name", '
-        '"Documents"."Document_Description" FROM "Documents"'
-    )
-    assert any(candidate.sql == expected for candidate in candidates)
-
-
-def test_generic_projection_respects_entity_qualifier():
-    countries = {
-        "name": "countries",
-        "columns": ["CountryId", "CountryName", "Continent"],
-        "rows": [[1, "France", 10], [2, "Germany", 10]],
-    }
-    continents = {
-        "name": "continents",
-        "columns": ["ContId", "Continent"],
-        "rows": [[10, "Europe"]],
-    }
-    foreign_keys = [{
-        "from_table": "countries",
-        "from_col": "Continent",
-        "to_table": "continents",
-        "to_col": "ContId",
-    }]
-    candidate = SQLSearcher.from_tables(
-        [countries, continents], foreign_keys, max_candidates=180,
-    ).search("For each continent, list its id, name, and how many countries it has?")[0]
-    assert '"countries"."Continent"' in candidate.sql
-    assert '"continents"."Continent"' in candidate.sql
-    assert '"countries"."CountryId"' not in candidate.sql
-    assert '"countries"."CountryName"' not in candidate.sql
-
-
-def test_entity_projection_follows_owner_foreign_key():
-    poker_players = {
-        "name": "poker_player",
-        "columns": ["People_ID", "Final_Table_Made"],
-        "rows": [[1, 3]],
-    }
-    people = {
-        "name": "people",
-        "columns": ["People_ID", "Name"],
-        "rows": [[1, "Alice"]],
-    }
-    foreign_keys = [{
-        "from_table": "poker_player",
-        "from_col": "People_ID",
-        "to_table": "people",
-        "to_col": "People_ID",
-    }]
-    searcher = SQLSearcher.from_tables([poker_players, people], foreign_keys)
-    candidate = searcher.search("What are the names of poker players?")[0]
-    assert candidate.sql == (
-        'SELECT "people"."Name" FROM "poker_player" JOIN "people" '
-        'ON "poker_player"."People_ID" = "people"."People_ID"'
-    )
-
-
-def test_fk_attribute_phrase_does_not_project_the_source_qualifier():
-    registrations = {
-        "name": "registrations", "columns": ["registration_id", "country"],
-        "rows": [[1, "FR"], [2, "US"]],
-    }
-    countries = {
-        "name": "iana_country", "columns": ["alpha2", "name"],
-        "rows": [["FR", "France"], ["US", "United States"]],
-    }
-    foreign_keys = [{
-        "from_table": "registrations", "from_col": "country",
-        "to_table": "iana_country", "to_col": "alpha2",
-    }]
-    candidate = SQLSearcher.from_tables([registrations, countries], foreign_keys).search(
-        "Show the country name for each registration"
-    )[0]
-    assert candidate.sql == (
-        'SELECT "iana_country"."name" FROM "registrations" JOIN "iana_country" '
-        'ON "registrations"."country" = "iana_country"."alpha2"'
-    )
-
-
-def test_entity_id_does_not_follow_owner_foreign_key():
-    paragraphs = {
-        "name": "Paragraphs",
-        "columns": ["Paragraph_ID", "Document_ID", "Paragraph_Text"],
-        "rows": [[1, 10, "Hello"]],
-    }
-    documents = {
-        "name": "Documents",
-        "columns": ["Document_ID", "Document_Name"],
-        "rows": [[10, "Welcome"]],
-    }
-    foreign_keys = [{
-        "from_table": "Paragraphs",
-        "from_col": "Document_ID",
-        "to_table": "Documents",
-        "to_col": "Document_ID",
-    }]
-    candidate = SQLSearcher.from_tables(
-        [paragraphs, documents], foreign_keys, max_candidates=180,
-    ).search(
-        "Show all paragraph ids and texts for the document with name 'Welcome'."
-    )[0]
-    assert candidate.sql.startswith(
-        'SELECT "Paragraphs"."Paragraph_ID", "Paragraphs"."Paragraph_Text" FROM '
-    )
-
-
-def test_duplicate_property_projection_respects_entity_qualifier():
-    documents = {
-        "name": "Documents",
-        "columns": ["Document_ID", "Document_Description", "Template_ID"],
-        "rows": [[1, "Annual memo", 1]],
-    }
-    templates = {
-        "name": "Templates",
-        "columns": ["Template_ID", "Template_Type_Code"],
-        "rows": [[1, "A"]],
-    }
-    template_types = {
-        "name": "Ref_Template_Types",
-        "columns": ["Template_Type_Code", "Template_Type_Description"],
-        "rows": [["A", "Type A"]],
-    }
-    foreign_keys = [
-        {
-            "from_table": "Documents",
-            "from_col": "Template_ID",
-            "to_table": "Templates",
-            "to_col": "Template_ID",
-        },
-        {
-            "from_table": "Templates",
-            "from_col": "Template_Type_Code",
-            "to_table": "Ref_Template_Types",
-            "to_col": "Template_Type_Code",
-        },
-    ]
-    candidate = SQLSearcher.from_tables(
-        [documents, templates, template_types], foreign_keys, max_candidates=180,
-    ).search(
-        "What are the distinct template type descriptions for the templates "
-        "ever used by any document?"
-    )[0]
-    assert '"Ref_Template_Types"."Template_Type_Description"' in candidate.sql
-    assert '"Documents"."Document_Description"' not in candidate.sql
-
-
-def test_directional_year_filter_targets_date_column():
-    employees = {
-        "name": "employees",
-        "columns": ["Name", "Hired_Date", "Salary"],
-        "rows": [["Ada", "2014-06-01", 10], ["Lin", "2016-03-01", 20]],
-    }
-    candidate = best("List employee names hired after 2015", [employees])
-    assert '"employees"."Hired_Date" >= \'2016-01-01\'' in candidate.sql
-    assert '"employees"."Salary"' not in candidate.sql
-    assert execute([employees], candidate.sql) == [("Lin",)]
-
-
-def test_month_and_dated_phrases_filter_the_date_column():
-    """Chrome exploration, 2026-10-02: "How many transfers were signed in August?", "How many leads
-    were submitted after August 10, 2026?" and "How many contracts were signed before July 10, 2026?"
-    were planned without their date; the coverage gate declined them over the month name. A month
-    compares the month of each date, and a dated phrase compares the date (engine/sql_dates.py)."""
-    leads = {"name": "leads", "columns": ["submitted", "name", "budget"], "rows": [
-        ["2026-08-03", "Elena", 15000], ["2026-08-04", "Pierre", 8000], ["2026-08-05", "Sara", 25000],
-        ["2026-08-07", "Akira", 12000], ["2026-08-09", "Maria", 5000], ["2026-08-11", "Tom", 18000],
-        ["2026-08-12", "Lucia", 6000], ["2026-08-14", "Raj", 9000], ["2026-08-15", "Emma", 4000],
-        ["2026-08-18", "Hans", 11000]]}
-    contracts = {"name": "contracts", "columns": ["contract", "value", "signed"], "rows": [
-        ["Service Agreement", 12000, "2026-07-02"], ["License", 900000, "2026-07-05"], ["NDA", 5000, "2026-07-06"],
-        ["Maintenance", 400000, "2026-07-08"], ["License", 3000000, "2026-07-10"],
-        ["Service Agreement", 30000, "2026-07-12"], ["NDA", 4000, "2026-07-15"], ["Maintenance", 80000, "2026-07-18"]]}
-    transfers = {"name": "transfers", "columns": ["hospital", "signed", "transfers"], "rows": [
-        ["Mayo Clinic", "2026-08-04", 14], ["Massachusetts General Hospital", "2026-08-06", 11],
-        ["Johns Hopkins Hospital", "2026-08-08", 9], ["Cleveland Clinic", "2026-08-11", 12],
-        ["Charite", "2026-07-13", 7], ["Toronto General Hospital", "2026-09-15", 8]]}
-    for question, tables, fragment, expected in (
-            ("How many leads were submitted after August 10, 2026?", [leads], "'2026-08-11'", 5),
-            ("How many contracts were signed before July 10, 2026?", [contracts], "'2026-07-10'", 4),
-            ("How many transfers were signed in August?", [transfers], "AS TEXT), 6, 2) AS INTEGER) = 8", 4),
-            # Same profile, other cues: "since" keeps the named day, "until" keeps it too, "in <month> <year>"
-            # is that month, and a day-month-year or ISO date reads the same.
-            ("How many leads were submitted since August 11, 2026?", [leads], "'2026-08-11'", 5),
-            ("How many leads were submitted until August 11, 2026?", [leads], "'2026-08-12'", 6),
-            ("total transfers in August 2026", [transfers], "'2026-09-01'", 46),
-            ("How many transfers were signed on 6 August 2026?", [transfers], "'2026-08-07'", 1),
-            ("how many transfers since 2026-08-06", [transfers], "'2026-08-06'", 4),
-            ("How many transfers were signed in July?", [transfers], "AS TEXT), 6, 2) AS INTEGER) = 7", 1)):
-        candidate = best(question, tables)
-        assert fragment in candidate.sql, (question, candidate.sql)
-        assert execute(tables, candidate.sql)[0][0] == expected, (question, candidate.sql)
-    # Negative: "may" as a verb is no month, and a day with no year names no date to compare with, so
-    # neither is a date filter (the coverage gate asks about the unread month); "after 2015" stays a year.
-    for question in ("how many transfers may have been signed", "How many leads were submitted after August 10?"):
-        candidate = best(question, [transfers if "transfers" in question else leads])
-        assert "WHERE" not in candidate.sql, (question, candidate.sql)
-    # Ordinal days and a "between" range read as dates; a month that is a value of the data stays it.
-    staff = {"name": "staff", "columns": ["first_name", "hired"], "rows": [
-        ["April", "2007-10-01"], ["Ben", "2008-03-04"], ["Cy", "2009-08-09"], ["April", "2010-01-01"]]}
-    between = best("How many staff were hired between November 5th, 2007 and July 5th, 2009?", [staff])
-    assert "'2007-11-05'" in between.sql and "'2009-07-06'" in between.sql, between.sql
-    assert execute([staff], between.sql) == [(1,)], between.sql
-    named = best("How many staff are named April?", [staff])
-    assert "'April'" in named.sql and "SUBSTR" not in named.sql, named.sql
-    # Without a date column a month is a value: "in may" filters a text month column.
-    contacts = {"name": "contacts", "columns": ["age", "job", "month", "balance"], "rows": [
-        [30, "admin", "may", 100], [40, "tech", "jun", 50], [35, "admin", "may", 70]]}
-    contacted = best("number of contacts reached in may", [contacts])
-    assert "\"contacts\".\"month\" = 'may'" in contacted.sql, contacted.sql
-    assert execute([contacts], contacted.sql) == [(2,)], contacted.sql
-
-
 def test_date_ranges_lists_and_quarters_filter_one_span():
     """Probe of the 2026-10-02 date reader: "from March to May 2026" and "between March and May 2026"
     filtered May alone, "between July 1 and July 10, 2026" July 10 alone, "in August and September 2026"
     both months at once (no row), and "after the 10th of August 2026" all of August. A range's ends, a
-    list of consecutive months and a quarter are one span; a year one end names is the other's too."""
+    list of consecutive months and a quarter are one span; a year one end names is the other's too
+    (engine/sql_dates.date_phrases, each phrase's comparisons run here as the typed AST renders them)."""
+    from engine.sql_ast import DatePart, and_predicates
+    from engine.sql_dates import date_phrases
+    from engine.sql_expansion import tokens
+
     dates = ["2025-11-20", "2025-12-15", "2026-01-10", "2026-02-14", "2026-03-03", "2026-04-18", "2026-05-30",
              "2026-06-02", "2026-07-01", "2026-07-05", "2026-07-10", "2026-07-11", "2026-08-05", "2026-08-10",
              "2026-08-12", "2026-09-09", "2026-10-01"]
     orders = {"name": "orders", "columns": ["order_id", "placed", "amount"],
               "rows": [[index + 1, placed, 100] for index, placed in enumerate(dates)]}
+    placed = ColumnRef("orders", "placed", SQLType.DATE)
+
+    def counted(question):
+        (phrase,) = date_phrases(question, tokens(question))
+        comparisons = list(phrase.comparisons(placed))
+        assert comparisons, question
+        query = SelectQuery((SelectItem(Aggregate("COUNT", Star())),), "orders", where=and_predicates(comparisons))
+        validate_query(query)
+        return execute([orders], render_query(query))[0][0]
+
     for question, expected in (
             ("How many orders were placed from March to May 2026?", 3),
             ("How many orders were placed from March 2026 to May 2026?", 3),
@@ -5391,16 +2038,10 @@ def test_date_ranges_lists_and_quarters_filter_one_span():
             ("How many orders were placed from November to February 2026?", 4),
             ("How many orders were placed from 5th to 10th August 2026?", 2),
             ("How many orders were placed March-May 2026?", 3)):
-        candidate = best(question, [orders])
-        assert execute([orders], candidate.sql)[0][0] == expected, (question, candidate.sql)
-
-    from engine.sql_ast import ColumnRef, DatePart, SQLType
-    from engine.sql_dates import date_phrases
-    from engine.sql_expansion import tokens
+        assert counted(question) == expected, question
 
     def read(question):
-        column = ColumnRef("orders", "placed", SQLType.DATE)
-        return [tuple((type(c.left) is DatePart, c.operator, c.right.value) for c in phrase.comparisons(column))
+        return [tuple((type(c.left) is DatePart, c.operator, c.right.value) for c in phrase.comparisons(placed))
                 for phrase in date_phrases(question, tokens(question))]
 
     # Same profile, other spans: a lone "from" is the period, "onwards" makes it "since", a yearless
@@ -5440,106 +2081,27 @@ def test_the_coverage_gate_reads_the_months_a_query_compares():
     assert realized_month_words("How many orders in Q4?", months) == {"q4"}
 
 
-def test_a_share_divides_the_kept_rows_aggregate_by_the_whole():
-    """Chrome exploration, 2026-10-02 (neartail-orders): "what share of the total amount comes from
-    Paris?" served the Paris total, and "share of total amount by city" each city's total; the coverage
-    gate declined both over the dropped word and proposed "total unit price". A share is the kept rows'
-    aggregate over the same aggregate of every row the query reads (sql_ast.share_of)."""
-    orders = {"name": "orders", "columns": ["order ID", "customer", "amount", "city"], "rows": [
-        [1, "Ada", 100, "Paris"], [2, "Ben", 29, "Paris"], [3, "Cy", 60, "Lyon"], [4, "Dee", 12, "Marseille"],
-        [5, "Eve", 6, "Nice"]]}
-    paris = best("what share of the total amount comes from Paris?", [orders])
-    assert "/ NULLIF((SELECT SUM(\"orders\".\"amount\") FROM \"orders\"), 0)" in paris.sql, paris.sql
-    assert abs(execute([orders], paris.sql)[0][0] - 129 / 207) < 1e-12
-    by_city = best("share of total amount by city", [orders])
-    shares = dict(execute([orders], by_city.sql))
-    assert set(shares) == {"Paris", "Lyon", "Marseille", "Nice"} and abs(shares["Lyon"] - 60 / 207) < 1e-12
-    lyon = best("what percentage of orders are from Lyon?", [orders])
-    assert "COUNT(*)" in lyon.sql and execute([orders], lyon.sql) == [(0.2,)], lyon.sql
-    # Contrast, same sheet: a total asked without a share word stays the total.
-    total = best("total amount from Paris", [orders])
-    assert "/" not in total.sql and execute([orders], total.sql) == [(129,)], total.sql
-    # Negative: a share word that names a column is that column (Spider tvshow and world_1).
-    series = {"name": "TV_series", "columns": ["id", "Episode", "Share", "Rating"], "rows": [
-        [1, "A", 5.5, 9], [2, "B", 7.0, 8], [3, "C", 4.5, 7]]}
-    shares = best("What is minimum and maximum share of TV series?", [series])
-    assert "/" not in shares.sql and "MAX(" in shares.sql and "MIN(" in shares.sql, shares.sql
-    languages = {"name": "countrylanguage", "columns": ["CountryCode", "Language", "Percentage"], "rows": [
-        ["ABW", "Dutch", 5.3], ["ABW", "English", 9.5], ["AFG", "Pashto", 52.4]]}
-    spoken = best("What is the total number of countries where English is spoken by the largest percentage of people?",
-                  [languages])
-    assert "/" not in spoken.sql, spoken.sql
-    # Negative: an average is never shared out.
-    average = best("what share of orders have the highest average amount", [orders])
-    assert "share" not in average.sql.lower() or "AVG" not in average.sql, average.sql
-
-
-def test_a_share_word_is_the_aggregate_of_the_rows_it_divides():
-    """Probe, 2026-10-02: "what % of total amount comes from Paris" served the Paris total (the
-    tokenizers dropped "%"), "what fraction of the amount comes from Lyon" divided order counts,
-    "percentage of amount by city" and "share of orders by city" were listings that divided nothing
-    ("orders by" also read as a sort), and "what percentage of customers are in Paris" a share per
-    customer. A share word asks for the sum of the measure it names, else the count of the rows."""
-    orders = {"name": "orders", "columns": ["order ID", "customer", "amount", "city"], "rows": [
-        [1, "Ada", 100, "Paris"], [2, "Ben", 29, "Paris"], [3, "Cy", 60, "Lyon"], [4, "Dee", 12, "Marseille"],
-        [5, "Eve", 6, "Nice"]]}
-    for question, expected in (
-            ("What % of total amount comes from Paris?", 129 / 207),
-            ("What fraction of the amount comes from Lyon?", 60 / 207),
-            ("What percentage of customers are in Paris?", 2 / 5),
-            ("What share of the amount do Paris and Lyon account for?", 189 / 207),
-            ("What percentage of the amount comes from orders over 50?", 160 / 207)):
-        candidate = best(question, [orders])
-        assert abs(execute([orders], candidate.sql)[0][0] - expected) < 1e-12, (question, candidate.sql)
-    for question, expected in (("Percentage of amount by city", {"Paris": 129 / 207, "Lyon": 60 / 207}),
-                               ("share of orders by city", {"Paris": 2 / 5, "Lyon": 1 / 5})):
-        candidate = best(question, [orders])
-        shares = dict(execute([orders], candidate.sql))
-        assert set(shares) == {"Paris", "Lyon", "Marseille", "Nice"}, (question, candidate.sql)
-        assert all(abs(shares[city] - value) < 1e-12 for city, value in expected.items()), (question, candidate.sql)
-    # Contrast: a "%" after a number is its unit, not a share.
-    from engine.sql_expansion import tokens
-
-    assert tokens("What % of orders") == ("what", "percent", "of", "order")
-    assert "percent" not in tokens("orders with a discount over 50%") + tokens("a discount over 50 %")
-    discounted = {"name": "orders", "columns": ["order ID", "discount", "amount"], "rows": [
-        [1, 60, 100], [2, 10, 29], [3, 55, 60]]}
-    over = best("how many orders have a discount over 50%", [discounted])
-    assert "/" not in over.sql and execute([discounted], over.sql) == [(2,)], over.sql
-
-
 def test_two_values_of_one_column_are_either():
     """Probe, 2026-10-02: "total amount from Paris and Lyon" filtered city = 'Paris' AND city =
     'Lyon' and answered nothing. No row holds both, and no Spider gold query conjoins two such values
-    (Spider writes "the continents Asia and Europe" as OR): the search reads either value, and the
-    served selection grounds no such conjunction, from the search or from a proposer."""
+    (Spider writes "the continents Asia and Europe" as OR): the conjunction is contradictory, its
+    disjunction is what either value means (sql_ast.conjunction), and the served selection grounds no
+    such conjunction (engine/sql_grounding.py)."""
+    from engine.sql_ast import BooleanExpr, conjunction, contradictory
+
     orders = {"name": "orders", "columns": ["order ID", "customer", "amount", "city"], "rows": [
         [1, "Ada", 100, "Paris"], [2, "Ben", 29, "Paris"], [3, "Cy", 60, "Lyon"], [4, "Dee", 12, "Marseille"],
         [5, "Eve", 6, "Nice"]]}
-    for question, expected in (("total amount from Paris and Lyon", [(189,)]),
-                               ("how many orders are from Paris and Lyon", [(3,)]),
-                               ("total amount from Paris or Lyon", [(189,)])):
-        candidate = best(question, [orders])
-        assert execute([orders], candidate.sql) == expected, (question, candidate.sql)
-    # Contrast: excluding both values keeps both exclusions.
-    excluded = best("total amount not from Paris and not from Lyon", [orders])
-    assert execute([orders], excluded.sql) == [(18,)], excluded.sql
-    # Negative: the conjunction is never searched, and never grounded for the served selection.
-    from engine.sql_ast import BooleanExpr, conjunction, contradictory
-    from engine.sql_candidate import ScoredQuery
-    from engine.sql_grounding import grounded_members
-
     city = ColumnRef("orders", "city", SQLType.TEXT)
     both = SelectQuery((SelectItem(Aggregate("COUNT", Star())),), "orders",
                        where=BooleanExpr("AND", (Comparison(city, "=", Literal("Paris", SQLType.TEXT)),
                                                  Comparison(city, "=", Literal("Lyon", SQLType.TEXT)))))
     assert contradictory(both)
-    searcher = SQLSearcher.from_tables([orders], [])
-    assert not any(contradictory(candidate.query) for candidate in searcher.search("total amount from Paris and Lyon"))
     either = SelectQuery(both.select, "orders", where=conjunction(both.where.terms))
     assert isinstance(either.where, BooleanExpr) and either.where.operator == "OR", either.where
+    assert execute([orders], render_query(either)) == [(3,)]
     pool = [ScoredQuery(both, render_query(both), 0.0, ()), ScoredQuery(either, render_query(either), 0.0, ())]
-    assert grounded_members(pool, {"orders": orders}, searcher.schema) == (False, True)
+    assert grounded_members(pool, {"orders": orders}, SchemaGraph.from_tables([orders], [])) == (False, True)
     # Contrast: a self-join compares two aliases, not one column.
     first, second = ColumnRef("T2", "city", SQLType.TEXT), ColumnRef("T3", "city", SQLType.TEXT)
     route = BooleanExpr("AND", (Comparison(first, "=", Literal("Ashley", SQLType.TEXT)),
@@ -5547,82 +2109,9 @@ def test_two_values_of_one_column_are_either():
     assert conjunction(route.terms) == route
 
 
-def test_a_noun_over_a_number_compares_each_row():
-    """Probe, 2026-10-02: "total amount of orders over 50" was read as "more than 50 orders" and lost
-    its total. A plural noun before "over <n>" compares each row, as in every Spider question of that
-    shape ("students over 20 years old"); "customers with over 1 orders" still counts."""
-    orders = {"name": "orders", "columns": ["order ID", "customer", "amount", "city"], "rows": [
-        [1, "Ada", 100, "Paris"], [2, "Ada", 29, "Paris"], [3, "Cy", 60, "Lyon"], [4, "Dee", 12, "Marseille"]]}
-    total = best("total amount of orders over 50", [orders])
-    assert execute([orders], total.sql) == [(160,)], total.sql
-    counted = best("how many orders over 50", [orders])
-    assert execute([orders], counted.sql) == [(2,)], counted.sql
-    repeat = best("customers with over 1 orders", [orders])
-    assert "HAVING COUNT(*) > 1" in repeat.sql and execute([orders], repeat.sql) == [("Ada",)], repeat.sql
-
-
-def test_a_month_word_joins_a_date_phrase_only_as_a_date():
-    """Review of the 2026-10-02 date reader: "hired in April may retire" read April-May, "hired in March
-    may get a raise" dropped March, "after January 15, 2026 through March 31, 2026" kept the 15th, "from
-    June, July and August 2026" paired June with July and answered 0, "between July 1 and 10, 2026"
-    compared an amount, and "valid_to on 9999-12-31" crashed. Each now reads as its dates."""
-    employees = {"name": "employees", "columns": ["employee_id", "name", "hired", "salary"], "rows": [
-        [1, "Ann", "2024-04-03", 10], [2, "Bo", "2024-05-09", 20], [3, "Cy", "2025-04-20", 30],
-        [4, "Di", "2025-03-11", 40], [5, "Ed", "2025-05-15", 50]]}
-    orders = {"name": "orders", "columns": ["order_id", "placed", "amount"], "rows": [
-        [1, "2026-01-15", 10], [2, "2026-01-16", 10], [3, "2026-02-20", 10], [4, "2026-03-31", 10],
-        [5, "2026-04-01", 10], [6, "2026-06-02", 10], [7, "2026-07-01", 10], [8, "2026-07-05", 10],
-        [9, "2026-07-10", 10], [10, "2026-07-11", 10], [11, "2026-08-10", 10], [12, "2026-08-12", 10],
-        [13, "2026-08-16", 10]]}
-    contracts = {"name": "contracts", "columns": ["contract_id", "client", "valid_to"], "rows": [
-        [1, "A", "9999-12-31"], [2, "B", "2026-05-01"], [3, "C", "9999-12-31"]]}
-    for question, tables, expected in (
-            ("How many employees hired in April may retire?", [employees], 2),
-            ("How many employees hired in March may get a raise?", [employees], 1),
-            ("How many orders were placed after January 15, 2026 through March 31, 2026?", [orders], 3),
-            ("How many orders were placed from June, July and August 2026?", [orders], 8),
-            ("How many orders were placed between July 1 and 10, 2026?", [orders], 3),
-            ("How many orders were placed from August 10 to 15, 2026?", [orders], 2),
-            ("How many orders were placed in July or August 2026?", [orders], 7),
-            ("How many contracts have valid_to on 9999-12-31?", [contracts], 2),
-            ("How many contracts are valid until December 31, 9999?", [contracts], 3)):
-        candidate = best(question, tables)
-        assert execute(tables, candidate.sql) == [(expected,)], (question, candidate.sql)
-    # A quarter column keeps its quarters: "Q3" is its value, and a game's "first quarter" is no month.
-    sales = {"name": "sales", "columns": ["sale id", "sold on", "quarter", "amount"], "rows": [
-        [1, "2026-01-10", "Q1", 20], [2, "2026-04-10", "Q2", 25], [3, "2026-08-02", "Q3", 30],
-        [4, "2025-08-02", "Q3", 15]]}
-    third = best("total amount in Q3 2026", [sales])
-    assert "'Q3'" in third.sql and execute([sales], third.sql) == [(30,)], third.sql
-    scores = {"name": "scores", "columns": ["score id", "game date", "team", "quarter", "points"], "rows": [
-        [1, "2026-01-10", "Bulls", 1, 20], [2, "2026-05-02", "Bulls", 1, 30], [3, "2026-05-02", "Bulls", 3, 15]]}
-    game = best("total points scored in the first quarter", [scores])
-    assert "SUBSTR" not in game.sql and "2026-01-01" not in game.sql, game.sql
-
-
-def test_either_value_reads_only_listed_values():
-    """Review of the either-value rewrite (2026-10-02): it outranked "destination Paris and origin Lyon"
-    bound to two columns, and a count over INTERSECT for "both English and Dutch". It reads values the
-    question lists with "and" or "or", never after "both", at its conjunction's score."""
-    shipments = {"name": "shipments", "columns": ["shipment id", "origin", "destination", "weight"], "rows": [
-        [1, "Lyon", "Paris", 10], [2, "Paris", "Lyon", 20], [3, "Lyon", "Nice", 30], [4, "Nice", "Paris", 40],
-        [5, "Lyon", "Paris", 50]]}
-    routed = best("List the weight of shipments with destination Paris and origin Lyon", [shipments])
-    assert execute([shipments], routed.sql) == [(10,), (50,)], routed.sql
-    country = {"name": "country", "columns": ["Code", "Name"], "rows": [
-        ["ABW", "Aruba"], ["NLD", "Netherlands"], ["GBR", "United Kingdom"], ["AND", "Andorra"]]}
-    languages = {"name": "countrylanguage", "columns": ["CountryCode", "Language"], "rows": [
-        ["ABW", "Dutch"], ["ABW", "English"], ["NLD", "Dutch"], ["NLD", "English"], ["GBR", "English"],
-        ["AND", "Catalan"]]}
-    fks = [{"from_table": "countrylanguage", "from_col": "CountryCode", "to_table": "country", "to_col": "Code"}]
-    both = best("How many countries speak both English and Dutch?", [country, languages], fks)
-    assert "INTERSECT" in both.sql and execute([country, languages], both.sql) == [(2,)], both.sql
-    # Contrast: listed values of one column are either value.
-    orders = {"name": "orders", "columns": ["order ID", "customer", "amount", "city"], "rows": [
-        [1, "Ada", 100, "Paris"], [2, "Ben", 29, "Paris"], [3, "Cy", 60, "Lyon"], [4, "Dee", 12, "Nice"]]}
-    listed = best("total amount from Paris and Lyon", [orders])
-    assert execute([orders], listed.sql) == [(189,)], listed.sql
-    # Negative: a value compared as text and as a number is one value, not a conflict.
+def test_a_value_compared_as_text_and_as_a_number_is_one_value():
+    """Review of the either-value rewrite (2026-10-02): a value compared as text and as a number is one value, not a
+    conflict (sql_ast.contradictory)."""
     from engine.sql_ast import BooleanExpr, contradictory
 
     code = ColumnRef("orders", "order ID", SQLType.TEXT)
@@ -5631,535 +2120,11 @@ def test_either_value_reads_only_listed_values():
     assert not contradictory(same)
 
 
-def test_a_count_over_times_and_a_share_word_that_names_a_thing():
-    """Review, 2026-10-02: "orders over 2 times" lost its count once "orders over 50" compared rows, and the
-    share cue summed "the highest share price" and "the highest percentage discount" and shared out "the %
-    discount on the Desk". A share is asked by "share of", "percentage of", "% of" or "as a percentage",
-    and it sums the measure the phrase after "of" names in full ("the share of the order amount")."""
-    customers = {"name": "customers", "columns": ["customer_id", "name"], "rows": [[1, "Ann"], [2, "Bob"], [3, "Cy"]]}
-    orders = {"name": "orders", "columns": ["order_id", "customer_id", "amount"], "rows": [
-        [10, 1, 5], [11, 1, 7], [12, 1, 70], [13, 2, 60], [14, 2, 3], [15, 3, 1]]}
-    fks = [{"from_table": "orders", "from_col": "customer_id", "to_table": "customers", "to_col": "customer_id"}]
-    repeat = best("Which customers have placed orders over 2 times?", [customers, orders], fks)
-    assert "HAVING COUNT(*) > 2" in repeat.sql and execute([customers, orders], repeat.sql) == [("Ann",)], repeat.sql
-    companies = {"name": "companies", "columns": ["company id", "name", "sector", "price"], "rows": [
-        [1, "Acme", "Tech", 10.0], [2, "Bolt", "Tech", 30.0], [3, "Crux", "Energy", 60.0]]}
-    products = {"name": "products", "columns": ["product id", "name", "category", "discount", "price"], "rows": [
-        [1, "Pen", "Office", 5, 2.0], [2, "Desk", "Furniture", 30, 200.0], [3, "Lamp", "Furniture", 15, 40.0]]}
-    for question, tables, expected in (
-            ("Which company has the highest share price?", [companies], 60.0),
-            ("Which product has the highest percentage discount?", [products], 30),
-            ("What is the % discount on the Desk?", [products], 30)):
-        candidate = best(question, tables)
-        assert "/" not in candidate.sql and execute(tables, candidate.sql)[0][-1] == expected, (question, candidate.sql)
-    sales = {"name": "orders", "columns": ["order ID", "customer", "amount", "city"], "rows": [
-        [1, "Ada", 100, "Paris"], [2, "Ben", 29, "Paris"], [3, "Cy", 60, "Lyon"], [4, "Dee", 18, "Nice"]]}
-    order_amount = best("What share of the order amount comes from Paris?", [sales])
-    assert abs(execute([sales], order_amount.sql)[0][0] - 129 / 207) < 1e-12, order_amount.sql
-    revenue = {"name": "revenue", "columns": ["month", "region", "revenue"], "rows": [
-        ["Jan", "North", 100], ["Feb", "North", 50], ["Jan", "South", 10], ["Feb", "South", 40]]}
-    regions = dict(execute([revenue], best("percentage of revenue by region", [revenue]).sql))
-    assert regions == {"North": 0.75, "South": 0.25}, regions
-    # Negative: "share" as a verb divides nothing, and a pattern's "%" is no percent.
-    shared = best("which customers share a city", [sales])
-    assert "/" not in shared.sql, shared.sql
-    from engine.sql_expansion import tokens
-
-    assert "percent" not in tokens("names like 'A%'")
-
-
-def test_a_lowercase_grammar_word_links_to_no_value():
-    """Spider world_1, 2026-10-02: "in", "and", "is" and "are" linked to the codes 'IN', 'AND', 'IS' and
-    'ARE' (India, Andorra, Iceland, the Emirates), so a question about countries in Asia filtered
-    Code = 'ARE', and one with two such words had no satisfiable reading at all. A grammar word in lower
-    case links to no value; one the question writes in capitals still does ("the division AS")."""
-    country = {"name": "country", "columns": ["Code", "Code2", "Name", "Continent", "Population"], "rows": [
-        ["ARE", "AE", "United Arab Emirates", "Asia", 2441000], ["AND", "AD", "Andorra", "Europe", 78000],
-        ["IND", "IN", "India", "Asia", 1013662000], ["ISL", "IS", "Iceland", "Europe", 279000],
-        ["CHN", "CN", "China", "Asia", 1277558000]]}
-    asia = best("how many countries are in Asia?", [country])
-    assert execute([country], asia.sql) == [(3,)], asia.sql
-    europe = best("What are the names of the countries that are in Europe and have a population of 78000?",
-                  [country])
-    assert not {"'AND'", "'ARE'", "'IN'", "'IS'"} & set(re.findall(r"'[A-Z]+'", europe.sql)), europe.sql
-    # Contrast: a value the question writes in capitals is that value.
-    departments = {"name": "department", "columns": ["DName", "Division", "Building"], "rows": [
-        ["History", "AS", "NEB"], ["Physics", "AS", "OLS"], ["Civil", "EN", "NEB"]]}
-    division = best("How many departments are in the division AS?", [departments])
-    assert execute([departments], division.sql) == [(2,)], division.sql
-    # Negative: a grammar word inside a longer value still belongs to it.
-    documents = {"name": "documents", "columns": ["Document_ID", "Document_Name"], "rows": [
-        [1, "Welcome to NY"], [2, "Robbin CV"]]}
-    named = best("Show the id of the document with name 'Welcome to NY'.", [documents])
-    assert execute([documents], named.sql) == [(1,)], named.sql
-
-
-def test_a_stated_comparison_on_an_aggregate_needs_no_where():
-    """Spider world_1 #796 (2026-10-02): "each government form whose average life expectancy is longer
-    than 72" reached HAVING AVG(...) > 72 only through a WHERE a bogus code link had built; the rewrite
-    reads the comparison from the question. A bare number is no such comparison ("top 2 shoppers by
-    total spend" keeps its ranking)."""
-    country = {"name": "country", "columns": ["Code", "GovernmentForm", "Population", "LifeExpectancy"], "rows": [
-        ["A", "Republic", 100, 80.0], ["B", "Republic", 50, 70.0], ["C", "Monarchy", 30, 60.0],
-        ["D", "Monarchy", 20, 66.0]]}
-    question = ("Find the government form name and total population for each government form whose average "
-                "life expectancy is longer than 72.")
-    candidate = best(question, [country])
-    rows = execute([country], candidate.sql)
-    assert "HAVING AVG(" in candidate.sql and rows in ([(150, "Republic")], [("Republic", 150)]), candidate.sql
-    spend = best("top 2 shoppers by total spend", RETAIL, RETAIL_FKS)
-    assert "HAVING" not in spend.sql, spend.sql
-
-
-def test_a_word_of_time_orders_by_a_date_and_a_name_part_places_nothing():
-    """Probe without generated SQL, 2026-10-02: "what are the first names of all students" returned one
-    row ordered by age (every "first" was a top-1 cue), "who is the first student to register" ordered by
-    age, and "what is the last transcript release date" kept no order. A word of time orders by the date
-    the question names, in its direction, as every Spider DEV question of that shape does; the "first" or
-    "last" of a name or an address line places nothing."""
-    students = {"name": "student", "columns": ["StuID", "first_name", "last_name", "age", "date_first_registered"],
-                "rows": [[1, "Ann", "Lee", 20, "2020-09-01"], [2, "Bo", "Kim", 22, "2019-09-01"],
-                         [3, "Cy", "Ng", 21, "2021-09-01"]]}
-    names = best("What are the first names of all students?", [students])
-    assert execute([students], names.sql) == [("Ann",), ("Bo",), ("Cy",)], names.sql
-    both = best("List the first and last name of all students", [students])
-    assert "LIMIT" not in both.sql and len(execute([students], both.sql)) == 3, both.sql
-    first = best("Who is the first student to register? List the first name.", [students])
-    assert execute([students], first.sql) == [("Bo",)], first.sql
-    transcripts = {"name": "transcripts", "columns": ["transcript_id", "transcript_date", "other_details"], "rows": [
-        [1, "2018-03-01", "a"], [2, "2019-07-01", "b"], [3, "2017-01-01", "c"]]}
-    last = best("What is the last transcript release date?", [transcripts])
-    assert execute([transcripts], last.sql) == [("2019-07-01",)], last.sql
-    # Contrast: a "by" target orders by itself ("the first 2 students by age").
-    by_age = best("List the first 2 students by age", [students])
-    assert 'ORDER BY "student"."age" ASC LIMIT 2' in by_age.sql, by_age.sql
-
-
-def test_a_table_joins_every_reading_only_when_named_together():
-    """Spider car_1, 2026-10-02: "how many car makers are there in each continent? List the continent
-    name and the count" named car_names by "car" and "name" far apart, every reading joined it through
-    model_list, and each maker counted once per car name. A several-word table joins every reading only
-    when its words come together ("car makers"), turned around with "of", or as its first word before one
-    of its columns ("the car makeid")."""
-    continents = {"name": "continents", "columns": ["ContId", "Continent"], "rows": [[1, "america"], [2, "europe"]]}
-    countries = {"name": "countries", "columns": ["CountryId", "CountryName", "Continent"], "rows": [
-        [1, "usa", 1], [2, "germany", 2], [3, "france", 2]]}
-    makers = {"name": "car_makers", "columns": ["Id", "Maker", "Country"], "rows": [
-        [1, "ford", 1], [2, "bmw", 2], [3, "renault", 3], [4, "audi", 2]]}
-    models = {"name": "model_list", "columns": ["ModelId", "Maker", "Model"], "rows": [
-        [1, 1, "mustang"], [2, 1, "focus"], [3, 2, "x5"]]}
-    names = {"name": "car_names", "columns": ["MakeId", "Model", "Make"], "rows": [
-        [1, "mustang", "ford mustang"], [2, "focus", "ford focus"], [3, "x5", "bmw x5"]]}
-    fks = [{"from_table": "countries", "from_col": "Continent", "to_table": "continents", "to_col": "ContId"},
-           {"from_table": "car_makers", "from_col": "Country", "to_table": "countries", "to_col": "CountryId"},
-           {"from_table": "model_list", "from_col": "Maker", "to_table": "car_makers", "to_col": "Id"},
-           {"from_table": "car_names", "from_col": "Model", "to_table": "model_list", "to_col": "Model"}]
-    tables = [continents, countries, makers, models, names]
-    candidate = best("How many car makers are there in each continents? List the continent name and the count.",
-                     tables, fks)
-    assert '"car_names"' not in candidate.sql and '"model_list"' not in candidate.sql, candidate.sql
-    counts = {next(value for value in row if isinstance(value, str)): row[-1] for row in execute(tables, candidate.sql)}
-    assert counts == {"america": 1, "europe": 3}, candidate.sql
-
-
-def test_an_order_of_names_its_target_as_by_does():
-    """Spider concert_singer, 2026-10-02: "the names, countries, and ages for every singer in descending
-    order of age" ordered by the stadium's Average and joined three tables for it. "Order of" names the
-    ordering column as "by" does."""
-    singer = {"name": "singer", "columns": ["Singer_ID", "Name", "Country", "Age"], "rows": [
-        [1, "Joe", "Netherlands", 52], [2, "Tribal", "United States", 29], [3, "Rose", "France", 41]]}
-    stadium = {"name": "stadium", "columns": ["Stadium_ID", "Location", "Capacity", "Highest", "Lowest", "Average"],
-               "rows": [[1, "Raith", 10104, 4812, 1294, 2106], [2, "Ayr", 4125, 1057, 331, 638]]}
-    concert = {"name": "concert", "columns": ["concert_ID", "Stadium_ID"], "rows": [[1, 1], [2, 2]]}
-    sung = {"name": "singer_in_concert", "columns": ["concert_ID", "Singer_ID"], "rows": [[1, 1], [2, 2], [2, 3]]}
-    fks = [{"from_table": "concert", "from_col": "Stadium_ID", "to_table": "stadium", "to_col": "Stadium_ID"},
-           {"from_table": "singer_in_concert", "from_col": "concert_ID", "to_table": "concert", "to_col": "concert_ID"},
-           {"from_table": "singer_in_concert", "from_col": "Singer_ID", "to_table": "singer", "to_col": "Singer_ID"}]
-    tables = [stadium, singer, concert, sung]
-    candidate = best("What are the names, countries, and ages for every singer in descending order of age?",
-                     tables, fks)
-    assert 'ORDER BY "singer"."Age" DESC' in candidate.sql and "JOIN" not in candidate.sql, candidate.sql
-    assert [row[-1] for row in execute(tables, candidate.sql)] == [52, 41, 29], candidate.sql
-
-
-def test_a_candidate_drops_a_key_echo_and_an_unread_join():
-    """Spider car_1 and cre_Doc_Template_Mgt, 2026-10-02: "the model of the car with the smallest amount of
-    horsepower" projected car_names.Model and model_list.Model, one value through a foreign key, and joined
-    model_list for it; "the template ids" projected Templates.Template_ID and Documents.Template_ID. Every
-    candidate projects a key once and keeps no joined table that nothing reads and the question does not
-    name; COUNT(*) keeps its joins, which make the rows it counts."""
-    names = {"name": "car_names", "columns": ["MakeId", "Model", "Make"], "rows": [
-        [1, "chevrolet", "chevrolet chevelle"], [2, "buick", "buick skylark"], [3, "chevrolet", "chevrolet impala"]]}
-    models = {"name": "model_list", "columns": ["ModelId", "Maker", "Model"], "rows": [
-        [1, 1, "chevrolet"], [2, 2, "buick"]]}
-    cars = {"name": "cars_data", "columns": ["Id", "Horsepower"], "rows": [[1, 130], [2, 95], [3, 220]]}
-    fks = [{"from_table": "car_names", "from_col": "Model", "to_table": "model_list", "to_col": "Model"},
-           {"from_table": "cars_data", "from_col": "Id", "to_table": "car_names", "to_col": "MakeId"}]
-    tables = [names, models, cars]
-    weakest = best("What is the model of the car with the smallest amount of horsepower?", tables, fks)
-    assert '"model_list"' not in weakest.sql and execute(tables, weakest.sql) == [("buick",)], weakest.sql
-    # Contrast: COUNT(*) counts the rows its joins make, and a named table stays joined.
-    from engine.sql_ast import Aggregate, Join, OrderTerm, SelectItem, SelectQuery, Star
-    from engine.sql_candidate import ScoredQuery
-
-    searcher = SQLSearcher.from_tables(tables, fks)
-    model = ColumnRef("model_list", "Model", SQLType.TEXT)
-    versions = SelectQuery((SelectItem(model),), "model_list",
-                           joins=(Join("car_names", ColumnRef("car_names", "Model", SQLType.TEXT), model),),
-                           group_by=(model,), order_by=(OrderTerm(Aggregate("COUNT", Star()), "DESC"),), limit=1)
-    counted = ScoredQuery(versions, render_query(versions), 1.0, ())
-    assert searcher._simplified(counted, set()).sql == counted.sql
-    echo = SelectQuery((SelectItem(ColumnRef("car_names", "Model", SQLType.TEXT)), SelectItem(model)), "car_names",
-                       joins=(Join("model_list", model, ColumnRef("car_names", "Model", SQLType.TEXT)),))
-    once = searcher._simplified(ScoredQuery(echo, render_query(echo), 1.0, ()), set())
-    assert once.sql == 'SELECT "car_names"."Model" FROM "car_names"', once.sql
-    named = searcher._simplified(ScoredQuery(echo, render_query(echo), 1.0, ()), {"model_list"})
-    assert '"model_list"' in named.sql and named.sql.count('"Model"') == 3, named.sql
-
-
-def test_a_listing_drops_a_key_that_repeats_a_read_table():
-    """Spider tvshow, 2026-10-02: "what is the content of TV Channel with serial name Sky Radio" projected
-    TV_series.Channel, which only repeats TV_Channel's id through the join, and joined TV_series for it;
-    "TV Channel" also counted as TV_series' first word before its Channel column. A listing drops a key
-    that repeats a table it reads for something else, and a word that names another table names that
-    table."""
-    channel = {"name": "TV_Channel", "columns": ["id", "series_name", "Content", "Language"], "rows": [
-        ["700", "Sky Radio", "music", "Italian"], ["701", "Sky Music", "music", "English"]]}
-    series = {"name": "TV_series", "columns": ["id", "Episode", "Channel"], "rows": [
-        [1, "A Love of a Lifetime", "700"], [2, "Friendly Skies", "700"], [3, "Blowback", "701"]]}
-    cartoon = {"name": "Cartoon", "columns": ["id", "Title", "Channel"], "rows": [[1, "The Rise of the Blue Beetle!", "701"]]}
-    fks = [{"from_table": "TV_series", "from_col": "Channel", "to_table": "TV_Channel", "to_col": "id"},
-           {"from_table": "Cartoon", "from_col": "Channel", "to_table": "TV_Channel", "to_col": "id"}]
-    tables = [channel, series, cartoon]
-    candidate = best('What is the content of TV Channel with serial name "Sky Radio"?', tables, fks)
-    assert "JOIN" not in candidate.sql and execute(tables, candidate.sql) == [("music",)], candidate.sql
-    # Contrast: the question's own rows keep their key. "The currency symbol for every order" lists each
-    # order's currency beside its symbol (tests.test_enrichment serving benchmark, 2026-10-02: ccab4dc
-    # dropped orders.currency as a repeat of the joined currency's code).
-    orders = {"name": "orders", "columns": ["order_id", "currency", "amount"], "rows": [
-        [1, "USD", 20], [2, "EUR", 30], [3, "GBP", 40]]}
-    currencies = {"name": "currency_iso4217", "columns": ["alphabetic_code", "symbol"], "rows": [
-        ["USD", "$"], ["EUR", "EUR"], ["GBP", "GBP"]]}
-    keyed = [{"from_table": "orders", "from_col": "currency", "to_table": "currency_iso4217",
-              "to_col": "alphabetic_code"}]
-    symbols = SQLSearcher.from_tables([orders, currencies], keyed).search("Show the currency symbol for every order")
-    gold = [("USD", "$"), ("EUR", "EUR"), ("GBP", "GBP")]
-    assert any(execute([orders, currencies], symbol.sql) == gold for symbol in symbols), [c.sql for c in symbols[:3]]
-
-
-def test_a_comparative_than_a_number_compares_the_measure_it_describes():
-    """Spider pets_1, 2026-10-02: "how many pets have a greater weight than 10", "the number of pets whose
-    weight is heavier than 10" and "the id and weight of every pet who is older than 1" matched no
-    comparison cue and dropped their filter. A comparative before "than" and a number compares the
-    column it describes, preferring the measure the word implies (older: age)."""
-    pets = {"name": "Pets", "columns": ["PetID", "PetType", "pet_age", "weight"], "rows": [
-        [2001, "cat", 3, 12.0], [2002, "dog", 2, 13.4], [2003, "dog", 1, 9.3]]}
-    for question, expected in (("How many pets have a greater weight than 10?", [(2,)]),
-                               ("Find the number of pets whose weight is heavier than 10.", [(2,)]),
-                               ("What is the id and weight of every pet who is older than 1?",
-                                [(2001, 12.0), (2002, 13.4)])):
-        candidate = best(question, [pets])
-        assert execute([pets], candidate.sql) == expected, (question, candidate.sql)
-    older = best("What is the id and weight of every pet who is older than 1?", [pets])
-    assert '"Pets"."pet_age" > 1' in older.sql, older.sql
-
-
-def test_a_contained_text_compares_the_lowered_values():
-    """Spider DEV, 2026-10-02: no reading had a substring filter, so "the contestants whose names contain
-    the substring 'Al'", "a song having 'Hey' in its name" and "the department whose name has the word
-    computer" dropped it ("'Al'" also became a state code 'AL'). A contained text compares
-    LOWER(column) LIKE '%al%', on the column that holds it; "includes the text 'Korea'" stays a whole
-    value."""
-    contestants = {"name": "CONTESTANTS", "columns": ["contestant_number", "contestant_name"], "rows": [
-        [1, "Alana"], [2, "Bob"], [3, "Kendall"], [4, "Jessie"]]}
-    states = {"name": "AREA_CODE_STATE", "columns": ["area_code", "state"], "rows": [[205, "AL"], [907, "AK"]]}
-    named = best("Return the names of the contestants whose names contain the substring 'Al' .", [contestants, states])
-    assert "LIKE '%al%'" in named.sql and execute([contestants, states], named.sql) == [("Alana",), ("Kendall",)], named.sql
-    singer = {"name": "singer", "columns": ["Singer_ID", "Name", "Country", "Song_Name"], "rows": [
-        [1, "Joe", "Netherlands", "You"], [2, "Timbaland", "US", "Dangerous"], [3, "Justin", "France", "Hey Oh"]]}
-    song = best("what is the name and nation of the singer who have a song having 'Hey' in its name?", [singer])
-    assert 'LOWER("singer"."Song_Name") LIKE \'%hey%\'' in song.sql, song.sql
-    departments = {"name": "Departments", "columns": ["department_id", "department_name", "department_description"],
-                   "rows": [[1, "computer science", "error"], [2, "history", "nihil"], [3, "art", "et"]]}
-    computing = best("What is the department description for the one whose name has the word computer?", [departments])
-    assert execute([departments], computing.sql) == [("error",)], computing.sql
-    # Contrast: "includes the text" names a whole value.
-    paragraphs = {"name": "Paragraphs", "columns": ["Paragraph_ID", "Paragraph_Text", "Other_Details"], "rows": [
-        [7, "Korea", "a"], [9, "North Korea", "b"]]}
-    korea = best("What are the details for the paragraph that includes the text 'Korea' ?", [paragraphs])
-    assert "LIKE" not in korea.sql and "\"Paragraph_Text\" = 'Korea'" in korea.sql, korea.sql
-
-
-def test_a_distinct_counted_noun_counts_the_column_it_names():
-    """Spider wta_1, 2026-10-02: "how many distinct countries do players come from" counted rows, since no
-    column was a mention of "countries". A noun after "distinct", "different" or "unique" counts, once
-    each, the column a word of whose name it is (players.country_code)."""
-    players = {"name": "players", "columns": ["player_id", "first_name", "country_code"], "rows": [
-        [1, "Serena", "USA"], [2, "Venus", "USA"], [3, "Angelique", "GER"], [4, "Simona", "ROU"]]}
-    countries = best("How many distinct countries do players come from?", [players])
-    assert "COUNT(DISTINCT" in countries.sql and execute([players], countries.sql) == [(3,)], countries.sql
-    # Contrast: without "distinct" a count counts the rows.
-    everyone = best("How many players are there?", [players])
-    assert execute([players], everyone.sql) == [(4,)], everyone.sql
-
-
-def test_a_having_reading_lists_in_the_question_order():
-    """Live suite without generated SQL, 2026-10-02: "cities with total sales over 100" served
-    [200, 'Osaka']: the sanitized HAVING reading put the total before the city it groups. It lists them in
-    the order the question names them (Spider writes some golds total-first against such wording: an
-    order-only difference)."""
-    sales = {"name": "s", "columns": ["city", "sales"], "rows": [
-        ["Osaka", 120], ["Osaka", 80], ["Tokyo", 50], ["Kyoto", 90]]}
-    cities = best("cities with total sales over 100", [sales])
-    assert execute([sales], cities.sql) == [("Osaka", 200)], cities.sql
-
-
-def test_a_superlative_of_only_its_measure_is_the_extreme_value():
-    """Live suite without generated SQL, 2026-10-02 (eval-formesign-termination-xlsx): "maximum notice_days"
-    served the first row ordered by notice_days, and the served ties turned it into a table. A row
-    superlative that lists only the column it orders, of a table the question does not name, is MAX or
-    MIN of it; one that names its entity keeps the row."""
-    terminations = {"name": "terminations", "columns": ["contract", "notice_days", "reason"], "rows": [
-        ["A", 30, "x"], ["B", 90, "y"], ["C", 90, "z"], ["D", 60, "x"]]}
-    longest = best("maximum notice_days", [terminations])
-    assert "MAX(" in longest.sql and execute([terminations], longest.sql) == [(90,)], longest.sql
-    shortest = best("minimum notice_days", [terminations])
-    assert "MIN(" in shortest.sql and execute([terminations], shortest.sql) == [(30,)], shortest.sql
-    # Contrast: the entity a question names stays its answer.
-    contract = best("Which contract has the longest notice_days?", [terminations])
-    assert "LIMIT 1" in contract.sql and execute([terminations], contract.sql)[0][0] in {"B", "C"}, contract.sql
-
-
-def test_a_year_column_compares_the_year_itself():
-    """Spider DEV, 2026-10-02: "the countries that became independent after 1950" and "the cars produced
-    after 1980" compared an integer year column with a date ('1951-01-01'), which validated nowhere, so the
-    search returned no reading at all (15 such questions). A column holding the year compares the year;
-    a date column still compares the year's first and last day."""
-    country = {"name": "country", "columns": ["Code", "Name", "IndepYear"], "rows": [
-        ["ARE", "United Arab Emirates", 1971], ["AFG", "Afghanistan", 1919], ["AGO", "Angola", 1975],
-        ["ALB", "Albania", 1912]]}
-    independent = best("What are the names of all the countries that became independent after 1950?", [country])
-    assert '"country"."IndepYear" > 1950' in independent.sql, independent.sql
-    assert sorted(execute([country], independent.sql)) == [("Angola",), ("United Arab Emirates",)], independent.sql
-    # Contrast: a date column compares the date.
-    orders = {"name": "orders", "columns": ["order_id", "placed", "amount"], "rows": [
-        [1, "2015-03-01", 10], [2, "2016-01-01", 20], [3, "2017-06-30", 30]]}
-    later = best("How many orders were placed after 2015?", [orders])
-    assert "'2016-01-01'" in later.sql and execute([orders], later.sql) == [(2,)], later.sql
-
-
-def test_an_unjoinable_projection_drops_out_of_the_reading():
-    """Spider dog_kennels, 2026-10-02: "the cost of each treatment and the corresponding treatment type
-    description" also read "type" as Charges.charge_type, a table no foreign key reaches, so no join
-    tree held the reading and the search returned nothing. A projected column or a named table that the
-    foreign keys do not reach from what the reading filters, aggregates, groups or orders drops out."""
-    treatments = {"name": "Treatments", "columns": ["treatment_id", "treatment_type_code", "cost_of_treatment"],
-                  "rows": [[1, "WALK", 567], [2, "VAC", 147], [3, "EXAM", 429]]}
-    types = {"name": "Treatment_Types", "columns": ["treatment_type_code", "treatment_type_description"],
-             "rows": [["EXAM", "Physical examination"], ["VAC", "Vaccination"], ["WALK", "Take for a Walk"]]}
-    charges = {"name": "Charges", "columns": ["charge_id", "charge_type", "charge_amount"],
-               "rows": [[1, "Daily Accommodation", 98], [2, "Drugs", 322]]}
-    fks = [{"from_table": "Treatments", "from_col": "treatment_type_code",
-            "to_table": "Treatment_Types", "to_col": "treatment_type_code"}]
-    tables = [treatments, types, charges]
-    candidate = best("List the cost of each treatment and the corresponding treatment type description.", tables, fks)
-    assert '"Charges"' not in candidate.sql, candidate.sql
-    assert sorted(execute(tables, candidate.sql)) == [(147, "Vaccination"), (429, "Physical examination"),
-                                                      (567, "Take for a Walk")], candidate.sql
-
-
-def test_two_values_a_child_table_holds_are_both():
-    """Spider world_1, 2026-10-02: "the number of nations that use English and Dutch" was read as either
-    language. Two values joined by "and" in a table that holds several rows per listed entity (the languages
-    of a country) are both, an INTERSECT; a column of the listed rows themselves stays either value (see
-    test_two_values_of_one_column_are_either). "Contain the paragraph text 'Brazil'" names a whole value."""
-    country = {"name": "country", "columns": ["Code", "Name"], "rows": [
-        ["CAN", "Canada"], ["FRA", "France"], ["GBR", "United Kingdom"]]}
-    languages = {"name": "countrylanguage", "columns": ["CountryCode", "Language"], "rows": [
-        ["CAN", "English"], ["CAN", "French"], ["FRA", "French"], ["GBR", "English"]]}
-    fks = [{"from_table": "countrylanguage", "from_col": "CountryCode", "to_table": "country", "to_col": "Code"}]
-    tables = [country, languages]
-    both = best("What is the number of nations that use English and French?", tables, fks)
-    assert "INTERSECT" in both.sql and execute(tables, both.sql) == [(1,)], both.sql
-    paragraphs = {"name": "Paragraphs", "columns": ["Paragraph_ID", "Document_ID", "Paragraph_Text"], "rows": [
-        [1, 10, "Brazil"], [2, 10, "Ireland"], [3, 20, "Brazil"]]}
-    contained = best("What are the ids of documents that contain the paragraph text 'Brazil'?", [paragraphs])
-    assert "LIKE" not in contained.sql and "= 'Brazil'" in contained.sql, contained.sql
-
-
-def test_a_key_said_whole_is_what_both_branches_show():
-    """Spider DEV 379, 380, 576, 2026-10-17: "What are the ids of documents that contain the paragraph text 'Brazil'
-    and 'Ireland'?" built the INTERSECT of the documents' descriptions, and "the id of the semester that had both
-    Masters and Bachelors students" of the semesters' descriptions: the branches showed the fields the question shares
-    a word with, never a key. A key every word of whose name is said ("ids of documents") is what each branch shows;
-    the documents' names, or the documents alone, show no key."""
-    documents = {"name": "Documents", "columns": ["Document_ID", "Document_Name", "Document_Description"], "rows": [
-        [10, "Plan", "Travel plan"], [20, "Notes", "Field notes"], [30, "Atlas", "Maps"]]}
-    paragraphs = {"name": "Paragraphs", "columns": ["Paragraph_ID", "Document_ID", "Paragraph_Text"], "rows": [
-        [1, 10, "Brazil"], [2, 10, "Ireland"], [3, 20, "Brazil"], [4, 30, "Ireland"]]}
-    fks = [{"from_table": "Paragraphs", "from_col": "Document_ID", "to_table": "Documents", "to_col": "Document_ID"}]
-    tables = [documents, paragraphs]
-    ids = best("What are the ids of documents that contain the paragraph text 'Brazil' and 'Ireland'?", tables, fks)
-    assert "INTERSECT" in ids.sql and execute(tables, ids.sql) == [(10,)], ids.sql
-    names = best("What are the names of documents that contain the paragraph text 'Brazil' and 'Ireland'?", tables, fks)
-    assert "INTERSECT" in names.sql and execute(tables, names.sql) != [(10,)], names.sql
-    from engine.sql_recursive import RecursiveQueryExpander
-    from engine.sql_schema import SchemaColumn, SchemaGraph
-    schema = SchemaGraph([SchemaColumn(ColumnRef("Documents", name, SQLType.TEXT)) for name in documents["columns"]],
-                         [])
-    shown = RecursiveQueryExpander(schema)._projection_columns
-    assert "Document_ID" in [column.name for column, _ in shown("the document ids", "Documents")]
-    assert "Document_ID" not in [column.name for column, _ in shown("Which documents mention Brazil?", "Documents")]
-
-
-def test_a_column_word_that_introduces_a_value_is_not_listed():
-    """Spider DEV, 2026-10-02: "which airline has abbreviation 'UAL'" listed the abbreviation beside the
-    airline, and "the names of cities that have a population between 160000 and 900000" the population
-    beside each name (30 readings listed the column they filtered). A column word before the value it
-    introduces, across "of", "the" or a comparison, or right after a data value ("'Brig' type ships"),
-    names the compared column; a second mention of the column still lists it."""
-    airlines = {"name": "airlines", "columns": ["uid", "Airline", "Abbreviation", "Country"], "rows": [
-        [1, "United Airlines", "UAL", "USA"], [2, "JetBlue Airways", "JetBlue", "USA"],
-        [3, "Air Canada", "ACA", "Canada"]]}
-    airline = best("Which airline has abbreviation 'UAL'?", [airlines])
-    assert execute([airlines], airline.sql) == [("United Airlines",)], airline.sql
-    abbreviation = best('What is the abbreviation of Airline "JetBlue Airways"?', [airlines])
-    assert execute([airlines], abbreviation.sql) == [("JetBlue",)], abbreviation.sql
-    city = {"name": "city", "columns": ["ID", "Name", "Population"], "rows": [
-        [1, "Kabul", 1780000], [2, "Qandahar", 237500], [3, "Herat", 186800], [4, "Amsterdam", 731200]]}
-    names = best("Return the names of cities that have a population between 160000 and 900000.", [city])
-    assert sorted(execute([city], names.sql)) == [("Amsterdam",), ("Herat",), ("Qandahar",)], names.sql
-    ship = {"name": "ship", "columns": ["id", "name", "ship_type", "tonnage"], "rows": [
-        [1, "Lettice", "Brig", 249], [2, "Bon Accord", "Brig", 300], [3, "Mary", "Schooner", 120]]}
-    brigs = best("What are the names of 'Brig' type ships?", [ship])
-    assert sorted(execute([ship], brigs.sql)) == [("Bon Accord",), ("Lettice",)], brigs.sql
-    # Contrast: the column named again in the list is listed.
-    both = best("Show the name and population of cities that have a population between 160000 and 900000.",
-                [city])
-    assert sorted(execute([city], both.sql)) == [("Amsterdam", 731200), ("Herat", 186800),
-                                                 ("Qandahar", 237500)], both.sql
-
-
-def test_the_words_of_a_column_name_are_no_value():
-    """Spider wta_1 and tvshow, 2026-10-02: "list the first and last name of all players" filtered on a
-    player whose last name is 'Last', and "the Package Option of TV Channel ..." on a package option
-    'Option' (8 readings filtered on the words of a column's name). Words that spell a several-word column
-    name name that column; the same words quoted are a value."""
-    players = {"name": "players", "columns": ["player_id", "first_name", "last_name", "hand"], "rows": [
-        [1, "Martina", "Hingis", "R"], [2, "Mirjana", "Last", "L"], [3, "Ana", "Jones", "R"]]}
-    names = best("List the last name of all players.", [players])
-    assert sorted(execute([players], names.sql)) == [("Hingis",), ("Jones",), ("Last",)], names.sql
-    channels = {"name": "TV_Channel", "columns": ["id", "series_name", "Package_Option"], "rows": [
-        [1, "Sky Radio", "Option"], [2, "Sky Music", "Sky Famiglia"]]}
-    option = best('What is the Package Option of TV Channel with serial name "Sky Radio"?', [channels])
-    assert "WHERE" in option.sql and '"Package_Option" =' not in option.sql, option.sql
-    assert execute([channels], option.sql) == [("Option",)], option.sql
-    # Contrast: the quoted value is compared, once.
-    quoted = best("Which channels have the package option 'Option'?", [channels])
-    assert quoted.sql.count("'Option'") == 1 and execute([channels], quoted.sql) == [("Option",)], quoted.sql
-
-
-def test_a_several_word_column_name_is_a_mention_where_it_is_said():
-    """Spider student_transcripts_tracking and wta_1, 2026-10-02: "list the first name, middle name, last
-    name" and "the first, middle, and last name" listed one of the names. Each column was a mention at the
-    last "name", so the three were one mention read three ways. A several-word name is a mention where the
-    question says it, and so is each modifier coordinated before a shared last word."""
-    students = {"name": "Students", "columns": ["student_id", "first_name", "middle_name", "last_name",
-                                                 "date_first_registered"], "rows": [
-        [1, "Timmothy", "Anna", "Ward", "1971-02-05"], [2, "Hobart", "Lorenz", "Bergnaum", "1976-10-26"],
-        [3, "Warren", "Violet", "Gibson", "1990-03-01"]]}
-    listed = best("List the first name, middle name, last name of all students.", [students])
-    assert sorted(execute([students], listed.sql)) == [
-        ("Hobart", "Lorenz", "Bergnaum"), ("Timmothy", "Anna", "Ward"), ("Warren", "Violet", "Gibson")], listed.sql
-    first = best("What is the first, middle, and last name of the first student to register?", [students])
-    assert execute([students], first.sql) == [("Timmothy", "Anna", "Ward")], first.sql
-    # Contrast: one modifier before the shared word is one column.
-    last = best("List the last name of all students.", [students])
-    assert sorted(execute([students], last.sql)) == [("Bergnaum",), ("Gibson",), ("Ward",)], last.sql
-
-
-def test_the_article_a_is_no_value():
-    """Spider student_transcripts_tracking, 2026-10-02: "who is enrolled in a Bachelor degree program"
-    also filtered on the section named 'a' (4 readings compared the article with a value). A lowercase "a"
-    is the article; a capital "A" after the first word is the value."""
-    classes = {"name": "classes", "columns": ["class_id", "student", "class_name", "program"], "rows": [
-        [1, "Ann", "a", "Bachelor"], [2, "Bob", "b", "Bachelor"], [3, "Cy", "a", "Master"]]}
-    enrolled = best("List the students enrolled in a Bachelor program.", [classes])
-    assert sorted(execute([classes], enrolled.sql)) == [("Ann",), ("Bob",)], enrolled.sql
-    # Contrast: the capital is the class.
-    in_a = best("List the students in class A.", [classes])
-    assert sorted(execute([classes], in_a.sql)) == [("Ann",), ("Cy",)], in_a.sql
-
-
-def test_a_value_compares_the_column_whose_words_introduce_it():
-    """Spider wta_1, 2026-10-02: "the players who are left / L hand" compared first_name = 'L', the first of
-    two columns holding 'L' by name, not the hand the question names beside it. The column whose words
-    introduce the value is the one compared."""
-    players = {"name": "players", "columns": ["player_id", "first_name", "last_name", "hand"], "rows": [
-        [1, "Martina", "Hingis", "R"], [2, "Mirjana", "Lucic", "L"], [3, "L", "Jones", "R"]]}
-    left = best("List the first and last name of all players who are left / L hand.", [players])
-    assert execute([players], left.sql) == [("Mirjana", "Lucic")], left.sql
-    # Contrast: the first name that introduces 'L' is compared.
-    named = best("List the last name of the players whose first name is L.", [players])
-    assert execute([players], named.sql) == [("Jones",)], named.sql
-
-
-def test_a_value_stated_once_is_compared_once():
-    """Spider concert_singer, 2026-10-02: "how many concerts are there in year 2014 or 2015" counted the
-    concerts whose year and whose singers' song release year were both 2014 or 2015, joining the singers
-    (10 readings compared one stated value on two columns). A value is compared in as many AND-ed terms
-    as the question states it; one term may still compare it on two columns."""
-    concert = {"name": "concert", "columns": ["concert_ID", "concert_Name", "Year"], "rows": [
-        [1, "Auditions", 2014], [2, "Bootcamp", 2015], [3, "Home Visits", 2016], [4, "Week 1", 2014]]}
-    singer = {"name": "singer", "columns": ["Singer_ID", "Name", "Song_release_year"], "rows": [
-        [1, "Joe Sharp", 2014], [2, "Timbaland", 2008]]}
-    links = {"name": "singer_in_concert", "columns": ["concert_ID", "Singer_ID"], "rows": [[1, 1], [2, 2], [4, 2]]}
-    fks = [{"from_table": "singer_in_concert", "from_col": "concert_ID", "to_table": "concert",
-            "to_col": "concert_ID"},
-           {"from_table": "singer_in_concert", "from_col": "Singer_ID", "to_table": "singer", "to_col": "Singer_ID"}]
-    tables = [concert, singer, links]
-    counted = best("How many concerts are there in year 2014 or 2015?", tables, fks)
-    assert "JOIN" not in counted.sql and execute(tables, counted.sql) == [(3,)], counted.sql
-    # Contrast: one OR term compares the value on either column.
-    either = best("What are the names of singers whose song release year is 2014 or whose concert year is 2014?",
-                  tables, fks)
-    assert sorted(execute(tables, either.sql)) == [("Joe Sharp",), ("Timbaland",)], either.sql
-
-
-def test_a_column_is_named_without_the_word_of_its_kind():
-    """Spider dog_kennels, 2026-10-02: "the emails of the professionals who live in the state of Hawaii or
-    the state of Wisconsin" and "their role, street, city and state" listed no email_address or role_code:
-    a several-word column was a mention only with every word said. The words of a column's kind (code,
-    number, address, date, ...) may go unsaid when the others say what its values are; "of" or a table's
-    word says nothing ("the cost of each treatment" names no date_of_treatment)."""
-    professionals = {"name": "Professionals", "columns": ["professional_id", "role_code", "email_address",
-                                                          "city", "state"], "rows": [
-        [1, "Employee", "deanna@example.com", "West Heidi", "Indiana"],
-        [2, "Employee", "lucile@example.com", "North Odellfurt", "Hawaii"],
-        [3, "Veterenarian", "uboehm@example.org", "Domenickton", "Wisconsin"]]}
-    emails = best("List the emails of the professionals who live in the state of Hawaii or the state of "
-                  "Wisconsin.", [professionals])
-    assert sorted(execute([professionals], emails.sql)) == [("lucile@example.com",), ("uboehm@example.org",)], \
-        emails.sql
-    roles = best("Find the role, city and state of the professionals.", [professionals])
-    assert sorted(execute([professionals], roles.sql))[0] == ("Employee", "North Odellfurt", "Hawaii"), roles.sql
-    # Contrast: a column named by "date" and "of" is not named by "of".
-    treatments = {"name": "Treatments", "columns": ["treatment_id", "date_of_treatment", "cost_of_treatment"],
-                  "rows": [[1, "2018-03-19", 567], [2, "2018-03-15", 147]]}
-    costs = best("List the cost of each treatment.", [treatments])
-    assert sorted(execute([treatments], costs.sql)) == [(147,), (567,)], costs.sql
-    # Contrast: a word two columns of a table share names neither ("the name of tourney" is no date).
-    matches = {"name": "matches", "columns": ["match_id", "tourney_name", "tourney_date"], "rows": [
-        [1, "Auckland", "2013-01-01"], [2, "Auckland", "2013-01-02"], [3, "Brisbane", "2013-01-03"]]}
-    tourneys = best("Find the name of tourney that has more than 1 matches.", [matches])
-    assert execute([matches], tourneys.sql) == [("Auckland",)], tourneys.sql
-
-
 def test_a_plural_reads_as_its_singular_everywhere():
     """Spider DEV, 2026-10-02: five modules each kept a copy of one plural rule, which read "courses" as
     "cours", "matches" as "matche" and "finishes" as "finishe", so "the course", "the match" and "the best
-    finishes" named no Courses, matches or Best_Finish. sql_schema.canon is the one rule the search, its
-    expansions, the ranker and the value index read with; "-ss" and short words keep their "s"."""
+    finishes" named no Courses, matches or Best_Finish. sql_schema.canon is the one rule every reader of
+    words and the value index read with; "-ss" and short words keep their "s"."""
     from engine.sql_schema import canon
 
     for singular, plural in (("course", "courses"), ("match", "matches"), ("branch", "branches"),
@@ -6168,179 +2133,6 @@ def test_a_plural_reads_as_its_singular_everywhere():
         assert canon(singular) == canon(plural) == singular, (singular, plural, canon(plural))
     # Contrast: a word that ends in "ss", or a short one, keeps its "s".
     assert (canon("bus"), canon("class"), canon("business")) == ("bus", "class", "business")
-    players = {"name": "poker_player", "columns": ["Poker_Player_ID", "Name", "Best_Finish", "Earnings"],
-               "rows": [[1, "Aleksey", 1, 476000], [2, "Maksim", 2, 133833], [3, "Yevgeni", 2, 104871]]}
-    finishes = best("List the best finishes of all poker players.", [players])
-    assert sorted(execute([players], finishes.sql)) == [(1,), (2,), (2,)], finishes.sql
-
-
-def test_a_key_named_by_the_table_it_references_needs_its_whole_name():
-    """Spider cre_Doc_Template_Mgt, 2026-10-02: "show all document names using templates with template type
-    code BK" listed Documents.Template_ID beside the names: "templates" was a mention of the foreign key
-    named by the table it references, and "code" counted as asking for keys. That table's word names the
-    table, which the join reaches; the key is a mention only where the question says its whole name ("the
-    template ids", "the ids of the documents")."""
-    templates = {"name": "Templates", "columns": ["Template_ID", "Version_Number", "Template_Type_Code"],
-                 "rows": [[1, 5, "BK"], [4, 4, "PP"], [6, 2, "BK"]]}
-    documents = {"name": "Documents", "columns": ["Document_ID", "Template_ID", "Document_Name"], "rows": [
-        [0, 6, "Introduction of OS"], [1, 1, "Understanding DB"], [3, 4, "Summer Show"]]}
-    fks = [{"from_table": "Documents", "from_col": "Template_ID", "to_table": "Templates", "to_col": "Template_ID"}]
-    tables = [templates, documents]
-    names = best("Show all document names using templates with template type code BK.", tables, fks)
-    assert sorted(execute(tables, names.sql)) == [("Introduction of OS",), ("Understanding DB",)], names.sql
-    ids = best("What are the ids of the documents using templates with template type code BK?", tables, fks)
-    assert sorted(execute(tables, ids.sql)) == [(0,), (1,)], ids.sql
-    # Contrast: the whole name lists the key.
-    keyed = best("Show the document names and their template ids.", tables, fks)
-    assert sorted(execute(tables, keyed.sql)) == [("Introduction of OS", 6), ("Summer Show", 4),
-                                                  ("Understanding DB", 1)], keyed.sql
-
-
-def test_a_denial_is_read_by_what_it_denies():
-    """Spider DEV, 2026-10-02: all 40 of the search's set-operation misfires were the extrema difference
-    (an EXCEPT on a fixed 51-point base). "The average age of students who do not have any pet" listed raw
-    ages, since an EXCEPT of values cannot carry the asked aggregate; "the teachers whose hometown is not
-    Little Lever Urban District" was a difference of grades, not the row's own value unequal; and "students
-    who do not have a cat pet" excluded the students whose pet is NOT a cat. An aggregate or a count leaves
-    the anti-join that keeps it, a denied value of the listed rows is "!=", and the excluded rows are those
-    the denial names."""
-    student = {"name": "Student", "columns": ["StuID", "LName", "Major", "Age"], "rows": [
-        [1001, "Smith", 600, 18], [1002, "Kim", 600, 19], [1003, "Jones", 600, 21], [1004, "Kumar", 600, 20],
-        [1005, "Gompers", 520, 26]]}
-    has_pet = {"name": "Has_Pet", "columns": ["StuID", "PetID"], "rows": [[1001, 2001], [1002, 2002],
-                                                                         [1002, 2003]]}
-    pets = {"name": "Pets", "columns": ["PetID", "PetType", "pet_age", "weight"], "rows": [
-        [2001, "cat", 3, 12.0], [2002, "dog", 2, 13.4], [2003, "dog", 1, 9.3]]}
-    fks = [{"from_table": "Has_Pet", "from_col": "StuID", "to_table": "Student", "to_col": "StuID"},
-           {"from_table": "Has_Pet", "from_col": "PetID", "to_table": "Pets", "to_col": "PetID"}]
-    tables = [student, has_pet, pets]
-    average = best("Find the average age of students who do not have any pet.", tables, fks)
-    assert [round(value, 6) for (value,) in execute(tables, average.sql)] == [22.333333], average.sql
-    no_cat = best("Find the last names of students who do not have a cat pet.", tables, fks)
-    assert sorted(execute(tables, no_cat.sql)) == [("Gompers",), ("Jones",), ("Kim",), ("Kumar",)], no_cat.sql
-    teacher = {"name": "teacher", "columns": ["Teacher_ID", "Name", "Age", "Hometown"], "rows": [
-        [1, "Joseph Huts", 32, "Blackrod Urban District"], [2, "Gustaaf Deloor", 29, "Bolton County Borough"],
-        [3, "Vicente Carretero", 26, "Little Lever Urban District"]]}
-    arrange = {"name": "course_arrange", "columns": ["Course_ID", "Teacher_ID", "Grade"], "rows": [
-        [2, 1, 1], [3, 2, 3], [4, 3, 2]]}
-    course = {"name": "course", "columns": ["Course_ID", "Staring_Date", "Course"], "rows": [
-        [2, "6 May", "Science"], [3, "7 May", "English"], [4, "9 May", "Art"]]}
-    teacher_fks = [
-        {"from_table": "course_arrange", "from_col": "Teacher_ID", "to_table": "teacher", "to_col": "Teacher_ID"},
-        {"from_table": "course_arrange", "from_col": "Course_ID", "to_table": "course", "to_col": "Course_ID"}]
-    teachers = [teacher, arrange, course]
-    elsewhere = best("List the name of teachers whose hometown is not Little Lever Urban District.", teachers,
-                     teacher_fks)
-    assert sorted(execute(teachers, elsewhere.sql)) == [("Gustaaf Deloor",), ("Joseph Huts",)], elsewhere.sql
-
-
-def test_a_ranking_measure_is_not_an_asked_aggregate():
-    """tests.test_complex_datasets, 2026-10-02: "find the top 3 products by units sold and the top 2 customers by
-    total spend, then list each pair where that customer has never bought that product" stopped asking for a
-    decomposition. "Total" in "by total spend" read as an asked aggregate, which leaves a denial no difference,
-    and the compound reading went with it (engine/decomposition.compound_candidate). An aggregate word after
-    "by" names the measure the rows are ranked by; an aggregate the question asks of the rows left still
-    takes the anti-join that keeps it."""
-    from engine.decomposition import compound_candidate
-
-    student = {"name": "Student", "columns": ["StuID", "LName", "Major", "Age"], "rows": [
-        [1001, "Smith", 600, 18], [1002, "Kim", 600, 19], [1003, "Jones", 600, 21], [1004, "Kumar", 600, 20],
-        [1005, "Gompers", 520, 26]]}
-    has_pet = {"name": "Has_Pet", "columns": ["StuID", "PetID"], "rows": [[1001, 2001], [1002, 2002],
-                                                                         [1002, 2003]]}
-    pets = {"name": "Pets", "columns": ["PetID", "PetType", "pet_age", "weight"], "rows": [
-        [2001, "cat", 3, 12.0], [2002, "dog", 2, 13.4], [2003, "dog", 1, 9.3]]}
-    fks = [{"from_table": "Has_Pet", "from_col": "StuID", "to_table": "Student", "to_col": "StuID"},
-           {"from_table": "Has_Pet", "from_col": "PetID", "to_table": "Pets", "to_col": "PetID"}]
-    tables = [student, has_pet, pets]
-    ranked = SQLSearcher.from_tables(tables, fks).search(
-        "Find the top 2 majors by total age, then list the last names of students who do not have any pet.")
-    assert compound_candidate(ranked) is not None, ranked[0].sql
-    total = best("Find the total age of students who do not have any pet.", tables, fks)
-    assert execute(tables, total.sql) == [(67,)], total.sql
-
-
-def test_a_total_by_month_groups_by_the_year_month():
-    """2026-10-02: "total amount by month" and "monthly total amount" were one ungrouped total, "how many orders
-    per month" was grouped by customer, and "which month had the highest total amount" was the overall total. A
-    month groups by the year-month of the date column, so August 2025 and August 2026 stay two rows, read in
-    calendar order. A month the question names still filters, another grouping is unchanged, a text column
-    named month is that column, and a spelled column name holding "monthly" asks for no month."""
-    orders = {"name": "orders", "columns": ["order_id", "customer", "city", "date", "amount"], "rows": [
-        [1, "Ada", "Paris", "2026-07-03", 40], [2, "Bo", "Lyon", "2026-07-15", 25],
-        [3, "Ada", "Paris", "2026-08-01", 60], [4, "Cy", "Nice", "2026-08-20", 30],
-        [5, "Bo", "Lyon", "2026-08-28", 45], [6, "Cy", "Nice", "2025-08-09", 67]]}
-    tables = [orders]
-    for question in ("total amount by month", "monthly total amount", "What is the total amount for each month?"):
-        answer = best(question, tables)
-        assert execute(tables, answer.sql) == [("2025-08", 67), ("2026-07", 65), ("2026-08", 135)], (question,
-                                                                                                    answer.sql)
-    per_month = best("how many orders per month", tables)
-    assert execute(tables, per_month.sql) == [("2025-08", 1), ("2026-07", 2), ("2026-08", 3)], per_month.sql
-    top = best("which month had the highest total amount", tables)
-    assert execute(tables, top.sql) == [("2026-08", 135)], top.sql
-    # The coverage gate reads "month" as realized only where the query groups by the year-month.
-    from engine.sql_dates import realized_month_words
-    assert {"month", "monthly"} <= realized_month_words("monthly total amount", top.sql)
-    assert not realized_month_words("total amount by month", 'SELECT SUM("orders"."amount") FROM "orders"')
-    # Contrastive: a named month filters, and a grouping by city stays one.
-    august = best("total amount in August", tables)
-    assert execute(tables, august.sql) == [(202,)], august.sql
-    by_city = best("total amount by city", tables)
-    assert sorted(execute(tables, by_city.sql)) == [("Lyon", 70), ("Nice", 97), ("Paris", 100)], by_city.sql
-    # Negative: a text column named month groups as that column; a spelled "Avg. monthly searches" beside a
-    # date column asks for no month.
-    leads = {"name": "leads", "columns": ["lead_id", "month", "contacted", "balance"], "rows": [
-        [1, "may", "2026-05-03", 100], [2, "jun", "2026-06-11", 50], [3, "may", "2026-05-20", 30]]}
-    by_text_month = best("total balance by month", [leads])
-    assert sorted(execute([leads], by_text_month.sql)) == [("jun", 50), ("may", 130)], by_text_month.sql
-    keywords = {"name": "keywords", "columns": ["Keyword", "Avg. monthly searches", "Checked"], "rows": [
-        ["forklift checklist", 5000, "2026-08-01"], ["forklift inspection", 500, "2026-09-01"]]}
-    searches = best("total of the avg. monthly searches", [keywords])
-    assert execute([keywords], searches.sql) == [(5500,)], searches.sql
-
-
-def test_same_shaped_tabs_answer_a_stated_keyword():
-    """A customer's keyword-planner workbook, 2026-10-02: three tabs shaped alike (Forklift, Checklist and
-    Inspection, each with Keyword, Avg. monthly searches, Top of page bid (low range), ...) gave "total of the
-    avg. monthly searches for forklift inspection" no reading at all ("planner: no valid AST candidate"), and the
-    Forklift tab alone summed it and averaged it too. The keyword 'forklift inspection' named the Forklift and
-    Inspection tabs, which no key joins; "of" in "Top of page bid" qualified "the avg. monthly searches" as
-    another entity's, so the column was never named; and "avg" in its name read as an average beside the asked
-    total. A spelled column name's aggregate word still asks the aggregate when no other word does."""
-    columns = ["Keyword", "Avg. monthly searches", "Competition", "Top of page bid (low range)"]
-
-    def tab(name, rows):
-        return {"name": name, "columns": columns, "rows": [list(row) for row in rows]}
-
-    forklift = tab("Forklift", [("forklift inspection", 500, "Medium", 3.47),
-                                ("forklift inspection checklist", 5000, "High", 1.37),
-                                ("forklift checklist", 5000, "High", 1.37)])
-    checklist = tab("Checklist", [("forklift inspection checklist", 5000, "High", 1.37),
-                                  ("daily checklist", 500, "Low", 0.80)])
-    inspection = tab("Inspection", [("forklift inspection", 500, "Medium", 3.47),
-                                    ("home inspection", 50000, "High", 4.20)])
-    workbook = [forklift, checklist, inspection]
-    for tables in ([forklift], workbook):
-        answer = best("total of the avg. monthly searches for forklift inspection", tables)
-        assert execute(tables, answer.sql) == [(500,)], answer.sql
-    volume = best("What is the total search volume for forklift inspection checklist", workbook)
-    assert execute(workbook, volume.sql) == [(5000,)], volume.sql
-    # The screenshot's follow-up paraphrase after the assistant asked whether to total "average
-    # monthly searches" must survive the same multi-tab workbook and preserve the exact keyword.
-    planner = _hermetic_planner()
-    for question in (
-        "total of the avg. monthly searches for forklift inspection checklist",
-        "total avg monthly searches for forklift inspection checklist",
-        "sum of average monthly searches for forklift inspection checklist",
-    ):
-        served = planner.serve(workbook, question)
-        assert served["valid"], (question, served)
-        assert served["result"]["rows"] == [[5000]], (question, served["sql"])
-    orders = {"name": "orders", "columns": ["City", "Total Amount"],
-              "rows": [["Paris", 10], ["Paris", 20], ["Lyon", 5]]}
-    paris = best("What is the total amount in Paris?", [orders])
-    assert execute([orders], paris.sql) == [(30,)], paris.sql
 
 
 def _subscription_workbook(extra_si_column=False, exports=None):
@@ -6379,44 +2171,43 @@ def _subscription_workbook(extra_si_column=False, exports=None):
 
 
 def test_tabs_of_one_layout_are_read_as_one():
-    """A customer's Stripe workbook, 2026-10-04: three subscription exports with one layout and a report of each
-    left "What is the total Amount broken down by Plan and Currency?" no reading at all. "total" read as the first
-    word of the reports' Total Amount, so the exports' Amount was no mention, and each word's options were cut to
-    four across six tabs that no key joins. Copies of one layout are searched as one: the tab the question names,
-    else the first holding a value it states, else the first sent (the Sheets add-on sends the active tab first),
-    and the answer says which it read."""
+    """A customer's Stripe workbook, 2026-10-04: three subscription exports with one layout and a report of each.
+    An answer from one of the copies says which it read, and the others that could answer, so it is not taken for
+    the workbook's total; not when the question names the tab (engine/tables.py _unread_copies,
+    SchemaGraph.layout_copies)."""
     workbook = _subscription_workbook()
     question = "What is the total Amount broken down by Plan and Currency?"
-    answer = best(question, workbook)
-    assert answer.query.referenced_tables() == {"NT"}, answer.sql
-    assert sorted(execute(workbook, answer.sql)) == [("price_a", "eur", 9), ("price_a", "usd", 20), ("price_b", "eur", 7), ("price_b", "usd", 8)], answer.sql
-    # Same profile, another copy: the tab the question names, or the one holding the value it states.
-    named = best("What is the total Amount in SI by Plan?", workbook)
-    assert sorted(execute(workbook, named.sql)) == [("price_c", 45), ("price_g", 40)], named.sql
-    held = best("total Amount for Payment Form - Monthly by Currency", workbook)
-    assert sorted(execute(workbook, held.sql)) == [("eur", 4), ("usd", 3)], held.sql
-    # The served answer names the tab it read, and the others that could answer; not when the question names it.
+    by_plan = ('SELECT "{t}"."Plan", "{t}"."Currency", SUM("{t}"."Amount") FROM "{t}" '
+               'GROUP BY "{t}"."Plan", "{t}"."Currency"')
+    in_si = "What is the total Amount in SI by Plan?"
     planner = _hermetic_planner()
+    planner.pool = {question: [_model_query(planner, by_plan.format(t="NT"), workbook)],
+                    in_si: [_model_query(planner, 'SELECT "SI"."Plan", SUM("SI"."Amount") FROM "SI" GROUP BY "SI"."Plan"',
+                                         workbook)]}
     served = planner.serve(workbook, question)
     assert sorted(map(tuple, served["result"]["rows"])) == [("price_a", "eur", 9), ("price_a", "usd", 20), ("price_b", "eur", 7), ("price_b", "usd", 8)], served["sql"]
     assert served["layout_copies"] == {"read": ["NT"], "others": ["SI", "FF"]}, served.get("layout_copies")
-    assert "layout_copies" not in planner.serve(workbook, "What is the total Amount in SI by Plan?")
+    named = planner.serve(workbook, in_si)
+    assert sorted(map(tuple, named["result"]["rows"])) == [("price_c", 45), ("price_g", 40)], named["sql"]
+    assert "layout_copies" not in named
     # A near copy (SI with one more column) is named too; another table that merely has the column read is not.
-    near = planner.serve(_subscription_workbook(extra_si_column=True), question)
+    near_workbook = _subscription_workbook(extra_si_column=True)
+    planner.pool = [_model_query(planner, by_plan.format(t="NT"), near_workbook)]
+    near = planner.serve(near_workbook, question)
     assert set(near["layout_copies"]["others"]) == {"NT", "SI", "FF"} - set(near["layout_copies"]["read"]), near.get("layout_copies")
     customers = {"name": "customers", "columns": ["customer_id", "name", "country"],
                  "rows": [["c1", "Ada", "France"], ["c2", "Lin", "Japan"]]}
     suppliers = {"name": "suppliers", "columns": ["supplier_id", "name", "country"],
                  "rows": [["s1", "Acme", "Germany"], ["s2", "Bolt", "France"]]}
+    planner.pool = [_model_query(planner, 'SELECT "customers"."country" FROM "customers"', [customers, suppliers])]
     listed = planner.serve([customers, suppliers], "list the countries")
-    assert listed["valid"] and listed["sql"] == 'SELECT "customers"."country" FROM "customers"', listed["sql"]
-    assert "layout_copies" not in listed, listed.get("layout_copies")
+    assert listed["valid"] and "layout_copies" not in listed, listed.get("layout_copies")
     # The narrowed graph keeps its parent's value index for the tables it keeps.
     graph = SchemaGraph.from_tables(workbook, [])
     kept = [column for column in graph.columns if column.ref.table not in {"SI", "FF"}]
     assert graph.without(frozenset({"SI", "FF"})).value_index == SchemaGraph(kept, graph.foreign_keys).value_index
     # Negative: tables with one layout that foreign keys reference are different things (two code lookups),
-    # and so are lists of one or two columns (test_encoder_role_signal_breaks_ambiguous_column_tie).
+    # and so are lists of one or two columns.
     main = {"name": "main", "columns": ["id", "a_code", "b_code"], "rows": [[1, "x", "p"], [2, "y", "p"]]}
     lookups = [{"name": name, "columns": ["code", "description", "active"], "rows": rows}
                for name, rows in (("ref_a", [["x", "Ex", 1], ["y", "Why", 1]]),
@@ -6427,19 +2218,6 @@ def test_tabs_of_one_layout_are_read_as_one():
     assert keyed.layout_copies == ()
     lists = [{"name": name, "columns": ["code", "description"], "rows": [["x", "Ex"]]} for name in ("ref_a", "ref_b")]
     assert SchemaGraph.from_tables(lists, []).layout_copies == ()
-
-
-def test_a_counted_noun_naming_an_unjoined_column_counts_the_rows():
-    """The owner's six-tab Stripe workbook (2026-10-05): "How many subscriptions are there by Status?" named the
-    report tabs' Subscriptions column, which no key joins to the exports' Status. Every reading grouped by both
-    and none could run, so the question had no reading. A projected column the group's table cannot reach is not
-    grouped with it and drops out; the completeness check reads the counted noun as the rows counted."""
-    workbook = _subscription_workbook()
-    question = "How many subscriptions are there by Status?"
-    answer = best(question, workbook)
-    assert sorted(execute(workbook, answer.sql)) == [("active", 4), ("canceled", 1)], answer.sql
-    served = _hermetic_planner().serve(workbook, question)
-    assert served["valid"] and sorted(map(tuple, served["result"]["rows"])) == [("active", 4), ("canceled", 1)], served
 
 
 def test_a_sum_over_rows_its_joins_repeat_is_served_only_when_every_reading_is_one():
@@ -6456,6 +2234,12 @@ def test_a_sum_over_rows_its_joins_repeat_is_served_only_when_every_reading_is_o
                ("price_c", "Formesign - Pro", "usd", 20, "canceled")]})
     question = "What is the total Amount broken down by Plan and Currency?"
     planner = _hermetic_planner()
+    reported = _model_query(planner, (
+        'SELECT "NT"."Plan", "NT"."Currency", SUM("NT_Report"."Total Amount") FROM "NT" JOIN "NT_Report" '
+        'ON "NT"."Product" = "NT_Report"."Product" GROUP BY "NT"."Plan", "NT"."Currency"'), workbook, score=1.0)
+    own = _model_query(planner, ('SELECT "NT"."Plan", "NT"."Currency", SUM("NT"."Amount") FROM "NT" '
+                                 'GROUP BY "NT"."Plan", "NT"."Currency"'), workbook)
+    planner.pool = [reported, own]
     selection = _select(planner, question, workbook)
     first = selection.ranking[0]
     assert 'SUM("NT_Report"."Total Amount")' in selection.pool[first].sql and selection.double_counted[first], (
@@ -6477,82 +2261,56 @@ def test_a_sum_over_rows_its_joins_repeat_is_served_only_when_every_reading_is_o
     assert only.double_counted == (True,) and only.selected == 0 and only.record()["double_counted"]
 
 
-def _keyword_planner_tabs():
-    """Three Google Ads Keyword Planner exports, the first with a column its owner added: a customer's Keyword Stats
-    workbook (2026-10-05). The values are made up."""
-    columns = ["Keyword", "Currency", "Avg. monthly searches", "Three month change", "Competition",
-               "Competition (indexed value)", "Top of page bid (low range)", "Top of page bid (high range)",
-               "Searches: Sep 2026"]
+def test_a_long_question_the_readers_decline_is_decomposed():
+    """In an analysis, a question longer than decomposition.ONE_QUERY_WORDS words that the readers decline asks for a
+    decomposition proposal (the complex demos' two-ranking prompts, which the readers read as one query they were not
+    confident of, 2026-10-20). Contrast: the same decline of a short question is asked about, and outside an analysis
+    a long one is too."""
+    from engine.decomposition import ONE_QUERY_WORDS
+    from engine.deterministic.context import analysis_execution_context
 
-    def rows(keywords):
-        return [[keyword, "USD", volume, "0%", "Low", index, 0.5 + index, 2.0 + index, volume]
-                for index, (keyword, volume) in enumerate(keywords)]
-
-    checklist = rows([("fire extinguisher audit checklist", 5000), ("home inspection checklist", 5000),
-                      ("balcony inspection checklist", 500)])
-    return [{"name": "Checklist", "columns": [columns[0], "shortlist", *columns[1:]],
-             "rows": [[row[0], "Yes" if index == 1 else None, *row[1:]] for index, row in enumerate(checklist)]},
-            {"name": "Forklift", "columns": columns,
-             "rows": rows([("forklift inspection checklist", 500), ("forklift daily checklist", 50)])},
-            {"name": "Inspection", "columns": columns,
-             "rows": rows([("home inspection", 50000), ("home inspection checklist", 5000), ("roof inspection", 5000)])}]
-
-
-def test_a_question_no_reading_reads_whole_is_asked_about_the_word_it_could_not_read():
-    """A customer's Keyword Stats workbook (2026-10-05): "keyword volume for home inspection checklist" read Keyword and
-    the keyword but not "volume". Nothing was served, and the reply asked "Which interpretation should I use?" with
-    nothing to choose. The reply names the word and offers the columns of the reading's table it could mean: numeric
-    ones for a quantity word, undated before dated copies of a measure."""
-    tabs = _keyword_planner_tabs()
-    planner = _hermetic_planner()
-    served = planner.serve(tabs, "keyword volume for home inspection checklist")
-    assert served["clarify"] is True and served["error"] is None and served["dropped"] == ["volume"], served
-    assert served["reason"] == ("I couldn't tell which column “volume” means. Did you mean Avg. monthly searches, "
-                                "Competition (indexed value), Top of page bid (low range) or Top of page bid (high "
-                                "range)?"), served["reason"]
-    # Contrast: the column's own name answers.
-    named = planner.serve(tabs, "avg. monthly searches for home inspection checklist")
-    assert named["result"]["rows"] == [[5000]] and "clarify" not in named, named
-    # A word that asks for no number is offered every column the reading does not read.
-    trend = planner.serve(tabs, "keyword trend for home inspection checklist")
-    assert trend["reason"] == ("I couldn't tell which column “trend” means. Did you mean shortlist, Currency, Avg. "
-                               "monthly searches or Three month change?"), trend["reason"]
-    # Negative: a reading that reads none of the question's tables, columns or values is not asked about.
-    assert planner.serve([PEOPLE], JAPANESE_FRANCE)["error"] == "planner: no executable AST candidate"
+    sql = "SELECT COUNT(*) FROM people WHERE Country = 'France'"
+    long_question = " ".join(["how many people come from France"] * (ONE_QUERY_WORDS // 6 + 1))
+    unsure = _hermetic_planner(confident=False)
+    unsure.pool = [_model_query(unsure, sql, read_as="the number of people whose Country is France")]
+    with analysis_execution_context({"slug": "people", "revision": 1}, "c_" + "7" * 32):
+        decomposed = unsure.serve([PEOPLE], long_question)
+        short = unsure.serve([PEOPLE], "how many people come from France?")
+    assert decomposed["decomposition_required"]["reason"].count("compound") == 1, decomposed
+    assert "clarify" not in decomposed and decomposed["result"] is None, decomposed
+    assert short["clarify"] is True and "decomposition_required" not in short, short
+    assert unsure.serve([PEOPLE], long_question)["clarify"] is True
 
 
-def test_the_rewrite_asks_for_low_thinking_and_stops_at_twenty_seconds():
-    """The same question with Gemini on (2026-10-05): at the model's default thinking the rewording took 12 to 30 s,
-    and in production the 30 s client timeout passed with no answer, a minute after the question. The rewrite asks
-    for LOW thinking (6 to 14 s measured) and stops at 20 s; the search reads the rewording."""
-    rewording = "What is the Avg. monthly searches for the Keyword 'home inspection checklist'?"
-    planner, gemini = _gemini_planner(question=rewording)
-    served = planner.serve(_keyword_planner_tabs(), "keyword volume for home inspection checklist")
-    assert served["result"]["rows"] == [[5000]] and served["fallback"]["kind"] == "rewrite", served
-    (request,) = gemini.requests
-    assert request["thinking"] == "LOW" and request["timeout_seconds"] == 20.0, request
-
-
-def test_total_before_a_measure_reads_the_measure_or_the_whole_name():
-    """Near copies of a subscriptions export (SI with one more column) leave SI and NT their own layouts, both with
-    Amount, beside reports with Total Amount: "the total Amount" must still read the total of Amount, as it
-    totals the reports' Total Amount (2026-10-04: Amount was no mention, and the question had no reading). Where
-    the column the question spells whole can answer, it stays the reading."""
-    near = _subscription_workbook(extra_si_column=True)
-    answer = best("What is the total Amount broken down by Plan and Currency?", near)
-    expected = {"NT": [("price_a", "eur", 9), ("price_a", "usd", 20), ("price_b", "eur", 7), ("price_b", "usd", 8)],
-                "SI": [("price_c", "inr", 5), ("price_c", "usd", 40), ("price_g", "usd", 40)]}
-    (table,) = answer.query.referenced_tables()
-    assert table in expected and sorted(execute(near, answer.sql)) == expected[table], answer.sql
-    # Contrast: the whole name the question spells answers when it can, and the measure stays in the pool.
-    orders = {"name": "orders", "columns": ["Region", "Amount", "Customer"], "rows": [["North", 10, "a"], ["South", 5, "b"]]}
-    refunds = {"name": "refunds", "columns": ["Region", "Amount", "Reason"], "rows": [["North", 2, "late"]]}
-    summary = {"name": "summary", "columns": ["Region", "Total Amount"], "rows": [["North", 100], ["South", 50]]}
-    tables = [orders, refunds, summary]
-    pool = SQLSearcher.from_tables(tables, []).search("total amount by region")
-    assert sorted(execute(tables, pool[0].sql)) == [("North", 100), ("South", 50)], pool[0].sql
-    assert any(candidate.query.referenced_tables() == {"orders"} and 'SUM("orders"."Amount")' in candidate.sql
-               for candidate in pool), [candidate.sql for candidate in pool]
+def test_a_reading_the_readers_are_not_confident_of_is_asked_about():
+    """When the readers' learned refusal (ReadingSearch.confident) is not confident of the reading selection
+    chose, nothing is served, the selection records its confidence and the reading it declined, and the reply says
+    how that reading read the question so the person can ask again in the sheet's own terms (engine/tables.py
+    unsure_clarification). Contrast: a confident reading is served with the same read-as line and its confidence;
+    a reading with none is asked about without one."""
+    question = "how many people come from France?"
+    line = "the number of people whose Country is France"
+    unsure = _hermetic_planner(confident=False)
+    unsure.pool = [_model_query(unsure, "SELECT COUNT(*) FROM people WHERE Country = 'France'", read_as=line)]
+    served = unsure.serve([PEOPLE], question)
+    assert served["clarify"] is True and served["valid"] is False, served
+    assert served["error"] is None and served["result"] is None and served["sql"] is None
+    assert served["read_as"] == line and served["dropped"] == []
+    assert served["selection"]["selected"] is None and served["selection"]["declined"] == 0, served["selection"]
+    assert served["selection"]["confidence"] == 0.1, served["selection"]
+    assert served["reason"] == (f"I read this as “{line}”, but I'm not confident that is what you asked. "
+                                "Ask again with the column names as your sheet spells them."), served["reason"]
+    sure = _hermetic_planner()
+    sure.pool = [_model_query(sure, "SELECT COUNT(*) FROM people WHERE Country = 'France'", read_as=line)]
+    answered = sure.serve([PEOPLE], question)
+    assert answered["valid"] and answered["result"]["rows"] == [[2]] and answered["read_as"] == line
+    assert "clarify" not in answered and answered["model"] == READERS_MODEL
+    assert answered["selection"]["confidence"] == 0.9 and answered["selection"]["declined"] is None
+    unsure.pool = [ScoredQuery(unsure.pool[0].query, unsure.pool[0].sql, 0.0, ())]
+    unread = unsure.serve([PEOPLE], question)
+    assert unread["clarify"] is True and unread["read_as"] is None
+    assert unread["reason"] == ("I'm not confident I read this question right. "
+                                "Ask again with the column names as your sheet spells them."), unread["reason"]
 
 
 def test_serving_preserves_repeated_source_rows_in_aggregates():
@@ -6564,581 +2322,11 @@ def test_serving_preserves_repeated_source_rows_in_aggregates():
                 "rows": [["Ada", 100], ["Ada", 100], ["ada", 100]]}
     normalized = normalize_tables([payments])
     assert len(normalized[0]["rows"]) == 3
-    served = _hermetic_planner().serve([payments], "total amount")
+    planner = _hermetic_planner()
+    planner.pool = [_model_query(planner, 'SELECT SUM("amount") FROM "payments"', [payments])]
+    served = planner.serve([payments], "total amount")
     assert served["valid"], served
     assert served["result"]["rows"] == [[300]], served
-
-
-def test_a_listing_follows_the_order_the_question_names():
-    """Spider DEV, 2026-10-02: "the airline names and abbreviations for airlines in the USA" listed the
-    abbreviation first, and "the names and birth dates of people" the dates: a column was placed at its last
-    mention ("airlines in the USA"), not where the question asks for it (8 listings matched gold but for
-    the order). A listing follows the question: a column where its whole name is said, a modifier
-    coordinated before a shared word at its own word, another word of its name ("the role")."""
-    airlines = {"name": "airlines", "columns": ["uid", "Airline", "Abbreviation", "Country"], "rows": [
-        [1, "United Airlines", "UAL", "USA"], [2, "US Airways", "USAir", "USA"], [3, "Air Canada", "ACA", "Canada"]]}
-    names = best("What are the airline names and abbreviations for airlines in the USA?", [airlines])
-    assert sorted(execute([airlines], names.sql)) == [("US Airways", "USAir"), ("United Airlines", "UAL")], names.sql
-    players = {"name": "players", "columns": ["player_id", "first_name", "last_name", "hand"], "rows": [
-        [1, "Martina", "Hingis", "R"], [2, "Mirjana", "Lucic", "L"]]}
-    full = best("List the first and last name of all players.", [players])
-    assert sorted(execute([players], full.sql)) == [("Martina", "Hingis"), ("Mirjana", "Lucic")], full.sql
-    # Contrast: a grouped answer lists its group before the aggregate, as a table shows it.
-    pets = {"name": "Pets", "columns": ["PetID", "PetType", "pet_age", "weight"], "rows": [
-        [2001, "cat", 3, 12.0], [2002, "dog", 2, 13.4], [2003, "dog", 1, 9.3]]}
-    average = best("Find the average weight for each pet type.", [pets])
-    assert sorted(execute([pets], average.sql)) == [("cat", 12.0), ("dog", 11.350000000000001)], average.sql
-
-
-def test_an_answer_shows_the_fields_the_question_asks_in_its_order():
-    """Spider DEV, 2026-10-12: "List the maximum weight and pet type" showed the pet type first; "the makers that
-    produced some cars in 1970" listed a maker once per car; and "the name and results of the battles when the
-    bulgarian commander is not 'Boril'" showed every battle's commander. A group the question names as a field to show
-    follows the question's order (one it only groups by stays first, as a table shows it); rows a joined table repeats
-    are one answer each; a field named only in its filter is not shown."""
-    pets = {"name": "Pets", "columns": ["PetID", "PetType", "pet_age", "weight"], "rows": [
-        [2001, "cat", 3, 12.0], [2002, "dog", 2, 13.4], [2003, "dog", 1, 9.3]]}
-    listed = best("Find the maximum weight for each type of pet. List the maximum weight and pet type.", [pets])
-    assert sorted(execute([pets], listed.sql)) == [(12.0, "cat"), (13.4, "dog")], listed.sql
-    grouped = best("Find the average weight for each pet type.", [pets])
-    assert sorted(execute([pets], grouped.sql)) == [("cat", 12.0), ("dog", 11.350000000000001)], grouped.sql
-    students = {"name": "Students", "columns": ["student_id", "first_name"], "rows": [[1, "Ann"], [2, "Bo"]]}
-    enrolments = {"name": "Student_Enrolment", "columns": ["enrolment_id", "student_id", "program"],
-                  "rows": [[10, 1, "Bachelor"], [11, 1, "Bachelor"], [12, 2, "Master"]]}
-    keys = [{"from_table": "Student_Enrolment", "from_col": "student_id", "to_table": "Students",
-             "to_col": "student_id"}]
-    enrolled = best("Who is enrolled in a Bachelor program? List the first name.", [students, enrolments], keys)
-    assert execute([students, enrolments], enrolled.sql) == [("Ann",)], enrolled.sql
-    # Contrast: the rows of the table referring to the other are its own; two paragraphs with one text are two.
-    documents = {"name": "Documents", "columns": ["Document_ID", "Document_Name"], "rows": [[1, "Reviews"], [2, "Notes"]]}
-    paragraphs = {"name": "Paragraphs", "columns": ["Paragraph_ID", "Document_ID", "Paragraph_Text"],
-                  "rows": [[10, 1, "Korea"], [11, 1, "Korea"], [12, 2, "Brazil"]]}
-    texts = best('Show all paragraph texts for the document "Reviews".', [documents, paragraphs],
-                 [{"from_table": "Paragraphs", "from_col": "Document_ID", "to_table": "Documents",
-                   "to_col": "Document_ID"}])
-    assert execute([documents, paragraphs], texts.sql) == [("Korea",), ("Korea",)], texts.sql
-    battles = {"name": "battle", "columns": ["id", "name", "result", "bulgarian_commander"],
-               "rows": [[1, "Adrianople", "victory", "Kaloyan"], [2, "Serres", "defeat", "Boril"]]}
-    filtered = best("What are the name and results of the battles when the bulgarian commander is not 'Boril'",
-                    [battles])
-    assert execute([battles], filtered.sql) == [("Adrianople", "victory")], filtered.sql
-
-
-def test_words_a_query_realizes_without_spelling_them_are_read():
-    """Spider DEV, 2026-10-12: 173 right answers were refused for words no table, field or value spells. A word of
-    travel direction is read by the column of that direction ("flights depart from APG" by SourceAirport), a name's part
-    by a field abbreviating it ("the first name" by Fname), and a verb by the two tables it relates ("templates used by
-    more than one document"). A verb the data holds as a value is still a filter to apply, and an answer must show the
-    rows the question asks for ("airlines that have flights arriving at AHD" are not airport names)."""
-    planner = _hermetic_planner()
-    airlines = {"name": "airlines", "columns": ["uid", "Airline", "Country"],
-                "rows": [[1, "United", "USA"], [2, "Delta", "USA"]]}
-    airports = {"name": "airports", "columns": ["AirportCode", "AirportName", "City"],
-                "rows": [["APG", "Phillips", "Aberdeen"], ["AHD", "Ardmore", "Ardmore"], ["CVO", "Corvallis", "Corvallis"]]}
-    flights = {"name": "flights", "columns": ["FlightNo", "Airline", "SourceAirport", "DestAirport"],
-               "rows": [[10, 1, "APG", "AHD"], [11, 1, "APG", "CVO"], [12, 2, "CVO", "AHD"]]}
-    keys = [{"from_table": "flights", "from_col": "SourceAirport", "to_table": "airports", "to_col": "AirportCode"},
-            {"from_table": "flights", "from_col": "DestAirport", "to_table": "airports", "to_col": "AirportCode"},
-            {"from_table": "flights", "from_col": "Airline", "to_table": "airlines", "to_col": "uid"}]
-
-    def answer(question, tables, keys):
-        served = planner.serve(tables, question, keys)
-        assert served.get("valid"), (question, served.get("error"), served.get("sql"))
-        return sorted(list(row) for row in served["result"]["rows"])
-
-    trips = [airlines, airports, flights]
-    assert answer("How many flights depart from 'APG'?", trips, keys) == [[2]]
-    assert answer("How many flights have destination 'AHD'?", trips, keys) == [[2]]
-    asked = planner.serve(trips, "What are airlines that have flights arriving at airport 'AHD'?", keys)
-    assert not asked.get("valid") or sorted(list(row) for row in asked["result"]["rows"]) == [["Delta"], ["United"]], \
-        asked.get("sql")
-    trip_graph = SchemaGraph.from_tables(trips, keys)
-    airport_names = SelectQuery((SelectItem(ColumnRef("airports", "AirportName", SQLType.TEXT)),), "airports")
-    assert "the answer shows airports's fields, not the airlines asked for" in constraint_violations(
-        "What are airlines that have flights arriving at airport 'AHD'?", airport_names, trip_graph)
-    # Contrast: a command word names no table; "Show the record companies shared by orchestras" asks for no show.
-    orchestra = {"name": "orchestra", "columns": ["Orchestra_ID", "Record_Company"], "rows": [[1, "Decca"]]}
-    show = {"name": "show", "columns": ["Show_ID", "Attendance"], "rows": [[1, 900]]}
-    companies = SelectQuery((SelectItem(ColumnRef("orchestra", "Record_Company", SQLType.TEXT)),), "orchestra")
-    assert not any("asked for" in violation for violation in constraint_violations(
-        "Show the record companies shared by orchestras.", companies, SchemaGraph.from_tables([orchestra, show], ())))
-    students = {"name": "Student", "columns": ["StuID", "Fname", "LName", "Age"],
-                "rows": [[1, "Linda", "Smith", 18], [2, "Tracy", "Kim", 19]]}
-    has_pet = {"name": "Has_Pet", "columns": ["StuID", "PetID"], "rows": [[1, 7], [2, 8]]}
-    pets = {"name": "Pets", "columns": ["PetID", "PetType"], "rows": [[7, "cat"], [8, "dog"]]}
-    pet_keys = [{"from_table": "Has_Pet", "from_col": "StuID", "to_table": "Student", "to_col": "StuID"},
-                {"from_table": "Has_Pet", "from_col": "PetID", "to_table": "Pets", "to_col": "PetID"}]
-    assert answer("Find the first name of students who have a cat.", [students, has_pet, pets], pet_keys) == [["Linda"]]
-    templates = {"name": "Templates", "columns": ["Template_ID", "Template_Type_Code"],
-                 "rows": [[1, "PP"], [2, "BK"], [3, "PP"]]}
-    documents = {"name": "Documents", "columns": ["Document_ID", "Template_ID", "Document_Name"],
-                 "rows": [[10, 1, "a"], [11, 1, "b"], [12, 2, "c"]]}
-    used = answer("Show ids for all templates that are used by more than one document.", [templates, documents],
-                  [{"from_table": "Documents", "from_col": "Template_ID", "to_table": "Templates",
-                    "to_col": "Template_ID"}])
-    assert used == [[1]], used
-    # Negative: a verb the data holds as a value names that value; the join alone does not answer it.
-    customers = {"name": "customers", "columns": ["customer_id", "name"], "rows": [[1, "Ann"], [2, "Bo"]]}
-    orders = {"name": "orders", "columns": ["order_id", "customer_id", "status"],
-              "rows": [[1, 1, "returned"], [2, 2, "shipped"]]}
-    returned = planner.serve([customers, orders], "Which customers returned orders?",
-                             [{"from_table": "orders", "from_col": "customer_id", "to_table": "customers",
-                               "to_col": "customer_id"}])
-    assert not returned.get("valid") or [list(row) for row in returned["result"]["rows"]] == [["Ann"]], \
-        returned.get("sql")
-
-
-def test_stems_pronouns_and_compounds_a_query_reads_are_read():
-    """Spider DEV, 2026-10-12: right answers were refused for a word sharing a stem with a table the query reads
-    ("teachers arranged to teach" by course_arrange), for "one" standing for a row ("the one whose name"), and for two
-    words that begin a table's name ("the high school student" by Highschooler). A word whose table the query does not
-    read, a "one" that is a number, and a word of an operation stay unread."""
-    from engine.query_contract import read_question
-    teacher = {"name": "teacher", "columns": ["Teacher_ID", "Name"], "rows": [[1, "Ann"], [2, "Bo"]]}
-    course = {"name": "course", "columns": ["Course_ID", "Course"], "rows": [[1, "Math"], [2, "Art"]]}
-    arrange = {"name": "course_arrange", "columns": ["Course_ID", "Teacher_ID"], "rows": [[1, 1], [2, 2]]}
-    keys = [("course_arrange", "Course_ID", "course", "Course_ID"),
-            ("course_arrange", "Teacher_ID", "teacher", "Teacher_ID")]
-    graph = SchemaGraph.from_tables([teacher, course, arrange], keys)
-    name, title = ColumnRef("teacher", "Name", SQLType.TEXT), ColumnRef("course", "Course", SQLType.TEXT)
-    arranged = SelectQuery((SelectItem(name), SelectItem(title)), "course", joins=(
-        Join("course_arrange", ColumnRef("course_arrange", "Course_ID", SQLType.INTEGER),
-             ColumnRef("course", "Course_ID", SQLType.INTEGER)),
-        Join("teacher", ColumnRef("course_arrange", "Teacher_ID", SQLType.INTEGER),
-             ColumnRef("teacher", "Teacher_ID", SQLType.INTEGER))))
-
-    def unread(question, query):
-        return read_question(question, ScoredQuery(query, render_query(query), 0.0, ()), graph).unread
-
-    question = "Show names of teachers and the courses they are arranged to teach."
-    assert "arranged" not in unread(question, arranged), unread(question, arranged)
-    # Contrast: a query that reads no arrangement leaves "arranged" unread.
-    teachers_only = SelectQuery((SelectItem(name),), "teacher")
-    assert "arranged" in unread("Show names of teachers who are arranged to teach.", teachers_only)
-    # Negative: a word of an operation is not read by a table sharing its stem.
-    rankings = {"name": "rankings", "columns": ["player", "points"], "rows": [["Ann", 3]]}
-    players = SelectQuery((SelectItem(ColumnRef("rankings", "player", SQLType.TEXT)),), "rankings")
-    ranked = read_question("Show the players who were ranked.", ScoredQuery(players, render_query(players), 0.0, ()),
-                           SchemaGraph.from_tables([rankings], ())).unread
-    assert "ranked" in ranked, ranked
-    # "one" after a determiner stands for a row; after "than" it is a number.
-    assert "one" not in unread("What is the name of the one whose id is 1?", SelectQuery(
-        (SelectItem(name),), "teacher",
-        where=Comparison(ColumnRef("teacher", "Teacher_ID", SQLType.INTEGER), "=", Literal(1))))
-    assert "one" in unread("Show names of teachers with more than one course.", teachers_only)
-    # Two words a read table's name spells as one.
-    student = {"name": "Highschooler", "columns": ["ID", "name"], "rows": [[1, "Kyle"]]}
-    school_graph = SchemaGraph.from_tables([student], ())
-    kyle = SelectQuery((SelectItem(ColumnRef("Highschooler", "name", SQLType.TEXT)),), "Highschooler")
-    words = read_question("Show the name of the high school student.", ScoredQuery(kyle, render_query(kyle), 0.0, ()),
-                          school_graph).unread
-    assert not {"high", "school"} & set(words), words
-    # A word the search names a field by is read by a query reading that field: "gender" is Sex (Spider DEV 81).
-    people = {"name": "people", "columns": ["id", "Name", "Sex"], "rows": [[1, "Ann", "F"], [2, "Bo", "M"]]}
-    people_graph = SchemaGraph.from_tables([people], ())
-    shown = SelectQuery((SelectItem(ColumnRef("people", "Name", SQLType.TEXT)),
-                         SelectItem(ColumnRef("people", "Sex", SQLType.TEXT))), "people")
-    assert "gender" not in read_question("Show the name and gender of every person.", ScoredQuery(
-        shown, render_query(shown), 0.0, ()), people_graph).unread
-    names_only = SelectQuery((SelectItem(ColumnRef("people", "Name", SQLType.TEXT)),), "people")
-    assert "gender" in read_question("Show the name and gender of every person.", ScoredQuery(
-        names_only, render_query(names_only), 0.0, ()), people_graph).unread
-    # "The last names" is lname, whatever name another table holds (held-out train 727).
-    authors = {"name": "Authors", "columns": ["authID", "fname", "lname"], "rows": [[1, "Amy", "Ng"]]}
-    inst = {"name": "Inst", "columns": ["instID", "name"], "rows": [[1, "MIT"]]}
-    last = SelectQuery((SelectItem(ColumnRef("Authors", "lname", SQLType.TEXT)),), "Authors")
-    assert not constraint_violations("Retrieve all the last names of authors.", last,
-                                     SchemaGraph.from_tables([authors, inst], ()))
-    # A camel-cased longer name the question spells is that field, not also a field named by one of its words
-    # (held-out train 169: "the average fastest lap speed" is fastestLapSpeed, not lapTimes.lap).
-    results = {"name": "results", "columns": ["resultId", "fastestLapSpeed"], "rows": [[1, 201.5], [2, 199.5]]}
-    laps = {"name": "lapTimes", "columns": ["resultId", "lap"], "rows": [[1, 3]]}
-    speed = ColumnRef("results", "fastestLapSpeed", SQLType.REAL)
-    average = SelectQuery((SelectItem(Aggregate("AVG", speed)),), "results")
-    assert not constraint_violations("What is the average fastest lap speed?", average,
-                                     SchemaGraph.from_tables([results, laps], ()))
-    # Contrast: the first names leave "last" unread.
-    first = SelectQuery((SelectItem(ColumnRef("Authors", "fname", SQLType.TEXT)),), "Authors")
-    assert "last" in read_question("Retrieve all the last names of authors.", ScoredQuery(
-        first, render_query(first), 0.0, ()), SchemaGraph.from_tables([authors, inst], ())).unread
-    # Contrast: a camel-cased name's words said apart are not that field: "at least 2 models" and "the id" ask for the
-    # models, not ModelId (Spider DEV 175).
-    makers = {"name": "car_makers", "columns": ["Id", "Maker"], "rows": [[1, "amc"], [2, "gm"]]}
-    models = {"name": "model_list", "columns": ["ModelId", "Maker", "Model"], "rows": [[1, 1, "amc"], [2, 2, "chevy"]]}
-    maker_id = ColumnRef("car_makers", "Id", SQLType.INTEGER)
-    numbered = SelectQuery((SelectItem(maker_id), SelectItem(ColumnRef("car_makers", "Maker", SQLType.TEXT))),
-                           "car_makers", joins=(Join("model_list", ColumnRef("model_list", "Maker", SQLType.INTEGER),
-                                                     maker_id),),
-                           where=Comparison(ColumnRef("model_list", "ModelId", SQLType.INTEGER), ">=", Literal(2)))
-    assert "The requested field is not used: Model" in constraint_violations(
-        "Which are the car makers which produce at least 2 models and more than 3 car makers? "
-        "List the id and the maker.", numbered,
-        SchemaGraph.from_tables([makers, models], [("model_list", "Maker", "car_makers", "Id")]))
-
-
-def test_a_full_name_is_a_first_and_a_last_name_unless_a_field_is_named_so():
-    """Held-out Spider train 474, 2026-10-12: "the full names of employees in Calgary" showed every field, and a query
-    showing FirstName and LastName was refused for "full", which a track title held, and for an albums' Name. A
-    table with a field named "full name" keeps it, and a first name alone leaves "full" unread. Spider DEV 75: "the
-    first name and age" listed the age first."""
-    from engine.query_contract import read_question
-    employee = {"name": "Employee", "columns": ["EmployeeId", "FirstName", "LastName", "City"],
-                "rows": [[1, "Ann", "Lee", "Calgary"], [2, "Bo", "Ng", "Edmonton"], [3, "Cy", "Fox", "Lethbridge"]]}
-    album = {"name": "Album", "columns": ["AlbumId", "Name"], "rows": [[1, "Full Circle"], [2, "Blue"]]}
-    served = _hermetic_planner().serve([employee, album], "Find the full names of employees in the city of Calgary.",
-                                       [])
-    assert served.get("valid"), (served.get("error"), served.get("sql"))
-    assert [list(row) for row in served["result"]["rows"]] == [["Ann", "Lee"]], served.get("sql")
-    # Contrast: a field named "full name" is the full name.
-    makers = {"name": "car_makers", "columns": ["Id", "Maker", "FullName"],
-              "rows": [[1, "amc", "American Motor Company"], [2, "gm", "General Motors"]]}
-    served = _hermetic_planner().serve([employee, album, makers],
-                                      "Find the full names of employees in the city of Calgary.", [])
-    assert served.get("valid") and [list(row) for row in served["result"]["rows"]] == [["Ann", "Lee"]], served
-    named_employee = {"name": "Employee", "columns": ["EmployeeId", "FirstName", "LastName", "FullName"],
-                      "rows": [[1, "Ann", "Lee", "Ann Lee"], [2, "Bo", "Ng", "Bo Ng"]]}
-    served = _hermetic_planner().serve([named_employee], "Find the full names of employees.", [])
-    assert served.get("valid") and [list(row) for row in served["result"]["rows"]] == [["Ann Lee"], ["Bo Ng"]], served
-    owners = {"name": "owners", "columns": ["Id", "first_name", "last_name"], "rows": [[1, "Ann", "Lee"]]}
-    served = _hermetic_planner().serve([makers, owners], "What is the full name of each car maker?", [])
-    assert served.get("valid"), (served.get("error"), served.get("sql"))
-    assert sorted(row[0] for row in served["result"]["rows"]) == ["American Motor Company", "General Motors"], (
-        served.get("sql"))
-    # Negative: a first name alone leaves "full" unread.
-    graph = SchemaGraph.from_tables([employee, album], ())
-    first = SelectQuery((SelectItem(ColumnRef("Employee", "FirstName", SQLType.TEXT)),), "Employee")
-    assert "full" in read_question("Find the full names of employees.", ScoredQuery(
-        first, render_query(first), 0.0, ()), graph).unread
-    # A name's part a field abbreviates is listed where the question says it: "the first name and age" lists Fname
-    # first (Spider DEV 75).
-    student = {"name": "Student", "columns": ["StuID", "LName", "Fname", "Age"],
-               "rows": [[1, "Lee", "Ann", 19], [2, "Ng", "Bo", 21]]}
-    listed = best("Find the first name and age of all students.", [student])
-    assert execute([student], listed.sql)[0] == ("Ann", 19), listed.sql
-    # "The ids and full names" lists the first name before the last (fresh holdout of Spider train 217).
-    named = best("What are the ids and full names of employees whose first name contains the letter A?", [employee])
-    assert execute([employee], named.sql)[0][:3] == (1, "Ann", "Lee"), named.sql
-
-
-def test_groups_list_each_value_once_and_count_more_than_their_own_value():
-    """Spider DEV 393, 1012, 2026-10-12: "different hometowns of teachers and the number of teachers from each" was
-    refused for "different" beside COUNT(*) by Hometown, though groups list each value once, and answered with
-    COUNT(DISTINCT Hometown) by Hometown, 1 in every group. A count of a key the joins equate with the group's is 1
-    too."""
-    teacher = {"name": "teacher", "columns": ["Teacher_ID", "Name", "Hometown"],
-               "rows": [[1, "Ann", "Bolton"], [2, "Bo", "Bolton"], [3, "Cy", "Wigan"]]}
-    question = "Show different hometown of teachers and the number of teachers from each hometown."
-    served = _hermetic_planner().serve([teacher], question, [])
-    assert served.get("valid"), (served.get("error"), served.get("sql"))
-    assert sorted(list(row) for row in served["result"]["rows"]) == [["Bolton", 2], ["Wigan", 1]], served.get("sql")
-    hometown = ColumnRef("teacher", "Hometown", SQLType.TEXT)
-    graph = SchemaGraph.from_tables([teacher], ())
-    once = SelectQuery((SelectItem(hometown), SelectItem(Aggregate("COUNT", hometown, distinct=True))), "teacher",
-                       group_by=(hometown,))
-    assert "each group counts its own value once" in constraint_violations(question, once, graph)
-    rows = SelectQuery((SelectItem(hometown), SelectItem(Aggregate("COUNT", Star()))), "teacher", group_by=(hometown,))
-    assert not constraint_violations(question, rows, graph), constraint_violations(question, rows, graph)
-    # A key the joins equate with the group's counts one value in each group too.
-    types = {"name": "Ref_Types", "columns": ["Type_Code", "Description"], "rows": [["PP", "Paper"]]}
-    templates = {"name": "Templates", "columns": ["Template_ID", "Type_Code"], "rows": [[1, "PP"], [2, "PP"]]}
-    joined_graph = SchemaGraph.from_tables([types, templates], [("Templates", "Type_Code", "Ref_Types", "Type_Code")])
-    mine, theirs = ColumnRef("Templates", "Type_Code", SQLType.TEXT), ColumnRef("Ref_Types", "Type_Code", SQLType.TEXT)
-    joined = SelectQuery((SelectItem(theirs), SelectItem(Aggregate("COUNT", mine, distinct=True))), "Templates",
-                         joins=(Join("Ref_Types", mine, theirs),), group_by=(theirs,))
-    assert "each group counts its own value once" in constraint_violations(
-        "What are the different template type codes, and how many templates correspond to each?", joined, joined_graph)
-
-
-def test_a_count_over_an_exclusion_or_an_average_comparison_counts_the_rows_kept():
-    """Spider DEV 974, 978, 983, 2026-10-12: "how many dogs have not gone through any treatment" listed the untreated
-    dogs ("have not" was no negation, and the count was dropped from the exclusion), and "how many dogs have an age below
-    the average" was refused for the average it compares with. A question asking for the average itself still needs it
-    shown."""
-    planner = _hermetic_planner()
-    dogs = {"name": "Dogs", "columns": ["dog_id", "name", "age"],
-            "rows": [[1, "Rex", 2], [2, "Bo", 6], [3, "Ace", 10], [4, "Kit", 3]]}
-    treatments = {"name": "Treatments", "columns": ["treatment_id", "dog_id", "cost"],
-                  "rows": [[1, 1, 50], [2, 1, 70], [3, 3, 20]]}
-    keys = [{"from_table": "Treatments", "from_col": "dog_id", "to_table": "Dogs", "to_col": "dog_id"}]
-
-    def answer(question):
-        served = planner.serve([dogs, treatments], question, keys)
-        assert served.get("valid"), (question, served.get("error"), served.get("sql"))
-        return [list(row) for row in served["result"]["rows"]]
-
-    assert answer("How many dogs have not gone through any treatment?") == [[2]]
-    assert answer("How many dogs have an age below the average?") == [[2]]
-    assert sorted(answer("Which dogs have an age above the average? List the names.")) == [["Ace"], ["Bo"]]
-    # Contrast: the average a question asks for is shown, not only compared with.
-    age = ColumnRef("Dogs", "age", SQLType.INTEGER)
-    compared = SelectQuery((SelectItem(Aggregate("COUNT", Star())),), "Dogs", where=Comparison(
-        age, "<", ScalarSubquery(SelectQuery((SelectItem(Aggregate("AVG", age)),), "Dogs"))))
-    graph = SchemaGraph.from_tables([dogs, treatments], [("Treatments", "dog_id", "Dogs", "dog_id")])
-    assert not constraint_violations("How many dogs have an age below the average?", compared, graph)
-    assert constraint_violations("What is the average age of the dogs?", compared, graph)
-
-
-def test_a_number_beside_a_field_and_an_order_of_a_field_are_read():
-    """Spider DEV 870, 117, 455, 2026-10-12: "the high schoolers in grade 10" and "the cars with 4 cylinders" compared
-    nothing with the number beside the field's name, and "in the order of birth date" ordered nothing."""
-    students = {"name": "Highschooler", "columns": ["ID", "name", "grade"],
-                "rows": [[1, "Ann", 9], [2, "Bo", 10], [3, "Cy", 10], [4, "Di", 11]]}
-    tenth = best("Show the names of all high schoolers in grade 10.", [students])
-    assert sorted(execute([students], tenth.sql)) == [("Bo",), ("Cy",)], tenth.sql
-    cars = {"name": "cars_data", "columns": ["Id", "Cylinders", "Weight"],
-            "rows": [[1, 4, 2000], [2, 8, 4000], [3, 4, 2500]]}
-    four = _hermetic_planner().serve([cars], "What is the average weight of the cars with 4 cylinders?", [])
-    assert four.get("valid") and [list(row) for row in four["result"]["rows"]] == [[2250.0]], four.get("sql")
-    # Contrast: a ranking's number stands beside no field's name and keeps that many rows.
-    top = best("Show the names of the top 2 high schoolers by grade.", [students])
-    assert len(execute([students], top.sql)) >= 2 and "= 2" not in top.sql, top.sql
-    # Nor is a number right after "top" beside a field's name (fresh holdout of Spider train 167).
-    mountain = {"name": "mountain", "columns": ["Mountain_ID", "Name", "Range", "Prominence"],
-                "rows": [[1, "A", "Alps", 3], [2, "B", "Andes", 900], [3, "C", "Rockies", 700], [4, "D", "Urals", 500]]}
-    ranges = best("List the distinct ranges of the mountains with the top 3 prominence.", [mountain])
-    assert "= 3" not in ranges.sql and len(execute([mountain], ranges.sql)) == 3, ranges.sql
-    players ={"name": "players", "columns": ["player_id", "first_name", "birth_date"],
-               "rows": [[1, "Zed", "1990-05-01"], [2, "Amy", "1985-01-02"], [3, "Bob", "2000-03-04"]]}
-    ordered = best("List the first name of all players in the order of birth date.", [players])
-    assert execute([players], ordered.sql) == [("Amy",), ("Zed",), ("Bob",)], ordered.sql
-    # "The first name" is a Fname field, and a field named only to order by is not shown (held-out train 736).
-    student = {"name": "Student", "columns": ["StuID", "Fname", "LName", "Age"],
-               "rows": [[1, "Ann", "Lee", 20], [2, "Bo", "Kim", 22], [3, "Cy", "Ng", 19]]}
-    served = _hermetic_planner().serve([student], "Find the first name of students in the descending order of age.", [])
-    assert served.get("valid") and [list(row) for row in served["result"]["rows"]] == [["Bo"], ["Ann"], ["Cy"]], \
-        served.get("sql")
-    # Contrast: a field the question also lists is shown.
-    both = _hermetic_planner().serve([student], "List the first name and age of students in descending order of age.",
-                                     [])
-    assert both.get("valid") and sorted(len(row) for row in both["result"]["rows"]) == [2, 2, 2], both.get("sql")
-
-
-def test_a_field_named_as_its_table_is_not_shown_for_its_owner_noun():
-    """Held-out Spider train 300, 105, 2026-10-12: "the carriers of devices" showed device.Device beside each carrier,
-    and "the locations and nicknames of schools" school.School: the table's word after "of" names the owner of the
-    fields asked, not a field. "The names of devices" asks for that field."""
-    device = {"name": "device", "columns": ["Device_ID", "Device", "Carrier"],
-              "rows": [[1, "Phone", "Verizon"], [2, "Tablet", "AT&T"]]}
-    graph = SchemaGraph.from_tables([device], ())
-    carrier = ColumnRef("device", "Carrier", SQLType.TEXT)
-    name = ColumnRef("device", "Device", SQLType.TEXT)
-    alone = SelectQuery((SelectItem(carrier),), "device")
-    beside = SelectQuery((SelectItem(carrier), SelectItem(name)), "device")
-    ranked = CandidateRanker(graph).rank("What are the carriers of devices?", [
-        ScoredQuery(query, render_query(query), 0.0, ()) for query in (beside, alone)])
-    assert ranked[0].query == alone, [candidate.sql for candidate in ranked]
-    assert any("owner_only_output" in evidence for evidence in ranked[1].evidence), ranked[1].evidence
-    named = CandidateRanker(graph).rank("What are the names of devices?", [
-        ScoredQuery(query, render_query(query), 0.0, ()) for query in (SelectQuery((SelectItem(name),), "device"),)])
-    assert not any("owner_only_output" in evidence for evidence in named[0].evidence), named[0].evidence
-
-
-def test_a_field_said_after_its_comparison_or_its_superlative_is_not_shown():
-    """Held-out Spider train 396, 420, 504, 2026-10-12: "projects that require between 100 and 300 hours" showed the
-    hours, "customers who do not use Cash as payment method" the payment method, and "the saving balance of the
-    account with the highest checking balance" the checking balance: each field said only where the question compares
-    it or picks the row by it. A field the question also lists is shown."""
-    def first(graph, question, *queries):
-        return CandidateRanker(graph).rank(question, [ScoredQuery(query, render_query(query), 0.0, ())
-                                                      for query in queries])
-
-    projects = {"name": "Projects", "columns": ["Code", "Name", "Hours"],
-                "rows": [["a", "Alpha", 150], ["b", "Beta", 400]]}
-    graph = SchemaGraph.from_tables([projects], ())
-    name, hours = ColumnRef("Projects", "Name", SQLType.TEXT), ColumnRef("Projects", "Hours", SQLType.INTEGER)
-    from engine.sql_ast import BooleanExpr
-    within = BooleanExpr("AND", (Comparison(hours, ">=", Literal(100)), Comparison(hours, "<=", Literal(300))))
-    alone = SelectQuery((SelectItem(name),), "Projects", where=within)
-    beside = SelectQuery((SelectItem(name), SelectItem(hours)), "Projects", where=within)
-    ranked = first(graph, "What are the names of projects that require between 100 and 300 hours?", beside, alone)
-    assert ranked[0].query == alone, [candidate.sql for candidate in ranked]
-    # Contrast: the hours the question lists are shown.
-    listed = first(graph, "Show the name and hours of projects that require between 100 and 300 hours.", beside)
-    assert not any("filter_only_output" in evidence for evidence in listed[0].evidence), listed[0].evidence
-    customers = {"name": "Customers", "columns": ["customer_id", "customer_name", "payment_method"],
-                 "rows": [[1, "Ann", "Cash"], [2, "Bo", "Visa"]]}
-    graph = SchemaGraph.from_tables([customers], ())
-    customer, method = (ColumnRef("Customers", "customer_name", SQLType.TEXT),
-                        ColumnRef("Customers", "payment_method", SQLType.TEXT))
-    other = Comparison(method, "!=", Literal("Cash"))
-    ranked = first(graph, "What is the name of customers who do not use Cash as payment method?",
-                   SelectQuery((SelectItem(customer), SelectItem(method)), "Customers", where=other),
-                   SelectQuery((SelectItem(customer),), "Customers", where=other))
-    assert ranked[0].query.select == (SelectItem(customer),), [candidate.sql for candidate in ranked]
-    savings = {"name": "SAVINGS", "columns": ["custid", "balance"], "rows": [[1, 50.0], [2, 70.0]]}
-    checking = {"name": "CHECKING", "columns": ["custid", "balance"], "rows": [[1, 900.0], [2, 10.0]]}
-    accounts = {"name": "ACCOUNTS", "columns": ["custid", "name"], "rows": [[1, "Ann"], [2, "Bo"]]}
-    keys = [("SAVINGS", "custid", "ACCOUNTS", "custid"), ("CHECKING", "custid", "ACCOUNTS", "custid")]
-    graph = SchemaGraph.from_tables([savings, checking, accounts], keys)
-    saved, checked = ColumnRef("SAVINGS", "balance", SQLType.REAL), ColumnRef("CHECKING", "balance", SQLType.REAL)
-    joins = (Join("ACCOUNTS", ColumnRef("CHECKING", "custid", SQLType.INTEGER),
-                  ColumnRef("ACCOUNTS", "custid", SQLType.INTEGER)),
-             Join("SAVINGS", ColumnRef("SAVINGS", "custid", SQLType.INTEGER),
-                  ColumnRef("ACCOUNTS", "custid", SQLType.INTEGER)))
-    top = (OrderTerm(checked, "DESC"),)
-    alone = SelectQuery((SelectItem(saved),), "CHECKING", joins=joins, order_by=top, limit=1)
-    beside = SelectQuery((SelectItem(checked), SelectItem(saved)), "CHECKING", joins=joins, order_by=top, limit=1)
-    ranked = first(graph, "Find the saving balance of the account with the highest checking balance.", beside, alone)
-    assert ranked[0].query == alone, [candidate.sql for candidate in ranked]
-    # Contrast: a balance the question also lists is shown, and so is one a verb says the rows have.
-    listed = first(graph, "Which account has the highest checking balance? Show its saving and checking balance.",
-                   beside)
-    assert not any("order_only_output" in evidence for evidence in listed[0].evidence), listed[0].evidence
-    had = first(graph, "Which account has the highest checking balance?", beside)
-    assert not any("order_only_output" in evidence for evidence in had[0].evidence), had[0].evidence
-
-
-def test_a_field_asked_by_its_whole_name_its_owner_or_an_alias_is_used():
-    """Spider DEV 930, 934, 890, 124, 854, 2026-10-12: right answers were refused as leaving a requested "name" or "id"
-    unused: "the owner id, first name and last name" beside a Dogs.name, "the name of the breed" by breed_name, "the
-    names of Kyle's friends" read through a self-join's alias, "the names and ids of all countries" by CountryName and
-    CountryId beside car_makers.Id, and "the names of orchestras" by orchestra.Orchestra beside a conductor's Name. The
-    stadiums' name is still not a concert's name (DEV 41)."""
-    def unused(question, query, tables, keys=()):
-        return [violation for violation in constraint_violations(question, query, SchemaGraph.from_tables(tables, keys))
-                if violation.startswith("The requested field is not used")]
-
-    owners = {"name": "Owners", "columns": ["owner_id", "first_name", "last_name"], "rows": [[1, "Ann", "Lee"]]}
-    breeds = {"name": "Breeds", "columns": ["breed_code", "breed_name"], "rows": [["BUL", "Bulldog"]]}
-    dogs = {"name": "Dogs", "columns": ["dog_id", "owner_id", "breed_code", "name"], "rows": [[1, 1, "BUL", "Rex"]]}
-    dog_keys = [("Dogs", "owner_id", "Owners", "owner_id"), ("Dogs", "breed_code", "Breeds", "breed_code")]
-    owner_id = ColumnRef("Owners", "owner_id", SQLType.INTEGER)
-    by_owner = Join("Owners", ColumnRef("Dogs", "owner_id", SQLType.INTEGER), owner_id)
-    shown = (owner_id, ColumnRef("Owners", "first_name", SQLType.TEXT), ColumnRef("Owners", "last_name", SQLType.TEXT))
-    most = SelectQuery(tuple(SelectItem(column) for column in shown), "Dogs", joins=(by_owner,), group_by=shown,
-                       order_by=(OrderTerm(Aggregate("COUNT", Star()), "DESC"),), limit=1)
-    assert not unused("Which owner owns the most dogs? List the owner id, first name and last name.", most,
-                      [owners, breeds, dogs], dog_keys)
-    breed_name = ColumnRef("Breeds", "breed_name", SQLType.TEXT)
-    breed = SelectQuery((SelectItem(breed_name),), "Breeds", joins=(
-        Join("Dogs", ColumnRef("Dogs", "breed_code", SQLType.TEXT), ColumnRef("Breeds", "breed_code", SQLType.TEXT)),),
-        group_by=(breed_name,), order_by=(OrderTerm(Aggregate("COUNT", Star()), "DESC"),), limit=1)
-    assert not unused("What is the name of the breed with the most dogs?", breed, [owners, breeds, dogs], dog_keys)
-    # Contrast: the dogs' names are not the breed's name, though the question names the breed too (DEV 954).
-    rare = Comparison(ColumnRef("Breeds", "breed_code", SQLType.TEXT), "=", Literal("BUL"))
-    by_breed = SelectQuery((SelectItem(breed_name),), "Breeds", joins=(
-        Join("Dogs", ColumnRef("Dogs", "breed_code", SQLType.TEXT), ColumnRef("Breeds", "breed_code", SQLType.TEXT)),),
-        where=rare)
-    assert unused("List the names of the dogs of the rarest breed.", by_breed, [owners, breeds, dogs], dog_keys)
-    student = {"name": "Highschooler", "columns": ["ID", "name"], "rows": [[1, "Kyle"], [2, "Ann"]]}
-    friend = {"name": "Friend", "columns": ["student_id", "friend_id"], "rows": [[1, 2]]}
-    friends = SelectQuery((SelectItem(ColumnRef("related", "name", SQLType.TEXT)),), "Friend", from_alias="relation",
-                          joins=(Join("Highschooler", ColumnRef("relation", "student_id", SQLType.INTEGER),
-                                      ColumnRef("owner", "ID", SQLType.INTEGER), alias="owner"),
-                                 Join("Highschooler", ColumnRef("relation", "friend_id", SQLType.INTEGER),
-                                      ColumnRef("related", "ID", SQLType.INTEGER), alias="related")),
-                          where=Comparison(ColumnRef("owner", "name", SQLType.TEXT), "=", Literal("Kyle")))
-    assert not unused("Return the names of friends of the high school student Kyle.", friends, [student, friend])
-    # Contrast: the ID an alias only joins on answers no "id" (DEV 872).
-    assert unused("What is Kyle's id?", friends, [student, friend])
-    countries = {"name": "countries", "columns": ["CountryId", "CountryName"], "rows": [[1, "usa"], [2, "japan"]]}
-    makers = {"name": "car_makers", "columns": ["Id", "Maker", "Country"], "rows": [[1, "amc", 1]]}
-    country_id = ColumnRef("countries", "CountryId", SQLType.INTEGER)
-    named = SelectQuery((SelectItem(ColumnRef("countries", "CountryName", SQLType.TEXT)), SelectItem(country_id)),
-                        "countries", joins=(Join("car_makers", ColumnRef("car_makers", "Country", SQLType.INTEGER),
-                                                 country_id),))
-    assert not unused("What are the names and ids of all countries with at least one car maker?", named,
-                      [countries, makers], [("car_makers", "Country", "countries", "CountryId")])
-    orchestra = {"name": "orchestra", "columns": ["Orchestra_ID", "Orchestra", "Conductor_ID"],
-                 "rows": [[1, "London Symphony", 1]]}
-    conductor = {"name": "conductor", "columns": ["Conductor_ID", "Name"], "rows": [[1, "Ann"]]}
-    listed = SelectQuery((SelectItem(ColumnRef("orchestra", "Orchestra", SQLType.TEXT)),), "orchestra")
-    assert not unused("List the names of orchestras.", listed, [orchestra, conductor],
-                      [("orchestra", "Conductor_ID", "conductor", "Conductor_ID")])
-    # Contrast: the stadiums' name is not a concert's name, though the question says "concerts" too.
-    stadium = {"name": "stadium", "columns": ["Stadium_ID", "Name", "Location"], "rows": [[1, "Hampden", "Glasgow"]]}
-    concert = {"name": "concert", "columns": ["concert_ID", "concert_Name", "Stadium_ID"], "rows": [[1, "Gig", 1]]}
-    stadium_id = ColumnRef("stadium", "Stadium_ID", SQLType.INTEGER)
-    wrong = SelectQuery((SelectItem(ColumnRef("concert", "concert_Name", SQLType.TEXT)),
-                         SelectItem(ColumnRef("stadium", "Location", SQLType.TEXT))), "stadium",
-                        joins=(Join("concert", ColumnRef("concert", "Stadium_ID", SQLType.INTEGER), stadium_id),))
-    assert unused("What are the name and location of the stadiums which some concerts happened in?", wrong,
-                  [stadium, concert], [("concert", "Stadium_ID", "stadium", "Stadium_ID")])
-
-
-def test_words_saying_how_rows_are_counted_are_read_by_a_count():
-    """Spider DEV 397, 852 and held-out Spider train 609, 892, 2026-10-12: right answers were refused for "shared" in
-    "the hometowns shared by at least two teachers", "times" in "visited the most times" and "records" in "at least two
-    records". A query that counts nothing, and a verb no count follows, leave them unread."""
-    from engine.query_contract import read_question
-    teacher = {"name": "teacher", "columns": ["Teacher_ID", "Name", "Hometown"],
-               "rows": [[1, "Ann", "Bolton"], [2, "Bo", "Bolton"], [3, "Cy", "Wigan"]]}
-    graph = SchemaGraph.from_tables([teacher], ())
-    hometown = ColumnRef("teacher", "Hometown", SQLType.TEXT)
-    shared = SelectQuery((SelectItem(hometown),), "teacher", group_by=(hometown,),
-                         having=Comparison(Aggregate("COUNT", Star()), ">=", Literal(2)))
-
-    def unread(question, query, on=graph):
-        return read_question(question, ScoredQuery(query, render_query(query), 0.0, ()), on).unread
-
-    assert "shared" not in unread("Show the hometowns shared by at least two teachers.", shared)
-    assert "records" not in unread("Show the hometown that has at least two records.", shared)
-    # "Record" after a read table's name names its rows (held-out train 598); after another word it stays unread.
-    trip = {"name": "trip", "columns": ["id", "bike_id"], "rows": [[1, 7], [2, 7], [3, 9]]}
-    bikes = SelectQuery((SelectItem(Aggregate("COUNT", ColumnRef("trip", "bike_id", SQLType.INTEGER), distinct=True)),),
-                        "trip")
-    trips = SchemaGraph.from_tables([trip], ())
-    assert "record" not in unread("From the trip record, find the number of unique bikes.", bikes, trips)
-    assert "record" in unread("From the latest record, find the number of unique bikes.", bikes, trips)
-    # Contrast: no count follows "by", or the query counts nothing.
-    assert "shared" in unread("Show the hometowns shared by teachers.", shared)
-    listing = SelectQuery((SelectItem(hometown),), "teacher", distinct=True)
-    assert "shared" in unread("Show the hometowns shared by at least two teachers.", listing)
-    museum = {"name": "museum", "columns": ["Museum_ID", "Name"], "rows": [[1, "Tate"], [2, "Louvre"]]}
-    visit = {"name": "visit", "columns": ["Museum_ID", "visitor_ID"], "rows": [[1, 1], [1, 2], [2, 1]]}
-    museums = SchemaGraph.from_tables([museum, visit], [("visit", "Museum_ID", "museum", "Museum_ID")])
-    museum_id, name = ColumnRef("museum", "Museum_ID", SQLType.INTEGER), ColumnRef("museum", "Name", SQLType.TEXT)
-    joins = (Join("museum", ColumnRef("visit", "Museum_ID", SQLType.INTEGER), museum_id),)
-    most = SelectQuery((SelectItem(museum_id), SelectItem(name)), "visit", joins=joins, group_by=(museum_id, name),
-                       order_by=(OrderTerm(Aggregate("COUNT", Star()), "DESC"),), limit=1)
-    question = "What are the id and name of the museum visited most times?"
-    assert "times" not in unread(question, most, museums), unread(question, most, museums)
-    first = SelectQuery((SelectItem(museum_id), SelectItem(name)), "museum", order_by=(OrderTerm(museum_id),), limit=1)
-    assert "times" in unread(question, first, museums)
-
-
-def test_an_aggregate_said_only_in_a_condition_is_not_shown():
-    """Held-out Spider train 746, 2026-10-12: "the studios whose average gross is above 4500000" showed each studio's
-    average, and only readings showing it were built. An aggregate the question also asks for is shown, and so is one
-    said after "with": "cities with total sales over 100" shows each city's total (test_a_having_reading_lists_in_the_
-    question_order), and "the categories with count more than 1" each count."""
-    film = {"name": "film", "columns": ["Film_ID", "Studio", "Gross_in_dollar"],
-            "rows": [[1, "Pixar", 5000000], [2, "Pixar", 6000000], [3, "Fox", 1000000], [4, "Fox", 2000000]]}
-    planner = _hermetic_planner()
-    for question in ("List the studios which average gross is above 4500000.",
-                     "List the studios whose average gross is above 4500000."):
-        served = planner.serve([film], question, [])
-        assert served.get("valid"), (question, served.get("error"), served.get("sql"))
-        assert [list(row) for row in served["result"]["rows"]] == [["Pixar"]], served.get("sql")
-    # Contrast: an average the question also asks for is shown.
-    shown = planner.serve([film], "Show each studio and its average gross for studios with average gross above "
-                                  "4500000.", [])
-    assert [list(row) for row in shown["result"]["rows"]] == [["Pixar", 5500000.0]], shown.get("sql")
-    festival = {"name": "music_festival", "columns": ["ID", "Music_Festival", "Category"],
-                "rows": [[1, "A", "Best Song"], [2, "B", "Best Song"], [3, "C", "Best Lyrics"]]}
-    counted = planner.serve([festival], "Please show the categories of the music festivals with count more than 1.",
-                            [])
-    assert [list(row) for row in counted["result"]["rows"]] == [["Best Song", 2]], counted.get("sql")
-
-
-def test_a_question_asking_how_many_is_answered_by_a_count():
-    """Spider DEV 892, 893, 2026-10-12: "how many friends does the high school student Kyle have" was answered with
-    the names of Kyle's friends. A count answers it; "countries with" opens with no count."""
-    student = {"name": "Highschooler", "columns": ["ID", "name"], "rows": [[1, "Kyle"], [2, "Ann"], [3, "Bo"]]}
-    friend = {"name": "Friend", "columns": ["student_id", "friend_id"], "rows": [[1, 2], [1, 3]]}
-    graph = SchemaGraph.from_tables([student, friend], [("Friend", "student_id", "Highschooler", "ID")])
-    kyle = Comparison(ColumnRef("Highschooler", "name", SQLType.TEXT), "=", Literal("Kyle"))
-    joins = (Join("Highschooler", ColumnRef("Friend", "student_id", SQLType.INTEGER),
-                  ColumnRef("Highschooler", "ID", SQLType.INTEGER)),)
-    listed = SelectQuery((SelectItem(ColumnRef("Friend", "friend_id", SQLType.INTEGER)),), "Friend", joins=joins,
-                         where=kyle)
-    counted = SelectQuery((SelectItem(Aggregate("COUNT", Star())),), "Friend", joins=joins, where=kyle)
-    uncounted = "the question asks how many, and the answer computes no count"
-    for question in ("How many friends does the high school student Kyle have?", "Count the number of friends Kyle has."):
-        assert uncounted in constraint_violations(question, listed, graph), question
-        assert uncounted not in constraint_violations(question, counted, graph), question
-    # Negative: a question that opens with another word asks no count.
-    assert uncounted not in constraint_violations("Countries of the friends of Kyle.", listed, graph)
 
 
 def test_a_number_of_a_numeric_field_is_the_field():
@@ -7148,17 +2336,8 @@ def test_a_number_of_a_numeric_field_is_the_field():
     name is that field (sql_expansion.field_numbers). A text field's name ("the number of countries" beside Country)
     and a table's ("the number of visits") are still counts."""
     from engine.sql_expansion import count_requested, field_numbers
-    building = {"name": "building", "columns": ["building_id", "Name", "Floors"],
-                "rows": [[1, "A", 10], [2, "B", 30], [3, "C", 20]]}
-    served = _hermetic_planner().serve([building], "What are the average, maximum, and minimum number of floors for all "
-                                                   "buildings?", [])
-    assert served.get("valid"), (served.get("error"), served.get("sql"))
-    assert [list(row) for row in served["result"]["rows"]] == [[20.0, 30, 10]], served.get("sql")
     county = {"name": "county_public_safety", "columns": ["County_ID", "Name", "Police_officers", "Crime_rate"],
               "rows": [[1, "A", 90, 50.0], [2, "B", 10, 80.0], [3, "C", 40, 70.0]]}
-    ordered = _hermetic_planner().serve([county], "Show the crime rates of counties in ascending order of number of "
-                                                  "police officers.", [])
-    assert [list(row) for row in ordered["result"]["rows"]] == [[80.0], [70.0], [50.0]], ordered.get("sql")
     graph = SchemaGraph.from_tables([county], ())
     fields = [column.ref for column in graph.columns]
     assert field_numbers("the order of number of police officers", fields) == {3}
@@ -7176,95 +2355,14 @@ def test_a_number_of_a_numeric_field_is_the_field():
     assert count_requested("What is the number of continents?", [column.ref for column in keyed.columns])
 
 
-def test_equal_to_is_read_by_a_comparison_for_equality():
-    """Spider DEV, 2026-10-12: "whose Country is equal to 'France'" left "equal" unread over a query comparing Country
-    with 'France', and 42 Gemini rewordings were refused for it. A query that compares nothing leaves it unread."""
-    from engine.query_contract import read_question
-    people = {"name": "people", "columns": ["id", "Name", "Country"], "rows": [[1, "Ann", "France"], [2, "Bo", "Spain"]]}
-    graph = SchemaGraph.from_tables([people], ())
-    name = SelectItem(ColumnRef("people", "Name", SQLType.TEXT))
-    french = SelectQuery((name,), "people",
-                         where=Comparison(ColumnRef("people", "Country", SQLType.TEXT), "=", Literal("France")))
-    question = "Show the Name of people whose Country is equal to 'France'."
-    assert "equal" not in read_question(question, ScoredQuery(french, render_query(french), 0.0, ()), graph).unread
-    everyone = SelectQuery((name,), "people")
-    assert "equal" in read_question("Show the Name of people whose number is equal to their rank.",
-                                    ScoredQuery(everyone, render_query(everyone), 0.0, ()), graph).unread
-
-
-def test_one_aggregate_word_over_coordinated_fields_takes_each():
-    """Spider DEV, 2026-10-12: "the average age of losers and winners" averaged one of loser_age and winner_age, and
-    "the number of different series names and contents" counted one field; "the average and maximum number of
-    tickets" counted visits, its "number" the start of Num_of_Ticket's name, and its "num" the word "number"."""
-    matches = {"name": "matches", "columns": ["match_id", "loser_age", "winner_age"],
-               "rows": [[1, 20, 30], [2, 22, 26]]}
-    ages = best("Find the average age of losers and winners of all matches.", [matches])
-    assert execute([matches], ages.sql) == [(21.0, 28.0)], ages.sql
-    channel = {"name": "TV_Channel", "columns": ["id", "series_name", "Content"],
-               "rows": [[1, "A", "music"], [2, "A", "news"], [3, "B", "news"]]}
-    counted = best("List the number of different series names and contents in the TV Channel table.", [channel])
-    assert execute([channel], counted.sql) == [(2, 2)], counted.sql
-    visit = {"name": "visit", "columns": ["Museum_ID", "visitor_ID", "Num_of_Ticket", "Total_spent"],
-             "rows": [[1, 1, 2, 10.0], [1, 2, 6, 30.0], [2, 1, 4, 20.0]]}
-    tickets = best("What are the average and maximum number of tickets bought in all visits?", [visit])
-    assert execute([visit], tickets.sql) == [(4.0, 6)], tickets.sql
-    # Contrast: a "number of" no field's name continues still counts.
-    trips = best("What is the number of visits?", [visit])
-    assert execute([visit], trips.sql) == [(3,)], trips.sql
-
-
-def test_by_after_a_participle_names_who_acted():
-    """Spider DEV, 2026-10-02: "how many cartoons were written by Joseph Kuhr" counted one group per
-    writer and "the number of pets owned by students who are older than 20" one per student: "by" read as a
-    grouping cue wherever it stood. After a participle it names who acted ("written by", "owned by"); after
-    "grouped" or "broken down" it still names the groups, and "ordered by" sorts."""
-    cartoon = {"name": "Cartoon", "columns": ["id", "Title", "Written_by", "Channel"], "rows": [
-        [1, "The Rise of the Blue Beetle!", "Michael Jelenic", "700"], [2, "Terror on Dinosaur Island!",
-                                                                       "Joseph Kuhr", "701"],
-        [3, "Evil Under the Sea!", "Joseph Kuhr", "701"]]}
-    written = best("How many cartoons were written by Joseph Kuhr?", [cartoon])
-    assert not written.query.group_by and execute([cartoon], written.sql) == [(2,)], written.sql
-    # Contrast: "grouped by" names the groups.
-    grouped = best("Count the cartoons grouped by channel.", [cartoon])
-    channels = sorted(execute([cartoon], grouped.sql))
-    assert grouped.query.group_by and channels == [("700", 1), ("701", 2)], grouped.sql
-
-
-def test_multiple_aggregates_share_a_typed_operand():
-    candidate = best("What are the average, minimum and maximum age of people from France?", [PEOPLE])
-    assert execute([PEOPLE], candidate.sql) == [(25.0, 20, 30)]
-    assert 'AVG("people"."Age")' in candidate.sql
-    assert 'MIN("people"."Age")' in candidate.sql
-    assert 'MAX("people"."Age")' in candidate.sql
-
-
-def test_repeated_count_paraphrase_is_one_aggregate():
-    candidate = best("Count the number of people from France", [PEOPLE])
-    assert candidate.sql.count("COUNT(") == 1
-    assert execute([PEOPLE], candidate.sql) == [(2,)]
-
-
-def test_total_number_of_entities_is_a_scalar_count():
-    candidate = best("What is the total number of people?", [PEOPLE])
-    assert candidate.sql == 'SELECT COUNT(*) FROM "people"'
-    assert execute([PEOPLE], candidate.sql) == [(3,)]
-
-
 def test_number_used_as_a_column_label_is_not_a_count_request():
     pit_stops = {
         "name": "pitStops",
         "columns": ["driverId", "stop", "duration"],
         "rows": [[1, 1, 20], [1, 2, 18]],
     }
-    searcher = SQLSearcher.from_tables([pit_stops], [])
     question = "Find the driver id and stop number of all drivers."
-    assert analyze_question(question, searcher.schema).count_requested is False
-    ranked = searcher.search(
-        question, rank_candidates=False, expand_recursive=False,
-        expand_constraints=False, expand_extrema=False,
-    )
-    assert ranked
-    assert "COUNT(" not in ranked[0].sql
+    assert analyze_question(question, SchemaGraph.from_tables([pit_stops], [])).count_requested is False
 
 
 def test_a_number_that_ends_a_fields_name_asks_for_the_field():
@@ -7273,22 +2371,6 @@ def test_a_number_that_ends_a_fields_name_asks_for_the_field():
     "number" asked for a count. A "number" that ends the name of a field asks for the field; an owner's ("each
     patient's number of appointments") and a quantity's ("the total number") still count."""
     from engine.sql_expansion import count_requested, field_numbers
-    planner = _hermetic_planner()
-    patients = {"name": "patients", "columns": ["SSN", "Name", "Phone"],
-                "rows": [[1, "Ann", "555-01"], [2, "Bo", "555-02"], [3, "Cy", "555-03"]]}
-    visits = {"name": "appointments", "columns": ["Appointment_ID", "Patient", "Day"],
-              "rows": [[10, 1, "mon"], [11, 1, "tue"], [12, 2, "wed"], [13, 3, "thu"], [14, 3, "fri"]]}
-    keys = [{"from_table": "appointments", "from_col": "Patient", "to_table": "patients", "to_col": "SSN"}]
-
-    def answer(question):
-        served = planner.serve([patients, visits], question, keys)
-        assert served.get("valid"), (question, served.get("error"), served.get("sql"))
-        return sorted(list(row) for row in served["result"]["rows"])
-
-    assert answer("Which patients made more than one appointment? Tell me the name and phone number of these "
-                  "patients.") == [["Ann", "555-01"], ["Cy", "555-03"]]
-    # Contrast: the number of those patients is a count.
-    assert answer("What is the number of patients with more than one appointment?") == [[2]]
     names = ("SSN", "Name", "Phone", "Appointment_ID", "Patient", "Day")
     assert field_numbers("the phone number of these patients", names) == {2}
     assert not count_requested("Give the name and phone numbers of the patients.", names)
@@ -7297,285 +2379,15 @@ def test_a_number_that_ends_a_fields_name_asks_for_the_field():
     assert count_requested("What is the total number of appointments?", names + ("Total",))
 
 
-def test_abbreviated_number_column_is_not_a_count_request():
-    flights = {
-        "name": "flights",
-        "columns": ["FlightNo", "SourceAirport"],
-        "rows": [[101, "APG"], [202, "LAX"]],
-    }
-    candidate = best("Give the flight numbers of flights leaving from APG", [flights])
-    assert candidate.sql == (
-        'SELECT "flights"."FlightNo" FROM "flights" '
-        'WHERE "flights"."SourceAirport" = \'APG\''
-    )
-    assert execute([flights], candidate.sql) == [(101,)]
-
-
-def test_travel_direction_disambiguates_parallel_airport_foreign_keys():
-    airports = {
-        "name": "airports",
-        "columns": ["AirportCode"],
-        "rows": [["APG"], ["LAX"]],
-    }
-    flights = {
-        "name": "flights",
-        "columns": ["FlightNo", "SourceAirport", "DestAirport"],
-        "rows": [[101, "APG", "LAX"], [202, "LAX", "APG"]],
-    }
-    fks = [
-        {"from_table": "flights", "from_col": "SourceAirport",
-         "to_table": "airports", "to_col": "AirportCode"},
-        {"from_table": "flights", "from_col": "DestAirport",
-         "to_table": "airports", "to_col": "AirportCode"},
-    ]
-    leaving = best("Give the flight numbers of flights leaving from APG", [airports, flights], fks)
-    landing = best("Give the flight numbers of flights landing at APG", [airports, flights], fks)
-    count = best("Return the number of flights", [airports, flights], fks)
-    airport_count = best("Return the number of airports", [airports, flights], fks)
-    assert '"flights"."SourceAirport"' in leaving.sql
-    assert '"flights"."DestAirport"' not in leaving.sql
-    assert '"flights"."DestAirport"' in landing.sql
-    assert '"flights"."SourceAirport"' not in landing.sql
-    assert execute([airports, flights], leaving.sql) == [(101,)]
-    assert execute([airports, flights], landing.sql) == [(202,)]
-    assert count.sql == 'SELECT COUNT(*) FROM "flights"'
-    assert execute([airports, flights], count.sql) == [(2,)]
-    assert airport_count.sql == 'SELECT COUNT(*) FROM "airports"'
-    assert execute([airports, flights], airport_count.sql) == [(2,)]
-
-
-def test_scalar_count_keeps_qualified_one_letter_category_filter():
-    matches = {
-        "name": "matches",
-        "columns": ["winner_name", "winner_hand", "tourney_name"],
-        "rows": [
-            ["Alice", "L", "WTA Championships"],
-            ["Alice", "L", "WTA Championships"],
-            ["Beth", "R", "WTA Championships"],
-            ["Cara", "L", "Other"],
-        ],
-    }
-    candidate = best(
-        "Find the number of left handed winners who participated in the WTA Championships",
-        [matches],
-    )
-    assert '"matches"."winner_hand" = \'L\'' in candidate.sql
-    assert 'COUNT(DISTINCT "matches"."winner_name")' in candidate.sql
-    assert "GROUP BY" not in candidate.sql
-    assert execute([matches], candidate.sql) == [(1,)]
-
-
-def test_counted_table_beats_related_column_with_same_entity_word():
-    documents = {
-        "name": "Documents",
-        "columns": ["Document_ID", "Template_ID"],
-        "rows": [[1, 10], [2, 10], [3, 20]],
-    }
-    templates = {
-        "name": "Templates",
-        "columns": ["Template_ID", "Template_Type_Code"],
-        "rows": [[10, "PPT"], [20, "PDF"]],
-    }
-    paragraphs = {
-        "name": "Paragraphs",
-        "columns": ["Paragraph_ID", "Document_ID"],
-        "rows": [[100, 1], [101, 1], [102, 2]],
-    }
-    fks = [
-        {"from_table": "Documents", "from_col": "Template_ID",
-         "to_table": "Templates", "to_col": "Template_ID"},
-        {"from_table": "Paragraphs", "from_col": "Document_ID",
-         "to_table": "Documents", "to_col": "Document_ID"},
-    ]
-    candidate = best(
-        "How many documents are using the template with type code PPT?",
-        [documents, templates, paragraphs],
-        fks,
-    )
-    # The documents are counted: their rows, or a column of theirs (Documents.Template_ID is a mention
-    # only where "template id" is said, test_a_key_named_by_the_table_it_references_needs_its_whole_name).
-    assert ('COUNT("Documents".' in candidate.sql or 'COUNT(DISTINCT "Documents".' in candidate.sql
-            or candidate.sql.startswith('SELECT COUNT(*) FROM "Documents" JOIN "Templates"')), candidate.sql
-    assert 'JOIN "Paragraphs"' not in candidate.sql
-    assert execute([documents, templates, paragraphs], candidate.sql) == [(2,)]
-
-
-def test_arbitrary_word_does_not_become_a_category_initial_filter():
-    records = {
-        "name": "records",
-        "columns": ["status"],
-        "rows": [["A"], ["I"]],
-    }
-    candidate = best("List all statuses", [records])
-    assert "WHERE" not in candidate.sql
-    assert set(execute([records], candidate.sql)) == {("A",), ("I",)}
-
-
-def test_ranker_prefers_count_distinct_over_grouped_count():
-    candidate = best("Find the number of distinct type of pets", [PETS])
-    assert candidate.sql == 'SELECT COUNT(DISTINCT "Pets"."PetType") FROM "Pets"'
-    assert execute([PETS], candidate.sql) == [(2,)]
-
-
-def test_ranker_coordinates_multiple_aggregate_operands():
-    candidate = best("Find the average and maximum age for each type of pet", [PETS])
-    assert 'AVG("Pets"."pet_age")' in candidate.sql
-    assert 'MAX("Pets"."pet_age")' in candidate.sql
-    assert 'MAX("Pets"."PetType")' not in candidate.sql
-
-
-def test_multi_hop_join_uses_bridge_table():
-    candidate = best("show customer names and item prices", [CUSTOMERS, ORDERS, ITEMS], COMMERCE_FKS)
-    assert candidate.sql.count(" JOIN ") == 2
-    assert 'JOIN "orders"' in candidate.sql
-    assert execute([CUSTOMERS, ORDERS, ITEMS], candidate.sql) == [
-        ("Alice", 8), ("Alice", 12), ("Bob", 30),
-    ]
-
-
-def test_grouped_count_uses_entity_display_column():
-    candidate = best("For each stadium, how many concerts play there?", [STADIUM, CONCERT], STADIUM_FKS)
-    assert 'GROUP BY "stadium"."Name"' in candidate.sql
-    assert "COUNT(*)" in candidate.sql
-    assert execute([STADIUM, CONCERT], candidate.sql) == [("Alpha", 2), ("Beta", 1)]
-
-
-def test_filter_column_does_not_leak_into_projection():
-    candidate = best("show stadium names with capacity between 5000 and 10000", [STADIUM])
-    assert candidate.sql.startswith('SELECT "stadium"."Name" FROM')
-    assert execute([STADIUM], candidate.sql) == [("Alpha",), ("Beta",)]
-
-
-def test_order_column_does_not_leak_into_projection():
-    candidate = best("show people names ordered by age descending", [PEOPLE])
-    assert candidate.sql.startswith('SELECT "people"."Name" FROM')
-    assert execute([PEOPLE], candidate.sql) == [("Cara",), ("Alice",), ("Bob",)]
-
-
 def test_literals_are_escaped_by_renderer():
     authors = {"name": "authors", "columns": ["Name"], "rows": [["O'Reilly"], ["Elsevier"]]}
-    candidate = best("show names for O'Reilly", [authors])
-    assert "'O''Reilly'" in candidate.sql
-    assert execute([authors], candidate.sql) == [("O'Reilly",)]
-
-
-def test_grouped_topn_orders_by_aggregate_across_bridge():
-    candidate = best("show top 2 customer names by total item price", [CUSTOMERS, ORDERS, ITEMS], COMMERCE_FKS)
-    assert 'GROUP BY "customers"."Name"' in candidate.sql
-    assert 'ORDER BY SUM("items"."Price") DESC LIMIT 2' in candidate.sql
-    assert execute([CUSTOMERS, ORDERS, ITEMS], candidate.sql) == [("Bob", 30), ("Alice", 20)]
-
-
-def test_ranked_units_sold_sums_the_quantity_measure():
-    # "units sold" is an implicit SUM over the quantity column, never a raw
-    # ORDER BY over whichever numeric column shares a token ("unit_price").
-    candidate = best("top 2 products by units sold", RETAIL, RETAIL_FKS)
-    assert 'SUM("purchase_items"."quantity")' in candidate.sql
-    assert 'GROUP BY "products"."product_name"' in candidate.sql
-    assert 'ORDER BY SUM("purchase_items"."quantity") DESC LIMIT 2' in candidate.sql
-    assert execute(RETAIL, candidate.sql) == [("Beta", 9), ("Alpha", 8)]
-
-
-def test_ranked_revenue_sums_the_amount_measure():
-    candidate = best("top 2 products by revenue", RETAIL, RETAIL_FKS)
-    assert 'SUM("purchase_items"."line_total")' in candidate.sql
-    assert 'GROUP BY "products"."product_name"' in candidate.sql
-    assert execute(RETAIL, candidate.sql) == [("Beta", 180), ("Gamma", 90)]
-
-
-def test_unit_price_ranking_stays_a_raw_rate_order():
-    # Same profile as the units-sold family, but "unit price" is a rate
-    # qualifier: ranking stays a raw ORDER BY without any aggregation.
-    candidate = best("top 2 products by unit price", RETAIL, RETAIL_FKS)
-    assert "SUM(" not in candidate.sql
-    assert 'ORDER BY "purchase_items"."unit_price" DESC LIMIT 2' in candidate.sql
-
-
-def test_total_spend_binds_the_amount_measure_deterministically():
-    # Without measure vocabulary the SUM target fell back to an arbitrary
-    # numeric-column tie; "spend" must bind the extended-amount column.
-    candidate = best("top 2 shoppers by total spend", RETAIL, RETAIL_FKS)
-    assert 'SUM("purchase_items"."line_total")' in candidate.sql
-    assert execute(RETAIL, candidate.sql) == [("Bob", 180), ("Alice", 170)]
-
-
-def test_explicit_total_quantity_sold_phrasing_is_unchanged():
-    candidate = best("top 2 product names by total quantity sold", RETAIL, RETAIL_FKS)
-    assert 'SUM("purchase_items"."quantity")' in candidate.sql
-    assert 'ORDER BY SUM("purchase_items"."quantity") DESC LIMIT 2' in candidate.sql
-    assert execute(RETAIL, candidate.sql) == [("Beta", 9), ("Alpha", 8)]
-
-
-SALES_LEDGER = {
-    "name": "sales",
-    "columns": ["order_id", "customer", "city", "currency", "amount"],
-    "rows": [
-        [101, "Sherlock Holmes", "London", "GBP", 118],
-        [102, "Sherlock Holmes", "London", "GBP", 95],
-        [104, "Dr. John Watson", "London", "GBP", 340],
-        [109, "Inspector Clouseau", "Paris", "EUR", 310],
-        [121, "Arsene Lupin", "Paris", "EUR", 180],
-    ],
-}
-
-
-def test_money_noun_naming_the_table_reads_as_its_money_total():
-    # "sales" names the table AND is a money noun. Asked as a quantity it is the money total, the
-    # way "total amount" is: the Sheets add-on's "Whats the sales in france" counted rows (5)
-    # instead of summing amount (970). The count and listing phrasings below keep the entity.
-    candidate = best("What's the sales in London", [SALES_LEDGER])
-    assert 'SUM("sales"."amount")' in candidate.sql, candidate.sql
-    assert execute([SALES_LEDGER], candidate.sql) == [(553,)]
-
-
-def test_counting_or_listing_a_money_named_table_keeps_the_entity():
-    counted = best("how many sales in London", [SALES_LEDGER])
-    assert "COUNT(" in counted.sql and "SUM(" not in counted.sql, counted.sql
-    assert execute([SALES_LEDGER], counted.sql) == [(3,)]
-    listed = best("list the sales in London", [SALES_LEDGER])
-    assert "SUM(" not in listed.sql and "COUNT(" not in listed.sql, listed.sql
-
-
-def test_money_named_table_without_a_money_column_keeps_the_entity():
-    # Same profile, but nothing in the table carries money vocabulary: there is no money total to
-    # read, so the question keeps its current interpretation instead of summing a quantity.
-    units = {"name": "sales", "columns": ["sale_id", "city", "units"],
-             "rows": [[1, "London", 3], [2, "Paris", 4]]}
-    candidate = best("What's the sales in London", [units])
-    assert "SUM(" not in candidate.sql, candidate.sql
-
-
-def test_served_selection_contract_keeps_money_totals_and_converted_totals():
-    """select_query serves the best-ranked member that aggregates the money column when the rule
-    fires, so a ranking that puts a listing first cannot turn "what's the sales in London" back
-    into rows. A converted total (SUM(amount * rate)) satisfies the contract, so a currency
-    intent's choice is never displaced."""
-    from engine.sql_ast import Aggregate, BinaryExpr, ColumnRef, SelectItem, SelectQuery
-    from engine.sql_expansion import aggregates_money_column, money_total_columns
-
-    sch = [{"table": "sales", "name": name, "affinity": affinity}
-           for name, affinity in (("order_id", "INTEGER"), ("city", "TEXT"), ("amount", "REAL"))]
-    assert money_total_columns("What's the sales in London", sch) == ("sales", [sch[2]])
-    assert money_total_columns("how many sales in London", sch) is None
-    assert money_total_columns("list the sales in London", sch) is None
-    assert money_total_columns("What's the sales in London",
-                               [dict(entry, table="orders") for entry in sch]) is None
-    summed = best("What's the sales in London", [SALES_LEDGER]).query
-    listed = best("list the sales in London", [SALES_LEDGER]).query
-    assert aggregates_money_column(summed, "sales", ["amount"])
-    assert not aggregates_money_column(listed, "sales", ["amount"])
-    converted = SelectQuery(select=(SelectItem(Aggregate("SUM", BinaryExpr(
-        ColumnRef("sales", "amount"), "*", ColumnRef("rates", "rate")))),), from_table="sales")
-    assert aggregates_money_column(converted, "sales", ["amount"])
-
-    # At the selection owner: the listing ranked first gives way to the money total ranked second.
-    planner = _hermetic_planner()
-    pool = [ScoredQuery(query, render_query(query), 0.0, ()) for query in (listed, summed)]
-    selection = _select(planner, "What's the sales in London", [SALES_LEDGER], searched=pool)
-    assert selection.ranking == (0, 1) and selection.money_total == (False, True)
-    assert selection.selected == 1 and selection.record()["money_total"] is True
-    listing = _select(planner, "list the sales in London", [SALES_LEDGER], searched=pool)
-    assert listing.selected == 0 and listing.money_total == (False, False), "the rule did not fire"
+    name = ColumnRef("authors", "Name", SQLType.TEXT)
+    query = SelectQuery((SelectItem(name),), "authors",
+                        where=Comparison(name, "=", Literal("O'Reilly", SQLType.TEXT)))
+    validate_query(query)
+    sql = render_query(query)
+    assert "'O''Reilly'" in sql
+    assert execute([authors], sql) == [("O'Reilly",)]
 
 
 def test_world_path_money_noun_naming_the_table_sums_its_money_column():
@@ -7662,7 +2474,6 @@ def test_world_path_reads_quantity_superlatives_and_counted_measures():
     assert reader(None).read_op_all("which bank has the most recent deposits?", deposits) is None
 
 
-
 def test_and_past_a_condition_joins_conditions():
     """Held out 5, 2026-10-18: "List the document ids of documents with the status done and type Paper" read no request
     for the ids: an "and" after the list was read as another output (sql_expansion.list_closed). Past a word opening
@@ -7712,8 +2523,8 @@ def test_operator_readout_never_reads_an_aggregate_off_a_closed_class_word():
 
 def test_one_surrogate_key_rule_names_keys_not_measures_or_codes():
     # Eleven copies of the surrogate-key test disagreed (2026-09-27): compose missed 'order ID' and summed
-    # order numbers, the ranker's regex called 'paid' a key, and only some copies counted codes. The planner,
-    # the ranker's features, compose, the world path and the deterministic lowering now read one rule.
+    # order numbers, the ranker's regex called 'paid' a key, and only some copies counted codes. The planner's
+    # helpers, compose, the world path and the deterministic lowering now read one rule.
     import importlib
 
     from engine.sql_schema import is_surrogate_key
@@ -7725,44 +2536,9 @@ def test_one_surrogate_key_rule_names_keys_not_measures_or_codes():
     for name in ("orders", "idea", "paid", "valid", "price index", "country_code", "Code", "keyboard"):
         assert not is_surrogate_key(name), name
     assert not is_surrogate_key("amount")                       # a measure
-    for module in ("engine.sql_search", "engine.sql_rank", "engine.sql_recursive", "engine.sql_expansion",
-                   "engine.sql_extrema", "engine.compose", "engine.encoder_overlay", "engine.knowledge_query",
-                   "engine.knowledge_tables", "engine.deterministic.lower"):
+    for module in ("engine.sql_expansion", "engine.sql_grounding", "engine.compose", "engine.encoder_overlay",
+                   "engine.knowledge_query", "engine.knowledge_tables", "engine.deterministic.lower"):
         assert importlib.import_module(module).is_surrogate_key is is_surrogate_key, module
-
-
-def test_literal_measure_column_keeps_raw_interpretation():
-    # A schema that names its own "revenue" column keeps the raw reading; the
-    # implicit measure fires only when the vocabulary has no direct column.
-    stores = {
-        "name": "stores",
-        "columns": ["store_id", "store_name", "revenue"],
-        "rows": [[1, "North", 100], [2, "South", 200]],
-    }
-    candidate = best("store with the highest revenue", [stores])
-    assert "SUM(" not in candidate.sql
-    assert 'ORDER BY "stores"."revenue" DESC LIMIT 1' in candidate.sql
-
-
-def test_search_is_deterministic():
-    searcher = SQLSearcher.from_tables([CUSTOMERS, ORDERS, ITEMS], COMMERCE_FKS)
-    first = [(c.sql, c.score) for c in searcher.search("show customer names and item prices")]
-    second = [(c.sql, c.score) for c in searcher.search("show customer names and item prices")]
-    assert first == second
-
-
-def test_encoder_role_signal_breaks_ambiguous_column_tie():
-    customers = {"name": "customers", "columns": ["Name"], "rows": [["Alice"]]}
-    orders = {"name": "orders", "columns": ["Name"], "rows": [["First order"]]}
-    signals = SemanticSignals(
-        {"projection": {("customers", "Name"): 0.1, ("orders", "Name"): 0.9}},
-        {},
-    )
-    candidates = SQLSearcher.from_tables([customers, orders], []).search(
-        "show names", semantic_signals=signals,
-    )
-    assert candidates[0].sql == 'SELECT "orders"."Name" FROM "orders"'
-    assert any(name == "model_projection" for name, _ in candidates[0].features)
 
 
 def test_soft_prediction_budget_does_not_abandon_work():
@@ -7820,851 +2596,6 @@ def test_recursive_ast_set_query_in_derived_table_executes():
     assert execute([PEOPLE], render_query(query)) == [(1,)]
 
 
-def test_recursive_expansion_searches_scalar_average():
-    candidate = best("Show names of people older than the average age", [PEOPLE])
-    assert "(SELECT AVG(" in candidate.sql
-    assert execute([PEOPLE], candidate.sql) == [("Cara",)]
-
-
-def test_recursive_expansion_searches_anti_membership():
-    candidate = SQLSearcher.from_tables([STADIUM, CONCERT], STADIUM_FKS).search(
-        "Show the stadium names without any concert", expand_extrema=False
-    )[0]
-    assert " NOT IN (SELECT " in candidate.sql
-    assert execute([STADIUM, CONCERT], candidate.sql) == [("Gamma",)]
-
-
-def test_recursive_expansion_searches_route_self_join():
-    candidate = best(
-        "How many flights depart from City Aberdeen and have destination City Ashley?",
-        [AIRPORTS, FLIGHTS],
-        FLIGHT_FKS,
-    )
-    assert candidate.sql.count('JOIN "airports"') == 2
-    assert 'AS "source"' in candidate.sql and 'AS "destination"' in candidate.sql
-    assert execute([AIRPORTS, FLIGHTS], candidate.sql) == [(1,)]
-
-
-def test_recursive_expansion_searches_nested_count_aggregate():
-    students = {
-        "name": "students",
-        "columns": ["Student_ID", "Name"],
-        "rows": [[1, "Alice"], [2, "Bob"], [3, "Cara"]],
-    }
-    pets = {
-        "name": "pets",
-        "columns": ["Pet_ID", "Student_ID"],
-        "rows": [[1, 1], [2, 1], [3, 2]],
-    }
-    fks = [
-        {"from_table": "pets", "from_col": "Student_ID", "to_table": "students", "to_col": "Student_ID"},
-    ]
-    candidate = best("What is the average number of pets per student?", [students, pets], fks)
-    assert 'AVG("counts"."value_count")' in candidate.sql
-    assert "FROM (SELECT" in candidate.sql
-    assert "LEFT JOIN" in candidate.sql
-    assert 'COUNT("pets"."Student_ID")' in candidate.sql
-    assert execute([students, pets], candidate.sql) == [(1.0,)]
-
-
-def test_recursive_set_expansion_keeps_every_categorical_alternative():
-    people = {
-        "name": "people",
-        "columns": ["Name", "Country"],
-        "rows": [["A", "France"], ["B", "Spain"], ["C", "Italy"]],
-    }
-    candidates = SQLSearcher.from_tables([people], [], max_candidates=80).search(
-        "List people in France, Spain, or Italy",
-        expand_constraints=False,
-        expand_extrema=False,
-    )
-    candidate = next(candidate for candidate in candidates if " UNION " in candidate.sql)
-    assert candidate.sql.count("SELECT") == 3
-    assert '"people"."Country" = \'Italy\'' in candidate.sql
-    assert " AND " not in candidate.sql
-    assert execute([people], candidate.sql) == [("A",), ("B",), ("C",)]
-
-
-def test_constraint_expansion_searches_cross_table_count_having():
-    candidate = best(
-        "Show stadium names that have more than one concert",
-        [STADIUM, CONCERT],
-        STADIUM_FKS,
-    )
-    assert 'GROUP BY "stadium"."Name"' in candidate.sql
-    assert "HAVING COUNT(*) > 1" in candidate.sql
-    assert execute([STADIUM, CONCERT], candidate.sql) == [("Alpha",)]
-
-
-def test_constraint_expansion_searches_single_table_count_having():
-    candidate = best("List countries having at least two people", [PEOPLE])
-    assert 'GROUP BY "people"."Country"' in candidate.sql
-    assert "HAVING COUNT(*) >= 2" in candidate.sql
-    assert execute([PEOPLE], candidate.sql) == [("France",)]
-
-
-def test_constraint_expansion_searches_disjunction():
-    candidate = best(
-        "How many people are from France or have age greater than 35?",
-        [PEOPLE],
-    )
-    assert '"people"."Country" = \'France\' OR "people"."Age" > 35' in candidate.sql
-    assert execute([PEOPLE], candidate.sql) == [(3,)]
-
-
-def test_constraint_expansion_disjoins_every_repeated_column_group():
-    people = {
-        "name": "people",
-        "columns": ["Name", "Country", "Job"],
-        "rows": [
-            ["A", "France", "engineer"],
-            ["B", "Spain", "doctor"],
-            ["C", "France", "teacher"],
-            ["D", "Italy", "engineer"],
-        ],
-    }
-    candidates = SQLSearcher.from_tables([people], [], max_candidates=80).search(
-        "List people in France or Spain who are engineers or doctors"
-    )
-    candidate = candidates[0]
-    assert "Country\" = 'France' OR \"people\".\"Country\" = 'Spain'" in candidate.sql
-    assert "Job\" = 'engineer' OR \"people\".\"Job\" = 'doctor'" in candidate.sql
-    assert execute([people], candidate.sql) == [("A",), ("B",)]
-    assert all(" UNION " not in item.sql for item in candidates)
-
-
-def test_constraint_disjunction_deduplicates_entities_across_relation():
-    customers = {
-        "name": "customers",
-        "columns": ["Customer_ID", "Name"],
-        "rows": [[1, "Alice"], [2, "Bob"]],
-    }
-    orders = {
-        "name": "orders",
-        "columns": ["Order_ID", "Customer_ID", "Type"],
-        "rows": [[1, 1, "cat"], [2, 1, "dog"], [3, 2, "bird"]],
-    }
-    fks = [
-        {"from_table": "orders", "from_col": "Customer_ID", "to_table": "customers", "to_col": "Customer_ID"},
-    ]
-    candidate = best("Show customer names with order type cat or dog", [customers, orders], fks)
-    assert candidate.sql.startswith('SELECT DISTINCT "customers"."Name"')
-    assert execute([customers, orders], candidate.sql) == [("Alice",)]
-
-
-def test_constraint_disjunction_preserves_shared_official_filter():
-    countries = {
-        "name": "country",
-        "columns": ["Code", "Name"],
-        "rows": [["A", "Alpha"], ["B", "Beta"], ["C", "Gamma"]],
-    }
-    languages = {
-        "name": "countrylanguage",
-        "columns": ["CountryCode", "Language", "IsOfficial"],
-        "rows": [["A", "English", "T"], ["B", "Dutch", "T"], ["C", "English", "F"]],
-    }
-    fks = [
-        {"from_table": "countrylanguage", "from_col": "CountryCode", "to_table": "country", "to_col": "Code"},
-    ]
-    candidate = best(
-        "What are the country names where either English or Dutch is the official language?",
-        [countries, languages],
-        fks,
-    )
-    assert '"countrylanguage"."IsOfficial" = \'T\'' in candidate.sql
-    assert execute([countries, languages], candidate.sql) == [("Alpha",), ("Beta",)]
-
-
-def test_constraint_expansion_searches_filtered_scalar_minimum():
-    cars = {
-        "name": "cars_data",
-        "columns": ["Id", "Horsepower", "Cylinders"],
-        "rows": [[1, 10, 2], [2, 20, 3], [3, 30, 4]],
-    }
-    names = {
-        "name": "car_names",
-        "columns": ["MakeId", "Make"],
-        "rows": [[1, "A"], [2, "B"], [3, "C"]],
-    }
-    fks = [
-        {"from_table": "car_names", "from_col": "MakeId", "to_table": "cars_data", "to_col": "Id"},
-    ]
-    candidate = best(
-        "Among the cars with more than lowest horsepower, which ones do not have more "
-        "than 3 cylinders? List the car makeid and make name.",
-        [cars, names],
-        fks,
-    )
-    assert candidate.sql.startswith('SELECT "car_names"."MakeId", "car_names"."Make"')
-    assert '"cars_data"."Cylinders" <= 3' in candidate.sql
-    assert '(SELECT MIN("cars_data"."Horsepower") FROM "cars_data")' in candidate.sql
-    assert execute([cars, names], candidate.sql) == [(2, "B")]
-
-
-def test_constraint_expansion_keeps_grouped_superlative_as_aggregate():
-    candidate = best("What is the maximum age for all the different countries?", [PEOPLE])
-    assert 'MAX("people"."Age")' in candidate.sql
-    assert 'GROUP BY "people"."Country"' in candidate.sql
-    assert "(SELECT MAX(" not in candidate.sql
-    assert execute([PEOPLE], candidate.sql) == [("France", 30), ("Spain", 40)]
-
-
-def test_constraint_expansion_infers_high_confidence_missing_entity_fk():
-    airlines = {
-        "name": "airlines",
-        "columns": ["uid", "Airline"],
-        "rows": [[1, "A"], [2, "B"], [3, "C"]],
-    }
-    flights = {
-        "name": "flights",
-        "columns": ["Airline", "FlightNo"],
-        "rows": [[1, 10], [1, 11], [2, 12]],
-    }
-    candidate = best("Find all airlines that have at least 2 flights", [airlines, flights])
-    assert 'JOIN "airlines" ON "flights"."Airline" = "airlines"."uid"' in candidate.sql
-    assert execute([airlines, flights], candidate.sql) == [("A",)]
-
-
-def test_constraint_expansion_can_be_disabled_without_affecting_recursive_expansion():
-    searcher = SQLSearcher.from_tables([STADIUM, CONCERT], STADIUM_FKS)
-    question = "Show stadium names that have more than one concert"
-    recursive_only = searcher.search(
-        question, expand_recursive=True, expand_constraints=False, expand_extrema=False,
-    )
-    constrained = searcher.search(
-        question, expand_recursive=True, expand_constraints=True, expand_extrema=False,
-    )
-    assert all("constraint:" not in evidence
-               for candidate in recursive_only for evidence in candidate.evidence)
-    assert " HAVING " not in recursive_only[0].sql
-    assert " HAVING " in constrained[0].sql
-
-
-def test_extrema_expansion_searches_row_superlative():
-    candidate = best("Show the name and country of the youngest person", [PEOPLE])
-    assert candidate.sql.endswith('ORDER BY "people"."Age" ASC LIMIT 1')
-    assert execute([PEOPLE], candidate.sql) == [("Bob", "France")]
-
-
-def test_extrema_expansion_preserves_filter_on_row_superlative():
-    candidate = best(
-        "For people from France, show the name of the oldest person",
-        [PEOPLE],
-    )
-    assert 'WHERE "people"."Country" = \'France\'' in candidate.sql
-    assert candidate.sql.endswith('ORDER BY "people"."Age" DESC LIMIT 1')
-    assert execute([PEOPLE], candidate.sql) == [("Alice",)]
-
-
-def test_extrema_expansion_searches_explicit_top_n():
-    candidate = best("Show the 2 youngest people names", [PEOPLE])
-    assert candidate.sql.endswith('ORDER BY "people"."Age" ASC LIMIT 2')
-    assert execute([PEOPLE], candidate.sql) == [("Bob",), ("Alice",)]
-
-
-def test_extrema_expansion_distinguishes_limit_token_from_equal_filter_value():
-    cars = {
-        "name": "cars",
-        "columns": ["Name", "Doors", "Price"],
-        "rows": [["A", 2, 100], ["B", 4, 200], ["C", 5, 300]],
-    }
-    candidates = SQLSearcher.from_tables([cars], [], max_candidates=80).search(
-        "List the price of the 2 largest cars by price with more than 2 doors"
-    )
-    candidate = next(
-        item for item in candidates
-        if item.sql.endswith('ORDER BY "cars"."Price" DESC LIMIT 2')
-        and '"cars"."Doors" > 2' in item.sql
-    )
-    assert execute([cars], candidate.sql) == [(300,), (200,)]
-
-
-def test_extrema_expansion_searches_frequency_superlative():
-    candidate = best("Which country has the most people?", [PEOPLE])
-    assert 'GROUP BY "people"."Country"' in candidate.sql
-    assert candidate.sql.endswith("ORDER BY COUNT(*) DESC LIMIT 1")
-    assert execute([PEOPLE], candidate.sql) == [("France",)]
-
-
-def test_extrema_frequency_superlative_can_return_count():
-    candidate = best(
-        "List the country with the most people and how many people it has",
-        [PEOPLE],
-    )
-    assert candidate.sql.startswith('SELECT "people"."Country", COUNT(*)')
-    assert execute([PEOPLE], candidate.sql) == [("France", 2)]
-
-
-def test_extrema_frequency_argmin_includes_zero_related_entities():
-    students = {
-        "name": "students",
-        "columns": ["Student_ID", "Name"],
-        "rows": [[1, "Alex"], [2, "Alex"], [3, "Cara"]],
-    }
-    pets = {
-        "name": "pets",
-        "columns": ["Pet_ID", "Student_ID"],
-        "rows": [[1, 1], [2, 1], [3, 3]],
-    }
-    fks = [{
-        "from_table": "pets", "from_col": "Student_ID",
-        "to_table": "students", "to_col": "Student_ID",
-    }]
-    candidate = best(
-        "Which student has the smallest number of pets?",
-        [students, pets],
-        fks,
-    )
-    assert "LEFT JOIN" in candidate.sql
-    assert '"students"."Student_ID"' in candidate.sql.split(" ORDER BY ")[0]
-    assert 'ORDER BY COUNT("pets"."Student_ID") ASC LIMIT 1' in candidate.sql
-    assert execute([students, pets], candidate.sql) == [("Alex",)]
-
-
-def test_extrema_expansion_returns_dual_lexical_extrema():
-    cars = {
-        "name": "cars",
-        "columns": ["Name", "Country", "Price", "Weight"],
-        "rows": [
-            ["A", "France", 100, 1000],
-            ["B", "France", 300, 900],
-            ["C", "Spain", 500, 700],
-        ],
-    }
-    candidate = best("Show the highest and lowest price", [cars])
-    assert candidate.sql == 'SELECT MAX("cars"."Price"), MIN("cars"."Price") FROM "cars"'
-    assert execute([cars], candidate.sql) == [(500, 100)]
-
-    filtered = best("Show the highest and lowest price for cars in France", [cars])
-    assert 'WHERE "cars"."Country" = \'France\'' in filtered.sql
-    assert execute([cars], filtered.sql) == [(300, 100)]
-
-    separate = best("Show the highest price and lowest weight", [cars])
-    assert separate.sql == (
-        'SELECT MAX("cars"."Price"), MIN("cars"."Weight") FROM "cars"'
-    )
-    assert execute([cars], separate.sql) == [(500, 700)]
-
-
-def test_extrema_expansion_searches_set_difference():
-    candidate = best(
-        "Show the stadium names without any concert",
-        [STADIUM, CONCERT],
-        STADIUM_FKS,
-    )
-    assert " EXCEPT SELECT " in candidate.sql
-    assert execute([STADIUM, CONCERT], candidate.sql) == [("Gamma",)]
-
-
-def test_a_difference_subtracts_entities_by_what_tells_them_apart():
-    """Spider DEV 61, 2026-10-10: "the major and age of students who do not have a cat" was served as an EXCEPT of
-    (major, age), which removed a student sharing both with a cat owner. A difference subtracts entities by a column
-    that tells them apart: the projected values when they do, else the entity's key, kept NOT IN the related rows."""
-    student = {"name": "Student", "columns": ["StuID", "Name", "Major", "Age"],
-               "rows": [[1, "Ann", 600, 19], [2, "Bo", 600, 19], [3, "Cy", 520, 20]]}
-    pets = {"name": "Pets", "columns": ["PetID", "PetType"], "rows": [[10, "cat"], [11, "dog"]]}
-    has_pet = {"name": "Has_Pet", "columns": ["StuID", "PetID"], "rows": [[1, 10], [3, 11]]}
-    planner = _hermetic_planner()
-    served = planner.serve([student, pets, has_pet], "Find the major and age of students who do not have a cat pet.")
-    assert sorted(tuple(row) for row in served["result"]["rows"]) == [(520, 20), (600, 19)], served.get("sql")
-    assert " NOT IN " in served["sql"], served["sql"]
-    # Contrast: names no two students share tell them apart, and their difference is the answer.
-    served = planner.serve([student, pets, has_pet], "Find the names of students who do not have a cat pet.")
-    assert sorted(row[0] for row in served["result"]["rows"]) == ["Bo", "Cy"], served.get("sql")
-
-
-def test_one_aggregate_word_over_two_coordinated_fields_takes_both():
-    """Spider train (41 of 7,000 questions; DEV 4): "the average distance and price" asks for two averages, and the
-    search kept one aggregate per word, so the price was dropped. The fields the aggregate word's phrase coordinates
-    each take it; a coordinated filter value is no second field."""
-    flight = {"name": "flight", "columns": ["flno", "origin", "distance", "price"],
-              "rows": [[1, "Los Angeles", 100, 50.0], [2, "Los Angeles", 300, 70.0], [3, "Chicago", 900, 200.0]]}
-    planner = _hermetic_planner()
-    both = planner.serve([flight], "What is the average distance and price for flights from Los Angeles?")
-    assert both["sql"] == ('SELECT AVG("flight"."distance"), AVG("flight"."price") FROM "flight" '
-                           """WHERE "flight"."origin" = 'Los Angeles'"""), both["sql"]
-    assert [list(row) for row in both["result"]["rows"]] == [[200, 60]]
-    # Contrast: two cities coordinated in a filter keep one average.
-    one = planner.serve([flight], "What is the average distance for flights from Los Angeles and Chicago?")
-    assert one["sql"].startswith('SELECT AVG("flight"."distance") FROM'), one["sql"]
-
-
-def test_each_coordinated_aggregate_word_takes_its_own_field():
-    """The review of 2026-10-11 (F4): "the average distance and average price" was refused, the second "average"
-    collapsed into the first, and the refusal blamed nonnumeric price cells, all of them numbers. Each aggregate word
-    "and" or a list coordinates takes the field it stands before, in the question's order; the same word over the same
-    field is asked once, and "count the number" is still one count."""
-    flight = {"name": "flight", "columns": ["flno", "origin", "distance", "price", "duration"],
-              "rows": [[1, "Los Angeles", 100, 50, 2], [2, "Los Angeles", 300, 70, 4], [3, "Chicago", 900, 200, 9]]}
-    planner = _hermetic_planner()
-
-    def answer(question):
-        served = planner.serve([flight], question)
-        assert served.get("valid"), (question, served.get("error"), served.get("sql"))
-        return served["sql"], [list(row) for row in served["result"]["rows"]]
-
-    sql, rows = answer("What is the average distance and average price for flights from Los Angeles?")
-    assert rows == [[200, 60]], sql
-    sql, rows = answer("What is the average distance, average price and average duration of flights from Los Angeles?")
-    assert rows == [[200, 60, 3]], sql
-    sql, rows = answer("What is the total distance and total price of flights from Chicago?")
-    assert rows == [[900, 200]], sql
-    sql, rows = answer("What is the average distance and maximum price for flights from Los Angeles?")
-    assert rows == [[200, 70]], sql
-    sql, _ = answer("What is the average price and average price of flights?")
-    assert sql == 'SELECT AVG("flight"."price") FROM "flight"', sql
-    sql, rows = answer("Count the number of flights from Los Angeles.")
-    assert sql.startswith('SELECT COUNT(*) FROM') and rows == [[2]], sql
-    # A count asked again in other words is one count (Spider DEV 89).
-    continents = {"name": "continents", "columns": ["ContId", "Continent"], "rows": [[1, "america"], [2, "asia"]]}
-    countries = {"name": "countries", "columns": ["CountryId", "CountryName", "Continent"],
-                 "rows": [[1, "usa", 1], [2, "japan", 2], [3, "korea", 2]]}
-    served = planner.serve([continents, countries], "How many countries does each continent have? List the continent "
-                           "name and the number of countries.",
-                           [{"from_table": "countries", "from_col": "Continent", "to_table": "continents",
-                             "to_col": "ContId"}])
-    assert served["sql"].count("COUNT(") == 1, served.get("sql")
-    # A numeric field the query leaves out is a missing aggregate, not a field with cells to repair.
-    graph = SchemaGraph.from_tables([flight], [])
-    distance = ColumnRef("flight", "distance", SQLType.INTEGER)
-    partial = SelectQuery((SelectItem(Aggregate("AVG", distance)),), "flight")
-    assert "requested aggregate is missing: AVG of price" in constraint_violations(
-        "What is the average distance and average price of flights?", partial, graph)
-
-
-HIGHSCHOOLERS = [
-    {"name": "Highschooler", "columns": ["ID", "name", "grade"],
-     "rows": [[1, "Jordan", 9], [2, "Jordan", 10], [3, "Kyle", 11], [4, "Ann", 9]]},
-    {"name": "Friend", "columns": ["student_id", "friend_id"],
-     "rows": [[1, 3], [2, 3], [3, 1], [3, 2], [3, 4], [4, 3], [4, 1]]},
-    {"name": "Likes", "columns": ["student_id", "liked_id"], "rows": [[1, 3], [2, 3], [4, 3], [3, 1], [4, 1]]},
-]
-HIGHSCHOOLER_KEYS = [{"from_table": table, "from_col": column, "to_table": "Highschooler", "to_col": "ID", "conf": 1.0}
-                     for table, column in (("Friend", "student_id"), ("Friend", "friend_id"),
-                                           ("Likes", "student_id"), ("Likes", "liked_id"))]
-
-
-def test_a_relation_is_read_from_its_owner_and_named_rows_are_grouped_apart():
-    """Spider DEV 885-911, 2026-10-10: "high schoolers who have at least 2 friends" joined Friend on friend_id, the
-    friends' side (both readings tied and friend_id came first by name), and grouped by name, so the two students named
-    Jordan counted their friends together. A table relating rows of one table reads from its owner's key, and rows
-    grouped by a name that repeats are grouped by their key too. From the friends' side the answer is Jordan and Kyle;
-    by name alone the Jordans' one friend each makes two."""
-    planner = _hermetic_planner()
-    served = planner.serve(HIGHSCHOOLERS, "Show the names of high schoolers who have at least 2 friends.",
-                           explicit_fks=HIGHSCHOOLER_KEYS)
-    assert sorted(row[0] for row in served["result"]["rows"]) == ["Ann", "Kyle"], served["sql"]
-    each = planner.serve(HIGHSCHOOLERS, "What are the names of the high schoolers and how many friends does each have?",
-                         explicit_fks=HIGHSCHOOLER_KEYS)
-    assert sorted(tuple(row) for row in each["result"]["rows"]) == [
-        ("Ann", 2), ("Jordan", 1), ("Jordan", 1), ("Kyle", 3)], each["sql"]
-    # Contrast: a category is no name, and its rows stay one group per value.
-    graded = planner.serve(HIGHSCHOOLERS, "How many friends do the high schoolers in each grade have?",
-                           explicit_fks=HIGHSCHOOLER_KEYS)
-    assert sorted(tuple(row) for row in graded["result"]["rows"]) == [(9, 3), (10, 1), (11, 3)], graded["sql"]
-    # Contrast: a "Title" the employees share is a job title when the question names no employees, and "total revenue
-    # by title" keeps one group per title (the release build's regress fk_relationship_named_group_slot, 2026-10-10).
-    stores = {"name": "stores", "columns": ["Store_ID", "Region", "Manager_ID", "Revenue"],
-              "rows": [["S1", "West", "E1", 5000], ["S2", "East", "E2", 7000], ["S3", "West", "E1", 4000],
-                       ["S4", "East", "E3", 9000]]}
-    employees = {"name": "employees", "columns": ["Employee_ID", "Employee_Name", "Title"],
-                 "rows": [["E1", "Alice", "Sr Mgr"], ["E2", "Bob", "Mgr"], ["E3", "Carol", "Mgr"]]}
-    titled = planner.serve([stores, employees], "total revenue by title",
-                           explicit_fks=[{"from_table": "stores", "from_col": "Manager_ID", "to_table": "employees",
-                                          "to_col": "Employee_ID", "conf": 1.0}])
-    assert sorted(tuple(row) for row in titled["result"]["rows"]) == [("Mgr", 16000), ("Sr Mgr", 9000)], titled["sql"]
-
-
-def test_a_group_is_told_apart_only_by_a_key_of_its_own_rows():
-    """Spider DEV 758 and 369, 2026-10-10, against the first cut of grouping named rows by their key: "languages spoken
-    by only one country" grouped each language with countrylanguage.CountryCode, a key of the countries, so every
-    language counted one country; and "document ids, names and the number of paragraphs" lost the ids it asked for,
-    their group no longer scored as asked. A key repeated in its table tells no group apart, and a key the answer
-    lists is a group it asks for."""
-    country = {"name": "country", "columns": ["Code", "Name", "GovernmentForm"],
-               "rows": [["FRA", "France", "Republic"], ["BEL", "Belgium", "Monarchy"], ["ITA", "Italy", "Republic"],
-                        ["PER", "Peru", "Republic"]]}
-    language = {"name": "countrylanguage", "columns": ["CountryCode", "Language", "Percentage"],
-                "rows": [["FRA", "French", 90.0], ["BEL", "French", 30.0], ["ITA", "Italian", 95.0],
-                         ["FRA", "Italian", 1.0], ["PER", "Quechua", 20.0], ["BEL", "Dutch", 60.0]]}
-    planner = _hermetic_planner()
-    spoken = planner.serve([country, language], "Which languages are spoken by only one country in republic governments?",
-                           explicit_fks=[{"from_table": "countrylanguage", "from_col": "CountryCode",
-                                          "to_table": "country", "to_col": "Code", "conf": 1.0}])
-    assert sorted(row[0] for row in spoken["result"]["rows"]) == ["French", "Quechua"], spoken["sql"]
-    documents = {"name": "Documents", "columns": ["Document_ID", "Document_Name"], "rows": [[1, "Plan"], [2, "Plan"], [3, "Memo"]]}
-    paragraphs = {"name": "Paragraphs", "columns": ["Paragraph_ID", "Document_ID", "Paragraph_Text"],
-                  "rows": [[10, 1, "a"], [11, 1, "b"], [12, 2, "c"], [13, 3, "d"]]}
-    counted = planner.serve([documents, paragraphs],
-                            "Show all document ids, names and the number of paragraphs in each document.",
-                            explicit_fks=[{"from_table": "Paragraphs", "from_col": "Document_ID",
-                                           "to_table": "Documents", "to_col": "Document_ID", "conf": 1.0}])
-    assert sorted(tuple(row) for row in counted["result"]["rows"]) == [(1, "Plan", 2), (2, "Plan", 1), (3, "Memo", 1)], (
-        counted["sql"])
-
-
-
-SHOP_ORDERS = {"name": "orders", "columns": ["order ID", "customer", "item", "quantity", "unit price", "amount", "city"],
-               "rows": [[1, "Ann", "Tart", 2, 6, 12, "Paris"], [2, "Ben", "Cake", 1, 30, 30, "Lyon"],
-                        [3, "Ann", "Pie", 3, 9, 27, "Paris"], [4, "Cy", "Bun", 4, 2, 8, "Nice"],
-                        [5, "Dee", "Cake", 1, 25, 25, "Lyon"], [6, "Ben", "Tart", 2, 6, 12, "Paris"]]}
-
-
-def test_a_field_an_aggregate_word_takes_ranks_the_groups_and_asks_no_grain():
-    """An owner's replay, 2026-10-10: "top 2 cities by total amount" failed the grain contract for every query that
-    grouped the cities alone, and the one grouped by city and amount answered "Lyon 200, Lyon 160". The field after
-    "by total" is the measure; a field after a bare "by" is still a grain the query must keep."""
-    planner = _hermetic_planner()
-    ranked = planner.serve([SHOP_ORDERS], "top 2 cities by total amount")
-    assert [tuple(row) for row in ranked["result"]["rows"]] == [("Lyon", 55), ("Paris", 51)], ranked["sql"]
-    graph = SchemaGraph.from_tables([SHOP_ORDERS], [])
-    city, amount = ColumnRef("orders", "city", SQLType.TEXT), ColumnRef("orders", "amount", SQLType.INTEGER)
-    by_city = SelectQuery((SelectItem(city), SelectItem(Aggregate("SUM", amount))), "orders", group_by=(city,))
-    ungrouped = SelectQuery((SelectItem(Aggregate("SUM", amount)),), "orders")
-    assert "requested output grain is missing" not in constraint_violations(
-        "top 2 cities by total amount", by_city, graph)
-    assert "requested output grain is missing" in constraint_violations("total amount by city", ungrouped, graph)
-    assert "requested output grain is missing" in constraint_violations("average amount by quantity", by_city, graph)
-
-
-def test_an_average_per_row_noun_averages_the_rows():
-    """An owner's replay, 2026-10-10: "average amount per order" over a table of orders was an average per
-    customer, the orders' first named column. Each row is an order, so the average is over the rows; a column
-    named after "per" is still the group ("average amount per city"), and a total per order is not averaged."""
-    planner = _hermetic_planner()
-    per_order = planner.serve([SHOP_ORDERS], "average amount per order")
-    assert [float(row[0]) for row in per_order["result"]["rows"]] == [19.0], per_order["sql"]
-    in_lyon = planner.serve([SHOP_ORDERS], "average amount per order in Lyon")
-    assert [float(row[0]) for row in in_lyon["result"]["rows"]] == [27.5], in_lyon["sql"]
-    per_city = planner.serve([SHOP_ORDERS], "average amount per city")
-    assert sorted((row[0], float(row[1])) for row in per_city["result"]["rows"]) == [
-        ("Lyon", 27.5), ("Nice", 8.0), ("Paris", 17.0)], per_city["sql"]
-
-
-def test_rows_said_to_be_over_a_number_are_compared_by_their_money_measure():
-    """An owner's replay, 2026-10-10: "how many orders are over 20?" counted customers with more than 20 orders, and
-    "list the orders over 20" compared unit price. A noun, a form of "to be" and "over <n>" compare each row, as the
-    noun right before "over" already did; a number no field is named for compares the rows' money measure. A named
-    field keeps its comparison, and "customers that have over 2 sales" counts the sales, which the money noun's
-    total read as SUM(amount) WHERE amount > 2."""
-    planner = _hermetic_planner()
-    counted = planner.serve([SHOP_ORDERS], "how many orders are over 20?")
-    assert [tuple(row) for row in counted["result"]["rows"]] == [(3,)], counted["sql"]
-    listed = planner.serve([SHOP_ORDERS], "list the orders over 20")
-    assert len(listed["result"]["rows"]) == 3 and '"amount" > 20' in listed["sql"], listed["sql"]
-    named = planner.serve([SHOP_ORDERS], "how many orders have a unit price over 20?")
-    assert [tuple(row) for row in named["result"]["rows"]] == [(2,)], named["sql"]
-    customers = {"name": "customers", "columns": ["customer_id", "name"], "rows": [[1, "Ann"], [2, "Ben"], [3, "Cy"]]}
-    sales = {"name": "sales", "columns": ["sale_id", "customer_id", "amount"],
-             "rows": [[1, 1, 5], [2, 1, 7], [3, 2, 9], [4, 1, 3], [5, 3, 4], [6, 3, 2]]}
-    repeat = planner.serve([customers, sales], "which customers have over 2 sales?",
-                           explicit_fks=[{"from_table": "sales", "from_col": "customer_id",
-                                          "to_table": "customers", "to_col": "customer_id", "conf": 1.0}])
-    assert [row[0] for row in repeat["result"]["rows"]] == ["Ann"], repeat["sql"]
-    # The money measure is the named rows' own: a noun of a table without one prefers nothing (held-out train 289,
-    # "products whose availability equals 1", compared Bookings.amount_payable under a first cut of the rule).
-    products = {"name": "products", "columns": ["product_id", "product_name"], "rows": [[1, "Tent"], [2, "Kayak"]]}
-    availability = {"name": "availability", "columns": ["product_id", "available_yn"], "rows": [[1, 1], [2, 0]]}
-    bookings = {"name": "bookings", "columns": ["booking_id", "product_id", "amount_payable"],
-                "rows": [[1, 1, 30], [2, 2, 1]]}
-    flagged = planner.serve([products, availability, bookings],
-                            "What are the names of products whose availability equals to 1?",
-                            explicit_fks=[{"from_table": "availability", "from_col": "product_id",
-                                           "to_table": "products", "to_col": "product_id", "conf": 1.0},
-                                          {"from_table": "bookings", "from_col": "product_id",
-                                           "to_table": "products", "to_col": "product_id", "conf": 1.0}])
-    assert "amount_payable" not in (flagged.get("sql") or ""), flagged.get("sql")
-
-
-
-def test_the_most_of_a_one_table_workbooks_rows_counts_them_per_group():
-    """An owner's question, 2026-10-01: "which country has the most leads?" over one sheet named responses was asked
-    what "leads" means, while "how many leads per country" was answered. In a workbook of one table a count counts its
-    rows whatever the question calls them, and the noun after "the most" names them; a field after "the most" is still
-    ranked by its values, and with two tables an unknown noun is still asked about."""
-    responses = {"name": "responses", "columns": ["submitted", "name", "company", "country", "employees", "budget"],
-                 "rows": [["2026-09-01", "Ann", "Acme", "Germany", 50, 10000],
-                          ["2026-09-02", "Ben", "Bolt", "Germany", 20, 5000],
-                          ["2026-09-03", "Cy", "Cog", "France", 900, 30000],
-                          ["2026-09-04", "Dee", "Dot", "Japan", 10, 2000]]}
-    planner = _hermetic_planner()
-    most = planner.serve([responses], "which country has the most leads?")
-    assert [row[0] for row in most["result"]["rows"]] == ["Germany"] and "COUNT(*)" in most["sql"], most.get("sql")
-    fewest = planner.serve([responses], "which country has the fewest leads?")
-    assert sorted(row[0] for row in fewest["result"]["rows"]) == ["France", "Japan"], fewest.get("sql")
-    ranked = planner.serve([responses], "which country has the most employees?")
-    assert [row[0] for row in ranked["result"]["rows"]] == ["France"] and "COUNT" not in ranked["sql"], ranked["sql"]
-    coded = {"name": "responses", "columns": ["response_id", "company", "country_code", "score"],
-             "rows": [[1, "Acme", "DE", 70], [2, "Bolt", "DE", 90], [3, "Cog", "FR", 85]]}
-    countries = {"name": "countries", "columns": ["country_code", "country"], "rows": [["DE", "Germany"], ["FR", "France"]]}
-    two = planner.serve([coded, countries], "which country has the most leads?",
-                        explicit_fks=[{"from_table": "responses", "from_col": "country_code",
-                                       "to_table": "countries", "to_col": "country_code", "conf": 1.0}])
-    assert two.get("clarify") and "leads" in two["reason"], two.get("sql")
-
-
-CAR_COUNTRIES = {"name": "countries", "columns": ["CountryId", "CountryName"],
-                 "rows": [[1, "usa"], [2, "japan"], [3, "korea"], [4, "korea"], [5, "germany"]]}
-CAR_MAKERS = {"name": "car_makers", "columns": ["Id", "Maker", "FullName", "Country"],
-              "rows": [[1, "ford", "Ford", 1], [2, "gm", "GM", 1], [3, "tesla", "Tesla", 1],
-                       [4, "toyota", "Toyota", 2], [5, "kia", "Kia", 3], [6, "daewoo", "Daewoo", 4]]}
-CAR_MAKER_KEYS = [{"from_table": "car_makers", "from_col": "Country", "to_table": "countries", "to_col": "CountryId"}]
-
-
-def test_how_many_entities_with_a_count_threshold_counts_the_ones_that_qualify():
-    """The review of 2026-10-11 (F2): "how many countries have more than 1 car maker" was served as a COUNT(*) grouped by
-    country with HAVING COUNT(*) > 1, the car makers in each country that qualifies, not the countries; "how many
-    customers have more than 2 orders" answered 3, one customer's orders. The answer counts the groups the HAVING keeps,
-    each country by its key (two named korea are two countries), and is the number of rows "which" lists; "each" asks for
-    a count in every country. A threshold on a total or an average is that aggregate's, counted the same way."""
-    planner = _hermetic_planner()
-    tables = [CAR_COUNTRIES, CAR_MAKERS]
-
-    def answer(question, sheets=tables, keys=CAR_MAKER_KEYS):
-        served = planner.serve(sheets, question, keys)
-        assert served.get("valid"), (question, served.get("error"), served.get("sql"))
-        return [list(row) for row in served["result"]["rows"]]
-
-    assert answer("How many countries have more than 1 car maker?") == [[1]]
-    assert answer("What is the number of countries with more than 1 car maker?") == [[1]]
-    assert answer("How many different countries have more than 1 car maker?") == [[1]]
-    assert answer("Which countries have more than 1 car maker?") == [["usa"]]
-    # None qualify: the answer is 0, not no rows; several qualify, the two named korea among them.
-    assert answer("How many countries have more than 5 car makers?") == [[0]]
-    assert answer("How many countries have at least 1 car maker?") == [[4]]
-    # The review of 2026-10-11 (R1): a count that admits none keeps germany, which has no car maker; an inner join
-    # of the two tables left it out, and "exactly 0" compared a car maker's Country key with 0.
-    assert answer("How many countries have fewer than 2 car makers?") == [[4]]
-    assert sorted(answer("Which countries have fewer than 2 car makers?")) == [["germany"], ["japan"], ["korea"],
-                                                                                ["korea"]]
-    assert answer("How many countries have exactly 0 car makers?") == [[1]]
-    assert answer("How many countries have at most 1 car maker?") == [[4]]
-    # The review of 6263502 (S1): a range that admits none keeps germany too; the car makers grouped alone listed
-    # the country ids that have one, and the countries NOT IN those with fewer than 0 or more than 2 were refused.
-    assert answer("How many countries have between 0 and 2 car makers?") == [[4]]
-    assert sorted(answer("Which countries have between 0 and 2 car makers?")) == [["germany"], ["japan"], ["korea"],
-                                                                                   ["korea"]]
-    assert sorted(answer("Which countries have between 1 and 2 car makers?")) == [["japan"], ["korea"], ["korea"]]
-    assert answer("How many countries have exactly 3 car makers?") == [[1]]
-    # The counted rows' own filter stays with them: usa has one electric maker, japan and germany none.
-    kinds = dict(CAR_MAKERS, columns=["Id", "Maker", "Kind", "Country"],
-                 rows=[[1, "ford", "petrol", 1], [2, "gm", "petrol", 1], [3, "tesla", "electric", 1],
-                       [4, "toyota", "petrol", 2], [5, "kia", "electric", 3], [6, "daewoo", "electric", 3]])
-    assert sorted(answer("Which countries have fewer than 2 electric car makers?", [CAR_COUNTRIES, kinds])) == [
-        ["germany"], ["japan"], ["korea"], ["usa"]]
-    # Contrast: "each" asks for the count in every country.
-    each = answer("How many car makers does each country have?")
-    assert sorted(row[-1] for row in each) == [1, 1, 1, 3], each
-    orders = {"name": "orders", "columns": ["Order ID", "Customer", "Amount"],
-              "rows": [[10, "Ann", 5], [11, "Ann", 6], [12, "Ann", 7], [13, "Bo", 8], [14, "Bo", 9], [15, "Cy", 1]]}
-    assert answer("How many customers have more than 2 orders?", [orders], []) == [[1]]
-    assert answer("How many customers have more than 1 order?", [orders], []) == [[2]]
-    assert sorted(answer("Which customers have more than 1 order?", [orders], [])) == [["Ann"], ["Bo"]]
-    assert answer("How many orders does each customer have?", [orders], []) == [["Ann", 3], ["Bo", 2], ["Cy", 1]]
-    # Totals 18, 17 and 1; averages 6, 8.5 and 1.
-    assert answer("How many customers have a total amount over 10?", [orders], []) == [[2]]
-    assert answer("How many customers have an average amount above 7?", [orders], []) == [[1]]
-    # The same over a customers table and its orders, which the search grouped by nothing.
-    customers = {"name": "customers", "columns": ["Customer_ID", "Name"], "rows": [[1, "Ann"], [2, "Bo"], [3, "Cy"]]}
-    placed = {"name": "orders", "columns": ["Order_ID", "Customer_ID", "Amount"],
-              "rows": [[10, 1, 5], [11, 1, 6], [12, 1, 7], [13, 2, 8], [14, 2, 9], [15, 3, 1]]}
-    keys = [{"from_table": "orders", "from_col": "Customer_ID", "to_table": "customers", "to_col": "Customer_ID"}]
-    assert answer("How many customers have a total amount over 10?", [customers, placed], keys) == [[2]]
-    assert sorted(answer("Which customers have a total amount over 10?", [customers, placed], keys)) == [
-        ["Ann", 18], ["Bo", 17]]
-
-
-def test_each_count_the_question_requires_is_met_on_its_own_rows():
-    """The review of 6263502 (S3): "countries with more than 1 car maker and more than 1 airport" read one threshold,
-    and the one grouped join of both tables counted pairs of them; once the check required a count for each, the
-    question was refused. The countries meeting both are IN the car makers' groups with more than 1 and IN the
-    airports' with more than 1, and a count admitting none subtracts the groups failing it."""
-    planner = _hermetic_planner()
-    cars = [{"name": "countries", "columns": ["CountryId", "CountryName"],
-             "rows": [[1, "usa"], [2, "japan"], [3, "chile"], [4, "peru"]]},
-            {"name": "car_makers", "columns": ["Id", "Maker", "Country"],
-             "rows": [[1, "ford", 1], [2, "gm", 1], [3, "tesla", 1], [4, "toyota", 2], [5, "cmc", 3], [6, "zz", 3]]},
-            {"name": "airports", "columns": ["AirportId", "Code", "Country"],
-             "rows": [[1, "JFK", 1], [2, "HND", 2], [3, "NRT", 2], [4, "SCL", 3], [5, "PMC", 3]]}]
-    keys = [{"from_table": "car_makers", "from_col": "Country", "to_table": "countries", "to_col": "CountryId"},
-            {"from_table": "airports", "from_col": "Country", "to_table": "countries", "to_col": "CountryId"}]
-
-    def answer(question):
-        served = planner.serve(cars, question, keys)
-        assert served.get("valid"), (question, served.get("error"), served.get("sql"))
-        return sorted(list(row) for row in served["result"]["rows"])
-
-    # usa has 3 car makers and 1 airport, japan 1 and 2, chile 2 and 2, peru none of either.
-    assert answer("Which countries have more than 1 car maker and more than 1 airport?") == [["chile"]]
-    assert answer("How many countries have more than 1 car maker and more than 1 airport?") == [[1]]
-    assert answer("Which countries have fewer than 2 car makers and more than 1 airport?") == [["japan"]]
-    assert answer("Which countries have at least 1 car maker and fewer than 2 airports?") == [["usa"]]
-    # The same populations connected by OR include either qualifying group, not their intersection.
-    assert answer("Which countries have more than 1 car maker or more than 1 airport?") == [
-        ["chile"], ["japan"], ["usa"]]
-    assert answer("How many countries have more than 1 car maker or more than 1 airport?") == [[3]]
-    assert answer("Which countries have fewer than 2 car makers or more than 1 airport?") == [
-        ["chile"], ["japan"], ["peru"]]
-    # Contrast: one requirement is met as before.
-    assert answer("Which countries have more than 1 car maker?") == [["chile"], ["usa"]]
-    assert answer("Which countries have fewer than 2 car makers?") == [["japan"], ["peru"]]
-
-
-def test_identity_for_an_exclusion_is_the_entitys_own():
-    """The review of 2026-10-11 (F1): a column referring to a key that holds no value twice was taken to tell its own
-    rows apart, so with a Majors table "the major and age of students who do not have a cat" subtracted (major, age)
-    and removed Bo with Ann, who shares both; a column whose values were missing in two rows was unique once those were
-    dropped. Fields tell an entity's rows apart only together and in its own table, a missing value counting as one."""
-    student = {"name": "Student", "columns": ["StuID", "Name", "Major", "Age"],
-               "rows": [[1, "Ann", 600, 19], [2, "Bo", 600, 19], [3, "Cy", 520, 20]]}
-    pets = {"name": "Pets", "columns": ["PetID", "PetType"], "rows": [[10, "cat"], [11, "dog"]]}
-    has_pet = {"name": "Has_Pet", "columns": ["StuID", "PetID"], "rows": [[1, 10], [3, 11]]}
-    majors = {"name": "Majors", "columns": ["MajorID", "Title"], "rows": [[600, "Math"], [520, "Art"]]}
-    keys = [{"from_table": "Has_Pet", "from_col": "StuID", "to_table": "Student", "to_col": "StuID"},
-            {"from_table": "Has_Pet", "from_col": "PetID", "to_table": "Pets", "to_col": "PetID"},
-            {"from_table": "Student", "from_col": "Major", "to_table": "Majors", "to_col": "MajorID"}]
-    asked = "Find the major and age of students who do not have a cat pet."
-    planner = _hermetic_planner()
-    served = planner.serve([student, pets, has_pet, majors], asked, keys)
-    assert sorted(tuple(row) for row in served["result"]["rows"]) == [(520, 20), (600, 19)], served.get("sql")
-    missing = dict(student, rows=[[1, "Ann", None, 19], [2, "Bo", None, 19], [3, "Cy", 520, 20]])
-    served = planner.serve([missing, pets, has_pet], asked)
-    assert sorted(row[1] for row in served["result"]["rows"]) == [19, 20], served.get("sql")
-
-    graph = SchemaGraph.from_tables([student, pets, has_pet, majors], keys)
-    ref = {column.ref.name: column.ref for column in graph.by_table["Student"]}
-    assert not graph.identifies((ref["Major"],)) and not graph.identifies((ref["Major"], ref["Age"]))
-    assert graph.identifies((ref["StuID"],)) and graph.identifies((ref["Name"],))
-    # Together: two fields neither of which tells the rows apart alone.
-    assert graph.identifies((ref["Major"], ref["Name"]))
-    # Fields of two tables tell no one table's rows apart.
-    assert not graph.identifies((ref["Name"], graph.by_table["Majors"][1].ref))
-    blanks = SchemaGraph.from_tables([missing], [])
-    major = blanks.by_table["Student"][2].ref
-    assert not blanks.identifies((major,)) and blanks.identifying_column("Student").name == "StuID"
-    # A key a row leaves empty is no key for a NOT IN: the next column that holds a value in every row is.
-    keyless = {"name": "Student", "columns": ["StuID", "Name"], "rows": [[1, "Ann"], [None, "Bo"]]}
-    assert SchemaGraph.from_tables([keyless], []).identifying_column("Student").name == "Name"
-
-
-
-def test_the_rows_of_each_entity_are_kept_by_their_key():
-    """A Gemini rewording of Spider DEV 62, 2026-10-18: "What is the Major and Age of each student who does not have a
-    pet ..." was answered by an EXCEPT of (major, age), which removed Bo with Ann, who shares both: "each" was read as
-    the table's name, so the question was not read as asking for fields of students' rows
-    (sql_extrema._describes_rows). Contrast: the values a question asks for are a difference of values."""
-    student = {"name": "Student", "columns": ["StuID", "Name", "Major", "Age"],
-               "rows": [[1, "Ann", 600, 19], [2, "Bo", 600, 19], [3, "Cy", 520, 20]]}
-    pets = {"name": "Pets", "columns": ["PetID", "PetType"], "rows": [[10, "cat"], [11, "dog"]]}
-    has_pet = {"name": "Has_Pet", "columns": ["StuID", "PetID"], "rows": [[1, 10], [3, 11]]}
-    keys = [{"from_table": "Has_Pet", "from_col": "StuID", "to_table": "Student", "to_col": "StuID"},
-            {"from_table": "Has_Pet", "from_col": "PetID", "to_table": "Pets", "to_col": "PetID"}]
-    served = _hermetic_planner().serve([student, pets, has_pet],
-                                       "What is the Major and Age of each student who does not have a cat pet?", keys)
-    assert sorted(tuple(row) for row in served["result"]["rows"]) == [(520, 20), (600, 19)], served.get("sql")
-    from engine.sql_extrema import _describes_rows
-    from engine.sql_expansion import tokens
-    assert _describes_rows(tokens("the major and age of each student who does not have a cat"), "Student")
-    assert not _describes_rows(tokens("the majors that each student has"), "Student")
-
-
-def test_a_ranking_keeps_the_rows_its_number_says_and_shows_them():
-    """The review of 2026-10-11 (F5): "the names of the two people with the largest Age" was refused: the search kept
-    one row unless the number stood beside "largest" or after "top", while the question contract read "two" as the
-    cutoff. "Excluding Person_ID 5" compared the age with 5, and "top 2 products by price" listed two prices. The
-    search and the contract read the cutoff in one place (sql_extrema.ranking_cutoff), an exclusion word before a
-    key and its number excludes that row, and a ranking shows the rows it keeps."""
-    from engine.sql_expansion import tokens
-    from engine.sql_extrema import ranking_cutoff
-    people = {"name": "people", "columns": ["Person_ID", "Name", "Country", "Age"],
-              "rows": [[1, "Ann", "France", 30], [2, "Bo", "Spain", 20], [3, "Cy", "Spain", 40],
-                       [4, "Dan", "Italy", 50], [5, "Eve", "France", 60]]}
-    planner = _hermetic_planner()
-
-    def answer(question, tables=(people,)):
-        served = planner.serve(list(tables), question)
-        assert served.get("valid"), (question, served.get("error"), served.get("sql"))
-        return [list(row) for row in served["result"]["rows"]]
-
-    assert answer("List the names of the two people with the largest Age.") == [["Eve"], ["Dan"]]
-    assert answer("List the names of the 2 people with the largest Age.") == [["Eve"], ["Dan"]]
-    assert answer("List the names of the three people with the smallest Age.") == [["Bo"], ["Ann"], ["Cy"]]
-    # The cutoff and an excluded row's number, different and the same.
-    assert answer("List the names of the two people with the largest Age, excluding Person_ID 5.") == [["Dan"], ["Cy"]]
-    assert answer("List the names of the two people with the largest Age, excluding Person_ID 2.") == [["Eve"], ["Dan"]]
-    assert answer("List the names of the two people with the largest Age who are not from Spain.") == [["Eve"], ["Dan"]]
-    assert answer("Show the top 3 people by Age") == [["Eve", 60], ["Dan", 50], ["Cy", 40]]
-    # Contrast: a field asked for before the cutoff is the answer, and a threshold's number keeps no rows.
-    assert answer("What are the ages of the 3 oldest people?") == [[60], [50], [40]]
-    question = tokens("the people older than 30 with the largest age")
-    assert ranking_cutoff(question, (question.index("largest"),)) == (1, None)
-    # The review of 2026-10-11 (R3): a cutoff over 100 is a cutoff; one capped at 100 refused "top 101".
-    many = {"name": "people", "columns": ["Person_ID", "Name", "Age"],
-            "rows": [[index, f"P{index}", 1000 - index] for index in range(1, 151)]}
-    for asked, kept in (("top 100 people by Age", 100), ("top 101 people by Age", 101),
-                        ("List the names of the 120 oldest people.", 120)):
-        assert len(answer(asked, [many])) == kept, asked
-    # The review of 6263502 (S6): a number a year could be counts the rows right before the superlative ("the 1200
-    # oldest", refused while every such number was a year), and after it is the year it names.
-    assert len(answer("List the names of the 1200 oldest people.", [many])) == 150
-    for said, cue, cutoff in (("the 1200 oldest people", "oldest", (1200, 1)),
-                              ("the highest 2014 score", "highest", (1, None)),
-                              ("which 2014 films have the highest gross", "highest", (1, None))):
-        question = tokens(said)
-        assert ranking_cutoff(question, (question.index(cue),)) == cutoff, said
-    # A number in a field's name, or a filter's, counts no rows kept (Spider DEV 562 and 165).
-    for said, cue in (("What is the id, line 1, and line 2 of the address with the most students?", "most"),
-                      ("For the cars with 4 cylinders, which model has the largest horsepower?", "largest"),
-                      ("What is the id of the patient who stayed in room 111 most recently?", "most")):
-        question = tokens(said)
-        assert ranking_cutoff(question, (question.index(cue),)) == (1, None), said
-    products = {"name": "products", "columns": ["product_id", "product_name", "category", "price"],
-                "rows": [[1, "Alpha", "A", 10], [2, "Beta", "A", 30], [3, "Gamma", "B", 20], [4, "Delta", "B", 5]]}
-    assert answer("top 2 products by price", [products]) == [["Beta", 30], ["Gamma", 20]]
-    assert answer("Which 2 products have the highest price?", [products]) == [["Beta", 30], ["Gamma", 20]]
-    assert answer("bottom 2 products by price", [products]) == [["Delta", 5], ["Alpha", 10]]
-
-
-def test_a_relation_names_the_side_its_participle_asks_for():
-    """The other key of a relation table (Likes.liked_id) is the side "liked by" asks for, and the owner's side
-    (student_id) the one "who have likes" does. Two keys named for neither side (a flight's source and destination
-    airports) relate no owner, and travel_direction reads them."""
-    graph = SchemaGraph.from_tables(HIGHSCHOOLERS, HIGHSCHOOLER_KEYS)
-    assert {relation: (owner.from_column.name, other.from_column.name, participle)
-            for relation, (owner, other, participle) in relation_sides(graph).items()} == {
-        "Friend": ("student_id", "friend_id", None), "Likes": ("student_id", "liked_id", "liked")}
-
-    def joined(column):
-        query = SelectQuery((SelectItem(ColumnRef("Highschooler", "name", SQLType.TEXT)),), "Likes", (
-            Join("Highschooler", ColumnRef("Likes", column, SQLType.INTEGER),
-                 ColumnRef("Highschooler", "ID", SQLType.INTEGER)),))
-        return ScoredQuery(query, render_query(query), 0.0, ())
-
-    ranker = CandidateRanker(graph)
-    candidates = [joined("liked_id"), joined("student_id")]
-    assert '"liked_id"' in ranker.rank("Show the names of high schoolers who are liked by someone.", candidates)[0].sql
-    assert '"student_id"' in ranker.rank("Show the names of high schoolers who have likes.", candidates)[0].sql
-    airports = {"name": "airports", "columns": ["code", "name"], "rows": [["A", "Alpha"], ["B", "Beta"]]}
-    flights = {"name": "flights", "columns": ["flno", "source_airport", "dest_airport"], "rows": [[1, "A", "B"]]}
-    keys = [{"from_table": "flights", "from_col": column, "to_table": "airports", "to_col": "code", "conf": 1.0}
-            for column in ("source_airport", "dest_airport")]
-    assert relation_sides(SchemaGraph.from_tables([airports, flights], keys)) == {}
-
-
-def test_extrema_expansion_guards_multi_aggregate_and_can_be_disabled():
-    aggregate = best("What are the minimum and maximum age of people?", [PEOPLE])
-    assert aggregate.sql == 'SELECT MIN("people"."Age"), MAX("people"."Age") FROM "people"'
-
-    searcher = SQLSearcher.from_tables([PEOPLE], [])
-    question = "Show the name and country of the youngest person"
-    without_extrema = searcher.search(question, expand_extrema=False)
-    with_extrema = searcher.search(question, expand_extrema=True)
-    assert all("extrema:" not in evidence
-               for candidate in without_extrema for evidence in candidate.evidence)
-    assert " LIMIT 1" not in without_extrema[0].sql
-    assert " LIMIT 1" in with_extrema[0].sql
-
-
 def test_shared_spider_evaluation_contract():
     metadata = {
         "demo": {
@@ -8690,39 +2621,21 @@ def test_shared_spider_evaluation_contract():
 
 
 def test_live_table_query_ast_mode_executes_typed_candidate():
-    class HermeticTableQuery(TableQuery):
-        def schema(self, tables, fks):
-            columns = []
-            index = 0
-            for table in tables:
-                for name in table["columns"]:
-                    values = [row[table["columns"].index(name)] for row in table["rows"]]
-                    numeric = values and all(isinstance(value, (int, float)) for value in values)
-                    columns.append({
-                        "table": table["name"], "name": name, "idx": index,
-                        "struct": set(), "affinity": "INTEGER" if numeric else "TEXT",
-                        "ace": [], "is_date": False,
-                        "qvec": np.zeros(2, dtype=np.float32), "values": values,
-                    })
-                    index += 1
-            return columns, {}, {table["name"]: table for table in tables}
-
-        def ast_semantic_signals(self, question, sch):
-            return SemanticSignals.empty()
-
-    planner = HermeticTableQuery()
+    planner = _hermetic_planner()
+    line = "the Name of every person"
+    planner.pool = [_model_query(planner, 'SELECT "Name" FROM "people"', read_as=line)]
     response = planner.serve([PEOPLE], "list person names")
     assert response["valid"] is True
     assert response["error"] is None
     assert response["result"]["rows"] == [["Alice"], ["Bob"], ["Cara"]]
-    assert response["candidate_count"] > 0
+    assert response["candidate_count"] == 1
     assert response["ast"].startswith("SelectQuery(")
-    assert response["model"] == "engine - typed SQL AST planner (deterministic search)"
-    assert response["fallback"] is None
+    assert response["model"] == READERS_MODEL == "engine - learned readers + typed SQL AST builder"
+    assert response["read_as"] == line and "fallback" not in response
     selection = response["selection"]
-    assert selection["served_by"] == "search" and selection["executable"] == selection["pool_size"]
+    assert selection["executable"] == selection["pool_size"]
     assert selection["eligible"] == selection["pool_size"] and selection["rank"] == 0
-    assert "fallback" not in selection
+    assert "served_by" not in selection and "fallback" not in selection
     assert compare_spider_rows([["1"], [None]], [[None], [1.0]])["strict"]
     assert not compare_spider_rows([[1, 2]], [[2, 1]])["strict"]
     assert not compare_spider_rows([[1, 1]], [[1]])["strict"]
@@ -8785,11 +2698,10 @@ def test_world_own_data_route_preserves_ast_observability():
                 "error": None,
                 "ast": "SelectQuery(...)",
                 "candidate_count": 7,
-                "evidence": ["extrema:projection"],
-                "features": {"projection": 1.0},
-                "selection": {"served_by": "gemini-rewrite", "pool_size": 7},
-                "fallback": {"kind": "rewrite", "model": "gemini-test",
-                             "question": "list the Name of every person"},
+                "evidence": ["the Name of every person"],
+                "features": {"rank": 0.0},
+                "selection": {"pool_size": 7, "selected": 0},
+                "read_as": "the Name of every person",
                 "calculations": [{"specification": "ratio", "status": "satisfied"}],
                 "model": "typed planner",
             }
@@ -8827,15 +2739,14 @@ def test_world_own_data_route_preserves_ast_observability():
     assert response["planner"] == {
         "ast": "SelectQuery(...)",
         "candidate_count": 7,
-        "evidence": ["extrema:projection"],
-        "features": {"projection": 1.0},
-        "selection": {"served_by": "gemini-rewrite", "pool_size": 7},
+        "evidence": ["the Name of every person"],
+        "features": {"rank": 0.0},
+        "selection": {"pool_size": 7, "selected": 0},
     }
     assert response["model"] == "typed planner"
     assert response["calculations"] == [{"specification": "ratio", "status": "satisfied"}]
-    # The coverage gate reads the question the served query answers from this record.
-    assert response["fallback"] == {"kind": "rewrite", "model": "gemini-test",
-                                    "question": "list the Name of every person"}
+    # The reply says how the readers read the question from this record.
+    assert response["read_as"] == "the Name of every person" and "fallback" not in response
 
 
 def test_world_target_uses_the_synced_iso_currency_column():
@@ -8905,102 +2816,6 @@ def test_spider_evaluator_does_not_count_all_errors_as_answered():
     assert integrated["scalar_correct"] == 0
 
 
-def test_a_ranking_number_beside_a_measure_is_not_an_equality_filter():
-    mountains = {"name": "mountains", "columns": ["id", "name", "prominence", "region"],
-                 "rows": [[1, "A", 100, 1], [2, "B", 80, 1], [3, "C", 60, 1],
-                          [4, "D", 3, 1], [5, "E", 1, 2]]}
-    planner = _hermetic_planner()
-    for direction, expected in (("top", [["A"], ["B"], ["C"]]),
-                                ("bottom", [["E"], ["D"], ["C"]])):
-        served = planner.serve([mountains], f"List the names of the mountains with the {direction} 3 prominence.", [])
-        assert served.get("valid") and [list(row) for row in served["result"]["rows"]] == expected, served
-        assert '"prominence" = 3' not in served["sql"], served["sql"]
-    same = planner.serve([mountains], "List the names of the top 1 mountains with region 1 by prominence.", [])
-    assert same.get("valid") and [list(row) for row in same["result"]["rows"]] == [["A"]], same
-    assert '"region" = 1' in same["sql"], same["sql"]
-    equal = planner.serve([mountains], "List the names of mountains with prominence 3.", [])
-    assert equal.get("valid") and [list(row) for row in equal["result"]["rows"]] == [["D"]], equal
-    assert '"prominence" = 3' in equal["sql"], equal["sql"]
-
-
-def test_a_requested_count_is_shown_not_only_computed_in_a_filter():
-    people = {"name": "people", "columns": ["id", "name", "age"],
-              "rows": [[1, "Ann", 20], [2, "Bo", 40], [3, "Cy", 60]]}
-    graph = SchemaGraph.from_tables([people], ())
-    age = ColumnRef("people", "age", SQLType.INTEGER)
-    name = ColumnRef("people", "name", SQLType.TEXT)
-    average = SelectQuery((SelectItem(Aggregate("AVG", age)),), "people")
-    above = Comparison(age, ">", ScalarSubquery(average))
-    question = "How many people have an age above the average?"
-    uncounted = "the question asks how many, and the answer computes no count"
-    for expression in (name, Aggregate("SUM", age), Aggregate("AVG", age), Aggregate("MAX", age)):
-        wrong = SelectQuery((SelectItem(expression),), "people", where=above)
-        assert uncounted in constraint_violations(question, wrong, graph), render_query(wrong)
-    qualifying = SelectQuery((SelectItem(name),), "people", group_by=(name,),
-                             having=Comparison(Aggregate("COUNT", Star()), ">", Literal(1)))
-    assert uncounted in constraint_violations("How many people have more than 1 record?", qualifying, graph)
-    scalar_average = SelectQuery((SelectItem(Aggregate("AVG", age)),), "people",
-                                 having=Comparison(Aggregate("COUNT", Star()), ">", Literal(1)))
-    scalar_wrong = SelectQuery((SelectItem(ScalarSubquery(scalar_average)),), "people", where=above)
-    assert uncounted in constraint_violations(question, scalar_wrong, graph)
-    counted = SelectQuery((SelectItem(Aggregate("COUNT", Star())),), "people", where=above)
-    assert not constraint_violations(question, counted, graph)
-    assert execute([people], render_query(counted)) == [(1,)]
-    scalar_count = SelectQuery((SelectItem(ScalarSubquery(counted)),), "people")
-    assert uncounted not in constraint_violations(question, scalar_count, graph)
-    listed = SelectQuery((SelectItem(name),), "people", where=above)
-    assert not constraint_violations("List names of people whose age is above the average.", listed, graph)
-    served = _hermetic_planner().serve([people], question, [])
-    assert served.get("valid") and [list(row) for row in served["result"]["rows"]] == [[1]], served
-    # Numeric columns storing the requested count use the existing shared operand-reading rule.
-    hospitals = {"name": "hospitals", "columns": ["id", "name", "transfers", "age"],
-                 "rows": [[1, "A", 8, 20], [2, "B", 5, 40]]}
-    hospital_graph = SchemaGraph.from_tables([hospitals], ())
-    transfers = ColumnRef("hospitals", "transfers", SQLType.INTEGER)
-    stored = SelectQuery((SelectItem(Aggregate("SUM", transfers)),), "hospitals")
-    assert uncounted not in constraint_violations("How many transfers are there?", stored, hospital_graph)
-    assert execute([hospitals], render_query(stored)) == [(13,)]
-    assert uncounted in constraint_violations("How many hospitals are there?", stored, hospital_graph)
-    wrong_quantity = SelectQuery((SelectItem(Aggregate("SUM", ColumnRef("hospitals", "age", SQLType.INTEGER))),),
-                                "hospitals")
-    assert uncounted in constraint_violations("How many transfers are there?", wrong_quantity, hospital_graph)
-    aliased = SelectQuery((SelectItem(Aggregate("SUM", ColumnRef("h", "transfers", SQLType.INTEGER))),),
-                         "hospitals", from_alias="h")
-    assert uncounted not in constraint_violations("How many transfers are there?", aliased, hospital_graph)
-
-
-
-def test_a_key_referring_to_another_tables_rows_counts_those_rows():
-    """Held-out Spider train 349, 2026-10-17: "Show the number of cities in counties that have a population more than
-    20000." counted the distinct County_ID of the cities, the counties: both keys earned count_distinct_key, and the
-    model preferred County_ID. A key that repeats in its table, referring to another table's rows, tells those rows
-    apart, not its own table's: the cities are counted by City_ID. Contrast: "the number of counties" is counted by
-    the County_ID the cities refer to."""
-    from engine.sql_ast import Aggregate
-    city = {"name": "city", "columns": ["City_ID", "County_ID", "Name"],
-            "rows": [[1, 1, "Adelanto"], [2, 1, "Apple Valley"], [3, 1, "Barstow"], [4, 3, "Big Bear"],
-                     [5, 2, "Chino"]]}
-    county = {"name": "county_public_safety", "columns": ["County_ID", "Name", "Population"],
-              "rows": [[1, "Abbotsford", 30000], [2, "Burnaby", 10000], [3, "Campbell River", 50000]]}
-    graph = SchemaGraph.from_tables([city, county], [("city", "County_ID", "county_public_safety", "County_ID")])
-
-    def counted(name):
-        query = SelectQuery((SelectItem(Aggregate("COUNT", ColumnRef("city", name, SQLType.INTEGER), True)),), "city")
-        return query
-
-    referring, own = counted("County_ID"), counted("City_ID")
-    ranked = CandidateRanker(graph).rank("Show the number of cities in the counties.",
-                                         [ScoredQuery(referring, render_query(referring), 0.3, ()),
-                                          ScoredQuery(own, render_query(own), 0.0, ())])
-    assert ranked[0].query == own, [(candidate.sql, candidate.evidence) for candidate in ranked]
-    features = {candidate.query: candidate.evidence for candidate in ranked}
-    assert "rank:count_distinct_key:city.County_ID=+0.500" not in features[referring], features[referring]
-    ranked = CandidateRanker(graph).rank("Show the number of counties with cities.",
-                                         [ScoredQuery(own, render_query(own), 0.3, ()),
-                                          ScoredQuery(referring, render_query(referring), 0.0, ())])
-    assert ranked[0].query == referring, [(candidate.sql, candidate.evidence) for candidate in ranked]
-
-
 def test_the_table_a_list_names_after_its_items_by_its_last_word_owns_them():
     """Spider DEV 150, 2026-10-18: "What are the names and ids of all makers with more than 3 models?" read no list:
     countries' CountryName and CountryId realized the items as well as car_makers' FullName and Id, and the makers
@@ -9021,30 +2836,13 @@ def test_the_table_a_list_names_after_its_items_by_its_last_word_owns_them():
     assert request_fields("What are the names and ids of all entries with more than 3 models?", graph) == ()
 
 
-def test_how_many_total_asks_one_number():
-    """Spider DEV 480, 2026-10-18: "How many total tours were there for each ranking date?" showed a count of the
-    tours beside their total. "How many total" asks one number: the total of the numeric field the noun after "total"
-    names whole, the count it holds (sql_expansion.asked_cues, counted_measure_columns). Contrast: of a noun naming
-    no numeric field, the count."""
-    rankings = {"name": "rankings", "columns": ["ranking_date", "player_id", "ranking", "tours"],
-                "rows": [[20000101, 1, 3, 5], [20000101, 2, 7, 2], [20000108, 1, 2, 4]]}
-    served = _hermetic_planner().serve([rankings], "How many total tours were there for each ranking date?", [])
-    assert served.get("valid") and sorted(served["result"]["rows"]) == [[20000101, 7], [20000108, 4]], (
-        served.get("error"), served.get("sql"))
-    served = _hermetic_planner().serve([rankings], "How many total players were there for each ranking date?", [])
-    assert served.get("valid") and sorted(served["result"]["rows"]) == [[20000101, 2], [20000108, 1]], (
-        served.get("error"), served.get("sql"))
-
-
 TESTS = [
-    test_shared_ranking_rule_preserves_calculation_then_money_precedence,
+    test_shared_ranking_rule_preserves_date_then_double_count_then_calculation_precedence,
     test_pool_oracle_counts_only_eligible_denotation_hits_and_validates_checkpoints,
-    test_mentioned_table_join_keeps_minimal_variant_in_pool,
-    test_duplicate_named_projection_keeps_single_binding_variant_in_pool,
     test_select_query_serves_the_reading_that_keeps_the_named_date,
     test_select_query_never_chooses_a_query_that_does_not_run,
     test_a_join_that_multiplies_two_tables_rows_stops_at_their_cells_budget,
-    test_the_rewording_pool_shares_the_tables_copy_and_reruns_no_query,
+    test_select_query_copies_the_tables_once_and_runs_each_query_once,
     test_a_duration_is_how_long_rows_lasted_not_a_quantity_and_an_interval,
     test_literal_grounding_names_the_column_a_value_actually_occupies,
     test_select_query_never_serves_a_misgrounded_query,
@@ -9055,153 +2853,42 @@ TESTS = [
     test_double_counting_reads_the_rows_each_join_repeats,
     test_named_request_decomposes_a_compound_question_a_single_query_answers_in_part,
     test_a_compound_named_request_asks_for_decomposition_before_selection_runs,
-    test_named_request_never_serves_or_decomposes_a_model_only_set_operation,
+    test_named_request_never_serves_or_decomposes_a_lower_read_set_operation,
     test_proposal_import_rejects_malformed_model_text,
     test_decoded_sql_normalizer_preserves_multiline_statements_and_strips_fences,
-    test_the_fallback_is_not_asked_when_the_search_covers_the_question,
-    test_a_question_the_search_cannot_read_is_answered_through_geminis_rewording,
-    test_gemini_rewording_cannot_drop_a_user_constraint_from_coverage,
-    test_gemini_cannot_write_sql_when_its_rewrite_is_not_searchable,
-    test_a_disabled_fallback_is_never_asked,
-    test_a_gemini_outage_serves_nothing_and_is_not_cached,
-    test_unreadable_runnable_baseline_is_not_served_when_rewriting_fails,
-    test_the_fallback_is_stateless_across_repeated_requests,
-    test_rewriter_recovers_when_a_runnable_plan_ignores_part_of_the_question,
-    test_schema_rewrite_can_resolve_a_synonym_without_changing_the_sql_reading,
     test_a_text_column_is_an_aggregate_operand_only_where_it_ends_the_aggregate_phrase,
-    test_a_text_right_after_contain_or_all_is_compared_inside_values,
-    test_an_average_a_column_name_spells_is_the_column,
-    test_the_rewording_of_a_keyword_volume_keeps_every_keyword_holding_the_phrase,
-    test_a_listing_of_numbers_names_the_rows_its_text_filter_picked,
-    test_a_negation_excludes_the_value_after_it_and_the_values_listed_with_it,
     test_a_decimal_comma_amount_is_not_totalled_as_hundreds,
     test_join_keys_are_read_as_the_executed_join_compares_them,
     test_an_explicit_zero_foreign_key_confidence_stays_zero,
-    test_a_number_in_a_question_is_one_word_however_it_is_written,
-    test_unread_check_accepts_a_threshold_only_when_the_ast_realizes_it,
-    test_unread_check_treats_sheet_scope_words_as_context_not_filters,
-    test_gemini_reads_schema_names_but_not_cell_values,
-    test_gemini_is_asked_for_words_not_sql_symbols,
-    test_a_code_spelled_as_a_word_does_not_hold_a_rewording,
     test_coordinated_aggregate_words_share_the_field_after_them,
     test_a_field_is_named_by_another_form_of_its_word,
     test_a_field_named_with_its_tables_abbreviation,
-    test_a_sort_verb_opening_the_question_is_its_command,
-    test_a_quantity_word_is_no_value,
-    test_a_nation_is_a_country,
-    test_a_participle_before_a_year_the_answer_compares_is_read,
-    test_a_one_letter_code_holds_the_word_it_stands_for,
-    test_code_words_need_the_named_kind_and_the_bound_field,
-    test_a_noun_several_fields_share_counts_its_entity,
-    test_a_noun_several_fields_share_counts_its_name_first,
-    test_in_total_closing_a_count_restates_it,
-    test_a_field_inside_another_fields_name_is_not_named_there,
-    test_a_field_beside_the_named_field_of_its_entity_is_not_asked,
-    test_a_field_asked_by_its_name_without_its_kind_is_requested,
-    test_explicit_list_preserves_repeated_bound_field_outputs,
-    test_only_a_request_said_again_repeats_its_field,
-    test_a_count_counts_the_rows_of_the_table_its_noun_names,
-    test_a_field_named_by_its_tables_abbreviation_is_matched_where_fields_are_shown,
-    test_a_word_said_once_names_one_of_the_fields_ending_in_it,
     test_an_explicit_list_names_the_outputs_their_owner_and_order,
-    test_a_row_count_keeps_the_join_to_a_table_the_question_names,
-    test_scalar_named_population_counts_qualifying_rows_once,
-    test_the_verb_a_sentence_opens_with_names_no_table,
     test_a_list_item_that_is_only_the_count_asks_for_the_count,
-    test_a_relationship_self_join_needs_a_word_besides_its_parent_table,
     test_a_superlative_over_the_shown_field_is_one_value,
     test_the_opening_sentence_lists_its_coordinated_outputs,
-    test_an_ordering_word_said_with_a_fields_name_is_that_field,
-    test_an_answer_showing_only_its_compared_field_shows_the_rows_asked_for,
     test_a_list_verb_after_a_comma_lists_the_outputs,
     test_along_with_adds_an_item_to_a_list,
-    test_a_list_of_fields_and_a_count_counts_each_group,
-    test_a_reading_showing_exactly_the_list_outranks_one_adding_a_field,
-    test_listed_says_the_rows_are_in_the_data,
+    test_a_noun_joined_to_a_count_by_and_is_counted_too,
     test_find_opens_a_list_of_outputs,
     test_an_item_followed_by_of_and_its_rows_is_theirs,
     test_an_items_last_word_may_stand_for_its_fields_kind,
-    test_a_which_after_a_preposition_opens_no_command,
-    test_a_place_names_what_is_of_it,
     test_a_country_holds_its_irregular_demonym,
     test_a_capital_initial_before_a_capitalized_word_is_a_word,
-    test_a_measure_word_after_a_superlative_names_it,
-    test_the_information_about_rows_shows_every_field,
-    test_the_pool_holds_no_exclusion_the_gate_refuses_for_its_shape,
-    test_a_most_common_value_is_ranked_once,
-    test_lexicographical_order_is_alphabetical,
-    test_a_number_before_a_fields_two_word_name_compares_the_field,
-    test_amount_of_says_a_quantity,
-    test_an_extreme_listed_beside_another_output_is_a_value,
     test_the_row_with_the_maximum_is_the_row_holding_it,
-    test_a_word_one_letter_from_a_read_word_is_it_misspelled,
-    test_listed_says_the_rows_are_in_the_data_beside_an_address_state,
     test_typographic_quotes_read_as_the_ascii_ones,
     test_a_possessive_is_its_word,
     test_a_word_spelling_out_a_fields_abbreviation_names_it,
-    test_a_key_named_as_the_table_it_refers_to_names_that_table,
-    test_available_results_and_compute_ask_nothing,
-    test_an_ordering_from_old_to_young_starts_at_the_oldest,
-    test_common_values_use_independent_populations_without_an_invented_join,
-    test_a_condition_field_is_not_also_an_output,
-    test_a_count_of_what_a_key_names_counts_the_referred_rows,
-    test_a_year_compares_the_year_field_named_beside_it,
-    test_a_named_tables_key_is_its_own_not_a_copy_from_an_unnamed_join,
     test_a_word_a_fields_name_abbreviates_spells_that_field_and_states_no_value,
-    test_a_count_ranking_groups_counts_the_rows_its_noun_names,
-    test_a_row_number_named_by_its_counted_table_is_no_measure,
-    test_a_listing_of_a_fields_values_shows_each_value_once,
-    test_a_number_a_comparison_reads_states_no_stored_value,
-    test_a_field_holding_a_number_is_compared_not_counted,
-    test_a_measures_own_word_said_before_a_superlative_names_it,
-    test_both_branches_show_the_field_the_question_names,
-    test_a_value_after_a_tables_name_is_that_tables_name,
-    test_a_field_two_tables_share_is_the_one_whose_table_is_named_before_it,
     test_most_before_a_tables_name_counts_its_rows,
-    test_a_negated_verbs_agent_is_excluded,
-    test_a_value_in_a_negated_clause_is_excluded,
-    test_a_preposition_says_a_trips_end,
     test_a_comparison_symbol_is_its_word,
-    test_most_recently_ranks_by_a_date,
-    test_a_count_fields_name_counts_nothing,
-    test_alphabetic_and_increasing_order_order_the_rows,
-    test_an_inflection_of_an_inflected_name_word_names_it,
-    test_any_comparative_before_the_average_compares_with_it,
-    test_a_number_after_id_is_the_named_tables_key,
-    test_routes_that_start_at_an_airport_leave_from_it,
-    test_one_value_bounded_both_ways_is_two_branches,
+    test_one_value_bounded_both_ways_is_contradictory,
     test_a_value_bounded_away_from_its_equality_is_contradictory,
-    test_a_cue_that_is_a_fields_name_grades_what_follows_it,
-    test_people_are_a_population_a_count_of_them_its_total,
-    test_each_output_a_list_instruction_names_is_shown,
-    test_a_count_of_a_fields_noun_counts_the_rows,
-    test_a_value_two_fields_of_a_table_hold_is_its_display_fields,
     test_a_count_counts_its_nouns_head,
-    test_a_table_said_after_in_is_no_item_to_show,
-    test_a_superlative_infers_its_field_only_where_none_is_named_at_it,
-    test_the_highest_rank_is_the_smallest_number,
-    test_of_two_keys_to_one_table_the_named_one_joins_and_a_distinct_count_counts_keys,
-    test_a_value_stored_as_said_is_meant_before_a_padded_copy,
-    test_a_field_said_with_its_owner_is_that_tables,
-    test_a_short_fields_inflection_names_it,
-    test_names_are_titles_where_a_table_holds_no_name_and_time_is_a_dates_kind,
-    test_corresponding_pairs_an_output_with_another,
-    test_a_flag_field_the_question_names_is_a_condition,
-    test_a_table_named_by_two_words_written_together_is_named_by_them,
-    test_a_verb_is_read_by_the_field_its_doer_names,
-    test_a_verb_the_question_says_names_no_stored_value,
-    test_a_measures_unit_is_left_unsaid,
     test_a_closed_opening_request_for_one_field_is_the_answer,
     test_and_past_a_condition_joins_conditions,
-    test_unjoined_catalog_does_not_deduplicate_a_property_listing,
-    test_missing_relationship_construction_requires_an_exact_parent_key,
     test_declared_self_relationship_keeps_unrelated_queries_and_source_rows,
     test_spider_ingestion_keeps_discovered_and_declared_relationships,
-    test_a_superlative_adjective_ranks_by_the_field_it_measures,
-    test_a_superlative_over_a_shared_field_ranks_the_rows_named_before_it,
-    test_a_rewording_keeps_the_operations_the_engine_reads,
-    test_gemini_rewrite_must_preserve_data_values_and_numbers,
-    test_a_rewording_may_say_the_value_a_word_names,
     test_evaluator_grades_the_served_selection,
     test_sql_import_maps_numeric_arithmetic_but_refuses_nonnumeric,
     test_sql_import_round_trip_executes_and_matches,
@@ -9213,170 +2900,35 @@ TESTS = [
     test_grouping_validation_sees_ordered_aggregates,
     test_composite_foreign_key_renders_and_executes_as_one_join,
     test_composite_join_validation_rejects_disconnected_predicate,
-    test_composite_self_join_helpers_render_complete_predicates,
     test_arithmetic_expression_sum_renders_and_executes,
     test_arithmetic_division_preserves_real_semantics,
     test_currency_conversion_query_executes_end_to_end,
-    test_planner_emits_currency_conversion_when_requested,
     test_planner_discovers_and_executes_same_name_currency_edge,
     test_currency_conversion_survives_uploaded_column_case,
     test_world_aggregate_currency_binding_is_typed_and_unambiguous,
-    test_planner_requires_exact_currency_target_and_key_shape,
     test_arithmetic_expression_validation,
-    test_projection_filter_and_order,
-    test_scalar_aggregate_does_not_group_by_recipient_mention,
-    test_order_noun_does_not_request_sort_or_group,
-    test_shared_table_words_do_not_collapse_distinct_projection_mentions,
-    test_generic_projection_respects_entity_qualifier,
-    test_entity_projection_follows_owner_foreign_key,
-    test_fk_attribute_phrase_does_not_project_the_source_qualifier,
-    test_entity_id_does_not_follow_owner_foreign_key,
-    test_duplicate_property_projection_respects_entity_qualifier,
-    test_directional_year_filter_targets_date_column,
-    test_month_and_dated_phrases_filter_the_date_column,
     test_date_ranges_lists_and_quarters_filter_one_span,
     test_the_coverage_gate_reads_the_months_a_query_compares,
-    test_a_share_divides_the_kept_rows_aggregate_by_the_whole,
-    test_a_share_word_is_the_aggregate_of_the_rows_it_divides,
     test_two_values_of_one_column_are_either,
-    test_a_noun_over_a_number_compares_each_row,
-    test_a_month_word_joins_a_date_phrase_only_as_a_date,
-    test_either_value_reads_only_listed_values,
-    test_a_count_over_times_and_a_share_word_that_names_a_thing,
-    test_a_lowercase_grammar_word_links_to_no_value,
-    test_a_stated_comparison_on_an_aggregate_needs_no_where,
-    test_a_word_of_time_orders_by_a_date_and_a_name_part_places_nothing,
-    test_a_table_joins_every_reading_only_when_named_together,
-    test_an_order_of_names_its_target_as_by_does,
-    test_a_candidate_drops_a_key_echo_and_an_unread_join,
-    test_a_listing_drops_a_key_that_repeats_a_read_table,
-    test_a_comparative_than_a_number_compares_the_measure_it_describes,
-    test_a_contained_text_compares_the_lowered_values,
-    test_a_distinct_counted_noun_counts_the_column_it_names,
-    test_a_having_reading_lists_in_the_question_order,
-    test_a_superlative_of_only_its_measure_is_the_extreme_value,
-    test_a_year_column_compares_the_year_itself,
-    test_an_unjoinable_projection_drops_out_of_the_reading,
-    test_two_values_a_child_table_holds_are_both,
-    test_a_key_said_whole_is_what_both_branches_show,
-    test_a_column_word_that_introduces_a_value_is_not_listed,
-    test_the_words_of_a_column_name_are_no_value,
-    test_a_several_word_column_name_is_a_mention_where_it_is_said,
-    test_the_article_a_is_no_value,
-    test_a_value_compares_the_column_whose_words_introduce_it,
-    test_a_value_stated_once_is_compared_once,
-    test_a_column_is_named_without_the_word_of_its_kind,
+    test_a_value_compared_as_text_and_as_a_number_is_one_value,
     test_a_plural_reads_as_its_singular_everywhere,
-    test_a_key_named_by_the_table_it_references_needs_its_whole_name,
-    test_a_denial_is_read_by_what_it_denies,
-    test_a_ranking_measure_is_not_an_asked_aggregate,
-    test_a_total_by_month_groups_by_the_year_month,
-    test_same_shaped_tabs_answer_a_stated_keyword,
     test_tabs_of_one_layout_are_read_as_one,
-    test_total_before_a_measure_reads_the_measure_or_the_whole_name,
-    test_a_counted_noun_naming_an_unjoined_column_counts_the_rows,
     test_a_sum_over_rows_its_joins_repeat_is_served_only_when_every_reading_is_one,
-    test_a_question_no_reading_reads_whole_is_asked_about_the_word_it_could_not_read,
-    test_the_rewrite_asks_for_low_thinking_and_stops_at_twenty_seconds,
+    test_a_long_question_the_readers_decline_is_decomposed,
+    test_a_reading_the_readers_are_not_confident_of_is_asked_about,
     test_serving_preserves_repeated_source_rows_in_aggregates,
-    test_a_listing_follows_the_order_the_question_names,
-    test_an_answer_shows_the_fields_the_question_asks_in_its_order,
-    test_words_a_query_realizes_without_spelling_them_are_read,
-    test_stems_pronouns_and_compounds_a_query_reads_are_read,
-    test_a_full_name_is_a_first_and_a_last_name_unless_a_field_is_named_so,
-    test_groups_list_each_value_once_and_count_more_than_their_own_value,
-    test_a_count_over_an_exclusion_or_an_average_comparison_counts_the_rows_kept,
-    test_a_number_beside_a_field_and_an_order_of_a_field_are_read,
-    test_a_field_named_as_its_table_is_not_shown_for_its_owner_noun,
-    test_a_field_said_after_its_comparison_or_its_superlative_is_not_shown,
-    test_a_field_asked_by_its_whole_name_its_owner_or_an_alias_is_used,
-    test_words_saying_how_rows_are_counted_are_read_by_a_count,
-    test_an_aggregate_said_only_in_a_condition_is_not_shown,
-    test_a_question_asking_how_many_is_answered_by_a_count,
-    test_a_ranking_number_beside_a_measure_is_not_an_equality_filter,
-    test_a_requested_count_is_shown_not_only_computed_in_a_filter,
     test_a_number_of_a_numeric_field_is_the_field,
-    test_equal_to_is_read_by_a_comparison_for_equality,
-    test_one_aggregate_word_over_coordinated_fields_takes_each,
-    test_by_after_a_participle_names_who_acted,
-    test_multiple_aggregates_share_a_typed_operand,
-    test_repeated_count_paraphrase_is_one_aggregate,
-    test_total_number_of_entities_is_a_scalar_count,
     test_number_used_as_a_column_label_is_not_a_count_request,
     test_a_number_that_ends_a_fields_name_asks_for_the_field,
-    test_abbreviated_number_column_is_not_a_count_request,
-    test_travel_direction_disambiguates_parallel_airport_foreign_keys,
-    test_scalar_count_keeps_qualified_one_letter_category_filter,
-    test_counted_table_beats_related_column_with_same_entity_word,
-    test_arbitrary_word_does_not_become_a_category_initial_filter,
-    test_ranker_prefers_count_distinct_over_grouped_count,
-    test_ranker_coordinates_multiple_aggregate_operands,
-    test_multi_hop_join_uses_bridge_table,
-    test_grouped_count_uses_entity_display_column,
-    test_filter_column_does_not_leak_into_projection,
-    test_order_column_does_not_leak_into_projection,
     test_literals_are_escaped_by_renderer,
-    test_grouped_topn_orders_by_aggregate_across_bridge,
-    test_ranked_units_sold_sums_the_quantity_measure,
-    test_ranked_revenue_sums_the_amount_measure,
-    test_unit_price_ranking_stays_a_raw_rate_order,
-    test_total_spend_binds_the_amount_measure_deterministically,
-    test_explicit_total_quantity_sold_phrasing_is_unchanged,
-    test_money_noun_naming_the_table_reads_as_its_money_total,
-    test_counting_or_listing_a_money_named_table_keeps_the_entity,
-    test_money_named_table_without_a_money_column_keeps_the_entity,
-    test_served_selection_contract_keeps_money_totals_and_converted_totals,
     test_world_path_money_noun_naming_the_table_sums_its_money_column,
     test_world_path_reads_quantity_superlatives_and_counted_measures,
     test_operator_readout_never_reads_an_aggregate_off_a_closed_class_word,
     test_one_surrogate_key_rule_names_keys_not_measures_or_codes,
-    test_literal_measure_column_keeps_raw_interpretation,
-    test_search_is_deterministic,
-    test_encoder_role_signal_breaks_ambiguous_column_tie,
     test_soft_prediction_budget_does_not_abandon_work,
     test_recursive_ast_scalar_subquery_executes,
     test_recursive_ast_correlated_exists_executes,
     test_recursive_ast_set_query_in_derived_table_executes,
-    test_recursive_expansion_searches_scalar_average,
-    test_recursive_expansion_searches_anti_membership,
-    test_recursive_expansion_searches_route_self_join,
-    test_recursive_expansion_searches_nested_count_aggregate,
-    test_recursive_set_expansion_keeps_every_categorical_alternative,
-    test_constraint_expansion_searches_cross_table_count_having,
-    test_constraint_expansion_searches_single_table_count_having,
-    test_constraint_expansion_searches_disjunction,
-    test_constraint_expansion_disjoins_every_repeated_column_group,
-    test_constraint_disjunction_deduplicates_entities_across_relation,
-    test_constraint_disjunction_preserves_shared_official_filter,
-    test_constraint_expansion_searches_filtered_scalar_minimum,
-    test_constraint_expansion_keeps_grouped_superlative_as_aggregate,
-    test_constraint_expansion_infers_high_confidence_missing_entity_fk,
-    test_constraint_expansion_can_be_disabled_without_affecting_recursive_expansion,
-    test_extrema_expansion_searches_row_superlative,
-    test_extrema_expansion_preserves_filter_on_row_superlative,
-    test_extrema_expansion_searches_explicit_top_n,
-    test_extrema_expansion_distinguishes_limit_token_from_equal_filter_value,
-    test_extrema_expansion_searches_frequency_superlative,
-    test_extrema_frequency_superlative_can_return_count,
-    test_extrema_frequency_argmin_includes_zero_related_entities,
-    test_extrema_expansion_returns_dual_lexical_extrema,
-    test_extrema_expansion_searches_set_difference,
-    test_a_difference_subtracts_entities_by_what_tells_them_apart,
-    test_one_aggregate_word_over_two_coordinated_fields_takes_both,
-    test_a_relation_is_read_from_its_owner_and_named_rows_are_grouped_apart,
-    test_a_relation_names_the_side_its_participle_asks_for,
-    test_a_group_is_told_apart_only_by_a_key_of_its_own_rows,
-    test_a_field_an_aggregate_word_takes_ranks_the_groups_and_asks_no_grain,
-    test_an_average_per_row_noun_averages_the_rows,
-    test_rows_said_to_be_over_a_number_are_compared_by_their_money_measure,
-    test_the_most_of_a_one_table_workbooks_rows_counts_them_per_group,
-    test_how_many_entities_with_a_count_threshold_counts_the_ones_that_qualify,
-    test_each_count_the_question_requires_is_met_on_its_own_rows,
-    test_identity_for_an_exclusion_is_the_entitys_own,
-    test_the_rows_of_each_entity_are_kept_by_their_key,
-    test_a_ranking_keeps_the_rows_its_number_says_and_shows_them,
-    test_each_coordinated_aggregate_word_takes_its_own_field,
-    test_extrema_expansion_guards_multi_aggregate_and_can_be_disabled,
     test_shared_spider_evaluation_contract,
     test_live_table_query_ast_mode_executes_typed_candidate,
     test_weight_manifest_detects_tampered_bundle,
@@ -9384,9 +2936,7 @@ TESTS = [
     test_world_target_uses_the_synced_iso_currency_column,
     test_schema_graph_resolves_normalized_foreign_key_names,
     test_spider_evaluator_does_not_count_all_errors_as_answered,
-    test_a_key_referring_to_another_tables_rows_counts_those_rows,
     test_the_table_a_list_names_after_its_items_by_its_last_word_owns_them,
-    test_how_many_total_asks_one_number,
 ]
 
 

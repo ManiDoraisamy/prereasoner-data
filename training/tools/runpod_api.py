@@ -1,8 +1,17 @@
-"""Cost-bounded RunPod client for Schema.org training.
+"""Cost-bounded RunPod client for the repository's GPU training: the Schema.org
+property head (training/schema_org) and the own-data readers (training/readers,
+whose ``training.readers.lease`` builds its jobs on this lease).
 
 The default ``lease`` command owns the complete pod lifecycle and terminates in
 ``finally``. A pod can outlive this process only when the operator explicitly
 passes ``--keep``.
+
+Environment overrides, each leaving the default below when unset:
+  RUNPOD_GPUS   comma-separated GPU types, most wanted first (replaces GPU_PRIORITY)
+  RUNPOD_CLOUD  the pod's cloudType (default SECURE)
+  RUNPOD_IMAGE  the runner image (default the digest-pinned IMAGE)
+  RUNPOD_CUDA   comma-separated allowedCudaVersions (default 12.8)
+  PREREASONER_RUNPOD_STATE  the lease state file, one per concurrent lease
 """
 from __future__ import annotations
 
@@ -21,7 +30,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 REST = "https://rest.runpod.io/v1"
-IMAGE = (
+IMAGE = os.environ.get("RUNPOD_IMAGE") or (
     "runpod/pytorch:1.2.0-rc.162-cu1281-torch2130-ubuntu2204"
     "@sha256:ed683f5f23a4b50f2738cddaccea02254bf8303dcbcc33485c95a31b76555422"
 )
@@ -29,6 +38,11 @@ GPU_PRIORITY = [
     "NVIDIA GeForce RTX 4090", "NVIDIA RTX A5000", "NVIDIA L4",
     "NVIDIA RTX A4000", "NVIDIA GeForce RTX 3090", "NVIDIA RTX A4500",
 ]
+if os.environ.get("RUNPOD_GPUS"):                  # a job's own list, most wanted first
+    GPU_PRIORITY = [name.strip() for name in os.environ["RUNPOD_GPUS"].split(",") if name.strip()]
+CLOUD = os.environ.get("RUNPOD_CLOUD") or "SECURE"
+CUDA_VERSIONS = [version.strip() for version in (os.environ.get("RUNPOD_CUDA") or "12.8").split(",")
+                 if version.strip()]
 STATE = Path(os.environ.get("PREREASONER_RUNPOD_STATE") or
              Path.home() / ".cache" / "prereasoner" / "runpod_active.json")
 
@@ -129,10 +143,10 @@ def create(max_minutes: int) -> str:
         '-H "Authorization: Bearer $RUNPOD_API_KEY"'
     )
     body = {
-        "name": f"prereasoner-train-{token}", "imageName": IMAGE, "cloudType": "SECURE",
+        "name": f"prereasoner-train-{token}", "imageName": IMAGE, "cloudType": CLOUD,
         "gpuTypeIds": GPU_PRIORITY, "gpuCount": 1, "containerDiskInGb": 25,
         "volumeInGb": 0, "ports": ["22/tcp"],
-        "allowedCudaVersions": ["12.8"],
+        "allowedCudaVersions": CUDA_VERSIONS,
         "dockerStartCmd": [
             "bash", "-lc",
             f"({delete_self}) >/tmp/prereasoner-lease-guard.log 2>&1 & exec /start.sh",

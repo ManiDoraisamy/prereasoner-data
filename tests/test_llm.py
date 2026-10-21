@@ -113,9 +113,8 @@ def test_json_request_is_deterministic_and_carries_the_schema():
 
 
 def test_failures_reach_callers_only_as_unavailable():
-    """The fallback (engine/question_rewrite.py) catches LLMUnavailable alone, so any other exception
-    type would fail the user's request instead of skipping the fallback. Messages name the failure
-    type only: an upstream error can quote the request."""
+    """Every failure reaches the caller as LLMUnavailable, the one exception callers handle. Messages
+    name the failure type only: an upstream error can quote the request."""
     for models in (_Models(error=RuntimeError("upstream 500 for SELECT secret")),
                    _Models(error=httpx.ReadTimeout("timed out")), _Models(error=TimeoutError()),
                    _Models(reply=None), _Models(reply="  \n")):

@@ -4415,3 +4415,104 @@ Measured on Spider (`spider/results/RESULTS.md`, 2026-10-19), against `b306132`:
 
 - The change refuses answers more than it adds right ones: wrong answers fall by 2 on held out, 7 on the fresh holdout
   and 1 with Gemini on (fresh holdout 43, 699, 848, 887 and held out 430, 760 are now refused).
+
+## Learned readers replace the lexical search; the Gemini rewording is gone (2026-10-21)
+
+The owner redirected the accuracy program on 2026-10-19: the aim is accuracy on databases the engine has never seen,
+by learning to read a schema instead of adding word rules and question-specific patches, while staying encoder-only,
+deterministic and interpretable, with no model writing SQL.
+
+**What replaced what.** The own-data planner was the lexical typed search (`engine/sql_search.py` with its
+constraint, parsimony, recursive and extrema expansions), ranked by hand-written features (`CandidateRanker`),
+checked word by word against the question (`query_contract.read_question`, `coverage`, `constraint_violations`), and
+reworded by Gemini when nothing ran (`engine/question_rewrite.py`). It is replaced, in the same change, by the readers
+(`engine/readers/`):
+
+- stage 1 (XLM-R base) scores each table's and column's use for the question; the six most probable tables are kept;
+- stage-2 readers (XLM-R large) read the question beside the kept tables as named readings (structure, per-column
+  select/condition/group/having/order roles, counts, value and limit pointers, shares); one reads the question's
+  values listed beside the columns that hold them (anchors), one does not, and their candidates are pooled;
+- a deterministic builder (`readings.build`) makes each reading a typed AST, joining along foreign keys;
+- the pool runs and is grounded as before; a re-scorer (XLM-R base) orders it by the question beside each candidate's
+  read-as line and result shape; a logistic refusal fitted on held-out databases declines a choice it is not
+  confident of, and the reply says how the question was read ("I read this as …").
+
+The response carries `read_as`, which the thread shows as the turn's "read as" line, in place of the `fallback`
+record of the rewording. Deleted with the search: `sql_search`, `sql_constraints`, `sql_parsimony`, `sql_recursive`,
+`sql_extrema`, `question_rewrite`, `sql_prompt`; `CandidateRanker`, `SemanticSignals`, `FallbackRecord` and the
+money-total preference in `sql_rank`; all of `query_contract` but the unreadable-measure checks and `Coverage`; the
+helpers in `sql_expansion`, `sql_rank`, `closed_class` and `sql_durations` only the search read (a reachability
+prune against `b8bedde`, leaving what was already unused there alone); 251 tests of the search in
+`tests/test_sql_ast.py` and 83 in `tests/test_query_contract.py`. Routing's own-data shortcut
+(`routing.reads_upload_whole`) now reads the readers' accepted selection and the world types and measures the
+upload lacks (`knowledge_query.asked_world_types`, `WORLD_MEASURES`), not the deleted word reader.
+
+**Generic semantics only.** The decoder and builder keep rules that hold across schemas and wording: a date the
+question names is read through `engine/sql_dates`, and so is a period it groups by ("per month" groups by the date's
+year-month); a stored date literal stays exact; a column an equality pins is not shown, grouped or sorted by again; a
+pointed value drops the marks of its list; two values of one column the question names (matched on the data) are also
+read as either, since a row holds one value of a column; a grouped block's plain number sort column is each group's
+total, and groups computing nothing are distinct rows; the first row of the one column shown and ranked is its MAX or
+MIN; a contained text compares `LOWER(column)` with the lower-cased text (SQLite's LIKE ignores ASCII case and
+PostgreSQL's does not); a share's read-as line names the share. The perfect-readings oracle is unchanged by them (984
+of 1,053 calibration questions). No question-specific word list or patch remains in own-data selection.
+
+**One stopgap, with its removal condition.** The readers' structure head reads the complex demos' multi-goal prompts
+("the top 3 products … and the top 2 customers …, then list each pair …") as one query, with confidence near zero for
+any set operation. In an analysis, a declined question longer than 30 words (`decomposition.ONE_QUERY_WORDS`: 99% of
+the readers' training questions have at most 27) asks for the decomposition proposal instead of a clarification. It is
+removed when the readers are trained on compound questions and their structure head reads them.
+
+**Training and data.** Spider train and dev (the 20 calibration databases and the 40 test databases excluded), BIRD
+train (6,558 readable questions plus 195 percentage questions verified by execution) and Spider-Syn's rewordings.
+Calibration is 20 held-out Spider train databases (1,053 questions); the frozen Spider test (40 databases, 2,147
+questions) is scored in totals only, at milestones. The pipeline is `training/readers/`; `training/readers/promote.py`
+is the one writer of `engine/data/readers/`. Experiment contracts and per-run metrics are under
+`training/readers/README.md`.
+
+**Precision and memory.** Serving runs each encoder in bfloat16 with float32 heads (`engine/readers/models.load`):
+half the memory of float32 and about 3.5 times faster on the development CPU, with p99 probability drift 0.013 on
+calibration rows; int8 dynamic quantization moved readings too much (p99 0.30) and is not used. The two large readers
+take about 1.1 GB each in bfloat16 and the two base models about 0.55 GB each, beside about 2.5 GiB of the engine's own
+models: an 8 GiB instance kept little room for three requests at once. Engine instances, and the build and suite
+containers that mirror their cap, now have 16 GiB (`infra/main.tf`; about $275 a month per warm instance at list
+prices, against $230). A four-reader pool with a combiner chose 621 of 1,028 on calibration (re-scorer "us") against
+612 for the two shipped with the same re-scorer; it would fit 16 GiB and is not shipped.
+
+**Re-scorer.** The shipped re-scorer ("f") trains on the union of the shipped recipes' own cross-fold candidate pools
+(v7a anchored and v7b plain, four folds each; `training/readers/rescorer_data.py`), BIRD share candidates relabelled
+against 100 times gold: on the shipped pair's calibration pool it chooses 624 of 1,028 right, against 612 and 601 for
+re-scorers trained on older recipes' pools.
+
+**Refusal.** The refusal declines below the confidence at which the readers answer no more questions wrongly on
+calibration than the engine they replace (`training.readers.refusal match`, threshold 0.2511): 587 right of 881
+answered against the engine's 418 of 712, the same 294 wrong.
+
+**Measured** (`spider/results/RESULTS.md`, 2026-10-20), through `spider.probe.full_eval`, whole_db, served:
+
+- Frozen Spider test (2,147 questions, 40 unseen databases, totals only): engine alone 939 (43.7%), production with
+  the Gemini rewording 1,126 (52.4%), the readers 1,351 (62.9%) strict and 1,535 (71.5%) lenient; 1,314 right of
+  1,875 answered with the refusal on.
+- Calibration (1,053): engine 418 → readers 617 strict; 274 wins, 75 losses.
+- The live demo-dataset gate (`tests.test_datasets`, 2026-10-21, this bundle, no connection errors): `b8bedde`
+  passes every case; the readers fail 6. The three compound demos' prompts: a ranking leaf "by total spend" or "by
+  total revenue" is read as a ranking by row count, since no column is named so and the re-scorer prefers the count
+  to the `SUM(line_total)` reading in the pool. "What is the highest purchase cost?" ranks by another column (the
+  right value, by chance, in SQL; the Python emitter cannot sort by a column it does not show). "What is the highest
+  Net PO Value?" is read right and declined (confidence 0.247 against the threshold 0.251). "How many Intake Consent
+  documents are there?" counts the distinct document types (1).
+- With the bundle installed, the hermetic suite fails `tests.test_complex_datasets` (5: the same leaves, and "List the
+  product names that no customer from Paris has bought" read as one query without its negation) and the enrichment
+  benchmarks, now graded on the served answer instead of the pool's first candidate: the currency-symbol join is in
+  the pool but not chosen, and the IANA country activation gate has 64% top-1 and 80% pool recall against its 95%.
+  Without the bundle (public CI) these model-backed tests are skipped. The offline regression gate
+  (`regress.run_regression --offline`, which the engine build runs) passes 12 of 13: "total revenue by title", a sum
+  grouped across a foreign key, is declined.
+- **Not releasable.** The engine build runs the full product suite on the candidate image and publishes no image that
+  fails it; this change is committed, not deployed, and production stays on `b8bedde`.
+
+**Known gaps.** Each failure above is a reading the training data does not cover: measures named by a business
+word the schema does not use, negated existence, joins to an enrichment's lookup table, and wide spreadsheet tables.
+The next step is training data for those families on the training databases (never the demo questions), and the
+Python emitter's sort by a column it does not show. The weights are published at Hugging Face revision
+`b9bb6521799ca603845a8e41248ff3abfe70fb40`, verified file by file by an anonymous download against the manifest.

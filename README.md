@@ -44,23 +44,16 @@ What runs today:
 
 | Component | What it is | What it decides |
 |---|---|---|
-| Encoder | `Qwen/Qwen2.5-0.5B` used without its decoder, adapted with a LoRA and a 10-block relational readout trained to fill **90 named coordinates**: 9 column types (`is_num`, `is_time`, `currency`, ...), 71 property names (`addressCountry`, `brand`, `birthDate`, ...), and 10 query intents (`intent_agg_sum`, `intent_filter_gt`, `intent_sort_desc`, ...) | What each column is and what the question asks for |
+| Encoder | `Qwen/Qwen2.5-0.5B` used without its decoder, adapted with a LoRA and a 10-block relational readout trained to fill **90 named coordinates**: 9 column types (`is_num`, `is_time`, `currency`, ...), 71 property names (`addressCountry`, `brand`, `birthDate`, ...), and 10 query intents (`intent_agg_sum`, `intent_filter_gt`, `intent_sort_desc`, ...) | What each column is, and what a composition or world question asks for |
 | Schema.org head | A linear layer reading 80 Schema.org properties. A class score is a weighted sum of those property scores. 56 properties and 11 classes pass the release gates; the others abstain | Which world table a column may join. Joins also need exact source-key matches |
-| Typed SQL search | A bounded search that builds queries as a typed syntax tree from those named readings, with hand-written ranking rules whose every adjustment is a named feature | The candidate queries, and which one is served: the best-ranked one that runs and matches the data |
+| Own-data readers | XLM-R encoders that read a question beside the schema: one scores the tables and columns it uses, the reading models read its named readings (aggregates, conditions, groups, orderings, set operations, shares), a re-scorer orders the candidates that ran, and a logistic refusal decides whether to serve | Which readings become candidate queries, which one is served, and when to decline |
+| Typed SQL builder | A deterministic builder that makes each reading a typed syntax tree, joining tables along their foreign keys | The candidate queries themselves |
 | Execution | PostgreSQL, plus a generated Python program that mirrors the SQL for supported shapes | The numbers |
 
-No model writes the SQL. The search builds every query from the encoder's named readings, runs each
-candidate on a copy of your tables, drops the ones that fail or test a value the column never holds,
-and serves the best-ranked one that is left. The answer shows the query, its evidence, and the rule
-that chose it.
-
-**Gemini can clarify wording for the search.** When the operator has switched on Gemini (Vertex AI),
-it may reword a question once if no candidate runs or the selected plan leaves request wording
-unresolved. Gemini receives the table and column names, types, and relationships, and the question with
-the values it states quoted, but no other cell values and no conversation history. It does not write SQL
-or select a query. The deterministic typed search builds and checks SQL from the rewrite; the response
-labels when that rewrite supplied the wording.
-The rewrite is not cached between requests.
+No model writes the SQL. The builder makes every own-data query from the readers' readings, each
+candidate runs on a copy of your tables, the ones that fail or test a value the column never holds are
+dropped, and the re-scorer ranks the rest. The answer shows the query and how the question was read; when
+the readers are not confident, the reply says what they read instead of answering.
 
 The optional chat service uses Gemini to make follow-up wording explicit and request engine operations.
 It sends schema metadata, bounded recent user questions and saved analysis questions. It sends no source
@@ -77,9 +70,9 @@ version pays that cost in three visible ways:
 - **Schema.org is mostly about business data.** It has few scientific types, and many of its types
   have no public data source yet. Facts come from Wikidata, the ECB, GeoNames, IANA, CLDR, CDC, NLM
   and the other releases listed in [docs/SOURCE_DATA.md](docs/SOURCE_DATA.md).
-- **Nouns, not actions.** Properties name things. Actions are covered only by the ten fixed query
-  intents, so Prereasoner handles questions over structured data such as CSV and spreadsheet files,
-  and nothing broader.
+- **Nouns, not actions.** Properties name things. Actions are covered only by fixed query forms (the
+  encoder's ten intents and the readers' aggregates, conditions, groups and orderings), so Prereasoner
+  handles questions over structured data such as CSV and spreadsheet files, and nothing broader.
 
 The project is open source so that this vocabulary can grow the way the periodic table did, one
 named dimension at a time. [docs/RESEARCH.md](docs/RESEARCH.md) gives the research position and its
@@ -162,11 +155,11 @@ engine/server.py                 HTTP/auth/request adapter
         v
 engine/knowledge.py              one serving entry point
         |
-        +--> own-data typed AST planner: deterministic search; candidates run and
-        |       grounded; the best-ranked one served; labelled Gemini fallback only
-        |       when nothing runs
-        |       engine/tables.py (select_query), engine/sql_search.py, engine/sql_rank.py,
-        |       engine/sql_ast.py, engine/question_rewrite.py
+        +--> own-data typed AST planner: learned readers read the question, a
+        |       deterministic builder makes each reading a typed AST; candidates run
+        |       and grounded, re-scored, served or declined by the refusal
+        |       engine/tables.py (select_query), engine/readers/, engine/sql_rank.py,
+        |       engine/sql_ast.py
         |
         +--> world grounding when a public entity relation is required
                 engine/knowledge_query.py, engine/knowledge_compose.py (engine/routing.py decides)
@@ -215,7 +208,7 @@ The browser does not guess provenance from column names. The server returns one
 ## Install On A Local Machine
 
 The full local installation runs the engine, the chat service, and PostgreSQL through Docker
-Compose. Chat and the engine's Gemini fallback need a Google Cloud project with Vertex AI and your
+Compose. Chat and reference generation need a Google Cloud project with Vertex AI and your
 application-default credentials (`gcloud auth application-default login`); set `GOOGLE_CLOUD_PROJECT`
 and `EXTERNAL_LLM_ENABLED=true` in the local `.env` file. The engine alone needs neither.
 
@@ -254,7 +247,9 @@ Open the local UI at `http://localhost:8090`.
 `engine.fetch_weights` downloads the public
 [weight bundle](https://huggingface.co/prereasoner/prereasoner-weights) without a token and checks
 every file against the revision and hashes in `engine/data/weights_manifest.json`. See
-[engine/data/README.md](engine/data/README.md).
+[engine/data/README.md](engine/data/README.md). The own-data readers in `engine/data/readers/` are
+installed only by `training/readers/promote.py`, which records their hashes in the same manifest
+([training/readers/README.md](training/readers/README.md)).
 
 The guided Google Cloud deployment uses Vertex AI Gemini through its service account and does not ask
 for a key.
@@ -286,6 +281,7 @@ For native Python, the Firebase emulator, and database seeding, see
 Fast checks that need neither weights nor Postgres:
 
 ```powershell
+python -m tests.test_readers
 python -m tests.test_sql_ast
 python -m tests.test_deterministic_emitters
 python -m tests.test_calculations
@@ -330,27 +326,23 @@ answers derived from the CSV files; `python -m tests.test_datasets` runs them ag
 | `mcp_server/` | MCP adapter over the same engine API |
 | `sheets-addon/`, `excel-addon/` | Google Sheets and Excel add-ons; they call the hosted chat service |
 | `db/` | PostgreSQL schema, source synchronization, migrations, and grants |
-| `training/` | Encoder and Schema.org head training and calibration; never imported by serving |
+| `training/` | Encoder, own-data readers and Schema.org head training and calibration; never imported by serving |
 | `tests/` | Hermetic and live integration suites |
 | `spider/` | Serving-faithful Spider evaluation and recorded results |
 | `docs/` | Architecture, developer guides, testing, research, and training |
 
 ## Accuracy Boundary
 
-Determinism does not remove ambiguity, incomplete schema linking, candidate-search limits, ranking
-errors, missing world data, or wrong relationship inference. Accuracy work is split into measured
-stages: routing, table selection, candidate-pool recall, top-1 ranking, execution, and evaluation.
+Determinism does not remove ambiguity, misread questions, shapes the readings form cannot hold,
+ranking errors, missing world data, or wrong relationship inference. Accuracy work is split into
+measured stages: routing, table selection, candidate-pool recall, top-1 ranking, refusal, execution,
+and evaluation.
 
-With no model writing SQL and the Gemini fallback off, the engine alone answers **524 of 1,034** Spider DEV
-questions (`whole_db`, gold-blind) and gets **315 strict (30.5%)** right, 60% of those it answers, measured
-2026-10-08. It refuses a question whose wording it cannot read rather than answer a different
-one. Before that completeness check, at `60a55a3`, it answered 1,025 and got 497 right (48.1%). With the
-operator's Gemini switch on, as production runs, a question the search cannot read is reworded once and
-searched again: 671 answered and **386 strict (37.3%)**, with no answer lost to the rewording. With a 7B
-SQL-writing model the engine scored 866. That gap is the cost of
-interpretability the project chose: every query is built by the search, and accuracy grows by search and
-ranking rules. Records and history are in
-[spider/results/RESULTS.md](spider/results/RESULTS.md). `gold_tables` results are an oracle ablation, not a Spider comparison. See
+No model writes SQL: every query is built from the readers' readings, and a question the readers are
+not confident of is declined with what they read rather than answered as a different one. Recorded
+Spider results are in [spider/results/RESULTS.md](spider/results/RESULTS.md). The readers' training
+sources include Spider's dev questions, so the Spider test set is their held-out measurement.
+`gold_tables` results are an oracle ablation, not a Spider comparison. See
 [docs/SQL_AST.md](docs/SQL_AST.md).
 
 ## License
