@@ -263,23 +263,35 @@ def _verify_download(ssh: list[str], scp: list[str], ip: str, remote: str, desti
 
 
 EXIT_FILE, OUTPUT_FILE = "/tmp/prereasoner-lease.exit", "/tmp/prereasoner-lease.out"
+PID_FILE = "/tmp/prereasoner-lease.pid"
 POLL_SECONDS, POLL_FAILURES = 30, 20        # a poll every 30 s; 20 failed polls in a row (10 minutes) end the lease
+# The poll's answer: the exit status once written, else "running" while the detached shell lives (its pid still runs
+# a command line naming EXIT_FILE, so a pid reused after a restart does not count), else "lost".
+POLL = (f"cat {EXIT_FILE} 2>/dev/null || {{ p=$(cat {PID_FILE} 2>/dev/null); "
+        f"grep -qs {EXIT_FILE} /proc/$p/cmdline && echo running || echo lost; }}")
+
+
+class CommandLost(RuntimeError):
+    """The detached command is gone without an exit status: the pod's container restarted (a community host did,
+    2026-10-22, killing a stage-2 run at its 1,300th step) or the process was killed."""
 
 
 def _run_detached(ssh: list[str], command: list[str], remaining) -> None:
     """Run ``command`` on the pod detached from the ssh session (setsid, nohup), then poll for its exit status. A
     dropped connection no longer ends it: a community host dropped ssh mid-training and four stage-2 runs died with
     their sessions (2026-10-21 and 22). The command's output is printed when it ends; a nonzero exit raises
-    CalledProcessError, and POLL_FAILURES failed polls in a row raise the last ssh error."""
+    CalledProcessError, a command gone without one raises CommandLost, and POLL_FAILURES failed polls in a row raise
+    the last ssh error."""
     script = f"{shlex.join(command)}; echo $? > {EXIT_FILE}"
-    launch = f"rm -f {EXIT_FILE}; nohup setsid bash -c {shlex.quote(script)} > {OUTPUT_FILE} 2>&1 < /dev/null &"
+    launch = (f"rm -f {EXIT_FILE}; nohup setsid bash -c {shlex.quote(script)} > {OUTPUT_FILE} 2>&1 < /dev/null & "
+              f"echo $! > {PID_FILE}")
     subprocess.run([*ssh, launch], check=True, timeout=min(remaining(), 120))
-    failures, status = 0, ""
-    while not status.isdigit():
+    failures, status = 0, "running"
+    while status == "running":
         time.sleep(min(POLL_SECONDS, remaining()))
         try:
-            status = subprocess.run([*ssh, f"cat {EXIT_FILE} 2>/dev/null || true"], check=True, capture_output=True,
-                                    text=True, timeout=min(remaining(), 60)).stdout.strip()
+            status = subprocess.run([*ssh, POLL], check=True, capture_output=True, text=True,
+                                    timeout=min(remaining(), 60)).stdout.strip()
             failures = 0
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
             failures += 1
@@ -290,6 +302,8 @@ def _run_detached(ssh: list[str], command: list[str], remaining) -> None:
                              timeout=min(remaining(), 120)).stdout, end="", flush=True)
     except subprocess.TimeoutExpired:
         pass
+    if not status.isdigit():
+        raise CommandLost(f"the remote command is gone without an exit status ({status or 'no answer'})")
     if int(status) != 0:
         raise subprocess.CalledProcessError(int(status), command)
 

@@ -676,7 +676,9 @@ def test_runpod_downloads_match_the_pods_files_before_termination():
 
 def test_a_dropped_connection_does_not_end_the_remote_command():
     # 2026-10-21/22: a community host dropped ssh mid-training, and four stage-2 runs died with their sessions. The
-    # command now runs detached on the pod and the lease polls for its exit status through dropped connections.
+    # command now runs detached on the pod and the lease polls for its exit status through dropped connections. The
+    # same host also restarted its containers, killing a run without an exit status: the poll says so ("lost") and
+    # the lease ends instead of polling an idle pod until its deadline.
     from training.tools import runpod_api
 
     def lease(polls):
@@ -697,14 +699,20 @@ def test_a_dropped_connection_does_not_end_the_remote_command():
                 runpod_api._run_detached(["ssh"], ["bash", "-lc", "train"], lambda: 100.0)
             except subprocess.CalledProcessError as exc:
                 return "failed", exc.returncode
+            except runpod_api.CommandLost:
+                return "lost", None
         return "done", calls
 
     # Two dropped polls, a still-running poll, then the exit status: the command finished.
-    outcome, calls = lease([None, None, "", "0\n"])
-    assert outcome == "done" and "nohup setsid" in calls[0] and calls[-1] == f"cat {runpod_api.OUTPUT_FILE}", calls
+    outcome, calls = lease([None, None, "running\n", "0\n"])
+    assert outcome == "done" and "nohup setsid" in calls[0] and runpod_api.PID_FILE in calls[0], calls
+    assert calls[-1] == f"cat {runpod_api.OUTPUT_FILE}", calls
     # A failed training still fails the lease (its exit status), and so does a pod lost for POLL_FAILURES polls.
-    assert lease(["", "4"]) == ("failed", 4)
+    assert lease(["running", "4"]) == ("failed", 4)
     assert lease([None, None, None]) == ("failed", 255)
+    # A command gone without an exit status (a restarted container) ends the lease at once.
+    assert lease(["running", "lost"]) == ("lost", None)
+    assert lease([""]) == ("lost", None)
 
 
 def test_a_readers_lease_never_trains_again_after_its_download_broke():
