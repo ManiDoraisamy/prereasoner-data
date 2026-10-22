@@ -51,17 +51,20 @@ def test_public_artifact_boundary():
     assert not any(path.endswith((".pt", ".tfstate", ".env")) for path in folded)
     import tomllib
 
-    # Two narrow exemptions and no other: the public browser configuration, and the weight manifest's lines that map
-    # a file to its digest (generic-api-key reads a tokenizer file's name as a credential).
-    allowlists = tomllib.loads(_text(".gitleaks.toml"))["allowlists"]
-    assert [entry.get("paths") for entry in allowlists] == [
-        ["^web/public/lib/config\\.js$"], ["^engine/data/weights_manifest\\.json$"]]
-    manifest = allowlists[1]
-    assert manifest["condition"] == "AND" and manifest["regexTarget"] == "line" and len(manifest["regexes"]) == 1
-    digest_line = re.compile(manifest["regexes"][0])
+    # Two narrow exemptions and no other, in the one global [allowlist] gitleaks 8.24 reads (it ignores
+    # [[allowlists]], 2026-10-22): the public browser configuration, and a line mapping a file name to its digest, as
+    # the weight manifest does (generic-api-key reads a tokenizer file's name as a credential).
+    config = tomllib.loads(_text(".gitleaks.toml"))
+    assert "allowlists" not in config
+    allowlist = config["allowlist"]
+    assert allowlist["paths"] == ["^web/public/lib/config\\.js$"]
+    assert allowlist["regexTarget"] == "line" and len(allowlist["regexes"]) == 1
+    digest_line = re.compile(allowlist["regexes"][0])
     assert digest_line.match('  "readers/stage1/tokenizer.json": "' + "0" * 64 + '",')
+    assert digest_line.match('+    "readers/stage2_c/tokenizer_config.json": "' + "a" * 64 + '",\n')
     assert not digest_line.match('  "github_token": "ghp_' + "a" * 36 + '",')
     assert not digest_line.match('  "api_key": "' + "0" * 63 + 'g",')
+    assert not digest_line.match('  "api_key": "' + "0" * 64 + '",')        # a credential's name is no file name
 
     workflow = _text(".github/workflows/ci.yml")
     assert "gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e" in workflow

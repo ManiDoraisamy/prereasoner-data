@@ -25,7 +25,7 @@
     "orchestrator/requirements.lock.txt": {
       "input": "orchestrator/requirements.txt",
       "input_sha256": "9ebab6ed1d00b694a64185f73f9375a329a000017a9ad7397cac8aa635a2aaa1",
-      "lock_sha256": "3d71872ddfa456130b8225276e87414ec2064d9470c10ba557ee1eeeefdda07b",
+      "lock_sha256": "91d48fa7e337c2f93989fefbe0a716212f9093a51b043f27620910ec06f4b9f2",
       "target": "linux-x86_64-python3.11"
     },
     "requirements-ci-windows.lock.txt": {
@@ -43,7 +43,7 @@
     "requirements.lock.txt": {
       "input": "requirements.txt",
       "input_sha256": "9dfbabf8f31bd781872145d7907568ab1b1c8563b9bb01b614dcb96d31fc0882",
-      "lock_sha256": "41e5450b4ba3c438185420c6173faab10f473aa23cd680f02e3999502110a1c5",
+      "lock_sha256": "343422fcd051d6a41675f404bb9c81bee56ec9d0fd7009cea861d268ccf8cab6",
       "target": "linux-x86_64-python3.11"
     },
     "training/requirements.lock.txt": {
