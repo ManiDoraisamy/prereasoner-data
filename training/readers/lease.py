@@ -38,9 +38,10 @@ from training.readers import EXPERIMENTS_DIR
 
 ROOT = Path(__file__).resolve().parents[2]
 LARGE = "FacebookAI/xlm-roberta-large"
-# XLM-R large trains with checkpointing on 24 GB or more; slower or smaller cards would outrun the lease.
-LARGE_GPUS = ["NVIDIA GeForce RTX 4090", "NVIDIA GeForce RTX 5090", "NVIDIA L40S", "NVIDIA RTX 6000 Ada Generation",
-              "NVIDIA RTX A6000", "NVIDIA A40"]
+# XLM-R large trains with checkpointing on 24 GB or more; slower or smaller cards would outrun the lease. The RTX 5090
+# is left out: the recorded image's torch 2.4 has no kernels for it ("CUDA kernel errors", 2026-10-22).
+LARGE_GPUS = ["NVIDIA GeForce RTX 4090", "NVIDIA L40S", "NVIDIA RTX 6000 Ada Generation", "NVIDIA RTX A6000",
+              "NVIDIA A40"]
 BASE_GPUS = LARGE_GPUS + ["NVIDIA GeForce RTX 3090", "NVIDIA RTX A5000", "NVIDIA RTX A4500", "NVIDIA GeForce RTX 4080",
                           "NVIDIA RTX 4000 Ada Generation", "NVIDIA RTX A4000", "NVIDIA L4"]
 # The image and CUDA versions the recorded runs leased (their logs report torch 2.4.1+cu124). An empty --image or
@@ -52,7 +53,10 @@ POD_CODE = ("engine/__init__.py", "engine/readers/layout.py", "engine/readers/nu
             "training/__init__.py", "training/readers/__init__.py", "training/readers/train.py",
             "training/readers/folds.py", "training/readers/rescorer.py", "training/readers/shrink_state.py")
 PIP = "pip install -q 'transformers>=4.44,<5' 2>&1 | tail -1"
-CUDA_CHECK = ("python -c 'import sys, torch; ok = torch.cuda.is_available(); "
+# The check runs a kernel: a card the image's torch has no kernels for reports CUDA available and fails mid-run
+# (an RTX 5090, 2026-10-22), and a host with a broken driver fails here ("CUDA unknown error").
+CUDA_CHECK = ("python -c 'import sys, torch; ok = torch.cuda.is_available() "
+              "and float((torch.ones(8, 8, device=\"cuda\") @ torch.ones(8, 8, device=\"cuda\")).sum()) == 512.0; "
               "print(torch.__version__, ok and torch.cuda.get_device_name(0)); sys.exit(0 if ok else 3)' || exit 3")
 ALLOC = "PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True"
 NAME = re.compile(r"[A-Za-z0-9._-]+")
