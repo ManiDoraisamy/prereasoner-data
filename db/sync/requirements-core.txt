@@ -1,4 +1,4 @@
 # Publisher-owned reference syncs: network fetch, validation, and PostgreSQL activation.
 psycopg2-binary>=2.9,<3
 requests>=2.31,<3
-defusedxml>=0.7,<1
+defusedxml>=0.7.1,<1
