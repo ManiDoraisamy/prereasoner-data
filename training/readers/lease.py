@@ -1,6 +1,9 @@
 """GPU leases for the readers' trainers. Each job builds the remote command the recorded runs used, stages the
 pod-side code of this package, and runs it through training/tools/runpod_api.py's owned, time-bounded lease: first
-on the SECURE cloud, then on COMMUNITY when that attempt fails (no instance, no CUDA, or a failed training).
+on the SECURE cloud, then on COMMUNITY when that attempt fails (no instance, no CUDA, or a failed training). A
+command that succeeded but whose download broke (runpod_api's INCOMPLETE_EXIT) is never run again elsewhere: its pod
+is kept with the files, which training/readers/pull_parts.sh pulls. A lease also refuses to start for an experiment
+whose out/ holds a finished run (a best.json): that run is pulled or moved aside by hand, never trained again.
 
 Jobs:
   full      stage 2 (readings) on <data>/stage2.jsonl.gz: XLM-R large, lr 1e-5, gradient checkpointing; the model
@@ -23,7 +26,7 @@ usage: python -m training.readers.lease full --experiment <id> --data <dir with 
        python -m training.readers.lease folds --experiment <id> --data <dir> --folds 0,1 [--epochs 12] [--eval-from 9]
        python -m training.readers.lease rescorer --experiment <id> --job NAME=TRAIN.jsonl.gz=CAL.jsonl.gz[=large] ...
        options of every job: [--minutes N] [--max-hourly-cost 1.0] [--clouds SECURE,COMMUNITY] [--gpus a,b]
-           [--image IMAGE] [--cuda 12.4,12.8] [--dry-run]
+           [--image IMAGE] [--cuda 12.4,12.8] [--dry-run] [--resume]
 """
 import argparse
 import gzip
@@ -35,6 +38,7 @@ import sys
 from pathlib import Path
 
 from training.readers import EXPERIMENTS_DIR
+from training.tools.runpod_api import INCOMPLETE_EXIT
 
 ROOT = Path(__file__).resolve().parents[2]
 LARGE = "FacebookAI/xlm-roberta-large"
@@ -73,14 +77,14 @@ def shrink(model, backbone, small, log):
             f"&& test -s {small} && rm -f {model}; tail -1 {log}")
 
 
-def readings(backbone, lr, epochs, eval_from, examples, out):
+def readings(backbone, lr, epochs, eval_from, examples, out, seed=0):
     return (f"{ALLOC} python -m training.readers.train readings --backbone {backbone} --epochs {epochs} --lr {lr} "
-            f"--checkpointing --examples {examples} --out {out} --eval-from {eval_from}")
+            f"--checkpointing --examples {examples} --out {out} --eval-from {eval_from} --seed {int(seed)}")
 
 
-def full_command(backbone, lr, epochs, eval_from):
+def full_command(backbone, lr, epochs, eval_from, seed=0):
     """Stage 2 on stage2.jsonl into out/stage2, shrunk."""
-    train = readings(backbone, lr, epochs, eval_from, "stage2.jsonl", "out/stage2")
+    train = readings(backbone, lr, epochs, eval_from, "stage2.jsonl", "out/stage2", seed)
     return (f"{prelude('stage2.jsonl.gz')}; {train} > out/stage2.log 2>&1 || "
             "{ grep -v Warning out/stage2.log | tail -4; exit 4; }; grep -v Warning out/stage2.log | tail -4; "
             f"{shrink('out/stage2/model.pt', backbone, 'out/stage2/small.pt', 'out/shrink.log')}; ls -la out/stage2")
@@ -147,7 +151,7 @@ def lease(args, job, remote, uploads, gpus):
     uploads = [(str(code_dir / "engine"), "/workspace/engine"),
                (str(code_dir / "training"), "/workspace/training")] + uploads
     command = [sys.executable, "-m", "training.tools.runpod_api", "lease", "--max-minutes", str(args.minutes),
-               "--max-hourly-cost", str(args.max_hourly_cost)]
+               "--max-hourly-cost", str(args.max_hourly_cost)] + (["--resume"] if args.resume else [])
     env = dict(os.environ, RUNPOD_GPUS=",".join(args.gpus.split(",") if args.gpus else gpus),
                PREREASONER_RUNPOD_STATE=str(Path.home() / ".cache" / "prereasoner"
                                             / f"runpod_readers_{args.experiment}.json"))
@@ -163,6 +167,9 @@ def lease(args, job, remote, uploads, gpus):
         print("gpus:", env["RUNPOD_GPUS"], "| image:", env.get("RUNPOD_IMAGE", "runpod_api default"),
               "| cuda:", env.get("RUNPOD_CUDA", "runpod_api default"))
         return 0
+    if out.exists() and any(out.rglob("best.json")):
+        print(f"{job} refused: {out} holds a finished run; pull or move it aside, never train it again")
+        return 2
     experiment.mkdir(parents=True, exist_ok=True)
     stage_code(code_dir)
     for local, path in uploads:
@@ -181,6 +188,9 @@ def lease(args, job, remote, uploads, gpus):
                                   stderr=subprocess.STDOUT).returncode
         print(f"{job} {cloud} lease exit {code}", flush=True)
         if code == 0:
+            break
+        if code == INCOMPLETE_EXIT:                        # trained; the pod is kept for pull_parts.sh
+            print(f"{job} kept its pod: see {experiment / f'lease_{cloud}.log'}", flush=True)
             break
         previous = cloud
     print(f"{job} done ok={code == 0}")
@@ -202,12 +212,15 @@ def main(argv=None):
         parser.add_argument("--image", default=RECORDED_IMAGE, help="'' for runpod_api's pinned image")
         parser.add_argument("--cuda", default=RECORDED_CUDA, help="allowed CUDA versions; '' for runpod_api's")
         parser.add_argument("--dry-run", action="store_true", help="print the command and uploads; lease nothing")
+        parser.add_argument("--resume", action="store_true",
+                            help="run on this experiment's owned pod (its state file) within its deadline; no new pod")
     for parser, epochs, eval_from in ((full, 15, 8), (folds, 12, 9)):
         parser.add_argument("--data", required=True, help="a directory holding stage2.jsonl.gz (or stage2.jsonl)")
         parser.add_argument("--backbone", default=LARGE)
         parser.add_argument("--lr", default="1e-5")
         parser.add_argument("--epochs", type=int, default=epochs)
         parser.add_argument("--eval-from", type=int, default=eval_from)
+        parser.add_argument("--seed", type=int, default=0, help="the trainer's seed (shuffle, initialisation)")
     folds.add_argument("--folds", required=True, help="comma-separated fold numbers, e.g. 0,1")
     rescorer.add_argument("--job", dest="jobs", action="append", type=parse_job, required=True,
                           help="NAME=TRAIN.jsonl.gz=CAL.jsonl.gz[=large], repeatable")
@@ -222,7 +235,7 @@ def main(argv=None):
         return lease(args, "rescorer", rescorer_command(args.jobs), uploads, gpus)
     uploads = [(str(stage2_archive(args.data, make=not args.dry_run)), "/workspace/stage2.jsonl.gz")]
     if args.job == "full":
-        remote = full_command(args.backbone, args.lr, args.epochs, args.eval_from)
+        remote = full_command(args.backbone, args.lr, args.epochs, args.eval_from, args.seed)
     else:
         wanted = [int(i) for i in args.folds.split(",")]
         remote = folds_command(wanted, args.backbone, args.lr, args.epochs, args.eval_from)

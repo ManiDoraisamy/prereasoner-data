@@ -674,6 +674,77 @@ def test_runpod_downloads_match_the_pods_files_before_termination():
     assert lease({"stage2/small.pt": 10}, [10]) == [("transfer", 10), "terminate"]
 
 
+def test_a_dropped_connection_does_not_end_the_remote_command():
+    # 2026-10-21/22: a community host dropped ssh mid-training, and four stage-2 runs died with their sessions. The
+    # command now runs detached on the pod and the lease polls for its exit status through dropped connections.
+    from training.tools import runpod_api
+
+    def lease(polls):
+        calls = []
+
+        def run(command, **kwargs):
+            calls.append(command[-1])
+            if command[-1].startswith(f"cat {runpod_api.EXIT_FILE}"):
+                answer = polls.pop(0)
+                if answer is None:
+                    raise subprocess.CalledProcessError(255, command)
+                return subprocess.CompletedProcess(command, 0, stdout=answer)
+            return subprocess.CompletedProcess(command, 0, stdout="")
+
+        with patch.object(runpod_api.subprocess, "run", side_effect=run), \
+                patch.object(runpod_api, "POLL_SECONDS", 0), patch.object(runpod_api, "POLL_FAILURES", 3):
+            try:
+                runpod_api._run_detached(["ssh"], ["bash", "-lc", "train"], lambda: 100.0)
+            except subprocess.CalledProcessError as exc:
+                return "failed", exc.returncode
+        return "done", calls
+
+    # Two dropped polls, a still-running poll, then the exit status: the command finished.
+    outcome, calls = lease([None, None, "", "0\n"])
+    assert outcome == "done" and "nohup setsid" in calls[0] and calls[-1] == f"cat {runpod_api.OUTPUT_FILE}", calls
+    # A failed training still fails the lease (its exit status), and so does a pod lost for POLL_FAILURES polls.
+    assert lease(["", "4"]) == ("failed", 4)
+    assert lease([None, None, None]) == ("failed", 255)
+
+
+def test_a_readers_lease_never_trains_again_after_its_download_broke():
+    # 2026-10-22: a stage-2 run trained and its download broke; the lease went on to the next cloud and rented a
+    # second pod to train it again, while the first pod held the weights. A broken download now ends the lease with
+    # its pod kept, and an experiment whose out/ holds a finished run refuses a new lease.
+    import argparse
+
+    from training.readers import lease as readers_lease
+    from training.tools import runpod_api
+
+    def attempts(exit_code, finished=False):
+        clouds = []
+
+        def run(command, **kwargs):
+            clouds.append(kwargs["env"]["RUNPOD_CLOUD"])
+            return subprocess.CompletedProcess(command, exit_code)
+
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.object(readers_lease, "EXPERIMENTS_DIR", Path(directory)), \
+                patch.object(readers_lease, "stage_code"), \
+                patch.object(readers_lease.subprocess, "run", side_effect=run):
+            if finished:
+                (Path(directory) / "x" / "out" / "stage2").mkdir(parents=True)
+                (Path(directory) / "x" / "out" / "stage2" / "best.json").write_text("{}")
+            args = argparse.Namespace(experiment="x", minutes=10, max_hourly_cost=1.0, gpus=None, image=None,
+                                      cuda=None, dry_run=False, clouds="SECURE,COMMUNITY", resume=False)
+            code = readers_lease.lease(args, "full", "true", [], ["NVIDIA A40"])
+        return code, clouds
+
+    assert attempts(runpod_api.INCOMPLETE_EXIT) == (runpod_api.INCOMPLETE_EXIT, ["SECURE"])
+    # Contrast: a failed attempt (no instance, no CUDA, a failed training) still tries the next cloud.
+    assert attempts(1) == (1, ["SECURE", "COMMUNITY"])
+    # A finished run is never leased again.
+    assert attempts(0, finished=True) == (2, [])
+    with patch.object(runpod_api, "run_lease", side_effect=runpod_api.IncompleteDownload("short")), \
+            patch.object(runpod_api, "credentials", return_value=("test-key", None)):
+        assert runpod_api.main(["lease", "--max-minutes", "5", "--", "true"]) == runpod_api.INCOMPLETE_EXIT
+
+
 def test_runpod_transfers_are_inside_the_owned_lease():
     from training.tools import runpod_api
 
@@ -688,11 +759,16 @@ def test_runpod_transfers_are_inside_the_owned_lease():
         events.append((method, path))
         return 204, None
 
+    def fake_run(command, **kwargs):
+        exit_status = "0" if command[-1].startswith(f"cat {runpod_api.EXIT_FILE}") else ""
+        return subprocess.CompletedProcess(command, 0, stdout=exit_status)
+
     with tempfile.TemporaryDirectory() as directory, \
             patch.object(runpod_api, "STATE", Path(directory) / "active.json"), \
             patch.object(runpod_api, "rest", side_effect=fake_rest), \
             patch.object(runpod_api, "pubkey", return_value="ssh-ed25519 test"), \
-            patch.object(runpod_api.subprocess, "run") as run:
+            patch.object(runpod_api, "POLL_SECONDS", 0), \
+            patch.object(runpod_api.subprocess, "run", side_effect=fake_run) as run:
         source = Path(directory) / "input.jsonl"
         source.write_text("{}\n", encoding="utf-8")
         runpod_api.run_lease(
@@ -701,12 +777,16 @@ def test_runpod_transfers_are_inside_the_owned_lease():
             uploads=((str(source), "/workspace/input.jsonl"),),
             downloads=(("/workspace/output", str(Path(directory) / "output")),),
         )
-        assert run.call_count == 4
+        assert run.call_count == 6
         assert "input.jsonl" in run.call_args_list[0].args[0][-2]
+        # The command runs detached from the session, and its exit status and output are read back.
         assert "train_property_head" in run.call_args_list[1].args[0][-1]
-        assert "/workspace/output" in run.call_args_list[2].args[0][-2]
+        assert "nohup setsid" in run.call_args_list[1].args[0][-1]
+        assert run.call_args_list[2].args[0][-1].startswith(f"cat {runpod_api.EXIT_FILE}")
+        assert run.call_args_list[3].args[0][-1] == f"cat {runpod_api.OUTPUT_FILE}"
+        assert "/workspace/output" in run.call_args_list[4].args[0][-2]
         # The pod's file sizes, read after the download and before termination (_verify_download).
-        assert run.call_args_list[3].args[0][-1].startswith("find /workspace/output -type f")
+        assert run.call_args_list[5].args[0][-1].startswith("find /workspace/output -type f")
         assert events[-1] == ("DELETE", "/pods/pod-3")
         assert not runpod_api.STATE.exists()
         try:
@@ -1262,6 +1342,8 @@ TESTS = [
     test_runpod_price_cap_terminates_before_any_work,
     test_runpod_failed_command_downloads_before_termination,
     test_runpod_downloads_match_the_pods_files_before_termination,
+    test_a_readers_lease_never_trains_again_after_its_download_broke,
+    test_a_dropped_connection_does_not_end_the_remote_command,
     test_runpod_resume_requires_ownership_and_never_creates_a_pod,
     test_runpod_retries_only_idempotent_transfers,
     test_cloud_build_context_is_git_archive_plus_manifested_weights,

@@ -4,7 +4,9 @@ whose ``training.readers.lease`` builds its jobs on this lease).
 
 The default ``lease`` command owns the complete pod lifecycle and terminates in
 ``finally``. A pod can outlive this process only when the operator explicitly
-passes ``--keep``.
+passes ``--keep``, or a download stays incomplete (exit INCOMPLETE_EXIT). The
+remote command runs detached on the pod and the lease polls its exit status, so
+a dropped ssh connection does not end it (``_run_detached``).
 
 Environment overrides, each leaving the default below when unset:
   RUNPOD_GPUS   comma-separated GPU types, most wanted first (replaces GPU_PRIORITY)
@@ -216,10 +218,13 @@ def _run_transfer(command: list[str], remaining, attempts: int = 3) -> None:
     raise last_error or RuntimeError("transfer failed without an error")
 
 
+INCOMPLETE_EXIT = 5        # the lease command's exit code when the command succeeded and its download did not
+
+
 class IncompleteDownload(RuntimeError):
     """A downloaded file is still shorter or longer than the pod's after re-fetching it. The lease keeps the pod
     (its provider-side watchdog still deletes it at the deadline) so the files can be pulled another way, since a
-    terminated pod takes them with it."""
+    terminated pod takes them with it; the ``lease`` command exits with INCOMPLETE_EXIT."""
 
 
 def _remote_sizes(ssh: list[str], remote: str, remaining) -> dict[str, int]:
@@ -255,6 +260,38 @@ def _verify_download(ssh: list[str], scp: list[str], ip: str, remote: str, desti
             short.append(f"{source} ({local.stat().st_size if local.is_file() else 0} of {size} bytes)")
     if short:
         raise IncompleteDownload("downloads differ from the pod's files: " + ", ".join(short))
+
+
+EXIT_FILE, OUTPUT_FILE = "/tmp/prereasoner-lease.exit", "/tmp/prereasoner-lease.out"
+POLL_SECONDS, POLL_FAILURES = 30, 20        # a poll every 30 s; 20 failed polls in a row (10 minutes) end the lease
+
+
+def _run_detached(ssh: list[str], command: list[str], remaining) -> None:
+    """Run ``command`` on the pod detached from the ssh session (setsid, nohup), then poll for its exit status. A
+    dropped connection no longer ends it: a community host dropped ssh mid-training and four stage-2 runs died with
+    their sessions (2026-10-21 and 22). The command's output is printed when it ends; a nonzero exit raises
+    CalledProcessError, and POLL_FAILURES failed polls in a row raise the last ssh error."""
+    script = f"{shlex.join(command)}; echo $? > {EXIT_FILE}"
+    launch = f"rm -f {EXIT_FILE}; nohup setsid bash -c {shlex.quote(script)} > {OUTPUT_FILE} 2>&1 < /dev/null &"
+    subprocess.run([*ssh, launch], check=True, timeout=min(remaining(), 120))
+    failures, status = 0, ""
+    while not status.isdigit():
+        time.sleep(min(POLL_SECONDS, remaining()))
+        try:
+            status = subprocess.run([*ssh, f"cat {EXIT_FILE} 2>/dev/null || true"], check=True, capture_output=True,
+                                    text=True, timeout=min(remaining(), 60)).stdout.strip()
+            failures = 0
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            failures += 1
+            if failures >= POLL_FAILURES:
+                raise
+    try:
+        print(subprocess.run([*ssh, f"cat {OUTPUT_FILE}"], capture_output=True, text=True,
+                             timeout=min(remaining(), 120)).stdout, end="", flush=True)
+    except subprocess.TimeoutExpired:
+        pass
+    if int(status) != 0:
+        raise subprocess.CalledProcessError(int(status), command)
 
 
 def reconcile() -> None:
@@ -351,7 +388,7 @@ def run_lease(max_minutes: int, command: list[str], keep: bool = False,
                 remaining,
             )
         if command:
-            subprocess.run([*ssh, shlex.join(command)], check=True, timeout=remaining())
+            _run_detached(ssh, command, remaining)
         for remote, local in downloads:
             destination = Path(local).resolve()
             destination.parent.mkdir(parents=True, exist_ok=True)
@@ -426,17 +463,21 @@ def main(argv=None) -> int:
     elif args.command == "term":
         terminate(args.pod_id)
     else:
-        run_lease(
-            args.max_minutes,
-            # argparse REMAINDER keeps an explicit "--" separator; the remote shell must
-            # never see it (a pod once executed literally "--" and burned its lease).
-            args.remote_command[1:] if args.remote_command[:1] == ["--"]
-            else args.remote_command,
-            args.keep,
-            tuple(map(tuple, args.upload)), tuple(map(tuple, args.download)),
-            args.max_hourly_cost,
-            args.resume,
-        )
+        try:
+            run_lease(
+                args.max_minutes,
+                # argparse REMAINDER keeps an explicit "--" separator; the remote shell must
+                # never see it (a pod once executed literally "--" and burned its lease).
+                args.remote_command[1:] if args.remote_command[:1] == ["--"]
+                else args.remote_command,
+                args.keep,
+                tuple(map(tuple, args.upload)), tuple(map(tuple, args.download)),
+                args.max_hourly_cost,
+                args.resume,
+            )
+        except IncompleteDownload as exc:
+            print(f"incomplete download: {exc}", file=sys.stderr)
+            return INCOMPLETE_EXIT
     return 0
 
 
