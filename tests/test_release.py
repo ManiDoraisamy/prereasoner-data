@@ -187,9 +187,9 @@ def test_public_weight_bundle_is_manifested_and_documented():
                        "qwen_lora/adapter_config.json", "qwen_lora/adapter_model.safetensors",
                        "schema_property_head.pt"}, encoder
     # The readers' bundle (training/readers/promote.py): stage 1, at least one stage-2 reader that says how it reads,
-    # the re-scorer and the refusal.
+    # the re-scorer and the choice that ranks and refuses.
     readers = {name for name in manifest["files"] if name.startswith("readers/")}
-    assert {"readers/stage1/model.pt", "readers/rescorer/model.pt", "readers/refusal.json"} <= readers, readers
+    assert {"readers/stage1/model.pt", "readers/rescorer/model.pt", "readers/choice.json"} <= readers, readers
     assert any(name.endswith("/reader.json") and name.startswith("readers/stage2_") for name in readers), readers
     # No SQL-writing model is part of the runtime bundle: the readers read questions as named readings and the
     # deterministic builder makes every query (CLAUDE.md, SQL planner rules).

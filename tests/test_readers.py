@@ -162,6 +162,33 @@ def test_a_named_period_groups_by_the_period():
                     "how many orders on each date?")[1] == ["orders.placed"]
 
 
+def test_a_named_period_groups_the_date_when_the_readers_group_by_a_row_key():
+    """ "how many orders per month?" was read as "for each order id" (one group per order) by every reader of
+    v11, and declined (2026-10-22): when the question asks for one row per month and the readers group only by
+    surrogate keys or by nothing, the period groups the one date column of the tables they read, shown first."""
+    from engine.readers.decode import periodic
+    graph = graph_of(ORDERS)
+    select, group, order = periodic([[0, "COUNT", "*", False]], ["orders.order_id"], [], graph,
+                                    "how many orders per month?", tables=["orders"])
+    assert group == ["year_month:orders.placed"], group
+    assert select == [[0, "plain", "year_month:orders.placed", False], [1, "COUNT", "*", False]], select
+    query = build({"structure": "single", "blocks": [block(select=select, group=group)]}, graph)
+    assert sorted(rows_of(render_query(query), ORDERS)) == [("2026-07", 1), ("2026-08", 3)]
+    # The key shown as its group's label gives way to the period; no grouping at all takes the period too.
+    select, group, _ = periodic([[0, "plain", "orders.order_id", False], [1, "COUNT", "*", False]],
+                                ["orders.order_id"], [], graph, "how many orders per month?", tables=["orders"])
+    assert select == [[0, "plain", "year_month:orders.placed", False], [1, "COUNT", "*", False]], select
+    assert periodic([[0, "COUNT", "*", False]], [], [], graph, "how many orders per month?",
+                    tables=["orders"])[1] == ["year_month:orders.placed"]
+    # Contrast: a grouping by a field that is no key stands; no period asked, or no table read, the reading stands.
+    assert periodic([[0, "COUNT", "*", False]], ["orders.city"], [], graph, "how many orders per month?",
+                    tables=["orders"])[1] == ["orders.city"]
+    assert periodic([[0, "COUNT", "*", False]], ["orders.order_id"], [], graph, "how many orders per order?",
+                    tables=["orders"])[1] == ["orders.order_id"]
+    assert periodic([[0, "COUNT", "*", False]], ["orders.order_id"], [], graph, "how many orders per month?",
+                    tables=[])[1] == ["orders.order_id"]
+
+
 def test_the_highest_of_the_one_ranked_column_is_its_max():
     """A block that shows only the column it ranks, first row, is that column's MAX (or MIN): the same value, and an
     aggregate both deterministic emitters express ("What is the highest purchase cost?" ran only as SQL)."""
@@ -303,6 +330,36 @@ def test_the_question_values_are_listed_beside_their_columns():
     assert "college [text] (Duke" in text, text
 
 
+def test_the_choice_ranks_by_agreement_and_refuses_below_its_threshold():
+    """The readers' choice (choice.json) weighs the re-scorer's logit with what the pool says of a candidate; of two
+    candidates the re-scorer scores alike, the one more of the readers' readings build ranks first (calibration,
+    four readers: 642 of 1,028 chosen right against 628 for the re-scorer alone). Its probability is the confidence,
+    and a choice under the threshold is refused."""
+    import math
+
+    from engine.readers import search
+    from engine.sql_candidate import ScoredQuery
+
+    readers = search.ReadingSearch.__new__(search.ReadingSearch)      # no weights: the logits are memoized below
+    readers.choice = {"features": list(search.CHOICE_FEATURES), "coef": [0.4, -0.3, -0.2, 1.5, 0.4],
+                      "intercept": -1.5, "threshold": 0.3}
+    pool = [ScoredQuery(None, "SELECT 1", -1.0, ("one",), (("rank", 0.0), ("readers", 0.25))),
+            ScoredQuery(None, "SELECT 2", -1.0, ("two",), (("rank", 0.0), ("readers", 1.0))),
+            ScoredQuery(None, "SELECT 3", -2.0, ("three",), (("rank", 3.0), ("readers", 0.25)))]
+    shapes = [(1, 1), (1, 1), None]
+    search._keep(search._SCORES, ("q", ("SELECT 1", "SELECT 2"), ((1, 1), (1, 1))), (2.0, 2.0))
+    scores = readers.rescore("q", pool, shapes)
+    assert scores[2] is None and scores[1] > scores[0], scores               # agreement breaks the tie
+    expected = -1.5 + sum(w * x for w, x in zip(readers.choice["coef"], search.choice_features(2.0, -1.0, 0.0, 1.0, 1)))
+    assert abs(scores[1] - expected) < 1e-12
+    confidence = readers.confidence(pool, scores, shapes, 1)
+    assert abs(confidence - 1.0 / (1.0 + math.exp(-scores[1]))) < 1e-12
+    assert readers.confident(confidence) == (confidence >= 0.3) and readers.confidence(pool, scores, shapes, 2) is None
+    assert not readers.confident(0.29) and readers.confident(None)
+    readers.choice = {**readers.choice, "threshold": None}                   # an evaluation records every confidence
+    assert readers.confident(0.01)
+
+
 def test_candidates_are_distinct_and_most_probable_first():
     graph = graph_of(ORDERS)
     names = ["*", "orders.order_id", "orders.city", "orders.amount", "orders.placed"]
@@ -322,6 +379,71 @@ def test_choices_override_by_rank():
     assert Choices().pick(("d",), [("a", 0.3), ("b", 0.7)]) == "b"
 
 
+def _shop(folder, totals, fks=([8, 1], [9, 4])):
+    """A training-shaped database (Spider metadata and a SQLite file): customers, products, and purchases whose
+    line totals are ``totals`` (one per purchase), with the foreign keys ``fks`` (column indexes)."""
+    import os
+
+    from training.readers import structures
+    purchases = [(1, 1, 11), (2, 3, 12), (3, 2, 13), (4, 4, 11), (5, 2, 11), (6, 4, 12)]
+    tables = {"customers": (["customer_id", "customer_name", "city"],
+                            [(1, "Ann", "Paris"), (2, "Bob", "Lyon"), (3, "Cyd", "Paris"), (4, "Dee", "Lyon"),
+                             (5, "Eve", "Nice")]),
+              "products": (["product_id", "product_name", "category"],
+                           [(11, "Alpha", "Toys"), (12, "Beta", "Home"), (13, "Gamma", "Toys"), (14, "Delta", "Home"),
+                            (15, "Omega", "Garden")]),
+              "purchases": (["purchase_id", "customer_id", "product_id", "line_total"],
+                            [row + (total,) for row, total in zip(purchases, totals)])}
+    path = os.path.join(folder, f"shop{len(os.listdir(folder))}.sqlite")
+    connection = sqlite3.connect(path)
+    for name, (columns, rows) in tables.items():
+        connection.execute(f'CREATE TABLE "{name}" ({", ".join(columns)})')
+        connection.executemany(f'INSERT INTO "{name}" VALUES ({", ".join("?" for _ in columns)})', rows)
+    connection.commit()
+    connection.close()
+    columns = [[-1, "*"]] + [[index, column] for index, (cs, _) in enumerate(tables.values()) for column in cs]
+    meta = {"db_id": "shop", "table_names_original": list(tables), "column_names_original": columns,
+            "column_types": ["text"] * len(columns), "primary_keys": [1, 4, 7],
+            "foreign_keys": [list(fk) for fk in fks]}
+    return structures.Database("shop", meta, path)
+
+
+def test_built_structures_exclude_and_rank_by_the_total():
+    """training.readers.structures: an exclusion filtered through a referenced table drops what that value's rows
+    reference and reads as NOT IN a subquery; one value of a filter is kept; a ranking is built only when ranking by
+    the number gives other first groups than ranking by row count; an aggregate reads a number of one table or a
+    category's number of rows; a question must state the value and the number."""
+    import tempfile
+
+    from regress.sql_import import import_sql
+    from training.readers import structures
+    with tempfile.TemporaryDirectory() as folder:
+        db = _shop(folder, [10, 10, 500, 5, 5, 20])
+        paris = [c for c in structures.unmatched(db) if c["value"] == "Paris" and c["table"] == "products"]
+        assert len(paris) == 1
+        assert sorted(row[0] for row in db.run(paris[0]["sql"])) == ["Delta", "Gamma", "Omega"]
+        readings = readings_of(import_sql(paris[0]["sql"], db.graph))
+        where = [list(condition) for condition in readings["blocks"][0]["where"]]
+        assert len(readings["blocks"]) == 2 and where[0][1:] == ["NOT IN", {"block": 1}], where
+        jobs = structures.queries(db)
+        city = [j for j in jobs if '"customers"."city" =' in j["sql"] and j["sql"].startswith('SELECT "products"')]
+        assert len(city) <= 1, [j["sql"] for j in city]
+        assert any(j["shape"] == "ranked" for j in jobs)
+        aggregates = {c["sql"] for c in structures.aggregated(db)}
+        assert any(sql.endswith('("purchases"."line_total") FROM "purchases"') for sql in aggregates), aggregates
+        assert 'SELECT COUNT(*) FROM "customers" WHERE "customers"."city" = \'Lyon\'' in aggregates, aggregates
+        db.connection.close()
+        # each product's purchases share one line total that grows with their number: every ranking of products by
+        # a total or an average is the ranking by row count, so no ranking is built
+        same = _shop(folder, [30, 20, 10, 30, 30, 20], fks=([9, 4],))
+        assert not structures.ranked(same), [c["sql"] for c in structures.ranked(same)]
+        same.connection.close()
+    assert structures.keeps({"value": "Paris", "limit": None}, "Which products did nobody in Paris buy?")
+    assert not structures.keeps({"value": "Paris", "limit": None}, "Which products did nobody in Lyon buy?")
+    assert structures.keeps({"value": None, "limit": 2}, "the two categories that bring in the most revenue")
+    assert not structures.keeps({"value": None, "limit": 2}, "the categories that bring in the most revenue")
+
+
 TESTS = [
     test_readings_round_trip_through_the_builder,
     test_a_grouped_block_groups_what_it_shows,
@@ -330,6 +452,7 @@ TESTS = [
     test_a_share_says_its_part_and_its_whole,
     test_two_named_values_of_one_column_read_either,
     test_a_named_period_groups_by_the_period,
+    test_a_named_period_groups_the_date_when_the_readers_group_by_a_row_key,
     test_the_highest_of_the_one_ranked_column_is_its_max,
     test_a_share_divides_the_part_by_the_whole,
     test_a_share_keeps_the_whole_conditions_in_both,
@@ -342,8 +465,10 @@ TESTS = [
     test_a_date_range_is_not_read_under_or,
     test_a_pointed_value_drops_the_marks_of_its_list,
     test_the_question_values_are_listed_beside_their_columns,
+    test_the_choice_ranks_by_agreement_and_refuses_below_its_threshold,
     test_candidates_are_distinct_and_most_probable_first,
     test_choices_override_by_rank,
+    test_built_structures_exclude_and_rank_by_the_total,
 ]
 
 

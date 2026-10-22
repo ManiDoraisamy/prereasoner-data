@@ -4519,3 +4519,56 @@ word the schema does not use, negated existence, joins to an enrichment's lookup
 The next step is training data for those families on the training databases (never the demo questions). The
 weights are published at Hugging Face revision
 `b9bb6521799ca603845a8e41248ff3abfe70fb40`, verified file by file by an anonymous download against the manifest.
+
+## Four readers trained on the structures they misread; a choice replaces the refusal (2026-10-22)
+
+The readers bundle above failed its release gates on readings its training data rarely held. Each family below got
+training data built on the training databases, never from the demo questions, and four new reading models replace
+the two:
+
+- **Written training questions** (`training/readers/rewordings.py`, `lookups.py`, `structures.py`; Gemini on Vertex
+  AI writes the words, the gold readings come from the query): training questions reworded with an everyday measure
+  word, as negated existence, and as the opposite extreme (MIN and MAX swapped in the readings; the training data
+  asked for the highest four times as often as the lowest); questions over lookup tables built from a categorical
+  column (the name alone, a label beside it, counts, filters); and questions written for queries built from each
+  database's foreign keys and values: rows no referencing row matches (`NOT IN`, at most once filtered through the
+  referencing table or a table it references), groups ranked by a number's total or average (kept only where that
+  ranking's first groups differ from the ranking by row count), and the lowest, highest, average or total of a
+  number (MIN, MAX, AVG and SUM equally often), half of them written as the few words a person types into a search
+  box. 4,393 rewordings, 1,724 lookup and 2,675 structure questions; 29,561 stage-2 rows.
+- **Four readers** (XLM-R large: anchored and plain, seeds 0 and 1; 13 epochs, checkpoints from epoch 5) replace
+  v7a and v5. A pool of all four with the shipped re-scorer: right answer in the pool for 788 of 1,028 calibration
+  questions (767 for the four earlier readers), the re-scorer alone 657 (628).
+- **The choice** (`choice.json`, `training/readers/choice.py`) replaces the refusal: a logistic model over the
+  re-scorer's logit, the candidate's log probability, its best rank among the readers, the share of readers whose
+  readings build it, and an empty result, fitted on the calibration pool cross-validated by database (664 of 1,028
+  against 657 for the re-scorer alone). It ranks the candidates; its probability for the first is the confidence,
+  and the threshold is matched on calibration as before (0.1421: answered 943 of 1,053, 649 right, 294 wrong, the
+  engine's 294).
+- **Generic decoder rule:** a period the question asks for ("per month", `sql_dates.period_grouping`) groups the one
+  date column of the tables the readers read when they group only by surrogate keys or by nothing ("how many orders
+  per month?" was read as one group per order by all four readers). It reaches no calibration question and 6 of
+  the 2,147 test questions.
+- **One convention for a joined attribute** (the owner's choice, 2026-10-22): "Show the currency symbol for every
+  order" shows the symbol alone, one row per order, as the country-name benchmark shows the name alone
+  (`regress/domain_enrichment.py`).
+- **The complex-dataset contract:** the three multi-goal prompts still ask for the decomposition proposal; "List the
+  product names that no customer from Paris has bought" is one query (the products whose name is not among the names
+  Paris customers bought) and is answered directly, with the rows derived from the CSVs
+  (`tests.test_complex_datasets`).
+
+**Measured** (`spider/results/RESULTS.md`), served through `spider.probe.full_eval`, whole_db:
+
+- Frozen Spider test (2,147 questions, 40 unseen databases, totals only): engine alone 939 (43.7%), production with
+  the Gemini rewording 1,126 (52.4%), shipped two readers 1,351 (62.9%), these readers 1,414 (65.9%) strict and
+  1,611 (75.0%) lenient; at the matched threshold 1,387 right of 1,972 answered.
+- Calibration (1,053): engine `b8bedde` 418, shipped two readers 617, four earlier readers 641, these readers 663
+  strict (63.0%; 746 lenient). Against the engine 298 wins and 53 losses; against the shipped readers 78 and 32.
+- The gates pass with this bundle: `tests.test_complex_datasets` 10 of 10, `tests.test_enrichment` 37 of 37 (the
+  IANA activation gate and the currency benchmark included), `regress.run_regression --offline`, and the live
+  demo-dataset gate (`tests.test_datasets`, every prompt and non-chat follow-up: 92 of 92).
+
+**Known gaps.** "minimum amount" over a one-table sheet is read as the lowest by the anchored readers and the highest
+by the plain ones, and the re-scorer picks the highest: it learned on pools where the highest dominates. "maximum
+notice_days" is right only because of the same lean. A re-scorer trained on these readers' own pools is the next
+step. Weights: Hugging Face revision `d4949122da66f04e8fce1ea68f3e2e0ecb9a0327`.

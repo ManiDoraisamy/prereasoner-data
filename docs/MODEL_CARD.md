@@ -47,16 +47,20 @@ versioned database releases and are not intended to be memorized in model weight
 - Models (`engine/data/readers/`): a stage-1 schema-item model (XLM-R base) that scores each table's and
   column's use; stage-2 reading models (XLM-R large, one directory per reader, `stage2_*`) that score
   every reading the deterministic builder uses; a re-scorer (XLM-R base) that orders the candidates that
-  ran; and a refusal, a logistic model over the re-scorer's confidence (`refusal.json`). Each model is an
+  ran; and the choice, a logistic model over the re-scorer's logit and the pool's own evidence that ranks the
+  candidates and refuses below its threshold (`choice.json`). Each model is an
   encoder with linear heads, defined once in `engine/readers/models.py`; serving runs the encoders in
   bfloat16. No decoder is used.
 - Inputs: the question and the schema as the engine receives it: table and column names, inferred types,
   sample values, and the question's own values beside the columns that hold them
   (`engine/readers/text.py`).
 - Boundary: the readers emit readings, never SQL. `engine/readers/readings.py:build` makes each reading
-  a typed AST, the engine runs and grounds every candidate, and when the refusal is not confident the
+  a typed AST, the engine runs and grounds every candidate, and when the choice is not confident the
   reply says how the question was read ("I read this as …") instead of serving an answer.
-- Training: Spider, BIRD and Spider-Syn questions with gold readings derived from gold SQL.
+- Training: Spider, BIRD and Spider-Syn questions with gold readings derived from gold SQL, plus
+  questions Gemini on Vertex AI wrote on the training databases (rewordings of training questions,
+  questions over lookup tables, and questions for queries built in the structures the readers
+  misread), each keeping its query's gold readings; no calibration or test database is used.
   `training/readers/` trains them, and only `training/readers/promote.py` installs them, recording each
   file's SHA-256 in `engine/data/weights_manifest.json`. The recipe, inputs and split are in
   [training/readers/README.md](../training/readers/README.md).

@@ -82,7 +82,7 @@ The serving path opens: `qwen_lora/` (PEFT adapter for the Qwen base), `encoder.
 (the relational-content readout state_dict) + `encoder_meta.pt` (`{"alloc", "cfg"}`),
 `taxonomy.csv`, `anchor_assignment.npz`, `dim_thresholds.json`, `primitives.npz`, and the
 `word_*.json` world-table metadata. The own-data readers load from `engine/data/readers/` (`stage1/`,
-`stage2_*/`, `rescorer/`, `refusal.json`), located relative to the package
+`stage2_*/`, `rescorer/`, `choice.json`), located relative to the package
 (`engine/readers/search.py:READERS_DIR`). `alloc.json`, `families.json`, and `props_thr.json` are training
 outputs kept beside the bundle; no `engine/` module reads them (see engine/data/README.md). The `*.pt`, `*.npz`, and `qwen_lora/` weights are gitignored (a fresh clone
 has none) — the entrypoint gate reports missing weights at startup (see

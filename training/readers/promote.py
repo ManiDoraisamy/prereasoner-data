@@ -7,7 +7,8 @@ A candidate bundle holds:
   stage2_<name>/      one directory per reading model (ReadingModel), with reader.json {"anchored": bool}: whether
                       it reads the question's values beside their columns (engine.readers.text.fit)
   rescorer/           the re-scorer (Rescorer)
-  refusal.json        the refusal model fitted on the held-out calibration databases (training.readers.refusal)
+  choice.json         the readers' choice, which ranks the candidates and refuses below its threshold, fitted on the
+                      held-out calibration databases (training.readers.choice)
 
 each model directory a saved config.json, tokenizer files and model.pt. Promotion is a separate, explicit step:
 
@@ -40,7 +41,7 @@ from engine.config import DATA_DIR as RUNTIME_DIR
 
 READERS = "readers"
 MODEL_FILES = ("config.json", "model.pt", "sentencepiece.bpe.model", "tokenizer.json", "tokenizer_config.json")
-REFUSAL_KEYS = ("features", "coef", "intercept", "threshold")
+CHOICE_KEYS = ("features", "coef", "intercept", "threshold")
 _IMMUTABLE_REVISION = re.compile(r"[0-9a-f]{40,64}")
 
 
@@ -74,13 +75,16 @@ def gate(candidate: Path) -> list[str]:
             models.load(kind, directory)
         except Exception as exc:  # noqa: BLE001 - any load failure blocks promotion
             problems.append(f"{name}: does not load as {kind}: {type(exc).__name__}: {exc}")
-    refusal = candidate / "refusal.json"
-    if not refusal.is_file():
-        problems.append("refusal.json missing")
+    choice = candidate / "choice.json"
+    if not choice.is_file():
+        problems.append("choice.json missing")
     else:
-        fitted = json.loads(refusal.read_text(encoding="utf-8"))
-        if any(key not in fitted for key in REFUSAL_KEYS) or len(fitted["coef"]) != len(fitted["features"]):
-            problems.append("refusal.json is not a fitted refusal model")
+        from engine.readers.search import CHOICE_FEATURES
+
+        fitted = json.loads(choice.read_text(encoding="utf-8"))
+        if (any(key not in fitted for key in CHOICE_KEYS) or tuple(fitted["features"]) != CHOICE_FEATURES
+                or len(fitted["coef"]) != len(CHOICE_FEATURES)):
+            problems.append(f"choice.json is not a choice fitted on serving's features {CHOICE_FEATURES}")
     return problems
 
 
@@ -101,8 +105,8 @@ def _stage(candidate: Path, staging: Path) -> None:
                 torch.save(_serving_state(source / file), destination / file)
             elif (source / file).is_file():
                 shutil.copyfile(source / file, destination / file)
-    (staging / "refusal.json").write_bytes(
-        json_artifact_bytes(json.loads((candidate / "refusal.json").read_text(encoding="utf-8")), indent=1))
+    (staging / "choice.json").write_bytes(
+        json_artifact_bytes(json.loads((candidate / "choice.json").read_text(encoding="utf-8")), indent=1))
 
 
 def _verify_published(repository: str, revision: str, files: dict[str, str]) -> None:

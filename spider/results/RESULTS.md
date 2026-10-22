@@ -5,6 +5,48 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
+## Four readers trained on the structures they misread, and a choice: calibration 617 → 663 strict; frozen test 1,351 → 1,414 strict (2026-10-22)
+
+The readers bundle of four reading models v11a, v11a1 (anchored, seeds 0 and 1) and v11b, v11b1 (plain), the shipped
+stage 1 and re-scorer "f", and the choice (`choice.json`, threshold 0.1421 matched on calibration), installed by
+`training/readers/promote.py` at Hugging Face revision `d4949122da66f04e8fce1ea68f3e2e0ecb9a0327`, in the readers
+worktree at `01138b2` plus this change (`worktree_dirty: true`). `spider.probe.full_eval`, whole_db / served / SQL /
+cap 5,000 per table / 12 s soft budget / compose on / external models off; the threshold off for these runs, so each
+answer records its confidence. The readers trained on Spider train and dev, BIRD train, Spider-Syn and questions
+written on those training databases (`training/readers/README.md` step 2b), never on the 20 calibration or 40 test
+databases. Records: `C:/work/prereasoner-readers-artifacts/evals/v11/` (per-example calibration; the test's totals
+only).
+
+**Calibration** (20 held-out Spider train databases, 1,053 questions):
+
+| System | Strict | Lenient | Answered | Wrong |
+|---|---|---|---|---|
+| Engine `b8bedde` | 418 (39.7%) | | 712 | 294 |
+| Shipped readers (v7a, v5; refusal 0.2511 off) | 617 (58.6%) | 714 | 1,052 | 435 |
+| Four earlier readers (v7a, v5, v7b, v6; choice off) | 641 (60.9%) | 723 | 1,053 | |
+| **These readers, choice off** | **663 (63.0%)** | 746 (70.8%) | 1,053 | 390 |
+| These readers, choice at 0.1421 | 649 (61.6%) | | 943 | 294 |
+
+Transitions, these readers (choice off) against the engine: 298 wins, 53 losses, 365 unchanged right, 337 unchanged
+wrong; against the shipped readers: 78 wins, 32 losses, 585 unchanged right, 358 unchanged wrong. The decoder's
+period rule (one change of this entry) reaches no calibration question. Prediction seconds (four threads, beside two
+other evaluations): median 6.83, p90 13.22.
+
+**Frozen Spider test** (2,147 questions, 40 databases; totals only):
+
+| System | Strict | Lenient | Answered |
+|---|---|---|---|
+| Engine alone `b8bedde` | 939 (43.7%) | | |
+| Production, the engine with the Gemini rewording | 1,126 (52.4%) | | |
+| Shipped readers (v7a, v5), refusal off | 1,351 (62.9%) | 1,535 (71.5%) | 2,145 |
+| Four earlier readers (v7a, v5, v7b, v6), choice off | 1,395 (65.0%) | 1,575 (73.4%) | |
+| **These readers, choice off** | **1,414 (65.9%)** | 1,611 (75.0%) | 2,147 |
+| These readers, choice at 0.1421 | 1,387 (64.6%) | | 1,972 (585 wrong) |
+
+The decoder's period rule reaches 6 of the 2,147 questions (counted without reading them); re-run with the final
+code, they score as in the full run (4 strict), so the totals above hold for it. The bundle was chosen on calibration
+and the product's demo questions, not on the test.
+
 ## A column matched with the question's value is counted by its rows: no Spider change; one demo case fixed (2026-10-21)
 
 The decoder no longer reads COUNT(DISTINCT column) when a condition compares that column with the question's own value

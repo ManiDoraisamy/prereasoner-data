@@ -503,6 +503,31 @@ def test_a_measure_named_in_two_words_is_summed_not_counted():
     ok(read("how many deliveries in Germany", "COUNT") == ("COUNT", "deliveries", None), "a COUNT is unchanged")
 
 
+def test_an_expansion_keeps_its_readings_evidence_and_says_what_it_computes():
+    """Four-reader gate (2026-10-22): "GDP per capita" and "total commission amount" were refused. A registered
+    calculation's expansion of a reading carried none of the reading's evidence (its rank, how many of the readers'
+    readings build it), so the readers' choice weighed it as built by no reader, and its read-as line was the
+    reading's ("average gdp of economy" for SUM(GDP) / SUM(Population))."""
+    from engine.readers.read_as import query_words
+    from engine.sql_ast import ScalarSubquery
+
+    graph = SchemaGraph.from_tables((ORDERS, USD_RATES), (EDGE,))
+    query = import_sql(SUM_AMOUNT, graph)
+    base = [ScoredQuery(query, render_query(query), -1.0, ("total amount of orders",),
+                        (("rank", 0.0), ("readers", 0.75)))]
+    expansions = CalculationQueryExpander(graph).expand("total order amount in US dollars", base)
+    converted = next(e for e in expansions if "rate_to_usd" in e.sql)
+    ok(dict(converted.features) == {"rank": 0.0, "readers": 0.75},
+       f"the expansion keeps its reading's evidence (got {converted.features})")
+    ok(converted.evidence[0] == "total usd (total (amount times rate to usd)) of orders and fx",
+       f"the read-as line says the calculation (got {converted.evidence[0]!r})")
+    ok(any(tag.startswith("calculation:") for tag in converted.evidence[1:]), "the calculation stays recorded")
+    # Contrast: the reading itself keeps its own line; a query the line has no words for keeps the reading's line.
+    ok(query_words(query) == "total amount of orders", f"a plain total reads as before (got {query_words(query)})")
+    nested = SelectQuery((SelectItem(ScalarSubquery(query)),), "orders")
+    ok(query_words(nested) is None, "a value the line has no words for gives no line")
+
+
 def test_an_average_converts_every_row_before_averaging():
     """Chrome exploration, 2026-10-02: "average amount in US dollars" was declined: the currency check
     knew only a converted SUM, so AVG(amount * rate_to_usd) read as "does not convert". A rate is a row
@@ -1489,6 +1514,7 @@ def test_training_database_adapter_preserves_postgres_decimal():
 
 
 TESTS = [
+    test_an_expansion_keeps_its_readings_evidence_and_says_what_it_computes,
     test_an_output_unit_request_is_not_satisfied_by_a_query_that_drops_its_aggregate,
     test_an_output_unit_is_not_also_a_filter_on_the_same_currency,
     test_a_world_word_that_names_the_scope_is_not_the_answer,

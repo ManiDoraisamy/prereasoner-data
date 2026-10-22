@@ -13,6 +13,7 @@ from engine.sql_ast import (
     render_query,
     validate_query,
 )
+from engine.readers.read_as import query_words
 from engine.sql_candidate import ScoredQuery
 from engine.sql_rank import analyze_question
 from engine.sql_schema import SchemaGraph
@@ -78,15 +79,20 @@ class CalculationQueryExpander:
                     except (TypeError, ValueError):
                         continue
                     score = candidate.score + plan.score
+                    # The expansion is the reading it extends with a registered calculation: it keeps that
+                    # reading's evidence (its rank, how many of the readers' readings build it), which the readers'
+                    # choice weighs, and its read-as line says what it computes, not what the reading showed.
+                    said = query_words(query)
                     result = ScoredQuery(
                         query,
                         sql,
                         score,
-                        candidate.evidence + (
+                        ((said,) if said else candidate.evidence[:1]) + candidate.evidence[1:] + (
                             f"calculation:{plan.specification}:{plan.rule}",
                             *(f"calculation-bind:{role}={column.table}.{column.name}"
                               for role, column in plan.bindings),
                         ),
+                        candidate.features,
                     )
                     previous = generated.get(sql)
                     if previous is None or result.score > previous.score:

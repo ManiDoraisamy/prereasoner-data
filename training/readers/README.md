@@ -5,7 +5,8 @@ This package trains the models behind the own-data readers in `engine/readers/`:
 - the stage-1 schema-item model, which scores tables and columns;
 - the stage-2 reading models, which read every fact the deterministic builder needs;
 - the re-scorer, which picks among the pooled candidates;
-- the refusal fit on the re-scorer's confidence.
+- the choice, a logistic model over the re-scorer's logit and the pool's evidence that ranks the candidates and
+  refuses below its matched threshold.
 
 The models, their inputs and their outputs are defined once, in `engine/readers/models.py`. The trainers here add
 only targets, losses, metrics and the training loop. The schema serialization (`engine/readers/text.py`), the
@@ -31,7 +32,10 @@ Run every step as a module from the repository root: `python -m training.readers
 | `gold.py` | Gold readings: gold SQL becomes a typed AST, then readings. Checked by the perfect-readings oracle (gold's rows against the AST's rows and the rebuilt query's rows), with printed totals. | split manifest, Spider or BIRD | `readings_{train,calibration,bird}.jsonl` |
 | `labels_share.py` | Share readings for BIRD's percentage questions. Each one is checked by execution: gold must equal 100 x built. | BIRD train | `readings_bird_share.jsonl` |
 | `labels_syn.py` | Gives Spider-Syn's rewordings their original question's gold readings. Leaves out the calibration databases. | split manifest, Spider-Syn, `readings_train.jsonl` | `readings_syn.jsonl` |
-| `examples.py` | Builds stage-1 rows (one per question and table) and stage-2 rows (one per question, gold-pruned like serving), split `train`/`calibration`. `--no-anchors` serializes without the question's values. | readings files, Spider, optional BIRD and Syn | `<dir>/stage1.jsonl`, `<dir>/stage2.jsonl` |
+| `rewordings.py` | Gemini rewords training questions into the families the readers misread, chosen from the gold readings: a measure named by an everyday word, an exclusion said as negated existence (both keep the original's readings), and the opposite extreme (MIN and MAX and a limited sort's direction swapped in the readings; kept only when Gemini's named phrase swap holds). Kept only when every stated value survives. Never on calibration or test databases. | split manifest, readings files, Spider, optional BIRD | `<dir>/rewordings.jsonl`, `readings_reworded.jsonl` |
+| `structures.py` | Questions for queries built on training databases in the two structures the readers misread: the rows that no referencing row matches (`NOT IN`, at most once filtered on a value of the referencing table or a table it references) and groups ranked by the total or average of a number (kept only when that ranking's first groups differ from the ranking by row count and no tie crosses the cut). Tables and columns come from foreign keys and values; choices by hash. Two Gemini-written questions per query, kept when they state the filter value and the number ranked. Never on calibration or test databases. | split manifest, Spider, optional BIRD | `<dir>/questions.json`, `readings_structure.jsonl` |
+| `lookups.py` | Lookup-table questions on training databases: a categorical text column becomes codes, a new table names each code, and five query shapes (names, labelled, counted, filtered, total) get two Gemini-written questions each, kept when they state the query's value. | split manifest, Spider, optional BIRD | `<dir>/dbs/`, `tables.json`, `questions.json`, `readings_lookup.jsonl` |
+| `examples.py` | Builds stage-1 rows (one per question and table) and stage-2 rows (one per question, gold-pruned like serving), split `train`/`calibration`. `--no-anchors` serializes without the question's values. | readings files, Spider, optional BIRD, Syn, rewordings (`--reworded`), lookups (`--lookups`) and structures (`--structures`) | `<dir>/stage1.jsonl`, `<dir>/stage2.jsonl` |
 | `train.py` | The trainers. `schema_items` is stage 1; `readings` is stage 2 and keeps `--eval-from` and `--checkpointing`. | `stage1.jsonl` / `stage2.jsonl` | run dir: `model.pt`, `best.json`, `log.jsonl`, `tokenizer/` (with the encoder config), calibration predictions or outputs |
 | `outputs.py` | `load_run`; `Stage1` (serving's `schema_items`, `prune` and `row` over a run); `serving_row`; and, as a command, sharded CPU stage-2 outputs for a rows file. | a readings run, rows | outputs `.jsonl` |
 | `pruned.py` | Stage-2 rows through serving's stage-1 pruning, for calibration (with labels) or the Spider test set (without). | a stage-1 run, Spider | rows `.jsonl` |
@@ -42,7 +46,7 @@ Run every step as a module from the repository root: `python -m training.readers
 | `rescorer.py` | The re-scorer trainer: listwise loss plus a yes/no term, checkpoint chosen on calibration candidates. | candidates files | run dir |
 | `choose.py` | Scores the first, execution-guided and re-scorer choices on calibration candidates. On the Spider test set it reports totals only. | candidates or rows + outputs | stdout |
 | `rescorer_data.py` | The re-scorer's training file: union pools of cross-fold candidates, plus the BIRD share questions' pools. | fold and share candidates | `.jsonl.gz` |
-| `refusal.py` | Fits the logistic confidence by database; `match` sets its threshold so the readers answer no more wrongly than the planner they replace. | calibration candidates, a re-scorer run; two full_eval runs | `refusal.json` |
+| `choice.py` | Fits the readers' choice (serving's `choice_features`: re-scorer logit, log probability, best rank, the readers' agreement, empty result), cross-validated by database; `match` sets its threshold so the readers answer no more wrongly than the planner they replace. | a calibration union pool, each reader's candidates, a re-scorer run; two full_eval runs | `choice.json` |
 | `shrink_state.py` | Shrinks a fine-tuned XLM-R state dict for a slow link, and expands it back. | `model.pt` / `small.pt` | `small.pt` / `model.pt` |
 | `pull_parts.sh` | Pulls a finished stage-2 run off a live pod in 8 parallel parts and checks md5. | ssh host and port | run dir |
 | `lease.py` | GPU jobs through `training/tools/runpod_api.py lease`: `full` stage 2, `folds`, and `rescorer`. Tries SECURE first, then COMMUNITY. `--dry-run` prints the command. | data or candidates | `data/experiments/<id>/{out,code,lease_<cloud>.log}` |
@@ -120,6 +124,29 @@ python -m training.readers.examples ... $E/data_v7b (as v7a) --no-anchors
 - v4 and v5 were built before anchors and share outputs existed. `--no-anchors` is today's equivalent, and their
   rows now also carry `"share": 0`. Their exact bytes against the recorded hashes are not verified.
 
+### 2b. Written training questions and the v11 data (the shipped readers' data)
+
+Gemini (`engine/llm.py`; `EXTERNAL_LLM_ENABLED=1`, Vertex AI, model `gemini-3.8-flash`, thinking LOW) writes three
+sets on the training databases, never on calibration or test ones:
+
+```
+python -m training.readers.rewordings $L/split1 $L/readings_train.jsonl $L/readings_bird.jsonl $E/readers_v8/rewordings --bird <BIRD> --workers 8 --families measure,exclusion
+python -m training.readers.rewordings $L/split1 $L/readings_train.jsonl $L/readings_bird.jsonl $E/readers_v10/opposite --bird <BIRD> --workers 8 --families opposite
+python -m training.readers.lookups $L/split1 $E/readers_v9/lookups --bird <BIRD> --workers 8 --db-dir <spider dbs> --db-dir <train_dbs_extra>
+python -m training.readers.structures $L/split1 $E/readers_v11/structures --bird <BIRD> --workers 16 --db-dir <spider dbs> --db-dir <train_dbs_extra>
+python -m training.readers.examples $L/readings_train.jsonl $L/readings_calibration.jsonl $E/readers_v11/data_v11a --bird <BIRD> --bird-readings $L/readings_bird.jsonl,$L/readings_bird_share.jsonl --syn C:/work/datasets/spider_syn --syn-readings $L/readings_syn.jsonl --reworded $E/readers_v8/rewordings/rewordings.jsonl,$E/readers_v10/opposite/rewordings.jsonl --reworded-readings $E/readers_v8/rewordings/readings_reworded.jsonl,$E/readers_v10/opposite/readings_reworded.jsonl --lookups $E/readers_v9/lookups --structures $E/readers_v11/structures --tokenizer C:/work/datasets/models/xlm-roberta-large
+python -m training.readers.examples ... $E/readers_v11/data_v11b (as data_v11a) --no-anchors
+```
+
+- The v8 run's families were the module's two families of that day (measure, exclusion); the opposite family came
+  later. The recorded sets: 4,393 rewordings (the v8 set, then the opposite set), 1,724 lookup questions on 173
+  lookup databases, and 2,675 structure questions on 195 databases (582 unmatched, 475 unmatched filtered, 398
+  ranked, 1,220 aggregate; half written as a search box's few words).
+- Stage-2 rows: 29,561 (`data_v11a` sha256 `c47128d93e231671`, `data_v11b` `201007d4b4b4b928`); the stage-1 rows
+  are not used (the shipped stage 1 is the "v2" run).
+- Gemini at temperature 0 is not bit-reproducible across service versions; the recorded sets are the training
+  data, kept with the experiment.
+
 ### 3. Stage 1 (the "v2" stage-1 run)
 
 ```
@@ -151,6 +178,23 @@ python -m training.readers.shrink_state expand $E/readers_v5/out/stage2/small.pt
 - v5's single-stream download broke, and its weights came back with `pull_parts.sh`.
 - Readers that read without anchors (v5, v7b) need `{"anchored": false}` in their run's `reader.json`, which serving
   reads. The trainer does not write that file.
+
+### 4b. The shipped stage-2 readers v11a, v11a1, v11b, v11b1
+
+```
+python -m training.readers.lease full --experiment readers_v11a --data $E/readers_v11/data_v11a --seed 0 --epochs 13 --eval-from 5 --minutes 260
+python -m training.readers.lease full --experiment readers_v11a1 --data $E/readers_v11/data_v11a --seed 1 --epochs 13 --eval-from 5 --minutes 260
+python -m training.readers.lease full --experiment readers_v11b --data $E/readers_v11/data_v11b --seed 0 --epochs 13 --eval-from 5 --minutes 260
+python -m training.readers.lease full --experiment readers_v11b1 --data $E/readers_v11/data_v11b --seed 1 --epochs 13 --eval-from 5 --minutes 260
+```
+
+- Anchored (a, a1) and plain (b, b1), seeds 0 and 1; checkpoints evaluated from epoch 5 (v10a's best had been its
+  first evaluated epoch, 8).
+- Selected checkpoints (gold-pruned calibration, every reading right): v11a epoch 12 (0.210), v11a1 epoch 13
+  (0.216), v11b epoch 12 (0.220), v11b1 epoch 8 (0.215).
+- The pods were L40S (v11a, v11b), L40 (v11b1) and A40 (v11a1) cards. Three runs' single-stream downloads stalled; their weights came
+  back with `pull_parts.sh` (md5-checked). The community host that restarted its containers is left out by
+  leaving the RTX 6000 Ada out of community attempts.
 
 ### 5. Relayout of v5 and v6 (before the share outputs)
 
@@ -241,16 +285,20 @@ python -m training.readers.shrink_state expand $E/rescorer_f/out/f/small.pt Face
   pools of the v4 and v6 recipes plus the share questions' pools, `rescorer_data --shares`) and 601 for re-scorer v2.
 - Recipe: XLM-R base, 3 epochs, 8 questions per step, lr 2e-5 / 1e-3, seed 0.
 
-### 9. Refusal
+### 9. The choice
 
 ```
-python -m training.readers.refusal $E/candidates/v7a5_cal.jsonl --rescorer $E/rescorer_f/out/f --target 0.25 --out $E/bundle/refusal.json
-python -m training.readers.refusal match $E/bundle/refusal.json <engine calibration per-example.json> <readers calibration per-example.json>
+python -m training.readers.union $E/candidates/v7a_cal.jsonl $E/candidates/v5c_cal.jsonl $E/candidates/v7b_cal.jsonl $E/candidates/v6c_cal.jsonl $E/candidates/v7ab56_cal.jsonl
+python -m training.readers.choice fit $E/candidates/v7ab56_cal.jsonl $E/candidates/v7a_cal.jsonl $E/candidates/v5c_cal.jsonl $E/candidates/v7b_cal.jsonl $E/candidates/v6c_cal.jsonl --rescorer $E/rescorer_f/out/f --out $E/bundle/choice.json
+python -m training.readers.choice match $E/bundle/choice.json <engine calibration per-example.json> <readers calibration per-example.json>
 ```
 
-- The first fits the confidence model on the shipped pair's calibration candidates (out of fold by database).
-- The second sets its threshold from two serving-faithful `spider.probe.full_eval` runs on calibration: the planner
-  being replaced, and the readers with the threshold off. The threshold is the lowest at which the readers answer no
+- The union pools the four readers' calibration candidates as serving does; `fit` weighs the re-scorer's logit with
+  each candidate's log probability, best rank, the readers' agreement and an empty result (out of fold by database:
+  642 of 1,028 right against 628 for the re-scorer alone on the same pool, and 624 for the earlier two-reader
+  bundle).
+- `match` sets the threshold from two serving-faithful `spider.probe.full_eval` runs on calibration: the planner
+  being replaced, and the readers with no threshold. The threshold is the lowest at which the readers answer no
   more questions wrongly than that planner did; it is recorded with its counts (`matched`).
 
 ### 10. Candidate bundle and promotion
@@ -261,7 +309,7 @@ python -m training.readers.refusal match $E/bundle/refusal.json <engine calibrat
 - `stage2_<name>/` for each shipped reading model, with a `reader.json` of `{"anchored": true}` or
   `{"anchored": false}`;
 - `rescorer/` from the re-scorer run;
-- `refusal.json` from step 9.
+- `choice.json` from step 9.
 
 Each model directory holds `model.pt` next to `config.json`, `tokenizer.json`, `tokenizer_config.json` and
 `sentencepiece.bpe.model`. A run keeps those files in `tokenizer/`, so copy them up beside `model.pt`. Some runs
@@ -272,7 +320,8 @@ lack files:
 - The recorded re-scorer runs saved no `config.json`. Take the base model's.
 
 The shipped bundle: `stage1/` the "v2" stage-1 run; `stage2_a/` reader v7a (`{"anchored": true}`); `stage2_b/`
-reader v5 after the relayout (`{"anchored": false}`); `rescorer/` the "f" re-scorer; `refusal.json` from step 9.
+reader v5 after the relayout (`{"anchored": false}`); `stage2_c/` reader v7b (`{"anchored": false}`); `stage2_d/`
+reader v6 after the relayout (`{"anchored": true}`); `rescorer/` the "f" re-scorer; `choice.json` from step 9.
 
 Then, with the owner's approval, install it locally, run the gates, publish exactly the manifest's `readers/` files
 to the weight repository, and promote again at the immutable commit that holds them (the promotion downloads every

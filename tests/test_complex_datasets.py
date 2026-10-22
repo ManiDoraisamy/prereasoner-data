@@ -23,6 +23,10 @@ from tests.test_datasets import DATASET_DIR, EXPECTED, _eval_cases, _tables
 
 COMPLEX_DATASETS = ("complex-promotions", "complex-category-gaps",
                     "complex-promotions-xlsx", "complex-unsold-products")
+# The prompts with several goals ("the top 3 ... and the top 2 ..., then list each pair ..."), which no one query
+# holds and which therefore ask for the decomposition proposal. The unsold-products prompt asks one thing, the rows no
+# referencing row matches, which the readers read as one query (NOT IN a subquery) since readers v11 (2026-10-22).
+COMPOUND_DATASETS = ("complex-promotions", "complex-category-gaps", "complex-promotions-xlsx")
 
 
 def _sqlite_type(affinity) -> str:
@@ -260,7 +264,7 @@ def test_shipped_complex_datasets_match_gold_in_python_and_sql():
 
 def test_full_complex_prompts_request_decomposition_without_executing_a_partial_answer():
     planner = EncoderQuery()
-    for name in COMPLEX_DATASETS:
+    for name in COMPOUND_DATASETS:
         directory = DATASET_DIR / name
         question = (directory / "prompt.txt").read_text(encoding="utf-8").strip()
         descriptor = {"slug": name.replace("-", "_"), "revision": 1}
@@ -283,7 +287,7 @@ def test_compose_surface_does_not_swallow_a_compound_question():
     from engine.decomposition import search_probe
 
     planner = EncoderQuery()
-    for name in COMPLEX_DATASETS:
+    for name in COMPOUND_DATASETS:
         directory = DATASET_DIR / name
         question = (directory / "prompt.txt").read_text(encoding="utf-8").strip()
         with patch.object(
@@ -343,6 +347,20 @@ def test_the_serving_entry_point_carries_the_proposal_to_the_compose_layer():
     assert forwarded.get("decomposition") is proposal
 
 
+def test_a_negated_existence_prompt_is_answered_as_one_query():
+    """"List the product names that no customer from Paris has bought" asks for the rows no referencing row matches:
+    one query, the products whose name is not among the names Paris customers bought, answered directly with the
+    rows derived from the CSVs, with no decomposition and no clarification."""
+    planner = EncoderQuery()
+    directory = DATASET_DIR / "complex-unsold-products"
+    question = (directory / "prompt.txt").read_text(encoding="utf-8").strip()
+    response = planner.serve(_tables(directory), question)
+    assert not response.get("decomposition_required") and not response.get("clarify"), response
+    _, expected = EXPECTED["complex-unsold-products"]
+    assert [list(row) for row in response["result"]["rows"]] == expected["rows"], response["result"]
+    assert "NOT IN" in response["sql"].upper(), response["sql"]
+
+
 TESTS = [
     test_the_serving_entry_point_carries_the_proposal_to_the_compose_layer,
     test_compose_surface_does_not_swallow_a_compound_question,
@@ -353,10 +371,12 @@ TESTS = [
     test_a_value_binds_to_the_column_that_holds_it,
     test_a_purchases_leaf_joins_through_the_bridge_table,
     test_a_decomposition_cannot_invent_a_cutoff,
+    test_a_negated_existence_prompt_is_answered_as_one_query,
 ]
 
 
 MODEL_BACKED = (
+    test_a_negated_existence_prompt_is_answered_as_one_query,
     test_shipped_complex_datasets_match_gold_in_python_and_sql,
     test_a_names_only_ranking_leaf_serves_its_own_ranking_with_the_measure,
     test_a_table_named_as_a_leaf_item_is_shown_by_its_display_field,

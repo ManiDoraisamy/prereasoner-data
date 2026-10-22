@@ -48,9 +48,9 @@ the complete bundle, and only then installs it.
 | `primitives.npz` | Learned primitive-composition head |
 | `schema_property_head.pt` | Calibrated Schema.org named-property evidence head |
 | `readers/stage1/` | Own-data schema-item model (XLM-R base): scores each table's and column's use |
-| `readers/stage2_a/`, `readers/stage2_b/` | Own-data reading models (XLM-R large), one with the question's values beside their columns and one without |
-| `readers/rescorer/` | Re-scorer (XLM-R base): orders the readings' queries that ran |
-| `readers/refusal.json` | Logistic refusal over the re-scorer's confidence, fitted on held-out calibration databases |
+| `readers/stage2_a/` to `readers/stage2_d/` | Four own-data reading models (XLM-R large); each `reader.json` says whether it reads the question's values beside their columns |
+| `readers/rescorer/` | Re-scorer (XLM-R base): scores the readings' queries that ran |
+| `readers/choice.json` | The readers' choice: a logistic model over the re-scorer's logit and how many readers build a query, fitted on held-out calibration databases; it ranks the queries and refuses below its threshold |
 
 The source repository contains the small ontology, calibration, taxonomy, and manifest artifacts.
 The base Qwen model is downloaded separately from its publisher. The readers' directories hold their
@@ -107,7 +107,8 @@ servable. Unsupported and under-calibrated coordinates abstain.
 The Prereasoner weight bundle is released under Apache-2.0. The base model and source datasets retain
 their own licenses and terms. The readers in `readers/` are fine-tuned from XLM-RoBERTa (MIT) on Spider's
 train and dev questions (Yu et al., EMNLP 2018; CC BY-SA 4.0), BIRD train (Li et al., NeurIPS 2023;
-CC BY-SA 4.0) and Spider-Syn (Gan et al., ACL 2021; MIT); keep those attributions when redistributing
-them. The Spider test set appears in no training step. The retired `sql_proposer/` adapter in earlier revisions was trained on
+CC BY-SA 4.0) and Spider-Syn (Gan et al., ACL 2021; MIT), and on questions Gemini on Vertex AI wrote
+over those training databases; keep those attributions when redistributing them. The Spider test set
+appears in no training step. The retired `sql_proposer/` adapter in earlier revisions was trained on
 Spider TRAIN (Yu et al., EMNLP 2018; CC BY-SA 4.0); keep that attribution when redistributing it. See
 [`THIRD_PARTY.md`](https://github.com/ManiDoraisamy/prereasoner-data/blob/main/THIRD_PARTY.md).

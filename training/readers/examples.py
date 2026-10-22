@@ -11,12 +11,15 @@ tables, then the samples. With anchors (the default) the question's own values a
 --no-anchors serializes without them. Labels are every reading the builder uses; a literal value is located by its
 mention in the question, else in its column's listed values.
 
-Rows carry split "train" (readings_train, BIRD, Spider-Syn) or "calibration" (readings_calibration, the 20 held-out
+Rows carry split "train" (readings_train, BIRD, Spider-Syn, rewordings) or "calibration" (readings_calibration, the 20 held-out
 Spider databases); the trainers fit on the first and select their checkpoint on the second.
 
 usage: python -m training.readers.examples <readings_train.jsonl> <readings_calibration.jsonl> <out dir>
            [--bird <BIRD train dir> --bird-readings <readings_bird.jsonl>[,<readings_bird_share.jsonl>]]
-           [--syn <Spider-Syn dir> --syn-readings <readings_syn.jsonl>] [--no-anchors]
+           [--syn <Spider-Syn dir> --syn-readings <readings_syn.jsonl>]
+           [--reworded <rewordings.jsonl>[,...] --reworded-readings <readings_reworded.jsonl>[,...]]
+           [--lookups <training.readers.lookups out dir>] [--structures <training.readers.structures out dir>]
+           [--no-anchors]
            [--tokenizer <dir or hf id>] [--spider-zip <zip>] [--db-dir <dir> ...]
 """
 import argparse
@@ -196,6 +199,11 @@ def main():
     ap.add_argument("--bird-readings", help="comma-separated BIRD readings files (readings_bird.jsonl[,shares])")
     ap.add_argument("--syn", help="Spider-Syn's directory; requires --syn-readings")
     ap.add_argument("--syn-readings")
+    ap.add_argument("--reworded", help="comma-separated training.readers.rewordings sets' rewordings.jsonl, "
+                                       "concatenated in order; requires --reworded-readings")
+    ap.add_argument("--reworded-readings", help="their readings_reworded.jsonl, in the same order")
+    ap.add_argument("--lookups", help="training.readers.lookups' output folder (lookup-table questions)")
+    ap.add_argument("--structures", help="training.readers.structures' output folder (unmatched and ranked questions)")
     ap.add_argument("--no-anchors", action="store_true", help="serialize stage 2 without the question's values")
     ap.add_argument("--tokenizer", default=TOKENIZER, help="the readers' tokenizer, for the token budget")
     add_arguments(ap)
@@ -211,6 +219,15 @@ def main():
     if args.syn:
         data.add_syn(args.syn)
         sources.insert(1, (args.syn_readings, "train"))
+    if args.reworded:
+        merged = data.add_reworded(args.reworded.split(","), args.reworded_readings.split(","), args.out_dir)
+        sources.insert(1, (merged, "train"))
+    if args.lookups:
+        data.add_lookups(args.lookups)
+        sources.insert(1, (os.path.join(args.lookups, "readings_lookup.jsonl"), "train"))
+    if args.structures:
+        data.add_structures(args.structures)
+        sources.insert(1, (os.path.join(args.structures, "readings_structure.jsonl"), "train"))
     anchored = not args.no_anchors
     os.makedirs(args.out_dir, exist_ok=True)
     schemas = {}

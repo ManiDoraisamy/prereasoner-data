@@ -137,16 +137,38 @@ def date_column(column, graph):
     return schema_column is not None and schema_column.ref.type == SQLType.DATE
 
 
-def periodic(select, group, order, graph, question):
+def periodic(select, group, order, graph, question, tables=()):
     """A period the question groups by ("how many orders per month", engine.sql_dates.period_grouping) groups by
     that period of the date column the readers group by: its year-month, so that August 2025 and August 2026 stay
-    two rows. A shown or sorted reading of that date column (itself, its earliest or latest) shows the period."""
+    two rows. A shown or sorted reading of that date column (itself, its earliest or latest) shows the period.
+
+    When the readers group by no date column, only by surrogate keys (one group per row: "how many orders per
+    month" read as "for each order id", 2026-10-22) or by nothing, the period groups the one date column of the
+    ``tables`` they read, and is shown first; with no date column there, or several, the reading stands as read."""
     from engine.sql_dates import period_grouping
     from engine.sql_expansion import tokens
+    from engine.sql_schema import is_surrogate_key
 
-    dates = [column for column in group if date_column(column, graph)]
-    if not dates or period_grouping(tokens(question), graph) is None:
+    if period_grouping(tokens(question), graph) is None:
         return select, group, order
+    dates = [column for column in group if date_column(column, graph)]
+    if not dates:
+        if any(column == "*" or ":" in column or not is_surrogate_key(column.split(".", 1)[1]) for column in group):
+            return select, group, order
+        in_tables = sorted(f"{column.ref.table}.{column.ref.name}" for column in graph.columns
+                           if column.ref.table in tables and column.ref.type == SQLType.DATE)
+        if len(in_tables) != 1:
+            return select, group, order
+        keys, (date,) = set(group), in_tables
+        dates, group = [date], [date]
+        shown = []                                 # a key shown as its group's label gives way to the period
+        for slot, aggregate, column, distinct in select:
+            column = date if aggregate == "plain" and column in keys else column
+            if not (aggregate == "plain" and column == date and any(s[2] == date and s[1] == "plain" for s in shown)):
+                shown.append([slot, aggregate, column, distinct])
+        if not any(aggregate == "plain" and column == date for _, aggregate, column, _ in shown):
+            shown = [[-1, "plain", date, False]] + shown
+        select = [[place, aggregate, column, distinct] for place, (_, aggregate, column, distinct) in enumerate(shown)]
     period = {column: f"year_month:{column}" for column in dates}
     select = [[slot, "plain", period[column], False] if column in period and aggregate in ("plain", "MIN", "MAX")
               else [slot, aggregate, column, distinct] for slot, aggregate, column, distinct in select]
@@ -306,7 +328,7 @@ def decode_block(output, example, graph, b, nested, choices):
                 numbers.append((number, span[3]))
         limit = choices.pick(("limit-number", b), list(zip([n for n, _ in numbers], softmax(
             [score for _, score in numbers])))) if numbers else 3
-    select, group, order = periodic(select, group, order, graph, example["question"])
+    select, group, order = periodic(select, group, order, graph, example["question"], tables)
     used = {c.partition(":")[2].split(".", 1)[0] if ":" in c else c.split(".", 1)[0] for c in
             [s[2] for s in select] + [w[0] for w in where] + group + [h[1] for h in having] + [o[1] for o in order]
             if c != "*"}

@@ -22,11 +22,12 @@ Given a question, tables, and foreign keys, the planner:
 5. Runs every pooled candidate on an in-memory copy of the tables. A query that fails, compares a
    text column with a value it never holds while another column does, or joins columns the foreign keys
    keep apart is ineligible.
-6. The re-scorer (XLM-R base) orders the eligible candidates. Named dates, a SUM or AVG that reads only
+6. The readers' choice (the re-scorer's logit with what the pool says of each candidate) orders the eligible
+   candidates. Named dates, a SUM or AVG that reads only
    rows its joins repeat (served only when every eligible candidate does), calculation intents, and the
    decomposition leaf contract constrain that order; they never rescore it.
-7. The refusal (`engine/data/readers/refusal.json`) serves the choice only when it is confident;
-   otherwise the reply says how the best-ranked candidate read the question.
+7. The choice (`engine/data/readers/choice.json`) serves its best candidate only when its probability meets the
+   threshold; otherwise the reply says how the best-ranked candidate read the question.
 8. Renders only validated ASTs to SQL. A served top-1 ranking keeps every row tied with its first
    row (`sql_ast.keep_ties`, rendered with `RANK() OVER`); a larger `LIMIT` keeps exactly that many rows.
 
@@ -130,14 +131,15 @@ probe and the delegate each select. `PoolSelection.record()` reports the decisio
 
 A reader whose `reader.json` says `{"anchored": true}` reads the question's values listed first beside
 their columns; matching is on the data, not on a word list. The weights live in `engine/data/readers/`
-(`stage1/`, `stage2_*/`, `rescorer/`, `refusal.json`). `training/readers/` trains them, and only
+(`stage1/`, `stage2_*/`, `rescorer/`, `choice.json`). `training/readers/` trains them, and only
 `training/readers/promote.py` installs them ([training/readers/README.md](../training/readers/README.md)).
 
-### Refusal and the read-as line
+### Choice, refusal and the read-as line
 
-The refusal is a logistic model over the re-scorer's probability, the decoder's log probability, the
-margin to the next candidate, the rank, and whether the result is empty, with a threshold fitted on
-held-out databases (`training/readers/refusal.py`). When it declines, nothing is selected and the reply
+The choice is a logistic model over the re-scorer's logit, the decoder's log probability, the best rank, the
+share of the readers' readings that build the candidate, and whether its result is empty, fitted with its
+threshold on held-out databases (`training/readers/choice.py`). It ranks the candidates, and its probability
+for the best is the confidence. Under the threshold nothing is selected and the reply
 is a clarification: "I read this as “…”, but I'm not confident that is what you asked"
 (`engine/tables.py:unsure_clarification`). A served answer carries `read_as`, the readers' plain reading
 of the served query (`engine/readers/read_as.py`), which the thread shows as the turn's "read as" line.

@@ -7,9 +7,13 @@
    (engine.readers.readings.build) makes each reading a typed-AST query.
 3. The candidates of all stage-2 models are pooled, each SQL once, most probable first.
 4. After the pool runs, the re-scorer reads the question beside each candidate that ran (its read-as line and
-   result shape) and scores it (``rescore``); the confidence of the best is what refusal reads.
+   result shape), and the readers' choice (choice.json) weighs its logit with what the pool says of the candidate:
+   its log probability, its best rank, how many of the readers' readings build it, whether its result is empty
+   (``rescore``). The choice's probability for the best candidate is its confidence; below the threshold the
+   readers refuse it (``confidence``, ``confident``).
 
-Weights live in engine/data/readers/{stage1,stage2_*,rescorer}, each a saved config, tokenizer and model.pt.
+Weights live in engine/data/readers/{stage1,stage2_*,rescorer}, each a saved config, tokenizer and model.pt, beside
+choice.json.
 """
 from __future__ import annotations
 
@@ -30,6 +34,15 @@ READERS_DIR = DATA_DIR / "readers"                 # installed only by training/
 MAX_COLUMNS = 20
 BUDGET = 508
 CANDIDATES = 16                                    # per stage-2 model
+CHOICE_FEATURES = ("rescorer_logit", "score/10", "best_rank/16", "readers_share", "empty")
+
+
+def choice_features(logit, score, rank, readers_share, rows):
+    """What the readers' choice weighs of a candidate that ran (``CHOICE_FEATURES``): the re-scorer's logit, the
+    candidate's log probability, its best rank among the readers, the share of the readers' readings that build it
+    (more than 1 when one reader builds it twice), and whether its result is empty. training.readers.choice fits the
+    weights on these same features of calibration pools."""
+    return (logit, score / 10.0, rank / CANDIDATES, readers_share, float(rows == 0))
 
 
 class ReadingSearch:
@@ -46,8 +59,9 @@ class ReadingSearch:
                         if (path / "reader.json").exists() else True)
                        for path in sorted(directory.glob("stage2_*"))]
         self.rescorer = models.load("rescorer", directory / "rescorer")
-        refusal = directory / "refusal.json"
-        self.refusal = json.loads(refusal.read_text(encoding="utf-8")) if refusal.exists() else None
+        self.choice = json.loads((directory / "choice.json").read_text(encoding="utf-8"))
+        if tuple(self.choice["features"]) != CHOICE_FEATURES:
+            raise ValueError(f"choice.json weighs {self.choice['features']}, serving computes {CHOICE_FEATURES}")
 
     def schema_items(self, question, schema):
         """{table: (table probability, {column: used probability})}."""
@@ -119,7 +133,7 @@ class ReadingSearch:
                  if len(values) > 1}
         from engine.readers import models
 
-        pooled, seen = [], set()
+        pooled, seen, built = [], set(), {}
         for model, anchored in self.stage2:
             row = self.row(question, schema, *kept, anchored=anchored)
             output = models.read_outputs(model, self.tokenizer, row)
@@ -130,20 +144,23 @@ class ReadingSearch:
                         sql = render_query(query)
                     except Exception:              # noqa: BLE001 - a reading the builder cannot make into a query
                         continue
-                    pooled.append((rank, -score, ScoredQuery(query, sql, score, (read_as(reading),),
-                                                             (("rank", float(rank)),))))
+                    built[sql] = built.get(sql, 0) + 1
+                    pooled.append((rank, -score, query, sql, read_as(reading)))
         ordered = []
-        for _, _, candidate in sorted(pooled, key=lambda item: (item[0], item[1])):
-            if candidate.sql not in seen:
-                seen.add(candidate.sql)
-                ordered.append(candidate)
+        for rank, negative, query, sql, said in sorted(pooled, key=lambda item: (item[0], item[1])):
+            if sql not in seen:
+                seen.add(sql)
+                ordered.append(ScoredQuery(query, sql, -negative, (said,),
+                                           (("rank", float(rank)), ("readers", built[sql] / len(self.stage2)))))
         return ordered
 
     def rescore(self, question, pool, shapes):
-        """The re-scorer's logit for each candidate that ran (None for the others). ``shapes`` holds each
-        candidate's (rows, columns) when it ran, else None. The scores depend only on the question and what
-        each candidate says and returned, so a request's second selection over the same pool (the compose
-        probe's, then the delegate's) reads them once (``_SCORES``)."""
+        """The readers' choice score (log odds that it answers the question) for each candidate that ran, None for
+        the others: the choice model (choice.json) over the re-scorer's logit and what the pool says of the
+        candidate (``choice_features``). ``shapes`` holds each candidate's (rows, columns) when it ran, else None.
+        The re-scorer's logits depend only on the question and what each candidate says and returned, so a
+        request's second selection over the same pool (the compose probe's, then the delegate's) reads them once
+        (``_SCORES``)."""
         ran = [i for i, shape in enumerate(shapes) if shape is not None]
         records = [{"read_as": pool[i].evidence[0], "rows": shapes[i][0], "columns": shapes[i][1],
                     "score": pool[i].score, "rank": dict(pool[i].features).get("rank", 0.0)} for i in ran]
@@ -157,27 +174,23 @@ class ReadingSearch:
             _keep(_SCORES, key, logits)
         scores = [None] * len(pool)
         for i, logit in zip(ran, logits):
-            scores[i] = logit
+            features = dict(pool[i].features)
+            x = choice_features(logit, pool[i].score, features.get("rank", 0.0), features.get("readers", 0.0),
+                                shapes[i][0])
+            scores[i] = self.choice["intercept"] + sum(w * v for w, v in zip(self.choice["coef"], x))
         return scores
 
     def confidence(self, pool, scores, shapes, chosen):
-        """The refusal model's probability that the chosen candidate answers the question (refusal.json, fitted on
-        held-out databases): a logistic model over the re-scorer's probability, the candidate's log probability, the
-        margin between the two most probable candidates that ran, its rank, and whether its result is empty. None
-        without a refusal model or for a candidate the re-scorer did not score."""
-        if self.refusal is None or scores[chosen] is None:
+        """The choice's probability that the chosen candidate answers the question: fitted on held-out databases,
+        so it is the confidence refusal reads. None for a candidate the readers did not score."""
+        if scores[chosen] is None:
             return None
-        decoded = sorted((c.score for c, s in zip(pool, scores) if s is not None), reverse=True)
-        candidate = pool[chosen]
-        following = decoded[1] if len(decoded) > 1 else candidate.score - 10.0
-        features = [1.0 / (1.0 + math.exp(-scores[chosen])), candidate.score, min(decoded[0] - following, 10.0),
-                    dict(candidate.features).get("rank", 0.0), float(shapes[chosen][0] == 0)]
-        z = self.refusal["intercept"] + sum(w * x for w, x in zip(self.refusal["coef"], features))
-        return 1.0 / (1.0 + math.exp(-z))
+        return 1.0 / (1.0 + math.exp(-scores[chosen]))
 
     def confident(self, confidence):
-        """Whether ``confidence`` (``confidence``) meets the refusal threshold; an unscored choice always does."""
-        threshold = (self.refusal or {}).get("threshold")
+        """Whether ``confidence`` meets the choice's threshold; an unscored choice, or a choice fitted without a
+        threshold (an evaluation that records every confidence), always does."""
+        threshold = self.choice.get("threshold")
         return confidence is None or threshold is None or confidence >= threshold
 
 

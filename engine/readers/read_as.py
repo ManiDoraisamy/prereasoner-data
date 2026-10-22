@@ -69,6 +69,81 @@ def block_words(block, inner=None):
     return text
 
 
+OPERATION_WORDS = {"+": "plus", "-": "minus", "*": "times", "/": "divided by"}
+
+
+def expression_words(expression):
+    """A typed-AST value in the read-as line's words ("total gdp divided by total population"), or None for one
+    the line has no words for."""
+    from engine.sql_ast import Aggregate, BinaryExpr, ColumnRef, Literal, Lower, Star
+
+    if isinstance(expression, ColumnRef):
+        return words(expression.name)
+    if isinstance(expression, Lower):
+        return expression_words(expression.operand)
+    if isinstance(expression, Aggregate):
+        if isinstance(expression.operand, Star):
+            return "number of rows"
+        inner = expression_words(expression.operand)
+        if inner and isinstance(expression.operand, BinaryExpr):
+            inner = f"({inner})"                   # "total (amount times rate)", not "total amount times rate"
+        return inner and f"{AGGREGATE_WORDS[expression.function]} {'distinct ' if expression.distinct else ''}{inner}"
+    if isinstance(expression, BinaryExpr):
+        sides = []
+        for side in (expression.left, expression.right):
+            text = expression_words(side)
+            if text is None:
+                return None
+            sides.append(f"({text})" if isinstance(side, BinaryExpr) else text)
+        return f"{sides[0]} {OPERATION_WORDS.get(expression.operator, expression.operator)} {sides[1]}"
+    if isinstance(expression, Literal):
+        return str(expression.value)
+    return None
+
+
+def predicate_words(predicate):
+    """A typed-AST condition in the read-as line's words, or None for one the line has no words for."""
+    from engine.sql_ast import BooleanExpr, Comparison, Literal
+
+    if isinstance(predicate, Comparison):
+        left = expression_words(predicate.left)
+        right = (f"'{str(predicate.right.value).strip('%')}'" if isinstance(predicate.right, Literal)
+                 and isinstance(predicate.right.value, str) else expression_words(predicate.right))
+        return left and right and f"{left} {COMPARISONS.get(predicate.operator, predicate.operator.lower())} {right}"
+    if isinstance(predicate, BooleanExpr):
+        terms = [predicate_words(term) for term in predicate.terms]
+        return None if None in terms else f" {predicate.operator.lower()} ".join(terms)
+    return None
+
+
+def query_words(query):
+    """The read-as line of a query the readers did not build themselves, a registered calculation's expansion of
+    their reading: what each output computes ("per capita (total gdp divided by total population) of economy"),
+    under its conditions, for each group. None for a query the line has no words for, which then keeps the
+    reading's own line."""
+    shown = []
+    for item in query.select:
+        text = expression_words(item.expression)
+        if text is None:
+            return None
+        shown.append(f"{words(item.alias)} ({text})" if item.alias and words(item.alias) != text else text)
+    tables = [query.from_table, *(join.table for join in query.joins)]
+    if not all(isinstance(table, str) for table in tables):
+        return None
+    line = ", ".join(shown) + " of " + " and ".join(words(table) for table in tables)
+    if query.where is not None:
+        conditions = predicate_words(query.where)
+        if conditions is None:
+            return None
+        line += " where " + conditions
+    if query.group_by:
+        groups = [expression_words(column) for column in query.group_by]
+        if None in groups:
+            return None
+        line += ", for each " + " and ".join(groups)
+    return line
+
+
 def read_as(readings):
     blocks = readings["blocks"]
     if readings["structure"] == "single":

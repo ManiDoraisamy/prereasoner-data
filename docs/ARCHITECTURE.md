@@ -12,7 +12,7 @@ stack and readable SQLAlchemy/Python source; see
 adapter and a relational readout) supplies model evidence: it reads intent and schema signals as named
 coordinates. No model writes SQL. Learned encoder readers (XLM-R) read each own-data question beside its
 schema as named readings, a deterministic builder makes every own-data query a typed AST from them, and a
-learned re-scorer and refusal choose among the ones that run (see [Own-Data SQL Planner](#own-data-sql-planner)).
+learned re-scorer and choice choose among the ones that run (see [Own-Data SQL Planner](#own-data-sql-planner)).
 No model writes Python or a numeric answer, and model text never reaches a database. AST construction,
 routing, joins, validation, selection, emission, and execution are deterministic for fixed inputs,
 configuration, database state, and model files.
@@ -290,7 +290,7 @@ builder makes each reading a typed AST.
 
 | Owner | Responsibility |
 |---|---|
-| `engine/readers/search.py` | `ReadingSearch`: schema items, the stage-2 readers' pooled candidates, re-scoring and the refusal |
+| `engine/readers/search.py` | `ReadingSearch`: schema items, the stage-2 readers' pooled candidates, re-scoring and the choice |
 | `engine/readers/text.py` | The schema as each model reads it: tables, columns, types, sample values, the question's values beside their columns (anchors), fitted to the token budget |
 | `engine/readers/models.py` | The three model kinds (schema items, readings, re-scorer) and their inputs; serving runs each encoder in bfloat16 |
 | `engine/readers/layout.py` | The readings' output layout, shared by training, serving and decoding |
@@ -318,7 +318,8 @@ builder makes each reading a typed AST.
    them (`Schema.anchors`, matched on the data). Decoding keeps the most probable distinct readings
    (`decode.candidates`, up to 16 per reader, above a probability floor); its generic semantics: a date the
    question names is read through `engine/sql_dates`, and so is a period it groups by ("per month" groups by the
-   date's year-month, `decode.periodic`); a stored date literal is kept exact; a column an equality pins is not
+   date's year-month, `decode.periodic`, the one date column of the tables read when the readers group only by
+   surrogate keys or by nothing); a stored date literal is kept exact; a column an equality pins is not
    shown, grouped or sorted by again; a column a condition matches with the question's value (= or LIKE) is
    counted by its rows, never by its distinct values; and a pointed value drops the marks of the list it stood in. A reading that
    compares one column with one value, when the question names more of that column's values (matched on the data),
@@ -335,13 +336,15 @@ builder makes each reading a typed AST.
    text column against a literal it never holds while another column does, or joins two columns the foreign keys
    keep apart is not eligible (`engine/sql_grounding.py`).
 5. The re-scorer (XLM-R base) reads the question beside each eligible candidate's read-as line and result shape,
-   with the decoder's log probability and rank, and orders them. A date the question names keeps the choice to the
+   with the decoder's log probability and rank, and the readers' choice (`engine/data/readers/choice.json`, a
+   logistic model fitted on held-out databases) weighs its logit with what the pool says of the candidate: its log
+   probability, its best rank, the share of the readers' readings that build it, and whether its result is empty
+   (`search.choice_features`). The choice orders the candidates. A date the question names keeps the choice to the
    candidates that realize it when one does, a candidate whose SUM or AVG reads only rows its joins repeat is
    chosen only when every one does, and a registered calculation intent takes the best-ranked candidate that
    satisfies it (`select_ranked_candidate`).
-6. The refusal (`engine/data/readers/refusal.json`, a logistic model over the re-scorer's probability, the
-   decoder's log probability, the margin to the next candidate, the rank and an empty result, fitted on held-out
-   databases) serves the choice only when it is confident. Otherwise nothing is selected and the reply says how the
+6. The choice's probability for the chosen candidate is its confidence: under the threshold fitted on held-out
+   databases nothing is selected, and the reply says how the
    best-ranked candidate read the question: "I read this as “…”, but I'm not confident that is what you asked"
    (`engine/tables.py:unsure_clarification`). In an analysis (the chat), a declined question longer than
    `decomposition.ONE_QUERY_WORDS` words, past what the readers were trained to read as one query, asks for a
@@ -597,9 +600,9 @@ The repository has one owner per decision:
 - routing: `engine.routing.route()`;
 - relationship discovery: `engine.relations.discover_fks()`;
 - own-data SQL representation: the typed AST;
-- own-data query selection (the readers' candidates, pool execution, grounding, re-scoring and refusal):
+- own-data query selection (the readers' candidates, pool execution, grounding, re-scoring and the choice):
   `engine.tables.TableQuery.select_query`;
-- the readers (schema items, readings, builder, re-scorer, refusal): `engine.readers`; their training
+- the readers (schema items, readings, builder, re-scorer, choice): `engine.readers`; their training
   `training.readers`, and their installation `training.readers.promote`;
 - the one external model client (Gemini on Vertex AI): `engine.llm`;
 - dual SQL/Python plan, source emission, and parity: `engine.deterministic`;

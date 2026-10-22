@@ -220,7 +220,9 @@ def run_serving_benchmark() -> ServingMetrics:
     candidates = reading_search().pool(
         "Show the currency symbol for every order", SchemaGraph.from_tables(plan.tables, fks)
     )
-    gold = [("USD", "$"), ("EUR", "EUR"), ("GBP", "GBP")]
+    # The attribute alone, one row per order: "Show the X for every order" names what to show, as the country-name
+    # benchmark (regress/source_activation.py) expects; the owner chose this one convention for both (2026-10-22).
+    gold = [("$",), ("EUR",), ("GBP",)]
     strict = [candidate for candidate in candidates if _execute(plan.tables, candidate.sql) == gold]
     top1 = served_rows(plan.tables, "Show the currency symbol for every order", plan.explicit_fks) == gold
     record = plan.manifest.record() if plan.manifest else {}

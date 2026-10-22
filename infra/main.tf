@@ -287,9 +287,9 @@ resource "google_cloud_run_v2_service" "api" {
 
       # Sizing: 4 vCPU / 16Gi. On the 91 demo-dataset questions and the six-tab workbook, 4 vCPU
       # answered within 3% of 8 vCPU in total (+5% on the median question) with the same answers,
-      # peaking at 3.4 GiB before the readers (2026-10-05). The own-data readers add about 3.4 GB in
-      # bfloat16 (two large reading models, two base models; DECISIONS.md, 2026-10-21), which 8Gi held
-      # with little room; 16Gi leaves headroom for request-time tensors, 10 MB request bodies, and the
+      # peaking at 3.4 GiB before the readers (2026-10-05). The own-data readers add about 5.4 GB in
+      # bfloat16 (four large reading models, two base models; DECISIONS.md, 2026-10-21), which 8Gi cannot
+      # hold beside the rest; 16Gi leaves headroom for request-time tensors, 10 MB request bodies, and the
       # in-memory SQLite copies of uploaded sheets, for three requests at once.
       resources {
         limits = {

@@ -71,6 +71,37 @@ class Sources:
             self.questions[source] = [dict(q, question=q["SpiderSynQuestion"])
                                       for q in json.load(open(os.path.join(directory, name), encoding="utf-8"))]
 
+    def add_reworded(self, paths, readings_paths, out_dir):
+        """Training questions reworded by training.readers.rewordings (source "reworded"), each on its original's
+        database: one or more sets, concatenated in order and re-indexed from 0. Their readings, re-indexed the same
+        way, are written to <out_dir>/readings_reworded.jsonl, whose path is returned."""
+        rows, readings = [], []
+        for path, readings_path in zip(paths, readings_paths, strict=True):
+            offset = len(rows)
+            rows.extend(dict(json.loads(line), index=offset + i) for i, line in enumerate(open(path, encoding="utf-8")))
+            for line in open(readings_path, encoding="utf-8"):
+                record = json.loads(line)
+                readings.append(dict(record, index=offset + record["index"]))
+        self.questions["reworded"] = rows
+        os.makedirs(out_dir, exist_ok=True)
+        merged = os.path.join(out_dir, "readings_reworded.jsonl")
+        with open(merged, "w", encoding="utf-8", newline="\n") as sink:
+            sink.writelines(json.dumps(record) + "\n" for record in readings)
+        return merged
+
+    def add_lookups(self, directory):
+        """Training questions over lookup tables (training.readers.lookups, source "lookup"): their schemas and
+        their databases."""
+        self.tables.update({t["db_id"]: t for t in json.load(open(os.path.join(directory, "tables.json"),
+                                                                  encoding="utf-8"))})
+        self.questions["lookup"] = json.load(open(os.path.join(directory, "questions.json"), encoding="utf-8"))
+        self.db_dirs.append(os.path.join(directory, "dbs"))
+
+    def add_structures(self, directory):
+        """Training questions written for unmatched and ranked queries (training.readers.structures, source
+        "structure"), each on a training database already in the sources."""
+        self.questions["structure"] = json.load(open(os.path.join(directory, "questions.json"), encoding="utf-8"))
+
     def add_bird(self, directory):
         """BIRD's training set: its questions (source "bird_train"), schemas and databases."""
         tables = {t["db_id"]: t for t in json.load(open(os.path.join(directory, "train_tables.json"),
