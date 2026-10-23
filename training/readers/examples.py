@@ -18,7 +18,7 @@ usage: python -m training.readers.examples <readings_train.jsonl> <readings_cali
            [--bird <BIRD train dir> --bird-readings <readings_bird.jsonl>[,<readings_bird_share.jsonl>]]
            [--syn <Spider-Syn dir> --syn-readings <readings_syn.jsonl>]
            [--reworded <rewordings.jsonl>[,...] --reworded-readings <readings_reworded.jsonl>[,...]]
-           [--lookups <training.readers.lookups out dir>] [--structures <training.readers.structures out dir>]
+           [--lookups <training.readers.lookups out dir>] [--structures <training.readers.structures out dir>[,...]]
            [--no-anchors]
            [--tokenizer <dir or hf id>] [--spider-zip <zip>] [--db-dir <dir> ...]
 """
@@ -203,7 +203,7 @@ def main():
                                        "concatenated in order; requires --reworded-readings")
     ap.add_argument("--reworded-readings", help="their readings_reworded.jsonl, in the same order")
     ap.add_argument("--lookups", help="training.readers.lookups' output folder (lookup-table questions)")
-    ap.add_argument("--structures", help="training.readers.structures' output folder (unmatched and ranked questions)")
+    ap.add_argument("--structures", help="comma-separated training.readers.structures output folders, in order")
     ap.add_argument("--no-anchors", action="store_true", help="serialize stage 2 without the question's values")
     ap.add_argument("--tokenizer", default=TOKENIZER, help="the readers' tokenizer, for the token budget")
     add_arguments(ap)
@@ -226,8 +226,8 @@ def main():
         data.add_lookups(args.lookups)
         sources.insert(1, (os.path.join(args.lookups, "readings_lookup.jsonl"), "train"))
     if args.structures:
-        data.add_structures(args.structures)
-        sources.insert(1, (os.path.join(args.structures, "readings_structure.jsonl"), "train"))
+        merged = data.add_structures(args.structures.split(","), args.out_dir)
+        sources.insert(1, (merged, "train"))
     anchored = not args.no_anchors
     os.makedirs(args.out_dir, exist_ok=True)
     schemas = {}

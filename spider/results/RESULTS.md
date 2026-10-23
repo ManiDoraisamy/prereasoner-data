@@ -5,6 +5,31 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
+## Two readers trained on the grouped structure, a refitted choice: calibration 663 → 669 strict (2026-10-23)
+
+The readers bundle of v11a and v11b (slots a and b, unchanged) with v12b1 and v12a1 (slots c and d, trained on v11's
+data plus the grouped structure), the shipped stage 1 and re-scorer "f", and the choice refitted on that pool
+(threshold 0.1434 matched on calibration), installed by `training/readers/promote.py` at Hugging Face revision
+`fd08934c5a5d45c31ed776c56cbc2d240d2f9d89`, in the readers worktree at `d416f2c` plus this change
+(`worktree_dirty: true`). Same evaluator and flags as the entry below (`spider.probe.full_eval`, whole_db / served /
+SQL / cap 5,000 per table / 12 s soft budget / compose on / external models off), the threshold off. Calibration ran before the long-question rule of this change,
+which reaches no calibration question (the longest has 29 words). Records:
+`C:/work/prereasoner-readers-artifacts/evals/mixB/` (per-example calibration).
+
+**Calibration** (20 held-out Spider train databases, 1,053 questions):
+
+| System | Strict | Lenient | Answered | Wrong |
+|---|---|---|---|---|
+| Engine `b8bedde` | 418 (39.7%) | | 712 | 294 |
+| Bundle of 2026-10-22 (v11a, v11b, v11b1, v11a1), choice off | 663 (63.0%) | 746 (70.8%) | 1,053 | 390 |
+| **This bundle, choice off** | **669 (63.5%)** | 749 (71.1%) | 1,053 | 384 |
+| This bundle, choice at 0.1434 | 658 (62.5%) | | 952 | 294 |
+
+Transitions, this bundle (choice off) against the bundle of 2026-10-22: 25 wins, 19 losses, 644 unchanged right, 365
+unchanged wrong; against the engine: 308 wins, 57 losses, 361 unchanged right, 327 unchanged wrong. Out-of-fold
+choice on the calibration pools: 667 of 1,028 right (the four v11 readers 664, the four v12 readers 659). Prediction
+seconds (six threads): median 5.55, p90 10.69.
+
 ## Four readers trained on the structures they misread, and a choice: calibration 617 → 663 strict; frozen test 1,351 → 1,414 strict (2026-10-22)
 
 The readers bundle of four reading models v11a, v11a1 (anchored, seeds 0 and 1) and v11b, v11b1 (plain), the shipped

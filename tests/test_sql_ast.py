@@ -2282,6 +2282,30 @@ def test_a_long_question_the_readers_decline_is_decomposed():
     assert unsure.serve([PEOPLE], long_question)["clarify"] is True
 
 
+def test_a_question_past_the_calibrated_length_is_declined_however_confident():
+    """The choice's threshold was matched on calibration questions of at most 29 words, so its confidence says
+    nothing of a longer one: "Find the top 2 product categories by revenue and the top 2 customers by total spend,
+    then list each pair where ..." (44 words) was read as one ranking at 0.19, above the 0.1434 threshold
+    (2026-10-23). A confident choice of a question longer than decomposition.ONE_QUERY_WORDS words is declined: in
+    an analysis it asks for the decomposition proposal, outside one it is asked about. Contrast: the same confident
+    reading of the short question is served."""
+    from engine.decomposition import ONE_QUERY_WORDS
+    from engine.deterministic.context import analysis_execution_context
+
+    sql = "SELECT COUNT(*) FROM people WHERE Country = 'France'"
+    long_question = " ".join(["how many people come from France"] * (ONE_QUERY_WORDS // 6 + 1))
+    sure = _hermetic_planner(confident=True)
+    sure.pool = [_model_query(sure, sql, read_as="the number of people whose Country is France")]
+    with analysis_execution_context({"slug": "people", "revision": 1}, "c_" + "7" * 32):
+        decomposed = sure.serve([PEOPLE], long_question)
+        short = sure.serve([PEOPLE], "how many people come from France?")
+    assert decomposed["decomposition_required"]["reason"].count("compound") == 1, decomposed
+    assert decomposed["result"] is None and decomposed["selection"]["declined"] == 0, decomposed
+    assert decomposed["selection"]["confidence"] == 0.9, decomposed["selection"]
+    assert short["result"] is not None and short["selection"]["selected"] == 0, short
+    assert sure.serve([PEOPLE], long_question)["clarify"] is True
+
+
 def test_a_reading_the_readers_are_not_confident_of_is_asked_about():
     """When the readers' learned refusal (ReadingSearch.confident) is not confident of the reading selection
     chose, nothing is served, the selection records its confidence and the reading it declined, and the reply says
@@ -2915,6 +2939,7 @@ TESTS = [
     test_tabs_of_one_layout_are_read_as_one,
     test_a_sum_over_rows_its_joins_repeat_is_served_only_when_every_reading_is_one,
     test_a_long_question_the_readers_decline_is_decomposed,
+    test_a_question_past_the_calibrated_length_is_declined_however_confident,
     test_a_reading_the_readers_are_not_confident_of_is_asked_about,
     test_serving_preserves_repeated_source_rows_in_aggregates,
     test_a_number_of_a_numeric_field_is_the_field,

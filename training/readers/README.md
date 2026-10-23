@@ -33,9 +33,9 @@ Run every step as a module from the repository root: `python -m training.readers
 | `labels_share.py` | Share readings for BIRD's percentage questions. Each one is checked by execution: gold must equal 100 x built. | BIRD train | `readings_bird_share.jsonl` |
 | `labels_syn.py` | Gives Spider-Syn's rewordings their original question's gold readings. Leaves out the calibration databases. | split manifest, Spider-Syn, `readings_train.jsonl` | `readings_syn.jsonl` |
 | `rewordings.py` | Gemini rewords training questions into the families the readers misread, chosen from the gold readings: a measure named by an everyday word, an exclusion said as negated existence (both keep the original's readings), and the opposite extreme (MIN and MAX and a limited sort's direction swapped in the readings; kept only when Gemini's named phrase swap holds). Kept only when every stated value survives. Never on calibration or test databases. | split manifest, readings files, Spider, optional BIRD | `<dir>/rewordings.jsonl`, `readings_reworded.jsonl` |
-| `structures.py` | Questions for queries built on training databases in the two structures the readers misread: the rows that no referencing row matches (`NOT IN`, at most once filtered on a value of the referencing table or a table it references) and groups ranked by the total or average of a number (kept only when that ranking's first groups differ from the ranking by row count and no tie crosses the cut). Tables and columns come from foreign keys and values; choices by hash. Two Gemini-written questions per query, kept when they state the filter value and the number ranked. Never on calibration or test databases. | split manifest, Spider, optional BIRD | `<dir>/questions.json`, `readings_structure.jsonl` |
+| `structures.py` | Questions for queries built on training databases in the four structures the readers misread: the rows that no referencing row matches (`NOT IN`, at most once filtered on a value of the referencing table or a table it references); groups ranked by the total or average of a number (kept only when that ranking's first groups differ from the ranking by row count and no tie crosses the cut); the lowest, highest, average or total of a number; and each group beside its total or average, unranked (`--shapes` builds some of them). Tables and columns come from foreign keys and values; choices by hash. Two Gemini-written questions per query (one a search box's few words), kept when they state the filter value and the number ranked. Never on calibration or test databases. | split manifest, Spider, optional BIRD | `<dir>/questions.json`, `readings_structure.jsonl` |
 | `lookups.py` | Lookup-table questions on training databases: a categorical text column becomes codes, a new table names each code, and five query shapes (names, labelled, counted, filtered, total) get two Gemini-written questions each, kept when they state the query's value. | split manifest, Spider, optional BIRD | `<dir>/dbs/`, `tables.json`, `questions.json`, `readings_lookup.jsonl` |
-| `examples.py` | Builds stage-1 rows (one per question and table) and stage-2 rows (one per question, gold-pruned like serving), split `train`/`calibration`. `--no-anchors` serializes without the question's values. | readings files, Spider, optional BIRD, Syn, rewordings (`--reworded`), lookups (`--lookups`) and structures (`--structures`) | `<dir>/stage1.jsonl`, `<dir>/stage2.jsonl` |
+| `examples.py` | Builds stage-1 rows (one per question and table) and stage-2 rows (one per question, gold-pruned like serving), split `train`/`calibration`. `--no-anchors` serializes without the question's values. | readings files, Spider, optional BIRD, Syn, rewordings (`--reworded`), lookups (`--lookups`) and structures (`--structures`, comma-separated folders) | `<dir>/stage1.jsonl`, `<dir>/stage2.jsonl` |
 | `train.py` | The trainers. `schema_items` is stage 1; `readings` is stage 2 and keeps `--eval-from` and `--checkpointing`. | `stage1.jsonl` / `stage2.jsonl` | run dir: `model.pt`, `best.json`, `log.jsonl`, `tokenizer/` (with the encoder config), calibration predictions or outputs |
 | `outputs.py` | `load_run`; `Stage1` (serving's `schema_items`, `prune` and `row` over a run); `serving_row`; and, as a command, sharded CPU stage-2 outputs for a rows file. | a readings run, rows | outputs `.jsonl` |
 | `pruned.py` | Stage-2 rows through serving's stage-1 pruning, for calibration (with labels) or the Spider test set (without). | a stage-1 run, Spider | rows `.jsonl` |
@@ -124,7 +124,7 @@ python -m training.readers.examples ... $E/data_v7b (as v7a) --no-anchors
 - v4 and v5 were built before anchors and share outputs existed. `--no-anchors` is today's equivalent, and their
   rows now also carry `"share": 0`. Their exact bytes against the recorded hashes are not verified.
 
-### 2b. Written training questions and the v11 data (the shipped readers' data)
+### 2b. Written training questions and the v11 data (two of the shipped readers' data)
 
 Gemini (`engine/llm.py`; `EXTERNAL_LLM_ENABLED=1`, Vertex AI, model `gemini-3.8-flash`, thinking LOW) writes three
 sets on the training databases, never on calibration or test ones:
@@ -146,6 +146,19 @@ python -m training.readers.examples ... $E/readers_v11/data_v11b (as data_v11a) 
   are not used (the shipped stage 1 is the "v2" run).
 - Gemini at temperature 0 is not bit-reproducible across service versions; the recorded sets are the training
   data, kept with the experiment.
+
+### 2c. The v12 data (two of the shipped readers' data)
+
+v11's sets plus the grouped structure ("total revenue by title" was read as each title's number of rows):
+
+```
+python -m training.readers.structures $L/split1 $E/readers_v12/structures_grouped --shapes grouped --bird <BIRD> --workers 16 --db-dir <spider dbs> --db-dir <train_dbs_extra>
+python -m training.readers.examples ... $E/readers_v12/data_v12a (as data_v11a, with --structures $E/readers_v11/structures,$E/readers_v12/structures_grouped)
+python -m training.readers.examples ... $E/readers_v12/data_v12b (as data_v12a) --no-anchors
+```
+
+- 806 grouped questions on 195 databases (403 queries).
+- Stage-2 rows: 30,367 (`data_v12a` sha256 `1d8d5ee67fa98a20`, `data_v12b` `307eb5855fd0f4f7`).
 
 ### 3. Stage 1 (the "v2" stage-1 run)
 
@@ -179,7 +192,7 @@ python -m training.readers.shrink_state expand $E/readers_v5/out/stage2/small.pt
 - Readers that read without anchors (v5, v7b) need `{"anchored": false}` in their run's `reader.json`, which serving
   reads. The trainer does not write that file.
 
-### 4b. The shipped stage-2 readers v11a, v11a1, v11b, v11b1
+### 4b. Stage-2 readers v11a, v11a1, v11b, v11b1 (v11a and v11b shipped)
 
 ```
 python -m training.readers.lease full --experiment readers_v11a --data $E/readers_v11/data_v11a --seed 0 --epochs 13 --eval-from 5 --minutes 260
@@ -195,6 +208,24 @@ python -m training.readers.lease full --experiment readers_v11b1 --data $E/reade
 - The pods were L40S (v11a, v11b), L40 (v11b1) and A40 (v11a1) cards. Three runs' single-stream downloads stalled; their weights came
   back with `pull_parts.sh` (md5-checked). The community host that restarted its containers is left out by
   leaving the RTX 6000 Ada out of community attempts.
+
+### 4c. Stage-2 readers v12a, v12a1, v12b, v12b1 (v12a1 and v12b1 shipped)
+
+```
+python -m training.readers.lease full --experiment readers_v12a --data $E/readers_v12/data_v12a --seed 0 --epochs 13 --eval-from 5 --minutes 260
+python -m training.readers.lease full --experiment readers_v12a1 --data $E/readers_v12/data_v12a --seed 1 --epochs 13 --eval-from 5 --minutes 260
+python -m training.readers.lease full --experiment readers_v12b --data $E/readers_v12/data_v12b --seed 0 --epochs 13 --eval-from 5 --minutes 260
+python -m training.readers.lease full --experiment readers_v12b1 --data $E/readers_v12/data_v12b --seed 1 --epochs 13 --eval-from 5 --minutes 260
+```
+
+- Selected checkpoints (gold-pruned calibration, every reading right): v12a epoch 13 (0.228), v12a1 epoch 12
+  (0.236), v12b epoch 12 (0.192), v12b1 epoch 11 (0.197).
+- The pods were A40 (v12a), L40S (v12a1, v12b) and L40 (v12b1) cards. Every lease ran detached on its pod
+  (`runpod_api` `_run_detached`); each run's weights came back with `pull_parts.sh`, after which its lease refuses to
+  train it again.
+- The shipped bundle keeps v11a and v11b in slots `a` and `b` and puts v12b1 in `c`, v12a1 in `d`: of the four-reader
+  pools compared, this one's choice is right on the most calibration questions (667 of 1,028 out of fold, against
+  664 for the four v11 readers, 659 for the four v12 readers, and 655 for v11a with v12b, v12b1 and v12a1).
 
 ### 5. Relayout of v5 and v6 (before the share outputs)
 

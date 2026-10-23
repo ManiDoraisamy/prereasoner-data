@@ -429,8 +429,10 @@ class TableQuery:
            joins repeat (engine/sql_grounding.py) is chosen only when every one does; and a registered
            calculation intent (engine/calculations) takes the best-ranked candidate that satisfies it.
         4. The readers' learned refusal serves the choice only when it is confident of it
-           (``ReadingSearch.confidence``, recorded as ``confidence``); otherwise nothing is selected, the
-           refused choice is recorded as ``declined``, and the reply says how it read the question.
+           (``ReadingSearch.confidence``, recorded as ``confidence``) and the question is no longer than the
+           questions its threshold was matched on (engine/decomposition.py:ONE_QUERY_WORDS); otherwise nothing is
+           selected, the refused choice is recorded as ``declined``, and the reply says how it read the question
+           (or, for a long question in an analysis, asks for the decomposition proposal).
 
         This is the one own-data selection: serving, decomposition leaves, the Spider evaluator and
         the offline regression gate all call it. The decomposition probe reads only its first stage
@@ -459,6 +461,7 @@ class TableQuery:
         from dataclasses import replace
 
         from engine.calculations import select_calculation_candidate, detect_calculations
+        from engine.decomposition import one_query_length
         from engine.readers.search import reading_search
         from engine.sql_dates import realizes_dates, served_date_phrases
         from engine.sql_expansion import tokens as question_tokens
@@ -491,7 +494,11 @@ class TableQuery:
                                   tuple(calculation_satisfied), tuple(date_satisfied), double_counted)
         selected = select_ranked_candidate(ranking, calculation_satisfied, date_satisfied, double_counted)
         confidence = readers.confidence(pool, scores, shapes, selected) if selected is not None else None
-        if not readers.confident(confidence):
+        # The choice's confidence speaks only for questions as long as those its threshold was matched on: a longer
+        # one is declined however confident (engine/decomposition.py:ONE_QUERY_WORDS). "Find the top 2 product
+        # categories by revenue and the top 2 customers by total spend, then list each pair where ..." was read as
+        # one ranking at 0.19 by the 2026-10-23 bundle, above its threshold of 0.1434.
+        if not readers.confident(confidence) or not one_query_length(question):
             return replace(selection, confidence=confidence, declined=selected)
         return replace(selection, selected=selected, confidence=confidence)
 

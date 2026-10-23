@@ -137,22 +137,29 @@ def single_branch(candidate) -> bool:
     return isinstance(candidate.query, SelectQuery)
 
 
-# Questions longer than this many words lie past what the readers were trained to read as one query: 99% of their
-# training questions have at most 27 words, and the multi-goal prompts the shipped complex datasets ask have 39 to 44.
+# Questions longer than this many words lie past what the readers read as one query: 99% of their training
+# questions have at most 27 words, the longest calibration question has 29, so the choice's confidence and its
+# threshold say nothing of a longer one, and the multi-goal prompts the shipped complex datasets ask have 39 to 44.
 ONE_QUERY_WORDS = 30
 
 
-def declined_compound(selection, question) -> dict[str, Any] | None:
-    """The decomposition a long question needs when the readers' refusal declined every reading of it, or None.
+def one_query_length(question) -> bool:
+    """Whether ``question`` is no longer than the readers read as one query (``ONE_QUERY_WORDS`` words)."""
+    return len(re.findall(r"[^\W_]+", str(question))) <= ONE_QUERY_WORDS
 
-    A question longer than ``ONE_QUERY_WORDS`` words that the readers cannot read confidently as one query is read
-    as the bounded subquestions of a decomposition proposal instead, each short enough to read; a short one is
-    asked about (engine/tables.py:unsure_clarification)."""
+
+def declined_compound(selection, question) -> dict[str, Any] | None:
+    """The decomposition a long question needs when the readers' refusal declined it, or None.
+
+    The readers decline every question longer than ``ONE_QUERY_WORDS`` words, however confident their choice
+    (engine/tables.py:TableQuery._choose); such a question is read as the bounded subquestions of a decomposition
+    proposal instead, each short enough to read. A short one they decline is asked about
+    (engine/tables.py:unsure_clarification)."""
     if selection is None or selection.selected is not None or selection.declined is None:
         return None
-    if len(re.findall(r"[^\W_]+", str(question))) <= ONE_QUERY_WORDS:
+    if one_query_length(question):
         return None
-    return {"reason": "the readers read this long compound question as no one query confidently"}
+    return {"reason": "the readers read a question this long as a compound question, never as one query"}
 
 
 def selected_decomposition_required(candidate) -> dict[str, Any] | None:

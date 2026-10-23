@@ -24,7 +24,7 @@ from __future__ import annotations
 
 from engine.sql_ast import (
     DATE_PARTS, Aggregate, BinaryExpr, BooleanExpr, ColumnRef, Comparison, DatePart, ExistsPredicate, InPredicate,
-    Literal, Lower, OrderTerm, ScalarSubquery, SelectItem, SelectQuery, SetQuery, Star,
+    Literal, Lower, OrderTerm, ScalarSubquery, SelectItem, SelectQuery, SetQuery, SQLType, Star,
 )
 
 AGGREGATES = ("plain", "COUNT", "SUM", "AVG", "MIN", "MAX")
@@ -191,6 +191,31 @@ def _value(value, subquery):
     return Literal(value)
 
 
+def value_kind(expr):
+    """"number" or "text" for a column of either type (or an aggregate of one), else None (unknown, dates)."""
+    if isinstance(expr, Aggregate):
+        return "number" if expr.function in ("COUNT", "SUM", "AVG") else value_kind(expr.operand)
+    if isinstance(expr, ColumnRef):
+        if expr.type in (SQLType.INTEGER, SQLType.REAL):
+            return "number"
+        if expr.type == SQLType.TEXT:
+            return "text"
+    return None
+
+
+def _same_kind(left, subquery) -> None:
+    """A set membership compares values of one kind: "product id is not among (the product names Paris customers
+    bought)" compares a number with names, which never match, so every row passes (2026-10-22). The search reads
+    such a membership again on the column the listed values are values of (engine.readers.search.referenced)."""
+    inner = subquery.query if isinstance(subquery, ScalarSubquery) else subquery
+    shown = getattr(inner, "select", ())
+    if not shown:
+        return
+    kinds = {value_kind(left), value_kind(shown[0].expression)}
+    if kinds == {"number", "text"}:
+        raise NotReadable("in-compares-number-with-text")
+
+
 def _predicate(conditions, conj):
     if not conditions:
         return None
@@ -223,6 +248,7 @@ def _build_block(graph, block: dict, subquery=None, joins_choice: int = 0) -> Se
         if operator in ("IN", "NOT IN"):
             if subquery is None:
                 raise NotReadable("missing-subquery")
+            _same_kind(left, subquery)
             where.append(InPredicate(left, subquery.query if isinstance(subquery, ScalarSubquery) else subquery,
                                      negated=operator == "NOT IN"))
         elif operator in ("LIKE", "NOT LIKE") and isinstance(value, str) and isinstance(left, ColumnRef):

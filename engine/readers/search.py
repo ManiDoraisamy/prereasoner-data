@@ -25,7 +25,7 @@ from pathlib import Path
 from engine.config import DATA_DIR
 from engine.readers import decode as decoding
 from engine.readers.read_as import read_as
-from engine.readers.readings import build
+from engine.readers.readings import build, value_kind
 from engine.readers.text import TOP_TABLES, Schema, fit, table_text
 from engine.sql_ast import render_query
 from engine.sql_candidate import ScoredQuery
@@ -138,7 +138,7 @@ class ReadingSearch:
             row = self.row(question, schema, *kept, anchored=anchored)
             output = models.read_outputs(model, self.tokenizer, row)
             for rank, (score, readings) in enumerate(decoding.candidates(output, row, graph, CANDIDATES)):
-                for reading in (readings, *either(readings, named)):
+                for reading in (readings, *either(readings, named), *referenced(readings, graph)):
                     try:
                         query = build(reading, graph)
                         sql = render_query(query)
@@ -209,6 +209,53 @@ def either(readings, named):
     values = named.get(column, [])
     if len(values) > 1 and {value for _, _, value in block["where"]} < set(values):
         yield {**readings, "blocks": [{**block, "where": [[column, "=", value] for value in values], "conj": "OR"}]}
+
+
+def referenced(readings, graph):
+    """The membership read on the column its listed values are values of, when the reading compares values of two
+    kinds. "List the product names that no customer from Paris has bought" was read by every reader as "product id
+    is not among (the product names Paris customers bought)" (2026-10-23), which matches no product, so the builder
+    refuses it (readings._same_kind); the names a purchase lists reference products.product_name, so the products
+    not among them are the products whose name is not among them. The column is the listed column itself when it
+    belongs to the compared column's table, else the one column of that table a foreign key pairs it with. Yields
+    nothing for any other reading."""
+    if readings["structure"] != "NESTED":
+        return
+    outer, inner = readings["blocks"]
+    if len(inner["select"]) != 1 or inner["select"][0][1] != "plain":
+        return
+    listed = inner["select"][0][2]
+    listed_column = graph.column_map.get(tuple(listed.split(".", 1))) if "." in listed else None
+    if listed_column is None:
+        return
+    where, changed = [], False
+    for column, operator, value in outer["where"]:
+        compared = graph.column_map.get(tuple(column.split(".", 1))) if "." in column else None
+        partner = None
+        if (operator in ("IN", "NOT IN") and compared is not None
+                and {value_kind(compared.ref), value_kind(listed_column.ref)} == {"number", "text"}):
+            partner = _partner(graph, listed_column.ref, compared.ref.table)
+        if partner is not None and value_kind(partner) == value_kind(listed_column.ref):
+            column, changed = f"{partner.table}.{partner.name}", True
+        where.append([column, operator, value])
+    if changed:
+        yield {**readings, "blocks": [{**outer, "where": where}, inner]}
+
+
+def _partner(graph, listed, table):
+    """The column of ``table`` whose values ``listed`` holds: itself when it is of that table, else the one column a
+    single-column foreign key pairs it with (None when none or more than one does)."""
+    if listed.table == table:
+        return listed
+    partners = set()
+    for key in graph.foreign_keys:
+        if not key.additional_columns:
+            for mine, other in ((key.from_column, key.to_column), (key.to_column, key.from_column)):
+                if mine == listed and other.table == table:
+                    partners.add(other.name)
+    if len(partners) != 1:
+        return None
+    return graph.column_map[(table, partners.pop())].ref
 
 
 _SEARCH = None

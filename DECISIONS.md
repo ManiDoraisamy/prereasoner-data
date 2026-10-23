@@ -4572,3 +4572,52 @@ the two:
 by the plain ones, and the re-scorer picks the highest: it learned on pools where the highest dominates. "maximum
 notice_days" is right only because of the same lean. A re-scorer trained on these readers' own pools is the next
 step. Weights: Hugging Face revision `d4949122da66f04e8fce1ea68f3e2e0ecb9a0327`.
+
+## Two readers trained on the grouped structure; a membership compares one kind of value; long questions are decomposed (2026-10-23)
+
+The bundle above passed every gate on the Windows development machine and failed two on the Linux build image,
+same weights and code: "total revenue by title" (`regress.run_regression --offline`: one reader of four read the
+total, and the choice declined it at 0.129 against 0.1421) and the Paris negated-existence prompt
+(`tests.test_complex_datasets`). The gates are single questions, and bfloat16 matrix products on another CPU move
+the ones decided by small margins. Each fix widens a margin; none is per platform:
+
+- **The grouped structure** (`training/readers/structures.py`, `grouped`): each group beside the total or average
+  of a number, unranked, as "total revenue by title" asks. 806 questions on 195 training databases, built and worded
+  as the other structures; 30,367 stage-2 rows. Four readers trained on v11's data plus these (v12a, v12a1, v12b,
+  v12b1; `training/readers/README.md` 2c, 4c). The bundle keeps v11a and v11b and takes v12b1 and v12a1 (slots c and
+  d): of the four-reader pools compared, its choice is right on the most calibration questions out of fold (667 of
+  1,028; the four v11 readers 664, the four v12 readers 659). "total revenue by title" is now read by three readers
+  of four (confidence 0.64, the threshold 0.1434).
+- **A membership compares values of one kind** (`engine/readers/readings.py`, `engine/readers/search.py`
+  `referenced`): every reader read "List the product names that no customer from Paris has bought" as "product id
+  is not among (the product names Paris customers bought)". A number never equals a name, so every product passed.
+  The builder refuses a membership that compares a number column with a text column, and the search reads it again
+  on the column the listed values are values of: the listed column itself when it belongs to the compared table,
+  else the one column a foreign key pairs it with (purchases.product_name -> products.product_name). The prompt is
+  answered with Delta and Omega at confidence 0.78, its read-as line naming the product name.
+- **Questions past the readers' calibrated length are declined** (`engine/tables.py` `TableQuery._choose`,
+  `engine/decomposition.py` `ONE_QUERY_WORDS`): the new bundle read the 44-word category-gaps prompt ("Find the top
+  2 product categories by revenue and the top 2 customers by total spend, then list each ... pair ...") as one
+  ranking at 0.19, above its threshold. The threshold was matched on calibration questions of at most 29 words, so
+  it says nothing of a longer one. A question longer than 30 words is declined however confident the choice: in an
+  analysis it asks for the decomposition proposal, as a declined long question already did, and outside one it is
+  asked about. It reaches no calibration question and 2 of the 2,147 test questions (counted without reading them).
+- **The choice refitted** on the new pool (`choice.json`), threshold matched on calibration at 0.1434: answered 952
+  of 1,053, 658 right, 294 wrong (the engine's 294).
+
+**Measured** (`spider/results/RESULTS.md`), served through `spider.probe.full_eval`, whole_db:
+
+- Calibration (1,053): 669 strict (63.5%; 749 lenient) against 663 for the bundle above; 25 wins and 19 losses
+  against it, 308 wins and 57 losses against the engine.
+- Gates in the Linux build image (Python 3.11), the bundle installed local-only: `regress.run_regression
+  --offline` 13 of 13 and every hermetic suite (`tests.test_complex_datasets` 10 of 10, `tests.test_enrichment`
+  37 of 37) but `tests.test_release`, which needs the published revision and passes with it. On Windows:
+  `regress.run_regression --offline` 13 of 13, `tests.test_complex_datasets` 10 of 10, and the live demo-dataset
+  gate (`tests.test_datasets`) 92 of 92.
+
+**Known gaps.** "minimum amount" over a one-table sheet is still answered with the highest: more of the readers'
+readings build the lowest (share 1.0 against 0.75), and the choice, led by the re-scorer's logit, picks the highest
+at 0.25. A re-scorer trained on these readers' own pools is the next step. A long single-goal question is now sent
+to decomposition, which needs two to four subquestions, so the chat answers "Try asking the parts as separate
+questions" where it could have answered it whole. Weights: Hugging Face
+revision `fd08934c5a5d45c31ed776c56cbc2d240d2f9d89`.

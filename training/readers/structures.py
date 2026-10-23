@@ -1,4 +1,4 @@
-"""Training questions written for queries built on the training databases, in three structures the readers misread:
+"""Training questions written for queries built on the training databases, in four structures the readers misread:
 
   unmatched  the rows of a table that no row of a table referencing it matches, at most once filtered on a value of
              that table or of a table it references:
@@ -15,6 +15,9 @@
              SELECT MAX(t.m) FROM t [WHERE t.c = 'value']. The readers read "maximum notice_days" as a total and,
              before the opposite rewordings, "minimum amount" as the highest (2026-10-22). A lowest or highest is
              kept only when the rows it reads hold more than one value.
+  grouped    each group beside the total (or average) of a number, with no ranking: SELECT g, SUM(c.m) FROM c JOIN p
+             ... GROUP BY g. "total revenue by title" was read as the number of rows of each title by three readers
+             of four, and by all four on the build machine's CPU (2026-10-22).
 
 The tables and columns are chosen from each database's foreign keys and its values: a label is a mostly distinct
 text column; a category a text column of 2 to 40 repeated values; a number a numeric column of more than two values
@@ -34,7 +37,7 @@ Outputs in <out dir>: questions.json (source "structure") and readings_structure
 training.readers.examples --structures <out dir>.
 
 usage: python -m training.readers.structures <split dir> <out dir> [--bird <BIRD train dir>] [--workers 8]
-           [--limit N]
+           [--limit N] [--shapes grouped,...]
 """
 import argparse
 import hashlib
@@ -57,7 +60,8 @@ NOT_A_MEASURE = re.compile(
 SHARE = re.compile(r"percent|rate|ratio|pct", re.I)
 LIMITS = (1, 2, 3, 5)
 MAX_PAIRS = 12                                     # (group, number) pairings tried per joined table
-BUDGET = {"unmatched": 3, "unmatched_filtered": 5, "ranked": 6, "aggregate": 4}     # queries kept per database
+# queries kept per database, of each shape
+BUDGET = {"unmatched": 3, "unmatched_filtered": 5, "ranked": 6, "aggregate": 4, "grouped": 4}
 FUNCTIONS = ("MIN", "MAX", "AVG", "SUM")
 WORDS = {"MIN": "lowest", "MAX": "highest", "AVG": "average", "SUM": "total", "COUNT": "number of rows"}
 SYSTEM = ("You write the questions people type to a spreadsheet assistant. Given a database schema, a query and its "
@@ -70,6 +74,8 @@ HINTS = {
     "ranked": "The query ranks {table} by the {measure} of {column}. Name that quantity the way a person would (an "
               "everyday word for it when one fits) and say how many are wanted.",
     "aggregate": "The query computes the {measure} of {column}{filtered}.",
+    "grouped": "The query gives the {measure} of {column} for each {group} of {table}. Name that quantity the way a "
+               "person would (an everyday word for it when one fits).",
 }
 
 
@@ -235,6 +241,38 @@ def ranked(db):
     return built
 
 
+def grouped(db):
+    """Candidate grouped totals of a database: each group of a referenced table (or a table's own category) beside the
+    total or average of a number (SUM three times in four, by hash; AVG for a share), shown group first or total first
+    by hash, with no ranking: SELECT g, SUM(c.m) FROM c JOIN p ... GROUP BY g, 2 to 30 groups."""
+    sources = [(child, f" JOIN {_quote(parent)} ON {_quote(child)}.{_quote(ref)} = {_quote(parent)}.{_quote(key)}",
+                parent, [c for c in [db.label(parent)] + db.categories(parent) if c])
+               for child, ref, parent, key in db.references]
+    sources += [(table["name"], "", table["name"], db.categories(table["name"])) for table in db.capped.values()]
+    built = []
+    for child, join, group_table, groups in sources:
+        pairs = sorted(((group, measure) for group in groups for measure in db.measures(child)),
+                       key=lambda pair: _hash(db.db_id, child, group_table, *pair, "grouped"))
+        for group, measure in pairs[:MAX_PAIRS]:
+            pick = _hash(db.db_id, child, group_table, group, measure, "grouped")
+            function = "AVG" if pick % 4 == 0 or SHARE.search(measure) else "SUM"
+            total = f"{function}({_quote(child)}.{_quote(measure)})"
+            g = f"{_quote(group_table)}.{_quote(group)}"
+            shown = f"{g}, {total}" if (pick // 4) % 2 else f"{total}, {g}"
+            sql = f"SELECT {shown} FROM {_quote(child)}{join} GROUP BY {g}"
+            try:
+                rows = db.run(f"SELECT {g}, {total} FROM {_quote(child)}{join} GROUP BY {g}")
+            except Exception:                      # noqa: BLE001 - a pairing this database cannot run
+                continue
+            if not 2 <= len(rows) <= 30 or any(row[0] is None or row[1] is None for row in rows):
+                continue
+            built.append({"shape": "grouped", "value": None, "table": group_table,
+                          "alternatives": ("grouped", child, group_table, group, measure), "sql": sql,
+                          "hint": HINTS["grouped"].format(table=group_table, group=group, column=f"{child}.{measure}",
+                                                          measure="total" if function == "SUM" else "average")})
+    return built
+
+
 def aggregated(db):
     """Candidate aggregate queries of a database: for each number of a table, its lowest, highest, average or total
     (chosen by hash), at most once filtered on a category of that table; and each table's number of rows of one
@@ -272,7 +310,7 @@ def queries(db):
     """The database's runnable, readable queries with their first rows and readings: at most BUDGET[shape] of each
     shape, chosen by hash."""
     jobs = []
-    candidates = sorted(unmatched(db) + ranked(db) + aggregated(db),
+    candidates = sorted(unmatched(db) + ranked(db) + aggregated(db) + grouped(db),
                         key=lambda c: _hash(db.db_id, c["shape"], *c["alternatives"]))
     kept, done = {}, set()
     for candidate in candidates:
@@ -341,6 +379,7 @@ def main():
     ap.add_argument("--bird", help="BIRD's train directory")
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--limit", type=int, help="at most this many databases (a trial)")
+    ap.add_argument("--shapes", default=",".join(BUDGET), help="comma-separated shapes to write (default: all)")
     add_arguments(ap)
     args = ap.parse_args()
     manifest = json.load(open(os.path.join(args.split_dir, "manifest.json")))
@@ -359,7 +398,7 @@ def main():
             print(f"skipped {db_id}: {type(exc).__name__}")
             continue
         schema = _schema_text(db)
-        jobs.extend({**job, "schema": schema} for job in queries(db))
+        jobs.extend({**job, "schema": schema} for job in queries(db) if job["shape"] in args.shapes.split(","))
         db.connection.close()
     with ThreadPoolExecutor(max_workers=args.workers) as pool:
         answered = list(pool.map(ask, jobs))

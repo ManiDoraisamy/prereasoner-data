@@ -323,7 +323,11 @@ builder makes each reading a typed AST.
    shown, grouped or sorted by again; a column a condition matches with the question's value (= or LIKE) is
    counted by its rows, never by its distinct values; and a pointed value drops the marks of the list it stood in. A reading that
    compares one column with one value, when the question names more of that column's values (matched on the data),
-   also enters the pool read as either value (`search.either`: a row holds one value of a column).
+   also enters the pool read as either value (`search.either`: a row holds one value of a column). A membership
+   (`IN`, `NOT IN`) that compares a number column with a text column matches nothing as read, so the builder
+   refuses it; it enters the pool read on the column the listed values are values of: the listed column itself
+   when it belongs to the compared table, else the one column a foreign key pairs it with (`search.referenced`:
+   "product id is not among the product names Paris customers bought" is read on the product name).
 3. The builder (`readings.build`) makes each reading a typed AST: the tables a block uses are joined along
    foreign keys; plain shown and sorted columns join a grouped block's GROUP BY, except a number column it sorts by
    but neither groups nor shows, which is each group's total ("the top 2 customers by total spend"); groups with no

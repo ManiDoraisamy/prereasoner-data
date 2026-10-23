@@ -162,6 +162,65 @@ def test_a_named_period_groups_by_the_period():
                     "how many orders on each date?")[1] == ["orders.placed"]
 
 
+def test_a_set_membership_compares_values_of_one_kind():
+    """ "List the product names that no customer from Paris has bought" was read as "product id is not among (the
+    product names Paris customers bought)" (2026-10-22): a number never equals a name, so every product passed. The
+    builder refuses a membership that compares a number with text; the same reading over the names builds."""
+    products = {"name": "products", "columns": ["product_id", "product_name"],
+                "rows": [[1, "Alpha"], [2, "Beta"], [3, "Delta"]]}
+    purchases = {"name": "purchases", "columns": ["purchase_id", "city", "product_name"],
+                 "rows": [[1, "Paris", "Alpha"], [2, "Lyon", "Beta"]]}
+    graph = graph_of(products, purchases)
+
+    def readings(column):
+        return {"structure": "NESTED", "blocks": [
+            block(tables=["products"], select=[[0, "plain", "products.product_name", False]],
+                  where=[[column, "NOT IN", {"block": 1}]]),
+            block(tables=["purchases"], select=[[0, "plain", "purchases.product_name", False]],
+                  where=[["purchases.city", "=", "Paris"]])]}
+    try:
+        build(readings("products.product_id"), graph)
+    except NotReadable as exc:
+        assert "number-with-text" in str(exc), exc
+    else:
+        raise AssertionError("a number was compared with names")
+    query = build(readings("products.product_name"), graph)
+    assert sorted(rows_of(render_query(query), products, purchases)) == [("Beta",), ("Delta",)]
+
+
+def test_a_membership_of_two_kinds_is_read_on_the_column_its_values_reference():
+    """Every reader read "List the product names that no customer from Paris has bought" as "product id is not among
+    (the product names Paris customers bought)" (2026-10-23). The search reads it again on the column the listed
+    names reference (purchases.product_name -> products.product_name), or on the listed column itself when the
+    subquery lists the outer table's own column; a membership of one kind, or one no foreign key pairs, has no
+    variant."""
+    from engine.readers.search import referenced
+    products = {"name": "products", "columns": ["product_id", "product_name"],
+                "rows": [[1, "Alpha"], [2, "Beta"], [3, "Delta"]]}
+    purchases = {"name": "purchases", "columns": ["purchase_id", "city", "product_name", "product_ref"],
+                 "rows": [[1, "Paris", "Alpha", 1], [2, "Lyon", "Beta", 2]]}
+    by_name = graph_of(products, purchases, fks=[("purchases", "product_name", "products", "product_name")])
+
+    def readings(column, listed, inner_tables=("purchases",)):
+        return {"structure": "NESTED", "blocks": [
+            block(tables=["products"], select=[[0, "plain", "products.product_name", False]],
+                  where=[[column, "NOT IN", {"block": 1}]]),
+            block(tables=list(inner_tables), select=[[0, "plain", listed, False]],
+                  where=[["purchases.city", "=", "Paris"]])]}
+    (variant,) = referenced(readings("products.product_id", "purchases.product_name"), by_name)
+    assert variant["blocks"][0]["where"] == [["products.product_name", "NOT IN", {"block": 1}]], variant
+    assert sorted(rows_of(render_query(build(variant, by_name)), products, purchases)) == [("Beta",), ("Delta",)]
+    # The subquery lists the outer table's own names: the membership compares them.
+    (joined,) = referenced(readings("products.product_id", "products.product_name", ("products", "purchases")),
+                           by_name)
+    assert joined["blocks"][0]["where"][0][0] == "products.product_name", joined
+    # One kind already (ids among the ids purchases reference): the reading stands as read.
+    by_id = graph_of(products, purchases, fks=[("purchases", "product_ref", "products", "product_id")])
+    assert list(referenced(readings("products.product_id", "purchases.product_ref"), by_id)) == []
+    # Two kinds, and no foreign key pairs the listed names with a products column: nothing to read it on.
+    assert list(referenced(readings("products.product_id", "purchases.city"), by_name)) == []
+
+
 def test_a_named_period_groups_the_date_when_the_readers_group_by_a_row_key():
     """ "how many orders per month?" was read as "for each order id" (one group per order) by every reader of
     v11, and declined (2026-10-22): when the question asks for one row per month and the readers group only by
@@ -412,7 +471,8 @@ def test_built_structures_exclude_and_rank_by_the_total():
     """training.readers.structures: an exclusion filtered through a referenced table drops what that value's rows
     reference and reads as NOT IN a subquery; one value of a filter is kept; a ranking is built only when ranking by
     the number gives other first groups than ranking by row count; an aggregate reads a number of one table or a
-    category's number of rows; a question must state the value and the number."""
+    category's number of rows; a grouped total shows each group beside its total, unranked; a question must state the
+    value and the number."""
     import tempfile
 
     from regress.sql_import import import_sql
@@ -432,6 +492,11 @@ def test_built_structures_exclude_and_rank_by_the_total():
         aggregates = {c["sql"] for c in structures.aggregated(db)}
         assert any(sql.endswith('("purchases"."line_total") FROM "purchases"') for sql in aggregates), aggregates
         assert 'SELECT COUNT(*) FROM "customers" WHERE "customers"."city" = \'Lyon\'' in aggregates, aggregates
+        # each category of products beside its purchases' total (or average), unranked
+        grouped = [c for c in structures.grouped(db) if '"products"."category"' in c["sql"]]
+        assert grouped and all("ORDER BY" not in c["sql"] and "LIMIT" not in c["sql"] for c in grouped), grouped
+        totals = dict((row if isinstance(row[0], str) else row[::-1]) for row in db.run(grouped[0]["sql"]))
+        assert set(totals) == {"Toys", "Home"}, totals
         db.connection.close()
         # each product's purchases share one line total that grows with their number: every ranking of products by
         # a total or an average is the ranking by row count, so no ranking is built
@@ -453,6 +518,8 @@ TESTS = [
     test_two_named_values_of_one_column_read_either,
     test_a_named_period_groups_by_the_period,
     test_a_named_period_groups_the_date_when_the_readers_group_by_a_row_key,
+    test_a_set_membership_compares_values_of_one_kind,
+    test_a_membership_of_two_kinds_is_read_on_the_column_its_values_reference,
     test_the_highest_of_the_one_ranked_column_is_its_max,
     test_a_share_divides_the_part_by_the_whole,
     test_a_share_keeps_the_whole_conditions_in_both,
