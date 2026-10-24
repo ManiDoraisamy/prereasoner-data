@@ -48,6 +48,23 @@ this bundle answers 4 fewer test questions than the bundle of 2026-10-22 and is 
 (eight threads): median 3.48, p90 7.17. The bundle was chosen on calibration and the product's demo questions, not on
 the test.
 
+**Against hosted models on the same 2,147 questions**, paired by question (the hosted runs of 2026-10-19 in the entry
+of 2026-10-21: each model wrote SQL from CREATE TABLE statements with 3 example rows and the foreign keys; same capped
+databases, executor and `spider_eval.compare`; totals only):
+
+| | This bundle | Gemini 3.8 Flash | Sonnet 5.5 |
+|---|---|---|---|
+| Strict, all 2,147 | 1,447 (67.4%) | 1,821 (84.8%) | 1,806 (84.1%) |
+| Lenient | 1,625 (75.7%) | 1,946 (90.6%) | 1,950 (90.8%) |
+| Easy / medium / hard / extra (470 / 857 / 463 / 357) | 84.9 / 69.5 / 62.6 / 45.4% | 92.1 / 81.1 / 85.3 / 83.5% | 91.7 / 81.1 / 84.7 / 80.7% |
+| Strict on the 1,968 the choice answers at 0.1405 | 1,419 (72.1%) | 1,692 (86.0%) | 1,682 (85.5%) |
+| Strict on the 179 it declines | | 129 | 124 |
+
+Paired with Gemini: 1,351 both right, 96 only this bundle, 470 only Gemini, 230 neither; with Sonnet: 1,346, 101,
+460, 240. Any of the three is right on 1,955. Seconds per question: this bundle median 3.48 on eight local threads;
+Gemini 2.40, Sonnet 1.44 (API). The hosted models' inputs differ from the engine's, and their training data may include
+the published Spider test, so this compares the task, not the models alone.
+
 ## Two readers trained on the grouped structure, a refitted choice: calibration 663 → 669 strict (2026-10-23)
 
 The readers bundle of v11a and v11b (slots a and b, unchanged) with v12b1 and v12a1 (slots c and d, trained on v11's
