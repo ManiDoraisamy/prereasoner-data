@@ -5,7 +5,7 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
-## Two readers trained on sheet language and every column: calibration 669 → 667 strict (2026-10-24)
+## Two readers trained on sheet language and every column: calibration 669 → 667 strict; frozen test 1,414 → 1,447 strict (2026-10-24)
 
 The readers bundle of v11a and v11b (slots a and b) with v13b1 and v13a1 (slots c and d, trained on the v13 data:
 `training/readers/README.md` 2d, 4d), the shipped stage 1 and re-scorer "f", and the choice refitted on that pool with
@@ -14,7 +14,8 @@ installed by `training/readers/promote.py` at Hugging Face revision `999b50a9d70
 readers worktree at `cb30447` plus this change (`worktree_dirty: true`). Same evaluator and flags as the entry below,
 the threshold off. This change's layout-copy and shared-header rules reach no calibration or test question (no
 database of either holds layout copies, and Spider has no repeated headers). Records:
-`C:/work/prereasoner-readers-artifacts/evals/v13s/` (per-example calibration).
+`C:/work/prereasoner-readers-artifacts/evals/v13s/` (per-example calibration; the test's totals only). The test ran on
+the code committed as `f58b839`, released as `304e19b` (a dependency-lock change only).
 
 **Calibration** (20 held-out Spider train databases, 1,053 questions):
 
@@ -29,6 +30,23 @@ Transitions, this bundle (choice off) against the bundle of 2026-10-23: 19 wins,
 unchanged wrong (within noise); against the engine: 301 wins, 52 losses, 366 unchanged right, 334 unchanged wrong.
 Prediction seconds (eight threads): median 4.21, p90 8.35. Out-of-fold choice on the calibration pools: 666 of 1,028
 right (668 with the candidates rebuilt by the final builder); all four readers trained on the v13 data, 649.
+
+**Frozen Spider test** (2,147 questions, 40 databases; totals only):
+
+| System | Strict | Lenient | Answered |
+|---|---|---|---|
+| Engine alone `b8bedde` | 939 (43.7%) | | |
+| Production, the engine with the Gemini rewording | 1,126 (52.4%) | | |
+| Bundle of 2026-10-22 (v11a, v11b, v11b1, v11a1), choice off | 1,414 (65.9%) | 1,611 (75.0%) | 2,147 |
+| **This bundle, choice off** | **1,447 (67.4%)** | 1,625 (75.7%) | 2,143 |
+| This bundle, choice at 0.1405 | 1,419 (66.1%) | | 1,968 (549 wrong) |
+
+The bundle of 2026-10-23 was not run on the test. Of the four questions left unanswered with the choice off, two have no
+executable grounded candidate and two rank only candidates the selection holds back (an unmet calculation or date, a
+double count, or a ranking that ranks nothing), counted by reason without reading them. With the choice at its threshold
+this bundle answers 4 fewer test questions than the bundle of 2026-10-22 and is wrong on 36 fewer. Prediction seconds
+(eight threads): median 3.48, p90 7.17. The bundle was chosen on calibration and the product's demo questions, not on
+the test.
 
 ## Two readers trained on the grouped structure, a refitted choice: calibration 663 → 669 strict (2026-10-23)
 
