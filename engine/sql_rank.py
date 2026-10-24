@@ -12,7 +12,7 @@ import re
 from typing import Mapping, Sequence
 
 from engine.sql_ast import (
-    ColumnRef, Comparison, keep_ties, render_query,
+    ColumnRef, Comparison, SelectItem, SelectQuery, keep_ties, render_query,
 )
 from engine.sql_dates import period_grouping
 from engine.sql_expansion import (
@@ -325,8 +325,9 @@ class PoolSelection:
     which compare every text literal with a column that can hold it and join no two columns the foreign
     keys keep apart (engine/sql_grounding.py). ``ranking`` lists the eligible members, where both hold, in
     the re-scorer's order. ``selected`` is usually ``ranking[0]``; a query that keeps the question's dates,
-    counts no row twice in a SUM or AVG (``double_counted``) or satisfies a registered calculation intent
-    can prefer a later eligible member (``select_ranked_candidate``), and the readers' refusal leaves it
+    counts no row twice in a SUM or AVG (``double_counted``), keeps rows its order ranks (``undecided``) or
+    satisfies a registered calculation intent can prefer a later eligible member (``select_ranked_candidate``),
+    and the readers' refusal leaves it
     None when it is not confident of the choice. The first pool member is the readers' most probable
     reading of the question (engine/decomposition.compound_candidate).
     """
@@ -339,6 +340,11 @@ class PoolSelection:
     date_satisfied: tuple[bool, ...] = ()
     # Which members SUM or AVG only rows their joins repeat (engine/sql_grounding.double_counted).
     double_counted: tuple[bool, ...] = ()
+    # Which members' order ranks none of the rows they keep above the first row they leave out (``ranking_cut_probe``).
+    undecided: tuple[bool, ...] = ()
+    # The headers each member reads a column of that another column shares, the question not saying which
+    # (engine/sql_grounding.shared_headers): such a member is not eligible.
+    shared_headers: tuple[tuple[str, ...], ...] = ()
     # The readers' refusal: its confidence in the choice, and the choice it declined when it was not confident.
     confidence: float | None = None
     declined: int | None = None
@@ -388,13 +394,15 @@ class PoolSelection:
                                            and self.calculation_satisfied[self.selected]),
                 date_satisfied=bool(self.date_satisfied and self.date_satisfied[self.selected]),
                 double_counted=bool(self.double_counted and self.double_counted[self.selected]),
+                undecided=bool(self.undecided and self.undecided[self.selected]),
             )
         return evidence
 
 
 def select_ranked_candidate(ranking: Sequence[int], calculation_satisfied: Sequence[bool],
                             date_satisfied: Sequence[bool] = (),
-                            double_counted: Sequence[bool] = ()) -> int | None:
+                            double_counted: Sequence[bool] = (),
+                            undecided: Sequence[bool] = ()) -> int | None:
     """The shared post-ranking serving rule; inputs are gold-blind candidate facts.
 
     A query that keeps the dates the question names (engine/sql_dates.realizes_dates) is served
@@ -402,11 +410,37 @@ def select_ranked_candidate(ranking: Sequence[int], calculation_satisfied: Seque
     July 10, 2026" was served undated and declined (2026-10-02). Among those, a query whose SUM or
     AVG reads only rows its joins repeat (engine/sql_grounding.double_counted) is served only when
     every one does: "the total Amount by Plan and Currency" ranked first a sum of a report's Total
-    Amount once per subscription it matched (2026-10-05). Among those, prefer a satisfied
-    calculation, if any.
+    Amount once per subscription it matched (2026-10-05). Among those, a ranking whose order ranks
+    none of the rows it keeps above the first row it leaves out (``undecided``: its first row ties
+    with that one) is served only when every one is: "top 3 cities" ranked first the cities by
+    their number of rows, one each, and served three of four by name (2026-10-23). A tie at the cut
+    alone is the data's: "the five oldest people" ties the fifth and sixth ages. Among those, prefer
+    a satisfied calculation, if any.
     """
     if not ranking:
         return None
     ranking = [i for i in ranking if date_satisfied and date_satisfied[i]] or list(ranking)
     ranking = [i for i in ranking if not (double_counted and double_counted[i])] or ranking
+    ranking = [i for i in ranking if not (undecided and undecided[i])] or ranking
     return next((i for i in ranking if calculation_satisfied[i]), ranking[0])
+
+
+def ranking_cut_probe(query):
+    """(probe, limit, terms) for a ranking whose LIMIT keeps more than one row, else None: ``probe`` is the same
+    query showing its ORDER BY terms after its own columns and keeping one row more, so the first row kept and the
+    first left out can be compared on the terms that order them (``ranks_nothing``). A top-1 ranking keeps its ties
+    when served (sql_ast.keep_ties); a DISTINCT one would change its rows by showing more."""
+    if (not isinstance(query, SelectQuery) or not query.order_by or not query.limit or query.limit < 2
+            or query.distinct or query.with_ties):
+        return None
+    terms = len(query.order_by)
+    probe = replace(query, select=query.select + tuple(SelectItem(term.expression) for term in query.order_by),
+                    limit=query.limit + 1)
+    return probe, query.limit, terms
+
+
+def ranks_nothing(rows, limit: int, terms: int) -> bool:
+    """Whether the probe's rows (``ranking_cut_probe``) show an order that ranks none of the rows kept above the first
+    one left out: the first row and the row after the cut sort equal on every ORDER BY term, so every row between
+    them ties too."""
+    return len(rows) > limit and tuple(rows[0][-terms:]) == tuple(rows[limit][-terms:])

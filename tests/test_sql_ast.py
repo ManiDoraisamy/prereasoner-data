@@ -2261,6 +2261,86 @@ def test_a_sum_over_rows_its_joins_repeat_is_served_only_when_every_reading_is_o
     assert only.double_counted == (True,) and only.selected == 0 and only.record()["double_counted"]
 
 
+def test_one_of_two_columns_that_share_a_header_is_asked_about():
+    """A sheet headed "id, Amount, Amount, Units" names its fields "Amount [column B]" and "Amount [column C]", and
+    "total Amount" summed column B alone (tests.test_scale, 2026-10-23): a reading of one of two columns that share a
+    header, the question not saying which, is not eligible, and the reply asks which. Contrast: the question that
+    names the column letter is answered, and so is one about another column."""
+    from engine.tables import csv_table
+
+    messy = csv_table("id,Amount,Amount,Units\n1,10,20,2\n2,30,40,3", "orders")
+    planner = _hermetic_planner()
+    planner.pool = {
+        "total Amount": [_model_query(planner, 'SELECT SUM("Amount [column B]") FROM "orders"', [messy])],
+        "total Amount in column C": [_model_query(planner, 'SELECT SUM("Amount [column C]") FROM "orders"', [messy])],
+        "total Units": [_model_query(planner, 'SELECT SUM("Units") FROM "orders"', [messy])]}
+    asked = planner.serve([messy], "total Amount")
+    assert asked["clarify"] is True and not (asked.get("result") or {}).get("rows"), asked
+    assert "headed “Amount”" in asked["reason"] and asked["selection"]["eligible"] == 0, asked
+    assert planner.serve([messy], "total Amount in column C")["result"]["rows"] == [[60]]
+    assert planner.serve([messy], "total Units")["result"]["rows"] == [[5]]
+
+
+def test_the_readers_read_one_table_of_each_layout():
+    """A workbook of three subscription exports (NT, SI, FF: one layout) and their three reports: read against all six
+    tabs, every reading of "What is the total Amount broken down by Plan and Currency?" joined copies no key connects
+    (tests.test_scale, 2026-10-23). The readers read one copy of each layout, the one the question names or else the
+    first, and the answer names the others (``layout_copies``)."""
+    def export(name):
+        return {"name": name, "columns": ["id", "Plan", "Currency", "Amount"],
+                "rows": [[1, "basic", "usd", 10], [2, "pro", "eur", 30]]}
+
+    def report(name):
+        return {"name": name, "columns": ["Plan", "Subscriptions", "Total Amount"],
+                "rows": [["basic", 1, 10], ["pro", 1, 30]]}
+    workbook = [export("NT"), report("NT Report"), export("SI"), report("SI Report"), export("FF"), report("FF Report")]
+    planner = _hermetic_planner()
+    read = []
+
+    def pool(question, graph):
+        read.append(set(graph.tables))
+        table = "SI" if "SI" in question else "NT"
+        return [_model_query(planner, f'SELECT "Plan", SUM("Amount") FROM "{table}" GROUP BY "Plan"', workbook)]
+    planner.readers.pool = pool
+    served = planner.serve(workbook, "What is the total Amount broken down by Plan?")
+    assert read[-1] == {"NT", "NT_Report"}, read[-1]
+    assert served["layout_copies"] == {"read": ["NT"], "others": ["SI", "FF"]}, served.get("layout_copies")
+    planner.serve(workbook, "total Amount by Plan in SI")
+    assert "SI" in read[-1] and not read[-1] & {"NT", "FF"}, read[-1]
+
+
+def test_a_ranking_whose_order_ranks_its_rows_is_preferred():
+    """ "top 3 cities" (one customer per city) ranked first the cities by their number of rows: every city has one,
+    so its first three were three of four by name, Berlin among them (tests.test_geo, 2026-10-23). A ranking whose
+    order ranks none of the rows it keeps above the first it leaves out is served only when every eligible one is
+    (sql_rank.select_ranked_candidate, ``undecided``): the ranking by amount ranks them. Contrast: a ranking that ties
+    only at its cut ranks its first rows and stays first ("the five oldest people", calibration); when no ranking
+    ranks anything, the first is served."""
+    customers = {"name": "customers", "columns": ["name", "city", "amount"],
+                 "rows": [["Ada", "Paris", 100], ["Bob", "Lyon", 80], ["Eve", "Berlin", 40], ["Sam", "Tokyo", 50]]}
+    by_rows = 'SELECT "city" FROM "customers" GROUP BY "city" ORDER BY COUNT(*) DESC LIMIT 3'
+    by_amount = 'SELECT "city" FROM "customers" GROUP BY "city" ORDER BY SUM("amount") DESC LIMIT 3'
+    planner = _hermetic_planner()
+    planner.pool = [_model_query(planner, by_rows, [customers], score=1.0),
+                    _model_query(planner, by_amount, [customers])]
+    served = planner.serve([customers], "top 3 cities")
+    assert [row[0] for row in served["result"]["rows"]] == ["Paris", "Lyon", "Tokyo"], served["result"]
+    assert served["selection"]["selected"] == 1 and served["selection"]["undecided"] is False, served["selection"]
+    decided = _hermetic_planner()
+    decided.pool = [_model_query(decided, by_amount, [customers], score=1.0),
+                    _model_query(decided, by_rows, [customers])]
+    assert decided.serve([customers], "top 3 cities")["selection"]["selected"] == 0
+    cut_tie = {**customers, "rows": customers["rows"] + [["Max", "Madrid", 50]]}   # Tokyo and Madrid tie at the cut
+    tied_cut = _hermetic_planner()
+    tied_cut.pool = [_model_query(tied_cut, by_amount, [cut_tie], score=1.0),
+                     _model_query(tied_cut, by_amount.replace('SUM("amount")', 'MIN("name")'), [cut_tie])]
+    assert tied_cut.serve([cut_tie], "top 3 cities")["selection"]["selected"] == 0
+    tied = _hermetic_planner()
+    tied.pool = [_model_query(tied, by_rows, [customers], score=1.0),
+                 _model_query(tied, by_rows.replace("COUNT(*)", 'COUNT("name")'), [customers])]
+    assert tied.serve([customers], "top 3 cities")["selection"]["selected"] == 0
+
+
 def test_a_long_question_the_readers_decline_is_decomposed():
     """In an analysis, a question longer than decomposition.ONE_QUERY_WORDS words that the readers decline asks for a
     decomposition proposal (the complex demos' two-ranking prompts, which the readers read as one query they were not
@@ -2938,6 +3018,9 @@ TESTS = [
     test_a_plural_reads_as_its_singular_everywhere,
     test_tabs_of_one_layout_are_read_as_one,
     test_a_sum_over_rows_its_joins_repeat_is_served_only_when_every_reading_is_one,
+    test_one_of_two_columns_that_share_a_header_is_asked_about,
+    test_the_readers_read_one_table_of_each_layout,
+    test_a_ranking_whose_order_ranks_its_rows_is_preferred,
     test_a_long_question_the_readers_decline_is_decomposed,
     test_a_question_past_the_calibrated_length_is_declined_however_confident,
     test_a_reading_the_readers_are_not_confident_of_is_asked_about,

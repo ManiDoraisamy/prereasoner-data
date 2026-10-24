@@ -357,7 +357,7 @@ submit_build "$BUILD_CONTEXT" \
   --project="$PROJECT_ID" \
   --ignore-file="$BUILD_CONTEXT/cloudbuild.hermetic.ignore" \
   --config="$BUILD_CONTEXT/cloudbuild.yaml" \
-  --timeout=5400s \
+  --timeout=10800s \
   --substitutions="_REGION=${REGION},_REPO=${ARTIFACT_REPO},_TAG=community-${commit}"
 digest="$(gcloud artifacts docker images describe "$image_tag" \
   --project="$PROJECT_ID" --format='value(image_summary.digest)')"

@@ -188,6 +188,70 @@ def test_a_set_membership_compares_values_of_one_kind():
     assert sorted(rows_of(render_query(query), products, purchases)) == [("Beta",), ("Delta",)]
 
 
+def test_every_column_is_the_star_shown_plain():
+    """ "show all rows ordered by id" asks for every column (tests.test_scale), which the readings could not hold: a
+    SELECT * gold was not readable ("bare-star", 55 Spider training questions), so no reader learned it and the
+    readers showed the id alone (2026-10-23). The star shown plain is every column: SELECT * round-trips through the
+    readings and the builder, reads as "every column", and the decoder reads it in a selection."""
+    from engine.readers.read_as import read_as
+    from regress.sql_import import import_sql
+    graph = graph_of(ORDERS)
+    readings = readings_of(import_sql('SELECT * FROM "orders" ORDER BY "orders"."order_id" ASC', graph))
+    assert readings["blocks"][0]["select"] == [[0, "plain", "*", False]], readings
+    query = build(readings, graph)
+    assert render_query(query).startswith('SELECT * FROM "orders"'), render_query(query)
+    assert sorted(rows_of(render_query(query), ORDERS)) == sorted(tuple(row) for row in ORDERS["rows"])
+    assert read_as(readings).startswith("every column of orders"), read_as(readings)
+    counted = readings_of(import_sql('SELECT COUNT(*) FROM "orders"', graph))
+    assert counted["blocks"][0]["select"] == [[0, "COUNT", "*", False]], counted
+
+
+def test_a_number_column_compares_with_numbers_and_never_with_its_own_values():
+    """ "Count all non-empty Order ID rows below the header in the Customers sheet" was read as "order id is
+    'non-empty'", as "order id is not among (order id of customers)" and as "order id is (order id of customers)"
+    (2026-10-23): none counts the sheet's 4 orders. The builder refuses a number column compared with a text that is
+    no number, and a column compared with its own unfiltered values. Contrast: a number, or a number written as text, compares; a text column
+    compares with text; a membership in the column's values under a condition stands."""
+    sheet = {"name": "orders", "columns": ["order_id", "customer", "city"],
+             "rows": [[101, "Poirot", "Paris"], [102, "Lupin", "Lyon"], [103, "Holmes", "Paris"]]}
+    graph = graph_of(sheet)
+
+    def counted(column, value):
+        return {"structure": "single", "blocks": [block(tables=["orders"], select=[[0, "COUNT", "*", False]],
+                                                        where=[[column, "=", value]])]}
+    for refused in (counted("orders.order_id", "non-empty"), counted("orders.order_id", "Count all")):
+        try:
+            build(refused, graph)
+        except NotReadable as exc:
+            assert "number-with-text" in str(exc), exc
+        else:
+            raise AssertionError("a number column was compared with a word")
+    for column, value, rows in (("orders.order_id", 101, [(1,)]), ("orders.city", "Paris", [(2,)])):
+        assert rows_of(render_query(build(counted(column, value), graph)), sheet) == rows, (column, value)
+    for spelled in ("102", "null", ""):                 # a number written as text; a missing number as data spells it
+        build(counted("orders.order_id", spelled), graph)
+
+    def among_itself(where):
+        return {"structure": "NESTED", "blocks": [
+            block(tables=["orders"], select=[[0, "COUNT", "*", False]], where=[["orders.order_id", "NOT IN", {"block": 1}]]),
+            block(tables=["orders"], select=[[0, "plain", "orders.order_id", False]], where=where)]}
+    equal_itself = among_itself([])
+    equal_itself["blocks"][0]["where"] = [["orders.order_id", "=", {"block": 1}]]
+    for itself in (among_itself([]), equal_itself):
+        try:
+            build(itself, graph)
+        except NotReadable as exc:
+            assert "with-itself" in str(exc), exc
+        else:
+            raise AssertionError("a column was compared with its own values")
+    filtered = build(among_itself([["orders.city", "=", "Paris"]]), graph)
+    assert rows_of(render_query(filtered), sheet) == [(1,)]
+    ranked = among_itself([])                           # one ranked row's own value is a condition
+    ranked["blocks"][0]["where"] = [["orders.order_id", ">", {"block": 1}]]
+    ranked["blocks"][1].update(order=[["plain", "orders.city"]], dir="ASC", limit=1)
+    assert rows_of(render_query(build(ranked, graph)), sheet) == [(1,)]
+
+
 def test_a_membership_of_two_kinds_is_read_on_the_column_its_values_reference():
     """Every reader read "List the product names that no customer from Paris has bought" as "product id is not among
     (the product names Paris customers bought)" (2026-10-23). The search reads it again on the column the listed
@@ -419,6 +483,36 @@ def test_the_choice_ranks_by_agreement_and_refuses_below_its_threshold():
     assert readers.confident(0.01)
 
 
+def test_a_reader_that_reads_nothing_is_no_dissent():
+    """The readers' share counts a candidate's readings among the readers that build any reading of the question: two
+    readers trained on sheet language read "Count all non-empty Order ID rows below the header in the Customers sheet"
+    as a count, and the other two built no reading, which halved the counts' share (2026-10-23). Serving
+    (search.readers_share, over the pool) and the choice's fit (training.readers.choice.features, over each reader's
+    calibration candidates) count it alike."""
+    import json
+    import tempfile
+    from pathlib import Path
+
+    from engine.readers.search import readers_share
+    from training.readers import choice
+
+    assert readers_share(2, 2) == 1.0 and readers_share(1, 4) == 0.25 and readers_share(1, 0) == 1.0
+    question = {"source": "s", "index": 0, "db_id": "d", "question": "q"}
+    counted = {"rank": 0, "score": -0.2, "read_as": "number of rows", "status": "ran", "rows": 1, "columns": 1,
+               "sql": "SELECT COUNT(*) FROM t", "right": True}
+    refused = {"rank": 0, "score": -0.3, "read_as": "number of rows where id is 'non-empty'", "status": "build",
+               "rows": 0, "columns": 0, "sql": None}
+    with tempfile.TemporaryDirectory() as folder:
+        paths = []
+        for name, candidates in (("reads", [counted]), ("silent", [refused])):
+            path = Path(folder) / f"{name}.jsonl"
+            path.write_text(json.dumps({**question, "candidates": candidates}) + "\n", encoding="utf-8")
+            paths.append(str(path))
+        X, y, _ = choice.features([{**question, "candidates": [counted]}], paths,
+                                  {("s", 0): {"SELECT COUNT(*) FROM t": 1.5}})
+    assert X.shape == (1, 5) and X[0][3] == 1.0 and list(y) == [1], X
+
+
 def test_candidates_are_distinct_and_most_probable_first():
     graph = graph_of(ORDERS)
     names = ["*", "orders.order_id", "orders.city", "orders.amount", "orders.placed"]
@@ -497,6 +591,10 @@ def test_built_structures_exclude_and_rank_by_the_total():
         assert grouped and all("ORDER BY" not in c["sql"] and "LIMIT" not in c["sql"] for c in grouped), grouped
         totals = dict((row if isinstance(row[0], str) else row[::-1]) for row in db.run(grouped[0]["sql"]))
         assert set(totals) == {"Toys", "Home"}, totals
+        # every column of a table's rows, read as the star shown plain
+        listings = [job for job in structures.queries(db) if job["shape"] == "listing"]
+        assert listings and all(job["sql"].startswith("SELECT * FROM") for job in listings), listings
+        assert all(job["readings"]["blocks"][0]["select"] == [[0, "plain", "*", False]] for job in listings)
         db.connection.close()
         # each product's purchases share one line total that grows with their number: every ranking of products by
         # a total or an average is the ranking by row count, so no ranking is built
@@ -519,6 +617,8 @@ TESTS = [
     test_a_named_period_groups_by_the_period,
     test_a_named_period_groups_the_date_when_the_readers_group_by_a_row_key,
     test_a_set_membership_compares_values_of_one_kind,
+    test_every_column_is_the_star_shown_plain,
+    test_a_number_column_compares_with_numbers_and_never_with_its_own_values,
     test_a_membership_of_two_kinds_is_read_on_the_column_its_values_reference,
     test_the_highest_of_the_one_ranked_column_is_its_max,
     test_a_share_divides_the_part_by_the_whole,
@@ -533,6 +633,7 @@ TESTS = [
     test_a_pointed_value_drops_the_marks_of_its_list,
     test_the_question_values_are_listed_beside_their_columns,
     test_the_choice_ranks_by_agreement_and_refuses_below_its_threshold,
+    test_a_reader_that_reads_nothing_is_no_dissent,
     test_candidates_are_distinct_and_most_probable_first,
     test_choices_override_by_rank,
     test_built_structures_exclude_and_rank_by_the_total,

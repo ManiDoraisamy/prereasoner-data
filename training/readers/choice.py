@@ -4,8 +4,8 @@ refuses a choice whose probability is under its threshold (``confidence``, ``con
 refuses.
 
 It weighs the features serving computes (engine.readers.search.choice_features): the re-scorer's logit, the
-candidate's log probability, its best rank among the readers, the share of the readers' readings that build it, and
-whether its result is empty. ``fit`` reads a calibration union pool (training.readers.union), each reader's own
+candidate's log probability, its best rank among the readers, the share of the readers' readings that build it (among
+the readers that build any reading of the question), and whether its result is empty. ``fit`` reads a calibration union pool (training.readers.union), each reader's own
 candidates (for the rank and the share) and a re-scorer run. It prints the re-scorer alone against the choice
 cross-validated by database (GroupKFold 5, so a database's questions are never scored by a model fitted on them) and
 writes the model fitted on all of calibration, with no threshold.
@@ -29,7 +29,7 @@ import numpy as np
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import GroupKFold
 
-from engine.readers.search import CHOICE_FEATURES, choice_features
+from engine.readers.search import CHOICE_FEATURES, choice_features, readers_share
 
 
 def _key(record):
@@ -75,12 +75,16 @@ def _logits(union, rescorer_dir, cache):
 
 
 def features(union, reader_paths, logits):
-    """(X, right, question index of each row) over the union's candidates the re-scorer scored."""
-    built = {}
+    """(X, right, question index of each row) over the union's candidates the re-scorer scored; the readers' share is
+    counted among the readers that build any reading of the question, as serving counts it (search.readers_share)."""
+    built, active = {}, {}
     for path in reader_paths:
         for record in _lines(path):
             for candidate in record["candidates"]:
-                built.setdefault((_key(record), _identity(candidate)), []).append(candidate["rank"])
+                if candidate.get("sql"):
+                    built.setdefault((_key(record), _identity(candidate)), []).append(candidate["rank"])
+            if any(candidate.get("sql") for candidate in record["candidates"]):
+                active[_key(record)] = active.get(_key(record), 0) + 1
     X, y, question_of = [], [], []
     for q, record in enumerate(union):
         scored = logits[_key(record)]
@@ -89,7 +93,7 @@ def features(union, reader_paths, logits):
                 continue
             ranks = built.get((_key(record), _identity(candidate)), [candidate["rank"]])
             X.append(choice_features(scored[_identity(candidate)], candidate["score"], min(ranks),
-                                     len(ranks) / len(reader_paths), candidate["rows"]))
+                                     readers_share(len(ranks), active.get(_key(record), 0)), candidate["rows"]))
             y.append(int(bool(candidate.get("right"))))
             question_of.append(q)
     return np.array(X), np.array(y), np.array(question_of)

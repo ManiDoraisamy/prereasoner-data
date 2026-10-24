@@ -104,7 +104,7 @@ options:
   # worker is too small for that valid combination and has caused host-level OOM kills.
   machineType: E2_HIGHCPU_32
 
-# Headroom for a slow-HF day: anonymous HF egress bandwidth to GCP varies. 60 min covers it; override
-# with `--timeout` if HF is pathologically
-# slow, or vendor the models into the image for a fully deterministic build.
-timeout: 7200s
+# The live product suite reads every demo question with the four readers on 4 vCPU: tests.test_datasets alone ran
+# past 30 minutes and the whole build past 90 (2026-10-23). Override with `--timeout` on a pathologically slow
+# HF day, or vendor the models into the image for a fully deterministic build.
+timeout: 10800s

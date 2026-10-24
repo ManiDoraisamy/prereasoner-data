@@ -276,8 +276,9 @@ def decode_block(output, example, graph, b, nested, choices):
         kept = [(score, item) for score, item in items if not (plain_of(item) and plain_of(item) in pinned)]
         return kept or items
 
+    # The star is shown counted (COUNT(*)) or plain, every column ("show all rows ordered by id").
     shown = unpinned([(field(p[b], "select")[a], (column, aggregate)) for column, p in columns.items()
-                      for a, aggregate in enumerate(AGGREGATES) if column != "*" or aggregate == "COUNT"],
+                      for a, aggregate in enumerate(AGGREGATES) if column != "*" or aggregate in ("COUNT", "plain")],
                      lambda item: item[0] if item[1] == "plain" else None)
     select = []
     for column, aggregate in best(choices, b, "select", shown, count(output, choices, b, "select", shown, least=1)):

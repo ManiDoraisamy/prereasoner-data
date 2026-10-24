@@ -38,7 +38,8 @@ engine/knowledge.py
         v
 engine/routing.py
         |  a question the search reads whole from the upload builds no compose plan and needs no
-        |  world lookup (reads_upload_whole, asked of the search probe's pool)
+        |  world lookup (reads_upload_whole, asked of the search probe's pool); a pool reading that
+        |  names a value the upload holds nowhere ("Europe") leaves the decision to compose
         |
         +-- DELEGATE --> own-data typed AST, local composition, or ordinary world lookup
         |
@@ -333,20 +334,28 @@ builder makes each reading a typed AST.
    but neither groups nor shows, which is each group's total ("the top 2 customers by total spend"); groups with no
    aggregate anywhere are the block's distinct rows; the first row of the one column a block shows and ranks is that
    column's MAX or MIN; a contained text compares `LOWER(column)`; and a share divides the aggregate over the part's
-   conditions by the same aggregate over the whole (its read-as line says "share of …, out of …"). The readers' candidates are pooled,
-   each SQL once, most probable first, and the registered calculations add their expansions (`search_pool`).
+   conditions by the same aggregate over the whole (its read-as line says "share of …, out of …"). It refuses a
+   reading whose condition can hold for no row as written: a number column compared with a text that is no number
+   ("order id is 'non-empty'"), or a column compared with its own unfiltered values. The readers' candidates are
+   pooled, each SQL once, most probable first, and the registered calculations add their expansions
+   (`search_pool`). The readers read one table of each group of layout copies (the NT, SI and FF exports of one
+   layout): the copy the question names, else the first, and the answer names the others (`one_of_each_layout`,
+   `layout_copies`).
 4. Every candidate that passes the guard runs on an in-memory SQLite copy of the request's tables under a step
    budget that grows with the cells of the tables it reads (`execution_op_limit`). A candidate that fails, tests a
-   text column against a literal it never holds while another column does, or joins two columns the foreign keys
-   keep apart is not eligible (`engine/sql_grounding.py`).
+   text column against a literal it never holds while another column does, joins two columns the foreign keys
+   keep apart, or reads one of two columns that share a header when the question does not name its column letter
+   is not eligible (`engine/sql_grounding.py`); when that last leaves nothing, the reply asks which column.
 5. The re-scorer (XLM-R base) reads the question beside each eligible candidate's read-as line and result shape,
    with the decoder's log probability and rank, and the readers' choice (`engine/data/readers/choice.json`, a
    logistic model fitted on held-out databases) weighs its logit with what the pool says of the candidate: its log
-   probability, its best rank, the share of the readers' readings that build it, and whether its result is empty
+   probability, its best rank, the share of the readers' readings that build it (among the readers that build any
+   reading of the question: a reader whose every reading is refused has not read it), and whether its result is empty
    (`search.choice_features`). The choice orders the candidates. A date the question names keeps the choice to the
    candidates that realize it when one does, a candidate whose SUM or AVG reads only rows its joins repeat is
-   chosen only when every one does, and a registered calculation intent takes the best-ranked candidate that
-   satisfies it (`select_ranked_candidate`).
+   chosen only when every one does, so is a ranking whose order ranks none of the rows it keeps above the first
+   it leaves out ("top 3 cities" by their number of rows, one each; a tie at the cut alone is the data's), and a
+   registered calculation intent takes the best-ranked candidate that satisfies it (`select_ranked_candidate`).
 6. The choice's probability for the chosen candidate is its confidence: under the threshold fitted on held-out
    databases nothing is selected, and the reply says how the
    best-ranked candidate read the question: "I read this as “…”, but I'm not confident that is what you asked"

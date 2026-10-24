@@ -23,4 +23,4 @@ options:
   # host-level SIGKILLs while preserving the container's 4-vCPU/16-GiB serving cap.
   machineType: E2_HIGHCPU_32
 
-timeout: 5400s
+timeout: 10800s

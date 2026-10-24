@@ -400,7 +400,8 @@ class TableQuery:
     def search_pool(self, question, norm, fks, sch, graph=None):
         """The readers' candidates under the pool contract: ``select_query``'s first stage
         (engine.readers.search.ReadingSearch.pool), with the registered calculations' expansions of them
-        (engine.calculations.search). Its top candidate is the readers' most probable reading."""
+        (engine.calculations.search). Its top candidate is the readers' most probable reading. The readers read
+        one table of each group of layout copies (``one_of_each_layout``)."""
         from engine.calculations.search import CalculationQueryExpander
         from engine.readers.search import reading_search
         from engine.sql_expansion import plain_marks
@@ -409,7 +410,7 @@ class TableQuery:
         if graph is None:
             graph = SchemaGraph.from_planner(sch, fks)
         with request_timing.span("readers"):
-            pool = reading_search().pool(question, graph)
+            pool = reading_search().pool(question, one_of_each_layout(graph, question))
         return pool + CalculationQueryExpander(graph).expand(question, pool)
 
     def select_query(self, question, norm, fks, sch, tablemap, searched=None, graph=None):
@@ -465,7 +466,7 @@ class TableQuery:
         from engine.readers.search import reading_search
         from engine.sql_dates import realizes_dates, served_date_phrases
         from engine.sql_expansion import tokens as question_tokens
-        from engine.sql_grounding import double_counted_members, grounded_members
+        from engine.sql_grounding import double_counted_members, grounded_members, shared_headers
         from engine.sql_rank import PoolSelection, select_ranked_candidate
 
         pool = tuple(pool)
@@ -477,8 +478,10 @@ class TableQuery:
         shapes = [runs.shapes.get(member.sql) if ran else None for member, ran in zip(pool, executable)]
         with request_timing.span("rescore"):
             scores = readers.rescore(question, pool, shapes)
+        # A reading of one of two columns that share a header, the question not saying which, is not eligible.
+        shared = tuple(shared_headers(member.query, tablemap, question) for member in pool)
         ranking = tuple(sorted((index for index, (ran, sound) in enumerate(zip(executable, grounded))
-                                if ran and sound),
+                                if ran and sound and not shared[index]),
                                key=lambda i: (-(scores[i] if scores[i] is not None else -1e9), i)))
         calculation_satisfied = [False] * len(pool)
         if detect_calculations(question):
@@ -490,9 +493,11 @@ class TableQuery:
         phrases = served_date_phrases(question, question_tokens(question), graph)
         date_satisfied = [realizes_dates(member.query, phrases) for member in pool]
         request_timing.count("pool", len(pool))
+        undecided = self._undecided(pool, ranking, runs)
         selection = PoolSelection(pool, tuple(executable), tuple(grounded), ranking, None,
-                                  tuple(calculation_satisfied), tuple(date_satisfied), double_counted)
-        selected = select_ranked_candidate(ranking, calculation_satisfied, date_satisfied, double_counted)
+                                  tuple(calculation_satisfied), tuple(date_satisfied), double_counted, undecided,
+                                  shared)
+        selected = select_ranked_candidate(ranking, calculation_satisfied, date_satisfied, double_counted, undecided)
         confidence = readers.confidence(pool, scores, shapes, selected) if selected is not None else None
         # The choice's confidence speaks only for questions as long as those its threshold was matched on: a longer
         # one is declined however confident (engine/decomposition.py:ONE_QUERY_WORDS). "Find the top 2 product
@@ -501,6 +506,27 @@ class TableQuery:
         if not readers.confident(confidence) or not one_query_length(question):
             return replace(selection, confidence=confidence, declined=selected)
         return replace(selection, selected=selected, confidence=confidence)
+
+    @staticmethod
+    def _undecided(pool, ranking, runs):
+        """Per pool member: whether it is an eligible ranking whose order ranks none of the rows it keeps above the
+        first row it leaves out (engine/sql_rank.ranking_cut_probe, ranks_nothing), on the copy of the request's
+        tables in ``runs``."""
+        from engine.sql_ast import render_query
+        from engine.sql_rank import ranking_cut_probe, ranks_nothing
+
+        undecided = [False] * len(pool)
+        for index in ranking:
+            probe = ranking_cut_probe(pool[index].query)
+            if probe is None:
+                continue
+            query, limit, terms = probe
+            try:
+                rows = runs.connection().execute(render_query(query)).fetchmany(limit + 1)
+            except sqlite3.Error:
+                continue
+            undecided[index] = ranks_nothing(rows, limit, terms)
+        return tuple(undecided)
 
     def _serve_ast(self, question, norm, fks, sch, tablemap, graph=None):
         """Select the own-data query (``select_query``) and execute it through this executor."""
@@ -751,6 +777,10 @@ class TableQuery:
                 clarification = unsure_clarification(selection.pool[
                     selection.declined if selection.declined is not None else selection.ranking[0]])
             err = None
+        elif candidate is None and selection is not None and not selection.ranking and any(selection.shared_headers):
+            # Every runnable reading read one of two columns that share a header: ask which.
+            clarification = shared_header_clarification(next(h for h in selection.shared_headers if h)[0])
+            err = None
         model = READERS_MODEL
         sql = candidate.sql if candidate is not None else None
         computation = None
@@ -830,6 +860,21 @@ class TableQuery:
         return response
 
 
+def one_of_each_layout(graph, question):
+    """``graph`` with one table of each group of layout copies (``SchemaGraph.layout_copies``): the copy the question
+    names, else the first. Copies hold one layout's rows for different products or months, such as the NT, SI and FF
+    subscription exports; the readers read the question against one of them, and the answer names the others
+    (``_unread_copies``). Read against a workbook of three exports and their three reports, every reading of "What is
+    the total Amount broken down by Plan and Currency?" joined copies that no foreign key connects (tests.test_scale,
+    2026-10-23)."""
+    words = set(name_words(question))
+    dropped = set()
+    for group in graph.layout_copies:
+        named = [table for table in group if set(name_words(table)) <= words]
+        dropped |= set(group) - {(named or group)[0]}
+    return graph.without(frozenset(dropped)) if dropped else graph
+
+
 def _unread_copies(question, query, graph):
     """{"read": [table], "others": [...]}: the other tables that could answer a one-table reading when the
     question names no table, else None: copies of its layout (`SchemaGraph.layout_copies`), and near copies
@@ -864,6 +909,14 @@ def read_as_of(candidate):
     evidence = getattr(candidate, "evidence", None) or ()
     first = evidence[0] if evidence else None
     return first if isinstance(first, str) and first else None
+
+
+def shared_header_clarification(header):
+    """The reply when every runnable reading reads one of two columns that share ``header`` and the question does not
+    say which (engine/sql_grounding.shared_headers)."""
+    return {"clarify": True, "dropped": [], "read_as": None,
+            "reason": f"More than one column is headed “{header}”. Which one do you mean? Name it with its column "
+                      f"letter, such as “{header} in column B”."}
 
 
 def unsure_clarification(candidate):

@@ -522,6 +522,21 @@ def test_a_question_the_upload_reads_whole_skips_the_world_lookup():
         unsure = host_of(_hermetic_planner(confident=False))
         unsure._serve_locked([orders], "total amount by plan", sub)
         unsure._world_lookup.assert_called_once()
+        # Contrast (2026-10-23): "total amount in Europe by plan" read with no condition by the reading chosen and as
+        # "city is 'Europe'" by another; Europe is no value of the upload, so the world may say which rows it names.
+        named = host_of(_hermetic_planner())
+        named.qw.pool = [
+            _model_query(named.qw, 'SELECT "plan", SUM("amount") FROM "orders" GROUP BY "plan"', [orders], score=1.0),
+            _model_query(named.qw, 'SELECT "plan", SUM("amount") FROM "orders" WHERE "city" = \'Europe\' '
+                                   'GROUP BY "plan"', [orders])]
+        named._serve_locked([orders], "total amount in Europe by plan", sub)
+        named._world_lookup.assert_called_once()
+        # ... while a value the upload holds ("Paris") is the upload's own condition.
+        held = host_of(_hermetic_planner())
+        held.qw.pool = [_model_query(held.qw, 'SELECT "plan", SUM("amount") FROM "orders" WHERE "city" = \'Paris\' '
+                                              'GROUP BY "plan"', [orders])]
+        held._serve_locked([orders], "total amount in Paris by plan", sub)
+        held._world_lookup.assert_not_called()
 
 
 def test_serving_hands_an_own_data_composition_to_the_planner():

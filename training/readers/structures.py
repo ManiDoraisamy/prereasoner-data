@@ -1,4 +1,4 @@
-"""Training questions written for queries built on the training databases, in four structures the readers misread:
+"""Training questions written for queries built on the training databases, in five structures the readers misread:
 
   unmatched  the rows of a table that no row of a table referencing it matches, at most once filtered on a value of
              that table or of a table it references:
@@ -18,6 +18,9 @@
   grouped    each group beside the total (or average) of a number, with no ranking: SELECT g, SUM(c.m) FROM c JOIN p
              ... GROUP BY g. "total revenue by title" was read as the number of rows of each title by three readers
              of four, and by all four on the build machine's CPU (2026-10-22).
+  listing    every column of a table's rows, at most filtered on a category and ordered by one column, all rows kept:
+             SELECT * FROM t [WHERE t.c = 'value'] [ORDER BY t.o ASC|DESC]. The readings could not hold SELECT * until
+             2026-10-23, so no reader had learned it, and "show all rows ordered by id" showed the id alone.
 
 The tables and columns are chosen from each database's foreign keys and its values: a label is a mostly distinct
 text column; a category a text column of 2 to 40 repeated values; a number a numeric column of more than two values
@@ -61,7 +64,7 @@ SHARE = re.compile(r"percent|rate|ratio|pct", re.I)
 LIMITS = (1, 2, 3, 5)
 MAX_PAIRS = 12                                     # (group, number) pairings tried per joined table
 # queries kept per database, of each shape
-BUDGET = {"unmatched": 3, "unmatched_filtered": 5, "ranked": 6, "aggregate": 4, "grouped": 4}
+BUDGET = {"unmatched": 3, "unmatched_filtered": 5, "ranked": 6, "aggregate": 4, "grouped": 4, "listing": 3}
 FUNCTIONS = ("MIN", "MAX", "AVG", "SUM")
 WORDS = {"MIN": "lowest", "MAX": "highest", "AVG": "average", "SUM": "total", "COUNT": "number of rows"}
 SYSTEM = ("You write the questions people type to a spreadsheet assistant. Given a database schema, a query and its "
@@ -76,6 +79,8 @@ HINTS = {
     "aggregate": "The query computes the {measure} of {column}{filtered}.",
     "grouped": "The query gives the {measure} of {column} for each {group} of {table}. Name that quantity the way a "
                "person would (an everyday word for it when one fits).",
+    "listing": "The query shows every column of the rows of {table}{filtered}{ordered}, all of them. Ask for all of "
+               "those rows with every detail, never for one field.",
 }
 
 
@@ -306,11 +311,41 @@ def aggregated(db):
     return built
 
 
+def listing(db):
+    """Candidate listings of a database: every column of a table's rows, at most filtered on one category (its most
+    common value) and ordered by one of its columns, both chosen by hash."""
+    built = []
+    for entry in db.capped.values():
+        table = entry["name"]
+        if len(entry["rows"]) < 3:
+            continue
+        categories = db.categories(table)
+        orderable = [c for c in [db.label(table)] + db.measures(table) if c] + list(entry["columns"][:1])
+        for variant in range(3):
+            pick = _hash(db.db_id, table, "listing", variant)
+            where, value, filtered = "", None, ""
+            if categories and pick % 2:
+                column = categories[(pick // 2) % len(categories)]
+                value = _common(db.values(table, column))[0]
+                where = f" WHERE {_quote(table)}.{_quote(column)} = {_literal(value)}"
+                filtered = f" whose {column} is {value}"
+            order, ordered = "", ""
+            if (pick // 64) % 3:
+                column = orderable[(pick // 8) % len(orderable)]
+                direction = "DESC" if (pick // 192) % 2 else "ASC"
+                order = f" ORDER BY {_quote(table)}.{_quote(column)} {direction}"
+                ordered = f", ordered by {column} {'highest' if direction == 'DESC' else 'lowest'} first"
+            built.append({"shape": "listing", "value": value, "table": table, "alternatives": (table, where, order),
+                          "sql": f"SELECT * FROM {_quote(table)}{where}{order}",
+                          "hint": HINTS["listing"].format(table=table, filtered=filtered, ordered=ordered)})
+    return built
+
+
 def queries(db):
     """The database's runnable, readable queries with their first rows and readings: at most BUDGET[shape] of each
     shape, chosen by hash."""
     jobs = []
-    candidates = sorted(unmatched(db) + ranked(db) + aggregated(db) + grouped(db),
+    candidates = sorted(unmatched(db) + ranked(db) + aggregated(db) + grouped(db) + listing(db),
                         key=lambda c: _hash(db.db_id, c["shape"], *c["alternatives"]))
     kept, done = {}, set()
     for candidate in candidates:

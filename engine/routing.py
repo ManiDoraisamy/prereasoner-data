@@ -46,14 +46,20 @@ class Route(enum.Enum):
 
 def reads_upload_whole(question, selection, schema) -> bool:
     """Whether the upload answers ``question`` alone: the readers' learned refusal accepted one of their readings
-    (``selection.selected``, engine/tables.py:select_query), and the question names no world type or world measure
-    the uploaded ``schema`` (the planner's column records) lacks (``asked_world_types``, ``WORLD_MEASURES``). Such a
+    (``selection.selected``, engine/tables.py:select_query), no reading of theirs names a value the upload holds
+    nowhere (engine/sql_grounding.unheld_literals), and the question names no world type or world measure the
+    uploaded ``schema`` (the planner's column records) lacks (``asked_world_types``, ``WORLD_MEASURES``). Such a
     question builds no compose plan: compose stands only on a NECESSARY world dependency (``compose_owns``).
     Building the plan first looked the upload up in the world, typing every text column of every tab, for 32 s on
-    an eight-tab workbook (2026-10-05). Serving and the Spider evaluator both ask this before compose."""
+    an eight-tab workbook (2026-10-05). "total amount in Europe by city" was read with no condition by the reading
+    chosen and as "city is 'Europe'" by others (2026-10-23): Europe is no value of the upload, so only the world
+    says which rows it names, and compose decides. Serving and the Spider evaluator both ask this before compose."""
     from engine.knowledge_query import asked_world_types
+    from engine.sql_grounding import unheld_literals
 
     if selection is None or selection.selected is None:
+        return False
+    if unheld_literals(selection.pool, schema):
         return False
     measure = WORLD_MEASURES.search(str(question or ""))
     if measure and not any(measure.group(0).lower() in str(column["name"]).lower() for column in schema):

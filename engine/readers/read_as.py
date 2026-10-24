@@ -22,6 +22,8 @@ def column_words(column):
 
 
 def item_words(aggregate, column, distinct=False):
+    if aggregate == "plain" and column == "*":
+        return "every column"
     if aggregate == "plain":
         return column_words(column)
     if column == "*":

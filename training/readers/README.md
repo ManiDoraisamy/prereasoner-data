@@ -32,8 +32,8 @@ Run every step as a module from the repository root: `python -m training.readers
 | `gold.py` | Gold readings: gold SQL becomes a typed AST, then readings. Checked by the perfect-readings oracle (gold's rows against the AST's rows and the rebuilt query's rows), with printed totals. | split manifest, Spider or BIRD | `readings_{train,calibration,bird}.jsonl` |
 | `labels_share.py` | Share readings for BIRD's percentage questions. Each one is checked by execution: gold must equal 100 x built. | BIRD train | `readings_bird_share.jsonl` |
 | `labels_syn.py` | Gives Spider-Syn's rewordings their original question's gold readings. Leaves out the calibration databases. | split manifest, Spider-Syn, `readings_train.jsonl` | `readings_syn.jsonl` |
-| `rewordings.py` | Gemini rewords training questions into the families the readers misread, chosen from the gold readings: a measure named by an everyday word, an exclusion said as negated existence (both keep the original's readings), and the opposite extreme (MIN and MAX and a limited sort's direction swapped in the readings; kept only when Gemini's named phrase swap holds). Kept only when every stated value survives. Never on calibration or test databases. | split manifest, readings files, Spider, optional BIRD | `<dir>/rewordings.jsonl`, `readings_reworded.jsonl` |
-| `structures.py` | Questions for queries built on training databases in the four structures the readers misread: the rows that no referencing row matches (`NOT IN`, at most once filtered on a value of the referencing table or a table it references); groups ranked by the total or average of a number (kept only when that ranking's first groups differ from the ranking by row count and no tie crosses the cut); the lowest, highest, average or total of a number; and each group beside its total or average, unranked (`--shapes` builds some of them). Tables and columns come from foreign keys and values; choices by hash. Two Gemini-written questions per query (one a search box's few words), kept when they state the filter value and the number ranked. Never on calibration or test databases. | split manifest, Spider, optional BIRD | `<dir>/questions.json`, `readings_structure.jsonl` |
+| `rewordings.py` | Gemini rewords training questions into the families the readers misread, chosen from the gold readings: a measure named by an everyday word, an exclusion said as negated existence (both keep the original's readings), the opposite extreme (MIN and MAX and a limited sort's direction swapped in the readings; kept only when Gemini's named phrase swap holds), and a count of one table's rows asked as a person looking at the sheet would (the sheet, its rows below the header, a column's non-empty cells; keeps the original's readings). Kept only when every stated value survives. Never on calibration or test databases. | split manifest, readings files, Spider, optional BIRD | `<dir>/rewordings.jsonl`, `readings_reworded.jsonl` |
+| `structures.py` | Questions for queries built on training databases in the five structures the readers misread: the rows that no referencing row matches (`NOT IN`, at most once filtered on a value of the referencing table or a table it references); groups ranked by the total or average of a number (kept only when that ranking's first groups differ from the ranking by row count and no tie crosses the cut); the lowest, highest, average or total of a number; each group beside its total or average, unranked; and every column of a table's rows, at most filtered and ordered (`SELECT *`) (`--shapes` builds some of them). Tables and columns come from foreign keys and values; choices by hash. Two Gemini-written questions per query (one a search box's few words), kept when they state the filter value and the number ranked. Never on calibration or test databases. | split manifest, Spider, optional BIRD | `<dir>/questions.json`, `readings_structure.jsonl` |
 | `lookups.py` | Lookup-table questions on training databases: a categorical text column becomes codes, a new table names each code, and five query shapes (names, labelled, counted, filtered, total) get two Gemini-written questions each, kept when they state the query's value. | split manifest, Spider, optional BIRD | `<dir>/dbs/`, `tables.json`, `questions.json`, `readings_lookup.jsonl` |
 | `examples.py` | Builds stage-1 rows (one per question and table) and stage-2 rows (one per question, gold-pruned like serving), split `train`/`calibration`. `--no-anchors` serializes without the question's values. | readings files, Spider, optional BIRD, Syn, rewordings (`--reworded`), lookups (`--lookups`) and structures (`--structures`, comma-separated folders) | `<dir>/stage1.jsonl`, `<dir>/stage2.jsonl` |
 | `train.py` | The trainers. `schema_items` is stage 1; `readings` is stage 2 and keeps `--eval-from` and `--checkpointing`. | `stage1.jsonl` / `stage2.jsonl` | run dir: `model.pt`, `best.json`, `log.jsonl`, `tokenizer/` (with the encoder config), calibration predictions or outputs |
@@ -147,7 +147,7 @@ python -m training.readers.examples ... $E/readers_v11/data_v11b (as data_v11a) 
 - Gemini at temperature 0 is not bit-reproducible across service versions; the recorded sets are the training
   data, kept with the experiment.
 
-### 2c. The v12 data (two of the shipped readers' data)
+### 2c. The v12 data
 
 v11's sets plus the grouped structure ("total revenue by title" was read as each title's number of rows):
 
@@ -159,6 +159,27 @@ python -m training.readers.examples ... $E/readers_v12/data_v12b (as data_v12a) 
 
 - 806 grouped questions on 195 databases (403 queries).
 - Stage-2 rows: 30,367 (`data_v12a` sha256 `1d8d5ee67fa98a20`, `data_v12b` `307eb5855fd0f4f7`).
+
+### 2d. The v13 data (two of the shipped readers' data)
+
+The readings hold `SELECT *` since 2026-10-23 (the star shown plain), so the gold readings were regenerated with
+today's builder, and two written sets were added:
+
+```
+python -m training.readers.gold $L/split1 train --out $E/readers_v13/gold/readings_train.jsonl (likewise calibration, bird)
+python -m training.readers.labels_syn $L/split1 C:/work/datasets/spider_syn $E/readers_v13/gold/readings_train.jsonl $E/readers_v13/gold/readings_syn.jsonl
+python -m training.readers.rewordings $L/split1 $L/readings_train.jsonl $L/readings_bird.jsonl $E/readers_v13/sheet --bird <BIRD> --workers 8 --families sheet --limit 1600
+python -m training.readers.structures $L/split1 $E/readers_v13/structures_listing --shapes listing --bird <BIRD> --workers 16
+python -m training.readers.examples $E/readers_v13/gold/readings_train.jsonl $E/readers_v13/gold/readings_calibration.jsonl $E/readers_v13/data_v13a (as data_v12a, with the regenerated BIRD and Syn readings, the sheet rewordings appended to --reworded, and --structures $E/readers_v11/structures,$E/readers_v12/structures_grouped,$E/readers_v13/structures_listing)
+python -m training.readers.examples ... $E/readers_v13/data_v13b (as data_v13a) --no-anchors
+```
+
+- Regenerated gold: 46 Spider training, 7 calibration and 1 BIRD `SELECT *` questions became readable; 433 training
+  questions an older builder could not rebuild now rebuild to gold's rows. Gemini (`gemini-3.8-flash`, thinking LOW)
+  needs `EXTERNAL_LLM_ENABLED=1 GOOGLE_CLOUD_PROJECT=prereasoner-inference GEMINI_MODEL=gemini-3.8-flash
+  GEMINI_LOCATION=global`; without them every call fails.
+- 1,085 sheet rewordings (of 1,172 asked) and 1,124 listing questions on 195 databases (564 queries).
+- Stage-2 rows: 32,677 (`data_v13a` sha256 `776fc6563c7be14e`, `data_v13b` `feb1312a9c920d22`).
 
 ### 3. Stage 1 (the "v2" stage-1 run)
 
@@ -209,7 +230,7 @@ python -m training.readers.lease full --experiment readers_v11b1 --data $E/reade
   back with `pull_parts.sh` (md5-checked). The community host that restarted its containers is left out by
   leaving the RTX 6000 Ada out of community attempts.
 
-### 4c. Stage-2 readers v12a, v12a1, v12b, v12b1 (v12a1 and v12b1 shipped)
+### 4c. Stage-2 readers v12a, v12a1, v12b, v12b1
 
 ```
 python -m training.readers.lease full --experiment readers_v12a --data $E/readers_v12/data_v12a --seed 0 --epochs 13 --eval-from 5 --minutes 260
@@ -223,9 +244,25 @@ python -m training.readers.lease full --experiment readers_v12b1 --data $E/reade
 - The pods were A40 (v12a), L40S (v12a1, v12b) and L40 (v12b1) cards. Every lease ran detached on its pod
   (`runpod_api` `_run_detached`); each run's weights came back with `pull_parts.sh`, after which its lease refuses to
   train it again.
-- The shipped bundle keeps v11a and v11b in slots `a` and `b` and puts v12b1 in `c`, v12a1 in `d`: of the four-reader
-  pools compared, this one's choice is right on the most calibration questions (667 of 1,028 out of fold, against
+- The bundle of `cb30447` kept v11a and v11b in slots `a` and `b` and put v12b1 in `c`, v12a1 in `d` (v13b1 and v13a1
+  replaced them, 4d): of the four-reader pools compared, its choice is right on the most calibration questions (667 of 1,028 out of fold, against
   664 for the four v11 readers, 659 for the four v12 readers, and 655 for v11a with v12b, v12b1 and v12a1).
+
+### 4d. Stage-2 readers v13a1 and v13b1 (shipped), v13a and v13b
+
+```
+python -m training.readers.lease full --experiment readers_v13a1 --data $E/readers_v13/data_v13a --seed 1 --epochs 13 --eval-from 5 --minutes 230 --max-hourly-cost 0.8
+python -m training.readers.lease full --experiment readers_v13b1 --data $E/readers_v13/data_v13b --seed 1 --epochs 13 --eval-from 5 --minutes 230 --max-hourly-cost 0.8
+```
+
+- Selected checkpoints (gold-pruned calibration, every reading right): v13a1 epoch 12 (0.238; v12a1 0.236), v13b1
+  epoch 12 (0.203; v12b1 0.197).
+- Both pods were community L40S cards ($0.79/h); the two runs cost about $4. v13b1's single-stream download stalled
+  at 99% and its weights came back with `pull_parts.sh`.
+- Two more on the same data with seed 0 (`--experiment readers_v13a` / `readers_v13b`, `--seed 0`, `--minutes 260`,
+  `--max-hourly-cost 0.9`): v13a epoch 13 (0.211), v13b epoch 13 (0.200). Not shipped: with all four v13 readers the
+  choice is right on 649 of 1,028 calibration questions out of fold, against 668 for v11a, v11b, v13b1 and v13a1
+  (v13a for v11a: 662; v13b for v11b: 660). Both single-stream downloads stalled; `pull_parts.sh` brought them back.
 
 ### 5. Relayout of v5 and v6 (before the share outputs)
 

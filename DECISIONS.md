@@ -4621,3 +4621,82 @@ at 0.25. A re-scorer trained on these readers' own pools is the next step. A lon
 to decomposition, which needs two to four subquestions, so the chat answers "Try asking the parts as separate
 questions" where it could have answered it whole. Weights: Hugging Face
 revision `fd08934c5a5d45c31ed776c56cbc2d240d2f9d89`.
+
+## The release build's live suites: every column, sheet language, rankings that rank, and values the upload lacks (2026-10-23, 2026-10-24)
+
+The learned readers had never passed a release build: each earlier one stopped at a hermetic gate. The build of
+`cb30447` reached the live product suite and failed it in two ways. `tests.test_datasets` ran past the suite's
+30-minute limit (the four readers read each question in about 9 s on the gate's 4 vCPU, and the suite asks 88
+questions in four execution modes), and the build past its 90 minutes. And live cases the readers had never been run
+on failed: four in that build, and three more in the scale suite once the first ones were fixed. Each is fixed as a
+family, but for two the owner accepted as known gaps (below):
+
+- **Every column** (`tests.test_scale`, "show all rows ordered by id"): the readings could not hold `SELECT *`, so
+  the 55 Spider and 2 BIRD training golds that ask for every column were unreadable and no reader learned it; the
+  readers showed the id alone. The star shown plain is now every column (`engine/readers/readings.py`, the decoder,
+  read as "every column of ..."), those golds are training data, and a written structure teaches it
+  (`training/readers/structures.py` `listing`: every column of a table's rows, at most filtered and ordered; 1,124
+  questions on training databases). Two of the four shipped readers have learned it, and the choice is not confident
+  of it on a 30,000-row sheet (0.09): the question is asked about, read right ("every column of subscriptions, sorted
+  by id lowest first"). A bundle of four readers trained on it answers it (0.17) but chooses right on 649 of 1,028
+  calibration questions out of fold against 668, and the owner chose the more accurate bundle (2026-10-24).
+- **Sheet language** (`tests.test_geo`, "Count all non-empty Order ID rows below the header in the Customers
+  sheet"): every reader read a condition on the order id ("order id is 'non-empty'"), which counted 0 of 4 orders.
+  The builder refuses a condition that can hold for no row as written: a number column compared with a text that is
+  no number (a spelling of a missing number, `''` or `'null'`, still compares: Spider's golds use them) and a column
+  compared with its own unfiltered, unranked values. A rewording family teaches the language
+  (`training/readers/rewordings.py` `sheet`: 1,085 training count questions asked as a person looking at the sheet
+  would).
+- **Rankings that rank** (`tests.test_geo`, "top 3 cities"): the choice ranked first the cities by their number of
+  rows, one each, and served three of four by name. A ranking whose order ranks none of the rows it keeps above the
+  first one it leaves out (its first row ties with that one) is served only when every eligible ranking is
+  (`engine/sql_rank.py`, `undecided`). A first version that refused any tie at the cut lost "the five oldest people"
+  on calibration (the fifth and sixth ages tie in the data) and was narrowed.
+- **A value the upload lacks** (`tests.test_geo`, "total amount in Europe by city"): the reading chosen dropped
+  "Europe", so routing took the upload as answering the question whole and skipped compose; the delegate's world
+  join still answered right, with no derivation shown. `engine/routing.py:reads_upload_whole` now also asks that no
+  reading of the pool names a value the upload holds nowhere (`engine/sql_grounding.py:unheld_literals`), and compose
+  decides as before.
+- **Layout copies are read once** (`tests.test_scale`, "What is the total Amount broken down by Plan and
+  Currency?" over three subscription exports and their three reports): read against all six tabs, every reading
+  joined copies no key connects. The readers read one table of each group of layout copies, the one the question
+  names or else the first (`engine/tables.py:one_of_each_layout`), and the answer names the others, as it already did
+  (`layout_copies`). The breakdown itself stays unanswered: the readers still list the export's report beside it, and
+  a rule that dropped a listed table no key reaches from the tables read let the readings build, after which the
+  choice preferred "plan, currency" with no total at 0.31. That rule was left out (a confident wrong total is worse
+  than none), and the question is declined, a known gap the owner accepted (2026-10-24). A preference for candidates
+  that read every column the question names by its header, the old search's coverage, was measured and left out
+  too: 653 of 1,028 out of fold against 668.
+- **Two columns under one header are asked about** (`tests.test_scale`, "total Amount" on a sheet headed "id,
+  Amount, Amount, Units"): the readers summed column B alone. A reading of one of two columns that share a header,
+  when the question does not name its column letter, is not eligible (`engine/sql_grounding.py:shared_headers`), and
+  when that leaves nothing the reply asks which column; "total Amount in column C" is answered.
+- **Limits:** the product suite gives each suite 3,600 s (`deploy/gcp/run_product_suite.sh`) and the engine build
+  10,800 s (`cloudbuild.yaml`, `cloudbuild.product.yaml`, `deploy/gcp/deploy.sh`).
+- **An abstaining reader is no dissent** (`engine/readers/search.py:readers_share`, the same count in
+  `training/readers/choice.py`): the readers' share of a candidate is counted among the readers that build any reading
+  of the question. With two of four readers trained on sheet language, the other two built nothing for the sheet
+  count, and the share counted their silence as disagreement (confidence 0.124 against the threshold). Out of fold
+  on calibration the choice is right on 666 of 1,028 with it and 667 without, within noise; a result-agreement
+  feature (668) and serving any answer every reading agrees on (2 of 9 such declined calibration questions right)
+  were tried and left out.
+- **Two readers retrained on the new data** (`training/readers/README.md` 2d, 4d): v13a1 and v13b1 replace v12a1
+  and v12b1 in slots d and c (gold-pruned calibration, every reading right: 0.238 against 0.236, 0.203 against
+  0.197); the choice refitted on the pool, threshold matched at 0.1405 (answered 955 of 1,053, 661 right, 294 wrong,
+  the engine's 294). Weights: Hugging Face revision `999b50a9d7038c901998c0b586cbb8d4aa67851e`. Two more on the
+  same data (v13a, v13b: seed 0, 0.211 and 0.200), trained with the owner's added budget, are not shipped: in place
+  of v11a and v11b they lower the choice to 649 out of fold, and in place of one of them to 660 or 662.
+
+**Measured** (`spider/results/RESULTS.md`): calibration 667 strict of 1,053 (669 for the bundle above: 19 wins, 21
+losses, within noise; 301 wins and 52 losses against the engine), so this is not an accuracy gain on Spider; what
+it changes is the four product failures. On Windows: `regress.run_regression --offline` 13 of 13,
+`tests.test_complex_datasets` 10 of 10, `tests.test_geo` 73 of 73, `tests.test_scale` (each known gap asked about or declined, never answered wrong),
+and the live demo-dataset gate 92 of 92. The sheet count is answered at confidence 0.163, 0.023 above the threshold.
+
+**Known gaps** (regressions against the engine before the readers, accepted by the owner for this release):
+"show all rows ordered by id" over a 30,000-row sheet is asked about rather than answered, and "What is the total
+Amount broken down by Plan and Currency?" over the six-tab subscription workbook is declined; `tests.test_scale`
+requires each to be answered right or not at all. "list the id and Amount of every subscription ordered by id" is
+read as sorted by amount. "minimum amount" is still answered with the highest. The re-scorer, the oldest model in
+the bundle, has never read "every column of ..." or sheet language; refreshing it needs cross-fold readers on the
+new data. RunPod balance after this round: $37.51.

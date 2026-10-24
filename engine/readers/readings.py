@@ -2,8 +2,9 @@
 assembles a typed-AST query from them.
 
 A query is one or two blocks. Block 0 is the outer query; block 1, when present, is the other side of a set operation
-or the subquery a block-0 condition compares with. Everything else is a set of facts keyed by a column (or by COUNT's
-star), so each fact is one classification an encoder makes about one schema item:
+or the subquery a block-0 condition compares with. Everything else is a set of facts keyed by a column (or by the
+star: counted, COUNT(*), or shown plain, every column, SELECT *), so each fact is one classification an encoder makes
+about one schema item:
 
     structure   single | UNION | INTERSECT | EXCEPT | NESTED             (one per question)
     per table   used in block b                                          (FROM tables, bridges included)
@@ -51,11 +52,10 @@ def _column(expr) -> str:
 
 
 def _aggregated(expr) -> tuple[str, str, bool]:
-    """(aggregate, column, distinct inside the aggregate) for a select, order or having operand."""
+    """(aggregate, column, distinct inside the aggregate) for a select, order or having operand; the star shown plain
+    is every column ("show all rows ordered by id": SELECT * ... ORDER BY id)."""
     if isinstance(expr, Aggregate):
         return expr.function, _column(expr.operand), expr.distinct
-    if isinstance(expr, Star):
-        raise NotReadable("bare-star")
     return "plain", _column(expr), False
 
 
@@ -177,8 +177,6 @@ def _ref(graph, column: str):
 def _operand(graph, aggregate: str, column: str, distinct: bool = False):
     ref = _ref(graph, column)
     if aggregate == "plain":
-        if isinstance(ref, Star):
-            raise NotReadable("bare-star")
         return ref
     return Aggregate(aggregate, ref, distinct)
 
@@ -206,7 +204,8 @@ def value_kind(expr):
 def _same_kind(left, subquery) -> None:
     """A set membership compares values of one kind: "product id is not among (the product names Paris customers
     bought)" compares a number with names, which never match, so every row passes (2026-10-22). The search reads
-    such a membership again on the column the listed values are values of (engine.readers.search.referenced)."""
+    such a membership again on the column the listed values are values of (engine.readers.search.referenced).
+    Nor is a column among its own values a condition (``_not_itself``)."""
     inner = subquery.query if isinstance(subquery, ScalarSubquery) else subquery
     shown = getattr(inner, "select", ())
     if not shown:
@@ -214,6 +213,36 @@ def _same_kind(left, subquery) -> None:
     kinds = {value_kind(left), value_kind(shown[0].expression)}
     if kinds == {"number", "text"}:
         raise NotReadable("in-compares-number-with-text")
+    _not_itself(left, subquery)
+
+
+def _not_itself(left, subquery) -> None:
+    """A column compared with its own values, over its own table unfiltered and unranked, is no condition: "order id is
+    not among (order id of customers)" keeps no row (it counted 0 orders, 2026-10-23), its IN keeps every row, and
+    "order id is (order id of customers)" holds for the first row's id alone. One ranked row's value is a condition:
+    "a greater accelerate than (the accelerate of the car with the most horsepower)"."""
+    inner = subquery.query if isinstance(subquery, ScalarSubquery) else subquery
+    shown = getattr(inner, "select", ())
+    if (len(shown) == 1 and shown[0].expression == left and inner.where is None and not inner.joins
+            and not inner.group_by and inner.having is None and not inner.order_by and inner.limit is None):
+        raise NotReadable("compares-with-itself")
+
+
+# How data spells a missing number: Spider's "WHERE manager_id != 'null'" and "WHERE death_year = ''" compare a number
+# column with them, and the cells hold them.
+MISSING_SPELLINGS = frozenset({"", "null", "none", "nan", "n/a"})
+
+
+def _comparable(left, value) -> None:
+    """A number column compares with a number, or with a spelling of a missing one (``MISSING_SPELLINGS``): "order id
+    is 'non-empty'" (a number column against a text that is no number) holds for no row, so "Count all non-empty
+    Order ID rows" counted 0 orders (2026-10-23)."""
+    if value_kind(left) != "number" or not isinstance(value, str) or value.strip().lower() in MISSING_SPELLINGS:
+        return
+    try:
+        float(value.replace(",", ""))
+    except ValueError:
+        raise NotReadable("compares-number-with-text") from None
 
 
 def _predicate(conditions, conj):
@@ -256,9 +285,15 @@ def _build_block(graph, block: dict, subquery=None, joins_choice: int = 0) -> Se
             # the pool runs, and PostgreSQL, whose LIKE alone is case-sensitive (sql_ast.Lower).
             where.append(Comparison(Lower(left), operator, Literal(value.lower())))
         else:
+            _comparable(left, value)
+            if value == SUBQUERY and subquery is not None:
+                _not_itself(left, subquery)
             where.append(Comparison(left, operator, _value(value, subquery)))
-    having = [Comparison(_operand(graph, aggregate, column), operator, _value(value, subquery))
-              for aggregate, column, operator, value in block["having"]]
+    having = []
+    for aggregate, column, operator, value in block["having"]:
+        operand = _operand(graph, aggregate, column)
+        _comparable(operand, value)
+        having.append(Comparison(operand, operator, _value(value, subquery)))
     order = tuple(OrderTerm(_operand(graph, aggregate, column), block["dir"] or "ASC")
                   for aggregate, column in block["order"])
     # A grouped block shows and sorts by the group's own fields: a plain column it shows or sorts by is grouped too

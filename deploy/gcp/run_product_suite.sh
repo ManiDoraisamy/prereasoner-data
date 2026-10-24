@@ -118,7 +118,7 @@ if [[ "${RUN_PRODUCT_SUITES:-1}" == "1" ]]; then
     --env INSTALL_CI_REQUIREMENTS=0 \
     --env RUN_WORLD_REGRESSION=1 \
     --env LIVE_REGRESSION_TIMEOUT_SECONDS=600 \
-    --env TEST_SUITE_TIMEOUT_SECONDS=1800 \
+    --env TEST_SUITE_TIMEOUT_SECONDS=3600 \
     --env KB_PG_HOST=product-db --env KB_PG_PORT=5432 --env KB_PG_DB=world \
     --env KB_PG_USER=serving --env "KB_PG_PASSWORD=$role_password" --env KB_PG_SSLMODE=disable \
     --entrypoint /bin/sh "$image" /workspace/deploy/gcp/run_hermetic_suite.sh || suite_status=$?

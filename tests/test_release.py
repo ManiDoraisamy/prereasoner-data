@@ -953,7 +953,7 @@ def test_engine_release_build_runs_the_real_server_until_health_ready():
     deploy = _text("deploy/gcp/deploy.sh")
     assert "build_context.py --target release" in deploy
     assert '--ignore-file="$BUILD_CONTEXT/cloudbuild.hermetic.ignore"' in deploy
-    assert "--timeout=5400s" in deploy
+    assert "--timeout=10800s" in deploy
 
 
 def test_engine_release_runs_full_live_product_gate_before_image_publication():
@@ -966,7 +966,7 @@ def test_engine_release_runs_full_live_product_gate_before_image_publication():
     assert "_RUN_PRODUCT_SUITES: \"1\"" in cloudbuild
     assert "_PGVECTOR_IMAGE: pgvector/pgvector:pg16@sha256:" in cloudbuild
     assert "machineType: E2_HIGHCPU_32" in cloudbuild
-    assert "timeout: 7200s" in cloudbuild
+    assert "timeout: 10800s" in cloudbuild
     assert "gcloud sql" not in product and "cloud-sql-proxy" not in product
     # Cloud Build publishes declared images only after every step succeeds.
     assert cloudbuild.index("- id: live-product-suite") < cloudbuild.index("images:")
@@ -1033,7 +1033,7 @@ def test_live_product_gate_uses_disposable_postgres_and_pinned_public_seed():
     assert "LIVE_REGRESSION_TIMEOUT_SECONDS=600" in runner
     assert "db.sync.sources.ecb.sync" in runner
     assert "db.sync.build_exchange_rate" in runner
-    assert "TEST_SUITE_TIMEOUT_SECONDS=1800" in runner
+    assert "TEST_SUITE_TIMEOUT_SECONDS=3600" in runner
     assert "E2_HIGHCPU_32" in _text("cloudbuild.product.yaml")
     assert '_RUN_PRODUCT_SUITES: "1"' in _text("cloudbuild.product.yaml")
     assert 'RUN_PRODUCT_SUITES=\'${_RUN_PRODUCT_SUITES}\'' in _text("cloudbuild.product.yaml")

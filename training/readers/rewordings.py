@@ -13,6 +13,10 @@ Families, chosen from the gold readings (never from the question's words):
              (1,745 descending top-1 sorts against 387 ascending), and the readers read "minimum notice_days" and
              "lowest amount" as the highest (2026-10-22). Gemini also names the phrase it replaced and its
              replacement; a rewording is kept only if the original holds the first and the rewording the second.
+  sheet      the readings count the rows of one table (COUNT(*) or COUNT of a column, at most filtered); the rewording
+             asks it as a person looking at the spreadsheet would: the table as a sheet, its rows below the header,
+             a column's non-empty cells. "Count all non-empty Order ID rows below the header in the Customers sheet"
+             was read as "order id is 'non-empty'" by every reader, which counted 0 of 4 orders (2026-10-23).
 
 Gemini (engine/llm.py, the product's one client; temperature 0, seed 0) writes each rewording. One is kept only if
 every value its original question states appears in it verbatim, it differs from the original, and it has at most
@@ -49,6 +53,11 @@ INSTRUCTIONS = {
                  "the latest or the earliest, and so on). Reword it so it asks for the opposite extreme and nothing "
                  "else changes. Give the phrase you replaced (replaced) and what replaced it (replacement). If the "
                  "extreme has no single opposite, set skip."),
+    "sheet": ("The table {columns} is a sheet of a spreadsheet: a header row naming its columns, one record per row "
+              "below it. Reword the question as a person looking at that sheet would ask it, naming the sheet, its "
+              "rows below the header, or the cells of a column as the header names it (non-empty or filled cells "
+              "when it counts a column's values), and keep every condition and value. If it cannot be said that "
+              "way, set skip."),
 }
 SCHEMA = {"type": "object", "properties": {"question": {"type": "string"}, "skip": {"type": "boolean"},
                                            "replaced": {"type": "string"}, "replacement": {"type": "string"}},
@@ -71,6 +80,10 @@ def family_columns(readings):
     found = {}
     if readings["structure"] == "single":
         block = readings["blocks"][0]
+        counted = [column for _, aggregate, column, _ in block["select"] if aggregate == "COUNT"]
+        if (len(block["tables"]) == 1 and len(block["select"]) == 1 and counted and not block["group"]
+                and not block["having"] and not block["order"]):
+            found["sheet"] = block["tables"]
         extremes = {aggregate for _, aggregate, _, _ in block["select"]} & {"MIN", "MAX"}
         if len(extremes) == 1:
             found["opposite"] = sorted({c for _, a, c, _ in block["select"] if a in extremes})

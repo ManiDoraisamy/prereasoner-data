@@ -37,12 +37,21 @@ CANDIDATES = 16                                    # per stage-2 model
 CHOICE_FEATURES = ("rescorer_logit", "score/10", "best_rank/16", "readers_share", "empty")
 
 
-def choice_features(logit, score, rank, readers_share, rows):
+def choice_features(logit, score, rank, share, rows):
     """What the readers' choice weighs of a candidate that ran (``CHOICE_FEATURES``): the re-scorer's logit, the
     candidate's log probability, its best rank among the readers, the share of the readers' readings that build it
-    (more than 1 when one reader builds it twice), and whether its result is empty. training.readers.choice fits the
-    weights on these same features of calibration pools."""
-    return (logit, score / 10.0, rank / CANDIDATES, readers_share, float(rows == 0))
+    (``readers_share``), and whether its result is empty. training.readers.choice fits the weights on these same
+    features of calibration pools."""
+    return (logit, score / 10.0, rank / CANDIDATES, share, float(rows == 0))
+
+
+def readers_share(readings, readers):
+    """The share of the readers' readings that build a candidate: ``readings`` build it, among ``readers``, the
+    readers that build any reading of the question (more than 1 when one reader builds it twice). A reader whose
+    every reading the builder refuses has not read the question, and its silence is not disagreement: "Count all
+    non-empty Order ID rows below the header in the Customers sheet" was read as a count by the two readers trained
+    on sheet language and by no reading of the other two, which counted the counts half as shared (2026-10-23)."""
+    return readings / max(readers, 1)
 
 
 class ReadingSearch:
@@ -133,8 +142,9 @@ class ReadingSearch:
                  if len(values) > 1}
         from engine.readers import models
 
-        pooled, seen, built = [], set(), {}
+        pooled, seen, built, active = [], set(), {}, 0
         for model, anchored in self.stage2:
+            reads = False
             row = self.row(question, schema, *kept, anchored=anchored)
             output = models.read_outputs(model, self.tokenizer, row)
             for rank, (score, readings) in enumerate(decoding.candidates(output, row, graph, CANDIDATES)):
@@ -146,12 +156,14 @@ class ReadingSearch:
                         continue
                     built[sql] = built.get(sql, 0) + 1
                     pooled.append((rank, -score, query, sql, read_as(reading)))
+                    reads = True
+            active += reads
         ordered = []
         for rank, negative, query, sql, said in sorted(pooled, key=lambda item: (item[0], item[1])):
             if sql not in seen:
                 seen.add(sql)
                 ordered.append(ScoredQuery(query, sql, -negative, (said,),
-                                           (("rank", float(rank)), ("readers", built[sql] / len(self.stage2)))))
+                                           (("rank", float(rank)), ("readers", readers_share(built[sql], active)))))
         return ordered
 
     def rescore(self, question, pool, shapes):

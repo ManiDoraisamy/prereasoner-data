@@ -5,6 +5,31 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
+## Two readers trained on sheet language and every column: calibration 669 → 667 strict (2026-10-24)
+
+The readers bundle of v11a and v11b (slots a and b) with v13b1 and v13a1 (slots c and d, trained on the v13 data:
+`training/readers/README.md` 2d, 4d), the shipped stage 1 and re-scorer "f", and the choice refitted on that pool with
+the readers' share counted among the readers that read the question (threshold 0.1405 matched on calibration),
+installed by `training/readers/promote.py` at Hugging Face revision `999b50a9d7038c901998c0b586cbb8d4aa67851e`, in the
+readers worktree at `cb30447` plus this change (`worktree_dirty: true`). Same evaluator and flags as the entry below,
+the threshold off. This change's layout-copy and shared-header rules reach no calibration or test question (no
+database of either holds layout copies, and Spider has no repeated headers). Records:
+`C:/work/prereasoner-readers-artifacts/evals/v13s/` (per-example calibration).
+
+**Calibration** (20 held-out Spider train databases, 1,053 questions):
+
+| System | Strict | Lenient | Answered | Wrong |
+|---|---|---|---|---|
+| Engine `b8bedde` | 418 (39.7%) | | 712 | 294 |
+| Bundle of 2026-10-23 (v11a, v11b, v12b1, v12a1), choice off | 669 (63.5%) | 749 (71.1%) | 1,053 | 384 |
+| **This bundle, choice off** | **667 (63.3%)** | 743 (70.6%) | 1,053 | 386 |
+| This bundle, choice at 0.1405 | 661 (62.8%) | | 955 | 294 |
+
+Transitions, this bundle (choice off) against the bundle of 2026-10-23: 19 wins, 21 losses, 648 unchanged right, 365
+unchanged wrong (within noise); against the engine: 301 wins, 52 losses, 366 unchanged right, 334 unchanged wrong.
+Prediction seconds (eight threads): median 4.21, p90 8.35. Out-of-fold choice on the calibration pools: 666 of 1,028
+right (668 with the candidates rebuilt by the final builder); all four readers trained on the v13 data, 649.
+
 ## Two readers trained on the grouped structure, a refitted choice: calibration 663 → 669 strict (2026-10-23)
 
 The readers bundle of v11a and v11b (slots a and b, unchanged) with v12b1 and v12a1 (slots c and d, trained on v11's

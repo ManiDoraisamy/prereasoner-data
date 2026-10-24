@@ -65,6 +65,7 @@ table's columns would make, whose values are computed, not uploaded.
 """
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, fields, is_dataclass
 
@@ -83,6 +84,7 @@ from engine.sql_ast import (
     SetQuery,
     SQLType,
     SubquerySource,
+    column_refs,
     contradictory,
 )
 from engine.sql_schema import is_surrogate_key
@@ -106,6 +108,39 @@ def literal_bindings(query) -> tuple[Binding, ...]:
     ``query``, with the column's qualifier resolved to its physical table. Columns of derived tables
     are skipped: their values are computed, not uploaded."""
     return tuple(_walk(query).bindings)
+
+
+def unheld_literals(pool: Sequence, schema: Sequence[Mapping]) -> set[str]:
+    """The text literals the pool's readings test text columns against (``literal_bindings``, folded) that no
+    column of the upload holds: ``schema`` is the planner's column records, each with every one of its
+    ``values``."""
+    wanted = {_fold(text) for member in pool for _, _, text in literal_bindings(member.query)}
+    if not wanted:
+        return set()
+    held = {_fold(value) for column in schema for value in (column.get("values") or ()) if value is not None}
+    return wanted - held
+
+
+_LETTERED = re.compile(r"^(?P<header>.*) \[column (?P<letter>[A-Z]+)\]$")
+
+
+def shared_headers(query, tables: Mapping[str, dict], question: str) -> tuple[str, ...]:
+    """The headers ``query`` reads a column of that another column of the same table shares, when ``question`` does
+    not say which by its column letter: a sheet headed "id, Amount, Amount, Units" names its fields "Amount [column B]"
+    and "Amount [column C]" (engine/column_names.py), and "total Amount" summed column B alone (tests.test_scale,
+    2026-10-23). Empty when every column it reads is the one its header names."""
+    asked = question.lower()
+    shared = []
+    for column in column_refs(query):
+        match = _LETTERED.match(column.name)
+        table = tables.get(column.table)
+        if not match or table is None or f"column {match['letter'].lower()}" in asked:
+            continue
+        others = [name for name in table["columns"] if name != column.name
+                  and (other := _LETTERED.match(str(name))) and other["header"] == match["header"]]
+        if others and match["header"] not in shared:
+            shared.append(match["header"])
+    return tuple(shared)
 
 
 def join_pairs(query) -> tuple[JoinPair, ...]:
