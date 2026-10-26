@@ -5,6 +5,42 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
+## After the SynSQL release: more SynSQL per database, a re-scorer that reads the first row, and what the tie rule costs (2026-10-26)
+
+Calibration only (20 held-out Spider train databases); the frozen test was not run for any of these. Records:
+`C:/work/prereasoner-readers-artifacts/` (contracts `readers_v15.md`, `rescorer_h.md`; candidates `v15*cal.jsonl`;
+evals `eval_v15.log`). RunPod: $15.91 (v15 readers $14.30, "h" $1.61).
+
+**Readers v15** (v14's recipe and selection with eight SynSQL questions per database instead of four, 95,726 questions,
+five epochs so the steps stay about equal), each against its v14 counterpart, candidates on 1,035 questions:
+
+| Reader | Right answer in its candidates | First candidate right |
+|---|---|---|
+| v14a → v15a (anchored, seed 0) | 742 → 762 | 579 → 569 |
+| v14b → v15b (plain, seed 0) | 732 → 751 | 550 → 571 |
+| v14b1 → v15b1 (plain, seed 1) | 743 → 772 | 563 → 584 |
+| v14a1 → v15a1 (anchored, seed 1) | 745 → 746 | 580 → 581 |
+
+The pools gain less than the readers, and the choice gains nothing (out of fold by database, over re-scorers "f" and
+"g"):
+
+| Pool | Right answer in the pool | Choice, "f" + "g" | "f" alone | "g" alone |
+|---|---|---|---|---|
+| Shipped (v14a, v14b, v14b1, v14a1) | 865 | 734 | 704 | 719 |
+| v15a, v15b, v15b1, v14a1 | 874 | 729 | 707 | 716 |
+| v14a, v15b, v15b1, v14a1 | 869 | 733 | | |
+
+The choice's own form is not the limit either: over six assignments of databases to folds the shipped choice picks
+731 to 733 (mean 732.3); a listwise fit 730 to 732; interaction terms 727 to 731; a third re-scorer's logit (the large
+"gl") 724. **"h"**, the "g" recipe on the same pools with each candidate's first result row appended to its text, chose
+0.655 of calibration right at its best epoch against g's 0.672, and was left out. Counting an empty result's columns as
+serving does (the candidates record 0) changes nothing: 734.
+
+**The tie rule.** Serving keeps every row tied with the first of a top-1 ranking (DECISIONS.md, 2026-10-02); Spider's
+gold keeps one (`ORDER BY ... LIMIT 1`). Of the shipped bundle's 1,053 served calibration answers, 162 rank with ties;
+run as the same reading with LIMIT 1, 24 become strict-right and 1 strict-wrong: **23 answers (2.2 points)** that the
+strict metric counts as wrong because the product returns every tied row.
+
 ## Readers trained with SynSQL-2.5M's databases and two re-scorers: calibration 667 → 729 strict; frozen test 1,447 → 1,535 strict (2026-10-26)
 
 The readers bundle of v14a, v14b, v14b1 and v14a1 (slots a to d, trained on v13's data plus 51,929 SynSQL-2.5M

@@ -4755,7 +4755,13 @@ Measured and left out: preferring candidates whose results agree across readers 
 668); structural facts of each candidate's SQL as choice features (664 to 669); a lower decoding floor (the pools
 hold 14 or 19 more right answers, the choice picks 1 or 6 fewer); a fifth reader (pool 879, choice 716); an XLM-R
 large re-scorer (708, and several times slower); ModernBERT-large in place of XLM-R (its loss was NaN from the first
-logged step under the recorded image; XLM-R stays, and with it the readers' other languages).
+logged step under the recorded image; XLM-R stays, and with it the readers' other languages). After the release
+(2026-10-26, `spider/results/RESULTS.md`): eight SynSQL questions per database instead of four (v15: each reader's
+candidates hold 1 to 29 more right answers, the pools 869 to 874, but the choice over both re-scorers picks 729 to 733
+against 734); a re-scorer that reads each candidate's first result row ("h", g's data and recipe: 0.655 of
+calibration chosen right against g's 0.672); and the empty result's column count, which the readers' candidates record
+as 0 and serving counts from the query (the choice over serving's text: 734, unchanged). The re-scorers are the limit:
+they choose about 730 of the 865 to 874 questions the pools can answer, whichever readers fill them.
 
 The Codex worktree (`C:\Users\manid\.codex\worktrees\6dba`, 3e46a74 plus about 12,400 uncommitted lines of
 2026-10-13..17) was read, not changed: its code extends the lexical search this repository removed on 2026-10-21, so
@@ -4766,3 +4772,9 @@ not yet checked on PostgreSQL).
 
 The release gate this time runs in the desktop app's built-in browser (Chromium, signed in to the owner's account)
 on the owner's instruction (2026-10-26), since Claude in Chrome could not connect to this session.
+
+**An instance is ready only once the readers are loaded** (`engine/server.py:main`, 68ac573). The readers loaded on
+an instance's first own-data question; on the fresh Cloud Run instances of the f2d08f5 release that took 191 s and
+the chat's engine call timed out at 180 s, so the first question on every new instance failed ("couldn't answer that
+right now"). They now load as a startup phase (160 s on Cloud Run, after the world reasoner's 180 to 205 s), inside
+the startup probe's 610 s, and the instance takes no request before they are ready.
