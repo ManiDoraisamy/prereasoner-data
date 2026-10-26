@@ -4760,8 +4760,10 @@ logged step under the recorded image; XLM-R stays, and with it the readers' othe
 candidates hold 1 to 29 more right answers, the pools 869 to 874, but the choice over both re-scorers picks 729 to 733
 against 734); a re-scorer that reads each candidate's first result row ("h", g's data and recipe: 0.655 of
 calibration chosen right against g's 0.672); and the empty result's column count, which the readers' candidates record
-as 0 and serving counts from the query (the choice over serving's text: 734, unchanged). The re-scorers are the limit:
-they choose about 730 of the 865 to 874 questions the pools can answer, whichever readers fill them.
+as 0 and serving counts from the query (the choice over serving's text: 734, unchanged); and a re-scorer trained on the
+v15b recipe's cross-fold candidates ("i": 733 with "f" and "g", against 733 without it). The re-scorers are the limit:
+they choose about 730 of the 865 to 874 questions the pools can answer, whichever readers fill them and whichever
+readers' candidates train them.
 
 The Codex worktree (`C:\Users\manid\.codex\worktrees\6dba`, 3e46a74 plus about 12,400 uncommitted lines of
 2026-10-13..17) was read, not changed: its code extends the lexical search this repository removed on 2026-10-21, so

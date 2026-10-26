@@ -9,7 +9,8 @@ been removed, and that commit holds the code that ran.
 
 Calibration only (20 held-out Spider train databases); the frozen test was not run for any of these. Records:
 `C:/work/prereasoner-readers-artifacts/` (contracts `readers_v15.md`, `rescorer_h.md`; candidates `v15*cal.jsonl`;
-evals `eval_v15.log`). RunPod: $15.91 (v15 readers $14.30, "h" $1.61).
+evals `eval_v15.log`; contract `rescorer_i.md`). RunPod: $27.08 (v15 readers $14.30, "h" $1.61, v15b fold readers
+and "i" $11.17).
 
 **Readers v15** (v14's recipe and selection with eight SynSQL questions per database instead of four, 95,726 questions,
 five epochs so the steps stay about equal), each against its v14 counterpart, candidates on 1,035 questions:
@@ -34,7 +35,11 @@ The choice's own form is not the limit either: over six assignments of databases
 731 to 733 (mean 732.3); a listwise fit 730 to 732; interaction terms 727 to 731; a third re-scorer's logit (the large
 "gl") 724. **"h"**, the "g" recipe on the same pools with each candidate's first result row appended to its text, chose
 0.655 of calibration right at its best epoch against g's 0.672, and was left out. Counting an empty result's columns as
-serving does (the candidates record 0) changes nothing: 734.
+serving does (the candidates record 0) changes nothing: 734. **"i"**, g's recipe on the union pools of the v14a and
+v15b cross-fold candidates (four v15b fold readers; fold 0's outputs partly downloaded, 3,721 of 8,004 questions, and
+folds 1 and 3 at their epoch-3 checkpoints, the leases' limit), on the pool v14a, v15b, v15b1, v14a1: alone 706, with
+"f" 722, with "g" 717, with "f" and "g" 733 (against 733 without it). A re-scorer matched to the new readers does not
+lift the choice either.
 
 **The tie rule.** Serving keeps every row tied with the first of a top-1 ranking (DECISIONS.md, 2026-10-02); Spider's
 gold keeps one (`ORDER BY ... LIMIT 1`). Of the shipped bundle's 1,053 served calibration answers, 162 rank with ties;
