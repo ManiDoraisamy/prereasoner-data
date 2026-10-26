@@ -50,8 +50,11 @@ docker run -d --name "$db_name" --network "$network" --network-alias product-db 
   "$pg_image" >/dev/null
 
 ready=0
+# The image's entrypoint runs init.sql on a temporary server that listens only on the Unix socket, then
+# restarts it; a socket probe can pass in between and the next psql finds no server. Only the final server
+# listens on TCP.
 for attempt in $(seq 1 180); do
-  if docker exec "$db_name" pg_isready -U postgres -d world >/dev/null 2>&1; then
+  if docker exec "$db_name" pg_isready -h 127.0.0.1 -U postgres -d world >/dev/null 2>&1; then
     ready=1
     break
   fi

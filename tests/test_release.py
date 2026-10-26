@@ -1010,6 +1010,14 @@ def test_hermetic_suite_build_runs_full_tests_in_the_pinned_cpu_image():
     assert 'INSTALL_CI_REQUIREMENTS:-1' in suite_runner
 
 
+def test_disposable_postgres_is_ready_only_after_its_init_restart():
+    # Build 23678efd (2026-10-26): pg_isready passed on the entrypoint's socket-only init server, which
+    # then stopped, and the next psql failed with "No such file or directory" after every suite passed.
+    runner = _text("deploy/gcp/run_product_suite.sh")
+    probes = [line for line in runner.splitlines() if "pg_isready" in line]
+    assert probes and all("-h 127.0.0.1" in line for line in probes)
+
+
 def test_live_product_gate_uses_disposable_postgres_and_pinned_public_seed():
     cloudbuild = _text("cloudbuild.product.yaml")
     runner = _text("deploy/gcp/run_product_suite.sh")
@@ -1362,6 +1370,7 @@ TESTS = [
     test_engine_release_build_runs_the_real_server_until_health_ready,
     test_engine_release_runs_full_live_product_gate_before_image_publication,
     test_hermetic_suite_build_runs_full_tests_in_the_pinned_cpu_image,
+    test_disposable_postgres_is_ready_only_after_its_init_restart,
     test_live_product_gate_uses_disposable_postgres_and_pinned_public_seed,
     test_live_database_tests_allocate_production_shaped_schemas,
     test_world_regression_reports_empty_result_instead_of_raising,
