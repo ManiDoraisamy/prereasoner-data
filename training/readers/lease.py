@@ -24,6 +24,7 @@ out/ is moved aside to out.<cloud>, so the next attempt never nests into it); ea
 usage: python -m training.readers.lease full --experiment <id> --data <dir with stage2.jsonl[.gz]>
            [--epochs 15] [--eval-from 8] [--backbone FacebookAI/xlm-roberta-large] [--lr 1e-5]
        python -m training.readers.lease folds --experiment <id> --data <dir> --folds 0,1 [--epochs 12] [--eval-from 9]
+           [--train-only synsql]
        python -m training.readers.lease rescorer --experiment <id> --job NAME=TRAIN.jsonl.gz=CAL.jsonl.gz[=large] ...
        options of every job: [--minutes N] [--max-hourly-cost 1.0] [--clouds SECURE,COMMUNITY] [--gpus a,b]
            [--image IMAGE] [--cuda 12.4,12.8] [--dry-run] [--resume]
@@ -90,12 +91,14 @@ def full_command(backbone, lr, epochs, eval_from, seed=0):
             f"{shrink('out/stage2/model.pt', backbone, 'out/stage2/small.pt', 'out/shrink.log')}; ls -la out/stage2")
 
 
-def folds_command(folds, backbone, lr, epochs, eval_from):
-    """The fold files made on the pod, then each wanted fold trained into out/fold<i>, its weights deleted."""
+def folds_command(folds, backbone, lr, epochs, eval_from, train_only=""):
+    """The fold files made on the pod (``train_only``: sources every fold trains on and none holds out), then each
+    wanted fold trained into out/fold<i>, its weights deleted."""
     loop = "; ".join(
         f"{readings(backbone, lr, epochs, eval_from, f'folds/fold{i}.jsonl', f'out/fold{i}')} > out/fold{i}.log 2>&1"
         f" || {{ tail -3 out/fold{i}.log; exit 4; }}; rm -f out/fold{i}/model.pt" for i in folds)
-    return f"{prelude('stage2.jsonl.gz')}; python -m training.readers.folds stage2.jsonl folds && {loop}; ls -la out/*"
+    split = "python -m training.readers.folds stage2.jsonl folds" + (f" --train-only {train_only}" if train_only else "")
+    return f"{prelude('stage2.jsonl.gz')}; {split} && {loop}; ls -la out/*"
 
 
 def rescorer_command(jobs):
@@ -222,6 +225,7 @@ def main(argv=None):
         parser.add_argument("--eval-from", type=int, default=eval_from)
         parser.add_argument("--seed", type=int, default=0, help="the trainer's seed (shuffle, initialisation)")
     folds.add_argument("--folds", required=True, help="comma-separated fold numbers, e.g. 0,1")
+    folds.add_argument("--train-only", default="", help="sources every fold trains on and none holds out (synsql)")
     rescorer.add_argument("--job", dest="jobs", action="append", type=parse_job, required=True,
                           help="NAME=TRAIN.jsonl.gz=CAL.jsonl.gz[=large], repeatable")
     args = ap.parse_args(argv)
@@ -238,7 +242,7 @@ def main(argv=None):
         remote = full_command(args.backbone, args.lr, args.epochs, args.eval_from, args.seed)
     else:
         wanted = [int(i) for i in args.folds.split(",")]
-        remote = folds_command(wanted, args.backbone, args.lr, args.epochs, args.eval_from)
+        remote = folds_command(wanted, args.backbone, args.lr, args.epochs, args.eval_from, args.train_only)
     return lease(args, args.job, remote, uploads, LARGE_GPUS)
 
 

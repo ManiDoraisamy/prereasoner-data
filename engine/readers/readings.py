@@ -23,6 +23,7 @@ The builder adds nothing the readings do not say except the joins, which come fr
 """
 from __future__ import annotations
 
+from engine.readers.layout import HAVING_OPERATORS
 from engine.sql_ast import (
     DATE_PARTS, Aggregate, BinaryExpr, BooleanExpr, ColumnRef, Comparison, DatePart, ExistsPredicate, InPredicate,
     Literal, Lower, OrderTerm, ScalarSubquery, SelectItem, SelectQuery, SetQuery, SQLType, Star,
@@ -111,6 +112,8 @@ def _block(query, nested: list) -> dict:
     for left, operator, value in raw:
         if isinstance(left, Aggregate):
             raise NotReadable("aggregate-in-where")
+        if operator not in OPERATORS:
+            raise NotReadable("where-operator")
         where.append([_column(left), operator, value])
     having_conj, raw = _conditions(query.having, nested)
     having = []
@@ -118,6 +121,8 @@ def _block(query, nested: list) -> dict:
         aggregate, column, distinct = _aggregated(left)
         if distinct:
             raise NotReadable("distinct-aggregate-in-having")
+        if operator not in HAVING_OPERATORS:                # the readers compare totals, never match them as text
+            raise NotReadable("having-operator")
         having.append([aggregate, column, operator, value])
     if having and len(having) > 1 and having_conj != "AND":
         raise NotReadable("having-or")

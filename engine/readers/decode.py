@@ -191,7 +191,10 @@ def dated(where, graph, question, ranges=True):
     def is_date(column):
         return date_column(column, graph)
 
-    stored = {column for column, _, value in where if isinstance(value, str) and STORED_DATE.fullmatch(value.strip())}
+    # Stored form only when the question says it so: a reader that points into the schema's listed dates for "between
+    # August 4 and August 9, 2026" read '2026-08-04' and '26-08-04' and answered 9 rows for 4 (2026-10-25).
+    stored = {column for column, _, value in where if isinstance(value, str) and STORED_DATE.fullmatch(value.strip())
+              and value.strip() in question}
     columns = []
     for column, _, value in where:
         if is_date(column) and not isinstance(value, dict) and column not in columns and column not in stored:
@@ -213,6 +216,13 @@ def dated(where, graph, question, ranges=True):
             read.append([f"{left.part}:{name}" if isinstance(left, DatePart) else name, comparison.operator,
                          comparison.right.value])
     return read
+
+
+def references_another_table(graph, column):
+    """Whether "table.column" is the referencing side of a one-column foreign key to another table."""
+    table, _, name = column.partition(".")
+    return any(not key.additional_columns and key.from_column.table == table and key.from_column.name == name
+               and key.to_column.table != table for key in graph.foreign_keys)
 
 
 def decode_block(output, example, graph, b, nested, choices):
@@ -295,6 +305,14 @@ def decode_block(output, example, graph, b, nested, choices):
     select = [[i, aggregate, column, distinct] for i, (_, aggregate, column, distinct) in enumerate(select)]
     grouped = unpinned([(field(p[b], "group")[0], c) for c, p in columns.items() if c != "*"], lambda item: item)
     group = best(choices, b, "group", grouped, count(output, choices, b, "group", grouped))
+    # Ungrouped, a count of a column that references another table's key counts each row it names once: a reading of
+    # its own table's rows counts them (COUNT(*)), not the key ("How many dogs have had a treatment?" counted three
+    # treatments of two dogs, 2026-10-25). On calibration the readers' pools hold 7 more right answers, and the 31
+    # Spider training golds that count such a column ungrouped return the same rows counted once.
+    if not group:
+        select = [[i, aggregate, column, distinct or (aggregate == "COUNT" and column != "*" and column not in matched
+                                                      and references_another_table(graph, column))]
+                  for i, aggregate, column, distinct in select]
     having = []
     held = [(field(p[b], "having")[a], (column, aggregate)) for column, p in columns.items()
             for a, aggregate in enumerate(AGGREGATES)

@@ -6,13 +6,15 @@
    into the most probable distinct readings (engine.readers.decode.candidates), and the deterministic builder
    (engine.readers.readings.build) makes each reading a typed-AST query.
 3. The candidates of all stage-2 models are pooled, each SQL once, most probable first.
-4. After the pool runs, the re-scorer reads the question beside each candidate that ran (its read-as line and
-   result shape), and the readers' choice (choice.json) weighs its logit with what the pool says of the candidate:
-   its log probability, its best rank, how many of the readers' readings build it, whether its result is empty
-   (``rescore``). The choice's probability for the best candidate is its confidence; below the threshold the
-   readers refuse it (``confidence``, ``confident``).
+4. After the pool runs, each re-scorer reads the question beside each candidate that ran (its read-as line and
+   result shape), and the readers' choice (choice.json) weighs their logits with what the pool says of the
+   candidate: its log probability, its best rank, how many of the readers' readings build it, whether its result is
+   empty (``rescore``). The choice's probability for the best candidate is its confidence; below the threshold the
+   readers refuse it (``confidence``, ``confident``). Two re-scorers trained on different readers' pools err apart:
+   on calibration the choice over both is right on 738 of 1,035 out of fold, against 716 and 717 over either alone
+   (2026-10-25).
 
-Weights live in engine/data/readers/{stage1,stage2_*,rescorer}, each a saved config, tokenizer and model.pt, beside
+Weights live in engine/data/readers/{stage1,stage2_*,rescorer_*}, each a saved config, tokenizer and model.pt, beside
 choice.json.
 """
 from __future__ import annotations
@@ -34,15 +36,22 @@ READERS_DIR = DATA_DIR / "readers"                 # installed only by training/
 MAX_COLUMNS = 20
 BUDGET = 508
 CANDIDATES = 16                                    # per stage-2 model
-CHOICE_FEATURES = ("rescorer_logit", "score/10", "best_rank/16", "readers_share", "empty")
+POOL_FEATURES = ("score/10", "best_rank/16", "readers_share", "empty")
 
 
-def choice_features(logit, score, rank, share, rows):
-    """What the readers' choice weighs of a candidate that ran (``CHOICE_FEATURES``): the re-scorer's logit, the
-    candidate's log probability, its best rank among the readers, the share of the readers' readings that build it
-    (``readers_share``), and whether its result is empty. training.readers.choice fits the weights on these same
+def choice_feature_names(rescorers):
+    """The features the choice weighs for a bundle with the named re-scorers (their directories, rescorer_a, ...):
+    each re-scorer's logit, then ``POOL_FEATURES``. choice.json names them, and serving refuses a choice fitted on
+    others."""
+    return tuple(f"{name}_logit" for name in rescorers) + POOL_FEATURES
+
+
+def choice_features(logits, score, rank, share, rows):
+    """What the readers' choice weighs of a candidate that ran (``choice_feature_names``): each re-scorer's logit,
+    the candidate's log probability, its best rank among the readers, the share of the readers' readings that build
+    it (``readers_share``), and whether its result is empty. training.readers.choice fits the weights on these same
     features of calibration pools."""
-    return (logit, score / 10.0, rank / CANDIDATES, share, float(rows == 0))
+    return (*logits, score / 10.0, rank / CANDIDATES, share, float(rows == 0))
 
 
 def readers_share(readings, readers):
@@ -67,10 +76,11 @@ class ReadingSearch:
                         json.loads((path / "reader.json").read_text(encoding="utf-8")).get("anchored", True)
                         if (path / "reader.json").exists() else True)
                        for path in sorted(directory.glob("stage2_*"))]
-        self.rescorer = models.load("rescorer", directory / "rescorer")
+        self.rescorers = [models.load("rescorer", path) for path in sorted(directory.glob("rescorer_*"))]
         self.choice = json.loads((directory / "choice.json").read_text(encoding="utf-8"))
-        if tuple(self.choice["features"]) != CHOICE_FEATURES:
-            raise ValueError(f"choice.json weighs {self.choice['features']}, serving computes {CHOICE_FEATURES}")
+        computed = choice_feature_names(path.name for path in sorted(directory.glob("rescorer_*")))
+        if tuple(self.choice["features"]) != computed:
+            raise ValueError(f"choice.json weighs {self.choice['features']}, serving computes {computed}")
 
     def schema_items(self, question, schema):
         """{table: (table probability, {column: used probability})}."""
@@ -168,11 +178,11 @@ class ReadingSearch:
 
     def rescore(self, question, pool, shapes):
         """The readers' choice score (log odds that it answers the question) for each candidate that ran, None for
-        the others: the choice model (choice.json) over the re-scorer's logit and what the pool says of the
+        the others: the choice model (choice.json) over the re-scorers' logits and what the pool says of the
         candidate (``choice_features``). ``shapes`` holds each candidate's (rows, columns) when it ran, else None.
-        The re-scorer's logits depend only on the question and what each candidate says and returned, so a
+        The re-scorers' logits depend only on the question and what each candidate says and returned, so a
         request's second selection over the same pool (the compose probe's, then the delegate's) reads them once
-        (``_SCORES``)."""
+        (``_SCORES``: each candidate's logits, one per re-scorer)."""
         ran = [i for i, shape in enumerate(shapes) if shape is not None]
         records = [{"read_as": pool[i].evidence[0], "rows": shapes[i][0], "columns": shapes[i][1],
                     "score": pool[i].score, "rank": dict(pool[i].features).get("rank", 0.0)} for i in ran]
@@ -182,12 +192,13 @@ class ReadingSearch:
         if logits is None:
             from engine.readers import models
 
-            logits = tuple(models.rescore(self.rescorer, self.tokenizer, question, records))
+            logits = tuple(zip(*(models.rescore(rescorer, self.tokenizer, question, records)
+                                 for rescorer in self.rescorers)))
             _keep(_SCORES, key, logits)
         scores = [None] * len(pool)
-        for i, logit in zip(ran, logits):
+        for i, candidate_logits in zip(ran, logits):
             features = dict(pool[i].features)
-            x = choice_features(logit, pool[i].score, features.get("rank", 0.0), features.get("readers", 0.0),
+            x = choice_features(candidate_logits, pool[i].score, features.get("rank", 0.0), features.get("readers", 0.0),
                                 shapes[i][0])
             scores[i] = self.choice["intercept"] + sum(w * v for w, v in zip(self.choice["coef"], x))
         return scores

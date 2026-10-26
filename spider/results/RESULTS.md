@@ -5,6 +5,53 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
+## Readers trained with SynSQL-2.5M's databases and two re-scorers: calibration 667 → 729 strict; frozen test 1,447 → 1,535 strict (2026-10-26)
+
+The readers bundle of v14a, v14b, v14b1 and v14a1 (slots a to d, trained on v13's data plus 51,929 SynSQL-2.5M
+questions on 13,537 synthetic databases: `training/readers/README.md` 2e, 4e), the shipped stage 1, re-scorers "f"
+(`rescorer_a`) and "g" (`rescorer_b`, trained on the v14 recipes' cross-fold candidates: 8b) and the choice fitted over
+both (threshold 0.0862 matched on calibration), installed by `training/readers/promote.py` at Hugging Face revision
+`cd8a03abb8fd443442f9a3e691f717f4285fd263`, in the readers worktree at `fd6d45e` plus this change
+(`worktree_dirty: true`); the stage-2 text drops a table's samples before the table, an ungrouped count of a
+referencing column counts each row once, and a listed date is not read as the question's stored form. Same evaluator
+and flags as the entry below, the threshold off. Records: `C:/work/prereasoner-readers-artifacts/evals/all14fg/`
+(per-example calibration; the test's totals only).
+
+**Calibration** (20 held-out Spider train databases, 1,053 questions):
+
+| System | Strict | Lenient | Answered | Wrong |
+|---|---|---|---|---|
+| Engine `b8bedde` | 418 (39.7%) | | 712 | 294 |
+| Released bundle (v11a, v11b, v13b1, v13a1; "f"), choice off | 667 (63.3%) | 743 (70.6%) | 1,053 | 386 |
+| These four readers with "g" only, choice off | 720 (68.4%) | 806 (76.5%) | 1,050 | |
+| v11b in slot b with "f" and "g", choice off | 728 (69.1%) | 808 (76.7%) | 1,051 | |
+| **This bundle, choice off** | **729 (69.2%)** | 810 (76.9%) | 1,050 | 321 |
+| This bundle, choice at 0.0862 | 727 (69.0%) | | 1,021 | 294 |
+
+Transitions, this bundle (choice off) against the released bundle: 92 wins, 30 losses, 637 unchanged right, 294
+unchanged wrong; against the engine: 345 wins, 34 losses, 384 unchanged right, 290 unchanged wrong. By difficulty
+(easy 238, medium 412, hard 233, extra 170): 88.7 / 66.7 / 63.9 / 55.3%, against 79.0 / 60.7 / 60.9 / 51.2% for the
+released bundle. Prediction seconds (eight threads, beside the frozen test's run): median 4.69, p90 8.54; the same
+readers with v11b in slot b, alone on the machine: median 3.52, p90 6.61.
+
+Out of fold on the calibration pools (1,035 questions with the samples-first rows): right answer in the pool 865; the
+choice right on 734 over both re-scorers, 704 over "f" alone and 719 over "g" alone.
+
+**Frozen Spider test** (2,147 questions, 40 databases; totals only):
+
+| System | Strict | Lenient | Answered |
+|---|---|---|---|
+| Engine alone `b8bedde` | 939 (43.7%) | | |
+| Released bundle (v11a, v11b, v13b1, v13a1; "f"), choice off | 1,447 (67.4%) | 1,625 (75.7%) | 2,143 |
+| **This bundle, choice off** | **1,535 (71.5%)** | 1,698 (79.1%) | 2,143 |
+| This bundle, choice at 0.0862 | 1,524 (71.0%) | | 2,085 (561 wrong) |
+
+By difficulty (easy 470, medium 857, hard 463, extra 357): 87.2 / 73.5 / 68.0 / 50.4%, against 84.9 / 69.5 / 62.6 /
+45.4% for the released bundle. The four questions left unanswered with the choice off: two with no executable grounded
+candidate, two held back by the selection (counted by reason without reading them). Prediction seconds (eight
+threads): median 3.76, p90 7.44. The bundle was chosen on calibration and the product's demo questions, not on the
+test.
+
 ## Two readers trained on sheet language and every column: calibration 669 → 667 strict; frozen test 1,414 → 1,447 strict (2026-10-24)
 
 The readers bundle of v11a and v11b (slots a and b) with v13b1 and v13a1 (slots c and d, trained on the v13 data:

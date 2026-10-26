@@ -7,6 +7,8 @@
   databases are disjoint from Spider's.
 - Spider-Syn (``add_syn``): train_spider.json and dev.json, Spider's questions reworded (SpiderSynQuestion) over
   Spider's databases.
+- SynSQL-2.5M (``add_synsql``): the questions training.readers.synsql chose (questions.json, tables.json) over the
+  dataset's synthetic databases (databases/<db>/<db>.sqlite). Its databases are disjoint from Spider's and BIRD's.
 
 Every database is read as the evaluator reads it: at most 5,000 rows per table (spider.probe.evalutil.load_capped),
 its foreign keys from the dataset's schema file.
@@ -59,6 +61,7 @@ class Sources:
             self.questions = {name.split(".")[0]: json.loads(z.read("spider_data/" + name)) for name in SPIDER_SETS}
             self.tables = {t["db_id"]: t for t in json.loads(z.read("spider_data/tables.json"))}
         self.db_dirs = list(db_dirs or SPIDER_DB_DIRS)
+        self.db_files = {}
 
     @classmethod
     def from_args(cls, args):
@@ -125,7 +128,18 @@ class Sources:
         self.questions["bird_train"] = json.load(open(os.path.join(directory, "train.json"), encoding="utf-8"))
         self.db_dirs.extend(os.path.join(directory, "train_databases", db) for db in sorted(tables))
 
+    def add_synsql(self, selection, databases):
+        """SynSQL-2.5M's chosen questions (source "synsql") and schemas from training.readers.synsql's ``selection``
+        folder; each database is ``databases``/<db>/<db>.sqlite."""
+        tables = {t["db_id"]: t for t in json.load(open(os.path.join(selection, "tables.json"), encoding="utf-8"))}
+        assert not set(tables) & set(self.tables), "SynSQL's database names overlap the sources'"
+        self.tables.update(tables)
+        self.questions["synsql"] = json.load(open(os.path.join(selection, "questions.json"), encoding="utf-8"))
+        self.db_files.update({db: os.path.join(databases, db, db + ".sqlite") for db in tables})
+
     def db_path(self, db_id):
+        if db_id in self.db_files:
+            return self.db_files[db_id]
         for folder in self.db_dirs:
             path = os.path.join(folder, db_id + ".sqlite")
             if os.path.exists(path):

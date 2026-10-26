@@ -7,19 +7,24 @@ data. The printed totals say how much the readings form and the foreign-key join
 anything. Every question gets one record: {"source", "index", "db_id", "status"} plus "readings" when its SQL is
 readable. Status "ok" means the rebuilt query returns gold's rows. "differs" means the AST does and the rebuild does
 not. "gold-ast-differs" means the AST as imported does not. "build" means the builder could not make the readings
-into a query. "not-readable:<why>" and "import" mean there are no readings.
+into a query. "not-readable:<why>" and "import" mean there are no readings. "database" means the capped loader
+could not read the question's database (a SynSQL value SQLite cannot hold), so the question was not read.
 
 Sets: calibration and train split Spider's train_spider, train_others and dev questions by the split manifest's
 calibration_dbs (training.readers.splits); bird reads BIRD's training set (train.json, train_tables.json,
-train_databases/), whose databases are disjoint from Spider's, so every BIRD question is training data.
+train_databases/), whose databases are disjoint from Spider's, so every BIRD question is training data; synsql reads
+the SynSQL-2.5M questions training.readers.synsql chose, over databases disjoint from both (training data too). Their
+databases hold a row or two per table, so the oracle's row check there mostly confirms that a query runs.
 
-usage: python -m training.readers.gold <split dir> [calibration|train|bird] [--bird <BIRD train dir>]
+usage: python -m training.readers.gold <split dir> [calibration|train|bird|synsql] [--bird <BIRD train dir>]
+           [--synsql <selection dir> --synsql-databases <dir>] [--shard i/n] [--resume]
            [--out readings.jsonl] [--spider-zip <zip>] [--db-dir <dir> ...]
 """
 import argparse
 import collections
 import json
 import os
+import zlib
 
 from engine.readers.readings import NotReadable, build, readings_of
 from engine.sql_ast import render_query
@@ -92,6 +97,11 @@ def question_set(which, split_dir, args):
             return capped_database(os.path.join(args.bird, "train_databases", db, db + ".sqlite"), tables[db])
         return questions, database
     sources = Sources.from_args(args)
+    if which == "synsql":
+        if not (args.synsql and args.synsql_databases):
+            raise SystemExit("synsql needs --synsql <selection dir> --synsql-databases <dir>")
+        sources.add_synsql(args.synsql, args.synsql_databases)
+        return [("synsql", index, q) for index, q in enumerate(sources.questions["synsql"])], sources.database
     calibration = set(json.load(open(os.path.join(split_dir, "manifest.json")))["calibration_dbs"])
     questions = [(name, index, q) for name in ("train_spider", "train_others", "dev")
                  for index, q in enumerate(sources.questions[name])
@@ -102,21 +112,41 @@ def question_set(which, split_dir, args):
 def main():
     ap = argparse.ArgumentParser(description="Gold readings of a question set, checked by the perfect-readings oracle.")
     ap.add_argument("split_dir", help="the folder of the split's manifest.json (training.readers.splits)")
-    ap.add_argument("which", nargs="?", default="calibration", choices=["calibration", "train", "bird"])
+    ap.add_argument("which", nargs="?", default="calibration", choices=["calibration", "train", "bird", "synsql"])
     ap.add_argument("--bird", help="BIRD's train directory (for bird)")
+    ap.add_argument("--synsql", help="training.readers.synsql's selection folder (for synsql)")
+    ap.add_argument("--synsql-databases", help="SynSQL-2.5M's databases folder (for synsql)")
+    ap.add_argument("--shard", default="0/1", help="i/n: only the questions of databases whose CRC-32 is i modulo n")
     ap.add_argument("--out", help="readings.jsonl to write; without it only the totals print")
+    ap.add_argument("--resume", action="store_true", help="keep --out's records and read only the questions it lacks")
     add_arguments(ap)
     args = ap.parse_args()
     questions, database = question_set(args.which, args.split_dir, args)
+    part, parts = map(int, args.shard.split("/"))
+    questions = [item for item in questions if zlib.crc32(item[2]["db_id"].encode()) % parts == part]
     databases = {}
     counts, reasons, structures = collections.Counter(), collections.Counter(), collections.Counter()
-    sink = open(args.out, "w", encoding="utf-8", newline="\n") if args.out else None
+    done = set()
+    if args.resume and args.out and os.path.exists(args.out):
+        with open(args.out, encoding="utf-8") as kept:
+            done = {(r["source"], r["index"]) for r in map(json.loads, kept)}
+    sink = open(args.out, "a" if done else "w", encoding="utf-8", newline="\n") if args.out else None
     for source, index, q in questions:
+        if (source, index) in done:
+            continue
         db = q["db_id"]
         if db not in databases:
-            databases[db] = database(db)
-        connection, graph = databases[db]
-        record = read_gold(source, index, q, connection, graph, counts, reasons, structures)
+            try:
+                databases[db] = database(db)
+            except (OverflowError, ValueError) as exc:    # a value the capped loader's SQLite cannot hold
+                reasons["database:" + type(exc).__name__] += 1
+                databases[db] = None
+        if databases[db] is None:
+            counts["questions"] += 1
+            record = {"source": source, "index": index, "db_id": db, "status": "database"}
+        else:
+            connection, graph = databases[db]
+            record = read_gold(source, index, q, connection, graph, counts, reasons, structures)
         if sink:
             sink.write(json.dumps(record) + "\n")
     if sink:

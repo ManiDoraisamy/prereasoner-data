@@ -6,9 +6,9 @@ A candidate bundle holds:
   stage1/             the schema-item model (engine.readers.models.SchemaItemModel)
   stage2_<name>/      one directory per reading model (ReadingModel), with reader.json {"anchored": bool}: whether
                       it reads the question's values beside their columns (engine.readers.text.fit)
-  rescorer/           the re-scorer (Rescorer)
+  rescorer_<name>/    one directory per re-scorer (Rescorer), rescorer_a, rescorer_b, ...
   choice.json         the readers' choice, which ranks the candidates and refuses below its threshold, fitted on the
-                      held-out calibration databases (training.readers.choice)
+                      held-out calibration databases (training.readers.choice) over every re-scorer's logit
 
 each model directory a saved config.json, tokenizer files and model.pt. Promotion is a separate, explicit step:
 
@@ -47,8 +47,9 @@ _IMMUTABLE_REVISION = re.compile(r"[0-9a-f]{40,64}")
 
 def models_of(candidate: Path) -> dict[str, str]:
     """{model directory name: model kind} of a candidate bundle."""
-    found = {"stage1": "schema_items", "rescorer": "rescorer"}
+    found = {"stage1": "schema_items"}
     found.update({path.name: "readings" for path in sorted(candidate.glob("stage2_*")) if path.is_dir()})
+    found.update({path.name: "rescorer" for path in sorted(candidate.glob("rescorer_*")) if path.is_dir()})
     return found
 
 
@@ -60,6 +61,8 @@ def gate(candidate: Path) -> list[str]:
     kinds = models_of(candidate)
     if not any(kind == "readings" for kind in kinds.values()):
         problems.append("no stage2_* reading model")
+    if not any(kind == "rescorer" for kind in kinds.values()):
+        problems.append("no rescorer_* re-scorer")
     for name, kind in kinds.items():
         directory = candidate / name
         missing = [file for file in MODEL_FILES if not (directory / file).is_file()]
@@ -79,12 +82,13 @@ def gate(candidate: Path) -> list[str]:
     if not choice.is_file():
         problems.append("choice.json missing")
     else:
-        from engine.readers.search import CHOICE_FEATURES
+        from engine.readers.search import choice_feature_names
 
+        features = choice_feature_names(name for name, kind in kinds.items() if kind == "rescorer")
         fitted = json.loads(choice.read_text(encoding="utf-8"))
-        if (any(key not in fitted for key in CHOICE_KEYS) or tuple(fitted["features"]) != CHOICE_FEATURES
-                or len(fitted["coef"]) != len(CHOICE_FEATURES)):
-            problems.append(f"choice.json is not a choice fitted on serving's features {CHOICE_FEATURES}")
+        if (any(key not in fitted for key in CHOICE_KEYS) or tuple(fitted["features"]) != features
+                or len(fitted["coef"]) != len(features)):
+            problems.append(f"choice.json is not a choice fitted on serving's features {features}")
     return problems
 
 

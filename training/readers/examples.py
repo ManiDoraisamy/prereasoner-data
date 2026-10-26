@@ -6,17 +6,18 @@ for each column, whether it is used and in which roles (select, filter, group, o
 
 Stage 2 (readings, stage2.jsonl): one example per question, the question paired with a pruned schema as serving
 prunes it: the gold tables plus the nearest other tables by foreign-key hops, up to 6 in all (gold_pruning), in
-schema order, at most 20 columns per table (gold columns kept), fitted to the token budget by dropping the farthest
-tables, then the samples. With anchors (the default) the question's own values are listed beside their columns;
+schema order, at most 20 columns per table (gold columns kept), fitted to the token budget as serving fits it
+(engine.readers.text.fit: the samples, then the farthest tables). With anchors (the default) the question's own values are listed beside their columns;
 --no-anchors serializes without them. Labels are every reading the builder uses; a literal value is located by its
 mention in the question, else in its column's listed values.
 
-Rows carry split "train" (readings_train, BIRD, Spider-Syn, rewordings) or "calibration" (readings_calibration, the 20 held-out
+Rows carry split "train" (readings_train, BIRD, Spider-Syn, SynSQL, rewordings) or "calibration" (readings_calibration, the 20 held-out
 Spider databases); the trainers fit on the first and select their checkpoint on the second.
 
 usage: python -m training.readers.examples <readings_train.jsonl> <readings_calibration.jsonl> <out dir>
            [--bird <BIRD train dir> --bird-readings <readings_bird.jsonl>[,<readings_bird_share.jsonl>]]
            [--syn <Spider-Syn dir> --syn-readings <readings_syn.jsonl>]
+           [--synsql <selection dir> --synsql-databases <dir> --synsql-readings <readings_synsql.jsonl>]
            [--reworded <rewordings.jsonl>[,...] --reworded-readings <readings_reworded.jsonl>[,...]]
            [--lookups <training.readers.lookups out dir>] [--structures <training.readers.structures out dir>[,...]]
            [--no-anchors]
@@ -199,6 +200,10 @@ def main():
     ap.add_argument("--bird-readings", help="comma-separated BIRD readings files (readings_bird.jsonl[,shares])")
     ap.add_argument("--syn", help="Spider-Syn's directory; requires --syn-readings")
     ap.add_argument("--syn-readings")
+    ap.add_argument("--synsql", help="training.readers.synsql's selection folder; requires --synsql-databases and "
+                                     "--synsql-readings")
+    ap.add_argument("--synsql-databases", help="SynSQL-2.5M's databases folder")
+    ap.add_argument("--synsql-readings", help="the selection's readings (training.readers.gold synsql)")
     ap.add_argument("--reworded", help="comma-separated training.readers.rewordings sets' rewordings.jsonl, "
                                        "concatenated in order; requires --reworded-readings")
     ap.add_argument("--reworded-readings", help="their readings_reworded.jsonl, in the same order")
@@ -219,6 +224,9 @@ def main():
     if args.syn:
         data.add_syn(args.syn)
         sources.insert(1, (args.syn_readings, "train"))
+    if args.synsql:
+        data.add_synsql(args.synsql, args.synsql_databases)
+        sources.insert(1, (args.synsql_readings, "train"))
     if args.reworded:
         merged = data.add_reworded(args.reworded.split(","), args.reworded_readings.split(","), args.out_dir)
         sources.insert(1, (merged, "train"))

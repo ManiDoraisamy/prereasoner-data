@@ -292,10 +292,10 @@ builder makes each reading a typed AST.
 | Owner | Responsibility |
 |---|---|
 | `engine/readers/search.py` | `ReadingSearch`: schema items, the stage-2 readers' pooled candidates, re-scoring and the choice |
-| `engine/readers/text.py` | The schema as each model reads it: tables, columns, types, sample values, the question's values beside their columns (anchors), fitted to the token budget |
+| `engine/readers/text.py` | The schema as each model reads it: tables, columns, types, sample values, the question's values beside their columns (anchors), fitted to the token budget (a table's samples go before a table does) |
 | `engine/readers/models.py` | The three model kinds (schema items, readings, re-scorer) and their inputs; serving runs each encoder in bfloat16 |
 | `engine/readers/layout.py` | The readings' output layout, shared by training, serving and decoding |
-| `engine/readers/decode.py` | Outputs to the most probable distinct readings, with generic semantics (dates, a pinned column not shown again, a matched column not counted distinct, list marks) |
+| `engine/readers/decode.py` | Outputs to the most probable distinct readings, with generic semantics (dates, a pinned column not shown again, a matched column not counted distinct, a referencing column counted once, list marks) |
 | `engine/readers/readings.py` | The readings form and the deterministic builder (`build`, foreign-key joins, groups, set operations, nested conditions, shares) and its inverse (`readings_of`, for training labels) |
 | `engine/readers/read_as.py` | The plain-English "read as" line of a reading |
 | `engine/sql_ast.py` | Immutable query nodes, type/visibility validation, rendering |
@@ -322,7 +322,9 @@ builder makes each reading a typed AST.
    date's year-month, `decode.periodic`, the one date column of the tables read when the readers group only by
    surrogate keys or by nothing); a stored date literal is kept exact; a column an equality pins is not
    shown, grouped or sorted by again; a column a condition matches with the question's value (= or LIKE) is
-   counted by its rows, never by its distinct values; and a pointed value drops the marks of the list it stood in. A reading that
+   counted by its rows, never by its distinct values; ungrouped, a count of a column that references another table's
+   key counts each row it names once ("How many dogs have had a treatment?"); and a pointed value drops the marks of
+   the list it stood in. A reading that
    compares one column with one value, when the question names more of that column's values (matched on the data),
    also enters the pool read as either value (`search.either`: a row holds one value of a column). A membership
    (`IN`, `NOT IN`) that compares a number column with a text column matches nothing as read, so the builder
@@ -346,9 +348,10 @@ builder makes each reading a typed AST.
    text column against a literal it never holds while another column does, joins two columns the foreign keys
    keep apart, or reads one of two columns that share a header when the question does not name its column letter
    is not eligible (`engine/sql_grounding.py`); when that last leaves nothing, the reply asks which column.
-5. The re-scorer (XLM-R base) reads the question beside each eligible candidate's read-as line and result shape,
-   with the decoder's log probability and rank, and the readers' choice (`engine/data/readers/choice.json`, a
-   logistic model fitted on held-out databases) weighs its logit with what the pool says of the candidate: its log
+5. Each re-scorer (`rescorer_a`, `rescorer_b`: XLM-R base, trained on different readers' cross-fold pools) reads
+   the question beside each eligible candidate's read-as line and result shape, with the decoder's log probability
+   and rank, and the readers' choice (`engine/data/readers/choice.json`, a logistic model fitted on held-out
+   databases) weighs their logits with what the pool says of the candidate: its log
    probability, its best rank, the share of the readers' readings that build it (among the readers that build any
    reading of the question: a reader whose every reading is refused has not read it), and whether its result is empty
    (`search.choice_features`). The choice orders the candidates. A date the question names keeps the choice to the

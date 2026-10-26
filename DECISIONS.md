@@ -4700,3 +4700,69 @@ requires each to be answered right or not at all. "list the id and Amount of eve
 read as sorted by amount. "minimum amount" is still answered with the highest. The re-scorer, the oldest model in
 the bundle, has never read "every column of ..." or sheet language; refreshing it needs cross-fold readers on the
 new data. RunPod balance after this round: $37.51.
+
+## Readers trained with SynSQL-2.5M's databases; two re-scorers; a table's samples go before the table; a referencing column is counted once (2026-10-25, 2026-10-26)
+
+The readers lost most answers before the choice: on calibration the four released readers' pools held a right
+answer for 775 of 1,028 readable questions, and the first component of each reader's best reading that differed from
+gold's was the tables it read (203 to 230 of 984), then the shown columns. They had read 260 databases. This change
+widens what they have read, keeps the tables a question needs in their input, and adds a re-scorer trained on pools
+like the new readers' (`training/readers/README.md` 2e, 4e, 8b, 9; records `C:/work/prereasoner-readers-artifacts/`).
+
+- **SynSQL-2.5M** (Hugging Face `seeklhy/SynSQL-2.5M`, Apache-2.0, 16,583 synthetic SQLite databases) is a training
+  source (`training/readers/synsql.py`, `sources.add_synsql`, `gold synsql`, `examples --synsql`). Its questions are
+  chosen without reading any: no "external knowledge" note (a note defines the question's words, and learning the
+  words without it would teach the readers to guess meanings), six plain styles, SQL in the shapes the readings hold,
+  24 per database by seeded hash; no database whose column or table names a calibration or test schema shares by half
+  or more (2,858 left out); no question that repeats a Spider question. Of 326,745 chosen, 144,419 rebuild to gold's
+  rows; four per database train: 51,929 questions on 13,537 databases. The databases hold a row or two per table, so
+  their execution check mostly says a query runs, and cross-fold readers never hold them out
+  (`folds --train-only synsql`).
+- **Four readers** (XLM-R large: v14a and v14a1 anchored, v14b and v14b1 plain, seeds 0 and 1, 8 epochs) trained on
+  that data replace v11a, v11b, v13b1 and v13a1. Each one's candidates hold a right answer for 727 to 740 of 1,028
+  calibration questions, against 658 to 674 for the readers they replace. Keeping v11b in slot b chose 4 more
+  calibration answers out of fold (738), but no reader of that pool read "how many orders not in USD" as anything
+  but the orders in USD (an offline regression case); the four v14 readers read the negation.
+- **Two re-scorers.** "g" is the shipped recipe on the v14 recipes' cross-fold candidates. Alone it chose better on
+  calibration (719 against 704 with "f" on the four-v14 pool) but answered three demo questions wrongly that "f"
+  answers ("What share of the total amount comes from Paris?" as a share of rows; "total commission amount", a
+  registered calculation, under the threshold). They err apart, so the bundle holds both (`rescorer_a` "f",
+  `rescorer_b` "g") and the one choice weighs both logits (`search.choice_feature_names`; serving and promotion refuse
+  a choice fitted on other re-scorers): 734 of 1,035 out of fold, against 704 and 719 with either alone. The bundle
+  layout's single `rescorer/` became `rescorer_<name>/`, as the readers' `stage2_<name>/`.
+- **The samples go before a table** (`engine/readers/text.fit`): the token budget drops a table's sample values
+  before it drops a table. A reading of a dropped table is never right, and on wide databases the samples had filled
+  the budget (college_1 kept three or four of its seven tables): gold tables missing from the readers' input fell from
+  45 to 19 of about 990 calibration questions, and the released readers' pools held 10 more right answers.
+- **A referencing column is counted once** (`engine/readers/decode.references_another_table`): ungrouped, a count of a
+  column that references another table's key counts each row it names once. "How many dogs have had a treatment?"
+  was read as the count of treatments.dog_id and answered 3 for two dogs (a scenario from the Codex worktree's
+  registered failures). The pools held 7 more right answers; the 31 Spider training golds of that shape return the
+  same rows counted once.
+- **A listed date is not the question's stored form** (`decode.dated`): a date literal in stored form keeps the
+  readers' own comparison only when the question says it. The v14 readers learned from SynSQL to point into the
+  schema's listed dates, and "between August 4 and August 9, 2026" was read as '2026-08-04' and '26-08-04' (9 rows for
+  4); the question's date phrase now says the days.
+- **The readings hold only what the readers read** (`readings_of`): a HAVING that matches text (`HAVING name LIKE`)
+  or a condition operator outside the readers' vocabulary has no reading. Three SynSQL golds had one and stopped the
+  first v14 trainers at their first batch; every data file now passes the trainer's batch builder before a lease.
+
+Calibration (20 held-out databases, 1,053 questions, served, choice off): 729 right (69.2%), against 667 for the
+released bundle; at the matched threshold 0.0862 the readers answer 1,021 and are wrong on 294, the engine's count.
+Weights: Hugging Face `cd8a03abb8fd443442f9a3e691f717f4285fd263`.
+
+Measured and left out: preferring candidates whose results agree across readers (649 to 656 out of fold against
+668); structural facts of each candidate's SQL as choice features (664 to 669); a lower decoding floor (the pools
+hold 14 or 19 more right answers, the choice picks 1 or 6 fewer); a fifth reader (pool 879, choice 716); an XLM-R
+large re-scorer (708, and several times slower); ModernBERT-large in place of XLM-R (its loss was NaN from the first
+logged step under the recorded image; XLM-R stays, and with it the readers' other languages).
+
+The Codex worktree (`C:\Users\manid\.codex\worktrees\6dba`, 3e46a74 plus about 12,400 uncommitted lines of
+2026-10-13..17) was read, not changed: its code extends the lexical search this repository removed on 2026-10-21, so
+none of it is portable without a second planner. Its methods were taken: a staged loss census before training,
+frozen gates per experiment, and its failure scenarios run against the readers (five of seven handled; the count
+over a join is fixed above; an INTERSECT of integer ids with decimal ids returns nothing on the local SQLite store,
+not yet checked on PostgreSQL).
+
+The release gate this time runs in the desktop app's built-in browser (Chromium, signed in to the owner's account)
+on the owner's instruction (2026-10-26), since Claude in Chrome could not connect to this session.

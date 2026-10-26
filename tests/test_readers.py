@@ -12,7 +12,7 @@ import sys
 from engine.readers.decode import Choices, candidates, decode, dated, unlisted
 from engine.readers.layout import AGGREGATES, COUNTS, GLOBAL, GLOBAL_WIDTH, LAYOUT, OPERATORS, PER_BLOCK, SLOTS
 from engine.readers.readings import NotReadable, build, readings_of
-from engine.readers.text import Schema, reading_text
+from engine.readers.text import Schema, fit, reading_text
 from engine.sql_ast import render_query
 from engine.sql_schema import SchemaGraph
 
@@ -74,6 +74,20 @@ def test_readings_round_trip_through_the_builder():
     query = build(readings, graph)
     assert rows_of(render_query(query), ORDERS) == [(129,)]
     assert readings_of(query)["blocks"][0]["where"] == [["orders.city", "=", "Paris"]]
+
+
+def test_readings_hold_only_the_operators_the_readers_read():
+    """A HAVING that matches text (SynSQL's "HAVING name LIKE ...") has no reading: the readers compare totals, and a
+    gold reading outside their vocabulary stopped the v14 trainer (2026-10-25). A compared total reads."""
+    from regress.sql_import import import_sql
+    graph = graph_of(ORDERS)
+    try:
+        readings_of(import_sql("SELECT city FROM orders GROUP BY city HAVING city LIKE '%a%'", graph))
+        raise AssertionError("a text-matching HAVING was read")
+    except NotReadable as exc:
+        assert str(exc) == "having-operator", exc
+    readings = readings_of(import_sql("SELECT city FROM orders GROUP BY city HAVING COUNT(*) > 1", graph))
+    assert readings["blocks"][0]["having"] == [["COUNT", "*", ">", 1]], readings
 
 
 def test_a_grouped_block_groups_what_it_shows():
@@ -415,6 +429,34 @@ def test_a_matched_column_is_not_counted_distinct():
     assert readings["blocks"][0]["select"] == [[0, "COUNT", "players.college", False]], readings
 
 
+def test_a_count_of_a_referencing_column_counts_each_row_it_names_once():
+    """"How many dogs have had a treatment?" was read as the count of treatments.dog_id and answered 3 (three
+    treatments of two dogs): ungrouped, a count of a column that references another table's key counts each row it
+    names once. A grouped count, and a count of a column that references nothing, keep their repeats."""
+    dogs = {"name": "dogs", "columns": ["dog_id", "name"], "rows": [[1, "Rex"], [2, "Fido"], [3, "Max"]]}
+    treatments = {"name": "treatments", "columns": ["treatment_id", "dog_id", "cost"],
+                  "rows": [[1, 1, 50], [2, 1, 20], [3, 2, 30]]}
+    graph = graph_of(dogs, treatments, fks=[("treatments", "dog_id", "dogs", "dog_id")])
+    names = ["*", "treatments.treatment_id", "treatments.dog_id", "treatments.cost"]
+    question = "How many dogs have had a treatment?"
+
+    def read(counted, grouped=False):
+        picks = {(counted, "select", AGGREGATES.index("COUNT")): 0.9, (counted, "distinct_aggregate", 0): 0.05}
+        g = counts({}, tables=1, select=1, group=int(grouped))
+        if grouped:
+            picks[("treatments.cost", "group", 0)] = 0.9
+        readings = decode(output_for(names, ["treatments"], picks, g), {"question": question, "text": ""}, graph)
+        return readings, render_query(build(readings, graph))
+
+    readings, sql = read("treatments.dog_id")
+    assert readings["blocks"][0]["select"] == [[0, "COUNT", "treatments.dog_id", True]], readings
+    assert rows_of(sql, dogs, treatments) == [(2,)], sql
+    readings, _ = read("treatments.cost")
+    assert readings["blocks"][0]["select"] == [[0, "COUNT", "treatments.cost", False]], readings
+    readings, _ = read("treatments.dog_id", grouped=True)
+    assert readings["blocks"][0]["select"][0][3] is False, readings
+
+
 def test_a_date_condition_reads_the_days_the_question_names():
     graph = graph_of(ORDERS)
     where = dated([["orders.placed", "<", "July 10"]], graph, "How many orders were placed before July 10, 2026?")
@@ -428,6 +470,18 @@ def test_a_stored_date_keeps_its_exact_value():
     graph = graph_of(ORDERS)
     where = [["orders.placed", "<", "2026-08-04 10:00:00"]]
     assert dated(where, graph, "orders placed before 2026-08-04 10:00:00") == where
+
+
+def test_a_listed_date_is_not_the_question_s_stored_form():
+    """A reader that points into the schema's listed dates reads a stored-form literal the question never says
+    ("between August 4 and August 9, 2026" read as '2026-08-04' and '26-08-04', 9 rows for 4, 2026-10-25): the
+    question's own date phrase says the days. A literal the question states keeps its exact value."""
+    graph = graph_of(ORDERS)
+    question = "How many orders were placed between August 4 and August 9, 2026?"
+    where = dated([["orders.placed", ">=", "2026-08-04"], ["orders.placed", "<=", "26-08-04"]], graph, question)
+    assert where == [["orders.placed", ">=", "2026-08-04"], ["orders.placed", "<", "2026-08-10"]], where
+    stated = [["orders.placed", "<", "2026-08-04"]]
+    assert dated(stated, graph, "orders placed before 2026-08-04") == stated
 
 
 def test_a_date_range_is_not_read_under_or():
@@ -453,6 +507,29 @@ def test_the_question_values_are_listed_beside_their_columns():
     assert "college [text] (Duke" in text, text
 
 
+def test_the_samples_go_before_a_table():
+    """The token budget drops a table's samples before it drops a table (engine.readers.text.fit): a reading of a
+    dropped table can never be right. College_1's seven tables kept three or four with samples (2026-10-25)."""
+    events = {"name": "events", "columns": ["event_id", "title"],
+              "rows": [[i, f"Event number {i} title"] for i in range(10)]}
+    schema = Schema(graph_of(ORDERS, PEOPLE, events))
+    tables = ["orders", "players", "events"]
+    columns_of = {t: schema.columns[t] for t in tables}
+
+    def tokenizer(question, text):
+        return {"input_ids": (question + " " + text).split()}
+
+    full = len(tokenizer("q", reading_text(schema, tables, columns_of, True)[0])["input_ids"])
+    bare = len(tokenizer("q", reading_text(schema, tables, columns_of, False)[0])["input_ids"])
+    assert bare < full, (bare, full)
+    kept, (text, *_) = fit(tokenizer, bare, "q", schema, tables, columns_of, ["events", "players"], anchored=False)
+    assert kept == tables and "Event number 0" not in text, (kept, text)
+    kept, (text, *_) = fit(tokenizer, full, "q", schema, tables, columns_of, ["events", "players"], anchored=False)
+    assert kept == tables and "Event number 0" in text, (kept, text)
+    kept, _ = fit(tokenizer, bare - 1, "q", schema, tables, columns_of, ["events", "players"], anchored=False)
+    assert kept == ["orders", "players"], kept
+
+
 def test_the_choice_ranks_by_agreement_and_refuses_below_its_threshold():
     """The readers' choice (choice.json) weighs the re-scorer's logit with what the pool says of a candidate; of two
     candidates the re-scorer scores alike, the one more of the readers' readings build ranks first (calibration,
@@ -464,16 +541,16 @@ def test_the_choice_ranks_by_agreement_and_refuses_below_its_threshold():
     from engine.sql_candidate import ScoredQuery
 
     readers = search.ReadingSearch.__new__(search.ReadingSearch)      # no weights: the logits are memoized below
-    readers.choice = {"features": list(search.CHOICE_FEATURES), "coef": [0.4, -0.3, -0.2, 1.5, 0.4],
+    readers.choice = {"features": list(search.choice_feature_names(["rescorer_a"])), "coef": [0.4, -0.3, -0.2, 1.5, 0.4],
                       "intercept": -1.5, "threshold": 0.3}
     pool = [ScoredQuery(None, "SELECT 1", -1.0, ("one",), (("rank", 0.0), ("readers", 0.25))),
             ScoredQuery(None, "SELECT 2", -1.0, ("two",), (("rank", 0.0), ("readers", 1.0))),
             ScoredQuery(None, "SELECT 3", -2.0, ("three",), (("rank", 3.0), ("readers", 0.25)))]
     shapes = [(1, 1), (1, 1), None]
-    search._keep(search._SCORES, ("q", ("SELECT 1", "SELECT 2"), ((1, 1), (1, 1))), (2.0, 2.0))
+    search._keep(search._SCORES, ("q", ("SELECT 1", "SELECT 2"), ((1, 1), (1, 1))), ((2.0,), (2.0,)))
     scores = readers.rescore("q", pool, shapes)
     assert scores[2] is None and scores[1] > scores[0], scores               # agreement breaks the tie
-    expected = -1.5 + sum(w * x for w, x in zip(readers.choice["coef"], search.choice_features(2.0, -1.0, 0.0, 1.0, 1)))
+    expected = -1.5 + sum(w * x for w, x in zip(readers.choice["coef"], search.choice_features((2.0,), -1.0, 0.0, 1.0, 1)))
     assert abs(scores[1] - expected) < 1e-12
     confidence = readers.confidence(pool, scores, shapes, 1)
     assert abs(confidence - 1.0 / (1.0 + math.exp(-scores[1]))) < 1e-12
@@ -481,6 +558,17 @@ def test_the_choice_ranks_by_agreement_and_refuses_below_its_threshold():
     assert not readers.confident(0.29) and readers.confident(None)
     readers.choice = {**readers.choice, "threshold": None}                   # an evaluation records every confidence
     assert readers.confident(0.01)
+    # Two re-scorers (rescorer_a, rescorer_b): the choice weighs each one's logit, in the bundle's order. Where the
+    # first scores two candidates alike, the second's disagreement decides.
+    assert search.choice_feature_names(["rescorer_a", "rescorer_b"])[:2] == ("rescorer_a_logit", "rescorer_b_logit")
+    readers.choice = {"features": list(search.choice_feature_names(["rescorer_a", "rescorer_b"])),
+                      "coef": [0.4, 0.5, -0.3, -0.2, 1.5, 0.4], "intercept": -1.5, "threshold": 0.3}
+    search._keep(search._SCORES, ("q2", ("SELECT 1", "SELECT 2"), ((1, 1), (1, 1))), ((2.0, 3.0), (2.0, -1.0)))
+    scores = readers.rescore("q2", pool, shapes)
+    assert scores[0] > scores[1], scores
+    expected = -1.5 + sum(w * x for w, x in zip(readers.choice["coef"],
+                                                search.choice_features((2.0, 3.0), -1.0, 0.0, 0.25, 1)))
+    assert abs(scores[0] - expected) < 1e-12
 
 
 def test_a_reader_that_reads_nothing_is_no_dissent():
@@ -509,7 +597,7 @@ def test_a_reader_that_reads_nothing_is_no_dissent():
             path.write_text(json.dumps({**question, "candidates": candidates}) + "\n", encoding="utf-8")
             paths.append(str(path))
         X, y, _ = choice.features([{**question, "candidates": [counted]}], paths,
-                                  {("s", 0): {"SELECT COUNT(*) FROM t": 1.5}})
+                                  [{("s", 0): {"SELECT COUNT(*) FROM t": 1.5}}])
     assert X.shape == (1, 5) and X[0][3] == 1.0 and list(y) == [1], X
 
 
@@ -609,6 +697,7 @@ def test_built_structures_exclude_and_rank_by_the_total():
 
 TESTS = [
     test_readings_round_trip_through_the_builder,
+    test_readings_hold_only_the_operators_the_readers_read,
     test_a_grouped_block_groups_what_it_shows,
     test_a_group_is_ordered_by_its_total,
     test_groups_with_no_aggregate_are_distinct_rows,
@@ -627,11 +716,14 @@ TESTS = [
     test_a_contained_text_matches_in_any_case,
     test_a_pinned_column_is_not_shown_again,
     test_a_matched_column_is_not_counted_distinct,
+    test_a_count_of_a_referencing_column_counts_each_row_it_names_once,
     test_a_date_condition_reads_the_days_the_question_names,
     test_a_stored_date_keeps_its_exact_value,
+    test_a_listed_date_is_not_the_question_s_stored_form,
     test_a_date_range_is_not_read_under_or,
     test_a_pointed_value_drops_the_marks_of_its_list,
     test_the_question_values_are_listed_beside_their_columns,
+    test_the_samples_go_before_a_table,
     test_the_choice_ranks_by_agreement_and_refuses_below_its_threshold,
     test_a_reader_that_reads_nothing_is_no_dissent,
     test_candidates_are_distinct_and_most_probable_first,

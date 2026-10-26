@@ -27,27 +27,28 @@ Run every step as a module from the repository root: `python -m training.readers
 
 | Module | What it does | Reads | Writes |
 |---|---|---|---|
-| `sources.py` | Knows where Spider, BIRD and Spider-Syn questions, schemas and databases are. Reads every database capped at 5,000 rows per table, as the evaluator does. | `--spider-zip`, `--db-dir` | nothing |
+| `sources.py` | Knows where Spider, BIRD, Spider-Syn and the chosen SynSQL questions, schemas and databases are. Reads every database capped at 5,000 rows per table, as the evaluator does. | `--spider-zip`, `--db-dir` | nothing |
 | `splits.py` | The database split (seed 20261019: 20 calibration databases of train_spider; the 40 test databases untouched) and stage-1 schema-item labels read from Spider's own parse. | Spider zip | `<dir>/manifest.json`, `labels.jsonl`, `schemas.json` |
-| `gold.py` | Gold readings: gold SQL becomes a typed AST, then readings. Checked by the perfect-readings oracle (gold's rows against the AST's rows and the rebuilt query's rows), with printed totals. | split manifest, Spider or BIRD | `readings_{train,calibration,bird}.jsonl` |
+| `gold.py` | Gold readings: gold SQL becomes a typed AST, then readings. Checked by the perfect-readings oracle (gold's rows against the AST's rows and the rebuilt query's rows), with printed totals. Sharded by database (`--shard`), resumable (`--resume`). | split manifest, Spider, BIRD or the SynSQL selection | `readings_{train,calibration,bird,synsql}.jsonl` |
+| `synsql.py` | SynSQL-2.5M (Apache-2.0): streams its 9.4 GB data.json once (`compact`), then chooses the questions the readers train on (`select`: no definition note, six plain styles, no schema within half of a calibration or test schema's names, readable SQL shapes, 24 per database by seeded hash), and caps gold's readable ones per database (`readings`). | SynSQL's data.json, tables.json; split manifest; Spider's test schemas (names only) | `compact.jsonl`; `<dir>/questions.json`, `tables.json`, `manifest.json`; `readings_synsql_p<N>.jsonl` |
 | `labels_share.py` | Share readings for BIRD's percentage questions. Each one is checked by execution: gold must equal 100 x built. | BIRD train | `readings_bird_share.jsonl` |
 | `labels_syn.py` | Gives Spider-Syn's rewordings their original question's gold readings. Leaves out the calibration databases. | split manifest, Spider-Syn, `readings_train.jsonl` | `readings_syn.jsonl` |
 | `rewordings.py` | Gemini rewords training questions into the families the readers misread, chosen from the gold readings: a measure named by an everyday word, an exclusion said as negated existence (both keep the original's readings), the opposite extreme (MIN and MAX and a limited sort's direction swapped in the readings; kept only when Gemini's named phrase swap holds), and a count of one table's rows asked as a person looking at the sheet would (the sheet, its rows below the header, a column's non-empty cells; keeps the original's readings). Kept only when every stated value survives. Never on calibration or test databases. | split manifest, readings files, Spider, optional BIRD | `<dir>/rewordings.jsonl`, `readings_reworded.jsonl` |
 | `structures.py` | Questions for queries built on training databases in the five structures the readers misread: the rows that no referencing row matches (`NOT IN`, at most once filtered on a value of the referencing table or a table it references); groups ranked by the total or average of a number (kept only when that ranking's first groups differ from the ranking by row count and no tie crosses the cut); the lowest, highest, average or total of a number; each group beside its total or average, unranked; and every column of a table's rows, at most filtered and ordered (`SELECT *`) (`--shapes` builds some of them). Tables and columns come from foreign keys and values; choices by hash. Two Gemini-written questions per query (one a search box's few words), kept when they state the filter value and the number ranked. Never on calibration or test databases. | split manifest, Spider, optional BIRD | `<dir>/questions.json`, `readings_structure.jsonl` |
 | `lookups.py` | Lookup-table questions on training databases: a categorical text column becomes codes, a new table names each code, and five query shapes (names, labelled, counted, filtered, total) get two Gemini-written questions each, kept when they state the query's value. | split manifest, Spider, optional BIRD | `<dir>/dbs/`, `tables.json`, `questions.json`, `readings_lookup.jsonl` |
-| `examples.py` | Builds stage-1 rows (one per question and table) and stage-2 rows (one per question, gold-pruned like serving), split `train`/`calibration`. `--no-anchors` serializes without the question's values. | readings files, Spider, optional BIRD, Syn, rewordings (`--reworded`), lookups (`--lookups`) and structures (`--structures`, comma-separated folders) | `<dir>/stage1.jsonl`, `<dir>/stage2.jsonl` |
+| `examples.py` | Builds stage-1 rows (one per question and table) and stage-2 rows (one per question, gold-pruned like serving), split `train`/`calibration`. `--no-anchors` serializes without the question's values. | readings files, Spider, optional BIRD, Syn, SynSQL (`--synsql`), rewordings (`--reworded`), lookups (`--lookups`) and structures (`--structures`, comma-separated folders) | `<dir>/stage1.jsonl`, `<dir>/stage2.jsonl` |
 | `train.py` | The trainers. `schema_items` is stage 1; `readings` is stage 2 and keeps `--eval-from` and `--checkpointing`. | `stage1.jsonl` / `stage2.jsonl` | run dir: `model.pt`, `best.json`, `log.jsonl`, `tokenizer/` (with the encoder config), calibration predictions or outputs |
 | `outputs.py` | `load_run`; `Stage1` (serving's `schema_items`, `prune` and `row` over a run); `serving_row`; and, as a command, sharded CPU stage-2 outputs for a rows file. | a readings run, rows | outputs `.jsonl` |
 | `pruned.py` | Stage-2 rows through serving's stage-1 pruning, for calibration (with labels) or the Spider test set (without). | a stage-1 run, Spider | rows `.jsonl` |
 | `relayout.py` | Converts a stage-2 model trained before the share outputs (v5, v6) to the current layout. The new outputs never fire. | `model.pt` | `model.pt` |
-| `folds.py` | Splits the training rows into cross-fold files by database (4 folds, seed 20261019). | `stage2.jsonl` | `fold<i>.jsonl` |
-| `candidates.py` | Decodes the k best readings per question, builds and runs each, and labels them by execution against gold. | rows, outputs, Spider (+ `--bird`) | candidates `.jsonl` |
+| `folds.py` | Splits the training rows into cross-fold files by database (4 folds, seed 20261019); a `--train-only` source trains in every fold and is held out in none. | `stage2.jsonl` | `fold<i>.jsonl` |
+| `candidates.py` | Decodes the k best readings per question, builds and runs each, and labels them by execution against gold (a reworded question against its original's). | rows, outputs, Spider (+ `--bird`, `--syn`, `--reworded`, `--lookups`, `--structures`) | candidates `.jsonl` |
 | `union.py` | Pools several models' candidates per question, each SQL once, as serving pools. | candidates files | candidates `.jsonl` |
 | `rescorer.py` | The re-scorer trainer: listwise loss plus a yes/no term, checkpoint chosen on calibration candidates. | candidates files | run dir |
 | `choose.py` | Scores the first, execution-guided and re-scorer choices on calibration candidates. On the Spider test set it reports totals only. | candidates or rows + outputs | stdout |
 | `rescorer_data.py` | The re-scorer's training file: union pools of cross-fold candidates, plus the BIRD share questions' pools. | fold and share candidates | `.jsonl.gz` |
 | `choice.py` | Fits the readers' choice (serving's `choice_features`: re-scorer logit, log probability, best rank, the readers' agreement, empty result), cross-validated by database; `match` sets its threshold so the readers answer no more wrongly than the planner they replace. | a calibration union pool, each reader's candidates, a re-scorer run; two full_eval runs | `choice.json` |
-| `shrink_state.py` | Shrinks a fine-tuned XLM-R state dict for a slow link, and expands it back. | `model.pt` / `small.pt` | `small.pt` / `model.pt` |
+| `shrink_state.py` | Shrinks a fine-tuned encoder's state dict for a slow link (its input embedding found by the base model, XLM-R's or ModernBERT's), and expands it back. | `model.pt` / `small.pt` | `small.pt` / `model.pt` |
 | `pull_parts.sh` | Pulls a finished stage-2 run off a live pod in 8 parallel parts and checks md5. | ssh host and port | run dir |
 | `lease.py` | GPU jobs through `training/tools/runpod_api.py lease`: `full` stage 2, `folds`, and `rescorer`. Tries SECURE first, then COMMUNITY. `--dry-run` prints the command. | data or candidates | `data/experiments/<id>/{out,code,lease_<cloud>.log}` |
 | `promote.py` | The one writer of `engine/data/readers`: gates a candidate bundle, then installs it as a whole. | a candidate bundle | `engine/data/readers`, the weights manifest |
@@ -63,6 +64,7 @@ These are the recorded locations. Every step also takes its paths as arguments.
 | Spider test databases | `C:/work/datasets/spider_official/test_dbs_flat` (`--test-dbs`) | `pruned test`, `choose test` |
 | BIRD train: `train.json`, `train_tables.json`, `train_databases/` | `C:/work/datasets/bird/extracted/train` | labels_share, `examples --bird`, `candidates --bird` |
 | Spider-Syn: `train_spider.json`, `dev.json` | `C:/work/datasets/spider_syn` | labels_syn, `examples --syn` |
+| SynSQL-2.5M (Hugging Face `seeklhy/SynSQL-2.5M`, Apache-2.0): `data.json` (9.36 GB), `tables.json`, `databases.zip` (16,583 SQLite databases of a row or two per table) | `C:/work/datasets/synsql` (`databases/` unzipped there); the selection in `C:/work/prereasoner-readers-artifacts/data/synsql` | `synsql`, `gold synsql`, `examples --synsql` |
 | XLM-R tokenizer and base weights | `C:/work/datasets/models/xlm-roberta-{base,large}` locally; `FacebookAI/xlm-roberta-{base,large}` on pods | examples (`--tokenizer`), `shrink_state expand` |
 Two more inputs are made here. `splits.py` writes the split manifest; the recorded one is scratch `phase2/split1/`
 (1,053 calibration and 8,640 training questions). `gold.py` writes the gold readings; the recorded ones are scratch
@@ -160,7 +162,7 @@ python -m training.readers.examples ... $E/readers_v12/data_v12b (as data_v12a) 
 - 806 grouped questions on 195 databases (403 queries).
 - Stage-2 rows: 30,367 (`data_v12a` sha256 `1d8d5ee67fa98a20`, `data_v12b` `307eb5855fd0f4f7`).
 
-### 2d. The v13 data (two of the shipped readers' data)
+### 2d. The v13 data
 
 The readings hold `SELECT *` since 2026-10-23 (the star shown plain), so the gold readings were regenerated with
 today's builder, and two written sets were added:
@@ -180,6 +182,32 @@ python -m training.readers.examples ... $E/readers_v13/data_v13b (as data_v13a) 
   GEMINI_LOCATION=global`; without them every call fails.
 - 1,085 sheet rewordings (of 1,172 asked) and 1,124 listing questions on 195 databases (564 queries).
 - Stage-2 rows: 32,677 (`data_v13a` sha256 `776fc6563c7be14e`, `data_v13b` `feb1312a9c920d22`).
+
+### 2e. The v14 data (the shipped readers' data): SynSQL-2.5M's databases
+
+The readers' first error on calibration is the tables they read (the first component of each reader's best reading
+that differs from gold's: "tables" for 203 to 230 of 984 readable questions, then the shown columns), and they had read
+260 databases. SynSQL-2.5M (Apache-2.0) adds a few questions from each of 13,537 synthetic databases:
+
+```
+python -m training.readers.synsql compact C:/work/datasets/synsql
+python -m training.readers.synsql select C:/work/datasets/synsql C:/work/prereasoner-readers-artifacts/data/synsql --split $L/split1 --test-tables <spider_data/test_tables.json>
+python -m training.readers.gold $L/split1 synsql --synsql C:/work/prereasoner-readers-artifacts/data/synsql --synsql-databases C:/work/datasets/synsql/databases --shard <i>/8 --out $E/readers_v14/gold/readings_synsql_s<i>.jsonl
+python -m training.readers.synsql readings $E/readers_v14/gold/readings_synsql_s*.jsonl --out $E/readers_v14/gold/readings_synsql_p4.jsonl --per-db 4
+python -m training.readers.examples $E/readers_v13/gold/readings_train.jsonl $E/readers_v13/gold/readings_calibration.jsonl $E/readers_v14/data_v14a (as data_v13a, with --synsql C:/work/prereasoner-readers-artifacts/data/synsql --synsql-databases C:/work/datasets/synsql/databases --synsql-readings $E/readers_v14/gold/readings_synsql_p4.jsonl)
+python -m training.readers.examples ... $E/readers_v14/data_v14b (as data_v14a) --no-anchors
+```
+
+- Selection: 2,544,390 samples; 561,498 lean on a definition note and 285,327 are vague, metaphorical or dialogue;
+  2,858 databases (282,469 samples) have column or table names half of which a calibration or test schema also has;
+  673,445 are in SQL shapes the readings never hold; 3 repeat a Spider question. 24 per database by seeded hash:
+  326,745 questions on 13,716 databases.
+- Gold readings: 144,419 rebuild to gold's rows (the databases hold a row or two per table, so the check mostly says a
+  query runs); the readers' vocabulary refuses 3 more (`HAVING ... LIKE`). Four per database: 51,929 questions on
+  13,537 databases (47,557 single, 4,284 nested, 67 UNION, 19 INTERSECT, 2 EXCEPT).
+- Stage-2 rows: 84,606 (`data_v14a` sha256 `e422a439d0dcb3b3`, `data_v14b` `8f03d1a1e79ca2a9`), fitted as serving
+  fits them since 2026-10-25 (the samples go before a table). Every row passes the trainer's own batch builder before
+  a lease.
 
 ### 3. Stage 1 (the "v2" stage-1 run)
 
@@ -248,7 +276,7 @@ python -m training.readers.lease full --experiment readers_v12b1 --data $E/reade
   replaced them, 4d): of the four-reader pools compared, its choice is right on the most calibration questions (667 of 1,028 out of fold, against
   664 for the four v11 readers, 659 for the four v12 readers, and 655 for v11a with v12b, v12b1 and v12a1).
 
-### 4d. Stage-2 readers v13a1 and v13b1 (shipped), v13a and v13b
+### 4d. Stage-2 readers v13a1 and v13b1 (shipped until 2026-10-25), v13a and v13b
 
 ```
 python -m training.readers.lease full --experiment readers_v13a1 --data $E/readers_v13/data_v13a --seed 1 --epochs 13 --eval-from 5 --minutes 230 --max-hourly-cost 0.8
@@ -263,6 +291,28 @@ python -m training.readers.lease full --experiment readers_v13b1 --data $E/reade
   `--max-hourly-cost 0.9`): v13a epoch 13 (0.211), v13b epoch 13 (0.200). Not shipped: with all four v13 readers the
   choice is right on 649 of 1,028 calibration questions out of fold, against 668 for v11a, v11b, v13b1 and v13a1
   (v13a for v11a: 662; v13b for v11b: 660). Both single-stream downloads stalled; `pull_parts.sh` brought them back.
+
+### 4e. Stage-2 readers v14a, v14b, v14a1, v14b1 (shipped)
+
+```
+python -m training.readers.lease full --experiment readers_v14a1 --data $E/readers_v14/data_v14a --seed 1 --epochs 8 --eval-from 4 --minutes 330 --max-hourly-cost 1.5 --cuda 12.4,12.5,12.6,12.7,12.8,12.9,13.0
+python -m training.readers.lease full --experiment readers_v14b1 --data $E/readers_v14/data_v14b --seed 1 (as v14a1)
+python -m training.readers.lease full --experiment readers_v14a --data $E/readers_v14/data_v14a --seed 0 (as v14a1)
+python -m training.readers.lease full --experiment readers_v14b --data $E/readers_v14/data_v14b --seed 0 (as v14a1)
+```
+
+- Selected checkpoints (gold-pruned calibration, every reading right): v14a1 epoch 5 (0.263; v13a1 0.238), v14b1
+  epoch 8 (0.235; v13b1 0.203), v14a epoch 8 (0.264), v14b epoch 8 (0.223).
+- Serving-faithful calibration candidates (1,028 questions): right answer in a reader's candidates 740 (v14a1), 736
+  (v14b1), 737 (v14a), 727 (v14b), against 674 (v13a1) and 658 (v13b1); its first candidate right 579, 561, 574, 545,
+  against 536 and 508.
+- Hosts with CUDA 13 drivers take the recorded CUDA 12.4 image; without `--cuda ...,13.0` every create failed with
+  "no instances" on 2026-10-25. Two single-stream downloads stalled; `pull_parts.sh` brought v14b back.
+- A ModernBERT-large arm (`readers_v14m1`, the plain data fitted in its tokens, lr 2e-5) never trained: its loss was
+  NaN from the first logged step under the recorded image. XLM-R large stays.
+- v11b in slot b instead of v14b: the pool holds 869 right answers and the choice 738 out of fold (against 865
+  and 734), but every reader of that pool reads "how many orders not in USD" as the orders in USD, which
+  fails the offline regression; the four v14 readers read the negation. All four ship.
 
 ### 5. Relayout of v5 and v6 (before the share outputs)
 
@@ -353,6 +403,32 @@ python -m training.readers.shrink_state expand $E/rescorer_f/out/f/small.pt Face
   pools of the v4 and v6 recipes plus the share questions' pools, `rescorer_data --shares`) and 601 for re-scorer v2.
 - Recipe: XLM-R base, 3 epochs, 8 questions per step, lr 2e-5 / 1e-3, seed 0.
 
+### 8b. The second shipped re-scorer ("g")
+
+The same recipe as "f" on the v14 recipes' cross-fold candidates. SynSQL trains in every fold and is held out in
+none (`folds --train-only synsql`): its databases' execution labels would say little. One fold per lease (RunPod
+caps a lease at 360 minutes).
+
+```
+python -m training.readers.lease folds --experiment readers_v14a_folds_<i> --data $E/readers_v14/data_v14a --folds <i> --train-only synsql --epochs 6 --eval-from 4 --minutes 300 --max-hourly-cost 1.5 --cuda 12.4,12.5,12.6,12.7,12.8,12.9,13.0   (and data_v14b)
+python -m training.readers.folds $E/readers_v14/data_v14a/stage2.jsonl $E/folds_v14a --train-only synsql   (and data_v14b)
+python -m training.readers.candidates $E/folds_v14a/fold<i>.jsonl $E/readers_v14a_folds_<i>/out/fold<i>/calibration_outputs.jsonl $E/fold_candidates_v14/v14a_fold<i>.jsonl --bird <BIRD> --syn <Spider-Syn> --reworded ... --reworded-readings ... --lookups $E/readers_v9/lookups --structures ...   (the v14 data's written sets, in its order)
+python -m training.readers.rescorer_data $E/rescorer_train_g.jsonl.gz --folds $E/fold_candidates_v14/v14a_fold{0,1,2,3}.jsonl --folds $E/fold_candidates_v14/v14b_fold{0,1,2,3}.jsonl --bird <BIRD> --share-weight 5
+python -m training.readers.lease rescorer --experiment rescorer_g --job g=$E/rescorer_train_g.jsonl.gz=$E/pairs/b_14a_11b_14b1_14a1.jsonl.gz
+```
+
+- Fold outputs are 300 to 430 MB; three of the eight came back cut by the lease deadline (anchored fold 0: 7,832 of
+  8,004 questions; fold 3: 6,758 of 8,841; plain fold 0: 5,771 of 8,004) and are used as they are.
+- The training file holds 31,470 union pools (21,855 with a right candidate) and 37 share pools written five times.
+- Recipe as "f": epoch 3, chooses 67.2% of its calibration pool right. On the pool of the four v14 readers (1,035
+  questions, the right answer in it for 865) the choice is right on 719 out of fold with "g" and 704 with "f"; but
+  "g" alone answered three of the product's demo questions wrongly that "f" answers ("What share of the total amount
+  comes from Paris?" read as a share of rows, "total commission amount" below the threshold). The two err apart, so
+  the bundle keeps both (`rescorer_a` "f", `rescorer_b` "g") and the choice weighs both logits (step 9): 734 out of
+  fold on that pool, which is the shipped readers'.
+- An XLM-R large re-scorer on the same file ("gl", epoch 2) is not shipped: 699 alone (g: 698) but 708 in the
+  choice, and it scores a pool several times slower on CPU.
+
 ### 9. The choice
 
 ```
@@ -361,8 +437,9 @@ python -m training.readers.choice fit $E/candidates/v7ab56_cal.jsonl $E/candidat
 python -m training.readers.choice match $E/bundle/choice.json <engine calibration per-example.json> <readers calibration per-example.json>
 ```
 
-- The union pools the four readers' calibration candidates as serving does; `fit` weighs the re-scorer's logit with
-  each candidate's log probability, best rank, the readers' agreement and an empty result (out of fold by database:
+- The union pools the four readers' calibration candidates as serving does; `fit` weighs each re-scorer's logit
+  (`--rescorer` repeated in the bundle's order, one `--logits` cache each) with each candidate's log probability,
+  best rank, the readers' agreement and an empty result (out of fold by database:
   642 of 1,028 right against 628 for the re-scorer alone on the same pool, and 624 for the earlier two-reader
   bundle).
 - `match` sets the threshold from two serving-faithful `spider.probe.full_eval` runs on calibration: the planner
@@ -376,7 +453,7 @@ python -m training.readers.choice match $E/bundle/choice.json <engine calibratio
 - `stage1/` from the stage-1 run;
 - `stage2_<name>/` for each shipped reading model, with a `reader.json` of `{"anchored": true}` or
   `{"anchored": false}`;
-- `rescorer/` from the re-scorer run;
+- `rescorer_<name>/` for each re-scorer run, in the order the choice was fitted on (`rescorer_a`, `rescorer_b`);
 - `choice.json` from step 9.
 
 Each model directory holds `model.pt` next to `config.json`, `tokenizer.json`, `tokenizer_config.json` and
@@ -387,9 +464,12 @@ lack files:
   (`C:/work/datasets/models/xlm-roberta-base`).
 - The recorded re-scorer runs saved no `config.json`. Take the base model's.
 
-The shipped bundle: `stage1/` the "v2" stage-1 run; `stage2_a/` reader v7a (`{"anchored": true}`); `stage2_b/`
-reader v5 after the relayout (`{"anchored": false}`); `stage2_c/` reader v7b (`{"anchored": false}`); `stage2_d/`
-reader v6 after the relayout (`{"anchored": true}`); `rescorer/` the "f" re-scorer; `choice.json` from step 9.
+The shipped bundle (since 2026-10-26): `stage1/` the "v2" stage-1 run; `stage2_a/` reader v14a
+(`{"anchored": true}`); `stage2_b/` reader v14b (`{"anchored": false}`); `stage2_c/` reader v14b1
+(`{"anchored": false}`); `stage2_d/` reader v14a1 (`{"anchored": true}`); `rescorer_a/` the "f" re-scorer;
+`rescorer_b/` the "g" re-scorer; `choice.json` from step 9 fitted on that pool over both re-scorers. It was assembled
+from the previous bundle's layout with those models swapped in (`records/scripts/assemble_two_rescorers.py` in the
+experiment records). The first bundle was v7a, v5, v7b and v6 with re-scorer "f".
 
 Then, with the owner's approval, install it locally, run the gates, publish exactly the manifest's `readers/` files
 to the weight repository, and promote again at the immutable commit that holds them (the promotion downloads every
@@ -400,7 +480,7 @@ python -m training.readers.promote $E/bundle --local-only
 python -m training.readers.promote $E/bundle --revision <immutable-hf-commit>
 ```
 
-The shipped bundle is published at revision `b9bb6521799ca603845a8e41248ff3abfe70fb40`.
+The shipped bundle is published at revision `cd8a03abb8fd443442f9a3e691f717f4285fd263`.
 
 The Spider test set appears in none of these steps. `pruned test` and `choose test` score it in totals only, once
 per milestone.

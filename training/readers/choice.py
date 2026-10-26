@@ -3,15 +3,16 @@ calibration databases. Serving (engine.readers.search.ReadingSearch.rescore) ran
 refuses a choice whose probability is under its threshold (``confidence``, ``confident``): one model chooses and
 refuses.
 
-It weighs the features serving computes (engine.readers.search.choice_features): the re-scorer's logit, the
+It weighs the features serving computes (engine.readers.search.choice_features): each re-scorer's logit, the
 candidate's log probability, its best rank among the readers, the share of the readers' readings that build it (among
-the readers that build any reading of the question), and whether its result is empty. ``fit`` reads a calibration union pool (training.readers.union), each reader's own
-candidates (for the rank and the share) and a re-scorer run. It prints the re-scorer alone against the choice
-cross-validated by database (GroupKFold 5, so a database's questions are never scored by a model fitted on them) and
-writes the model fitted on all of calibration, with no threshold.
+the readers that build any reading of the question), and whether its result is empty. ``fit`` reads a calibration
+union pool (training.readers.union), each reader's own candidates (for the rank and the share) and one or more
+re-scorer runs, in the order the bundle holds them (rescorer_a, rescorer_b, ...). It prints the first re-scorer alone
+against the choice cross-validated by database (GroupKFold 5, so a database's questions are never scored by a model
+fitted on them) and writes the model fitted on all of calibration, with no threshold.
 
 usage: python -m training.readers.choice fit <union.jsonl[.gz]> <reader candidates.jsonl ...> --rescorer <run dir>
-           --out <choice.json> [--logits <cache.jsonl>]
+           [--rescorer <run dir> ...] --out <choice.json> [--logits <cache.jsonl> ...]   (one cache per re-scorer)
        python -m training.readers.choice match <choice.json> <baseline per-example.json> <readers per-example.json>
 
 ``match`` sets the threshold from two serving-faithful calibration runs of spider.probe.full_eval on the same
@@ -29,7 +30,7 @@ import numpy as np
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import GroupKFold
 
-from engine.readers.search import CHOICE_FEATURES, choice_features, readers_share
+from engine.readers.search import choice_feature_names, choice_features, readers_share
 
 
 def _key(record):
@@ -75,8 +76,9 @@ def _logits(union, rescorer_dir, cache):
 
 
 def features(union, reader_paths, logits):
-    """(X, right, question index of each row) over the union's candidates the re-scorer scored; the readers' share is
-    counted among the readers that build any reading of the question, as serving counts it (search.readers_share)."""
+    """(X, right, question index of each row) over the union's candidates every re-scorer scored (``logits``: one
+    {question: {candidate: logit}} per re-scorer, in the bundle's order); the readers' share is counted among the
+    readers that build any reading of the question, as serving counts it (search.readers_share)."""
     built, active = {}, {}
     for path in reader_paths:
         for record in _lines(path):
@@ -87,12 +89,12 @@ def features(union, reader_paths, logits):
                 active[_key(record)] = active.get(_key(record), 0) + 1
     X, y, question_of = [], [], []
     for q, record in enumerate(union):
-        scored = logits[_key(record)]
+        scored = [each[_key(record)] for each in logits]
         for candidate in record["candidates"]:
-            if _identity(candidate) not in scored:
+            if any(_identity(candidate) not in one for one in scored):
                 continue
             ranks = built.get((_key(record), _identity(candidate)), [candidate["rank"]])
-            X.append(choice_features(scored[_identity(candidate)], candidate["score"], min(ranks),
+            X.append(choice_features([one[_identity(candidate)] for one in scored], candidate["score"], min(ranks),
                                      readers_share(len(ranks), active.get(_key(record), 0)), candidate["rows"]))
             y.append(int(bool(candidate.get("right"))))
             question_of.append(q)
@@ -108,9 +110,13 @@ def _chosen_right(scores, y, question_of, questions):
     return right
 
 
-def fit(union_path, reader_paths, rescorer_dir, out, cache=None):
+def fit(union_path, reader_paths, rescorer_dirs, out, caches=()):
+    """``rescorer_dirs`` in the bundle's order: the first is installed as rescorer_a, the next rescorer_b, ...;
+    ``caches`` holds one logits cache per re-scorer (or none)."""
     union = _lines(union_path)
-    X, y, question_of = features(union, reader_paths, _logits(union, rescorer_dir, cache))
+    caches = list(caches) or [None] * len(rescorer_dirs)
+    logits = [_logits(union, directory, cache) for directory, cache in zip(rescorer_dirs, caches, strict=True)]
+    X, y, question_of = features(union, reader_paths, logits)
     databases = np.array([record["db_id"] for record in union])
     alone = chosen = 0
     for train, held in GroupKFold(n_splits=5).split(np.arange(len(union)), groups=databases):
@@ -120,7 +126,8 @@ def fit(union_path, reader_paths, rescorer_dir, out, cache=None):
         alone += _chosen_right(X[:, 0], y, question_of, held)
     pool = sum(any(c.get("right") for c in record["candidates"]) for record in union)
     final = LogisticRegression(C=1.0, max_iter=2000).fit(X, y)
-    fitted = {"features": list(CHOICE_FEATURES), "coef": [float(w) for w in final.coef_[0]],
+    names = [f"rescorer_{chr(ord('a') + i)}" for i in range(len(rescorer_dirs))]
+    fitted = {"features": list(choice_feature_names(names)), "coef": [float(w) for w in final.coef_[0]],
               "intercept": float(final.intercept_[0]), "threshold": None,
               "calibration": {"questions": len(union), "readers": len(reader_paths), "pool": int(pool),
                               "rescorer_alone": int(alone), "choice_cross_validated": int(chosen)}}
@@ -179,9 +186,11 @@ def main():
     fitting = commands.add_parser("fit")
     fitting.add_argument("union", help="the calibration union pool (training.readers.union)")
     fitting.add_argument("readers", nargs="+", help="each reader's calibration candidates")
-    fitting.add_argument("--rescorer", required=True, help="the re-scorer run directory")
+    fitting.add_argument("--rescorer", action="append", required=True,
+                         help="a re-scorer run directory, repeatable, in the bundle's order (rescorer_a, rescorer_b)")
     fitting.add_argument("--out", required=True, help="where to write choice.json")
-    fitting.add_argument("--logits", help="a cache of the re-scorer's logits for the union")
+    fitting.add_argument("--logits", action="append", default=[],
+                         help="a cache of a re-scorer's logits for the union, one per --rescorer, in their order")
     matching = commands.add_parser("match")
     matching.add_argument("choice")
     matching.add_argument("baseline")

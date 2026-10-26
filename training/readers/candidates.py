@@ -7,11 +7,18 @@ counts, and its first row as text, "preview"), and, on training and calibration 
 gold's ("right"). The Spider test set never passes through here: test answers are chosen and scored in totals by
 training.readers.choose.
 
+A reworded question (training.readers.rewordings) is scored against its original's gold query; the written sets
+(--reworded, --lookups, --structures) are the ones training.readers.examples reads, so cross-fold readers' held-out
+questions of those sets get candidates too.
+
 usage: python -m training.readers.candidates <rows.jsonl> <outputs.jsonl> <out.jsonl> [--k 16] [--floor 0.03]
-           [--shard i/n] [--bird <BIRD train dir>] [--syn <Spider-Syn dir>] [--spider-zip <zip>] [--db-dir <dir> ...]
+           [--shard i/n] [--bird <BIRD train dir>] [--syn <Spider-Syn dir>]
+           [--reworded <rewordings.jsonl>[,...] --reworded-readings <readings_reworded.jsonl>[,...]]
+           [--lookups <dir>] [--structures <dir>[,...]] [--spider-zip <zip>] [--db-dir <dir> ...]
 """
 import argparse
 import json
+import tempfile
 
 from engine.readers import decode as decoding
 from engine.readers.read_as import read_as
@@ -51,6 +58,14 @@ def candidate_records(output, row, graph, connection, gold_rows, k=K, floor=None
     return records
 
 
+def gold_query(sources, question):
+    """A question's gold SQL; a reworded question's is its original's."""
+    if "origin" in question and not (question.get("query") or question.get("SQL")):
+        source, index = question["origin"]
+        question = sources.questions[source][index]
+    return question.get("query") or question["SQL"]
+
+
 def main():
     ap = argparse.ArgumentParser(description="Re-scorer candidates with execution labels.")
     ap.add_argument("rows", help="the stage-2 rows the outputs were read from")
@@ -61,6 +76,10 @@ def main():
     ap.add_argument("--shard", default="0/1", help="i/n: only outputs whose line number is i modulo n")
     ap.add_argument("--bird", help="BIRD's train directory, for bird_train questions")
     ap.add_argument("--syn", help="Spider-Syn's directory, for syn_train and syn_dev questions (Spider's databases)")
+    ap.add_argument("--reworded", help="comma-separated rewordings.jsonl, as training.readers.examples takes them")
+    ap.add_argument("--reworded-readings", help="their readings_reworded.jsonl, in the same order")
+    ap.add_argument("--lookups", help="training.readers.lookups' output folder")
+    ap.add_argument("--structures", help="comma-separated training.readers.structures output folders, in order")
     add_arguments(ap)
     args = ap.parse_args()
     shard = tuple(map(int, args.shard.split("/")))
@@ -69,6 +88,13 @@ def main():
         sources.add_bird(args.bird)
     if args.syn:
         sources.add_syn(args.syn)
+    merged = tempfile.mkdtemp(prefix="candidates-")            # the merged readings the sources write; unused here
+    if args.reworded:
+        sources.add_reworded(args.reworded.split(","), args.reworded_readings.split(","), merged)
+    if args.lookups:
+        sources.add_lookups(args.lookups)
+    if args.structures:
+        sources.add_structures(args.structures.split(","), merged)
     rows = {}
     for line in open(args.rows, encoding="utf-8"):
         row = json.loads(line)
@@ -87,7 +113,7 @@ def main():
                 databases[db] = sources.database(db)
             connection, graph = databases[db]
             question = sources.questions[key[0]][key[1]]
-            gold_rows, _ = exec_sql_timed(connection, question.get("query") or question["SQL"], timeout=8.0)
+            gold_rows, _ = exec_sql_timed(connection, gold_query(sources, question), timeout=8.0)
             sink.write(json.dumps({"source": key[0], "index": key[1], "db_id": db, "question": question["question"],
                                    "candidates": candidate_records(output, row, graph, connection, gold_rows,
                                                                    args.k, args.floor)}) + "\n")

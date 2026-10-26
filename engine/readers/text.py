@@ -146,13 +146,16 @@ def reading_text(schema, tables, columns_of, samples=True, anchors=None):
 
 
 def fit(tokenizer, budget, question, schema, tables, columns_of, droppable, anchored=True):
-    """(kept tables, reading_text(...)) within the token budget: drop the droppable tables in order, then the
-    samples. ``anchored`` lists the question's own values first (a model reads with them or without)."""
+    """(kept tables, reading_text(...)) within the token budget: the samples go before a table does, then the
+    droppable tables in order, each without samples. A reading of a dropped table can never be right, and a table
+    without samples still lists its columns and their few values: on calibration the readers' pools hold 10 more
+    right answers this way (783 of 1,028), most of them over wide databases whose samples filled the budget
+    (2026-10-25). ``anchored`` lists the question's own values first (a model reads with them or without)."""
     kept, serialized = list(tables), None
     anchors = schema.anchors(question) if anchored else {}
-    for samples in (True, False):
-        for dropped in range(len(droppable) + 1):
-            kept = [t for t in tables if t not in droppable[:dropped]]
+    for dropped in range(len(droppable) + 1):
+        kept = [t for t in tables if t not in droppable[:dropped]]
+        for samples in (True, False):
             serialized = reading_text(schema, kept, columns_of, samples, anchors)
             if len(tokenizer(question, serialized[0])["input_ids"]) <= budget:
                 return kept, serialized
