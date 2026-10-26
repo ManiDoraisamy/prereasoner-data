@@ -1115,6 +1115,10 @@ def main():
         print(f"startup warmup note: {type(e).__name__}", flush=True)
     DIM_MODEL = startup_phase("dimension model (shared world encoder)",
                               lambda: DimensionModel(shared_encoder=MODEL.qw))
+    # The readers answer every own-data question. Loaded on the first one, they took 191 s on a fresh Cloud Run
+    # instance (2026-10-26) and the chat's engine call timed out at 180 s, so an instance is ready only with them.
+    from engine.readers.search import reading_search
+    startup_phase("readers", reading_search)
     # spaCy is lazy and is only needed by entity extraction on a subset of queries.
     # It is not part of model readiness: loading it synchronously here can consume
     # the last seconds of Cloud Run's startup-probe budget after the Qwen encoder and

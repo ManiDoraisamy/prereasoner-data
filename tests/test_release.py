@@ -93,6 +93,36 @@ def test_spacy_warmup_does_not_block_model_readiness():
     assert not worker.is_alive(), "background spaCy warmup failed to exit"
 
 
+def test_the_engine_loads_the_readers_before_it_serves():
+    # 2026-10-26 (f2d08f5): the readers loaded on an instance's first own-data question, 191 s on a fresh Cloud Run
+    # instance, and the chat's engine call timed out at 180 s.
+    import engine.server as server
+
+    order = []
+
+    class Server:
+        def __init__(self, *args):
+            order.append("serve")
+
+        def serve_forever(self):
+            pass
+
+    saved = server.MODEL, server.DIM_MODEL, server.ENRICHMENT
+    try:
+        with patch("engine.knowledge.KnowledgeReasoner", lambda: SimpleNamespace(qw=None)), \
+                patch("engine.enrichment.EnrichmentRuntime", lambda *args, **kwargs: None), \
+                patch("engine.enrichment.SnapshotStore", lambda *args: None), \
+                patch("engine.embeddings.Embedder.get", lambda: SimpleNamespace(encode=lambda texts: None)), \
+                patch("engine.dimension.DimensionModel", lambda **kwargs: None), \
+                patch.object(server, "_start_spacy_warmup", lambda model: None), \
+                patch.object(server, "ThreadingHTTPServer", Server), \
+                patch("engine.readers.search.reading_search", lambda: order.append("readers")):
+            server.main()
+    finally:
+        server.MODEL, server.DIM_MODEL, server.ENRICHMENT = saved
+    assert order == ["readers", "serve"]
+
+
 def test_vendored_xlsx_parser_has_the_reviewed_identity():
     path = ROOT / "web/public/vendor/xlsx-0.20.3.full.min.js"
     digest = hashlib.sha256(path.read_bytes()).hexdigest()
@@ -1340,6 +1370,7 @@ TESTS = [
     test_cpu_suite_timeouts_are_bounded_and_overridable,
     test_public_artifact_boundary,
     test_spacy_warmup_does_not_block_model_readiness,
+    test_the_engine_loads_the_readers_before_it_serves,
     test_vendored_xlsx_parser_has_the_reviewed_identity,
     test_spider_evaluator_supports_module_invocation,
     test_spider_results_fingerprint_every_source_file_a_run_executes,
