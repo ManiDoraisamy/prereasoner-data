@@ -24,7 +24,7 @@ def _engine_container_size() -> tuple[str, str]:
     """The engine service's CPU and memory limits in infra/main.tf, as docker run limits: the build
     gates run the image at the size production serves it."""
     service = _text("infra/main.tf").split('resource "google_cloud_run_v2_service" "api"', 1)[1]
-    limits = service.split("limits = {", 1)[1].split("}", 1)[0]
+    limits = service.split("limits = ", 1)[1].split("}", 1)[0]      # "{...}", or merge({...}, the GPU's)
     cpu = re.search(r'cpu\s*=\s*"(\d+)"', limits)[1]
     memory = re.search(r'memory\s*=\s*"(\d+)Gi"', limits)[1]
     return f"--cpus={cpu}", f"--memory={memory}g"
@@ -1135,6 +1135,7 @@ def test_world_regression_reports_empty_result_instead_of_raising():
 def test_release_installs_only_hash_locked_dependencies():
     locks = (
         "requirements.lock.txt",
+        "requirements-gpu.lock.txt",
         "requirements-ci.lock.txt",
         "requirements-ci-windows.lock.txt",
         "orchestrator/requirements.lock.txt",
@@ -1164,6 +1165,58 @@ def test_release_installs_only_hash_locked_dependencies():
     from deploy.dependency_locks import check
 
     check()
+
+
+def _pins(relative):
+    return dict(re.findall(r"^([a-z0-9][a-z0-9._-]*)==(\S+)", _text(relative), re.M))
+
+
+def test_the_gpu_lock_is_the_cpu_lock_with_torch_s_cuda_build():
+    # One serving stack: the hosted edition's image may differ from the Community edition's only by torch's
+    # CUDA build and the libraries that build brings, never by another version of anything they share.
+    cpu, gpu = _pins("requirements.lock.txt"), _pins("requirements-gpu.lock.txt")
+    assert cpu["torch"].endswith("+cpu") and gpu["torch"] == cpu["torch"].replace("+cpu", "+cu130")
+    assert {name: version for name, version in gpu.items() if name in cpu and name != "torch"} == {
+        name: version for name, version in cpu.items() if name != "torch"}
+    extra = set(gpu) - set(cpu)
+    assert extra and all(name.startswith(("nvidia-", "cuda-")) or name == "triton" for name in extra), extra
+    assert "--extra-index-url https://download.pytorch.org/whl/cu130" in _text("requirements-gpu.lock.txt")
+    dockerfile = _text("Dockerfile")
+    assert "ARG ENGINE_LOCK=requirements.lock.txt" in dockerfile
+    assert "requirements.lock.txt|requirements-gpu.lock.txt" in dockerfile
+    assert "--build-arg ENGINE_LOCK=${_ENGINE_LOCK}" in _text("cloudbuild.yaml")
+    assert "_ENGINE_LOCK: requirements.lock.txt" in _text("cloudbuild.yaml")
+    main = _text("infra/main.tf")
+    assert 'value = var.gpu != "" ? "cuda" : "cpu"' in main and 'accelerator = node_selector.value' in main
+    assert "gpu_zonal_redundancy_disabled = var.gpu != \"\" ? true : null" in main
+
+
+def test_a_gpu_deployment_without_a_gpu_refuses_to_serve():
+    import torch
+
+    import engine.config as config
+
+    saved = config.DEVICE
+    try:
+        config.DEVICE = "cpu"
+        assert config.serving_device() == torch.device("cpu")
+        config.DEVICE = "gpu"
+        try:
+            config.serving_device()
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("an unknown DEVICE was accepted")
+        if not torch.cuda.is_available():
+            config.DEVICE = "cuda"
+            try:
+                config.serving_device()
+            except RuntimeError:
+                pass
+            else:
+                raise AssertionError("DEVICE=cuda served without a GPU")
+    finally:
+        config.DEVICE = saved
 
 
 def test_world_evaluation_records_release_provenance():
@@ -1406,6 +1459,8 @@ TESTS = [
     test_live_database_tests_allocate_production_shaped_schemas,
     test_world_regression_reports_empty_result_instead_of_raising,
     test_release_installs_only_hash_locked_dependencies,
+    test_the_gpu_lock_is_the_cpu_lock_with_torch_s_cuda_build,
+    test_a_gpu_deployment_without_a_gpu_refuses_to_serve,
     test_world_evaluation_records_release_provenance,
     test_gpu_training_preserves_the_runner_cuda_torch,
     test_schema_training_selection_never_reads_test_evidence,

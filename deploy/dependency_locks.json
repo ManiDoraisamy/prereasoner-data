@@ -40,6 +40,12 @@
       "lock_sha256": "81d7fd71af7bb35fd2ec8d436c21f1a63a23842810d02c86d07a05e379c65bd1",
       "target": "linux-x86_64-python3.11"
     },
+    "requirements-gpu.lock.txt": {
+      "input": "requirements.txt",
+      "input_sha256": "9dfbabf8f31bd781872145d7907568ab1b1c8563b9bb01b614dcb96d31fc0882",
+      "lock_sha256": "545dc5b3159796805c9d774ef849e3a99dbc49acb090e74c9339ad6e6ca172aa",
+      "target": "linux-x86_64-python3.11-cuda13.0"
+    },
     "requirements.lock.txt": {
       "input": "requirements.txt",
       "input_sha256": "9dfbabf8f31bd781872145d7907568ab1b1c8563b9bb01b614dcb96d31fc0882",

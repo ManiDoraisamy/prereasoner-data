@@ -66,7 +66,8 @@ def load_encoder(obj, deploy_dir=DATA_DIR):
     base = AutoModel.from_pretrained(
         MODEL_ID, revision=MODEL_REVISION, low_cpu_mem_usage=True
     ).float()
-    obj.qwen = PeftModel.from_pretrained(base, str(d / "qwen_lora")).eval()
+    from engine.config import serving_device
+    obj.qwen = PeftModel.from_pretrained(base, str(d / "qwen_lora")).eval().to(serving_device())
     obj.hdim = base.config.hidden_size
 
 

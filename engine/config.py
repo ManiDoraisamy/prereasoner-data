@@ -28,7 +28,7 @@ Env contract:
   DATASET_ATTESTATION_KEY shared engine/orchestrator HMAC key for authenticated dataset claims.
   CORS_ORIGINS         comma-separated exact browser origins; empty disables cross-origin responses.
   PREREASONER_DATA_DIR model/data directory                          (default: engine/data in the package)
-  DEVICE               torch device for the Schema.org head (default cpu)
+  DEVICE               torch device every serving model loads onto: cpu (default) or cuda (serving_device)
   BASE_MODEL_ID        Hugging Face id of the base encoder LM        (default Qwen/Qwen2.5-0.5B)
   BASE_MODEL_REVISION  Immutable Hugging Face commit for that base model
   KB_MODEL_ROUTE    "0" disables model-driven column routing (falls back to value membership; default on)
@@ -184,6 +184,24 @@ DATA_DIR = Path(os.environ.get("PREREASONER_DATA_DIR") or Path(__file__).resolve
 DEVICE = os.environ.get("DEVICE", "cpu")
 BASE_MODEL_ID = os.environ.get("BASE_MODEL_ID", QWEN_MODEL_ID)
 BASE_MODEL_REVISION = os.environ.get("BASE_MODEL_REVISION", QWEN_REVISION)
+
+
+def serving_device():
+    """The torch device every serving model loads onto (DEVICE: "cpu" or "cuda"). A cuda DEVICE on a machine
+    with no usable GPU is a deployment error, raised rather than served on the CPU at a fraction of the speed. On
+    cuda the kernels run in deterministic mode (cuBLAS with a fixed workspace), so an answer does not depend on
+    which run computed it."""
+    import torch
+
+    if DEVICE == "cpu":
+        return torch.device("cpu")
+    if DEVICE != "cuda":
+        raise ValueError(f"DEVICE must be cpu or cuda, not {DEVICE!r}")
+    if not torch.cuda.is_available():
+        raise RuntimeError("DEVICE=cuda but this machine has no usable CUDA device")
+    os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")       # read when cuBLAS first starts
+    torch.use_deterministic_algorithms(True)
+    return torch.device("cuda")
 
 
 def kb_model_route_enabled():

@@ -10,6 +10,9 @@ locals {
   # turns it on for a deployment without chat. EXTERNAL_LLM_ENABLED carries this to both services.
   external_llm_enabled = var.enable_external_llm || var.enable_orchestrator
 
+  # The engine grows to four CPU instances, or to three L4 instances: a project's default L4 quota.
+  engine_max_instances = var.gpu != "" ? 3 : 4
+
   required_apis = concat([
     "firebase.googleapis.com",         # Firebase project APIs
     "firebasehosting.googleapis.com",  # Firebase Hosting release stage
@@ -263,8 +266,17 @@ resource "google_cloud_run_v2_service" "api" {
       # 4 and on 8 vCPU). Four instances of two requests hold at most 24 database connections (a
       # request holds up to three: resolution, world query, deterministic run), within the 47 the
       # db-g1-small instance serves beside its reserved ones.
-      max_instance_count = 4
+      max_instance_count = local.engine_max_instances
     }
+
+    # The hosted edition's accelerator (variables.tf: gpu); none on the Community edition's CPU.
+    dynamic "node_selector" {
+      for_each = var.gpu != "" ? [var.gpu] : []
+      content {
+        accelerator = node_selector.value
+      }
+    }
+    gpu_zonal_redundancy_disabled = var.gpu != "" ? true : null
 
     # The requests an instance serves at once: a question, and the short catalog, master-data and
     # health requests beside it. Questions in one instance share its CPU and the interpreter lock:
@@ -292,11 +304,12 @@ resource "google_cloud_run_v2_service" "api" {
       # hold beside the rest; 16Gi leaves headroom for request-time tensors, 10 MB request bodies, and the
       # in-memory SQLite copies of uploaded sheets, for three requests at once.
       resources {
-        limits = {
+        limits = merge({
           cpu    = "4"
           memory = "16Gi"
-        }
-        startup_cpu_boost = true # model load is CPU-bound; boost cuts cold-start time
+        }, var.gpu != "" ? { "nvidia.com/gpu" = "1" } : {})
+        cpu_idle          = false # CPU always allocated (instance-based billing; a GPU requires it)
+        startup_cpu_boost = true  # model load is CPU-bound; boost cuts cold-start time
       }
 
       ports {
@@ -397,7 +410,7 @@ resource "google_cloud_run_v2_service" "api" {
       }
       env {
         name  = "DEVICE"
-        value = "cpu"
+        value = var.gpu != "" ? "cuda" : "cpu"
       }
       # The engine refuses to start on a database missing a migration its code needs, so traffic stays
       # on the previous revision (engine/server.py:require_current_schema).

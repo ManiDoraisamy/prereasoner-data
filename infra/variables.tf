@@ -258,3 +258,21 @@ variable "min_instances" {
     error_message = "min_instances must be 0 to 4: the engine service runs at most four instances (main.tf)."
   }
 }
+
+variable "gpu" {
+  description = <<-EOT
+    The engine's accelerator: "" runs every model on the CPU (the default, and the Community edition);
+    "nvidia-l4" gives each engine instance one L4 without zonal redundancy and loads every model onto it
+    (DEVICE=cuda, engine/config.py:serving_device). It needs the image built from the CUDA lock
+    (cloudbuild.yaml _ENGINE_LOCK=requirements-gpu.lock.txt). An L4 instance with the 4 vCPU and 16Gi below
+    costs about $1.05 an hour with its CPU always allocated (us-central1 list prices, 2026-10-27), and a
+    project's default L4 quota is three, so the service then runs at most three instances.
+  EOT
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = contains(["", "nvidia-l4"], var.gpu)
+    error_message = "gpu must be \"\" (CPU) or \"nvidia-l4\"."
+  }
+}

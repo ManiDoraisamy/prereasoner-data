@@ -28,6 +28,7 @@ SOURCE_ALLOWLIST = (
     "THIRD_PARTY.md",
     "cloudbuild.yaml",
     "requirements.lock.txt",
+    "requirements-gpu.lock.txt",
     "engine",
     "db",
     "regress",

@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 from engine.artifact_provenance import semantic_encoder_fingerprint
-from engine.config import BASE_MODEL_ID, BASE_MODEL_REVISION, DATA_DIR, DEVICE
+from engine.config import BASE_MODEL_ID, BASE_MODEL_REVISION, DATA_DIR, serving_device
 from engine.schema_decode import SIGNATURES_PATH, ClassDecoder
 from engine.schema_org import load_contract, schema_name
 
@@ -113,9 +113,8 @@ class SchemaInterpreter:
     def _load_encoder(self):
         if self._encoder is not None:
             return self._encoder
-        import torch
         from engine.encoder import LiveQwen
-        dev = torch.device(DEVICE if DEVICE != "cuda" or torch.cuda.is_available() else "cpu")
+        dev = serving_device()
         if self.shared is not None:
             qwen, tok = self.shared
             self._encoder = LiveQwen(dev, shared_qwen=qwen, shared_tok=tok)

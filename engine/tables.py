@@ -261,12 +261,13 @@ class TableQuery:
         """The raw forward pass, uncached. Callers go through `_encode`."""
         out = np.zeros((len(texts), self.hdim), np.float32)
         from engine.encoder import tokenize
+        device = next(self.qwen.parameters()).device             # the serving device (engine.config.serving_device)
         for i in range(0, len(texts), 64):
             chunk = texts[i:i + 64]
-            enc = tokenize(self.tok, chunk, MAX_LEN)
+            enc = tokenize(self.tok, chunk, MAX_LEN).to(device)
             h = self.qwen(**enc).last_hidden_state
             m = enc["attention_mask"].unsqueeze(-1).float()
-            out[i:i + len(chunk)] = ((h * m).sum(1) / m.sum(1).clamp(min=1.0)).float().numpy()
+            out[i:i + len(chunk)] = ((h * m).sum(1) / m.sum(1).clamp(min=1.0)).float().cpu().numpy()
         return out
 
     def _encode(self, texts):

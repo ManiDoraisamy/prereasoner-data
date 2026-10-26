@@ -45,9 +45,10 @@ class Embedder:
         from transformers import AutoTokenizer, AutoModel
         self._torch = torch
         self.tok = AutoTokenizer.from_pretrained(_MODEL_ID, revision=_MODEL_REVISION)
+        from engine.config import serving_device
         self.mdl = AutoModel.from_pretrained(
             _MODEL_ID, revision=_MODEL_REVISION, low_cpu_mem_usage=True
-        ).eval()
+        ).eval().to(serving_device())
         self.dim = self.mdl.config.hidden_size          # 384
 
     @classmethod
@@ -66,7 +67,8 @@ class Embedder:
         with torch.no_grad():
             for i in range(0, len(texts), batch):
                 chunk = [("" if t is None else str(t)) for t in texts[i:i + batch]]
-                enc = self.tok(chunk, padding=True, truncation=True, max_length=32, return_tensors="pt")
+                enc = self.tok(chunk, padding=True, truncation=True, max_length=32,
+                               return_tensors="pt").to(self.mdl.device)
                 cls = self.mdl(**enc).last_hidden_state[:, 0]          # [CLS]
                 cls = torch.nn.functional.normalize(cls, p=2, dim=1)
                 out.append(cls.cpu().numpy().astype(np.float32))

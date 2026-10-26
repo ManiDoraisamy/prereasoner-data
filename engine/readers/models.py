@@ -9,7 +9,9 @@
 Each is an XLM-R encoder with linear heads. Serving builds the encoder from its saved config and loads the
 fine-tuned weights (``load``), so no base weights are fetched at serving time. Serving runs each encoder in bfloat16
 and its heads in float32: half the memory of float32 and a few times faster on CPU, and on calibration rows no
-reading's probability moves by more than 0.06 (p99 0.013).
+reading's probability moves by more than 0.06 (p99 0.013). ``load`` places a model on the serving device
+(engine.config.serving_device: the CPU, or the hosted edition's GPU); the reading functions run a model on the
+device it is on and return its outputs on the CPU.
 """
 from __future__ import annotations
 
@@ -120,7 +122,14 @@ def load(kind, directory):
     encoder = AutoModel.from_config(AutoConfig.from_pretrained(directory), dtype=torch.bfloat16)
     model = {"schema_items": SchemaItemModel, "readings": ReadingModel, "rescorer": Rescorer}[kind](encoder)
     model.load_state_dict(torch.load(os.path.join(directory, "model.pt"), map_location="cpu", weights_only=True))
-    return model.eval()
+    from engine.config import serving_device
+    return model.eval().to(serving_device())
+
+
+def on_device(model, *tensors):
+    """``tensors`` moved to the device ``model`` runs on."""
+    device = next(model.parameters()).device
+    return [t.to(device) for t in tensors]
 
 
 # ---------------------------------------------------------------------------------------------------- inputs
@@ -245,8 +254,9 @@ def read_outputs(model, tokenizer, row):
     """The stage-2 outputs for one row."""
     with torch.no_grad():
         encoded, t = reading_inputs(tokenizer, [row])
-        column_logits, table_logits, global_logits, start, end, limit_start, limit_end = model(
-            t["ids"], t["mask"], t["column_index"], t["column_mask"], t["table_index"], t["table_mask"])
+        outputs = model(*on_device(model, t["ids"], t["mask"], t["column_index"], t["column_mask"],
+                                   t["table_index"], t["table_mask"]))
+        column_logits, table_logits, global_logits, start, end, limit_start, limit_end = [o.cpu() for o in outputs]
         return row_output(row, encoded[0], torch.sigmoid(column_logits[0]), slot_view(column_logits[0]),
                           torch.sigmoid(table_logits[0]), global_logits[0], start[0], end[0], limit_start[0],
                           limit_end[0], t["column_valid"][0], t["table_valid"][0])
@@ -274,4 +284,4 @@ def rescore(model, tokenizer, question, candidates):
     if not candidates:
         return []
     with torch.no_grad():
-        return model(*rescorer_inputs(tokenizer, question, candidates)).float().tolist()
+        return model(*on_device(model, *rescorer_inputs(tokenizer, question, candidates))).float().cpu().tolist()

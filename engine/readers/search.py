@@ -98,9 +98,9 @@ class ReadingSearch:
             for begin in range(0, len(rows), 16):
                 chunk = rows[begin:begin + 16]
                 ids, mask, index, span_mask, valid = models.schema_item_inputs(self.tokenizer, chunk)
-                table_logit, column_logits = self.stage1(ids, mask, index, span_mask)
-                table_p = torch.sigmoid(table_logit).tolist()
-                column_p = torch.sigmoid(column_logits[..., 0])
+                table_logit, column_logits = self.stage1(*models.on_device(self.stage1, ids, mask, index, span_mask))
+                table_p = torch.sigmoid(table_logit).cpu().tolist()
+                column_p = torch.sigmoid(column_logits[..., 0]).cpu()
                 for b, row in enumerate(chunk):
                     scores[row["table"]] = (table_p[b], {c["name"]: float(column_p[b, i]) if valid[b, i] else 0.0
                                                          for i, c in enumerate(row["columns"])})

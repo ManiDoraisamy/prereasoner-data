@@ -28,8 +28,14 @@ ENV PATH="/opt/venv/bin:$PATH"
 # installs spaCy's en_core_web_md straight from the release wheel (no post-install
 # `spacy download` step needed — but keep the assertion below so a future requirements
 # edit that drops the model wheel fails the build, not the first request).
-COPY requirements.lock.txt /tmp/requirements.lock.txt
-RUN pip install --require-hashes -r /tmp/requirements.lock.txt \
+# ENGINE_LOCK=requirements-gpu.lock.txt builds the hosted edition's image: the same input and the same
+# versions, with torch's CUDA build and the CUDA libraries it brings (tests/test_release.py holds the two
+# locks equal otherwise). That image also runs on a CPU (DEVICE=cpu, the default).
+ARG ENGINE_LOCK=requirements.lock.txt
+COPY ${ENGINE_LOCK} /tmp/requirements.lock.txt
+RUN case "${ENGINE_LOCK}" in requirements.lock.txt|requirements-gpu.lock.txt) ;; \
+      *) echo "ENGINE_LOCK must be requirements.lock.txt or requirements-gpu.lock.txt" >&2; exit 1 ;; esac \
+ && pip install --require-hashes -r /tmp/requirements.lock.txt \
  && python -c "import spacy; spacy.load('en_core_web_md')"
 
 # Pre-bake the Hugging Face models the engine loads at startup (the Qwen base, used as the

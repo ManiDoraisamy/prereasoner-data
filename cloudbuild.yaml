@@ -21,7 +21,7 @@ steps:
       - |
         set -e
         export DOCKER_BUILDKIT=1   # the Dockerfile uses a COPY heredoc — BuildKit-only
-        docker build -t ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/engine:${_TAG} .
+        docker build --build-arg ENGINE_LOCK=${_ENGINE_LOCK} -t ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/engine:${_TAG} .
 
   # REGRESSION GATE (offline tier) — runs the golden non-world text-to-SQL cases + engine.joins invariants
   # INSIDE the freshly built image (real Qwen/LoRA weights are baked in; no Postgres needed). A regression
@@ -95,6 +95,7 @@ substitutions:
   _REGION: us-central1 # must match infra/ var.region
   _REPO: prereasoner   # must match infra/ var.artifact_repo
   _TAG: latest
+  _ENGINE_LOCK: requirements.lock.txt # requirements-gpu.lock.txt for the hosted edition's L4 (infra var.gpu)
   _RUN_PRODUCT_SUITES: "1"
   _PGVECTOR_IMAGE: pgvector/pgvector:pg16@sha256:eac621400b7b7ff52493883e41e930e3d104695fea5b68cc0c42370cf7880067
 
