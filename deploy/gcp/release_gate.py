@@ -12,8 +12,12 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import sys
 
-from db.sync.app_migrations import CHAT_MIGRATIONS
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
+
+from db.sync.app_migrations import CHAT_MIGRATIONS  # noqa: E402
 
 
 REQUIRED_STEPS = {

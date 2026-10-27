@@ -59,6 +59,19 @@ def test_manifest_attests_the_chat_migration_the_release_needs():
     with rejected(): validate_manifest(manifest)
 
 
+def test_the_gate_runs_as_the_readme_says():
+    """deploy/gcp/README.md runs `python deploy/gcp/release_gate.py <manifest.json>`: a script whose directory is
+    deploy/gcp must still import the repository's migrations (it failed with "No module named 'db'", 2026-10-27)."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    done = subprocess.run([sys.executable, str(root / "deploy" / "gcp" / "release_gate.py"), "--help"],
+                          capture_output=True, text=True, cwd=root.parent, timeout=120)
+    assert done.returncode == 0, done.stderr[-500:]
+
+
 def test_cli_resolves_the_windows_sdk_entry_point():
     executable = r'C:\Google Cloud SDK\bin\gcloud.CMD'
     with patch('deploy.gcp.release_gate.shutil.which', return_value=executable), \
@@ -83,6 +96,7 @@ if __name__ == '__main__':
     test_untested_promotion_is_rejected()
     test_build_success_cannot_substitute_for_hosted_evidence()
     test_manifest_attests_the_chat_migration_the_release_needs()
+    test_the_gate_runs_as_the_readme_says()
     test_cli_resolves_the_windows_sdk_entry_point()
     test_missing_sdk_does_not_bypass_verification()
     print('Promotion gate: all checks passed')
