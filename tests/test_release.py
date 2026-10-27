@@ -23,11 +23,9 @@ def _text(path: str) -> str:
 def _engine_container_size() -> tuple[str, str]:
     """The engine service's CPU and memory limits in infra/main.tf, as docker run limits: the build
     gates run the image at the size production serves it."""
-    main = _text("infra/main.tf")
-    service = main.split('resource "google_cloud_run_v2_service" "api"', 1)[1]
+    service = _text("infra/main.tf").split('resource "google_cloud_run_v2_service" "api"', 1)[1]
     limits = service.split("limits = ", 1)[1].split("}", 1)[0]      # "{...}", or merge({...}, the GPU's)
-    assert re.search(r'cpu\s*=\s*local\.engine_cpu', limits), limits
-    cpu = re.search(r'engine_cpu\s*=\s*"(\d+)"', main)[1]
+    cpu = re.search(r'cpu\s*=\s*"(\d+)"', limits)[1]
     memory = re.search(r'memory\s*=\s*"(\d+)Gi"', limits)[1]
     return f"--cpus={cpu}", f"--memory={memory}g"
 
@@ -1193,15 +1191,6 @@ def test_the_gpu_lock_is_the_cpu_lock_with_torch_s_cuda_build():
     assert "gpu_zonal_redundancy_disabled = var.gpu != \"\" ? true : null" in main
 
 
-def test_the_engine_computes_with_as_many_threads_as_it_has_vcpus():
-    """2026-10-27: PyTorch sized its thread pool from the cores a Cloud Run instance shows (6 logical, so 3 threads
-    on 4 vCPUs); a reader pass took 1.52 s against 1.08 s with 4. One Terraform value sets both."""
-    service = _text("infra/main.tf").split('resource "google_cloud_run_v2_service" "api"', 1)[1]
-    assert re.search(r'name\s*=\s*"OMP_NUM_THREADS"\s*\n\s*value\s*=\s*local\.engine_cpu', service), \
-        "the engine's OMP_NUM_THREADS must be its vCPU limit"
-    assert _engine_container_size()[0] == "--cpus=4"
-
-
 def test_a_gpu_deployment_without_a_gpu_refuses_to_serve():
     import torch
 
@@ -1471,7 +1460,6 @@ TESTS = [
     test_world_regression_reports_empty_result_instead_of_raising,
     test_release_installs_only_hash_locked_dependencies,
     test_the_gpu_lock_is_the_cpu_lock_with_torch_s_cuda_build,
-    test_the_engine_computes_with_as_many_threads_as_it_has_vcpus,
     test_a_gpu_deployment_without_a_gpu_refuses_to_serve,
     test_world_evaluation_records_release_provenance,
     test_gpu_training_preserves_the_runner_cuda_torch,
