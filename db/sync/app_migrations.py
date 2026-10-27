@@ -350,6 +350,13 @@ _WORDS_NORM_TYPE_INDEX = """
 CREATE INDEX IF NOT EXISTS ix_words_norm_type ON knowledgebase."words"(norm, type)
 """
 
+# The qid -> canonical label lookup (engine/entities.py:_qid_labels) filters on qid alone. No index led with qid,
+# so PostgreSQL walked all of ix_words_type_qid for it: 431 ms for 12 qids, and 75 production statements over
+# 0.2 s in a week, up to 6.1 s (2026-10-27). Not CONCURRENTLY, for the reason given above.
+_WORDS_QID_INDEX = """
+CREATE INDEX IF NOT EXISTS ix_words_qid ON knowledgebase."words"(qid)
+"""
+
 KNOWLEDGEBASE_MIGRATIONS = (
     ApplicationMigration(
         1,
@@ -373,6 +380,11 @@ KNOWLEDGEBASE_MIGRATIONS = (
         3,
         "words_norm_type_index",
         (_WORDS_NORM_TYPE_INDEX,),
+    ),
+    ApplicationMigration(
+        4,
+        "words_qid_index",
+        (_WORDS_QID_INDEX,),
     ),
 )
 

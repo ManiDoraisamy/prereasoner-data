@@ -34,6 +34,7 @@ from engine.request_limits import (
 from mcp_server import engine_client
 from orchestrator.orchestrator import run_chat
 from engine.request_validation import RequestValidationError, validate_chat_request
+from engine.trace import drain_request
 
 WEB_ROOT = Path(config.__file__).resolve().parent.parent / "web" / "public"
 MAX_BODY = 30 * 1024 * 1024
@@ -77,6 +78,7 @@ class H(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
     def _send(self, code, body, ctype="application/json", retry_after=None):
+        drain_request()                                  # the turn's queued trace writes, the final reply included, first
         b = body if isinstance(body, bytes) else body.encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", ctype)

@@ -21,7 +21,7 @@ from engine.tables import MODEL_ID, TableQuery
 
 def load_encoder(obj, deploy_dir=DATA_DIR):
     """ONE MODEL: the trained unified encoder IS the world encoder — operator (intent_agg dims), bridge
-    embeddings, AND column typing all read off it. Sets the shared attributes (alloc/nc/dims/sid/thr/model/
+    embeddings, AND column typing all read off it. Sets the shared attributes (device/alloc/nc/dims/sid/thr/model/
     nL/tok/qwen/hdim) from the shipped artifacts (encoder_meta.pt / encoder.pt / qwen_lora) + the anchor-head
     thresholds (the intent dims fire the operator; verified SUM/COUNT/AVG)."""
     from pathlib import Path
@@ -67,7 +67,8 @@ def load_encoder(obj, deploy_dir=DATA_DIR):
         MODEL_ID, revision=MODEL_REVISION, low_cpu_mem_usage=True
     ).float()
     from engine.config import serving_device
-    obj.qwen = PeftModel.from_pretrained(base, str(d / "qwen_lora")).eval().to(serving_device())
+    obj.device = serving_device()
+    obj.qwen = PeftModel.from_pretrained(base, str(d / "qwen_lora")).eval().to(obj.device)
     obj.hdim = base.config.hidden_size
 
 

@@ -264,7 +264,7 @@ def test_the_shared_tokenizer_is_called_one_at_a_time():
     tok = _CountingTokenizer()
     qwen = lambda **enc: SimpleNamespace(last_hidden_state=torch.zeros((len(enc["input_ids"]), 1, 4)))  # noqa: E731
     cells = TableQuery.__new__(TableQuery)
-    cells.tok, cells.qwen, cells.hdim = tok, qwen, 4
+    cells.tok, cells.qwen, cells.hdim, cells.device = tok, qwen, 4, torch.device("cpu")
     summaries = LiveQwen(torch.device("cpu"), shared_qwen=qwen, shared_tok=tok)
     meet = threading.Barrier(2, timeout=5)
 

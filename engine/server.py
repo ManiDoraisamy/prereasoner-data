@@ -97,7 +97,7 @@ from engine.request_validation import (
 )
 from engine.sheet_sessions import clear_sheet_session, restore_sheet_session, save_sheet_session
 from engine.tables import csv_table, normalize_tables, table_name
-from engine.trace import emitter, request_stream, stream_final
+from engine.trace import drain_request, emitter, request_stream, stream_final
 
 # Questions run in parallel on these shared objects: each request's own state is request-local
 # (engine/request_state.py), and Cloud Run bounds the requests an instance serves at once (infra/main.tf).
@@ -222,6 +222,7 @@ class H(BaseHTTPRequestHandler):
 
     def _send(self, code, body, ctype="application/json", retry_after=None):
         self._status = code                              # every exit path, so the timing line reports the outcome
+        drain_request()                                  # the trace's queued writes, terminal status included, first
         replay_key, self._replay_key = getattr(self, "_replay_key", None), None
         if replay_key is not None:                       # recorded BEFORE the write: the write is what can be lost
             try:

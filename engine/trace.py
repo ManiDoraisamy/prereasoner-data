@@ -75,10 +75,133 @@ def ensure_app():
             firebase_admin.initialize_app(options=opts)           # ADC creds (+ the RTDB url when configured)
 
 
+# How long a response waits for its request's queued trace writes (drain_request): the terminal status
+# lands in RTDB no later than the HTTP answer unless RTDB is this slow, and then it follows on its own.
+TERMINAL_WAIT_SECONDS = 2.0
+
+# The writers this request created, drained before its response is sent (drain_request). A context
+# variable, so concurrent requests each drain only their own.
+_WRITERS: contextvars.ContextVar = contextvars.ContextVar("trace_writers", default=None)
+
+# A writer's thread ends once its queue has been empty this long, and a later write starts another: a writer
+# nobody drains holds no thread.
+WRITER_IDLE_SECONDS = 30.0
+
+
+def _overlaps(path, other):
+    return path.startswith(other + "/") or other.startswith(path + "/")
+
+
+def write_batches(writes):
+    """``writes`` ((node, encoded value, merge) in emit order) as RTDB multi-path updates applied in order.
+
+    One update replaces each path it names and is atomic, so consecutive writes coalesce: a later write to the
+    same path replaces the earlier one (the trace's status moves running -> done in one update), and a merge
+    of a dict writes each of its keys as a path. RTDB refuses an update whose paths nest, so a write to a path
+    nested in (or holding) one already in the batch starts the next batch."""
+    batches, batch = [], {}
+    for node, value, merge in writes:
+        if merge and isinstance(value, dict):
+            paths = {(f"{node}/{key}" if node else str(key)): child for key, child in value.items()}
+        else:
+            paths = {node: value}
+        for path, child in paths.items():
+            if any(_overlaps(path, other) for other in batch):
+                batches.append(batch)
+                batch = {}
+            batch[path] = child
+    if batch:
+        batches.append(batch)
+    return batches
+
+
+class _Writer:
+    """One request's trace writes, delivered in order by a background thread.
+
+    Each RTDB write is a network round trip (13 per question on 2026-10-26, rtdb p50 0.65 s and p90 5.0 s on
+    the serving thread). ``emit`` encodes the value at once (a snapshot the caller may go on mutating) and
+    queues it; the thread sends everything queued as few multi-path updates as RTDB accepts (write_batches),
+    so a burst of view writes costs one round trip. Best-effort like every trace write."""
+
+    def __init__(self, base, reference):
+        self._base = base
+        self._reference = reference
+        self._pending = []
+        self._sending = False
+        self._closed = False
+        self._lock = threading.Condition()
+        self._thread = None
+
+    def __call__(self, node, value, merge=False):
+        if not node and not (merge and isinstance(value, dict)):
+            print("[trace] emit_failed error=JobNodeWrite", flush=True)      # writes go to nodes under the job
+            return
+        try:
+            encoded = rtdb_encode(value)
+        except Exception as e:                           # noqa: BLE001 — best-effort; never break the answer
+            print(f"[trace] emit_failed error={type(e).__name__}", flush=True)
+            return
+        request_timing.count("rtdb_writes")
+        with self._lock:
+            self._pending.append((node, encoded, merge))
+            if self._thread is None:
+                self._thread = threading.Thread(target=self._run, name="trace-writer", daemon=True)
+                self._thread.start()
+            self._lock.notify_all()
+
+    def _run(self):
+        while True:
+            with self._lock:
+                idle_until = time.monotonic() + WRITER_IDLE_SECONDS
+                while not self._pending and not self._closed and time.monotonic() < idle_until:
+                    self._lock.wait(idle_until - time.monotonic())
+                if not self._pending:
+                    self._thread = None
+                    return
+                writes, self._pending, self._sending = self._pending, [], True
+            try:
+                for batch in write_batches(writes):
+                    self._reference(self._base).update(batch)
+            except Exception as e:                       # noqa: BLE001 — streaming is best-effort
+                print(f"[trace] emit_failed error={type(e).__name__}", flush=True)
+            finally:
+                with self._lock:
+                    self._sending = False
+                    self._lock.notify_all()
+
+    def drain(self, timeout):
+        """Stop taking writes and wait up to ``timeout`` seconds for the queued ones; whether they all landed.
+        Writes still queued then go out on their own."""
+        deadline = time.monotonic() + timeout
+        with self._lock:
+            self._closed = True
+            self._lock.notify_all()
+            while self._pending or self._sending:
+                left = deadline - time.monotonic()
+                if left <= 0:
+                    return False
+                self._lock.wait(left)
+        return True
+
+
+def drain_request(timeout=TERMINAL_WAIT_SECONDS):
+    """Wait (bounded) for every trace write this request queued, before its response is sent."""
+    writers = _WRITERS.get()
+    if not writers:
+        return
+    _WRITERS.set(None)
+    with request_timing.span("rtdb"):
+        deadline = time.monotonic() + timeout
+        for writer in writers:
+            if not writer.drain(max(0.0, deadline - time.monotonic())):
+                print("[trace] drain_timeout", flush=True)
+
+
 def emitter(uid, job_id):
     """Return emit(node, value, merge=False) bound to /runs/{uid}/{job_id}; a NO-OP if RTDB_URL is unset,
     uid/job_id absent, or RTDB is unavailable, so callers can always `emit = emitter(...)` and call it
-    unconditionally."""
+    unconditionally. Writes are queued and delivered in order off the serving thread (_Writer); the server
+    waits for them before it responds (drain_request)."""
     if not RTDB_URL or not uid or not job_id:
         return _NOOP
     base = f"runs/{uid}/{job_id}"
@@ -89,26 +212,12 @@ def emitter(uid, job_id):
         print(f"[trace] unavailable error={type(e).__name__}", flush=True)
         return _NOOP
 
+    writer = _Writer(base, db.reference)
+    _WRITERS.set([*(_WRITERS.get() or ()), writer])
     created_at = time.time()
-    try:
-        db.reference(base).update({
-            "created_at": created_at,
-            "expires_at": created_at + (rtdb_trace_retention_days() * 86400),
-        })
-    except Exception as e:                           # noqa: BLE001 — streaming is best-effort
-        print(f"[trace] metadata_write_failed error={type(e).__name__}", flush=True)
-
-    def emit(node, value, merge=False):
-        # Each write is a SYNCHRONOUS network round trip on the serving thread. rtdb_ms is what makes
-        # that cost visible, and it is the number that decides whether prose streaming can write
-        # per-token or has to batch behind a background writer.
-        try:
-            with request_timing.span("rtdb"):            # the span publishes its own rtdb_n
-                ref = db.reference(f"{base}/{node}" if node else base)
-                (ref.update if merge else ref.set)(rtdb_encode(value))
-        except Exception as e:                           # noqa: BLE001 — best-effort; never break the answer
-            print(f"[trace] emit_failed error={type(e).__name__}", flush=True)
-    return emit
+    writer("", {"created_at": created_at,
+                "expires_at": created_at + (rtdb_trace_retention_days() * 86400)}, merge=True)
+    return writer
 
 
 def cleanup_expired_traces(uid=None, *, now=None, max_jobs=2000):

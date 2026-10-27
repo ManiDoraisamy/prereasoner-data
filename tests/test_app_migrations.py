@@ -121,7 +121,7 @@ def test_chat_migration_is_admin_run_and_idempotent():
 
 
 def test_knowledgebase_migration_installs_definer_functions():
-    assert [migration.version for migration in KNOWLEDGEBASE_MIGRATIONS] == [1, 2, 3]
+    assert [migration.version for migration in KNOWLEDGEBASE_MIGRATIONS] == [1, 2, 3, 4]
     assert KNOWLEDGEBASE_MIGRATIONS[0].name == "lazy_fill_definer_functions"
     statements = KNOWLEDGEBASE_MIGRATIONS[0].statements
     definers = [s for s in statements if "SECURITY DEFINER" in s]
@@ -136,7 +136,7 @@ def test_knowledgebase_migration_installs_definer_functions():
     assert any("ON CONFLICT (qid) DO NOTHING" in s for s in definers)
     connection = _Connection()
     # definer functions, then the schedule table, then the words(type, norm) resolution index
-    assert migrate_knowledgebase(connection) == (1, 2, 3)
+    assert migrate_knowledgebase(connection) == (1, 2, 3, 4)
     assert migrate_knowledgebase(connection) == ()
     # Separate ledgers: the chat and knowledgebase entries must not collide on version numbers.
     assert migrate_chat(connection) == (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11)
@@ -351,6 +351,24 @@ def test_words_index_migration_and_base_schema_agree():
         "migrations run in one transaction, where PostgreSQL forbids CREATE INDEX CONCURRENTLY")
 
 
+def test_the_qid_label_lookup_has_a_qid_leading_index_on_both_paths():
+    """2026-10-27: the qid -> canonical label lookup filters on qid alone, and the only index holding qid led with
+    type, so every label lookup walked the whole index (431 ms for 12 qids; up to 6.1 s in production)."""
+    import pathlib
+
+    from db.sync.app_migrations import KNOWLEDGEBASE_MIGRATIONS
+    v4 = [m for m in KNOWLEDGEBASE_MIGRATIONS if m.version == 4]
+    assert v4 and v4[0].name == "words_qid_index", "the qid index migration must be v4"
+    ddl = v4[0].statements[0]
+    init = pathlib.Path("db/init.sql").read_text(encoding="utf-8")
+    for declaration in (ddl, init):
+        assert 'ix_words_qid ' in declaration and 'knowledgebase."words"(qid)' in declaration, declaration[:200]
+    assert "IF NOT EXISTS" in ddl and "CONCURRENTLY" not in ddl
+    entities = pathlib.Path("engine/entities.py").read_text(encoding="utf-8")
+    assert "WHERE qid = ANY(%s) AND canonical IS NOT NULL" in entities, (
+        "the lookup this index serves changed: check the index still leads with what it filters on")
+
+
 def test_legacy_tenant_schemas_are_adopted_by_the_serving_role():
     """Regression for an OBSERVED production 500 (2026-09-07): after the serving role migration,
     per-tenant schemas still owned by the admin role denied CREATE, so reference-data saves failed
@@ -509,6 +527,7 @@ TESTS = [
     test_schedule_catalog_is_honest_about_what_it_claims,
     test_schedule_migration_and_base_schema_agree,
     test_words_index_migration_and_base_schema_agree,
+    test_the_qid_label_lookup_has_a_qid_leading_index_on_both_paths,
     test_serving_guard_consults_the_catalog_instead_of_skipping,
     test_request_path_contains_no_shared_chat_ddl,
     test_expired_conversation_cleanup_is_bounded_and_identifier_guarded,

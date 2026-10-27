@@ -125,7 +125,147 @@ def test_updates_do_not_block_the_caller():
     assert elapsed < 1.0, f"100 updates must not wait on the network: {elapsed:.3f}s"
 
 
+class _Reference:
+    """Stands in for firebase_admin.db.reference: records each multi-path update; ``delay`` slows each one."""
+
+    def __init__(self, delay=0.0):
+        self.updates = []
+        self.delay = delay
+
+    def __call__(self, base):
+        recorder = self
+
+        class _Ref:
+            def update(self, values):
+                time.sleep(recorder.delay)
+                recorder.updates.append((base, values))
+        return _Ref()
+
+
+def test_a_question_s_trace_writes_leave_the_serving_thread_as_few_updates():
+    """2026-10-26: 13 synchronous RTDB writes per question, rtdb p50 0.65 s and p90 5.0 s on the serving thread.
+    The writer queues them and sends what is queued as one multi-path update per round trip."""
+    from engine.trace import _Writer, write_batches
+
+    assert write_batches([("status", "running", False), ("views/0", {"a": 1}, False),
+                          ("views/1", {"b": 2}, False), ("status", "done", False)]) == [
+        {"status": "done", "views/0": {"a": 1}, "views/1": {"b": 2}}]
+    assert write_batches([("views/0", 1, False), ("views", {}, False), ("result", 2, False)]) == [
+        {"views/0": 1}, {"views": {}, "result": 2}]                  # nested paths never share an update
+    assert write_batches([("", {"created_at": 1, "expires_at": 2}, True), ("analysis", {"x": 1}, True)]) == [
+        {"created_at": 1, "expires_at": 2, "analysis/x": 1}]
+
+    reference = _Reference(delay=0.05)
+    writer = _Writer("runs/u/j", reference)
+    view = {"rows": [[1]]}
+    started = time.perf_counter()
+    writer("status", "running")
+    writer("views/0", view)
+    view["rows"].append([2])                                         # the caller goes on mutating its value
+    for index in range(1, 12):
+        writer(f"views/{index}", {"i": index})
+    writer("status", "done")
+    queued = time.perf_counter() - started
+    assert queued < 0.05, f"queueing waited on the network: {queued:.3f}s"
+    assert writer.drain(5.0)
+    assert len(reference.updates) <= 2, reference.updates             # one in flight, the rest in one update
+    delivered = {}
+    for base, values in reference.updates:
+        assert base == "runs/u/j"
+        delivered.update(values)
+    assert delivered["status"] == "done" and delivered["views/11"] == {"i": 11}
+    assert delivered["views/0"] == {"rows": {"__pr_wire__": "array/v1", "json": "[[1]]"}}   # the value when emitted
+
+
+def test_a_response_waits_only_for_its_own_trace_writes():
+    import contextvars
+    import threading
+
+    from engine import trace
+
+    reference = _Reference(delay=0.2)
+    other = []
+
+    def request(name, out):
+        writer = trace._Writer(f"runs/u/{name}", reference)
+        trace._WRITERS.set([writer])
+        writer("status", "done")
+        started = time.perf_counter()
+        trace.drain_request(timeout=5.0)
+        out.append(time.perf_counter() - started)
+        assert trace._WRITERS.get() is None
+
+    mine = []
+    thread = threading.Thread(target=contextvars.Context().run, args=(request, "b", other))
+    thread.start()
+    contextvars.Context().run(request, "a", mine)
+    thread.join()
+    assert mine[0] >= 0.15 and other[0] >= 0.15                       # each waited for its own write
+    assert sorted(base for base, _ in reference.updates) == ["runs/u/a", "runs/u/b"]
+    trace.drain_request()                                             # nothing queued in this context: no wait
+
+
+def test_a_writer_nobody_drains_holds_no_thread():
+    """The chat orchestrator created writers and never drained them (2026-10-27 review): each turn would have
+    left a thread waiting forever. A writer's thread ends once its queue is idle; a later write starts another."""
+    from engine import trace
+
+    reference = _Reference()
+    saved = trace.WRITER_IDLE_SECONDS
+    trace.WRITER_IDLE_SECONDS = 0.05
+    try:
+        writer = trace._Writer("runs/u/idle", reference)
+        writer("status", "running")
+        deadline = time.monotonic() + 2.0
+        while writer._thread is not None and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert writer._thread is None, "an idle writer kept its thread"
+        writer("status", "done")
+        assert writer.drain(2.0)
+        assert [values for _, values in reference.updates] == [{"status": "running"}, {"status": "done"}]
+    finally:
+        trace.WRITER_IDLE_SECONDS = saved
+
+
+def test_the_chat_orchestrator_answers_after_its_trace_writes():
+    """The browser reads a chat turn's reply from RTDB and from the HTTP answer; the answer must not overtake
+    the reply's final write."""
+    import io
+
+    from engine import trace
+    from orchestrator.server import H
+
+    reference = _Reference(delay=0.2)
+    order = []
+
+    class _Stub:
+        wfile = io.BytesIO()
+
+        def send_response(self, code):
+            order.append(("response", len(reference.updates)))
+
+        def send_header(self, *args):
+            pass
+
+        def end_headers(self):
+            pass
+
+        def _cors(self):
+            pass
+
+    writer = trace._Writer("runs/u/turn", reference)
+    trace._WRITERS.set([writer])
+    writer("reply", "Your total comes to 740.")
+    writer("status", "done")
+    H._send(_Stub(), 200, "{}")
+    assert order == [("response", 1)], order                           # one update, delivered before the answer
+
+
 TESTS = [
+    test_a_question_s_trace_writes_leave_the_serving_thread_as_few_updates,
+    test_a_response_waits_only_for_its_own_trace_writes,
+    test_a_writer_nobody_drains_holds_no_thread,
+    test_the_chat_orchestrator_answers_after_its_trace_writes,
     test_many_updates_coalesce_into_few_writes,
     test_every_write_is_full_state_and_monotonic,
     test_close_final_wins_over_pending_update,

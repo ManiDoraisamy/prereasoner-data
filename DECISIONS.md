@@ -4780,3 +4780,42 @@ an instance's first own-data question; on the fresh Cloud Run instances of the f
 the chat's engine call timed out at 180 s, so the first question on every new instance failed ("couldn't answer that
 right now"). They now load as a startup phase (160 s on Cloud Run, after the world reasoner's 180 to 205 s), inside
 the startup probe's 610 s, and the instance takes no request before they are ready.
+
+## A question's connections, timeouts and progress writes leave its critical path (2026-10-27)
+
+Profile of the 243 production questions of 2026-10-25..27 (the 71.5% readers, 68ac573): median 15.9 s, p90
+49.7 s. Serving itself took 14.1 s of the median (readers 6.5 s, encoding 1.1 s, re-scoring 0.8 s: the models), and
+1.36 s went around it (p90 5.1 s): 13 progress writes to Firebase at 0.65 s (p90 5.0 s), 12 Postgres connections at
+0.41 s, and a statement timeout sent before each of about 68 statements. The models' share is the GPU's
+(`engine/config.py:serving_device`); this change takes the rest off the critical path, owner by owner.
+
+- **Connections are pooled per process** (`engine/pg.py:_pg`). `close()` hands a connection back reset: its
+  transaction rolled back, `DISCARD ALL` (search path, the timeouts, session advisory locks, temporary tables,
+  prepared statements), autocommit off, and every cursor its last user opened closed, so a cursor kept past
+  `close()` fails as on a closed connection instead of running on the next user's lease. Four idle per instance (a
+  question holds one to three at once; four instances keep at most 16 of the 50 connections a db-g1-small takes);
+  one idle over 30 s is checked before reuse. `_orm_pg`'s connection is never pooled: its NUMERIC caster cannot be
+  removed.
+- **The statement timeout is sent once per request and connection**, again only when it could outlast the deadline
+  by more than 2% of its budget (4.8 s of 240 s) or after a rollback, which reverts it; SQLAlchemy's
+  `ROLLBACK TO SAVEPOINT` counts. Without the rollback rule, statements after a rollback ran with no timeout at all.
+- **Progress writes are queued** (`engine/trace.py:_Writer`). Each is encoded when emitted and delivered in order
+  by a background thread, as few multi-path updates as RTDB accepts (paths that nest go in separate updates), so a
+  burst of view writes costs one round trip. The engine and the chat service each wait for their request's queued
+  writes, at most 2 s, before answering (`drain_request`): the terminal status still reaches the browser no later
+  than the answer. A writer's thread ends after 30 s idle.
+- **`knowledgebase.words` gains an index on `qid`** (knowledgebase migration v4, `db/init.sql`). The qid-to-label
+  lookup filters on qid alone and walked all of `ix_words_type_qid`: 431 ms for 12 qids, and 75 production
+  statements over 0.2 s in a week, up to 6.1 s.
+
+Same-process A/B on this machine (customer-orders and formfacade-leads, warm, answers identical; this machine is
+149 ms from the database, so the saving here is several times the in-region one): new connections 5 to 1 a question
+(4 reused), timeout round trips 58 to 8, wall time 21.7 to 12.9 s and 20.5 to 12.1 s. In region a connection costs
+about 35 ms and a round trip about 1 to 2 ms; the expected saving there is about 0.3 to 0.5 s from Postgres and most
+of the 0.65 s Firebase median, to be confirmed by the `[timing]` lines after release.
+
+Measured and left out: reading the reference catalog from `pg_catalog` instead of `information_schema` (both about
+6 ms on the server; the 0.4 s outliers were contention). Not addressed here: the entity nearest-neighbour search
+(`engine/entities.py:_nn`, 265 production statements over 0.2 s, median 0.5 s) is an HNSW scan whose pages a
+db-g1-small cannot keep cached (0.9 s, 909 pages read, for one city); a sheet's resolved cells belong to the sheet,
+which is the next step.

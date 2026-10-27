@@ -165,6 +165,8 @@ CREATE TABLE IF NOT EXISTS knowledgebase."words" (
 -- all four shapes; type-only scans use ix_words_type_qid.
 CREATE INDEX IF NOT EXISTS ix_words_norm_type  ON knowledgebase."words"(norm, type);
 CREATE INDEX IF NOT EXISTS ix_words_type_qid   ON knowledgebase."words"(type, qid);
+-- qid alone: the qid -> canonical label lookup (engine/entities.py:_qid_labels) walked all of ix_words_type_qid.
+CREATE INDEX IF NOT EXISTS ix_words_qid        ON knowledgebase."words"(qid);
 CREATE INDEX IF NOT EXISTS ix_words_city_norm  ON knowledgebase."words"(norm) WHERE type = 'city';
 -- HNSW cosine index (pgvector defaults: m=16, ef_construction=64) — the source
 -- created it with no explicit parameters, so defaults are the contract.
