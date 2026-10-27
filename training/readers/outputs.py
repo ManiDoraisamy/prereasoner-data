@@ -2,8 +2,8 @@
 pruning over a run's stage-1 model, and the stage-2 outputs of a run's reading model for a file of rows.
 
 - ``load_run``: the model a trainer here saved (model.pt, tokenizer/ with the encoder's config), on CPU in float32,
-  as the recorded runs were read. Serving (engine.readers.models.load) runs its encoders in bfloat16, which moves no
-  reading's probability by more than 0.06 on calibration rows.
+  as the recorded runs were read. Serving (engine.readers.models.load) computes in float32 too, over the promoted
+  weights, which stay in bfloat16 and are widened as they are used.
 - ``Stage1``: engine.readers.search.ReadingSearch's own schema_items, prune and row over a run's stage-1 model, so
   the pruned rows (training.readers.pruned) are built by the code serving runs.
 - ``serving_row``: that row with the empty labels the trainer's batches read.

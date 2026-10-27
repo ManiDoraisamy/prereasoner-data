@@ -7,11 +7,15 @@
   candidate, and scores how likely the candidate answers the question.
 
 Each is an XLM-R encoder with linear heads. Serving builds the encoder from its saved config and loads the
-fine-tuned weights (``load``), so no base weights are fetched at serving time. Serving runs each encoder in bfloat16
-and its heads in float32: half the memory of float32 and a few times faster on CPU, and on calibration rows no
-reading's probability moves by more than 0.06 (p99 0.013). ``load`` places a model on the serving device
-(engine.config.serving_device: the CPU, or the hosted edition's GPU); the reading functions run a model on the
-device it is on and return its outputs on the CPU.
+fine-tuned weights (``load``), so no base weights are fetched at serving time. The weights stay in bfloat16, half
+the memory of float32, and serving computes in float32 on every device, as training reads its runs
+(training.readers.outputs): each linear layer's weight is widened as it is used, and the word-embedding table, a
+lookup, is widened per looked-up row. A CPU without native bfloat16 emulates it: on Cloud Run's AMD EPYC 7B13 (AVX2)
+one large reader's pass over 4 x 256 tokens took 15.3 s in bfloat16 and 2.7 s in float32 (2026-10-27); widening as
+used costs 2 to 6% over float32 weights, and float32 weights would need 4 GiB more for the bundle. bfloat16 was
+faster only on CPUs that have it (0.9 s against 2.3 s on an AVX512-BF16 desktop). ``load`` places a model on the
+serving device (engine.config.serving_device: the CPU, or the hosted edition's GPU); the reading functions run a
+model on the device it is on and return its outputs on the CPU.
 """
 from __future__ import annotations
 
@@ -114,14 +118,32 @@ class Rescorer(nn.Module):
         return self.head(torch.cat([first, features], dim=-1)).squeeze(-1)
 
 
+class _Widened(nn.Module):
+    """A weight kept in bfloat16 and read in float32 (``load``)."""
+
+    def forward(self, weight):
+        return weight.float()
+
+
 def load(kind, directory):
     """The model of ``kind`` saved in ``directory``, for serving: its encoder built from the saved config in bfloat16,
-    its heads in float32, and the saved weights (either precision) copied in."""
+    the saved weights (either precision) copied in, and every computation in float32: each linear layer's bfloat16
+    weight widened as it is used, the word-embedding table's rows as they are looked up, and the small weights
+    (biases, norms, position embeddings, the heads) held in float32."""
+    from torch.nn.utils import parametrize
     from transformers import AutoConfig, AutoModel
     # Built in bfloat16 rather than cast: a float32 build of XLM-R large holds 2 GB more until it is freed.
     encoder = AutoModel.from_config(AutoConfig.from_pretrained(directory), dtype=torch.bfloat16)
     model = {"schema_items": SchemaItemModel, "readings": ReadingModel, "rescorer": Rescorer}[kind](encoder)
     model.load_state_dict(torch.load(os.path.join(directory, "model.pt"), map_location="cpu", weights_only=True))
+    table = encoder.get_input_embeddings()
+    for module in list(encoder.modules()):
+        if isinstance(module, nn.Linear):
+            parametrize.register_parametrization(module, "weight", _Widened(), unsafe=True)
+    for name, parameter in model.named_parameters():
+        if parameter is not table.weight and ".parametrizations." not in name:
+            parameter.data = parameter.data.float()
+    table.register_forward_hook(lambda module, inputs, output: output.float())
     from engine.config import serving_device
     return model.eval().to(serving_device())
 

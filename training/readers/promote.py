@@ -13,7 +13,8 @@ A candidate bundle holds:
 each model directory a saved config.json, tokenizer files and model.pt. Promotion is a separate, explicit step:
 
   * every model must load in serving form (engine.readers.models.load) and every reader must say how it reads;
-  * each model's encoder weights are stored in bfloat16, the precision serving runs them in; heads stay float32;
+  * each model's encoder weights are stored in bfloat16 (serving keeps them so and computes in float32,
+    engine.readers.models.load); heads stay float32;
   * engine/data/readers is replaced as a whole (a sibling directory renamed into place), so a partial bundle never
     serves;
   * every file's SHA-256 is recorded in engine/data/weights_manifest.json under "readers/...". A release names the

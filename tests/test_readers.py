@@ -695,7 +695,48 @@ def test_built_structures_exclude_and_rank_by_the_total():
     assert not structures.keeps({"value": None, "limit": 2}, "the categories that bring in the most revenue")
 
 
+def test_the_readers_compute_in_float32_over_weights_kept_in_bfloat16():
+    """2026-10-27: the readers ran in bfloat16 on Cloud Run's AVX2-only CPUs (AMD EPYC 7B13), which emulate it: one
+    large reader's pass took 15.3 s against 2.7 s in float32. Serving computes in float32; the large weights stay in
+    bfloat16 (float32 ones would need 4 GiB more) and are widened as they are used."""
+    import tempfile
+    from pathlib import Path
+
+    import torch
+    from transformers import XLMRobertaConfig, XLMRobertaModel
+
+    from engine.readers import models
+
+    config = XLMRobertaConfig(vocab_size=64, hidden_size=16, num_hidden_layers=2, num_attention_heads=2,
+                              intermediate_size=32, max_position_embeddings=40)
+    torch.manual_seed(0)
+    saved = models.Rescorer(XLMRobertaModel(config)).eval()
+    with tempfile.TemporaryDirectory() as directory:
+        config.save_pretrained(directory)
+        state = {key: (value.to(torch.bfloat16) if key.startswith("encoder.") and value.is_floating_point() else value)
+                 for key, value in saved.state_dict().items()}                   # stored as promotion stores it
+        torch.save(state, Path(directory) / "model.pt")
+        served = models.load("rescorer", directory)
+    table = served.encoder.get_input_embeddings().weight
+    assert table.dtype == torch.bfloat16
+    linears = [module for module in served.encoder.modules() if isinstance(module, torch.nn.Linear)]
+    assert linears and all(module.parametrizations.weight.original.dtype == torch.bfloat16 for module in linears)
+    assert all(module.weight.dtype == torch.float32 for module in linears)       # read widened
+    stored = {name: parameter.dtype for name, parameter in served.named_parameters()
+              if parameter is not table and ".parametrizations." not in name}
+    assert set(stored.values()) == {torch.float32}, stored                         # biases, norms, positions, head
+    ids = torch.tensor([[0, 5, 9, 2, 1, 1]])
+    mask = torch.tensor([[1, 1, 1, 1, 0, 0]])
+    features = torch.zeros(1, models.RESCORER_FEATURES)
+    with torch.inference_mode():
+        score = served(ids, mask, features)
+        states = served.encoder(input_ids=ids, attention_mask=mask).last_hidden_state
+    assert score.dtype == torch.float32 and states.dtype == torch.float32
+    assert torch.isfinite(score).all()
+
+
 TESTS = [
+    test_the_readers_compute_in_float32_over_weights_kept_in_bfloat16,
     test_readings_round_trip_through_the_builder,
     test_readings_hold_only_the_operators_the_readers_read,
     test_a_grouped_block_groups_what_it_shows,
