@@ -677,6 +677,41 @@ def test_a_question_naming_a_column_in_any_script_is_about_the_data():
     assert host._has_data_signal("total sales", [{"name": "orders", "columns": ["region", "sales"], "rows": []}])
 
 
+def test_cities_are_searched_only_when_no_word_is_near_a_country():
+    """The world-entity guess returned the best country whenever one cleared its floor, yet searched the 213k
+    cities for every word beside it: 124 of 243 production questions spent a median 0.77 s on those searches,
+    mostly in the conversational pre-gate (2026-10-27). The guess is unchanged; the city search runs only when it
+    is the answer."""
+    from unittest.mock import patch
+
+    from engine import knowledge_query
+    from engine.knowledge_query import KnowledgeQuery
+
+    sims = {("german", "country"): ("Germany", 0.71), ("german", "city"): ("German", 0.9),
+            ("sales", "country"): ("Wales", 0.55), ("sales", "city"): ("Sale", 0.65),
+            ("lyonn", "country"): ("Lyon", 0.3), ("lyonn", "city"): ("Lyon", 0.86),
+            ("parris", "city"): ("Paris", 0.86)}
+    searched = []
+
+    class _Encoder:
+        def encode(self, words):
+            return [words[0]]                                    # the word stands in for its vector
+
+    def nn(vec, type_):
+        searched.append((vec, type_))
+        return sims.get((vec, type_), (None, -1.0))
+
+    query = KnowledgeQuery.__new__(KnowledgeQuery)
+    query._nn = nn
+    with patch.object(knowledge_query.Embedder, "get", staticmethod(lambda: _Encoder())):
+        assert query._best_world_entity(["sales", "german"]) == ("german", "Germany", "country", 0.71)
+        assert all(type_ == "country" for _, type_ in searched), searched
+        searched.clear()
+        assert query._best_world_entity(["sales", "lyonn", "parris"]) == ("lyonn", "Lyon", "city", 0.86)  # tie: first
+        assert [type_ for _, type_ in searched] == ["country"] * 3 + ["city"] * 3, searched
+        assert query._best_world_entity(["sales"], floor=0.9) is None
+
+
 def test_a_threshold_on_an_aggregate_compares_numbers():
     # Compose's SQLite candidate kept every city for 'cities with total sales over 100' and none for 'under 50': a
     # view's decimal_sum is TEXT with no affinity, and SQLite orders every TEXT above every number (2026-09-28).
@@ -853,6 +888,7 @@ def test_a_city_the_knowledgebase_does_not_know_is_said_to_be_left_out():
 
 
 TESTS = [
+    test_cities_are_searched_only_when_no_word_is_near_a_country,
     test_the_rows_a_question_totals_are_no_grouping_whatever_the_sheet_is_called,
     test_a_named_measure_with_a_cell_that_is_no_number_is_never_replaced,
     test_a_city_the_knowledgebase_does_not_know_is_said_to_be_left_out,

@@ -952,20 +952,31 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
     def _best_world_entity(self, tokens, floor=0.6):
         """Best (token, canonical, type, sim) world-entity guess across tokens, even BELOW the 0.80 resolve
         threshold, so 'German' surfaces Germany (~0.7) for the rephrase. PREFERS country over city — a demonym
-        like 'German'/'French' means the country, not some town literally named 'German'."""
-        best_country, best_city = None, None
+        like 'German'/'French' means the country, not some town literally named 'German'.
+
+        Cities are searched only when no token is near a country, the one case their guess is returned. The city
+        search is an approximate scan of 213k vectors, 0.5 to 0.9 s each on the production database, and it ran
+        for every token beside the country one (2026-10-27: 124 of 243 questions spent a median 0.77 s on it,
+        mostly in the data-signal pre-gate)."""
+        vectors = []
         for w in tokens:
             try:
-                vec = Embedder.get().encode([w])[0]
+                vectors.append((w, Embedder.get().encode([w])[0]))
             except Exception:                                # noqa: BLE001
                 continue
+        best_country = None
+        for w, vec in vectors:
             cc, cs = self._nn(vec, "country")
             if cc and cs >= floor and (best_country is None or cs > best_country[3]):
                 best_country = (w, cc, "country", float(cs))
+        if best_country:
+            return best_country
+        best_city = None
+        for w, vec in vectors:
             ci, ci_s = self._nn(vec, "city")
             if ci and ci_s >= floor and (best_city is None or ci_s > best_city[3]):
                 best_city = (w, ci, "city", float(ci_s))
-        return best_country or best_city
+        return best_city
 
     def _clarify(self, question, norm, fks, sch):
         """A best-guess UNAMBIGUOUS rephrasing + the bindings, from the model's SUB-THRESHOLD signals — so the user
