@@ -242,7 +242,7 @@ def test_the_chat_orchestrator_answers_after_its_trace_writes():
         wfile = io.BytesIO()
 
         def send_response(self, code):
-            order.append(("response", len(reference.updates)))
+            order.append(("response", sorted(path for _, values in reference.updates for path in values)))
 
         def send_header(self, *args):
             pass
@@ -258,7 +258,7 @@ def test_the_chat_orchestrator_answers_after_its_trace_writes():
     writer("reply", "Your total comes to 740.")
     writer("status", "done")
     H._send(_Stub(), 200, "{}")
-    assert order == [("response", 1)], order                           # one update, delivered before the answer
+    assert order == [("response", ["reply", "status"])], order         # both delivered before the answer
 
 
 TESTS = [
