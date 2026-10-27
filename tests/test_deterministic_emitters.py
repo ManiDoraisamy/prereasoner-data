@@ -1384,6 +1384,28 @@ def test_a_month_comparison_runs_in_both_programs():
     assert labels["filtered"] == "where month(signed) >= 7 and month(signed) <= 9", labels
 
 
+def test_a_number_written_as_text_compares_as_that_number_in_both_programs():
+    # "Find the names of goods that receive a rating of 10." (Spider calibration, 2026-10-27): the readers kept the
+    # sentence's period, so rating was compared with '10.'. SQLite's integer affinity reads it as 10 and the SQL
+    # program kept two goods; the Python program compared 10 with the text '10.' and kept none.
+    rating = ColumnRef("review", "rating", SQLType.INTEGER)
+    query = SelectQuery((SelectItem(ColumnRef("review", "title", SQLType.TEXT)),), "review",
+                        where=Comparison(rating, "=", Literal("10.")))
+    schema = [{"table": "review", "name": "title", "affinity": "TEXT", "values": ["orange", "cup", "comb"]},
+              {"table": "review", "name": "rating", "affinity": "INTEGER", "values": [10, 10, 7]}]
+    plan = lower_select_query("rated_ten", query, schema, ())
+    statements = ["CREATE TABLE conversation.review (title TEXT, rating INTEGER)",
+                  "INSERT INTO conversation.review VALUES ('orange', 10), ('cup', 10), ('comb', 7)"]
+    result = _execute_fixture(plan, statements)
+    assert result.mode.value == "verify"                       # both programs ran and agreed
+    assert sorted(tuple(row.values()) for row in result.rows) == [("cup",), ("orange",)], result.rows
+    # Text that is no number stays text: the column compares with it as SQLite compares them.
+    words = SelectQuery((SelectItem(ColumnRef("review", "title", SQLType.TEXT)),), "review",
+                        where=Comparison(rating, "=", Literal("ten")))
+    result = _execute_fixture(lower_select_query("rated_words", words, schema, ()), statements)
+    assert result.mode.value == "verify" and not result.rows, result.rows
+
+
 def test_a_span_comparison_runs_in_both_programs():
     # "how many users wanted neartail for greater than 6 months" (2026-10-05): the days from each subscription's
     # start to its end, or to the question's date while it runs, over a month of 30.4375 days, read from the

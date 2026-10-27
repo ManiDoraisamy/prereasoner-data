@@ -506,7 +506,25 @@ def _predicate(value) -> PredicateValue:
         raise UnsupportedDeterministicPlan(
             f"comparison {value.operator!r} is not supported"
         )
-    return PredicateValue(_value(value.left), value.operator, _value(value.right))
+    if value.operator in {"IS", "IS NOT", "LIKE"}:
+        return PredicateValue(_value(value.left), value.operator, _value(value.right))
+    return PredicateValue(_compared(value.left, value.right), value.operator,
+                          _compared(value.right, value.left))
+
+
+# A SQL numeric literal written as text: what SQLite's column affinity reads as a number.
+_SQL_NUMBER = re.compile(r"\s*[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?\s*")
+
+
+def _compared(value, other) -> Value:
+    """``value`` as a comparison with ``other`` reads it. A number written as text and compared with a numeric
+    column is that number, as SQLite's column affinity reads it, so the Python program finds the rows the SQL
+    program finds: "the names of goods that receive a rating of 10." compared rating with '10.' and the Python
+    program kept none (Spider calibration through the request database, 2026-10-27)."""
+    if (isinstance(value, Literal) and isinstance(value.value, str) and isinstance(other, ColumnRef)
+            and other.type.numeric and _SQL_NUMBER.fullmatch(value.value)):
+        return LiteralValue(Decimal(value.value.strip()))
+    return _value(value)
 
 
 def _value(value) -> Value:
