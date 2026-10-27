@@ -34,12 +34,15 @@ class LLMUnavailable(RuntimeError):
 _CLIENT = None
 _CLIENT_LOCK = threading.Lock()
 
-# A chat round waits this long for Gemini, then sends the round once more. Vertex's shared pool held single requests
+# A chat round waits this long for Gemini, then sends the round again. Vertex's shared pool held single requests
 # for 50-120 s while its median stayed under 2 s (2026-10-10: 6 of 362 turns, every call answered 200), and the
 # round had no timeout, so the turn waited them out. A 429 or 5xx is sent again on the same budget. The SDK retries a
 # timeout raised by httpx, the chat image's transport (orchestrator/requirements.lock.txt holds no aiohttp).
-CHAT_ROUND_TIMEOUT_SECONDS = 20
-CHAT_ROUND_ATTEMPTS = 2
+# 10 s and three attempts (2026-10-27): of 479 answered turns of 10-20..27 a round's p95 was 5.6 s and 4 took 8-10 s,
+# while a held request ran out the 20 s and was sent once more: 5 turns failed after two held attempts (36-39 s,
+# ServerError), and 12 answered only after 20 s.
+CHAT_ROUND_TIMEOUT_SECONDS = 10
+CHAT_ROUND_ATTEMPTS = 3
 CHAT_RETRY_STATUS_CODES = (408, 429, 500, 502, 503, 504)
 
 
