@@ -13,6 +13,11 @@ locals {
   # The engine grows to four CPU instances, or to three L4 instances: a project's default L4 quota.
   engine_max_instances = var.gpu != "" ? 3 : 4
 
+  # An engine instance's vCPUs, and the threads its models compute with: PyTorch sized its pool from the
+  # cores it saw (6 logical, so 3 threads on a 4-vCPU instance), and one reader pass took 1.52 s against
+  # 1.08 s with 4 threads (Cloud Run job, 2026-10-27).
+  engine_cpu = "4"
+
   required_apis = concat([
     "firebase.googleapis.com",         # Firebase project APIs
     "firebasehosting.googleapis.com",  # Firebase Hosting release stage
@@ -305,7 +310,7 @@ resource "google_cloud_run_v2_service" "api" {
       # in-memory SQLite copies of uploaded sheets, for three requests at once.
       resources {
         limits = merge({
-          cpu    = "4"
+          cpu    = local.engine_cpu
           memory = "16Gi"
         }, var.gpu != "" ? { "nvidia.com/gpu" = "1" } : {})
         cpu_idle          = false # CPU always allocated (instance-based billing; a GPU requires it)
@@ -411,6 +416,10 @@ resource "google_cloud_run_v2_service" "api" {
       env {
         name  = "DEVICE"
         value = var.gpu != "" ? "cuda" : "cpu"
+      }
+      env {
+        name  = "OMP_NUM_THREADS"
+        value = local.engine_cpu
       }
       # The engine refuses to start on a database missing a migration its code needs, so traffic stays
       # on the previous revision (engine/server.py:require_current_schema).
