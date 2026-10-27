@@ -1121,6 +1121,17 @@ def main():
 
     if os.environ.get("REQUIRE_CURRENT_SCHEMA") == "1":
         startup_phase("database schema", require_current_schema)   # first: a stale database fails fast
+    # The readers answer every own-data question. Loaded on the first one, they took 191 s on a fresh Cloud Run
+    # instance (2026-10-26) and the chat's engine call timed out at 180 s, so an instance is ready only with them.
+    # They load beside the world reasoner: on Cloud Run both phases mostly wait on the image's files (25 s and 56 s
+    # in the build, 176-363 s and 145-293 s there), and one after the other they outran the 600 s startup probe on
+    # an instance of the 4580c0c rollout (2026-10-27).
+    from concurrent.futures import ThreadPoolExecutor
+    from engine.readers.search import reading_search
+    loading = ThreadPoolExecutor(max_workers=1, thread_name_prefix="readers-load")
+    print("startup phase start: readers (beside the world reasoner)", flush=True)
+    readers = loading.submit(reading_search)
+    loading.shutdown(wait=False)
     MODEL = startup_phase("world reasoner", KnowledgeReasoner)
     from engine.enrichment import (
         EnrichmentRuntime,
@@ -1139,10 +1150,7 @@ def main():
         print(f"startup warmup note: {type(e).__name__}", flush=True)
     DIM_MODEL = startup_phase("dimension model (shared world encoder)",
                               lambda: DimensionModel(shared_encoder=MODEL.qw))
-    # The readers answer every own-data question. Loaded on the first one, they took 191 s on a fresh Cloud Run
-    # instance (2026-10-26) and the chat's engine call timed out at 180 s, so an instance is ready only with them.
-    from engine.readers.search import reading_search
-    startup_phase("readers", reading_search)
+    startup_phase("readers", readers.result)               # the wait left after the phases above
     # spaCy is lazy and is only needed by entity extraction on a subset of queries.
     # It is not part of model readiness: loading it synchronously here can consume
     # the last seconds of Cloud Run's startup-probe budget after the Qwen encoder and

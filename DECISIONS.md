@@ -4854,13 +4854,19 @@ to 2.7 s median (p90 16.0 to 5.6), re-scoring 0.83 to 0.30 s (p90 16.2 to 3.4), 
 to 9.1 s (p90 49.0 to 22.1); 23 of 208 engine requests under a second. The gate: 105/105 in fresh conversations and
 82/82 in existing ones, after re-running two turns Vertex answered with ServerError at 36 s (no engine call).
 
-## A chat round waits 10 s for Gemini, three times at most; the engine keeps PyTorch's thread count (2026-10-27)
+## A chat round waits 20 s for Gemini, three times at most; the engine keeps PyTorch's thread count (2026-10-27)
 
 Vertex sometimes holds a request: of 479 answered chat turns of 2026-10-20..27 a round's p95 was 5.6 s and 4 took 8
 to 10 s, while a held request ran out the 20 s round timeout and was sent once more. Five turns failed after two held
 attempts (36 to 39 s, `ServerError`, no engine call; three of them during the c2eae37 release gate, each re-run and
-answered) and 12 answered only after 20 s. `engine/llm.py` now waits 10 s a round and sends it up to three times:
-a held round costs 10 s instead of 20, and a second held one leaves a third attempt (30 s at worst, against 40).
+answered) and 12 answered only after 20 s. `engine/llm.py` now sends a round up to three times, so a second held
+attempt leaves a third.
+
+It first waited 10 s a round (2a82e2c). The SDK sends that timeout to Vertex as `X-Server-Timeout`, a server deadline,
+so every round that needs longer is answered 504 each time it is sent: Vertex's 504s rose from about one an hour to 17
+and 28 an hour against 49 and 86 answered calls, a compound follow-up ("use the top 3 products instead") failed in
+both conversations of the 4580c0c gate that asked it, and 8 of about 75 gate turns failed. A day's p95 across the
+project's Gemini calls has been 6 to 18 s. The round waits 20 s again (60 s at worst over three attempts).
 
 Measured and left out: setting the engine's `OMP_NUM_THREADS` to its 4 vCPUs. PyTorch picks 3 threads on a Cloud Run
 instance (it sees 6 logical CPUs), and a Cloud Run job timed one reader pass at 1.52 s with 3 threads against 1.08 s
@@ -4922,3 +4928,12 @@ Removed: `_load_user_schema`, `chat.working_table` writes, the PostgreSQL world 
 conversation locks, the `postgres_numeric` dialect, the REPEATABLE READ branch, `tests/test_pg_upload.py` and the
 CI job that executed uploads through PostgreSQL NUMERIC. The 971 `c_*` schemas (116 MB) and `chat.working_table`
 stay until this release has soaked; then they are dropped, one schema per transaction.
+
+## The engine loads its readers beside the world reasoner (2026-10-27)
+
+An engine instance is ready only with its readers (2026-10-26). They loaded after the world reasoner, and on Cloud Run
+both phases mostly wait on the image's files: the world reasoner took 176 to 363 s and the readers 145 to 293 s across
+the c2eae37 and 4580c0c rollouts, against 25 and 56 s in the build. One instance of the 4580c0c rollout outran the
+600 s startup probe and was not started. `engine/server.py:main` now starts the readers' load first, in a thread, and
+waits for it after the world reasoner's phases; the build's server, at the same 4 vCPUs and 16 GiB, held 8.8 GiB once
+loaded (`tests.test_release`).

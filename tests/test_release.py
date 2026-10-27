@@ -95,10 +95,22 @@ def test_spacy_warmup_does_not_block_model_readiness():
 
 def test_the_engine_loads_the_readers_before_it_serves():
     # 2026-10-26 (f2d08f5): the readers loaded on an instance's first own-data question, 191 s on a fresh Cloud Run
-    # instance, and the chat's engine call timed out at 180 s.
+    # instance, and the chat's engine call timed out at 180 s. They load beside the world reasoner (2026-10-27: one
+    # after the other, the two outran the 600 s startup probe on an instance of the 4580c0c rollout).
+    import threading
+
     import engine.server as server
 
     order = []
+    readers_started = threading.Event()
+
+    def readers():
+        readers_started.set()
+        order.append("readers")
+
+    def world():
+        assert readers_started.wait(5), "the readers waited for the world reasoner"
+        return SimpleNamespace(qw=None)
 
     class Server:
         def __init__(self, *args):
@@ -109,14 +121,14 @@ def test_the_engine_loads_the_readers_before_it_serves():
 
     saved = server.MODEL, server.DIM_MODEL, server.ENRICHMENT
     try:
-        with patch("engine.knowledge.KnowledgeReasoner", lambda: SimpleNamespace(qw=None)), \
+        with patch("engine.knowledge.KnowledgeReasoner", world), \
                 patch("engine.enrichment.EnrichmentRuntime", lambda *args, **kwargs: None), \
                 patch("engine.enrichment.SnapshotStore", lambda *args: None), \
                 patch("engine.embeddings.Embedder.get", lambda: SimpleNamespace(encode=lambda texts: None)), \
                 patch("engine.dimension.DimensionModel", lambda **kwargs: None), \
                 patch.object(server, "_start_spacy_warmup", lambda model: None), \
                 patch.object(server, "ThreadingHTTPServer", Server), \
-                patch("engine.readers.search.reading_search", lambda: order.append("readers")):
+                patch("engine.readers.search.reading_search", readers):
             server.main()
     finally:
         server.MODEL, server.DIM_MODEL, server.ENRICHMENT = saved

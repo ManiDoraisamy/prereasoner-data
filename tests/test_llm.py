@@ -310,7 +310,9 @@ def test_chat_facade_passes_the_thinking_level():
 def test_chat_rounds_are_bounded_and_sent_once_more():
     """Vertex's shared pool held single chat rounds for 50-120 s while its median stayed under 2 s (2026-10-10), and
     the rounds had no timeout. Each round now waits CHAT_ROUND_TIMEOUT_SECONDS and is sent again after a timeout, a
-    429 or a 5xx, up to CHAT_ROUND_ATTEMPTS times: two held attempts of 20 s failed 5 turns (2026-10-27)."""
+    429 or a 5xx, up to CHAT_ROUND_ATTEMPTS times: two held attempts of 20 s failed 5 turns (2026-10-27). The timeout is
+    also Vertex's deadline (X-Server-Timeout): 10 s answered every longer round 504, so a compound follow-up failed
+    each time it was asked."""
     vertex = _VertexClient([_model_turn(types.Part(text="ok"))])
 
     async def one_round():
@@ -322,7 +324,7 @@ def test_chat_rounds_are_bounded_and_sent_once_more():
     with patch("google.genai.Client", lambda **_kwargs: vertex):
         asyncio.run(one_round())
     options = vertex.requests[0]["config"].http_options
-    assert options.timeout == llm.CHAT_ROUND_TIMEOUT_SECONDS * 1000 == 10_000
+    assert options.timeout == llm.CHAT_ROUND_TIMEOUT_SECONDS * 1000 == 20_000
     assert options.retry_options.attempts == 3
     assert {429, 503, 504} <= set(options.retry_options.http_status_codes)
 

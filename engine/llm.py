@@ -38,10 +38,11 @@ _CLIENT_LOCK = threading.Lock()
 # for 50-120 s while its median stayed under 2 s (2026-10-10: 6 of 362 turns, every call answered 200), and the
 # round had no timeout, so the turn waited them out. A 429 or 5xx is sent again on the same budget. The SDK retries a
 # timeout raised by httpx, the chat image's transport (orchestrator/requirements.lock.txt holds no aiohttp).
-# 10 s and three attempts (2026-10-27): of 479 answered turns of 10-20..27 a round's p95 was 5.6 s and 4 took 8-10 s,
-# while a held request ran out the 20 s and was sent once more: 5 turns failed after two held attempts (36-39 s,
-# ServerError), and 12 answered only after 20 s.
-CHAT_ROUND_TIMEOUT_SECONDS = 10
+# The SDK sends the timeout to Vertex as X-Server-Timeout, so it is a server deadline too: a round that needs longer
+# is answered 504 every time it is sent. 10 s (2a82e2c) failed a compound follow-up's round twice in a row and raised
+# Vertex's 504s from about 1 an hour to a quarter of its calls (2026-10-27); a day's p95 has been 6-18 s. A round
+# waits 20 s and is sent up to three times: two held attempts of 20 s failed 5 turns of 479 (2026-10-20..27).
+CHAT_ROUND_TIMEOUT_SECONDS = 20
 CHAT_ROUND_ATTEMPTS = 3
 CHAT_RETRY_STATUS_CODES = (408, 429, 500, 502, 503, 504)
 
