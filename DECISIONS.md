@@ -4854,19 +4854,22 @@ to 2.7 s median (p90 16.0 to 5.6), re-scoring 0.83 to 0.30 s (p90 16.2 to 3.4), 
 to 9.1 s (p90 49.0 to 22.1); 23 of 208 engine requests under a second. The gate: 105/105 in fresh conversations and
 82/82 in existing ones, after re-running two turns Vertex answered with ServerError at 36 s (no engine call).
 
-## A chat round waits 20 s for Gemini, three times at most; the engine keeps PyTorch's thread count (2026-10-27)
+## A chat round waits 45 s for Gemini, twice at most; the engine keeps PyTorch's thread count (2026-10-27)
 
 Vertex sometimes holds a request: of 479 answered chat turns of 2026-10-20..27 a round's p95 was 5.6 s and 4 took 8
 to 10 s, while a held request ran out the 20 s round timeout and was sent once more. Five turns failed after two held
 attempts (36 to 39 s, `ServerError`, no engine call; three of them during the c2eae37 release gate, each re-run and
-answered) and 12 answered only after 20 s. `engine/llm.py` now sends a round up to three times, so a second held
-attempt leaves a third.
+answered) and 12 answered only after 20 s.
 
 It first waited 10 s a round (2a82e2c). The SDK sends that timeout to Vertex as `X-Server-Timeout`, a server deadline,
 so every round that needs longer is answered 504 each time it is sent: Vertex's 504s rose from about one an hour to 17
 and 28 an hour against 49 and 86 answered calls, a compound follow-up ("use the top 3 products instead") failed in
 both conversations of the 4580c0c gate that asked it, and 8 of about 75 gate turns failed. A day's p95 across the
-project's Gemini calls has been 6 to 18 s. The round waits 20 s again (60 s at worst over three attempts).
+project's Gemini calls has been 6 to 18 s. Vertex's latency also queues: that evening the chat's first round of the
+complex-promotions prompt (4,413 tokens in, 87 out) took 5.6 to 38.4 s, median 27 s, and all 12 calls answered; a
+20 s round (3926964) cut it on three attempts running in three of four gate conversations. A round now waits 45 s and
+is sent twice at most (90 s at worst; the chat's Cloud Run timeout is 300 s): a queued round finishes, and a held one
+is cut and sent again. `gemini-3.8-flash` is served only on the global endpoint (us-central1 answers 404).
 
 Measured and left out: setting the engine's `OMP_NUM_THREADS` to its 4 vCPUs. PyTorch picks 3 threads on a Cloud Run
 instance (it sees 6 logical CPUs), and a Cloud Run job timed one reader pass at 1.52 s with 3 threads against 1.08 s
