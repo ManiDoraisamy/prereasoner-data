@@ -4932,11 +4932,14 @@ conversation locks, the `postgres_numeric` dialect, the REPEATABLE READ branch, 
 CI job that executed uploads through PostgreSQL NUMERIC. The 971 `c_*` schemas (116 MB) and `chat.working_table`
 stay until this release has soaked; then they are dropped, one schema per transaction.
 
-## The engine loads its readers beside the world reasoner (2026-10-27)
+## The engine loads its readers after the world reasoner, never beside it (2026-10-27)
 
-An engine instance is ready only with its readers (2026-10-26). They loaded after the world reasoner, and on Cloud Run
-both phases mostly wait on the image's files: the world reasoner took 176 to 363 s and the readers 145 to 293 s across
-the c2eae37 and 4580c0c rollouts, against 25 and 56 s in the build. One instance of the 4580c0c rollout outran the
-600 s startup probe and was not started. `engine/server.py:main` now starts the readers' load first, in a thread, and
-waits for it after the world reasoner's phases; the build's server, at the same 4 vCPUs and 16 GiB, held 8.8 GiB once
-loaded (`tests.test_release`).
+An engine instance is ready only with its readers (2026-10-26). On Cloud Run both startup phases mostly wait on the
+image's files: the world reasoner took 176 to 363 s and the readers 145 to 293 s across the c2eae37 and 4580c0c
+rollouts (25 and 56 s in the build), and one instance of the 4580c0c rollout outran the 600 s startup probe. 3fa1b46
+loaded the readers in a thread beside the world reasoner; its instances were ready in 5.5 and 7 minutes, but building
+the readers in bfloat16 (`AutoModel.from_config(..., dtype=torch.bfloat16)`) sets torch's default dtype for the whole
+process, the world encoder built meanwhile came out in bfloat16, and every own-data question failed ("mat1 and mat2
+must have the same dtype"; revision 00205, rolled back to 4580c0c within half an hour). Two torch models are never
+built at once in one process: the readers load after the world reasoner (`tests.test_release`). A shorter startup
+needs another way to wait less on the image's files.

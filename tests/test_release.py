@@ -95,22 +95,25 @@ def test_spacy_warmup_does_not_block_model_readiness():
 
 def test_the_engine_loads_the_readers_before_it_serves():
     # 2026-10-26 (f2d08f5): the readers loaded on an instance's first own-data question, 191 s on a fresh Cloud Run
-    # instance, and the chat's engine call timed out at 180 s. They load beside the world reasoner (2026-10-27: one
-    # after the other, the two outran the 600 s startup probe on an instance of the 4580c0c rollout).
+    # instance, and the chat's engine call timed out at 180 s. They load after the world reasoner, never beside it:
+    # building them in bfloat16 sets torch's default dtype for the whole process, and 3fa1b46's world encoder, built
+    # meanwhile, came out in bfloat16, so every own-data question failed (2026-10-27).
     import threading
 
     import engine.server as server
 
     order = []
-    readers_started = threading.Event()
+    loading = threading.Lock()
 
     def readers():
-        readers_started.set()
+        assert loading.acquire(blocking=False), "the readers loaded while the world reasoner was being built"
+        loading.release()
         order.append("readers")
 
     def world():
-        assert readers_started.wait(5), "the readers waited for the world reasoner"
-        return SimpleNamespace(qw=None)
+        with loading:
+            order.append("world")
+            return SimpleNamespace(qw=None)
 
     class Server:
         def __init__(self, *args):
@@ -132,7 +135,7 @@ def test_the_engine_loads_the_readers_before_it_serves():
             server.main()
     finally:
         server.MODEL, server.DIM_MODEL, server.ENRICHMENT = saved
-    assert order == ["readers", "serve"]
+    assert order == ["world", "readers", "serve"], order
 
 
 def test_vendored_xlsx_parser_has_the_reviewed_identity():
