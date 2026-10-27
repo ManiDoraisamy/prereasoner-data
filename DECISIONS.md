@@ -4814,8 +4814,40 @@ Same-process A/B on this machine (customer-orders and formfacade-leads, warm, an
 about 35 ms and a round trip about 1 to 2 ms; the expected saving there is about 0.3 to 0.5 s from Postgres and most
 of the 0.65 s Firebase median, to be confirmed by the `[timing]` lines after release.
 
+Released in c2eae37 (engine 00201-5l4, 2026-10-27), measured on the release gates' questions (122 engine requests
+of 68ac573's gate on 2026-10-26 against 208 of c2eae37's): connections 0.41 s to 0.03 s a question (12 opened to 0,
+11 reused), Firebase 1.83 s to 0.06 s (the drain before the answer), statements 1.02 s to 0.70 s (68 to 66).
+
 Measured and left out: reading the reference catalog from `pg_catalog` instead of `information_schema` (both about
 6 ms on the server; the 0.4 s outliers were contention). Not addressed here: the entity nearest-neighbour search
 (`engine/entities.py:_nn`, 265 production statements over 0.2 s, median 0.5 s) is an HNSW scan whose pages a
 db-g1-small cannot keep cached (0.9 s, 909 pages read, for one city); a sheet's resolved cells belong to the sheet,
 which is the next step.
+
+## The readers compute in float32 over weights kept in bfloat16 (2026-10-27)
+
+Production's readers took a median 6.5 s a question on Cloud Run against about 1 s on the development desktop.
+The cause is the hardware, not the model: Cloud Run served the engine on AMD EPYC 7B13 hosts (AVX2, no AVX-512, no
+bfloat16 instructions), where PyTorch emulates bfloat16. One large reader's pass over 4 x 256 tokens, measured in a
+Cloud Run job on the serving image (4 vCPU, 16 GiB): 15.3 s in bfloat16, 2.7 s in float32. On the desktop, which
+has AVX512-BF16, bfloat16 was the faster one (0.9 s against 2.3 s); with its bfloat16 instructions disabled
+(oneDNN capped at AVX2) it measured like Cloud Run (14.6 s against 2.2 s).
+
+`engine/readers/models.py:load` keeps the promoted weights in bfloat16 and computes in float32 on every device:
+each linear layer's weight is widened as it is used (a parametrization), the word-embedding table's rows as they
+are looked up, and the small weights (biases, norms, position embeddings, heads) are held in float32. Widening as
+used costs 2 to 6% over float32 weights (2.37 s against 2.33 s under AVX2); float32 weights would have taken the
+bundle from 7.21 to 11.07 GiB resident, which a 16 GiB instance cannot hold beside the rest of the engine, and
+widened weights take 7.31 GiB. Training already reads its runs in float32 (`training/readers/outputs.py`), so
+serving now computes as the re-scorers' and the choice's training candidates were read.
+
+Calibration (1,053 questions, whole_db, served, SQL, choice threshold null as recorded for the bundle; the same
+bundle and code but the loader): 730 strict / 811 lenient against bfloat16's 729 / 810; 1,016 questions run the
+same SQL; 4 answers became right and 3 wrong, 726 stayed right and 320 wrong. On the desktop the run took a median
+7.56 s a question against 4.69 s, because that CPU has the bfloat16 instructions Cloud Run's lacks.
+
+In production (c2eae37, the release gate's questions against 68ac573's gate on the same questions): the readers 7.0 s
+to 2.7 s median (p90 16.0 to 5.6), re-scoring 0.83 to 0.30 s (p90 16.2 to 3.4), the compound probe's p90 20.2 to
+6.1 s; with the plumbing above, an engine request 18.8 s to 6.6 s median (p90 49.9 to 15.6) and a chat turn 20.7 s
+to 9.1 s (p90 49.0 to 22.1); 23 of 208 engine requests under a second. The gate: 105/105 in fresh conversations and
+82/82 in existing ones, after re-running two turns Vertex answered with ServerError at 36 s (no engine call).
