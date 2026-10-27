@@ -773,16 +773,26 @@ TESTS = [
 ]
 
 
+# CI's hermetic job installs no model stack; the engine image does.
+NEEDS_TORCH = {test_the_readers_compute_in_float32_over_weights_kept_in_bfloat16}
+
+
 def main():
-    failed = []
+    import importlib.util
+
+    failed, skipped = [], 0
     for test in TESTS:
+        if test in NEEDS_TORCH and importlib.util.find_spec("torch") is None:
+            skipped += 1
+            print(f"  SKIP {test.__name__}: needs torch (the engine image installs it)")
+            continue
         try:
             test()
             print(f"  ok   {test.__name__}")
         except Exception as exc:  # noqa: BLE001
             failed.append(test.__name__)
             print(f"  FAIL {test.__name__}: {type(exc).__name__}: {exc}")
-    print(f"\nreaders: {len(TESTS) - len(failed)} passed, {len(failed)} failed")
+    print(f"\nreaders: {len(TESTS) - len(failed) - skipped} passed, {len(failed)} failed, {skipped} skipped")
     sys.exit(1 if failed else 0)
 
 
