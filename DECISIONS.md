@@ -4844,7 +4844,8 @@ serving now computes as the re-scorers' and the choice's training candidates wer
 Calibration (1,053 questions, whole_db, served, SQL, choice threshold null as recorded for the bundle; the same
 bundle and code but the loader): 730 strict / 811 lenient against bfloat16's 729 / 810; 1,016 questions run the
 same SQL; 4 answers became right and 3 wrong, 726 stayed right and 320 wrong. On the desktop the run took a median
-7.56 s a question against 4.69 s, because that CPU has the bfloat16 instructions Cloud Run's lacks.
+7.56 s a question against 4.69 s, because that CPU has the bfloat16 instructions Cloud Run's lacks. Frozen test
+(2,147, totals only): 1,532 strict / 1,696 lenient against 1,535 / 1,698 (`spider/results/RESULTS.md`).
 
 In production (c2eae37, the release gate's questions against 68ac573's gate on the same questions): the readers 7.0 s
 to 2.7 s median (p90 16.0 to 5.6), re-scoring 0.83 to 0.30 s (p90 16.2 to 3.4), the compound probe's p90 20.2 to

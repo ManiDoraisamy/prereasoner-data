@@ -5,6 +5,24 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
+## The readers computed in float32 over bfloat16 weights: calibration 729 -> 730, frozen test 1,535 -> 1,532 (2026-10-27)
+
+Same bundle (all14fg, weights manifest 40605578...), same evaluator and options as the bundle's recorded runs
+(`spider/probe/full_eval.py --config whole_db --selection served --backend sql`, the choice's threshold null); only
+`engine/readers/models.load` differs (fd91a87: every computation in float32, the weights kept in bfloat16). Run on the
+development desktop, which has the bfloat16 instructions Cloud Run's CPUs lack. Records:
+`C:/work/prereasoner-readers-artifacts/evals/widened/`.
+
+| | bfloat16 (f2d08f5) | float32 over bfloat16 weights (fd91a87) |
+|---|---|---|
+| Calibration strict / lenient (1,053) | 729 / 810 | 730 / 811 |
+| Calibration: same SQL | | 1,016 of 1,053; 4 answers became right, 3 wrong |
+| Frozen test strict / lenient (2,147; totals only) | 1,535 (71.5%) / 1,698 | 1,532 (71.4%) / 1,696 |
+| Frozen test answered | 2,143 | 2,143 |
+
+Prediction seconds on the desktop rose (calibration median 4.69 to 7.56, the frozen test 3.76 to 6.28: that CPU runs
+bfloat16 natively); on Cloud Run the readers fell from 7.0 s to 2.7 s median (DECISIONS.md, 2026-10-27).
+
 ## After the SynSQL release: more SynSQL per database, a re-scorer that reads the first row, and what the tie rule costs (2026-10-26)
 
 Calibration only (20 held-out Spider train databases); the frozen test was not run for any of these. Records:
