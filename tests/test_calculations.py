@@ -14,7 +14,7 @@ from engine.knowledge import KnowledgeReasoner
 from engine.knowledge_tables import KnowledgeTableQuery
 from engine.numeric import coerce_numeric, parse_decimal, wire_decimal
 from engine.dataset_semantics import synthetic_currency_column
-from engine.pg import _PGTYPE, _numeric_to_py
+from engine.pg import _numeric_to_py
 from engine.calculations import (
     ComputationEvidence,
     assess_calculations,
@@ -332,7 +332,7 @@ def test_the_coverage_gate_reads_a_place_as_one_name():
              "european": ("european", "Q183", "country", 0.75), "american": ("american", "Q30", "country", 0.8),
              "leads": ("leads", "Q584982", "city", 0.85), "german": ("german", "Q183", "country", 0.75)}
     gate = object.__new__(knowledge_query.KnowledgeQuery)
-    gate._kb_rows = lambda _sql, params: [(norm, *words[norm]) for norm in params[0] if norm in words]
+    gate._names_by_type = lambda norms: {norm: {words[norm][0]: {words[norm][1]}} for norm in norms if norm in words}
     gate._word_qid = lambda _word: None
     gate._best_world_entity = lambda tokens: fuzzy.get(tokens[0])
     gate._encode = lambda texts: np.zeros((len(texts), 2), dtype=np.float32)
@@ -378,7 +378,7 @@ def test_the_coverage_gate_reads_a_measure_named_in_other_words():
     near = {"search": ("search", "Q1001", "city", 0.66), "volume": ("volume", "Q1002", "city", 0.62),
             "shipping": ("shipping", "Q1003", "city", 0.7)}
     gate = object.__new__(knowledge_query.KnowledgeQuery)
-    gate._kb_rows = lambda _sql, params: []
+    gate._names_by_type = lambda _norms: {}
     gate._word_qid = lambda _word: None
     gate._best_world_entity = lambda tokens: near.get(tokens[0])
     gate._encode = lambda texts: np.zeros((len(texts), 2), dtype=np.float32)
@@ -411,7 +411,8 @@ def test_a_continent_demonym_resolves_to_its_continent():
 
     words = {"northamerica": ("continent", "Q49"), "europe": ("continent", "Q46"), "pl": ("country", "Q36")}
     resolver = object.__new__(entities.EntityQuery)
-    resolver._kb_rows = lambda _sql, params: [(norm, *words[norm]) for norm in params[0] if norm in words]
+    resolver._names_by_type = lambda norms: {norm: {words[norm][0]: {words[norm][1]}}
+                                             for norm in norms if norm in words}
     resolver._nn = lambda _vector, _type: (None, -1.0)
     embedder = type("Embedder", (), {"encode": staticmethod(lambda texts: [[0.0] for _ in texts])})
 
@@ -1472,8 +1473,6 @@ def test_decimal_execution_is_exact_and_backend_compatible():
     ok(columns == ["amount_total", "converted_total"], "decimal execution preserves aliases")
     ok(rows == [("9007199254740993.2", "900719925474099.33")],
        "SQLite decimal dialect preserves sums and row-level multiplication exactly")
-    ok(_PGTYPE["REAL"].startswith("NUMERIC("),
-       "PostgreSQL fractional uploads use bounded exact NUMERIC storage")
     ok(_numeric_to_py("9007199254740993.2", None) == rows[0][0],
        "PostgreSQL and SQLite normalize an inexact-for-float decimal identically")
     ok(_numeric_to_py("2.5", None) == 2.5 and _numeric_to_py("300.000", None) == 300,
@@ -1488,9 +1487,9 @@ def test_decimal_execution_is_exact_and_backend_compatible():
         {"ledger": table}, schema, render_query(divided), query=divided,
     )
     ok(divided_rows == [("0.33333333333333333333",)],
-       "SQLite division uses PostgreSQL NUMERIC's 20-place fractional contract")
-    ok("CAST(1 AS NUMERIC)" in render_query(divided, dialect="postgres_numeric"),
-       "PostgreSQL rendering never casts exact division operands to binary REAL")
+       "SQLite division keeps the exact 20-place fractional contract")
+    ok("decimal_div(1, 3)" in render_query(divided, dialect="sqlite_decimal"),
+       "the executed dialect never casts exact division operands to binary REAL")
     ok(coerce_numeric("2024.5", "INTEGER") is None,
        "integer ingestion rejects fractional values instead of silently truncating them")
     ok(wire_decimal(parse_decimal("1e100", enforce_input_bounds=False)) == 10 ** 100,

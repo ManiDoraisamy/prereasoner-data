@@ -3,7 +3,8 @@
 This realizes the unified-encoder objective in production (not just /api/dimension analyze):
   * OPERATOR + OPERAND from the metric space  — inherited EncoderQuery.read_op_all (no MEASURE_NOUNS/table_noun);
     the delegate (aggregate / pure world-join) path is EntityQuery.serve, which calls THIS read_op_all via MRO.
-  * BRIDGE TABLES persisted per user on Postgres (the thesis: "an interpretable model is a database"):
+  * BRIDGE TABLES in the request's database (engine/prepared.py; the thesis: "an interpretable model is a
+    database"):
       "<t> connected to knowledgebase"   = the bridge of resolved FKs (cell -> world key + country), via bge +
                                        knowledgebase.words (exact entity resolution; same-space NOT required —
                                        the join is on a string key).
@@ -12,18 +13,19 @@ This realizes the unified-encoder objective in production (not just /api/dimensi
                                        so a free-text MEANING is kept as an embedding.
   * HYBRID structured+semantic query — "who complained about bad delivery in France" =
         connected:   country = 'France'                      (world join, bge-resolved)
-      + unconnected: remarks <=> embed('bad delivery')       (pgvector cosine, UNIFIED encoder both sides)
+      + unconnected: remarks <=> embed('bad delivery')       (cosine distance, UNIFIED encoder both sides)
     The predicate vector and the stored column vectors come from the SAME unified encoder (EncoderQuery._encode),
-    so `<=>` is a valid same-space cosine — the reason the encoder had to be unified first.
+    so the distance is a valid same-space cosine — the reason the encoder had to be unified first.
 
 Class graph:  KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, EntityQuery)
-  The bridge mixin owns persistence and hybrid pgvector execution; this module owns routing, planning,
-  clarification, and request orchestration.
+  The bridge mixin owns the bridges and the hybrid search; this module owns routing, planning,
+  clarification, request orchestration, and what a table is prepared with (``prepare_table``).
     - read_op_all / read_op_model  resolve to EncoderQuery (the metric-space operator), NOT keywords.
     - serve / meaning_filter / _world_joins / route / _resolve  resolve to EntityQuery (the world machinery + bge).
     - schema / _encode / _layers  resolve to TableQuery, but run on the UNIFIED qwen (overlaid in __init__).
 """
 from __future__ import annotations
+import json
 import os
 import re
 
@@ -34,6 +36,9 @@ from engine.config import DATA_DIR, kb_model_route_enabled
 from engine.entities import EntityQuery, PLACE_TYPES, WORLD_TABLE_TYPE
 from engine.dataset_semantics import is_synthetic_currency_column
 from engine.embeddings import Embedder, demonym_stems, pgvector_literal, normalize_surface
+from engine.prepared import (current_database, decimal_cursor, encode_city_vector, preparations, read_labels,
+                             stored_value)
+from engine.tables import qident, qlit
 from engine.encoder_overlay import EncoderQuery, load_encoder
 from engine.knowledge_bridges import KnowledgeBridgeMixin
 from engine.knowledge_typing import KnowledgeTypingMixin
@@ -377,23 +382,118 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
 
     # ---------------- Schema.org evidence + deterministic source grounding ----------------
     def route(self, table):
-        """Route columns with calibrated Schema.org evidence plus exact source keys.
+        """The table's routes, from its preparation (engine/prepared.py), and its typing evidence."""
+        preparation = self._prepared(table)
+        self._emit_typing(preparation.typing)
+        return dict(preparation.routes)
+
+    def _prepared(self, table):
+        """The preparation of ``table`` (engine/prepared.py), its knowledgebase rows held by the request's database.
+        A preparation computed in a conversation is kept for it."""
+        database = current_database()
+        if database is not None:
+            held = database.prepared_for(table)
+            if held is not None:
+                return held
+        from engine.deterministic.context import current_analysis_context
+        context = current_analysis_context()
+        preparation = preparations().get(self, table, context.conversation_id if context else None)
+        if database is not None:
+            database.add_preparation(preparation, table)
+        return preparation
+
+    def prepare_table(self, table):
+        """What ``table`` needs from the knowledgebase, read once per version of the table (engine/prepared.py):
+
+        * its routes and typing evidence (``_route_table``), and the routes source membership alone gives;
+        * every candidate entity of each distinct cell of a routed column (``_city_matches``, ``_name_matches``),
+          with each city's country and each canonical name's country and qid (``_bridge_rows``);
+        * the Schema.org evidence of every other column of three or more cells, the dominant non-geographic
+          entity type of each, and the entity each of its cells names exactly (``_nongeo_plan``; the nearest
+          names of the rest are read when a question needs them, ``_nongeo_matches``);
+        * the knowledgebase rows those entities are, their labels, and the vectors of the city names the cells
+          matched (a question's fuzzy city words, ``_nn``).
+        Reads PostgreSQL and the models."""
+        routes, typing, membership = self._route_table(table)
+        columns, cities, reached_cities, labels = {}, [], set(), set()
+        for (_name, column), world in sorted(routes.items()):
+            world_type = WORLD_TABLE_TYPE.get(world)
+            cells = self._cells(table, column)
+            if not world_type or not cells:
+                continue
+            if world_type == "city":
+                matches = self._city_matches(cells)
+                qids = sorted({candidate[0] for found in matches.values() for candidate in found})
+                columns[column] = {"type": "city", "cells": matches, "countries": self._city_countries(qids)}
+                reached_cities.update(qids)
+                cities.extend(self._city_vectors(cells))
+            else:
+                matches = self._name_matches(cells, world_type)
+                keys = sorted({matches.get(cell) or cell for cell in cells})
+                columns[column] = {"type": world_type, "cells": matches,
+                                   "names": self._canonical_names(world_type, keys)}
+        evidence, nongeo, reached = [], {}, {}
+        typed = {record.get("column") for record in typing}
+        router = None
+        if kb_model_route_enabled():
+            try:
+                router = self._router()
+            except Exception as exc:                                     # noqa: BLE001
+                print(f"[knowledge_query] schema router unavailable: {type(exc).__name__}", flush=True)
+        for ci, col in enumerate(table["columns"]):
+            if is_synthetic_currency_column(col):
+                continue
+            cells = [str(rw[ci]) for rw in table["rows"] if ci < len(rw) and rw[ci] not in (None, "")]
+            if len(cells) < 3:                                    # entity names are long but model+grounding gate
+                continue
+            if router is not None and col not in typed:
+                try:
+                    found = router.route(cells, header=col)
+                except Exception as exc:                          # noqa: BLE001
+                    print(f"[knowledge_query] column evidence unavailable: {type(exc).__name__}", flush=True)
+                    found = None
+                if found:
+                    evidence.append({
+                        "table": table["name"], "column": col,
+                        "family": found["family"], "frac": found["frac"],
+                        "geo": found["geo"], "grounded_to": None,
+                        "class": found.get("class"),
+                        "class_name": found.get("class_name"),
+                        "class_threshold": found.get("class_threshold"),
+                        "class_score_model": found.get("class_score_model"),
+                        "class_bias": found.get("class_bias"),
+                        "ontology_version": found.get("ontology_version"),
+                        "model_artifact_sha256": found.get("model_artifact_sha256"),
+                        "evidence": found.get("evidence", []),
+                    })
+            label, type_qid = self._dominant_nongeo_type(cells)   # FINE type = dominant knowledgebase.words type
+            if not (label and type_qid):
+                continue
+            matches = self._resolve_world_qids(sorted(set(cells)), label, nearest=False)
+            nongeo[col] = {"label": label, "qid": type_qid, "matches": matches}
+            entities = sorted({qid for qid in matches.values() if qid})
+            labels.update(entities)
+            block = self._reached_rows(label[:63], entities)
+            if block:
+                reached[label[:63]] = block
+        for table_name in ("city", "Cities"):
+            block = self._reached_rows(table_name, sorted(reached_cities))
+            if block:
+                reached[table_name] = block
+        labels.update(reached_cities)
+        return {"routes": [[name, column, world] for (name, column), world in sorted(routes.items())],
+                "membership": [[name, column, world] for (name, column), world in sorted(membership.items())],
+                "typing": typing, "evidence": evidence, "columns": columns, "nongeo": nongeo,
+                "reached": reached, "labels": read_labels(sorted(labels)), "cities": cities}
+
+    def _route_table(self, table):
+        """Route columns with calibrated Schema.org evidence plus exact source keys: (routes, typing, the routes
+        source membership alone gives). Read at preparation.
 
         The model may propose a servable class, but a world join is authorized only by
         source-key grounding. The inherited exact membership route supplies coverage
         when the model abstains. Captured evidence is the computation actually used.
         """
-        sig = self._table_sig(table)
-        # ONE cache holding (routes, typing) together. Two dicts keyed by the same signature had to be
-        # written, read and purged in lockstep at three sites by discipline alone; any future writer that
-        # updated one and not the other would serve cached routes with stale or missing evidence, and no
-        # test would notice because the routing output would be unchanged.
-        cache = self.__dict__.setdefault("_route_cache", {})               # per (schema, values): router runs ONCE
-        cached = cache.get(sig)       # one read: concurrent questions share the cache and one may clear it
-        if cached is not None:
-            routes, typing = cached
-            self._emit_typing(typing)
-            return dict(routes)
         routes, typing = {}, []
         with request_timing.span("typing"):
             model_routes, model_typing = self._schema_model_routes(table)
@@ -430,46 +530,104 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
                     "ontology_version": None, "model_artifact_sha256": None,
                     "evidence": [],
                 })
-        if len(cache) > 100:
-            cache.clear()
-        cache[sig] = (dict(routes), typing)
-        self._emit_typing(typing)
-        return routes
+        return routes, typing, source_routes
+
+    def _city_countries(self, qids):
+        """Each city's country name: its first name row's that has one. Read at preparation."""
+        countries = {}
+        if qids:
+            cursor = self._rconn().cursor()
+            cursor.execute('SELECT qid, canon_country FROM knowledgebase."words" '
+                           "WHERE type='city' AND qid = ANY(%s) ORDER BY qid, id", (qids,))
+            for qid, country in cursor.fetchall():
+                if country and not countries.get(qid):
+                    countries[qid] = country
+        return countries
+
+    def _canonical_names(self, world_type, keys):
+        """Each key's country and qid, as a bridge row holds them (``_bridge_rows``): the country of the key's
+        canonical name, else the name itself, and for a country no row names the key itself; the qid the name
+        names, the lowest of its qids (so an aggregate cannot fan out by the name's altLabels). Read at
+        preparation."""
+        cursor = self._rconn().cursor()
+        countries, qids = {}, {}
+        if keys:
+            cursor.execute('SELECT canonical, canon_country FROM knowledgebase."words" '
+                           "WHERE type=%s AND canonical = ANY(%s) ORDER BY canonical, id", (world_type, keys))
+            for canonical, country in cursor.fetchall():
+                if canonical not in countries or (country and countries[canonical] == canonical):
+                    countries[canonical] = country or canonical
+            cursor.execute('SELECT DISTINCT ON (lower(canonical)) lower(canonical), qid '
+                           'FROM knowledgebase."words" WHERE type=%s AND lower(canonical) = ANY(%s) '
+                           'AND qid IS NOT NULL ORDER BY lower(canonical), qid',
+                           (world_type, [key.lower() for key in keys]))
+            qids = dict(cursor.fetchall())
+        return {key: {"country": countries.get(key, key if world_type == "country" else None),
+                      "qid": qids.get(key.lower())} for key in keys}
+
+    def _city_vectors(self, cells):
+        """(norm, qid, vector) of the city names ``cells`` match exactly. Read at preparation."""
+        norms = sorted({normalize_surface(cell) for cell in cells} - {""})
+        if not norms:
+            return []
+        cursor = self._rconn().cursor()
+        cursor.execute('SELECT norm, qid, embedding::text FROM knowledgebase."words" '
+                       "WHERE type='city' AND qid IS NOT NULL AND embedding IS NOT NULL AND norm = ANY(%s) "
+                       "ORDER BY norm, qid, id", (norms,))
+        return [[norm, qid, encode_city_vector(json.loads(text))] for norm, qid, text in cursor.fetchall()]
+
+    def _reached_rows(self, table, qids):
+        """{"columns", "rows"} of the knowledgebase table's rows with ``qids``. Read at preparation."""
+        if not qids:
+            return None
+        cursor = decimal_cursor(self._rconn())
+        cursor.execute("SELECT to_regclass(%s)", (f'knowledgebase.{qident(table)}',))
+        if cursor.fetchone()[0] is None:
+            return None
+        cursor.execute(f"SELECT * FROM knowledgebase.{qident(table)} WHERE qid = ANY(%s) ORDER BY qid", (qids,))
+        return {"columns": [description[0] for description in cursor.description],
+                "rows": [[stored_value(value) for value in row] for row in cursor.fetchall()]}
 
     # ---------------- NON-GEO world join over pre-synchronized facts ----------------
     # The faithful Wikidata tables (knowledgebase."hospital"/"software"/...) join like the geo ones: resolve the uploaded
     # cell -> the type's qid (knowledgebase.words, type=<leaf>), JOIN knowledgebase."<leaf>" ON qid, filter by a world attribute
     # (country), aggregate the uploaded metric. Missing facts abstain; serving never fetches or writes them.
-    def _resolve_world_qid(self, value, label, type_qid):
-        """value -> the world qid. knowledgebase.words.type stores the EXACT Wikidata label (what the offline
-        syncs insert), NOT the snake routing leaf — so look it up by that exact label, else a
-        multi-word type ('academic journal' vs the routing 'academic_journal') misses the fast path forever.
-        Exact norm match, then bge NN. A miss remains unresolved until an offline source sync supplies it."""
-        # This runs once per uploaded ROW on the non-geo path, so both exact lookups go through the
-        # request memo: repeated cell values and the constant type_qid->label lookup hit Postgres once.
-        _r = self._kb_rows('SELECT label FROM knowledgebase."types" WHERE qid=%s', (type_qid,))
-        wl = (str(_r[0][0]) if _r and _r[0][0] else label)            # the exact label used by the offline projection
-        n = normalize_surface(value)
+    def _resolve_world_qids(self, values, label, nearest=True):
+        """value -> the world qid of type ``label`` (None when none). knowledgebase.words.type stores the EXACT
+        Wikidata label (what the offline syncs insert), NOT the snake routing leaf — so look it up by that exact
+        label, else a multi-word type ('academic journal' vs the routing 'academic_journal') misses the fast path
+        forever. Exact norm match, then (with ``nearest``) bge NN. A miss remains unresolved until an offline
+        source sync supplies it. Every distinct cell at once: exactly at preparation, the nearest names when a
+        question needs them (``_nongeo_matches``)."""
+        cursor = self._rconn().cursor()
+        norms = {value: normalize_surface(value) for value in values}
         # A name two entities share picks one the same way every time: the primary entity of the name, then
         # the lowest numeric QID (2026-10-02: 87 hospital names named two QIDs, and either could be served).
-        rows = self._kb_rows('SELECT qid FROM knowledgebase."words" WHERE type=%s AND norm=%s AND qid IS NOT NULL '
-                             f'ORDER BY {_ENTITY_TIE_BREAK} LIMIT 1', (wl, n))
-        if rows:
-            return rows[0][0]
-        vec = pgvector_literal(Embedder.get().encode([value])[0])
+        cursor.execute(f'SELECT DISTINCT ON (norm) norm, qid FROM knowledgebase."words" WHERE type=%s '
+                       f'AND norm = ANY(%s) AND qid IS NOT NULL ORDER BY norm, {_ENTITY_TIE_BREAK}',
+                       (label, sorted(set(norms.values()))))
+        exact = dict(cursor.fetchall())
+        out = {value: exact.get(norms[value]) for value in values}
+        missed = [value for value in values if out[value] is None and norms[value]] if nearest else []
         # The nearest entity of THIS type, exactly: the B-tree on (type, qid) bounds the scan to the type and
         # the distance is sorted, not served by the HNSW index. The index scan is approximate and the type
         # filter runs after it, so it can return no row or a farther one, depending on the graph a restore
         # builds and on whether the planner picks it: on the 2026-10-02 build's fresh seed "Mayo Clinic"
         # stayed unresolved, and the US hospitals totalled 32 instead of 46.
-        rows = self._kb_rows(
-            'SELECT qid, 1-(embedding <=> %s::vector), norm FROM knowledgebase."words" '
-            'WHERE type=%s AND qid IS NOT NULL AND embedding IS NOT NULL '
-            f'ORDER BY (embedding <=> %s::vector) + 0, {_ENTITY_TIE_BREAK} LIMIT 1', (vec, wl, vec))
-        row = rows[0] if rows else None
-        if row and row[1] is not None and nearest_name_matches(n, row[2], row[1]):
-            return row[0]
-        return None
+        for start in range(0, len(missed), 100):
+            part = missed[start:start + 100]
+            vectors = Embedder.get().encode(part)
+            vlits = ", ".join(f"({qlit(value)}, {qlit(pgvector_literal(vector))}::vector)"
+                              for value, vector in zip(part, vectors))
+            cursor.execute(
+                f'SELECT fv.value, nn.qid, nn.sim, nn.norm FROM (VALUES {vlits}) AS fv(value, vec) '
+                f'JOIN LATERAL (SELECT qid, 1-(embedding <=> fv.vec) AS sim, norm FROM knowledgebase."words" '
+                f'WHERE type=%s AND qid IS NOT NULL AND embedding IS NOT NULL '
+                f'ORDER BY (embedding <=> fv.vec) + 0, {_ENTITY_TIE_BREAK} LIMIT 1) nn ON true', (label,))
+            for value, qid, sim, nearest in cursor.fetchall():
+                if sim is not None and nearest_name_matches(norms[value], nearest, sim):
+                    out[value] = qid
+        return out
 
     def _world_type_map(self):
         """{snake(leaf label) -> type qid} for the mirrored non-geo tables, from taxonomy.csv. Cached."""
@@ -530,42 +688,15 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         if (by_country and agg[0] == "COUNT" and order is None
                 and _re.search(r"\b(?:by|per|each)\s+countr", ql)):
             aggregate = None                                  # "how many banks per country": rows per value
-        r = None
-        if kb_model_route_enabled():
-            try:
-                r = self._router()
-            except Exception as exc:                                     # noqa: BLE001
-                print(f"[knowledge_query] schema router unavailable: {type(exc).__name__}", flush=True)
-        cur = self._rconn().cursor()
         places = None
         for t in norm:
-            for ci, col in enumerate(t["columns"]):
-                cells = [str(rw[ci]) for rw in t["rows"] if ci < len(rw) and rw[ci] not in (None, "")]
-                if len(cells) < 3:                                        # entity names are long but model+grounding gate
+            preparation = self._prepared(t)
+            self._emit_typing(preparation.record.get("evidence", []))
+            for col in t["columns"]:
+                found = preparation.nongeo.get(col)                       # FINE type = dominant knowledgebase.words type
+                if not found:                                             # the cells resolve to (prepared)
                     continue
-                if r is not None:
-                    try:
-                        evidence = r.route(cells, header=col)
-                    except Exception as exc:                              # noqa: BLE001
-                        print(f"[knowledge_query] column evidence unavailable: {type(exc).__name__}", flush=True)
-                        evidence = None
-                    if evidence:
-                        self._emit_typing([{
-                            "table": t["name"], "column": col,
-                            "family": evidence["family"], "frac": evidence["frac"],
-                            "geo": evidence["geo"], "grounded_to": None,
-                            "class": evidence.get("class"),
-                            "class_name": evidence.get("class_name"),
-                            "class_threshold": evidence.get("class_threshold"),
-                            "class_score_model": evidence.get("class_score_model"),
-                            "class_bias": evidence.get("class_bias"),
-                            "ontology_version": evidence.get("ontology_version"),
-                            "model_artifact_sha256": evidence.get("model_artifact_sha256"),
-                            "evidence": evidence.get("evidence", []),
-                        }])
-                wl, tqid = self._dominant_nongeo_type(cells)             # FINE type = dominant knowledgebase.words type the cells resolve to
-                if not (wl and tqid):
-                    continue
+                wl, tqid = found["label"], found["qid"]
                 # English plural forms count as naming the type: hospital->hospitals (-s), university->universities
                 # (-y/-ies), church->churches (-es); a bare "s?" missed every -ies plural and silently dropped the
                 # university family to the clarify path.
@@ -575,28 +706,49 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
                 if not any(_names_type(w) for w in wl.replace("_", " ").split() if len(w) > 3):
                     if places is None:                           # source-key place routes, read once
                         places = any(WORLD_TABLE_TYPE.get(world) in PLACE_TYPES
-                                     for table in norm for world in self._value_membership_routes(table).values())
+                                     for table in norm
+                                     for _t, _c, world in self._prepared(table).record.get("membership", ()))
                     if places:
                         continue
-                cur.execute("SELECT 1 FROM information_schema.columns WHERE table_schema='knowledgebase' "
-                            "AND table_name=%s AND column_name='country'", (wl,))
-                if not cur.fetchone():
+                if not any(name == "country" for name, _type in self._database().catalog(wl[:63])):
                     continue                                             # need knowledgebase."<wl>".country
                 if aggregate is not None and aggregate[2] is not None and aggregate[1] != t["name"]:
                     continue                                             # the measure lives on another sheet
-                return {"table": t, "col": col, "label": wl, "qid": tqid, "cells": cells,
+                return {"table": t, "col": col, "label": wl, "qid": tqid,
                         "country": country[0] if country else None,
                         "continent": continent[0] if continent else None,
                         "aggregate": aggregate, "by_country": by_country,
                         "own_dimension": own_dimension, "order": order}
         return None
 
+    def _nongeo_matches(self, table, column):
+        """{cell: qid or None} for a non-geographic column: its exact matches, prepared with the table, and the
+        nearest names of the rest. Those are an exact scan of the type's names per cell (seconds for a type of
+        tens of thousands of names), so they are read only when a question needs the column, and kept with the
+        preparation in this process; the knowledgebase rows they reach join the request's database."""
+        preparation = self._prepared(table)
+        found = preparation.nongeo[column]
+        nearest = preparation.extras.get(("nearest", column))
+        if nearest is None:
+            unmatched = sorted(cell for cell, qid in found["matches"].items() if qid is None)
+            resolved = {cell: qid for cell, qid in self._resolve_world_qids(unmatched, found["label"]).items()
+                        if qid} if unmatched else {}
+            qids = sorted(set(resolved.values()))
+            nearest = (resolved, self._reached_rows(found["label"][:63], qids), read_labels(qids))
+            preparations().keep_extra(preparation, ("nearest", column), nearest, 2048 * (len(resolved) + 1))
+        resolved, block, labels = nearest
+        database = current_database()
+        if database is not None and block:
+            database.add_reached(found["label"][:63], block, labels)
+        return {**found["matches"], **resolved}
+
     def _dominant_nongeo_type(self, cells):
         """FINE type of a non-geo entity column = the dominant knowledgebase.words `type` its cells resolve to (exact
         norm; excludes the geo types). The fine type and QID come from source resolution, independently of the
         learned class evidence. Returns (exact-Wikidata-label, type-qid) or (None, None). This source-grounded
         fallback is permitted even when the
-        Schema.org model abstains; it cannot invent a type because every accepted cell matches a stored source key."""
+        Schema.org model abstains; it cannot invent a type because every accepted cell matches a stored source key.
+        Read at preparation."""
         norms = sorted({normalize_surface(str(c)) for c in cells if str(c).strip()})
         if len(norms) < 2:
             return None, None
@@ -626,21 +778,20 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         ci = t["columns"].index(plan["col"])
         aggregate = plan["aggregate"]
 
+        matches = self._nongeo_matches(t, plan["col"])
         resolved = []                                                     # (upload row, resolved world qid)
         named, matched = [], []                                           # the rows that name an entity; which resolved
         for rw in t["rows"]:
             v = str(rw[ci]) if ci < len(rw) and rw[ci] not in (None, "") else None
             if not v:
                 continue
-            wq = self._resolve_world_qid(v, label, plan["qid"])
+            wq = matches.get(v)
             named.append(rw)
             matched.append(bool(wq))
             if wq:
                 resolved.append((list(rw), wq))
 
-        cur = self._rconn().cursor()
-        cur.execute('SELECT label FROM knowledgebase."types" WHERE qid=%s', (plan["qid"],))
-        _r = cur.fetchone(); wl = (str(_r[0]) if _r and _r[0] else label)[:63]   # table = the EXACT Wikidata label
+        wl = label[:63]                                                   # table = the EXACT Wikidata label
         joins = [{"left_table": t["name"], "left_col": plan["col"], "right_table": wl, "right_col": "qid"}]
         required = {wl: {"country"}}
         meaning_filter = None
@@ -675,26 +826,17 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         from engine.numeric import wire_rows
         from engine.sql_ast import Aggregate, Star
         from engine.sql_schema import SchemaGraph
-        self._pg_schema = schema
-        self.q11._pg_schema = schema
-        self._persist_connected(t["name"], plan["col"], label,
-                                [(str(row[ci]), qid) for row, qid in resolved])
-        con = self._connect({table["name"]: table for table in norm}, sch, attach_world=True)
-        try:
-            shared_plan = lower_world_query(
-                slug=context.slug, schema=sch, uploaded=[t["name"]], foreign_keys=[],
-                joins=joins, bridge_name=self._conn_bridge_name(t["name"]), route_table=t["name"],
-                route_column=plan["col"], meaning_filter=meaning_filter, own_filters=own_filters,
-                world_rate=None, as_of=None, aggregate=aggregate, calculation=None, conversion=None,
-                reference_columns=reference_schema(con, required), dimension=dimension, order=order)
-            release = self._bridge_world_version()
-            con.conn.commit()
-            columns, rows = self.q11._execute_deterministic({t["name"]: t}, shared_plan, release,
-                                                            labels=self._qid_labels)
-            record = current_execution_record()
-        finally:
-            con.close()
-            self._con = None
+        self._persist_connected(t, plan["col"], label, [(str(row[ci]), qid) for row, qid in resolved])
+        self._connect({table["name"]: table for table in norm}, sch)
+        shared_plan = lower_world_query(
+            slug=context.slug, schema=sch, uploaded=[t["name"]], foreign_keys=[],
+            joins=joins, bridge_name=self._conn_bridge_name(t["name"]), route_table=t["name"],
+            route_column=plan["col"], meaning_filter=meaning_filter, own_filters=own_filters,
+            world_rate=None, as_of=None, aggregate=aggregate, calculation=None, conversion=None,
+            reference_columns=reference_schema(self._database(), required), dimension=dimension, order=order)
+        columns, rows = self.q11._execute_deterministic({t["name"]: t}, shared_plan, self._world_version(),
+                                                        labels=self._qid_labels)
+        record = current_execution_record()
         response = {"question": question, "as_of": None, "sql": record["final_sql"],
                     "result": {"columns": columns, "rows": wire_rows(rows)},
                     "views": record["views"], "deterministic": record, "model": model}
@@ -750,10 +892,10 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         """the world qid a single content word resolves to (exact normalized match in knowledgebase.\"words\" across the geo
         entity types), so _uncovered can tell a word is COVERED when its QID appears in the qid-keyed knowledgebase SQL."""
         try:
-            r = self._kb_rows('SELECT qid FROM knowledgebase."words" WHERE norm=%s AND qid IS NOT NULL '
-                              "AND type IN ('country','continent','city','state') LIMIT 1",
-                              (normalize_surface(w),))
-            return r[0][0] if r else None
+            norm = normalize_surface(w)
+            types = self._names_by_type({norm}).get(norm, {})
+            qids = sorted(qid for type_ in ("country", "continent", "city", "state") for qid in types.get(type_, ()))
+            return qids[0] if qids else None
         except Exception:                                        # noqa: BLE001
             return None
 
@@ -1038,15 +1180,7 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
             return None
         if not re.match(r"^Q\d+$", str(qid)):
             return qid                                                # already a name (defensive) -> pass through
-        try:
-            cur = self._rconn().cursor()
-            cur.execute('SELECT canonical FROM knowledgebase."words" WHERE type=\'country\' AND qid=%s '
-                        'AND canonical IS NOT NULL LIMIT 1', (qid,))
-            row = cur.fetchone()
-            return row[0] if row and row[0] else None
-        except Exception as e:                                        # noqa: BLE001 — a lookup miss must not hard-fail the world path
-            print(f"[knowledge_query] country name lookup failed: {type(e).__name__}", flush=True)
-            return None
+        return self._qid_labels([qid]).get(qid)
 
     def serve(self, tables, question, as_of=None, schema=None, explicit_fks=(), dataset_semantics=()):
         """Hybrid structured+semantic retrieval when the question has a free-text predicate AND the data has a

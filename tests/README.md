@@ -29,7 +29,7 @@ runtime bundle, `tests.test_complex_datasets` reports its model-backed cases as 
 | `python -m tests.test_app_migrations` | Application migrations and least-privilege database grants |
 | `python -m tests.test_request_limits` | Canonical request validation, resource bounds, auth bypass isolation, and paid-request budgets |
 | `python -m tests.test_request_timing` | One `[timing]` line per request: no double-counted nested spans, emitted on failure, unchanged results, no user data in the line |
-| `python -m tests.test_pg_upload` | Uploaded-sheet load issues page-bounded statements with byte-identical values, against a recording cursor |
+| `python -m tests.test_request_database` | The request's SQLite database holds every value exactly, loads an unchanged table once, ends statements at the deadline, holds a table preparation's entities once, and picks a city's namesake by the question's country |
 | `python -m tests.test_dimension_model` | `/api/dimension` startup and encoder sharing |
 | `python -m tests.test_concurrent_requests` | Questions served in parallel on the shared engine: each request keeps its own planner state, trace stream and connection; shared caches, tokenizer and warning escalation hold |
 | `python -m tests.test_kb_memo` | Request-scoped shared-knowledge memo dedupes identical lookups without changing answers |

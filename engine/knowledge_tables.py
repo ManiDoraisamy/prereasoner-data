@@ -8,21 +8,21 @@ BUILDING the join — the implicit table made explicit. Your table holds only sc
 
 This layer is deterministic planning on top of the encoder/readout (no new training): it defines the query
 class — `SELECT … FROM csv JOIN city ON lower(csv.city)=lower(city.name) WHERE city.country = 'France'` —
-that the live Postgres layers (engine.pg / engine.entities) then execute against the real world DB.
+that runs on the request's database, which holds the uploaded tables and the knowledgebase rows they reach
+(engine/prepared.py).
 """
 from __future__ import annotations
 
 import datetime
 import json
 import re
-import sqlite3
 
 from engine.config import DATA_DIR
 from engine.currency_intent import (
     currency_rate_binding, is_currency_measure_column, is_currency_source_column,
 )
 from engine.dataset_semantics import is_synthetic_currency_column
-from engine.numeric import coerce_numeric, register_sqlite_decimal, sqlite_numeric, wire_rows
+from engine.numeric import wire_rows
 from engine.request_state import RequestLocal
 from engine.sql_ast import Aggregate, render_scalar_expression
 from engine.sql_schema import is_surrogate_key
@@ -70,7 +70,7 @@ _ECB_CODES = frozenset({
 # the world-knowledge tables in generated SQL are qid-keyed projections in the `knowledgebase` schema, named by the
 # EXACT Wikidata label (knowledgebase."city" / knowledgebase."country"). The planner's logical slugs
 # (word_city/word_country) remap here; the place hierarchy is dropped (no faithful Wikidata "place" type).
-# The serving search_path includes `knowledgebase`, so bare names resolve.
+# The request's database attaches `knowledgebase` (engine/prepared.py), so bare names resolve.
 # word_city/word_country -> qid-keyed knowledgebase."<type>" tables. word_state -> the aggregate qid-keyed
 # knowledgebase."u_s_state" (built by db/sync/build_u_s_state.py; state qid PK, country/continent qid FKs) — so a
 # state column joins qid-keyed and filters by country/continent, same as city/country. word_element still
@@ -182,7 +182,6 @@ class KnowledgeTableQuery:
     def __init__(self, deploy_dir=DATA_DIR):
         self.q11 = TableQuery(deploy_dir)         # the anchored readout planner (encoder overlaid by the world layer)
         self.words = load_word_tables()           # metadata only (key/concept/filter_attrs/filter_values/links/parent)
-        self.dbpath = WORD_DIR / "words.db"       # OPTIONAL local SQLite word tables (the live path uses Postgres)
 
     def route(self, table):
         """concept routing by the cell VALUES' entity class (Paris -> location/region/district), so a column routes
@@ -302,31 +301,50 @@ class KnowledgeTableQuery:
         return None
 
     def ambiguities(self, table, routed_col, wt):
-        """upload values that match MORE THAN ONE word-table row and were NOT disambiguated -> flag them (queries
-        the DB for just the uploaded values). The discrepancy-review discipline: answer, but say it's ambiguous."""
-        w = self.words[wt]; key = w["key"]
-        haskind = "country" in w.get("columns", [])
+        """upload values that match MORE THAN ONE world-table row and were NOT disambiguated -> flag them. The
+        discrepancy-review discipline: answer, but say it's ambiguous. The request's database holds the world rows
+        the uploaded values can name (engine/prepared.py)."""
+        w = self.words[wt]; key = w["key"]; haskind = "country" in w.get("columns", [])
+        # Match the uploaded value against the entity NAME column, not the key. For qid-keyed tables (city,
+        # country, state) the key is the opaque QID, so `WHERE lower(qid)=<name>` never matched and NO
+        # ambiguity was ever flagged. The name column is what the uploaded string actually corresponds to.
+        name_col = "name" if "name" in w.get("columns", []) else key
         vals = [str(dict(zip(table["columns"], r)).get(routed_col)) for r in table["rows"]]
         vals = [v for v in vals if v and v != "None"]
         if not vals:
             return []
-        con = sqlite3.connect(self.dbpath)
-        warns, seen = [], set()
+        first = {}                                    # lowercased value -> the upload's first spelling of it
         for v in vals:
-            vl = v.lower()
-            if vl in seen:
-                continue
-            seen.add(vl)
-            if haskind:
-                opts = [r[0] for r in con.execute(f"SELECT DISTINCT country FROM {qident(wt)} WHERE lower({qident(key)})=?", (vl,)).fetchall()]
-                if len(opts) > 1:
-                    warns.append(f"'{v}' is ambiguous in {wt}: {', '.join(sorted(opts))}")
-            else:
-                cnt = con.execute(f"SELECT COUNT(*) FROM {qident(wt)} WHERE lower({qident(key)})=?", (vl,)).fetchone()[0]
-                if cnt > 1:
-                    warns.append(f"'{v}' is ambiguous in {wt}: {cnt} rows")
-        con.close()
+            first.setdefault(v.lower(), v)
+        database = self._database()
+        name = f"lower({qident(name_col)})"
+        kind = "country" if haskind else "NULL"
+        options = {}
+        for value, country in database.select_in(
+                f"SELECT DISTINCT {name}, {kind} FROM knowledgebase.{qident(wt)} WHERE {name} IN", list(first)):
+            options.setdefault(value, []).append(country)
+        warns = []
+        for vl, v in first.items():
+            opts = options.get(vl, [])
+            if len(opts) > 1:
+                warns.append(f"'{v}' is ambiguous in {wt}: {', '.join(sorted(map(str, opts)))}" if haskind
+                             else f"'{v}' is ambiguous in {wt}: multiple rows")
         return warns
+
+    @staticmethod
+    def _world_version():
+        """The knowledgebase release a world answer read: its newest refresh, and the models' revisions."""
+        from engine.prepared import knowledge
+        return knowledge().versions()[0]
+
+    @staticmethod
+    def _database():
+        """The request's database (engine/prepared.py); a world question is served on one."""
+        from engine.prepared import current_database
+        database = current_database()
+        if database is None:
+            raise RuntimeError("world questions are served on the request's database")
+        return database
 
     def _uploaded_from(self, involved, fks):
         """FROM the involved uploaded sheets, chained by their discovered foreign keys. IDs join with plain
@@ -547,18 +565,20 @@ class KnowledgeTableQuery:
     def _world_rows(self, joins, seed_values, cap=12):
         """fetch ONLY the participating world rows (value context, not a DB dump): walk the join chain, seeding each
         world table from the previous table's join-key values — the first from the uploaded city values."""
-        con = sqlite3.connect(self.dbpath)
+        database = self._database()
         out, seeds = [], [str(v).lower() for v in seed_values if v not in (None, "")]
         for idx, j in enumerate(joins):
             wt, key, w = j["right_table"], j["right_col"], self.words[j["right_table"]]
-            cols = [c for c in w["columns"] if c not in ("updated_at", "source", "valid_from", "valid_to")]
+            cols = [c for c in w["columns"]
+                    if c not in ("updated_at", "source", "source_release_id", "valid_from", "valid_to")]
             seedset = sorted(set(seeds))
             if not seedset:
                 break
-            ph = ",".join("?" * len(seedset))
             extra = " AND is_primary=1" if "is_primary" in w["columns"] else ""
-            rows = con.execute(f'SELECT {", ".join(qident(c) for c in cols)} FROM {qident(wt)} '
-                               f'WHERE lower({qident(key)}) IN ({ph}){extra} LIMIT {cap}', tuple(seedset)).fetchall()
+            rows = database.connection.execute(
+                f'SELECT {", ".join(qident(c) for c in cols)} FROM knowledgebase.{qident(wt)} '
+                f'WHERE lower({qident(key)}) IN ({",".join("?" * len(seedset))}){extra} LIMIT {cap}',
+                tuple(seedset)).fetchall()
             rd = [[("" if v is None else v) for v in r] for r in rows]
             out.append({"name": wt, "columns": cols, "rows": rd})
             nxt = joins[idx + 1] if idx + 1 < len(joins) else None
@@ -566,7 +586,6 @@ class KnowledgeTableQuery:
                 ci = cols.index(nxt["left_col"]); seeds = [str(r[ci]).lower() for r in rd if r[ci] not in (None, "")]
             else:
                 seeds = []
-        con.close()
         return out
 
     def world_encode(self, joins, seed_values):
@@ -960,8 +979,8 @@ class KnowledgeTableQuery:
         fw_no_rate = fw
         if world_rate:
             # The knowledgebase table joins like any other table in the conversation: by VALUE on the
-            # (code, date) pair. The date compares as ISO text on both engines (Postgres date::text is
-            # ISO; SQLite stores dates as text) — non-ISO upload dates simply fail to join and are
+            # (code, date) pair. The date compares as ISO text (the request's database stores the
+            # knowledgebase's dates as ISO text) — non-ISO upload dates simply fail to join and are
             # caught by the row-coverage check below, which declines rather than dropping rows.
             date_side = (f'{qident(world_rate["fact"])}.{qident(world_rate["date_col"])}'
                          if world_rate["date_col"] else qlit(as_of))
@@ -993,7 +1012,9 @@ class KnowledgeTableQuery:
         deterministic_record = None
         if ok:
             try:
-                con = self._connect(tablemap, sch, attach_world=bool(joins) or bool(world_rate))
+                con = self._connect(tablemap, sch)
+                if world_rate:
+                    self._load_rates(tablemap, world_rate, as_of)
                 from engine.deterministic.context import current_analysis_context, current_execution_record
                 from engine.deterministic.world import lower_world_query, reference_schema
                 context = current_analysis_context()
@@ -1021,16 +1042,13 @@ class KnowledgeTableQuery:
                     route_table=mtab, route_column=route_col, meaning_filter=mf,
                     own_filters=own_filters, world_rate=world_rate, as_of=as_of,
                     aggregate=projection_aggregate, calculation=calculation_plan, conversion=conversion,
-                    reference_columns=reference_schema(con, required, keys), reference_keys=keys,
+                    reference_columns=reference_schema(self._database(), required, keys), reference_keys=keys,
                     bridge_key="entity_qid" if not joins or joins[0]["right_col"] == "qid" else "world_key",
                     disambiguated=disamb[0] if disamb else None, dimension=grouping, order=ranking)
-                release = self._bridge_world_version()
+                release = self._world_version()
                 if world_rate:
                     release_row = con.execute('SELECT source_release_id FROM knowledgebase.exchange_rate LIMIT 1').fetchone()
                     release += f"; ECB={release_row[0] if release_row else 'missing'}"
-                # Publish the uploaded source transaction before acquiring the shared
-                # repeatable-read SQLAlchemy snapshot used by BOTH programs.
-                con.conn.commit()
                 cols, rows = self.q11._execute_deterministic(tablemap, shared_plan, release,
                                                              labels=self._qid_labels)
                 deterministic_record = current_execution_record()
@@ -1051,7 +1069,7 @@ class KnowledgeTableQuery:
                         warnings.extend(self._table_freshness(con, ft, as_of))
                 if world_rate and result is not None:
                     release_row = con.execute(
-                        f'SELECT source_release_id FROM {qident("exchange_rate")} LIMIT 1'
+                        'SELECT source_release_id FROM knowledgebase.exchange_rate LIMIT 1'
                     ).fetchone()
                     prov["release_id"] = release_row[0] if release_row else None
                     # Only a row with an amount needs a rate: a row whose measure is empty adds nothing, and an empty
@@ -1188,34 +1206,48 @@ class KnowledgeTableQuery:
         return response
 
     def _table_freshness(self, con, table, as_of):
-        """Warnings from the maintenance catalog for a table with no per-row updated_at. The offline
-        SQLite path has no catalog to consult, so it claims nothing; PgQuery overrides this."""
+        """A world table with no per-row updated_at is judged from the maintenance catalog instead of passing
+        silently. The request's database holds the catalog as the knowledgebase recorded it when this instance
+        last read it (engine/prepared.py, at most a minute old).
+
+        Only two things are worth saying: the table is past its declared cadence, or nobody declared it. A table
+        declared on-demand (cadence NULL) is an intentional, recorded state — warning about that on every geo query
+        would be noise, not disclosure."""
+        if not self._database().has_table("schedule", "knowledgebase"):
+            return []                             # un-migrated database: say nothing, invent nothing
+        row = con.execute('SELECT cadence_hours, last_refreshed_at FROM knowledgebase."schedule" '
+                          'WHERE table_name = ?', (table,)).fetchone()
+        if row is None:
+            return [f"freshness: world table '{table}' has no maintenance record — "
+                    f"declare it in db/sync/schedule.py:CATALOG"]
+        cadence, last = row
+        if cadence is None:
+            return []
+        if last is None:
+            return [f"freshness: '{table}' is scheduled every {cadence}h but has never recorded a refresh"]
+        stamp = str(last)[:10]
+        overdue_h = self._days(stamp, as_of) * 24
+        if overdue_h > cadence:
+            return [f"freshness: '{table}' last refreshed {stamp}, {int(overdue_h)}h before the "
+                    f"as-of date {as_of} and past its {cadence}h cadence — may be stale"]
         return []
 
-    def _connect(self, tablemap, sch, attach_world):
-        """in-memory SQLite with the uploaded sheet(s); ATTACH words.db whenever the SQL joins ANY world table
-        (a filter join OR a world-column path — not only when a filter exists)."""
-        con = sqlite3.connect(":memory:")
-        register_sqlite_decimal(con)
-        by_t = {}
-        for c in sch:
-            by_t.setdefault(c["table"], []).append(c)
-        for tname, cols in by_t.items():
-            declarations = []
-            for column in cols:
-                storage = "TEXT COLLATE decimal" if column["affinity"] == "REAL" else column["affinity"]
-                declarations.append(f'{qident(column["name"])} {storage}')
-            con.execute(f"CREATE TABLE {qident(tname)} (" + ", ".join(declarations) + ")")
-            t = tablemap[tname]
-            ins = f"INSERT INTO {qident(tname)} VALUES ({','.join('?' * len(cols))})"
-            for r in t["rows"]:
-                rd = dict(zip(t["columns"], r))
-                con.execute(ins, [sqlite_numeric(rd.get(c["name"]), c["affinity"])
-                                  if c["affinity"] in ("INTEGER", "REAL") else str(rd.get(c["name"]))
-                                  if rd.get(c["name"]) is not None else None for c in cols])
-        if attach_world:                          # ATTACH the persistent meaning DB (no per-query bulk insert —
-            con.execute("ATTACH DATABASE ? AS words", (str(self.dbpath),))   # joins hit the indexed word tables)
-        return con
+    def _connect(self, tablemap, sch):
+        """The request's database holding the uploaded tables; its knowledgebase schema holds the world rows their
+        values reach (engine/prepared.py)."""
+        return self._database().load(tablemap, sch)
+
+    def _load_rates(self, tablemap, world_rate, as_of):
+        """Hold the exchange rates a conversion reads: the rate to its target on every day the fact table names, or
+        on the as-of day for an undated one. Only an ISO day can join (``CAST(date AS text) = day``)."""
+        days = {str(as_of)}
+        if world_rate["date_col"]:
+            table = tablemap[world_rate["fact"]]
+            index = table["columns"].index(world_rate["date_col"])
+            days = {str(row[index]) for row in table["rows"]
+                    if index < len(row) and row[index] is not None
+                    and re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(row[index]))}
+        self._database().load_rates([world_rate["rate_col"]], sorted(days))
 
     @staticmethod
     def _days(a, b):
@@ -1224,11 +1256,3 @@ class KnowledgeTableQuery:
             return (datetime.date.fromisoformat(str(b)[:10]) - datetime.date.fromisoformat(str(a)[:10])).days
         except Exception:
             return 0
-
-    @staticmethod
-    def _coerce(v, aff):
-        if v is None:
-            return None
-        if aff in ("INTEGER", "REAL"):
-            return coerce_numeric(v, aff)
-        return str(v)

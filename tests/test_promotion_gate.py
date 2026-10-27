@@ -2,7 +2,8 @@
 from contextlib import contextmanager
 from unittest.mock import patch
 
-from deploy.gcp.release_gate import describe_build, verify_build, verify_launch
+from db.sync.app_migrations import CHAT_MIGRATIONS
+from deploy.gcp.release_gate import describe_build, validate_manifest, verify_build, verify_launch
 
 
 @contextmanager
@@ -47,6 +48,17 @@ def test_build_success_cannot_substitute_for_hosted_evidence():
     with rejected(): verify_launch(manifest, {'source_commit': 'a'*40})
 
 
+def test_manifest_attests_the_chat_migration_the_release_needs():
+    """An engine refuses to start on a database missing a migration its code needs (REQUIRE_CURRENT_SCHEMA), so a
+    manifest attests the current one: the gate pinned 11 while the request database's preparations needed 12."""
+    manifest = {'source_commit': 'a'*40, 'weights_manifest_sha256': 'c'*64,
+                'chat_migration': CHAT_MIGRATIONS[-1].version,
+                'rollback': {'engine': 'e', 'chat': 'c', 'hosting': 'h'}}
+    validate_manifest(manifest)
+    manifest['chat_migration'] = CHAT_MIGRATIONS[-1].version - 1
+    with rejected(): validate_manifest(manifest)
+
+
 def test_cli_resolves_the_windows_sdk_entry_point():
     executable = r'C:\Google Cloud SDK\bin\gcloud.CMD'
     with patch('deploy.gcp.release_gate.shutil.which', return_value=executable), \
@@ -70,6 +82,7 @@ if __name__ == '__main__':
     test_exact_tested_digest_passes()
     test_untested_promotion_is_rejected()
     test_build_success_cannot_substitute_for_hosted_evidence()
+    test_manifest_attests_the_chat_migration_the_release_needs()
     test_cli_resolves_the_windows_sdk_entry_point()
     test_missing_sdk_does_not_bypass_verification()
     print('Promotion gate: all checks passed')

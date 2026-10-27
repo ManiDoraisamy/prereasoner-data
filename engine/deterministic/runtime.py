@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 from engine.deterministic.emitter.py import GeneratedPackage
 from engine.deterministic.emitter.sql import GeneratedSQL
 from engine.deterministic.plan import AnalysisPlan
-from engine.numeric import DECIMAL_PRECISION, canonical_decimal
+from engine.numeric import DECIMAL_PRECISION, canonical_decimal, parse_decimal
 
 # A relationship emitted as one-to-one that finds several rows is a wrong plan: the generated program
 # fails rather than pick a row. The filter is installed once for the process. Set per call inside
@@ -160,6 +160,7 @@ def execute_sql_views(
     transaction = (
         connection.begin_nested() if connection.in_transaction() else connection.begin()
     )
+    numbers = program.manifest.get("view_numbers") or {}
     try:
         for statement in program.statements:
             connection.execute(text(statement))
@@ -169,7 +170,12 @@ def execute_sql_views(
             result = connection.execute(
                 text(f"SELECT * FROM {_quote_identifier(view_name)}{limit}")
             )
-            materialized.append(tuple(dict(row._mapping) for row in result))
+            numeric = frozenset(numbers.get(view_name, ()))
+            materialized.append(tuple(
+                {column: _number(value) if column in numeric else value
+                 for column, value in row._mapping.items()}
+                for row in result
+            ))
         for view_name in reversed(view_names):
             connection.execute(
                 text(f"DROP VIEW IF EXISTS {_quote_identifier(view_name)}")
@@ -284,6 +290,19 @@ def _canonical_rows(rows: tuple[dict[str, object], ...], *, ordered=False):
         for row in rows
     )
     return normalized if ordered else tuple(sorted(normalized, key=repr))
+
+
+def _number(value):
+    """A number a SQL stage returned, as the Python program holds it: an integer stays one, and decimal text or a
+    binary float becomes the Decimal it names (a float through its shortest decimal, as ExactDecimal reads it)."""
+    if value is None or type(value) is int or isinstance(value, Decimal):
+        return value
+    if isinstance(value, (str, float)):
+        try:
+            return parse_decimal(value, enforce_input_bounds=False)
+        except ValueError:
+            return value
+    return value
 
 
 def _quote_identifier(value: str) -> str:

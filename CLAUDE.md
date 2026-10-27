@@ -78,7 +78,8 @@ Extend these owners. Do not build parallel replacements.
 | World grounding and knowledge joins | `engine/knowledge_query.py` |
 | The pool contract, the selection record (`PoolSelection`) and its post-ranking rule | `engine/sql_rank.py` |
 | Table normalization and canonical planner table names | `engine/tables.py` |
-| World-table maintenance catalog (what is maintained, its cadence, when it last refreshed) | `db/sync/schedule.py` — the ONE writer of `knowledgebase.schedule`, read at serving time by `engine/pg.py:PgQuery._table_freshness` |
+| World-table maintenance catalog (what is maintained, its cadence, when it last refreshed) | `db/sync/schedule.py` — the ONE writer of `knowledgebase.schedule`, read at serving time by `engine/knowledge_tables.py:KnowledgeTableQuery._table_freshness` from the request database's copy |
+| The request database every question runs on (one private SQLite database: the request's tables, its bridges, the knowledgebase rows it reaches), table preparation (routes, cell candidates, reached rows; `chat.prepared_table`), and question-time knowledgebase reads | `engine/prepared.py` — every executor (the readers' pool, the deterministic plan, compose, the world checks, the hybrid search) runs on its database; PostgreSQL holds conversations and the shared knowledgebase |
 | Private reference validation, persistence, and request selection | `engine/master.py` |
 | Runtime model loading and overlay | `engine/encoder_overlay.py` |
 | Runtime model bundle | `engine/data/`, pinned by `engine/data/weights_manifest.json` |

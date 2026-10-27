@@ -1,16 +1,11 @@
-"""Persistence and execution for connected and semantic request-local bridges."""
+"""Connected and semantic bridges, in the request's database (engine/prepared.py)."""
 from __future__ import annotations
 
-import hashlib
 import re
 
 import numpy as np
-from psycopg2.extras import execute_values
 
-from engine import request_timing
-from engine.embeddings import pgvector_literal
-from engine.knowledge_tables import KnowledgeTableQuery
-from engine.pg import _PGTYPE, _pg
+from engine.prepared import preparations, vector_blob
 from engine.tables import qident, qlit
 
 
@@ -21,12 +16,8 @@ def _norm_vec(value):
 
 
 class KnowledgeBridgeMixin:
-    """Own the physical bridge tables and hybrid pgvector query path."""
+    """Own the bridge tables a world join reads and the hybrid search over free text."""
 
-    CONN_DDL = (
-        '("column" TEXT, "value" TEXT, "world_type" TEXT, "world_key" TEXT, '
-        '"country" TEXT, "world_qid" TEXT, "entity_qid" TEXT, "context" TEXT)'
-    )
     TYPE_QID = {
         "city": "Q515", "country": "Q6256", "state": "Q35657",
         "continent": "Q5107", "element": "Q11344",
@@ -35,157 +26,46 @@ class KnowledgeBridgeMixin:
     def _conn_bridge_name(self, main_table):
         return f"{main_table} connected to knowledgebase"
 
-    def _materialize(self, inner_sql):
-        cursor = self._rconn().cursor()
-        cursor.execute(f"SELECT b.cell, b.wk FROM ({inner_sql}) AS b(cell, wk)")
-        return cursor.fetchall()
+    def _bridge_select(self, main_table, route_column, fields=("value", "world_key"), names=None):
+        """The SELECT of one routed column's bridge rows: the cell and what it names, each ``fields`` column under
+        its name in ``names`` when given (SQLite names a subquery's columns only by their aliases)."""
+        selected = ", ".join(qident(field) + (f" AS {qident(name)}" if name else "")
+                             for field, name in zip(fields, names or (None,) * len(fields)))
+        return (f'SELECT {selected} FROM main.{qident(self._conn_bridge_name(main_table))} '
+                f'WHERE "column" = {qlit(route_column)}')
 
-    # ---- bridge state hash: rebuild only what changed ---------------------------------------------------------
-    # The connected bridge is a pure function of (route column, world type, resolved pairs) and the
-    # world snapshot they were resolved against. A follow-up question on unchanged tables used to
-    # re-run the whole persist anyway — DROP legacy, CREATE, catalog check, DELETE, one INSERT per
-    # row, COMMIT — per routed column, per turn. The hash gate skips that rewrite when nothing it
-    # depends on changed; the resolution slides still stream (the browser expects them every turn).
-    _BRIDGE_STATE = "_bridge_state"                       # per-conversation-schema hash ledger
-
-    def _bridge_world_version(self):
-        """Salt for the state hash: the world data's newest refresh + the model revision set. Either
-        moving invalidates every stored bridge hash, so a resync or a promoted model rebuilds."""
-        stamp = self._kb_rows(
-            "SELECT COALESCE(max(last_refreshed_at)::text, '') FROM knowledgebase.\"schedule\"")
-        from engine import model_revisions
-        revisions = sorted((k, str(v)) for k, v in vars(model_revisions).items() if k.isupper())
-        return f"{stamp[0][0] if stamp else ''}|{revisions}"
-
-    def _bridge_state_hash(self, route_column, world_type, pairs):
-        try:
-            payload = repr(("entity-qid-v2", route_column, world_type, sorted({(c, k) for c, k in pairs if k}),
-                            self._bridge_world_version()))
-            return hashlib.sha256(payload.encode("utf-8", "replace")).hexdigest()
-        except Exception:                                 # noqa: BLE001 — no hash -> just rebuild
-            return None
-
-    def _bridge_rows(self, cursor, route_column, world_type, pairs):
-        """The bridge rows for `pairs` — shared by the write path and the reuse path (slides only)."""
-        keys = sorted({key for _, key in pairs if key})
-        countries = {}
-        if keys and world_type == "city":
-            cursor.execute(
-                'SELECT qid, canon_country FROM knowledgebase."words" '
-                "WHERE type='city' AND qid = ANY(%s)",
-                (keys,),
-            )
-            for qid, country in cursor.fetchall():
-                if country and not countries.get(qid):
-                    countries[qid] = country
-        elif keys:
-            cursor.execute(
-                'SELECT canonical, canon_country FROM knowledgebase."words" '
-                "WHERE type=%s AND canonical = ANY(%s)",
-                (world_type, keys),
-            )
-            countries = {canonical: (country or canonical)
-                         for canonical, country in cursor.fetchall()}
-            if world_type == "country":
-                for key in keys:
-                    countries.setdefault(key, key)
+    def _bridge_rows(self, table, route_column, world_type, pairs):
+        """The bridge rows for ``pairs`` [(cell or (cell, row country), key)]: (column, value, world_type, world_key,
+        country, world_qid, entity_qid, context). A city's key is its qid; another type's key is its canonical name,
+        whose country and qid its table's preparation holds (engine/prepared.py)."""
+        bridge = self._prepared(table).columns.get(route_column, {})
         type_qid = self.TYPE_QID.get(world_type)
-        entity_qids = {key if world_type == "city" else key.lower(): key
-                       for key in keys if re.fullmatch(r"Q\d+", key)}
-        if keys and world_type != "city":
-            # Match the existing name-bridge's canonical -> QID tie rule exactly.
-            cursor.execute(
-                'SELECT DISTINCT ON (lower(canonical)) lower(canonical), qid '
-                'FROM knowledgebase."words" WHERE type=%s AND lower(canonical)=ANY(%s) '
-                'AND qid IS NOT NULL ORDER BY lower(canonical), qid',
-                (world_type, [key.lower() for key in keys]),
-            )
-            entity_qids.update(cursor.fetchall())
         seen = set()
         rows = []
         for cell, key in pairs:
-            if key and (cell, key) not in seen:
-                seen.add((cell, key))
-                cell, context = cell if isinstance(cell, tuple) else (cell, "")
-                rows.append((route_column, cell, world_type, key, countries.get(key), type_qid,
-                             entity_qids.get(key if world_type == "city" else key.lower()), context))
+            if not key or (cell, key) in seen:
+                continue
+            seen.add((cell, key))
+            cell, context = cell if isinstance(cell, tuple) else (cell, "")
+            if world_type == "city":
+                country, entity = bridge.get("countries", {}).get(key), None
+            else:
+                # A canonical name's country, else the name itself; a country no row names is itself.
+                named = bridge.get("names", {}).get(key)
+                country = named["country"] if named else (key if world_type == "country" else None)
+                entity = named["qid"] if named else None
+            if entity is None and re.fullmatch(r"Q\d+", key):
+                entity = key                                 # a city's or a non-geographic entity's key is its qid
+            rows.append((route_column, cell, world_type, key, country, type_qid, entity, context))
         return rows
 
-    def _persist_connected(self, main_table, route_column, world_type, pairs):
-        schema = self._pg_schema
-        bridge_name = self._conn_bridge_name(main_table)
-        cursor = self._rconn().cursor()
-        select_sql = (
-            f'SELECT "value", "world_key" FROM {qident(schema)}.{qident(bridge_name)} '
-            f'WHERE "column" = {qlit(route_column)}'
-        )
-        state_hash = self._bridge_state_hash(route_column, world_type, pairs)
-        if state_hash:
-            # Fresh = same hash recorded AND the bridge table actually exists (a dropped table with
-            # a surviving ledger row must rebuild, not serve a SELECT against nothing). The ledger
-            # table is probed via to_regclass FIRST — naming it in a query before it exists is a
-            # plan-time error, not an empty result.
-            cursor.execute(
-                "SELECT to_regclass(%s) IS NOT NULL AND to_regclass(%s) IS NOT NULL",
-                (f'"{schema}"."{self._BRIDGE_STATE}"', f'"{schema}"."{bridge_name}"'),
-            )
-            if cursor.fetchone()[0]:
-                cursor.execute(
-                    f'SELECT "hash" FROM {qident(schema)}.{qident(self._BRIDGE_STATE)} '
-                    'WHERE "bridge" = %s AND "column" = %s',
-                    (bridge_name, route_column),
-                )
-                row = cursor.fetchone()
-                if row and row[0] == state_hash:
-                    self._emit_resolutions(self._bridge_rows(cursor, route_column, world_type, pairs))
-                    request_timing.count("bridge_reuse_n")
-                    return select_sql
-        cursor.execute(f"CREATE SCHEMA IF NOT EXISTS {qident(schema)}")
-        legacy_bridge = f"{main_table} connected to wikipedia"          # pre-rename bridge in existing conversations
-        cursor.execute(f"DROP TABLE IF EXISTS {qident(schema)}.{qident(legacy_bridge)}")
-        cursor.execute(
-            f"CREATE TABLE IF NOT EXISTS {qident(schema)}.{qident(bridge_name)} {self.CONN_DDL}"
-        )
-        cursor.execute(f'ALTER TABLE {qident(schema)}.{qident(bridge_name)} '
-                       'ADD COLUMN IF NOT EXISTS "entity_qid" TEXT')
-        cursor.execute(f'ALTER TABLE {qident(schema)}.{qident(bridge_name)} '
-                       'ADD COLUMN IF NOT EXISTS "context" TEXT')
-        cursor.execute(
-            "SELECT 1 FROM information_schema.columns WHERE table_schema=%s AND table_name=%s "
-            "AND column_name='world_qid'",
-            (schema, bridge_name),
-        )
-        if not cursor.fetchone():
-            cursor.execute(
-                f'ALTER TABLE {qident(schema)}.{qident(bridge_name)} '
-                'ADD COLUMN IF NOT EXISTS "world_qid" TEXT'
-            )
-        cursor.execute(
-            f'DELETE FROM {qident(schema)}.{qident(bridge_name)} WHERE "column" = %s',
-            (route_column,),
-        )
-        rows = self._bridge_rows(cursor, route_column, world_type, pairs)
-        if rows:
-            # ONE paged multi-row INSERT — the same per-row-round-trip fix as the sheet upload.
-            execute_values(
-                cursor,
-                f'INSERT INTO {qident(schema)}.{qident(bridge_name)} '
-                '("column", "value", "world_type", "world_key", "country", "world_qid", "entity_qid", "context") VALUES %s',
-                rows, page_size=500,
-            )
-        if state_hash:
-            cursor.execute(
-                f"CREATE TABLE IF NOT EXISTS {qident(schema)}.{qident(self._BRIDGE_STATE)} "
-                '("bridge" TEXT, "column" TEXT, "hash" TEXT, PRIMARY KEY ("bridge", "column"))'
-            )
-            cursor.execute(
-                f"INSERT INTO {qident(schema)}.{qident(self._BRIDGE_STATE)} VALUES (%s,%s,%s) "
-                'ON CONFLICT ("bridge", "column") DO UPDATE SET "hash" = EXCLUDED."hash"',
-                (bridge_name, route_column, state_hash),
-            )
-        self._rconn().commit()
+    def _persist_connected(self, table, route_column, world_type, pairs):
+        """Hold the bridge rows of ``pairs`` for ``route_column`` of ``table`` in the request's database, stream the
+        matches, and return the SELECT of the cell and its key."""
+        rows = self._bridge_rows(table, route_column, world_type, pairs)
+        self._database().replace_bridge(self._conn_bridge_name(table["name"]), route_column, rows)
         self._emit_resolutions(rows)
-        return select_sql
+        return self._bridge_select(table["name"], route_column)
 
     @staticmethod
     def _emit_resolutions(rows):
@@ -211,82 +91,75 @@ class KnowledgeBridgeMixin:
         except Exception:  # noqa: BLE001 - trace transport must not change an answer
             pass
 
-    def _city_bridge_sql(self, norm, main_table, route_column, context_country):
-        inner = super()._city_bridge_sql(norm, main_table, route_column, context_country)
-        if not inner:
-            return None
-        return self._persist_connected(
-            main_table, route_column, "city", self._materialize(inner),
-        )
+    @staticmethod
+    def _table(norm, main_table):
+        return next((table for table in norm if table["name"] == main_table), None)
 
-    def _cell_bridge_sql(self, norm, main_table, route_column, world_type, context_country=None):
-        inner = super()._cell_bridge_sql(
-            norm, main_table, route_column, world_type, context_country,
-        )
-        if not inner:
+    def _city_bridge_sql(self, norm, main_table, route_column):
+        pairs = self._city_pairs(norm, main_table, route_column)
+        if not pairs:
             return None
-        return self._persist_connected(
-            main_table, route_column, world_type, self._materialize(inner),
-        )
+        return self._persist_connected(self._table(norm, main_table), route_column, "city", pairs)
+
+    def _cell_bridge_sql(self, norm, main_table, route_column, world_type):
+        """The bridge of a country, state or element column."""
+        pairs = self._name_pairs(norm, main_table, route_column)
+        if not pairs:
+            return None
+        return self._persist_connected(self._table(norm, main_table), route_column, world_type, pairs)
 
     def _city_bridge_disamb_sql(self, norm, main_table, route_column, country_column):
-        inner = super()._city_bridge_disamb_sql(norm, main_table, route_column, country_column)
-        if not inner:
+        pairs = self._city_disamb_pairs(norm, main_table, route_column, country_column)
+        if not pairs:
             return None
-        cursor = self._rconn().cursor()
-        cursor.execute(f"SELECT * FROM ({inner}) AS resolved(cell, context, qid)")
-        pairs = [((cell, context), qid) for cell, context, qid in cursor.fetchall()]
-        self._persist_connected(main_table, route_column, "city", pairs)
-        return (f'SELECT "value", "context", "entity_qid" FROM '
-                f'{qident(self._pg_schema)}.{qident(self._conn_bridge_name(main_table))} '
-                f'WHERE "column"={qlit(route_column)}')
+        self._persist_connected(self._table(norm, main_table), route_column, "city", pairs)
+        return self._bridge_select(main_table, route_column, ("value", "context", "entity_qid"))
 
-    def _persist_main_unconnected(self, cursor, schema, table, planner_schema, plan):
+    def _hold_unconnected(self, database, table, planner_schema, plan):
+        """Hold the searched table with a row key, and one vector per free-text cell, in the request's database.
+        A column's vectors are kept with the table's preparation in this process (engine/prepared.py)."""
         table_name = table["name"]
         columns = table["columns"]
         rows = table["rows"]
+        keyed = f"{table_name} searched"
         affinities = {
             column["name"]: column["affinity"]
             for column in planner_schema if column["table"] == table_name
         }
-        cursor.execute(f"DROP TABLE IF EXISTS {qident(schema)}.{qident(table_name)} CASCADE")
-        definitions = ['"__pk" BIGINT'] + [
-            f'{qident(column)} {_PGTYPE.get(affinities.get(column, "TEXT"), "TEXT")}'
+        connection = database.connection
+        connection.execute(f"DROP TABLE IF EXISTS main.{qident(keyed)}")
+        definitions = ['"__pk" INTEGER'] + [
+            f'{qident(column)} '
+            f'{"TEXT COLLATE decimal" if affinities.get(column) == "REAL" else affinities.get(column, "TEXT")}'
             for column in columns
         ]
-        cursor.execute(
-            f"CREATE TABLE {qident(schema)}.{qident(table_name)} ({', '.join(definitions)})"
-        )
-        placeholders = ",".join(["%s"] * (len(columns) + 1))
-        insert = f"INSERT INTO {qident(schema)}.{qident(table_name)} VALUES ({placeholders})"
-        for primary_key, row in enumerate(rows):
-            values = [
-                KnowledgeTableQuery._coerce(row[index], affinities.get(columns[index], "TEXT"))
-                for index in range(len(columns))
-            ]
-            cursor.execute(insert, [primary_key, *values])
-
+        connection.execute(f"CREATE TABLE main.{qident(keyed)} ({', '.join(definitions)})")
+        from engine.prepared import _cell
+        connection.executemany(
+            f"INSERT INTO main.{qident(keyed)} VALUES ({','.join('?' * (len(columns) + 1))})",
+            ([primary_key, *(_cell(row[index] if index < len(row) else None, affinities.get(columns[index], "TEXT"))
+                             for index in range(len(columns)))]
+             for primary_key, row in enumerate(rows)))
         unconnected = f"{table_name} unconnected to knowledgebase"
-        legacy_unconnected = f"{table_name} unconnected to wikipedia"      # pre-rename bridge in existing conversations
-        cursor.execute(f"DROP TABLE IF EXISTS {qident(schema)}.{qident(legacy_unconnected)}")
-        cursor.execute(f"DROP TABLE IF EXISTS {qident(schema)}.{qident(unconnected)}")
-        cursor.execute(
-            f"CREATE TABLE {qident(schema)}.{qident(unconnected)} "
-            f'("__pk" BIGINT, "column" TEXT, "value" TEXT, "embedding" vector({self.hdim}))'
-        )
-        insert_vector = (
-            f"INSERT INTO {qident(schema)}.{qident(unconnected)} VALUES (%s,%s,%s,%s::vector)"
-        )
+        connection.execute(f"DROP TABLE IF EXISTS main.{qident(unconnected)}")
+        connection.execute(f'CREATE TABLE main.{qident(unconnected)} '
+                           '("__pk" INTEGER, "column" TEXT, "value" TEXT, "embedding" BLOB)')
+        preparation = self._prepared(table)
         for column in plan["unconn"]:
             index = columns.index(column)
             texts = ["" if row[index] is None else str(row[index]) for row in rows]
-            vectors = self._encode(texts)
-            for primary_key, (text, vector) in enumerate(zip(texts, vectors)):
-                if text.strip():
-                    cursor.execute(
-                        insert_vector,
-                        [primary_key, column, text, pgvector_literal(_norm_vec(vector))],
-                    )
+            # The column's vectors are encoded once per table version in this process and kept with its
+            # preparation: a free-text column larger than the encoder's cache was encoded again by every search.
+            vectors = preparation.extras.get(("vectors", column))
+            if vectors is None:
+                vectors = self._encode(texts)
+                preparations().keep_extra(preparation, ("vectors", column), vectors, vectors.nbytes)
+            connection.executemany(
+                f"INSERT INTO main.{qident(unconnected)} VALUES (?, ?, ?, ?)",
+                ([primary_key, column, text, vector_blob(_norm_vec(vector))]
+                 for primary_key, (text, vector) in enumerate(zip(texts, vectors)) if text.strip()))
+        connection.commit()
+        return keyed, unconnected
 
     def _serve_hybrid(self, norm, fks, planner_schema, question, predicate, plan,
                       country, as_of, schema, mention=(), filters=()):
@@ -297,16 +170,14 @@ class KnowledgeBridgeMixin:
         the rows that mention them answer it, and the similarity orders them. With no verbatim mention
         anywhere in the sheet, the search stays semantic and ranks every row that passes the world filter.
         ``filters`` are the cell values the question quotes, as (column, value) on this sheet: exact
-        filters ('in Paris'), never search words.
+        filters ('in Paris'), never search words. ``country`` is the named country's label.
         """
-        del fks
+        del fks, schema
         table = plan["table"]
         table_name = table["name"]
         freetext = plan["freetext"]
-        self._pg_schema = schema
-        predicate_vector = pgvector_literal(_norm_vec(self._encode([predicate])[0]))
+        predicate_vector = vector_blob(_norm_vec(self._encode([predicate])[0]))
         connected = self._conn_bridge_name(table_name)
-        unconnected = f"{table_name} unconnected to knowledgebase"
         route_column = plan["conn"][0][0] if plan["conn"] else None
         text_index = table["columns"].index(freetext)
 
@@ -316,43 +187,36 @@ class KnowledgeBridgeMixin:
 
         literal = bool(mention) and any(mentions(row[text_index]) for row in table["rows"])
         patterns = [r"\y(" + "|".join(forms) + r")\y" for _word, forms in mention] if literal else []
-        connection = _pg()
-        try:
-            cursor = connection.cursor()
-            cursor.execute(f"CREATE SCHEMA IF NOT EXISTS {qident(schema)}")
-            cursor.execute(f"SET search_path TO {qident(schema)}, knowledgebase, public")
-            self._persist_main_unconnected(cursor, schema, table, planner_schema, plan)
-            connection.commit()
-            for column, world_type in plan["conn"]:
-                if world_type == "city":
-                    self._city_bridge_sql(norm, table_name, column, country)
-                elif world_type:
-                    self._cell_bridge_sql(norm, table_name, column, world_type, country)
-            display = ", ".join(f"m.{qident(column)}" for column in table["columns"])
-            conditions = []
-            if country and route_column:
-                conditions.append(
-                    f"EXISTS (SELECT 1 FROM {qident(schema)}.{qident(connected)} c "
-                    f"WHERE c.\"column\" = {qlit(route_column)} "
-                    f"AND lower(c.\"value\") = lower(m.{qident(route_column)}) "
-                    f"AND c.\"country\" = {qlit(country)})"
-                )
-            conditions += [f"lower(m.{qident(column)}) = lower(%s)" for column, _value in filters]
-            conditions += [f"m.{qident(freetext)} ~* %s" for _ in patterns]
-            sql = (
-                f"SELECT {display} FROM {qident(schema)}.{qident(table_name)} m "
-                f"JOIN {qident(schema)}.{qident(unconnected)} u ON u.\"__pk\" = m.\"__pk\" "
-                f"AND u.\"column\" = {qlit(freetext)} "
-                + (f"WHERE {' AND '.join(conditions)} " if conditions else "")
-                + f'ORDER BY u."embedding" <=> %s::vector LIMIT {self.HYBRID_LIMIT}'
+        database = self._database()
+        keyed, unconnected = self._hold_unconnected(database, table, planner_schema, plan)
+        for column, world_type in plan["conn"]:
+            if world_type == "city":
+                self._city_bridge_sql(norm, table_name, column)
+            elif world_type:
+                self._cell_bridge_sql(norm, table_name, column, world_type)
+        display = ", ".join(f"m.{qident(column)}" for column in table["columns"])
+        conditions = []
+        if country and route_column and database.has_table(connected):
+            conditions.append(
+                f"EXISTS (SELECT 1 FROM main.{qident(connected)} c "
+                f"WHERE c.\"column\" = {qlit(route_column)} "
+                f"AND lower(c.\"value\") = lower(m.{qident(route_column)}) "
+                f"AND c.\"country\" = {qlit(country)})"
             )
-            cursor.execute(sql, [*(value for _column, value in filters), *patterns, predicate_vector])
-            result_columns = [description[0] for description in cursor.description]
-            result_rows = [["" if value is None else value for value in row]
-                           for row in cursor.fetchall()]
-            connection.commit()
-        finally:
-            connection.close()
+        conditions += [f"lower(m.{qident(column)}) = lower(?)" for column, _value in filters]
+        conditions += [f"regexp_matches(m.{qident(freetext)}, ?)" for _ in patterns]
+        sql = (
+            f"SELECT {display} FROM main.{qident(keyed)} m "
+            f"JOIN main.{qident(unconnected)} u ON u.\"__pk\" = m.\"__pk\" "
+            f"AND u.\"column\" = {qlit(freetext)} "
+            + (f"WHERE {' AND '.join(conditions)} " if conditions else "")
+            # The row key breaks a tie in similarity, so equal scores keep the sheet's order.
+            + f'ORDER BY vector_distance(u."embedding", ?), m."__pk" LIMIT {self.HYBRID_LIMIT}'
+        )
+        cursor = database.connection.execute(
+            sql, [*(value for _column, value in filters), *patterns, predicate_vector])
+        result_columns = [description[0] for description in cursor.description]
+        result_rows = [["" if value is None else value for value in row] for row in cursor.fetchall()]
 
         shown = []
         if country and route_column:
@@ -380,5 +244,5 @@ class KnowledgeBridgeMixin:
                              "filters": [f"{column} = {value}" for column, value in filters],
                              "connected_bridge": connected, "unconnected_bridge": unconnected},
             "provenance": None, "warnings": [], "dims": None,
-            "model": "engine - unified encoder: persisted world bridge + semantic pgvector rank",
+            "model": "engine - unified encoder: world bridge + semantic rank",
         }

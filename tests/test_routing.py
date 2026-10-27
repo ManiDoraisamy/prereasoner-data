@@ -65,8 +65,8 @@ def test_composed_gate_with_no_world_match_delegates_without_crashing():
         serve=lambda *args, **kwargs: expected,
     )
     query._composed = lambda tables, question: True
-    query._world_lookup = lambda tables, sub: None
-    result = query._serve_locked(
+    query._world_lookup = lambda tables: None
+    result = query.serve(
         [{"name": "orders", "columns": ["amount"], "rows": [[1], [2]]}],
         "total amount", "user-a",
     )

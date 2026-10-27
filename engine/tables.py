@@ -1,7 +1,7 @@
 """Multi-table interpretable text->SQL over uploaded CSVs. N tables joined on DETERMINISTIC foreign keys
 (engine.relations): FK discovery gives the join graph, the model only PICKS which tables/columns the
 question refers to (learned intent + name/representation binding) and the SQL is assembled with qualified
-`"t"."c"` identifiers, guarded SELECT-only, and executed on an in-memory SQLite with every table created.
+`"t"."c"` identifiers, guarded SELECT-only, and executed on the request's SQLite database (engine/prepared.py).
 Per-token readout is read PER LAYER through the SAME anchored model, so a JOIN's `"orders"."customer_id"`
 fires is_field + the FK edge to `"customers"."customer_id"`.
 
@@ -23,8 +23,7 @@ import numpy as np
 from engine import request_timing
 from engine.config import DATA_DIR, BASE_MODEL_ID as MODEL_ID  # noqa: F401 - public compatibility export
 from engine.fk_edges import edges
-from engine.numeric import (parse_decimal, register_sqlite_decimal, sqlite_numeric, wire_decimal,
-                           observed_numeric_affinity, stored_as_numbers)
+from engine.numeric import parse_decimal, wire_decimal, observed_numeric_affinity, stored_as_numbers
 from engine.relations import relate
 from engine.request_validation import canonical_table_name
 from engine.column_names import canonical_columns
@@ -206,26 +205,33 @@ def table_from_rows(name, columns, rows):
 
 
 class _PoolRuns:
-    """The in-memory SQLite copy of one request's tables that ``TableQuery.select_query`` runs its pools
-    on, and whether each query it ran there finished and the shape of what it returned: a pool member is run
+    """The database ``TableQuery.select_query`` runs its pools on, the request's (engine/prepared.py) holding its
+    tables, and whether each query it ran there finished and the shape of what it returned: a pool member is run
     once per selection."""
 
     def __init__(self, planner, tablemap, sch):
-        self._planner, self._tablemap, self._sch = planner, tablemap, sch
-        self._connection = None
+        self._tablemap, self._sch = tablemap, sch
+        self._database = None
+        self._own = None
         self.outcomes = {}
         # (rows, columns) of each query that ran: the result shape the re-scorer reads
         self.shapes = {}
 
+    def database(self):
+        if self._database is None:
+            from engine.prepared import RequestDatabase, current_database
+            self._database = current_database()
+            if self._database is None:                    # outside a served request: a database of its own
+                self._database = self._own = RequestDatabase()
+        return self._database
+
     def connection(self):
-        if self._connection is None:
-            self._connection = self._planner._sqlite_tables(self._tablemap, self._sch)
-        return self._connection
+        return self.database().load(self._tablemap, self._sch)
 
     def close(self):
-        if self._connection is not None:
-            self._connection.close()
-            self._connection = None
+        if self._own is not None:
+            self._own.close()
+        self._database = self._own = None
 
 
 class TableQuery:
@@ -574,7 +580,6 @@ class TableQuery:
             try:
                 deterministic_plan = lower_select_query(
                     analysis_context.slug, candidate.query, sch, fks,
-                    postgres_row_identity=getattr(self, "postgres_row_identity", False),
                 )
             except UnsupportedDeterministicPlan:
                 deterministic_plan = None
@@ -602,34 +607,6 @@ class TableQuery:
             return False, "forbidden keyword"
         return True, "ok"
 
-    def _sqlite_tables(self, tablemap, sch):
-        """An in-memory SQLite database holding the request's normalized tables."""
-        con = sqlite3.connect(":memory:")
-        register_sqlite_decimal(con)
-        by_t = {}
-        for c in sch:
-            by_t.setdefault(c["table"], []).append(c)
-        for tname, cols in by_t.items():
-            declarations = []
-            for column in cols:
-                storage = "TEXT COLLATE decimal" if column["affinity"] == "REAL" else column["affinity"]
-                declarations.append(f'{qident(column["name"])} {storage}')
-            con.execute(f"CREATE TABLE {qident(tname)} (" + ", ".join(declarations) + ")")
-
-            def coerce(v, aff):
-                if v is None:
-                    return None
-                if aff in ("INTEGER", "REAL"):
-                    return sqlite_numeric(v, aff)
-                return str(v)
-            t = tablemap[tname]
-            ins = f"INSERT INTO {qident(tname)} VALUES ({','.join('?' * len(cols))})"
-            position = {name: index for index, name in enumerate(t["columns"])}
-            fields = [(position.get(c["name"]), c["affinity"]) for c in cols]
-            con.executemany(ins, ([coerce(r[index] if index is not None and index < len(r) else None, affinity)
-                                   for index, affinity in fields] for r in t["rows"]))
-        return con
-
     def _executable(self, pool, tablemap, runs):
         """Which pooled queries pass the guard and run to completion within their SQLite VM step
         budget (``engine.sql_rank.execution_op_limit``, which grows with the cells of the tables a
@@ -648,45 +625,55 @@ class TableQuery:
             return int(steps >= budget or expired())
         outcomes = []
         with request_timing.span("pool_execute"):
-            for candidate in pool:
-                remaining()
-                if candidate.sql in runs.outcomes:
-                    outcomes.append(runs.outcomes[candidate.sql])
-                    continue
-                ran = False
-                if self.guard(candidate.sql)[0]:
-                    con = runs.connection()
-                    steps, budget = 0, execution_op_limit(candidate.query, tablemap)
-                    interval = max(1, min(10000, budget))
-                    con.set_progress_handler(progress, interval)
-                    try:
-                        # Eligibility needs completion, but not a second materialized copy
-                        # of tens of thousands of result rows for each candidate.
-                        cursor = con.execute(candidate.sql)
-                        rows = 0
-                        while chunk := cursor.fetchmany(1024):
-                            rows += len(chunk)
-                            remaining()
-                        runs.shapes[candidate.sql] = (rows, len(cursor.description or ()))
-                        ran = True
-                    except sqlite3.Error:
-                        ran = False
-                runs.outcomes[candidate.sql] = ran
-                outcomes.append(ran)
+            try:
+                for candidate in pool:
+                    remaining()
+                    if candidate.sql in runs.outcomes:
+                        outcomes.append(runs.outcomes[candidate.sql])
+                        continue
+                    ran = False
+                    if self.guard(candidate.sql)[0]:
+                        con = runs.connection()
+                        steps, budget = 0, execution_op_limit(candidate.query, tablemap)
+                        interval = max(1, min(10000, budget))
+                        con.set_progress_handler(progress, interval)
+                        try:
+                            # Eligibility needs completion, but not a second materialized copy
+                            # of tens of thousands of result rows for each candidate.
+                            cursor = con.execute(candidate.sql)
+                            rows = 0
+                            while chunk := cursor.fetchmany(1024):
+                                rows += len(chunk)
+                                remaining()
+                            runs.shapes[candidate.sql] = (rows, len(cursor.description or ()))
+                            ran = True
+                        except sqlite3.Error:
+                            ran = False
+                    runs.outcomes[candidate.sql] = ran
+                    outcomes.append(ran)
+            finally:
+                if runs.outcomes:
+                    runs.database().restore_deadline()    # the request's own statements end at its deadline
         return tuple(outcomes)
 
     def execute(self, tablemap, sch, sql, query=None, deterministic_plan=None):
-        """Run one query on an in-memory SQLite copy of the tables (the local executor; the live
-        service executes on PostgreSQL through engine.pg)."""
-        from engine.sql_ast import SetQuery, SQLType, expression_type, render_query
+        """Run one query on the request's database (engine/prepared.py), outside a served request on a database of
+        its own: a deterministic plan through both programs (``_execute_deterministic``), else the query in the
+        exact decimal dialect."""
+        from engine.prepared import scratch_database
+        from engine.sql_ast import SetQuery, SQLType, render_query, value_type
 
-        con = self._sqlite_tables(tablemap, sch)
-        execution_sql = render_query(query, dialect="sqlite_decimal") if query is not None else sql
-        cur = con.execute(execution_sql)
-        rows = cur.fetchall()
+        with scratch_database() as database:
+            con = database.load(tablemap, sch)
+            if deterministic_plan is not None:
+                return self._execute_deterministic(tablemap, deterministic_plan)
+            execution_sql = render_query(query, dialect="sqlite_decimal") if query is not None else sql
+            cur = con.execute(execution_sql)
+            rows = cur.fetchall()
+            columns = [d[0] for d in cur.description]
         if query is not None:
             output = query.left if isinstance(query, SetQuery) else query
-            types = [expression_type(item.expression) for item in output.select]
+            types = [value_type(item.expression) for item in output.select]
             normalized = []
             for row in rows:
                 values = []
@@ -699,7 +686,66 @@ class TableQuery:
                     values.append(value)
                 normalized.append(tuple(values))
             rows = normalized
-        return [d[0] for d in cur.description], rows
+        return columns, rows
+
+    def _execute_deterministic(self, tablemap, plan, knowledgebase_release=None, labels=None):
+        """Run a served plan through both emitters on the request's database. ``labels`` resolves knowledgebase
+        entities to their labels for display (docs/SHEETS_AS_REASONING.md rule 5); a plan that reads the
+        knowledgebase cannot be shown without it, so every world trail passes it here, the one executor they
+        share."""
+        from sqlalchemy import create_engine
+        from sqlalchemy.pool import StaticPool
+
+        from engine.analysis import analysis_input_hash
+        from engine.config import (APP_ENV, deterministic_execution_mode, deterministic_persist_generated,
+                                   deterministic_python_row_limit)
+        from engine.deterministic.context import current_analysis_context, set_execution_record
+        from engine.deterministic.service import DeterministicAnalysis
+        from engine.prepared import current_database
+
+        context = current_analysis_context()
+        if context is None:
+            raise RuntimeError("deterministic execution requires a named-analysis context")
+        if labels is None and any(table.schema == "knowledgebase" for table in plan.tables):
+            raise RuntimeError("a plan that reads the knowledgebase needs its entity labels")
+        database = current_database()
+        if database is None:
+            raise RuntimeError("deterministic execution runs on the request's database")
+        shared = _SharedConnection(database.connection)
+        engine = create_engine("sqlite+pysqlite://", creator=lambda: shared, poolclass=StaticPool)
+        result = DeterministicAnalysis(
+            plan,
+            conversation_schema="main",
+            dataset_version=context.dataset_version or analysis_input_hash(list(tablemap.values())),
+            knowledgebase_release=knowledgebase_release,
+            labels=labels,
+        ).run(
+            engine,
+            mode=context.execution_mode or deterministic_execution_mode(),
+            estimated_rows=sum(
+                len(tablemap[name].get("rows") or ())
+                for name in {
+                    table_name
+                    for view in plan.views
+                    if hasattr(view, "tables")
+                    for table_name in view.tables
+                }
+                if name in tablemap
+            ),
+            python_row_limit=deterministic_python_row_limit(),
+            app_env=APP_ENV,
+            persist_generated=deterministic_persist_generated(),
+            conversation_id=context.conversation_id,
+            revision=context.revision,
+        )
+        set_execution_record(result.record())
+        shown = result.output_rows()
+        if shown:
+            columns = list(shown[0])
+        else:
+            columns = list(plan.view_columns()[str(plan.output)])
+        rows = [tuple(row.get(column) for column in columns) for row in shown]
+        return columns, rows
 
     # ---------- analytics (the /dimension per-cell view) ----------
     def _salient_evo(self, layers, ui):
@@ -859,6 +905,25 @@ class TableQuery:
             if current_analysis_context() is not None and required:
                 response["decomposition_required"] = required
         return response
+
+
+class _SharedConnection:
+    """The request's database connection as SQLAlchemy's pool hands it out: closing it leaves it open for the rest
+    of the request, which closes it (engine/prepared.py)."""
+
+    __slots__ = ("_connection",)
+
+    def __init__(self, connection):
+        object.__setattr__(self, "_connection", connection)
+
+    def __getattr__(self, name):
+        return getattr(object.__getattribute__(self, "_connection"), name)
+
+    def __setattr__(self, name, value):
+        setattr(object.__getattribute__(self, "_connection"), name, value)
+
+    def close(self):
+        pass
 
 
 def one_of_each_layout(graph, question):

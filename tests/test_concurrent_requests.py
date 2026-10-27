@@ -105,35 +105,38 @@ def test_two_questions_run_at_once_each_on_its_own_stream():
 
 
 def test_each_request_sees_only_its_own_planner_state():
-    """The conversation's schema, the request's connections, its question text and its typing buffer
-    lived on the one shared planner: with two questions at once, one uploaded into, computed over and
-    closed the connection of the other's conversation. Each request now writes and reads its own."""
+    """The request's connections, its question text and its typing buffer lived on the one shared planner:
+    with two questions at once, one computed over and closed the connection of the other's conversation. Each
+    request now writes and reads its own, and holds its own database (engine/prepared.py): one question's
+    tables and bridges never reach another's."""
     from engine.knowledge_query import KnowledgeQuery
-    from engine.pg import _TableQueryPg
+    from engine.prepared import current_database, scratch_database
     from engine.request_state import request_scope
 
     qw = KnowledgeQuery.__new__(KnowledgeQuery)            # the shared planner; no weights needed
-    q11 = _TableQueryPg.__new__(_TableQueryPg)             # its shared own-data executor
-    names = ("_pg_schema", "_con", "_rcn", "_rcn_used", "_kb_memo", "_q_orig", "_q_meaning", "_typing_run")
+    names = ("_rcn", "_rcn_used", "_kb_memo", "_q_orig", "_q_meaning", "_typing_run")
     meet = threading.Barrier(2, timeout=5)
     seen = {}
 
     def request(tag):
         def run():
-            with request_scope():
+            with request_scope(), scratch_database() as database:
                 for name in names:
                     setattr(qw, name, f"{tag}:{name}")
-                q11._pg_schema = f"{tag}:q11"
+                database.load({"t": {"columns": ["tag"], "rows": [[tag]]}},
+                              [{"table": "t", "name": "tag", "affinity": "TEXT"}])
                 meet.wait()                                # the other request has written its own values
-                seen[tag] = ({name: getattr(qw, name) for name in names}, q11._pg_schema)
+                rows = current_database().connection.execute("SELECT tag FROM t").fetchall()
+                seen[tag] = ({name: getattr(qw, name) for name in names}, rows)
         return run
 
     _run_together(request("a"), request("b"))
     for tag in ("a", "b"):
-        assert seen[tag] == ({name: f"{tag}:{name}" for name in names}, f"{tag}:q11"), seen[tag]
+        assert seen[tag] == ({name: f"{tag}:{name}" for name in names}, [(tag,)]), seen[tag]
     with request_scope():
-        assert qw._pg_schema is None and qw._typing_run is None, "a new request starts empty"
-    print("  PASS  each request reads only the planner state it wrote")
+        assert qw._rcn is None and qw._typing_run is None, "a new request starts empty"
+    assert current_database() is None, "a request's database ends with it"
+    print("  PASS  each request reads only the planner state and the database it wrote")
 
 
 def test_a_request_local_value_is_never_read_through_a_reused_id():
@@ -177,6 +180,10 @@ def test_a_request_closes_the_resolution_connection_it_opened():
         query.end_request()
         assert connection.closed and query._rcn is None
 
+    import contextlib
+
+    from engine import knowledge
+
     ended = []
     reasoner = KnowledgeReasoner.__new__(KnowledgeReasoner)
     reasoner.qw = SimpleNamespace(end_request=lambda: ended.append(True))
@@ -186,33 +193,47 @@ def test_a_request_closes_the_resolution_connection_it_opened():
 
     reasoner._serve = fails
     try:
-        reasoner.serve([], "total amount", "c_" + "0" * 32)
+        with patch.object(knowledge, "request_database", contextlib.nullcontext):
+            reasoner.serve([], "total amount", "c_" + "0" * 32)
     except RuntimeError:
         pass
     assert ended == [True], "a request that failed left its connection open"
     print("  PASS  a request closes the resolution connection it opened")
 
 
-def test_a_cleared_route_cache_never_fails_a_lookup():
-    """The route cache is shared by concurrent questions, and one clears it once it holds 100
-    tables. Its membership test and its read were two steps: a clear between them raised KeyError
-    out of the routing pass. The lookup is now one read."""
-    from engine.knowledge_query import KnowledgeQuery
+def test_two_questions_over_one_table_prepare_it_once():
+    """Concurrent questions share the process's preparations (engine/prepared.py). Two questions over a table
+    being prepared, as when a client asks before its sync's background preparation ends, wait for the one
+    preparation in progress: neither types and matches the cells again."""
+    from engine import prepared
 
-    qw = KnowledgeQuery.__new__(KnowledgeQuery)
-    table = {"name": "customers", "columns": ["city"], "rows": [["Paris"]]}
-    signature = qw._table_sig(table)
-    routes = {("customers", "city"): "city"}
+    computed = []
+    meet = threading.Barrier(2, timeout=5)
 
-    class ClearedBetweenTestAndRead(dict):
-        def __contains__(self, key):
-            found = dict.__contains__(self, key)
-            self.clear()                                   # another question's clear lands here
-            return found
+    class Resolver:
+        def prepare_table(self, table):
+            computed.append(table["name"])
+            time.sleep(0.2)                                # the other question arrives meanwhile
+            return {"routes": [[table["name"], "city", "city"]]}
 
-    qw.__dict__["_route_cache"] = ClearedBetweenTestAndRead({signature: (routes, [])})
-    assert qw.route(table) == routes
-    print("  PASS  a route cache cleared by another question never fails a lookup")
+    preparations = prepared.Preparations()
+    table = {"name": "customers", "columns": ["city"], "rows": [["Paris"], ["Lyon"]]}
+    got = {}
+
+    def ask(tag):
+        def run():
+            meet.wait()
+            got[tag] = preparations.get(Resolver(), table)
+        return run
+
+    with patch.object(prepared.Knowledge, "versions", lambda self: ("world", "entity")):
+        _run_together(ask("a"), ask("b"))
+        again = preparations.get(Resolver(), {"name": "customers", "columns": ["city"],
+                                              "rows": [["Paris"], ["Lyon"]]})
+    assert computed == ["customers"], f"prepared {len(computed)} times"
+    assert got["a"] is got["b"] is again, "both questions and a later one read the one preparation"
+    assert got["a"].routes == {("customers", "city"): "city"}
+    print("  PASS  two questions over one table prepare it once")
 
 
 class _Batch(Mapping):
@@ -422,7 +443,7 @@ TESTS = [
     test_each_request_sees_only_its_own_planner_state,
     test_a_request_local_value_is_never_read_through_a_reused_id,
     test_a_request_closes_the_resolution_connection_it_opened,
-    test_a_cleared_route_cache_never_fails_a_lookup,
+    test_two_questions_over_one_table_prepare_it_once,
     test_the_shared_tokenizer_is_called_one_at_a_time,
     test_another_requests_eviction_never_fails_a_cache_hit,
     test_a_finished_program_never_lifts_a_running_programs_escalation,

@@ -364,8 +364,9 @@ separate planner or a model-authored black box.
 
 ORM foreign-key attributes are related objects. Their physical scalar columns remain private mapped
 attributes, so `Order.customer_id` is a `Customer` while SQLAlchemy can still join through the stored
-key. The ORM binds directly to the authorized PostgreSQL conversation schema and shared
-knowledgebase schemas; production does not create a parallel SQLite schema.
+key. The ORM binds to the request's one database. (It bound to the authorized PostgreSQL conversation
+schema until 2026-10-27; since then every question runs on its own SQLite database, which both programs
+and every other executor read: "Every question runs on its own SQLite database" below.)
 
 `auto` execution uses Python for bounded small inputs and SQL above the configured row threshold;
 `verify` executes both and rejects unequal normalized rows at the first mismatching named stage.
@@ -4865,3 +4866,59 @@ Measured and left out: setting the engine's `OMP_NUM_THREADS` to its 4 vCPUs. Py
 instance (it sees 6 logical CPUs), and a Cloud Run job timed one reader pass at 1.52 s with 3 threads against 1.08 s
 with 4; on the serving revision the readers took 3.44 s against 3.51 s over the same 20 gate requests, so the setting
 was reverted (4c77f18, f013cd6).
+
+## Every question runs on its own SQLite database (2026-10-27)
+
+A question ran on PostgreSQL: each conversation had a schema holding its uploaded tables and the bridges matching
+their cells to knowledgebase entities. Every question re-checked and rewrote them, re-typed the columns when the
+instance had not, re-matched every cell, and read the knowledgebase row by row, behind a per-conversation lock
+(a 64-way process lock and an advisory lock across instances). On the 2026-10-27 release a question averaged
+67 statements (0.87 s of 7.5 s), column typing 0.46 s (2.4 s when it ran), and the readers' candidate pool already
+ran on an in-memory SQLite copy that the final answer then left for PostgreSQL.
+
+Now one private SQLite database serves the request (`engine/prepared.py:RequestDatabase`). `main` holds the
+request's tables as the planner types them, the bridges its routes build and the hybrid vectors; `knowledgebase`
+holds the instance's base image (the small tables whole, the catalog, the schedule, the small types' labels) and
+the rows each table's preparation reaches. Every executor reads it: the readers' pool, the decomposition probe, the
+deterministic plan of every route, compose's lowering, the world checks, the hybrid search and the slides. No lock
+remains: a request's bridges are its own.
+
+A table is prepared once per version of its content (`TablePreparation`): routes and typing evidence, every
+candidate entity of each cell of a routed column, the dominant entity type and exact matches of every other column,
+the knowledgebase rows and labels they reach, and the vectors of the matched city names. It starts in the
+background when a client syncs its sheets and is kept in `chat.prepared_table` (chat migration v12) for the
+conversation, at most 32 per conversation, deleted with it and not counted against storage. The nearest names of a
+non-geographic column's unmatched cells (an exact scan of the type's names, seconds per column) are read only when
+a question needs that column, and kept in the process.
+
+What stays on PostgreSQL at question time: conversation records and saved references, the exact-name lookup of a
+question's words (each name cached per instance), the rates a conversion reads (cached), labels missing from the
+image, and the nearby-places search. Fuzzy country, continent and state words are matched exactly in memory (1,386
+names); a fuzzy city word only among the sheet's cities, since a city the sheet never names matches none of its rows.
+
+Decimals stay exact on SQLite: the SQL program computes through the registered decimal functions (arithmetic,
+SUM/AVG/MIN/MAX, comparisons, ordering) and returns numbers as decimal text read back as Decimals
+(`view_numbers`); the Python program reads REAL columns through `ExactDecimal`. Both agree exactly at every stage
+(`tests.test_deterministic_emitters:test_both_programs_compute_exactly_on_the_request_database`), and the float
+tolerances those tests carried are gone. A query the typed AST runs directly renders in the same decimal dialect;
+SQLite orders any text above any number, so a decimal value (a REAL column, a SUM, a calculation, a subquery of one)
+compares with a number only through `decimal_cmp`, an untyped literal typed by its value (`HAVING SUM(sales) > 100`
+kept every group until it did; `tests.test_request_database`). `rowid` replaces `ctid` as the row identity of a
+table without a proven key, `lower()`/`upper()` fold every alphabet, and a statement ends at the request's deadline.
+
+Changes a user can see: text sorts by code point instead of en_US collation (Python already did); empty values
+sort last in both directions; the shown SQL uses `decimal_*` functions; a city typo in a question matches only the
+sheet's cities. The country a question names was meant to choose among a cell's namesake cities but never did (it
+compared a country QID with a country name); a cell's city now comes from the sheet alone (its row's country column,
+else the name's primary city, then population), since a filter's country is no evidence of which city a cell names:
+choosing London, Kentucky under 'in the United States' lets every namesake pass the filter
+(`tests.test_question_families`). A typo's nearest city is no longer dropped under a country filter.
+
+The Spider evaluator executes the selected query through the same executor, by serving's policy (`--backend auto`:
+the Python program, SQL when the plan cannot be lowered or is too large).
+
+Removed: `_load_user_schema`, `chat.working_table` writes, the PostgreSQL world executor (`PgQuery`,
+`_TableQueryPg`, `_orm_pg`, `_PgCon`), the bridge state ledger, the hybrid search's PostgreSQL tables, both
+conversation locks, the `postgres_numeric` dialect, the REPEATABLE READ branch, `tests/test_pg_upload.py` and the
+CI job that executed uploads through PostgreSQL NUMERIC. The 971 `c_*` schemas (116 MB) and `chat.working_table`
+stay until this release has soaked; then they are dropped, one schema per transaction.

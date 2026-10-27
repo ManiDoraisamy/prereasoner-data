@@ -136,10 +136,9 @@ def main():
             "rows": [["Ada", "Paris", 100], ["Bob", "Lyon", 80], ["Eve", "Berlin", 40], ["Sam", "Tokyo", 50]]}
 
     # ONE model instance (like production: the server loads a single KnowledgeReasoner). wr wraps a ComposedKnowledgeQuery
-    # at wr.composed; routing every composed call through wr.composed (instead of a SEPARATE instance) keeps a SINGLE set of
-    # per-schema connections. Two instances against the SAME `sub` schema DEADLOCK: instance A leaves its bridge build
-    # idle-in-transaction holding a lock on "<sub>.customers connected to knowledgebase", and instance B's
-    # `ALTER TABLE … ADD COLUMN world_qid` (knowledge_query._persist_connected) then blocks forever on that relation lock.
+    # at wr.composed; routing every composed call through wr.composed (instead of a SEPARATE instance) loads the models
+    # once. Each question builds its bridges in its own database (engine/prepared.py), so two instances or two questions
+    # on one conversation never share one (section E).
     print("loading KnowledgeReasoner (LoRA Qwen + bge + spaCy; slow on CPU)…", flush=True)
     t0 = time.time()
     wr = KnowledgeReasoner()
@@ -630,14 +629,12 @@ def main():
     ok("delegate: KnowledgeReasoner passes the France aggregate through unchanged (=180)", dv == 180, f"got={dv}")
 
     # ============================================================ (E) CONCURRENCY — no bridge deadlock ===========
-    # Regression guard. Two service instances handling concurrent requests for the SAME per-user sub (the normal
-    # multi-tab / cold-start-retry case) used to wedge each other: instance A left its bridge SELECTs idle-in-
-    # transaction holding read locks on "<sub>.customers connected to knowledgebase", and instance B's per-request
-    # `ALTER TABLE … ADD COLUMN world_qid` (an ACCESS EXCLUSIVE lock) blocked ~forever on that relation lock (833s
-    # measured). The fix: _rconn() is autocommit (no idle-in-transaction) AND the ADD COLUMN migration is guarded by
-    # an information_schema check (no exclusive lock once the column exists). Here we build a SECOND independent
-    # instance (its own connection set) and fire the world-join serve from BOTH concurrently against the same sub; a
-    # deadlock would make a thread exceed the join timeout -> FAIL (not a silent hang).
+    # Regression guard. Two service instances handling concurrent requests for the SAME conversation (the normal
+    # multi-tab / cold-start-retry case) used to wedge each other on its PostgreSQL bridge tables (833s measured).
+    # Bridges are now built in each request's own database (engine/prepared.py), and _rconn() stays autocommit (no
+    # idle-in-transaction). Here we build a SECOND independent instance (its own connection set) and fire the
+    # world-join serve from BOTH concurrently against the same conversation; a hang would make a thread exceed the
+    # join timeout -> FAIL (not a silent hang).
     print("\n== (E) concurrency: two instances, same sub, no deadlock ==", flush=True)
     import threading
 

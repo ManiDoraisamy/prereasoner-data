@@ -157,10 +157,9 @@ def test_source_grounding_is_the_only_model_abstention_fallback():
     qw = _bare_qw()
     qw._value_membership_routes = lambda _table: {("customers", "city"): "city"}
     with patch("engine.knowledge_typing.kb_model_route_enabled", return_value=False):
-        qw.begin_typing()
-        routes = qw.route({"name": "customers", "columns": ["city"], "rows": [["Paris"]]})
-        typing = qw.take_typing()
-    assert routes == {("customers", "city"): "city"}
+        # A table's routes are read when it is prepared (engine/prepared.py); route() serves them.
+        routes, typing, membership = qw._route_table({"name": "customers", "columns": ["city"], "rows": [["Paris"]]})
+    assert routes == membership == {("customers", "city"): "city"}
     assert typing == [{
         "table": "customers", "column": "city", "kind": "source_grounding",
         "family": "place", "frac": None, "geo": True, "grounded_to": "city",
@@ -171,7 +170,7 @@ def test_source_grounding_is_the_only_model_abstention_fallback():
         "class": None, "class_name": None, "ontology_version": None,
         "model_artifact_sha256": None, "evidence": [],
     }]
-    assert "super().route(table)" not in inspect.getsource(KnowledgeQuery.route)
+    assert "super().route(table)" not in inspect.getsource(KnowledgeQuery._route_table)
     print("  PASS  generalized abstention falls back only to explicit synchronized source keys")
 
 

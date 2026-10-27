@@ -293,12 +293,9 @@ class DeterministicAnalysis:
         debug_root: str | Path = DEFAULT_DEBUG_ROOT,
     ) -> ExecutionResult:
         if isinstance(bind, Engine):
-            # Both programs and every SQL stage must observe one database snapshot.
+            # Both programs and every SQL stage read one database in one transaction. The request's
+            # database is its own copy, which nothing else writes (engine/prepared.py).
             with bind.connect() as connection:
-                if connection.dialect.name == "postgresql":
-                    connection = connection.execution_options(
-                        isolation_level="REPEATABLE READ"
-                    )
                 with connection.begin():
                     return self.run(
                         connection,
@@ -312,17 +309,12 @@ class DeterministicAnalysis:
                         debug_root=debug_root,
                     )
         if not bind.in_transaction():
-            # A caller-supplied Connection gets the same snapshot/cleanup
+            # A caller-supplied Connection gets the same transaction/cleanup
             # contract as an Engine. Without this branch begin_nested() would
             # autobegin an outer transaction and leave it open after returning.
-            connection = bind
-            if connection.dialect.name == "postgresql":
-                connection = connection.execution_options(
-                    isolation_level="REPEATABLE READ"
-                )
-            with connection.begin():
+            with bind.begin():
                 return self.run(
-                    connection,
+                    bind,
                     mode=mode,
                     estimated_rows=estimated_rows,
                     python_row_limit=python_row_limit,

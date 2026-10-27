@@ -45,6 +45,7 @@ from engine.deterministic.context import (
 from engine.deterministic.emitter import PythonEmitter, SQLEmitter
 from engine.sql_rank import PoolSelection
 from engine.deterministic.plan import JunctionValue
+from engine.prepared import RequestDatabase, register_functions
 from engine.sql_ast import (
     Aggregate,
     BinaryExpr,
@@ -59,6 +60,13 @@ from engine.sql_ast import (
     Star,
 )
 
+
+
+def _sqlite_engine():
+    """An in-memory SQLite engine with the functions every request database has (engine/prepared.py)."""
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    event.listen(engine, "connect", lambda connection, _record: register_functions(connection))
+    return engine
 
 def _plan() -> AnalysisPlan:
     customers = TableSpec(
@@ -222,7 +230,7 @@ def test_both_emitters_are_byte_deterministic_and_have_matching_stages():
 def test_generated_python_and_sql_execute_to_the_same_result():
     from engine.deterministic.runtime import execute_python
 
-    engine = create_engine("sqlite+pysqlite:///:memory:")
+    engine = _sqlite_engine()
     with engine.connect() as connection:
         connection.execute(text("ATTACH DATABASE ':memory:' AS conversation"))
         connection.execute(text("ATTACH DATABASE ':memory:' AS knowledgebase"))
@@ -374,7 +382,7 @@ def test_auto_python_has_a_hard_materialized_row_limit_and_sql_fallback():
             ),
         ),
     )
-    engine = create_engine("sqlite+pysqlite:///:memory:")
+    engine = _sqlite_engine()
     with engine.connect() as connection:
         connection.exec_driver_sql("ATTACH DATABASE ':memory:' AS conversation")
         connection.exec_driver_sql(
@@ -718,8 +726,10 @@ def test_spider_scalar_gold_runner_executes_the_selected_ast_with_python():
     candidate = ScoredQuery(
         query, "SELECT SUM(amount) AS total FROM orders", 1, ()
     )
-    plan, estimated_rows = _lower_python_candidate(candidate, tables, schema, ())
-    rows = _execute_python_candidate(plan, tables, schema, estimated_rows, 10_000)
+    from engine.tables import TableQuery
+
+    plan, _estimated_rows = _lower_python_candidate(candidate, tables, schema, ())
+    rows = _execute_python_candidate(TableQuery(), plan, {"orders": tables[0]}, schema)
     assert rows == [[30]]
     assert compare([[30]], rows)["scalar_exact"] is True
 
@@ -730,7 +740,7 @@ def test_spider_scalar_gold_runner_executes_the_selected_ast_with_python():
             return input_tables, tuple(explicit_fks)
 
         def schema(self, _tables, _foreign_keys):
-            return schema, {}, {}
+            return schema, {}, {"orders": tables[0]}
 
         def select_query(self, *_args):
             return PoolSelection((candidate,), (True,), (True,), (0,), 0)
@@ -738,7 +748,9 @@ def test_spider_scalar_gold_runner_executes_the_selected_ast_with_python():
         def guard(self, _sql):
             return True, None
 
-        def execute(self, _table_map, _schema, _sql):
+        def execute(self, table_map, schema_, sql, query=None, deterministic_plan=None):
+            if deterministic_plan is not None:                 # the production executor runs the program
+                return TableQuery().execute(table_map, schema_, sql, deterministic_plan=deterministic_plan)
             return ["total"], [(30,)]
 
     evaluated = ast_predict(
@@ -767,13 +779,14 @@ def test_repeated_bound_outputs_preserve_sql_python_parity():
     query = SelectQuery((SelectItem(identity), SelectItem(name), SelectItem(identity)), "people")
     expected = [[1, "Ann", 1], [2, "Bo", 2]]
     plan = lower_select_query("requested_people", query, schema, ())
-    python_rows = _execute_python_candidate(plan, tables, schema, 2, 10_000)
-    connection = TableQuery._sqlite_tables(None, {"people": tables[0]}, schema)
+    python_rows = _execute_python_candidate(TableQuery(), plan, {"people": tables[0]}, schema)
+    database = RequestDatabase()
     try:
         from engine.sql_ast import render_query
+        connection = database.load({"people": tables[0]}, schema)
         sql_rows = [list(row) for row in connection.execute(render_query(query))]
     finally:
-        connection.close()
+        database.close()
     assert python_rows == sql_rows == expected
 
 
@@ -791,12 +804,13 @@ def test_named_population_identity_preserves_sql_python_parity():
     query = SelectQuery((SelectItem(Aggregate("COUNT", identity, distinct=True)),), "dogs",
                         joins=(Join("treatments", child, identity),))
     plan = lower_select_query("treated_dogs", query, schema, ())
-    python_rows = _execute_python_candidate(plan, tables, schema, 7, 10_000)
-    connection = TableQuery._sqlite_tables(None, {table["name"]: table for table in tables}, schema)
+    tablemap = {table["name"]: table for table in tables}
+    python_rows = _execute_python_candidate(TableQuery(), plan, tablemap, schema)
+    database = RequestDatabase()
     try:
-        sql_rows = [list(row) for row in connection.execute(render_query(query))]
+        sql_rows = [list(row) for row in database.load(tablemap, schema).execute(render_query(query))]
     finally:
-        connection.close()
+        database.close()
     assert python_rows == sql_rows == [[2]]
 
 
@@ -850,12 +864,12 @@ def test_spider_backend_parity_preserves_blank_text_and_null_as_different_cells(
     ]
     for query, sql, expected in queries:
         plan = lower_select_query("cells", query, schema, ())
-        python_rows = _execute_python_candidate(plan, tables, schema, 3, 10_000)
-        connection = TableQuery._sqlite_tables(None, {"items": tables[0]}, schema)
+        python_rows = _execute_python_candidate(TableQuery(), plan, {"items": tables[0]}, schema)
+        database = RequestDatabase()
         try:
-            sql_rows = [list(row) for row in connection.execute(sql)]
+            sql_rows = [list(row) for row in database.load({"items": tables[0]}, schema).execute(sql)]
         finally:
-            connection.close()
+            database.close()
         assert sorted(map(repr, python_rows)) == sorted(map(repr, expected))
         assert sorted(map(repr, python_rows)) == sorted(map(repr, sql_rows))
     # Correcting candidate parity must not silently change independent gold.
@@ -911,7 +925,7 @@ def test_auto_grades_the_served_python_answer_when_a_limit_cutoff_ties():
             return input_tables, tuple(explicit_fks)
 
         def schema(self, _tables, _foreign_keys):
-            return schema, {}, {}
+            return schema, {}, {"courses": tables[0]}
 
         def select_query(self, *_args):
             return PoolSelection((candidate,), (True,), (True,), (0,), 0)
@@ -919,7 +933,10 @@ def test_auto_grades_the_served_python_answer_when_a_limit_cutoff_ties():
         def guard(self, _sql):
             return True, None
 
-        def execute(self, _table_map, _schema, _sql):
+        def execute(self, table_map, schema_, sql, query=None, deterministic_plan=None):
+            if deterministic_plan is not None:                 # the production executor runs the program
+                from engine.tables import TableQuery
+                return TableQuery().execute(table_map, schema_, sql, deterministic_plan=deterministic_plan)
             # The engine-arbitrary pick: the OTHER tie member than the plan's
             # deterministic tie-break would choose.
             return ["course_name", "total"], [("rs", 1)]
@@ -1122,7 +1139,7 @@ def test_custom_orm_join_uses_python_spelling_for_sql_is_predicates():
     assert "Customer.name != None" in source
     assert "Customer.name IS NOT None" not in source
 
-    engine = create_engine("sqlite+pysqlite:///:memory:")
+    engine = _sqlite_engine()
     with engine.begin() as connection:
         for schema in ("conversation", "knowledgebase"):
             connection.exec_driver_sql(f"ATTACH DATABASE ':memory:' AS {schema}")
@@ -1155,6 +1172,48 @@ def test_custom_orm_join_uses_python_spelling_for_sql_is_predicates():
             plan, conversation_schema="conversation"
         ).run(connection, mode="verify", estimated_rows=1)
     assert result.rows == ({"total_amount": Decimal("25.00000000000000000000")},)
+
+
+def test_both_programs_compute_exactly_on_the_request_database():
+    """SQLite has no exact decimal type: a REAL column is decimal text, and the SQL program computes through the
+    decimal functions (engine/prepared.py). Text compared as text puts '10.5' below '9.75', a float average of
+    two large integers loses the half, and a float division rounds away the last places; each stage of both
+    programs must agree exactly (verify) and equal the decimal gold."""
+    from engine.deterministic.context import analysis_execution_context
+    from engine.sql_ast import BinaryExpr
+    from engine.tables import TableQuery
+
+    rows = [[1, Decimal("10.5"), 9007199254740993], [2, Decimal("9.75"), 9007199254740994],
+            [3, Decimal("100"), 3], [4, None, 4]]
+    table = {"name": "ledger", "columns": ["id", "amount", "units"], "rows": rows}
+    schema = [{"table": "ledger", "name": name, "affinity": affinity, "values": [row[index] for row in rows]}
+              for index, (name, affinity) in enumerate((("id", "INTEGER"), ("amount", "REAL"),
+                                                         ("units", "INTEGER")))]
+    amount = ColumnRef("ledger", "amount", SQLType.REAL)
+    units = ColumnRef("ledger", "units", SQLType.INTEGER)
+    identity = ColumnRef("ledger", "id", SQLType.INTEGER)
+    cases = (
+        (SelectQuery((SelectItem(identity),), "ledger",
+                     where=Comparison(amount, ">", Literal(Decimal("9.8"), SQLType.REAL))),
+         [(1,), (3,)]),
+        (SelectQuery((SelectItem(identity), SelectItem(amount)), "ledger",
+                     order_by=(OrderTerm(amount, "DESC"),), limit=3),
+         [(3, Decimal("100")), (1, Decimal("10.5")), (2, Decimal("9.75"))]),
+        (SelectQuery((SelectItem(Aggregate("AVG", units), "average"),), "ledger",
+                     where=Comparison(units, ">", Literal(10, SQLType.INTEGER))),
+         [(Decimal("9007199254740993.5"),)]),
+        (SelectQuery((SelectItem(BinaryExpr(Literal(1, SQLType.INTEGER), "/", units), "third"),), "ledger",
+                     where=Comparison(identity, "=", Literal(3, SQLType.INTEGER))),
+         [(Decimal("0.33333333333333333333"),)]),
+        (SelectQuery((SelectItem(Aggregate("SUM", amount), "total"),
+                      SelectItem(Aggregate("MAX", amount), "largest")), "ledger"),
+         [(Decimal("120.25"), Decimal("100"))]),
+    )
+    for index, (query, expected) in enumerate(cases):
+        plan = lower_select_query(f"exact_{index}", query, schema, ())
+        with analysis_execution_context(None, "c_" + "2" * 32, execution_mode="verify"):
+            columns, served = TableQuery().execute({"ledger": table}, schema, "", deterministic_plan=plan)
+        assert served == expected, (index, served)
 
 
 def test_an_average_of_converted_rows_runs_in_both_programs():
@@ -1493,7 +1552,7 @@ def test_lowering_does_not_treat_a_repeated_foreign_id_as_row_identity():
         column.name for column in plan.table("orders").columns if column.primary_key
     }
     assert keys == {"customer_id", "amount"}
-    engine = create_engine("sqlite+pysqlite:///:memory:")
+    engine = _sqlite_engine()
     with engine.connect() as connection:
         connection.execute(text("ATTACH DATABASE ':memory:' AS conversation"))
         connection.execute(
@@ -1542,7 +1601,7 @@ def test_plan_rejects_an_ambiguous_combined_relationship():
 
 
 def _execute_fixture(plan, statements, mode="verify", estimated_rows=3):
-    engine = create_engine("sqlite+pysqlite:///:memory:")
+    engine = _sqlite_engine()
     try:
         with engine.connect() as connection:
             connection.exec_driver_sql("ATTACH DATABASE ':memory:' AS conversation")
@@ -1755,8 +1814,8 @@ def test_parity_never_rounds_away_large_decimal_differences():
 
 
 def test_lowering_requires_identity_evidence_after_numeric_coercion():
-    from engine.deterministic.lower import UnsupportedDeterministicPlan
-
+    """A column is the ORM identity only when its values, coerced as the upload stores them, are proven unique:
+    unknown values, '01' and 1, or an empty value leave the identity to the table's SQLite row id."""
     query = SelectQuery(
         (SelectItem(ColumnRef("items", "id", SQLType.INTEGER)),), "items"
     )
@@ -1764,12 +1823,12 @@ def test_lowering_requires_identity_evidence_after_numeric_coercion():
         schema = [{"table": "items", "name": "id", "affinity": "INTEGER"}]
         if values is not None:
             schema[0]["values"] = values
-        try:
-            lower_select_query("ids", query, schema, ())
-        except UnsupportedDeterministicPlan:
-            pass
-        else:
-            raise AssertionError(f"unproven identity accepted: {values}")
+        table = lower_select_query("ids", query, schema, ()).table("items")
+        keys = [column.name for column in table.columns if column.primary_key]
+        assert keys == ["rowid"], f"unproven identity accepted: {values} -> {keys}"
+    schema = [{"table": "items", "name": "id", "affinity": "INTEGER", "values": [1, 2]}]
+    table = lower_select_query("ids", query, schema, ()).table("items")
+    assert [column.name for column in table.columns if column.primary_key] == ["id"]
 
 
 def test_grouped_projection_keeps_select_order_when_group_by_order_differs():
@@ -2202,7 +2261,7 @@ def test_resolved_secondary_relationship_returns_real_knowledgebase_objects():
         relationships=(plan.table("orders").relationships[0], relationship),
     )
     plan = replace(plan, tables=(orders, *plan.tables[1:], bridge))
-    engine = create_engine("sqlite+pysqlite:///:memory:")
+    engine = _sqlite_engine()
     with engine.begin() as connection:
         for schema in ("conversation", "knowledgebase"):
             connection.exec_driver_sql(f"ATTACH DATABASE ':memory:' AS {schema}")
@@ -2254,7 +2313,7 @@ def test_correlated_operators_sort_and_outer_join_are_readable_and_equivalent():
             ColumnSpec("amount", "amount", SQLType.INTEGER),
         ),
     )
-    engine = create_engine("sqlite+pysqlite:///:memory:")
+    engine = _sqlite_engine()
     with engine.begin() as connection:
         connection.exec_driver_sql("ATTACH DATABASE ':memory:' AS conversation")
         connection.exec_driver_sql(
@@ -2264,7 +2323,7 @@ def test_correlated_operators_sort_and_outer_join_are_readable_and_equivalent():
             "INSERT INTO conversation.observation VALUES (1,2022,10), (2,2023,20), (3,2025,10)"
         )
         for operation, expected in (
-            ("share", [0.5, 0.25, 0.25]),
+            ("share", [Decimal("0.5"), Decimal("0.25"), Decimal("0.25")]),
             ("running", [40, 30, 10]),
             ("yoy", [1]),
         ):
@@ -2313,8 +2372,8 @@ def test_correlated_operators_sort_and_outer_join_are_readable_and_equivalent():
             sql_views = execute_sql_views(SQLEmitter().emit(plan), connection)
             for python_rows, sql_rows in zip(python_views, sql_views, strict=True):
                 assert_equivalent(python_rows, sql_rows)
-            assert [float(row["metric"]) for row in python_views[-1]] == expected
-            assert [float(row["metric"]) for row in sql_views[-1]] == expected
+            assert [row["metric"] for row in python_views[-1]] == expected
+            assert [row["metric"] for row in sql_views[-1]] == expected
             assert (
                 "metric_window = metric_base.for_each("
                 in package.files[package.entrypoint]
@@ -2361,7 +2420,7 @@ def test_composition_lowers_selected_bindings_and_executes_real_reference_relati
         }
         for index, column in enumerate(tables[0]["columns"])
     ]
-    engine = create_engine("sqlite+pysqlite:///:memory:")
+    engine = _sqlite_engine()
     with engine.begin() as connection:
         for namespace in ("conversation", "knowledgebase"):
             connection.exec_driver_sql(f"ATTACH DATABASE ':memory:' AS {namespace}")
@@ -2445,7 +2504,7 @@ def test_a_world_listing_ends_at_the_filtered_sheet_in_both_emitters():
     assert [view.name for view in plan.views] == [
         "amount_in_france_combined", "amount_in_france_enriched_1", "amount_in_france_filtered",
     ]
-    engine = create_engine("sqlite+pysqlite:///:memory:")
+    engine = _sqlite_engine()
     with engine.begin() as connection:
         for namespace in ("conversation", "knowledgebase"):
             connection.exec_driver_sql(f"ATTACH DATABASE ':memory:' AS {namespace}")
@@ -2496,7 +2555,7 @@ def test_a_one_sheet_trail_starts_at_the_reference_lookup():
         world_rate=None, as_of=None, aggregate=None, calculation=None, conversion=None,
         reference_columns={"city": [("qid", SQLType.TEXT, False), ("country", SQLType.TEXT, False)]},
     )
-    engine = create_engine("sqlite+pysqlite:///:memory:")
+    engine = _sqlite_engine()
     with engine.begin() as connection:
         for namespace in ("conversation", "knowledgebase"):
             connection.exec_driver_sql(f"ATTACH DATABASE ':memory:' AS {namespace}")
@@ -2530,7 +2589,7 @@ def test_a_one_sheet_trail_starts_at_the_reference_lookup():
     assert [len(view["rows"]) for view in shown] == [3, 2]
 
     # Two uploaded sheets really joined keep their combined sheet, and the next sheet reads from it.
-    engine = create_engine("sqlite+pysqlite:///:memory:")
+    engine = _sqlite_engine()
     with engine.begin() as connection:
         for namespace in ("conversation", "knowledgebase"):
             connection.exec_driver_sql(f"ATTACH DATABASE ':memory:' AS {namespace}")
@@ -2584,7 +2643,7 @@ def test_a_world_trail_shows_entity_labels_and_runs_the_stored_qids():
             world_rate=None, as_of=None, aggregate=aggregate, calculation=None, conversion=None,
             reference_columns={"city": [("qid", SQLType.TEXT, False), ("country", SQLType.TEXT, False)]},
         )
-        engine = create_engine("sqlite+pysqlite:///:memory:")
+        engine = _sqlite_engine()
         with engine.begin() as connection:
             for namespace in ("conversation", "knowledgebase"):
                 connection.exec_driver_sql(f"ATTACH DATABASE ':memory:' AS {namespace}")
@@ -2669,7 +2728,7 @@ def test_world_projections_group_the_kept_rows_by_the_named_world_attribute():
             reference_columns={"country": [("qid", SQLType.TEXT, False), ("continent", SQLType.TEXT, False)]},
             **binding,
         )
-        engine = create_engine("sqlite+pysqlite:///:memory:")
+        engine = _sqlite_engine()
         with engine.begin() as connection:
             for namespace in ("conversation", "knowledgebase"):
                 connection.exec_driver_sql(f"ATTACH DATABASE ':memory:' AS {namespace}")
@@ -2771,24 +2830,8 @@ def test_a_converted_total_is_grouped_or_ranked_by_the_column_the_question_names
             },
             **binding,
         )
-        engine = create_engine("sqlite+pysqlite:///:memory:")
-        # SQLite 3.38's ROUND(120.0, 20) returns 119.9999999999999,
-        # unlike PostgreSQL NUMERIC ROUND. This fixture has binary-exact
-        # operands; emulate only PostgreSQL rounding rather than relaxing
-        # stage equality or changing its independent numerical gold.
-        def install_numeric_round(dbapi_connection, _record):
-            from decimal import Decimal, ROUND_HALF_UP, localcontext
-            def numeric_round(value, scale):
-                if value is None:
-                    return None
-                with localcontext() as ctx:
-                    ctx.prec = 100
-                    return float(Decimal(str(value)).quantize(
-                        Decimal(1).scaleb(-int(scale)), rounding=ROUND_HALF_UP))
-            dbapi_connection.create_function('round', 2, numeric_round, deterministic=True)
-        event.listen(engine, 'connect', install_numeric_round)
+        engine = _sqlite_engine()
         with engine.begin() as connection:
-            assert connection.exec_driver_sql('SELECT ROUND(120.0, 20)').scalar_one() == 120.0
             for namespace in ("conversation", "knowledgebase"):
                 connection.exec_driver_sql(f"ATTACH DATABASE ':memory:' AS {namespace}")
             connection.exec_driver_sql(
@@ -2929,10 +2972,9 @@ def test_sum_or_avg_over_a_text_column_is_refused():
 def test_a_binary_float_reference_column_is_read_as_numeric_by_both_programs():
     # 'average atomic mass' reads knowledgebase."Elements in the World".mass, a double precision column keyed
     # by name (2026-09-27). The ORM read 1.008 as 1.00800000000000000711 while SQL read 1.008, so verify
-    # failed at the lookup; and Postgres sums floats with rounding a decimal sum does not have. Both programs
-    # now read the column as NUMERIC. (SQLite computes the SQL program's AVG in floats, so the average is
-    # checked against live Postgres in tests.test_world.)
-    from engine.deterministic.runtime import VerificationMismatch
+    # failed at the lookup; and a float sum rounds where a decimal sum does not. Both programs read the stored
+    # float as its shortest decimal, and compute with decimals (engine/prepared.py): the SUM and the AVG agree
+    # exactly.
     from engine.deterministic.world import lower_world_query
 
     rows = [(1, "Hydrogen", 2), (2, "Oxygen", 1), (3, "Carbon", 3)]
@@ -2950,7 +2992,7 @@ def test_a_binary_float_reference_column_is_read_as_numeric_by_both_programs():
             aggregate=aggregate, bridge_key="world_key", reference_keys={"elements": ("name",)},
             reference_columns={"elements": [("name", SQLType.TEXT, False), ("mass", SQLType.REAL, binary_float)]},
         )
-        engine = create_engine("sqlite+pysqlite:///:memory:")
+        engine = _sqlite_engine()
         with engine.begin() as connection:
             for namespace in ("conversation", "knowledgebase"):
                 connection.exec_driver_sql(f"ATTACH DATABASE ':memory:' AS {namespace}")
@@ -2981,15 +3023,14 @@ def test_a_binary_float_reference_column_is_read_as_numeric_by_both_programs():
     assert sorted(row[-1] for row in shown[0]["rows"]) == ["1.008", "12.011", "15.999"], shown[0]["rows"]
     assert [Decimal(str(value)) for row in total.rows for value in row.values()] == [Decimal("29.018")]
     lookup = total.record()["views"][0]
-    assert 'CAST("knowledgebase"."elements"."mass" AS NUMERIC)' in lookup["sql"], lookup["sql"]
+    assert '"knowledgebase"."elements"."mass" AS "elements__mass"' in lookup["sql"], lookup["sql"]
+    assert "decimal_sum(" in total.record()["views"][-1]["sql"], total.record()["views"][-1]["sql"]
     assert "NumericFloat" in total.emission.python.files["elements.py"]
-    # Contrast: read as a plain REAL, the two programs disagree at the lookup, as they did in production.
-    try:
-        run(("SUM", "elements", "mass"), binary_float=False)
-    except VerificationMismatch as exc:
-        assert "1.00800000000000000711" in str(exc) and "mass_enriched_1" in "".join(exc.__notes__), exc
-    else:
-        raise AssertionError("a binary float read as REAL passed verify")
+    average = run(("AVG", "elements", "mass"))
+    assert average.mode.value == "verify"
+    assert [value for row in average.rows for value in row.values()] == [Decimal("9.67266666666666666667")]
+    # A float column declared as an exact decimal is read the same way: no binary noise reaches either program.
+    assert run(("SUM", "elements", "mass"), binary_float=False).mode.value == "verify"
 
 
 def test_decomposed_dag_crosses_branches_and_excludes_existing_pairs():
@@ -3208,7 +3249,7 @@ def test_every_stage_reports_the_exact_python_that_produced_it():
         assert segment.startswith(f"        # View: {view.name}\n"), view.name
         assert segment in source, view.name
     assert "view_sources" not in package.record()["manifest"]
-    assert package.record()["manifest"]["emitter_version"] == 10
+    assert package.record()["manifest"]["emitter_version"] == 11
     # A one-sheet entry is no stage: the stage that reads it opens with the upload's ORM load, and that
     # slice of the module is what the sheet shows.
     orders = _plan().table("orders")

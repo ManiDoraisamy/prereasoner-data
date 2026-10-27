@@ -2,13 +2,13 @@
 
 Questions run on concurrent threads that share ONE planner object graph (engine/server.py MODEL): its
 weights, tokenizer and caches are shared on purpose. A few attributes of those objects describe the
-request being served instead: the conversation's Postgres schema, the connections the request holds,
+request being served instead: the connections the request holds,
 the question's own text, the typing evidence it captures. Stored on the shared object, they were safe
 only while a process-wide lock served one question at a time; with two questions at once, one would
 read the other's schema and answer over another conversation's tables.
 
 `RequestLocal` keeps such an attribute per request. Declared on the class, it stores each value in a
-ContextVar, so `self._pg_schema = schema` and every later read see only the current request's value.
+ContextVar, so `self._q_orig = question` and every later read see only the current request's value.
 `request_scope()` gives one served request a fresh set of values (engine/knowledge.py
 KnowledgeReasoner.serve) and drops them after it. Outside a scope (startup, tests) the values belong
 to the current thread, as instance attributes did to the one thread that served.

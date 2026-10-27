@@ -27,7 +27,7 @@ import engine.config  # noqa: F401 — autoloads repo .env so KB_PG_PASSWORD/GOO
 SUITES = ["tests.test_numeric_storage", "tests.test_suggestions", "tests.test_readers", "tests.test_sql_ast", "tests.test_query_contract", "tests.test_llm", "tests.test_calculations", "tests.test_analysis", "tests.test_deterministic_emitters", "tests.test_decomposition", "tests.test_complex_datasets", "tests.test_routing", "tests.test_router_evidence", "tests.test_schema_decode",
           "tests.test_schema_coverage", "tests.test_compose", "tests.test_converse", "tests.test_master_ingest",
           "tests.test_enrichment", "tests.test_source_sync", "tests.test_app_migrations",
-          "tests.test_request_limits", "tests.test_request_timing", "tests.test_pg_upload",
+          "tests.test_request_limits", "tests.test_request_timing", "tests.test_request_database",
           "tests.test_dimension_model", "tests.test_concurrent_requests",
           "tests.test_kb_memo", "tests.test_encode_cache", "tests.test_stream_buffer",
           "tests.test_dataset_semantics", "tests.test_dataset_gold",

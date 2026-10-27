@@ -1,9 +1,9 @@
 """The ONE Prereasoner server. Serves all three inference paths from a single process:
 
   POST /api/reason    — the composition reasoner (view-stacking) on the live world path. Firebase auth
-                        derives the verified user; the working Postgres schema is the CONVERSATION (owned
-                        by that user, see engine.conversations) + live reasoning-trace streaming to RTDB
-                        (/runs/{uid}/{jobId}) when RTDB_URL is configured.
+                        derives the verified user and the CONVERSATION it owns (engine.conversations); the
+                        question runs on its own SQLite database (engine/prepared.py), with live
+                        reasoning-trace streaming to RTDB (/runs/{uid}/{jobId}) when RTDB_URL is configured.
   POST /api/knowledge     — the world path (unified-encoder world joins / hybrid semantic SQL). Same auth +
                         conversation + trace contract; both routes share ONE KnowledgeReasoner instance.
   POST /api/dimension — the stateless per-column/per-cell taxonomy readout (no Postgres, auth required).
@@ -106,6 +106,24 @@ DIM_MODEL = None                   # the ONE DimensionModel for /api/dimension
 ENRICHMENT = None                  # request-local enrichment; registry activation remains authoritative
 
 
+def _start_knowledge_warmup():
+    """Build the knowledgebase's base image (engine/prepared.py) before the first question needs it, without
+    holding up readiness: a question that arrives first builds it."""
+    def warm():
+        started = time.monotonic()
+        try:
+            from engine.prepared import knowledge
+            knowledge().base()
+        except Exception as exc:                      # noqa: BLE001
+            print(f"knowledge warmup note: {type(exc).__name__}", flush=True)
+        else:
+            print(f"startup phase ready: knowledge base image seconds={time.monotonic() - started:.1f}", flush=True)
+
+    worker = threading.Thread(target=warm, name="knowledge-warmup", daemon=True)
+    worker.start()
+    return worker
+
+
 def _start_spacy_warmup(model):
     """Warm the lazy spaCy singleton without blocking Cloud Run model readiness."""
     def warm():
@@ -192,7 +210,7 @@ def _json_safe(value):
     """Normalize the values PostgreSQL never got a chance to normalize.
 
     Uploaded cells become `Decimal` in the planner (engine/tables.py:_typed) and return JSON-safe
-    through the NUMERIC caster on the way out of Postgres. A SAVED REFERENCE table's cells can reach
+    through the executor's wire rows (engine.numeric.wire_rows). A SAVED REFERENCE table's cells can reach
     the response without that round trip, and `json.dumps` then raises TypeError — which surfaced as
     a blanket 500 for every request by a user with saved reference data (2026-09-07). `wire_value` is
     the existing exact-scalar contract, so this normalizes rather than invents. The leak is LOGGED so
@@ -443,9 +461,14 @@ class H(BaseHTTPRequestHandler):
                 question = req.get("question") or ""
                 if not isinstance(question, str):
                     raise RequestValidationError("question must be text")
-                self._send(200, json_dumps(sync_conversation_source(
-                    sub, req.get("id", ""), tables, question[:2000],
-                )))
+                synced = sync_conversation_source(sub, req.get("id", ""), tables, question[:2000])
+                self._send(200, json_dumps(synced))
+                if MODEL is not None:
+                    # The first question finds its tables prepared (engine/prepared.py), and their rows parsed
+                    # under the snapshot it names.
+                    from engine.prepared import prepare_sheets_in_background
+                    prepare_sheets_in_background(MODEL.qw, _parsed_tables(tables, synced["source_hash"]),
+                                                 synced["conversation_id"])
             except RequestValidationError as exc:
                 self._send(exc.status_code, json_dumps({"error": str(exc)}))
             except NotOwned:
@@ -777,10 +800,10 @@ class H(BaseHTTPRequestHandler):
             if row_error:
                 self._send(413, json_dumps({"error": row_error})); return
             uploaded_count = len(tabs)
-            # The WORKING Postgres schema is the CONVERSATION, not the user. A client-supplied
-            # conversation id is honored ONLY after the ownership check (chat.user_conversation);
-            # otherwise a new conversation is minted for the verified user. No conversation id
-            # ever reaches the schema without passing through this authorization (no IDOR).
+            # A question belongs to a CONVERSATION, not the user. A client-supplied conversation id
+            # is honored ONLY after the ownership check (chat.user_conversation); otherwise a new
+            # conversation is minted for the verified user. No conversation id reaches its stored
+            # records without passing through this authorization (no IDOR).
             try:
                 conv = resolve_conversation(
                     sub, req.get("conversation_id"), req.get("question", ""), source_sheets,
@@ -1127,6 +1150,7 @@ def main():
     # in the background; spacy_model() is internally locked, so a first request
     # racing this warmup safely waits on the same singleton initialization.
     _start_spacy_warmup(MODEL)
+    _start_knowledge_warmup()
     print(f"engine ready: http://{HOST}:{PORT}  (POST /api/reason /api/knowledge /api/dimension)", flush=True)
     ThreadingHTTPServer((HOST, PORT), H).serve_forever()
 

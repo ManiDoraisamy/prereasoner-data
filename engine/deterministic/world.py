@@ -110,7 +110,6 @@ def lower_world_query(
         ),
         schema,
         foreign_keys,
-        postgres_row_identity=True,
     )
     tables = {table.name: table for table in base.tables}
     names = list(uploaded) + list(reference_columns)
@@ -360,11 +359,12 @@ def lower_world_query(
     return AnalysisPlan(slug, tuple(tables.values()), tuple(views))
 
 
-def reference_schema(connection, required, keys=None):
-    """Read declared physical types; never guess the type from the name of a fact.
+def reference_schema(database, required, keys=None):
+    """Read declared physical types from the knowledgebase's column catalog, which the request's database holds
+    (engine/prepared.py); never guess the type from the name of a fact.
 
-    Each column is (name, SQLType, stored as a binary float): a double precision column is read as
-    NUMERIC by both programs (ColumnSpec.binary_float)."""
+    Each column is (name, SQLType, stored as a binary float): a double precision column is read as its shortest
+    decimal by both programs (ColumnSpec.binary_float)."""
     types = {
         "text": SQLType.TEXT,
         "character varying": SQLType.TEXT,
@@ -377,11 +377,7 @@ def reference_schema(connection, required, keys=None):
     }
     result = {}
     for table, columns in required.items():
-        rows = connection.execute(
-            "SELECT column_name, data_type FROM information_schema.columns "
-            "WHERE table_schema='knowledgebase' AND table_name=%s ORDER BY ordinal_position",
-            (table,),
-        ).fetchall()
+        rows = database.catalog(table)
         wanted = set(columns) | set(
             (keys or {}).get(table)
             or (("date", "currency_code") if table == "exchange_rate" else ("qid",))

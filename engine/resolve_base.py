@@ -1,6 +1,6 @@
 """GENERALIZED world-knowledge routing.
 
-Same model + multi-tenant Postgres execution as engine.pg. The ONE change is `route()`: instead of city-only,
+The ONE change over KnowledgeTableQuery is `route()`: instead of city-only,
 a column routes to ANY world table whose `concept` list matches its cell values' entity-class nouns
 (Cities / Countries / States / Elements). This layer also registers the extra world-table configs
 (`word_element`, `word_state`) on top of the base ones (`word_city`/`country`), and teaches the world-column
@@ -16,8 +16,8 @@ import re
 
 from engine import knowledge_tables as _wt          # module — we extend its WORLD_COL_SYN in place
 from engine.config import DATA_DIR
-from engine.pg import PgQuery, _pg
-from engine.knowledge_tables import WORLD_NAMES, csv_table  # noqa: F401  (csv_table re-exported)
+from engine.pg import _pg
+from engine.knowledge_tables import WORLD_NAMES, KnowledgeTableQuery, csv_table  # noqa: F401  (csv_table re-exported)
 
 DATA = DATA_DIR
 
@@ -62,8 +62,8 @@ _wt.WORLD_COL_SYN.update({
 })
 
 
-class RoutedQuery(PgQuery):
-    """PgQuery (model + Postgres) + generalized concept→world-table routing + States/Elements configs."""
+class RoutedQuery(KnowledgeTableQuery):
+    """KnowledgeTableQuery + generalized concept→world-table routing + States/Elements configs."""
 
     def __init__(self, deploy_dir):
         super().__init__(deploy_dir)
@@ -81,7 +81,7 @@ class RoutedQuery(PgQuery):
             return "INTEGER"
         if col == "mass":
             return "REAL"
-        return PgQuery._world_aff(col)
+        return KnowledgeTableQuery._world_aff(col)
 
     def _country_alias_map(self):
         """Lazy-load the knowledgebase."Country Aliases" NORMALIZATION TABLE (alias -> canonical country name = the world

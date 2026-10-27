@@ -8,8 +8,8 @@ without regressing anything. When an execution context requests a shared backend
 bindings use the same SQL/Python emitters as own-data and world plans.
 
 Reuse, not reinvention:
-  * the WORLD lookup (city -> country) comes from KnowledgeQuery's world schema (knowledgebase."words"); the uploaded data
-    is already in the request, so the only thing Postgres provides for the composed path is the meaning lookup.
+  * the WORLD lookup (city -> country) comes from the same bridges KnowledgeQuery builds from its tables'
+    preparations, in the request's database (engine/prepared.py).
   * the analytical DAG is the deterministic ComposeEngine (filter/time/group/yoy/running/share/divide/having/
     top-N/sort), driven by the LEARNED 10-primitive head on the SAME unified encoder.
   * operator + measure come from the metric space (read_op_model + cosine), like the rest of the program.
@@ -18,9 +18,7 @@ Auth (the verified Google sub) is enforced by the server; the composed path read
 world schema + the request's own data (no per-user schema read -> no IDOR).
 """
 from __future__ import annotations
-import hashlib
 import re
-import threading
 
 from engine import request_timing
 from engine.tables import qident
@@ -58,12 +56,6 @@ def _trace_view(view):
 
 class ComposedKnowledgeQuery:
     """Composition over the live multi-table + world base; delegates non-composed queries to KnowledgeQuery."""
-
-    # Bridge tables are conversation-scoped mutable state. A small local lock stripe handles
-    # threads sharing one process; a PostgreSQL advisory lock handles separate service
-    # processes. The lock spans refresh and execution, so another request cannot observe the
-    # bridge between DELETE and INSERT.
-    _serve_locks = tuple(threading.RLock() for _ in range(64))
 
     # Routing constants (DEPTH_PRIMS = primitive-head EVIDENCE to build a compose plan; WORLD_MEASURES = a world
     # attribute the upload can't expose) and the ownership authority (compose_owns) live in engine.routing. A plan
@@ -152,8 +144,14 @@ class ComposedKnowledgeQuery:
             if toks & schema or any(not part.isascii() and part in ql for part in schema):
                 return True
             content = [w for w in toks if len(w) > 2 and w not in self._META_STOP]
-            if content and self.qw._best_world_entity(content):
-                return True
+            if content:
+                # A fuzzy city word is matched among the cities the request's tables name (engine/prepared.py),
+                # which their preparations hold: prepare them first, as routing would.
+                from engine.tables import normalize_tables
+                for table in normalize_tables(tables or ()):
+                    self.qw._prepared(table)
+                if self.qw._best_world_entity(content):
+                    return True
             return False
         except Exception:                                        # noqa: BLE001 — fail OPEN: never block a real query
             return True
@@ -223,31 +221,29 @@ class ComposedKnowledgeQuery:
         "place":   ("Places",    "name", [("kind", "kind"), ("hemisphere", "hemisphere"), ("population", "population")]),
     }
 
-    def _emit_existing_resolutions(self, norm, sub):
+    def _emit_existing_resolutions(self, norm):
         """Show the executed bridge without re-resolving or overwriting its context."""
-        cursor = self.qw._rconn().cursor()
+        database = self.qw._database()
         index = [0]
         for table in norm:
-            bridge = f'{qident(sub)}.{qident(self.qw._conn_bridge_name(table["name"]))}'
-            cursor.execute("SELECT to_regclass(%s)", (bridge,))
-            if cursor.fetchone()[0] is None:
+            bridge = self.qw._conn_bridge_name(table["name"])
+            if not database.has_table(bridge):
                 continue
-            cursor.execute(f'SELECT "column", "value", "world_type", "world_key", "country" FROM {bridge}')
             by_column = {}
-            for column, *row in cursor.fetchall():
+            for column, *row in database.connection.execute(
+                    f'SELECT "column", "value", "world_type", "world_key", "country" FROM main.{qident(bridge)} '
+                    'ORDER BY rowid'):
                 by_column.setdefault(column, []).append(row)
             for column, rows in by_column.items():
-                self._emit_resolve_slide(cursor, table["name"], column, rows, index)
-        cursor.close()
+                self._emit_resolve_slide(database, table["name"], column, rows, index)
 
-    def _world_lookup(self, norm, sub):
+    def _world_lookup(self, norm):
         """An in-memory world table whose first column is the upload's geo value and whose remaining columns are the
         FULL resolved-entity row (same resolution the delegate path uses: route() finds the geo column, the connected-
         bridge build does keyed disambiguation). The deterministic engine joins on the upload's own value; TEXT
         attributes (country/continent/currency/level/...) are filter dimensions, NUMERIC ones (population/atomic_
         number/mass) are measures the primitives can aggregate."""
-        self.qw._pg_schema = sub
-        cur = self.qw._rconn().cursor()
+        database = self.qw._database()
         _ridx = [0]                                       # 'Resolving <col>' slide index, across all string columns
         result = None                                     # the engine's world table = the FIRST table with connected entities
         for t in norm:
@@ -265,13 +261,13 @@ class ComposedKnowledgeQuery:
                 if wtype:                                 # CONNECTED string column -> resolve + the wikipedia slide
                     try:
                         if wtype == "city":
-                            self.qw._city_bridge_sql(norm, t["name"], col, None)
+                            self.qw._city_bridge_sql(norm, t["name"], col)
                         else:
-                            self.qw._cell_bridge_sql(norm, t["name"], col, wtype, None)
+                            self.qw._cell_bridge_sql(norm, t["name"], col, wtype)
                         bn = self.qw._conn_bridge_name(t["name"])
-                        cur.execute(f'SELECT "value", "world_type", "world_key", "country" FROM {qident(sub)}.{qident(bn)} '
-                                    f'WHERE "column" = %s', (col,))
-                        col_rows = cur.fetchall()
+                        col_rows = database.connection.execute(
+                            f'SELECT "value", "world_type", "world_key", "country" FROM main.{qident(bn)} '
+                            'WHERE "column" = ? ORDER BY rowid', (col,)).fetchall()
                         for val, wt, wk, country in col_rows:
                             d = ent.setdefault(val, {})   # first resolution per value wins
                             d.setdefault("_wt", wt); d.setdefault("_wk", wk)
@@ -281,13 +277,13 @@ class ComposedKnowledgeQuery:
                         # Stream ONE 'Resolving <col>' slide (this column's knowledgebase."<type>" rows) LIVE, ahead of the
                         # view stack. Reads the persisted bridge, so it fires fresh OR cached; uses the request's emit
                         # CONTEXT (engine.trace.request_stream), so _world_lookup needn't thread `emit` through.
-                        self._emit_resolve_slide(cur, t["name"], col, col_rows, _ridx)
+                        self._emit_resolve_slide(database, t["name"], col, col_rows, _ridx)
                     except Exception as e:                # noqa: BLE001 — a column that won't resolve is skipped
                         print(f"world lookup skipped: {type(e).__name__}", flush=True)
                 elif not self._is_numeric(cells):         # UNCONNECTED free-text string column -> the embedding slide
                     self._emit_unconnected_slide(t["name"], col, _ridx)
             if ent and result is None:
-                self._enrich(cur, ent)                    # join each entity's source table + country -> continent/currency
+                self._enrich(database, ent)               # join each entity's source table + country -> continent/currency
                 # Drop enriched attrs colliding with ANY uploaded column, not just the geo column: an
                 # orders sheet with its own 'currency' column plus the world 'currency' attr produced a
                 # duplicate that surfaced as an unreadable dedup name ("currency:1") in the derivation.
@@ -313,7 +309,7 @@ class ComposedKnowledgeQuery:
                                        "bridge": self.qw._conn_bridge_name(t["name"])}
         return result
 
-    def _emit_resolve_slide(self, cur, table, column, col_rows, ridx):
+    def _emit_resolve_slide(self, database, table, column, col_rows, ridx):
         """Stream ONE resolution slide for a CONNECTED string column: the knowledgebase."<type>" rows (qid + the faithful
         Wikidata columns from the pre-synchronized projection for the entities this column resolved to. The client renders <table> with
         <column> highlighted above this world table, whose `name` column is highlighted to match. Best-effort."""
@@ -330,10 +326,11 @@ class ComposedKnowledgeQuery:
                              "state": ("u_s_state", "qid"), "element": ("Elements", "name"),
                              "continent": ("Continents", "name")}
             wtable, keycol = table_by_type.get(wt, (wt, "qid"))
-            cur.execute(f'SELECT * FROM knowledgebase.{qident(wtable)} WHERE {qident(keycol)} = ANY(%s) '
-                        f'ORDER BY {qident(keycol)} LIMIT 30', (world_keys,))
-            allcols = [d[0] for d in cur.description]
-            allrows = [list(r) for r in cur.fetchall()]
+            cursor = database.connection.execute(
+                f'SELECT * FROM knowledgebase.{qident(wtable)} WHERE {qident(keycol)} IN '
+                f'({",".join("?" * len(world_keys))}) ORDER BY {qident(keycol)} LIMIT 30', world_keys)
+            allcols = [d[0] for d in cursor.description]
+            allrows = [list(r) for r in cursor.fetchall()]
             if not allrows:                                                # nothing synced yet -> skip the (empty) slide
                 return
             qi = allcols.index("qid") if "qid" in allcols else 0
@@ -369,7 +366,7 @@ class ComposedKnowledgeQuery:
                 return False
         return True
 
-    def _enrich(self, cur, ent):
+    def _enrich(self, database, ent):
         """Fill each entity's attribute row: group by world_type, join its source table by world_key for that type's
         analytical columns, then chain any country -> continent + currency. Best-effort per type (a missing table is
         skipped, not fatal)."""
@@ -384,8 +381,8 @@ class ComposedKnowledgeQuery:
             table, keycol, cols = cfg
             sel = ", ".join([f'"{keycol}"'] + [f'"{wc}"' for wc, _ in cols])
             try:
-                cur.execute(f'SELECT {sel} FROM knowledgebase."{table}" WHERE "{keycol}" = ANY(%s)', (keys,))
-                by_key = {row[0]: row[1:] for row in cur.fetchall()}
+                by_key = {row[0]: row[1:] for row in database.select_in(
+                    f'SELECT {sel} FROM knowledgebase."{table}" WHERE "{keycol}" IN', keys)}
             except Exception as e:                        # noqa: BLE001
                 print(f"entity attrs skipped: {type(e).__name__}", flush=True); continue
             for val, wk in pairs:
@@ -395,9 +392,8 @@ class ComposedKnowledgeQuery:
         countries = sorted({d["country"] for d in ent.values() if d.get("country")})
         if countries:
             try:
-                cur.execute('SELECT name, continent, currency FROM knowledgebase."Countries" WHERE name = ANY(%s)',
-                            (countries,))
-                cc = {n: (co, cu) for n, co, cu in cur.fetchall()}
+                cc = {n: (co, cu) for n, co, cu in database.select_in(
+                    'SELECT name, continent, currency FROM knowledgebase."Countries" WHERE name IN', countries)}
             except Exception as e:                        # noqa: BLE001
                 print(f"continent/currency skipped: {type(e).__name__}", flush=True); cc = {}
             for d in ent.values():
@@ -408,7 +404,7 @@ class ComposedKnowledgeQuery:
                     if co_cu[1]:
                         d["currency"] = co_cu[1]
 
-    def _run_engine(self, tables, question, sub, as_of, emit=None, world=None, dataset_semantics=()):
+    def _run_engine(self, tables, question, as_of, emit=None, world=None, dataset_semantics=()):
         """Build the composed view stack (join -> world_join -> world_filter -> ... -> aggregate) for `question`
         and shape it into the serve response (views carry their own columns/rows so the UI can walk each step).
         `emit` streams ONLY status here (status:resolving around a standalone world lookup). Views are NEVER
@@ -420,7 +416,7 @@ class ComposedKnowledgeQuery:
                 emit("status", "resolving")
             norm, _ = self.qw.ingest(tables)
             with request_timing.span("world_lookup"):
-                world = self._world_lookup(norm, sub)
+                world = self._world_lookup(norm)
         with request_timing.span("compose"):
             res = self.reason.run(tables, question, world=world)
         if res.get("clarify"):
@@ -446,25 +442,17 @@ class ComposedKnowledgeQuery:
             from engine.numeric import wire_rows
             norm, fks = self.qw.ingest(tables)
             schema, _, _ = self.qw.schema(norm, fks)
-            self.qw._pg_schema = sub
-            self.qw.q11._pg_schema = sub
             tablemap = {table["name"]: table for table in norm}
-            connection = self.qw._connect(tablemap, schema, attach_world=True)
-            try:
-                shared_plan = lower_composition(context.slug, norm, schema, res["bindings"], world, connection)
-                release = self.qw._bridge_world_version()
-                connection.conn.commit()
-                columns, rows = self.qw.q11._execute_deterministic(tablemap, shared_plan, release,
-                                                                   labels=self.qw._qid_labels)
-                record = current_execution_record()
-                return {"question": question, "as_of": as_of, "error": None,
-                        "model": "engine - composed view stack", "plan": res["plan"],
-                        "primitives": res["primitives"], "world_dependency": res["world_dependency"],
-                        "deterministic": record, "views": record["views"], "sql": record["final_sql"],
-                        "result": {"columns": columns, "rows": wire_rows(rows)}, "unmatched": res.get("unmatched")}
-            finally:
-                connection.close()
-                self.qw._con = None
+            self.qw._connect(tablemap, schema)
+            shared_plan = lower_composition(context.slug, norm, schema, res["bindings"], world, self.qw._database())
+            columns, rows = self.qw.q11._execute_deterministic(tablemap, shared_plan, self.qw._world_version(),
+                                                               labels=self.qw._qid_labels)
+            record = current_execution_record()
+            return {"question": question, "as_of": as_of, "error": None,
+                    "model": "engine - composed view stack", "plan": res["plan"],
+                    "primitives": res["primitives"], "world_dependency": res["world_dependency"],
+                    "deterministic": record, "views": record["views"], "sql": record["final_sql"],
+                    "result": {"columns": columns, "rows": wire_rows(rows)}, "unmatched": res.get("unmatched")}
         views = []
         for view in res["views"]:
             item = {"name": view["name"], **_trace_view(view)}
@@ -508,30 +496,6 @@ class ComposedKnowledgeQuery:
 
     def serve(self, tables, question, sub, as_of=None, emit=None, explicit_fks=(), dataset_semantics=(),
               decomposition=None):
-        if not sub:
-            return self._serve_locked(tables, question, sub, as_of=as_of, emit=emit,
-                                      explicit_fks=explicit_fks, dataset_semantics=dataset_semantics,
-                                      decomposition=decomposition)
-        digest = hashlib.sha256(str(sub).encode("utf-8")).digest()
-        local_lock = self._serve_locks[int.from_bytes(digest[:2], "big") % len(self._serve_locks)]
-        with local_lock:
-            conn = self.qw._rconn()
-            cur = conn.cursor()
-            try:
-                cur.execute("SELECT pg_advisory_lock(hashtext(%s), hashtext(%s))",
-                            ("prereasoner-world-bridge", str(sub)))
-                try:
-                    return self._serve_locked(tables, question, sub, as_of=as_of, emit=emit,
-                                               explicit_fks=explicit_fks, dataset_semantics=dataset_semantics,
-                                               decomposition=decomposition)
-                finally:
-                    cur.execute("SELECT pg_advisory_unlock(hashtext(%s), hashtext(%s))",
-                                ("prereasoner-world-bridge", str(sub)))
-            finally:
-                cur.close()
-
-    def _serve_locked(self, tables, question, sub, as_of=None, emit=None, explicit_fks=(), dataset_semantics=(),
-                      decomposition=None):
         """Composed (composition primitives / COUNT / world MEASURE) -> the view stack. A plain world-FILTERED
         scalar aggregate ('total amount in France') is ALSO re-expressed as the view stack so the demo SHOWS the
         reasoning (resolve -> world join -> filter -> aggregate) instead of jumping to the number. The delegate
@@ -542,7 +506,6 @@ class ComposedKnowledgeQuery:
                 return self._serve_decomposition(
                     tables,
                     question,
-                    sub,
                     decomposition,
                     as_of=as_of,
                     explicit_fks=explicit_fks,
@@ -614,7 +577,6 @@ class ComposedKnowledgeQuery:
                     er = self._run_engine(
                         tables,
                         question,
-                        sub,
                         as_of,
                         emit=emit,
                         world=None,
@@ -646,16 +608,16 @@ class ComposedKnowledgeQuery:
         # filtered -> per-row `calculated` views with the exact rate and its publication date) —
         # compose's re-expression cannot show the rate step, so the delegate wins and its views
         # stream like compose's would. The resolution slides stream the same way as on the compose
-        # path: _world_lookup re-walks the bridges the delegate's serve just built (cached Postgres
+        # path: _world_lookup re-walks the bridges the delegate's serve just built (the request's database
         # reads) and ctx_emits one knowledgebase slide per connected column. Best-effort.
         if (deleg.get("deterministic") or (deleg.get("currency") or {}).get("realization") == "converted") and deleg.get("views"):
             try:
                 norm, _ = self.qw.ingest(tables)
                 if deleg.get("deterministic"):
                     if emit:
-                        self._emit_existing_resolutions(norm, sub)
+                        self._emit_existing_resolutions(norm)
                 else:
-                    self._world_lookup(norm, sub)
+                    self._world_lookup(norm)
             except Exception as e:                        # noqa: BLE001 — slides never break the answer
                 print(f"resolution slides skipped: {type(e).__name__}", flush=True)
             self._emit_response_views(emit, deleg)
@@ -666,7 +628,7 @@ class ComposedKnowledgeQuery:
         if (not deleg.get("clarify") and not deleg.get("error")
                 and deleg.get("meaning_join") and self._is_scalar(deleg.get("result"))):
             try:
-                er = self._run_engine(tables, question, sub, as_of, emit=emit,
+                er = self._run_engine(tables, question, as_of, emit=emit,
                                       dataset_semantics=dataset_semantics)
                 if er and self._same_answer(er.get("result"), deleg.get("result")):
                     self._emit_response_views(emit, er)
@@ -681,7 +643,6 @@ class ComposedKnowledgeQuery:
         self,
         tables,
         question,
-        sub,
         decomposition,
         *,
         as_of=None,
@@ -710,12 +671,8 @@ class ComposedKnowledgeQuery:
             decomposition,
             question=question,
         )
-        # Execute through the own-data PG executor (q11): it uploads the normalized
-        # tables into the conversation schema and routes the plan to the ONE
-        # deterministic executor. TableQuery.execute is the hermetic SQLite arm and
-        # ignores `deterministic_plan`, so calling it here ran an empty statement —
-        # every live decomposition failed while the SQLite-backed suite passed.
-        self.qw.q11._pg_schema = sub
+        # Execute through the own-data executor (q11): it holds the normalized tables in the request's
+        # database and runs the plan through the ONE deterministic executor.
         tablemap = {table["name"]: table for table in norm}
         columns, rows = self.qw.q11.execute(
             tablemap, schema, "", deterministic_plan=plan

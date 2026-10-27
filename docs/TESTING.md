@@ -147,7 +147,7 @@ onward run last, after the orchestrator suites, unless `RUN_ENGINE_TESTS=0`:
 | `tests.test_app_migrations` | Application schema migrations, the world-table maintenance catalog, and least-privilege grants |
 | `tests.test_request_limits` | Canonical request validation, resource bounds, auth bypass isolation, and paid-request budgets |
 | `tests.test_request_timing` | One `[timing]` line per request: no double-counted nested spans, emitted on failure, unchanged results, no user data in the line |
-| `tests.test_pg_upload` | Uploaded-sheet load issues page-bounded statements with byte-identical values, against a recording cursor |
+| `tests.test_request_database` | The request's SQLite database holds every value exactly, loads an unchanged table once, ends statements at the deadline, holds a table preparation's entities once, and never lets a question's country choose a cell's city |
 | `tests.test_dimension_model` | `/api/dimension` startup and encoder sharing |
 | `tests.test_concurrent_requests` | Questions served in parallel on the shared engine: each request keeps its own planner state, trace stream and connection; shared caches, tokenizer and warning escalation hold |
 | `tests.test_kb_memo` | Request-scoped shared-knowledge memo dedupes identical lookups without changing answers |

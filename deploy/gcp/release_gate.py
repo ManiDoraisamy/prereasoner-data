@@ -13,6 +13,8 @@ import re
 import shutil
 import subprocess
 
+from db.sync.app_migrations import CHAT_MIGRATIONS
+
 
 REQUIRED_STEPS = {
     'engine': {'build', 'regress-offline', 'runtime-server-smoke', 'live-product-suite'},
@@ -47,8 +49,8 @@ def validate_manifest(manifest: dict) -> None:
         raise ValueError('manifest needs the complete source commit')
     if not re.fullmatch(r'[0-9a-f]{64}', manifest.get('weights_manifest_sha256', '')):
         raise ValueError('manifest needs the model bundle fingerprint')
-    if manifest.get('chat_migration') != 11:
-        raise ValueError('manifest must attest durable replay migration 11')
+    if manifest.get('chat_migration') != CHAT_MIGRATIONS[-1].version:
+        raise ValueError(f'manifest must attest the current chat migration {CHAT_MIGRATIONS[-1].version}')
     for name in ('engine', 'chat', 'hosting'):
         if not manifest.get('rollback', {}).get(name):
             raise ValueError(f'manifest needs an explicit {name} rollback target')

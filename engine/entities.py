@@ -12,6 +12,10 @@ No alias list, no lower(), no string matching. "US"/"USA"/"UK"/"Deutschland" res
 This overrides ONLY value resolution (KnowledgeTableQuery._find_value) plus the cell-side bridge (uploaded city
 values -> world PK via a per-upload bridge). Everything else — routing, joins, SQL assembly, multi-table FK,
 the analyze view — is inherited unchanged from the layers below.
+
+Cells are matched to entities once per version of their table (engine/prepared.py): ``_city_matches`` and
+``_name_matches`` read the knowledgebase then, and the sheet alone decides which entity a cell names
+(``_city_pairs``). A question reads its own words through the instance's cached knowledge.
 """
 from __future__ import annotations
 import re
@@ -27,6 +31,7 @@ from engine.request_state import RequestLocal
 from engine.knowledge_tables import qident, qlit
 from engine.dataset_semantics import is_synthetic_currency_column
 from engine.embeddings import Embedder, demonym_stems, pgvector_literal, normalize_surface
+from engine.prepared import current_database, knowledge
 
 # filter attr (as named in word_*.json) -> the entity `type` it is matched against in knowledgebase."words"
 ENTITY_TYPES = {"country": "country", "nation": "country", "continent": "continent",
@@ -95,14 +100,9 @@ class EntityQuery(RoutedQuery):
         return self._nlp
 
     def _rconn(self):
-        # AUTOCOMMIT: the request's connection issues many independent read SELECTs (resolution / routing / grounding)
-        # interleaved with idempotent bridge writes. Without autocommit psycopg2 opens an implicit transaction on the
-        # first statement and leaves it "idle in transaction" until an explicit commit — holding read locks on
-        # knowledgebase."words"/the bridge tables. Two service instances serving the SAME per-user sub then wedge each other
-        # (a concurrent ALTER TABLE on the bridge blocks ~indefinitely on that relation lock; a measured 833s stall).
-        # Every write here is idempotent (per-user bridge CREATE/ADD COLUMN IF NOT EXISTS, DELETE+INSERT refresh),
-        # so per-statement autocommit is safe and the explicit .commit() calls become no-ops. Shared knowledgebase
-        # tables are never written from this path.
+        # The connection a table's preparation reads the knowledgebase on (engine/prepared.py). AUTOCOMMIT: it issues
+        # many independent read SELECTs, and an implicit transaction left "idle in transaction" would hold read locks
+        # on knowledgebase."words" for as long as the preparation runs.
         now = time.monotonic()
         last_used = getattr(self, "_rcn_used", None)
         if (self._rcn is not None and not self._rcn.closed and last_used is not None
@@ -124,7 +124,7 @@ class EntityQuery(RoutedQuery):
         self._rcn.autocommit = True
 
     def end_request(self):
-        """Close the resolution connection this request opened. Its session advisory locks go with it."""
+        """Close the resolution connection this request opened."""
         connection, self._rcn = self._rcn, None
         if connection is not None and not connection.closed:
             connection.close()
@@ -161,14 +161,9 @@ class EntityQuery(RoutedQuery):
 
     def _names_by_type(self, norms):
         """{norm: {type: {qid}}} for the normalized names in ``norms`` that name a world entity exactly, in
-        one lookup. The resolver's exact pass and the coverage gate's place check both read names here."""
-        by_type = {}
-        if norms:
-            for nm, ty, q_ in self._kb_rows(
-                    'SELECT norm, type, qid FROM knowledgebase."words" WHERE norm = ANY(%s) AND qid IS NOT NULL',
-                    (sorted(norms),)):
-                by_type.setdefault(nm, {}).setdefault(ty, set()).add(q_)      # collect QIDS — resolve to qid, not name
-        return by_type
+        one lookup. The resolver's exact pass and the coverage gate's place check both read names here; the
+        instance keeps each name it read (engine.prepared.Knowledge.names_by_type)."""
+        return knowledge().names_by_type(norms)
 
     def _candidates(self, question):
         """surface forms worth resolving: spaCy place-ish entities + noun chunks + proper nouns + bare alpha
@@ -193,16 +188,14 @@ class EntityQuery(RoutedQuery):
         return out[:12]
 
     def _nn(self, vec, type_):
-        # Through the request memo: identical fuzzy lookups repeat across the compose and delegate
-        # passes. Measured (2026-09-07): ~127ms warm, ~1.3s cold per NN; hnsw.ef_search=16 returned
-        # NO row for a filtered city NN (recall loss), so the beam is NOT tunable down — dedupe is
-        # the safe win.
-        lit = pgvector_literal(vec)
-        rows = self._kb_rows(
-            'SELECT qid, 1-(embedding <=> %s::vector) AS sim FROM knowledgebase."words" '            # QID, not the name —
-            'WHERE type=%s AND qid IS NOT NULL ORDER BY embedding <=> %s::vector LIMIT 1', (lit, type_, lit))
-        r = rows[0] if rows else None
-        return (r[0], float(r[1])) if r else (None, -1.0)                                            # the resolved qid
+        """(qid, cosine) of the ``type_`` entity whose name is nearest ``vec``. A country, continent or state is
+        searched exactly among every name of its type, in memory; a city among the cities the request's tables
+        name: a city the sheets never mention matches none of their rows. Each was an approximate PostgreSQL
+        search before, 0.5 to 0.9 s for a city (2026-10-27)."""
+        if type_ == "city":
+            database = current_database()
+            return database.nearest_city(vec) if database is not None else (None, -1.0)
+        return knowledge().nearest(vec, type_)
 
     @staticmethod
     def _type_forms(candidate):
@@ -275,7 +268,7 @@ class EntityQuery(RoutedQuery):
     # ---- overrides ----
     def serve(self, tables, question, as_of=None, schema=None, explicit_fks=(), dataset_semantics=()):
         self._q_orig = question                      # original-case prompt for spaCy + bge (low_q is lowercased)
-        return super().serve(tables, question, as_of=as_of, schema=schema,
+        return super().serve(tables, question, as_of=as_of,
                              explicit_fks=explicit_fks, dataset_semantics=dataset_semantics)
 
     def _find_value(self, low_q, w, exact_only=False):
@@ -353,169 +346,159 @@ class EntityQuery(RoutedQuery):
         return {**ace, **self._value_membership_routes(table)}
 
     # ---- cell-side bridge (uploaded value -> world PK), the Paris->Paris-FR slice ----
-    def _cell_bridge_sql(self, norm, mtab, route_col, wtype, ctx_country=None):
-        """Build the bridge as ONE SQL subquery yielding (cell, canon). Exact normalized matches are a cheap batch
-        lookup; the FUZZY remainder is resolved by a SET-BASED in-SQL nearest-neighbour join — the cell vectors are
-        materialized into the query and POSTGRES does the `<=>` similarity search over knowledgebase."words" (HNSW), with
-        the threshold as a distance filter. Python only turns cell text into a bge vector; the search + join run in
-        Postgres. COALESCE keeps unmatched cells as identity (== the old lower()=lower() behaviour). When
-        `ctx_country` is set (the query filters to a country), BOTH exact and fuzzy resolution are constrained to
-        that country (props->>'country') — context-aware same-name disambiguation. -> SQL | None."""
-        t = next((x for x in norm if x["name"] == mtab), None)
-        if not t or route_col not in t["columns"]:
-            return None
-        ci = t["columns"].index(route_col)
-        cells = list({str(r[ci]) for r in t["rows"] if r[ci] not in (None, "")})
-        if not cells:
-            return None
+    # Preparation reads the knowledgebase once per table version (engine/prepared.py); a question picks.
+
+    @staticmethod
+    def _cells(table, column):
+        """The distinct non-empty cells of ``column``, as text."""
+        index = table["columns"].index(column)
+        return sorted({str(row[index]) for row in table["rows"]
+                       if index < len(row) and row[index] not in (None, "")})
+
+    def _city_matches(self, cells):
+        """Every city each cell can name: {cell: [[qid, country name, is_primary, population, sim], ...]}. A cell
+        whose normalized name is a city's name or altLabel lists those cities (sim 1.0); a typo lists the cities
+        within FUZZY_THRESH of it, nearest first (a nearest-neighbour search over the city names). ``_city_pairs``
+        picks one. Read at preparation."""
         cur = self._rconn().cursor()
         norms = {c: normalize_surface(c) for c in cells}
         uniq = sorted({n for n in norms.values() if n})
-        ctx_sql = f" AND w.props->>'country' = {qlit(ctx_country)}" if ctx_country else ""
+        exact = {}                                                # norm -> [(qid, country, is_primary, population)]
+        if uniq:
+            cur.execute("SELECT norm, qid, canon_country, is_primary, (props->>'population')::bigint "
+                        "FROM knowledgebase.\"words\" WHERE type='city' AND qid IS NOT NULL AND norm = ANY(%s) "
+                        "ORDER BY norm, qid, id", (uniq,))
+            for nm, qid, co, prim, pop in cur.fetchall():
+                exact.setdefault(nm, []).append([qid, co, bool(prim), int(pop or 0), 1.0])
+        out = {cell: exact[norms[cell]] for cell in cells if exact.get(norms[cell])}
+        fuzzy = [cell for cell in cells if cell not in out]
+        if fuzzy:                                                 # genuine typos only — tight
+            vecs = Embedder.get().encode(fuzzy)
+            maxd = 1.0 - self.FUZZY_THRESH
+            for start in range(0, len(fuzzy), 200):
+                part = list(zip(fuzzy[start:start + 200], vecs[start:start + 200]))
+                vlits = ", ".join(f"({qlit(c)}, {qlit(pgvector_literal(v))}::vector)" for c, v in part)
+                cur.execute(
+                    f'SELECT fv.cell, nn.qid, nn.country, nn.is_primary, nn.population, nn.sim '
+                    f'FROM (VALUES {vlits}) AS fv(cell, vec) JOIN LATERAL ('
+                    f"SELECT w.qid, w.canon_country AS country, w.is_primary, (w.props->>'population')::bigint "
+                    f'AS population, 1 - (w.embedding <=> fv.vec) AS sim FROM knowledgebase."words" w '
+                    f"WHERE w.type='city' AND w.qid IS NOT NULL AND (w.embedding <=> fv.vec) <= {maxd} "
+                    f'ORDER BY w.embedding <=> fv.vec, w.qid LIMIT 10) nn ON true')
+                for cell, qid, co, prim, pop, sim in cur.fetchall():
+                    out.setdefault(cell, []).append([qid, co, bool(prim), int(pop or 0), float(sim)])
+        return out
+
+    def _name_matches(self, cells, wtype):
+        """The entity of ``wtype`` each cell names: {cell: canonical name}. An exact normalized name that names one
+        entity, else the nearest name within THRESH, else none. Read at preparation."""
+        cur = self._rconn().cursor()
+        norms = {c: normalize_surface(c) for c in cells}
+        uniq = sorted({n for n in norms.values() if n})
         exact = {}
         if uniq:                                                  # one batch query, NOT per-cell
-            q = ('SELECT w.norm, w.canonical FROM knowledgebase."words" w WHERE w.type=%s AND w.norm = ANY(%s)' + ctx_sql)
-            cur.execute(q, (wtype, uniq))
+            cur.execute('SELECT w.norm, w.canonical FROM knowledgebase."words" w WHERE w.type=%s AND w.norm = ANY(%s)',
+                        (wtype, uniq))
             tmp = {}
             for nm, cn_ in cur.fetchall():
                 tmp.setdefault(nm, set()).add(cn_)
             exact = {nm: next(iter(cs)) for nm, cs in tmp.items() if len(cs) == 1}   # unique exact only
-        exact_rows, fuzzy = [], []
-        for c in cells:
-            e = exact.get(norms[c])
-            (exact_rows.append(f"({qlit(c)}, {qlit(e)})") if e else fuzzy.append(c))
-        parts = []
-        if exact_rows:
-            parts.append(f"SELECT * FROM (VALUES {', '.join(exact_rows)}) AS ex(cell, canon)")
+        out = {cell: exact[norms[cell]] for cell in cells if norms[cell] in exact}
+        fuzzy = [cell for cell in cells if cell not in out]
         if fuzzy:                                                 # similarity search runs IN POSTGRES (LATERAL <=>)
             vecs = Embedder.get().encode(fuzzy)
-            vlits = ", ".join(f"({qlit(c)}, {qlit(pgvector_literal(v))}::vector)" for c, v in zip(fuzzy, vecs))
             maxd = 1.0 - self.THRESH                              # cosine distance <= 1-thresh  <=>  cosine sim >= thresh
-            parts.append(
-                f'SELECT fv.cell, COALESCE(nn.canonical, fv.cell) '
-                f'FROM (VALUES {vlits}) AS fv(cell, vec) '
-                f'LEFT JOIN LATERAL (SELECT w.canonical FROM knowledgebase."words" w '
-                f'WHERE w.type={qlit(wtype)}{ctx_sql} AND (w.embedding <=> fv.vec) <= {maxd} '
-                f'ORDER BY w.embedding <=> fv.vec LIMIT 1) nn ON true')
-        return " UNION ALL ".join(parts) if parts else None
+            for start in range(0, len(fuzzy), 200):
+                part = list(zip(fuzzy[start:start + 200], vecs[start:start + 200]))
+                vlits = ", ".join(f"({qlit(c)}, {qlit(pgvector_literal(v))}::vector)" for c, v in part)
+                cur.execute(
+                    f'SELECT fv.cell, nn.canonical FROM (VALUES {vlits}) AS fv(cell, vec) '
+                    f'JOIN LATERAL (SELECT w.canonical FROM knowledgebase."words" w '
+                    f'WHERE w.type={qlit(wtype)} AND (w.embedding <=> fv.vec) <= {maxd} '
+                    f'ORDER BY w.embedding <=> fv.vec LIMIT 1) nn ON true')
+                out.update((cell, canonical) for cell, canonical in cur.fetchall() if canonical)
+        return out
 
-    def _city_bridge_sql(self, norm, mtab, route_col, ctx_country):
-        """Resolve each uploaded city cell to a SPECIFIC city qid. Exact name/altLabel candidates are ranked
-        (context country -> global is_primary -> population) in Python — deterministic, not a similarity search;
-        the TYPO remainder is a tight in-SQL <=> nearest-neighbour (FUZZY_THRESH), context-constrained. -> SQL
-        yielding (cell, qid), or None. A cell matching no city resolves to no row (excluded), like a failed join.
-        'Bombay' under 'in India' -> Mumbai's qid (altLabel + context); 'Mumbai' under 'in US' -> Mumbai-India's
-        qid (no US candidate) which the downstream country filter then excludes; 'London' under 'in US' -> the
-        highest-population US London."""
+    def _city_pairs(self, norm, mtab, route_col):
+        """Each uploaded city cell's city: [(cell, qid)]. An exact name (or altLabel: 'Bombay' -> Mumbai) takes the
+        name's primary city, then the most populous; a typo its nearest city. A cell matching no city has no pair
+        (excluded, like a failed join). A sheet with a country column separates its namesakes row by row
+        (``_city_disamb_pairs``).
+
+        The question never chooses. A country it names filters the rows; it is no evidence of which city a cell
+        names, and reading 'London' as London, Kentucky under 'in the United States' would let every namesake pass
+        the filter (tests.test_question_families: "total amount in the United States in euros")."""
         t = next((x for x in norm if x["name"] == mtab), None)
         if not t or route_col not in t["columns"]:
-            return None
-        ci = t["columns"].index(route_col)
-        cells = list({str(r[ci]) for r in t["rows"] if r[ci] not in (None, "")})
-        if not cells:
-            return None
-        cur = self._rconn().cursor()
-        norms = {c: normalize_surface(c) for c in cells}
-        uniq = sorted({n for n in norms.values() if n})
-        cand = {}                                                 # norm -> [(qid, country, is_primary, population)]
-        if uniq:
-            cur.execute("SELECT norm, qid, canon_country, is_primary, (props->>'population')::bigint "
-                        "FROM knowledgebase.\"words\" WHERE type='city' AND qid IS NOT NULL AND norm = ANY(%s)", (uniq,))
-            for nm, qid, co, prim, pop in cur.fetchall():
-                cand.setdefault(nm, []).append((qid, co, bool(prim), pop or 0))
+            return []
+        matches = self._prepared(t).columns.get(route_col, {}).get("cells", {})
+        pairs = []
+        for cell in self._cells(t, route_col):
+            candidates = matches.get(cell) or []
+            exact = [c for c in candidates if c[4] >= 1.0]
+            ranked = sorted(exact, key=lambda c: (c[2], c[3]), reverse=True) if exact else candidates
+            if ranked:
+                pairs.append((cell, ranked[0][0]))
+        return pairs
 
-        def pick(c):
-            cs = cand.get(norms[c])                               # context country, then global is_primary, then pop
-            return sorted(cs, key=lambda x: ((x[1] == ctx_country) if ctx_country else False, x[2], x[3]),
-                          reverse=True)[0][0] if cs else None
-        exact_rows, fuzzy = [], []
-        for c in cells:
-            q = pick(c)
-            (exact_rows.append((c, q)) if q else fuzzy.append(c))
-        parts = []
-        if exact_rows:
-            parts.append("SELECT * FROM (VALUES " +
-                         ", ".join(f"({qlit(c)}, {qlit(q)})" for c, q in exact_rows) + ") AS ex(cell, qid)")
-        if fuzzy:                                                 # genuine typos only — tight, context-constrained
-            vecs = Embedder.get().encode(fuzzy)
-            vlits = ", ".join(f"({qlit(c)}, {qlit(pgvector_literal(v))}::vector)" for c, v in zip(fuzzy, vecs))
-            maxd = 1.0 - self.FUZZY_THRESH
-            ctx_sql = f" AND w.canon_country = {qlit(ctx_country)}" if ctx_country else ""
-            parts.append(
-                f'SELECT fv.cell, nn.qid FROM (VALUES {vlits}) AS fv(cell, vec) '
-                f'JOIN LATERAL (SELECT w.qid FROM knowledgebase."words" w WHERE w.type=\'city\' AND w.qid IS NOT NULL'
-                f'{ctx_sql} AND (w.embedding <=> fv.vec) <= {maxd} ORDER BY w.embedding <=> fv.vec LIMIT 1) nn ON true')
-        return " UNION ALL ".join(parts) if parts else None
+    def _name_pairs(self, norm, mtab, route_col):
+        """Each uploaded cell's entity of the column's world type: [(cell, canonical name)]; a cell matching none
+        keeps its own text (the old lower()=lower() join)."""
+        t = next((x for x in norm if x["name"] == mtab), None)
+        if not t or route_col not in t["columns"]:
+            return []
+        matches = self._prepared(t).columns.get(route_col, {}).get("cells", {})
+        return [(cell, matches.get(cell) or cell) for cell in self._cells(t, route_col)]
 
-    def _city_bridge_disamb_sql(self, norm, mtab, route_col, disamb_col):
+    def _city_disamb_pairs(self, norm, mtab, route_col, disamb_col):
         """Same-name city disambiguation when the UPLOAD itself carries a per-row country column (branches_geo has
-        BOTH a city column and a country column to separate its two 'Paris' rows). Resolve each (city, country) PAIR
-        to the city qid whose canon_country matches THAT row's country (then is_primary, population), and yield
-        (cell, ctx, qid) so the join pins BOTH the city name AND its row-country. This is the qid-keyed replacement
-        for the old name-vs-name disambiguator join: knowledgebase."city".country is a country QID ('Q142'), not 'France',
-        so the inherited lower(up.country)=lower(city.country) never matched -> empty SUM. -> SQL | None."""
+        BOTH a city column and a country column to separate its two 'Paris' rows). Each (city, country) PAIR takes
+        the city whose country name is THAT row's country (then is_primary, population): [((cell, country), qid)],
+        so the join pins BOTH the city name AND its row-country. knowledgebase."city".country is a country QID
+        ('Q142'), not 'France', so a name-vs-name join on the city table never matched -> empty SUM."""
         t = next((x for x in norm if x["name"] == mtab), None)
         if not t or route_col not in t["columns"] or disamb_col not in t["columns"]:
-            return None
+            return []
         ci = t["columns"].index(route_col); di = t["columns"].index(disamb_col)
-        pairs = sorted({(str(r[ci]), str(r[di])) for r in t["rows"]
-                        if r[ci] not in (None, "") and r[di] not in (None, "")})
-        if not pairs:
-            return None
-        cur = self._rconn().cursor()
-        cnorm = {c: normalize_surface(c) for c, _ in pairs}
-        uniq = sorted({n for n in cnorm.values() if n})
-        cand = {}                                                 # norm -> [(qid, canon_country, is_primary, pop)]
-        if uniq:
-            cur.execute("SELECT norm, qid, canon_country, is_primary, (props->>'population')::bigint "
-                        "FROM knowledgebase.\"words\" WHERE type='city' AND qid IS NOT NULL AND norm = ANY(%s)", (uniq,))
-            for nm, qid, co, prim, pop in cur.fetchall():
-                cand.setdefault(nm, []).append((qid, (co or ""), bool(prim), pop or 0))
-        rows = []
-        for cell, ctx in pairs:                                   # pick the qid whose canon_country == this row's country
-            cs = cand.get(cnorm[cell])
-            if not cs:
-                continue
-            q = sorted(cs, key=lambda x: (x[1].lower() == ctx.lower(), x[2], x[3]), reverse=True)[0][0]
-            rows.append((cell, ctx, q))
-        if not rows:
-            return None
-        vals = ", ".join(f"({qlit(c)}, {qlit(x)}, {qlit(q)})" for c, x, q in rows)
-        return f"SELECT * FROM (VALUES {vals}) AS ex(cell, ctx, qid)"
+        rows = sorted({(str(r[ci]), str(r[di])) for r in t["rows"]
+                       if r[ci] not in (None, "") and r[di] not in (None, "")})
+        matches = self._prepared(t).columns.get(route_col, {}).get("cells", {})
+        pairs = []
+        for cell, ctx in rows:                                    # the qid whose country name == this row's country
+            exact = [c for c in (matches.get(cell) or []) if c[4] >= 1.0]
+            if exact:
+                best = sorted(exact, key=lambda c: ((c[1] or "").lower() == ctx.lower(), c[2], c[3]),
+                              reverse=True)[0]
+                pairs.append(((cell, ctx), best[0]))
+        return pairs
 
     def _qid_labels(self, qids):
-        """qid -> canonical label via knowledgebase."words" (the qid->canonical index; knowledgebase."types" holds
+        """qid -> canonical label (the qid->canonical index of knowledgebase."words"; knowledgebase."types" holds
         only the taxonomy, not entity labels). Returns {} on a lookup miss so callers degrade to showing the qid.
 
         A qid can carry more than one canonical row: a later sync added "Czech Republic" beside the source's
         "Czechia" (Q213) and "People's Republic of China" beside "China" (Q148). The label is the primary row's,
         then the one the source record names itself, then the earliest: building the map from every row let
         the row order decide, and the world answer said "Czech Republic" where compose said "Czechia"
-        (2026-10-02). This is the one qid label source; every trail and answer reads it."""
-        qids = sorted({q for q in qids if q})
-        if not qids:
-            return {}
+        (2026-10-02). This is the one qid label source (engine.prepared.read_labels); every trail and answer reads
+        it, through the request's database and the instance's cache."""
         try:
-            return dict(self._kb_rows(
-                'SELECT DISTINCT ON (qid) qid, canonical FROM knowledgebase."words" '
-                'WHERE qid = ANY(%s) AND canonical IS NOT NULL '
-                "ORDER BY qid, is_primary IS TRUE DESC, canonical = props->>'name' IS TRUE DESC, id",
-                (qids,)))
+            return knowledge().labels(qids, current_database())
         except Exception as e:                                    # noqa: BLE001 — leave qids as-is on a lookup miss
             print(f"[entities] qid_to_label_failed error={type(e).__name__}", flush=True)
             return {}
 
     def _world_joins(self, upfrom, joins, sch, norm, mtab, route_col, as_of, mf=None):
-        """idx==0 = the CELL-side join. CITY cells resolve to a stable qid (context-aware, robust same-name
-        disambiguation) and join on Cities.qid; other world types use the name bridge (safe superset of
-        lower()=lower()). When the query filters to a country, that country is the resolution CONTEXT."""
+        """idx==0 = the CELL-side join. CITY cells resolve to a stable qid (``_city_pairs``; a country column in
+        the sheet separates same-name cities) and join on Cities.qid; other world types use the name bridge (safe
+        superset of lower()=lower()). ``mf``, the question's world filter, is applied after the join; it never
+        changes which entity a cell names."""
         fw = upfrom
         wt0 = joins[0]["right_table"]
         disamb = self.disambiguator(sch, mtab, route_col, wt0)
         warnings = [] if disamb else self.ambiguities(next(t for t in norm if t["name"] == mtab), route_col, wt0)
         wtype = WORLD_TABLE_TYPE.get(wt0)
-        ctx_country = mf.get("value") if (mf and mf.get("attr") == "country") else None
-        city_bridge = self._city_bridge_sql(norm, mtab, route_col, ctx_country) if (wtype == "city" and not disamb) else None
+        city_bridge = self._city_bridge_sql(norm, mtab, route_col) if (wtype == "city" and not disamb) else None
         # disamb + city: the upload carries a per-row country column to separate same-name cities (branches_geo's two
         # 'Paris' rows). The inherited name-vs-name disambiguator join can't work qid-keyed, so resolve each
         # (city, country) PAIR to a qid and join on BOTH -> the row-correct city (replaces the broken else-branch).
@@ -527,32 +510,31 @@ class EntityQuery(RoutedQuery):
             R = j["right_table"]
             if idx == 0 and disamb_city_bridge:
                 b = "__bridge0"
-                fw += (f' JOIN ({disamb_city_bridge}) AS {b}(cell, ctx, qid)'
+                rows = self._bridge_select(mtab, route_col, ("value", "context", "entity_qid"), ("cell", "ctx", "qid"))
+                fw += (f' JOIN ({rows}) AS {b}'
                        f' ON {b}.cell = {qident(mtab)}.{qident(route_col)}'
                        f' AND {b}.ctx = {qident(mtab)}.{qident(disamb[0])}')
                 fw += f' JOIN {qident(R)} ON {qident(R)}.{qident("qid")} = {b}.qid'   # qid pins the row-disambiguated city
             elif idx == 0 and city_bridge:
                 b = "__bridge0"
-                fw += f' JOIN ({city_bridge}) AS {b}(cell, qid) ON {b}.cell = {qident(mtab)}.{qident(route_col)}'
+                rows = self._bridge_select(mtab, route_col, ("value", "world_key"), ("cell", "qid"))
+                fw += f' JOIN ({rows}) AS {b} ON {b}.cell = {qident(mtab)}.{qident(route_col)}'
                 fw += f' JOIN {qident(R)} ON {qident(R)}.{qident("qid")} = {b}.qid'   # qid pins the exact city
             elif idx == 0 and name_bridge:
                 b = "__bridge0"
-                fw += f' JOIN ({name_bridge}) AS {b}(cell, canon) ON {b}.cell = {qident(mtab)}.{qident(route_col)}'
                 if j["right_col"] == "qid":
                     # QID-KEYED world table (knowledgebase."country" migrated to qid keys): the name bridge yields the
                     # canonical NAME, but the table joins on `qid`, so a name/qid join returned 0 rows — every
-                    # country-column world join was empty. Map canon -> qid through knowledgebase."words" (the SAME index the
-                    # bridge resolved through) and join on qid. Robust to official-vs-common name mismatch
-                    # (China's canon 'China' -> Q148 -> knowledgebase.country.qid Q148), which a name-join silently drops.
-                    # knowledgebase."words" has MANY rows per entity (one per altLabel), all sharing the qid, so DISTINCT ON
-                    # (canonical) collapses to ONE qid per name — else the aggregate fans out by the altLabel count.
-                    w = f"{b}_w"
-                    fw += (f' JOIN (SELECT DISTINCT ON (lower({qident("canonical")})) lower({qident("canonical")}) AS cn, '
-                           f'{qident("qid")} FROM knowledgebase."words" WHERE {qident("type")}={qlit(wtype)} '
-                           f'AND {qident("qid")} IS NOT NULL ORDER BY lower({qident("canonical")}), {qident("qid")}) '
-                           f'{w} ON {w}.cn = lower({b}.canon)')
-                    fw += f' JOIN {qident(R)} ON {qident(R)}.{qident("qid")} = {w}.{qident("qid")}'
+                    # country-column world join was empty. The bridge's entity_qid is the ONE qid the canonical name
+                    # names (the lowest of its qids, KnowledgeBridgeMixin._bridge_rows), so the aggregate cannot fan out
+                    # by the name's altLabel count. Robust to official-vs-common name mismatch (China's canon 'China'
+                    # -> Q148 -> knowledgebase.country.qid Q148), which a name-join silently drops.
+                    rows = self._bridge_select(mtab, route_col, ("value", "entity_qid"), ("cell", "qid"))
+                    fw += f' JOIN ({rows}) AS {b} ON {b}.cell = {qident(mtab)}.{qident(route_col)}'
+                    fw += f' JOIN {qident(R)} ON {qident(R)}.{qident("qid")} = {b}.qid'
                 else:
+                    rows = self._bridge_select(mtab, route_col, ("value", "world_key"), ("cell", "canon"))
+                    fw += f' JOIN ({rows}) AS {b} ON {b}.cell = {qident(mtab)}.{qident(route_col)}'
                     cond = f'lower({qident(R)}.{qident(j["right_col"])}) = lower({b}.canon)'
                     if "is_primary" in self.words[R].get("columns", []):
                         cond += f' AND {qident(R)}.{qident("is_primary")} = 1'

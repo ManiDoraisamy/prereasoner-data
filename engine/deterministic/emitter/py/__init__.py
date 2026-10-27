@@ -43,7 +43,7 @@ from engine.sql_ast import SQLType
 
 _TYPE = {
     SQLType.INTEGER: ("int", "BigInteger"),
-    SQLType.REAL: ("Decimal", "Numeric(58, 20)"),
+    SQLType.REAL: ("Decimal", "ExactDecimal"),
     SQLType.BOOLEAN: ("bool", "Boolean"),
     SQLType.DATE: ("date | str", "PortableDate"),
     SQLType.TEXT: ("str", "Text"),
@@ -159,7 +159,7 @@ def _safe_id(value: str, prefix: str) -> bool:
 
 
 class PythonEmitter:
-    VERSION = 10
+    VERSION = 11
 
     def emit(
         self,
@@ -237,20 +237,43 @@ class PythonEmitter:
     def _base_source() -> str:
         return (
             "from datetime import date, datetime\n"
+            "from decimal import Decimal\n"
             "\n"
-            "from sqlalchemy import Date, Numeric, Text, cast\n"
+            "from sqlalchemy import Date, Float, Numeric, Text\n"
             "from sqlalchemy.orm import DeclarativeBase\n"
             "from sqlalchemy.types import TypeDecorator\n"
             "\n"
             "\n"
-            "class NumericFloat(TypeDecorator):\n"
-            "    \"\"\"A binary float column read as NUMERIC, as the SQL program reads it.\"\"\"\n"
+            "class ExactDecimal(TypeDecorator[Decimal]):\n"
+            "    \"\"\"An exact decimal: NUMERIC where the database has it; in SQLite, which has none, the decimal\n"
+            "    as text, ordered by its decimal collation and read back as the Decimal it names.\"\"\"\n"
             "\n"
             "    impl = Numeric\n"
             "    cache_ok = True\n"
             "\n"
-            "    def column_expression(self, column):\n"
-            "        return cast(column, Numeric)\n"
+            "    def load_dialect_impl(self, dialect):\n"
+            "        storage = Text() if dialect.name == 'sqlite' else Numeric(58, 20)\n"
+            "        return dialect.type_descriptor(storage)\n"
+            "\n"
+            "    def process_bind_param(self, value, dialect):\n"
+            "        if dialect.name != 'sqlite' or value is None:\n"
+            "            return value\n"
+            "        text = format(Decimal(str(value)), 'f')\n"
+            "        text = text.rstrip('0').rstrip('.') if '.' in text else text\n"
+            "        return '0' if text in ('', '-0') else text\n"
+            "\n"
+            "    def process_result_value(self, value, _dialect):\n"
+            "        if value is None or isinstance(value, Decimal):\n"
+            "            return value\n"
+            "        return Decimal(str(value))\n"
+            "\n"
+            "\n"
+            "class NumericFloat(ExactDecimal):\n"
+            "    \"\"\"A binary float column, read as the shortest decimal that names its value, as the SQL program\n"
+            "    reads it.\"\"\"\n"
+            "\n"
+            "    def load_dialect_impl(self, dialect):\n"
+            "        return dialect.type_descriptor(Float())\n"
             "\n"
             "\n"
             "class PortableDate(TypeDecorator[date | str]):\n"
@@ -283,7 +306,6 @@ class PythonEmitter:
             "BigInteger",
             "Boolean",
             "ForeignKey",
-            "Numeric",
             "Text",
         }
         lines = [
@@ -295,7 +317,7 @@ class PythonEmitter:
             f"from sqlalchemy import {', '.join(sorted(imports))}",
             "from sqlalchemy.orm import Mapped, mapped_column, relationship",
             "",
-            "from .base import Base, "
+            "from .base import Base, ExactDecimal, "
             + ("NumericFloat, " if any(column.binary_float for column in table.columns) else "")
             + "PortableDate",
             "",

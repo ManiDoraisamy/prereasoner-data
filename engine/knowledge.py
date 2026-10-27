@@ -22,6 +22,7 @@ from engine.calculations import (
 from engine.calculations.registry import attach_calculation_evidence
 from engine.knowledge_compose import ComposedKnowledgeQuery
 from engine.pg import _pg
+from engine.prepared import request_database
 from engine.relations import request_memo
 from engine.request_state import request_scope
 from engine.sql_expansion import FUNCTION_WORDS
@@ -48,9 +49,10 @@ class KnowledgeReasoner:
 
     def serve(self, tables, question, sub, as_of=None, emit=None, explicit_fks=(), dataset_semantics=(),
               decomposition=None):
-        # Questions run concurrently on this one object: the request gets its own schema, connections and
-        # question text (engine/request_state.py), and its paths derive its tables once (relations.memoized).
-        with request_scope(), request_memo():
+        # Questions run concurrently on this one object: the request gets its own database (engine/prepared.py),
+        # connections and question text (engine/request_state.py), and its paths derive its tables once
+        # (relations.memoized).
+        with request_scope(), request_memo(), request_database():
             try:
                 return self._serve(tables, question, sub, as_of=as_of, emit=emit, explicit_fks=explicit_fks,
                                    dataset_semantics=dataset_semantics, decomposition=decomposition)

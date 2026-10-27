@@ -23,7 +23,7 @@ from engine.deterministic.plan import (
 from engine.deterministic.world import lower_world_query, reference_schema
 
 
-def lower_composition(slug, tables, schema, bindings, world, connection):
+def lower_composition(slug, tables, schema, bindings, world, database):
     graph = (world or {}).get("graph")
     if bindings["world_join"] and graph is None:
         raise UnsupportedDeterministicPlan(
@@ -95,7 +95,7 @@ def lower_composition(slug, tables, schema, bindings, world, connection):
         aggregate=None,
         calculation=None,
         conversion=None,
-        reference_columns=reference_schema(connection, required, keys),
+        reference_columns=reference_schema(database, required, keys),
         reference_keys=keys,
         bridge_key="world_key",
         outer=True,

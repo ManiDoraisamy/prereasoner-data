@@ -158,7 +158,7 @@ def main():
     import re
     from types import SimpleNamespace
 
-    from engine.pg import _TableQueryPg
+    from engine.tables import TableQuery
 
     def qids(response):
         cells = [cell for view in response.get("views") or [] for row in view.get("rows") or [] for cell in row]
@@ -180,7 +180,7 @@ def main():
             ok(f"rule 5: '{question}' still totals the France orders", str(dv) == answer, f"got={dv}")
     try:
         with analysis_execution_context(None, sub, execution_mode=None):
-            _TableQueryPg._execute_deterministic(
+            TableQuery._execute_deterministic(
                 None, {}, SimpleNamespace(tables=(SimpleNamespace(schema="knowledgebase"),)))
         refused = False
     except RuntimeError as exc:

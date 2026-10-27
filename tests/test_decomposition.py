@@ -553,7 +553,7 @@ def test_failed_compound_probe_cannot_authorize_a_partial_composed_answer():
             side_effect=DecompositionError("internal planner failure"),
         ),
     ):
-        response = host._serve_locked([], "question", "c_" + "7" * 32)
+        response = host.serve([], "question", "c_" + "7" * 32)
     assert response["clarify"] and not response.get("result")
     assert "internal" not in response["reason"]
     host._run_engine.assert_not_called()

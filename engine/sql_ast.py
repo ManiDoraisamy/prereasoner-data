@@ -10,7 +10,7 @@ from dataclasses import dataclass, fields, is_dataclass, replace
 from decimal import Decimal
 from enum import Enum
 import math
-from numbers import Real
+from numbers import Integral, Real
 import re
 from typing import Any, Iterable, Sequence, TypeAlias
 
@@ -485,10 +485,10 @@ def _validate_query(query: Query, outer_scope: frozenset[str]) -> None:
 def render_query(query: Query, *, dialect: str = "standard") -> str:
     """Render validated SQL.
 
-    ``sqlite_decimal`` is the exact local-execution dialect. Its function names
-    are installed by :func:`engine.numeric.register_sqlite_decimal`.
+    ``sqlite_decimal`` is the exact execution dialect of the request's database (engine/prepared.py). Its
+    function names are installed by :func:`engine.numeric.register_sqlite_decimal`.
     """
-    if dialect not in {"standard", "sqlite_decimal", "postgres_numeric"}:
+    if dialect not in {"standard", "sqlite_decimal"}:
         raise ValueError(f"unsupported SQL dialect: {dialect}")
     validate_query(query)
     return _render_query(query, dialect)
@@ -502,7 +502,7 @@ def render_scalar_expression(expression: ScalarExpr, *, dialect: str = "standard
     translating it back into ad hoc SQL. Validation uses exactly the qualifiers referenced by the
     expression; the owning query remains responsible for making those tables visible.
     """
-    if dialect not in {"standard", "sqlite_decimal", "postgres_numeric"}:
+    if dialect not in {"standard", "sqlite_decimal"}:
         raise ValueError(f"unsupported SQL dialect: {dialect}")
     _validate_expr(expression, frozenset(_expr_tables(expression)))
     return _render_expr(expression, dialect)
@@ -856,7 +856,7 @@ def _render_expr(expr: ScalarExpr, dialect: str = "standard") -> str:
     if isinstance(expr, Aggregate):
         distinct = "DISTINCT " if expr.distinct else ""
         function = expr.function
-        if dialect == "sqlite_decimal" and expression_type(expr.operand).numeric:
+        if dialect == "sqlite_decimal" and value_type(expr.operand).numeric:
             function = {
                 "SUM": "decimal_sum", "AVG": "decimal_avg",
                 "MIN": "decimal_min", "MAX": "decimal_max",
@@ -880,8 +880,7 @@ def _render_expr(expr: ScalarExpr, dialect: str = "standard") -> str:
                 and expr.right.value != 0
             ):
                 right = f"NULLIF({right}, 0)"
-            cast_type = "NUMERIC" if dialect == "postgres_numeric" else "REAL"
-            return f"(CAST({_render_expr(expr.left, dialect)} AS {cast_type}) / {right})"
+            return f"(CAST({_render_expr(expr.left, dialect)} AS REAL) / {right})"
         return f"({_render_expr(expr.left, dialect)} {expr.operator} {_render_expr(expr.right, dialect)})"
     if isinstance(expr, ScalarSubquery):
         return f"({_render_query(expr.query, dialect)})"
@@ -906,6 +905,11 @@ def _render_predicate(predicate: Predicate, dialect: str = "standard") -> str:
     if isinstance(predicate, InPredicate):
         prefix = "NOT " if predicate.negated else ""
         if isinstance(predicate.source, tuple):
+            if any(_numeric_comparison(predicate.left, expression, dialect) for expression in predicate.source):
+                left = _render_expr(predicate.left, dialect)
+                members = " OR ".join(f"decimal_cmp({left}, {_render_expr(expression, dialect)}) = 0"
+                                      for expression in predicate.source)
+                return f"{prefix}({members})"
             source = ", ".join(_render_expr(expression, dialect) for expression in predicate.source)
         else:
             source = _render_query(predicate.source, dialect)
@@ -913,18 +917,70 @@ def _render_predicate(predicate: Predicate, dialect: str = "standard") -> str:
     return _render_comparison(predicate.left, predicate.operator, predicate.right, dialect)
 
 
+def value_type(expr: ScalarExpr) -> SQLType:
+    """The type ``expr``'s value has when it runs: ``expression_type``, with an untyped literal typed by its value
+    (the readers write ``Literal(100)``) and a scalar subquery by the one column it projects. Rendering reads it;
+    validation keeps ``expression_type``, so what a candidate may be does not change with it."""
+    if isinstance(expr, Literal) and expr.type == SQLType.UNKNOWN:
+        value = expr.value
+        if isinstance(value, bool):
+            return SQLType.BOOLEAN
+        if isinstance(value, Integral):
+            return SQLType.INTEGER
+        if isinstance(value, (Real, Decimal)):
+            return SQLType.REAL
+        return SQLType.TEXT if isinstance(value, str) else SQLType.UNKNOWN
+    if isinstance(expr, ScalarSubquery):
+        query = expr.query
+        while isinstance(query, SetQuery):
+            query = query.left
+        return value_type(query.select[0].expression) if len(query.select) == 1 else SQLType.UNKNOWN
+    if isinstance(expr, Aggregate) and expr.function not in {"COUNT", "AVG"}:
+        return value_type(expr.operand)
+    if isinstance(expr, BinaryExpr) and expr.operator != "/":
+        return (SQLType.REAL if SQLType.REAL in (value_type(expr.left), value_type(expr.right))
+                else SQLType.INTEGER)
+    return expression_type(expr)
+
+
+def _decimal_text(expr: ScalarExpr) -> bool:
+    """Whether ``expr`` reads as decimal text in the ``sqlite_decimal`` dialect: a REAL column (stored as canonical
+    text, engine/prepared.py), the decimal functions' results (arithmetic, SUM/AVG/MIN/MAX of numbers) and a scalar
+    subquery projecting one of them. SQLite orders any text above any number, so such a value compares with a
+    number only through ``decimal_cmp``; a REAL column alone would compare by its ``decimal`` collation, but an
+    aggregate's or a calculation's value has none."""
+    if isinstance(expr, ColumnRef):
+        return expr.type == SQLType.REAL
+    if isinstance(expr, Aggregate):
+        return expr.function != "COUNT" and value_type(expr.operand).numeric
+    if isinstance(expr, BinaryExpr):
+        return True
+    if isinstance(expr, ScalarSubquery):
+        query = expr.query
+        while isinstance(query, SetQuery):
+            query = query.left
+        return len(query.select) == 1 and _decimal_text(query.select[0].expression)
+    return False
+
+
+def _numeric_comparison(left: ScalarExpr, right: ScalarExpr, dialect: str) -> bool:
+    """Whether the ``sqlite_decimal`` dialect compares ``left`` and ``right`` through ``decimal_cmp``: both are
+    numbers and one of them reads as decimal text. Integers and literals compare exactly as themselves."""
+    return (dialect == "sqlite_decimal" and value_type(left).numeric and value_type(right).numeric
+            and (_decimal_text(left) or _decimal_text(right)))
+
+
 def _render_comparison(left: ScalarExpr, operator: str, right: ScalarExpr, dialect: str) -> str:
     rendered_left = _render_expr(left, dialect)
     rendered_right = _render_expr(right, dialect)
-    if (dialect == "sqlite_decimal" and expression_type(left).numeric and expression_type(right).numeric
-            and operator in {"=", "!=", "<>", ">", "<", ">=", "<="}):
+    if operator in {"=", "!=", "<>", ">", "<", ">=", "<="} and _numeric_comparison(left, right, dialect):
         return f"decimal_cmp({rendered_left}, {rendered_right}) {operator} 0"
     return f"{rendered_left} {operator} {rendered_right}"
 
 
 def _render_order_expr(expression: ScalarExpr, dialect: str) -> str:
     rendered = _render_expr(expression, dialect)
-    if dialect == "sqlite_decimal" and expression_type(expression).numeric:
+    if dialect == "sqlite_decimal" and value_type(expression).numeric:
         return f"{rendered} COLLATE decimal"
     return rendered
 

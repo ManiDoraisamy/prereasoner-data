@@ -97,6 +97,29 @@ def test_production_entry_opens_the_request():
     assert "begin_request()" in serve, "KnowledgeReasoner.serve must open the request memo"
 
 
+class _Connection:
+    """A preparation's PostgreSQL connection (engine/prepared.py): records each statement, answers with
+    ``answer(sql)``."""
+
+    def __init__(self, calls, answer):
+        self._calls, self._answer = calls, answer
+
+    def cursor(self):
+        connection = self
+
+        class Cursor:
+            rows = []
+
+            def execute(self, sql, params=None):
+                connection._calls.append((sql, params))
+                self.rows = connection._answer(sql)
+
+            def fetchall(self):
+                return self.rows
+
+        return Cursor()
+
+
 def test_value_membership_routing_is_one_lookup_per_table():
     """Routing read the words index once per column: seven round trips for the customer-orders sheet on
     every world request (2026-09-30). One lookup must route every column exactly as before, and a value
@@ -137,18 +160,18 @@ def test_an_entity_resolves_to_the_exact_nearest_of_its_type():
 
     calls = []
     q = knowledge_query.KnowledgeQuery.__new__(knowledge_query.KnowledgeQuery)
-    q._kb_rows = lambda sql, params: calls.append((sql, params)) or (
-        [("hospital",)] if "types" in sql else [] if "norm=%s" in sql
-        else [("Q1472068", 0.93, "johnshopkinshospital")])
+    q._rconn = lambda: _Connection(calls, lambda sql: [] if "DISTINCT ON (norm)" in sql
+                                   else [("Johns Hopkns Hospital", "Q1472068", 0.93, "johnshopkinshospital")])
     original = knowledge_query.Embedder
     knowledge_query.Embedder = type("E", (), {"get": staticmethod(lambda: _Embedder())})
     try:
-        assert q._resolve_world_qid("Johns Hopkns Hospital", "hospital", "Q16917") == "Q1472068"
+        assert q._resolve_world_qids(["Johns Hopkns Hospital"], "hospital") == {
+            "Johns Hopkns Hospital": "Q1472068"}
     finally:
         knowledge_query.Embedder = original
     sql = calls[-1][0]
-    assert "ORDER BY (embedding <=> %s::vector) + 0" in sql and "embedding IS NOT NULL" in sql, sql
-    assert calls[-1][1][1] == "hospital"
+    assert "ORDER BY (embedding <=> fv.vec) + 0" in sql and "embedding IS NOT NULL" in sql, sql
+    assert calls[-1][1] == ("hospital",)
 
 
 def test_a_nearest_name_matches_only_when_its_spelling_agrees():
@@ -185,16 +208,16 @@ def test_a_shared_name_resolves_the_same_way_every_time():
 
     calls = []
     q = knowledge_query.KnowledgeQuery.__new__(knowledge_query.KnowledgeQuery)
-    q._kb_rows = lambda sql, params: calls.append(sql) or ([("hospital",)] if "types" in sql else [])
+    q._rconn = lambda: _Connection(calls, lambda _sql: [])
     original = knowledge_query.Embedder
     knowledge_query.Embedder = type("E", (), {"get": staticmethod(lambda: _Embedder())})
     try:
-        assert q._resolve_world_qid("St. Mary's Hospital", "hospital", "Q16917") is None
+        assert q._resolve_world_qids(["St. Mary's Hospital"], "hospital") == {"St. Mary's Hospital": None}
     finally:
         knowledge_query.Embedder = original
-    exact, nearest = calls[1], calls[2]
-    assert "norm=%s" in exact and "ORDER BY is_primary IS TRUE DESC, length(qid), qid LIMIT 1" in exact, exact
-    assert "ORDER BY (embedding <=> %s::vector) + 0, is_primary IS TRUE DESC, length(qid), qid" in nearest, nearest
+    exact, nearest = calls[0][0], calls[1][0]
+    assert "ORDER BY norm, is_primary IS TRUE DESC, length(qid), qid" in exact, exact
+    assert "ORDER BY (embedding <=> fv.vec) + 0, is_primary IS TRUE DESC, length(qid), qid" in nearest, nearest
 
 
 def test_rows_whose_entity_matched_nothing_are_disclosed():

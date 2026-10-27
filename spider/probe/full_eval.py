@@ -96,7 +96,6 @@ def _lower_python_candidate(candidate, tables, schema, foreign_keys):
         candidate.query,
         schema,
         foreign_keys,
-        postgres_row_identity=False,
     )
     estimated_rows = sum(
         len(table.get("rows") or ())
@@ -106,43 +105,19 @@ def _lower_python_candidate(candidate, tables, schema, foreign_keys):
     return plan, estimated_rows
 
 
-def _execute_python_candidate(plan, tables, schema, estimated_rows, row_limit):
-    """Execute one lowered generated ORM/Python program on Spider's SQLite rows.
+def _execute_python_candidate(enc, plan, tablemap, schema):
+    """Execute one lowered generated ORM/Python program through serving's executor (TableQuery.execute on a
+    request database, engine/prepared.py), with the Python program forced.
 
-    Spider's independent gold SQL still runs through the existing evaluator. This helper changes
-    only the selected candidate's execution backend, so SQL and Python runs share the model,
-    planner, candidate ranking, capped input rows, and scalar-gold comparison contract.
-    """
-    from sqlalchemy import create_engine
-    from sqlalchemy.pool import StaticPool
+    Spider's independent gold SQL still runs through the existing evaluator. This changes only the selected
+    candidate's execution backend, so SQL and Python runs share the model, planner, candidate ranking, capped input
+    rows, and scalar-gold comparison contract."""
+    from engine.deterministic.context import analysis_execution_context
 
-    from engine.deterministic import DeterministicAnalysis
-    from engine.tables import TableQuery
-
-    # Use a separate connection with the candidate executor's exact storage
-    # contract. The gold fixture has its own historical coercion rules (including
-    # blank text -> NULL); applying those only to Python changes the source cells
-    # and manufactures backend disagreements. Gold remains independent.
-    raw = TableQuery._sqlite_tables(None, {table["name"]: table for table in tables}, schema)
-    raw.commit()  # SQLAlchemy's initial rollback must not discard the fixture inserts.
-    engine = create_engine(
-        "sqlite+pysqlite://",
-        creator=lambda: raw,
-        poolclass=StaticPool,
-    )
-    try:
-        with engine.connect() as connection:
-            result = DeterministicAnalysis(
-                plan, conversation_schema="main"
-            ).run(
-                connection,
-                mode="python",
-                estimated_rows=estimated_rows,
-                python_row_limit=row_limit,
-            )
-        return [list(row.values()) for row in result.rows]
-    finally:
-        engine.dispose()
+    descriptor = {"slug": plan.slug, "revision": 1, "dataset_version": "spider"}
+    with analysis_execution_context(descriptor, "c_" + "0" * 32, execution_mode="python"):
+        _columns, rows = enc.execute(tablemap, schema, "", deterministic_plan=plan)
+    return [list(row) for row in rows]
 
 
 def _source_paths(root):
@@ -225,13 +200,23 @@ def _write_json_atomic(path, value):
 
 def ast_predict(
     enc, tabs, question, schema_fks=None, schema_cache=None,
-    selection="served", execution_backend="sql", python_row_limit=10_000,
+    selection="served", execution_backend="auto", python_row_limit=10_000,
 ):
-    """Run the served own-data selection, then execute the chosen query for grading.
+    """Run the served own-data selection, then execute the chosen query for grading, on one database for the
+    question as serving does (engine/prepared.py).
 
     `enc.select_query` is the production selection (engine/tables.py). `selection="pool_oracle"`
     additionally executes every pooled candidate so the evaluator can score the pool's best
     member (an oracle ablation, never serving)."""
+    from engine.prepared import scratch_database
+
+    with scratch_database():
+        return _ast_predict(enc, tabs, question, schema_fks, schema_cache, selection, execution_backend,
+                            python_row_limit)
+
+
+def _ast_predict(enc, tabs, question, schema_fks, schema_cache, selection, execution_backend,
+                 python_row_limit):
     cache_key = (tuple(id(table) for table in tabs), repr(schema_fks))
     cached = schema_cache.get(cache_key) if schema_cache is not None else None
     if cached is None:
@@ -250,11 +235,12 @@ def ast_predict(
         "selection": chosen.record(),
     }
 
-    def execute(sql):
-        ok, why = enc.guard(sql)
+    def execute(candidate):
+        ok, why = enc.guard(candidate.sql)
         if not ok:
             raise RuntimeError(f"guard: {why}")
-        return enc.execute(tmap, sch, sql)
+        # As serving executes a query it could not lower: its AST in the exact decimal dialect.
+        return enc.execute(tmap, sch, candidate.sql, query=candidate.query)
 
     def execute_selected(candidate, sql_rows=None):
         metadata = {
@@ -265,7 +251,7 @@ def ast_predict(
         }
         if execution_backend == "sql":
             if sql_rows is None:
-                _, sql_rows = execute(candidate.sql)
+                _, sql_rows = execute(candidate)
             return sql_rows, metadata
 
         from engine.deterministic.lower import UnsupportedDeterministicPlan
@@ -283,7 +269,7 @@ def ast_predict(
             if execution_backend != "auto":
                 raise _DeterministicCandidateError(str(exc), metadata) from exc
             if sql_rows is None:
-                _, sql_rows = execute(candidate.sql)
+                _, sql_rows = execute(candidate)
             return sql_rows, metadata
 
         metadata.update(
@@ -295,19 +281,17 @@ def ast_predict(
                 f"estimated rows {estimated_rows} exceed limit {python_row_limit}"
             )
             if sql_rows is None:
-                _, sql_rows = execute(candidate.sql)
+                _, sql_rows = execute(candidate)
             return sql_rows, metadata
 
         try:
-            python_rows = _execute_python_candidate(
-                plan, norm, sch, estimated_rows, python_row_limit
-            )
+            python_rows = _execute_python_candidate(enc, plan, tmap, sch)
         except PythonRowLimitExceeded as exc:
             metadata["python_fallback_reason"] = str(exc)
             if execution_backend != "auto":
                 raise _DeterministicCandidateError(str(exc), metadata) from exc
             if sql_rows is None:
-                _, sql_rows = execute(candidate.sql)
+                _, sql_rows = execute(candidate)
             return sql_rows, metadata
         except Exception as exc:
             metadata["python_execution_error"] = f"{type(exc).__name__}: {exc}"
@@ -316,7 +300,7 @@ def ast_predict(
                     "python_execution_error"
                 ]
                 if sql_rows is None:
-                    _, sql_rows = execute(candidate.sql)
+                    _, sql_rows = execute(candidate)
                 return sql_rows, metadata
             raise _DeterministicCandidateError(
                 metadata["python_execution_error"], metadata
@@ -325,7 +309,7 @@ def ast_predict(
         metadata["execution_backend_actual"] = "python"
         if execution_backend in {"auto", "verify"}:
             if sql_rows is None:
-                _, sql_rows = execute(candidate.sql)
+                _, sql_rows = execute(candidate)
             metadata["python_sql_equal"] = bool(
                 compare(sql_rows, python_rows).get("strict")
             )
@@ -349,7 +333,10 @@ def ast_predict(
 
         from engine.sql_rank import execution_op_limit
 
-        connection = enc._sqlite_tables(tmap, sch)
+        from engine.prepared import RequestDatabase
+
+        database = RequestDatabase()
+        connection = database.load(tmap, sch)
         pool = []
         for rank, candidate in enumerate(candidates):
             entry = {"rank": rank, "sql": candidate.sql,
@@ -373,7 +360,7 @@ def ast_predict(
                 except sqlite3.Error as exc:
                     entry["error"] = f"{type(exc).__name__}: {exc}"
             pool.append(entry)
-        connection.close()
+        database.close()
         executed = sum(1 for entry in pool if "rows" in entry)
         result = {"ok": executed > 0, "path": "ast", "pool_execution": pool, **evidence}
         if not executed:
@@ -521,7 +508,7 @@ def compose_predict(eng, tabs, question):
 
 def predict(enc, eng, reader, tabs, question, schema_fks=None,
             ast_schema_cache=None, selection="served", use_compose=True,
-            execution_backend="sql", python_row_limit=10_000):
+            execution_backend="auto", python_row_limit=10_000):
     """Route exactly like live serving, via the SHARED router (engine.routing): primitive-head depth cues are
     EVIDENCE to build a compose plan; the AUTHORITY is route(): a grounded world dependency composes, and compose's
     refusal of a measure nothing can aggregate is the answer, as in serving. Spider tables are world-less, so no
@@ -585,10 +572,10 @@ def main():
     ap.add_argument(
         "--backend",
         choices=["sql", "python", "auto", "verify"],
-        default="sql",
+        default="auto",
         help=(
-            "execute the selected AST with legacy SQL, generated Python, "
-            "Python-preferred auto fallback, or Python/SQL denotation verification"
+            "execute the selected AST as SQL, as generated Python, by serving's policy (auto: Python, "
+            "SQL when it cannot be lowered or is too large), or with Python/SQL denotation verification"
         ),
     )
     ap.add_argument(

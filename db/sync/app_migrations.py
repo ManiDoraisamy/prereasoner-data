@@ -246,6 +246,23 @@ CHAT_MIGRATIONS = (
             'CREATE INDEX IF NOT EXISTS ix_request_job_expiry ON chat.request_job(expires_at)',
         ),
     ),
+    ApplicationMigration(
+        12,
+        "prepared_tables",
+        (
+            # What one version of a conversation's table needs from the knowledgebase, computed once
+            # (engine/prepared.py): derived data, rebuilt when missing, deleted with its conversation.
+            '''CREATE TABLE IF NOT EXISTS "chat"."prepared_table" (
+                conversation_id text NOT NULL REFERENCES "chat"."conversation"(conversation_id) ON DELETE CASCADE,
+                table_key text NOT NULL CHECK (table_key ~ '^[0-9a-f]{64}$'),
+                preparation_version text NOT NULL,
+                record bytea NOT NULL,
+                record_bytes integer NOT NULL CHECK (record_bytes >= 0),
+                prepared_at timestamptz NOT NULL DEFAULT now(),
+                PRIMARY KEY (conversation_id, table_key)
+            )''',
+        ),
+    ),
 )
 
 # Legacy compatibility functions from the former request-time Wikidata fill path.

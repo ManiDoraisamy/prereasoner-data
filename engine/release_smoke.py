@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import uuid
 
-from engine.pg import _pg, _TableQueryPg
+from engine.pg import _pg
 from engine.sql_ast import (
     Aggregate,
     BinaryExpr,
@@ -14,7 +14,7 @@ from engine.sql_ast import (
     SQLType,
     render_query,
 )
-from engine.tables import table_from_rows
+from engine.tables import TableQuery, table_from_rows
 
 
 def _assert_reasoning_result(result: dict) -> None:
@@ -60,6 +60,11 @@ def run() -> dict:
             "SELECT source_bytes, state_bytes, last_active_at, expires_at "
             "FROM chat.conversation WHERE false"
         )
+        # A question keeps its tables' preparations here (engine/prepared.py).
+        cursor.execute(
+            "SELECT conversation_id, table_key, preparation_version, record, record_bytes, prepared_at "
+            "FROM chat.prepared_table WHERE false"
+        )
         cursor.execute("SELECT to_regclass('knowledgebase.schedule'), to_regclass('knowledgebase.exchange_rate')")
         schedule, exchange_rate = cursor.fetchone()
         if schedule is None or exchange_rate is None:
@@ -67,9 +72,9 @@ def run() -> dict:
     finally:
         connection.close()
 
-    # A unique production-shaped schema proves the runtime role can provision a
-    # fresh conversation and cannot collide with a schema owned by an older role.
-    schema = f"c_{uuid.uuid4().hex}"
+    # A unique production-shaped conversation proves the runtime role can provision a
+    # fresh conversation and keep its tables' preparations.
+    conversation = f"c_{uuid.uuid4().hex}"
     table = table_from_rows(
         "ledger", ["amount", "rate"],
         [["9007199254740993.1", "0.1"], ["0.1", "0.2"]],
@@ -81,17 +86,16 @@ def run() -> dict:
     amount = ColumnRef("ledger", "amount", SQLType.REAL)
     rate = ColumnRef("ledger", "rate", SQLType.REAL)
     query = SelectQuery((SelectItem(Aggregate("SUM", BinaryExpr(amount, "*", rate)), "total"),), "ledger")
-    executor = _TableQueryPg()
-    executor._pg_schema = schema
+    executor = TableQuery()
     reasoning = None
     connection = _pg()
     try:
-        # The request path creates this durable identity before loading chat.working_table.
+        # The request path creates this durable identity before keeping chat.prepared_table rows.
         # Keep the smoke test on the same production-shaped path so its FK checks are real.
         cursor = connection.cursor()
         cursor.execute(
             "INSERT INTO chat.conversation (conversation_id, initial_prompt) VALUES (%s, %s)",
-            (schema, "release smoke"),
+            (conversation, "release smoke"),
         )
         connection.commit()
     finally:
@@ -104,8 +108,8 @@ def run() -> dict:
             raise RuntimeError(f"exact calculation smoke mismatch: {columns!r} {rows!r}")
 
         # A health endpoint proves only that weights loaded. This request exercises
-        # the active ranker, typed AST planner, upload path, PostgreSQL execution,
-        # and result contract using the exact image being promoted.
+        # the active ranker, typed AST planner, the request database and the knowledgebase
+        # it is prepared from, and the result contract using the exact image being promoted.
         from engine.knowledge import KnowledgeReasoner
 
         reasoning = KnowledgeReasoner().serve(
@@ -114,15 +118,14 @@ def run() -> dict:
                 [["1", "1.10"], ["2", "2.20"]],
             )],
             "what is the total amount",
-            schema,
+            conversation,
         )
         _assert_reasoning_result(reasoning)
     finally:
         connection = _pg()
         try:
             cursor = connection.cursor()
-            cursor.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
-            cursor.execute("DELETE FROM chat.conversation WHERE conversation_id = %s", (schema,))
+            cursor.execute("DELETE FROM chat.conversation WHERE conversation_id = %s", (conversation,))
             connection.commit()
         finally:
             connection.close()

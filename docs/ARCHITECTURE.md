@@ -45,7 +45,7 @@ engine/routing.py
         |
         +-- COMPOSE  --> world-dependent multi-step view composition
         v
-guarded execution in the conversation schema
+guarded execution on the request's SQLite database (engine/prepared.py)
         |  supported shared plan: bounded Python/SQL, or both for parity
         |  other plans: SQL; explicit Python/verification rejects the fallback
         |
@@ -89,7 +89,7 @@ ComposeEngine primitive records have separate lowering adapters under `engine/de
 They feed the same plan, emitters, and runtime; none is another planner. The routing authority still
 requires a necessary world dependency before ComposeEngine owns a world answer, but an explicit
 `python` or `verify` request can lower a selected local composition as well. World ORM relationships
-use persisted cell-to-QID associations and actual knowledgebase tables. Composition retains its
+use the request's cell-to-QID bridges and the knowledgebase rows its tables reach. Composition retains its
 SQLite candidate-materialization step for operand binding/routing, then runs the selected typed
 program through the shared runtime. Unsupported shapes still fail closed for explicit Python/verification.
 
@@ -122,11 +122,51 @@ The PostgreSQL deployment uses five distinct scopes:
 | Wikidata shared data (legacy names) | `knowledgebase`, `public` | Current resolution index, taxonomy, Wikidata-backed entity tables, and staging/geo data; target migration is described below |
 | Synchronized reference sources | See `SOURCE_DATA.md` | Nine publisher-owned schemas with active physical releases; logical datasets remain separately deployment-gated |
 | Application metadata | `chat` | Admin-migrated conversations, named analyses and immutable revisions, source manifests, ownership, quota, activity, and expiry tables; serving receives DML only |
-| Conversation | `c_<32hex>` | Uploaded tables under their canonical CSV stems and persisted world-resolution bridges |
+| Prepared tables | `chat.prepared_table` | Each conversation table's preparation: its routes, every cell's candidate entities, and the knowledgebase rows they reach (see The Request Database) |
 | User | `m_<md5(subject)>` | Reusable private reference tables |
 
 The verified Firebase subject determines the user scope. A client-supplied conversation id is accepted only after
-an ownership check. Client input never selects a user schema directly.
+an ownership check. Client input never selects a user schema directly. Conversation schemas (`c_<32hex>`) from
+releases before the request database hold nothing a question reads; they are dropped once that release has soaked.
+
+## The Request Database
+
+Every question runs on one private SQLite database (`engine/prepared.py:RequestDatabase`), built when the request
+starts and closed when it ends. `main` holds the request's tables as the planner types them (a REAL column as
+canonical decimal text ordered by the `decimal` collation, an INTEGER column as integers), the cell-to-QID bridges its
+world routes build, and the hybrid search's vectors; `knowledgebase` holds the part of the knowledgebase the request
+can reach. The readers' candidate pool, the decomposition probe, the deterministic plan of every route, compose's
+lowering, the world path's freshness, coverage and unmatched-row checks, the hybrid search and the resolution
+slides all read it. Nothing else writes it, so no question waits for another, on one conversation or across them.
+
+The knowledgebase part starts from the instance's base image: the small tables whole (`country`, `Countries`,
+`States`, `u_s_state`, `Elements`, `Continents`, `schedule`, `types`), the column catalog of every knowledgebase
+table, and the labels of every country, continent, state and element, rebuilt when the knowledgebase refreshes.
+Each request table then adds its preparation: the rows of the cities and other entities its cells can name, and
+their labels. A conversion adds the exchange rates of the days its fact table names, read once per instance.
+
+A table is prepared once per version of its content (the synthesized currency column a dataset op adds does not
+count): its routes and typing evidence, every candidate entity of each distinct cell of a routed column (a cell
+can name several Parises; the country a question names chooses among them), the Schema.org evidence and dominant
+entity type of every other column, the entity each of that column's cells names, and the knowledgebase rows and
+labels those reach. Preparation reads PostgreSQL and the models; it starts in the background when a client syncs
+its sheets (`/api/conversation/sync`), else the first question computes it, and a question that arrives meanwhile
+waits for it instead of preparing again. It is kept in `chat.prepared_table` for the conversation (the newest 32
+per conversation, deleted with it, not counted against the user's storage) and cached in the process.
+
+At question time PostgreSQL answers only what the request cannot hold: conversation records and saved
+references, the exact-name lookup of the question's words (each name cached per instance), the exchange rates of a
+conversion (cached), labels missing from the image, and the nearby-places search over `public.settlement`, which
+reads no upload. A country, continent or state word is matched against every name of its type exactly, in memory;
+a fuzzy city word only against the cities the request's tables name, since a city they do not mention matches none
+of their rows.
+
+SQLite has no exact decimal type, so the database registers the decimal functions (`engine/numeric.py`): the SQL
+program computes arithmetic, SUM/AVG/MIN/MAX, comparisons and ordering through them and returns numbers as
+decimal text, which the runtime reads back as Decimals; the Python program's columns read the same text through
+`ExactDecimal`. Both programs agree exactly at every stage. `lower()` and `upper()` fold every alphabet, text sorts
+by code point in both programs, empty values sort last in both directions, and a statement ends at the request's
+deadline (a progress handler).
 
 Private references are not added wholesale to a SQL `search_path`. `engine.master.relevant_tables()` reads every
 saved key, applies the production foreign-key detector to uploaded and saved tables, and selects only references
@@ -247,8 +287,8 @@ replay. The legacy Wikidata schema migration is still pending.
     while selected local analytical compositions can still be lowered into the shared plan for explicit
     SQL/Python execution.
 9. The selected planner emits a typed query. Supported shapes lower to one shared plan and deterministic SQL/Python
-   programs; the request policy executes bounded Python, SQL, or both against the conversation schema plus the
-   explicitly reachable shared knowledge tables. A selected compound own-data AST may request the one bounded
+   programs; the request policy executes bounded Python, SQL, or both on the request's database, which holds the
+   request's tables and the knowledgebase rows they reach. A selected compound own-data AST may request the one bounded
    decomposition retry described above; all leaf planning and merge binding remains inside the engine. Other
    unsupported shapes remain on guarded, quoted, read-only SQL.
 10. Cross-route calculation verifiers inspect typed planner evidence before a result is released. Without changing
@@ -305,7 +345,7 @@ builder makes each reading a typed AST.
 | `engine/sql_rank.py` | The pool contract (`execution_op_limit`), the selection record (`PoolSelection`) and its post-ranking rule (`select_ranked_candidate`); `analyze_question` for the calculations |
 | `engine/sql_grounding.py` | Pool eligibility: text literals that fit their column, and joins the foreign keys allow; which SUM or AVG reads only rows its joins repeat (a selection preference) |
 | `engine/calculations/` | Registered calculations (a currency conversion, a rate) expanded from the readers' candidates |
-| `engine/tables.py` | Planner facade (`select_query`), SQL guard, pool and local SQLite execution |
+| `engine/tables.py` | Planner facade (`select_query`), SQL guard, pool runs and the one executor (`execute`, on the request's database) |
 | `engine/decomposition.py` | Closed model proposal validation and fusion of planner-selected leaf ASTs into one shared DAG |
 
 1. Stage 1 (`ReadingSearch.schema_items`, XLM-R base) reads the question beside each table and scores the table's
@@ -343,7 +383,7 @@ builder makes each reading a typed AST.
    (`search_pool`). The readers read one table of each group of layout copies (the NT, SI and FF exports of one
    layout): the copy the question names, else the first, and the answer names the others (`one_of_each_layout`,
    `layout_copies`).
-4. Every candidate that passes the guard runs on an in-memory SQLite copy of the request's tables under a step
+4. Every candidate that passes the guard runs on the request's database (engine/prepared.py) under a step
    budget that grows with the cells of the tables it reads (`execution_op_limit`). A candidate that fails, tests a
    text column against a literal it never holds while another column does, joins two columns the foreign keys
    keep apart, or reads one of two columns that share a header when the question does not name its column letter
@@ -375,7 +415,7 @@ reads it (`KnowledgeQuery.serve`), by compose and the currency check alike.
 
 The response's `planner.selection` records the pool counts (`pool_size`, `executable`, `misgrounded`, `eligible`),
 the served member's place among the eligible ones, its log probability, and whether a date, double-counting or
-calculation preference chose it. The winning AST then executes against the conversation schema through the shared
+calculation preference chose it. The winning AST then executes on the same database through the shared
 SQL/Python plan.
 
 The readers' pool and scores depend only on the question and the data, so a request reads them once
@@ -389,10 +429,11 @@ sampling, ties keep pool order, and nothing depends on hash order. The readers a
 World grounding handles facts absent from uploaded data. For example, a table may contain cities while the question
 filters by country. The path is:
 
-1. route a column to a grounded entity type;
-2. resolve cell values to QIDs through exact normalized lookup, then embedding fallback;
-3. read the required rows from the pinned, offline-built Wikidata projection;
-4. persist a conversation-scoped cell-to-QID bridge;
+1. route a column to a grounded entity type (prepared with the table);
+2. match cell values to candidate QIDs through exact normalized lookup, then embedding fallback (prepared);
+3. read the required rows from the pinned, offline-built Wikidata projection (prepared);
+4. pick each cell's entity into the request's bridge (a country column in the sheet separates namesakes; a
+   question's country only filters);
 5. join through QID foreign keys and execute the requested operation.
 
 `engine/knowledge_query.py` owns ordinary world lookup. A non-geographic entity column (a bank, a restaurant, a
@@ -521,8 +562,8 @@ a PostgreSQL constraint before an identifier can name a schema. Conversation lis
 `(created_at, conversation_id)` cursor so equal timestamps do not skip rows.
 
 The source tables in a conversation retain their canonical upload names (`orders.csv` becomes `orders`). A
-content manifest prevents follow-up turns from dropping and reloading unchanged data. Replacement is serialized
-with a conversation advisory lock across service instances. Derived sheets are not PostgreSQL views: they are the
+question loads them into its own database (see The Request Database); their preparations persist per table
+version, so a follow-up turn neither types nor matches unchanged data again. Derived sheets are not views: they are the
 executed SQL, rows, and provenance returned by the one planner and stored as an immutable analysis revision. Their
 workbook identities use the analysis-prefixed name; `logical_name` and `sql` retain the exact ephemeral relation
 names and statement that were executed, so naming a workbook never rewrites its evidence.
@@ -551,7 +592,8 @@ number is never reused; an abandoned pending revision becomes a tombstone after 
 saving refreshes the conversation expiry.
 
 `python -m engine.retention_cleanup` is the single scheduled cleanup owner. It deletes expired conversation
-metadata and the corresponding schemas in bounded batches, then removes expired RTDB traces when RTDB is enabled.
+metadata (their prepared tables go with them) and any conversation schema an earlier release left, in bounded
+batches, then removes expired RTDB traces when RTDB is enabled.
 Terraform runs it daily with the non-superuser serving role; the engine container entrypoint exempts only this
 maintenance command from loading model artifacts.
 
@@ -577,18 +619,18 @@ planner implementation modules.
 ## Concurrency And Failure Behavior
 
 - Model instances are loaded once per service process and shared by the serving stack. Questions run in parallel
-  on them: what belongs to one request (its conversation schema, connections, question text, typing evidence and
-  trace stream) is request-local (`engine/request_state.py`, `engine/trace.py:request_stream`), and the shared
-  tokenizer and encode cache take short locks.
+  on them: what belongs to one request (its database, connections, question text, typing evidence and trace stream)
+  is request-local (`engine/prepared.py`, `engine/request_state.py`, `engine/trace.py:request_stream`), and the
+  shared tokenizer, encode cache and preparation cache take short locks.
 - Cloud Run sends an engine instance at most two requests at once and runs two to four instances
   (`infra/main.tf`). When none can take a request it answers 429 "no available instance", and the chat's
   engine client asks again with backoff for about a minute (`mcp_server/engine_client.py:_send`).
-- Requests on one conversation are serialized (a local lock stripe and a conversation advisory lock), because a
-  request rewrites that conversation's bridge tables.
+- Requests on one conversation run in parallel: each builds its bridges in its own database. Two requests that
+  need one table's preparation share it; the second waits for the first's.
 - Database operations use bounded inputs and explicit transaction ownership.
 - Cross-instance conversation quotas use a per-user PostgreSQL advisory transaction lock.
 - Cross-instance source replacement and analysis revision assignment use conversation-scoped advisory locks.
-- SQL is read-only, identifiers are quoted, and conversation schemas are ownership checked.
+- SQL is read-only, identifiers are quoted, and conversations are ownership checked.
 - Reference writes are atomic and failures are visible to callers.
 - Optional trace or presentation failures do not fabricate a successful answer.
 - A failed Gemini call yields nothing for its fallback step; selection never serves an unchecked query in its place.

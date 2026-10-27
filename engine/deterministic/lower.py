@@ -65,7 +65,6 @@ def lower_select_query(
     schema: Sequence[Mapping[str, object]],
     foreign_keys: Sequence[Mapping[str, object]],
     *,
-    postgres_row_identity: bool = False,
     expand_stars: bool = False,
 ) -> AnalysisPlan:
     """Build one linear plan branch without parsing or reverse-engineering rendered SQL.
@@ -170,14 +169,10 @@ def lower_select_query(
             ),
             None,
         )
-        if selected is None and postgres_row_identity:
-            # PostgreSQL's tuple identity is unique within the repeatable-read
-            # snapshot. It preserves duplicate input rows without changing CSVs.
-            selected = ("ctid",)
         if selected is None:
-            raise UnsupportedDeterministicPlan(
-                f"table {table!r} has no stable ORM identity for this dataset"
-            )
+            # SQLite's row identity is unique in the request's database, which no statement changes
+            # (engine/prepared.py). It keeps duplicate input rows without changing the upload.
+            selected = (_row_identity(columns_by_table[table]),)
         primary_keys[table] = set(selected)
 
     relationships_by_table: dict[str, list[RelationshipSpec]] = defaultdict(list)
@@ -209,20 +204,18 @@ def lower_select_query(
                 )
                 for column in columns_by_table[table]
             )
-            + (
-                (
-                    ColumnSpec(
-                        "ctid",
-                        _next_unique(
-                            "_orm_row_identity", set(column_attributes[table].values())
-                        ),
-                        ASTType.TEXT,
-                        True,
-                        False,
+            + tuple(
+                ColumnSpec(
+                    identity,
+                    _next_unique(
+                        "_orm_row_identity", set(column_attributes[table].values())
                     ),
+                    ASTType.INTEGER,
+                    True,
+                    False,
                 )
-                if "ctid" in primary_keys[table]
-                else ()
+                for identity in sorted(primary_keys[table])
+                if identity not in {str(column["name"]) for column in columns_by_table[table]}
             ),
             relationships=tuple(relationships_by_table[table]),
         )
@@ -412,6 +405,16 @@ def lower_select_query(
         return AnalysisPlan(slug, table_specs, tuple(views))
     except (ValueError, TypeError) as exc:
         raise UnsupportedDeterministicPlan(str(exc)) from exc
+
+
+def _row_identity(columns: Sequence[Mapping[str, object]]) -> str:
+    """The name SQLite reads a table's row identity by: rowid, or one of its other names when the table has a
+    column called that (SQLite compares names without case)."""
+    taken = {str(column["name"]).lower() for column in columns}
+    for name in ("rowid", "_rowid_", "oid"):
+        if name not in taken:
+            return name
+    raise UnsupportedDeterministicPlan("the table's columns hide every name of its row identity")
 
 
 def _relationship_edges(query, foreign_keys, included):

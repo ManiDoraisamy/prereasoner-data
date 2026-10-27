@@ -532,7 +532,9 @@ def test_a_join_that_multiplies_two_tables_rows_stops_at_their_cells_budget():
                          from_table="subscriptions",
                          order_by=(OrderTerm(ColumnRef("subscriptions", "id", SQLType.TEXT)),))
     assert execution_op_limit(listed, tablemap) == EXECUTION_OPS_PER_CELL * 600000   # above the floor
-    connection = TableQuery._sqlite_tables(None, tablemap, [
+    from engine.prepared import RequestDatabase
+    database = RequestDatabase()
+    connection = database.load(tablemap, [
         {"table": "subscriptions", "name": name, "affinity": "INTEGER" if name in ("Amount", "Quantity") else "TEXT"}
         for name in columns])
     steps = 0
@@ -542,7 +544,7 @@ def test_a_join_that_multiplies_two_tables_rows_stops_at_their_cells_budget():
         steps += 1000
     connection.set_progress_handler(count, 1000)
     assert len(connection.execute(render_query(listed)).fetchall()) == 50000
-    connection.close()
+    database.close()
     assert 4 * steps < execution_op_limit(listed, tablemap), steps
 
     wide = {"wide": {"columns": list(range(50)), "rows": range(200000)}}           # 10M cells
@@ -552,18 +554,21 @@ def test_a_join_that_multiplies_two_tables_rows_stops_at_their_cells_budget():
 
 
 def test_select_query_copies_the_tables_once_and_runs_each_query_once():
-    """select_query copies the request's tables into SQLite once and runs each distinct query once
-    (engine/tables.py _PoolRuns): a second copy of a large workbook per pool member, or a query run again,
-    is time no answer needs (2026-10-05)."""
+    """select_query copies the request's tables into its database once and runs each distinct query once
+    (engine/tables.py _PoolRuns, engine/prepared.py): a second copy of a large workbook per pool member, or a
+    query run again, is time no answer needs (2026-10-05)."""
+    from engine.prepared import scratch_database
     planner = _hermetic_planner()
     amounts = {"name": "orders", "columns": ["Amount"], "rows": [[100], [200]]}
     total = _model_query(planner, 'SELECT SUM("orders"."Amount") FROM "orders"', [amounts])
     listed = _model_query(planner, 'SELECT "orders"."Amount" FROM "orders"', [amounts])
     copies, guarded = [], []
-    copy, guard = planner._sqlite_tables, planner.guard
-    planner._sqlite_tables = lambda *args: copies.append(args) or copy(*args)
+    guard = planner.guard
     planner.guard = lambda sql: guarded.append(sql) or guard(sql)
-    selection = _select(planner, "what is total Amount", [amounts], searched=[total, listed, total])
+    with scratch_database() as database:
+        database.connection.set_trace_callback(
+            lambda statement: copies.append(statement) if statement.startswith("CREATE TABLE main.") else None)
+        selection = _select(planner, "what is total Amount", [amounts], searched=[total, listed, total])
     assert selection.candidate.sql == total.sql and selection.executable == (True, True, True)
     assert len(copies) == 1, f"{len(copies)} copies of the request's tables"
     assert guarded == [total.sql, listed.sql], guarded
@@ -1058,7 +1063,9 @@ def test_named_request_never_serves_or_decomposes_a_lower_read_set_operation():
     with analysis_execution_context({"slug": "catering", "revision": 1}, "c_" + "8" * 32):
         named = planner.serve(tables, question)
     assert not named.get("decomposition_required"), named
-    assert named["valid"] and named["sql"] == total.sql, named
+    # A named request runs the served query's deterministic program; its SQL is the program's, its AST the total.
+    assert named["valid"] and named["ast"] == repr(total.query), named
+    assert named["deterministic"]["mode"] == "python" and named["result"]["rows"] == [[26000]], named
     assert named["selection"]["selected"] == 0
 
 

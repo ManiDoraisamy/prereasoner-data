@@ -70,10 +70,10 @@ class _Connection:
 
 
 def test_chat_migration_is_admin_run_and_idempotent():
-    assert [migration.version for migration in CHAT_MIGRATIONS] == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+    assert [migration.version for migration in CHAT_MIGRATIONS] == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
     assert CHAT_MIGRATIONS[0].name == "conversation_state"
     connection = _Connection()
-    assert migrate_chat(connection) == (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11)
+    assert migrate_chat(connection) == (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12)
     assert migrate_chat(connection) == ()
     assert connection.commits == 2 and connection.rollbacks == 0
     assert any("ALTER TABLE \"chat\".\"conversation\"" in statement
@@ -118,6 +118,14 @@ def test_chat_migration_is_admin_run_and_idempotent():
     assert host_sessions.name == "host_scoped_spreadsheet_sessions"
     assert "PRIMARY KEY (user_id, host, spreadsheet_id)" in "\n".join(host_sessions.statements)
     assert "PRIMARY KEY (user_id, host, spreadsheet_id)" in init
+    # A conversation's table preparations (engine/prepared.py) go with it, and the serving role reads and
+    # writes them.
+    preparations = CHAT_MIGRATIONS[11]
+    assert preparations.name == "prepared_tables"
+    preparation_ddl = "\n".join(preparations.statements)
+    assert '"chat"."prepared_table"' in preparation_ddl and "ON DELETE CASCADE" in preparation_ddl
+    assert "PRIMARY KEY (conversation_id, table_key)" in preparation_ddl
+    assert "prepared_table" in _CHAT_TABLES
 
 
 def test_knowledgebase_migration_installs_definer_functions():
@@ -139,7 +147,7 @@ def test_knowledgebase_migration_installs_definer_functions():
     assert migrate_knowledgebase(connection) == (1, 2, 3, 4)
     assert migrate_knowledgebase(connection) == ()
     # Separate ledgers: the chat and knowledgebase entries must not collide on version numbers.
-    assert migrate_chat(connection) == (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11)
+    assert migrate_chat(connection) == (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12)
 
 
 def test_serving_path_has_no_direct_knowledgebase_writes():
@@ -364,8 +372,8 @@ def test_the_qid_label_lookup_has_a_qid_leading_index_on_both_paths():
     for declaration in (ddl, init):
         assert 'ix_words_qid ' in declaration and 'knowledgebase."words"(qid)' in declaration, declaration[:200]
     assert "IF NOT EXISTS" in ddl and "CONCURRENTLY" not in ddl
-    entities = pathlib.Path("engine/entities.py").read_text(encoding="utf-8")
-    assert "WHERE qid = ANY(%s) AND canonical IS NOT NULL" in entities, (
+    prepared = pathlib.Path("engine/prepared.py").read_text(encoding="utf-8")
+    assert "WHERE qid = ANY(%s) AND canonical IS NOT NULL" in prepared, (
         "the lookup this index serves changed: check the index still leads with what it filters on")
 
 
@@ -435,16 +443,15 @@ def test_serving_guard_consults_the_catalog_instead_of_skipping():
     guard = kt[kt.index("FRESHNESS GUARD"):]
     guard = guard[:guard.index("if world_rate")]
     assert "else:" in guard, "the missing-updated_at case must be handled, not fall through"
-    pg = pathlib.Path("engine/pg.py").read_text(encoding="utf-8")
+    freshness = kt[kt.index("def _table_freshness"):kt.index("def _connect")]
     # The guard runs inside serve()'s try, where an exception costs the user their answer, so the
     # catalog read must tolerate a database that predates the migration WITHOUT raising.
-    assert "to_regclass('knowledgebase.schedule')" in pg, "must probe before selecting"
-    # It must also reuse the connection the query already holds. Opening a second connection here
-    # turned a transient network blip into a lost answer ("total amount in France" -> None) when
-    # this was first written; the signature carries `con` so that cannot regress.
-    assert "def _table_freshness(self, con, table, as_of)" in pg, "must read via the live connection"
-    assert "_pg()" not in pg[pg.index("def _table_freshness"):pg.index("def _connect")], \
-        "the freshness read must not open its own connection"
+    assert 'has_table("schedule", "knowledgebase")' in freshness, "must probe before selecting"
+    # It must also read through the request's database the query already holds (engine/prepared.py), which
+    # holds the catalog. Opening a connection here turned a transient network blip into a lost answer
+    # ("total amount in France" -> None) when this was first written.
+    assert "def _table_freshness(self, con, table, as_of)" in kt, "must read via the live connection"
+    assert "_pg()" not in freshness, "the freshness read must not open its own connection"
 
 
 def test_durable_retry_relation_has_explicit_serving_grants():
@@ -492,7 +499,7 @@ def test_the_engine_refuses_a_database_missing_a_migration_it_needs():
     current = {"chat": ledger(CHAT_MIGRATIONS), "knowledgebase": ledger(KNOWLEDGEBASE_MIGRATIONS)}
     assert pending_migrations(Connection(current)) == []
     at_ten = dict(current, chat=[row for row in current["chat"] if row[0] <= 10])
-    assert pending_migrations(Connection(at_ten)) == ["chat v11:durable_request_replay"]
+    assert pending_migrations(Connection(at_ten)) == ["chat v11:durable_request_replay", "chat v12:prepared_tables"]
     drifted = dict(current, chat=[(v, n, "0" * 64 if v == 11 else c) for v, n, c in current["chat"]])
     assert pending_migrations(Connection(drifted)) == ["chat v11:durable_request_replay"]
     no_ledger = {"knowledgebase": current["knowledgebase"]}

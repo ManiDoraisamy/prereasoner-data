@@ -1,4 +1,9 @@
-"""Emit one readable SQL view stack from the deterministic view plan."""
+"""Emit one readable SQL view stack from the deterministic view plan.
+
+The stack runs on the request's SQLite database (engine/prepared.py). SQLite has no exact decimal type, so
+every number is computed through the decimal functions engine.numeric registers on that database: arithmetic,
+SUM/AVG/MIN/MAX, comparisons and ordering read numbers exactly, as the Python program does. A number a stage
+returns is decimal text, which the runtime reads back as a Decimal (``view_numbers`` in the manifest)."""
 
 from __future__ import annotations
 
@@ -33,7 +38,7 @@ from engine.deterministic.plan import (
     ViewValue,
     WindowView,
 )
-from engine.numeric import DIVISION_SCALE
+from engine.numeric import canonical_decimal
 from engine.sql_ast import date_span_sql, month_of_date_sql, year_month_of_date_sql
 
 
@@ -46,7 +51,9 @@ def _function(function: str, operand: str) -> str:
         return year_month_of_date_sql(operand)
     return f"LOWER({operand})"
 
-_BINARY = {"+": "+", "-": "-", "*": "*", "/": "/"}
+_DECIMAL = {"+": "decimal_add", "-": "decimal_sub", "*": "decimal_mul", "/": "decimal_div"}
+_DECIMAL_AGGREGATE = {"SUM": "decimal_sum", "AVG": "decimal_avg", "MIN": "decimal_min", "MAX": "decimal_max"}
+_ORDERED = frozenset({"=", "!=", "<>", ">", "<", ">=", "<="})
 
 
 @dataclass(frozen=True)
@@ -80,10 +87,13 @@ class GeneratedSQL:
 
 
 class SQLEmitter:
-    VERSION = 7
+    VERSION = 8
 
     def __init__(self, schema_map: Mapping[str, str] | None = None):
         self.schema_map = MappingProxyType(dict(schema_map or {}))
+        self._plan: AnalysisPlan | None = None
+        # The numeric values of the stage whose expressions are being rendered (AnalysisPlan.numeric_values).
+        self._numbers: frozenset[str] = frozenset()
 
     def emit(
         self,
@@ -96,6 +106,8 @@ class SQLEmitter:
         tables_by_view: dict[str, set[str]] = {}
         values_by_view: dict[str, set[str]] = {}
         columns_by_view = plan.view_columns()
+        numbers_by_view = plan.numeric_values()
+        self._plan = plan
         inlined = plan.inlined_entries()
         entries: dict[str, str] = {}
 
@@ -107,6 +119,8 @@ class SQLEmitter:
             return f"{item(name)} AS {_q(name)}" if name in entries else _q(name)
 
         for view in plan.views:
+            inputs = plan.inputs(view)
+            self._numbers = numbers_by_view[inputs[0]] if len(inputs) == 1 else numbers_by_view[view.name]
             if isinstance(view, CombinedView):
                 sql, available_tables = self._combined(plan, view)
                 available_values = set()
@@ -140,9 +154,7 @@ class SQLEmitter:
                 available_values = set(columns_by_view[view.name])
                 if view.order:
                     sql += " ORDER BY " + ", ".join(
-                        f"{self._value(item.value, available_tables, available_values)} "
-                        f"{'DESC' if item.descending else 'ASC'} NULLS LAST"
-                        for item in view.order
+                        self._order(item, available_tables, available_values) for item in view.order
                     )
             elif isinstance(view, EnrichedView):
                 available_tables = set(tables_by_view[view.source])
@@ -190,10 +202,7 @@ class SQLEmitter:
             elif isinstance(view, SortedView):
                 available_tables = set(tables_by_view[view.source])
                 available_values = set(values_by_view[view.source])
-                terms = [
-                    f"{self._value(item.value, available_tables, available_values)} {'DESC' if item.descending else 'ASC'} NULLS LAST"
-                    for item in view.order
-                ]
+                terms = [self._order(item, available_tables, available_values) for item in view.order]
                 order = ", ".join(terms)
                 # A sort that shows fewer values than it ranks by selects them in the same statement, so the
                 # ranking values order the rows and are dropped without a later step losing the order.
@@ -226,6 +235,7 @@ class SQLEmitter:
             statements.append(f"CREATE TEMP VIEW {_q(view.name)} AS {sql}")
             tables_by_view[view.name] = set(available_tables)
             values_by_view[view.name] = set(available_values)
+        stages = {view.name for view in plan.stages()}
         return GeneratedSQL(
             tuple(statements),
             {
@@ -235,6 +245,9 @@ class SQLEmitter:
                 "dataset_version": dataset_version,
                 "knowledgebase_release": knowledgebase_release,
                 **plan.stage_manifest(),
+                "view_numbers": {
+                    name: sorted(numbers) for name, numbers in numbers_by_view.items() if name in stages
+                },
             },
         )
 
@@ -393,14 +406,14 @@ class SQLEmitter:
             if aggregate.operand is None
             else self._value(aggregate.operand, tables, values)
         )
-        sql = f"{aggregate.function}({'DISTINCT ' if aggregate.distinct else ''}{operand})"
-        # ROUND cannot recover digits PostgreSQL's AVG(bigint) already discarded.
-        # Give the operand the contract's decimal scale BEFORE division occurs.
-        return (
-            f"ROUND(AVG(CAST({operand} AS NUMERIC) * 1.{'0' * DIVISION_SCALE}), {DIVISION_SCALE})"
-            if aggregate.function == "AVG"
-            else sql
-        )
+        function = aggregate.function
+        if function in _DECIMAL_AGGREGATE and (
+            function in {"SUM", "AVG"} or self._plan.numeric(aggregate.operand, self._numbers)
+        ):
+            # Exact: a decimal sum, and an average rounded half up at the division scale, as the Python
+            # program's SUM and AVG (engine.numeric.decimal_divide).
+            function = _DECIMAL_AGGREGATE[function]
+        return f"{function}({'DISTINCT ' if aggregate.distinct else ''}{operand})"
 
     def _window(self, view, tables, values, source):
         def scoped(value, alias):
@@ -410,26 +423,24 @@ class SQLEmitter:
 
         current, previous = scoped(view.measure, "t"), scoped(view.measure, "p")
         conditions = [
-            f"{scoped(key, 'p')} = {scoped(key, 't')}" for key in view.partition
+            self._compare(scoped(key, "p"), "=", scoped(key, "t"), self._plan.numeric(key, self._numbers))
+            for key in view.partition
         ]
+        timed = view.time is not None and self._plan.numeric(view.time, self._numbers)
         if view.function == "yoy":
             conditions.append(
-                f"{scoped(view.time, 't')} = {scoped(view.time, 'p')} + 1"
+                self._compare(scoped(view.time, "t"), "=", f"decimal_add({scoped(view.time, 'p')}, 1)", timed)
             )
-            expression = f"ROUND((CAST(({current} - {previous}) AS NUMERIC) * 1.{'0' * DIVISION_SCALE} / NULLIF({previous}, 0)), {DIVISION_SCALE})"
+            expression = f"decimal_div(decimal_sub({current}, {previous}), {previous})"
             return (
                 f"SELECT t.*, {expression} AS {_q(view.output)} FROM {source} t JOIN {source} p ON "
                 + " AND ".join(conditions)
             )
         if view.function == "running":
-            conditions.append(f"{scoped(view.time, 'p')} <= {scoped(view.time, 't')}")
+            conditions.append(self._compare(scoped(view.time, "p"), "<=", scoped(view.time, "t"), timed))
         where = " WHERE " + " AND ".join(conditions) if conditions else ""
-        total = f"(SELECT SUM({previous}) FROM {source} p{where})"
-        expression = (
-            total
-            if view.function == "running"
-            else f"ROUND((CAST({current} AS NUMERIC) * 1.{'0' * DIVISION_SCALE} / NULLIF({total}, 0)), {DIVISION_SCALE})"
-        )
+        total = f"(SELECT decimal_sum({previous}) FROM {source} p{where})"
+        expression = total if view.function == "running" else f"decimal_div({current}, {total})"
         return f"SELECT t.*, {expression} AS {_q(view.output)} FROM {source} t"
 
     def _predicate(
@@ -457,10 +468,27 @@ class SQLEmitter:
                 f"{self._value(predicate.left, tables, values)} "
                 f"{predicate.operator} {right}"
             )
-        return (
-            f"{self._value(predicate.left, tables, values)} {predicate.operator} "
-            f"{self._value(predicate.right, tables, values)}"
+        return self._compare(
+            self._value(predicate.left, tables, values),
+            predicate.operator,
+            self._value(predicate.right, tables, values),
+            self._plan.numeric(predicate.left, self._numbers)
+            and self._plan.numeric(predicate.right, self._numbers),
         )
+
+    @staticmethod
+    def _compare(left: str, operator: str, right: str, numeric: bool) -> str:
+        """A comparison; two numbers compare exactly, by their decimal values."""
+        if numeric and operator in _ORDERED:
+            return f"decimal_cmp({left}, {right}) {'<>' if operator == '!=' else operator} 0"
+        return f"{left} {operator} {right}"
+
+    def _order(self, item, tables: set[str], values: set[str]) -> str:
+        """One ORDER BY term: numbers in decimal order, empty values last in both directions."""
+        rendered = self._value(item.value, tables, values)
+        if self._plan.numeric(item.value, self._numbers):
+            rendered += " COLLATE decimal"
+        return f"{rendered} {'DESC' if item.descending else 'ASC'} NULLS LAST"
 
     def _value(self, value: Value, tables: set[str], values: set[str]) -> str:
         if isinstance(value, FunctionValue):
@@ -479,12 +507,8 @@ class SQLEmitter:
                 raise ValueError(f"table {value.table!r} is unavailable")
             return _q(_flat(value.table, value.column))
         if isinstance(value, BinaryValue):
-            if value.operator == "/":
-                left = self._value(value.left, tables, values)
-                right = self._value(value.right, tables, values)
-                return f"ROUND((CAST({left} AS NUMERIC) * 1.{'0' * DIVISION_SCALE} / NULLIF({right}, 0)), {DIVISION_SCALE})"
             return (
-                f"({self._value(value.left, tables, values)} {_BINARY[value.operator]} "
+                f"{_DECIMAL[value.operator]}({self._value(value.left, tables, values)}, "
                 f"{self._value(value.right, tables, values)})"
             )
         raise TypeError(f"unsupported SQL value: {type(value).__name__}")
@@ -500,15 +524,7 @@ class SQLEmitter:
             if isinstance(item, SpanValue):
                 raise TypeError("a span is not a join value")
             if isinstance(item, BinaryValue):
-                left = value(item.left)
-                right = value(item.right)
-                if item.operator == "/":
-                    return (
-                        f"ROUND((CAST({left} AS NUMERIC) * "
-                        f"1.{'0' * DIVISION_SCALE} / NULLIF({right}, 0)), "
-                        f"{DIVISION_SCALE})"
-                    )
-                return f"({left} {_BINARY[item.operator]} {right})"
+                return f"{_DECIMAL[item.operator]}({value(item.left)}, {value(item.right)})"
             return self._value(item, set(), set())
 
         if isinstance(predicate, JunctionValue):
@@ -526,9 +542,9 @@ class SQLEmitter:
         return _table(self.schema_map.get(schema, schema), table)
 
     def _read(self, table, column) -> str:
-        """A stored column as a stage reads it; a binary float is read as NUMERIC (ColumnSpec.binary_float)."""
-        qualified = self._qualified(table.schema, table.name, column.name)
-        return f"CAST({qualified} AS NUMERIC)" if column.binary_float else qualified
+        """A stored column as a stage reads it. A binary float (ColumnSpec.binary_float) is read as stored: the
+        decimal functions and the runtime read it as its shortest decimal, as the Python program does."""
+        return self._qualified(table.schema, table.name, column.name)
 
     def _qualified(self, schema: str, table: str, column: str) -> str:
         return _qualified(self.schema_map.get(schema, schema), table, column)
@@ -558,11 +574,12 @@ def _literal(value: object) -> str:
     if isinstance(value, Decimal):
         if not value.is_finite():
             raise ValueError("non-finite Decimal literal")
-        return str(value)
+        # Decimal text: SQLite would read 0.1 as a binary float, and the decimal functions read text exactly.
+        return "'" + canonical_decimal(value) + "'"
     if isinstance(value, float):
         if not math.isfinite(value):
             raise ValueError("non-finite float literal")
-        return repr(value)
+        return "'" + canonical_decimal(Decimal(repr(value))) + "'"
     if isinstance(value, int):
         return str(value)
     if isinstance(value, date):

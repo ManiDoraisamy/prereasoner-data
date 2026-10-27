@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 
 from engine.decomposition import build_decomposed_plan
 from engine.deterministic import DeterministicAnalysis
@@ -63,7 +63,10 @@ def _run_fixture(planner: EncoderQuery, directory: Path, proposal: dict | None =
         question=question or (directory / "prompt.txt").read_text(encoding="utf-8").strip(),
     )
     source_tables = {table["name"]: table for table in tables}
+    from engine.prepared import register_functions
+
     engine = create_engine("sqlite+pysqlite:///:memory:")
+    event.listen(engine, "connect", lambda connection, _record: register_functions(connection))
     with engine.connect() as connection:
         connection.exec_driver_sql("ATTACH DATABASE ':memory:' AS conversation")
         for table in plan.tables:
@@ -340,9 +343,13 @@ def test_the_serving_entry_point_carries_the_proposal_to_the_compose_layer():
         def take_typing(self): return {}
         def end_request(self): pass
 
+    import contextlib
+
+    from engine import knowledge
+
     reasoner.qw = _Qw()
     proposal = {"subquestions": [], "merges": [], "output": "x", "grain": "one row"}
-    with patch.object(KnowledgeReasoner, "_tag_present", lambda self, r, *a: r),          patch.object(KnowledgeReasoner, "_verify_calculations", lambda self, r, *a: r),          patch.object(KnowledgeReasoner, "_attach_typing", lambda self, r, *a: r):
+    with patch.object(knowledge, "request_database", contextlib.nullcontext),             patch.object(KnowledgeReasoner, "_tag_present", lambda self, r, *a: r),          patch.object(KnowledgeReasoner, "_verify_calculations", lambda self, r, *a: r),          patch.object(KnowledgeReasoner, "_attach_typing", lambda self, r, *a: r):
         reasoner.serve([], "top 3 x and top 2 y", "c_" + "0" * 32, decomposition=proposal)
     assert forwarded.get("decomposition") is proposal
 

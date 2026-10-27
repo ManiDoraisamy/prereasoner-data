@@ -79,14 +79,16 @@ class NumericStorageTests(unittest.TestCase):
         rows = [[str(10**30), "1e-3"], [str(10**30+1), "2e-3"]]
         schema = [{"table": "ledger", "name": name, "affinity": observed_numeric_affinity([r[i] for r in rows])}
                   for i, name in enumerate(("id", "amount"))]
-        connection = TableQuery()._sqlite_tables({"ledger": {"columns": ["id", "amount"], "rows": rows}}, schema)
+        from engine.prepared import RequestDatabase
+        database = RequestDatabase()
         try:
+            connection = database.load({"ledger": {"columns": ["id", "amount"], "rows": rows}}, schema)
             self.assertEqual(connection.execute('SELECT COUNT(*) FROM ledger').fetchone()[0], 2)
             fetched = connection.execute('SELECT id, amount FROM ledger ORDER BY id').fetchall()
             self.assertEqual([str(row[0]) for row in fetched], [row[0] for row in rows])
             self.assertEqual(sum(Decimal(str(row[1])) for row in fetched), Decimal("0.003"))
         finally:
-            connection.close()
+            database.close()
 
 
 if __name__ == "__main__":

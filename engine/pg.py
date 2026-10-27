@@ -1,48 +1,30 @@
-"""Live multi-tenant PostgreSQL execution.
+"""The PostgreSQL connections of the serving process.
 
-The typed planner is shared with SQLite, but each executor renders its own numeric
-dialect. Uploaded fractional values use bounded PostgreSQL ``NUMERIC`` columns and
-typed division is rendered with ``NUMERIC`` casts; SQLite uses the exact-decimal
-functions from :mod:`engine.numeric`. The per-user schema always comes from the
-verified identity, never from request data.
+PostgreSQL holds the conversations, the saved references and the shared knowledgebase. Questions run on the
+request's SQLite database (engine/prepared.py), which reads the knowledgebase from here when it prepares a table
+and when a question names a word or converts a currency.
 """
 from __future__ import annotations
 
-import hashlib
-import json
 import re
 import threading
 import time
 import weakref
-from decimal import Decimal
 
 import psycopg2
-from psycopg2.extras import execute_values
 
 from engine import request_timing
 from engine.config import (
-    APP_ENV,
     KB_PG_DB,
     KB_PG_HOST,
     KB_PG_PORT,
     KB_PG_SSLMODE,
     KB_PG_USER,
-    deterministic_execution_mode,
-    deterministic_persist_generated,
-    deterministic_python_row_limit,
     kb_pg_password,
 )
-from engine.knowledge_tables import KnowledgeTableQuery
 from engine.numeric import parse_decimal, wire_decimal
-from engine.request_state import RequestLocal
-from engine.sql_ast import render_query
-from engine.tables import TableQuery, qident
 
-# Uploaded fractional values are financial/reference data surprisingly often. PostgreSQL NUMERIC preserves
-# their decimal representation and arithmetic exactly; binary DOUBLE PRECISION does not.
-_PGTYPE = {"INTEGER": "BIGINT", "REAL": "NUMERIC(58,20)", "TEXT": "TEXT"}
 _CONNECT_ATTEMPTS = 3
-_UPLOAD_PAGE_SIZE = 500          # rows per INSERT statement; bounds statement size on wide 10000-row sheets
 _NON_RETRYABLE_CONNECT_ERRORS = (
     "password authentication failed",
     "no pg_hba.conf entry",
@@ -171,10 +153,8 @@ _POOL_CHECK_SECONDS = 30.0
 
 
 class _PooledConnection(psycopg2.extensions.connection):
-    """A serving connection whose close() returns it to the process pool. ``poolable`` is cleared for a
-    connection whose state a reset cannot undo (_orm_pg's NUMERIC caster)."""
+    """A serving connection whose close() returns it to the process pool."""
 
-    poolable = True
     timeout_set = None
     idle = False                                          # in the pool: closed, as far as its last user knows
     cursors = None                                        # this lease's cursors, closed when it ends
@@ -182,7 +162,7 @@ class _PooledConnection(psycopg2.extensions.connection):
     def close(self):
         if self.idle:
             return                                        # closed twice: it is already back in the pool
-        if self.poolable and not self.closed and _POOL.give_back(self):
+        if not self.closed and _POOL.give_back(self):
             return
         super().close()
 
@@ -294,337 +274,3 @@ def _pg():
                 raise
             time.sleep(pause)
     raise AssertionError("unreachable")
-
-
-def _orm_pg():
-    """SQLAlchemy must receive Decimals, not the legacy cursor's wire values."""
-    connection = _pg()
-    connection.poolable = False                          # its NUMERIC caster cannot be unregistered
-    numeric = psycopg2.extensions.new_type(
-        (1700,), "ORM_NUMERIC", lambda value, cursor: None if value is None else Decimal(value))
-    psycopg2.extensions.register_type(numeric, connection)
-    return connection
-
-
-def _load_user_schema(cur, schema, sch, tablemap):
-    """Create the conversation schema and load only changed source tables.
-
-    A source table keeps the canonical CSV stem (``orders.csv`` -> ``orders``) for the
-    lifetime of the conversation.  ``chat.working_table`` holds a deterministic content
-    hash, so an unchanged follow-up reuses the existing table instead of dropping and
-    rebuilding it. Workbook freshness is owned by the conversation's dataset version;
-    this request-local working-table manifest must not invalidate unrelated analyses
-    merely because two questions select different reference or enrichment tables.
-
-    `schema` MUST be a server-authorized conversation id; it is only ever quoted, never executed."""
-    # Cloud Run instances can serve the same conversation concurrently. Serialize schema replacement
-    # across instances so one request cannot drop a table while another is planning against it.
-    cur.execute('SELECT pg_advisory_xact_lock(hashtext(%s))',
-                (f"prereasoner-conversation:{schema}",))
-    cur.execute(f'CREATE SCHEMA IF NOT EXISTS {qident(schema)}')
-    # user schema + knowledgebase FIRST (they own every table the planner names); `public` LAST so the pgvector `vector`
-    # type and its `<=>` operator (installed in public) resolve for the embedding bridge. No shadowing:
-    # uploads live in <schema>, shared projections in knowledgebase; public holds only the raw Wikidata import + pgvector.
-    cur.execute(f'SET search_path TO {qident(schema)}, knowledgebase, public')   # knowledgebase FIRST: bare world-table names resolve to qid-keyed projections
-    by_t = {}
-    for c in sch:
-        by_t.setdefault(c["table"], []).append(c)
-    cur.execute('SELECT table_name FROM "chat"."working_table" WHERE conversation_id = %s',
-                (schema,))
-    removed = sorted(str(row[0]) for row in cur.fetchall() if str(row[0]) not in by_t)
-    if removed:
-        for table_name in removed:
-            cur.execute(f'DROP TABLE IF EXISTS {qident(schema)}.{qident(table_name)} CASCADE')
-        cur.execute('DELETE FROM "chat"."working_table" '
-                    'WHERE conversation_id = %s AND table_name = ANY(%s)', (schema, removed))
-    with request_timing.span("upload"):
-        for tname, cols in by_t.items():
-            t = tablemap[tname]
-            fingerprint = hashlib.sha256(json.dumps(
-                {"columns": [(c["name"], c["affinity"]) for c in cols], "rows": t["rows"]},
-                ensure_ascii=False, separators=(",", ":"), default=str,
-            ).encode("utf-8")).hexdigest()
-            cur.execute('SELECT content_hash FROM "chat"."working_table" '
-                        'WHERE conversation_id = %s AND table_name = %s', (schema, tname))
-            previous = cur.fetchone()
-            cur.execute('SELECT to_regclass(%s)', (f'{qident(schema)}.{qident(tname)}',))
-            relation_exists = cur.fetchone()[0] is not None
-            if previous and previous[0] == fingerprint and relation_exists:
-                continue
-            # Persistent analysis snapshots are metadata, not database dependencies. CASCADE is
-            # still deliberate: conversation-local bridge relations may depend on an edited input.
-            cur.execute(f'DROP TABLE IF EXISTS {qident(schema)}.{qident(tname)} CASCADE')
-            cur.execute(f'CREATE TABLE {qident(schema)}.{qident(tname)} (' +
-                        ", ".join(f'{qident(c["name"])} {_PGTYPE.get(c["affinity"], "TEXT")}' for c in cols) + ')')
-            # ONE multi-row INSERT per page instead of one statement per row. Each row is still built by
-            # the same `_coerce`, so the values handed to psycopg2 — and therefore NUMERIC exactness and
-            # every adapter — are byte-for-byte what the per-row loop passed. Only the statement count
-            # changes: an uploaded sheet cost one network round trip PER ROW, which made request latency
-            # scale linearly with the upload (measured: 1000 rows took 138s at a 133ms RTT, 0.26s batched).
-            # Paged so a wide 10000-row sheet cannot build one unbounded statement.
-            rows = [
-                [KnowledgeTableQuery._coerce(rd.get(c["name"]), c["affinity"]) for c in cols]
-                for rd in (dict(zip(t["columns"], r)) for r in t["rows"])
-            ]
-            if rows:
-                execute_values(cur, f'INSERT INTO {qident(schema)}.{qident(tname)} VALUES %s',
-                               rows, page_size=_UPLOAD_PAGE_SIZE)
-            cur.execute(
-                'INSERT INTO "chat"."working_table" '
-                '(conversation_id, table_name, content_hash, row_count) VALUES (%s, %s, %s, %s) '
-                'ON CONFLICT (conversation_id, table_name) DO UPDATE SET '
-                'content_hash = EXCLUDED.content_hash, row_count = EXCLUDED.row_count, updated_at = now()',
-                (schema, tname, fingerprint, len(t["rows"])),
-            )
-            request_timing.count("upload_rows", len(t["rows"]))
-
-
-class _PgCon:
-    """Quacks like the slice of sqlite3.Connection that KnowledgeTableQuery.serve() uses: .execute(sql) -> cursor
-    with .description/.fetchall(). The answer SQL inlines its literals via qlit, so there are no '?' to translate."""
-    def __init__(self, conn):
-        self.conn = conn
-
-    def execute(self, sql, params=None):
-        cur = self.conn.cursor()
-        cur.execute(sql, params or ())
-        return cur
-
-    def close(self):
-        try:
-            # _connect keeps the working-table advisory lock for the full world query. Persist the
-            # validated source replacement and release that lock only after the reasoning path ends.
-            if self.conn.get_transaction_status() == psycopg2.extensions.TRANSACTION_STATUS_INERROR:
-                self.conn.rollback()
-            else:
-                self.conn.commit()
-        finally:
-            self.conn.close()
-
-
-class _TableQueryPg(TableQuery):
-    postgres_row_identity = True
-    """Own-data path executor → Postgres (so uploads persist in the user schema and answers are consistent)."""
-    _pg_schema = RequestLocal()                   # the conversation's schema (engine/request_state.py)
-
-    def execute(self, tablemap, sch, sql, query=None, deterministic_plan=None):
-        conn = _pg(); cur = conn.cursor()
-        try:
-            _load_user_schema(cur, self._pg_schema, sch, tablemap)
-            if deterministic_plan is not None:
-                conn.commit()
-                conn.close()
-                conn = None
-                return self._execute_deterministic(tablemap, deterministic_plan)
-            execution_sql = render_query(query, dialect="postgres_numeric") if query is not None else sql
-            cur.execute(execution_sql)
-            columns, rows = [d[0] for d in cur.description], cur.fetchall()
-            conn.commit()
-            return columns, rows
-        except Exception:
-            if conn is not None:
-                conn.rollback()
-            raise
-        finally:
-            if conn is not None:
-                conn.close()
-
-    def _execute_deterministic(self, tablemap, plan, knowledgebase_release=None, labels=None):
-        """Run a served plan through both emitters. ``labels`` resolves knowledgebase entities to their
-        labels for display (docs/SHEETS_AS_REASONING.md rule 5); a plan that reads the knowledgebase
-        cannot be shown without it, so every world trail passes it here, the one executor they share."""
-        from sqlalchemy import create_engine
-        from sqlalchemy.pool import NullPool
-
-        from engine.deterministic.context import (
-            current_analysis_context,
-            set_execution_record,
-        )
-        from engine.deterministic.service import DeterministicAnalysis
-        from engine.analysis import analysis_input_hash
-
-        context = current_analysis_context()
-        if context is None:
-            raise RuntimeError("deterministic execution requires a named-analysis context")
-        if labels is None and any(table.schema == "knowledgebase" for table in plan.tables):
-            raise RuntimeError("a plan that reads the knowledgebase needs its entity labels")
-        engine = create_engine(
-            "postgresql+psycopg2://",
-            creator=_orm_pg,
-            poolclass=NullPool,
-        )
-        try:
-            result = DeterministicAnalysis(
-                plan,
-                conversation_schema=self._pg_schema,
-                dataset_version=context.dataset_version or analysis_input_hash(list(tablemap.values())),
-                knowledgebase_release=knowledgebase_release,
-                labels=labels,
-            ).run(
-                engine,
-                mode=context.execution_mode or deterministic_execution_mode(),
-                estimated_rows=sum(
-                    len(tablemap[name].get("rows") or ())
-                    for name in {
-                        table_name
-                        for view in plan.views
-                        if hasattr(view, "tables")
-                        for table_name in view.tables
-                    }
-                    if name in tablemap
-                ),
-                python_row_limit=deterministic_python_row_limit(),
-                app_env=APP_ENV,
-                persist_generated=deterministic_persist_generated(),
-                conversation_id=context.conversation_id,
-                revision=context.revision,
-            )
-            set_execution_record(result.record())
-            shown = result.output_rows()
-            if shown:
-                columns = list(shown[0])
-            else:
-                columns = list(plan.view_columns()[str(plan.output)])
-            rows = [tuple(row.get(column) for column in columns) for row in shown]
-            return columns, rows
-        finally:
-            engine.dispose()
-
-
-class PgQuery(KnowledgeTableQuery):
-    """KnowledgeTableQuery planner + Postgres execution, scoped to a per-request verified schema."""
-
-    # The request's conversation schema and its world-query connection: per request, as concurrent
-    # questions share this object (engine/request_state.py).
-    _pg_schema = RequestLocal()
-    _con = RequestLocal()
-
-    @staticmethod
-    def _numeric_aggregate(function, operand):
-        return f"{function.upper()}( {operand} )"
-
-    @staticmethod
-    def _numeric_multiply(left, right):
-        return f"({left} * {right})"
-
-    @staticmethod
-    def _calculation_dialect():
-        return "postgres_numeric"
-
-    def __init__(self, deploy_dir):
-        super().__init__(deploy_dir)
-        self.q11.__class__ = _TableQueryPg       # rebless the shared TableQuery (same loaded model) -> PG own-data path
-
-    def serve(self, tables, question, as_of=None, schema=None, explicit_fks=(), dataset_semantics=()):
-        if not schema:
-            return {"error": "not signed in (no schema)", "question": question}
-        self._pg_schema = schema
-        self.q11._pg_schema = schema
-        self._con = None
-        try:
-            return super().serve(tables, question, as_of, explicit_fks=explicit_fks,
-                                 dataset_semantics=dataset_semantics)
-        finally:
-            if self._con is not None:
-                self._con.close(); self._con = None
-
-    def _table_freshness(self, con, table, as_of):
-        """A world table with no per-row updated_at is judged from the maintenance catalog instead
-        of passing silently. Read through the connection the query already holds: this runs inside
-        serve()'s try, where ANY raised exception costs the user their answer, so opening a second
-        connection here would turn a transient network blip into a lost answer. to_regclass keeps
-        the un-migrated case to one ordinary statement rather than a swallowed exception, and the
-        catalog is small enough (one indexed row) that reading it per request beats caching a value
-        that a nightly refresh would leave falsely 'overdue'.
-
-        Only two things are worth saying: the table is past its declared cadence, or nobody declared
-        it. A table declared on-demand (cadence NULL) is an intentional, recorded state — warning
-        about that on every geo query would be noise, not disclosure."""
-        if con.execute("SELECT to_regclass('knowledgebase.schedule')").fetchone()[0] is None:
-            return []                             # un-migrated database: say nothing, invent nothing
-        row = con.execute('SELECT cadence_hours, last_refreshed_at FROM knowledgebase."schedule"'
-                          " WHERE table_name = %s", (table,)).fetchone()
-        if row is None:
-            return [f"freshness: world table '{table}' has no maintenance record — "
-                    f"declare it in db/sync/schedule.py:CATALOG"]
-        cadence, last = row
-        if cadence is None:
-            return []
-        if last is None:
-            return [f"freshness: '{table}' is scheduled every {cadence}h but has never recorded a refresh"]
-        stamp = last.date() if hasattr(last, "date") else last
-        overdue_h = self._days(stamp, as_of) * 24
-        if overdue_h > cadence:
-            return [f"freshness: '{table}' last refreshed {stamp}, {int(overdue_h)}h before the "
-                    f"as-of date {as_of} and past its {cadence}h cadence — may be stale"]
-        return []
-
-    def _connect(self, tablemap, sch, attach_world):
-        """World path executor → Postgres. The world tables are visible via search_path (no ATTACH)."""
-        conn = _pg(); cur = conn.cursor()
-        try:
-            _load_user_schema(cur, self._pg_schema, sch, tablemap)
-        except Exception:
-            conn.rollback()
-            conn.close()
-            raise
-        self._con = _PgCon(conn)
-        return self._con
-
-    def ambiguities(self, table, routed_col, wt):
-        w = self.words[wt]; key = w["key"]; haskind = "country" in w.get("columns", [])
-        # Match the uploaded value against the entity NAME column, not the key. For qid-keyed tables (city,
-        # country, state) the key is the opaque QID, so `WHERE lower(qid)=<name>` never matched and NO
-        # ambiguity was ever flagged. The name column is what the uploaded string actually corresponds to.
-        name_col = "name" if "name" in w.get("columns", []) else key
-        vals = [str(dict(zip(table["columns"], r)).get(routed_col)) for r in table["rows"]]
-        vals = [v for v in vals if v and v != "None"]
-        if not vals:
-            return []
-        first = {}                                    # lowercased value -> the upload's first spelling of it
-        for v in vals:
-            first.setdefault(v.lower(), v)
-        # ONE lookup for every distinct value (it was one round trip each, ~150 ms apiece on the
-        # 200k-row city table, 2026-09-30); knowledgebase."city"/"country" index lower(name).
-        conn = _pg(); cur = conn.cursor(); cur.execute("SET search_path TO knowledgebase")
-        name = f"lower({qident(name_col)})"
-        if haskind:
-            cur.execute(f'SELECT DISTINCT {name}, country FROM {qident(wt)} WHERE {name} = ANY(%s)', (list(first),))
-        else:
-            cur.execute(f'SELECT {name}, NULL FROM {qident(wt)} WHERE {name} = ANY(%s)', (list(first),))
-        options = {}
-        for value, country in cur.fetchall():
-            options.setdefault(value, []).append(country)
-        conn.close()
-        warns = []
-        for vl, v in first.items():
-            opts = options.get(vl, [])
-            if len(opts) > 1:
-                warns.append(f"'{v}' is ambiguous in {wt}: {', '.join(sorted(map(str, opts)))}" if haskind
-                             else f"'{v}' is ambiguous in {wt}: multiple rows")
-        return warns
-
-    def _world_rows(self, joins, seed_values, cap=12):
-        conn = _pg(); cur = conn.cursor(); cur.execute("SET search_path TO knowledgebase")
-        out, seeds = [], [str(v).lower() for v in seed_values if v not in (None, "")]
-        for idx, j in enumerate(joins):
-            wt, key, w = j["right_table"], j["right_col"], self.words[j["right_table"]]
-            cols = [c for c in w["columns"]
-                    if c not in ("updated_at", "source", "source_release_id", "valid_from", "valid_to")]
-            seedset = sorted(set(seeds))
-            if not seedset:
-                break
-            ph = ",".join(["%s"] * len(seedset))
-            extra = " AND is_primary=1" if "is_primary" in w["columns"] else ""
-            cur.execute(f'SELECT {", ".join(qident(c) for c in cols)} FROM {qident(wt)} '
-                        f'WHERE lower({qident(key)}) IN ({ph}){extra} LIMIT {cap}', tuple(seedset))
-            rows = cur.fetchall()
-            rd = [[("" if v is None else v) for v in r] for r in rows]
-            out.append({"name": wt, "columns": cols, "rows": rd})
-            nxt = joins[idx + 1] if idx + 1 < len(joins) else None
-            if nxt and nxt["left_table"] == wt and nxt["left_col"] in cols:
-                ci = cols.index(nxt["left_col"]); seeds = [str(r[ci]).lower() for r in rd if r[ci] not in (None, "")]
-            else:
-                seeds = []
-        conn.close()
-        return out

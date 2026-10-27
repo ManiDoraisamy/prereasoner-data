@@ -122,20 +122,31 @@ def test_a_pooled_connection_comes_back_reset():
         again.close()
 
 
-def test_the_orm_connection_is_never_pooled():
-    """Its NUMERIC caster is registered on the connection and cannot be removed: a pooled one would hand
-    Decimals to a caller expecting the serving cursor's values."""
-    from engine.pg import _POOL, _orm_pg
-    conn = _orm_pg()
-    conn.close()
-    assert conn.closed and all(c is not conn for c, _ in _POOL._idle)
+def test_a_decimal_cursor_leaves_its_pooled_connection_as_it_was():
+    """A preparation reads NUMERIC as Decimal (engine/prepared.py:decimal_cursor), every digit kept. The caster is
+    registered on that cursor alone: the pooled connection's next user still reads the serving cursor's values."""
+    from decimal import Decimal
+
+    from engine.pg import _pg
+    from engine.prepared import decimal_cursor
+    conn = _pg()
+    try:
+        cur = decimal_cursor(conn)
+        cur.execute("SELECT 0.1::numeric, 9007199254740993.1::numeric")
+        assert cur.fetchone() == (Decimal("0.1"), Decimal("9007199254740993.1"))
+        plain = conn.cursor()
+        plain.execute("SELECT 0.1::numeric, 0.5::numeric")
+        assert plain.fetchone() == ("0.1", 0.5)
+    finally:
+        conn.rollback()
+        conn.close()
 
 
 TESTS = [
     test_a_rollback_reaches_an_aborted_transaction,
     test_a_request_s_timeout_is_sent_once_and_again_after_a_rollback,
     test_a_pooled_connection_comes_back_reset,
-    test_the_orm_connection_is_never_pooled,
+    test_a_decimal_cursor_leaves_its_pooled_connection_as_it_was,
 ]
 
 

@@ -1001,6 +1001,70 @@ class AnalysisPlan:
             out[view.name] = frozenset(columns)
         return out
 
+    def numeric(self, value: Value, numbers: frozenset[str] | set[str]) -> bool:
+        """Is ``value`` a number, given the names ``numbers`` among the values of the stage it reads? A number
+        column, a number literal, arithmetic, a month (an integer) and a span are; text, a date and a boolean are
+        not."""
+        if isinstance(value, ColumnValue):
+            return self.table(value.table).column(value.column).type in {SQLType.INTEGER, SQLType.REAL}
+        if isinstance(value, ViewValue):
+            return value.name in numbers
+        if isinstance(value, LiteralValue):
+            return type(value.value) in {int, Decimal}
+        if isinstance(value, FunctionValue):
+            return value.function == "MONTH"
+        return isinstance(value, (BinaryValue, SpanValue))
+
+    def numeric_values(self) -> dict[str, frozenset[str]]:
+        """Each stage's columns that hold numbers. The SQL program computes them exactly through SQLite's decimal
+        functions and returns them as decimal text, which becomes a Decimal again, as the Python program holds it."""
+        shapes = self.view_columns()
+
+        def table_numbers(names):
+            return {f"{name}__{column.name}" for name in names
+                    for column in self.table(name).columns
+                    if column.type in {SQLType.INTEGER, SQLType.REAL}}
+
+        def aggregate_number(aggregate, current):
+            return (aggregate.function in {"COUNT", "SUM", "AVG"}
+                    or self.numeric(aggregate.operand, current))
+
+        out: dict[str, frozenset[str]] = {}
+        for view in self.views:
+            if isinstance(view, CombinedView):
+                numbers = table_numbers(view.tables)
+            elif isinstance(view, CrossView):
+                left = shapes[view.left]
+                numbers = set(out[view.left]) | {
+                    view.right_prefix + name if name in left else name for name in out[view.right]
+                }
+            elif isinstance(view, AntiJoinView):
+                numbers = set(out[view.left])
+            else:
+                current = out[view.source]
+                if isinstance(view, EnrichedView):
+                    numbers = set(current) | table_numbers(
+                        enrichment.target_table for enrichment in view.enrichments
+                    )
+                elif isinstance(view, CalculatedView):
+                    numbers = set(current) | {
+                        value.name for value in view.values if self.numeric(value.value, current)
+                    }
+                elif isinstance(view, ProjectedView):
+                    numbers = {value.name for value in view.values if self.numeric(value.value, current)}
+                elif isinstance(view, ReducedView):
+                    numbers = {value.name for value in view.group_by if self.numeric(value.value, current)} | {
+                        aggregate.name for aggregate in view.aggregates if aggregate_number(aggregate, current)
+                    }
+                elif isinstance(view, WindowView):
+                    numbers = set(current) | {view.output}
+                elif isinstance(view, SortedView) and view.shown:
+                    numbers = set(current) & set(view.shown)
+                else:                                   # filtered and sorted stages keep their rows' columns
+                    numbers = set(current)
+            out[view.name] = frozenset(numbers)
+        return out
+
     def inlined_entries(self) -> frozenset[str]:
         """One-sheet entry views, which neither emitter materializes as a stage.
 

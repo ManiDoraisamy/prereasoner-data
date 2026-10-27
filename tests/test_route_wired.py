@@ -50,7 +50,10 @@ def main():
     if ("customers", "name") in routes:
         fails.append(f"(1) model mis-typed 'name' -> {routes[('customers','name')]!r} (should be untyped)")
 
-    # (2) aggregate world join on the model-typed column
+    # (2) aggregate world join on the model-typed column, on a request database (3) reads after it
+    from engine.prepared import request_database
+    request = request_database()
+    database = request.__enter__()
     res = served(schema, Q.serve, [CUST], "how many customers in France", schema=schema)
     rows = (res.get("result") or {}).get("rows") or []
     print(f"\nQ: how many customers in France\n   sql={res.get('sql')}\n   rows={rows}")
@@ -64,11 +67,11 @@ def main():
         if not (isinstance(got, int) and got >= 2):
             fails.append(f"(2) expected >=2 French customers, got {got!r}")
 
-    # (3) world_qid in the persisted bridge = the model's table qid (Q515 city)
-    cur = Q._rconn().cursor()
+    # (3) world_qid in the request's bridge = the model's table qid (Q515 city)
     bn = Q._conn_bridge_name("customers")                     # "customers connected to knowledgebase"
-    cur.execute(f'SELECT DISTINCT "world_type","world_qid" FROM {qident(schema)}.{qident(bn)} WHERE "column"=%s', ("city",))
-    bridge = cur.fetchall()
+    bridge = database.connection.execute(
+        f'SELECT DISTINCT "world_type","world_qid" FROM main.{qident(bn)} WHERE "column"=?', ("city",)).fetchall()
+    request.__exit__(None, None, None)
     print(f"\nbridge world_type/world_qid for 'city': {bridge}")
     if not any(wt == "city" and wq == "Q515" for wt, wq in bridge):
         fails.append(f"(3) bridge world_qid != Q515 for city (got {bridge})")
