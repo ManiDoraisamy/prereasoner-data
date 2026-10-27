@@ -10,8 +10,8 @@ locals {
   # turns it on for a deployment without chat. EXTERNAL_LLM_ENABLED carries this to both services.
   external_llm_enabled = var.enable_external_llm || var.enable_orchestrator
 
-  # The engine grows to four CPU instances, or to three L4 instances: a project's default L4 quota.
-  engine_max_instances = var.gpu != "" ? 3 : 4
+  # The engine grows to four CPU instances, or to as many L4 instances as the project's quota holds.
+  engine_max_instances = var.gpu != "" ? var.gpu_instances : 4
 
   required_apis = concat([
     "firebase.googleapis.com",         # Firebase project APIs
@@ -259,7 +259,7 @@ resource "google_cloud_run_v2_service" "api" {
     service_account = google_service_account.run.email
 
     scaling {
-      min_instance_count = var.min_instances # default 2: see the variable
+      min_instance_count = min(var.min_instances, local.engine_max_instances) # default 2: see the variable
       # Questions run in parallel in an instance (engine/request_state.py), and Cloud Run adds
       # instances, up to four, when those running are busy: at 60% of the request limit below or
       # 60% CPU. A new instance passes its startup probe about 70 s after it starts (2026-10-05, on

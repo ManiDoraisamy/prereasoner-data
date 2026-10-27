@@ -1189,6 +1189,10 @@ def test_the_gpu_lock_is_the_cpu_lock_with_torch_s_cuda_build():
     main = _text("infra/main.tf")
     assert 'value = var.gpu != "" ? "cuda" : "cpu"' in main and 'accelerator = node_selector.value' in main
     assert "gpu_zonal_redundancy_disabled = var.gpu != \"\" ? true : null" in main
+    # The project holds one L4 (2026-10-27): a GPU service runs no more instances than its quota, and the warm
+    # minimum is held to that.
+    assert 'engine_max_instances = var.gpu != "" ? var.gpu_instances : 4' in main
+    assert "min_instance_count = min(var.min_instances, local.engine_max_instances)" in main
 
 
 def test_a_gpu_deployment_without_a_gpu_refuses_to_serve():
