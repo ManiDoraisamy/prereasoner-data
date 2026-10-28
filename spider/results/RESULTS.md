@@ -5,6 +5,27 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
+## Every question on its own SQLite database: calibration 730 -> 727, frozen test 1,532 -> 1,531 (2026-10-27)
+
+Same bundle (all14fg, weights manifest 40605578...), same evaluator, the choice's threshold null; the selected query
+executes through the request's SQLite database (`engine/prepared.py`) by serving's policy (`--backend auto`: the
+generated Python program, SQL when the plan cannot be lowered or is too large), where the previous entry executed SQL
+on an in-memory copy (`--backend sql`). Records: `C:/work/prereasoner-readers-artifacts/evals/sqlite/`.
+
+| | previous executor (fd91a87, `--backend sql`) | request database (4580c0c) | request database with fd63f2b's fix |
+|---|---|---|---|
+| Calibration strict / lenient (1,053) | 730 / 811 | 725 / 806 | 727 / 808 |
+| Calibration: same SQL | | 1,053 of 1,053; 1 answer became right, 6 wrong | 1,053 of 1,053; 1 became right, 4 wrong |
+| Frozen test strict / lenient (2,147; totals only) | 1,532 / 1,696 | | 1,531 / 1,696 |
+| Frozen test answered | 2,143 | | 2,143 |
+
+The six calibration answers 4580c0c lost: 122 and 278 compared an integer column with '2008.' / '10.' (the readers kept
+a sentence's period); SQLite's affinity reads the text as a number and the generated Python program did not (fixed in
+fd63f2b). 314 and 315 ("the five oldest people") tie at the fifth row; either answer is a valid top five. 891 and 892
+order hotels by a price the evaluator's copy reads as NULL where the database holds '' and NULLs now sort last; the
+original database gives the new answer. The gain, 282, compares AVG(rating) with '5.' exactly. The fd63f2b column's
+calibration ran at 13b9791 (the same engine; only engine/server.py's startup differs) and its frozen test at fd63f2b.
+
 ## The readers computed in float32 over bfloat16 weights: calibration 729 -> 730, frozen test 1,535 -> 1,532 (2026-10-27)
 
 Same bundle (all14fg, weights manifest 40605578...), same evaluator and options as the bundle's recorded runs

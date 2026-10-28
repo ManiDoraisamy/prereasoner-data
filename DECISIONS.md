@@ -4932,6 +4932,19 @@ conversation locks, the `postgres_numeric` dialect, the REPEATABLE READ branch, 
 CI job that executed uploads through PostgreSQL NUMERIC. The 971 `c_*` schemas (116 MB) and `chat.working_table`
 stay until this release has soaked; then they are dropped, one schema per transaction.
 
+Measured on the 4580c0c release gate (`prereasoner-api-00204-ljx`, 243 engine requests, against 208 on the c2eae37
+gate): a question's PostgreSQL time fell from 700 to 198 ms at the median (74.6 statements to 41.8, the rest being the
+conversation's own records), and the time outside the models' compute from 1.96 to 0.96 s at the median (p90 6.7 to
+3.0 s) when the readers ran and from 1.88 to 0.91 s (p90 7.7 to 1.45 s) when their memo answered; those requests now
+take 0.95 s at the median, against 2.3 s. 66 of 243 requests finished under 1 s (23 of 208 before). A question the
+readers read anew still takes 7.9 s at the median on 4 vCPUs: the readers (3.2 s), the re-scorers and the encoder are
+the rest, and wait for the L4. The browser gate answered every demo question in 24 new and 24 existing conversations
+(the existing ones made by c2eae37); every failed turn was a Gemini round (no engine call).
+
+The Spider evaluator, executing through this database by serving's policy, read the same SQL for all 1,053
+calibration questions and answered 725 strictly / 806 leniently, against 730 / 811 (`spider/results/RESULTS.md`); with
+fd63f2b's parity fix, 727 / 808. The frozen test answered 1,531 / 1,696 of 2,147, against 1,532 / 1,696.
+
 ## The engine loads its readers after the world reasoner, never beside it (2026-10-27)
 
 An engine instance is ready only with its readers (2026-10-26). On Cloud Run both startup phases mostly wait on the
