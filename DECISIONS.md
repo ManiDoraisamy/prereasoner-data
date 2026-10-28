@@ -4974,6 +4974,11 @@ the schema interpreter's `LiveQwen.encode` read through it. Measured at 3 thread
 0.9 s, a short question's 19 spans 0.65 to 0.30 s, 300 cell values 41.5 to 22.6 s; a cold first question's encoding
 3.0 to 1.1 s.
 
-Measured and left out: merging the LoRA into the weights (2 to 7% faster) and dynamic int8 quantization of the linear
-layers (about 3 times faster, but 1 - cosine 0.7 on average against float32, so every calibrated threshold would move).
-What remains is the fixed cost of each pass: a question still makes 2 to 4 of them.
+In production (780f7c2, `prereasoner-api-00209-kg6`, 44 requests of six demo datasets in new conversations, against the
+254 of the 4580c0c to 235dfd0 gates): encoding 1.24 to 1.03 s at the median, 3.39 to 1.76 s at p90 and 1.93 to 1.18 s
+on average, 247 to 186 ms per uncached text at p90, and 16.9% to 12.1% of the engine's time.
+
+Measured and left out: merging the LoRA into the weights (2 to 7% faster); dynamic int8 quantization of the linear
+layers (about 3 times faster, but 1 - cosine 0.7 on average against float32, so every calibrated threshold would move);
+and reading a question's own texts (itself, its spans, its words) in one pass before the paths that encode them (31 to
+15 passes over 12 questions, but 6.5 against 6.6 s: the pass took the texts no path then read).
