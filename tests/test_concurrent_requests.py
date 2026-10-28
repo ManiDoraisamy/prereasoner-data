@@ -13,7 +13,6 @@ import json
 import sys
 import threading
 import time
-from collections.abc import Mapping
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -236,25 +235,6 @@ def test_two_questions_over_one_table_prepare_it_once():
     print("  PASS  two questions over one table prepare it once")
 
 
-class _Batch(Mapping):
-    """A tokenized batch the encoders read: tensors by name, movable to a device."""
-
-    def __init__(self, rows):
-        import torch
-        self._tensors = {"input_ids": torch.zeros((rows, 1), dtype=torch.long),
-                         "attention_mask": torch.ones((rows, 1), dtype=torch.long)}
-
-    def __getitem__(self, key):
-        return self._tensors[key]
-
-    def __iter__(self):
-        return iter(self._tensors)
-
-    def __len__(self):
-        return len(self._tensors)
-
-    def to(self, _device):
-        return self
 
 
 class _CountingTokenizer:
@@ -271,7 +251,7 @@ class _CountingTokenizer:
         time.sleep(0.005)
         with self.lock:
             self.inside -= 1
-        return _Batch(len(texts))
+        return {"input_ids": [[0] for _ in texts]}            # one token a text, unpadded
 
 
 def test_the_shared_tokenizer_is_called_one_at_a_time():
@@ -283,7 +263,7 @@ def test_the_shared_tokenizer_is_called_one_at_a_time():
     from engine.tables import TableQuery
 
     tok = _CountingTokenizer()
-    qwen = lambda **enc: SimpleNamespace(last_hidden_state=torch.zeros((len(enc["input_ids"]), 1, 4)))  # noqa: E731
+    qwen = lambda **enc: SimpleNamespace(last_hidden_state=torch.zeros((1, enc["input_ids"].shape[1], 4)))  # noqa: E731
     cells = TableQuery.__new__(TableQuery)
     cells.tok, cells.qwen, cells.hdim, cells.device = tok, qwen, 4, torch.device("cpu")
     summaries = LiveQwen(torch.device("cpu"), shared_qwen=qwen, shared_tok=tok)

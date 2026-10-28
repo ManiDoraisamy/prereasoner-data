@@ -265,16 +265,12 @@ class TableQuery:
 
     @_torch_no_grad
     def _encode_batch(self, texts):
-        """The raw forward pass, uncached. Callers go through `_encode`."""
-        out = np.zeros((len(texts), self.hdim), np.float32)
-        from engine.encoder import tokenize
-        for i in range(0, len(texts), 64):
-            chunk = texts[i:i + 64]
-            enc = tokenize(self.tok, chunk, MAX_LEN).to(self.device)
-            h = self.qwen(**enc).last_hidden_state
-            m = enc["attention_mask"].unsqueeze(-1).float()
-            out[i:i + len(chunk)] = ((h * m).sum(1) / m.sum(1).clamp(min=1.0)).float().cpu().numpy()
-        return out
+        """The raw forward pass, uncached, texts packed without padding (engine/encoder.py). Callers go through
+        `_encode`."""
+        from engine.encoder import pooled_vectors
+        if not texts:
+            return np.zeros((0, self.hdim), np.float32)
+        return pooled_vectors(self.qwen, self.tok, texts, MAX_LEN, self.device).cpu().numpy().astype(np.float32)
 
     def _encode(self, texts):
         if self.qwen is None:

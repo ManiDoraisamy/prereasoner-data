@@ -2175,7 +2175,7 @@ to finish lifted the other's.
 What belongs to one request is now request-local: `engine/request_state.py:RequestLocal` keeps those planner
 attributes in a ContextVar, `KnowledgeReasoner.serve` opens a fresh scope per request and closes the request's own
 resolution connection when it ends, and `engine/trace.py:request_stream` scopes the trace emitter. The tokenizer
-call (`engine/encoder.py:tokenize`) and the encode cache take short locks, the route cache is read once, the
+call (`engine/encoder.py:token_ids` since 2026-10-28) and the encode cache take short locks, the route cache is read once, the
 escalation is installed once for the process, and the firebase app is initialized under a lock. Requests on one
 conversation still run one at a time (a local lock stripe and a conversation advisory lock), because a request
 rewrites that conversation's bridge tables. `tests/test_concurrent_requests.py` runs two requests at once for each
@@ -4956,3 +4956,24 @@ process, the world encoder built meanwhile came out in bfloat16, and every own-d
 must have the same dtype"; revision 00205, rolled back to 4580c0c within half an hour). Two torch models are never
 built at once in one process: the readers load after the world reasoner (`tests.test_release`). A shorter startup
 needs another way to wait less on the image's files.
+
+## The encoder reads a pass's texts packed, without padding (2026-10-28)
+
+The Qwen encoder (Qwen2.5-0.5B with its LoRA, float32) took 16.9% of the engine's request time after the request
+database shipped: 1.24 s at the median and 3.39 s at p90 per request, about 110 ms per text it had not cached (254
+production requests, 2026-10-27/28). A pass costs about 100 ms before its first token on Cloud Run's CPU, mostly
+streaming the weights, then a few milliseconds a token; and a padded batch read every text at the length of the
+longest beside it. The primitive head's spans of a question (engine/primitive_head.py) sat in a batch with the whole
+question, so 18 spans of 44 tokens were read as 126.
+
+`engine/encoder.py:pooled_vectors` now lays a pass's texts end to end, up to 1,024 tokens, each attending causally to
+its own tokens only and numbered from position 0, and pools each text's own tokens: the vector a text has when read
+alone, as in a padded batch (1 - cosine at most 1.8e-7 against the padded batches on the served encoder, the noise a
+batch's composition already made; `tests.test_encode_cache` checks it on a small Qwen2). `TableQuery._encode_batch` and
+the schema interpreter's `LiveQwen.encode` read through it. Measured at 3 threads: a long question's 79 spans 8.4 to
+0.9 s, a short question's 19 spans 0.65 to 0.30 s, 300 cell values 41.5 to 22.6 s; a cold first question's encoding
+3.0 to 1.1 s.
+
+Measured and left out: merging the LoRA into the weights (2 to 7% faster) and dynamic int8 quantization of the linear
+layers (about 3 times faster, but 1 - cosine 0.7 on average against float32, so every calibrated threshold would move).
+What remains is the fixed cost of each pass: a question still makes 2 to 4 of them.
