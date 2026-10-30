@@ -427,7 +427,8 @@ def grade(expected, response):
     cells = [[number(v) for v in row if number(v) is not None] for row in rows]
     if kind == "scalar":
         golds = gold if isinstance(gold, (list, tuple)) else [gold]
-        right = len(rows) == 1 and any(_close(v, g) for v in cells[0] for g in golds)
+        # "first time visitors": the rows themselves answer a count as well as their number does.
+        right = (len(rows) == 1 and any(_close(v, g) for v in cells[0] for g in golds)) or (len(rows) > 1 and len(rows) in golds)
     elif kind == "money":
         labelled = _labelled(rows)
         if len(gold) == 1:

@@ -4,7 +4,11 @@ and these do not. The frozen split reports totals only, so its misses are never 
 
 Needs a live Postgres (KB_PG_*), as every served path does.
 
-usage: python -m regress.run_messy [--split dev|frozen|all] [--workbook a,b] [--only words] [--tag x] [--out dir]
+--pool asks instead whether the readers' pool holds a right answer at all, and at what rank: every candidate run and graded,
+no selection, no refusal (an oracle ablation, never serving). It separates what the readers can read from what the choice
+chooses, needs no Postgres, and never runs on the frozen split.
+
+usage: python -m regress.run_messy [--split dev|frozen|all] [--workbook a,b] [--only words] [--tag x] [--out dir] [--pool]
 """
 import argparse
 import collections
@@ -34,6 +38,37 @@ def run(selected, serve_one):
     return records
 
 
+def pool_records(selected):
+    """One record per case: the best rank at which the readers' pool holds a right answer, None when it holds none."""
+    from engine.sql_schema import SchemaGraph
+    from engine.tables import TableQuery
+
+    planner = TableQuery()
+    prepared = {}
+    records = []
+    for case in selected:
+        if case.workbook not in prepared:
+            norm, keys = planner.ingest(workbook(case.workbook))
+            schema, _, tables = planner.schema(norm, keys)
+            prepared[case.workbook] = norm, keys, schema, tables, SchemaGraph.from_planner(schema, keys)
+        norm, keys, schema, tables, graph = prepared[case.workbook]
+        started = time.perf_counter()
+        pool = planner.search_pool(case.question, norm, keys, schema, graph=graph)
+        best = None
+        for rank, candidate in enumerate(pool):
+            try:
+                result = planner.execute(tables, schema, candidate.sql, query=candidate.query)
+            except Exception:                      # noqa: BLE001 - a candidate that fails answers nothing
+                continue
+            if grade(case.expected, {"result": result})[0] == "right":
+                best = rank
+                break
+        records.append({"workbook": case.workbook, "question": case.question, "family": case.family, "split": case.split,
+                        "verdict": "right" if best is not None else "wrong", "best_rank": best, "pool": len(pool),
+                        "seconds": round(time.perf_counter() - started, 1), "note": "", "read_as": "", "sql": ""})
+    return records
+
+
 def summary(records):
     """{right, asked, wrong, n, seconds_p50} overall and by workbook, family and split."""
     def tally(rows):
@@ -53,15 +88,21 @@ def main():
     ap.add_argument("--only", help="only questions containing these words")
     ap.add_argument("--tag", default="run")
     ap.add_argument("--out", default=os.path.join("regress", "results"))
+    ap.add_argument("--pool", action="store_true", help="the readers' pool's recall, not the served answer")
     args = ap.parse_args()
-    from engine.knowledge import KnowledgeReasoner
-    from regress.live_schema import live_schema, served
-
-    reasoner = KnowledgeReasoner()
-    schema = live_schema().name
+    if args.pool and args.split != "dev":
+        ap.error("--pool studies misses, so it reads the dev split only")
     selected = [case for case in cases(args.workbook.split(",") if args.workbook else None)
                 if (args.split == "all" or case.split == args.split) and (not args.only or args.only in case.question)]
-    records = run(selected, lambda tables, question: served(schema, reasoner.serve, tables, question, schema))
+    if args.pool:
+        records = pool_records(selected)
+    else:
+        from engine.knowledge import KnowledgeReasoner
+        from regress.live_schema import live_schema, served
+
+        reasoner = KnowledgeReasoner()
+        schema = live_schema().name
+        records = run(selected, lambda tables, question: served(schema, reasoner.serve, tables, question, schema))
     frozen = args.split != "dev"
     if not frozen:
         for record in records:

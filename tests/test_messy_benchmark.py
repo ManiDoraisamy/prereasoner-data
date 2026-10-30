@@ -56,6 +56,8 @@ def test_grade():
     assert grade(("scalar", 10), answer([10]))[0] == "right"
     assert grade(("scalar", [3, 10]), answer(["$10.00"]))[0] == "right"
     assert grade(("scalar", 10), answer([11]))[0] == "wrong"
+    assert grade(("scalar", 2), answer(["a"], ["b"]))[0] == "right", "the rows themselves answer a count"
+    assert grade(("scalar", 3), answer(["a"], ["b"]))[0] == "wrong"
     assert grade(("scalar", 10), answer([10], [10]))[0] == "wrong"
     assert grade(("scalar", 10), {"clarify": True, "reason": "which one?"})[0] == "asked"
     assert grade(("scalar", 10), {"error": "boom"})[0] == "asked"
