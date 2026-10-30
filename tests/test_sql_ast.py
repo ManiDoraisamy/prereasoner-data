@@ -1910,6 +1910,55 @@ def test_pool_oracle_counts_only_eligible_denotation_hits_and_validates_checkpoi
 def test_shared_ranking_rule_preserves_date_then_double_count_then_calculation_precedence():
     from engine.sql_rank import select_ranked_candidate
     assert select_ranked_candidate((), ()) is None
+    # A total of money over several currencies is served per currency, unless the question already says which.
+    from engine.sql_rank import mixed_currencies, per_currency
+    from engine.sql_ast import Aggregate, Comparison, Literal, SelectItem, SelectQuery
+    from engine.sql_schema import SchemaGraph
+    money = SchemaGraph.from_tables([{"name": "t", "columns": ["id", "Currency", "Amount", "Quantity"],
+                                      "rows": [[1, "usd", 10, 1], [2, "inr", 800, 2], [3, "usd", 5, 1]]},
+                                     {"name": "one", "columns": ["Currency", "Amount"], "rows": [["usd", 1], ["usd", 2]]}], [])
+    currencies = mixed_currencies(money)
+    assert set(currencies) == {"t"}, currencies
+    amount, quantity = money.column_map[("t", "Amount")].ref, money.column_map[("t", "Quantity")].ref
+    currency = money.column_map[("t", "Currency")].ref
+    total = SelectQuery((SelectItem(Aggregate("SUM", amount)),), "t")
+    split = per_currency(total, currencies)
+    assert split.group_by == (currency,) and split.select[0].expression == currency
+    # Already filtered or grouped by currency, not money, a row list, or a sheet of one currency: as it was.
+    filtered = SelectQuery(total.select, "t", where=Comparison(currency, "=", Literal("usd")))
+    assert per_currency(filtered, currencies) is filtered
+    grouped = SelectQuery((SelectItem(currency), SelectItem(Aggregate("SUM", amount))), "t", group_by=(currency,))
+    assert per_currency(grouped, currencies) is grouped
+    units = SelectQuery((SelectItem(Aggregate("SUM", quantity)),), "t")
+    assert per_currency(units, currencies) is units
+    assert per_currency(total, {}) is total
+    # A test of a column of few values against a value it does not hold is named; one of many values, or a held one, not.
+    from engine.sql_grounding import absent_value
+    from engine.sql_schema import SchemaGraph
+    from engine.sql_ast import (Aggregate, ColumnRef, Comparison, Literal, OrderTerm, SelectItem, SelectQuery, SQLType,
+                                named_groups, render_query)
+    graph = SchemaGraph.from_tables([{"name": "t", "columns": ["id", "status", "note"],
+                                      "rows": [[i, ["active", "canceled"][i % 2], f"n{i}"] for i in range(40)]}], [])
+    status = graph.column_map[("t", "status")].ref
+    note = graph.column_map[("t", "note")].ref
+    star = (SelectItem(status),)
+    churned = SelectQuery(star, "t", where=Comparison(status, "=", Literal("churned")))
+    assert absent_value(churned, graph) == ("status", "churned", ("active", "canceled"))
+    assert absent_value(SelectQuery(star, "t", where=Comparison(status, "=", Literal("Canceled"))), graph) is None
+    assert absent_value(SelectQuery(star, "t", where=Comparison(note, "=", Literal("gone"))), graph) is None
+    # A ranking of groups ranks the groups that have a name; a listing of groups keeps its blank.
+    industry, amount = ColumnRef("t", "industry", SQLType.TEXT), ColumnRef("t", "amount", SQLType.INTEGER)
+    total = Aggregate("SUM", amount)
+    ranking = SelectQuery((SelectItem(industry),), "t", group_by=(industry,),
+                          order_by=(OrderTerm(total, "DESC"),), limit=1)
+    assert "\"t\".\"industry\" <> ''" in render_query(named_groups(ranking))
+    listing = SelectQuery((SelectItem(industry), SelectItem(total)), "t", group_by=(industry,))
+    assert named_groups(listing) is listing
+    plain = SelectQuery((SelectItem(industry),), "t", order_by=(OrderTerm(amount, "DESC"),), limit=1)
+    assert named_groups(plain) is plain
+    year = ColumnRef("t", "year", SQLType.INTEGER)
+    by_year = SelectQuery((SelectItem(year),), "t", group_by=(year,), order_by=(OrderTerm(total, "DESC"),), limit=1)
+    assert "\"t\".\"year\" IS NOT NULL" in render_query(named_groups(by_year))
     # A reading that matches nothing does not beat a more probable reading that finds rows, whatever the re-scorer
     # thinks of its words; the readers' most probable reading keeps an empty answer ("orders from Mars").
     from types import SimpleNamespace

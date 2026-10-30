@@ -22,7 +22,7 @@ import tempfile
 
 from engine.readers import decode as decoding
 from engine.readers.read_as import read_as
-from engine.readers.readings import build
+from engine.readers.readings import as_built, build
 from engine.sql_ast import render_query
 from spider.probe.evalutil import exec_sql_timed
 from spider.probe.spider_eval import compare
@@ -47,7 +47,8 @@ def candidate_records(output, row, graph, connection, gold_rows, k=K, floor=None
             record = {"rank": rank, "score": round(score, 4), "read_as": read_as(reading), "status": "build",
                       "rows": 0, "columns": 0, "sql": None}
             try:
-                sql = render_query(build(reading, graph))
+                query = build(reading, graph)
+                sql = render_query(query)
             except Exception:                      # noqa: BLE001 - a reading the builder cannot make into a query
                 records.append(record)
                 continue
@@ -55,6 +56,7 @@ def candidate_records(output, row, graph, connection, gold_rows, k=K, floor=None
                 continue
             seen.add(sql)
             record["sql"] = sql
+            record["read_as"] = read_as(as_built(reading, query))
             rows, error = exec_sql_timed(connection, sql, timeout=CANDIDATE_SECONDS)
             if error:
                 record["status"] = "exec-error"

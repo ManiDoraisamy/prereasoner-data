@@ -5030,3 +5030,37 @@ is asked once for a day whose clock does not change. The hosted sidebar keeps re
 the script published before it, a real external contract: consumer, Marketplace installs of Apps Script version 31;
 removal condition, Marketplace serves the new version; remove `getWorkbookGrids`' branch in `sidebar.js` then, by
 2026-11-30. The read's new time is not measured until that version runs on a real workbook.
+
+## Messy questions on real sheets are the bar, and what the first test found (2026-10-30)
+
+The owner's request after that test: questions that use neither a column's name nor a cell's value as written, on real
+sheets, or the model is not generalized. The deployed build (543e5b9) got 0 of 6 on the owner's two workbooks in the add-on.
+A harness of 38 such questions over synthetic copies shaped like them (gold computed from the CSV) scored 12 right, 8 asked
+and 18 wrong after the fixes below; Gemini writing SQL linked nearly all of them to the right column and value. Spider test's
+71.3% does not describe this: its questions repeat the schema's words.
+
+The 26 misses: 10 value meaning ("churned" for canceled), 8 column meaning ("cpc" for a top-of-page bid), 8 structure
+("monthly vs yearly", "zero volume" read as above 0). The readers were never taught the first: `training/readers/rewordings.py`
+keeps a rewording only if every value of the original appears in it verbatim. That is a training-data change, under its own
+contract, not a rule here.
+
+What did not need training, each measured on that harness or the stored calibration pool:
+
+- Near copies of one export are one layout (`SchemaGraph.layout_copies`, `COPY_SHARE`): NT holds SI's columns and more, FF
+  misspells one, and read as different tables the readers chose whichever listed the question's value, with the user on NT.
+- A table the block reads no column of is left out when no key connects it (`readings._join_options`): the readers marked the
+  report tab beside the export, and the builder refused every reading of "total sales split by sector".
+- A total of money over several currencies is one row per currency (`sql_rank.per_currency`), unless the question filters,
+  groups or converts: 332,600 rupees and 205,194 dollars read as 545,337 of nothing. Gemini's SQL does the same.
+- A ranking of groups ranks the groups that have a name (`sql_ast.named_groups`); a listing keeps its blank.
+- A value spelled almost as a stored one in a column of few values is that value (`decode.nearly_spelled`, ratio 0.9:
+  cancelled/canceled, not Australia/Austria or Niger/Nigeria).
+- A test of a column of 12 values or fewer against a value it does not hold declines and names what the column holds
+  (`sql_grounding.absent_value`): "how many customers have churned" answered 0.
+- A search reads at most 1,000 distinct free-text cells at question time (`SEARCH_MAX_CELLS`), and stands in for the readers
+  only when they decline or the question filters a sheet with a world column by place: a word check sent "what are the
+  priciest terms" to it before any reader saw it, and 11,500 cells took 14 minutes.
+
+Measured and rejected: linking a word to a value by the served Qwen encoder's cosine (10 of 33 at a cutoff that invents none;
+"cancelled" is nearest "trialing"). The re-scorers pick the right stored value on 15 of 22, but rank the question's own words
+above it, so they need training on this too.

@@ -256,21 +256,34 @@ def _predicate(conditions, conj):
     return conditions[0] if len(conditions) == 1 else BooleanExpr(conj, tuple(conditions))
 
 
-def _join_options(graph, tables: list[str]) -> list[tuple[str, tuple]]:
+def _read_tables(block: dict) -> list[str]:
+    """The block's tables that one of its columns belongs to, in the block's order."""
+    columns = ([column for _, _, column, _ in block["select"]] + [column for column, _, _ in block["where"]]
+               + [column for _, column, _, _ in block["having"]] + [column for _, column in block["order"]]
+               + list(block["group"]))
+    read = {str(column).split(".", 1)[0] for column in columns if "." in str(column)}
+    return [table for table in block["tables"] if table in read]
+
+
+def _join_options(graph, tables: list[str], read: list[str] = ()) -> list[tuple[str, tuple]]:
     """(root, joins) for each foreign-key tree over exactly the block's tables, fewest joins first; when no tree has
-    exactly those tables, the trees that add bridge tables."""
+    exactly those tables, the trees that add bridge tables. When none connects them, a table the block reads no column
+    of (``read``) is left out: a reader that also marked the report tab beside an export read nothing from it, and the
+    builder refused every reading of "total sales split by sector" for want of a join (2026-10-30)."""
     if len(tables) == 1:
         return [(tables[0], ())]
     trees = graph.join_trees(tables, limit=8)
     exact = [tree for tree in trees if len(tree.joins) == len(tables) - 1]
     chosen = exact or list(trees)
     if not chosen:
+        if read and len(read) < len(tables):
+            return _join_options(graph, list(read))
         raise NotReadable("no-join-path")
     return [(tree.root, tree.joins) for tree in chosen]
 
 
 def _build_block(graph, block: dict, subquery=None, joins_choice: int = 0) -> SelectQuery:
-    options = _join_options(graph, block["tables"])
+    options = _join_options(graph, block["tables"], _read_tables(block))
     root, joins = options[min(joins_choice, len(options) - 1)]
     # A shown period is headed by the period it is, "month", not by its SQL.
     operands = [_operand(graph, aggregate, column, distinct)
@@ -353,6 +366,16 @@ def _share(graph, block, root, joins, select, where):
                         where=_predicate([w for i, w in enumerate(where) if i not in part], "AND"))
     return SelectQuery(select=(SelectItem(BinaryExpr(aggregate, "/", ScalarSubquery(whole)), "share"),),
                        from_table=root, joins=tuple(joins), where=_predicate(where, "AND"))
+
+
+def as_built(readings: dict, query) -> dict:
+    """The readings as ``query`` realizes them: without a table the builder left out (``_join_options``), so the read-as
+    line names only what the answer reads. "total amount of nt and nt report" was the total of NT alone (2026-10-30)."""
+    if readings["structure"] != "single":
+        return readings
+    block = readings["blocks"][0]
+    used = [table for table in block["tables"] if table in query.referenced_tables()]
+    return {**readings, "blocks": [{**block, "tables": used}]} if used and len(used) < len(block["tables"]) else readings
 
 
 def build(readings: dict, graph):

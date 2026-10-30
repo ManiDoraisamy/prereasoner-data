@@ -7,12 +7,14 @@ best re-scored candidate that executes and is grounded, under the pool contract 
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 import re
 from typing import Mapping, Sequence
 
+from engine.currency_intent import is_currency_measure_column, is_currency_source_column
+from engine.dataset_semantics import is_synthetic_currency_column
 from engine.sql_ast import (
-    ColumnRef, Comparison, SelectItem, SelectQuery, keep_ties, render_query,
+    Aggregate, ColumnRef, Comparison, SelectItem, SelectQuery, column_refs, keep_ties, named_groups, render_query,
 )
 from engine.sql_dates import period_grouping
 from engine.sql_expansion import (
@@ -351,6 +353,12 @@ class PoolSelection:
     declined: int | None = None
     # Which members match no row while the readers found a more probable member that does (``outread_by_rows``).
     outread: tuple[bool, ...] = ()
+    # The chosen reading's test of a column of few values against a value it does not hold (sql_grounding.absent_value):
+    # the choice is declined, and the reply asks which value was meant.
+    absent_value: tuple[str, str, tuple[str, ...]] | None = None
+    # table -> the column naming each row's currency, for tables that hold several currencies and a question that asks
+    # for no conversion (``mixed_currencies``): a total of money is served per currency (``per_currency``).
+    currencies: Mapping[str, ColumnRef] = field(default_factory=dict)
 
     @property
     def candidate(self) -> ScoredQuery | None:
@@ -359,10 +367,14 @@ class PoolSelection:
         if self.selected is None:
             return None
         member = self.pool[self.selected]
-        served = keep_ties(member.query)
+        split = per_currency(member.query, self.currencies)
+        served = keep_ties(named_groups(split))
         if served is member.query:
             return member
-        return ScoredQuery(served, render_query(served), member.score, member.evidence)
+        evidence = member.evidence
+        if split is not member.query and evidence:
+            evidence = (f"{evidence[0]}, for each {spaced_name(split.group_by[0].name).lower()}", *evidence[1:])
+        return ScoredQuery(served, render_query(served), member.score, evidence)
 
     def constrained(self, admissible) -> PoolSelection:
         """This selection under a caller's contract, a filter on the ranking and never a rescore.
@@ -400,6 +412,35 @@ class PoolSelection:
                 undecided=bool(self.undecided and self.undecided[self.selected]),
             )
         return evidence
+
+
+def mixed_currencies(graph) -> dict[str, ColumnRef]:
+    """Table -> the column naming each row's currency, for each table whose rows hold more than one currency."""
+    found = {}
+    for column in graph.columns:
+        if (is_currency_source_column(column.ref.name) and not is_synthetic_currency_column(column.ref.name)
+                and len({str(value).strip().lower() for value in column.values
+                         if value is not None and str(value).strip()}) > 1):
+            found.setdefault(column.ref.table, column.ref)
+    return found
+
+
+def per_currency(query, currencies: Mapping[str, ColumnRef]):
+    """The served form of a total or average of money over rows in several currencies: one row per currency. Added up,
+    332,600 rupees and 205,194 dollars read as 545,337 of nothing, as "how much sales for long term customers" did
+    (2026-10-30). A question that names a currency filters or converts; one that groups by it asks for this already."""
+    if (not currencies or not isinstance(query, SelectQuery) or query.group_by or query.joins or query.limit is not None
+            or query.distinct or not isinstance(query.from_table, str) or query.from_table not in currencies):
+        return query
+    measures = [item.expression for item in query.select]
+    if not measures or not all(isinstance(measure, Aggregate) and measure.function in ("SUM", "AVG")
+                               and isinstance(measure.operand, ColumnRef)
+                               and is_currency_measure_column(measure.operand.name) for measure in measures):
+        return query
+    currency = currencies[query.from_table]
+    if currency in column_refs(query):
+        return query
+    return replace(query, select=(SelectItem(currency), *query.select), group_by=(currency,))
 
 
 def outread_by_rows(pool: Sequence[ScoredQuery], ranking: Sequence[int],

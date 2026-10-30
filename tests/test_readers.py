@@ -136,6 +136,7 @@ def test_training_candidates_are_the_pool_serving_ranks():
           patch.object(search, "reading_variants", variants),
           patch.object(candidate_module.decoding, "candidates", lambda *_args: decoded),
           patch.object(candidate_module, "build", lambda reading, _graph: reading),
+          patch.object(candidate_module, "as_built", lambda reading, _query: reading),
           patch.object(candidate_module, "render_query", lambda query: query["sql"]),
           patch.object(candidate_module, "read_as", lambda reading: reading["sql"]),
           patch.object(candidate_module, "exec_sql_timed", lambda *_args, **_kwargs: ([("ok",)], None)),
@@ -159,6 +160,71 @@ def test_reader_training_reads_no_dev_or_test_question():
             assert source in str(exc)
         else:
             raise AssertionError(f"source {source!r} was accepted")
+
+
+def test_a_value_spelled_almost_as_read_is_the_stored_value():
+    """"how many people cancelled" compared status with 'cancelled' where the sheet says 'canceled', and answered 0."""
+    from engine.readers.decode import literal
+
+    statuses = ["active", "canceled", "past_due"]
+    graph = graph_of({"name": "subs", "columns": ["id", "status"], "rows": [[i, v] for i, v in enumerate(statuses)]})
+    assert literal("cancelled", "subs.status", graph, "=") == "canceled"
+    assert literal("CANCELLED", "subs.status", graph, "=") == "canceled"
+    # Same profile: another word, and a name that only begins the same, stay what was read.
+    assert literal("paused", "subs.status", graph, "=") == "paused"
+    places = graph_of({"name": "t", "columns": ["id", "country"], "rows": [[1, "Nigeria"], [2, "Austria"]]})
+    assert literal("Niger", "t.country", places, "=") == "Niger"
+    assert literal("Australia", "t.country", places, "=") == "Australia"
+    # Two values as near: the reading does not choose between them.
+    twins = graph_of({"name": "t", "columns": ["id", "code"], "rows": [[1, "report-a"], [2, "report-b"]]})
+    assert literal("report-c", "t.code", twins, "=") == "report-c"
+    # A column of many values holds names, not categories.
+    many = graph_of({"name": "t", "columns": ["id", "name"], "rows": [[i, f"name{i:03}"] for i in range(70)]})
+    assert literal("name0001", "t.name", many, "=") == "name0001"
+
+
+def test_near_copies_of_an_export_are_one_layout_and_the_first_is_read():
+    """NT holds SI's columns and more, and FF misspells one: the readers chose SI with the user on NT (2026-10-30)."""
+    from engine.tables import one_of_each_layout
+
+    shared = [f"c{i}" for i in range(19)]
+    def sheet(name, columns):
+        return {"name": name, "columns": columns, "rows": [[f"{name}{i}" for i in range(len(columns))]] * 2}
+
+    workbook = graph_of(sheet("NT", ["Domain", *shared, "x1", "x2", "x3", "x4", "x5"]), sheet("SI", ["Domain", *shared]),
+                        sheet("FF", ["Domian", *shared]), sheet("Report", ["year", "status", "total"]))
+    assert workbook.layout_copies == (("NT", "SI", "FF"),)
+    assert set(one_of_each_layout(workbook, "total amount").tables) == {"NT", "Report"}
+    assert set(one_of_each_layout(workbook, "total amount in SI").tables) == {"SI", "Report"}
+    # Tables that only share a few columns are their own things.
+    other = graph_of(sheet("orders", ["id", "customer", "amount", "date"]), sheet("people", ["id", "customer", "age", "city"]))
+    assert other.layout_copies == ()
+
+
+def test_a_table_read_from_nowhere_does_not_need_a_join():
+    """A reader marked the report tab beside the export and read nothing from it: every reading was refused for want of
+    a join, and "total sales split by sector" had no candidate at all (2026-10-30)."""
+    from engine.readers.readings import NotReadable, build
+
+    graph = graph_of({"name": "export", "columns": ["id", "sector", "amount"], "rows": [[1, "Retail", 5], [2, "Food", 7]]},
+                     {"name": "report", "columns": ["year", "active", "total"], "rows": [[2024, 1, 2], [2025, 3, 4]]})
+    base = {"structure": "single", "blocks": [{
+        "tables": ["export", "report"], "select": [[0, "SUM", "export.amount", False]], "where": [], "conj": "AND",
+        "group": ["export.sector"], "having": [], "order": [], "dir": None, "limit": None, "distinct": False}]}
+    query = build(base, graph)
+    assert query.from_table == "export" and not query.joins
+    from engine.readers.read_as import read_as
+    from engine.readers.readings import as_built
+    assert " of export," in read_as(as_built(base, query)) and "report" not in read_as(as_built(base, query))
+    # Columns of both tables and no key between them: still no query, not a cross product.
+    both = {"structure": "single", "blocks": [dict(base["blocks"][0], select=[[0, "SUM", "export.amount", False],
+                                                                             [1, "plain", "report.year", False]])]}
+    try:
+        build(both, graph)
+    except NotReadable as exc:
+        assert "no-join-path" in str(exc)
+    else:
+        raise AssertionError("two tables read and no key between them was built")
 
 
 def test_readings_hold_only_the_operators_the_readers_read():
@@ -821,6 +887,9 @@ def test_the_readers_compute_in_float32_over_weights_kept_in_bfloat16():
 
 
 TESTS = [
+    test_a_table_read_from_nowhere_does_not_need_a_join,
+    test_near_copies_of_an_export_are_one_layout_and_the_first_is_read,
+    test_a_value_spelled_almost_as_read_is_the_stored_value,
     test_training_candidates_are_the_pool_serving_ranks,
     test_reader_training_reads_no_dev_or_test_question,
     test_a_question_past_half_the_budget_is_read_as_far_as_it_fits,

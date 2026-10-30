@@ -178,6 +178,27 @@ def grounded_members(pool: Sequence, tables: Mapping[str, dict], graph) -> tuple
     )
 
 
+# A column of this many distinct values or fewer holds categories a reader can be asked about by name.
+ABSENT_AMONG = 12
+
+
+def absent_value(query, graph) -> tuple[str, str, tuple[str, ...]] | None:
+    """(column, literal, the values it holds) of the first test of a column of few values against a value it does not
+    hold, else None. Such a reading can only match nothing: "how many customers have churned" answered 0, where status
+    holds active, canceled and past_due (2026-10-30). The answer is then a question, naming what the column holds. A set
+    operation is several goals, which a named request reads as a decomposition's parts, each tested here on its own."""
+    if isinstance(query, SetQuery):
+        return None
+    for table, name, text in literal_bindings(query):
+        column = graph.column_map.get((table, name))
+        if column is None:
+            continue
+        values = sorted({str(value).strip() for value in column.values if value is not None and str(value).strip()})
+        if 0 < len(values) <= ABSENT_AMONG and _fold(text) not in {_fold(value) for value in values}:
+            return name, text, tuple(values)
+    return None
+
+
 def _grounded(binding: Binding, holders: Mapping[str, set[tuple[str, str]]]) -> bool:
     table, column, text = binding
     places = holders.get(_fold(text))

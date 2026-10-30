@@ -552,6 +552,22 @@ def keep_ties(query: Query) -> Query:
     return query
 
 
+def named_groups(query: Query) -> Query:
+    """The served form of a ranking of groups: only the groups that have a name. "which industry brings in the most
+    money" answered with the rows that name no industry, a blank being the largest group of a sheet where most rows
+    leave the column empty (2026-10-30). A question that lists its groups ("total sales by industry") keeps the blank.
+    """
+    if not (isinstance(query, SelectQuery) and query.group_by and query.order_by and query.limit is not None):
+        return query
+    terms = [Comparison(column, "<>" if column.type == SQLType.TEXT else "IS NOT",
+                        Literal("" if column.type == SQLType.TEXT else None))
+             for column in query.group_by if isinstance(column, ColumnRef)]
+    if not terms:
+        return query
+    where = (query.where, *terms) if query.where is not None else tuple(terms)
+    return replace(query, where=where[0] if len(where) == 1 else BooleanExpr("AND", where))
+
+
 def _render_query(query: Query, dialect: str = "standard") -> str:
     if isinstance(query, SetQuery):
         return f"{_render_query(query.left, dialect)} {query.operator} {_render_query(query.right, dialect)}"

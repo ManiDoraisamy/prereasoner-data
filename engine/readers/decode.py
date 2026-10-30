@@ -7,6 +7,7 @@ of each kind a block holds, structure, direction, limit. Generic semantics shape
 to one value is not shown again, a column matched with the question's value is not counted distinct, and a
 condition on a date column reads its days as the engine reads dates (engine.sql_dates).
 """
+import difflib
 import heapq
 import json
 import math
@@ -21,6 +22,11 @@ from engine.sql_ast import SQLType
 
 LOWER_BOUNDS, UPPER_BOUNDS = (">", ">="), ("<", "<=")
 
+
+
+SPELLED_AMONG = 64                                 # a column of more distinct values holds names, not categories
+SPELLED_MIN = 4
+SPELLED_RATIO = 0.9
 
 
 def field(probabilities, name):
@@ -52,7 +58,20 @@ def literal(text, column, graph, operator):
             if (isinstance(value, str) and len(value) > VALUE_CHARS
                     and unlisted(listed(value)).strip("'\"").lower() == text.lower()):
                 return value
+        return nearly_spelled(text, schema_column.values)
     return text
+
+
+def nearly_spelled(text, values):
+    """The one stored value of a column of few values spelled almost as ``text``, else ``text``. "how many people
+    cancelled" compared status with 'cancelled' where the sheet says 'canceled', and answered 0 (2026-10-30). Close
+    enough is SPELLED: a value only begins the same ('Niger', 'Nigeria') is another name, and stays no match."""
+    distinct = {value for value in values if isinstance(value, str)}
+    if len(distinct) > SPELLED_AMONG or len(text) < SPELLED_MIN:
+        return text
+    near = sorted(value for value in distinct
+                  if difflib.SequenceMatcher(None, text.lower(), value.lower()).ratio() >= SPELLED_RATIO)
+    return near[0] if len(near) == 1 else text
 
 
 def span_text(span, example):

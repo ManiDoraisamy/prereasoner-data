@@ -471,8 +471,9 @@ class TableQuery:
         from engine.readers.search import reading_search
         from engine.sql_dates import realizes_dates, served_date_phrases
         from engine.sql_expansion import tokens as question_tokens
-        from engine.sql_grounding import double_counted_members, grounded_members, shared_headers
-        from engine.sql_rank import PoolSelection, outread_by_rows, select_ranked_candidate
+        from engine.sql_grounding import absent_value, double_counted_members, grounded_members, shared_headers
+        from engine.currency_intent import currency_conversion_target
+        from engine.sql_rank import PoolSelection, mixed_currencies, outread_by_rows, select_ranked_candidate
 
         pool = tuple(pool)
         executable = self._executable(pool, tablemap, runs)
@@ -502,7 +503,8 @@ class TableQuery:
         outread = outread_by_rows(pool, ranking, [runs.matched_nothing.get(member.sql, False) for member in pool])
         selection = PoolSelection(pool, tuple(executable), tuple(grounded), ranking, None,
                                   tuple(calculation_satisfied), tuple(date_satisfied), double_counted, undecided,
-                                  shared, outread=outread)
+                                  shared, outread=outread,
+                                  currencies={} if currency_conversion_target(question) else mixed_currencies(graph))
         selected = select_ranked_candidate(ranking, calculation_satisfied, date_satisfied, double_counted, undecided,
                                            outread)
         confidence = readers.confidence(pool, scores, shapes, selected) if selected is not None else None
@@ -512,6 +514,9 @@ class TableQuery:
         # one ranking at 0.19 by the 2026-10-23 bundle, above its threshold of 0.1434.
         if not readers.confident(confidence) or not one_query_length(question):
             return replace(selection, confidence=confidence, declined=selected)
+        absent = absent_value(pool[selected].query, graph) if selected is not None else None
+        if absent is not None:
+            return replace(selection, confidence=confidence, declined=selected, absent_value=absent)
         return replace(selection, selected=selected, confidence=confidence)
 
     @staticmethod
@@ -824,8 +829,9 @@ class TableQuery:
             if current_analysis_context() is not None:
                 declined = declined_compound(selection, question)
             if declined is None:
-                clarification = unsure_clarification(selection.pool[
-                    selection.declined if selection.declined is not None else selection.ranking[0]])
+                refused = selection.pool[selection.declined if selection.declined is not None else selection.ranking[0]]
+                clarification = (absent_value_clarification(refused, selection.absent_value)
+                                 if selection.absent_value else unsure_clarification(refused))
             err = None
         elif candidate is None and selection is not None and not selection.ranking and any(selection.shared_headers):
             # Every runnable reading read one of two columns that share a header: ask which.
@@ -999,6 +1005,17 @@ def unsure_clarification(candidate):
         reason = ("I'm not confident I read this question right. "
                   "Ask again with the column names as your sheet spells them.")
     return {"clarify": True, "reason": reason, "dropped": [], "read_as": read_as}
+
+
+def absent_value_clarification(candidate, absent):
+    """The reply when the chosen reading tests a column of few values against a value it does not hold: what it read,
+    and what the column does hold, so the person can say which they meant in one word."""
+    from engine.readers.text import words
+    column, value, values = absent
+    listed = ", ".join(values[:-1]) + " and " + values[-1] if len(values) > 1 else values[0]
+    return {"clarify": True, "dropped": [], "read_as": read_as_of(candidate),
+            "reason": f"Your {words(column)} column holds {listed}, and I can't tell which of those “{value}” means. "
+                      "Which did you mean?"}
 
 
 def sch_col_of(agg, sch):

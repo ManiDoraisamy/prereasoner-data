@@ -27,7 +27,7 @@ from pathlib import Path
 from engine.config import DATA_DIR
 from engine.readers import decode as decoding
 from engine.readers.read_as import read_as
-from engine.readers.readings import build, value_kind
+from engine.readers.readings import as_built, build, value_kind
 from engine.readers.text import TOP_TABLES, Schema, fit, readable, table_text
 from engine.sql_ast import render_query
 from engine.sql_candidate import ScoredQuery
@@ -165,7 +165,7 @@ class ReadingSearch:
                     except Exception:              # noqa: BLE001 - a reading the builder cannot make into a query
                         continue
                     built[sql] = built.get(sql, 0) + 1
-                    pooled.append((rank, -score, query, sql, read_as(reading)))
+                    pooled.append((rank, -score, query, sql, read_as(as_built(reading, query))))
                     reads = True
             active += reads
         ordered = []

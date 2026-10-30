@@ -359,6 +359,9 @@ def semantic_predicate(question, drop_surfaces=(), sch=(), closed=()):
     return " ".join(residual).strip()
 
 
+SEARCH_MAX_CELLS = 1000                 # the distinct free-text cells a question-time search reads through the encoder
+
+
 class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, EntityQuery):
     """Live /api/knowledge served by the unified encoder: bge for connected entity resolution, the unified encoder
     for the anchored readout + operator + the unconnected free-text bridge. Persists the two bridge tables per
@@ -859,6 +862,30 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         return {"table": table, "conn": conn, "unconn": unconn,
                 "freetext": max(unconn, key=lambda c: self._avglen(table, c))}
 
+    def _readers_decline(self, tables, question):
+        """Whether the readers have no answer to the question, the one case a semantic search stands in for them when
+        the question filters by no place. A word check sent every question it found no aggregate word in to the
+        search, before any reader saw it: "what are the priciest terms to advertise on" returned whole rows by
+        similarity (2026-10-30). "who ordered a trench coat in France" stays a search: the world filter is its point."""
+        from engine.decomposition import DecompositionError, search_probe
+        try:
+            probe = search_probe(self, tables, question)
+        except DecompositionError:
+            return True
+        return (probe.decomposition_required is None
+                and (probe.selection is None or (probe.selection.selected is None
+                                                 and probe.selection.absent_value is None)))
+
+    @staticmethod
+    def _searchable(plan):
+        """Whether a search can read this table's free-text columns within a request: it reads each distinct cell
+        through the encoder, about 70 ms each on a CPU, and "sales from short term customers, under 3 months" spent
+        14 minutes on 11,500 cells of a column that was only long, before any reader saw it (2026-10-30)."""
+        table = plan["table"]
+        indexes = [table["columns"].index(column) for column in plan["unconn"]]
+        distinct = {str(row[index]) for row in table["rows"] for index in indexes if index < len(row)}
+        return len(distinct) <= SEARCH_MAX_CELLS
+
     # ---------------- clarify: detect a query that dropped part of the question + propose a rephrasing ----------------
     def _word_qid(self, w):
         """the world qid a single content word resolves to (exact normalized match in knowledgebase.\"words\" across the geo
@@ -1187,6 +1214,9 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         drop = ([cr[2]] if cr else []) + [value for _table, _column, value in own]
         pred = "" if is_agg else semantic_predicate(question, drop, sch, closed)
         plan = next((p for p in (self._table_plan(t) for t in norm) if p), None) if pred else None
+        if plan and not (self._searchable(plan) and ((plan["conn"] and (cr or own))
+                                                     or self._readers_decline(tables, question))):
+            plan = None
         # The search reads one sheet; a filter on another sheet needs the structured path's joins.
         if plan and any(table != plan["table"]["name"] for table, _column, _value in own):
             plan = None

@@ -19,6 +19,10 @@ _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}(?:[ T].*)?$")
 _NAME_WORDS = frozenset({"name", "title", "label"})
 
 
+# The share of the smaller table's columns two tables hold in common to be copies of one export.
+COPY_SHARE = 0.9
+
+
 @dataclass(frozen=True)
 class SchemaColumn:
     ref: ColumnRef
@@ -200,11 +204,21 @@ class SchemaGraph:
         one or two columns lists one thing (customers' names, orders' names), and a table a foreign key
         references is its own thing (two code lookups different keys reference): neither is a copy."""
         referenced = {foreign_key.to_column.table for foreign_key in self.foreign_keys}
-        groups: dict[frozenset[str], list[str]] = {}
+        groups: list[tuple[frozenset[str], list[str]]] = []
         for table in self.tables:
-            if table not in referenced and len(self.by_table[table]) >= 3:
-                groups.setdefault(layout(column.ref.name for column in self.by_table[table]), []).append(table)
-        return tuple(tuple(group) for group in groups.values() if len(group) > 1)
+            if table in referenced or len(self.by_table[table]) < 3:
+                continue
+            own = layout(column.ref.name for column in self.by_table[table])
+            for shape, members in groups:
+                # Exports drift: NT holds SI's columns and sixteen more, and FF spells one of them "Domian". Read as
+                # different tables, the readers chose whichever listed the question's value, and the answer came from
+                # SI with the user on NT (2026-10-30).
+                if len(own & shape) >= COPY_SHARE * min(len(own), len(shape)):
+                    members.append(table)
+                    break
+            else:
+                groups.append((own, [table]))
+        return tuple(tuple(members) for _, members in groups if len(members) > 1)
 
     def reachable(self, tables: Iterable[str]) -> set[str]:
         """The tables the foreign keys connect to ``tables``, those included."""
