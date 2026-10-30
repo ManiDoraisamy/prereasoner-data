@@ -42,11 +42,12 @@
         // `uploadOnce`: the add-on's script uploads a sheet once and asks by its hash (getSidebarContext says so).
         // `sourceHash` names the conversation's stored copy of the sheet the sidebar last uploaded.
         var state = {conversationId: null, turns: [], history: [], tables: [], syncedFingerprint: '', ready: false,
-          uploadOnce: false, sourceHash: '',
+          uploadOnce: false, tabReads: false, sourceHash: '', uploading: null, savedReadMs: 0,
           restored: false, sheetError: '', uid: null, signedIn: null, busy: false, live: null, scope: 'auto',
           loading: null, loaded: null, restoring: null, print: '', readMs: 0, syncedAt: 0, syncing: false};
         // The chat service's answer for a conversation deleted elsewhere (orchestrator/server.py).
         var NOT_FOUND = /conversation not found/i;
+        var SYNC_URL = new URL('/api/conversation/sync', REASON_BASE).href;
 
         function callServer(name, arg) {
           return new Promise(function (resolve, reject) {
@@ -102,6 +103,26 @@
           });
         }
 
+        // The cells, several tabs at once, each in its own Apps Script execution: one execution read a six-tab
+        // workbook in 1:50 (2026-10-30). A script published before reads them all itself (getWorkbookGrids).
+        var READ_AT_ONCE = 4;
+        function readTabs(plan) {
+          var grids = [], next = 0;
+          function reader() {
+            if (next >= plan.tabs.length) return null;
+            var index = next++;
+            return callServer('getWorkbookTab', {name: plan.tabs[index]}).then(function (grid) {
+              grids[index] = grid;
+              return reader();
+            });
+          }
+          var readers = [];
+          for (var i = 0; i < READ_AT_ONCE; i++) readers.push(reader());
+          return Promise.all(readers).then(function () {
+            return {grids: grids, scope: plan.scope, availableTabs: plan.availableTabs};
+          });
+        }
+
         // A read of the sheet, made usable: imported, fingerprinted and timed. The header's sync time is
         // the moment the cells were read, which is the data the next question uses.
         async function takeWorkbook(workbook, startedAt) {
@@ -125,7 +146,9 @@
           renderSync();
           try {
             var startedAt = Date.now();
-            return await takeWorkbook(await callServer('getWorkbookGrids', {scope: state.scope}), startedAt);
+            return await takeWorkbook(await (state.tabReads
+              ? callServer('getWorkbookPlan', {scope: state.scope}).then(readTabs)
+              : callServer('getWorkbookGrids', {scope: state.scope})), startedAt);
           } finally {
             state.syncing = false;
             renderSync();
@@ -368,7 +391,7 @@
         function snapshot() {
           return {client: 'google-sheets-addon', version: 2, turns: state.turns.slice(-24),
             history: state.history.slice(-24), syncedFingerprint: state.syncedFingerprint,
-            syncedSourceHash: state.sourceHash};
+            syncedSourceHash: state.sourceHash, readMs: state.readMs || state.savedReadMs};
         }
 
         // Saved sidebars: version 2 keeps the shared rail's steps; version 1 (before the shared rail)
@@ -395,6 +418,7 @@
             state.turns = restoredTurns(restored.state);
             state.history = restored.state && Array.isArray(restored.state.history) ? restored.state.history.slice(-24) : [];
             state.syncedFingerprint = (restored.state && restored.state.syncedFingerprint) || '';
+            state.savedReadMs = (restored.state && restored.state.readMs) || 0;
             // The stored sheet is the one this sidebar last uploaded only while the conversation still stores the
             // hash saved with that upload; otherwise the next question uploads the sheet again. Only a script that
             // uploads once restores without the cells, before the sidebar knows which script it runs.
@@ -413,17 +437,51 @@
         async function syncSheet(question, tables, print) {
           var synced;
           try {
-            synced = await callServer('syncPrereasonerConversation',
-              {conversationId: state.conversationId, question: question, tables: tables});
+            synced = await uploadSheet(state.conversationId, question, tables);
           } catch (error) {
             if (!state.conversationId || !NOT_FOUND.test(errorText(error))) throw error;
             forgetConversation();                  // deleted elsewhere: the sheet starts a new chat
-            synced = await callServer('syncPrereasonerConversation',
-              {conversationId: null, question: question, tables: tables});
+            synced = await uploadSheet(null, question, tables);
           }
           state.conversationId = synced.conversationId || state.conversationId;
           state.sourceHash = synced.sourceHash || '';
           state.syncedFingerprint = print;
+        }
+
+        // Straight to the API with the sidebar's sign-in: through google.script.run and Apps Script, 9 MB took 45 s
+        // on its way to an engine that stored it in 1.3 s (2026-10-30). A sidebar whose sign-in failed (a browser
+        // that blocks the frame's storage) has no token, and the script uploads for it.
+        async function uploadSheet(conversationId, question, tables) {
+          var token = null;
+          if (state.signedIn && window.__prereasonerLive && window.__prereasonerLive.idToken) {
+            token = await state.signedIn.then(window.__prereasonerLive.idToken).catch(function () { return null; });
+          }
+          if (!token) {
+            return callServer('syncPrereasonerConversation',
+              {conversationId: conversationId, question: question, tables: tables});
+          }
+          var response = await fetch(SYNC_URL, {method: 'POST',
+            headers: {'Content-Type': 'application/json', Authorization: 'Bearer ' + token},
+            body: JSON.stringify({id: conversationId || '', question: question, tables: tables.map(function (table) {
+              return {name: table.name, data: table.data, source: table.source};
+            })})});
+          var body = await response.json().catch(function () { return {}; });
+          if (!response.ok) throw new Error(body.error || 'Prereasoner could not sync this spreadsheet.');
+          return {changed: !!body.changed, conversationId: body.conversation_id || conversationId,
+            sourceHash: body.source_hash || ''};
+        }
+
+        // The sheet goes to its chat as soon as it is read, and the engine prepares it there (engine/prepared.py),
+        // so a question finds it ready: it was sent with the first question, which waited a minute for the
+        // preparation that started (2026-10-30). The chat is kept for this sheet, so opening it again sends nothing
+        // unless it changed; it stays out of the conversations list until a question names it. A failure here is
+        // tried again, and reported, by the next question.
+        function uploadAtOpen() {
+          if (!state.uploadOnce || !state.restored || !state.tables.length || state.busy) return;
+          if (state.conversationId && state.sourceHash && state.print === state.syncedFingerprint) return;
+          state.uploading = syncSheet('', state.tables, state.print).then(function () {
+            return callServer('savePrereasonerSheetConversation', {conversationId: state.conversationId, state: snapshot()});
+          }).catch(function () {}).then(function () { state.uploading = null; });
         }
 
         // `asked`: a starter question, asked without taking the draft out of the composer.
@@ -438,35 +496,55 @@
           render();
           var stopLive = function () {};
           try {
-            if (state.loaded) await state.loaded;          // the read that opened the sidebar
-            // A sheet that reads quickly is read again, so an edit since then is in the answer; a slow one
-            // uses its last read, whose age the header shows.
-            var tables = state.tables.length && state.readMs >= READ_REUSE_MS ? state.tables : null;
-            if (!tables) {
-              live.status = 'Reading the sheet…';
-              renderLive();
-              tables = await readSheet();
-            }
-            var print = state.print;
-            state.sheetError = '';
             if (state.restoring) await state.restoring;     // the chat asked for when the sidebar opened
-            if (!state.restored) await restore(state.uploadOnce ? null : tables, true);
-            if (state.uploadOnce) {
-              if (!state.conversationId || !state.sourceHash || print !== state.syncedFingerprint) {
-                live.status = state.conversationId ? 'Syncing the changed sheet…' : 'Sending the sheet…';
+            var tables = null, print = state.syncedFingerprint;
+            // A sheet that took long to read, whose chat already stores it, does not wait for the read that opened
+            // the sidebar: the question runs on the stored copy, whose age the header shows, and a sheet the read
+            // finds changed is uploaded for the next one. Only a script that uploads once restores that copy's hash.
+            if (state.loaded && state.conversationId && state.sourceHash && state.savedReadMs >= READ_REUSE_MS) {
+              state.uploadOnce = true;
+            } else {
+              if (state.loaded) await state.loaded;          // the read that opened the sidebar
+              // A sheet that reads quickly is read again, so an edit since then is in the answer; a slow one
+              // uses its last read, whose age the header shows.
+              tables = state.tables.length && state.readMs >= READ_REUSE_MS ? state.tables : null;
+              if (!tables) {
+                live.status = 'Reading the sheet…';
                 renderLive();
-                await syncSheet(question, tables, print);
+                tables = await readSheet();
               }
-            } else if (state.conversationId && state.syncedFingerprint && print !== state.syncedFingerprint) {
-              live.status = 'Syncing the changed sheet…';
-              renderLive();
-              try {
-                await callServer('syncPrereasonerConversation', {conversationId: state.conversationId, tables: tables});
-              } catch (error) {
-                if (!NOT_FOUND.test(errorText(error))) throw error;
-                forgetConversation();
+              print = state.print;
+              state.sheetError = '';
+              if (state.uploading) {                         // sent when the sidebar opened
+                live.status = 'Sending the sheet…';
+                renderLive();
+                await state.uploading;
+              }
+              if (!state.restored) await restore(state.uploadOnce ? null : tables, true);
+              if (state.uploadOnce) {
+                if (!state.conversationId || !state.sourceHash || print !== state.syncedFingerprint) {
+                  live.status = state.conversationId ? 'Syncing the changed sheet…' : 'Sending the sheet…';
+                  renderLive();
+                  await syncSheet(question, tables, print);
+                }
+              } else if (state.conversationId && state.syncedFingerprint && print !== state.syncedFingerprint) {
+                live.status = 'Syncing the changed sheet…';
+                renderLive();
+                try {
+                  await callServer('syncPrereasonerConversation', {conversationId: state.conversationId, tables: tables});
+                } catch (error) {
+                  if (!NOT_FOUND.test(errorText(error))) throw error;
+                  forgetConversation();
+                }
               }
             }
+            // The sheet itself, when the question ran on the stored copy and has to upload it after all.
+            var readTables = async function () {
+              if (tables) return;
+              if (state.loaded) await state.loaded;
+              tables = state.tables;
+              print = state.print;
+            };
             live.status = 'Understanding your question…';
             renderLive();
             if (state.signedIn) await Promise.race([state.signedIn.catch(function () {}),
@@ -483,6 +561,7 @@
             try {
               response = await ask();
               if (response && response.sourceChanged) {      // replaced since (another sidebar): upload it again, once
+                await readTables();
                 await syncSheet(question, tables, print);
                 response = await ask();
                 if (response && response.sourceChanged) throw new Error('The sheet keeps changing. Ask again in a moment.');
@@ -490,7 +569,10 @@
             } catch (error) {
               if (state.conversationId && NOT_FOUND.test(errorText(error))) {
                 forgetConversation();
-                if (state.uploadOnce) await syncSheet(question, tables, print);   // a new chat stores the sheet first
+                if (state.uploadOnce) {                       // a new chat stores the sheet first
+                  await readTables();
+                  await syncSheet(question, tables, print);
+                }
                 response = await ask();
               } else if (live.done && live.reply) {   // the live trace already finished this turn
                 response = {reply: live.reply, conversationId: live.conversationId, history: [], traces: null};
@@ -541,6 +623,7 @@
           if (state.busy) return;
           setBusy(true);
           try {
+            if (state.uploading) await state.uploading;
             await callServer('clearPrereasonerSheetConversation');
             state.conversationId = null;
             state.turns = [];
@@ -554,6 +637,7 @@
           } finally {
             setBusy(false);
           }
+          uploadAtOpen();                    // the new chat stores the sheet before its first question
         });
 
         syncEl.addEventListener('click', async function () {
@@ -561,6 +645,7 @@
           try {
             await readSheet();
             state.sheetError = '';
+            uploadAtOpen();                  // a sheet the click finds changed is ready for the next question
           } catch (error) {
             keepFailed('', error);
           }
@@ -588,20 +673,22 @@
         var contextStarted = Date.now();
         state.loaded = callServer('getSidebarContext').then(async function (context) {
           state.uploadOnce = !!context.uploadOnce;
+          state.tabReads = Array.isArray(context.tabs);
           state.signedIn = signIn(context.token);
           state.signedIn.catch(function () {});
-          state.loading.stage = 'preparing';
-          render();
           try {
-            await takeWorkbook(context.workbook, contextStarted);
+            var workbook = state.tabReads ? await readTabs(context) : context.workbook;
+            state.loading.stage = 'preparing';
+            render();
+            await takeWorkbook(workbook, contextStarted);
           } catch (error) {
             state.sheetError = errorText(error);
             return;
           }
           // Independent of restore/answers. A slow or unavailable suggestion never blocks typing.
           refreshSuggestions();
-          if (state.uploadOnce) return;      // its chat was asked for when the sidebar opened
           if (state.restoring) await state.restoring;
+          if (state.uploadOnce) return uploadAtOpen();   // its chat was asked for when the sidebar opened
           if (state.restored) return;
           state.loading.stage = 'restoring';
           render();

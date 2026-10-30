@@ -49,6 +49,7 @@ from engine.readers.layout import (AGGREGATES, COLUMN_POS_WEIGHT, COUNTS, GLOBAL
                                    LAYOUT, OPERATORS, PER_BLOCK, SLOTS, STRUCTURES, TABLE_POS_WEIGHT)
 from engine.readers.models import (ROLES, ReadingModel, SchemaItemModel, reading_encode, row_output,
                                    schema_item_inputs, slot_view, token_positions)
+from training.readers.provenance import assert_no_evaluation_sources
 
 
 def _schedule(optimizer, epochs, rows, batch):
@@ -133,6 +134,7 @@ def train_schema_items(args):
     random.seed(args.seed); np.random.seed(args.seed); torch.manual_seed(args.seed)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     rows = [json.loads(line) for line in open(args.examples, encoding="utf-8")]
+    assert_no_evaluation_sources(rows, "schema-item examples")
     train = [r for r in rows if r["split"] == "train"]
     calibration = [r for r in rows if r["split"] == "calibration"]
     if args.limit:
@@ -435,6 +437,7 @@ def train_readings(args):
     random.seed(args.seed); np.random.seed(args.seed); torch.manual_seed(args.seed)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     rows = [json.loads(line) for line in open(args.examples, encoding="utf-8")]
+    assert_no_evaluation_sources(rows, "reading examples")
     train = [r for r in rows if r["split"] == "train"]
     calibration = [r for r in rows if r["split"] == "calibration"]
     if args.limit:

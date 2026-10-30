@@ -77,7 +77,7 @@ variable "rtdb_url" {
 }
 
 variable "cors_origins" {
-  description = "Comma-separated exact browser origins allowed to call the engine. Empty keeps the API same-origin only."
+  description = "Comma-separated browser origins allowed to call the engine: exact, or with one * for part of a host label (the Sheets sidebar's Apps Script hosts). Empty keeps the API same-origin only."
   type        = string
   default     = ""
 }

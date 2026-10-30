@@ -8,7 +8,7 @@ such as "complicated means a complexity above 5"). ``select`` then keeps the sam
 - no external knowledge, and a style that says what it asks (formal, colloquial, imperative, interrogative,
   descriptive, concise): a vague or metaphorical question needs its note, and learning it without the note would
   teach the readers to guess words' meanings;
-- a database unlike every calibration and test database: the share of its column names that one of those databases
+- a database unlike every calibration, dev and test database: the share of its column names that one of those databases
   also has (and its table names) stays under ``SIMILAR``, so nothing near a held-out schema trains;
 - a question no Spider question repeats;
 - SQL in the shapes the readings hold: a common table expression, a window, CASE, string concatenation or a date or
@@ -116,7 +116,8 @@ def held_out_schemas(split_dir, test_tables, spider_zip):
         spider = {t["db_id"]: t for t in json.loads(z.read("spider_data/tables.json"))}
         questions = {q["question"].strip().lower() for name in SPIDER_SETS
                      for q in json.loads(z.read("spider_data/" + name))}
-    held = [spider[db] for db in sorted(calibration)] + json.load(open(test_tables, encoding="utf-8"))
+        dev_dbs = {q["db_id"] for q in json.loads(z.read("spider_data/dev.json"))}
+    held = ([spider[db] for db in sorted(calibration | dev_dbs)] + json.load(open(test_tables, encoding="utf-8")))
     return [_names(meta) for meta in held], questions
 
 

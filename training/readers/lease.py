@@ -55,7 +55,8 @@ RECORDED_IMAGE = "runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04"
 RECORDED_CUDA = "12.4,12.5,12.6,12.7,12.8,12.9"
 # What the pod imports: the shared model definitions and this package's GPU-side steps, nothing that needs the engine.
 POD_CODE = ("engine/__init__.py", "engine/readers/layout.py", "engine/readers/numerals.py", "engine/readers/models.py",
-            "training/__init__.py", "training/readers/__init__.py", "training/readers/train.py",
+            "training/__init__.py", "training/readers/__init__.py", "training/readers/provenance.py",
+            "training/readers/train.py",
             "training/readers/folds.py", "training/readers/rescorer.py", "training/readers/shrink_state.py")
 PIP = "pip install -q 'transformers>=4.44,<5' 2>&1 | tail -1"
 # The check runs a kernel: a card the image's torch has no kernels for reports CUDA available and fails mid-run

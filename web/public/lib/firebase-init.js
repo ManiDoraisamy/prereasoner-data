@@ -166,6 +166,12 @@ export async function signInWithHostToken(accessToken){
   return result.user.uid;
 }
 
+// The signed-in user's Firebase ID token: the Sheets sidebar uploads a sheet with it, straight to the API.
+export async function hostIdToken(){
+  await auth.authStateReady();
+  return auth.currentUser ? getIdToken(auth.currentUser) : null;
+}
+
 export async function signOutUser(){
   const module = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
   await module.signOut(auth);

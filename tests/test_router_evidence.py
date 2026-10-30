@@ -228,7 +228,22 @@ def test_engine_construction_loads_the_interpreter():
     print("  PASS  constructing the engine loads the Schema.org interpreter")
 
 
+def test_a_column_of_numbers_dates_or_true_false_names_no_entity():
+    """Preparing a subscriptions export ran the encoder on every column, twice on most (2026-10-30): none of these
+    names anything, and neither the model nor the knowledgebase is asked about them."""
+    from engine.knowledge_typing import names_no_entity
+
+    assert names_no_entity(["1", "2.5", "-3"])
+    assert names_no_entity(["2026-01-01", "2026-02-03 12:00"])
+    assert names_no_entity(["TRUE", "false", "True"])
+    assert names_no_entity(["1", "2026-01-01", "TRUE"])
+    assert not names_no_entity(["Paris", "1"])
+    assert not names_no_entity(["Greater than 6 months", "3 to 6 months"])
+    assert not names_no_entity(["NO", "SE"])             # country codes, not booleans
+
+
 TESTS = [
+    test_a_column_of_numbers_dates_or_true_false_names_no_entity,
     test_evidence_reconstructs_the_decode,
     test_evidence_is_ordered_fired_first,
     test_route_surfaces_evidence_matching_the_family,

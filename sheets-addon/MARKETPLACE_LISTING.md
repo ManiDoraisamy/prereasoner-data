@@ -54,8 +54,8 @@ Prereasoner.
 
 ➤ Keep source data unchanged
 
-The add-on reads the current spreadsheet only when you ask a question. It never edits spreadsheet
-cells.
+The add-on reads the current spreadsheet when you open it, and again before a question. It never edits
+spreadsheet cells.
 
 ❇️ Why Prereasoner?
 

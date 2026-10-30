@@ -76,6 +76,91 @@ def test_readings_round_trip_through_the_builder():
     assert readings_of(query)["blocks"][0]["where"] == [["orders.city", "=", "Paris"]]
 
 
+def test_a_listed_value_cut_short_reads_as_the_stored_value():
+    """The schema text cuts a value to 20 characters, and a reader pointing at the listing read "Greater than 6 month":
+    compared as cut it matched no row, and a question about a real column answered that nothing matched (2026-10-30)."""
+    from engine.readers.decode import literal
+    from engine.readers.text import listed
+
+    values = ["Less than 3 months", "Greater than 6 months", "Greater than 6 months (annual)", "Exactly twenty chars"]
+    assert len(values[3]) == 20 and listed(values[1]) == "Greater than 6 month"
+    graph = graph_of({"name": "subs", "columns": ["id", "duration"], "rows": [[i, v] for i, v in enumerate(values)]})
+    # Positive: the cut form is the value, whatever the case; the first listed that way is the one the reader saw.
+    assert literal("Greater than 6 month", "subs.duration", graph, "=") == "Greater than 6 months"
+    assert literal("greater than 6 month", "subs.duration", graph, "=") == "Greater than 6 months"
+    # Same profile: a value that fits the listing is itself, and a shorter part of a long value names no stored value.
+    assert literal("Exactly twenty chars", "subs.duration", graph, "=") == "Exactly twenty chars"
+    assert literal("Greater than 6", "subs.duration", graph, "=") == "Greater than 6"
+    # Negative: words no value is listed as stay what the reader read, and LIKE keeps looking inside the values.
+    assert literal("above 6 months", "subs.duration", graph, "=") == "above 6 months"
+    assert literal("Greater than 6 month", "subs.duration", graph, "LIKE") == "%Greater than 6 month%"
+
+
+def test_a_question_past_half_the_budget_is_read_as_far_as_it_fits():
+    """A question of 2,700 characters raised a truncation error out of the readers, and the reply said to try again."""
+    import re
+
+    from engine.readers.text import readable
+
+    class Words:
+        def __call__(self, text, truncation=False, max_length=None, return_offsets_mapping=False):
+            spans = [match.span() for match in re.finditer(r"\S+", text)]
+            spans = spans[:max_length] if truncation else spans
+            return {"input_ids": list(range(len(spans))), "offset_mapping": spans}
+
+    words = Words()
+    assert readable(words, "total amount", 8) == "total amount"
+    assert readable(words, "one two three four", 8) == "one two three four"
+    assert readable(words, "one two three four five six", 8) == "one two three four five"
+
+
+def test_training_candidates_are_the_pool_serving_ranks():
+    """The choice and the re-scorers were fitted on the decoded readings alone; serving ranks their variants too."""
+    from unittest.mock import patch
+
+    from engine.readers import search
+    from training.readers import candidates as candidate_module
+
+    class Anchors:
+        @staticmethod
+        def anchors(_question):
+            return {}
+
+    decoded = [(-0.1234, {"sql": "SELECT 1"}), (-0.2345, {"sql": "SELECT 2"})]
+
+    def variants(reading, _named, _graph):
+        yield reading
+        yield {"sql": {"SELECT 1": "SELECT 2", "SELECT 2": "SELECT 3"}[reading["sql"]]}
+
+    with (patch.object(search, "Schema", lambda _graph: Anchors()),
+          patch.object(search, "reading_variants", variants),
+          patch.object(candidate_module.decoding, "candidates", lambda *_args: decoded),
+          patch.object(candidate_module, "build", lambda reading, _graph: reading),
+          patch.object(candidate_module, "render_query", lambda query: query["sql"]),
+          patch.object(candidate_module, "read_as", lambda reading: reading["sql"]),
+          patch.object(candidate_module, "exec_sql_timed", lambda *_args, **_kwargs: ([("ok",)], None)),
+          patch.object(candidate_module, "compare", lambda *_args: {"strict": True})):
+        found = candidate_module.candidate_records("outputs", {"question": "q"}, object(), object(), [("ok",)])
+    assert [record["sql"] for record in found] == ["SELECT 1", "SELECT 2", "SELECT 3"], found
+    assert [record["rank"] for record in found] == [0, 0, 1], found
+
+
+def test_reader_training_reads_no_dev_or_test_question():
+    from training.readers.provenance import SPIDER_TRAIN_SETS, assert_no_evaluation_sources
+    from training.readers.sources import SPIDER_SETS
+
+    assert SPIDER_TRAIN_SETS == ("train_spider", "train_others")
+    assert SPIDER_SETS == ("train_spider.json", "train_others.json")
+    assert_no_evaluation_sources([{"source": "train_spider"}, {"source": "bird_train"}, {"source": "synsql"}], "fixture")
+    for source in ("dev", "test", "syn_dev", "Spider_test", "unknown_source", ""):
+        try:
+            assert_no_evaluation_sources([{"source": source}], "fixture")
+        except ValueError as exc:
+            assert source in str(exc)
+        else:
+            raise AssertionError(f"source {source!r} was accepted")
+
+
 def test_readings_hold_only_the_operators_the_readers_read():
     """A HAVING that matches text (SynSQL's "HAVING name LIKE ...") has no reading: the readers compare totals, and a
     gold reading outside their vocabulary stopped the v14 trainer (2026-10-25). A compared total reads."""
@@ -736,6 +821,10 @@ def test_the_readers_compute_in_float32_over_weights_kept_in_bfloat16():
 
 
 TESTS = [
+    test_training_candidates_are_the_pool_serving_ranks,
+    test_reader_training_reads_no_dev_or_test_question,
+    test_a_question_past_half_the_budget_is_read_as_far_as_it_fits,
+    test_a_listed_value_cut_short_reads_as_the_stored_value,
     test_the_readers_compute_in_float32_over_weights_kept_in_bfloat16,
     test_readings_round_trip_through_the_builder,
     test_readings_hold_only_the_operators_the_readers_read,

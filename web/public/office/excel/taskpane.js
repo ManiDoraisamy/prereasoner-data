@@ -69,6 +69,20 @@ async function syncWorkbook(question, tables, print) {
   state.syncedFingerprint = print;
 }
 
+// The workbook goes to its chat as soon as it is read, and the engine prepares it there (engine/prepared.py), so a
+// question finds it ready: it was sent with the first question, which waited for the preparation it started
+// (2026-10-30). The chat is kept for this workbook; it stays out of the conversations list until a question names
+// it. A failure here is tried again, and reported, by the next question.
+function uploadAtOpen(workbook) {
+  state.uploading = (async () => {
+    const print = await fingerprint(workbook.tables);
+    if (!state.restored) await restore(workbook.tables, print);
+    if (state.conversationId && state.sourceHash && print === state.syncedFingerprint) return;
+    await syncWorkbook('', workbook.tables, print);
+    await persist();
+  })().catch(() => {}).finally(() => { state.uploading = null; });
+}
+
 async function get(path) {
   const response = await fetch(path, {headers: {Authorization: `Bearer ${await token()}`}});
   const data = await response.json().catch(() => ({}));
@@ -210,6 +224,7 @@ async function ask(question) {
     refreshSuggestions(workbook);
     $('sheetCount').textContent = `${workbook.tables.length} tab${workbook.tables.length === 1 ? '' : 's'} · ${workbook.name}`;
     const print = await fingerprint(workbook.tables);
+    if (state.uploading) await state.uploading;
     if (!state.restored) await restore(workbook.tables, print);
     if (!state.conversationId || !state.sourceHash || print !== state.syncedFingerprint) {
       await syncWorkbook(question, workbook.tables, print);
@@ -378,6 +393,7 @@ function onSignedIn(user) {
       state.tables = workbook.tables;
       $('sheetCount').textContent = `${workbook.tables.length} tabs · ${workbook.name}`;
       refreshSuggestions(workbook);
+      uploadAtOpen(workbook);
     }).catch(error => notice(error.message, true));
     readWorkbookSchema().then(schema=>{workbookSchema=schema;refreshSuggestions();}).catch(()=>{});
   }

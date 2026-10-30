@@ -24,7 +24,7 @@ const fakeFirebase = {
       return {user: {uid: 'sheet-user'}};
     }
     export async function signInWithRedirect(){} export async function getRedirectResult(){ return null; }
-    export async function getIdToken(){ return 'id-token'; } export async function signInAnonymously(){}
+    export async function getIdToken(){ return window.__server.workbookOptions.hostToken === false ? null : 'id-token'; } export async function signInAnonymously(){}
     export async function signOut(){}`,
   'firebase-database.js': `
     const listeners = [];
@@ -67,6 +67,21 @@ async function openSidebar(page, rows, failing = {}, workbookOptions = {}) {
   await page.addInitScript(({initialRows, failing, workbookOptions}) => {
     window.__calls = [];
     window.__server = {rows: initialRows, pendingAsk: null, pendingSchemas: [], holdSchemas: false, workbookOptions};
+    // The sidebar's upload goes straight to the API with its sign-in (`hostToken: false`: a sign-in that gave none).
+    const hostFetch = window.fetch;
+    window.fetch = async (url, init) => {
+      if (!String(url).endsWith('/api/conversation/sync')) return hostFetch(url, init);
+      const body = JSON.parse(init.body);
+      window.__calls.push({name: 'syncPrereasonerConversation', authorization: init.headers.Authorization,
+        arg: {conversationId: body.id || null, question: body.question, tables: body.tables}});
+      const once = window.__server.workbookOptions.failOnce || {};
+      const message = once.syncPrereasonerConversation || failing.syncPrereasonerConversation;
+      delete once.syncPrereasonerConversation;
+      if (window.__server.holdUpload) await new Promise(resolve => { window.__server.releaseUpload = resolve; });
+      return new Response(JSON.stringify(message ? {error: message} : {changed: true,
+        conversation_id: body.id || 'c_0123456789abcdef0123456789abcdef', source_hash: 'a'.repeat(64)}),
+      {status: message ? 500 : 200, headers: {'content-type': 'application/json'}});
+    };
     // What Code.js:readGrids_ returns: the upload-once script sends each column's format once and the cells
     // holding an error; a script published before it (`uploadOnce: false`) sends both for every cell.
     const grids = () => {
@@ -79,9 +94,13 @@ async function openSidebar(page, rows, failing = {}, workbookOptions = {}) {
     };
     const handlers = {
       // The script that uploads a sheet once says so; `uploadOnce: false` is a script published before it.
-      getSidebarContext: (_, ok) => ok({token: 'google-token', spreadsheetId: 'sheet-1', name: 'Sales', workbook: grids(),
-        uploadOnce: window.__server.workbookOptions.uploadOnce !== false}),
+      // `tabReads`: the script that returns the tabs to read, and each tab's cells on its own call.
+      getSidebarContext: (_, ok) => ok(Object.assign({token: 'google-token', spreadsheetId: 'sheet-1', name: 'Sales',
+        uploadOnce: window.__server.workbookOptions.uploadOnce !== false},
+      window.__server.workbookOptions.tabReads ? {tabs: ['Orders'], scope: 'all', availableTabs: ['Orders']} : {workbook: grids()})),
       getWorkbookGrids: (_, ok) => ok(grids()),
+      getWorkbookPlan: (_, ok) => ok({tabs: ['Orders'], scope: 'all', availableTabs: ['Orders']}),
+      getWorkbookTab: (_, ok) => ok(grids().grids[0]),
       getWorkbookSchema: (arg, ok) => {
         if(window.__server.holdSchemas) window.__server.pendingSchemas.push({arg,ok});
         else ok(workbookOptions.schema || {sheets:[{name:'Orders',columns:window.__server.rows[0]}],active_sheet:'Orders',scope:['Orders']});

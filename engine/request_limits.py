@@ -7,6 +7,7 @@ or billing control.  Global quotas belong at the edge or in an authenticated gat
 from __future__ import annotations
 
 import json
+import re
 import threading
 import time
 from collections import defaultdict, deque
@@ -123,8 +124,19 @@ class RequestGate:
 
 
 def allowed_origin(origin: str | None, configured: str) -> str | None:
-    """Return the exact allowed origin; never turn an allowlist into ``*``."""
+    """Return the allowed origin; never turn an allowlist into ``*``. An entry's one ``*`` stands for part of a single
+    host label: Google serves the Sheets sidebar from https://n-<hash>-script.googleusercontent.com, a new host for
+    each script version. Every call still carries the user's bearer token; no origin holds an ambient credential."""
     if not origin:
         return None
-    allowed = {item.strip() for item in configured.split(",") if item.strip()}
-    return origin if origin in allowed else None
+    for item in configured.split(","):
+        item = item.strip()
+        if item == origin:
+            return origin
+        if item.count("*") == 1:
+            before, after = item.split("*")
+            middle = origin[len(before):len(origin) - len(after)]
+            if (len(origin) > len(before) + len(after) and origin.startswith(before) and origin.endswith(after)
+                    and re.fullmatch(r"[a-z0-9-]+", middle)):
+                return origin
+    return None

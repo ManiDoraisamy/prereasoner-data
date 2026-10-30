@@ -216,6 +216,8 @@ class _PoolRuns:
         self.outcomes = {}
         # (rows, columns) of each query that ran: the result shape the re-scorer reads
         self.shapes = {}
+        # Whether each query that ran matched no row: none came back, or an aggregate's one NULL total or zero count.
+        self.matched_nothing = {}
 
     def database(self):
         if self._database is None:
@@ -470,7 +472,7 @@ class TableQuery:
         from engine.sql_dates import realizes_dates, served_date_phrases
         from engine.sql_expansion import tokens as question_tokens
         from engine.sql_grounding import double_counted_members, grounded_members, shared_headers
-        from engine.sql_rank import PoolSelection, select_ranked_candidate
+        from engine.sql_rank import PoolSelection, outread_by_rows, select_ranked_candidate
 
         pool = tuple(pool)
         executable = self._executable(pool, tablemap, runs)
@@ -497,10 +499,12 @@ class TableQuery:
         date_satisfied = [realizes_dates(member.query, phrases) for member in pool]
         request_timing.count("pool", len(pool))
         undecided = self._undecided(pool, ranking, runs)
+        outread = outread_by_rows(pool, ranking, [runs.matched_nothing.get(member.sql, False) for member in pool])
         selection = PoolSelection(pool, tuple(executable), tuple(grounded), ranking, None,
                                   tuple(calculation_satisfied), tuple(date_satisfied), double_counted, undecided,
-                                  shared)
-        selected = select_ranked_candidate(ranking, calculation_satisfied, date_satisfied, double_counted, undecided)
+                                  shared, outread=outread)
+        selected = select_ranked_candidate(ranking, calculation_satisfied, date_satisfied, double_counted, undecided,
+                                           outread)
         confidence = readers.confidence(pool, scores, shapes, selected) if selected is not None else None
         # The choice's confidence speaks only for questions as long as those its threshold was matched on: a longer
         # one is declined however confident (engine/decomposition.py:ONE_QUERY_WORDS). "Find the top 2 product
@@ -637,11 +641,14 @@ class TableQuery:
                             # Eligibility needs completion, but not a second materialized copy
                             # of tens of thousands of result rows for each candidate.
                             cursor = con.execute(candidate.sql)
-                            rows = 0
+                            rows, first = 0, None
                             while chunk := cursor.fetchmany(1024):
+                                first = chunk[0] if first is None else first
                                 rows += len(chunk)
                                 remaining()
                             runs.shapes[candidate.sql] = (rows, len(cursor.description or ()))
+                            runs.matched_nothing[candidate.sql] = rows == 0 or (
+                                rows == 1 and all(value in (None, 0) for value in first))
                             ran = True
                         except sqlite3.Error:
                             ran = False

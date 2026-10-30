@@ -1910,6 +1910,18 @@ def test_pool_oracle_counts_only_eligible_denotation_hits_and_validates_checkpoi
 def test_shared_ranking_rule_preserves_date_then_double_count_then_calculation_precedence():
     from engine.sql_rank import select_ranked_candidate
     assert select_ranked_candidate((), ()) is None
+    # A reading that matches nothing does not beat a more probable reading that finds rows, whatever the re-scorer
+    # thinks of its words; the readers' most probable reading keeps an empty answer ("orders from Mars").
+    from types import SimpleNamespace
+    from engine.sql_rank import outread_by_rows
+    pool = [SimpleNamespace(score=-0.4), SimpleNamespace(score=-1.0), SimpleNamespace(score=-2.0)]
+    outread = outread_by_rows(pool, (1, 2, 0), [False, True, False])
+    assert outread == (False, True, False)
+    assert select_ranked_candidate((1, 2, 0), [False] * 3, outread=outread) == 2
+    assert outread_by_rows(pool, (0, 1, 2), [True, False, False]) == (False, False, False)
+    assert select_ranked_candidate((1, 0), [False] * 3, outread=outread_by_rows(pool, (1, 0), [True] * 3)) == 1
+    # A more probable reading that is not eligible (it did not run, or misreads a column) outreads nothing.
+    assert outread_by_rows(pool, (1,), [False, True, False]) == (False, False, False)
     assert select_ranked_candidate((2, 1, 0), (False, True, False)) == 1
     # A query that keeps the named dates comes first; the calculation rule applies among them.
     assert select_ranked_candidate((2, 1, 0), (False,) * 3, (True, False, False)) == 0

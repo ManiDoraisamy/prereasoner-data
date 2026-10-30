@@ -43,10 +43,12 @@ footer{border-top:1px solid var(--line);padding-top:24px;margin-top:52px;color:v
   <h2>What we process</h2>
   <ul>
     <li>Files and spreadsheets you choose. In the Google Sheets™ add-on, this is limited to the visible,
-    non-empty tabs in the current spreadsheet when you submit a question, including table names,
-    columns, and cell values. The Excel add-in reads visible, used ranges in the open workbook when
-    you submit a question, including values and column labels; filtered or hidden rows in a visible
-    worksheet are included. It does not edit cells.</li>
+    non-empty tabs in the current spreadsheet, including table names, columns, and cell values. They are
+    read and sent to a conversation kept for that spreadsheet when you open the add-on, so a question can
+    start at once, and again if they have changed when you ask. The Excel add-in does the same with the
+    visible, used ranges in the open workbook, including values and column labels; filtered or hidden rows
+    in a visible worksheet are included. It does not edit cells. That conversation expires like any other,
+    and is not listed among your conversations until you ask a question in it.</li>
     <li>Your questions, conversation history, generated SQL, results, and reasoning traces.</li>
     <li>Account and session identifiers supplied through Google, Microsoft, and Firebase Authentication.</li>
     <li>For the Google Sheets™ add-on, the document ID needed to reopen the conversation associated

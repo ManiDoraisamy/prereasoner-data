@@ -49,7 +49,7 @@ from engine.numeric import canonical_decimal, register_sqlite_decimal, sqlite_nu
 
 # The preparation's own format. Raise it whenever what a preparation holds, or how it is computed, changes: a
 # stored preparation of another format is computed again.
-PREPARATION_FORMAT = 1
+PREPARATION_FORMAT = 2
 # The knowledgebase tables every request database holds whole: a few hundred rows each.
 WHOLE_TABLES = ("country", "Countries", "States", "u_s_state", "Elements", "Continents", "schedule", "types")
 # The knowledgebase tables whose rows arrive with a table's preparation (the entities its cells name) or a

@@ -5,7 +5,7 @@
   (spider_official/train_dbs_extra). Override with --spider-zip and --db-dir.
 - BIRD's training set (``add_bird``): train.json, train_tables.json, train_databases/<db>/<db>.sqlite. Its
   databases are disjoint from Spider's.
-- Spider-Syn (``add_syn``): train_spider.json and dev.json, Spider's questions reworded (SpiderSynQuestion) over
+- Spider-Syn (``add_syn``): train_spider.json only, Spider's questions reworded (SpiderSynQuestion) over
   Spider's databases.
 - SynSQL-2.5M (``add_synsql``): the questions training.readers.synsql chose (questions.json, tables.json) over the
   dataset's synthetic databases (databases/<db>/<db>.sqlite). Its databases are disjoint from Spider's and BIRD's.
@@ -23,11 +23,12 @@ from pathlib import Path
 from engine.sql_schema import SchemaGraph
 from spider.probe.evalutil import build_mem_db, load_capped
 from spider.probe.spider_eval import spider_foreign_keys
+from training.readers.provenance import SPIDER_TRAIN_SETS
 
 ROOT = Path(__file__).resolve().parents[2]
 SPIDER_ZIP = r"C:\work\datasets\spider_official\spider_data.zip"
 SPIDER_DB_DIRS = (str(ROOT / "spider" / "data" / "dbs"), r"C:\work\datasets\spider_official\train_dbs_extra")
-SPIDER_SETS = ("train_spider.json", "train_others.json", "dev.json")
+SPIDER_SETS = tuple(f"{name}.json" for name in SPIDER_TRAIN_SETS)
 TOKENIZER = r"C:\work\datasets\models\xlm-roberta-base"   # XLM-R base and large share one tokenizer
 CAP = 5000
 
@@ -53,7 +54,7 @@ def capped_database(path, meta):
 
 
 class Sources:
-    """Questions by source ("train_spider", "train_others", "dev", and "bird_train", "syn_train", "syn_dev" when
+    """Questions by source ("train_spider", "train_others", and "bird_train", "syn_train" when
     added), schema metadata by database, and the folders the databases are in."""
 
     def __init__(self, spider_zip=SPIDER_ZIP, db_dirs=None):
@@ -68,11 +69,10 @@ class Sources:
         return cls(args.spider_zip, args.db_dirs)
 
     def add_syn(self, directory):
-        """Spider-Syn: Spider's questions reworded with synonyms (sources "syn_train", "syn_dev"); the databases
-        are Spider's."""
-        for name, source in (("train_spider.json", "syn_train"), ("dev.json", "syn_dev")):
-            self.questions[source] = [dict(q, question=q["SpiderSynQuestion"])
-                                      for q in json.load(open(os.path.join(directory, name), encoding="utf-8"))]
+        """Spider-Syn: Spider's training questions reworded with synonyms (source "syn_train"); the databases are
+        Spider's."""
+        self.questions["syn_train"] = [dict(q, question=q["SpiderSynQuestion"]) for q in
+                                       json.load(open(os.path.join(directory, "train_spider.json"), encoding="utf-8"))]
 
     def add_reworded(self, paths, readings_paths, out_dir):
         """Training questions reworded by training.readers.rewordings (source "reworded"), each on its original's

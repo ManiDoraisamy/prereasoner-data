@@ -13,6 +13,7 @@ from engine.entities import TYPE_TO_FRIENDLY
 from engine.embeddings import normalize_surface
 from engine.numeric import parse_decimal
 from engine.request_state import RequestLocal
+from engine.sql_schema import _DATE_RE
 
 
 class KnowledgeTypingMixin:
@@ -107,9 +108,9 @@ class KnowledgeTypingMixin:
                 ]
                 if len(cells) < 3 or self._avglen(table, column) > self.FREETEXT_MIN_AVGLEN:
                     continue
-                if all(_number(cell) for cell in cells):
-                    # A column of numbers names no entity, and the router abstains on it: a third of the
-                    # encoder passes of a six-tab subscriptions workbook were amounts and counts (2026-10-04).
+                if names_no_entity(cells):
+                    # The router abstains on it: a third of the encoder passes of a six-tab subscriptions workbook
+                    # were amounts and counts (2026-10-04), and half of the rest dates and TRUE/FALSE (2026-10-30).
                     continue
                 proposal = router.route(cells, header=column)
                 if not proposal:
@@ -165,6 +166,12 @@ class KnowledgeTypingMixin:
         except Exception as error:  # noqa: BLE001 - class evidence never authorizes a join
             print(f"[knowledge_query] schema class evidence failed: {type(error).__name__}", flush=True)
         return routes, typing
+
+
+def names_no_entity(cells):
+    """Whether a column's cells are all numbers, dates or TRUE/FALSE: none of them is the name of anything."""
+    return all(_number(cell) or _DATE_RE.match(cell.strip()) or cell.strip().lower() in ("true", "false")
+               for cell in cells)
 
 
 def _number(cell):

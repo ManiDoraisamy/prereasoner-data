@@ -325,8 +325,9 @@ class PoolSelection:
     which compare every text literal with a column that can hold it and join no two columns the foreign
     keys keep apart (engine/sql_grounding.py). ``ranking`` lists the eligible members, where both hold, in
     the re-scorer's order. ``selected`` is usually ``ranking[0]``; a query that keeps the question's dates,
-    counts no row twice in a SUM or AVG (``double_counted``), keeps rows its order ranks (``undecided``) or
-    satisfies a registered calculation intent can prefer a later eligible member (``select_ranked_candidate``),
+    counts no row twice in a SUM or AVG (``double_counted``), keeps rows its order ranks (``undecided``), finds
+    rows where a less probable member finds none (``outread``) or satisfies a registered calculation intent can
+    prefer a later eligible member (``select_ranked_candidate``),
     and the readers' refusal leaves it
     None when it is not confident of the choice. The first pool member is the readers' most probable
     reading of the question (engine/decomposition.compound_candidate).
@@ -348,6 +349,8 @@ class PoolSelection:
     # The readers' refusal: its confidence in the choice, and the choice it declined when it was not confident.
     confidence: float | None = None
     declined: int | None = None
+    # Which members match no row while the readers found a more probable member that does (``outread_by_rows``).
+    outread: tuple[bool, ...] = ()
 
     @property
     def candidate(self) -> ScoredQuery | None:
@@ -399,10 +402,25 @@ class PoolSelection:
         return evidence
 
 
+def outread_by_rows(pool: Sequence[ScoredQuery], ranking: Sequence[int],
+                    matched_nothing: Sequence[bool]) -> tuple[bool, ...]:
+    """Per pool member: whether it matches no row while an eligible member the readers found more probable does.
+
+    The re-scorer reads a question beside each reading, and a reading that repeats the question's words reads well:
+    "sales for long term customers (above 6 months)" ranked duration = 'above 6 months' over the value the column
+    holds, 'Greater than 6 months', which the readers found more probable, and the answer said no rows matched
+    (2026-10-30). A reading the readers rated highest keeps its empty answer: "orders from Mars" matches nothing,
+    and no less probable reading of another country or of no filter answers it instead.
+    """
+    best = max((pool[i].score for i in ranking if not matched_nothing[i]), default=None)
+    return tuple(bool(matched_nothing[i] and best is not None and best > pool[i].score) for i in range(len(pool)))
+
+
 def select_ranked_candidate(ranking: Sequence[int], calculation_satisfied: Sequence[bool],
                             date_satisfied: Sequence[bool] = (),
                             double_counted: Sequence[bool] = (),
-                            undecided: Sequence[bool] = ()) -> int | None:
+                            undecided: Sequence[bool] = (),
+                            outread: Sequence[bool] = ()) -> int | None:
     """The shared post-ranking serving rule; inputs are gold-blind candidate facts.
 
     A query that keeps the dates the question names (engine/sql_dates.realizes_dates) is served
@@ -414,14 +432,16 @@ def select_ranked_candidate(ranking: Sequence[int], calculation_satisfied: Seque
     none of the rows it keeps above the first row it leaves out (``undecided``: its first row ties
     with that one) is served only when every one is: "top 3 cities" ranked first the cities by
     their number of rows, one each, and served three of four by name (2026-10-23). A tie at the cut
-    alone is the data's: "the five oldest people" ties the fifth and sixth ages. Among those, prefer
-    a satisfied calculation, if any.
+    alone is the data's: "the five oldest people" ties the fifth and sixth ages. Among those, a query that
+    matches no row while a more probable one finds rows (``outread_by_rows``) is served only when every one
+    does. Among those, prefer a satisfied calculation, if any.
     """
     if not ranking:
         return None
     ranking = [i for i in ranking if date_satisfied and date_satisfied[i]] or list(ranking)
     ranking = [i for i in ranking if not (double_counted and double_counted[i])] or ranking
     ranking = [i for i in ranking if not (undecided and undecided[i])] or ranking
+    ranking = [i for i in ranking if not (outread and outread[i])] or ranking
     return next((i for i in ranking if calculation_satisfied[i]), ranking[0])
 
 

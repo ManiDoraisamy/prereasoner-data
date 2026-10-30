@@ -5,7 +5,10 @@ Databases are split, never questions:
   test         the 40 official Spider test databases: never labelled here, never inspected
   calibration  20 of the 140 train_spider databases, drawn with seed 20261019: checkpoint selection, thresholds,
                refusal, ablations
-  train        the other 120, the 6 train_others databases and dev's 20 (dev is studied, so it trains)
+  dev          the 20 official dev databases: never trained on, so a score on them says something about databases
+               the readers have not seen. The readers shipped through 2026-10 trained on them, so 803/1,034 on dev is
+               not such a score; 71.3% on the 40 test databases is (DECISIONS.md, 2026-10-30).
+  train        the other 120 and the 6 train_others databases
 
 Each Spider question is labelled with the tables and columns its gold SQL uses and the role each column plays there
 (select, filter, group, having, order, join), read from Spider's own parse. No question word is string-matched to a
@@ -104,16 +107,18 @@ def main():
                                                  load("dev.json"), load("test.json"))
         tables = {t["db_id"]: t for t in load("tables.json")}
     test_dbs = {q["db_id"] for q in test}
+    dev_dbs = {q["db_id"] for q in dev}
     main_dbs = sorted({q["db_id"] for q in train_spider})
-    assert not test_dbs & (set(main_dbs) | {q["db_id"] for q in train_others} | {q["db_id"] for q in dev})
+    assert not (test_dbs | dev_dbs) & (set(main_dbs) | {q["db_id"] for q in train_others})
     calibration = sorted(random.Random(SEED).sample(main_dbs, CALIBRATION_DBS))
-    split_of = {db: ("calibration" if db in calibration else "train") for db in tables if db not in test_dbs}
+    split_of = {db: ("calibration" if db in calibration else "train") for db in tables
+                if db not in test_dbs and db not in dev_dbs}
 
     os.makedirs(args.out_dir, exist_ok=True)
     labels_path = os.path.join(args.out_dir, "labels.jsonl")
     counts = collections.Counter()
     with open(labels_path, "w", encoding="utf-8", newline="\n") as sink:
-        for source, rows in (("train_spider", train_spider), ("train_others", train_others), ("dev", dev)):
+        for source, rows in (("train_spider", train_spider), ("train_others", train_others)):
             for index, q in enumerate(rows):
                 db = tables[q["db_id"]]
                 names, table_names = db["column_names_original"], db["table_names_original"]
@@ -136,7 +141,7 @@ def main():
         json.dump(schemas, sink)
     with open(args.spider_zip, "rb") as source, open(labels_path, "rb") as labels:
         zip_sha256, labels_sha256 = hashlib.sha256(source.read()).hexdigest(), hashlib.sha256(labels.read()).hexdigest()
-    manifest = {"seed": SEED, "calibration_dbs": calibration, "test_dbs": sorted(test_dbs),
+    manifest = {"seed": SEED, "calibration_dbs": calibration, "test_dbs": sorted(test_dbs), "dev_dbs": sorted(dev_dbs),
                 "questions": dict(counts), "dbs": collections.Counter(split_of.values()),
                 "source_zip_sha256": zip_sha256, "labels_sha256": labels_sha256}
     with open(os.path.join(args.out_dir, "manifest.json"), "w", encoding="utf-8", newline="\n") as sink:

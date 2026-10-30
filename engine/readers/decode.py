@@ -16,6 +16,7 @@ from engine.readers import numerals
 from engine.readers.layout import (AGGREGATES, COLUMN_POS_WEIGHT, COUNTS, GLOBAL, HAVING_OPERATORS, LAYOUT,
                                    OPERATORS, STRUCTURES, TABLE_POS_WEIGHT)
 from engine.readers.readings import SUBQUERY
+from engine.readers.text import VALUE_CHARS, listed
 from engine.sql_ast import SQLType
 
 LOWER_BOUNDS, UPPER_BOUNDS = (">", ">="), ("<", "<=")
@@ -43,6 +44,13 @@ def literal(text, column, graph, operator):
     if schema_column is not None:
         for value in schema_column.values:
             if isinstance(value, str) and value.lower() == text.lower():
+                return value
+        # The schema text cuts a long value (text.listed). A reader that points at the listing has read that value:
+        # "Greater than 6 month" is how "Greater than 6 months" is listed, and compared as cut it matched no row
+        # and the answer said so (2026-10-30). The first value listed that way is the one the reader saw.
+        for value in schema_column.values:
+            if (isinstance(value, str) and len(value) > VALUE_CHARS
+                    and unlisted(listed(value)).strip("'\"").lower() == text.lower()):
                 return value
     return text
 

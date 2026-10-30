@@ -141,8 +141,8 @@ test('the Sheets sidebar renders the web rail, with live steps from the realtime
     '2Added up the values to get the total. · from filteredPY ran']);
   await expect(steps.first()).toHaveAttribute('href',
     'https://chat.prereasoner.com/reason/' + conversation + '?analysis_id=a_11111111111111111111111111111111&revision=1');
-  await expect.poll(async () => (await calls(page, 'savePrereasonerSheetConversation')).length).toBe(1);
-  const [save] = await calls(page, 'savePrereasonerSheetConversation');
+  await expect.poll(async () => (await calls(page, 'savePrereasonerSheetConversation')).length).toBe(2);   // opening, answer
+  const [, save] = await calls(page, 'savePrereasonerSheetConversation');
   expect(save.arg.conversationId).toBe(conversation);
   expect(save.arg.state.version).toBe(2);
   expect(save.arg.state.turns[0].steps.map(step => step.description))
@@ -326,6 +326,10 @@ test('a passing sync failure keeps the chat and the earlier turns', async ({page
   await openSidebar(page, orders, {}, {restored: {conversationId: conversation, state: saved},
     failOnce: {syncPrereasonerConversation: 'Prereasoner: request failed.'}});
   await expect(page.locator('.turn-answer')).toHaveText('Total sales in France are US$1,240.');
+  // The upload when the sidebar opened failed and said nothing: the question tries it again, and reports it.
+  await expect.poll(async () => (await calls(page, 'syncPrereasonerConversation')).length).toBe(1);
+  await expect(page.locator('.answer.error')).toHaveCount(0);
+  await page.evaluate(() => { window.__server.workbookOptions.failOnce = {syncPrereasonerConversation: 'Prereasoner: request failed.'}; });
   await page.locator('#question').fill('and in Germany?');
   await page.locator('#question').press('Enter');
   await expect(page.locator('.answer.error')).toContainText('Prereasoner: request failed.');
@@ -407,7 +411,7 @@ test('the Sheets sidebar keeps the answer without a notice when sheet history ca
   await expect.poll(() => page.evaluate(() => Boolean(window.__server.pendingAsk))).toBe(true);
   await answer(page, 'Total sales in France are **US$1,240**.', views);
   await expect(page.locator('.turn-answer')).toHaveText('Total sales in France are US$1,240.');
-  await expect.poll(async () => (await calls(page, 'savePrereasonerSheetConversation')).length).toBe(1);
+  await expect.poll(async () => (await calls(page, 'savePrereasonerSheetConversation')).length).toBe(2);   // opening, answer
   await expect(page.locator('#scroll')).not.toContainText('could not be saved');
   await expect(page.locator('#newConversation')).toBeEnabled();
 });
@@ -465,6 +469,102 @@ test('a saved chat shows at once while a slow sheet is read, the read being the 
   await expect(page.locator('#topline')).toBeHidden();
 });
 
+test('the sheet goes to its chat when the sidebar opens, straight to the API, and the first question names it', async ({page}) => {
+  // It went with the first question, through Apps Script, and the question then waited for the preparation it
+  // started: 45 s of upload and 62 s of waiting on a six-tab workbook (2026-10-30).
+  await openSidebar(page, orders);
+  await expect.poll(async () => (await calls(page, 'savePrereasonerSheetConversation')).length).toBe(1);
+  const [opened] = await calls(page, 'syncPrereasonerConversation');
+  expect(opened.authorization).toBe('Bearer id-token');
+  expect(opened.arg.question).toBe('');
+  expect(opened.arg.conversationId).toBeNull();
+  const [saved] = await calls(page, 'savePrereasonerSheetConversation');
+  expect(saved.arg.conversationId).toBe(conversation);        // opening this sheet again finds its chat
+  expect(saved.arg.state.syncedSourceHash).toBe('a'.repeat(64));
+  // An empty chat still looks like one: the starters, no header.
+  await expect(page.locator('#suggestions .starter-question')).toHaveCount(3);
+  await expect(page.locator('#topline')).toBeHidden();
+  await page.locator('#question').fill('total amount');
+  await page.locator('#question').press('Enter');
+  await expect.poll(() => page.evaluate(() => Boolean(window.__server.pendingAsk))).toBe(true);
+  expect((await calls(page, 'syncPrereasonerConversation')).length).toBe(1);
+  const ask = await page.evaluate(() => window.__server.pendingAsk.arg);
+  expect(ask.conversationId).toBe(conversation);
+  expect(ask.sourceHash).toBe('a'.repeat(64));
+  expect(ask.tables).toBeUndefined();
+});
+
+test('a question asked while the sheet is being sent waits for that upload and sends nothing more', async ({page}) => {
+  await page.addInitScript(() => { window.addEventListener('DOMContentLoaded', () => { window.__server.holdUpload = true; }); });
+  await openSidebar(page, orders);
+  await expect.poll(async () => (await calls(page, 'syncPrereasonerConversation')).length).toBe(1);
+  await page.locator('#question').fill('total amount');
+  await page.locator('#question').press('Enter');
+  await expect(page.locator('#liveTurn .statusline')).toContainText('Sending the sheet…');
+  expect(await calls(page, 'askPrereasoner')).toEqual([]);
+  await page.evaluate(() => window.__server.releaseUpload());
+  await expect.poll(() => page.evaluate(() => Boolean(window.__server.pendingAsk))).toBe(true);
+  expect((await calls(page, 'syncPrereasonerConversation')).length).toBe(1);
+});
+
+test('a script that reads tab by tab gives the token first, then each tab, and the sheet reads the same', async ({page}) => {
+  await openSidebar(page, orders, {}, {tabReads: true});
+  await expect.poll(async () => (await calls(page, 'syncPrereasonerConversation')).length).toBe(1);
+  expect((await calls(page, 'getWorkbookTab')).map(call => call.arg)).toEqual([{name: 'Orders'}]);
+  expect(await page.evaluate(() => window.__signedInWith)).toBe('google-token');
+  const [sync] = await calls(page, 'syncPrereasonerConversation');
+  expect(sync.arg.tables[0].data).toBe('country,amount\nFrance,840\nFrance,400\nGermany,620');
+  // A question reads the sheet again the same way.
+  await page.locator('#question').fill('total amount');
+  await page.locator('#question').press('Enter');
+  await expect.poll(() => page.evaluate(() => Boolean(window.__server.pendingAsk))).toBe(true);
+  expect((await calls(page, 'getWorkbookPlan')).length).toBe(1);
+  expect((await calls(page, 'getWorkbookTab')).length).toBe(2);
+  expect(await calls(page, 'getWorkbookGrids')).toEqual([]);
+});
+
+test('a sidebar with no sign-in token uploads through the script', async ({page}) => {
+  await openSidebar(page, orders, {}, {hostToken: false});
+  await expect.poll(async () => (await calls(page, 'syncPrereasonerConversation')).length).toBe(1);
+  const [opened] = await calls(page, 'syncPrereasonerConversation');
+  expect(opened.authorization).toBeUndefined();
+  expect(opened.arg.tables[0].name).toBe('Orders');
+});
+
+test('New chat sends the sheet to the new chat at once', async ({page}) => {
+  const saved = {client: 'google-sheets-addon', version: 2, turns: [{question: 'q', reply: 'a', steps: [], asks: []}], history: []};
+  await openSidebar(page, orders, {}, {restored: {conversationId: conversation, state: saved}});
+  await expect.poll(async () => (await calls(page, 'syncPrereasonerConversation')).length).toBe(1);
+  await expect(page.locator('#newConversation')).toBeEnabled();
+  await page.locator('#newConversation').click();
+  await expect.poll(async () => (await calls(page, 'syncPrereasonerConversation')).length).toBe(2);
+  expect((await calls(page, 'syncPrereasonerConversation'))[1].arg.conversationId).toBeNull();
+});
+
+test('a slow sheet whose chat stores it answers on that copy without waiting for its read', async ({page}) => {
+  // A six-tab workbook took 1:50 to read before any question could start (2026-10-30).
+  const saved = {client: 'google-sheets-addon', version: 2, turns: [{question: 'q', reply: 'a', steps: [], asks: []}], history: [],
+    syncedFingerprint: 'the-stored-sheet', syncedSourceHash: 'b'.repeat(64), readMs: 110000};
+  await page.clock.install();
+  await openSidebar(page, orders, {}, {contextDelay: 120000,
+    restored: {conversationId: conversation, state: saved, sourceHash: 'b'.repeat(64)}});
+  await expect(page.locator('.turn-answer')).toHaveText('a');
+  await page.locator('#question').fill('total amount');
+  await page.locator('#question').press('Enter');
+  await expect.poll(() => page.evaluate(() => Boolean(window.__server.pendingAsk))).toBe(true);
+  const ask = await page.evaluate(() => window.__server.pendingAsk.arg);
+  expect(ask.sourceHash).toBe('b'.repeat(64));
+  expect(ask.conversationId).toBe(conversation);
+  expect(ask.tables).toBeUndefined();
+  expect(await calls(page, 'syncPrereasonerConversation')).toEqual([]);
+});
+
+test('the sidebar says it is opening before its scripts have loaded', async () => {
+  // The panel was blank until the importer and the rail had loaded.
+  const html = require('fs').readFileSync('web/public/office/sheets/sidebar.html', 'utf8');
+  expect(html).toMatch(/<div id="thread"[^>]*><div class="loading" role="status">.*Opening Prereasoner…/);
+});
+
 test('a slow sheet is read once: a question asked while it is read waits, and later ones reuse that read', async ({page}) => {
   // The six-tab workbook was read again before every question, five minutes each (2026-10-04). A sheet
   // whose read takes 15 s or more keeps that read; the header says how old it is and reads it again on a click.
@@ -494,9 +594,12 @@ test('a slow sheet is read once: a question asked while it is read waits, and la
   await answer(page, 'Total sales in France are **US$1,240**.', views);
   await expect(page.locator('#syncStatus')).toHaveText('Synced 2 days ago');
 
+  await page.evaluate(() => { window.__server.rows = window.__server.rows.concat([['Spain', 100]]); });
   await page.locator('#syncStatus').click();
   await expect.poll(async () => (await calls(page, 'getWorkbookGrids')).length).toBe(1);
   await expect(page.locator('#syncStatus')).toHaveText('Synced just now');
+  // A sheet the click finds changed is sent at once.
+  await expect.poll(async () => (await calls(page, 'syncPrereasonerConversation')).length).toBe(2);
 });
 
 test('a quick sheet is read again before each question, so an edit is in the answer', async ({page}) => {

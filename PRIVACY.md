@@ -37,7 +37,10 @@ generated SQL, query results, and reasoning traces. Depending on deployment conf
 
 Firebase identity is verified server-side. Client-supplied user IDs do not select storage
 ownership. The Marketplace add-on uses `spreadsheets.currentonly` and reads only the spreadsheet in
-which it is invoked. The separate web picker uses the narrow `drive.file` scope and reads only a
+which it is invoked. When its sidebar or the Excel task pane opens, it sends the visible, non-empty tabs to a
+conversation kept for that spreadsheet, so a question can start at once; that conversation stores the tables and their
+preparation like any other, expires on the same schedule, and is not listed until a question is asked in it. The
+separate web picker uses the narrow `drive.file` scope and reads only a
 file the user selects.
 
 ## Google API Limited Use And AI/ML

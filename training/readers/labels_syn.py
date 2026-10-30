@@ -18,7 +18,7 @@ from training.readers.sources import SPIDER_ZIP
 def main():
     ap = argparse.ArgumentParser(description="Readings for Spider-Syn's reworded questions.")
     ap.add_argument("split_dir", help="the folder of the split's manifest.json (calibration_dbs)")
-    ap.add_argument("syn_dir", help="Spider-Syn's folder (train_spider.json, dev.json)")
+    ap.add_argument("syn_dir", help="Spider-Syn's folder (only its train_spider.json)")
     ap.add_argument("readings", help="readings_train.jsonl, the gold readings of Spider's training questions")
     ap.add_argument("out")
     ap.add_argument("--spider-zip", default=SPIDER_ZIP)
@@ -26,15 +26,13 @@ def main():
     calibration = set(json.load(open(os.path.join(args.split_dir, "manifest.json")))["calibration_dbs"])
     originals = {}
     with zipfile.ZipFile(args.spider_zip) as z:
-        for name in ("train_spider.json", "dev.json"):
-            for index, q in enumerate(json.loads(z.read("spider_data/" + name))):
-                originals[(q["db_id"], q["query"].strip(), " ".join(q["question"].split()))] = (name.split(".")[0],
-                                                                                                index)
+        for index, q in enumerate(json.loads(z.read("spider_data/train_spider.json"))):
+            originals[(q["db_id"], q["query"].strip(), " ".join(q["question"].split()))] = ("train_spider", index)
     readings = {(r["source"], r["index"]): r for r in map(json.loads, open(args.readings, encoding="utf-8"))
                 if "readings" in r}
     written = matched = 0
     with open(args.out, "w", encoding="utf-8", newline="\n") as sink:
-        for name, source in (("train_spider.json", "syn_train"), ("dev.json", "syn_dev")):
+        for name, source in (("train_spider.json", "syn_train"),):
             for index, q in enumerate(json.load(open(os.path.join(args.syn_dir, name), encoding="utf-8"))):
                 if q["db_id"] in calibration or q["SpiderSynQuestion"].strip() == q["SpiderQuestion"].strip():
                     continue

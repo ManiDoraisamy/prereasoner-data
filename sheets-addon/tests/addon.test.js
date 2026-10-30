@@ -61,6 +61,11 @@ function load(spreadsheet, responses = {}) {
   vm.createContext(context);
   vm.runInContext(source, context);
   context.fetches = fetches;
+  // What the sidebar does: the plan, then each tab.
+  context.readAll = scope => {
+    const plan = context.getWorkbookPlan({scope});
+    return {grids: plan.tabs.map(name => context.getWorkbookTab({name})), scope: plan.scope, availableTabs: plan.availableTabs};
+  };
   return context;
 }
 const book = (tabs, active) => ({getId: () => 'sheet-id-1', getName: () => 'Sales data', getSpreadsheetTimeZone: () => 'UTC',
@@ -81,7 +86,9 @@ const addon = load(book([orders, notes, hidden, blank], notes));
 const context = addon.getSidebarContext();
 equal([context.token, context.spreadsheetId, context.name], ['google-access-token', 'sheet-id-1', 'Sales data']);
 equal(context.uploadOnce, true, 'the hosted sidebar uploads a sheet once with this script');
-const grids = context.workbook.grids;
+check(!('workbook' in context), 'the token does not wait for the cells');
+equal([context.tabs, context.scope, context.availableTabs], [['Notes', 'Orders'], 'all', ['Notes', 'Orders']]);
+const grids = addon.readAll().grids;
 equal(grids.map(grid => grid.name), ['Notes', 'Orders'], 'the active tab first; hidden and header-only tabs skipped');
 const grid = grids[1];
 equal(grid.rows[1][1], 45292, '2024-01-01 is serial 45292');
@@ -90,7 +97,7 @@ equal(grid.columnFormats[2], {f: '[h]:mm'}, 'a column format, sent once');
 equal(grid.errorCells, [[1, 3]], 'the one failed formula');
 check(!('formats' in grid) && !('errors' in grid), 'no per-cell formats or error flags');
 equal(grid.merges, [{s: {r: 0, c: 4}, e: {r: 0, c: 5}}]);
-equal(addon.getWorkbookGrids().grids[0].rows, [['note'], ['keep']]);
+equal(addon.readAll().grids[0].rows, [['note'], ['keep']]);
 
 // The sidebar imports these grids with the web upload importer: Sheets' serial days and formats read
 // back as the date and the duration, a failed formula is refused, and a data column without a header
@@ -98,12 +105,12 @@ equal(addon.getWorkbookGrids().grids[0].rows, [['note'], ['keep']]);
 const {normalizeGrids} = require('../../tests/workbook_fixture.js');
 const clean = load(book([sheet(6, 'Hours', [
   ['order ID', 'placed', 'worked'], [101, new Date(Date.UTC(2024, 0, 1)), new Date(Date.UTC(1899, 11, 31, 3, 30))]
-], {formats: [['General', 'General', 'General'], ['0', 'yyyy-mm-dd', '[h]:mm']]})])).getSidebarContext();
-equal(normalizeGrids(clean.workbook.grids)[0].csv, 'order ID,placed,worked\n101,2024-01-01,1.145833333');
+], {formats: [['General', 'General', 'General'], ['0', 'yyyy-mm-dd', '[h]:mm']]})])).readAll();
+equal(normalizeGrids(clean.grids)[0].csv, 'order ID,placed,worked\n101,2024-01-01,1.145833333');
 assert(normalizeGrids(grids)[1].csv.includes('Column F')); checks++; // merged headers preserve positions
-const failed = load(book([sheet(8, 'Ratios', [['id', 'ratio'], [1, '#DIV/0!']])])).getSidebarContext();
-assert(normalizeGrids(failed.workbook.grids)[0].csv.includes('#DIV/0!')); checks++;
-check(normalizeGrids(failed.workbook.grids)[0].import.warnings.some(text => text.includes('unavailable in columns B')),
+const failed = load(book([sheet(8, 'Ratios', [['id', 'ratio'], [1, '#DIV/0!']])])).readAll();
+assert(normalizeGrids(failed.grids)[0].csv.includes('#DIV/0!')); checks++;
+check(normalizeGrids(failed.grids)[0].import.warnings.some(text => text.includes('unavailable in columns B')),
   'a failed formula is read as an error, not as text');
 // Formats travel per column, with the number cells whose format differs, and errors as the cells that hold
 // one: the import reads them exactly as the per-cell formats and flags a script published before sends.
@@ -115,7 +122,7 @@ const mixed = load(book([sheet(9, 'Shifts', [
   [new Date(Date.UTC(2024, 0, 2)), new Date(Date.UTC(1899, 11, 31, 3, 30)), '#DIV/0!'],
   [new Date(Date.UTC(2024, 0, 3)), 2.25, 0.5],
   ['', '', '']
-], {formats: mixedFormats})])).getSidebarContext().workbook.grids[0];
+], {formats: mixedFormats})])).readAll().grids[0];
 equal(mixed.columnFormats, [{f: 'yyyy-mm-dd'}, {f: '0.00', x: [[2, '[h]:mm']]}, {f: 'General'}],
   'a text or blank cell sends no format');
 equal(mixed.errorCells, [[2, 2]]);
@@ -124,8 +131,32 @@ const perCell = {name: mixed.name, rows: mixed.rows, formats: mixedFormats, merg
 equal(JSON.stringify(normalizeGrids([mixed])), JSON.stringify(normalizeGrids([perCell])), 'compact and per-cell grids import alike');
 check(normalizeGrids([mixed])[0].csv.startsWith('day,hours,ratio\n2024-01-01,1.5,0.25\n2024-01-02,1.145833333,#DIV/0!'),
   'the column format reads the dates; the row format reads the duration');
-const shifted = load(book([sheet(7, 'sales', [['order ID', 'customer', 'amount'], [1, 101, 'Holmes', 118]])])).getSidebarContext();
-assert(normalizeGrids(shifted.workbook.grids)[0].csv.startsWith('Column A,Column B,Column C,Column D')); checks++;
+const shifted = load(book([sheet(7, 'sales', [['order ID', 'customer', 'amount'], [1, 101, 'Holmes', 118]])])).readAll();
+assert(normalizeGrids(shifted.grids)[0].csv.startsWith('Column A,Column B,Column C,Column D')); checks++;
+
+// A date's zone offset is asked of Apps Script once for a day its clock does not change on; a day it changes on
+// is asked moment by moment, so the wall clock is right on both sides of the change.
+{
+  const zoned = load(book([sheet(20, 'Dates', [['when']].concat(
+    Array.from({length: 2000}, (_, i) => [new Date(Date.UTC(2024, 0, 1 + i % 3, i % 24, i % 60))]),
+    [[new Date(Date.UTC(2024, 2, 10, 1, 30))], [new Date(Date.UTC(2024, 2, 10, 2, 30))]]),
+    {formats: [['General']].concat(Array.from({length: 2002}, () => ['yyyy-mm-dd hh:mm']))})]));
+  let asked = 0;
+  const change = Date.UTC(2024, 2, 10, 2);
+  zoned.Utilities.formatDate = (date, zone, pattern) => {
+    asked++;
+    const local = new Date(date.getTime() + (date.getTime() >= change ? 3600000 : 0));
+    const p = n => String(n).padStart(2, '0');
+    return [local.getUTCFullYear(), p(local.getUTCMonth() + 1), p(local.getUTCDate()),
+      p(local.getUTCHours()), p(local.getUTCMinutes()), p(local.getUTCSeconds())].join(',');
+  };
+  const dates = zoned.readAll().grids[0].rows;
+  check(asked < 20, `a few days of dates ask the zone a few times, not ${asked}`);
+  const serial = (y, m, d, h, min) => (Date.UTC(y, m, d, h, min) - Date.UTC(1899, 11, 30)) / 86400000;
+  equal(dates[1][0], serial(2024, 0, 1, 0, 0));
+  equal(dates[2001][0], serial(2024, 2, 10, 1, 30), 'before the clock changes');
+  equal(dates[2002][0], serial(2024, 2, 10, 3, 30), 'after it');
+}
 
 // Apps Script cannot load web/public/lib/upload-limits.js, so the add-on's copy is pinned to it here.
 const shared = {};
@@ -135,28 +166,28 @@ for (const key of ['sheets', 'rows', 'columns', 'cells']) equal(addon.GRID_LIMIT
 // The upload's worksheet limits hold per tab before any cell is read: two 30,000-row tabs are read, as an
 // upload of them would be; an active tab past 50,000 data rows or 256 columns is refused by name.
 const rows = count => [['id', 'amount']].concat(Array.from({length: count}, (_, i) => [i + 1, 1]));
-equal(load(book([sheet(7, 'A', rows(30000)), sheet(8, 'B', rows(30000))])).getSidebarContext().workbook.grids.length, 2);
+equal(load(book([sheet(7, 'A', rows(30000)), sheet(8, 'B', rows(30000))])).readAll().grids.length, 2);
 assert.throws(() => load(book([sheet(9, 'Long', rows(50001))])).getSidebarContext(),
   /^Error: Sheet "Long": each worksheet may contain at most 50,000 data rows$/); checks++;
 const wide = sheet(5, 'Wide', [Array.from({length: 257}, (_, i) => 'c' + i), Array.from({length: 257}, () => 1)]);
 assert.throws(() => load(book([wide])).getSidebarContext(), /^Error: Sheet "Wide": each worksheet may contain at most 256 columns$/); checks++;
 const realCustomerShape = [Array.from({length: 18}, (_, i) => 'c' + i)]
   .concat(Array.from({length: 30000}, (_, i) => [i + 1].concat(Array(17).fill('value'))));
-equal(load(book([sheet(10, 'Subscriptions', realCustomerShape)])).getSidebarContext().workbook.grids.length, 1,
+equal(load(book([sheet(10, 'Subscriptions', realCustomerShape)])).readAll().grids.length, 1,
   'a 30,000-row customer-shaped sheet fits the add-on grid cap');
 const dense = [Array.from({length: 26}, (_, i) => 'c' + i)].concat(Array.from({length: 40000}, () => Array(26).fill(1)));
 assert.throws(() => load(book([sheet(15, 'Dense', dense)])).getSidebarContext(),
   /active sheet exceeds the current analysis capacity/); checks++;
 // Oversized unrelated tabs select a clearly labelled active-sheet scope.
 const scoped = load(book([sheet(11, 'NT', rows(30000)), sheet(12, 'SI', dense), sheet(14, 'FF', rows(100))]));
-const scopedBook = scoped.getSidebarContext().workbook;
+const scopedBook = scoped.readAll();
 equal(scopedBook.scope, 'active');
 equal(scopedBook.grids.map(grid => grid.name), ['NT']);
 equal(scopedBook.availableTabs, ['NT', 'SI', 'FF']);
-equal(scoped.getWorkbookGrids({scope:'all'}).scope, 'active', 'stale scope clients fall back to the current sheet');
-equal(scoped.getWorkbookGrids({scope:'active'}).grids.map(grid => grid.name), ['NT']);
+equal(scoped.getWorkbookPlan({scope:'all'}).scope, 'active', 'stale scope clients fall back to the current sheet');
+equal(scoped.getWorkbookPlan({scope:'active'}).tabs, ['NT']);
 equal(load(book([sheet(11, 'NT', rows(30000)), sheet(12, 'SI', dense, {hidden: true}),
-  sheet(14, 'FF', rows(100))])).getSidebarContext().workbook.grids.map(grid => grid.name), ['NT', 'FF'],
+  sheet(14, 'FF', rows(100))])).readAll().grids.map(grid => grid.name), ['NT', 'FF'],
   'explicit visible-tab scope still admits the complete 30,000-row source');
 assert.throws(() => load(book([blank])).getSidebarContext(), /header row and at least one data row/); checks++;
 

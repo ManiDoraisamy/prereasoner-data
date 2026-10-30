@@ -34,27 +34,36 @@ K = 16
 
 
 def candidate_records(output, row, graph, connection, gold_rows, k=K, floor=None):
-    """One record per candidate, most probable first."""
+    """One record per candidate of the pool serving builds (search.reading_variants), most probable first, each SQL
+    once: the choice and the re-scorers were fitted on the decoded readings alone, without the variants they rank."""
+    from engine.readers.search import Schema, named_values, reading_variants
+
     records = []
+    seen = set()
+    named = named_values(Schema(graph), row["question"])
     floor = decoding.FLOOR if floor is None else floor
     for rank, (score, readings) in enumerate(decoding.candidates(output, row, graph, k, floor)):
-        record = {"rank": rank, "score": round(score, 4), "read_as": read_as(readings), "status": "build",
-                  "rows": 0, "columns": 0, "sql": None}
-        try:
-            sql = render_query(build(readings, graph))
-        except Exception:                          # noqa: BLE001 - a reading the builder cannot make into a query
+        for reading in reading_variants(readings, named, graph):
+            record = {"rank": rank, "score": round(score, 4), "read_as": read_as(reading), "status": "build",
+                      "rows": 0, "columns": 0, "sql": None}
+            try:
+                sql = render_query(build(reading, graph))
+            except Exception:                      # noqa: BLE001 - a reading the builder cannot make into a query
+                records.append(record)
+                continue
+            if sql in seen:
+                continue
+            seen.add(sql)
+            record["sql"] = sql
+            rows, error = exec_sql_timed(connection, sql, timeout=CANDIDATE_SECONDS)
+            if error:
+                record["status"] = "exec-error"
+            else:
+                record.update(status="ran", rows=len(rows), columns=len(rows[0]) if rows else 0,
+                              preview=", ".join(str(v) for v in rows[0])[:PREVIEW_CHARS] if rows else "")
+                if gold_rows is not None:
+                    record["right"] = bool(compare(gold_rows, rows).get("strict"))
             records.append(record)
-            continue
-        record["sql"] = sql
-        rows, error = exec_sql_timed(connection, sql, timeout=CANDIDATE_SECONDS)
-        if error:
-            record["status"] = "exec-error"
-        else:
-            record.update(status="ran", rows=len(rows), columns=len(rows[0]) if rows else 0,
-                          preview=", ".join(str(v) for v in rows[0])[:PREVIEW_CHARS] if rows else "")
-            if gold_rows is not None:
-                record["right"] = bool(compare(gold_rows, rows).get("strict"))
-        records.append(record)
     return records
 
 
@@ -75,7 +84,7 @@ def main():
     ap.add_argument("--floor", type=float, default=None, help=f"default engine.readers.decode.FLOOR ({decoding.FLOOR})")
     ap.add_argument("--shard", default="0/1", help="i/n: only outputs whose line number is i modulo n")
     ap.add_argument("--bird", help="BIRD's train directory, for bird_train questions")
-    ap.add_argument("--syn", help="Spider-Syn's directory, for syn_train and syn_dev questions (Spider's databases)")
+    ap.add_argument("--syn", help="Spider-Syn's directory, for syn_train questions (Spider's databases)")
     ap.add_argument("--reworded", help="comma-separated rewordings.jsonl, as training.readers.examples takes them")
     ap.add_argument("--reworded-readings", help="their readings_reworded.jsonl, in the same order")
     ap.add_argument("--lookups", help="training.readers.lookups' output folder")
@@ -106,7 +115,8 @@ def main():
                 continue
             output = json.loads(line)
             key = (output["source"], output["index"])
-            assert output["source"] != "test", "test questions are chosen and scored by training.readers.choose"
+            if output["source"] == "test":
+                raise ValueError("test questions are chosen and scored by training.readers.choose")
             row = rows[key]
             db = output["db_id"]
             if db not in databases:

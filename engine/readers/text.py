@@ -31,6 +31,11 @@ def normal(text):
     return " ".join(str(text).lower().split()).strip(EDGE)
 
 
+def listed(value):
+    """A value as the schema text lists it: cut to VALUE_CHARS, without the marks that separate the listing."""
+    return str(value).replace("|", "/").replace(";", ",").replace("\n", " ")[:VALUE_CHARS]
+
+
 def words(name):
     spaced = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", str(name)).replace("_", " ")
     return " ".join(spaced.split()).lower()
@@ -50,7 +55,7 @@ class Schema:
             for value in column.values:
                 if value is None or str(value).strip() == "":
                     continue
-                text = str(value).replace("|", "/").replace(";", ",").replace("\n", " ")[:VALUE_CHARS]
+                text = listed(value)
                 if text not in seen:
                     seen.append(text)
                     if len(seen) > LIST_ALL:
@@ -143,6 +148,17 @@ def reading_text(schema, tables, columns_of, samples=True, anchors=None):
                 text += ")"
             column_spans[f"{table}.{column}"] = (span, value_spans)
     return text, star, table_spans, column_spans
+
+
+def readable(tokenizer, question, budget):
+    """The question as far as the readers read it: half the token budget at most, the rest being the schema's. A longer
+    one raised a truncation error out of the readers, and the reply said to try again, which could not help (2026-10-30).
+    Nothing is answered from the words left out: a question this long is past ONE_QUERY_WORDS, so the readers decline
+    it however confident, and it is read as the short subquestions of a decomposition (engine/decomposition.py)."""
+    encoded = tokenizer(question, truncation=True, max_length=budget // 2 + 1, return_offsets_mapping=True)
+    if len(encoded["input_ids"]) <= budget // 2:
+        return question
+    return question[:max(end for _, end in encoded["offset_mapping"])]
 
 
 def fit(tokenizer, budget, question, schema, tables, columns_of, droppable, anchored=True):

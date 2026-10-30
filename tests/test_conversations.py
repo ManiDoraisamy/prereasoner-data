@@ -28,6 +28,43 @@ class _Connection:
         self.closed = True
 
 
+def test_a_sheet_uploaded_when_a_client_opened_is_no_chat_until_a_question_names_it():
+    """A client uploads a sheet as soon as it has read it, before anyone asks (2026-10-30): the upload makes no line in
+    the conversations list, and the first question, asked by the conversation's id, names the chat."""
+    class Cursor:
+        def __init__(self):
+            self.statements, self.one, self.rows = [], (1,), []
+
+        def execute(self, statement, params=None):
+            self.statements.append((statement, params))
+
+        def fetchone(self):
+            return self.one
+
+        def fetchall(self):
+            return self.rows
+
+    cursor = Cursor()
+    connection = _Connection(cursor)
+    cid = "c_" + "7" * 32
+    with patch.object(conversations, "_pg", return_value=connection):
+        assert conversations.resolve_conversation("user", cid, "total sales", []) == cid
+    named = [params for statement, params in cursor.statements
+             if statement.startswith('UPDATE "chat"."conversation" SET initial_prompt')]
+    assert named == [("total sales", cid)]
+    named_blank_only = next(statement for statement, _ in cursor.statements if "SET initial_prompt" in statement)
+    assert "COALESCE(initial_prompt, '') = ''" in named_blank_only
+    # A later question, or an upload with no question, names nothing.
+    cursor.statements.clear()
+    with patch.object(conversations, "_pg", return_value=connection):
+        conversations.resolve_conversation("user", cid, "", [])
+    assert not any("SET initial_prompt" in statement for statement, _ in cursor.statements)
+    cursor.statements.clear()
+    with patch.object(conversations, "_pg", return_value=connection):
+        conversations.conversation_page("user", 10)
+    assert "COALESCE(c.initial_prompt, '') <> ''" in cursor.statements[0][0]
+
+
 def test_conversation_page_uses_a_stable_timestamp_and_id_cursor():
     stamp = datetime(2026, 9, 6, 12, 0, tzinfo=timezone.utc)
 
@@ -840,6 +877,7 @@ def test_analysis_turn_matches_exact_sheet_revision_before_web_state():
 
 
 TESTS = [
+    test_a_sheet_uploaded_when_a_client_opened_is_no_chat_until_a_question_names_it,
     test_conversation_page_uses_a_stable_timestamp_and_id_cursor,
     test_save_state_locks_and_replaces_only_the_previous_state_bytes,
     test_a_saved_answer_keeps_the_source_it_read,

@@ -32,7 +32,7 @@ import re
 import numpy as np
 
 from engine.answer_presentation import unmatched_names
-from engine.config import DATA_DIR, kb_model_route_enabled
+from engine.config import DATA_DIR
 from engine.entities import EntityQuery, PLACE_TYPES, WORLD_TABLE_TYPE
 from engine.dataset_semantics import is_synthetic_currency_column
 from engine.embeddings import Embedder, demonym_stems, pgvector_literal, normalize_surface
@@ -41,7 +41,7 @@ from engine.prepared import (current_database, decimal_cursor, encode_city_vecto
 from engine.tables import qident, qlit
 from engine.encoder_overlay import EncoderQuery, load_encoder
 from engine.knowledge_bridges import KnowledgeBridgeMixin
-from engine.knowledge_typing import KnowledgeTypingMixin
+from engine.knowledge_typing import KnowledgeTypingMixin, names_no_entity
 from engine.knowledge_tables import COUNT_CUE
 from engine.bridge import STOP
 from engine.closed_class import (
@@ -408,9 +408,9 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         * its routes and typing evidence (``_route_table``), and the routes source membership alone gives;
         * every candidate entity of each distinct cell of a routed column (``_city_matches``, ``_name_matches``),
           with each city's country and each canonical name's country and qid (``_bridge_rows``);
-        * the Schema.org evidence of every other column of three or more cells, the dominant non-geographic
-          entity type of each, and the entity each of its cells names exactly (``_nongeo_plan``; the nearest
-          names of the rest are read when a question needs them, ``_nongeo_matches``);
+        * the dominant non-geographic entity type of every other column of three or more cells, and the entity
+          each of its cells names exactly (``_nongeo_plan``; the nearest names of the rest are read when a question
+          needs them, ``_nongeo_matches``);
         * the knowledgebase rows those entities are, their labels, and the vectors of the city names the cells
           matched (a question's fuzzy city words, ``_nn``).
         Reads PostgreSQL and the models."""
@@ -432,40 +432,13 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
                 keys = sorted({matches.get(cell) or cell for cell in cells})
                 columns[column] = {"type": world_type, "cells": matches,
                                    "names": self._canonical_names(world_type, keys)}
-        evidence, nongeo, reached = [], {}, {}
-        typed = {record.get("column") for record in typing}
-        router = None
-        if kb_model_route_enabled():
-            try:
-                router = self._router()
-            except Exception as exc:                                     # noqa: BLE001
-                print(f"[knowledge_query] schema router unavailable: {type(exc).__name__}", flush=True)
+        nongeo, reached = {}, {}
         for ci, col in enumerate(table["columns"]):
             if is_synthetic_currency_column(col):
                 continue
             cells = [str(rw[ci]) for rw in table["rows"] if ci < len(rw) and rw[ci] not in (None, "")]
-            if len(cells) < 3:                                    # entity names are long but model+grounding gate
+            if len(cells) < 3 or names_no_entity(cells):          # entity names are long but model+grounding gate
                 continue
-            if router is not None and col not in typed:
-                try:
-                    found = router.route(cells, header=col)
-                except Exception as exc:                          # noqa: BLE001
-                    print(f"[knowledge_query] column evidence unavailable: {type(exc).__name__}", flush=True)
-                    found = None
-                if found:
-                    evidence.append({
-                        "table": table["name"], "column": col,
-                        "family": found["family"], "frac": found["frac"],
-                        "geo": found["geo"], "grounded_to": None,
-                        "class": found.get("class"),
-                        "class_name": found.get("class_name"),
-                        "class_threshold": found.get("class_threshold"),
-                        "class_score_model": found.get("class_score_model"),
-                        "class_bias": found.get("class_bias"),
-                        "ontology_version": found.get("ontology_version"),
-                        "model_artifact_sha256": found.get("model_artifact_sha256"),
-                        "evidence": found.get("evidence", []),
-                    })
             label, type_qid = self._dominant_nongeo_type(cells)   # FINE type = dominant knowledgebase.words type
             if not (label and type_qid):
                 continue
@@ -483,7 +456,7 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         labels.update(reached_cities)
         return {"routes": [[name, column, world] for (name, column), world in sorted(routes.items())],
                 "membership": [[name, column, world] for (name, column), world in sorted(membership.items())],
-                "typing": typing, "evidence": evidence, "columns": columns, "nongeo": nongeo,
+                "typing": typing, "columns": columns, "nongeo": nongeo,
                 "reached": reached, "labels": read_labels(sorted(labels)), "cities": cities}
 
     def _route_table(self, table):
@@ -691,7 +664,6 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         places = None
         for t in norm:
             preparation = self._prepared(t)
-            self._emit_typing(preparation.record.get("evidence", []))
             for col in t["columns"]:
                 found = preparation.nongeo.get(col)                       # FINE type = dominant knowledgebase.words type
                 if not found:                                             # the cells resolve to (prepared)

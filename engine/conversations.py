@@ -161,6 +161,11 @@ def resolve_conversation(user_id, conversation_id, initial_prompt, sheets):
                             'WHERE conversation_id = %s AND user_id = %s', (conversation_id, user_id))
                 if not cur.fetchone():
                     raise NotOwned("conversation not found")     # not yours OR absent — same answer
+                # A client uploads a sheet when it opens, before anyone asks: the first question names the chat.
+                if initial_prompt:
+                    cur.execute('UPDATE "chat"."conversation" SET initial_prompt = %s '
+                                "WHERE conversation_id = %s AND COALESCE(initial_prompt, '') = ''",
+                                (initial_prompt[:2000], conversation_id))
                 # Keep the stored source tables in step with the schema this run rebuilds, so a later
                 # re-open (get_conversation) — and a GCS archive — never diverges from the live data.
                 if sheets:
@@ -751,7 +756,8 @@ def conversation_page(user_id, limit=50, before=None):
     conn = _pg()
     try:
         cur = conn.cursor()
-        where = 'WHERE uc.user_id = %s '
+        # A sheet uploaded when a client opened, with no question yet, is no chat to go back to.
+        where = "WHERE uc.user_id = %s AND COALESCE(c.initial_prompt, '') <> '' "
         params = [user_id]
         if before:
             where += 'AND (c.created_at, c.conversation_id) < (%s, %s) '

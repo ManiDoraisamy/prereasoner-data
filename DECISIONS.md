@@ -4982,3 +4982,51 @@ Measured and left out: merging the LoRA into the weights (2 to 7% faster); dynam
 layers (about 3 times faster, but 1 - cosine 0.7 on average against float32, so every calibrated threshold would move);
 and reading a question's own texts (itself, its spans, its words) in one pass before the paths that encode them (31 to
 15 passes over 12 questions, but 6.5 against 6.6 s: the pass took the texts no path then read).
+
+## A sheet is uploaded and prepared when the add-on opens (2026-10-30)
+
+The owner asked a real question on a real six-tab subscriptions workbook (three exports of about 11,500 rows and 24
+columns, 8.9 MB of CSV) in the Sheets sidebar: "how much sales for long term customers (above 6 months)". It took about
+3:50 and answered that no rows matched. Every number the release gates had reported came from demo datasets; none of
+them saw this.
+
+From the production logs of that request: the Apps Script read took 1:52 and the question waited for it; the 8.9 MB upload took
+about 45 s through `google.script.run` and Apps Script, of which the engine took 1.3 s; the engine then took 101.6 s,
+62 of them waiting for the preparation the upload had just started (`prepare_wait_ms`), 32 in the decomposition probe
+(readers 20.5 s) and the rest in compose and execution; Gemini took 10.8 s.
+
+**The wrong answer** came from two faults, reproduced on a synthetic copy of the workbook. The schema text cuts a listed
+value to 20 characters, and "Greater than 6 months" has 21: a reader pointing at the listing read 'Greater than 6
+month', which matched no row. `decode.literal` now maps a listing's cut form back to the stored value. Then the re-scorer
+ranked duration = 'above 6 months', the question's own words, over the stored value the readers had rated more probable,
+and a SUM over no rows looks like one row to the re-scorer's shape. `sql_rank.outread_by_rows` now keeps a reading that
+matches no row from beating a more probable reading that finds rows; the readers' own most probable reading keeps an
+empty answer ("orders from Mars"). On the stored calibration pool that rule changes 10 of 1,035 picks, +1 / -2, net -1
+out of fold (734 to 733).
+
+**The time** moved in four places, none of which changes an answer:
+
+- `prepare_sheets_in_background` now starts when the client opens, not when the first question is sent: the sidebar and
+  the Excel task pane upload as soon as the sheet is read (and on New chat), and keep the conversation for that sheet,
+  so opening it again sends nothing unless it changed. A question that arrives first waits for that upload rather than
+  sending another. The conversation has no question yet, so `conversation_page` leaves it out of the list until the first
+  question names it (`resolve_conversation`); of 1,033 stored conversations 8 had no prompt, and none of those an answer.
+  This changes what the add-on does with a user's cells, so the privacy page and both listings say it: read and sent on
+  opening, where they said on submitting a question.
+- The sidebar uploads straight to `/api/conversation/sync` with its Firebase token, as the Excel task pane and the web
+  app do. Its origin is a new `*-script.googleusercontent.com` host per script version, so `allowed_origin` takes one `*`
+  within a host label; a request still carries a bearer token and no origin holds an ambient credential. A sidebar whose
+  sign-in failed has no token, and the script uploads for it.
+- Preparation ran the router on every column twice over: once to propose routes, skipping columns of numbers, and once
+  more for "evidence" that only the typing trace read, 35 encoder passes of a 24-column table that fired on nothing,
+  56% of its 20.6 s (local, one table). The second pass is gone, and dates and TRUE/FALSE join numbers
+  (`knowledge_typing.names_no_entity`) in being asked of neither the router nor the knowledgebase. `PREPARATION_FORMAT` is 2.
+- A sheet that took 15 s or more to read, whose chat already stores it, no longer waits for the read that opened the
+  sidebar: the question runs on the stored copy, whose age the header shows.
+
+**The read** is the script's, so it waits for a published version: `getSidebarContext` returns the token and the tabs to
+read at once, the sidebar reads four tabs at a time, each in its own execution (`getWorkbookTab`), and a date's zone offset
+is asked once for a day whose clock does not change. The hosted sidebar keeps reading through `getWorkbookGrids` for
+the script published before it, a real external contract: consumer, Marketplace installs of Apps Script version 31;
+removal condition, Marketplace serves the new version; remove `getWorkbookGrids`' branch in `sidebar.js` then, by
+2026-11-30. The read's new time is not measured until that version runs on a real workbook.

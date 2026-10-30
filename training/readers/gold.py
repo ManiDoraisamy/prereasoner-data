@@ -10,7 +10,7 @@ not. "gold-ast-differs" means the AST as imported does not. "build" means the bu
 into a query. "not-readable:<why>" and "import" mean there are no readings. "database" means the capped loader
 could not read the question's database (a SynSQL value SQLite cannot hold), so the question was not read.
 
-Sets: calibration and train split Spider's train_spider, train_others and dev questions by the split manifest's
+Sets: calibration and train split Spider's train_spider and train_others questions by the split manifest's
 calibration_dbs (training.readers.splits); bird reads BIRD's training set (train.json, train_tables.json,
 train_databases/), whose databases are disjoint from Spider's, so every BIRD question is training data; synsql reads
 the SynSQL-2.5M questions training.readers.synsql chose, over databases disjoint from both (training data too). Their
@@ -31,6 +31,7 @@ from engine.sql_ast import render_query
 from regress.sql_import import import_sql
 from spider.probe.evalutil import exec_sql_timed
 from spider.probe.spider_eval import compare
+from training.readers.provenance import SPIDER_TRAIN_SETS
 from training.readers.sources import Sources, add_arguments, capped_database
 
 SECONDS = 8.0
@@ -103,7 +104,7 @@ def question_set(which, split_dir, args):
         sources.add_synsql(args.synsql, args.synsql_databases)
         return [("synsql", index, q) for index, q in enumerate(sources.questions["synsql"])], sources.database
     calibration = set(json.load(open(os.path.join(split_dir, "manifest.json")))["calibration_dbs"])
-    questions = [(name, index, q) for name in ("train_spider", "train_others", "dev")
+    questions = [(name, index, q) for name in SPIDER_TRAIN_SETS
                  for index, q in enumerate(sources.questions[name])
                  if (q["db_id"] in calibration) == (which == "calibration")]
     return questions, sources.database

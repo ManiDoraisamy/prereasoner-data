@@ -28,7 +28,7 @@ from engine.config import DATA_DIR
 from engine.readers import decode as decoding
 from engine.readers.read_as import read_as
 from engine.readers.readings import build, value_kind
-from engine.readers.text import TOP_TABLES, Schema, fit, table_text
+from engine.readers.text import TOP_TABLES, Schema, fit, readable, table_text
 from engine.sql_ast import render_query
 from engine.sql_candidate import ScoredQuery
 
@@ -146,10 +146,10 @@ class ReadingSearch:
         return pool
 
     def _pool(self, question, graph):
+        question = readable(self.tokenizer, question, BUDGET)
         schema = Schema(graph)
         kept = self.prune(schema, self.schema_items(question, schema))
-        named = {f"{table}.{column}": values for (table, column), values in schema.anchors(question).items()
-                 if len(values) > 1}
+        named = named_values(schema, question)
         from engine.readers import models
 
         pooled, seen, built, active = [], set(), {}, 0
@@ -158,7 +158,7 @@ class ReadingSearch:
             row = self.row(question, schema, *kept, anchored=anchored)
             output = models.read_outputs(model, self.tokenizer, row)
             for rank, (score, readings) in enumerate(decoding.candidates(output, row, graph, CANDIDATES)):
-                for reading in (readings, *either(readings, named), *referenced(readings, graph)):
+                for reading in reading_variants(readings, named, graph):
                     try:
                         query = build(reading, graph)
                         sql = render_query(query)
@@ -279,6 +279,19 @@ def _partner(graph, listed, table):
     if len(partners) != 1:
         return None
     return graph.column_map[(table, partners.pop())].ref
+
+
+def named_values(schema, question):
+    """The columns the question names more than one value of, which a reading can read as either of them."""
+    return {f"{table}.{column}": values for (table, column), values in schema.anchors(question).items()
+            if len(values) > 1}
+
+
+def reading_variants(readings, named, graph):
+    """A decoded reading and its expansions: the readings the pool builds, in training's candidates as in serving."""
+    yield readings
+    yield from either(readings, named)
+    yield from referenced(readings, graph)
 
 
 _SEARCH = None

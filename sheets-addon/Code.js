@@ -64,17 +64,21 @@ function listPreviousConversations() {
 }
 
 // Called once when the sidebar opens: the Google token (the sidebar signs in to Firebase with it for
-// the live trace), this spreadsheet's identity, and its cells. `uploadOnce` tells the hosted sidebar that
+// the live trace), this spreadsheet's identity, and the tabs to read. `uploadOnce` tells the hosted sidebar that
 // this script uploads a sheet once and asks by its hash (the sidebar deploys before a script version is
-// published, and keeps the older calls for an older script).
+// published, and keeps the older calls for an older script). The cells come tab by tab (getWorkbookTab): read here,
+// in one execution, a six-tab workbook held up the token and the first question for 1:50 (2026-10-30).
 function getSidebarContext() {
   var spreadsheet = activeSpreadsheet_();
+  var plan = workbookPlan_(spreadsheet);
   return {
     token: ScriptApp.getOAuthToken(),
     spreadsheetId: spreadsheet.getId(),
     name: spreadsheet.getName(),
     activeSheet: spreadsheet.getActiveSheet().getName(),
-    workbook: readGrids_(spreadsheet),
+    tabs: plan.tabs,
+    scope: plan.scope,
+    availableTabs: plan.availableTabs,
     uploadOnce: true
   };
 }
@@ -115,9 +119,21 @@ function getPrereasonerSuggestions(schema) {
   return fetchJson_(PREREASONER_CHAT_URL + '/suggestions', 'post', schema, 'Suggested questions are unavailable.');
 }
 
-// Called before each question, so a changed sheet is noticed.
-function getWorkbookGrids(request) {
-  return readGrids_(activeSpreadsheet_(), request && request.scope);
+// Called before each question, so a changed sheet is noticed: which tabs to read, then each one (the sidebar
+// reads several at once, each in its own execution).
+function getWorkbookPlan(request) {
+  return workbookPlan_(activeSpreadsheet_(), request && request.scope);
+}
+
+function getWorkbookTab(request) {
+  var spreadsheet = activeSpreadsheet_();
+  var name = String((request && request.name) || '');
+  var sheet = spreadsheet.getSheets().filter(function(candidate) {
+    return candidate.getName() === name && !candidate.isSheetHidden();
+  })[0];
+  if (!sheet) throw new Error('This spreadsheet changed while it was being read. Try again.');
+  checkTab_(sheet);
+  return readTab_(sheet, spreadsheet.getSpreadsheetTimeZone() || 'UTC');
 }
 
 // The sheet's conversation and saved sidebar. The cells are not sent: the sidebar compares the sheet's
@@ -228,12 +244,10 @@ function requestTables_(request) {
   });
 }
 
-// Visible, non-empty tabs (the active one first) as cell grids: values, number formats, failed
-// formulas and merged ranges.
-function readGrids_(spreadsheet, requestedScope) {
+// The tabs to read: visible and non-empty, the active one first.
+function workbookPlan_(spreadsheet, requestedScope) {
   var scope = requestedScope || 'auto';
   if (['auto', 'active', 'all'].indexOf(scope) < 0) throw new Error('Choose the active sheet or all tabs.');
-  var timeZone = spreadsheet.getSpreadsheetTimeZone() || 'UTC';
   var active = spreadsheet.getActiveSheet();
   var sheets = spreadsheet.getSheets().filter(function(sheet) {
     return !sheet.isSheetHidden() && sheet.getLastRow() > 1 && sheet.getLastColumn() > 0;
@@ -255,33 +269,36 @@ function readGrids_(spreadsheet, requestedScope) {
   if (scope === 'all' && !allFit) scope = 'active';
   var fitting = scope === 'active' ? sheets.filter(function(sheet) { return sheet.getSheetId() === active.getSheetId(); }) : sheets;
   if (!fitting.length) throw new Error('The current sheet has no data rows. Open a populated sheet and try again.');
-  fitting.forEach(function(sheet) {
-    var rows = sheet.getLastRow(), columns = sheet.getLastColumn();
-    if (rows - 1 > GRID_LIMITS.rows) throw new Error('Sheet "' + sheet.getName() + '": each worksheet may contain at most ' + grouped_(GRID_LIMITS.rows) + ' data rows');
-    if (columns > GRID_LIMITS.columns) throw new Error('Sheet "' + sheet.getName() + '": each worksheet may contain at most 256 columns');
-    if (rows * columns > GRID_LIMITS.cells) throw new Error('The active sheet exceeds the current analysis capacity of ' + grouped_(GRID_LIMITS.cells) + ' cells.');
+  fitting.forEach(checkTab_);
+  return {tabs: fitting.map(function(sheet) { return sheet.getName(); }), scope: scope, availableTabs: available};
+}
+
+function checkTab_(sheet) {
+  var rows = sheet.getLastRow(), columns = sheet.getLastColumn();
+  if (rows - 1 > GRID_LIMITS.rows) throw new Error('Sheet "' + sheet.getName() + '": each worksheet may contain at most ' + grouped_(GRID_LIMITS.rows) + ' data rows');
+  if (columns > GRID_LIMITS.columns) throw new Error('Sheet "' + sheet.getName() + '": each worksheet may contain at most 256 columns');
+  if (rows * columns > GRID_LIMITS.cells) throw new Error('The active sheet exceeds the current analysis capacity of ' + grouped_(GRID_LIMITS.cells) + ' cells.');
+}
+
+// One tab as a cell grid: values, number formats, failed formulas and merged ranges.
+function readTab_(sheet, timeZone) {
+  var range = sheet.getRange(1, 1, sheet.getLastRow(), sheet.getLastColumn());
+  var values = range.getValues();
+  var offsets = {};
+  var rows = values.map(function(row) {
+    return row.map(function(value) { return gridValue_(value, timeZone, offsets); });
   });
-  var grids = fitting.map(function(sheet) {
-    var rowCount = sheet.getLastRow();
-    var columnCount = sheet.getLastColumn();
-    var range = sheet.getRange(1, 1, rowCount, columnCount);
-    var values = range.getValues();
-    var rows = values.map(function(row) {
-      return row.map(function(value) { return gridValue_(value, timeZone); });
-    });
-    return {
-      name: sheet.getName(),
-      rows: rows,
-      columnFormats: columnFormats_(range.getNumberFormats(), rows),
-      errorCells: errorCells_(values),
-      merges: range.getMergedRanges().map(function(merged) {
-        return {s: {r: merged.getRow() - 1, c: merged.getColumn() - 1},
-                e: {r: merged.getLastRow() - 1, c: merged.getLastColumn() - 1}};
-      }),
-      date1904: false
-    };
-  });
-  return {grids: grids, scope: scope, availableTabs: available};
+  return {
+    name: sheet.getName(),
+    rows: rows,
+    columnFormats: columnFormats_(range.getNumberFormats(), rows),
+    errorCells: errorCells_(values),
+    merges: range.getMergedRanges().map(function(merged) {
+      return {s: {r: merged.getRow() - 1, c: merged.getColumn() - 1},
+              e: {r: merged.getLastRow() - 1, c: merged.getLastColumn() - 1}};
+    }),
+    date1904: false
+  };
 }
 
 // Each column's number format once, with the rows whose format differs ({f, x: [[row, format]]}), instead of a
@@ -328,15 +345,30 @@ function grouped_(count) {
 
 // google.script.run cannot return Date objects. A date, time or duration cell becomes the serial day
 // count Sheets stores for it (days since 1899-12-30 in the spreadsheet's time zone); its number format
-// travels with it, so the importer reads it as the upload of the same sheet would.
-function gridValue_(value, timeZone) {
+// travels with it, so the importer reads it as the upload of the same sheet would. A zone's offset is asked of Apps Script once
+// for a day it does not change on (`offsets`, by day): a subscriptions export holds six date columns of 11,500 rows.
+function gridValue_(value, timeZone, offsets) {
   if (Object.prototype.toString.call(value) === '[object Date]') {
-    var parts = Utilities.formatDate(value, timeZone, 'yyyy,MM,dd,HH,mm,ss').split(',').map(Number);
-    var wallClock = Date.UTC(parts[0], parts[1] - 1, parts[2], parts[3], parts[4], parts[5]);
-    return (wallClock - Date.UTC(1899, 11, 30)) / DAY_MS;
+    var seconds = Math.floor(value.getTime() / 1000) * 1000;
+    return (seconds + zoneOffset_(seconds, timeZone, offsets) - Date.UTC(1899, 11, 30)) / DAY_MS;
   }
   if (typeof value === 'number' && !isFinite(value)) return '';
   return value;
+}
+
+// The zone's offset from UTC at this moment, in milliseconds. A day whose clock changes is asked moment by moment.
+function zoneOffset_(moment, timeZone, offsets) {
+  var day = Math.floor(moment / DAY_MS);
+  if (!(day in offsets)) {
+    var start = offsetAt_(day * DAY_MS, timeZone), end = offsetAt_((day + 1) * DAY_MS, timeZone);
+    offsets[day] = start === end ? start : null;
+  }
+  return offsets[day] === null ? offsetAt_(moment, timeZone) : offsets[day];
+}
+
+function offsetAt_(moment, timeZone) {
+  var parts = Utilities.formatDate(new Date(moment), timeZone, 'yyyy,MM,dd,HH,mm,ss').split(',').map(Number);
+  return Date.UTC(parts[0], parts[1] - 1, parts[2], parts[3], parts[4], parts[5]) - moment;
 }
 
 // The engine's views for the sidebar's reasoning steps: what each step did and where it came from,

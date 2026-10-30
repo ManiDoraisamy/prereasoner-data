@@ -33,6 +33,7 @@ from engine.readers import numerals
 from engine.readers.models import ROLES
 from engine.readers.search import BUDGET, MAX_COLUMNS
 from engine.readers.text import TOP_TABLES, Schema, fit, table_text
+from training.readers.provenance import assert_no_evaluation_sources
 from training.readers.sources import TOKENIZER, Sources, add_arguments
 
 
@@ -245,6 +246,7 @@ def main():
         for path, split in sources:
             for line in open(path, encoding="utf-8"):
                 record = json.loads(line)
+                assert_no_evaluation_sources([record], "gold readings")
                 if "readings" not in record:
                     continue
                 record["split"] = split

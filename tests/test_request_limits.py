@@ -203,6 +203,15 @@ def test_cors_requires_exact_configured_origin():
     assert allowed_origin("https://app.example", "https://app.example") == "https://app.example"
     assert allowed_origin("https://evil.example", "https://app.example") is None
     assert allowed_origin("https://app.example.evil", "https://app.example") is None
+    sidebar = "https://chat.example,https://*-script.googleusercontent.com"
+    assert allowed_origin("https://n-abc-0lu-script.googleusercontent.com", sidebar)
+    assert allowed_origin("https://chat.example", sidebar) == "https://chat.example"
+    # One host label only: another domain's label, a deeper host and an empty label are not the sidebar's.
+    assert allowed_origin("https://evil.example/-script.googleusercontent.com", sidebar) is None
+    assert allowed_origin("https://a.b-script.googleusercontent.com", sidebar) is None
+    assert allowed_origin("https://-script.googleusercontent.com", sidebar) is None
+    assert allowed_origin("https://n-abc-script.googleusercontent.com.evil", sidebar) is None
+    assert allowed_origin("http://n-abc-script.googleusercontent.com", sidebar) is None
 
 
 def test_auth_test_sub_is_ignored_outside_explicit_nonproduction():
