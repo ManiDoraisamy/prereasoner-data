@@ -78,6 +78,15 @@ def test_regression_the_named_filter_is_not_dropped():
     assert r["answer"]["rows"] != [[330.0]], "the 'in Chennai' filter was dropped -> summed all rows"
 
 
+def test_headers_that_differ_only_by_case_or_are_blank_still_load():
+    """SQLite's column names ignore case: a real export holds "business" and "Business", and blank headers. Loading it
+    raised, which the composer read as this path not applying, for every question on that sheet (2026-10-30)."""
+    messy = {"name": "export", "columns": ["city", "Amount", "amount", "", ""],
+             "rows": [["Paris", 100, 1, "x", "y"], ["Lyon", 80, 2, "x", "y"], ["Chennai", 90, 3, "x", "y"]]}
+    result = _run("total Amount in Chennai", world=None, tables=(messy,))
+    assert result["result"]["rows"], result
+
+
 def test_country_still_uses_the_world_path_unchanged():
     # 'France' is NOT a value in the city column, so the plain filter must NOT fire; the world path resolves the
     # cities to their country and filters there. Plan is the world stack, France total = Paris 100 + Lyon 80 = 180.
@@ -912,7 +921,7 @@ TESTS = [
     test_named_input_value_filters_directly_without_world_model,
     test_named_input_value_filters_even_when_world_available,
     test_regression_the_named_filter_is_not_dropped,
-    test_country_still_uses_the_world_path_unchanged,
+    test_headers_that_differ_only_by_case_or_are_blank_still_load, test_country_still_uses_the_world_path_unchanged,
     test_no_named_value_does_not_invent_a_filter,
     test_structural_query_word_never_self_matches_a_cell,
     test_deterministic_across_repeated_runs,

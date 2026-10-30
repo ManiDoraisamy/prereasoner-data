@@ -26,6 +26,7 @@ import numpy as np
 from engine.primitives import (q, filter_view, group_agg_view, yoy_view, topn_view, share_view,
                                divide_view, running_view, join_view, world_join_view)
 from engine.closed_class import EXCLUSION_CUES, counted_rows, measured_rows
+from engine.column_names import canonical_columns
 from engine.joins import discover_fks, join_plan
 from engine.numeric import GROUPED_DIGITS, parse_decimal, register_sqlite_decimal, sqlite_numeric, wire_decimal
 from engine.answer_presentation import unreadable_measure_reason
@@ -622,7 +623,12 @@ class ComposeEngine:
     def run(self, tables, question, world=None):
         """Build + execute the view stack. A BASE relation is formed first when there is more than one uploaded table
         (FK join) and/or a world-meaning filter (world join + filter); the analytical primitives then stack on that
-        flattened base. Returns the final answer + the full trace (every view: name, op, SQL, rows)."""
+        flattened base. Returns the final answer + the full trace (every view: name, op, SQL, rows).
+
+        Headers are the canonical ones every other path reads: SQLite's column names ignore case, and a sheet holding both
+        "business (metadata)" and "Business (metadata)" failed to load here, so every question on it lost this path without
+        a word (2026-10-30)."""
+        tables = [dict(t, columns=canonical_columns(t["columns"])) for t in tables]
         low = " " + question.lower() + " "
         con = sqlite3.connect(":memory:")
         register_sqlite_decimal(con)
