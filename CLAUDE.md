@@ -91,6 +91,7 @@ Extend these owners. Do not build parallel replacements.
 | Wikidata type QID -> schema.org class, ROUTER side | `engine/data/families.json` (canonical QIDs; 17 of its 27 resolve to zero rows in the snapshot) |
 | Promotion of a Schema.org candidate into the runtime bundle | `training/schema_org/promote.py` — the ONE writer of `engine/data/schema_{property_head.pt,property_model.json,class_signatures.json}` |
 | Serving-faithful Spider evaluation | `spider/probe/full_eval.py` |
+| Messy-question benchmark on the served path (real-shaped workbooks, gold computed from their rows, right / asked / wrong, frozen split in totals only) | `regress/run_messy.py`, `regress/messy_cases.py`, `regress/messy_workbooks.py` |
 | Hermetic own-data planner regression suites | `tests/test_readers.py` (the readers' deterministic half) and `tests/test_sql_ast.py` (AST, grounding, selection plumbing) |
 | Workbook and reference-data browser lifecycle | `web/public/lib/workbook.js` |
 | Sheets-as-reasoning derivation contract (step grammar, naming, rendering rules) | `docs/SHEETS_AS_REASONING.md` — every view emitter (`engine/compose.py`, the conversion trail in `engine/knowledge_tables.py`) and `web/public/lib/workbook.js` follow it; fix the path, never fork the grammar |

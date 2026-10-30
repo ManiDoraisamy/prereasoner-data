@@ -74,3 +74,4 @@ Thumbs.db
 
 # Opted-in evaluation metadata stays local; only validators and public fixtures are committed.
 regress/private/
+regress/results/
