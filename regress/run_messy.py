@@ -40,10 +40,10 @@ def run(selected, serve_one):
 
 def pool_records(selected):
     """One record per case: the best rank at which the readers' pool holds a right answer, None when it holds none."""
+    from engine.encoder_overlay import EncoderQuery
     from engine.sql_schema import SchemaGraph
-    from engine.tables import TableQuery
 
-    planner = TableQuery()
+    planner = EncoderQuery()
     prepared = {}
     records = []
     for case in selected:
@@ -57,10 +57,10 @@ def pool_records(selected):
         best = None
         for rank, candidate in enumerate(pool):
             try:
-                result = planner.execute(tables, schema, candidate.sql, query=candidate.query)
+                columns, rows = planner.execute(tables, schema, candidate.sql, query=candidate.query)
             except Exception:                      # noqa: BLE001 - a candidate that fails answers nothing
                 continue
-            if grade(case.expected, {"result": result})[0] == "right":
+            if grade(case.expected, {"result": {"columns": columns, "rows": rows}})[0] == "right":
                 best = rank
                 break
         records.append({"workbook": case.workbook, "question": case.question, "family": case.family, "split": case.split,
