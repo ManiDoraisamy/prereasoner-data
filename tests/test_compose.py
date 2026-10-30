@@ -84,7 +84,7 @@ def test_headers_that_differ_only_by_case_or_are_blank_still_load():
     messy = {"name": "export", "columns": ["city", "Amount", "amount", "", ""],
              "rows": [["Paris", 100, 1, "x", "y"], ["Lyon", 80, 2, "x", "y"], ["Chennai", 90, 3, "x", "y"]]}
     result = _run("total Amount in Chennai", world=None, tables=(messy,))
-    assert result["result"]["rows"], result
+    assert result["answer"]["rows"] == [[90]], result["answer"]
 
 
 def test_country_still_uses_the_world_path_unchanged():
