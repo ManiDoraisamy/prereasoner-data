@@ -5082,3 +5082,15 @@ Forklift with Checklist open. Two causes, both found only on the real sheets.
 - The first copy was the tab open at the upload, and a sheet is uploaded once. The add-on and the Excel pane now send the open
   tab's name with each question (`active_sheet`, optional; the web app has no such tab), and the engine puts it first
   (`tables.on_screen_first`) at the serve call only, so the stored sheet and its hash do not change with the tab.
+
+## The process keeps what a sheet's cells derive (2026-10-31)
+
+A question on the owner's 500,000-cell workbook spent 5.7 to 8.7 s on Cloud Run deriving the sheet's foreign keys, planner schema,
+schema graph and readers' schema again, outside any model. `relations.memoized` now also keeps the latest of them in the process,
+under the content itself, so a request can only reuse what its own cells derive. The bound is 12,000,000 cells across the kept
+derivations, which each count their workbook's cells: about 4,000,000 cells of workbooks, about 1 GB at the 240 bytes a cell
+measured, on a 16 GB instance that has peaked at 89%. What goes unused for 30 minutes is let go. A kept result is shared, so no
+caller may change one, which was already true within a request.
+
+On the 38 messy dev questions of the subscriptions and keywords workbooks with this off and then on, no answer differs. The median
+on subscriptions falls from 22.1 to 16.1 s (480 to 362 s in all) and on keywords from 6.6 to 5.9 s (125 to 95 s in all).

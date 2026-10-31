@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import contextlib
 import contextvars
+import threading
+import time
 from math import isfinite
 from engine.numeric import parse_decimal, stored_as_numbers
 
@@ -20,8 +22,18 @@ from engine.numeric import parse_decimal, stored_as_numbers
 # delegate and its fallbacks): a 6-tab, 34,500-row subscriptions workbook spent 52 s of a request on FK
 # discovery, and built its planner schema and schema graph four times each (2026-10-04). Each is a pure
 # function of the tables' content, so within one request (`request_memo`) a repeat reuses the first result.
+#
+# A person then asks the same sheet one question after another, and each request derived it again: 5.7 to 8.7 s of
+# every question on a 500,000-cell workbook on Cloud Run (2026-10-31). The process keeps the latest derivations too
+# (`_KEPT`): the key is the content, so a request only ever reuses what its own cells derive. About 240 bytes a cell
+# were measured over a workbook's three derivations, and each derivation counts the workbook's cells: 12,000,000
+# keeps about 4,000,000 cells of workbooks, about 1 GB of a 16 GB instance that peaks at 89%.
+KEPT_CELLS = 12_000_000
+KEPT_SECONDS = 1800
 _MEMO = contextvars.ContextVar("request_memo", default=None)
 _MISSING = object()
+_KEPT = {}                                                     # slot -> (result, cells, last used), oldest use first
+_KEPT_LOCK = threading.Lock()
 
 
 @contextlib.contextmanager
@@ -34,9 +46,41 @@ def request_memo():
         _MEMO.reset(token)
 
 
-def memoized(kind, key, compute):
-    """``compute()``, or within `request_memo` the result an equal ``key()`` of the same kind already
-    computed. A key that cannot be hashed (an unhashable cell) computes afresh."""
+def _kept(slot):
+    """What the process keeps under ``slot``, marked as just used; none past ``KEPT_SECONDS`` unused."""
+    now = time.monotonic()
+    with _KEPT_LOCK:
+        for old, (_, _, used) in list(_KEPT.items()):
+            if now - used <= KEPT_SECONDS:
+                break
+            del _KEPT[old]
+        entry = _KEPT.pop(slot, None)
+        if entry is None:
+            return _MISSING
+        _KEPT[slot] = (entry[0], entry[1], now)
+    return entry[0]
+
+
+def _keep(slot, result, cells):
+    """Keep ``result``, dropping the least recently used past ``KEPT_CELLS`` in all."""
+    if cells > KEPT_CELLS:
+        return
+    with _KEPT_LOCK:
+        _KEPT.pop(slot, None)
+        _KEPT[slot] = (result, cells, time.monotonic())
+        total = sum(entry[1] for entry in _KEPT.values())
+        for old, (_, size, _) in list(_KEPT.items()):
+            if total <= KEPT_CELLS:
+                break
+            del _KEPT[old]
+            total -= size
+
+
+def memoized(kind, key, compute, cells):
+    """``compute()``, or within `request_memo` the result an equal ``key()`` of the same kind already computed,
+    in this request or one before it (``cells``: how many cells of tables the result holds, for the process's
+    bound). A key that cannot be hashed (an unhashable cell) computes afresh. A result is shared: callers do not
+    change it."""
     memo = _MEMO.get()
     if memo is None:
         return compute()
@@ -46,8 +90,17 @@ def memoized(kind, key, compute):
     except TypeError:
         return compute()
     if found is _MISSING:
-        found = memo[slot] = compute()
+        found = _kept(slot)
+        if found is _MISSING:
+            found = compute()
+            _keep(slot, found, cells)
+        memo[slot] = found
     return found
+
+
+def table_cells(tables):
+    """How many cells ``tables`` hold."""
+    return sum(len(table["rows"]) * len(table["columns"]) for table in tables)
 
 
 def content_key(tables):
@@ -169,7 +222,8 @@ def layout(columns):
 
 def discover_fks(tables, min_incl=0.9):
     """The tables' many-to-one foreign keys (the module's inclusion-dependency rule)."""
-    found = memoized("fks", lambda: (min_incl, content_key(tables)), lambda: _discover_fks(tables, min_incl))
+    found = memoized("fks", lambda: (min_incl, content_key(tables)), lambda: _discover_fks(tables, min_incl),
+                     table_cells(tables))
     return [dict(fk) for fk in found]
 
 

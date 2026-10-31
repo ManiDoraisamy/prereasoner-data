@@ -28,6 +28,7 @@ from engine.config import DATA_DIR
 from engine.readers import decode as decoding
 from engine.readers.read_as import read_as
 from engine.readers.readings import as_built, build, value_kind
+from engine.relations import memoized
 from engine.readers.text import TOP_TABLES, Schema, fit, readable, table_text
 from engine.sql_ast import render_query
 from engine.sql_candidate import ScoredQuery
@@ -147,7 +148,8 @@ class ReadingSearch:
 
     def _pool(self, question, graph):
         question = readable(self.tokenizer, question, BUDGET)
-        schema = Schema(graph)
+        schema = memoized("readers_schema", lambda: graph, lambda: Schema(graph),
+                          sum(len(column.values) for column in graph.columns))
         kept = self.prune(schema, self.schema_items(question, schema))
         named = named_values(schema, question)
         from engine.readers import models

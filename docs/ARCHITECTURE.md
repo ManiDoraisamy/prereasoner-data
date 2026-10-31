@@ -270,9 +270,10 @@ replay. The legacy Wikidata schema migration is still pending.
 4. `engine.master` validates or selects private references. `engine.relations.discover_fks()` is the canonical
    relationship detector used here and by planning (`relate` merges declared keys with it: a declaration blocks a
    discovered parent for its column only where its name names its own parent at least as well), and
-   `engine.relations.join_keys` is how it and join grounding (`engine/sql_grounding.py`) read a column's keys. Within
-   one request, discovery, the planner's schema and the schema graph are each derived once
-   (`engine.relations.memoized`).
+   `engine.relations.join_keys` is how it and join grounding (`engine/sql_grounding.py`) read a column's keys.
+   Discovery, the planner's schema, the schema graph and the readers' schema are each derived once for equal cells
+   (`engine.relations.memoized`), and each process keeps the latest across requests, bounded by cells and by time
+   since use.
 5. `engine.server` resolves the conversation id and verifies ownership before selecting its working schema.
    Uploaded data changes advance a monotonic dataset version and mark prior analyses stale. `engine.pg` hashes
    each materialized working table and leaves unchanged uploaded, private-reference, and enrichment tables in place.

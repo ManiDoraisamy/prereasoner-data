@@ -149,7 +149,8 @@ class SchemaGraph:
                            _planner_type(column), tuple(column.get("values") or ()))
                           for index, column in enumerate(schema)), repr(fks))
 
-        return memoized("schema_graph", key, lambda: cls._from_planner(schema, fks))
+        return memoized("schema_graph", key, lambda: cls._from_planner(schema, fks),
+                        sum(len(column.get("values") or ()) for column in schema))
 
     @classmethod
     def _from_planner(cls, schema: Sequence[dict], fks: Sequence[dict | tuple]) -> "SchemaGraph":

@@ -251,7 +251,7 @@ def test_rows_whose_entity_matched_nothing_are_disclosed():
 def test_a_request_derives_its_tables_once():
     """A 6-tab, 34,500-row workbook ran foreign-key discovery, the planner's schema and the schema graph up to
     four times a request (2026-10-04). Within `relations.request_memo` an equal derivation is reused and each
-    caller gets its own records; a key that cannot be hashed computes afresh; a new request, or none, recomputes."""
+    caller gets its own records; a key that cannot be hashed computes afresh; outside a request nothing is kept."""
     from engine.relations import memoized, request_memo
     from engine.sql_schema import SchemaGraph
     from engine.tables import TableQuery
@@ -261,20 +261,17 @@ def test_a_request_derives_its_tables_once():
         calls.append(1)
         return ["result"]
 
-    memoized("kind", lambda: ("k",), compute)
-    memoized("kind", lambda: ("k",), compute)
+    memoized("request kind", lambda: ("k",), compute, 1)
+    memoized("request kind", lambda: ("k",), compute, 1)
     assert len(calls) == 2, "outside a request nothing is kept"
     with request_memo():
-        first = memoized("kind", lambda: ("k",), compute)
-        assert memoized("kind", lambda: ("k",), compute) is first and len(calls) == 3
-        memoized("other", lambda: ("k",), compute)
+        first = memoized("request kind", lambda: ("k",), compute, 1)
+        assert memoized("request kind", lambda: ("k",), compute, 1) is first and len(calls) == 3
+        memoized("request other", lambda: ("k",), compute, 1)
         assert len(calls) == 4, "another derivation never collides"
-        memoized("kind", lambda: ([1],), compute)
-        memoized("kind", lambda: ([1],), compute)
+        memoized("request kind", lambda: ([1],), compute, 1)
+        memoized("request kind", lambda: ([1],), compute, 1)
         assert len(calls) == 6, "an unhashable key computes afresh"
-    with request_memo():
-        memoized("kind", lambda: ("k",), compute)
-        assert len(calls) == 7, "a new request recomputes"
     planner = TableQuery.__new__(TableQuery)
     planner.model = object()
     built = []
@@ -293,6 +290,82 @@ def test_a_request_derives_its_tables_once():
         assert SchemaGraph.from_planner(sch, []) is SchemaGraph.from_planner(again, []), "one graph a request"
 
 
+def test_a_later_question_on_the_same_cells_derives_nothing_again():
+    """Every question on a 500,000-cell workbook derived its keys, schema and graph again: 5.7 to 8.7 s on Cloud Run
+    (2026-10-31). The process keeps them under the content itself: another request reuses them, a changed cell does
+    not, and the bound and the time limit let them go."""
+    from engine import relations
+    from engine.relations import memoized, request_memo
+    calls = []
+
+    def compute():
+        calls.append(1)
+        return ["result"]
+
+    def asked(key, cells=1):
+        with request_memo():
+            return memoized("kept kind", lambda: (key,), compute, cells)
+
+    first = asked("cells")
+    assert asked("cells") is first and len(calls) == 1, "a later request reuses an equal derivation"
+    asked("a changed cell")
+    assert len(calls) == 2, "other content derives its own"
+
+    calls.clear()
+    limit, seconds = relations.KEPT_CELLS, relations.KEPT_SECONDS
+    try:
+        relations.KEPT_CELLS = 10
+        asked("too big", 11)
+        asked("too big", 11)
+        assert len(calls) == 2, "what is larger than the bound is not kept"
+        calls.clear()
+        relations._KEPT.clear()
+        asked("oldest", 6)
+        asked("newer", 4)
+        asked("oldest", 6)
+        assert len(calls) == 2, "a reuse is a use"
+        asked("newest", 4)
+        assert len(calls) == 3
+        asked("oldest", 6)
+        assert len(calls) == 3, "the least recently used goes first"
+        asked("newer", 4)
+        assert len(calls) == 4, "and it went"
+        calls.clear()
+        relations.KEPT_CELLS = limit
+        relations._KEPT.clear()
+        asked("idle")
+        relations.KEPT_SECONDS = -1
+        asked("idle")
+        assert len(calls) == 2, "what has not been used for the time limit is gone"
+    finally:
+        relations.KEPT_CELLS, relations.KEPT_SECONDS = limit, seconds
+        relations._KEPT.clear()
+
+
+def test_a_graph_kept_for_a_request_serves_the_next():
+    """Two requests with equal cells read one graph and one readers' schema, each with its own records."""
+    from engine.readers.text import Schema
+    from engine.relations import memoized, request_memo
+    from engine.sql_schema import SchemaGraph
+
+    def schema():
+        return [{"table": "orders", "name": "city", "idx": 0, "affinity": "TEXT", "values": ["Paris", "Lyon"]}]
+
+    def graph_of(column_values):
+        return SchemaGraph.from_planner([dict(column, values=list(column_values)) for column in schema()], [])
+
+    with request_memo():
+        first = graph_of(["Paris", "Lyon"])
+        read = memoized("readers_schema", lambda: first, lambda: Schema(first), 2)
+    with request_memo():
+        again = graph_of(["Paris", "Lyon"])
+        reread = memoized("readers_schema", lambda: again, lambda: Schema(again), 2)
+    with request_memo():
+        other = graph_of(["Paris", "Lille"])
+    assert again is first and reread is read, "the same cells"
+    assert other is not first and other.column_map["orders", "city"].values == ("Paris", "Lille"), "a changed cell"
+
+
 TESTS = [
     test_identical_lookup_executes_once_per_request,
     test_different_params_never_collide,
@@ -306,6 +379,8 @@ TESTS = [
     test_a_shared_name_resolves_the_same_way_every_time,
     test_rows_whose_entity_matched_nothing_are_disclosed,
     test_a_request_derives_its_tables_once,
+    test_a_later_question_on_the_same_cells_derives_nothing_again,
+    test_a_graph_kept_for_a_request_serves_the_next,
 ]
 
 

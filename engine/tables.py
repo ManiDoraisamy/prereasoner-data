@@ -347,12 +347,12 @@ class TableQuery:
 
     def schema(self, tables, fks):
         """The planner's schema of the tables: one record per column (its encoder reading, affinity and
-        values), the global column index, and the tables by name. Built once per request
+        values), the global column index, and the tables by name. Built once for equal tables
         (`relations.memoized`): each record and mapping is the caller's own copy."""
-        from engine.relations import content_key, memoized
+        from engine.relations import content_key, memoized, table_cells
         sch, colidx, tablemap = memoized(
             "planner_schema", lambda: (id(self.model), content_key(tables), repr(fks)),
-            lambda: self._schema(tables, fks))
+            lambda: self._schema(tables, fks), table_cells(tables))
         return [dict(column) for column in sch], dict(colidx), dict(tablemap)
 
     def _schema(self, tables, fks):
