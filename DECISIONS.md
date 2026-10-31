@@ -5094,3 +5094,20 @@ caller may change one, which was already true within a request.
 
 On the 38 messy dev questions of the subscriptions and keywords workbooks with this off and then on, no answer differs. The median
 on subscriptions falls from 22.1 to 16.1 s (480 to 362 s in all) and on keywords from 6.6 to 5.9 s (125 to 95 s in all).
+
+## Speed levers tried on CPU and not taken (2026-10-31)
+
+With L4 unavailable, the readers are two thirds of a later question's time on 4 vCPU. Three ways to cut them without a GPU were
+measured (`spider/results/RESULTS.md`, 2026-10-31) and none ships:
+
+- **8-bit dynamic quantization** halves the median question and loses a third of the right answers (44 to 29, 31 at best). The
+  bundle's choice was fitted on float32 pools, so a refit might recover some; it stays an experiment on a final bundle, never a
+  drop-in.
+- **ONNX Runtime** over the same float32 weights keeps the readings but wins or loses by CPU: 1.5x on AMD, 0.82x on the Intel Xeon
+  that Cloud Run also hands out, and it needs about 5 GB more than bfloat16 weights, past a 4 vCPU, 16 GiB instance.
+- **Fewer tokens**: a pass's time follows its length on every CPU, but the readers' inputs are already 160 to 370 tokens on the
+  messy workbooks, and one table once layout copies are removed.
+
+A word-coverage check for silently dropped filters was also measured and refused: even its narrowest form, one aggregate of one
+whole table with a question word the query does not account for, flags 27 right answers per 7 wrong on Spider calibration. Dropped
+filters are a reading failure, for the readers and the re-scorer.

@@ -5,6 +5,54 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
+## Messy questions at 3a34166: dev 44 right / 21 asked / 55 wrong of 120; the owner's two real sheets 6 / 0 / 8 of 14 (2026-10-31)
+
+Shipped bundle (weights manifest 40605578...), served path, `regress/run_messy.py --split dev`, clean worktree at 3a34166, a
+local process with a live Postgres. The bar since 2026-10-30 (DECISIONS.md): questions that use neither the sheet's column
+names nor its cell values, graded right, asked back, or wrong. A frozen split of 79 reports totals only and did not run here.
+
+| Family | Right | Asked | Wrong | n |
+|---|---:|---:|---:|---:|
+| column | 17 | 3 | 26 | 46 |
+| value | 14 | 17 | 19 | 50 |
+| plain | 11 | 0 | 4 | 15 |
+| structure | 2 | 1 | 6 | 9 |
+| all | 44 | 21 | 55 | 120 |
+
+Before the tab fixes this was 45 / 21 / 54 on the older shape of the subscriptions workbook, whose reports kept the pivot's title
+as their header; the workbook changed in feb491a, so the two are not a controlled comparison. These workbooks hold no near-copy
+tabs to choose among, except subscriptions, so the fixes show on the real sheets rather than here.
+
+The owner's Subscriptions and Keyword Stats sheets, asked in the add-on on the deployed 3404948 and 3a34166, with expected values
+read from the sheets independently: 14 messy questions, 6 right, 0 asked, 8 wrong. An earlier run on 543e5b9 got 0 of 6. Each
+answer now names its tab and the others that could answer. Right: Keyword Stats "how many keywords are hard to rank for";
+Subscriptions "how many customers pay yearly", "how much revenue did we make in 2024", "what is our best selling product" (by
+units), "revenue from monthly plans", "how many left because it was too expensive". Wrong: "whats the most expensive one to bid on",
+"how many are getting more popular than last year", "how much search volume do the fire extinguisher ones get", "search volume split
+by how competitive it is" (counted rows), "how much sales for long term customers (above 6 months)", "how many customers are in
+america" (every row), "how much did retailers pay us" (every row), and "how many have cancelled", which the conversation's rewording
+read as "in america" after the question before it. Half the wrong answers drop a filter without saying so.
+
+Time, on the two warm instances of 4 vCPU, 500,000-cell workbook, Subscriptions: an instance's first question on a sheet 26.9 and
+37.7 s in the engine, a later one 14.8 and 14.9 s; a chat turn 30.6 and 48.5 s, then 18.6 and 20.4 s. The derivations an instance now
+keeps took 6.8 s in the first and 0.17 s in the later (`decompose_probe_self_ms`). Of a later question, `readers_ms` is 8.2 to 10.1 s.
+
+What did not help, on the same 120 questions (fp32 p50 6.05 s; none of these ship):
+
+| Readers | Right | Asked | Wrong | p50 |
+|---|---:|---:|---:|---:|
+| 8-bit dynamic, every encoder layer | 29 | 19 | 72 | 3.2 s |
+| 8-bit dynamic, per channel | 29 | 22 | 69 | 3.4 s |
+| 8-bit dynamic, per channel, feed-forward layers only | 31 | 11 | 78 | 3.7 s |
+
+ONNX Runtime 1.31 over one reader's float32 weights, 4 threads, 508 tokens: 1.55 s against PyTorch's 2.37 s on an AMD Zen 4 dev box,
+but 1.58 s against 1.30 s on the Intel Xeon that Cloud Run gave a job. Outputs differ by at most 3e-4 on values up to 28.
+
+Spider calibration, whole_db, strict, on 2941ae5: 723 of 1,053 (lenient 799). The two rule changes since do not change that number by
+a fresh run: 1be6875's subset delta implied about 726, and feb491a's rule changes no database's copy groups (0 of 1,053 questions).
+A fresh run is owed at the next promotion.
+
+
 ## Every question on its own SQLite database: calibration 730 -> 727, frozen test 1,532 -> 1,531 (2026-10-27)
 
 Same bundle (all14fg, weights manifest 40605578...), same evaluator, the choice's threshold null; the selected query
