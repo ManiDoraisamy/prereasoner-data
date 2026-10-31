@@ -15,7 +15,6 @@ question's hash on the workbooks written for this benchmark (half "frozen", scor
 shapes were studied while the fixes of 2026-10-30 were made, so they are always "dev".
 """
 import hashlib
-import re
 from collections import defaultdict
 from dataclasses import dataclass
 
@@ -457,4 +456,5 @@ def grade(expected, response):
         right = bool(gold) and all(k in labelled and any(_close(x, v) for x in labelled[k]) for k, v in gold.items())
     else:
         raise ValueError(kind)
-    return ("right" if right else "wrong"), f"{len(rows)} rows, first {re.sub(r'\s+', ' ', str(rows[:1]))[:200]}"
+    first = " ".join(str(rows[:1]).split())[:200]
+    return ("right" if right else "wrong"), f"{len(rows)} rows, first {first}"
