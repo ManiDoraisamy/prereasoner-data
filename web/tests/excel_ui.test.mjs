@@ -46,6 +46,6 @@ for (const [file, text] of addonSources) {
 }
 // Upload once (2026-10-02): the workbook goes to the conversation when it changes, and a question names it.
 assert.match(pane, /api\('\/api\/conversation\/sync', \{id: state\.conversationId \|\| '', question, tables\}\)/);
-assert.match(pane, /api\('\/chat', \{\s*message: question, history: baseHistory,\s*conversation_id: state\.conversationId, source_hash: state\.sourceHash, turnId\s*\}, \[409\]\)/);
+assert.match(pane, /api\('\/chat', \{\s*message: question, history: baseHistory,\s*conversation_id: state\.conversationId, source_hash: state\.sourceHash, active_sheet: activeSheet, turnId\s*\}, \[409\]\)/);
 assert.doesNotMatch(pane, /api\('\/chat', \{[^}]*tables/);
 console.log('Excel and shared conversation UI: 18 checks passed');

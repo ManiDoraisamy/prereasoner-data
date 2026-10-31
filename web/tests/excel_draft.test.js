@@ -12,7 +12,7 @@ const element = id => {
 };
 const context = {console,crypto:require('node:crypto').webcrypto,TextEncoder,window:{PrereasonerTurnRenderer:{},PrereasonerSuggestions:{...require('../public/lib/sidebar-suggestions.js'),create:()=>({update(){},clear(){},setActive(){}})}},
   document:{getElementById:element},initializeApp:()=>({}),getAuth:()=>({currentUser:{uid:'fixture'}}),
-  getDatabase:()=>({}),firebaseConfig:{}};
+  getDatabase:()=>({}),firebaseConfig:{},readActiveSheet:async()=>'Orders'};
 vm.createContext(context);
 vm.runInContext(source+`
   restore=async()=>{}; renderTurns=()=>{}; mapReasoning=()=>[];
