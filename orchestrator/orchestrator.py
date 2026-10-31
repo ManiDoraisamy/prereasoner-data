@@ -586,10 +586,12 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                     principal: str | None = None,
                     use: str | None = None,
                     analysis_override: dict[str, Any] | None = None,
-                    source_hash: str | None = None) -> dict[str, Any]:
+                    source_hash: str | None = None,
+                    active_sheet: str | None = None) -> dict[str, Any]:
     """Run one chat turn. `history` is a lean transcript [{role, content:str}, ...]; `tables` is the
     session's inline CSVs, or, with `source_hash`, the sheets `conversation_id` stores: the turn reads them
     from the engine for its own checks and each engine call names them instead of carrying them.
+    `active_sheet` is the tab the person has open, when their client has tabs.
     Returns {reply, traces, history, conversation_id}.
 
     `conversation_id` keeps every engine call on ONE conversation schema; the FIRST call mints one if none
@@ -884,7 +886,7 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                         # mutable state across concurrent turns of DIFFERENT users, so it is an argument.
                         with request_timing.span("engine_call"):
                             shaped = await engine_client.call_query(
-                                question, tables, job_id, conv, source_hash=source_hash,
+                                question, tables, job_id, conv, source_hash=source_hash, active_sheet=active_sheet,
                                 base_url=engine_base_url, token=bearer_token,
                                 request_id=job_id, client=http, dataset_ops=dataset_ops,
                                 dataset_attestation=attestation,

@@ -5067,3 +5067,18 @@ What did not need training, each measured on that harness or the stored calibrat
 Measured and rejected: linking a word to a value by the served Qwen encoder's cosine (10 of 33 at a cutoff that invents none;
 "cancelled" is nearest "trialing"). The re-scorers pick the right stored value on 15 of 22, but rank the question's own words
 above it, so they need training on this too.
+
+## A question reads the tab on screen, and each export's report does not split the exports (2026-10-31)
+
+On the deployed 2cc3cb3 the owner's Subscriptions sheet answered from SI and FF with NT open, and Keyword Stats answered from
+Forklift with Checklist open. Two causes, both found only on the real sheets.
+
+- `layout_copies` refused near copies whose tables hold any foreign key (1be6875, for college_2's `takes` and `teaches`). The
+  importer reads a pivot tab's labels as its header, so every export's `Year` keys its report's `Year`, and NT, SI and FF stopped
+  being one layout. The rule is now what college_2 meant: near copies are apart only when a column they share keys different
+  things, and each export's report is one layout too. No Spider calibration database changes its groups (0 of 1,053 questions).
+  The benchmark missed it because `regress/messy_workbooks.py` kept the pivot's title as the header, which no key links; its
+  reports now have the importer's shape.
+- The first copy was the tab open at the upload, and a sheet is uploaded once. The add-on and the Excel pane now send the open
+  tab's name with each question (`active_sheet`, optional; the web app has no such tab), and the engine puts it first
+  (`tables.on_screen_first`) at the serve call only, so the stored sheet and its hash do not change with the tab.

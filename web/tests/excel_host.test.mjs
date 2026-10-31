@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
-import {readWorkbook, readWorkbookSchema} from '../public/office/excel/host.js';
+import {readActiveSheet, readWorkbook, readWorkbookSchema} from '../public/office/excel/host.js';
 
 // The task pane posts its cell grids to lib/xlsx-worker.js, the upload importer. The same worker
 // runs here (tests/workbook_fixture.js), so these checks exercise the production rule.
@@ -154,6 +154,7 @@ await runWorkbook([visible,hidden]);
 const metadata=await readWorkbookSchema();
 assert.deepEqual(metadata.scope,['Orders']);
 assert.equal(metadata.active_sheet,'Orders');
+assert.equal(await readActiveSheet(),'Orders');
 // Hidden tabs' names and headers are not described (they went to the suggestion service, 2026-10-04).
 assert.deepEqual(metadata.sheets.map(s=>s.name),['Orders']);
 assert(!JSON.stringify(metadata).includes('Hidden'));

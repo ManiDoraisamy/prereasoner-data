@@ -241,6 +241,16 @@ def validate_source_hash(req: dict) -> str | None:
     return value
 
 
+def validate_active_sheet(req: dict) -> str | None:
+    """The name of the tab the person has open, from a client that has tabs (engine.tables.on_screen_first)."""
+    value = req.get("active_sheet")
+    if value in (None, ""):
+        return None
+    if not isinstance(value, str) or len(value.strip()) > MAX_TABLE_DISPLAY_NAME_CHARS:
+        raise RequestValidationError("active_sheet is invalid")
+    return value.strip() or None
+
+
 def validate_reason_request(req: object) -> dict:
     """Validate the authenticated /api/reason and /api/knowledge body."""
     if not isinstance(req, dict):
@@ -249,6 +259,7 @@ def validate_reason_request(req: object) -> dict:
     normalized["question"] = validate_question(req.get("question"))
     normalized["tables"] = validate_tables(req.get("tables"), allow_single=True)
     normalized["source_hash"] = validate_source_hash(req)
+    normalized["active_sheet"] = validate_active_sheet(req)
     if normalized["tables"] and normalized["source_hash"]:
         raise RequestValidationError("send tables or a source_hash, not both")
     if not normalized["tables"] and not normalized["source_hash"]:
@@ -355,4 +366,4 @@ def validate_chat_request(req: object):
 
     return (message, tables, normalized_history, _optional_id(req, "turnId"),
             _optional_id(req, "conversation_id", conversation=True),
-            validate_execution_use(req.get("use")), analysis, source_hash)
+            validate_execution_use(req.get("use")), analysis, source_hash, validate_active_sheet(req))

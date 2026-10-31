@@ -2,7 +2,7 @@ import {initializeApp} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase
 import {getAuth, OAuthProvider, onAuthStateChanged, signInWithCredential, getIdToken} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 import {getDatabase, ref, onValue} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js';
 import {firebaseConfig} from '../../lib/config.js';
-import {readWorkbook, readWorkbookSchema, workbookKey} from './host.js';
+import {readActiveSheet, readWorkbook, readWorkbookSchema, workbookKey} from './host.js';
 import {credentialForDialog} from './auth-bridge.js';
 import {explainMicrosoftAuthError} from './auth-errors.js';
 import {streamResponse} from './turn-bridge.js';
@@ -236,9 +236,10 @@ async function ask(question) {
     renderTurns();
     const streamResult = awaitStream(turnId);
     let response;
+    const activeSheet = await readActiveSheet();
     const chat = () => api('/chat', {
       message: question, history: baseHistory,
-      conversation_id: state.conversationId, source_hash: state.sourceHash, turnId
+      conversation_id: state.conversationId, source_hash: state.sourceHash, active_sheet: activeSheet, turnId
     }, [409]);
     try {
       response = await chat();

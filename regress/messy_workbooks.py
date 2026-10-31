@@ -58,7 +58,7 @@ def _subscription_rows(name, rows, columns, seed):
     stamp = lambda day: day.strftime("%Y-%m-%d %H:%M:%S")  # noqa: E731
     out = []
     for i in range(rows):
-        year = _pick(rng, _YEAR)
+        year = max(_pick(rng, _YEAR), 2023 if name == "SI" else 0)      # the real SI began later, so its report lists fewer years
         created = datetime(year, 1, 1) + timedelta(minutes=rng.randrange(60 * 24 * 360))
         status = _pick(rng, _STATUS)
         subscription = _pick(rng, _SUBSCRIPTION)
@@ -94,15 +94,17 @@ def _subscription_rows(name, rows, columns, seed):
 
 
 def _status_report(rows, columns):
+    """A tab's pivot as the sheets importer reads it: the row of labels beneath the pivot's title is the header, and the pivot has
+    only the statuses and years its tab holds. The second return is its Grand Total row, which the importer splits off."""
     years = sorted({row[columns.index("Year")] for row in rows})
-    statuses = ["active", "canceled", "past_due", "unpaid"]
     y, s = columns.index("Year"), columns.index("Status")
+    statuses = [status for status in ("active", "canceled", "past_due", "unpaid") if any(r[s] == status for r in rows)]
     table = []
     for year in years:
         counts = [sum(1 for r in rows if r[y] == year and r[s] == status) for status in statuses]
         table.append([year, *counts, sum(counts)])
-    return ["COUNTA of Customer ID Year", *[f"Status {s}" if i == 0 else s for i, s in enumerate(statuses)],
-            "Grand Total"], table
+    totals = [sum(line[index] for line in table) for index in range(1, len(statuses) + 2)]
+    return ["Year", *statuses, "Grand Total"], table, ["Grand Total", *totals]
 
 
 def subscriptions():
@@ -113,8 +115,10 @@ def subscriptions():
             columns = ["Domian" if c == "Domain" else c for c in columns]
         data = _subscription_rows(name, rows, columns, 2026 + index)
         tables.append(_tab(name, columns, data))
-        header, report = _status_report(data, columns)
+        header, report, total = _status_report(data, columns)
         tables.append(_tab(f"{name} Report", header, report))
+        if name != "FF":                                                # the real FF's pivot has no Grand Total row
+            tables.append(_tab(f"{name} Report summaries", header, [total]))
     return tables
 
 

@@ -222,7 +222,8 @@ async def call_query(question: str, tables: list[dict], job_id: str | None = Non
                      analysis: dict[str, Any] | None = None,
                      decomposition: dict[str, Any] | None = None,
                      use: str | None = None,
-                     source_hash: str | None = None) -> dict[str, Any]:
+                     source_hash: str | None = None,
+                     active_sheet: str | None = None) -> dict[str, Any]:
     """POST the question + inline tables to the engine's /api/reason and return the shaped tool output.
 
     `tables` is [{name, data}] where data is raw CSV text — exactly the engine's inline shape (no dataset_id).
@@ -237,6 +238,8 @@ async def call_query(question: str, tables: list[dict], job_id: str | None = Non
     base = (base_url or _engine_base_url()).rstrip("/")
     body: dict[str, Any] = ({"source_hash": source_hash} if source_hash else {"tables": tables})
     body["question"] = question
+    if active_sheet:
+        body["active_sheet"] = active_sheet      # of tabs that could all answer, the one on screen (engine.tables)
     if job_id:
         body["jobId"] = job_id
     if conversation_id:

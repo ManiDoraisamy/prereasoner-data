@@ -199,7 +199,7 @@ class H(BaseHTTPRequestHandler):
                 return
             try:
                 (message, tables, history, turn_id, conversation_id, use, analysis,
-                 source_hash) = validate_chat_request(req)
+                 source_hash, active_sheet) = validate_chat_request(req)
             except RequestValidationError as exc:
                 self._send(exc.status_code, json_dumps({"error": str(exc)})); return
             token = self._bearer()
@@ -243,7 +243,7 @@ class H(BaseHTTPRequestHandler):
                          location=config.GEMINI_LOCATION,
                          turn_id=turn_id, emit=emit, conversation_id=conversation_id,
                          principal=uid, use=use, analysis_override=analysis,
-                         source_hash=source_hash),
+                         source_hash=source_hash, active_sheet=active_sheet),
                 _LOOP,
             )
             res = fut.result(timeout=CHAT_TIMEOUT_SECONDS)

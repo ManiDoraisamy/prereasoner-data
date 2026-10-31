@@ -211,7 +211,7 @@ const answer = api.askPrereasoner({question: '  What are total sales in France? 
 const chat = api.fetches.find(call => call.url.endsWith('/chat'));
 equal(chat.options.headers.Authorization, 'Bearer firebase-id-token');
 equal(chat.body, {message: 'What are total sales in France?', history: [{role: 'user', content: 'hi'}],
-  conversation_id: 'c_0123456789abcdef0123456789abcdef', source_hash: stored, turnId: 'turn_1'});
+  conversation_id: 'c_0123456789abcdef0123456789abcdef', source_hash: stored, active_sheet: 'Notes', turnId: 'turn_1'});
 equal(answer.reply, 'Total sales in France are **US$840**.');
 equal(answer.history, [{role: 'user', content: 'total'}], 'only user and assistant history returns');
 equal(answer.traces, [{jobId: 'job-1', question: 'total amount in France', analysis: {slug: 'france_sales'},

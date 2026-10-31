@@ -107,7 +107,7 @@ class _HTTP:
 
 async def _run(status: str, *, fail_presentation=False, use=None, query_input=None,
                user_message=None, tables=None, catalog=None, analysis_override=None, shaped_extra=None,
-               **client_options):
+               active_sheet=None, **client_options):
     model_calls, engine_calls = [], []
     shaped = {"status": status, **(shaped_extra or {})}
     if status == "answered":
@@ -146,6 +146,7 @@ async def _run(status: str, *, fail_presentation=False, use=None, query_input=No
             principal="user-a",
             conversation_id="c_test" if catalog is not None else None,
             analysis_override=analysis_override,
+            active_sheet=active_sheet,
         )
     finally:
         orchestrator.AsyncGeminiClient = original_client
@@ -1828,7 +1829,15 @@ def test_the_engine_client_names_stored_sheets_and_caches_them_per_user():
         asyncio.run(scenario())
 
 
+def test_the_tab_on_screen_reaches_every_engine_call():
+    _result, _calls, engine_calls = asyncio.run(_run("answered", active_sheet="Checklist"))
+    assert engine_calls and all(kwargs.get("active_sheet") == "Checklist" for _args, kwargs in engine_calls), engine_calls
+    _result, _calls, engine_calls = asyncio.run(_run("answered"))
+    assert all(kwargs.get("active_sheet") is None for _args, kwargs in engine_calls)
+
+
 TESTS = [
+    test_the_tab_on_screen_reaches_every_engine_call,
     test_the_reply_names_tables_as_the_user_did,
     test_intent_context_has_schema_and_questions_but_no_values_or_assistant_answers,
     test_the_intent_context_names_which_question_came_last,

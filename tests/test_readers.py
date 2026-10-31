@@ -199,7 +199,17 @@ def test_near_copies_of_an_export_are_one_layout_and_the_first_is_read():
     # Tables that only share a few columns are their own things.
     other = graph_of(sheet("orders", ["id", "customer", "amount", "date"]), sheet("people", ["id", "customer", "age", "city"]))
     assert other.layout_copies == ()
-    # Near in columns but with keys of their own: who took a course and who taught it are not one export (college_2).
+    # Each export's Year keys its own report tab, as the importer reads a pivot, and the reports are one layout too: still
+    # one export, or the readers answer from whichever tab they like (the owner's sheet, 2026-10-31).
+    exports = [sheet("NT", ["Domain", "Year", *shared, "x1", "x2", "x3", "x4", "x5"]), sheet("SI", ["Domain", "Year", *shared]),
+               sheet("FF", ["Domian", "Year", *shared]), sheet("NT_Report", ["Year", "active", "canceled", "unpaid", "Total"]),
+               sheet("SI_Report", ["Year", "active", "canceled", "Total"])]
+    reported = SchemaGraph.from_tables(exports, [("NT", "Year", "NT_Report", "Year"), ("SI", "Year", "SI_Report", "Year"),
+                                                 ("FF", "Year", "NT_Report", "Year")])
+    assert reported.layout_copies == (("NT", "SI", "FF"),), reported.layout_copies
+    assert "NT" in one_of_each_layout(reported, "total amount").tables
+    assert "SI" not in one_of_each_layout(reported, "total amount").tables
+    # Near in columns but keying different things: who took a course and who taught it are not one export (college_2).
     tables = [sheet("takes", ["ID", "course_id", "sec_id", "semester", "year", "grade"]),
               sheet("teaches", ["ID", "course_id", "sec_id", "semester", "year"]),
               {"name": "student", "columns": ["ID", "name", "dept"], "rows": [["takes0", "a", "b"]]},
@@ -207,6 +217,29 @@ def test_near_copies_of_an_export_are_one_layout_and_the_first_is_read():
     keyed = SchemaGraph.from_tables(tables, [("takes", "ID", "student", "ID"), ("teaches", "ID", "instructor", "ID")])
     assert keyed.layout_copies == (), keyed.layout_copies
     assert SchemaGraph.from_tables(tables, []).layout_copies == (("takes", "teaches"),), "no key says otherwise"
+
+
+def test_the_tab_on_screen_is_the_copy_a_question_reads():
+    """A sheet is uploaded once, with the tab open then first: a question asked on Checklist read Forklift (2026-10-31). The
+    tab open now goes first, a tab the question names still wins, and no tab or an unknown one changes nothing."""
+    from engine.tables import on_screen_first, one_of_each_layout
+
+    def tab(name):
+        return {"name": name, "columns": ["Keyword", "Volume", "Bid"], "rows": [[f"{name}{i}", i, i] for i in range(3)]}
+
+    tabs = [tab("forklift"), tab("Sheet1"), tab("checklist"), tab("inspection")]
+    def read(active, question="top keywords"):
+        ordered = on_screen_first(tabs, active)
+        return list(one_of_each_layout(SchemaGraph.from_tables(ordered, []), question).tables)
+
+    assert read("Checklist") == ["checklist"], read("Checklist")
+    assert read("Sheet1") == ["Sheet1"]
+    assert read(None) == ["forklift"] and read("") == ["forklift"] and read("Gone") == ["forklift"]
+    assert read("Checklist", "top keywords in inspection") == ["inspection"]
+    assert [t["name"] for t in on_screen_first(tabs, "inspection")] == ["inspection", "forklift", "Sheet1", "checklist"]
+    # "NT Report" is the tab; its report's canonical name matches and the export's does not.
+    named = [tab("nt"), tab("nt_report")]
+    assert [t["name"] for t in on_screen_first(named, "NT Report")] == ["nt_report", "nt"]
 
 
 def test_a_table_read_from_nowhere_does_not_need_a_join():
@@ -897,6 +930,7 @@ def test_the_readers_compute_in_float32_over_weights_kept_in_bfloat16():
 TESTS = [
     test_a_table_read_from_nowhere_does_not_need_a_join,
     test_near_copies_of_an_export_are_one_layout_and_the_first_is_read,
+    test_the_tab_on_screen_is_the_copy_a_question_reads,
     test_a_value_spelled_almost_as_read_is_the_stored_value,
     test_training_candidates_are_the_pool_serving_ranks,
     test_reader_training_reads_no_dev_or_test_question,

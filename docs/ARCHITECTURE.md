@@ -381,8 +381,8 @@ builder makes each reading a typed AST.
    ("order id is 'non-empty'"), or a column compared with its own unfiltered values. The readers' candidates are
    pooled, each SQL once, most probable first, and the registered calculations add their expansions
    (`search_pool`). The readers read one table of each group of layout copies (the NT, SI and FF exports of one
-   layout): the copy the question names, else the first, and the answer names the others (`one_of_each_layout`,
-   `layout_copies`).
+   layout): the copy the question names, else the tab the person has open (`on_screen_first`, from the request's
+   `active_sheet`), else the first, and the answer names the others (`one_of_each_layout`, `layout_copies`).
 4. Every candidate that passes the guard runs on the request's database (engine/prepared.py) under a step
    budget that grows with the cells of the tables it reads (`execution_op_limit`). A candidate that fails, tests a
    text column against a literal it never holds while another column does, joins two columns the foreign keys

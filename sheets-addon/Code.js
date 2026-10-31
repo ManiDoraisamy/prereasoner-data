@@ -198,7 +198,8 @@ function askPrereasoner(request) {
     message: question,
     history: normalizeHistory_(request.history),
     conversation_id: conversationId_(request.conversationId) || null,
-    source_hash: sourceHash
+    source_hash: sourceHash,
+    active_sheet: activeSpreadsheet_().getActiveSheet().getName()
   };
   if (!payload.conversation_id) {
     throw new Error('The conversation expired. Start a new conversation and try again.');

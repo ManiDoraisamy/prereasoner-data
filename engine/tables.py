@@ -950,6 +950,14 @@ def one_of_each_layout(graph, question):
     return graph.without(frozenset(dropped)) if dropped else graph
 
 
+def on_screen_first(tables, active_sheet):
+    """``tables`` with the tab the person has open first, so that of tabs that could all answer, the question reads that one
+    (``one_of_each_layout``). A sheet is uploaded once: a question asked on Checklist was answered from Forklift, the tab open
+    at the upload (2026-10-31)."""
+    words = name_words(active_sheet or "")
+    return sorted(tables, key=lambda table: name_words(table["name"]) != words)
+
+
 def _unread_copies(question, query, graph):
     """{"read": [table], "others": [...]}: the other tables that could answer a one-table reading when the
     question names no table, else None: copies of its layout (`SchemaGraph.layout_copies`), and near copies

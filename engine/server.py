@@ -96,7 +96,7 @@ from engine.request_validation import (
     validate_tables,
 )
 from engine.sheet_sessions import clear_sheet_session, restore_sheet_session, save_sheet_session
-from engine.tables import csv_table, normalize_tables, table_name
+from engine.tables import csv_table, normalize_tables, on_screen_first, table_name
 from engine.trace import drain_request, emitter, request_stream, stream_final
 
 # Questions run in parallel on these shared objects: each request's own state is request-local
@@ -932,7 +932,7 @@ class H(BaseHTTPRequestHandler):
                     analysis, conv, execution_mode=req.get("use")
                 ), request_timing.span("serve"):
                     res = MODEL.serve(
-                        tabs, req.get("question", ""), conv, req.get("as_of"),
+                        on_screen_first(tabs, req.get("active_sheet")), req.get("question", ""), conv, req.get("as_of"),
                         dataset_semantics=semantics, **serve_kwargs
                     )
                     res = enforce_execution_response(res, req.get("use"))

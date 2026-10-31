@@ -73,6 +73,15 @@ export async function readWorkbookSchema() {
   });
 }
 
+export async function readActiveSheet() {
+  return Excel.run(async context => {
+    const active = context.workbook.worksheets.getActiveWorksheet();
+    active.load('name');
+    await context.sync();
+    return active.name;
+  });
+}
+
 export async function readWorkbook(normalize = normalizeInWorker) {
   await Office.onReady();
   const collected = await Excel.run(async context => {

@@ -409,6 +409,16 @@ def test_chat_validation_normalizes_and_bounds_inputs():
     cid = "c_" + "2" * 32
     reference = validate_chat_request({"message": "total", "conversation_id": cid, "source_hash": "a" * 64})
     assert reference[1] == [] and reference[4] == cid and reference[7] == "a" * 64
+    assert out[8] is None
+    assert validate_chat_request({"message": "total", "active_sheet": " Checklist "})[8] == "Checklist"
+    assert validate_reason_request({"question": "total", "data": "a\n1\n", "active_sheet": "Checklist"})["active_sheet"] == "Checklist"
+    for bad in ({"message": "x", "active_sheet": 3}, {"message": "x", "active_sheet": "x" * 1000}):
+        try:
+            validate_chat_request(bad)
+        except RequestValidationError:
+            pass
+        else:
+            raise AssertionError(bad)
     for bad in ({"message": "x", "source_hash": "a" * 64},
                 {"message": "x", "conversation_id": cid, "source_hash": "A" * 64},
                 {"message": "x", "conversation_id": cid, "source_hash": "a" * 64,
