@@ -199,6 +199,14 @@ def test_near_copies_of_an_export_are_one_layout_and_the_first_is_read():
     # Tables that only share a few columns are their own things.
     other = graph_of(sheet("orders", ["id", "customer", "amount", "date"]), sheet("people", ["id", "customer", "age", "city"]))
     assert other.layout_copies == ()
+    # Near in columns but with keys of their own: who took a course and who taught it are not one export (college_2).
+    tables = [sheet("takes", ["ID", "course_id", "sec_id", "semester", "year", "grade"]),
+              sheet("teaches", ["ID", "course_id", "sec_id", "semester", "year"]),
+              {"name": "student", "columns": ["ID", "name", "dept"], "rows": [["takes0", "a", "b"]]},
+              {"name": "instructor", "columns": ["ID", "name", "pay"], "rows": [["teaches0", "c", "d"]]}]
+    keyed = SchemaGraph.from_tables(tables, [("takes", "ID", "student", "ID"), ("teaches", "ID", "instructor", "ID")])
+    assert keyed.layout_copies == (), keyed.layout_copies
+    assert SchemaGraph.from_tables(tables, []).layout_copies == (("takes", "teaches"),), "no key says otherwise"
 
 
 def test_a_table_read_from_nowhere_does_not_need_a_join():

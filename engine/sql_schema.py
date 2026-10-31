@@ -204,6 +204,7 @@ class SchemaGraph:
         one or two columns lists one thing (customers' names, orders' names), and a table a foreign key
         references is its own thing (two code lookups different keys reference): neither is a copy."""
         referenced = {foreign_key.to_column.table for foreign_key in self.foreign_keys}
+        referencing = {foreign_key.from_column.table for foreign_key in self.foreign_keys}
         groups: list[tuple[frozenset[str], list[str]]] = []
         for table in self.tables:
             if table in referenced or len(self.by_table[table]) < 3:
@@ -212,8 +213,11 @@ class SchemaGraph:
             for shape, members in groups:
                 # Exports drift: NT holds SI's columns and sixteen more, and FF spells one of them "Domian". Read as
                 # different tables, the readers chose whichever listed the question's value, and the answer came from
-                # SI with the user on NT (2026-10-30).
-                if len(own & shape) >= COPY_SHARE * min(len(own), len(shape)):
+                # SI with the user on NT (2026-10-30). A table with keys of its own is no export's drift: "teaches" holds
+                # every column of "takes" but one, and they name instructors and students.
+                near = (len(own & shape) >= COPY_SHARE * min(len(own), len(shape))
+                        and table not in referencing and members[0] not in referencing)
+                if own == shape or near:
                     members.append(table)
                     break
             else:
