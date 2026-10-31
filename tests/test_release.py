@@ -444,6 +444,38 @@ def test_external_model_deployment_fails_closed():
     assert "engine/dataset_attestation.py" in SOURCE_CHAT_ALLOWLIST
 
 
+def test_a_build_context_links_its_weights_when_it_can():
+    """Each release build held another 6 GB on the disk, which only the upload reads (2026-10-31)."""
+    import os
+    import tempfile
+    from pathlib import Path
+
+    from deploy.gcp.build_context import place_weight
+    with tempfile.TemporaryDirectory() as directory:
+        source = Path(directory) / "source.pt"
+        source.write_bytes(b"weights")
+        linked = Path(directory) / "linked.pt"
+        place_weight(source, linked)
+        assert linked.read_bytes() == b"weights" and os.path.samefile(source, linked)
+
+        class OtherVolume:
+            def __init__(self, path):
+                self.path = path
+
+            def stat(self):
+                class Stat:
+                    st_dev = source.stat().st_dev + 1
+                return Stat()
+
+        copied = Path(directory) / "copied.pt"
+
+        class Destination(type(copied)):
+            parent = OtherVolume(Path(directory))
+
+        place_weight(source, Destination(copied))
+        assert copied.read_bytes() == b"weights" and not os.path.samefile(source, copied)
+
+
 def test_orchestrator_prompt_owns_generic_question_fidelity():
     prompt = _text("orchestrator/system_prompt.py")
     orchestrator = _text("orchestrator/orchestrator.py")
@@ -1488,6 +1520,7 @@ TESTS = [
     test_class_model_is_a_deterministic_signed_named_dimension_superposition,
     test_class_threshold_uses_the_validation_gap_without_changing_decisions,
     test_class_metrics_separate_evidence_coverage_from_accuracy,
+    test_a_build_context_links_its_weights_when_it_can,
 ]
 
 

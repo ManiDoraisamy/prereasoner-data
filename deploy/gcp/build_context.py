@@ -177,6 +177,15 @@ def require_clean_head() -> str:
     return _git("rev-parse", "HEAD")
 
 
+def place_weight(source: Path, destination: Path) -> None:
+    """A weight in a build context, which is only read: a hard link on the same volume, since a copy holds about 6 GB
+    more on the disk for each build (2026-10-31), else a copy."""
+    if source.stat().st_dev == destination.parent.stat().st_dev:
+        destination.hardlink_to(source)
+    else:
+        shutil.copyfile(source, destination)
+
+
 def create_context(output: Path, target: str = "engine") -> tuple[str, str]:
     commit = require_clean_head()
     allowlist = target_allowlist(target)
@@ -217,7 +226,7 @@ def create_context(output: Path, target: str = "engine") -> tuple[str, str]:
             source = data / relative
             destination = output / "engine" / "data" / relative
             destination.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(source, destination)
+            place_weight(source, destination)
         validate_weight_bundle(output / "engine" / "data", manifest)
         provenance = output / "engine" / "data" / "build_provenance.json"
     elif target == "sync":
