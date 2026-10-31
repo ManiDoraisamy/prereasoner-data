@@ -373,7 +373,7 @@ class PoolSelection:
             return member
         evidence = member.evidence
         if split is not member.query and evidence:
-            evidence = (f"{evidence[0]}, for each {spaced_name(split.group_by[0].name).lower()}", *evidence[1:])
+            evidence = (f"{evidence[0]}, for each {spaced_name(split.group_by[-1].name).lower()}", *evidence[1:])
         return ScoredQuery(served, render_query(served), member.score, evidence)
 
     def constrained(self, admissible) -> PoolSelection:
@@ -426,21 +426,24 @@ def mixed_currencies(graph) -> dict[str, ColumnRef]:
 
 
 def per_currency(query, currencies: Mapping[str, ColumnRef]):
-    """The served form of a total or average of money over rows in several currencies: one row per currency. Added up,
-    332,600 rupees and 205,194 dollars read as 545,337 of nothing, as "how much sales for long term customers" did
+    """The served form of a total or average of money over rows in several currencies: one row per currency, within each
+    group it has. Added up, 332,600 rupees and 205,194 dollars read as 545,337 of nothing, as "how much sales for long term
+    customers" did, and "total Amount broken down by Plan and Currency" read without the currency gave each plan such a sum
     (2026-10-30). A question that names a currency filters or converts; one that groups by it asks for this already."""
-    if (not currencies or not isinstance(query, SelectQuery) or query.group_by or query.joins or query.limit is not None
-            or query.distinct or not isinstance(query.from_table, str) or query.from_table not in currencies):
+    if (not currencies or not isinstance(query, SelectQuery) or query.joins or query.limit is not None or query.distinct
+            or query.having is not None or not isinstance(query.from_table, str) or query.from_table not in currencies):
         return query
-    measures = [item.expression for item in query.select]
-    if not measures or not all(isinstance(measure, Aggregate) and measure.function in ("SUM", "AVG")
-                               and isinstance(measure.operand, ColumnRef)
+    measures = [item.expression for item in query.select if isinstance(item.expression, Aggregate)]
+    if not measures or not all(measure.function in ("SUM", "AVG") and isinstance(measure.operand, ColumnRef)
                                and is_currency_measure_column(measure.operand.name) for measure in measures):
         return query
     currency = currencies[query.from_table]
-    if currency in column_refs(query):
+    labels = [index for index, item in enumerate(query.select) if not isinstance(item.expression, Aggregate)]
+    if currency in column_refs(query) or (labels and not query.group_by):
         return query
-    return replace(query, select=(SelectItem(currency), *query.select), group_by=(currency,))
+    at = labels[-1] + 1 if labels else 0
+    return replace(query, select=(*query.select[:at], SelectItem(currency), *query.select[at:]),
+                   group_by=(*query.group_by, currency))
 
 
 def outread_by_rows(pool: Sequence[ScoredQuery], ranking: Sequence[int],

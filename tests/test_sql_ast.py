@@ -1932,6 +1932,17 @@ def test_shared_ranking_rule_preserves_date_then_double_count_then_calculation_p
     units = SelectQuery((SelectItem(Aggregate("SUM", quantity)),), "t")
     assert per_currency(units, currencies) is units
     assert per_currency(total, {}) is total
+    # Within a group too: a plan's total of mixed money is a sum of nothing ("by Plan and Currency", read without it).
+    identity = money.column_map[("t", "id")].ref
+    by_id = SelectQuery((SelectItem(identity), SelectItem(Aggregate("SUM", amount))), "t", group_by=(identity,))
+    split = per_currency(by_id, currencies)
+    assert split.group_by == (identity, currency), split.group_by
+    assert [item.expression for item in split.select] == [identity, currency, Aggregate("SUM", amount)], split.select
+    first = SelectQuery((SelectItem(Aggregate("SUM", amount)), SelectItem(identity)), "t", group_by=(identity,))
+    assert [item.expression for item in per_currency(first, currencies).select] == [
+        Aggregate("SUM", amount), identity, currency]
+    ranked = SelectQuery(by_id.select, "t", group_by=(identity,), limit=1)
+    assert per_currency(ranked, currencies) is ranked, "the top group stays one group"
     # A test of a column of few values against a value it does not hold is named; one of many values, or a held one, not.
     from engine.sql_grounding import absent_value
     from engine.sql_schema import SchemaGraph
@@ -2256,7 +2267,9 @@ def test_tabs_of_one_layout_are_read_as_one():
     assert sorted(map(tuple, served["result"]["rows"])) == [("price_a", "eur", 9), ("price_a", "usd", 20), ("price_b", "eur", 7), ("price_b", "usd", 8)], served["sql"]
     assert served["layout_copies"] == {"read": ["NT"], "others": ["SI", "FF"]}, served.get("layout_copies")
     named = planner.serve(workbook, in_si)
-    assert sorted(map(tuple, named["result"]["rows"])) == [("price_c", 45), ("price_g", 40)], named["sql"]
+    # SI's money is in two currencies, so each plan's total is per currency (sql_rank.per_currency): 40 usd + 5 inr is no 45.
+    assert sorted(map(tuple, named["result"]["rows"])) == [("price_c", "inr", 5), ("price_c", "usd", 40),
+                                                           ("price_g", "usd", 40)], named["sql"]
     assert "layout_copies" not in named
     # A near copy (SI with one more column) is named too; another table that merely has the column read is not.
     near_workbook = _subscription_workbook(extra_si_column=True)

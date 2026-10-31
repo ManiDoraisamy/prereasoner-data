@@ -16,7 +16,7 @@ def test_every_answer_is_computed_and_non_empty():
     assert len(every) >= 190, len(every)
     for case in every:
         kind, gold = case.expected
-        assert kind in ("scalar", "groups", "first", "rows", "money"), case.question
+        assert kind in ("scalar", "groups", "first", "rows", "money", "pairs"), case.question
         if kind == "scalar":
             golds = gold if isinstance(gold, list) else [gold]
             assert any(value for value in golds), case.question
@@ -69,6 +69,8 @@ def test_grade():
     assert grade(("money", {"usd": 5, "inr": 80}), answer(["usd", 5], ["inr", 80]))[0] == "right"
     assert grade(("money", {"usd": 5, "inr": 80}), answer([85]))[0] == "wrong"
     assert grade(("money", {"usd": 5}), answer([5]))[0] == "right"
+    assert grade(("pairs", {("a", "usd"): 5, ("a", "inr"): 80}), answer(["a", "usd", 5], ["a", "inr", 80]))[0] == "right"
+    assert grade(("pairs", {("a", "usd"): 5, ("a", "inr"): 80}), answer(["a", 85]))[0] == "wrong"
 
 
 TESTS = [test_workbooks_are_seeded, test_every_answer_is_computed_and_non_empty, test_a_question_on_meaning_does_not_say_the_column,

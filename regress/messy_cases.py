@@ -7,6 +7,7 @@ An expected answer is one of:
   ("first", [label, ...])       the first row names one of these labels (more than one on a tie)
   ("rows", n)                   the answer lists n rows
   ("money", {currency: n})      a total of mixed money: one row per currency
+  ("pairs", {(a, b): n})        a row holds both labels with this number: mixed money's groups, per currency
 
 A case's ``family`` says what the wording leans on: "value" a stored value named by its meaning, "column" a column named by
 its meaning, "structure" a shape of question, "plain" a control that uses the data's own words. The split is by the
@@ -84,6 +85,14 @@ class Sheet:
                     counts[r[key]] += 1
         return {k: (v / counts[k] if how == "mean" else v) for k, v in totals.items()}
 
+    def by_pair(self, first, second, column):
+        """{(first's label, second's label): total of ``column``} over the rows with a first label."""
+        totals = defaultdict(float)
+        for r in self.rows:
+            if r[first] != "" and number(r[column]) is not None:
+                totals[(r[first], r[second])] += number(r[column])
+        return dict(totals)
+
     def top(self, key, column=None, test=None):
         """The labels with the most rows, or the largest total of ``column``."""
         table = self.by(key, column, test)
@@ -123,7 +132,7 @@ def _subscriptions(tables):
         ("how many customers pay annually", count(equals(kind, "yearly")), "value"),
         ("monthly vs yearly subscribers", ("groups", nt.by(kind, test=both)), "structure"),
         ("which product brings in the most money", ("first", nt.top("Product", "Amount", usd) + nt.top("Product", "Amount")), "column"),
-        ("total sales split by sector", ("groups", nt.by("sector (metadata)", "Amount")), "column"),
+        ("total sales split by sector", ("pairs", nt.by_pair("sector (metadata)", "Currency", "Amount")), "column"),
         ("sales from retailers", money(equals("sector (metadata)", "Retail Trade")), "value"),
         ("how much do schools pay us", money(equals("sector (metadata)", "Educational Services")), "value"),
         ("churn by year", ("groups", nt.by("Year", test=equals(status, "canceled"))), "structure"),
@@ -439,6 +448,10 @@ def grade(expected, response):
         right = bool(rows) and any(str(v) in {str(g) for g in gold} for v in rows[0])
     elif kind == "rows":
         right = len(rows) == gold
+    elif kind == "pairs":
+        right = bool(gold) and all(any({str(a), str(b)} <= {str(v) for v in row} and any(_close(number(v), n) for v in row
+                                                                                       if number(v) is not None)
+                                       for row in rows) for (a, b), n in gold.items())
     elif kind == "groups":
         labelled = _labelled(rows)
         right = bool(gold) and all(k in labelled and any(_close(x, v) for x in labelled[k]) for k, v in gold.items())

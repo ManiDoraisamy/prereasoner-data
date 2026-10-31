@@ -5050,8 +5050,11 @@ What did not need training, each measured on that harness or the stored calibrat
   misspells one, and read as different tables the readers chose whichever listed the question's value, with the user on NT.
 - A table the block reads no column of is left out when no key connects it (`readings._join_options`): the readers marked the
   report tab beside the export, and the builder refused every reading of "total sales split by sector".
-- A total of money over several currencies is one row per currency (`sql_rank.per_currency`), unless the question filters,
-  groups or converts: 332,600 rupees and 205,194 dollars read as 545,337 of nothing. Gemini's SQL does the same.
+- A total of money over several currencies is one row per currency, within each group it has (`sql_rank.per_currency`),
+  unless the question filters by a currency, groups by it or converts: 332,600 rupees and 205,194 dollars read as 545,337 of
+  nothing. Gemini's SQL does the same for totals.
+- Compose loads the canonical headers every other path reads: SQLite's column names ignore case, so a sheet with `business`
+  and `Business` raised on load, and every question on it lost the world-join path without a word.
 - A ranking of groups ranks the groups that have a name (`sql_ast.named_groups`); a listing keeps its blank.
 - A value spelled almost as a stored one in a column of few values is that value (`decode.nearly_spelled`, ratio 0.9:
   cancelled/canceled, not Australia/Austria or Niger/Nigeria).
