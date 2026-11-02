@@ -399,9 +399,27 @@ def test_a_lone_data_line_called_a_header_stays_in_its_table():
     model = _tab_heads(rows, {1, 9})
     assert len(model.tables) == 1 and [c.name for c in model.tables[0].columns] == head
     assert 9 in [line.row for line in model.tables[0].lines] and model.lines[8].role == names.RECORD and names.S_DATA_LINE in model.lines[8].signals
+    # Styled apart from the records, its cells may fit and it is still a header: a schedule's bold line of a slot number and names.
+    styled = _tab_heads(rows, {1, 9}, rowStyles=[[8, 5, 5, 0, 0]])
+    assert [t.header_rows for t in styled.tables] == [(1,), (9,)]
     # A real stacked header beneath a table still opens a new table.
     rows = [head] + [[f"Co{i}", f"P{i}", 100 + i, i, f"C{i}"] for i in range(1, 8)] + [["Trader", "Desk", "Pnl"], ["x", "d1", 1], ["y", "d2", 2], ["z", "d3", 3]]
     assert [t.header_rows for t in _tab_heads(rows, {1, 9}).tables] == [(1,), (9,)]
+
+
+def test_a_later_line_styled_as_the_header_is_a_header():
+    # A stacked table's header reads short when its words are as odd as data: the same marks, set off, on the same columns.
+    rows = [["5", "John", "Martin", "Jim"]] + [[f"2:{i}0", f"p{i}", f"q{i}", f"r{i}"] for i in range(5)] + [["6", "Keith", "Mike", "Jeff"]] + [[f"3:{i}0", f"s{i}", f"t{i}", f"u{i}"] for i in range(5)]
+    styles = [[0, 4, 4, 0, 0], [6, 4, 4, 0, 0]]
+    heads = {r: (1.0 if r == 1 else -1.0) for r in range(1, 13)}
+    held, line_roles.final_scores = line_roles.final_scores, lambda facts, grid, features, model=None: heads
+    try:
+        model = _tab(rows, rowStyles=styles)
+        plain = _tab(rows)
+    finally:
+        line_roles.final_scores = held
+    assert [t.header_rows for t in model.tables] == [(1,), (7,)]
+    assert [t.header_rows for t in plain.tables] == [(1,)]
 
 
 def test_a_units_line_repeating_over_new_names_opens_a_table():
@@ -543,6 +561,10 @@ def test_the_lone_title_over_a_header_is_the_first_band():
     assert [line.section for line in table.lines][:1] == [("NEWCO",)] and table.lines[-1].section == ("ESTATE",)
     assert [text for _, text in table.bands] == ["NEWCO", "ESTATE"]
     assert [t[1] for t in table.context.titles] == ["NEWCO"]
+    # Read as the header's upper line by the model, it is still the first band, and names no column.
+    both = _tab_heads(rows, {1, 3}, rowStyles=styles).tables[0]
+    both_upper = _tab_heads(rows[:1] + rows[2:], {1, 2}, rowStyles=[[0, 1, 1, 0, 0], [6, 1, 1, 0, 0]]).tables[0]
+    assert both.lines[0].section == ("NEWCO",) and both_upper.lines[0].section == ("NEWCO",) and both_upper.header_rows == (2,) and [c.name for c in both_upper.columns] == ["Area", "Amt"]
     # A title that looks nothing like the bands is only a title.
     table = _tab_heads(rows, {3}, rowStyles=[[7, 1, 1, 0, 0]]).tables[0]
     assert table.lines[0].section == () and table.lines[-1].section == ("ESTATE",)
@@ -801,7 +823,7 @@ TESTS = [
     test_grand_total_and_subtotals_that_tie_never_leave, test_a_key_left_of_repeated_names_goes_with_every_block, test_all_names_alike_are_a_peer_run_not_blocks, test_a_column_beyond_the_named_blocks_stays_in_a_table,
     test_the_line_model_artifact_is_small_pinned_and_retrains_the_same, test_training_labels_hold_row_numbers_and_hashes_only, test_a_units_line_repeating_over_new_names_opens_a_table, test_a_total_word_naming_a_column_can_be_a_header,
     test_a_closing_total_ends_its_table_when_records_resume, test_titles_with_one_cell_a_block_part_side_by_side_blocks, test_each_side_by_side_list_has_its_own_bands, test_a_lone_label_between_a_total_and_figures_is_a_band, test_axes_cross_spacers_and_totals_and_reach_flag_columns,
-    test_rule_lines_are_spacers_and_never_names, test_no_header_inside_the_filter_range, test_a_data_line_joined_to_a_repeated_header_stays_data, test_a_lone_data_line_called_a_header_stays_in_its_table,
+    test_a_later_line_styled_as_the_header_is_a_header, test_rule_lines_are_spacers_and_never_names, test_no_header_inside_the_filter_range, test_a_data_line_joined_to_a_repeated_header_stays_data, test_a_lone_data_line_called_a_header_stays_in_its_table,
     test_a_spacer_column_does_not_part_labels_from_their_figures, test_statistic_lines_under_a_date_key_are_printed, test_a_repeated_block_that_differs_opens_a_section, test_a_repeat_after_a_band_keeps_the_bands_section,
     test_the_lone_title_over_a_header_is_the_first_band, test_text_records_after_a_dated_title_stay_records, test_a_solid_block_ending_early_does_not_fill_down, test_a_sparse_comment_right_of_a_full_key_does_not_fill_down,
     test_continuation_lines_take_no_label, test_a_family_says_how_much_its_members_repeat_each_other, test_a_date_from_the_clock_is_no_as_of, test_an_unchanged_sheet_keeps_its_hash_and_its_model,

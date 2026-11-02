@@ -112,6 +112,10 @@ def _fits_body(grid: Grid, r: int, region: _Region, roles: dict[int, tuple[str, 
     recent = [x for x in region.body if roles[x][0] == RECORD][-_FILTER_RECENT:]
     if len(recent) < 3:
         return False
+    # A line styled as the lines around it are not is set apart by its author, whatever its cells hold.
+    marks = _style_of(grid, r)
+    if any(marks) and sum(1 for x in recent if _style_of(grid, x) == marks) * 2 < len(recent):
+        return False
     fit = 0
     for c, cell in line.items():
         kinds = Counter(_kind_group(grid.rows[x][c].kind) for x in recent if c in grid.rows[x])
@@ -683,13 +687,18 @@ def _style_of(grid: Grid, row: int) -> tuple[bool, bool, bool]:
 
 
 def _first_band(grid: Grid, region: _Region, block: _Block, roles: dict) -> int | None:
-    """When a table has bands, the lone title directly over its header, styled like them, is its first band: the first section sits above the header, where it reads as a title."""
+    """When a table has bands, the lone title directly over its header, styled like them, is its first band: the first section sits above the header, where it reads as a title, or as the header's own upper line."""
     bands = [r for r in region.body if roles[r][0] == BAND]
-    if not bands or not region.titles or not region.header_rows:
+    if not bands or not region.header_rows:
         return None
-    title = region.titles[-1]
+    if len(region.header_rows) >= 2 and len(grid.rows[region.header_rows[0]]) == 1:
+        title = region.header_rows[0]
+    elif region.titles and region.header_rows[0] - region.titles[-1] <= 3:
+        title = region.titles[-1]
+    else:
+        return None
     cells = [cell for c, cell in grid.rows[title].items() if block.holds(c)]
-    if len(cells) != 1 or len(grid.rows[title]) != 1 or cells[0].kind != V_TEXT or region.header_rows[0] - title > 3 or len(str(cells[0].value)) > 60:
+    if len(cells) != 1 or len(grid.rows[title]) != 1 or cells[0].kind != V_TEXT or len(str(cells[0].value)) > 60:
         return None
     return title if _style_of(grid, title) == _style_of(grid, bands[0]) else None
 
@@ -739,6 +748,9 @@ def _table_of(grid: Grid, tab: str, index: int, block_number: int, region: _Regi
     if not columns_used:
         return None
     repeat_sections, title_rows = _repeat_sections(grid, region, block, header_rows)
+    first_band = None if title_rows else _first_band(grid, region, block, roles)
+    if first_band in header_rows:
+        header_rows = [r for r in header_rows if r != first_band]
     name_rows = [r for r in header_rows if r not in title_rows]
     span = block.span()
     paths = _header_paths(grid, name_rows, span)
@@ -767,7 +779,7 @@ def _table_of(grid: Grid, tab: str, index: int, block_number: int, region: _Regi
         cells = [cell for r in title_rows for c, cell in grid.rows[r].items() if holds(c) and c not in block.shared]
         section = (_text_of(cells),)
         bands.append((title_rows[0], section[0]))
-    elif (first_band := _first_band(grid, region, block, roles)) is not None:
+    elif first_band is not None:
         section = (_text_of([cell for c, cell in grid.rows[first_band].items() if holds(c)]),)
         bands.append((first_band, section[0]))
     repeat_rows = {r for rows in region.repeats for r in rows}

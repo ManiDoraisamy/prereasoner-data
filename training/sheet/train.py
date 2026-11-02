@@ -22,7 +22,7 @@ from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 WEIGHTS = {"hand": 1.0, "markup": 1.0, "free": 0.25}
-THRESHOLD = -0.5
+THRESHOLD = -0.5    # chosen on dev (validation tabs V and the first blind batch, the train holdout, the gold run): 0 gold 183 lines .881; -0.5 gold 183 lines .933; -0.75 gold 181 lines .940
 LEARNING_RATE = 0.08
 BINS = 64
 SMOOTHING = 5.0

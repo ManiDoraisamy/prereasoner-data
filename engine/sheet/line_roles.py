@@ -7,7 +7,7 @@ from engine.sheet.grid import Grid
 from engine.sheet.line_facts import LineFacts, line_facts
 from engine.sheet.line_model import final_scores, line_features, load_model
 from engine.sheet.names import (BAND, HEADER, NOTE, RECORD, S_ABOVE_TABLE, S_ALONE_AFTER_GAP, S_ALONE_AFTER_TOTAL, S_ALONE_BEFORE_HEADER, S_ALONE_STYLED, S_ARITHMETIC_TIE, S_AUTOFILTER_TOP, S_BELOW_TABLE, S_FIGURES, S_FORMULA_CLOSES_BLOCK,
-                                S_FORMULA_COMPUTED, S_FORMULA_TOTAL, S_FROZEN_LAST, S_JOINED_ABOVE, S_JOINED_BELOW, S_LABEL_VALUE, S_MERGED_OVER_COLUMNS, S_MODEL, S_NAMES_BODY, S_TEXT_LINE, S_TOTAL_WORD, S_TOTAL_WORD_IN_KEY, TITLE, TOTAL)
+                                S_FORMULA_COMPUTED, S_FORMULA_TOTAL, S_FROZEN_LAST, S_JOINED_ABOVE, S_JOINED_BELOW, S_LABEL_VALUE, S_MERGED_OVER_COLUMNS, S_MODEL, S_NAMES_BODY, S_STYLE_OF_HEADER, S_TEXT_LINE, S_TOTAL_WORD, S_TOTAL_WORD_IN_KEY, TITLE, TOTAL)
 
 _WORD_ON_MOST_LINES = 8
 
@@ -70,6 +70,7 @@ _MOST_LINES_ABOVE = 4
 _TITLE_ZONE = 15
 _JOIN_FLOOR = -3.0
 _WORD_YIELDS = 1.0
+STYLE_FLOOR = -2.0
 
 
 def grow_blocks(heads: dict[int, list[str]], facts: dict[int, LineFacts], printed: dict[int, list[str]], scores: dict[int, float]) -> dict[int, list[str]]:
@@ -180,7 +181,7 @@ def assign_roles(grid: Grid, facts: dict[int, LineFacts], heads: dict[int, list[
     return roles
 
 
-def _name_unnamed_bodies(heads: dict[int, list[str]], facts: dict[int, LineFacts], printed: dict[int, list[str]]) -> None:
+def _name_unnamed_bodies(heads: dict[int, list[str]], facts: dict[int, LineFacts], printed: dict[int, list[str]], scores: dict[int, float]) -> None:
     """A body of figures with no header over it takes the name line directly above it, when that line starts its block: a small clean table needs no further evidence."""
     rows = sorted(facts)
     above_is_body = False
@@ -193,7 +194,7 @@ def _name_unnamed_bodies(heads: dict[int, list[str]], facts: dict[int, LineFacts
             if facts[x].filled == 1 and x not in heads and at >= 2:
                 x = rows[at - 2]
             more = any(facts[y].real_figures + facts[y].date >= 1 for y in rows[at + 1:at + 6])
-            if x not in heads and x not in printed and r - x <= 3 and _name_line(facts[x]) and facts[x].real_figures == 0 and facts[x].over_figures >= 0.3 and more:
+            if x not in heads and x not in printed and r - x <= 3 and _name_line(facts[x]) and facts[x].real_figures == 0 and facts[x].over_figures >= 0.3 and more and scores[x] >= _JOIN_FLOOR:
                 above = facts[x].prev
                 if above is None or x - above > 1 or above in printed or above in heads or facts[above].filled == 1:
                     heads[x] = [S_NAMES_BODY]
@@ -217,6 +218,28 @@ def _clear_filter_range(heads: dict[int, list[str]], grid: Grid) -> None:
             del heads[r]
 
 
+def _styled_like_a_header(heads: dict[int, list[str]], facts: dict[int, LineFacts], grid: Grid, printed: dict[int, list[str]], scores: dict[int, float], threshold: float) -> None:
+    """A stacked table's header is often read short: it names a body as the first header does, and its words are as odd as data. Its evidence is the first one's: the same marks set off from the line under it, on the same columns, with text over the first line's columns. Records styled so are rare: the model's score must not rule it out."""
+    above: list[int] = []
+    for r in sorted(facts):
+        f = facts[r]
+        if r in heads:
+            above.append(r)
+            continue
+        marks = (f.bold >= 0.5, f.fill >= 0.5, f.under >= 0.5)
+        if r in printed or not any(marks) or f.real_figures * 4 > f.filled or f.filled < 2 or not above or scores[r] < threshold + STYLE_FLOOR:
+            continue
+        after = facts[f.next] if f.next is not None else None
+        if after is None or (after.bold >= 0.5, after.fill >= 0.5, after.under >= 0.5) == marks:
+            continue
+        for h in above[-8:]:
+            head = facts[h]
+            if (head.bold >= 0.5, head.fill >= 0.5, head.under >= 0.5) == marks and len(grid.rows[r].keys() & grid.rows[h].keys()) >= 0.8 * len(grid.rows[r].keys() | grid.rows[h].keys()):
+                heads[r] = [S_STYLE_OF_HEADER]
+                above.append(r)
+                break
+
+
 def _figures_outnumber_names(f: LineFacts) -> bool:
     """A line of real figures with fewer names beside them holds data, whatever else it looks like."""
     return f.real_figures >= 3 and f.real_figures > f.text + f.date + f.period + (f.number - f.real_figures)
@@ -238,9 +261,10 @@ def header_lines(grid: Grid, facts: dict[int, LineFacts], printed: dict[int, lis
         elif r in printed and printed[r] == [S_TOTAL_WORD] and scores[r] >= model["threshold"] + _WORD_YIELDS and facts[r].real_figures * 2 <= facts[r].text:
             # "Date, Total, Grand Total" over the columns it names: the word names a column, and the line holds more names than figures.
             heads.setdefault(r, []).append(S_MODEL)
+    _styled_like_a_header(heads, facts, grid, printed, scores, model["threshold"])
     if tab.frozen_rows in heads:
         heads[tab.frozen_rows].append(S_FROZEN_LAST)
-    _name_unnamed_bodies(heads, facts, printed)
+    _name_unnamed_bodies(heads, facts, printed, scores)
     heads = grow_blocks(heads, facts, printed, scores)
     _clear_filter_range(heads, grid)
     return heads
