@@ -100,8 +100,9 @@ FX_DATE = "date"
 FX_TEXT = "text"
 FX_CONST = "const"
 FX_MIXED = "mixed"
+FX_VOLATILE = "volatile"           # reads the clock or a random draw (TODAY, NOW, RAND): its value moves with no edit, so it is never an as-of date and no part of a tab's hash
 FORMULA_SHAPES = (FX_AGG_COLUMN, FX_AGG_ROW, FX_AGG_OTHER, FX_AGG_RUN, FX_COND_AGG, FX_ROW_ARITH, FX_COLUMN_ARITH, FX_COLUMN_RUN, FX_LINK, FX_LINK_COLUMN,
-                  FX_OTHER_TAB, FX_EXTERNAL, FX_LOOKUP, FX_IF, FX_DATE, FX_TEXT, FX_CONST, FX_MIXED)
+                  FX_OTHER_TAB, FX_EXTERNAL, FX_LOOKUP, FX_IF, FX_DATE, FX_TEXT, FX_CONST, FX_MIXED, FX_VOLATILE)
 
 # What an axis of peer columns runs over.
 AXIS_PERIOD = "period"
@@ -135,5 +136,13 @@ S_FIGURES = "figures"
 S_TEXT_LINE = "text_line"
 S_NAMES_BODY = "names_body"                    # the name line directly above a body nothing else names
 S_MODEL = "line_model"                         # the learned line model called it a header
+S_RULE_LINE = "rule_line"                      # only rule characters, a spacer: never a name, a record or a band
+S_TOTAL_WORD_IN_KEY = "total_word_in_key"      # on most lines the word sits inside the record's own key and ties to nothing: a record
+S_TOTAL_OTHER_BLOCK = "total_other_block"      # a side-by-side neighbour's total on this line; this block's own cells hold a record
+S_STRAY_KEY = "stray_key"                      # text where the key column holds dates, beside figures: a statistic printed under the data
+S_DATA_LINE = "data_line"                      # called a header, but its cells fit the columns of the table it sits in
+S_FILLED_DOWN = "filled_down"                  # a sparse label column's cell above fills a blank on this line
+S_REPEATED_HEADER = "repeated_header"          # repeats its table's header
 LINE_SIGNALS = (S_TOTAL_WORD, S_FORMULA_TOTAL, S_FORMULA_COMPUTED, S_FORMULA_CLOSES_BLOCK, S_ARITHMETIC_TIE, S_AUTOFILTER_TOP, S_FROZEN_LAST, S_JOINED_ABOVE, S_JOINED_BELOW, S_MERGED_OVER_COLUMNS, S_ALONE_STYLED,
-                S_ALONE_BEFORE_HEADER, S_ALONE_AFTER_GAP, S_ABOVE_TABLE, S_BELOW_TABLE, S_LABEL_VALUE, S_FIGURES, S_TEXT_LINE, S_NAMES_BODY, S_MODEL)
+                S_ALONE_BEFORE_HEADER, S_ALONE_AFTER_GAP, S_ABOVE_TABLE, S_BELOW_TABLE, S_LABEL_VALUE, S_FIGURES, S_TEXT_LINE, S_NAMES_BODY, S_MODEL, S_RULE_LINE, S_TOTAL_WORD_IN_KEY, S_TOTAL_OTHER_BLOCK, S_STRAY_KEY,
+                S_DATA_LINE, S_FILLED_DOWN, S_REPEATED_HEADER)

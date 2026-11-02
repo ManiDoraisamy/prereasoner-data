@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import math
+import re
 from functools import lru_cache
 
 from engine.sheet.formulas import FormulaShape, classify, mark_runs
@@ -9,6 +10,9 @@ from engine.sheet.model import Cell
 from engine.sheet.names import F_DATE, F_GENERAL, F_PERCENT, P_DAY, V_BOOL, V_DATE, V_ERROR, V_MARKER, V_NUMBER, V_PERIOD, V_TEXT
 from engine.sheet.payload import TabPayload
 from engine.sheet.values import format_kind, is_error, is_marker, parse_number, parse_period, period_of_serial
+
+
+_RULE = re.compile(r"^(?:[-=_~]\s*){2,}$|^(?:[*.]\s*){3,}$")
 
 
 def clean(text: str) -> str:
@@ -85,8 +89,10 @@ class Grid:
                 if line is None:
                     line = self.rows[r] = {}
                 line[c] = cell
-        self.filled = sorted(self.rows)
-        self.last_row = self.filled[-1] if self.filled else 0
+        # A line of rule characters is a spacer, decided before anything reads the lines: it names nothing, holds nothing, and its neighbours see a gap.
+        self.rule_lines = frozenset(r for r, line in self.rows.items() if all(isinstance(cell.raw, str) and _RULE.match(clean(cell.raw)) for cell in line.values()))
+        self.filled = sorted(r for r in self.rows if r not in self.rule_lines)
+        self.last_row = max(self.rows, default=0)
         self.width = max((max(line) for line in self.rows.values()), default=0)
         # A merge's covered cells point at its top-left cell.
         self.spans: dict[tuple[int, int], tuple[int, int]] = {}

@@ -9,7 +9,7 @@ import re
 from dataclasses import dataclass
 
 from engine.sheet.names import (FX_AGG_COLUMN, FX_AGG_OTHER, FX_AGG_ROW, FX_AGG_RUN, FX_COLUMN_ARITH, FX_COLUMN_RUN, FX_COND_AGG, FX_CONST, FX_DATE, FX_EXTERNAL, FX_IF, FX_LINK,
-                                FX_LINK_COLUMN, FX_LOOKUP, FX_MIXED, FX_OTHER_TAB, FX_ROW_ARITH, FX_TEXT)
+                                FX_LINK_COLUMN, FX_LOOKUP, FX_MIXED, FX_OTHER_TAB, FX_ROW_ARITH, FX_TEXT, FX_VOLATILE)
 
 _STRINGS = re.compile(r'"[^"]*"')
 _REF = re.compile(r"(?<![A-Za-z0-9_.$!\]'])(?:(?P<sheet>'[^']+'|(?:\[[^\]]*\])?[A-Za-z0-9_.]+)!)?(?P<c1>\$?[A-Za-z]{1,3})(?P<r1>\$?\d{1,7})(?::(?P<c2>\$?[A-Za-z]{1,3})(?P<r2>\$?\d{1,7}))?(?![A-Za-z0-9_(.])")
@@ -21,7 +21,8 @@ _ADDERS = frozenset({"SUM", "SUBTOTAL", "AGGREGATE"})
 _AGG = _ADDERS | {"AVERAGE", "AVERAGEA", "COUNT", "COUNTA", "MIN", "MAX", "MEDIAN", "PRODUCT", "STDEV", "STDEVP", "VAR"}
 _COND_AGG = frozenset({"SUMIF", "SUMIFS", "COUNTIF", "COUNTIFS", "AVERAGEIF", "AVERAGEIFS", "SUMPRODUCT", "DSUM", "DCOUNT", "DCOUNTA", "DAVERAGE", "DMAX", "DMIN", "DGET", "FREQUENCY"})
 _LOOKUP = frozenset({"VLOOKUP", "HLOOKUP", "LOOKUP", "INDEX", "MATCH", "CHOOSE", "OFFSET", "INDIRECT", "GETPIVOTDATA"})
-_DATE_FN = frozenset({"TODAY", "NOW", "DATE", "EOMONTH", "EDATE", "YEAR", "MONTH", "DAY", "WEEKDAY", "DATEVALUE", "NETWORKDAYS", "WORKDAY", "HOUR", "MINUTE", "TIME", "WEEKNUM"})
+_VOLATILE_FN = frozenset({"TODAY", "NOW", "RAND", "RANDBETWEEN"})
+_DATE_FN = frozenset({"DATE", "EOMONTH", "EDATE", "YEAR", "MONTH", "DAY", "WEEKDAY", "DATEVALUE", "NETWORKDAYS", "WORKDAY", "HOUR", "MINUTE", "TIME", "WEEKNUM"})
 _TEXT_FN = frozenset({"CONCATENATE", "LEFT", "RIGHT", "MID", "TEXT", "TRIM", "UPPER", "LOWER", "PROPER", "LEN", "FIND", "SEARCH", "SUBSTITUTE", "REPLACE", "VALUE", "T", "CLEAN", "REPT"})
 
 
@@ -161,6 +162,8 @@ def classify(formula: str, row: int, column: int) -> FormulaShape:
     if "[" in body:
         return FormulaShape(FX_EXTERNAL, broken=broken)
     fns = {f.upper() for f in _FUNCTION.findall(body)}
+    if fns & _VOLATILE_FN:
+        return FormulaShape(FX_VOLATILE, broken=broken)
     refs = _refs(body)
     qualified = any(x[0] for x in refs)
     if _ONE_REF.match(body):

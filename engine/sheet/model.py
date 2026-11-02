@@ -38,7 +38,6 @@ class Line:
     section: tuple[str, ...] = ()
     label: str = ""
     scope: tuple[int, int] | None = None     # a printed line's rows, when its formulas say which it reads
-    repeated: bool = False                   # a header line repeating the table's own header
 
 
 @dataclass(slots=True)
@@ -120,12 +119,23 @@ class Table:
 
 
 @dataclass(slots=True)
+class MemberOverlap:
+    """How much of one family member's lines also sit in the other members: repeated is their share; inside names the members holding at least 90% of them."""
+    member: str
+    lines: int
+    repeated: float
+    inside: tuple[str, ...] = ()
+
+
+@dataclass(slots=True)
 class Family:
-    """Tables of one schema merged into one table, the member's name as a column: months on their own tabs, or repeated side-by-side blocks. basis says what matched them."""
+    """Tables of one schema merged into one table, the member's name as a column: months on their own tabs, or repeated side-by-side blocks. basis says what matched them. overlap says what adding across the members would count twice: one list sorted two ways, or a tab that is the sum of the others. adds_twice is true when a member of 10+ lines sits at least 90% in the others: a program adding across such a family asks which member is meant (Phase 2). as_of and unit stay on each member's own table."""
     name: str
     basis: str
     members: tuple[tuple[str, int], ...]          # (tab, table index)
     table: Table
+    overlap: tuple[MemberOverlap, ...] = ()
+    adds_twice: bool = False
 
 
 @dataclass(slots=True)
@@ -138,6 +148,7 @@ class TabModel:
     tables: list[Table]
     notes: list[Note]
     hidden_columns: tuple[int, ...] = ()
+    style_read: bool = True                       # the host read this tab's style whole; False: read none (payload.py)
 
 
 @dataclass(slots=True)

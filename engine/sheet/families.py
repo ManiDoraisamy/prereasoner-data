@@ -1,17 +1,20 @@
 """Tables of one schema merged into one table, with the member's name as a column: month tabs of one workbook (48% of tabs in the sample sit in such a family), and repeated side-by-side blocks of one tab.
 
-Two tables are one family when their header names match at 0.8 or better with digits and month words masked, or, for tables with no usable names, when their first text column holds the same labels at 0.8 or better. Each member keeps its own lines and addresses: a merged line's cells are the members' cells.
+Two tables are one family when their header names match at 0.8 or better with digits and month words masked, or, for tables with no usable names, when their first text column holds the same labels at 0.8 or better. Each member keeps its own lines and addresses: a merged line's cells are the members' cells. Column names alone cannot tell month tabs from one list sorted two ways, so a family carries how much its members repeat each other (MemberOverlap); the merge stays, and adding across it asks.
 """
 from __future__ import annotations
 
 import re
+from collections import Counter
 
-from engine.sheet.model import Axis, Cell, Column, Context, Family, Line, Stray, TabModel, Table
-from engine.sheet.names import TAB_NAME, V_DATE, V_PERIOD, V_TEXT
+from engine.sheet.model import Axis, Cell, Column, Context, Family, Line, MemberOverlap, Stray, TabModel, Table
+from engine.sheet.names import P_DAY, TAB_NAME, V_DATE, V_PERIOD, V_TEXT
 from engine.sheet.values import parse_period
 
 _MONTH = re.compile(r"\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\b", re.I)
 _MATCH = 0.8
+_REPEATED = 0.9
+_REPEATED_MEMBER_LINES = 10
 BASIS_NAMES = "header_names"
 BASIS_LABELS = "row_labels"
 BASIS_BLOCKS = "repeated_blocks"
@@ -40,8 +43,28 @@ def _member_cell(line: Line, name: str) -> Cell:
     """The member's name as a cell of the merged table; column 0 says it comes from the tab, not from a cell on it."""
     period = parse_period(name)
     if period is not None and period.start is not None:
-        return Cell(line.row, 0, name, V_DATE if period.kind == "day" else V_PERIOD, period.start if period.kind == "day" else name, period)
+        return Cell(line.row, 0, name, V_DATE if period.kind == P_DAY else V_PERIOD, period.start if period.kind == P_DAY else name, period)
     return Cell(line.row, 0, name, V_TEXT, name)
+
+
+def _overlaps(member_names: list[str], member_lines: list[Counter]) -> tuple[tuple[MemberOverlap, ...], bool]:
+    """Each member's lines against the others': the same cell values in the same merged columns, counted with their repeats."""
+    out: list[MemberOverlap] = []
+    twice = False
+    for at, (name, lines) in enumerate(zip(member_names, member_lines)):
+        count = sum(lines.values())
+        others: Counter = Counter()
+        inside: list[str] = []
+        for other_at, (other_name, other) in enumerate(zip(member_names, member_lines)):
+            if other_at == at:
+                continue
+            others.update(other)
+            if count and sum((lines & other).values()) >= _REPEATED * count:
+                inside.append(other_name)
+        share = sum((lines & others).values()) / count if count else 0.0
+        out.append(MemberOverlap(name, count, round(share, 4), tuple(inside)))
+        twice = twice or (count >= _REPEATED_MEMBER_LINES and share >= _REPEATED)
+    return tuple(out), twice
 
 
 def merge_tables(tables: list[Table], member_names: list[str], key_name: str, basis: str) -> Family:
@@ -55,6 +78,7 @@ def merge_tables(tables: list[Table], member_names: list[str], key_name: str, ba
     strays: list[Stray] = []
     axes: list[Axis] = []
     seen_axes: set[tuple[str, tuple[int, ...]]] = set()
+    member_lines: list[Counter] = []
     for table, member in zip(tables, member_names):
         mapping: dict[int, int] = {}
         for column in table.columns:
@@ -74,6 +98,7 @@ def merge_tables(tables: list[Table], member_names: list[str], key_name: str, ba
                 cells = {0: _member_cell(line, member)}
                 cells.update((mapping[p], cell) for p, cell in line.cells.items())
                 target.append(Line(tab=line.tab, row=line.row, role=line.role, cells=cells, signals=line.signals, hidden=line.hidden, section=line.section, label=line.label, scope=line.scope))
+        member_lines.append(Counter(tuple(sorted((mapping[p], str(cell.value)) for p, cell in line.cells.items())) for line in table.lines))
         columns[0].filled += len(table.lines)
         strays.extend(Stray(s.address, s.tab, s.row, mapping[s.position], s.kind, s.raw) for s in table.strays)
         for axis in table.axes:
@@ -84,7 +109,8 @@ def merge_tables(tables: list[Table], member_names: list[str], key_name: str, ba
     context = Context(tab=first.tab, titles=first.context.titles, unit=first.context.unit, unit_address=first.context.unit_address)
     merged = Table(tab=first.tab, index=first.index, name=first.name, columns=columns, lines=lines, printed=printed, header_rows=first.header_rows, first_row=first.first_row, last_row=first.last_row,
                    context=context, axes=tuple(axes), strays=tuple(strays))
-    return Family(name=first.name, basis=basis, members=tuple((t.tab, t.index) for t in tables), table=merged)
+    overlap, twice = _overlaps(member_names, member_lines)
+    return Family(name=first.name, basis=basis, members=tuple((t.tab, t.index) for t in tables), table=merged, overlap=overlap, adds_twice=twice)
 
 
 def find_families(tabs: list[TabModel]) -> list[Family]:

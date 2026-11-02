@@ -5,7 +5,7 @@ import os
 import sys
 import tempfile
 
-from engine.sheet import compile_tab, compile_workbook
+from engine.sheet import compile_tab, compile_workbook, line_roles, names
 from engine.sheet.formulas import classify
 from engine.sheet.grid import Grid
 from engine.sheet.line_facts import line_facts
@@ -23,6 +23,15 @@ def _tab(rows, name="Sheet1", **more):
 
 def _roles(model):
     return {line.row: line.role for line in model.lines}
+
+
+def _tab_heads(rows, heads, **more):
+    """A tab compiled with exactly these lines called headers, whatever the line model says: a rule after the model is tested on its own."""
+    held, line_roles.header_lines = line_roles.header_lines, lambda grid, facts, printed: {r: [] for r in heads}
+    try:
+        return _tab(rows, **more)
+    finally:
+        line_roles.header_lines = held
 
 
 CLEAN = [["Region", "Rep", "Date", "Amount"], ["East", "Ann", 36892, 10.0], ["West", "Bob", 36893, 20.5], ["East", "Cal", 36894, 30.0], ["North", "Dee", 36895, 40.0]]
@@ -142,10 +151,36 @@ def test_total_word_inside_a_name_stays_a_record():
     assert [line.row for line in table.printed] == [5]
 
 
-def test_total_word_on_most_lines_is_not_a_mark():
+def test_total_word_inside_every_key_is_no_mark():
     rows = [["Customer", "Amt"]] + [[f"C{i} Total", i] for i in range(1, 11)]
-    table = _tab(rows).tables[0]
+    model = _tab(rows)
+    table = model.tables[0]
     assert len(table.lines) == 10 and not table.printed
+    assert names.S_TOTAL_WORD_IN_KEY in table.lines[0].signals
+
+
+def test_total_word_beside_a_blank_key_stays_printed():
+    # F2: an invoice's word sits in another column with the key blank, on every second line: the records must not add each ticket twice.
+    rows = [["Ticket", "Item", "Note", "Amt"]]
+    for i in range(1, 10):
+        rows += [[f"T{i}", "x", "", i * 10], ["", "", "Ticket Total", i * 10]]
+    rows += [["", "", "Total for Dept", 450]]
+    table = _tab(rows).tables[0]
+    assert sum(line.cells[3].value for line in table.lines) == 450
+    assert len(table.printed) == 10 and table.printed[-1].role == TOTAL
+
+
+def test_grand_total_and_subtotals_that_tie_never_leave():
+    # F2: the guard took a grand total with the rest; a key's own word that ties to what is above it prints that sum.
+    rows = [["Customer", "Item", "Amt"]]
+    for i in range(1, 10):
+        rows += [[f"C{i}", "x", i], [f"C{i} Total", "", i]]
+    rows += [["Grand Total", "", 45]]
+    table = _tab(rows).tables[0]
+    assert sum(line.cells[2].value for line in table.lines) == 45 and [line.label for line in table.printed][-1] == "Grand Total"
+    rows = [["Customer", "Amt"]] + [[f"C{i} Total", i] for i in range(1, 11)] + [["Grand Total", 55]]
+    table = _tab(rows).tables[0]
+    assert sum(line.cells[1].value for line in table.lines) == 55 and [line.label for line in table.printed] == ["Grand Total"]
 
 
 def test_running_balance_is_not_a_total():
@@ -288,6 +323,280 @@ def test_style_alone_never_moves_the_first_header():
     assert model.tables[0].header_rows == (1,)
 
 
+def _every_data_cell_is_held(model):
+    """The invariant behind F4: every filled cell on a data line belongs to a table."""
+    held = {(cell.row, cell.col) for table in model.tables for line in table.lines + table.printed for cell in line.cells.values()}
+    lost = [(line.row, c) for line in model.lines if line.role in (names.RECORD, SUBTOTAL, TOTAL) for c in line.cells if (line.row, c) not in held]
+    assert not lost, lost
+
+
+def test_a_key_left_of_repeated_names_goes_with_every_block():
+    # F4: Long Short Long Short make two blocks; the dates left of them fell out of both.
+    rows = [["", "Long", "Short", "Long", "Short"]] + [[36892 + i, 5.5 + i, 2.5 * i, 7.25 - i, 9.5 * i] for i in range(6)]
+    model = _tab_heads(rows, {1}, columnFormats=[{"f": "mm/dd/yy"}])
+    assert len(model.tables) == 2
+    assert all(table.columns[0].letter == "A" and table.columns[0].role == DATE for table in model.tables)
+    assert [c.letter for c in model.tables[1].columns] == ["A", "D", "E"]
+    _every_data_cell_is_held(model)
+
+
+def test_all_names_alike_are_a_peer_run_not_blocks():
+    # F4: 24 hour columns all named HB became 12 two-column tables and the zone, unnamed, fell out.
+    rows = [[""] + ["HB"] * 8] + [[f"Z{i}"] + [1.5 * (i + 1) + 3.25 * k for k in range(8)] for i in range(5)]
+    model = _tab_heads(rows, {1})
+    assert len(model.tables) == 1 and model.tables[0].columns[0].letter == "A" and len(model.tables[0].columns) == 9
+    _every_data_cell_is_held(model)
+
+
+def test_a_column_beyond_the_named_blocks_stays_in_a_table():
+    # F4: an unnamed computed column after A B A B, in no table.
+    rows = [["Hub", "Vol", "Hub", "Vol", ""]] + [[f"h{i}", i, f"k{i}", i + 1, 1] for i in range(1, 6)]
+    model = _tab(rows, formulas=[[r, 4, f"=D{r + 1}-B{r + 1}"] for r in range(1, 6)])
+    assert model.tables[-1].columns[-1].letter == "E"
+    _every_data_cell_is_held(model)
+
+
+def test_rule_lines_are_spacers_and_never_names():
+    # F6c: lines of dashes were headers, so columns were named "--" and a table split at each one.
+    rows = [["Cnterparty", "Deal", "Volume"], ["--------", "-----", "------"], ["a", "x1", 5], ["------", "---", "---"], ["Deal Total", "", 5], ["b", "x2", 6], ["------", "---", "---"], ["Deal Total", "", 6], ["c", "x3", 7], ["d", "x4", 8], ["e", "x5", 9]]
+    model = _tab(rows)
+    assert len(model.tables) == 1
+    table = model.tables[0]
+    assert [c.name for c in table.columns] == ["Cnterparty", "Deal", "Volume"]
+    assert [line.row for line in table.lines] == [3, 6, 9, 10, 11] and [line.row for line in table.printed] == [5, 8]
+    assert model.lines[1].role == names.BLANK and names.S_RULE_LINE in model.lines[1].signals
+
+
+def test_no_header_inside_the_filter_range():
+    # F6a: lines inside the autofilter that read like names opened new tables and named columns from data.
+    body = [[f"Plant {i}", f"Tank {i}", 100 + i] for i in range(1, 12)]
+    odd = [["Legal description", "Tank number", "Location"]]
+    rows = [["Plant", "Tank", "Vol"]] + body[:6] + odd + body[6:]
+    held, line_roles.header_score = line_roles.header_score, lambda values, model=None: 1.0 if values["text"] == 3 else -1.0
+    try:
+        model = _tab(rows, autofilter={"s": {"r": 0, "c": 0}, "e": {"r": len(rows) - 1, "c": 2}})
+        repeat = _tab(rows[:9] + [["Plant", "Tank", "Vol"]] + rows[9:], autofilter={"s": {"r": 0, "c": 0}, "e": {"r": len(rows), "c": 2}})
+    finally:
+        line_roles.header_score = held
+    assert len(model.tables) == 1 and model.tables[0].header_rows == (1,)
+    assert model.lines[7].role != HEADER and [c.name for c in model.tables[0].columns] == ["Plant", "Tank", "Vol"]
+    assert len(repeat.tables) == 1 and repeat.tables[0].repeated_header_rows == (10,), "a page's header kept inside the range stays a repeat"
+
+
+def test_a_data_line_joined_to_a_repeated_header_stays_data():
+    # F6b: the block's first line repeats the header, the next is data: the whole block was compared, so a new table opened and read its data line as names.
+    head = ["Company", "Plant", "Total MW", "Unit", "City"]
+    rows = [head] + [[f"Co{i}", f"P{i}", 100 + i, i, f"C{i}"] for i in range(1, 8)] + [head, ["Tva", "Haywood", 680, 1, "Brown"]] + [[f"Co{i}", f"P{i}", 200 + i, i, f"C{i}"] for i in range(8, 12)]
+    model = _tab_heads(rows, {1, 9, 10})
+    assert len(model.tables) == 1 and model.tables[0].repeated_header_rows == (9,)
+    assert 10 in [line.row for line in model.tables[0].lines] and model.lines[9].role == names.RECORD and names.S_DATA_LINE in model.lines[9].signals
+
+
+def test_a_lone_data_line_called_a_header_stays_in_its_table():
+    # F6b: a data line among records named columns "550" and "340" and split the table.
+    head = ["Company", "Plant", "Total MW", "Unit", "City"]
+    rows = [head] + [[f"Co{i}", f"P{i}", 100 + i, i, f"C{i}"] for i in range(1, 8)] + [["Dearborn", "Rouge", 550, 2, "Detroit"]] + [[f"Co{i}", f"P{i}", 200 + i, i, f"C{i}"] for i in range(8, 12)]
+    model = _tab_heads(rows, {1, 9})
+    assert len(model.tables) == 1 and [c.name for c in model.tables[0].columns] == head
+    assert 9 in [line.row for line in model.tables[0].lines] and model.lines[8].role == names.RECORD and names.S_DATA_LINE in model.lines[8].signals
+    # A real stacked header beneath a table still opens a new table.
+    rows = [head] + [[f"Co{i}", f"P{i}", 100 + i, i, f"C{i}"] for i in range(1, 8)] + [["Trader", "Desk", "Pnl"], ["x", "d1", 1], ["y", "d2", 2], ["z", "d3", 3]]
+    assert [t.header_rows for t in _tab_heads(rows, {1, 9}).tables] == [(1,), (9,)]
+
+
+def test_a_spacer_column_does_not_part_labels_from_their_figures():
+    # F7: labels A:C and figures E:H across a spacer, on the same lines, became two tables, so no question could filter by quarter and sum value; line labels were parted from their figures.
+    rows = [["Deal", "", "Quarter", "", "Team", "Region", "", "Value"]]
+    rows += [[f"D{i}", "", "Q1", "", f"T{i}", "East", "", i * 10] for i in range(1, 7)]
+    rows += [["TOTAL DEALS", "", "", "", "", "", "", 210]]
+    model = _tab(rows, formulas=[[7, 7, "=SUM(H2:H7)"]])
+    assert len(model.tables) == 1
+    table = model.tables[0]
+    assert [c.name for c in table.columns] == ["Deal", "Quarter", "Team", "Region", "Value"]
+    assert table.printed[0].label == "TOTAL DEALS" and table.printed[0].cells[4].value == 210
+
+
+def test_statistic_lines_under_a_date_key_are_printed():
+    # F5: Sum and Average under a date column stayed records: top-row answered the Sum line and a sum doubled.
+    rows = [["Dates", "Price", "Volume"]] + [[36892 + i, 2.0 + i, 10.0] for i in range(10)] + [["Sum", 65.0, 100.0], ["Average", 6.5, 10.0], ["Maximum", 11.0, 10.0]]
+    model = _tab_heads(rows, {1}, columnFormats=[{"f": "mm/dd/yy"}])
+    table = model.tables[0]
+    assert len(table.lines) == 10 and sum(line.cells[1].value for line in table.lines) == 65.0
+    assert [line.label for line in table.printed] == ["Sum", "Average", "Maximum"]
+    assert names.S_STRAY_KEY in table.printed[0].signals and model.lines[11].role in (SUBTOTAL, TOTAL)
+    # Under a text key the same lines are records until a word or a formula says otherwise: nothing here reads the words.
+    rows = [["Hub", "Price"]] + [[f"h{i}", 2.0 + i] for i in range(10)] + [["Sum", 65.0]]
+    assert len(_tab(rows).tables[0].lines) == 11
+
+
+def test_a_repeated_block_that_differs_opens_a_section():
+    # F8: hubs named on repeated header lines went to repeated rows with no section, so every record sat under the first hub's name.
+    def block(hub, base):
+        return [[f"{hub} PURCHASES", "", "", f"{hub} SALES", "", ""], ["", "MW", "PRICE", "", "MW", "PRICE"]] + [[f"c{i}", base + i, 1.5, f"s{i}", base - i, 2.5] for i in range(4)]
+
+    rows = block("COB", 10) + [[]] + block("MIDC", 20) + [[]] + block("PV", 30)
+    table = _tab_heads(rows, {1, 2, 8, 9, 15, 16}).tables[0]
+    assert table.repeated_header_rows == (8, 9, 15, 16)
+    assert [line.section for line in table.lines if line.row in (3, 10, 17)] == [("COB PURCHASES COB SALES",), ("MIDC PURCHASES MIDC SALES",), ("PV PURCHASES PV SALES",)]
+    assert [c.path for c in table.columns if c.letter in ("B", "C")] == [("MW",), ("PRICE",)], "the first hub is the first block's section, not part of a column's name"
+    assert [text for _, text in table.bands] == ["COB PURCHASES COB SALES", "MIDC PURCHASES MIDC SALES", "PV PURCHASES PV SALES"]
+
+
+def test_a_repeat_after_a_band_keeps_the_bands_section():
+    rows = [["ALPHA"], [], ["Area", "Device", "Amt"]] + [[f"a{i}", f"d{i}", i] for i in range(1, 6)] + [[], ["ESTATE"], [], ["Area", "Device name", "Amt"]] + [[f"e{i}", f"f{i}", i] for i in range(1, 6)]
+    styles = [[0, 1, 1, 0, 0], [9, 1, 1, 0, 0]]
+    table = _tab_heads(rows, {3, 12}, rowStyles=styles).tables[0]
+    assert table.repeated_header_rows == (12,) and {line.section for line in table.lines if line.row > 12} == {("ESTATE",)}
+
+
+def test_the_lone_title_over_a_header_is_the_first_band():
+    # F9: the first section sits above the header and reads as a title, so "the NEWCO section" found nothing.
+    rows = [["NEWCO"], [], ["Area", "Amt"]] + [[f"a{i}", i] for i in range(1, 5)] + [["ESTATE"]] + [[f"e{i}", i] for i in range(1, 5)]
+    styles = [[0, 1, 1, 0, 0], [7, 1, 1, 0, 0]]
+    model = _tab_heads(rows, {3}, rowStyles=styles)
+    table = model.tables[0]
+    assert [line.section for line in table.lines][:1] == [("NEWCO",)] and table.lines[-1].section == ("ESTATE",)
+    assert [text for _, text in table.bands] == ["NEWCO", "ESTATE"]
+    assert [t[1] for t in table.context.titles] == ["NEWCO"]
+    # A title that looks nothing like the bands is only a title.
+    table = _tab_heads(rows, {3}, rowStyles=[[7, 1, 1, 0, 0]]).tables[0]
+    assert table.lines[0].section == () and table.lines[-1].section == ("ESTATE",)
+
+
+def test_text_records_after_a_dated_title_stay_records():
+    # F10: a date in a title counted as the table's last figure, so every wordy record under the header became a note in no table.
+    rows = [["Report", 36892], [], ["Company", "City"], ["Enron Power Marketing Incorporated of Houston Texas", "Houston"], ["Duke", "Charlotte"], ["Calpine Corporation of San Jose in California", "San Jose"], ["Dynegy", "Houston"], ["Reliant", "Houston"]]
+    model = _tab_heads(rows, {3}, columnFormats=[{"f": "General"}, {"f": "mm/dd/yy"}])
+    assert model.tables[0].header_rows == (3,) and [line.row for line in model.tables[0].lines] == [4, 5, 6, 7, 8]
+    rows = [["Name", "City", "Amt"], ["a", "x", 1], ["b", "y", 2], ["c", "z", 3], ["d", "x", ""], ["e", "y", ""], ["Prepared on the last day of the month by the desk"]]
+    model = _tab(rows)
+    assert [line.row for line in model.tables[0].lines] == [2, 3, 4, 5, 6] and _roles(model)[7] == NOTE
+
+
+def test_a_solid_block_ending_early_does_not_fill_down():
+    # F3: a column filled on the first lines and blank after gave thousands of lines a value they never had.
+    rows = [["ID", "Book", "Desk", "Amt"]] + [[f"i{k}", "P", "D", k] for k in range(1, 6)] + [[f"i{k}", "", "", k] for k in range(6, 30)]
+    table = _tab(rows).tables[0]
+    assert not any(c.role == SECTION_LABEL for c in table.columns)
+    assert sum(1 for line in table.lines if 1 in line.cells) == 5
+    rows = [["Book", "ID", "Amt"]] + [["P", f"i{k}", k] for k in range(1, 6)] + [["", f"i{k}", k] for k in range(6, 30)]
+    table = _tab(rows).tables[0]
+    assert not any(c.role == SECTION_LABEL for c in table.columns) and sum(1 for line in table.lines if 0 in line.cells) == 5
+
+
+def test_a_sparse_comment_right_of_a_full_key_does_not_fill_down():
+    # F3: a comment filled down onto other people's lines.
+    rows = [["Name", "Comment", "Amount"], ["a", "check this", 1], ["b", "", 2], ["c", "", 3], ["d", "", 4], ["e", "late", 5], ["f", "", 6], ["g", "", 7], ["h", "", 8]]
+    table = _tab(rows).tables[0]
+    assert sum(1 for line in table.lines if 1 in line.cells) == 2 and table.columns[1].role != SECTION_LABEL
+
+
+def test_continuation_lines_take_no_label():
+    # F3: a record's further lines hold one text cell; filling its labels made a count off by four.
+    rows = [["Org", "Type", "Vol", "Point"]]
+    for i in range(1, 9):
+        rows += [[f"Org{i}", "P", i * 100, f"pt{i}"], ["", "", "", f"pt{i}b"], ["", "", "", f"pt{i}c"], ["", "", "", f"pt{i}d"]]
+    table = _tab(rows).tables[0]
+    assert sum(1 for line in table.lines if 1 in line.cells) == 8 and table.columns[1].role != SECTION_LABEL
+    filled = _tab([["Book", "Trader", "Amt"], ["West", "a", 1], ["", "b", 2], ["", "c", 3], ["East", "d", 4], ["", "e", 5], ["", "f", 6]]).tables[0]
+    assert names.S_FILLED_DOWN in filled.lines[1].signals and names.S_FILLED_DOWN not in filled.lines[0].signals
+
+
+def test_a_family_says_how_much_its_members_repeat_each_other():
+    # F1: one list sorted two ways, and a tab that is the sum of two others, merge on column names; adding across them doubles.
+    def tab(name, lines):
+        return {"name": name, "rows": [["Deal", "Vol"]] + [[f"d{i}", i] for i in lines]}
+
+    book = compile_workbook(workbook_from_json({"name": "w", "tabs": [tab("All", range(1, 21)), tab("Financial", range(1, 11)), tab("Physical", range(11, 21))]}))
+    family = book.families[0]
+    assert sum(line.cells[2].value for line in family.table.lines) == 2 * sum(range(1, 21))
+    assert family.adds_twice
+    by_member = {m.member: m for m in family.overlap}
+    assert by_member["All"].repeated == 1.0 and by_member["Financial"].inside == ("All",) and by_member["All"].inside == ()
+    # Day tabs of one template merge and do not repeat.
+    def day(name, base):
+        return {"name": name, "rows": [["Deal", "Vol"]] + [[f"d{i}", base + i] for i in range(12)]}
+
+    book = compile_workbook(workbook_from_json({"name": "w", "tabs": [day("Jan 01", 100), day("Jan 02", 200), day("Jan 03", 300)]}))
+    assert len(book.families) == 1 and not book.families[0].adds_twice and book.families[0].overlap[0].repeated == 0.0
+    assert len(book.families[0].table.lines) == 36
+
+
+def test_a_date_from_the_clock_is_no_as_of():
+    # F11: =TODAY() read as the table's as-of date: a workbook of 2001 read 2014, and in a live sheet it moves every day.
+    assert classify("=TODAY()", 1, 1).kind == names.FX_VOLATILE and classify("=NOW()-1", 1, 1).kind == names.FX_VOLATILE and classify('="as of "&TEXT(TODAY(),"m/d/y")', 1, 1).kind == names.FX_VOLATILE
+    assert classify("=DATE(2001,1,1)", 1, 1).kind == "date"
+    rows = [["Report", 41886], [], ["Pipe", "Vol"], ["a", 1], ["b", 2], ["c", 3]]
+    formats = [{"f": "General"}, {"f": "mm/dd/yy"}]
+    table = _tab_heads(rows, {3}, columnFormats=formats, formulas=[[0, 1, "=TODAY()"]]).tables[0]
+    assert table.context.as_of is None and table.context.as_of_address == ""
+    assert _tab_heads(rows, {3}, columnFormats=formats).tables[0].context.as_of_address == "B1"
+
+
+def test_an_unchanged_sheet_keeps_its_hash_and_its_model():
+    # N11, F11: a clock cell moves the hash daily; a host's budget must not change the model.
+    from engine.sheet import payload as wire
+
+    def raw(today, styles=None, **more):
+        tab = {"name": "S", "rows": [["Report", today], [], ["Pipe", "Vol"], ["a", 1], ["b", 2], ["c", 3]], "columnFormats": [{"f": "General"}, {"f": "mm/dd/yy"}], "formulas": [[0, 1, "=TODAY()"]]}
+        if styles is not None:
+            tab["rowStyles"] = styles
+        tab.update(more)
+        return tab
+
+    assert wire.tab_hash(tab_from_json(raw(41886))) == wire.tab_hash(tab_from_json(raw(45000)))
+    assert wire.tab_hash(tab_from_json({**raw(41886), "rows": [["Report", 41886], [], ["Pipe", "Vol"], ["a", 9], ["b", 2], ["c", 3]]})) != wire.tab_hash(tab_from_json(raw(41886)))
+    read = tab_from_json(raw(41886, [[2, 2, 2, 0, 0]]))
+    none = tab_from_json(raw(41886, [[2, 2, 2, 0, 0]], styleRead=False))
+    assert read.style_read and not none.style_read and not none.row_styles and wire.tab_hash(read) != wire.tab_hash(none)
+    assert compile_tab(none).style_read is False
+    # Above the limit the style sent does not count, so a clock cannot change what a host's reading gives.
+    limit, wire.STYLE_CELL_LIMIT = wire.STYLE_CELL_LIMIT, 3
+    try:
+        big_with = tab_from_json(raw(41886, [[2, 2, 2, 0, 0]]))
+        big_without = tab_from_json(raw(41886, [], styleRead=False))
+    finally:
+        wire.STYLE_CELL_LIMIT = limit
+    assert not big_with.style_read and repr(compile_tab(big_with)) == repr(compile_tab(big_without))
+
+
+def test_an_axis_holds_one_grain_and_no_totals():
+    # F12: months and quarters in one axis, a typed total as a peer: top_col always answered a total.
+    rows = [["Pipe", "Jan-01", "Feb-01", "Mar-01", "Q1 01", "Apr-01", "May-01", "Jun-01", "Q2 01", "2001"], ["a", 1, 2, 3, 6, 1, 1, 1, 3, 9], ["b", 2, 2, 2, 6, 2, 2, 2, 6, 12], ["c", 3, 3, 3, 9, 3, 3, 3, 9, 18]]
+    table = _tab(rows).tables[0]
+    assert [(a.kind, a.positions) for a in table.axes] == [(AXIS_PERIOD, (1, 2, 3, 5, 6, 7))]
+    assert table.columns[4].role != PEER and table.columns[9].role != PEER
+    rows = [["", "Actual", "", "", ""], ["Pipe", "Gas", "Oil", "Power", "Total"], ["a", 2, 1, 3, 6], ["b", 4, 9, 6, 19], ["c", 7, 3, 9, 19]]
+    table = _tab_heads(rows, {1, 2}, merges=[{"s": {"r": 0, "c": 1}, "e": {"r": 0, "c": 4}}]).tables[0]
+    assert [a.positions for a in table.axes] == [(1, 2, 3)] and table.columns[4].role == ROW_TOTAL
+    # A column that adds up the others under no total word.
+    rows = [["", "Actual", "", "", ""], ["Pipe", "Gas", "Oil", "Power", "All"], ["a", 2, 1, 3, 6], ["b", 4, 9, 6, 19], ["c", 7, 3, 9, 19]]
+    table = _tab_heads(rows, {1, 2}, merges=[{"s": {"r": 0, "c": 1}, "e": {"r": 0, "c": 4}}]).tables[0]
+    assert [a.positions for a in table.axes] == [(1, 2, 3)] and table.columns[4].role == ROW_TOTAL
+
+
+def test_a_group_axis_needs_one_format():
+    # F12: currency beside percents under one label read as peers.
+    rows = [["", "2001 Actual", "", ""], ["Pipe", "Volume", "Price", "Share"], ["a", 2, 1.5, 0.1], ["b", 4, 2.5, 0.2], ["c", 7, 3.5, 0.3]]
+    formats = [{"f": "General"}, {"f": "#,##0"}, {"f": "$#,##0.00"}, {"f": "0%"}]
+    table = _tab_heads(rows, {1, 2}, columnFormats=formats, merges=[{"s": {"r": 0, "c": 1}, "e": {"r": 0, "c": 3}}]).tables[0]
+    assert not table.axes and all(c.role != PEER for c in table.columns)
+
+
+def test_a_tall_merge_over_a_number_is_one_figure():
+    # N13: a tall merge over a number repeated it on every line, and a sum read it each time.
+    rows = [["Pipe", "Item", "Cap"], ["a", "x", 100], ["a", "y", ""], ["a", "z", ""], ["b", "x", 50], ["b", "y", ""], ["b", "z", ""]]
+    table = _tab(rows, merges=[{"s": {"r": 1, "c": 2}, "e": {"r": 3, "c": 2}}, {"s": {"r": 4, "c": 2}, "e": {"r": 6, "c": 2}}]).tables[0]
+    assert sum(line.cells[2].value for line in table.lines if 2 in line.cells) == 150
+
+
+def test_a_name_keeps_what_the_sheet_wrote():
+    # N3: 7933047 was named 7.93305e+06 and "(1)" became -1, so a question's word no longer met it.
+    rows = [["Pipe", 7933047, "(1)"], ["a", 1, 2], ["b", 3, 4], ["c", 5, 6]]
+    table = _tab_heads(rows, {1}).tables[0]
+    assert [c.name for c in table.columns] == ["Pipe", "7933047", "(1)"]
+
+
 def test_a_chart_tab_and_empty_tabs_do_not_crash():
     book = compile_workbook(workbook_from_json({"name": "w", "tabs": [{"name": "Chart1", "sheetType": SHEET_CHART}, {"name": "Empty", "rows": []}, {"name": "Blank", "rows": [["", ""], ["", ""]]}, {"name": "One", "rows": [["only"]]}]}))
     assert [t.tables for t in book.tabs[:3]] == [[], [], []]
@@ -363,7 +672,13 @@ def test_xlsx_reader_builds_the_wire_payload():
 
 TESTS = [
     test_number_parser, test_period_parser, test_format_kinds, test_formula_shapes, test_clean_table_comes_out_unchanged, test_title_lines_give_context, test_multi_row_header_joins_with_merges,
-    test_total_lines_are_printed_and_never_records, test_total_word_inside_a_name_stays_a_record, test_total_word_on_most_lines_is_not_a_mark, test_running_balance_is_not_a_total, test_bands_give_sections,
+    test_total_lines_are_printed_and_never_records, test_total_word_inside_a_name_stays_a_record, test_total_word_inside_every_key_is_no_mark, test_total_word_beside_a_blank_key_stays_printed,
+    test_grand_total_and_subtotals_that_tie_never_leave, test_a_key_left_of_repeated_names_goes_with_every_block, test_all_names_alike_are_a_peer_run_not_blocks, test_a_column_beyond_the_named_blocks_stays_in_a_table,
+    test_rule_lines_are_spacers_and_never_names, test_no_header_inside_the_filter_range, test_a_data_line_joined_to_a_repeated_header_stays_data, test_a_lone_data_line_called_a_header_stays_in_its_table,
+    test_a_spacer_column_does_not_part_labels_from_their_figures, test_statistic_lines_under_a_date_key_are_printed, test_a_repeated_block_that_differs_opens_a_section, test_a_repeat_after_a_band_keeps_the_bands_section,
+    test_the_lone_title_over_a_header_is_the_first_band, test_text_records_after_a_dated_title_stay_records, test_a_solid_block_ending_early_does_not_fill_down, test_a_sparse_comment_right_of_a_full_key_does_not_fill_down,
+    test_continuation_lines_take_no_label, test_a_family_says_how_much_its_members_repeat_each_other, test_a_date_from_the_clock_is_no_as_of, test_an_unchanged_sheet_keeps_its_hash_and_its_model,
+    test_an_axis_holds_one_grain_and_no_totals, test_a_group_axis_needs_one_format, test_a_tall_merge_over_a_number_is_one_figure, test_a_name_keeps_what_the_sheet_wrote, test_running_balance_is_not_a_total, test_bands_give_sections,
     test_sparse_label_column_fills_down_and_traces_to_its_source, test_stacked_tables_split, test_repeated_header_continues_its_table, test_side_by_side_blocks_split, test_spacer_columns_do_not_split_one_table,
     test_repeated_blocks_merge_into_one_family, test_months_across_are_an_axis, test_sequence_and_group_axes, test_stray_cells_are_set_apart_by_kind, test_hidden_lines_and_columns_are_kept_and_flagged,
     test_label_value_notes, test_tab_family_merges_with_the_tab_name_as_a_column, test_direct_markers_name_the_header, test_style_alone_never_moves_the_first_header, test_a_chart_tab_and_empty_tabs_do_not_crash,

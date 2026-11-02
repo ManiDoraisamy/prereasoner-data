@@ -13,17 +13,25 @@ from dataclasses import dataclass, field
 from engine.sheet.formulas import column_letter
 from engine.sheet.grid import Grid, clean
 from engine.sheet.line_facts import TOTAL_WORD, is_total_mark
-from engine.sheet.line_roles import read_roles
+from engine.sheet.line_roles import read_roles, repeats_line
 from engine.sheet.model import Axis, Cell, Column, Context, Line, Note, Stray, TabModel, Table
-from engine.sheet.names import (AXIS_GROUP, AXIS_PERIOD, AXIS_SEQUENCE, BAND, BLANK, DATE, DERIVED, F_CURRENCY, F_PERCENT, FX_AGG_COLUMN, FX_AGG_ROW, FX_ROW_ARITH, HEADER, KEY, LABEL, MEASURE, MIXED, NOTE,
-                                PEER, PERIOD, PRINTED_ROLES, RECORD, ROW_TOTAL, S_TOTAL_WORD, SECTION_LABEL, SHEET_CHART, SPACER, STRAY_DATE, STRAY_ERROR, STRAY_LABEL, STRAY_MARKER, STRAY_NOTE,
-                                STRAY_NUMBER_WITH_WORD, STRAY_REPEATED_HEADER, STRAY_TOTAL, SUBTOTAL, TITLE, TOTAL, V_BLANK, V_BOOL, V_DATE, V_ERROR, V_MARKER, V_NUMBER, V_PERIOD, V_TEXT)
+from engine.sheet.names import (AXIS_GROUP, AXIS_PERIOD, AXIS_SEQUENCE, BAND, BLANK, DATE, DERIVED, F_CURRENCY, F_GENERAL, F_NUMBER, F_PERCENT, FX_AGG_COLUMN, FX_AGG_ROW, FX_ROW_ARITH, FX_VOLATILE, HEADER, KEY, LABEL, MEASURE, MIXED, NOTE,
+                                P_YEAR, PEER, PERIOD, PRINTED_ROLES, RECORD, ROW_TOTAL, S_DATA_LINE, S_FILLED_DOWN, S_REPEATED_HEADER, S_RULE_LINE, S_STRAY_KEY, S_TOTAL_OTHER_BLOCK, S_TOTAL_WORD, SECTION_LABEL, SHEET_CHART, SPACER, STRAY_DATE,
+                                STRAY_ERROR, STRAY_LABEL, STRAY_MARKER, STRAY_NOTE, STRAY_NUMBER_WITH_WORD, STRAY_REPEATED_HEADER, STRAY_TOTAL, SUBTOTAL, TITLE, TOTAL, V_BLANK, V_BOOL, V_DATE, V_ERROR, V_MARKER, V_NUMBER, V_PERIOD, V_TEXT)
 from engine.sheet.payload import TabPayload
 from engine.sheet.values import Period, number_with_word, parse_period, year_number
 
 _UNIT_IN_TITLE = re.compile(r"\$\s?000s?|\$\s?MM\b|\(000'?s?\)|\bin\s+(?:thousands|millions|billions)\b|\bin\s+(?:[A-Z]{2,}\w*|US\$|\$\w*)")
 _UNIT_IN_NAME = re.compile(r"\(([^()]{1,12})\)\s*$")
 _DATE_IN_TEXT = re.compile(r"\b\d{1,2}/\d{1,2}/\d{2,4}\b|\b\d{1,2}-[A-Za-z]{3,9}-\d{2,4}\b|\b[A-Za-z]{3,9}\.?\s+\d{1,2},?\s+\d{4}\b|\b[A-Za-z]{3,9}\.?[\s'-]+\d{4}\b|\b[A-Za-z]{3,9}-\d{2}\b|\b\d{4}-\d{2}-\d{2}\b")
+_TOTAL_MEMBER = re.compile(r"^\s*(?:grand\s*|sub-?\s*)?totals?\b|\btotals?\s*$", re.I)
+_DIGITS = re.compile(r"\d+")
+_FILTER_RECENT = 30
+_FIT_SHARE = 0.8
+_ADJACENT_MOST = 0.7
+_AXIS_TIE_SHARE = 0.8
+_LINED_UP = 0.7
+_STRAY_KEY_DATED = 0.7
 
 
 @dataclass(slots=True)
@@ -31,14 +39,30 @@ class _Region:
     """A header block and the filled lines under it, down to the next table."""
     header_rows: list[int] = field(default_factory=list)
     body: list[int] = field(default_factory=list)
-    repeats: list[int] = field(default_factory=list)
+    repeats: list[list[int]] = field(default_factory=list)     # the repeated header blocks, each in row order
     titles: list[int] = field(default_factory=list)
 
 
+@dataclass(frozen=True, slots=True)
+class _Block:
+    """One table's columns of a region: a range, plus key columns left of every block that each block shares."""
+    first: int
+    last: int
+    shared: tuple[int, ...] = ()
+
+    def holds(self, column: int) -> bool:
+        return self.first <= column <= self.last or column in self.shared
+
+    def span(self) -> list[int]:
+        return [*self.shared, *range(self.first, self.last + 1)]
+
+
 def _label_of(cell: Cell) -> str:
-    """A cell as the words of a name."""
+    """A cell as the words of a name: what the sheet wrote, so a question's word still meets it."""
     if cell.kind == V_NUMBER:
-        return f"{cell.value:g}" if isinstance(cell.value, float) else str(cell.value)
+        if isinstance(cell.raw, str):
+            return clean(cell.raw)
+        return str(int(cell.value)) if float(cell.value).is_integer() else str(cell.value)
     if cell.kind == V_DATE or (cell.kind == V_PERIOD and cell.value == cell.period.start):
         return str(cell.value) if cell.value is not None else clean(str(cell.raw))
     return clean(str(cell.value if cell.value is not None else cell.raw))
@@ -61,8 +85,39 @@ def _repeats_block(grid: Grid, rows: list[int], names: dict[int, str]) -> bool:
     return same >= max(2, len(here) * 0.6)
 
 
+def _repeated_lines(grid: Grid, block: list[int], header_rows: list[int]) -> int:
+    """How many leading lines of a header block repeat the table's own header; 0 when the block opens a new table. A block whose first line repeats the header but whose later lines do not has data lines joined to it."""
+    heads = [grid.rows[h] for h in header_rows]
+    k = 0
+    while k < len(block) and any(repeats_line(grid.rows[block[k]], h) for h in heads):
+        k += 1
+    if k:
+        return k
+    return len(block) if _repeats_block(grid, block, _names_of(grid, header_rows)) else 0
+
+
+def _kind_group(kind: str) -> str:
+    return V_NUMBER if kind in (V_NUMBER, V_ERROR, V_MARKER) else V_DATE if kind in (V_DATE, V_PERIOD) else V_TEXT
+
+
+def _fits_body(grid: Grid, r: int, region: _Region, roles: dict[int, tuple[str, tuple[str, ...]]]) -> bool:
+    """A lone line called a header that holds figures and whose cells fit the columns of the table open above it: a data line. A header names columns; this one's cells are what those columns hold."""
+    line = grid.rows[r]
+    if not any(cell.kind == V_NUMBER and not year_number(cell.value) for cell in line.values()):
+        return False
+    recent = [x for x in region.body if roles[x][0] == RECORD][-_FILTER_RECENT:]
+    if len(recent) < 3:
+        return False
+    fit = 0
+    for c, cell in line.items():
+        kinds = Counter(_kind_group(grid.rows[x][c].kind) for x in recent if c in grid.rows[x])
+        if kinds and min(kinds, key=lambda k: (-kinds[k], k)) == _kind_group(cell.kind):
+            fit += 1
+    return fit >= _FIT_SHARE * len(line)
+
+
 def _regions(grid: Grid, roles: dict[int, tuple[str, tuple[str, ...]]]) -> list[_Region]:
-    """Walk the filled lines: a new header block closes the table above it, unless it repeats that table's own header; lines with no header above them form a table of their own."""
+    """Walk the filled lines: a new header block closes the table above it, unless it repeats that table's own header or its one line is a line of that table; lines with no header above them form a table of their own. A header line found to be data takes the record role here."""
     regions: list[_Region] = []
     current: _Region | None = None
     pending_titles: list[int] = []
@@ -76,8 +131,15 @@ def _regions(grid: Grid, roles: dict[int, tuple[str, tuple[str, ...]]]) -> list[
             while i + 1 < len(filled) and roles[filled[i + 1]][0] == HEADER and filled[i + 1] - block[-1] <= 2:
                 i += 1
                 block.append(filled[i])
-            if current is not None and current.header_rows and _repeats_block(grid, block, _names_of(grid, current.header_rows)):
-                current.repeats.extend(block)
+            repeated = _repeated_lines(grid, block, current.header_rows) if current is not None and current.header_rows else 0
+            if repeated:
+                current.repeats.append(block[:repeated])
+                for x in block[repeated:]:
+                    roles[x] = (RECORD, (S_DATA_LINE,))
+                    current.body.append(x)
+            elif current is not None and len(block) == 1 and _fits_body(grid, r, current, roles):
+                roles[r] = (RECORD, (S_DATA_LINE,))
+                current.body.append(r)
             else:
                 # A band directly over a header names the table under it, not the end of the one above.
                 while current is not None and current.body and roles[current.body[-1]][0] == BAND:
@@ -102,8 +164,8 @@ def _regions(grid: Grid, roles: dict[int, tuple[str, tuple[str, ...]]]) -> list[
     return regions
 
 
-def _column_groups(grid: Grid, region: _Region, roles: dict[int, tuple[str, tuple[str, ...]]]) -> list[tuple[int, int]]:
-    """Side-by-side blocks: columns cut at blank gutters, each block with its own key column and something beside it; or names repeating in order (A B | A B). One range when the region is one table."""
+def _column_groups(grid: Grid, region: _Region, roles: dict[int, tuple[str, tuple[str, ...]]]) -> list[_Block]:
+    """Side-by-side blocks: columns cut at blank gutters, each block with its own key column and a measure of its own or lines of its own; or names repeating in order (A B | A B) with any column left of them going with every block. One block when the region is one table. Every column used lands in a block."""
     rows = region.header_rows + region.body
     used: set[int] = set()
     for r in rows:
@@ -111,7 +173,7 @@ def _column_groups(grid: Grid, region: _Region, roles: dict[int, tuple[str, tupl
     if not used:
         return []
     columns = sorted(used)
-    whole = [(columns[0], columns[-1])]
+    whole = [_Block(columns[0], columns[-1])]
     if not region.header_rows:
         return whole
     groups: list[list[int]] = [[columns[0]]]
@@ -122,15 +184,29 @@ def _column_groups(grid: Grid, region: _Region, roles: dict[int, tuple[str, tupl
             groups.append([c])
     record_rows = [r for r in region.body if roles[r][0] == RECORD]
 
+    def lines_of(group: list[int]) -> set[int]:
+        return {r for r in record_rows if any(c in grid.rows[r] for c in group)}
+
     def has_own_key(group: list[int]) -> bool:
         if len(group) < 2:
             return False
-        lines = [r for r in record_rows if any(c in grid.rows[r] for c in group)]
+        lines = lines_of(group)
         if len(lines) < 2:
             return False
         lead = sum(1 for r in lines if (cell := grid.rows[r].get(group[0])) is not None and cell.kind in (V_TEXT, V_DATE, V_PERIOD))
         named = sum(1 for c in group if any(c in grid.rows[h] for h in region.header_rows))
         return lead * 10 >= len(lines) * 6 and named >= 2
+
+    def has_measure(group: list[int]) -> bool:
+        for c in group:
+            cells = [grid.rows[r][c] for r in record_rows if c in grid.rows[r]]
+            if len(cells) >= 2 and sum(1 for cell in cells if cell.kind == V_NUMBER) * 2 >= len(cells):
+                return True
+        return False
+
+    def lines_up(a: list[int], b: list[int]) -> bool:
+        here, there = lines_of(a), lines_of(b)
+        return bool(here) and len(here & there) >= _LINED_UP * len(here)
 
     merged: list[list[int]] = []
     for group in groups:
@@ -138,28 +214,47 @@ def _column_groups(grid: Grid, region: _Region, roles: dict[int, tuple[str, tupl
             merged[-1].extend(group)
         else:
             merged.append(list(group))
+    # A block with no measure on the same lines as its neighbour is that neighbour's labels, across a spacer column.
+    at = 0
+    while len(merged) >= 2 and at < len(merged):
+        neighbour = at - 1 if at else 1
+        if not has_measure(merged[at]) and lines_up(merged[at], merged[neighbour]):
+            merged[neighbour] = sorted(merged[neighbour] + merged[at])
+            del merged[at]
+            at = 0
+            continue
+        at += 1
     if len(merged) >= 2 and has_own_key(merged[0]):
-        return [(g[0], g[-1]) for g in merged]
+        return [_Block(g[0], g[-1]) for g in merged]
     names = _names_of(grid, region.header_rows)
     named = sorted(names)
     texts = [names[c] for c in named]
     for size in range(2, len(named) // 2 + 1):
-        if len(named) % size == 0 and all(texts[k:k + size] == texts[:size] for k in range(0, len(named), size)):
-            return [(named[k], named[k + size - 1]) for k in range(0, len(named), size)]
+        # All names alike is a run of peers, not blocks.
+        if len(named) % size == 0 and len(set(texts[:size])) >= 2 and all(texts[k:k + size] == texts[:size] for k in range(0, len(named), size)):
+            starts = [named[k] for k in range(0, len(named), size)]
+            ends = [nxt - 1 for nxt in starts[1:]] + [columns[-1]]
+            left = tuple(c for c in columns if c < starts[0])
+            return [_Block(first, last, left) for first, last in zip(starts, ends)]
     return whole
 
 
-def _header_paths(grid: Grid, header_rows: list[int], first: int, last: int) -> dict[int, tuple[list[str], list[str]]]:
+def _header_paths(grid: Grid, header_rows: list[int], span: list[int]) -> dict[int, tuple[list[str], list[str]]]:
     """Each column's name path and the addresses it came from: a merge gives its text to the columns it spans; on an upper line of a block, a label carries right over the columns the line below names, until the next label."""
-    paths: dict[int, tuple[list[str], list[str]]] = {c: ([], []) for c in range(first, last + 1)}
+    paths: dict[int, tuple[list[str], list[str]]] = {c: ([], []) for c in span}
+    inside = set(span)
     for at, r in enumerate(header_rows):
         line = grid.rows[r]
         lower = set()
         for below in header_rows[at + 1:]:
             lower.update(grid.rows[below])
         held: Cell | None = None
-        upper_is_sparse = bool(lower) and len([c for c in line if first <= c <= last]) < len([c for c in lower if first <= c <= last])
-        for c in range(first, last + 1):
+        upper_is_sparse = bool(lower) and len([c for c in line if c in inside]) < len([c for c in lower if c in inside])
+        previous = None
+        for c in span:
+            if previous is not None and c != previous + 1:
+                held = None
+            previous = c
             cell = line.get(c)
             if cell is None:
                 source = grid.spans.get((r, c))
@@ -217,7 +312,7 @@ def _stray_kind(cell: Cell, header_name: str) -> str | None:
     return STRAY_LABEL
 
 
-def _type_column(column: Column, cells: list[Cell], strays: list[Stray], tab: str, row_of) -> None:
+def _type_column(column: Column, cells: list[Cell], strays: list[Stray], tab: str) -> None:
     """A column's type by its majority, markers aside; cells of a typed column that do not fit are set apart by kind and stay on their lines."""
     counts = Counter(cell.kind for cell in cells)
     column.filled = len(cells)
@@ -268,24 +363,58 @@ def _unit_of(column: Column) -> str:
     return m.group(1) if m else ""
 
 
-def _axes(columns: list[Column], header_period: dict[int, bool], sequence_numbers: dict[int, float]) -> tuple[Axis, ...]:
-    """Peer columns: a run of 3+ number columns named by periods, or by a sequence 1, 2, 3; else 3+ number columns under one group label."""
+def _ties_to_others(member: Column, others: list[Column], records: list[Line]) -> bool:
+    """A member whose value is the sum of the members before it, on most lines where it holds a nonzero figure: it adds up its axis, so it is no peer of what it adds."""
+    if len(others) < 2:
+        return False
+    nonzero = tied = 0
+    for line in records:
+        cell = line.cells.get(member.position)
+        if cell is None or cell.kind != V_NUMBER or not cell.value:
+            continue
+        nonzero += 1
+        total = sum(c.value for o in others if (c := line.cells.get(o.position)) is not None and c.kind == V_NUMBER)
+        tied += abs(total - cell.value) < 0.01
+    return nonzero >= 3 and tied >= _AXIS_TIE_SHARE * nonzero
+
+
+def _true_members(members: list[Column], records: list[Line]) -> list[Column]:
+    """An axis's members, without those that print a total of the others: a member whose own name says total, or one that ties to those before it. It is marked as what it is."""
+    kept: list[Column] = []
+    for column in members:
+        word = bool(column.path) and bool(_TOTAL_MEMBER.search(column.path[-1]))
+        if word or _ties_to_others(column, kept, records):
+            column.role = ROW_TOTAL
+        else:
+            kept.append(column)
+    return kept
+
+
+def _format_family(column: Column) -> str:
+    return F_NUMBER if column.format_kind in (F_GENERAL, F_NUMBER) else column.format_kind
+
+
+def _axes(columns: list[Column], header_grain: dict[int, str | None], sequence_numbers: dict[int, float], records: list[Line]) -> tuple[Axis, ...]:
+    """Peer columns: 3+ number columns of one grain in a run named by periods, or a sequence 1, 2, 3; else 3+ number columns of one format under one group label. A member that prints a total of the others is no peer."""
     axes: list[Axis] = []
     taken: set[int] = set()
     numeric = [c for c in columns if c.kind == V_NUMBER]
     runs: list[list[Column]] = []
     for column in numeric:
-        if not header_period.get(column.position):
+        if not header_grain.get(column.position):
             continue
         if runs and all(c.role == SPACER or c.position in {x.position for x in runs[-1]} or not c.filled for c in columns[runs[-1][-1].position + 1:column.position]):
             runs[-1].append(column)
         else:
             runs.append([column])
     for run in runs:
-        if len(run) >= 3:
-            shared = {tuple(c.path[:-1]) for c in run}
-            axes.append(Axis(AXIS_PERIOD, " ".join(shared.pop()) if len(shared) == 1 else "", tuple(c.position for c in run)))
-            taken.update(c.position for c in run)
+        grains = Counter(header_grain[c.position] for c in run)
+        for grain in sorted(grains, key=lambda g: min(c.position for c in run if header_grain[c.position] == g)):
+            members = _true_members([c for c in run if header_grain[c.position] == grain], records)
+            if len(members) >= 3:
+                shared = {tuple(c.path[:-1]) for c in members}
+                axes.append(Axis(AXIS_PERIOD, " ".join(shared.pop()) if len(shared) == 1 else "", tuple(c.position for c in members)))
+                taken.update(c.position for c in members)
     run: list[Column] = []
     for column in numeric:
         value = sequence_numbers.get(column.position)
@@ -304,8 +433,8 @@ def _axes(columns: list[Column], header_period: dict[int, bool], sequence_number
         if len(column.path) >= 2 and column.position not in taken:
             groups.setdefault(column.path[0].lower(), []).append(column)
     for key in sorted(groups, key=lambda k: groups[k][0].position):
-        members = groups[key]
-        if len(members) >= 3:
+        members = _true_members(groups[key], records)
+        if len(members) >= 3 and len({_format_family(c) for c in members}) == 1:
             axes.append(Axis(AXIS_GROUP, members[0].path[0], tuple(c.position for c in members)))
             taken.update(c.position for c in members)
     for column in columns:
@@ -323,11 +452,13 @@ def _as_of_in(text: str) -> Period | None:
 
 
 def _context(grid: Grid, tab: str, title_rows: list[int]) -> Context:
-    """Tab name, title lines, as-of date, unit: a date or unit of a nearer line wins, then the tab's name gives the date."""
+    """Tab name, title lines, as-of date, unit: a date or unit of a nearer line wins, then the tab's name gives the date. A cell that reads the clock says when the file was last recalculated, not what the table is as of: it is no context."""
     titles = []
     as_of, as_of_address, unit, unit_address = None, "", "", ""
     for r in title_rows:
         for cell in grid.rows[r].values():
+            if cell.shape == FX_VOLATILE:
+                continue
             text = _label_of(cell)
             titles.append((cell.address, text))
             if cell.kind in (V_DATE, V_PERIOD) and cell.period is not None and cell.period.start is not None:
@@ -344,17 +475,51 @@ def _context(grid: Grid, tab: str, title_rows: list[int]) -> Context:
     return Context(tab=tab, titles=tuple(titles), as_of=as_of, as_of_address=as_of_address, unit=unit, unit_address=unit_address)
 
 
-def _sparse_label_columns(columns: list[Column], records: list[dict[int, Cell]]) -> list[int]:
-    """Positions of label columns filled only now and then, the blanks under each label being the same thing: among the first three columns, text, under half filled, the first record filled."""
-    out = []
-    if len(records) < 3:
+def _sparse_label_columns(columns: list[Column], records: list[Line]) -> list[int]:
+    """Positions of label columns filled only now and then, the blanks under each label being the same thing: among the first three columns with no full column to their left, label cells on under half the lines, the first record labelled, own cells mostly apart (a solid block ending early is no sparse label), and no last run far past the runs before it (lines after a list's last value are not of that value)."""
+    out: list[int] = []
+    n = len(records)
+    if n < 3:
         return out
     for column in columns[:3]:
-        cells = [line.get(column.position) for line in records]
-        present = [cell for cell in cells if cell is not None]
-        if len(present) >= 2 and len(present) * 2 < len(cells) and cells[0] is not None and all(cell.kind == V_TEXT and len(str(cell.value)) <= 60 for cell in present):
-            out.append(column.position)
+        cells = [line.cells.get(column.position) for line in records]
+        own = [at for at, cell in enumerate(cells) if cell is not None]
+        if len(own) * 2 >= n:
+            break
+        if len(own) < 2 or cells[0] is None or not all(cells[at].kind in (V_TEXT, V_DATE, V_PERIOD) for at in own):
+            continue
+        gaps = [b - a for a, b in zip(own, own[1:])]
+        tail = n - own[-1]
+        if sum(1 for g in gaps if g == 1) > _ADJACENT_MOST * len(gaps) or tail * 2 > n or tail > 2 * max(gaps):
+            continue
+        out.append(column.position)
     return out
+
+
+def _fill_down(position: int, records: list[Line], printed: list[Line]) -> int:
+    """A sparse label fills down inside its section and up to the next printed line; the filled cell is the source cell, so it still traces to where it was written. Where labelled lines hold figures, a line with none is a continuation of the line above and takes no label. Returns how many lines were filled."""
+    labelled = [line for line in records if position in line.cells]
+    figures = sum(1 for line in labelled if any(cell.kind == V_NUMBER for cell in line.cells.values()))
+    need_figure = figures * 2 >= len(labelled)
+    held = None
+    held_section = None
+    rows_of_printed = sorted(line.row for line in printed)
+    pointer = 0
+    filled = 0
+    for line in records:
+        while pointer < len(rows_of_printed) and rows_of_printed[pointer] < line.row:
+            held = None
+            pointer += 1
+        if line.section != held_section:
+            held, held_section = None, line.section
+        cell = line.cells.get(position)
+        if cell is not None:
+            held = cell
+        elif held is not None and (not need_figure or any(c.kind == V_NUMBER for c in line.cells.values())):
+            line.cells[position] = held
+            line.signals = (*line.signals, S_FILLED_DOWN)
+            filled += 1
+    return filled
 
 
 def _printed_kinds(printed: list[Line], last_record_row: int) -> None:
@@ -371,44 +536,126 @@ def _printed_kinds(printed: list[Line], last_record_row: int) -> None:
             line.role = SUBTOTAL
 
 
-def _table_of(grid: Grid, tab: str, index: int, block: int, region: _Region, first: int, last: int, roles: dict, tab_titles: list[int]) -> Table | None:
-    """One table: the region's lines cut to one column range."""
-    header_rows = [r for r in region.header_rows if any(first <= c <= last for c in grid.rows[r])]
-    columns_used = {c for r in header_rows + region.body for c in grid.rows[r] if first <= c <= last}
+def _stray_key_lines(columns: list[Column], records: list[Line]) -> set[int]:
+    """Lines whose key cell is text where the key column otherwise holds dates, beside figures: statistics printed under the data, whatever their word. The first filled column is the key."""
+    for column in columns:
+        cells = [line.cells[column.position] for line in records if column.position in line.cells]
+        if not cells:
+            continue
+        dated = sum(1 for cell in cells if cell.kind in (V_DATE, V_PERIOD))
+        if dated < 5 or dated < _STRAY_KEY_DATED * len(cells):
+            return set()
+        return {line.row for line in records if (cell := line.cells.get(column.position)) is not None and cell.kind == V_TEXT and any(other.kind == V_NUMBER for other in line.cells.values())}
+    return set()
+
+
+def _text_of(cells: list[Cell]) -> str:
+    return " ".join(dict.fromkeys(_label_of(cell) for cell in cells))
+
+
+def _style_of(grid: Grid, row: int) -> tuple[bool, bool, bool]:
+    counts = grid.tab.row_styles.get(row)
+    if not counts or not counts[0]:
+        return (False, False, False)
+    return (counts[1] * 2 >= counts[0], counts[2] * 2 >= counts[0], counts[3] * 2 >= counts[0])
+
+
+def _first_band(grid: Grid, region: _Region, block: _Block, roles: dict) -> int | None:
+    """When a table has bands, the lone title directly over its header, styled like them, is its first band: the first section sits above the header, where it reads as a title."""
+    bands = [r for r in region.body if roles[r][0] == BAND]
+    if not bands or not region.titles or not region.header_rows:
+        return None
+    title = region.titles[-1]
+    cells = [cell for c, cell in grid.rows[title].items() if block.holds(c)]
+    if len(cells) != 1 or len(grid.rows[title]) != 1 or cells[0].kind != V_TEXT or region.header_rows[0] - title > 3 or len(str(cells[0].value)) > 60:
+        return None
+    return title if _style_of(grid, title) == _style_of(grid, bands[0]) else None
+
+
+def _repeat_sections(grid: Grid, region: _Region, block: _Block, header_rows: list[int]) -> tuple[dict[int, str], list[int]]:
+    """What a repeated header block says that the table's header does not. Returns {first row of the block: the words that are that block's section} and the table's own header lines that are titles of its first block: an upper line none of whose cells comes back in any repeat, while the lines under it do."""
+    names: dict[int, set[str]] = {}
+    for h in header_rows:
+        for c, cell in grid.rows[h].items():
+            names.setdefault(c, set()).add(_label_of(cell).lower())
+    sections: dict[int, str] = {}
+    titles: set[int] = set()
+    for rows in region.repeats:
+        differing: list[Cell] = []
+        for at, r in enumerate(rows):
+            cells = [cell for c, cell in grid.rows[r].items() if block.holds(c) and c not in block.shared]
+            new = [cell for cell in cells if _label_of(cell).lower() not in names.get(cell.col, ())]
+            differing.extend(new)
+            aligned = len(header_rows) - len(rows) + at
+            if cells and len(new) == len(cells) and at + 1 < len(rows) and 0 <= aligned < len(header_rows) - 1:
+                titles.add(header_rows[aligned])
+        if differing:
+            sections[rows[0]] = _text_of(differing)
+    return sections, sorted(titles)
+
+
+def _table_of(grid: Grid, tab: str, index: int, block_number: int, region: _Region, block: _Block, roles: dict, tab_titles: list[int]) -> Table | None:
+    """One table: the region's lines cut to one block's columns."""
+    holds = block.holds
+    header_rows = [r for r in region.header_rows if any(holds(c) for c in grid.rows[r])]
+    columns_used = {c for r in header_rows + region.body for c in grid.rows[r] if holds(c)}
     if not columns_used:
         return None
-    paths = _header_paths(grid, header_rows, first, last)
-    ordered = sorted(c for c in range(first, last + 1) if c in columns_used or paths[c][0])
+    repeat_sections, title_rows = _repeat_sections(grid, region, block, header_rows)
+    name_rows = [r for r in header_rows if r not in title_rows]
+    span = block.span()
+    paths = _header_paths(grid, name_rows, span)
+    ordered = sorted(c for c in span if c in columns_used or paths[c][0])
     names = _unique_names(paths, ordered)
     hidden_columns = grid.tab.hidden_columns
     columns = [Column(position=i, col=c, letter=column_letter(c), name=names[i], path=tuple(paths[c][0]), header_cells=tuple(paths[c][1]), hidden=c in hidden_columns) for i, c in enumerate(ordered)]
     position = {c: i for i, c in enumerate(ordered)}
     tall: dict[tuple[int, int], Cell] = {}
     for r1, c1, r2, c2 in grid.tab.merges:
-        if r2 > r1 and first <= c1 <= last and (source := grid.rows.get(r1, {}).get(c1)) is not None and r2 - r1 <= 4096:
+        # A tall merge names the lines it covers. A number under one is one figure: repeating it would add it once per line.
+        if r2 > r1 and holds(c1) and (source := grid.rows.get(r1, {}).get(c1)) is not None and source.kind != V_NUMBER and r2 - r1 <= 4096:
             for r in range(r1 + 1, r2 + 1):
                 tall[(r, c1)] = source
+    tall_rows: dict[int, list[tuple[int, Cell]]] = {}
+    for (rr, c), source in tall.items():
+        tall_rows.setdefault(rr, []).append((c, source))
     hidden_rows = grid.tab.hidden_rows
     records: list[Line] = []
     printed: list[Line] = []
     bands: list[tuple[int, str]] = []
     section: tuple[str, ...] = ()
     previous_band = False
-    body_rows = sorted(region.body)
-    for r in body_rows:
-        role, signals = roles[r]
-        cut = {position[c]: cell for c, cell in grid.rows[r].items() if first <= c <= last}
-        if not cut and not any(first <= c <= last for rr, c in tall if rr == r):
+    if title_rows:
+        # The first block's title is its section; the repeats name the blocks after it.
+        cells = [cell for r in title_rows for c, cell in grid.rows[r].items() if holds(c) and c not in block.shared]
+        section = (_text_of(cells),)
+        bands.append((title_rows[0], section[0]))
+    elif (first_band := _first_band(grid, region, block, roles)) is not None:
+        section = (_text_of([cell for c, cell in grid.rows[first_band].items() if holds(c)]),)
+        bands.append((first_band, section[0]))
+    repeat_rows = {r for rows in region.repeats for r in rows}
+    for r in sorted({*region.body, *repeat_rows}):
+        if r in repeat_rows:
+            # A repeated block's differing words open its section, unless a band directly above it already did: its words are then only a column's other name.
+            if r in repeat_sections and not previous_band:
+                section = (repeat_sections[r],)
+                bands.append((r, section[0]))
+            previous_band = False
             continue
-        for (rr, c), source in ((key, value) for key, value in tall.items() if key[0] == r):
+        role, signals = roles[r]
+        cut = {position[c]: cell for c, cell in grid.rows[r].items() if holds(c)}
+        over = tall_rows.get(r, ())
+        if not cut and not any(holds(c) for c, _ in over):
+            continue
+        for c, source in over:
             if c in position and position[c] not in cut:
                 cut[position[c]] = source
-        if role == TOTAL and block:
+        if role == TOTAL and block_number:
             # In a block of side-by-side tables the line's role follows the block's own cells.
-            own = [cell for cell in cut.values()]
+            own = list(cut.values())
             if not is_total_mark(own) and not any(cell.shape == FX_AGG_COLUMN for cell in own):
-                role = RECORD
-        elif role == RECORD and block and is_total_mark(list(cut.values())) and any(cell.kind == V_NUMBER for cell in cut.values()):
+                role, signals = RECORD, (S_TOTAL_OTHER_BLOCK,)
+        elif role == RECORD and block_number and is_total_mark(list(cut.values())) and any(cell.kind == V_NUMBER for cell in cut.values()):
             role, signals = TOTAL, (S_TOTAL_WORD,)
         hidden = r in hidden_rows
         if role == BAND:
@@ -427,59 +674,49 @@ def _table_of(grid: Grid, tab: str, index: int, block: int, region: _Region, fir
             if spans:
                 line.scope = (min(s[0] for s in spans), max(s[1] for s in spans))
             printed.append(line)
-            if section and section[-1].lower() in line.label.lower():
+            if section and re.search(rf"\b{re.escape(section[-1])}\b", line.label, re.I):
                 section = section[:-1]
         else:
             records.append(line)
-    # A sparse label column fills down, inside its section: the filled cell is the source cell, so it still traces to where it was written.
-    fill = _sparse_label_columns(columns, [line.cells for line in records])
-    for at in fill:
-        held = None
-        held_section = None
-        rows_of_printed = sorted(line.row for line in printed)
-        pointer = 0
-        for line in records:
-            while pointer < len(rows_of_printed) and rows_of_printed[pointer] < line.row:
-                held = None
-                pointer += 1
-            if line.section != held_section:
-                held, held_section = None, line.section
-            cell = line.cells.get(at)
-            if cell is not None:
-                held = cell
-            elif held is not None:
-                line.cells[at] = held
+    stray_keys = _stray_key_lines(columns, records)
+    if stray_keys:
+        moved = [line for line in records if line.row in stray_keys]
+        records = [line for line in records if line.row not in stray_keys]
+        for line in moved:
+            line.role, line.signals = TOTAL, (*line.signals, S_STRAY_KEY)
+        printed = sorted(printed + moved, key=lambda line: line.row)
+    fill = [at for at in _sparse_label_columns(columns, records) if _fill_down(at, records, printed)]
     strays: list[Stray] = []
     for column in columns:
         cells = [line.cells[column.position] for line in records if column.position in line.cells and line.cells[column.position].row == line.row]
-        _type_column(column, cells, strays, tab, None)
+        _type_column(column, cells, strays, tab)
         if column.position in fill:
             column.role = SECTION_LABEL
         column.unit = _unit_of(column)
     strays.sort(key=lambda s: (s.row, s.position))
-    header_period = {}
+    header_grain: dict[int, str | None] = {}
     sequence: dict[int, float] = {}
     for column in columns:
-        cell = None
-        if header_rows:
-            cell = grid.rows[header_rows[-1]].get(column.col)
+        cell = grid.rows[name_rows[-1]].get(column.col) if name_rows else None
         if cell is not None:
-            header_period[column.position] = cell.period is not None or (cell.kind == V_NUMBER and year_number(cell.value)) or (cell.kind == V_TEXT and parse_period(str(cell.value)) is not None)
+            period = cell.period or (parse_period(str(cell.value)) if cell.kind == V_TEXT else None)
+            header_grain[column.position] = period.kind if period is not None else P_YEAR if cell.kind == V_NUMBER and year_number(cell.value) else None
             if cell.kind == V_NUMBER and float(cell.value).is_integer():
                 sequence[column.position] = cell.value
-    axes = _axes(columns, header_period, sequence)
+    axes = _axes(columns, header_grain, sequence, records)
     last_record = records[-1].row if records else 0
     _printed_kinds(printed, last_record)
     if not records and not printed and not header_rows:
         return None
     rows_seen = [line.row for line in records] + [line.row for line in printed]
-    title_rows = list(dict.fromkeys(tab_titles + region.titles))
-    context = _context(grid, tab, title_rows)
-    near_titles = [text for address, text in context.titles if any(address.endswith(str(r)) for r in region.titles[-1:])]
+    title_lines = list(dict.fromkeys(tab_titles + region.titles))
+    context = _context(grid, tab, title_lines)
+    near_titles = [text for address, text in context.titles if region.titles and int(_DIGITS.search(address).group()) == region.titles[-1]]
     name = near_titles[0] if near_titles and len(near_titles[0]) <= 80 else tab
+    repeated = tuple(r for rows in region.repeats for r in rows)
     return Table(tab=tab, index=index, name=name, columns=columns, lines=records, printed=printed, header_rows=tuple(header_rows),
                  first_row=min(rows_seen) if rows_seen else (header_rows[-1] if header_rows else 0), last_row=max(rows_seen) if rows_seen else (header_rows[-1] if header_rows else 0),
-                 context=context, bands=tuple(bands), axes=axes, strays=tuple(strays), repeated_header_rows=tuple(region.repeats), block=block)
+                 context=context, bands=tuple(sorted(bands)), axes=axes, strays=tuple(strays), repeated_header_rows=repeated, block=block_number)
 
 
 def _notes_of(grid: Grid, tab: str, rows: list[int]) -> list[Note]:
@@ -508,34 +745,37 @@ def compile_tab(tab: TabPayload) -> TabModel:
         return TabModel(tab.name, tab.sheet_type, tab.hidden, [], [], [])
     grid = Grid(tab)
     roles = read_roles(grid)
+    regions = _regions(grid, roles)
+    tab_titles = regions[0].titles if regions else []
+    tables: list[Table] = []
+    for region in regions:
+        blocks = _column_groups(grid, region, roles)
+        for number, block in enumerate(blocks, 1 if len(blocks) > 1 else 0):
+            table = _table_of(grid, tab.name, len(tables), number, region, block, roles, tab_titles)
+            if table is not None:
+                tables.append(table)
+    repeated = {r for region in regions for rows in region.repeats for r in rows}
     lines: list[Line] = []
     for r in range(1, grid.last_row + 1):
         cells = grid.rows.get(r)
         if cells is None:
             lines.append(Line(tab.name, r, BLANK, hidden=r in tab.hidden_rows))
+        elif r in grid.rule_lines:
+            lines.append(Line(tab.name, r, BLANK, dict(cells), (S_RULE_LINE,), hidden=r in tab.hidden_rows))
         else:
             role, signals = roles[r]
+            signals = (*signals, S_REPEATED_HEADER) if r in repeated else signals
             lines.append(Line(tab.name, r, role, dict(cells), signals, hidden=r in tab.hidden_rows))
-    regions = _regions(grid, roles)
-    tab_titles = regions[0].titles if regions else []
-    tables: list[Table] = []
-    for region in regions:
-        groups = _column_groups(grid, region, roles)
-        for block, (first, last) in enumerate(groups, 1 if len(groups) > 1 else 0):
-            table = _table_of(grid, tab.name, len(tables), block, region, first, last, roles, tab_titles)
-            if table is not None:
-                tables.append(table)
     note_rows = [r for r in grid.filled if roles[r][0] in (TITLE, NOTE)]
-    for line in lines:
-        if line.role in (SUBTOTAL, TOTAL):
-            line.role = TOTAL
     # A tab line takes the role its table gave it, so a side-by-side block's own reading does not hide; rows in no table keep theirs.
-    by_row = {}
+    by_row: dict[int, Line] = {}
     for table in tables:
         for printed in table.printed:
-            by_row.setdefault(printed.row, printed.role)
+            by_row.setdefault(printed.row, printed)
     for line in lines:
-        if line.role == TOTAL and line.row in by_row:
-            line.role = by_row[line.row]
-    return TabModel(tab.name, tab.sheet_type, tab.hidden, lines, tables, _notes_of(grid, tab.name, note_rows), tuple(sorted(tab.hidden_columns)))
-
+        held = by_row.get(line.row)
+        if line.role in (SUBTOTAL, TOTAL) and held is None:
+            line.role = TOTAL
+        elif held is not None and (line.role in (SUBTOTAL, TOTAL) or S_STRAY_KEY in held.signals):
+            line.role = held.role
+    return TabModel(tab.name, tab.sheet_type, tab.hidden, lines, tables, _notes_of(grid, tab.name, note_rows), tuple(sorted(tab.hidden_columns)), tab.style_read)
