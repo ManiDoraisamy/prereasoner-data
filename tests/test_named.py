@@ -564,6 +564,14 @@ def test_batch_has_in_sheet_hard_negatives() -> None:
 
 
 # ------------------------------------------------------------------------------------------------- the pipeline
+def test_training_runs_under_autocast() -> None:
+    """A lease trains under bf16 autocast, and the first one died at its first step mixing bf16 reads into a float32 tensor. The reads come out in float32, the losses count in it."""
+    with tempfile.TemporaryDirectory() as folder:
+        config = TrainConfig(reader=ReaderConfig(backbone="hash", hidden=36, blocks=1, open_dim=16, sample_rows=3), steps=4, questions=6, seed=0, held_share=0.2, eval_every=4, eval_tabs=2, amp=True)
+        summary = train(fake_examples(6), fake_name_set(), HashBackbone(), config, folder, log_print=False)
+        assert summary["steps"] == 4
+
+
 def test_training_lowers_the_loss_and_is_repeatable() -> None:
     """A pipeline check on the fake: loss falls, a bundle comes back, and it reads the same as what was trained. Not an accuracy result."""
     with tempfile.TemporaryDirectory() as folder:

@@ -368,7 +368,6 @@ def run_batch(backbone: nn.Module, reader: NamedReader, config: ReaderConfig, ba
     def stack(graph: Graph) -> torch.Tensor:
         return vectors[torch.as_tensor([lookup[text] for text in graph.texts], device=vectors.device)] if graph.texts else torch.zeros((1, backbone.dim), device=vectors.device)
 
-    hidden = torch.zeros((len(batch.targets), config.hidden), device=device)
     by_graph: dict[int, torch.Tensor] = {}
     for at, graph in enumerate(batch.graphs):
         inputs, edges, pad = collate([graph], [stack(graph)])
@@ -388,12 +387,14 @@ def run_batch(backbone: nn.Module, reader: NamedReader, config: ReaderConfig, ba
         read = reader.hidden(inputs, edges, pad)
         rows.extend(batch.values)
         sources.extend(read[:, 1].unbind(0))
+    hidden = torch.zeros((len(batch.targets), config.hidden), device=device)
     if rows:
-        hidden = hidden.index_copy(0, torch.as_tensor(rows, device=hidden.device), torch.stack(sources))
+        read_out = torch.stack(sources).float()          # what the encoder read under autocast comes out in float32: the head and the losses count in it
+        hidden = hidden.index_copy(0, torch.as_tensor(rows, device=hidden.device), read_out)
     questions = backbone.encode_questions(batch.questions, max_tokens=config.question_tokens)
     graphs = [question_graph(words) for words, _ in questions]
     inputs, edges, pad = collate(graphs, [vectors_q if len(words) else torch.zeros((1, backbone.dim), device=vectors.device) for words, vectors_q in questions])
-    word_hidden_all = reader.hidden(inputs, edges, pad)
+    word_hidden_all = reader.hidden(inputs, edges, pad).float()
     closed = reader.closed_logits(word_hidden_all, pad)
     word_hidden = [word_hidden_all[at, :len(words)] for at, (words, _) in enumerate(questions)]
     return Forward(hidden, reader.coordinate_logits(hidden), [words for words, _ in questions], word_hidden, [reader.coordinate_logits(item) for item in word_hidden], closed)
@@ -555,7 +556,7 @@ def train(examples: list[TabExample], names: NameSet, backbone: nn.Module, confi
     started = time.time()
     first, last = [], []
     history = []
-    use_amp = config.amp and device == "cuda"
+    use_amp = config.amp
     with open(out / "log.jsonl", "a", encoding="utf-8", newline="\n") as log:
         step = cursor = 0
         tick = time.perf_counter()
@@ -569,8 +570,9 @@ def train(examples: list[TabExample], names: NameSet, backbone: nn.Module, confi
                 continue
             spent["build"] += time.perf_counter() - built
             forward = time.perf_counter()
-            with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=use_amp):
+            with torch.autocast(device_type=device, dtype=torch.bfloat16, enabled=use_amp):
                 outputs = run_batch(backbone, reader, reader_config, batch, device)
+            with torch.autocast(device_type=device, enabled=False):
                 parts = losses_of(reader, names, batch, outputs, config.open_detached, structure, device)
                 loss = sum(LOSS_WEIGHTS[name] * value for name, value in parts.items())
             (loss / config.accumulate).backward()
