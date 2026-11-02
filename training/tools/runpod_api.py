@@ -187,7 +187,7 @@ def terminate(pid: str, attempts: int = 3) -> None:
     raise RuntimeError(f"RunPod termination failed for {pid}: HTTP {status} {response}")
 
 
-def poll(pid: str, timeout_minutes=8):
+def poll(pid: str, timeout_minutes=20):
     deadline = time.monotonic() + timeout_minutes * 60
     while time.monotonic() < deadline:
         status, pod = rest("GET", f"/pods/{pid}")
