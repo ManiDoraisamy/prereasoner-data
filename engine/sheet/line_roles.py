@@ -45,6 +45,10 @@ def _name_line(f: LineFacts) -> bool:
     return f.filled >= 2 or f.wide_merge >= 2
 
 
+_MOST_LINES_ABOVE = 4
+_TITLE_ZONE = 15
+
+
 def grow_blocks(heads: dict[int, list[str]], facts: dict[int, LineFacts], printed: dict[int, list[str]]) -> dict[int, list[str]]:
     """A header block grows from the lines named: down over adjacent name lines standing over typed cells, up over short name lines and merged group labels."""
     heads = dict(heads)
@@ -56,12 +60,17 @@ def grow_blocks(heads: dict[int, list[str]], facts: dict[int, LineFacts], printe
             r, y = y, facts[y].next
     for r in sorted(heads):
         x = facts[r].prev
-        while x is not None and r - x <= 2 and x not in printed and x not in heads:
+        lines = 0
+        while x is not None and r - x <= 2 and x not in printed and x not in heads and lines < _MOST_LINES_ABOVE:
             f = facts[x]
             over_some = f.wide_merge >= 2 and f.wide_merge < 0.8 * max(1, facts[r].last_col - facts[r].first_col + 1)
             if not (x in usable and f.filled >= 2 and f.longest <= 40) and not (f.filled == 1 and over_some):
                 break
+            # A styled header is joined by lines styled like it: the plain lines above a repeated styled header are the last table's records.
+            if (facts[r].bold >= 0.5 and f.bold < 0.5) or (facts[r].fill >= 0.5 and f.fill < 0.5):
+                break
             heads[x] = [S_MERGED_OVER_COLUMNS if f.filled == 1 else S_JOINED_ABOVE]
+            lines += 1
             r, x = x, f.prev
     return heads
 
@@ -89,7 +98,7 @@ def assign_roles(facts: dict[int, LineFacts], heads: dict[int, list[str]], print
         if first_head is None:
             if figures == 0 and f.label_value:
                 roles[r] = (NOTE, (S_LABEL_VALUE,))
-            elif figures == 0 and f.filled <= 2 and (last_figures is None or r < rows[min(3, len(rows) - 1)]):
+            elif figures == 0 and f.filled <= 2 and r < rows[min(3, len(rows) - 1)] and (last_figures is not None or r < rows[min(1, len(rows) - 1)]):
                 roles[r] = (TITLE, (S_ABOVE_TABLE,))
             elif alone and styled:
                 roles[r] = (BAND, (S_ALONE_STYLED,))
@@ -102,8 +111,13 @@ def assign_roles(facts: dict[int, LineFacts], heads: dict[int, list[str]], print
                 roles[r] = (RECORD, (S_FIGURES if f.number else S_TEXT_LINE,))
             elif alone and styled and r > rows[0] and facts[f.prev].filled >= 3:
                 roles[r] = (BAND, (S_ALONE_STYLED,))
+            elif f.label_value:
+                roles[r] = (NOTE, (S_LABEL_VALUE,))
+            elif rows.index(r) < _TITLE_ZONE:
+                roles[r] = (TITLE, (S_ABOVE_TABLE,))
             else:
-                roles[r] = (NOTE, (S_LABEL_VALUE,)) if f.label_value else (TITLE, (S_ABOVE_TABLE,))
+                # Far from the top, lines above a late header are no title: a list with no header of its own.
+                roles[r] = (RECORD, (S_FIGURES if f.number else S_TEXT_LINE,))
             continue
         before_head = f.next in heads
         short_band = f.filled <= 3 and figures == 0 and f.longest <= 60 and styled
