@@ -37,8 +37,10 @@ from engine.deterministic.plan import (
 )
 from engine.numeric import coerce_numeric
 from engine.sql_ast import (
+    Abs,
     Aggregate,
     BinaryExpr,
+    BlankAsZero,
     BooleanExpr,
     ColumnRef,
     Comparison,
@@ -46,6 +48,7 @@ from engine.sql_ast import (
     DateSpan,
     Lower,
     Literal,
+    ScalarSubquery,
     SelectItem,
     SelectQuery,
     Star,
@@ -239,13 +242,19 @@ def lower_select_query(
         for index, item in enumerate(query.select)
         if (part := share_aggregate(item.expression, query)) is not None
     }
+    # A size of an aggregate ("biggest by size") is its aggregate, reduced with the rest, with the sign dropped after.
+    sizes = {
+        index: item.expression.operand
+        for index, item in enumerate(query.select)
+        if isinstance(item.expression, Abs) and isinstance(item.expression.operand, Aggregate)
+    }
     aggregates = [
         item for index, item in enumerate(query.select)
-        if isinstance(item.expression, Aggregate) or index in shares
+        if isinstance(item.expression, Aggregate) or index in shares or index in sizes
     ]
     if aggregates:
         if any(
-            not isinstance(item.expression, (Aggregate, ColumnRef, DatePart)) and index not in shares
+            not isinstance(item.expression, (Aggregate, ColumnRef, DatePart)) and index not in shares and index not in sizes
             for index, item in enumerate(query.select)
         ):
             raise UnsupportedDeterministicPlan(
@@ -257,8 +266,8 @@ def lower_select_query(
         for index, (item, output_name) in enumerate(
             zip(query.select, output_names, strict=True)
         ):
-            expression = shares.get(index, item.expression)
-            if index in shares:
+            expression = shares.get(index, sizes.get(index, item.expression))
+            if index in shares or index in sizes:
                 output_name = f"{output_name}_part"
             if not isinstance(expression, Aggregate):
                 continue
@@ -271,7 +280,7 @@ def lower_select_query(
                     )
             if isinstance(expression.operand, Star):
                 operand = None
-            elif isinstance(expression.operand, BinaryExpr):
+            elif isinstance(expression.operand, (BinaryExpr, Abs)):
                 calculated_name = f"aggregate_operand_{index + 1}"
                 calculations.append(
                     SelectedValue(calculated_name, _value(expression.operand))
@@ -312,6 +321,24 @@ def lower_select_query(
                 tuple(grouped),
             )
         )
+        if sizes:
+            views.append(
+                CalculatedView(
+                    f"{slug}_sizes",
+                    views[-1].name,
+                    tuple(
+                        SelectedValue(output_names[index], FunctionValue("ABS", ViewValue(f"{output_names[index]}_part")))
+                        for index in sizes
+                    ),
+                )
+            )
+            views.append(
+                ProjectedView(
+                    f"{slug}_sized",
+                    views[-1].name,
+                    tuple(SelectedValue(name, ViewValue(name)) for name in output_names),
+                )
+            )
         if shares:
             wholes = []
             for index, part in shares.items():
@@ -403,6 +430,64 @@ def lower_select_query(
         )
     try:
         return AnalysisPlan(slug, table_specs, tuple(views))
+    except (ValueError, TypeError) as exc:
+        raise UnsupportedDeterministicPlan(str(exc)) from exc
+
+
+def lower_calculation(
+    slug: str,
+    query: SelectQuery,
+    schema: Sequence[Mapping[str, object]],
+    foreign_keys: Sequence[Mapping[str, object]],
+) -> AnalysisPlan:
+    """A calculation of scalar subqueries, as a sheet's program states it: ``SELECT (a) - (b)`` over a one-row table,
+    nested as (a) / ((b) + (c)). Each subquery lowers as its own branch of the one plan, the branches cross, and the
+    calculation reads their values by name. The FROM table is only SQL's need for a row and no stage reads it. A branch
+    with no row gives the calculation no row, in both programs."""
+    if len(query.select) != 1:
+        raise UnsupportedDeterministicPlan("a calculation has one output")
+    expression = query.select[0].expression
+    magnitude = isinstance(expression, Abs)
+    if magnitude:
+        expression = expression.operand
+    branches: list[AnalysisPlan] = []
+
+    def read(node) -> Value:
+        if isinstance(node, BinaryExpr):
+            left = read(node.left)
+            return BinaryValue(left, node.operator, read(node.right))
+        if not isinstance(node, ScalarSubquery) or not isinstance(node.query, SelectQuery):
+            raise UnsupportedDeterministicPlan("a calculation reads scalar subqueries")
+        branch = lower_select_query(f"{slug}_{len(branches) + 1}", node.query, schema, foreign_keys)
+        branches.append(branch)
+        return ViewValue(f"value_{len(branches)}")
+
+    calculation = read(expression)
+    if not branches:
+        raise UnsupportedDeterministicPlan("a calculation reads scalar subqueries")
+    tables: dict[str, TableSpec] = {}
+    views: list = []
+    crossed = None
+    for at, branch in enumerate(branches, 1):
+        for table in branch.tables:
+            tables.setdefault(table.name, table)
+        outputs = branch.view_columns()[str(branch.output)]
+        if len(outputs) != 1:
+            raise UnsupportedDeterministicPlan("a scalar subquery has one output")
+        views.extend(branch.views)
+        one = ProjectedView(f"{slug}_{at}_value", str(branch.output), (SelectedValue(f"value_{at}", ViewValue(outputs[0])),))
+        views.append(one)
+        if crossed is None:
+            crossed = one.name
+        else:
+            views.append(CrossView(f"{slug}_{at}_crossed", crossed, one.name))
+            crossed = views[-1].name
+    if magnitude:
+        calculation = FunctionValue("ABS", calculation)
+    views.append(CalculatedView(f"{slug}_calculated", crossed, (SelectedValue("calculated", calculation),)))
+    views.append(ProjectedView(f"{slug}_result", views[-1].name, (SelectedValue(query.select[0].alias or "value", ViewValue("calculated")),)))
+    try:
+        return AnalysisPlan(slug, tuple(tables.values()), tuple(views))
     except (ValueError, TypeError) as exc:
         raise UnsupportedDeterministicPlan(str(exc)) from exc
 
@@ -548,6 +633,10 @@ def _value(value) -> Value:
         return FunctionValue("YEAR_MONTH" if value.part == "year_month" else "MONTH", _value(value.operand))
     if isinstance(value, Lower):
         return FunctionValue("LOWER", _value(value.operand))
+    if isinstance(value, Abs):
+        return FunctionValue("ABS", _value(value.operand))
+    if isinstance(value, BlankAsZero):
+        return FunctionValue("BLANK_ZERO", _value(value.operand))
     if isinstance(value, DateSpan):
         return SpanValue(_value(value.start), None if value.end is None else _value(value.end), value.unit,
                          value.until)

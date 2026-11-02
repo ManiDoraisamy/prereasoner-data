@@ -51,7 +51,7 @@ class Literal:
 @dataclass(frozen=True)
 class Aggregate:
     function: str
-    operand: ColumnRef | Star | BinaryExpr
+    operand: "ColumnRef | Star | BinaryExpr | Abs"
     distinct: bool = False
 
     def __post_init__(self) -> None:
@@ -151,8 +151,22 @@ class DateSpan:
         return self.start.name
 
 
+@dataclass(frozen=True)
+class Abs:
+    """A number's size, its sign dropped: "the biggest driver" ranks |Change| and "biggest by size" ranks |SUM(x)|. It reads
+    a row expression, or at aggregate scope an aggregate (the sheet programs of engine/program; noted for the cut-over)."""
+    operand: "ColumnRef | BinaryExpr | Aggregate | BlankAsZero"
+
+
+@dataclass(frozen=True)
+class BlankAsZero:
+    """A number whose blank counts 0: in row arithmetic of + and -, one blank side of a line still leaves the other side
+    (the sheet programs of engine/program; noted for the cut-over). A line blank on both sides is the caller's filter."""
+    operand: "ColumnRef"
+
+
 ScalarExpr: TypeAlias = (ColumnRef | Star | Literal | Aggregate | ScalarSubquery | BinaryExpr | DatePart | Lower
-                         | DateSpan)
+                         | DateSpan | Abs | BlankAsZero)
 
 
 @dataclass(frozen=True)
@@ -218,7 +232,7 @@ class Join:
 
 @dataclass(frozen=True)
 class OrderTerm:
-    expression: ColumnRef | Aggregate | BinaryExpr | DatePart
+    expression: "ColumnRef | Aggregate | BinaryExpr | DatePart | Abs"
     direction: str = "ASC"
 
     def __post_init__(self) -> None:
@@ -361,6 +375,8 @@ def expression_type(expr: ScalarExpr) -> SQLType:
         return SQLType.TEXT
     if isinstance(expr, DateSpan):
         return SQLType.REAL
+    if isinstance(expr, (Abs, BlankAsZero)):
+        return expression_type(expr.operand)
     if isinstance(expr, Literal):
         return expr.type
     if isinstance(expr, Aggregate):
@@ -742,6 +758,16 @@ def conjunction(predicates: Iterable[Predicate]) -> Predicate | None:
 
 
 def _validate_expr(expr: ScalarExpr, visible: frozenset[str]) -> None:
+    if isinstance(expr, Abs):
+        if not isinstance(expr.operand, (ColumnRef, BinaryExpr, Aggregate, BlankAsZero)):
+            raise ASTValidationError("a size reads a column, a row expression or an aggregate")
+        _validate_expr(expr.operand, visible)
+        return
+    if isinstance(expr, BlankAsZero):
+        if not isinstance(expr.operand, ColumnRef):
+            raise ASTValidationError("a blank counts as zero only for a column")
+        _validate_expr(expr.operand, visible)
+        return
     if isinstance(expr, DatePart):
         if expr.part not in DATE_PARTS:
             raise ASTValidationError(f"unsupported date part: {expr.part}")
@@ -774,7 +800,7 @@ def _validate_expr(expr: ScalarExpr, visible: frozenset[str]) -> None:
     if isinstance(expr, Aggregate):
         if expr.function not in AGGREGATES:
             raise ASTValidationError(f"unsupported aggregate: {expr.function}")
-        if not isinstance(expr.operand, (ColumnRef, Star, BinaryExpr)):
+        if not isinstance(expr.operand, (ColumnRef, Star, BinaryExpr, Abs)):
             raise ASTValidationError("aggregate operands must be a column, star, or row expression")
         if isinstance(expr.operand, Star) and expr.function != "COUNT":
             raise ASTValidationError(f"{expr.function}(*) is not valid")
@@ -783,7 +809,7 @@ def _validate_expr(expr: ScalarExpr, visible: frozenset[str]) -> None:
         if (expr.function in {"SUM", "AVG"} and isinstance(expr.operand, ColumnRef)
                 and not expr.operand.type.numeric):
             raise ASTValidationError(f"{expr.function} requires a numeric column")
-        if isinstance(expr.operand, BinaryExpr):
+        if isinstance(expr.operand, (BinaryExpr, Abs)):
             if _expr_has_aggregate(expr.operand):
                 raise ASTValidationError("nested aggregates are not valid")
             _validate_expr(expr.operand, visible)               # e.g. SUM(amount * rate)
@@ -792,7 +818,7 @@ def _validate_expr(expr: ScalarExpr, visible: frozenset[str]) -> None:
         if expr.operator not in ARITHMETIC_OPERATORS:
             raise ASTValidationError(f"unsupported arithmetic operator: {expr.operator}")
         for side in (expr.left, expr.right):
-            if not isinstance(side, (ColumnRef, Literal, Aggregate, BinaryExpr, ScalarSubquery)):
+            if not isinstance(side, (ColumnRef, Literal, Aggregate, BinaryExpr, ScalarSubquery, Abs, BlankAsZero)):
                 raise ASTValidationError(
                     "arithmetic operands must be a column, literal, aggregate, scalar subquery, or "
                     "arithmetic expression"
@@ -904,6 +930,11 @@ def _render_expr(expr: ScalarExpr, dialect: str = "standard") -> str:
         return date_part_sql(expr.part, _render_expr(expr.operand, dialect))
     if isinstance(expr, Lower):
         return f"LOWER({_render_expr(expr.operand, dialect)})"
+    if isinstance(expr, Abs):
+        function = "decimal_abs" if dialect == "sqlite_decimal" else "ABS"
+        return f"{function}({_render_expr(expr.operand, dialect)})"
+    if isinstance(expr, BlankAsZero):
+        return f"COALESCE({_render_expr(expr.operand, dialect)}, 0)"
     if isinstance(expr, DateSpan):
         return date_span_sql(_render_expr(expr.start, dialect),
                              None if expr.end is None else _render_expr(expr.end, dialect), expr.unit, expr.until)
@@ -953,6 +984,8 @@ def value_type(expr: ScalarExpr) -> SQLType:
         return value_type(query.select[0].expression) if len(query.select) == 1 else SQLType.UNKNOWN
     if isinstance(expr, Aggregate) and expr.function not in {"COUNT", "AVG"}:
         return value_type(expr.operand)
+    if isinstance(expr, (Abs, BlankAsZero)):
+        return value_type(expr.operand)
     if isinstance(expr, BinaryExpr) and expr.operator != "/":
         return (SQLType.REAL if SQLType.REAL in (value_type(expr.left), value_type(expr.right))
                 else SQLType.INTEGER)
@@ -969,7 +1002,7 @@ def _decimal_text(expr: ScalarExpr) -> bool:
         return expr.type == SQLType.REAL
     if isinstance(expr, Aggregate):
         return expr.function != "COUNT" and value_type(expr.operand).numeric
-    if isinstance(expr, BinaryExpr):
+    if isinstance(expr, (BinaryExpr, Abs, BlankAsZero)):
         return True
     if isinstance(expr, ScalarSubquery):
         query = expr.query
@@ -1037,6 +1070,8 @@ def _has_star_projection(query: Query) -> bool:
 def _expr_has_aggregate(expression: ScalarExpr) -> bool:
     if isinstance(expression, BinaryExpr):
         return _expr_has_aggregate(expression.left) or _expr_has_aggregate(expression.right)
+    if isinstance(expression, (Abs, BlankAsZero)):
+        return _expr_has_aggregate(expression.operand)
     return isinstance(expression, Aggregate)
 
 
@@ -1055,7 +1090,7 @@ def _predicate_has_aggregate(predicate: Predicate | None) -> bool:
 def _expr_tables(expr: ScalarExpr) -> set[str]:
     if isinstance(expr, ColumnRef):
         return {expr.table}
-    if isinstance(expr, (Aggregate, DatePart, Lower)):
+    if isinstance(expr, (Aggregate, DatePart, Lower, Abs, BlankAsZero)):
         return _expr_tables(expr.operand)
     if isinstance(expr, BinaryExpr):
         return _expr_tables(expr.left) | _expr_tables(expr.right)

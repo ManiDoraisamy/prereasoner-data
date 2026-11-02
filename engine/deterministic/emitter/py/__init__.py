@@ -1349,8 +1349,8 @@ def _orm_value(plan, value):
         raise TypeError("a span is not a join value")
     if isinstance(value, FunctionValue):
         operand = _orm_value(plan, value.operand)
-        if value.function in {"MONTH", "YEAR_MONTH"}:
-            raise TypeError("a month is not a join value")
+        if value.function in {"MONTH", "YEAR_MONTH", "ABS", "BLANK_ZERO"}:
+            raise TypeError(f"{value.function} is not a join value")
         return (
             f"cast({operand}, Text)"
             if value.function == "TEXT"

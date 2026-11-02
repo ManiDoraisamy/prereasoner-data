@@ -49,6 +49,10 @@ def _function(function: str, operand: str) -> str:
         return month_of_date_sql(operand)
     if function == "YEAR_MONTH":
         return year_month_of_date_sql(operand)
+    if function == "ABS":
+        return f"decimal_abs({operand})"
+    if function == "BLANK_ZERO":
+        return f"COALESCE({operand}, 0)"
     return f"LOWER({operand})"
 
 _DECIMAL = {"+": "decimal_add", "-": "decimal_sub", "*": "decimal_mul", "/": "decimal_div"}

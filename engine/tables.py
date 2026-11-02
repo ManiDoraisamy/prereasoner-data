@@ -709,7 +709,7 @@ class TableQuery:
                                    deterministic_python_row_limit)
         from engine.deterministic.context import current_analysis_context, set_execution_record
         from engine.deterministic.service import DeterministicAnalysis
-        from engine.prepared import current_database
+        from engine.prepared import SharedConnection, current_database
 
         context = current_analysis_context()
         if context is None:
@@ -719,7 +719,7 @@ class TableQuery:
         database = current_database()
         if database is None:
             raise RuntimeError("deterministic execution runs on the request's database")
-        shared = _SharedConnection(database.connection)
+        shared = SharedConnection(database.connection)
         engine = create_engine("sqlite+pysqlite://", creator=lambda: shared, poolclass=StaticPool)
         result = DeterministicAnalysis(
             plan,
@@ -914,25 +914,6 @@ class TableQuery:
             if current_analysis_context() is not None and required:
                 response["decomposition_required"] = required
         return response
-
-
-class _SharedConnection:
-    """The request's database connection as SQLAlchemy's pool hands it out: closing it leaves it open for the rest
-    of the request, which closes it (engine/prepared.py)."""
-
-    __slots__ = ("_connection",)
-
-    def __init__(self, connection):
-        object.__setattr__(self, "_connection", connection)
-
-    def __getattr__(self, name):
-        return getattr(object.__getattribute__(self, "_connection"), name)
-
-    def __setattr__(self, name, value):
-        setattr(object.__getattribute__(self, "_connection"), name, value)
-
-    def close(self):
-        pass
 
 
 def one_of_each_layout(graph, question):

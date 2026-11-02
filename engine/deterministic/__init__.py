@@ -2,6 +2,7 @@
 
 from engine.deterministic.lower import (
     UnsupportedDeterministicPlan,
+    lower_calculation,
     lower_select_query,
 )
 from engine.deterministic.plan import (
@@ -64,5 +65,6 @@ __all__ = [
     "UnsupportedDeterministicPlan",
     "VerificationMismatch",
     "ViewValue",
+    "lower_calculation",
     "lower_select_query",
 ]

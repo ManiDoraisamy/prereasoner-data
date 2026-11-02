@@ -228,6 +228,11 @@ def _binary(operator: str, left: Any, right: Any) -> str | None:
     return canonical_decimal(result)
 
 
+def _absolute(value: Any) -> str | None:
+    number = _decimal_arg(value)
+    return None if number is None else canonical_decimal(abs(number))
+
+
 def _compare(left: Any, right: Any) -> int | None:
     a, b = _decimal_arg(left), _decimal_arg(right)
     if a is None or b is None:
@@ -279,6 +284,7 @@ def register_sqlite_decimal(connection: sqlite3.Connection) -> None:
     connection.create_function("decimal_sub", 2, lambda a, b: _binary("-", a, b), deterministic=True)
     connection.create_function("decimal_mul", 2, lambda a, b: _binary("*", a, b), deterministic=True)
     connection.create_function("decimal_div", 2, lambda a, b: _binary("/", a, b), deterministic=True)
+    connection.create_function("decimal_abs", 1, _absolute, deterministic=True)
     connection.create_function("decimal_cmp", 2, _compare, deterministic=True)
     connection.create_aggregate("decimal_sum", 1, _DecimalAggregate)
     connection.create_aggregate("decimal_avg", 1, _DecimalAverage)

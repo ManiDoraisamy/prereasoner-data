@@ -304,6 +304,16 @@ def TEXT(value):
     return str(value)
 
 
+def ABS(value):
+    """A number's size, its sign dropped."""
+    return None if value is None else abs(value)
+
+
+def BLANK_ZERO(value):
+    """A number whose blank counts 0: one blank side of a line in row arithmetic of + and -."""
+    return Decimal(0) if value is None else value
+
+
 def LIKE(value, pattern):
     """SQL's LIKE over text, as both SQL engines read it: '%' matches any run of characters, '_' one
     character, and every other character itself, over the whole text. The search compares lower-cased

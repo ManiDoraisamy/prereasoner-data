@@ -139,6 +139,25 @@ def connect():
     return connection
 
 
+class SharedConnection:
+    """The request's database connection as SQLAlchemy's pool hands it out: closing it leaves it open for the rest
+    of the request, which closes it."""
+
+    __slots__ = ("_connection",)
+
+    def __init__(self, connection):
+        object.__setattr__(self, "_connection", connection)
+
+    def __getattr__(self, name):
+        return getattr(object.__getattribute__(self, "_connection"), name)
+
+    def __setattr__(self, name, value):
+        setattr(object.__getattribute__(self, "_connection"), name, value)
+
+    def close(self):
+        pass
+
+
 def vector_blob(vector):
     return np.asarray(vector, dtype=np.float32).tobytes()
 

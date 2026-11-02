@@ -1,0 +1,312 @@
+"""A reading from the question's words alone: word index matches over names, values, labels and bands, parsed periods and numbers, and closed word lists for the closed heads. No model.
+
+This fills the same coordinates the encoders will fill, so it is both the floor they must beat and what makes the decoder testable without them. Scores are in 0..1 and mean only "how much of this name the question's words cover". The closed lists hold generic
+words of the language itself (how many, average, highest, difference), never a word of one question or one sheet.
+"""
+from __future__ import annotations
+
+import re
+
+from engine.program.catalog import Catalog
+from engine.program.decoder import Decoder
+from engine.program.index import TableIndex, stem, words_of
+from engine.program.language import Col, PeriodSpan
+from engine.program.names import (A_CODE, A_COMPANY, A_COUNT, A_DATE, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_PERSON, AGG, AVG, BY_SIZE, CALC, COUNT, COUNT_DISTINCT, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, GE, GT, HIGHEST, LE, LOWEST, LT, MAX, MIN, MINUS, NE, OVER, PERIOD_NAMED, PERIOD_REST_OF, PLUS, RANK, SHOW,
+                                  SLOT_AGGREGATE, SLOT_ANSWER_TYPE, SLOT_BLANK, SLOT_CALC_OP, SLOT_COMPARISON, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_DIRECTION, SLOT_ENTITY, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE, SLOT_MEASURE, SLOT_NUMBER, SLOT_PERIOD, SLOT_ROW_OP,
+                                  SLOT_SECTION, SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, STATED_BY_SIZE, SUM, TIMES, coordinate)
+from engine.program.scoring import Reading
+from engine.program.semantics import exact_wins, fold, number_text, read_period, read_sign, sign_word_of, stated_number
+from engine.sheet.names import P_DAY, P_MONTH, P_QUARTER, P_RANGE, P_YEAR
+from engine.sheet.values import parse_period
+
+_STOP = frozenset(stem(word) for word in """a about across after all also am an and any are as at be been by can did do does each for from get give got had has have how i in into is it its made many me more most much my of on one or our out over per s show so tell than that the
+their them there these they this to total under us was we were what when where which who whose will with would you""".split())
+_MONTHS = ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec")
+_MONTH_WORD = re.compile(r"\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b")
+_YEAR_WORD = re.compile(r"\b((?:19|20)\d{2})\b")
+_DATE_FORMS = re.compile(r"\b\d{1,2}/\d{1,2}/\d{2,4}\b|\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}-[a-z]{3}-\d{2,4}\b|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.? \d{1,2},? \d{4}\b|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*[ '-]+\d{2,4}\b|\b[1-4]q\d{2,4}\b|\bq[1-4][ '-]*\d{2,4}\b|\bcalendar \d{4}\b")
+_NUMBER = re.compile(r"(?<![\w/.-])[$]?\d[\d,]*(?:\.\d+)?\s*(?:%|percent\b|k\b|m\b|mm\b)?")
+_COMPARE = ((GE, re.compile(r"\b(at least|or more|or better|or higher|or above|no less than|minimum of)\b")), (LE, re.compile(r"\b(at most|or less|or lower|or below|no more than|maximum of|up to)\b")),
+            (GT, re.compile(r"\b(above|over|greater than|more than|exceeds?|exceeding|higher than)\b")), (LT, re.compile(r"\b(below|under|less than|lower than|fewer than)\b")), (NE, re.compile(r"\b(other than|excluding|except)\b")))
+_HIGH = re.compile(r"\b(most|highest|largest|biggest|top|peak|max(?:imum)?|greatest|best|busiest|furthest|latest|last|heaviest|longest)\b")
+_LOW = re.compile(r"\b(least|lowest|smallest|min(?:imum)?|fewest|worst|earliest|first|shortest)\b")
+_SUM = re.compile(r"\b(total|sum|altogether|combined|overall|net|aggregate|cumulative|how much)\b")
+_AVG = re.compile(r"\b(average|avg|mean)\b")
+_COUNT = re.compile(r"\b(how many|number of|count of|count)\b")
+_DISTINCT = re.compile(r"\b(distinct|different|unique)\b")
+_CALC_MINUS = re.compile(r"\b(difference|differ|net of|less|minus|over budget|versus|vs|spread|gap|more than|higher than|above|compared)\b")
+_CALC_OVER = re.compile(r"\b(ratio|share|percent|percentage|fraction|portion|per|weighted|average price|margin|what part)\b|%")
+_CALC_PLUS = re.compile(r"\b(plus|together|combined|added|sum of)\b")
+_ROW_TIMES = re.compile(r"\b(weighted|times|multiplied|value of|expected)\b")
+_ROW_MINUS = re.compile(r"\b(less|minus|above|over|difference|net|after)\b")
+_ROW_PLUS = re.compile(r"\b(plus|and|together|combined|both)\b")
+_BLANK = re.compile(r"\b(no|missing|blank|empty|without|unassigned|lack|lacking)\b")
+_UNIT_WORDS = r"mw|mwh|barrels?|bbls?|mmbtu|mmbtus|dth|dths|mcf|dollars?|tons?|gallons?|kwh|megawatts?"
+_COMPANY_NOUNS = r"counterpart(?:y|ies|y's)|compan(?:y|ies)|shippers?|customers?|producers?|suppliers?|vendors?|entit(?:y|ies)|owners?|utilit(?:y|ies)|banks?"
+_TEXT_NOUNS = r"name|description|agreement|type|status|driver|code|title|address|location"
+_DATE_NOUNS = r"day|date|month|hour|year|quarter|week"
+_SUPERLATIVE = r"most|biggest|largest|highest|lowest|smallest|least|peak|top|furthest|busiest"
+
+
+# A column's name in a question says little about a condition on it until a value is read there too.
+FILTER_NAME_SHARE = 0.2
+# A number with no comparison word near it ("500 kV") is weak evidence of a comparison.
+NUMBER_ALONE = 0.3
+# A rank with no word asking for one reads below any other form; arithmetic with no word for it, below its one column.
+NO_RANK_WORD = -1.0
+NO_ROW_WORD = -2.0
+NO_CALC_WORD = -2.0
+# Row arithmetic names two measures where a plain measure names one: its operator costs what the second name would add.
+ROW_WORD = -1.0
+# A condition beyond what the question's words can read costs this; one they read and the program leaves out, this.
+EXTRA_CONDITION = 1.0
+UNREAD_CONDITION = 0.3
+
+
+def predict_answer_type(question: str) -> str:
+    """The answer's type from the question's words, by design/answer_location.txt's rule: 177 of 186 on the questions it was written after (optimistic), 90 and 106 of 129 on rewordings."""
+    t = question.lower().replace("’", "'").strip()
+    if re.search(r"\bhow many\b", t):
+        return A_NUMBER if re.search(rf"\bhow many ({_UNIT_WORDS})\b", t) else A_COUNT
+    if re.search(r"\b(what share|share of|percent|percentage|fraction|portion)\b|%", t):
+        return A_PERCENT
+    if re.search(r"\bhow much\b", t):
+        return A_NUMBER
+    if re.search(rf"^(in |on |at |by )?(what|which)( \w+)?( \w+)? ({_DATE_NOUNS})\b|^when\b", t) and not re.search(r"^(what's|what is|what was)\b", t):
+        return A_DATE
+    if re.search(r"^who\b|^who's\b|^whose\b", t):
+        return A_PERSON if re.search(r"\b(coordinator|covers|in settlements|trader|manager|analyst|contact|person)\b", t) else A_COMPANY
+    if re.search(r"^what (are|months)\b", t):
+        return A_LIST
+    if t.startswith("which") or re.search(r"^(in|on|for|at) which\b", t):
+        plural = re.search(r"^which (\w+ )?(\w+ies|\w+[^s]s) (can|are|have|do|does|did|were)\b", t)
+        if plural and not re.search(rf"\b({_SUPERLATIVE})\b", t):
+            return A_LIST
+        return A_COMPANY if re.search(rf"^which( \w+)?( \w+)? ({_COMPANY_NOUNS})\b", t) else A_CODE
+    if re.search(rf"^(what's|what is|what was|what)( \w+){{0,4}} ({_TEXT_NOUNS})\b", t):
+        return A_CODE
+    return A_NUMBER
+
+
+def _closed(question: str, low: str, out: dict[str, float]) -> None:
+    """The closed heads: form, aggregate, direction, size, entity, operators, answer type."""
+    first = low.split(" ", 1)[0] if low else ""
+    forms = {SHOW: 0.3, AGG: 0.3, RANK: NO_RANK_WORD, CALC: 0.05}
+    if first in ("which", "who", "whose"):
+        forms.update({RANK: 0.7, SHOW: 0.3, AGG: 0.0})
+    elif low.startswith("how many") or low.startswith("how much"):
+        forms.update({AGG: 0.8, SHOW: 0.2})
+    elif first in ("where",):
+        forms.update({SHOW: 0.8, AGG: 0.0})
+    elif first in ("what", "what's"):
+        forms.update({AGG: 0.5, SHOW: 0.5})
+    high, lowest = bool(_HIGH.search(low)), bool(_LOW.search(low))
+    if high or lowest:
+        forms[RANK] = max(forms[RANK], 0.7)
+    if _SUM.search(low) or _AVG.search(low):
+        forms[AGG] = max(forms[AGG], 0.7)
+    calc_minus, calc_over, calc_plus = bool(_CALC_MINUS.search(low)), bool(_CALC_OVER.search(low)), bool(_CALC_PLUS.search(low))
+    forms[CALC] = 0.0 if calc_minus or calc_over or calc_plus else NO_CALC_WORD
+    for form, score in forms.items():
+        out[coordinate(SLOT_FORM, form)] = score
+    out[coordinate(SLOT_CALC_OP, MINUS)] = 0.0 if calc_minus else NO_ROW_WORD
+    out[coordinate(SLOT_CALC_OP, OVER)] = 0.0 if calc_over else NO_ROW_WORD
+    out[coordinate(SLOT_CALC_OP, PLUS)] = 0.0 if calc_plus else NO_ROW_WORD
+    sign = sign_word_of(question)
+    read = read_sign(sign, stored_negative=True)
+    if high or forms[RANK] >= 0.7:
+        out[coordinate(SLOT_DIRECTION, HIGHEST)] = 0.8 if high else 0.3
+    if lowest or read.direction == LOWEST:
+        out[coordinate(SLOT_DIRECTION, LOWEST)] = 0.8
+    if read.by_size:
+        out[coordinate(SLOT_SIZE, BY_SIZE)] = 0.6
+        out[coordinate(SLOT_SIZE, EACH_BY_SIZE)] = 0.6
+    if read.magnitude:
+        out[coordinate(SLOT_SIZE, STATED_BY_SIZE)] = 0.6
+    out[coordinate(SLOT_AGGREGATE, SUM)] = 0.8 if _SUM.search(low) else 0.4
+    out[coordinate(SLOT_AGGREGATE, AVG)] = 0.9 if _AVG.search(low) else 0.05
+    out[coordinate(SLOT_AGGREGATE, COUNT)] = 0.9 if _COUNT.search(low) else 0.1
+    out[coordinate(SLOT_AGGREGATE, COUNT_DISTINCT)] = 0.7 if _DISTINCT.search(low) and _COUNT.search(low) else 0.02
+    out[coordinate(SLOT_AGGREGATE, MAX)] = 0.3 if high else 0.05
+    out[coordinate(SLOT_AGGREGATE, MIN)] = 0.3 if lowest else 0.05
+    if forms[RANK] >= 0.7:
+        out[coordinate(SLOT_ENTITY, ENTITY_GROUP)] = 0.5
+        out[coordinate(SLOT_ENTITY, ENTITY_LINE)] = 0.5
+        out[coordinate(SLOT_ENTITY, ENTITY_PEER)] = 0.3
+    out[coordinate(SLOT_ROW_OP, TIMES)] = ROW_WORD if _ROW_TIMES.search(low) else NO_ROW_WORD
+    out[coordinate(SLOT_ROW_OP, MINUS)] = ROW_WORD if _ROW_MINUS.search(low) else NO_ROW_WORD
+    out[coordinate(SLOT_ROW_OP, PLUS)] = ROW_WORD if _ROW_PLUS.search(low) else NO_ROW_WORD
+    out[coordinate(SLOT_ROW_OP, OVER)] = ROW_WORD if calc_over else NO_ROW_WORD
+    if _BLANK.search(low):
+        out[coordinate(SLOT_BLANK, "blank")] = 0.3
+    predicted = predict_answer_type(question)
+    coarse = A_NAME if predicted in (A_PERSON, A_COMPANY, A_CODE) else predicted
+    out[coordinate(SLOT_ANSWER_TYPE, coarse)] = 0.5
+
+
+def _periods(low: str, out: dict[str, float]) -> None:
+    """Periods from the question's own words; a period needs no value slot. "So far" adds nothing of its own; "the rest of May" is a status column, so its month is no condition."""
+    reading = read_period(low)
+    if reading is not None and reading.kind == PERIOD_REST_OF:
+        return
+    years = _YEAR_WORD.findall(low)
+    for match in _DATE_FORMS.finditer(low):
+        reading = read_period(match.group(0))
+        if reading is not None and reading.kind == PERIOD_NAMED and reading.period is not None and reading.period.start is not None:
+            _span_score(reading.period, out, 1.0)
+    for match in _MONTH_WORD.finditer(low):
+        word = match.group(1)
+        if word == "may" and not re.search(r"\b(?:in|of|for|during) may\b|\bmay (?:\d|19|20)", low):
+            continue
+        month = _MONTHS.index(word[:3]) + 1
+        out[coordinate(SLOT_PERIOD, f"m{month:02d}")] = 0.8
+        for year in years:
+            period = parse_period(f"{word[:3]} {year}")
+            if period is not None:
+                _span_score(period, out, 1.0)
+    for year in years:
+        out.setdefault(coordinate(SLOT_PERIOD, year), 0.9)
+
+
+def _span_score(period, out: dict[str, float], score: float) -> None:
+    span = None
+    if period.kind in (P_DAY, P_MONTH, P_YEAR, P_QUARTER):
+        span = PeriodSpan(period.kind, period.start, period.end)
+    elif period.start is not None:
+        span = PeriodSpan(P_RANGE, period.start, period.end)
+    if span is not None:
+        out[coordinate(SLOT_PERIOD, span.name)] = score
+
+
+def _numbers(low: str, out: dict[str, float]) -> None:
+    """Numbers the question states, with what compares them."""
+    asked = [op for op, pattern in _COMPARE if pattern.search(low)]
+    strength = 1.0 if asked else NUMBER_ALONE
+    found = False
+    for match in _NUMBER.finditer(low):
+        text = match.group(0).strip()
+        value = stated_number(re.sub(r"\s*percent$", "%", text))
+        if value is None or _YEAR_WORD.fullmatch(text):
+            continue
+        found = True
+        out[coordinate(SLOT_NUMBER, number_text(value))] = strength
+        if "%" in text or "percent" in text:
+            out[coordinate(SLOT_NUMBER, number_text(value * 100))] = strength / 2
+    if found:
+        for op in asked:
+            out[coordinate(SLOT_COMPARISON, op)] = 1.0
+
+
+def _phrases(words: list[str]) -> list[tuple[str, ...]]:
+    out = []
+    for size in (4, 3, 2, 1):
+        for at in range(len(words) - size + 1):
+            phrase = tuple(words[at:at + size])
+            if any(word not in _STOP for word in phrase) and phrase[0] not in _STOP and phrase[-1] not in _STOP:
+                out.append(phrase)
+    return out
+
+
+def _covered(text: str, question_words: set[str]) -> float:
+    """How much of a label the question's words cover: a whole word counts 1, a label word a question word begins (Transco, Transcontinental) counts half."""
+    words = words_of(text)
+    if not words:
+        return 0.0
+    total = 0.0
+    for word in words:
+        if word in question_words:
+            total += 1.0
+        elif any(len(asked) >= 4 and word.startswith(asked) for asked in question_words):
+            total += 0.5
+    return total / len(words)
+
+
+def _table_words(table_id: str, index: TableIndex, question_words: set[str], raw_words: list[str], low: str, out: dict[str, float], *, periods: bool, comparison: bool) -> None:
+    """Word index matches on one table: names, then values, then printed labels and bands."""
+    table = index.table
+    title = index.title_words
+    if title:
+        hits = (title & question_words)
+        if hits:
+            out[coordinate(SLOT_TABLE, table_id)] = len(hits) / max(3, len(title))
+    for position, name in index.name_words.items():
+        if not name:
+            continue
+        share = len(name & question_words) / len(name)
+        if share:
+            col = Col(table_id, position).name
+            for slot in (SLOT_MEASURE, SLOT_KEY, SLOT_SHOWN):
+                out[coordinate(slot, col)] = share
+            out[coordinate(SLOT_FILTER, col)] = share * FILTER_NAME_SHARE
+    # values: every value holding a question word, by how much of it the question covers
+    seen: set[tuple[int, str]] = set()
+    value_words = index.value_words
+    for word in question_words:
+        for position, folded in value_words.get(word, ()):
+            seen.add((position, folded))
+    for position, folded in seen:
+        text = words_of(folded)
+        share = sum(word in question_words for word in text) / len(text) if text else 0.0
+        whole = re.search(rf"(?<!\w){re.escape(folded)}(?!\w)", low) is not None
+        out[coordinate(SLOT_VALUE, Col(table_id, position).name, folded)] = 1.0 if whole else 0.8 * share
+    # a phrase inside longer cells: the partial match, whole words first, then a word's prefix
+    phrases = _phrases(raw_words)
+    for position, lines in index.value_lines.items():
+        if table.columns[position].kind == "number":
+            continue
+        col = Col(table_id, position).name
+        for phrase in phrases:
+            words = [stem(word) for word in phrase]
+            if not all(word in value_words for word in words):
+                continue
+            text = " ".join(phrase)
+            holders = {f for p, f in value_words[words[0]] if p == position}
+            if any(text in folded for folded in holders) and not exact_wins(text, lines):
+                out[coordinate(SLOT_CONTAINS, col, text)] = min(1.0, 0.5 + 0.1 * len(phrase))
+    for word in set(raw_words) - _STOP:
+        if len(word) < 3:
+            continue
+        for longer in index.words_with_prefix(word):
+            if longer == word:
+                continue
+            for position, folded in value_words[longer]:
+                name = coordinate(SLOT_CONTAINS, Col(table_id, position).name, word)
+                if word in folded and not exact_wins(word, index.value_lines[position]):
+                    out.setdefault(name, 0.4)
+    # printed labels and bands
+    for label in index.printed_labels:
+        if label:
+            share = _covered(label, question_words)
+            if share:
+                out[coordinate(SLOT_LINE, table_id, label)] = share
+    for band in index.bands:
+        share = _covered(band, question_words)
+        if share:
+            out[coordinate(SLOT_SECTION, table_id, band)] = share
+    # how many conditions this table can read from the question: a program with more says what was not asked, with fewer leaves words unread
+    prefixes = (f"{SLOT_VALUE}:{table_id}.", f"{SLOT_CONTAINS}:{table_id}.")
+    columns = {name.split(".", 1)[1].split("=", 1)[0] for name, score in out.items() if name.startswith(prefixes) and score >= 0.8}
+    asked = len(columns) + (1 if periods and index.date_columns else 0) + (1 if comparison and index.number_columns else 0)
+    asked += 1 if any(name.startswith((f"{SLOT_LINE}:{table_id}=", f"{SLOT_SECTION}:{table_id}=")) and score >= 0.8 for name, score in out.items()) else 0
+    for count in range(7):
+        out[coordinate(SLOT_CONDITIONS, table_id, count)] = -EXTRA_CONDITION * max(0, count - asked) - UNREAD_CONDITION * max(0, asked - count)
+
+
+def read_question(question: str, catalog: Catalog, decoder: Decoder) -> Reading:
+    """The question's reading from its words alone."""
+    low = fold(question).replace("’", "'")
+    raw_words = re.findall(r"[a-z0-9]+", low)
+    question_words = {stem(word) for word in raw_words}
+    out: dict[str, float] = {}
+    _closed(question, low, out)
+    _periods(low, out)
+    _numbers(low, out)
+    periods = any(name.startswith(f"{SLOT_PERIOD}:") for name in out)
+    comparison = any(name.startswith(f"{SLOT_COMPARISON}:") for name in out)
+    for table in catalog.tables:
+        if table.lines:
+            _table_words(table.id, decoder.indexes[table.id], question_words, raw_words, low, out, periods=periods, comparison=comparison)
+    return Reading(out)
+
+
+__all__ = ["predict_answer_type", "read_question"]

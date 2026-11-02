@@ -190,13 +190,13 @@ class BinaryValue:
 @dataclass(frozen=True)
 class FunctionValue:
     """A scalar function of one value: LOWER and TEXT of any value, MONTH of a date (an integer) and its
-    YEAR_MONTH (the text '2026-08')."""
+    YEAR_MONTH (the text '2026-08'), ABS of a number, and BLANK_ZERO: a number whose blank counts 0."""
 
     function: str
     operand: Value
 
     def __post_init__(self) -> None:
-        if self.function not in {"LOWER", "TEXT", "MONTH", "YEAR_MONTH"}:
+        if self.function not in {"LOWER", "TEXT", "MONTH", "YEAR_MONTH", "ABS", "BLANK_ZERO"}:
             raise ValueError(f"unsupported scalar function: {self.function}")
 
 
@@ -1012,7 +1012,7 @@ class AnalysisPlan:
         if isinstance(value, LiteralValue):
             return type(value.value) in {int, Decimal}
         if isinstance(value, FunctionValue):
-            return value.function == "MONTH"
+            return value.function in {"MONTH", "ABS", "BLANK_ZERO"}
         return isinstance(value, (BinaryValue, SpanValue))
 
     def numeric_values(self) -> dict[str, frozenset[str]]:
