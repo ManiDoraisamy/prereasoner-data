@@ -2,7 +2,7 @@
 
 usage (cwd C:/work/prereasoner-readers): python C:/work/prereasoner-next/training/factory/llm_run.py <requests.jsonl> <journal name> [--workers 12] [--stage-output N] [--timeout 150]
 
-A request: {"key", "system", "prompt", "max_output"}. A journal line: {"key", "reply"|"error", "prompt_tokens", "output_tokens", "thought_tokens", "finish", "seconds"}. Stops sending at 97% of the hard budget over all journals, or at --stage-output tokens of this run. Prints counts, never a prompt or a reply.
+A request: {"key", "system", "prompt", "max_output"}. A journal line: {"key", "reply"|"error", "prompt_tokens", "output_tokens", "thought_tokens", "finish", "seconds"}. Stops sending at --stop-share (97%) of the hard budget over all journals, or at --stage-output tokens of this run. Prints counts, never a prompt or a reply.
 """
 import argparse
 import datetime
@@ -59,6 +59,7 @@ def main():
     parser.add_argument("--stage-output", type=int, default=0)
     parser.add_argument("--timeout", type=float, default=150.0)
     parser.add_argument("--tries", type=int, default=3)
+    parser.add_argument("--stop-share", type=float, default=ledger.STOP_SHARE, help="the share of the hard budget at which sending stops; never above 1")
     args = parser.parse_args()
     if not os.getcwd().replace("\\", "/").endswith("prereasoner-readers"):
         sys.exit("run from C:/work/prereasoner-readers")
@@ -78,8 +79,9 @@ def main():
     print("model", llm.model_id(), "to send", len(work), "already", len(done), "spent", state["output"], state["prompt"], flush=True)
     watch_usage()
     lock = threading.Lock()
-    limit_output = ledger.HARD_OUTPUT * ledger.STOP_SHARE
-    limit_prompt = ledger.HARD_INPUT * ledger.STOP_SHARE
+    share = min(args.stop_share, 1.0)
+    limit_output = ledger.HARD_OUTPUT * share
+    limit_prompt = ledger.HARD_INPUT * share
     started = time.time()
 
     def one(request):
@@ -110,6 +112,10 @@ def main():
                 state["sent"] += 1
                 if record.get("reply") is None:
                     state["failed"] += 1
+                if state["sent"] % 50 == 0:
+                    # Another run may be spending too: the journals, not this process, hold the total. Two runs at once passed 97% on 2026-11-02 for want of this.
+                    total_now = ledger.spent(paths.JOURNAL)["TOTAL"]
+                    state["output"], state["prompt"] = total_now["output"] + total_now["thought"], total_now["prompt"]
                 if state["sent"] % 100 == 0:
                     print("sent", state["sent"], "failed", state["failed"], "stage", state["stage"], "output", state["output"], "prompt", state["prompt"], round(time.time() - started), "s", flush=True)
             if record.get("reply") is not None:
