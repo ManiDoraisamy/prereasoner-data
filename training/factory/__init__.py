@@ -1,0 +1,1 @@
+"""The training data factory: from compiled sheets to questions, programs, links and named coordinates. Offline only: Gemini writes data here and nothing in serving imports this package. See README.md."""
