@@ -10,16 +10,16 @@ from engine.program.catalog import Catalog
 from engine.program.decoder import Decoder, POLICY
 from engine.program.execute import run, run_dual
 from engine.program.index import TableIndex
-from engine.program.language import (Agg, Calc, Col, Compare, CompareColumns, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, OnLine, PeriodSpan, Rank, RowArithmetic, SECTION, Show, Size, answer_type_of, coordinates, is_sound, period_from_name)
+from engine.program.language import (Across, Agg, Calc, Col, Compare, CompareColumns, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, NotEquals, OnLine, PeriodSpan, Rank, RowArithmetic, SECTION, Show, Size, answer_type_of, coordinates, tables_of, is_sound, period_from_name)
 from engine.program.lowering import plan_schema, to_query
-from engine.program.names import (A_COMPANY, A_COUNT, A_LIST, A_NAME, A_NUMBER, A_PERCENT, AVG, CALC, COMPARISONS, COUNT, COUNT_DISTINCT, ENDS, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, EV_BARE_ZERO, EV_EMPTY, EV_FAILED, EV_FILTER_DID_NOTHING, EV_FRACTION_FOR_COUNT, EV_MANY_ROWS, EV_PRINTED_TIE, EV_RAN,
+from engine.program.names import (A_COMPANY, A_COUNT, A_LIST, A_NAME, A_NUMBER, A_PERCENT, ANSWER_TYPES, AVG, CALC, COMPARISONS, COUNT, COUNT_DISTINCT, ENDS, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, EV_ADDS_TWICE, EV_BARE_ZERO, EV_EMPTY, EV_FAILED, EV_FILTER_DID_NOTHING, EV_FRACTION_FOR_COUNT, EV_MANY_ROWS, EV_PRINTED_TIE, EV_RAN,
                                   EV_REPEATED_LINES, EV_ROW_COUNT_FOR_AMOUNT, EV_SHAPE_AGREES, EV_TOO_LARGE_FOR_SHARE, EV_TYPE_AGREES, EV_WRONG_KIND, EVIDENCE, FORMS, GE, GT, HIGHEST, LOWEST, MAX, MIN, MINUS, OVER, PERIOD_NAMED, PERIOD_REST_OF, PERIOD_SO_FAR, PLUS, SEMANTICS, SIGN_LOSS, SIGN_MAGNITUDE, SIGN_NET,
-                                  SIGN_SIZE, SLOT_AGGREGATE, SLOT_FORM, SLOTS, STARTS, SUM, TIMES, coordinate, slot_of)
+                                  SIGN_SIZE, SLOT_AGGREGATE, SLOT_FORM, SLOTS, STARTS, SUM, TIMES, coarse_type, coordinate, slot_of)
 from engine.program.output import cells_used, compress, explain, formula, read_as
 from engine.program.scoring import Reading, Weights, score_program
 from engine.program.semantics import (SEMANTIC_COUNTS, cell_day, exact_wins, fold, read_period, read_sign, share_forms, sign_word_of, stated_number)
 from engine.program.store import RequestTables
-from engine.program.verifier import is_exact, significant_digits, verify, verify_one
+from engine.program.verifier import LINES_READ, MIN_RUN, adds_across_members, is_exact, significant_digits, verify, verify_one
 from engine.program.words import predict_answer_type, read_question
 from engine.sheet import compile_workbook, workbook_from_json
 from engine.sql_ast import (Abs, Aggregate, ASTValidationError, BinaryExpr, BlankAsZero, ColumnRef, OrderTerm, SelectItem, SelectQuery, SQLType, render_query)
@@ -510,17 +510,20 @@ def test_intervention_a_named_coordinate_moves_the_score_by_its_weight():
 
 
 def test_policy_prunes_values_only_where_it_says():
-    """One condition keeps every value for show and agg, the top 50 of a column for a rank form; two conditions the top 50 each, on combinations that occur."""
+    """One condition keeps every value the reading reaches for show and agg, the top 50 of a column for a rank form; two conditions the top 50 each, on combinations that occur. A value nothing reaches is no condition."""
     values = [[f"name{at}", f"kind{at % 3}", float(at)] for at in range(120)]
     catalog = _catalog([["Name", "Kind", "Amount"], *values])
     decoder = Decoder(catalog)
     t = catalog.tables[0].id
     rare = Equals(Col(t, 0), "name119")
-    reading = Reading({"form:agg": 1.0, "aggregate:sum": 1.0, "measure:" + t + ".2": 1.0})
+    reached = {f"value:{t}.0=name{at}": 0.1 for at in range(120)} | {f"value:{t}.1=kind{at}": 0.1 for at in range(3)}
+    reading = Reading({"form:agg": 1.0, "aggregate:sum": 1.0, "measure:" + t + ".2": 1.0, **reached})
     programs, candidates, _, _ = decoder.enumerate(reading, k=5000)
     assert Agg(SUM, Col(t, 2), t, (rare,)) in programs
     assert candidates > 5000
-    ranked = Reading({"form:rank": 3.0, "entity:group": 3.0, "aggregate:sum": 3.0, "measure:" + t + ".2": 3.0, "key:" + t + ".1": 3.0, "direction:highest": 3.0})
+    unreached = Reading({"form:agg": 1.0, "aggregate:sum": 1.0, "measure:" + t + ".2": 1.0})
+    assert Agg(SUM, Col(t, 2), t, (rare,)) not in decoder.enumerate(unreached, k=5000)[0]
+    ranked = Reading({"form:rank": 3.0, "entity:group": 3.0, "aggregate:sum": 3.0, "measure:" + t + ".2": 3.0, "key:" + t + ".1": 3.0, "direction:highest": 3.0, **reached})
     programs, _, _, _ = decoder.enumerate(ranked, k=20000)
     conditions = {p.where[0] for p in programs if isinstance(p, Rank) and p.entity == ENTITY_GROUP and len(p.where) == 1 and isinstance(p.where[0], Equals) and p.where[0].column.position == 0}
     assert 0 < len(conditions) <= POLICY.rank_values
@@ -542,7 +545,7 @@ def test_conditions_stay_on_distinct_columns():
 
 # ------------------------------------------------------------------------------------------------------------ the words
 def test_answer_type_rule():
-    assert predict_answer_type("How many deals are open?") == A_COUNT and predict_answer_type("How many MW are scheduled?") == A_NUMBER
+    assert predict_answer_type("How many deals are open?") == A_COUNT and coarse_type(predict_answer_type("How many MW are scheduled?")) == A_NUMBER
     assert predict_answer_type("What share of volume is gas?") == A_PERCENT and predict_answer_type("How much did we sell?") == A_NUMBER
     assert predict_answer_type("On what date did the price peak?") == "date" and predict_answer_type("Who covers Tampa Electric?") == "person"
     assert predict_answer_type("Which counterparty owes the most?") == A_COMPANY and predict_answer_type("What are the delivery points?") == A_LIST
@@ -652,6 +655,180 @@ class _Kinds:
         return "number"
 
 
+
+# -------------------------------------------------------------------------------------------------- the gaps Phase 4 closed
+ACROSS_ROWS = [["Book", "Jan", "Feb", "Mar", "Status"], ["a", 7.0, 2.0, 9.0, "Open"], ["b", 10.0, None, 5.0, "Closed"], ["c", None, None, None, "Open"], ["d", 100.0, 1.0, 1.0, None], ["e", 4.0, 4.0, 4.0, "Open"], ["f", 3.0, 3.0, 3.0, "Closed"]]
+ACROSS_FORMATS = [{"f": "General"}, {"f": "#,##0.00"}, {"f": "#,##0.00"}, {"f": "#,##0.00"}, {"f": "General"}]
+
+
+def test_across_adds_peer_columns_of_a_line():
+    """Factory programs tried 549 sums across an axis's columns: a blank counts 0, a line blank in them all is no line, both deterministic programs agree, and it ranks like any measure."""
+    _, table, tables = _setup(ACROSS_ROWS, formats=ACROSS_FORMATS)
+    t = table.id
+    months = Across((Col(t, 1), Col(t, 2), Col(t, 3)))
+    assert _one(_answer(Agg(SUM, months, t, (Equals(Col(t, 0), "b"),)), tables)) == 15.0
+    assert _one(_answer(Agg(SUM, months, t), tables)) == 156.0
+    assert _one(_answer(Agg(AVG, months, t), tables)) == 31.2            # five lines: c is blank across them all
+    assert _answer(Rank(ENTITY_LINE, t, HIGHEST, (), months, (Col(t, 0),)), tables)[0][0] == "d"
+    assert _answer(Rank(ENTITY_GROUP, t, LOWEST, (), months, key=Col(t, 0), function=SUM), tables)[0][0] == "f"
+    assert "across" in read_as(Agg(SUM, Across((Col(t, 1), Col(t, 2), Col(t, 3), Col(t, 4))), t), tables.catalog) or "plus" in read_as(Agg(SUM, months, t), tables.catalog)
+    names = coordinates(Agg(SUM, months, t), tables.catalog.column_kind)
+    assert coordinate("peers", t, "1,2,3") in names and coordinate("row_op", "+") in names
+    assert cells_used(Agg(SUM, months, t, (Equals(Col(t, 0), "b"),)), tables, ())
+    assert formula(Agg(SUM, months, t, (Equals(Col(t, 0), "b"),)), tables).startswith("=SUM(")
+    for bad in ((Col(t, 1),), (Col(t, 1), Col("other", 1))):
+        try:
+            Across(bad)
+        except ValueError:
+            continue
+        raise AssertionError("across takes two or more columns of one table")
+
+
+def test_the_decoder_reaches_across_when_a_word_asks():
+    catalog = _catalog(ACROSS_ROWS, formats=ACROSS_FORMATS)
+    decoder = Decoder(catalog)
+    t = catalog.tables[0].id
+    months = Agg(SUM, Across((Col(t, 1), Col(t, 2), Col(t, 3))), t, (Equals(Col(t, 0), "b"),))
+    asked = read_question("What is the total for b across the months?", catalog, decoder)
+    assert months in decoder.enumerate(asked, k=300)[0]
+    plain = Reading({"form:agg": 1.0, "aggregate:sum": 1.0, f"measure:{t}.1": 1.0})
+    assert not [p for p in decoder.enumerate(plain, k=300)[0] if isinstance(p, Agg) and isinstance(p.measure, Across)], "no row operator read, no sum across"
+
+
+def test_a_text_other_than():
+    """Factory programs tried 183 text conditions with not-equal. A blank is no other value, in the masks and in both programs."""
+    _, table, tables = _setup(ACROSS_ROWS, formats=ACROSS_FORMATS)
+    t = table.id
+    other = NotEquals(Col(t, 4), "open")
+    assert _one(_answer(Agg(COUNT, None, t, (other,)), tables)) == 2.0     # b and f; d is blank
+    assert _one(_answer(Agg(SUM, Col(t, 1), t, (other,)), tables)) == 13.0
+    index = TableIndex(table)
+    assert index.mask(other) == table.condition_mask(other) == sum(1 << at for at, line in enumerate(table.lines) if table.folds[4][at] == "closed")
+    assert "other than" in read_as(Agg(COUNT, None, t, (other,)), tables.catalog)
+    assert not formula(Agg(SUM, Col(t, 1), t, (other,)), tables).startswith("=SUMIFS"), "a sheet's <> passes a blank; this does not"
+    assert coordinate("comparison", "!=") in coordinates(Agg(COUNT, None, t, (other,)), tables.catalog.column_kind)
+
+
+def test_the_decoder_reads_other_than_from_the_words():
+    catalog = _catalog(ACROSS_ROWS, formats=ACROSS_FORMATS)
+    decoder = Decoder(catalog)
+    t = catalog.tables[0].id
+    reading = read_question("How many lines have a status other than closed?", catalog, decoder)
+    assert reading.scores[coordinate("comparison", "!=")] == 1.0
+    programs = decoder.enumerate(reading, k=300)[0]
+    assert Agg(COUNT, None, t, (NotEquals(Col(t, 4), "closed"),)) in programs
+
+
+def test_answer_types_place_money_quantity():
+    assert {"place", "money", "quantity"} <= set(ANSWER_TYPES)
+    assert coarse_type("place") == A_NAME and coarse_type("money") == coarse_type("quantity") == A_NUMBER and coarse_type("count") == A_COUNT
+    assert predict_answer_type("Where is the Waha hub?") == "place" and predict_answer_type("Which city has the most deals?") == "place"
+    assert predict_answer_type("How much did we pay Transco?") == "money" and predict_answer_type("How many MW are scheduled?") == "quantity"
+    catalog, table, tables, col = _trades()
+    assert verify_one(score_program(Show(table.id, (col(0),), (Equals(col(1), "west"),)), Reading({}), catalog), tables, "place").held(EV_TYPE_AGREES)
+    assert verify_one(score_program(Agg(SUM, col(3), table.id), Reading({}), catalog), tables, "money").held(EV_TYPE_AGREES)
+
+
+def _reordered(rows, order):
+    return [[row[at] for at in order] for row in rows]
+
+
+def _by_names(programs, table):
+    """A program list read through column names, so two orders of a sheet can be compared."""
+    out = []
+    for program in programs:
+        names = coordinates(program, lambda column: table.columns[column.position].kind if column.position >= 0 else "text")
+        out.append(tuple(sorted(_column_words(name, table) for name in names)))
+    return out
+
+
+def _column_words(name, table):
+    prefix = f"{table.id}."
+    head, _, body = name.partition(":")
+    if body.startswith(prefix):
+        position, _, rest = body[len(prefix):].partition("=")
+        if position.lstrip("-").isdigit() and int(position) >= 0:
+            return f"{head}:{table.columns[int(position)].name}={rest}"
+    return name
+
+
+def test_decoder_ties_do_not_follow_sheet_order():
+    """Columns tying on a reading come out in the same order however the sheet stands. On position ties the top of the list followed the sheet, so a shuffled sheet could answer otherwise."""
+    rows = [["Alpha", "Beta", "Gamma", "Delta", "Kind"], [1.0, 20.0, 300.0, 4000.0, "x"], [2.0, 30.0, 500.0, 7000.0, "y"], [5.0, 70.0, 110.0, 1300.0, "x"]]
+    reading_for = lambda t: Reading({"form:agg": 1.0, "aggregate:sum": 1.0, "form:rank": 0.5, "entity:line": 0.2, "direction:highest": 0.2})
+    first = None
+    for order in ((0, 1, 2, 3, 4), (3, 1, 4, 0, 2), (4, 3, 2, 1, 0), (2, 0, 3, 4, 1)):
+        catalog = _catalog(_reordered(rows, order))
+        table = catalog.tables[0]
+        listed = _by_names([item.program for item in Decoder(catalog).decode(reading_for(table.id), k=80).programs], table)
+        if first is None:
+            first = listed
+        assert listed == first, order
+
+
+def test_a_family_adding_twice_says_so():
+    """Family.adds_twice: members repeat each other's lines. A sum or count across the members is flagged; one member's lines, or a read, are not."""
+    def book(tab):
+        return {"name": tab, "rows": [["Deal", "Desk", "Volume"]] + [[f"d{at}", "w" if at % 2 else "e", float(at * 7 + 1)] for at in range(14)]}
+    catalog = Catalog.from_model(compile_workbook(workbook_from_json({"name": "book", "tabs": [book("Jan"), book("Feb")]})))
+    family = next(table for table in catalog.tables if table.kind == "family")
+    assert family.adds_twice
+    tables = RequestTables(catalog)
+    f = family.id
+    across = Agg(SUM, Col(f, 3), f)
+    assert adds_across_members(across, catalog) and verify_one(score_program(across, Reading({}), catalog), tables, A_NUMBER).held(EV_ADDS_TWICE)
+    assert not adds_across_members(Agg(SUM, Col(f, 3), f, (Equals(Col(f, 0), "jan"),)), catalog)
+    assert not adds_across_members(Agg(AVG, Col(f, 3), f), catalog)
+    assert not adds_across_members(Show(f, (Col(f, 3),), (Equals(Col(f, 1), "d3"),)), catalog)
+    assert adds_across_members(Rank(ENTITY_GROUP, f, HIGHEST, (), Col(f, 3), key=Col(f, 2), function=SUM), catalog)
+    assert adds_across_members(Calc(across, MINUS, Agg(SUM, Col(f, 3), f, (Equals(Col(f, 2), "w"),))), catalog)
+    assert not adds_across_members(Agg(SUM, Col("t0", 2), "t0"), catalog)
+
+
+def test_axes_are_read_by_their_kind():
+    """A flag axis counts marks and adds nothing; an axis named only by a total beside it is a peer set only where a question asks."""
+    marks = [["Deal", "Master", "ISDA", "CSA"], ["1", "Y", "N", "Y"], ["2", "Y", "Y", "N"], ["3", "N", "Y", "N"], ["4", "Y", "N", "N"]]
+    catalog = _catalog(marks)
+    table = catalog.tables[0]
+    decoder = Decoder(catalog)
+    index = decoder.indexes[table.id]
+    assert index.flag_sets == ((1, 2, 3),) and not index.peer_sets
+    reading = Reading({"form:rank": 3.0, "entity:peer": 3.0, "direction:highest": 1.0, f"value:{table.id}=y": 1.0})
+    programs = decoder.enumerate(reading, k=20)[0]
+    assert Rank(ENTITY_PEER, table.id, HIGHEST, (), peers=(1, 2, 3), mark="y") in programs
+    books = [["Trader", "", "", "Book total"], ["", "Alpha", "Beta", "Gamma"], ["a", 1.0, 2.0, 3.0], ["b", 4.0, 5.0, 6.0]]
+    wide = [["Group", "Desk one", "Desk two", "Desk three", "Total"], ["a", 1.0, 2.0, 3.0, 6.0], ["b", 4.0, 5.0, 6.0, 99.0], ["c", 7.0, 8.0, 9.0, 1.0]]
+    for rows in (books, wide):
+        catalog = _catalog(rows)
+        table = catalog.tables[0]
+        index = Decoder(catalog).indexes[table.id]
+        for held in index.totalled_sets:
+            assert held not in tuple(tuple(axis.positions) for axis in table.table.axes if axis.kind != "totalled")
+
+
+def test_a_question_reads_the_tables_its_links_reach():
+    """The worst case is a workbook of many tables: past linked_tables only those the reading reaches best make frames."""
+    tabs = [{"name": f"Tab{at}", "rows": [[f"Name{at}", f"Figure{at}"], [f"a{at}", 1.0 + at], [f"b{at}", 2.0 + at], [f"c{at}", 3.0 + at]]} for at in range(POLICY.linked_tables + 6)]
+    catalog = Catalog.from_model(compile_workbook(workbook_from_json({"name": "book", "tabs": tabs})))
+    decoder = Decoder(catalog)
+    far = catalog.tables[-1]
+    reading = read_question(f"What is the total {far.columns[1].name}?", catalog, decoder)
+    programs = decoder.enumerate(reading, k=50)[0]
+    assert {tables_of(program)[0] for program in programs} <= {table.id for table in catalog.tables}
+    assert any(tables_of(program)[0] == far.id for program in programs)
+    assert len({tables_of(program)[0] for program in decoder.enumerate(reading, k=3000)[0]}) <= POLICY.linked_tables
+
+
+def test_verifier_stops_at_its_budget_of_lines():
+    """A hard, deterministic stop on what a question's candidates read: the first MIN_RUN always run."""
+    rows = [["Name", "Amount"]] + [[f"n{at}", float(at)] for at in range(40000)]
+    catalog, table, tables = _setup(rows)
+    t = table.id
+    many = [score_program(Agg(function, Col(t, 1), t), Reading({}), catalog) for function in (SUM, AVG, MIN, MAX) for _ in range(10)]
+    done = verify(many, tables, A_NUMBER, top=40)
+    assert MIN_RUN <= len(done) < 40 and sum(len(table.lines) for _ in done) <= max(LINES_READ, MIN_RUN * len(table.lines))
+
+
 # ----------------------------------------------------------------------------------------------------------- the output
 def test_read_as_in_the_sheets_own_words():
     catalog, table, tables, col = _trades()
@@ -737,6 +914,7 @@ def test_explain_carries_the_named_contributions():
 
 
 TESTS = [
+    test_across_adds_peer_columns_of_a_line, test_the_decoder_reaches_across_when_a_word_asks, test_a_text_other_than, test_the_decoder_reads_other_than_from_the_words, test_answer_types_place_money_quantity, test_decoder_ties_do_not_follow_sheet_order, test_a_family_adding_twice_says_so, test_axes_are_read_by_their_kind, test_a_question_reads_the_tables_its_links_reach, test_verifier_stops_at_its_budget_of_lines,
     test_every_name_is_from_a_closed_list, test_forms_refuse_what_they_cannot_say, test_signs, test_printed_lines_are_read_by_label_and_never_added, test_shortest_label_first_and_unlabelled_printed_lines, test_a_column_filled_only_on_printed_lines_reads_them,
     test_partial_value_match, test_case_and_spacing_do_not_count, test_periods, test_blanks, test_ties_keep_every_tied_line, test_units, test_mixed_columns, test_repeated_rows, test_sections_nested_bands_and_the_section_shown, test_python_masks_agree_with_the_sql,
     test_calc_shapes, test_rank_across_peer_columns, test_new_ast_nodes_render_and_validate, test_plan_schema_holds_only_what_a_query_reads, test_perfect_readings_give_the_gold_first, test_decoder_is_deterministic_and_order_free, test_the_list_does_not_depend_on_hash_order,

@@ -11,9 +11,9 @@ from dataclasses import dataclass
 
 from engine.program.execute import Result, run
 from engine.program.index import index_of
-from engine.program.language import Agg, Col, Equals, InSection, OnLine, Program, Show, addresses_printed, answer_type_of, conditions_of, measure_columns
-from engine.program.names import (A_CODE, A_COUNT, A_DATE, A_LIST, A_NAME, A_NUMBER, A_PERCENT, COUNT, EV_BARE_ZERO, EV_EMPTY, EV_FAILED, EV_FILTER_DID_NOTHING, EV_FRACTION_FOR_COUNT, EV_MANY_ROWS, EV_PRINTED_TIE, EV_RAN, EV_REPEATED_LINES, EV_ROW_COUNT_FOR_AMOUNT, EV_ROW_DUMP, EV_SHAPE_AGREES,
-                                  EV_TOO_LARGE_FOR_SHARE, EV_TYPE_AGREES, EV_WRONG_KIND, NAME_TYPES, SUM)
+from engine.program.language import Agg, Calc, Col, Contains, Equals, InPeriod, InSection, OnLine, Program, Rank, Show, addresses_printed, answer_type_of, conditions_of, measure_columns
+from engine.program.names import (A_CODE, A_COUNT, A_DATE, A_LIST, A_NAME, A_NUMBER, A_PERCENT, COUNT, COUNT_DISTINCT, ENTITY_LINE, EV_ADDS_TWICE, EV_BARE_ZERO, EV_EMPTY, EV_FAILED, EV_FILTER_DID_NOTHING, EV_FRACTION_FOR_COUNT, EV_MANY_ROWS, EV_PRINTED_TIE, EV_RAN, EV_REPEATED_LINES, EV_ROW_COUNT_FOR_AMOUNT, EV_ROW_DUMP, EV_SHAPE_AGREES,
+                                  EV_TOO_LARGE_FOR_SHARE, EV_TYPE_AGREES, EV_WRONG_KIND, SUM, coarse_type)
 from engine.program.scoring import ScoredProgram
 from engine.program.semantics import fold
 from engine.program.store import RequestTables
@@ -24,6 +24,7 @@ _TOTAL_WORD = re.compile(r"\b(?:grand\s+total|sub-?\s*total|totals?|net|sum)\b")
 TIE_RELATIVE = 1e-6
 TIE_ABSOLUTE = 1e-9
 TIE_DIGITS = 4
+SHAPE_ROWS = 50                # a rank's ties can return every line: the shape reads this many
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,8 +91,8 @@ def shape_evidence(rows: tuple[tuple, ...], program: Program, expected: str | No
         out.append(Evidence(EV_ROW_DUMP, True))
     if expected is None:
         return out
-    wants = A_NAME if expected in NAME_TYPES else expected
-    kinds = {_kind(cell) for row in rows for cell in row} - {"null"}
+    wants = coarse_type(expected)
+    kinds = {_kind(cell) for row in rows[:SHAPE_ROWS] for cell in row} - {"null"}
     bad: str | None = None
     if wants in (A_NUMBER, A_COUNT, A_PERCENT):
         if len(rows) > 1:
@@ -179,6 +180,32 @@ def _repeated_lines(program: Program, tables: RequestTables) -> list[Evidence]:
     return [Evidence(EV_REPEATED_LINES, True, f"{hits} lines")] if hits > 1 else []
 
 
+def adds_across_members(program: Program, catalog) -> bool:
+    """Whether a program adds lines across a family whose members repeat each other's lines (Family.adds_twice): the same figures would count twice. A condition on the member's own column reads one member and adds nothing twice."""
+    if isinstance(program, Calc):
+        return adds_across_members(program.left, catalog) or adds_across_members(program.right, catalog)
+    table = catalog.table(program.table)
+    if not table.adds_twice or isinstance(program, Show):
+        return False
+    if isinstance(program, Agg) and program.function not in (SUM, COUNT, COUNT_DISTINCT):
+        return False
+    if isinstance(program, Rank) and program.entity == ENTITY_LINE:
+        return False
+    member = Col(table.id, 0)
+    return not any(isinstance(condition, (Equals, Contains, InPeriod)) and condition.column == member for condition in program.where)
+
+
+# How many lines a question's candidates may read in all. The first MIN_RUN always run. A hard, deterministic stop: time depends on the machine and so may not decide what runs.
+LINES_READ = 600_000
+MIN_RUN = 10
+
+
+def _lines_of(program: Program, catalog) -> int:
+    if isinstance(program, Calc):
+        return _lines_of(program.left, catalog) + _lines_of(program.right, catalog)
+    return len(catalog.table(program.table).lines)
+
+
 def verify_one(scored: ScoredProgram, tables: RequestTables, expected: str | None) -> Verified:
     program = scored.program
     try:
@@ -190,19 +217,28 @@ def verify_one(scored: ScoredProgram, tables: RequestTables, expected: str | Non
     evidence.extend(shape_evidence(rows, program, expected))
     if expected is not None and rows:
         have = answer_type_of(program, tables.catalog.column_kind)
-        wants = A_NAME if expected in NAME_TYPES else expected
+        wants = coarse_type(expected)
         evidence.append(Evidence(EV_TYPE_AGREES, have == wants or {have, wants} == {A_NUMBER, A_PERCENT} or {have, wants} == {A_NUMBER, A_COUNT}))
     if rows and len(rows) == 1 and len(rows[0]) == 1:
         value = _number(rows[0][0])
         if value is not None:
             evidence.extend(printed_tie_evidence(program, value, tables))
     evidence.extend(_repeated_lines(program, tables))
+    if adds_across_members(program, tables.catalog):
+        evidence.append(Evidence(EV_ADDS_TWICE, True))
     return Verified(scored, result, tuple(evidence))
 
 
 def verify(programs, tables: RequestTables, expected: str | None = None, *, top: int = 50) -> tuple[Verified, ...]:
-    """The first top programs, in order, each with its result and evidence."""
-    return tuple(verify_one(scored, tables, expected) for scored in list(programs)[:top])
+    """The first top programs, in order, each with its result and evidence, as far as the budget of lines read goes."""
+    out = []
+    read = 0
+    for scored in list(programs)[:top]:
+        read += _lines_of(scored.program, tables.catalog)
+        if read > LINES_READ and len(out) >= MIN_RUN:
+            break
+        out.append(verify_one(scored, tables, expected))
+    return tuple(out)
 
 
-__all__ = ["Evidence", "Verified", "is_exact", "printed_tie_evidence", "shape_evidence", "significant_digits", "verify", "verify_one"]
+__all__ = ["Evidence", "LINES_READ", "MIN_RUN", "Verified", "adds_across_members", "is_exact", "printed_tie_evidence", "shape_evidence", "significant_digits", "verify", "verify_one"]

@@ -62,8 +62,13 @@ class NamedEngine:
         """A workbook read into its index, tab by tab; an unchanged tab comes from the cache."""
         started = time.perf_counter()
         index = index_workbook(self.encoder, catalog, self.cache, tab_hashes)
+        decoder = Decoder(catalog, policy=self.policy)
+        decoder.warm()
+        tables = RequestTables(catalog)
+        for table in catalog.tables:
+            tables.ensure(table.id)
         seconds = time.perf_counter() - started
-        return Prepared(catalog, Decoder(catalog, policy=self.policy), RequestTables(catalog), index, seconds)
+        return Prepared(catalog, decoder, tables, index, seconds)
 
     def read(self, question: str, prepared: Prepared, mode: str = MODE_NAMED) -> NamedReading:
         read = read_questions(self.backbone, self.reader, self.config, [question])[0]

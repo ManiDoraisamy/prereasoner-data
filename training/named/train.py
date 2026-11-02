@@ -35,7 +35,7 @@ from engine.named.links import LinkWeights, RULES, SLOT_BIASES, rule_evidence
 from engine.named.model import NamedReader, ReaderConfig
 from engine.named.names import CALC_SIDES, CLOSED_HEADS, LEFT, RIGHT, WORD_ROLE_CLASSES, NameSet, closed_labels, load_name_set, meaning_groups
 from engine.named.bundle import write_bundle
-from engine.named.units import T_BAND, T_COLUMN, T_LINE, T_TABLE, T_VALUE, Graph, Target, collate, column_order, question_graph, table_graphs, targets_of, value_graph
+from engine.named.units import T_BAND, T_COLUMN, T_LINE, T_TABLE, T_VALUE, Graph, Target, collate, question_graph, table_graphs, targets_of, value_graph
 from engine.program.catalog import Catalog, CatalogTable
 from engine.program.decoder import Decoder
 from engine.program.index import stem
@@ -181,7 +181,7 @@ def build_batch(example: TabExample, reader_config: ReaderConfig, names: NameSet
         all_targets[table_id] = targets_of(table, units)
     value_graphs: list[Graph] = []
     values: list[int] = []
-    orders = {table_id: column_order(table) for table_id, table in tables.items()}
+    orders = {table_id: table.column_order for table_id, table in tables.items()}
 
     def add_value(target: Target) -> int:
         fresh = target.key not in at_target

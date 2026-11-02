@@ -1,20 +1,20 @@
 """The program as Gemini writes it: a short line of text over a table's positions, bound here to engine/program's typed forms. Slots over the compiled model, nothing more. Text that does not parse, or names a position the table lacks, raises Unbound with a reason.
 
   agg sum 3 @t0 where 1="EES", 0 in 2001-02      agg sum|avg|min|max|count|countd; count takes no measure; a trailing "mag" states the result by its size
-  agg sum 3-4 @t0        measure: 3 | 3+4 3-4 3*4 3/4 | abs(3) | abs(3-4) | date(0)
+  agg sum 3-4 @t0        measure: 3 | 3+4 3-4 3*4 3/4 | 3+4+5 across | across a0 an axis's columns | abs(3) | abs(3-4) | date(0)
   show 5 @t0 where 1="X"     show 5,6 @t0 ...     list 2 @t0 where 3>=36     list band @t0
   rank line high 3 show 1 @t0 where ...       rank line low abs(3) show 1,2 @t0
   rank group high sum 3 by 1 @t0 size         rank group high count by 1 @t0      by band works too
   rank peer high a0 @t0 size                  rank peer high 3,4,5 @t0 mark "X"
   calc (agg sum 3 @t0 where 1="A") - (agg sum 3 @t0 where 1="B")     - + /, a trailing "mag" states it by size
-Conditions, comma separated: 1="X" 1=5 | 1~"X" holds, 1^"X" starts, 1$"X" ends | 0 in 2001-02 (2002, 2001-02, 2001-11-29, m02 a month of any year, 2001-q4, a..b) | 3>=36 > <= < != | 3>c4 another column | 1 blank, 1 filled, 1 isnum | band="X" band~"X" | line="X" line="X" total line total line subtotal
+Conditions, comma separated: 1="X" 1=5 | 1!="X" other than | 1~"X" holds, 1^"X" starts, 1$"X" ends | 0 in 2001-02 (2002, 2001-02, 2001-11-29, m02 a month of any year, 2001-q4, a..b) | 3>=36 > <= < != | 3>c4 another column | 1 blank, 1 filled, 1 isnum | band="X" band~"X" | line="X" line="X" total line total line subtotal
 """
 from __future__ import annotations
 
 import re
 
 from engine.program.catalog import Catalog
-from engine.program.language import (Agg, Calc, Col, Compare, CompareColumns, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, OnLine, Rank, RowArithmetic, SECTION, Show, Size, is_sound, period_from_name)
+from engine.program.language import (Across, Agg, Calc, Col, Compare, CompareColumns, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, NotEquals, OnLine, Rank, RowArithmetic, SECTION, Show, Size, is_sound, period_from_name)
 from engine.program.names import ANYWHERE, COUNT, COUNT_DISTINCT, ENDS, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, HIGHEST, LOWEST, STARTS
 from engine.sheet.names import SUBTOTAL, TOTAL
 
@@ -82,6 +82,13 @@ class _Binder:
         match = re.fullmatch(r"(\d+)\s*([-+*/])\s*(\d+)", text)
         if match:
             return RowArithmetic(self.col(table, match[1]), match[2], self.col(table, match[3]))
+        if re.fullmatch(r"\d+(?:\s*\+\s*\d+){2,}", text):
+            return Across(tuple(self.col(table, part) for part in text.split("+")))
+        if match := re.fullmatch(r"across\s*a(\d+)", low):
+            axes = table.table.axes
+            if int(match[1]) >= len(axes):
+                raise Unbound("unknown_axis")
+            return Across(tuple(Col(table.id, position) for position in axes[int(match[1])].positions))
         return self.col(table, text)
 
     def condition(self, table, text: str):
@@ -96,6 +103,8 @@ class _Binder:
             return OnLine(table.id, "", {"total": TOTAL, "subtotal": SUBTOTAL}[match[1]])
         if match := re.fullmatch(rf"(\d+)\s*=\s*{_QUOTED}", text):
             return Equals(self.col(table, match[1]), _unquote(match[2]))
+        if match := re.fullmatch(rf"(\d+)\s*!=\s*{_QUOTED}", text):
+            return NotEquals(self.col(table, match[1]), _unquote(match[2]))
         if match := re.fullmatch(rf"(\d+)\s*=\s*({_NUMBER})", text):
             return Equals(self.col(table, match[1]), float(match[2]))
         if match := re.fullmatch(rf"(\d+)\s*([~^$])\s*{_QUOTED}", text):

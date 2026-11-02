@@ -118,15 +118,6 @@ def table_context(table: CatalogTable) -> str:
     return _clip(f"{table.tab} {table.table.name if table.table.name != table.tab else ''} {titles}")
 
 
-def column_order(table: CatalogTable) -> list[int]:
-    """Positions in an order read from each column's words and distinct cells."""
-    keys = []
-    for column in table.columns:
-        folds = sorted(set(value for value in table.folds[column.position] if value is not None))
-        keys.append((" ".join(column.name.split()).casefold(), column.kind, _digest("|".join(folds)), column.position))
-    return [key[-1] for key in sorted(keys)]             # two columns tying here hold the same words and cells, so the units they give are the same either way
-
-
 def line_digests(table: CatalogTable) -> list[str]:
     """Each line's digest of its own cells, whatever their order and whatever their columns are called."""
     held = table.__dict__.get("_line_digests")
@@ -149,7 +140,7 @@ def sampled_lines(table: CatalogTable, count: int) -> list[int]:
 
 def table_graphs(table: CatalogTable, config: UnitsConfig) -> list[Graph]:
     """One table's graphs. Every column stands in exactly one."""
-    order = column_order(table)
+    order = table.column_order
     lines = sampled_lines(table, config.sample_rows)
     windows = [order[start:start + config.window_columns] for start in range(0, len(order), config.window_columns)] or [[]]
     graphs = []
@@ -203,7 +194,7 @@ def targets_of(table: CatalogTable, config: UnitsConfig) -> list[Target]:
     return out
 
 
-def value_graph(table: CatalogTable, target: Target, config: UnitsConfig, order: list[int]) -> Graph:
+def value_graph(table: CatalogTable, target: Target, config: UnitsConfig, order) -> Graph:
     """A stored value read with its column's name and cells of the line holding it; a label or band read with its table's context."""
     index = index_of(table)
     if target.kind in (T_LINE, T_BAND):
@@ -264,4 +255,4 @@ def collate(graphs: list[Graph], vectors: list[torch.Tensor]) -> tuple[torch.Ten
     return inputs, edges, pad
 
 
-__all__ = ["FEATURES", "Graph", "T_BAND", "T_COLUMN", "T_LINE", "T_TABLE", "T_VALUE", "TARGET_KINDS", "Target", "UnitsConfig", "cell_text", "collate", "column_order", "question_graph", "sampled_lines", "table_context", "table_graphs", "targets_of", "value_graph", "word_features"]
+__all__ = ["FEATURES", "Graph", "T_BAND", "T_COLUMN", "T_LINE", "T_TABLE", "T_VALUE", "TARGET_KINDS", "Target", "UnitsConfig", "cell_text", "collate", "question_graph", "sampled_lines", "table_context", "table_graphs", "targets_of", "value_graph", "word_features"]

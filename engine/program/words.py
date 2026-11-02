@@ -10,13 +10,13 @@ import re
 from engine.program.catalog import Catalog
 from engine.program.decoder import Decoder
 from engine.program.index import TableIndex, stem, words_of
-from engine.program.language import Col, PeriodSpan
-from engine.program.names import (A_CODE, A_COMPANY, A_COUNT, A_DATE, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_PERSON, AGG, AVG, BY_SIZE, CALC, COUNT, COUNT_DISTINCT, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, GE, GT, HIGHEST, LE, LOWEST, LT, MAX, MIN, MINUS, NE, OVER, PERIOD_NAMED, PERIOD_REST_OF, PLUS, RANK, SHOW,
-                                  SLOT_AGGREGATE, SLOT_ANSWER_TYPE, SLOT_BLANK, SLOT_CALC_OP, SLOT_COMPARISON, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_DIRECTION, SLOT_ENTITY, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE, SLOT_MEASURE, SLOT_NUMBER, SLOT_PERIOD, SLOT_ROW_OP,
-                                  SLOT_SECTION, SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, STATED_BY_SIZE, SUM, TIMES, coordinate)
+from engine.program.language import Col, PeriodSpan, peers_name
+from engine.program.names import (A_CODE, A_COMPANY, A_COUNT, A_DATE, A_LIST, A_MONEY, A_NAME, A_NUMBER, A_PERCENT, A_PERSON, A_PLACE, A_QUANTITY, AGG, AVG, BY_SIZE, CALC, COUNT, COUNT_DISTINCT, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, GE, GT, HIGHEST, LE, LOWEST, LT, MAX, MIN, MINUS, NE, OVER, PERIOD_NAMED, PERIOD_REST_OF, PLUS, RANK, SHOW,
+                                  SLOT_AGGREGATE, SLOT_ANSWER_TYPE, SLOT_BLANK, SLOT_CALC_LEFT, SLOT_CALC_OP, SLOT_COMPARISON, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_DIRECTION, SLOT_ENTITY, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE, SLOT_MEASURE, SLOT_NUMBER, SLOT_PEERS, SLOT_PERIOD, SLOT_ROW_OP,
+                                  SLOT_SECTION, SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, STATED_BY_SIZE, SUM, TIMES, coarse_type, coordinate)
 from engine.program.scoring import Reading
 from engine.program.semantics import exact_wins, fold, number_text, read_period, read_sign, sign_word_of, stated_number
-from engine.sheet.names import P_DAY, P_MONTH, P_QUARTER, P_RANGE, P_YEAR
+from engine.sheet.names import AXIS_FLAG, P_DAY, P_MONTH, P_QUARTER, P_RANGE, P_YEAR
 from engine.sheet.values import parse_period
 
 _STOP = frozenset(stem(word) for word in """a about across after all also am an and any are as at be been by can did do does each for from get give got had has have how i in into is it its made many me more most much my of on one or our out over per s show so tell than that the
@@ -39,7 +39,10 @@ _CALC_OVER = re.compile(r"\b(ratio|share|percent|percentage|fraction|portion|per
 _CALC_PLUS = re.compile(r"\b(plus|together|combined|added|sum of)\b")
 _ROW_TIMES = re.compile(r"\b(weighted|times|multiplied|value of|expected)\b")
 _ROW_MINUS = re.compile(r"\b(less|minus|above|over|difference|net|after)\b")
-_ROW_PLUS = re.compile(r"\b(plus|and|together|combined|both)\b")
+_ROW_PLUS = re.compile(r"\b(plus|and|together|combined|both|across)\b")
+_ACROSS = re.compile(r"\b(across|every|all the|each of the)\b")
+_PLACE_NOUNS = r"city|state|country|region|location|place|site|hub|plant|zone|office|point"
+_MONEY_WORDS = re.compile(r"\b(dollars?|cost|costs|price|prices|paid|pay|revenue|expense|expenses|budget|amount|fee|fees|charge|charges|invoice|invoiced|salary|worth|spend|spent)\b|\$")
 _BLANK = re.compile(r"\b(no|missing|blank|empty|without|unassigned|lack|lacking)\b")
 _UNIT_WORDS = r"mw|mwh|barrels?|bbls?|mmbtu|mmbtus|dth|dths|mcf|dollars?|tons?|gallons?|kwh|megawatts?"
 _COMPANY_NOUNS = r"counterpart(?:y|ies|y's)|compan(?:y|ies)|shippers?|customers?|producers?|suppliers?|vendors?|entit(?:y|ies)|owners?|utilit(?:y|ies)|banks?"
@@ -58,6 +61,8 @@ NO_ROW_WORD = -2.0
 NO_CALC_WORD = -2.0
 # Row arithmetic names two measures where a plain measure names one: its operator costs what the second name would add.
 ROW_WORD = -1.0
+# Of two named columns under - or /, the one named first reads as the left: a word order, breaking what would otherwise be a tie.
+LEFT_BY_WORD_ORDER = 0.05
 # A condition beyond what the question's words can read costs this; one they read and the program leaves out, this.
 EXTRA_CONDITION = 1.0
 UNREAD_CONDITION = 0.3
@@ -67,13 +72,15 @@ def predict_answer_type(question: str) -> str:
     """The answer's type from the question's words, by design/answer_location.txt's rule: 177 of 186 on the questions it was written after (optimistic), 90 and 106 of 129 on rewordings."""
     t = question.lower().replace("’", "'").strip()
     if re.search(r"\bhow many\b", t):
-        return A_NUMBER if re.search(rf"\bhow many ({_UNIT_WORDS})\b", t) else A_COUNT
+        return A_QUANTITY if re.search(rf"\bhow many ({_UNIT_WORDS})\b", t) else A_COUNT
     if re.search(r"\b(what share|share of|percent|percentage|fraction|portion)\b|%", t):
         return A_PERCENT
     if re.search(r"\bhow much\b", t):
-        return A_NUMBER
+        return A_MONEY if _MONEY_WORDS.search(t) else A_NUMBER
     if re.search(rf"^(in |on |at |by )?(what|which)( \w+)?( \w+)? ({_DATE_NOUNS})\b|^when\b", t) and not re.search(r"^(what's|what is|what was)\b", t):
         return A_DATE
+    if t.startswith("where") or re.search(rf"^(what|which|in which|in what|at which)( \w+)? ({_PLACE_NOUNS})\b", t):
+        return A_PLACE
     if re.search(r"^who\b|^who's\b|^whose\b", t):
         return A_PERSON if re.search(r"\b(coordinator|covers|in settlements|trader|manager|analyst|contact|person)\b", t) else A_COMPANY
     if re.search(r"^what (are|months)\b", t):
@@ -85,7 +92,7 @@ def predict_answer_type(question: str) -> str:
         return A_COMPANY if re.search(rf"^which( \w+)?( \w+)? ({_COMPANY_NOUNS})\b", t) else A_CODE
     if re.search(rf"^(what's|what is|what was|what)( \w+){{0,4}} ({_TEXT_NOUNS})\b", t):
         return A_CODE
-    return A_NUMBER
+    return A_MONEY if _MONEY_WORDS.search(t) else A_NUMBER
 
 
 def _closed(question: str, low: str, out: dict[str, float]) -> None:
@@ -139,9 +146,7 @@ def _closed(question: str, low: str, out: dict[str, float]) -> None:
     out[coordinate(SLOT_ROW_OP, OVER)] = ROW_WORD if calc_over else NO_ROW_WORD
     if _BLANK.search(low):
         out[coordinate(SLOT_BLANK, "blank")] = 0.3
-    predicted = predict_answer_type(question)
-    coarse = A_NAME if predicted in (A_PERSON, A_COMPANY, A_CODE) else predicted
-    out[coordinate(SLOT_ANSWER_TYPE, coarse)] = 0.5
+    out[coordinate(SLOT_ANSWER_TYPE, coarse_type(predict_answer_type(question)))] = 0.5
 
 
 def _periods(low: str, out: dict[str, float]) -> None:
@@ -192,8 +197,8 @@ def _numbers(low: str, out: dict[str, float]) -> None:
         out[coordinate(SLOT_NUMBER, number_text(value))] = strength
         if "%" in text or "percent" in text:
             out[coordinate(SLOT_NUMBER, number_text(value * 100))] = strength / 2
-    if found:
-        for op in asked:
+    for op in asked:
+        if found or op == NE:          # "other than EES" needs no number
             out[coordinate(SLOT_COMPARISON, op)] = 1.0
 
 
@@ -238,6 +243,17 @@ def _table_words(table_id: str, index: TableIndex, question_words: set[str], raw
             for slot in (SLOT_MEASURE, SLOT_KEY, SLOT_SHOWN):
                 out[coordinate(slot, col)] = share
             out[coordinate(SLOT_FILTER, col)] = share * FILTER_NAME_SHARE
+    named = [(min(raw_words.index(word) for word in raw_words if stem(word) in name), position) for position, name in index.name_words.items() if name & question_words]
+    for place, (_, position) in enumerate(sorted(named, key=lambda item: item[0])):
+        if place == 0 and len(named) >= 2:
+            out[coordinate(SLOT_CALC_LEFT, coordinate(SLOT_MEASURE, Col(table_id, position).name))] = LEFT_BY_WORD_ORDER
+    # an axis: its name or its members' names in the question, and the word across. One named only by a total beside it, or a flag axis, needs a word of its own
+    for axis in table.table.axes:
+        names = [index.name_words.get(position, frozenset()) for position in axis.positions]
+        share = sum(bool(name & question_words) for name in names) / max(1, len(names))
+        across = bool(_ACROSS.search(low)) and axis.kind != AXIS_FLAG
+        if share or across:
+            out[coordinate(SLOT_PEERS, table_id, peers_name(tuple(axis.positions)))] = round(max(share, 0.3 if across else 0.0), 4)
     # values: every value holding a question word, by how much of it the question covers
     seen: set[tuple[int, str]] = set()
     value_words = index.value_words

@@ -134,7 +134,7 @@ def augmented(table: Table, rng: random.Random, shares: dict[str, float] | None 
 
 def mutate_catalog(catalog: Catalog, operation: Callable, seed: object = 0) -> Catalog:
     """A whole workbook through one op, ids kept: a question's gold answer is untouched by any of these."""
-    return Catalog([CatalogTable(table.id, operation(table.table, seed)[0], table.kind) for table in catalog.tables], catalog.name)
+    return Catalog([CatalogTable(table.id, operation(table.table, seed)[0], table.kind, table.adds_twice) for table in catalog.tables], catalog.name)
 
 
 __all__ = ["SURVIVAL_OPS", "TRAINING_OPS", "TRAINING_SHARES", "add_columns", "augmented", "mutate_catalog", "rebuilt", "rename_columns", "renamed", "reorder_columns", "unreadable_headers"]

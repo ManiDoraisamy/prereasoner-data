@@ -27,19 +27,17 @@ DEFINITIONS = {
     "comparison": {">=": "at least", ">": "above", "<=": "at most", "<": "below", "!=": "other than"},
     "row_op": {"+": "two measures of one line added", "-": "one measure of a line less another", "*": "two measures of one line multiplied", "/": "one measure of a line over another"},
     "calc_op": {"-": "one program's number less another's", "+": "two programs' numbers added", "/": "one program's number over another's"},
-    "answer_type": {"number": "a figure", "count": "how many", "percent": "a share or percent", "date": "a day or period", "person": "a person's name", "company": "a company's name", "code": "a code or other name", "list": "several values"},
+    "answer_type": {"number": "a figure", "count": "how many", "percent": "a share or percent", "date": "a day or period", "person": "a person's name", "company": "a company's name", "code": "a code or other name", "list": "several values", "place": "a place", "money": "a sum of money", "quantity": "a physical quantity"},
     "word_role": {"measure": "the word names what is measured", "key": "the word names what is grouped by or shown", "filter": "the word narrows the lines", "context": "the word names the sheet, the tab or its subject"},
-    "condition": {"equals": "a cell is this value", "contains": "a cell holds this text", "period": "a date falls in this period", "comparison": "a number compares with a number stated", "blank": "a cell is blank or filled", "section": "a band above the line says this", "line": "a line's own label holds this"},
+    "condition": {"equals": "a cell is this value", "contains": "a cell holds this text", "period": "a date falls in this period", "comparison": "a number compares with a number stated", "not_equals": "a text cell is some other value", "blank": "a cell is blank or filled", "section": "a band above the line says this", "line": "a line's own label holds this"},
     "anchor": {"anywhere": "the text sits anywhere in the cell", "starts": "the cell starts with it", "ends": "the cell ends with it"},
-    "measure_kind": {"column": "one column's figures", "row_arithmetic": "two columns of one line under an operator", "size": "a measure with its sign dropped", "date": "a date column read as its day"},
+    "measure_kind": {"column": "one column's figures", "row_arithmetic": "two columns of one line under an operator", "size": "a measure with its sign dropped", "date": "a date column read as its day", "across": "peer columns of one line added"},
     "sign_word": {"net": "net, position, value: the signed sum", "loss": "a loss, owing, short: lowest where stored negative", "size": "biggest driver, moved most: by size", "magnitude": "a burn, a payment: the signed figure stated as its size"},
     "period": {"day": "one day", "month": "one month", "quarter": "one quarter", "half": "one half year", "season": "a trading season: winter, summer", "year": "one year", "range": "a span between two days", "relative": "YTD, MTD, BOM, prompt", "weekday": "a weekday", "week": "one week", "hour": "one hour"},
     "column_role": {"key": "text naming the record, mostly distinct", "label": "text with repeats, a category", "section_label": "a sparse label filled down over the lines under it", "measure": "numbers", "date": "typed or written days", "period": "months, quarters, years as words", "peer": "one of several columns of one axis", "row_total": "adds up its own line", "derived": "arithmetic on its own line", "tab_name": "the tab a family member came from", "spacer": "empty inside a table's range"},
     "line_role": {"record": "a data line", "subtotal": "a printed summary of part of a table", "total": "a printed summary of a whole table", "band": "a section label over the lines under it", "header": "names columns", "title": "context above a table", "note": "a label and value outside a table", "blank": "nothing on the line"},
     "value_kind": {"blank": "no value", "number": "a number", "date": "a day", "period": "a named period", "text": "text", "error": "a formula error", "bool": "true or false", "marker": "a filled cell saying no value: -, n/a"},
 }
-# The brief's answer types beyond the closed list today: engine/program/names.py needs them before the reader's head can fill them.
-PENDING_ANSWER_TYPES = {"place": "a place", "money": "a sum of money", "quantity": "a physical quantity"}
 
 
 def structure_tier() -> list[dict]:
@@ -52,8 +50,6 @@ def structure_tier() -> list[dict]:
     for group, members in lists.items():
         for member in members:
             out.append({"name": f"{group}:{member}", "group": group, "definition": DEFINITIONS[group][member]})
-    for member, definition in PENDING_ANSWER_TYPES.items():
-        out.append({"name": f"answer_type:{member}", "group": "answer_type", "definition": definition, "pending": "engine/program/names.py"})
     return out
 
 

@@ -5,9 +5,10 @@ so no second reading of a cell exists. Everything here is computed once per work
 """
 from __future__ import annotations
 
+import hashlib
 from functools import cached_property
 
-from engine.program.language import (Col, Compare, CompareColumns, Condition, Contains, Equals, InPeriod, InSection, IsBlank, IsNumber, OnLine, SECTION)
+from engine.program.language import (Col, Compare, CompareColumns, Condition, Contains, Equals, InPeriod, InSection, IsBlank, IsNumber, NotEquals, OnLine, SECTION)
 from engine.program.names import ANYWHERE, ENDS, GE, GT, LE, LT, NE, STARTS
 from engine.program.semantics import cell_day, cell_fold, cell_number, cell_text, fold, is_filled, is_serial_day
 from engine.sheet.model import Cell, Column, Context, Line, SheetModel, Table
@@ -24,12 +25,13 @@ _DATE_NAME_WORDS = ("date", "start", "end", "day", "begin", "term", "month")
 class CatalogTable:
     """One table a program can read. id is stable for a workbook: "t3" by compiled order, "f1" a family, "n2" a tab's notes."""
 
-    __slots__ = ("id", "table", "kind", "lines", "folds", "numbers", "days", "texts", "__dict__")
+    __slots__ = ("id", "table", "kind", "adds_twice", "lines", "folds", "numbers", "days", "texts", "__dict__")
 
-    def __init__(self, table_id: str, table: Table, kind: str):
+    def __init__(self, table_id: str, table: Table, kind: str, adds_twice: bool = False):
         self.id = table_id
         self.table = table
         self.kind = kind
+        self.adds_twice = adds_twice
         order = {}
         for line in (*table.lines, *table.printed):
             order.setdefault(line.tab, len(order))
@@ -119,6 +121,20 @@ class CatalogTable:
         out[SECTION] = words
         return out
 
+    @cached_property
+    def column_order(self) -> tuple[int, ...]:
+        """Positions in an order read from each column's words and distinct cells, not from where it stands. Two columns tying here hold the same words and cells, so either order reads the same."""
+        keys = []
+        for column in self.table.columns:
+            cells = sorted({value for value in self.folds[column.position] if value is not None})
+            keys.append((" ".join(column.name.split()).casefold(), column.kind, hashlib.blake2b("|".join(cells).encode("utf-8", "surrogatepass"), digest_size=8).hexdigest(), column.position))
+        return tuple(key[-1] for key in sorted(keys))
+
+    @cached_property
+    def column_rank(self) -> dict[int, int]:
+        """A column's place in column_order: what ties break on, so a tie never follows the sheet's order. The section sorts first."""
+        return {SECTION: -1, **{position: at for at, position in enumerate(self.column_order)}}
+
     def is_date_column(self, position: int) -> bool:
         """A column conditions read as days: typed dates or periods, or whole serial days under a date-like name."""
         column = self.table.columns[position]
@@ -142,6 +158,9 @@ class CatalogTable:
                 number = self.numbers[condition.column.position][i]
                 return number is not None and number == condition.value
             return self._fold_of(condition.column.position, i) == fold(condition.value)
+        if isinstance(condition, NotEquals):
+            text = self._fold_of(condition.column.position, i)
+            return text is not None and text != fold(condition.value)
         if isinstance(condition, Contains):
             text = self._fold_of(condition.column.position, i)
             if text is None:
@@ -229,7 +248,7 @@ class Catalog:
                 tables.append(CatalogTable(f"t{count}", table, KIND_TABLE))
                 count += 1
         for at, family in enumerate(model.families):
-            tables.append(CatalogTable(f"f{at}", family.table, KIND_FAMILY))
+            tables.append(CatalogTable(f"f{at}", family.table, KIND_FAMILY, bool(getattr(family, "adds_twice", False))))
         for at, tab in enumerate(model.tabs):
             notes = _notes_table(tab.name, tab.notes, 0)
             if notes is not None:

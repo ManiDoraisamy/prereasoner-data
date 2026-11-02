@@ -21,7 +21,7 @@ from engine.named.model import NamedReader, ReaderConfig
 from engine.named.names import CLOSED_HEADS, NameSet, closed_labels, load_name_set
 from engine.named.pipeline import NamedEngine, load_bundle
 from engine.named.reader import MODE_NAMED, MODE_NAMED_PLUS_OPEN, PROPOSAL_SCORE, build_reading, closed_reading, needs_asking, read_questions, unsupported_links
-from engine.named.units import T_COLUMN, T_VALUE, UnitsConfig, cell_text, column_order, sampled_lines, table_graphs, targets_of
+from engine.named.units import T_COLUMN, T_VALUE, UnitsConfig, cell_text, sampled_lines, table_graphs, targets_of
 from engine.program.catalog import Catalog, CatalogTable
 from engine.program.execute import run
 from engine.program.language import Agg, Col, Show
@@ -164,7 +164,7 @@ def test_order_invariance_by_construction() -> None:
     units = CONFIG.units
     assert [line for line in [table.lines[i].row for i in sampled_lines(table, 4)]] == [moved.lines[i].row for i in sampled_lines(moved, 4)]
     assert table_graphs(table, units)[0].texts == table_graphs(moved, units)[0].texts
-    assert [table.columns[p].name for p in column_order(table)] == [moved.columns[p].name for p in column_order(moved)]
+    assert [table.columns[p].name for p in table.column_order] == [moved.columns[p].name for p in moved.column_order]
     assert np.array_equal(table_graphs(table, units)[0].edges, table_graphs(moved, units)[0].edges)
     first = engine.encoder.index_group([table], "a")
     second = engine.encoder.index_group([moved], "b")

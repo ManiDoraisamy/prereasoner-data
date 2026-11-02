@@ -16,7 +16,7 @@ from engine.program.catalog import CatalogTable
 from engine.program.language import Col, Compare, Condition, Contains, Equals, InPeriod, InSection, IsBlank, IsNumber, OnLine, condition_coordinates
 from engine.program.names import ENDS, GE, GT, LE, LT, NE, STARTS
 from engine.program.semantics import fold
-from engine.sheet.names import F_DATE, PEER, ROW_TOTAL, V_NUMBER
+from engine.sheet.names import AXIS_FLAG, AXIS_TOTALLED, F_DATE, PEER, ROW_TOTAL, V_NUMBER
 
 # A low-cardinality number column's values are values too, up to this many (design/program_language.txt, section 3).
 NUMBER_VALUES = 30
@@ -165,6 +165,23 @@ class TableIndex:
                 out.append(self._atom(OnLine(table.id, label) if label else OnLine(table.id, "", line.role if not data else None), _LINE_GROUP))
         return tuple(out)
 
+    @cached_property
+    def structural_atoms(self) -> tuple[Atom, ...]:
+        """The conditions no word can reach and a question can still mean: what a column's shape says, and a printed line the sheet leaves unlabelled. Everything else comes through the reading's own coordinates."""
+        table = self.table
+        out = [self._atom(IsNumber(Col(table.id, position)), position) for position in self.mixed_columns]
+        out.extend(self._atom(IsBlank(Col(table.id, position)), position) for position in self.blank_columns)
+        roles: dict[str, None] = {}
+        for line, data, label in zip(table.lines, table.is_data, table.label_folds):
+            if not data and not label:
+                roles.setdefault(line.role, None)
+        out.extend(self._atom(OnLine(table.id, "", role), _LINE_GROUP) for role in roles)
+        return tuple(out)
+
+    def warm(self) -> None:
+        """Every word index and shape a question reads."""
+        _ = (self.value_lines, self.number_columns, self.text_columns, self.date_columns, self.structural_atoms, self.value_words, self.sorted_words, self.name_words, self.title_words, self.printed_labels, self.bands, self.peer_sets, self.peer_marks, self.table.column_rank, self.day_lines)
+
     def atom_of(self, condition: Condition, group: int) -> Atom:
         return self._atom(condition, group)
 
@@ -278,9 +295,9 @@ class TableIndex:
 
     @cached_property
     def peer_sets(self) -> tuple[tuple[int, ...], ...]:
-        """The peer column sets the sheet states: each axis; the number columns that are not row totals; each run of adjacent number columns, row totals and columns named total left out; and columns sharing a word of their names."""
+        """The peer column sets a number is read across, stated ones first: each axis of figures; the number columns that are not row totals; each run of adjacent number columns, row totals and columns named total left out; and columns sharing a word of their names. An axis named only by a total beside it is read when a question asks for it (totalled_sets), and a flag axis counts marks (flag_sets)."""
         columns = self.table.columns
-        out: list[tuple[int, ...]] = [tuple(axis.positions) for axis in self.table.table.axes]
+        out: list[tuple[int, ...]] = [tuple(axis.positions) for axis in self.table.table.axes if axis.kind not in (AXIS_FLAG, AXIS_TOTALLED)]
         rest = tuple(position for position in self.number_columns if columns[position].role != ROW_TOTAL)
         if len(rest) >= 2:
             out.append(rest)
@@ -302,7 +319,23 @@ class TableIndex:
         for word in sorted(sharing):
             if len(sharing[word]) >= 3:
                 out.append(tuple(sharing[word]))
-        return tuple(dict.fromkeys(out))
+        apart = {tuple(axis.positions) for axis in self.table.table.axes if axis.kind in (AXIS_FLAG, AXIS_TOTALLED)}
+        return tuple(held for held in dict.fromkeys(out) if held not in apart)
+
+    @cached_property
+    def stated_sets(self) -> frozenset[tuple[int, ...]]:
+        """The peer sets an axis states, whatever its kind: a tie among peer sets goes to these."""
+        return frozenset(tuple(axis.positions) for axis in self.table.table.axes)
+
+    @cached_property
+    def totalled_sets(self) -> tuple[tuple[int, ...], ...]:
+        """Columns a column named total stands beside. That name is no proof they add up, so these are peers only where a question asks for them."""
+        return tuple(tuple(axis.positions) for axis in self.table.table.axes if axis.kind == AXIS_TOTALLED)
+
+    @cached_property
+    def flag_sets(self) -> tuple[tuple[int, ...], ...]:
+        """Text columns marking the same few values across: what a "most marked" rank counts over."""
+        return tuple(tuple(axis.positions) for axis in self.table.table.axes if axis.kind == AXIS_FLAG)
 
     def mark_columns(self, mark: str) -> tuple[int, ...]:
         """The text columns holding a mark: the peers a "most marked" rank reads across."""

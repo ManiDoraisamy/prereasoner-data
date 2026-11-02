@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from typing import TypeAlias
 
 from engine.program.names import (A_COUNT, A_DATE, A_LIST, A_NAME, A_NUMBER, A_PERCENT, AGG, AGGREGATES, ANCHORS, ANYWHERE, BY_SIZE, CALC, CALC_OPS, COMPARISONS, COUNT, COUNT_DISTINCT, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, HIGHEST,
-                                  NUMBER_AGGREGATES, OVER, PLUS, RANK, RANK_ENTITIES, ROW_OPS, SHOW, SLOT_AGGREGATE, SLOT_ANSWER_TYPE, SLOT_BLANK, SLOT_CALC_LEFT, SLOT_CALC_OP, SLOT_COMPARISON, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_DIRECTION, SLOT_ENTITY, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE,
+                                  MINUS, NE, NUMBER_AGGREGATES, OVER, PLUS, RANK, RANK_ENTITIES, ROW_OPS, SHOW, SLOT_AGGREGATE, SLOT_ANSWER_TYPE, SLOT_BLANK, SLOT_CALC_LEFT, SLOT_CALC_OP, SLOT_COMPARISON, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_DIRECTION, SLOT_ENTITY, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE,
                                   SLOT_LISTING, SLOT_MEASURE, SLOT_NUMBER, SLOT_PEERS, SLOT_PERIOD, SLOT_ROW_OP, SLOT_SECTION, SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, STATED_BY_SIZE, coordinate)
 from engine.program.semantics import fold, number_text
 from engine.sheet.names import P_DAY, P_MONTH, P_QUARTER, P_RANGE, P_YEAR, PERIOD_KINDS
@@ -53,7 +53,17 @@ class DateOf:
     column: Col
 
 
-Measure: TypeAlias = Col | RowArithmetic | Size | DateOf
+@dataclass(frozen=True, slots=True)
+class Across:
+    """Peer columns of one line added: "total across the months". A blank column counts 0, and a line blank in all of them is not a line. Two or more columns of one table, in sheet order."""
+    columns: tuple[Col, ...]
+
+    def __post_init__(self):
+        if len(self.columns) < 2 or len({column.table for column in self.columns}) != 1:
+            raise ValueError("across adds two or more columns of one table")
+
+
+Measure: TypeAlias = Col | RowArithmetic | Size | DateOf | Across
 
 
 def measure_columns(measure: Measure) -> tuple[Col, ...]:
@@ -61,6 +71,8 @@ def measure_columns(measure: Measure) -> tuple[Col, ...]:
         return (measure,)
     if isinstance(measure, DateOf):
         return (measure.column,)
+    if isinstance(measure, Across):
+        return measure.columns
     if isinstance(measure, Size):
         return measure_columns(measure.measure)
     return measure_columns(measure.left) + measure_columns(measure.right)
@@ -72,6 +84,13 @@ class Equals:
     """A cell is this value: case and spacing do not count, a number compares as a number."""
     column: Col
     value: str | float
+
+
+@dataclass(frozen=True, slots=True)
+class NotEquals:
+    """A text cell is some other value: "other than EES". A blank is no other value and never passes, as with a number's != (Compare)."""
+    column: Col
+    value: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -197,7 +216,7 @@ class OnLine:
     role: str | None = None
 
 
-Condition: TypeAlias = Equals | Contains | InPeriod | Compare | CompareColumns | IsBlank | IsNumber | InSection | OnLine
+Condition: TypeAlias = Equals | NotEquals | Contains | InPeriod | Compare | CompareColumns | IsBlank | IsNumber | InSection | OnLine
 
 
 def addresses_printed(where: tuple[Condition, ...]) -> bool:
@@ -208,6 +227,8 @@ def condition_coordinates(condition: Condition) -> tuple[str, ...]:
     if isinstance(condition, Equals):
         value = number_text(condition.value) if isinstance(condition.value, (int, float)) else fold(condition.value)
         return (coordinate(SLOT_FILTER, condition.column.name), coordinate(SLOT_VALUE, condition.column.name, value))
+    if isinstance(condition, NotEquals):
+        return (coordinate(SLOT_FILTER, condition.column.name), coordinate(SLOT_COMPARISON, NE), coordinate(SLOT_VALUE, condition.column.name, fold(condition.value)))
     if isinstance(condition, Contains):
         if condition.anchor != ANYWHERE:
             return (coordinate(SLOT_FILTER, condition.column.name), coordinate(SLOT_CONTAINS, condition.column.name, fold(condition.text), condition.anchor))
@@ -355,9 +376,13 @@ def measure_coordinates(measure: Measure) -> list[str]:
         return [coordinate(SLOT_MEASURE, measure.name)]
     if isinstance(measure, DateOf):
         return [coordinate(SLOT_MEASURE, measure.column.name)]
+    if isinstance(measure, Across):
+        return [coordinate(SLOT_ROW_OP, PLUS), coordinate(SLOT_PEERS, measure.columns[0].table, peers_name(tuple(column.position for column in measure.columns)))]
     if isinstance(measure, Size):
         return [coordinate(SLOT_SIZE, EACH_BY_SIZE)] + measure_coordinates(measure.measure)
-    return measure_coordinates(measure.left) + [coordinate(SLOT_ROW_OP, measure.op)] + measure_coordinates(measure.right)
+    left = measure_coordinates(measure.left)
+    sided = [coordinate(SLOT_CALC_LEFT, name) for name in left if name.startswith(f"{SLOT_MEASURE}:")] if measure.op in (MINUS, OVER) else []
+    return left + [coordinate(SLOT_ROW_OP, measure.op)] + measure_coordinates(measure.right) + sided
 
 
 def peers_name(peers: tuple[int, ...]) -> str:
@@ -437,5 +462,5 @@ def _type_of_column(column: Col, column_kind) -> str:
     return A_NUMBER if kind == "number" else A_DATE if kind in ("date", "period") else A_NAME
 
 
-__all__ = ["Agg", "Calc", "Col", "Compare", "CompareColumns", "Condition", "Contains", "DateOf", "Equals", "InPeriod", "InSection", "IsBlank", "IsNumber", "Measure", "OnLine", "PeriodSpan", "Program", "Rank", "RowArithmetic", "SECTION", "Show", "Size",
+__all__ = ["Across", "Agg", "Calc", "Col", "Compare", "CompareColumns", "Condition", "Contains", "DateOf", "Equals", "InPeriod", "InSection", "IsBlank", "IsNumber", "Measure", "NotEquals", "OnLine", "PeriodSpan", "Program", "Rank", "RowArithmetic", "SECTION", "Show", "Size",
            "addresses_printed", "answer_type_of", "coordinates", "conditions_of", "form_of", "measure_columns", "tables_of", "peers_name"]

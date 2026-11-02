@@ -4,7 +4,7 @@
 "tiers": {
 "structure": {
 "note": "closed lists, read from engine/program/names.py and engine/sheet/names.py",
-"count": 102,
+"count": 104,
 "names": [
 {
 "name": "form:show",
@@ -257,6 +257,11 @@
 "definition": "a line's own label holds this"
 },
 {
+"name": "condition:not_equals",
+"group": "condition",
+"definition": "a text cell is some other value"
+},
+{
 "name": "anchor:anywhere",
 "group": "anchor",
 "definition": "the text sits anywhere in the cell"
@@ -290,6 +295,11 @@
 "name": "measure_kind:date",
 "group": "measure_kind",
 "definition": "a date column read as its day"
+},
+{
+"name": "measure_kind:across",
+"group": "measure_kind",
+"definition": "peer columns of one line added"
 },
 {
 "name": "sign_word:net",
@@ -504,20 +514,17 @@
 {
 "name": "answer_type:place",
 "group": "answer_type",
-"definition": "a place",
-"pending": "engine/program/names.py"
+"definition": "a place"
 },
 {
 "name": "answer_type:money",
 "group": "answer_type",
-"definition": "a sum of money",
-"pending": "engine/program/names.py"
+"definition": "a sum of money"
 },
 {
 "name": "answer_type:quantity",
 "group": "answer_type",
-"definition": "a physical quantity",
-"pending": "engine/program/names.py"
+"definition": "a physical quantity"
 }
 ]
 },

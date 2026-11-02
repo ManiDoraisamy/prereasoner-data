@@ -66,9 +66,13 @@ A_COMPANY = "company"
 A_CODE = "code"
 A_LIST = "list"
 A_NAME = "name"
-ANSWER_TYPES = (A_NUMBER, A_COUNT, A_PERCENT, A_DATE, A_PERSON, A_COMPANY, A_CODE, A_LIST)
+A_PLACE = "place"
+A_MONEY = "money"
+A_QUANTITY = "quantity"
+ANSWER_TYPES = (A_NUMBER, A_COUNT, A_PERCENT, A_DATE, A_PERSON, A_COMPANY, A_CODE, A_LIST, A_PLACE, A_MONEY, A_QUANTITY)
 PROGRAM_ANSWER_TYPES = (A_NUMBER, A_COUNT, A_PERCENT, A_DATE, A_NAME, A_LIST)
-NAME_TYPES = (A_PERSON, A_COMPANY, A_CODE)
+NAME_TYPES = (A_PERSON, A_COMPANY, A_CODE, A_PLACE)
+FIGURE_TYPES = (A_MONEY, A_QUANTITY)
 
 # What a word of the question does.
 ROLE_MEASURE = "measure"
@@ -85,7 +89,8 @@ C_COMPARISON = "comparison"
 C_BLANK = "blank"
 C_SECTION = "section"
 C_LINE = "line"
-CONDITION_KINDS = (C_EQUALS, C_CONTAINS, C_PERIOD, C_COMPARISON, C_BLANK, C_SECTION, C_LINE)
+C_NOT_EQUALS = "not_equals"
+CONDITION_KINDS = (C_EQUALS, C_CONTAINS, C_PERIOD, C_COMPARISON, C_BLANK, C_SECTION, C_LINE, C_NOT_EQUALS)
 
 # Where a contained text must sit in its cell.
 ANYWHERE = "anywhere"
@@ -98,7 +103,8 @@ M_COLUMN = "column"
 M_ROW_ARITHMETIC = "row_arithmetic"
 M_SIZE = "size"
 M_DATE = "date"
-MEASURE_KINDS = (M_COLUMN, M_ROW_ARITHMETIC, M_SIZE, M_DATE)
+M_ACROSS = "across"
+MEASURE_KINDS = (M_COLUMN, M_ROW_ARITHMETIC, M_SIZE, M_DATE, M_ACROSS)
 
 # The slots a program's coordinates fill. Each has one weight in the additive formula.
 SLOT_FORM = "form"
@@ -171,13 +177,19 @@ EV_SHAPE_AGREES = "shape_agrees"
 EV_PRINTED_TIE = "printed_total_tie"
 EV_FILTER_DID_NOTHING = "filter_did_nothing"
 EV_REPEATED_LINES = "first_of_repeated_lines"
+EV_ADDS_TWICE = "adds_twice"
 EVIDENCE = (EV_RAN, EV_FAILED, EV_EMPTY, EV_BARE_ZERO, EV_ROW_DUMP, EV_MANY_ROWS, EV_WRONG_KIND, EV_ROW_COUNT_FOR_AMOUNT, EV_FRACTION_FOR_COUNT, EV_TOO_LARGE_FOR_SHARE, EV_TYPE_AGREES, EV_SHAPE_AGREES, EV_PRINTED_TIE,
-            EV_FILTER_DID_NOTHING, EV_REPEATED_LINES)
+            EV_FILTER_DID_NOTHING, EV_REPEATED_LINES, EV_ADDS_TWICE)
 
 
 # Which word role fills which slot: the question reader's word heads read onto the program's slots through this.
 ROLE_OF_SLOT = {SLOT_MEASURE: ROLE_MEASURE, SLOT_KEY: ROLE_KEY, SLOT_SHOWN: ROLE_KEY, SLOT_PEERS: ROLE_KEY, SLOT_FILTER: ROLE_FILTER, SLOT_VALUE: ROLE_FILTER, SLOT_CONTAINS: ROLE_FILTER, SLOT_LINE: ROLE_FILTER, SLOT_SECTION: ROLE_FILTER, SLOT_PERIOD: ROLE_FILTER, SLOT_NUMBER: ROLE_FILTER,
                 SLOT_BLANK: ROLE_FILTER, SLOT_TABLE: ROLE_CONTEXT}
+
+
+def coarse_type(fine: str) -> str:
+    """The type a program can state for what a question reads as: a person or a place is a name, a sum of money a number."""
+    return A_NAME if fine in NAME_TYPES else A_NUMBER if fine in FIGURE_TYPES else fine
 
 
 def coordinate(slot: str, *parts: object) -> str:

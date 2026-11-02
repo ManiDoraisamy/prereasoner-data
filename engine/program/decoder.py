@@ -1,10 +1,11 @@
 """The typed k-best over programs: scores come in as data on named coordinates, programs come out best first, each with the named contributions that scored it. No learned part: an encoder fills the same names and nothing here changes.
 
 A frame is one program shape on one table: its fixed coordinates, then slots, each a list of options sorted by score. A program is one option from each slot, so a frame's score is additive and its programs enumerate best first by the lazy product search: pop the best tuple, push its
-successors. All frames share one heap, ties break by frame order then slot positions, so the result never depends on hashing. Fewer conditions come first among equals, because their frames come first.
+successors. All frames share one heap, ties break by frame order then slot positions, and a slot's options tie by what they read (CatalogTable.column_rank, an atom's own words), never by where a column stands: so the result depends neither on hashing nor on the sheet's column order. Fewer conditions come first among equals, because their frames come first.
 
 What is kept is design/program_language.txt's policy (Policy below): every table; every column of a slot's type, the top 50 of each type on a table over 50 columns; all values with one condition for show, agg and count, the top 50 per column for rank forms, the top 50 per column with two
 conditions, the top 20 with three, on occurring combinations only; periods and numbers from the reading's own coordinates; calc as a contrast in one slot, never all pairs of programs. A condition beyond the third needs a strong score.
+Pruned on links, for the worst case: a question reads the tables its links reach best (linked_tables), and a value is a condition only where the reading reaches it. A program resting on a value no name and no word reaches would be asked about anyway.
 """
 from __future__ import annotations
 
@@ -15,10 +16,10 @@ from typing import Callable, Sequence
 
 from engine.program.catalog import Catalog, CatalogTable
 from engine.program.index import Atom, TableIndex, index_of
-from engine.program.language import (Agg, Calc, Col, Compare, CompareColumns, Condition, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, OnLine, Program, Rank, RowArithmetic, SECTION, Show, Size, answer_type_of, is_sound, measure_coordinates, peers_name, period_from_name)
-from engine.program.names import (A_COUNT, A_LIST, A_NAME, A_NUMBER, A_PERCENT, AGG, ANCHORS, ANYWHERE, AVG, BY_SIZE, CALC, CALC_OPS, COMPARISONS, COUNT, COUNT_DISTINCT, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, MAX, MIN, MINUS, NUMBER_AGGREGATES, OVER, PLUS, RANK, ROW_OPS, SHOW, SLOT_AGGREGATE,
+from engine.program.language import (Across, Agg, Calc, Col, Compare, CompareColumns, Condition, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, NotEquals, OnLine, Program, Rank, RowArithmetic, SECTION, Show, Size, answer_type_of, is_sound, measure_coordinates, peers_name, period_from_name)
+from engine.program.names import (A_COUNT, A_LIST, A_NAME, A_NUMBER, A_PERCENT, AGG, ANCHORS, ANYWHERE, AVG, BY_SIZE, CALC, CALC_OPS, COMPARISONS, COUNT, COUNT_DISTINCT, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, MAX, MIN, MINUS, NE, NUMBER_AGGREGATES, OVER, PLUS, RANK, ROW_OPS, SHOW, SLOT_AGGREGATE,
                                   SLOT_ANSWER_TYPE, SLOT_BLANK, SLOT_CALC_LEFT, SLOT_CALC_OP, SLOT_COMPARISON, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_DIRECTION, SLOT_ENTITY, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE, SLOT_LISTING, SLOT_MEASURE, SLOT_NUMBER, SLOT_PEERS, SLOT_PERIOD, SLOT_ROW_OP, SLOT_SECTION,
-                                  SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, STATED_BY_SIZE, SUM, coordinate, slot_of)
+                                  SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, STATED_BY_SIZE, SUM, TIMES, coordinate, slot_of)
 from engine.program.scoring import DEFAULT_WEIGHTS, Reading, ScoredProgram, Weights, score_program
 from engine.sheet.names import PRINTED_ROLES
 
@@ -38,6 +39,7 @@ class Policy:
     arithmetic_columns: int = 20   # number columns tried as the two sides of row arithmetic, by score
     strong_condition: float = 1.0  # past the policy's count of conditions, only conditions the reading scores this high
     compared_columns: int = 5      # columns tried against each other, by score, when a reading asks for a comparison
+    linked_tables: int = 8         # a question reads the tables its links reach best
     max_pops: int = 4_000_000      # a hard stop, deterministic, on the search
 
 
@@ -61,6 +63,32 @@ def _periods(atom: Atom) -> frozenset[str]:
 
 _ONCE = (f"{SLOT_NUMBER}:", f"{SLOT_BLANK}:", f"{SLOT_COMPARISON}:")
 _PERIOD = f"{SLOT_PERIOD}:"
+_ROUND = 9                     # scores compare at this many places, so a float's last bits, which follow the order terms were added in, never break a tie
+_CLOSE = 1e-8
+_LINK_SLOTS = {SLOT_MEASURE: 0, SLOT_KEY: 0, SLOT_SHOWN: 0, SLOT_VALUE: 1, SLOT_CONTAINS: 1, SLOT_LINE: 1, SLOT_SECTION: 1, SLOT_TABLE: 2}
+_ATOM_KINDS = {IsNumber: 0, IsBlank: 1, InSection: 3, OnLine: 4}
+
+
+def _atom_order(table: CatalogTable, atom: Atom) -> tuple:
+    """Where an atom stands among equals, read from what it says: what a column's shape says first, so a slot's top k keeps it; then by column, read from the column's words and cells; then its own words."""
+    condition = atom.condition
+    columns = [held for held in (getattr(condition, "column", None), getattr(condition, "other", None)) if held is not None]
+    return (_ATOM_KINDS.get(type(condition), 2), tuple(table.column_rank[column.position] for column in columns), type(condition).__name__, tuple(repr(getattr(condition, field)) for field in condition.__slots__ if field not in ("column", "other", "table")))
+
+
+def _measure_order(table: CatalogTable, measure) -> tuple:
+    """Where a measure stands among equals, read from the columns it reads."""
+    rank = table.column_rank
+    if isinstance(measure, Col):
+        return (0, "", (rank[measure.position],))
+    if isinstance(measure, Size):
+        return (1, "", _measure_order(table, measure.measure)[2])
+    if isinstance(measure, RowArithmetic):
+        sides = [rank[side.position] for side in (measure.left, measure.right)]
+        return (2, measure.op, tuple(sorted(sides) if measure.op in (PLUS, TIMES) else sides))
+    if isinstance(measure, DateOf):
+        return (3, "", (rank[measure.column.position],))
+    return (4, "", tuple(sorted(rank[column.position] for column in measure.columns)))
 
 
 class _Node:
@@ -108,7 +136,7 @@ class _Conditions:
         bound = self._completion(node, at)
         if bound is not None:
             self.sequence += 1
-            heapq.heappush(self.heap, (-bound, self.sequence, node, at))
+            heapq.heappush(self.heap, (round(-bound, _ROUND), self.sequence, node, at))
 
     def _facts(self, at: int) -> tuple:
         """A condition's column, what it uses up, its period and its lines, read once."""
@@ -154,9 +182,9 @@ class _Conditions:
             if not _occurring(self.index, self.table, atoms, self.any_line):
                 return
             exact = self.score_of(atoms)
-            if exact < bound - 1e-12:
+            if exact < bound - _CLOSE:
                 self.sequence += 1
-                heapq.heappush(self.heap, (-exact, self.sequence, atoms, 0))     # a coordinate two conditions share counts once: it goes back at its true score
+                heapq.heappush(self.heap, (round(-exact, _ROUND), self.sequence, atoms, 0))     # a coordinate two conditions share counts once: it goes back at its true score
                 return
             self.found.append(_Option(exact, atoms))
             return
@@ -220,18 +248,23 @@ class Decoder:
         self.policy = policy
         self.indexes = {table.id: index_of(table) for table in catalog.tables}
 
+    def warm(self) -> None:
+        """Everything a question would otherwise build on first touch, at index time."""
+        for index in self.indexes.values():
+            index.warm()
+
     def decode(self, reading: Reading, *, k: int = 50, weights: Weights = DEFAULT_WEIGHTS) -> Decoded:
         """The top k programs, best first, each scored and its contributions named."""
         programs, candidates, frames, pops = self.enumerate(reading, k=k, weights=weights)
         scored = [score_program(program, reading, self.catalog, weights) for program in programs]
-        order = sorted(range(len(scored)), key=lambda at: (-scored[at].score, len(scored[at].contributions), at))
+        order = sorted(range(len(scored)), key=lambda at: (round(-scored[at].score, _ROUND), len(scored[at].contributions), at))
         return Decoded(tuple(scored[at] for at in order), candidates, frames, pops)
 
     def enumerate(self, reading: Reading, *, k: int = 50, weights: Weights = DEFAULT_WEIGHTS) -> tuple[list[Program], int, int, int]:
         """The search alone: programs in the order the frames give them, the size of the kept space, the frames, the tuples popped."""
         search = _Search(self, reading, weights)
         frames: list[_Frame] = []
-        for table in self.catalog.tables:
+        for table in search.linked_tables():
             frames.extend(search.table_frames(table))
         frames.extend(search.cross_table_frames())
         return _best(frames, k, self.policy)
@@ -272,7 +305,7 @@ def _best(frames: list[_Frame], k: int, policy: Policy) -> tuple[list[Program], 
             root = (0,) * len(frame.slots)
             bound = _bound(frame, root)
             if bound is not None:
-                heapq.heappush(heap, (-bound, at, root))
+                heapq.heappush(heap, (round(-bound, _ROUND), at, root))
     visited: set[tuple[int, tuple[int, ...]]] = set()
     seen: set[Program] = set()
     out: list[Program] = []
@@ -284,8 +317,8 @@ def _best(frames: list[_Frame], k: int, policy: Policy) -> tuple[list[Program], 
         if not all(slot.has(i) for slot, i in zip(frame.slots, indices) if isinstance(slot, _Conditions)):
             continue
         real = _score(frame, indices)
-        if real < -negative - 1e-12:
-            heapq.heappush(heap, (-real, at, indices))
+        if real < -negative - _CLOSE:
+            heapq.heappush(heap, (round(-real, _ROUND), at, indices))
             continue
         for j in range(len(indices)):
             following = indices[:j] + (indices[j] + 1,) + indices[j + 1:]
@@ -293,7 +326,7 @@ def _best(frames: list[_Frame], k: int, policy: Policy) -> tuple[list[Program], 
                 bound = _bound(frame, following)
                 if bound is not None:
                     visited.add((at, following))
-                    heapq.heappush(heap, (-bound, at, following))
+                    heapq.heappush(heap, (round(-bound, _ROUND), at, following))
         program = frame.build(tuple(frame.slots[j][i].payload for j, i in enumerate(indices)))
         if program is None or program in seen or not is_sound(program):
             continue
@@ -328,17 +361,35 @@ class _Search:
     def type_score(self, kind: str) -> float:
         return self.s(coordinate(SLOT_ANSWER_TYPE, kind))
 
+    def linked_tables(self) -> list[CatalogTable]:
+        """The tables this question reads: those its links reach best, by the best column, the best value and the table's own score added, then the larger, then workbook order."""
+        best: dict[str, list[float]] = {}
+        for name, score in self.reading.scores.items():
+            at = _LINK_SLOTS.get(slot_of(name))
+            if at is None or score <= 0:
+                continue
+            body = name.split(":", 1)[1]
+            table_id = body.split("=", 1)[0].split(".", 1)[0]
+            parts = best.setdefault(table_id, [0.0, 0.0, 0.0])
+            parts[at] = max(parts[at], score)
+        tables = [table for table in self.decoder.catalog.tables if table.lines]
+        if len(tables) <= self.policy.linked_tables:
+            return tables
+        reach = {table.id: round(sum(best.get(table.id, ())), _ROUND) for table in tables}
+        order = sorted(range(len(tables)), key=lambda at: (-reach[tables[at].id], -len(tables[at].lines), at))
+        return [tables[at] for at in sorted(order[:self.policy.linked_tables])]
+
     # ------------------------------------------------------------------------------------------- conditions
     def atoms_of(self, table: CatalogTable, index: TableIndex) -> list[_Option]:
-        """Every condition for this table and reading, best first: the sheet's atoms, and those the reading's own coordinates state."""
+        """Every condition for this table and reading, best first: what the reading's own coordinates state, and what the sheet's shape says. A value no word reaches is no condition."""
         out: dict[Condition, Atom] = {}
-        for atom in index.atoms:
+        for atom in index.structural_atoms:
             out[atom.condition] = atom
         for atom in self.reading_atoms(table, index):
             out.setdefault(atom.condition, atom)
-        options = [_Option(self.atom_score(atom), atom) for atom in out.values()]
-        order = sorted(range(len(options)), key=lambda at: (-options[at].score, at))
-        return [options[at] for at in order]
+        held = [(_Option(self.atom_score(atom), atom), _atom_order(table, atom)) for atom in out.values()]
+        held.sort(key=lambda item: (round(-item[0].score, _ROUND), item[1]))
+        return [option for option, _ in held]
 
     def atom_score(self, atom: Atom) -> float:
         return sum(self.s(name) for name in atom.names)
@@ -361,7 +412,7 @@ class _Search:
             for option in held:
                 shared &= set(option.payload.names)
         options = [_Option(option.score + sum(self.s(coordinate(SLOT_CALC_LEFT, name)) for name in option.payload.names if name not in shared), option.payload) for option in held]
-        order = sorted(range(len(options)), key=lambda at: (-options[at].score, at))
+        order = sorted(range(len(options)), key=lambda at: (round(-options[at].score, _ROUND), at))
         return [options[at] for at in order]
 
     def left_columns(self, held: list[_Option], slot: str) -> list[_Option]:
@@ -372,7 +423,7 @@ class _Search:
         for option in held:
             names = measure_coordinates(option.payload) if slot == SLOT_MEASURE else [coordinate(slot, option.payload.name)]
             options.append(_Option(option.score + sum(self.s(coordinate(SLOT_CALC_LEFT, name)) for name in names), option.payload))
-        order = sorted(range(len(options)), key=lambda at: (-options[at].score, at))
+        order = sorted(range(len(options)), key=lambda at: (round(-options[at].score, _ROUND), at))
         return [options[at] for at in order]
 
     def set_score(self, atoms: tuple[Atom, ...]) -> float:
@@ -382,6 +433,7 @@ class _Search:
         """Conditions only a reading can state: a contained phrase, a period, a stated number, a blank, a value no cell list holds, a label or band read in part."""
         out: list[Atom] = []
         prefix = f"{table.id}."
+        not_equal = self.reading.score(coordinate(SLOT_COMPARISON, NE)) > 0
         for name in self.positive(SLOT_CONTAINS):
             body = name.split(":", 1)[1]
             if not body.startswith(prefix):
@@ -405,6 +457,8 @@ class _Search:
                 out.append(index.atom_of(Equals(Col(table.id, position), number), position))
             else:
                 out.append(index.atom_of(Equals(Col(table.id, position), value), position))
+                if not_equal:
+                    out.append(index.atom_of(NotEquals(Col(table.id, position), value), position))
         for name in self.positive(SLOT_LINE):
             body = name.split(":", 1)[1]
             owner, _, rest = body.partition("=")
@@ -437,7 +491,7 @@ class _Search:
             op = comparison.split(":", 1)[1]
             if "@" in op:
                 continue
-            scored = sorted((position for position in index.number_columns if self.s(coordinate(SLOT_FILTER, Col(table.id, position).name)) > 0), key=lambda position: (-self.s(coordinate(SLOT_FILTER, Col(table.id, position).name)), position))[:self.policy.compared_columns]
+            scored = sorted((position for position in index.number_columns if self.s(coordinate(SLOT_FILTER, Col(table.id, position).name)) > 0), key=lambda position: (round(-self.s(coordinate(SLOT_FILTER, Col(table.id, position).name)), _ROUND), table.column_rank[position]))[:self.policy.compared_columns]
             for a in scored:
                 out.extend(index.atom_of(CompareColumns(Col(table.id, a), op, Col(table.id, b)), a) for b in scored if a != b)
         for blank in self.positive(SLOT_BLANK):
@@ -470,18 +524,22 @@ class _Search:
             if typed:
                 score += self.type_score(answer_type_of(Show(table.id, (col,)), self.decoder.catalog.column_kind))
             options.append(_Option(score, col))
-        order = sorted(range(len(options)), key=lambda at: (-options[at].score, at))
+        order = sorted(range(len(options)), key=lambda at: (round(-options[at].score, _ROUND), table.column_rank[options[at].payload.position]))
         keep = self.policy.wide_columns if len(table.columns) > self.policy.wide_table else len(options)
         return [options[at] for at in order[:keep]]
 
     def measure_options(self, table: CatalogTable, index: TableIndex, *, dates: bool = False, arithmetic: bool = True) -> list[_Option]:
-        """Measures: a number column; two under an operator; a size; for a rank, a date column read as its day."""
+        """Measures: a number column; two under an operator; peers added across; a size; for a rank, a date column read as its day."""
+        key = (table.id, "measures", dates, arithmetic)
+        held = self.slots.get(key)
+        if held is not None:
+            return held
         columns = self.column_options(table, index.number_columns, SLOT_MEASURE)
         options = list(columns)
         size = self.s(coordinate(SLOT_SIZE, EACH_BY_SIZE))
         options.extend(_Option(option.score + size, Size(option.payload)) for option in columns)
         if arithmetic and len(columns) >= 2:
-            top = columns[:self.policy.arithmetic_columns]
+            top = [option for option in columns if option.score > 0][:self.policy.arithmetic_columns]     # the two sides of arithmetic are columns the reading names
             for op in ROW_OPS:
                 if coordinate(SLOT_ROW_OP, op) not in self.reading.scores:
                     continue              # arithmetic is read only where the reading scores it: two named columns are not by themselves a sum of them
@@ -489,11 +547,17 @@ class _Search:
                 for a in top:
                     for b in top:
                         if a.payload != b.payload and (op in (MINUS, OVER) or a.payload < b.payload):
-                            options.append(_Option(a.score + b.score + weight, RowArithmetic(a.payload, op, b.payload)))
+                            sided = self.s(coordinate(SLOT_CALC_LEFT, coordinate(SLOT_MEASURE, a.payload.name))) if op in (MINUS, OVER) else 0.0
+                            options.append(_Option(a.score + b.score + weight + sided, RowArithmetic(a.payload, op, b.payload)))
+            if coordinate(SLOT_ROW_OP, PLUS) in self.reading.scores:
+                weight = self.s(coordinate(SLOT_ROW_OP, PLUS))
+                for peers in self.peer_options(table, index):
+                    options.append(_Option(peers.score + weight, Across(tuple(Col(table.id, position) for position in peers.payload))))
         if dates:
             options.extend(_Option(self.s(coordinate(SLOT_MEASURE, Col(table.id, position).name)), DateOf(Col(table.id, position))) for position in index.date_columns)
-        order = sorted(range(len(options)), key=lambda at: (-options[at].score, at))
-        return [options[at] for at in order]
+        held = sorted(((option, _measure_order(table, option.payload)) for option in options), key=lambda item: (round(-item[0].score, _ROUND), item[1]))
+        self.slots[key] = [option for option, _ in held]
+        return self.slots[key]
 
     def shown_options(self, table: CatalogTable, positions: Sequence[int]) -> list[_Option]:
         """One shown column, or several when the reading names several: only columns it scores positively combine."""
@@ -503,7 +567,7 @@ class _Search:
         for size in (2, 3):
             for group in combinations(sorted(named, key=lambda option: option.payload.position), size):
                 options.append(_Option(sum(option.score for option in group), tuple(option.payload for option in group)))
-        order = sorted(range(len(options)), key=lambda at: (-options[at].score, at))
+        order = sorted(range(len(options)), key=lambda at: (round(-options[at].score, _ROUND), len(options[at].payload), tuple(sorted(table.column_rank[column.position] for column in options[at].payload))))
         return [options[at] for at in order]
 
     # ------------------------------------------------------------------------------------------------ frames
@@ -587,18 +651,25 @@ class _Search:
             counted = group + s(coordinate(SLOT_AGGREGATE, COUNT))
             frames += self.condition_frames(counted, (group_keys,), lambda options, where, d=direction: Rank(ENTITY_GROUP, table.id, d, where, None, key=options[0], function=COUNT), table, index, atoms, rank=True, max_policy=2)
             peer_sets = self.peer_options(table, index)
+            peer = turn + s(coordinate(SLOT_ENTITY, ENTITY_PEER)) + self.type_score(A_NAME)
             if peer_sets:
-                peer = turn + s(coordinate(SLOT_ENTITY, ENTITY_PEER)) + self.type_score(A_NAME)
                 frames += self.condition_frames(peer, (peer_sets,), lambda options, where, d=direction: Rank(ENTITY_PEER, table.id, d, where, peers=options[0]), table, index, atoms, rank=True, max_policy=1)
                 frames += self.condition_frames(peer + s(coordinate(SLOT_SIZE, BY_SIZE)), (peer_sets,), lambda options, where, d=direction: Rank(ENTITY_PEER, table.id, d, where, peers=options[0], by_size=True), table, index, atoms, rank=True, max_policy=1)
+            if index.peer_marks:
                 marks = [_Option(s(coordinate(SLOT_VALUE, table.id, mark)) + s(coordinate(SLOT_PEERS, table.id, peers_name(index.mark_columns(mark)))), mark) for mark in index.peer_marks]
-                marks = sorted(marks, key=lambda option: -option.score)
-                frames += self.condition_frames(peer, (peer_sets, marks), lambda options, where, d=direction: Rank(ENTITY_PEER, table.id, d, where, peers=options[0], mark=options[1]), table, index, atoms, rank=True, max_policy=0)
+                marks = sorted(marks, key=lambda option: round(-option.score, _ROUND))
+                if index.flag_sets:
+                    flags = sorted((_Option(s(coordinate(SLOT_PEERS, table.id, peers_name(held))), held) for held in index.flag_sets), key=lambda option: (round(-option.score, _ROUND), sorted(table.column_rank[position] for position in option.payload)))
+                    frames += self.condition_frames(peer, (flags, marks), lambda options, where, d=direction: Rank(ENTITY_PEER, table.id, d, where, peers=options[0], mark=options[1]), table, index, atoms, rank=True, max_policy=0)
                 frames += self.condition_frames(peer, (marks,), lambda options, where, d=direction: Rank(ENTITY_PEER, table.id, d, where, peers=index.mark_columns(options[0]), mark=options[0]), table, index, atoms, rank=True, max_policy=0)
         frames += self.calc_frames(table, index, atoms, measures, plain)
         return frames
 
     def peer_options(self, table: CatalogTable, index: TableIndex) -> list[_Option]:
+        key = (table.id, "peers")
+        kept = self.slots.get(key)
+        if kept is not None:
+            return kept
         sets = list(index.peer_sets)
         for name in self.positive(SLOT_PEERS):
             owner, _, positions = name.split(":", 1)[1].partition("=")
@@ -607,8 +678,9 @@ class _Search:
                 if held not in sets:
                     sets.append(held)
         options = [_Option(self.s(coordinate(SLOT_PEERS, table.id, peers_name(held))), held) for held in sets]
-        order = sorted(range(len(options)), key=lambda at: (-options[at].score, at))
-        return [options[at] for at in order]
+        order = sorted(range(len(options)), key=lambda at: (round(-options[at].score, _ROUND), options[at].payload not in index.stated_sets, sorted(table.column_rank[position] for position in options[at].payload)))
+        self.slots[key] = [options[at] for at in order]
+        return self.slots[key]
 
     def calc_frames(self, table: CatalogTable, index: TableIndex, atoms: list[_Option], measures: list[_Option], plain: list[_Option]) -> list[_Frame]:
         """Calc as a contrast: two sides differing in one slot. Spent only when the reading scores calc at all."""
@@ -629,7 +701,7 @@ class _Search:
         by_column: dict[int, list[_Option]] = {}
         for option in contrast:
             by_column.setdefault(option.payload.group, []).append(option)
-        groups = [(self.left_atoms(held, shared_only=True), self.without_shared(held)) for group, held in sorted(by_column.items()) if len(held) >= 2]
+        groups = [(self.left_atoms(held, shared_only=True), self.without_shared(held)) for group, held in sorted(by_column.items(), key=lambda item: table.column_rank.get(item[0], item[0])) if len(held) >= 2]
         aggregate = s(coordinate(SLOT_AGGREGATE, SUM))
         shown_numbers = self.column_options(table, index.number_columns, SLOT_SHOWN)
         left_shown = self.left_columns(shown_numbers, SLOT_SHOWN)
@@ -652,7 +724,7 @@ class _Search:
         share = base + s(coordinate(SLOT_CALC_OP, OVER)) + self.type_score(A_PERCENT) + conditions(1)
         parts = selectors[0]
         if self.positive(SLOT_CALC_LEFT):
-            parts = sorted((_Option(option.score + sum(self.s(coordinate(SLOT_CALC_LEFT, name)) for name in option.payload[0].names), option.payload) for option in parts), key=lambda option: -option.score)
+            parts = sorted((_Option(option.score + sum(self.s(coordinate(SLOT_CALC_LEFT, name)) for name in option.payload[0].names), option.payload) for option in parts), key=lambda option: round(-option.score, _ROUND))
         frames.append(_Frame(share + aggregate, (plain, parts), lambda options: _part_of_whole(table, options)))
         frames.append(_Frame(share + s(coordinate(SLOT_CALC_OP, PLUS)), (left_shown, shown_numbers, read_lines[0]), lambda options: _share_on_a_line(table, options)))
         return frames

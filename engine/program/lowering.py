@@ -9,7 +9,7 @@ from dataclasses import replace
 
 from engine.deterministic import AnalysisPlan, lower_calculation, lower_select_query
 from engine.program.catalog import Catalog
-from engine.program.language import (Agg, Calc, Col, Compare, CompareColumns, Condition, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, Measure, OnLine, Program, Rank, RowArithmetic, SECTION, Show, Size, addresses_printed)
+from engine.program.language import (Across, Agg, Calc, Col, Compare, CompareColumns, Condition, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, Measure, NotEquals, OnLine, Program, Rank, RowArithmetic, SECTION, Show, Size, addresses_printed)
 from engine.program.names import ANYWHERE, AVG, COUNT, COUNT_DISTINCT, ENDS, ENTITY_GROUP, ENTITY_LINE, HIGHEST, MAX, MIN, MINUS, NE, OVER, PLUS, STARTS, SUM
 from engine.program.semantics import fold as fold_text
 from engine.program.store import (LABEL, LABEL_LENGTH, LINE, ONE_ROW, PEER_FOLD, PEER_NAME, PEER_NUMBER, ROLE, SECTION_FOLD, SECTION_PATH, SECTION_TEXT, day_column, fold_column, number_column, peers_table, text_column)
@@ -52,6 +52,8 @@ def _condition(condition: Condition):
         if isinstance(condition.value, (int, float)):
             return Comparison(_number(condition.column), "=", Literal(float(condition.value)))
         return Comparison(_fold(condition.column), "=", Literal(fold_text(condition.value), SQLType.TEXT))
+    if isinstance(condition, NotEquals):
+        return Comparison(_fold(condition.column), "!=", Literal(fold_text(condition.value), SQLType.TEXT))
     if isinstance(condition, Contains):
         return Comparison(_fold(condition.column), "LIKE", _like(condition.text, condition.anchor))
     if isinstance(condition, InPeriod):
@@ -95,6 +97,11 @@ def _measure(measure: Measure):
         return _day(measure.column)
     if isinstance(measure, Size):
         return Abs(_measure(measure.measure))
+    if isinstance(measure, Across):
+        total = BlankAsZero(_number(measure.columns[0]))
+        for column in measure.columns[1:]:
+            total = BinaryExpr(total, PLUS, BlankAsZero(_number(column)))
+        return total
     left, right = _measure(measure.left), _measure(measure.right)
     if measure.op in (PLUS, MINUS):
         left = BlankAsZero(left) if isinstance(left, ColumnRef) else left
@@ -110,6 +117,8 @@ def _present(measure: Measure):
         return _is_null(_day(measure.column), negated=True)
     if isinstance(measure, Size):
         return _present(measure.measure)
+    if isinstance(measure, Across):
+        return BooleanExpr("OR", tuple(_is_null(_number(column), negated=True) for column in measure.columns))
     left, right = _present(measure.left), _present(measure.right)
     if measure.op in (PLUS, MINUS):
         return BooleanExpr("OR", (left, right))
@@ -153,7 +162,7 @@ def _agg_query(program: Agg, catalog: Catalog) -> SelectQuery:
         value = Aggregate("COUNT", _fold(program.measure), distinct=True)
     else:
         value = Aggregate(_FUNCTIONS[program.function], _measure(program.measure))
-        if isinstance(program.measure, (RowArithmetic, Size)):
+        if isinstance(program.measure, (RowArithmetic, Size, Across)):
             guard = _present(program.measure)
     if program.magnitude:
         value = Abs(value)

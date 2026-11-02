@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 from engine.program.catalog import Catalog, CatalogTable, KIND_FAMILY
 from engine.program.index import index_of
-from engine.program.language import (Agg, Calc, Col, Compare, CompareColumns, Condition, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, Measure, Program, Rank, RowArithmetic, SECTION, Show, Size, addresses_printed, answer_type_of, measure_columns)
+from engine.program.language import (Across, Agg, Calc, Col, Compare, CompareColumns, Condition, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, Measure, NotEquals, Program, Rank, RowArithmetic, SECTION, Show, Size, addresses_printed, answer_type_of, measure_columns)
 from engine.program.names import (A_PERCENT, ANYWHERE, AVG, COUNT, COUNT_DISTINCT, ENDS, ENTITY_GROUP, ENTITY_LINE, GE, GT, HIGHEST, LE, LT, MAX, MIN, MINUS, NE, OVER, PLUS, STARTS, SUM, TIMES)
 from engine.program.scoring import ScoredProgram
 from engine.program.semantics import fold, share_forms
@@ -52,6 +52,8 @@ def _value_words(catalog: Catalog, column: Col, value: str | float) -> str:
 def _condition_words(catalog: Catalog, condition: Condition) -> str:
     if isinstance(condition, Equals):
         return f'{_name(catalog, condition.column)} is "{_value_words(catalog, condition.column, condition.value)}"'
+    if isinstance(condition, NotEquals):
+        return f'{_name(catalog, condition.column)} is other than "{_value_words(catalog, condition.column, condition.value)}"'
     if isinstance(condition, Contains):
         where = {ANYWHERE: "holds", STARTS: "starts with", ENDS: "ends with"}[condition.anchor]
         return f'{_name(catalog, condition.column)} {where} "{condition.text}"'
@@ -83,6 +85,9 @@ def _measure_words(catalog: Catalog, measure: Measure) -> str:
         return _name(catalog, measure.column)
     if isinstance(measure, Size):
         return f"the size of {_measure_words(catalog, measure.measure)}"
+    if isinstance(measure, Across):
+        names = [_name(catalog, column) for column in measure.columns]
+        return f"{names[0]} to {names[-1]} added across" if len(names) > 3 else " plus ".join(names)
     return f"{_measure_words(catalog, measure.left)} {_OP_WORDS[measure.op]} {_measure_words(catalog, measure.right)}"
 
 
@@ -187,7 +192,7 @@ def cells_used(program: Program, tables: RequestTables, rows: tuple[tuple, ...])
                 for column in program.shown:
                     add(line, column.position)
     elif isinstance(program, Agg):
-        columns = measure_columns(program.measure) if isinstance(program.measure, (Col, RowArithmetic, Size, DateOf)) else ()
+        columns = measure_columns(program.measure) if isinstance(program.measure, (Col, RowArithmetic, Size, DateOf, Across)) else ()
         for i in kept:
             for column in columns:
                 add(i, column.position)
@@ -243,6 +248,9 @@ def _line_value(measure: Measure, table: CatalogTable, i: int):
     if isinstance(measure, Size):
         inner = _line_value(measure.measure, table, i)
         return None if inner is None else abs(inner)
+    if isinstance(measure, Across):
+        held = [table.numbers[column.position][i] for column in measure.columns]
+        return None if all(value is None for value in held) else sum(value or 0.0 for value in held)
     left, right = _line_value(measure.left, table, i), _line_value(measure.right, table, i)
     if measure.op in (PLUS, MINUS):
         if left is None and right is None:
@@ -311,6 +319,8 @@ def _criteria(catalog: Catalog, where: tuple[Condition, ...]) -> list[str] | Non
             table = catalog.table(condition.column.table)
             pattern = {ANYWHERE: f"*{condition.text}*", STARTS: f"{condition.text}*", ENDS: f"*{condition.text}"}[condition.anchor]
             out.extend((_range(table, condition.column.position), f'"{pattern}"'))
+        elif isinstance(condition, NotEquals):
+            return None                          # a sheet's "<>X" also passes a blank; this does not, so it has no plain criterion
         elif isinstance(condition, Compare):
             table = catalog.table(condition.column.table)
             op = "<>" if condition.op == NE else condition.op
@@ -362,7 +372,7 @@ def _agg_formula(program: Agg, table: CatalogTable, tables: RequestTables) -> st
     if isinstance(program.measure, Col) and plain:
         target = _range(table, program.measure.position)
         body = f"{_IFS[function]}({target},{','.join(criteria)})" if criteria else f"{_SHEET_FUNCTION[function]}({target})"
-    elif isinstance(program.measure, (RowArithmetic, Size)):
+    elif isinstance(program.measure, (RowArithmetic, Size, Across)):
         body = _arithmetic_formula(program, table, tables)
     else:
         cells = compress(cells_used(program, tables, ()))
@@ -390,6 +400,9 @@ def _line_term(measure: Measure, table: CatalogTable, i: int) -> str | None:
         return None if inner is None else f"ABS({inner})"
     if isinstance(measure, DateOf):
         return _line_term(measure.column, table, i)
+    if isinstance(measure, Across):
+        terms = [term for term in (_line_term(column, table, i) for column in measure.columns) if term is not None]
+        return "(" + "+".join(terms) + ")" if terms else None
     left, right = _line_term(measure.left, table, i), _line_term(measure.right, table, i)
     if measure.op in (PLUS, MINUS):
         if left is None and right is None:
@@ -411,6 +424,9 @@ def _rank_formula(program: Rank, table: CatalogTable, tables: RequestTables) -> 
         if isinstance(program.measure, Size):
             measure = _range(table, measure_columns(program.measure)[0].position)
             return f"=INDEX({shown},MATCH(MAX(ABS({measure})),ABS({measure}),0))"
+        if isinstance(program.measure, Across):
+            added = "+".join(_range(table, column.position) for column in program.measure.columns)
+            return f"=INDEX({shown},MATCH({way}({added}),{added},0))"
         a, b = (_range(table, column.position) for column in measure_columns(program.measure)[:2])
         return f"=INDEX({shown},MATCH({way}({a}{program.measure.op}{b}),{a}{program.measure.op}{b},0))"
     if program.entity == ENTITY_GROUP:

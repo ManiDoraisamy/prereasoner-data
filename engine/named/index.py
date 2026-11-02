@@ -18,7 +18,7 @@ from engine.named.backbone import TextBackbone
 from engine.named.links import SCALE, to_thousandths
 from engine.named.model import NamedReader, ReaderConfig
 from engine.named.names import NameSet
-from engine.named.units import T_COLUMN, T_TABLE, Graph, Target, collate, column_order, table_graphs, targets_of, value_graph
+from engine.named.units import T_COLUMN, T_TABLE, Graph, Target, collate, table_graphs, targets_of, value_graph
 from engine.program.catalog import KIND_FAMILY, Catalog, CatalogTable
 
 _MAGIC = b"NAMEDIDX1"
@@ -165,7 +165,7 @@ class SheetEncoder:
                 local = f"{place}"
                 targets = targets_of(table, units)
                 graphs = table_graphs(table, units)
-                order = column_order(table)
+                order = table.column_order
                 value_targets = [target for target in targets if target.kind not in (T_COLUMN, T_TABLE)]
                 value_graphs = [value_graph(table, target, units, order) for target in value_targets]
                 texts = [text for graph in (*graphs, *value_graphs) for text in graph.texts]

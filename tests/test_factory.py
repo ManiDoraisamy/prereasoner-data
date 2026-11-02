@@ -58,7 +58,7 @@ def test_grammar_answers_through_engine_program() -> None:
 
 def test_grammar_refuses() -> None:
     catalog = _catalog()
-    for text, why in (("agg sum 9 @t0", "unknown_column"), ("agg sum a0 @t0", "unknown_column"), ("agg sum 2 @t7", "unknown_table"), ("agg sum 2", "no_table"), ("rank line high 2 show 2 @t0", "unsound"), ('agg count @t0 where 0!="ENA"', "bad_condition"), ("sum 2 @t0", "unknown_form")):
+    for text, why in (("agg sum 9 @t0", "unknown_column"), ("agg sum a0 @t0", "unknown_column"), ("agg sum 2 @t7", "unknown_table"), ("agg sum 2", "no_table"), ("rank line high 2 show 2 @t0", "unsound"), ('agg count @t0 where 0<>"ENA"', "bad_condition"), ("sum 2 @t0", "unknown_form")):
         try:
             bind(text, catalog)
         except Unbound as exc:

@@ -21,7 +21,7 @@ from engine.program.catalog import Catalog
 from engine.program.decoder import Decoder
 from engine.program.index import index_of, stem
 from engine.program.language import Program, coordinates
-from engine.program.names import (CALC, ROLE_OF_SLOT, SIGNED, SLOT_ANSWER_TYPE, SLOT_BLANK, SLOT_CALC_LEFT, SLOT_COMPARISON, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE, SLOT_MEASURE, SLOT_NUMBER, SLOT_PERIOD, SLOT_ROW_OP, SLOT_SECTION, SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, coordinate, slot_of)
+from engine.program.names import (CALC, MINUS, OVER, ROLE_OF_SLOT, SIGNED, SLOT_ANSWER_TYPE, SLOT_BLANK, SLOT_CALC_LEFT, SLOT_COMPARISON, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE, SLOT_MEASURE, SLOT_NUMBER, SLOT_PERIOD, SLOT_ROW_OP, SLOT_SECTION, SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, coordinate, slot_of)
 from engine.program.scoring import Reading
 from engine.program.words import _STOP, FILTER_NAME_SHARE, read_question
 
@@ -190,12 +190,12 @@ class _Builder:
         question = self.read.coordinates
         keep = view.ids
         best = n.max(axis=0) if n.size else np.zeros(len(view.targets))
-        proposals = self._proposals(view, dots, best)
+        proposals = self._proposals(view, dots, best, catalog_table)
         numbers = list(index.number_columns)
         texts = list(index.text_columns)
         value_rows = [at for at, target in enumerate(view.targets) if target.kind in (T_VALUE, T_LINE, T_BAND)]
         if len(value_rows) > VALUE_TOP:
-            value_rows = sorted(sorted(value_rows, key=lambda at: (-round(float(best[at]), 4), view.targets[at].text, at))[:VALUE_TOP])
+            value_rows = sorted(sorted(value_rows, key=lambda at: (-round(float(best[at]), 4), view.targets[at].text, catalog_table.column_rank.get(view.targets[at].position, -1)))[:VALUE_TOP])
         wanted = set(value_rows) | {at for at, target in enumerate(view.targets) if target.kind in (T_COLUMN, T_TABLE)} | set(proposals)
         for at, target in enumerate(view.targets):
             names = target.coordinates()
@@ -220,7 +220,7 @@ class _Builder:
                     continue                          # a value no word reaches reads 0, as one the index never looked at does
                 self.write(name, span if (has_named or proposal) else (), terms, rules, open_score, proposal)
 
-    def _proposals(self, view: TableView, dots: np.ndarray, best: np.ndarray) -> dict[int, float]:
+    def _proposals(self, view: TableView, dots: np.ndarray, best: np.ndarray, table) -> dict[int, float]:
         """What the open channel puts forward: per word, its top targets reaching OPEN_MIN and with no named support. In the order of (rounded similarity, target), and only as a set after that."""
         out: dict[int, float] = {}
         if not dots.size:
@@ -235,7 +235,7 @@ class _Builder:
             rounded = np.round(row[candidates], 3)
             line = np.sort(rounded)[-min(OPEN_TOP, len(rounded))]
             near = candidates[rounded >= line]
-            for at in sorted(near.tolist(), key=lambda at: (-round(float(row[at]), 3), view.targets[at].kind, view.targets[at].text, at))[:OPEN_TOP]:
+            for at in sorted(near.tolist(), key=lambda at: (-round(float(row[at]), 3), view.targets[at].kind, view.targets[at].text, table.column_rank.get(view.targets[at].position, -1)))[:OPEN_TOP]:
                 out[at] = max(out.get(at, 0.0), float(row[at]))
         return out
 
@@ -258,7 +258,8 @@ class _Builder:
             self.scores[name] = round(self.floor.get(name, 0.0) + self.weights.closed * max(float(np.log(max(p, 1e-6))), LOG_FLOOR), 4)
 
     def calc_left(self) -> None:
-        if self.read.closed[SLOT_FORM].get(CALC, 0.0) < HEAD_MIN or not len(self.read.words):
+        row_sided = max(self.read.closed[SLOT_ROW_OP].get(op, 0.0) for op in (MINUS, OVER))
+        if max(self.read.closed[SLOT_FORM].get(CALC, 0.0), row_sided) < HEAD_MIN or not len(self.read.words):
             return
         left = self.read.sides[:, CALC_SIDES.index(LEFT)]
         for name, evidence in sorted(self.book.items()):
