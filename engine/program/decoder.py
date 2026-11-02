@@ -69,6 +69,19 @@ _LINK_SLOTS = {SLOT_MEASURE: 0, SLOT_KEY: 0, SLOT_SHOWN: 0, SLOT_VALUE: 1, SLOT_
 _ATOM_KINDS = {IsNumber: 0, IsBlank: 1, InSection: 3, OnLine: 4}
 
 
+def table_reach(reading: Reading) -> dict[str, float]:
+    """How far a reading's links reach each table: its best column, its best value and the table's own score, added."""
+    best: dict[str, list[float]] = {}
+    for name, score in reading.scores.items():
+        at = _LINK_SLOTS.get(slot_of(name))
+        if at is None or score <= 0:
+            continue
+        table_id = name.split(":", 1)[1].split("=", 1)[0].split(".", 1)[0]
+        parts = best.setdefault(table_id, [0.0, 0.0, 0.0])
+        parts[at] = max(parts[at], score)
+    return {table_id: round(sum(parts), _ROUND) for table_id, parts in best.items()}
+
+
 def _atom_order(table: CatalogTable, atom: Atom) -> tuple:
     """Where an atom stands among equals, read from what it says: what a column's shape says first, so a slot's top k keeps it; then by column, read from the column's words and cells; then its own words."""
     condition = atom.condition
@@ -362,21 +375,12 @@ class _Search:
         return self.s(coordinate(SLOT_ANSWER_TYPE, kind))
 
     def linked_tables(self) -> list[CatalogTable]:
-        """The tables this question reads: those its links reach best, by the best column, the best value and the table's own score added, then the larger, then workbook order."""
-        best: dict[str, list[float]] = {}
-        for name, score in self.reading.scores.items():
-            at = _LINK_SLOTS.get(slot_of(name))
-            if at is None or score <= 0:
-                continue
-            body = name.split(":", 1)[1]
-            table_id = body.split("=", 1)[0].split(".", 1)[0]
-            parts = best.setdefault(table_id, [0.0, 0.0, 0.0])
-            parts[at] = max(parts[at], score)
+        """The tables this question reads: those its links reach best, then the larger, then workbook order."""
         tables = [table for table in self.decoder.catalog.tables if table.lines]
         if len(tables) <= self.policy.linked_tables:
             return tables
-        reach = {table.id: round(sum(best.get(table.id, ())), _ROUND) for table in tables}
-        order = sorted(range(len(tables)), key=lambda at: (-reach[tables[at].id], -len(tables[at].lines), at))
+        reach = table_reach(self.reading)
+        order = sorted(range(len(tables)), key=lambda at: (-reach.get(tables[at].id, 0.0), -len(tables[at].lines), at))
         return [tables[at] for at in sorted(order[:self.policy.linked_tables])]
 
     # ------------------------------------------------------------------------------------------- conditions
@@ -826,4 +830,4 @@ def _share_on_a_line(table, options):
     return Calc(Show(table.id, (a,), where), OVER, Calc(Show(table.id, (b,), where), PLUS, Show(table.id, (a,), where)))
 
 
-__all__ = ["Decoded", "Decoder", "POLICY", "Policy"]
+__all__ = ["Decoded", "Decoder", "POLICY", "Policy", "table_reach"]

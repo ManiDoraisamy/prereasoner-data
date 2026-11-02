@@ -6,7 +6,7 @@ The open channel: an unnamed projection and a dot product. It may put a target b
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 import torch
@@ -18,7 +18,7 @@ from engine.named.model import NamedReader, ReaderConfig
 from engine.named.names import CALC_SIDES, CLOSED_HEADS, FINE_OF_NAME, LEFT, NONE, WORD_ROLE_CLASSES, NameSet
 from engine.named.units import T_BAND, T_COLUMN, T_LINE, T_TABLE, T_VALUE, collate, question_graph
 from engine.program.catalog import Catalog
-from engine.program.decoder import Decoder
+from engine.program.decoder import Decoder, table_reach
 from engine.program.index import index_of, stem
 from engine.program.language import Program, coordinates
 from engine.program.names import (CALC, MINUS, OVER, ROLE_OF_SLOT, SIGNED, SLOT_ANSWER_TYPE, SLOT_BLANK, SLOT_CALC_LEFT, SLOT_COMPARISON, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE, SLOT_MEASURE, SLOT_NUMBER, SLOT_PERIOD, SLOT_ROW_OP, SLOT_SECTION, SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, coarse_type, coordinate, slot_of)
@@ -86,6 +86,7 @@ class NamedReading:
     class_agreement: dict[str, float]
     index: WorkbookIndex | None = None
     names: NameSet | None = None
+    reach: dict[str, float] = field(default_factory=dict)
 
     @property
     def expected(self) -> str:
@@ -323,7 +324,8 @@ def build_reading(read: QuestionRead, windex: WorkbookIndex, catalog: Catalog, d
     builder.stated()
     builder.calc_left()
     agreement = _class_agreement(read, windex, names, signatures)
-    return NamedReading(read, Reading(builder.scores), builder.book, mode, agreement, windex, names)
+    reading = Reading(builder.scores)
+    return NamedReading(read, reading, builder.book, mode, agreement, windex, names, table_reach(reading))
 
 
 def _class_agreement(read: QuestionRead, windex: WorkbookIndex, names: NameSet, signatures: ClassSignatures | None) -> dict[str, float]:

@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
 _KINDS = {SLOT_MEASURE: "measure", SLOT_KEY: "key", SLOT_SHOWN: "shown", SLOT_VALUE: "value", SLOT_CONTAINS: "contains", SLOT_LINE: "line", SLOT_SECTION: "section"}
 _FLAGS = {EV_TYPE_AGREES: "type_agrees", EV_SHAPE_AGREES: "shape_agrees", EV_PRINTED_TIE: "printed_tie", EV_BARE_ZERO: "bare_zero", EV_EMPTY: "empty", EV_FAILED: "failed", EV_ROW_DUMP: "row_dump", EV_MANY_ROWS: "many_rows", EV_WRONG_KIND: "wrong_kind", EV_ROW_COUNT_FOR_AMOUNT: "row_count_for_amount", EV_FRACTION_FOR_COUNT: "fraction_for_count", EV_TOO_LARGE_FOR_SHARE: "too_large_for_share", EV_FILTER_DID_NOTHING: "filter_did_nothing", EV_REPEATED_LINES: "repeated_lines", EV_ADDS_TWICE: "adds_twice"}
-FEATURES = ("fine_type", "shown_columns", "words_explained", "words_unexplained", "parts_asked", "parts_unasked", "link_mean", "link_min", *(f"link_{kind}" for kind in _KINDS.values()), "rule_exact", "rule_partial", "rule_prefix", *_FLAGS.values(), "form_prior", "decoder_score", "rank_inverse", "score_margin", "conditions", "class_agreement", "needs_asking", "open_similarity")
+FEATURES = ("fine_type", "shown_columns", "words_reused", "reach_gap", "words_explained", "words_unexplained", "parts_asked", "parts_unasked", "link_mean", "link_min", *(f"link_{kind}" for kind in _KINDS.values()), "rule_exact", "rule_partial", "rule_prefix", *_FLAGS.values(), "form_prior", "decoder_score", "rank_inverse", "score_margin", "conditions", "class_agreement", "needs_asking", "open_similarity")
 ROLE_MIN = 0.5
 SUPPORT_NOTE = "no_named_support"
 ASK_LOW = "low_confidence"
@@ -96,6 +96,20 @@ def explained_words(program: Program, named: NamedReading, catalog: Catalog) -> 
     return out
 
 
+def reused_words(program: Program, named: NamedReading, catalog: Catalog) -> int:
+    """How many times a program reads a word for more than one thing: a column's link and a value's on one word, two values on one. Additive scores cannot see this, and one word means one thing."""
+    seen: dict[int, set[str]] = {}
+    for name in coordinates(program, catalog.column_kind):
+        evidence = named.book.get(name)
+        slot = slot_of(name)
+        if evidence is None or slot not in LINK_SLOTS:
+            continue
+        place = name.split(":", 1)[1].split("=", 1)[0] if slot in (SLOT_MEASURE, SLOT_KEY, SLOT_SHOWN) else name
+        for word in evidence.span:
+            seen.setdefault(word, set()).add(place)
+    return sum(len(held) - 1 for held in seen.values())
+
+
 def answer_column(program: Program) -> Col | None:
     """The one column a program answers from, where it has one."""
     if isinstance(program, Show):
@@ -141,6 +155,8 @@ def features_of(verified: Verified, named: NamedReading, catalog: Catalog, *, ra
     features = {
         "fine_type": named.fine_support(column.table, column.position) if column is not None else 0.0,
         "shown_columns": float(max(len(getattr(program, "shown", ())) - 1, 0)),
+        "words_reused": float(reused_words(program, named, catalog)),
+        "reach_gap": max((named.reach.values()), default=0.0) - min((named.reach.get(table, 0.0) for table in tables_of(program)), default=0.0),
         "words_explained": len(explained & set(content)) / max(1, len(content)),
         "words_unexplained": len(set(roleful) - explained) / max(1, len(content)),
         "parts_asked": len(asked) / max(1, len(parts)),
