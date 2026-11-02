@@ -143,6 +143,9 @@ def test_links_and_rule() -> None:
     assert [(link["kind"], link.get("position")) for link in links] == [("value", 1), ("column", 2), ("context", None)], "a word not in the question or a column the table lacks is dropped"
     assert links[0]["target"] == "East" and links[0]["own_words"] is True and links[0]["role"] == "filter"
     assert links[1]["coordinates"] == ["biz:volume"] and links[1]["role"] == "measure"
+    unlinked = {"program": 'agg sum 2 @t0 where 1="East"', "question": "total volume east", "links": "", "coordinates": ["measure:t0.2", "filter:t0.1"], "overlap": ["volume"], "used": [{"table": "t0", "position": 2, "letter": "C", "name": "Volume"}, {"table": "t0", "position": 1, "letter": "B", "name": "Region"}]}
+    by_rule = link_records(unlinked, {}, columns, labels)
+    assert {(link["kind"], link["words"], link["source"]) for link in by_rule} == {("column", "volume", "rule"), ("value", "east", "rule")}, "what a question says outright links by rule"
     assert is_subject_only({"program": "agg sum 2 @t0", "overlap": []}, [links[2]])
     assert not is_subject_only(q, links)
     assert not is_subject_only({"program": "agg sum 2 @t0", "overlap": ["volume"]}, [links[2]])

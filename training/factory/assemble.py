@@ -149,6 +149,31 @@ def link_records(q: dict, tab: dict, columns: dict, labels: dict) -> list[dict]:
             target = record.get("target") or record.get("column") or ""
             record["own_words"] = rule_reaches(words, target) if target else False
             out.append(record)
+    out.extend(_rule_links(q, tokens, out, columns, labels, default, slots))
+    return out
+
+
+def _rule_links(q: dict, tokens: list[str], have: list[dict], columns: dict, labels: dict, default: str, slots: dict) -> list[dict]:
+    """Links no model wrote: a word of a condition's value or of a used column's header standing in the question, where the author left it unlinked. By rule, so marked."""
+    covered = {at for link in have for at in link["span"]}
+    out = []
+    for used in q.get("used") or ():
+        table, position = used["table"], used["position"]
+        column = columns.get(table, {}).get(position)
+        if column is None:
+            continue
+        label = labels.get((table, str(position))) or {}
+        value = value_of(q["program"], table, str(position))
+        for kind, target, coordinates in (("value", value, label.get("value_coordinates")), ("column", column[1], label.get("coordinates"))):
+            if not target:
+                continue
+            wanted = set(words_in(target)) - {"the", "of", "and", "a", "to", "in", "for"}
+            span = [at for at, token in enumerate(tokens) if token in wanted and at not in covered]
+            if not span:
+                continue
+            covered.update(span)
+            roles = {ROLE_OF[slot] for slot in slots.get(f"{table}.{position}", ()) if slot in ROLE_OF}
+            out.append({"words": " ".join(tokens[at] for at in span), "span": span, "ref": ("V" if kind == "value" else "") + str(position), "table": table, "position": position, "column": column[1], "kind": kind, "role": "filter" if kind == "value" else (sorted(roles)[0] if roles else "filter"), "target": target if kind == "value" else None, "coordinates": coordinates or [], "own_words": True, "source": "rule"})
     return out
 
 
