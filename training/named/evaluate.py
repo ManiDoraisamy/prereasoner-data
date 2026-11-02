@@ -2,7 +2,7 @@
 
 Writes a report with the code commit, dirty state, dataset identity, bundle hash and flags. Prints counts, never a cell or a question.
 
-usage: NAMED_PIN=1 python -m training.named.evaluate --set val --bundle <dir> [--limit N] [--survival 200] [--modes named,named_plus_open] --out <report.json>
+usage: python -m training.named.evaluate --set val --bundle <dir> [--limit N] [--survival 200] [--modes named,named_plus_open] --out <report.json>
        python -m training.named.evaluate --set studied --bundle <dir> --out <report.json>
        --words: the floor, the reading from words alone with no model
 """
@@ -344,8 +344,6 @@ def main() -> None:
     parser.add_argument("--survival", type=int, default=0, help="how many right questions each survival test re-reads; 0 for none")
     parser.add_argument("--out", required=True)
     args = parser.parse_args()
-    if args.set == "val" and not os.environ.get("NAMED_PIN"):
-        parser.error("--set val reads the factory's pickled models: run with NAMED_PIN=1")
     items = load_factory_set("val", limit=args.limit) if args.set == "val" else load_studied()
     if args.limit and args.set == "studied":
         items = items[:args.limit]

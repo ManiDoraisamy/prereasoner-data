@@ -17,7 +17,7 @@ from collections import defaultdict
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-ALLOWED_SIDES = ("train", "val", "fake")
+ALLOWED_SIDES = ("train", "val", "fake", "pub_eia", "pub_sec")          # never a frozen side, never the other-industry source held out for the frozen test
 SHARD_TABS = 200
 MANIFEST = "manifest.json"
 
@@ -73,21 +73,31 @@ def thin(table, keep_words: set[str], max_lines: int):
     return replace(table, lines=kept)
 
 
+# Each side's row files: the side's own, and gold rows set apart over a family's quota, true and paid for. Quotas shape what is measured, not what may be learned from.
+ROW_FILES = {"train": ("train.jsonl", "train.over_quota.jsonl"), "val": ("val.jsonl",), "pub_eia": ("pub_eia.jsonl", "pub_eia.over_quota.jsonl"), "pub_sec": ("pub_sec.jsonl", "pub_sec.over_quota.jsonl")}
+NEVER_READ = "held_out_other_industry"
+
+
 def tab_records(side: str, limit_tabs: int | None, max_lines: int, out_dir: str | Path) -> dict:
-    """Write one side's shards. Reads the factory's out/<side>.jsonl and labels and the compiled models of the pinned commit."""
+    """Write one side's shards. Reads the factory's rows and labels and the compiled models of the pinned commit."""
     from training.factory.paths import MODELS, OUT, pin
     from training.factory.split import sides
     commit = pin()
     from engine.program.catalog import Catalog
     side_of = sides()
-    rows_path = f"{OUT}{side}.jsonl"
     by_tab: dict[str, list[dict]] = defaultdict(list)
-    with open(rows_path, encoding="utf-8") as source:
-        for line in source:
-            row = json.loads(line)
-            if side_of.get(row["file"]) != side:
-                raise ValueError("a row whose workbook is not on this side")
-            by_tab[f"{row['book']}|{row['tab']}"].append(row)
+    digest = hashlib.sha256()
+    for name in ROW_FILES[side]:
+        if NEVER_READ in name:
+            raise ValueError("the other-industry source is held out")
+        with open(f"{OUT}{name}", "rb") as source:
+            digest.update(source.read())
+        with open(f"{OUT}{name}", encoding="utf-8") as source:
+            for line in source:
+                row = json.loads(line)
+                if row.get("side") != side or (not side.startswith("pub_") and side_of.get(row["file"]) != side):
+                    raise ValueError("a row whose workbook is not on this side")
+                by_tab[f"{row['book']}|{row['tab']}"].append(row)
     labels: dict[str, dict] = {}
     with open(f"{OUT}{side}.labels.jsonl", encoding="utf-8") as source:
         for line in source:
@@ -95,12 +105,13 @@ def tab_records(side: str, limit_tabs: int | None, max_lines: int, out_dir: str 
             labels[record["key"]] = record["labels"]
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+    first_shard = len(list(out_dir.glob("shard_*.pkl.gz")))
     keys = sorted(by_tab)
     if limit_tabs:
         keys = sorted(keys, key=lambda key: hashlib.blake2b(key.encode("utf-8", "surrogatepass"), digest_size=8).digest())[:limit_tabs]
     keys.sort()
     shard, shards, count = [], 0, 0
-    questions = 0
+    questions = gold = 0
     cached_book, cached_catalog = None, None
     for key in keys:
         rows = by_tab[key]
@@ -114,16 +125,19 @@ def tab_records(side: str, limit_tabs: int | None, max_lines: int, out_dir: str 
         shard.append(TabExample(key, rows[0]["family"], rows[0]["file"], tab, side, tables, rows, labels.get(key, {})))
         count += 1
         questions += len(rows)
+        gold += sum(row.get("label") == "gold" for row in rows)
         if len(shard) == SHARD_TABS:
-            write_shard(out_dir, shards, shard)
+            write_shard(out_dir, first_shard + shards, shard)
             shard, shards = [], shards + 1
     if shard:
-        write_shard(out_dir, shards, shard)
+        write_shard(out_dir, first_shard + shards, shard)
         shards += 1
-    digest = hashlib.sha256()
-    with open(rows_path, "rb") as source:
-        digest.update(source.read())
-    manifest = {"side": side, "tabs": count, "rows": questions, "shards": shards, "engine_commit": commit, "max_lines": max_lines, "rows_sha256": digest.hexdigest(), "limit_tabs": limit_tabs}
+    manifest = {"side": side, "tabs": count, "rows": questions, "gold": gold, "shards": shards, "engine_commit": commit, "max_lines": max_lines, "rows_sha256": digest.hexdigest(), "limit_tabs": limit_tabs}
+    if first_shard:                                 # a second side into one folder: the folder's manifest says all of them
+        held = json.loads((out_dir / MANIFEST).read_text(encoding="utf-8"))
+        if held["engine_commit"] != commit or held["max_lines"] != max_lines:
+            raise ValueError("sides of one examples folder share an engine commit and a thinning")
+        manifest = {**manifest, "side": f"{held['side']},{side}", "tabs": held["tabs"] + count, "rows": held["rows"] + questions, "gold": held["gold"] + gold, "shards": held["shards"] + shards, "rows_sha256": hashlib.sha256(f"{held['rows_sha256']}{digest.hexdigest()}".encode()).hexdigest()}
     (out_dir / MANIFEST).write_text(json.dumps(manifest, indent=1, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
     return manifest
 
@@ -151,12 +165,13 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Export the reader's examples from the factory.")
     commands = parser.add_subparsers(dest="command", required=True)
     export = commands.add_parser("export")
-    export.add_argument("--side", required=True, choices=("train", "val"))
+    export.add_argument("--side", required=True, help="comma separated: " + ", ".join(sorted(ROW_FILES)))
     export.add_argument("--out", required=True)
     export.add_argument("--limit-tabs", type=int)
     export.add_argument("--max-lines", type=int, default=400)
     args = parser.parse_args()
-    print(json.dumps(tab_records(args.side, args.limit_tabs, args.max_lines, args.out), indent=0, sort_keys=True), flush=True)
+    for side in args.side.split(","):
+        print(json.dumps(tab_records(side, args.limit_tabs, args.max_lines, args.out), indent=0, sort_keys=True), flush=True)
 
 
 if __name__ == "__main__":

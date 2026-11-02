@@ -15,21 +15,22 @@ from engine.named.names import NONE, WORD_ROLE_CLASSES
 from engine.named.reader import LINK_SLOTS, MODE_NAMED, NamedReading, needs_asking, unsupported_links
 from engine.program.catalog import Catalog
 from engine.program.index import stem
-from engine.program.language import Program, coordinates, form_of, tables_of
-from engine.program.names import (EV_BARE_ZERO, EV_EMPTY, EV_FAILED, EV_FILTER_DID_NOTHING, EV_FRACTION_FOR_COUNT, EV_MANY_ROWS, EV_PRINTED_TIE, EV_REPEATED_LINES, EV_ROW_COUNT_FOR_AMOUNT, EV_ROW_DUMP, EV_SHAPE_AGREES, EV_TOO_LARGE_FOR_SHARE, EV_TYPE_AGREES, EV_WRONG_KIND, FORMS, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE, SLOT_MEASURE, SLOT_SECTION, SLOT_SHOWN, SLOT_VALUE, slot_of)
+from engine.program.language import Agg, Col, Program, Rank, Show, coordinates, form_of, tables_of
+from engine.program.names import (ENTITY_GROUP, ENTITY_LINE, EV_ADDS_TWICE, EV_BARE_ZERO, EV_EMPTY, EV_FAILED, EV_FILTER_DID_NOTHING, EV_FRACTION_FOR_COUNT, EV_MANY_ROWS, EV_PRINTED_TIE, EV_REPEATED_LINES, EV_ROW_COUNT_FOR_AMOUNT, EV_ROW_DUMP, EV_SHAPE_AGREES, EV_TOO_LARGE_FOR_SHARE, EV_TYPE_AGREES, EV_WRONG_KIND, FORMS, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE, SLOT_MEASURE, SLOT_SECTION, SLOT_SHOWN, SLOT_VALUE, slot_of)
 from engine.program.words import _STOP
 
 if TYPE_CHECKING:
     from engine.program.verifier import Verified
 
 _KINDS = {SLOT_MEASURE: "measure", SLOT_KEY: "key", SLOT_SHOWN: "shown", SLOT_VALUE: "value", SLOT_CONTAINS: "contains", SLOT_LINE: "line", SLOT_SECTION: "section"}
-_FLAGS = {EV_TYPE_AGREES: "type_agrees", EV_SHAPE_AGREES: "shape_agrees", EV_PRINTED_TIE: "printed_tie", EV_BARE_ZERO: "bare_zero", EV_EMPTY: "empty", EV_FAILED: "failed", EV_ROW_DUMP: "row_dump", EV_MANY_ROWS: "many_rows", EV_WRONG_KIND: "wrong_kind", EV_ROW_COUNT_FOR_AMOUNT: "row_count_for_amount", EV_FRACTION_FOR_COUNT: "fraction_for_count", EV_TOO_LARGE_FOR_SHARE: "too_large_for_share", EV_FILTER_DID_NOTHING: "filter_did_nothing", EV_REPEATED_LINES: "repeated_lines"}
-FEATURES = ("words_explained", "words_unexplained", "parts_asked", "parts_unasked", "link_mean", "link_min", *(f"link_{kind}" for kind in _KINDS.values()), "rule_exact", "rule_partial", "rule_prefix", *_FLAGS.values(), "form_prior", "decoder_score", "rank_inverse", "score_margin", "conditions", "class_agreement", "needs_asking", "open_similarity")
+_FLAGS = {EV_TYPE_AGREES: "type_agrees", EV_SHAPE_AGREES: "shape_agrees", EV_PRINTED_TIE: "printed_tie", EV_BARE_ZERO: "bare_zero", EV_EMPTY: "empty", EV_FAILED: "failed", EV_ROW_DUMP: "row_dump", EV_MANY_ROWS: "many_rows", EV_WRONG_KIND: "wrong_kind", EV_ROW_COUNT_FOR_AMOUNT: "row_count_for_amount", EV_FRACTION_FOR_COUNT: "fraction_for_count", EV_TOO_LARGE_FOR_SHARE: "too_large_for_share", EV_FILTER_DID_NOTHING: "filter_did_nothing", EV_REPEATED_LINES: "repeated_lines", EV_ADDS_TWICE: "adds_twice"}
+FEATURES = ("fine_type", "words_explained", "words_unexplained", "parts_asked", "parts_unasked", "link_mean", "link_min", *(f"link_{kind}" for kind in _KINDS.values()), "rule_exact", "rule_partial", "rule_prefix", *_FLAGS.values(), "form_prior", "decoder_score", "rank_inverse", "score_margin", "conditions", "class_agreement", "needs_asking", "open_similarity")
 ROLE_MIN = 0.5
 SUPPORT_NOTE = "no_named_support"
 ASK_LOW = "low_confidence"
 ASK_CLOSE = "close_readings"
 ASK_NOTHING = "nothing_ran"
+ASK_ADDS_TWICE = "adds_twice"
 ANSWER = "answer"
 ASK = "ask"
 
@@ -82,7 +83,7 @@ class Chooser:
 
 
 # Before any fit: the signs the evidence should have, small. Not a result: a fitted chooser replaces it.
-PRIOR = Chooser({"words_explained": 2.0, "words_unexplained": -1.0, "parts_asked": 1.0, "parts_unasked": -1.0, "link_mean": 1.0, "link_min": 0.5, "rule_exact": 0.5, "type_agrees": 1.0, "shape_agrees": 1.0, "printed_tie": 1.0, "bare_zero": -1.0, "empty": -3.0, "failed": -5.0, "wrong_kind": -2.0, "row_dump": -1.0, "many_rows": -1.0, "form_prior": 0.5, "decoder_score": 0.1, "rank_inverse": 0.5, "needs_asking": -1.0}, -1.0)
+PRIOR = Chooser({"words_explained": 2.0, "words_unexplained": -1.0, "parts_asked": 1.0, "parts_unasked": -1.0, "link_mean": 1.0, "link_min": 0.5, "rule_exact": 0.5, "type_agrees": 1.0, "shape_agrees": 1.0, "printed_tie": 1.0, "bare_zero": -1.0, "empty": -3.0, "failed": -5.0, "adds_twice": -1.0, "wrong_kind": -2.0, "row_dump": -1.0, "many_rows": -1.0, "form_prior": 0.5, "decoder_score": 0.1, "rank_inverse": 0.5, "needs_asking": -1.0}, -1.0)
 
 
 def explained_words(program: Program, named: NamedReading, catalog: Catalog) -> set[int]:
@@ -93,6 +94,17 @@ def explained_words(program: Program, named: NamedReading, catalog: Catalog) -> 
         if evidence is not None:
             out.update(evidence.span)
     return out
+
+
+def answer_column(program: Program) -> Col | None:
+    """The one column a program answers from, where it has one."""
+    if isinstance(program, Show):
+        return program.shown[0]
+    if isinstance(program, Agg):
+        return program.measure if isinstance(program.measure, Col) else None
+    if isinstance(program, Rank):
+        return program.shown[0] if program.entity == ENTITY_LINE else program.key if program.entity == ENTITY_GROUP else None
+    return None
 
 
 def features_of(verified: Verified, named: NamedReading, catalog: Catalog, *, rank: int, best_score: float) -> dict[str, float]:
@@ -125,7 +137,9 @@ def features_of(verified: Verified, named: NamedReading, catalog: Catalog, *, ra
             prefix += hit.rule == PREFIX
     parts = [name for name in names if not name.startswith(f"{SLOT_FORM}:") and slot_of(name) != SLOT_CONDITIONS]
     asked = [name for name in parts if named.reading.score(name) > 0]
+    column = answer_column(program)
     features = {
+        "fine_type": named.fine_support(column.table, column.position) if column is not None else 0.0,
         "words_explained": len(explained & set(content)) / max(1, len(content)),
         "words_unexplained": len(set(roleful) - explained) / max(1, len(content)),
         "parts_asked": len(asked) / max(1, len(parts)),
@@ -212,6 +226,8 @@ def answer_or_ask(candidates: Sequence[Candidate], chooser: Chooser) -> Decision
     reasons = []
     if best.needs_asking:
         reasons.append(SUPPORT_NOTE)
+    if best.verified.held(EV_ADDS_TWICE):
+        reasons.append(ASK_ADDS_TWICE)
     form = form_of(best.verified.scored.program)
     if best.probability < chooser.threshold(form):
         reasons.append(ASK_LOW)
@@ -220,4 +236,4 @@ def answer_or_ask(candidates: Sequence[Candidate], chooser: Chooser) -> Decision
     return Decision(ASK if reasons else ANSWER, best, other, tuple(reasons))
 
 
-__all__ = ["ANSWER", "ASK", "Candidate", "Chooser", "Decision", "FEATURES", "FORMS", "FeatureTerm", "PRIOR", "answer_or_ask", "features_of", "score_candidates", "unsupported_links"]
+__all__ = ["ANSWER", "ASK", "ASK_ADDS_TWICE", "Candidate", "Chooser", "Decision", "FEATURES", "FORMS", "FeatureTerm", "PRIOR", "answer_or_ask", "features_of", "score_candidates", "unsupported_links"]

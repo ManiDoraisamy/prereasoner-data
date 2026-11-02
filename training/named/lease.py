@@ -135,7 +135,7 @@ def main(argv: list[str] | None = None) -> int:
     if not NAME.fullmatch(args.experiment):
         parser.error("--experiment takes letters, digits, '.', '_' and '-'")
     manifest = json.loads((Path(args.examples) / "manifest.json").read_text(encoding="utf-8"))
-    plan = plan_candidate(args.backbone, int(manifest["tabs"]), int(manifest["rows"]), epochs=args.epochs, steps=args.steps)
+    plan = plan_candidate(args.backbone, int(manifest["tabs"]), int(manifest["gold"]), epochs=args.epochs, steps=args.steps)
     remote = remote_command(args.backbone, plan.steps, args.seed)
     print(json.dumps(asdict(plan), indent=0, sort_keys=True))
     experiment = EXPERIMENTS_DIR / args.experiment

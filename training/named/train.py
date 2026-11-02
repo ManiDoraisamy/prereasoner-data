@@ -20,6 +20,7 @@ import argparse
 import hashlib
 import json
 import random
+import re
 import subprocess
 import time
 from dataclasses import dataclass, field
@@ -33,13 +34,13 @@ from engine.named.backbone import question_words
 from engine.named.index import ClassSignatures
 from engine.named.links import LinkWeights, RULES, SLOT_BIASES, rule_evidence
 from engine.named.model import NamedReader, ReaderConfig
-from engine.named.names import CALC_SIDES, CLOSED_HEADS, LEFT, RIGHT, WORD_ROLE_CLASSES, NameSet, closed_labels, load_name_set, meaning_groups
+from engine.named.names import CALC_SIDES, CLOSED_HEADS, LEFT, RIGHT, WORD_ROLE_CLASSES, NameSet, closed_labels, fine_answer_type, load_name_set, meaning_groups
 from engine.named.bundle import write_bundle
 from engine.named.units import T_BAND, T_COLUMN, T_LINE, T_TABLE, T_VALUE, Graph, Target, collate, question_graph, table_graphs, targets_of, value_graph
 from engine.program.catalog import Catalog, CatalogTable
 from engine.program.decoder import Decoder
 from engine.program.index import stem
-from engine.program.names import SLOT_CALC_LEFT, slot_of
+from engine.program.names import A_NAME, ROLE_KEY, ROLE_MEASURE, SLOT_ANSWER_TYPE, SLOT_CALC_LEFT, slot_of
 from engine.program.semantics import fold
 from engine.program.words import _STOP, read_question
 from training.named import EXPERIMENTS_DIR
@@ -48,6 +49,7 @@ from training.named.data import TabExample, check_held_out, read_examples, split
 
 THRESHOLD = 6              # the factory's: a label at this confidence or more counts
 GOLD = "gold"
+_ROW_SIDES = re.compile(r"(?:^|\s|\()(\d+)\s*[-/]\s*(\d+)(?:\s|\)|$)")
 COLUMN_NEGATIVES = 24
 VALUE_NEGATIVES = 16
 TABLES_PER_STEP = 3
@@ -117,6 +119,18 @@ def _column_structure(column) -> list[str]:
     if column.kind:
         out.append(f"value_kind:{column.kind}")
     return out
+
+
+def closed_of(row: dict, labels: dict[str, dict]) -> dict[str, str]:
+    """A row's closed heads. The answer type is read as finely as the labels of what it answers with allow: its linked key or measure, then the columns it used."""
+    closed = closed_labels(row.get("coordinates", ()))
+    coarse = closed[SLOT_ANSWER_TYPE]
+    wanted = ROLE_KEY if coarse == A_NAME else ROLE_MEASURE
+    names = [name for link in row.get("links", ()) if link.get("role") == wanted for name in link.get("coordinates") or ()]
+    for used in row.get("used", ()):
+        names.extend((labels.get(f"{used.get('table')}.{used.get('position')}") or {}).get("coordinates") or ())
+    closed[SLOT_ANSWER_TYPE] = fine_answer_type(coarse, names)
+    return closed
 
 
 def build_batch(example: TabExample, reader_config: ReaderConfig, names: NameSet, rng: random.Random, *, questions: int, shares: dict | None, rows: list[dict] | None = None) -> Batch | None:
@@ -208,12 +222,13 @@ def build_batch(example: TabExample, reader_config: ReaderConfig, names: NameSet
         words = question_words(question)
         at_question = len(texts)
         texts.append(question)
-        closed.append(closed_labels(row.get("coordinates", ())))
+        closed.append(closed_of(row, example.labels))
         word_names: list[list[str] | None] = [([] if stem(word) in _STOP else None) for word in words]
         roles = [0] * len(words)
         sides = [0] * len(words)
         left_names = {name.split(":", 1)[1] for name in row.get("coordinates", ()) if slot_of(name) == SLOT_CALC_LEFT}
         calc = row.get("form") == "calc"
+        row_sides = _ROW_SIDES.search(str(row.get("program", "")).split(" where ")[0]) if not calc else None
         floor = read_question(question, catalog, decoder).scores
         stems = {stem(word) for word in words}
         for link in row.get("links", ()):
@@ -241,6 +256,16 @@ def build_batch(example: TabExample, reader_config: ReaderConfig, names: NameSet
                     side = LEFT if any(name in left_names for name in Target(table_id, T_COLUMN, position, "").coordinates()) else RIGHT
                     for at in span:
                         sides[at] = CALC_SIDES.index(side)
+                elif row_sides is not None and kind == "column" and str(old) in row_sides.groups():
+                    for at in span:
+                        sides[at] = CALC_SIDES.index(LEFT if str(old) == row_sides.group(1) else RIGHT)
+            elif kind == "context":
+                gold = Target(table_id, T_TABLE, -1, "")
+                others = [Target(other, T_TABLE, -1, "") for other in sorted(tables) if other != table_id]
+                if gold.key in at_target and others and all(item.key in at_target for item in others):
+                    candidates = [gold, *others]
+                    links.append(LinkExample(at_question, span, kind, [at_target[item.key] for item in candidates], np.stack([_rule_row(item.coordinates(), floor, stems, tables[item.table]) for item in candidates])))
+                continue
             example_link = None
             if kind == "column":
                 example_link = _column_candidates(table, table_id, position, floor, stems, rng, at_target)

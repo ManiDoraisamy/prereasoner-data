@@ -2,7 +2,7 @@
 
 numpy Newton steps, a fixed count of them, no random draw: the same records give the same bytes. Candidates only: the result goes into a bundle under the experiment's folder.
 
-usage: NAMED_PIN=1 python -m training.named.choose --bundle <dir> --side train --families <out>/held_families.json --seed 0 --out <new bundle dir> [--limit N]
+usage: python -m training.named.choose --bundle <dir> --side train --families <out>/held_families.json --seed 0 --out <new bundle dir> [--limit N]
 """
 from __future__ import annotations
 

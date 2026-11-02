@@ -15,13 +15,13 @@ from engine.named.backbone import TextBackbone
 from engine.named.index import ClassSignatures, TableView, WorkbookIndex
 from engine.named.links import ONLY_OF_TYPE, SCALE, SUPPORT, Contribution, LinkWeights, RuleHit, contributions_of, named_matrix, rule_evidence, to_thousandths, words_in_text
 from engine.named.model import NamedReader, ReaderConfig
-from engine.named.names import CALC_SIDES, CLOSED_HEADS, LEFT, NONE, WORD_ROLE_CLASSES, NameSet
+from engine.named.names import CALC_SIDES, CLOSED_HEADS, FINE_OF_NAME, LEFT, NONE, WORD_ROLE_CLASSES, NameSet
 from engine.named.units import T_BAND, T_COLUMN, T_LINE, T_TABLE, T_VALUE, collate, question_graph
 from engine.program.catalog import Catalog
 from engine.program.decoder import Decoder
 from engine.program.index import index_of, stem
 from engine.program.language import Program, coordinates
-from engine.program.names import (CALC, MINUS, OVER, ROLE_OF_SLOT, SIGNED, SLOT_ANSWER_TYPE, SLOT_BLANK, SLOT_CALC_LEFT, SLOT_COMPARISON, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE, SLOT_MEASURE, SLOT_NUMBER, SLOT_PERIOD, SLOT_ROW_OP, SLOT_SECTION, SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, coordinate, slot_of)
+from engine.program.names import (CALC, MINUS, OVER, ROLE_OF_SLOT, SIGNED, SLOT_ANSWER_TYPE, SLOT_BLANK, SLOT_CALC_LEFT, SLOT_COMPARISON, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE, SLOT_MEASURE, SLOT_NUMBER, SLOT_PERIOD, SLOT_ROW_OP, SLOT_SECTION, SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, coarse_type, coordinate, slot_of)
 from engine.program.scoring import Reading
 from engine.program.words import _STOP, FILTER_NAME_SHARE, read_question
 
@@ -84,15 +84,43 @@ class NamedReading:
     book: dict[str, Evidence]
     mode: str
     class_agreement: dict[str, float]
+    index: WorkbookIndex | None = None
+    names: NameSet | None = None
 
     @property
     def expected(self) -> str:
-        """The answer type the head reads."""
+        """The answer type a program can state, which the head's classes add up to."""
+        return _coarse_best(self.read.closed[SLOT_ANSWER_TYPE])
+
+    @property
+    def expected_fine(self) -> str:
+        """What the question asks for as finely as the head reads it: its best class within the coarse type."""
         head = self.read.closed[SLOT_ANSWER_TYPE]
-        return max(sorted(head), key=lambda name: head[name])
+        coarse = _coarse_best(head)
+        return max(sorted(name for name in head if coarse_type(name) == coarse), key=lambda name: head[name])
+
+    def fine_support(self, table_id: str, position: int) -> float:
+        """How far a column's named coordinates say it holds what the question asks for, in 0..1. Zero where the fine type has no names, or the column none of them."""
+        if self.index is None or self.names is None:
+            return 0.0
+        view = self.index.views.get(table_id)
+        if view is None:
+            return 0.0
+        fine = self.expected_fine
+        for target, ids, values in zip(view.targets, view.ids, view.values):
+            if target.kind == T_COLUMN and target.position == position:
+                return max((value / SCALE for coordinate_id, value in zip(ids.tolist(), values.tolist()) if FINE_OF_NAME.get(self.names.names[coordinate_id]) == fine), default=0.0)
+        return 0.0
 
     def form_prior(self, form: str) -> float:
         return float(np.log(max(self.read.closed[SLOT_FORM].get(form, 0.0), 1e-6)))
+
+
+def _coarse_best(head: dict[str, float]) -> str:
+    totals: dict[str, float] = {}
+    for name, p in head.items():
+        totals[coarse_type(name)] = totals.get(coarse_type(name), 0.0) + p
+    return max(sorted(totals), key=lambda name: totals[name])
 
 
 def read_questions(backbone: TextBackbone, reader: NamedReader, config: ReaderConfig, questions: list[str]) -> list[QuestionRead]:
@@ -116,8 +144,13 @@ def read_questions(backbone: TextBackbone, reader: NamedReader, config: ReaderCo
 def closed_reading(read: QuestionRead, weights: LinkWeights) -> dict[str, float]:
     """A head's class as a coordinate: its log probability, or where the head can stay silent its log odds against silence, so the sum over a program's filled heads is the log likelihood of all heads up to one constant per question. Conditions, per table, are added by the caller."""
     out = {}
+    totals: dict[str, float] = {}
+    for name, p in read.closed[SLOT_ANSWER_TYPE].items():
+        totals[coarse_type(name)] = totals.get(coarse_type(name), 0.0) + p
+    for name, p in totals.items():
+        out[coordinate(SLOT_ANSWER_TYPE, name)] = weights.closed * max(float(np.log(max(p, 1e-6))), LOG_FLOOR)
     for head, classes in read.closed.items():
-        if head == SLOT_CONDITIONS:
+        if head in (SLOT_CONDITIONS, SLOT_ANSWER_TYPE):
             continue
         silent = NONE if NONE in classes else SIGNED if head == SLOT_SIZE else None
         floor = float(np.log(max(classes[silent], 1e-6))) if silent else 0.0
@@ -289,7 +322,7 @@ def build_reading(read: QuestionRead, windex: WorkbookIndex, catalog: Catalog, d
     builder.stated()
     builder.calc_left()
     agreement = _class_agreement(read, windex, names, signatures)
-    return NamedReading(read, Reading(builder.scores), builder.book, mode, agreement)
+    return NamedReading(read, Reading(builder.scores), builder.book, mode, agreement, windex, names)
 
 
 def _class_agreement(read: QuestionRead, windex: WorkbookIndex, names: NameSet, signatures: ClassSignatures | None) -> dict[str, float]:
