@@ -206,8 +206,9 @@ class _Builder:
         role = self.weights.role * self.role_of(span, slot) if (terms or rules) else 0.0
         bias = self.weights.bias(slot)
         named = sum(term.value for term in terms)
-        if slot == SLOT_FILTER:
+        if slot == SLOT_FILTER:                       # a column's name says little of a condition until a value is read there too: the role stays with the value
             named *= FILTER_NAME_SHARE
+            role = 0.0
         total = named + sum(hit.value for hit in rules) + role - bias
         if proposal:
             total = PROPOSAL_SCORE                    # one fixed score: a proposal comes before the decoder and its similarity orders nothing

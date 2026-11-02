@@ -1,4 +1,4 @@
-"""The chooser's fit, on families the reader never trained on: run the engine with the prior chooser, keep every candidate's named evidence and whether its answer is right (enron_grade), fit a logistic model on one part of those families, calibrate it per form on another, set each form's answer threshold there. The decoder's slot weights are fit the same way on what each candidate's coordinates sum to per slot.
+"""The chooser's fit, on families the reader never trained on: run the engine with the prior chooser, keep every candidate's named evidence and whether its answer is right (enron_grade), fit a multinomial logistic model among each question's candidates on one part of those families, calibrate the chosen candidate per form on another, set each form's answer threshold and the margin there. The decoder's slot weights are fit the same way on what each candidate's coordinates sum to per slot.
 
 numpy Newton steps, a fixed count of them, no random draw: the same records give the same bytes. Candidates only: the result goes into a bundle under the experiment's folder.
 
@@ -32,9 +32,10 @@ from training.named.data import family_share
 L2 = 1.0
 NEWTON_STEPS = 25
 MIN_CALIBRATION = 30
-TARGET_WRONG = 0.10
-THRESHOLDS = tuple(round(0.05 * step, 2) for step in range(1, 20))
-MARGINS = (0.0, 0.01, 0.02, 0.05, 0.1, 0.2)
+TARGET_WRONG = 0.12         # of all gold questions, on the folds that set a policy: Gate A's bar is 15% and a fold's estimate is not the bar's
+THRESHOLDS = tuple(round(0.05 * step, 2) for step in range(0, 20))
+MARGINS = (0.0, 0.1, 0.25, 0.5, 1.0, 1.5, 2.0, 3.0)
+WRONG_COSTS = (0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0, 8.0, 12.0)
 FOLDS = 5
 FOLD_SEED = 20261102
 ANSWER_ROWS = 50
@@ -94,8 +95,8 @@ def decision_of(rows: Sequence["CandidateRecord"], chooser: Chooser) -> tuple[st
     if not ran:
         return ASK, None, (ASK_NOTHING,)
     logit, best = ran[0]
-    other = next((chooser.probability(held, row.form) for held, row in ran[1:] if row.answer != best.answer), None)
-    reasons = reasons_to_ask(chooser.probability(logit, best.form), best.form, other, bool(best.features.get("needs_asking")), bool(best.features.get("adds_twice")), chooser)
+    other = next((held for held, row in ran[1:] if row.answer != best.answer), None)
+    reasons = reasons_to_ask(chooser.probability(logit, best.form), best.form, logit - other if other is not None else None, bool(best.features.get("needs_asking")), bool(best.features.get("adds_twice")), chooser)
     return (ASK if reasons else ANSWER), best, reasons
 
 
@@ -108,6 +109,60 @@ def cross_fit(base: Chooser, rows: Sequence["CandidateRecord"], folds: int = FOL
     return {fold: calibrated(base, [row for row in rows if fold_of(row.family, folds) != fold]) for fold in range(folds)}
 
 
+def groups_of(rows: Sequence["CandidateRecord"], names: Sequence[str] = FEATURES) -> list[tuple[np.ndarray, np.ndarray]]:
+    """Each question with a right candidate that ran: its candidates' evidence, and that evidence's target, shared among the right ones."""
+    by_question: dict[str, list[CandidateRecord]] = {}
+    for row in rows:
+        if row.ran:
+            by_question.setdefault(row.question, []).append(row)
+    out = []
+    for question in sorted(by_question):
+        group = by_question[question]
+        right = np.asarray([row.right for row in group], dtype=np.float64)
+        if right.sum() and not right.all():
+            out.append((matrix_of(group, names), right / right.sum()))
+    return out
+
+
+def fit_conditional(groups: Sequence[tuple[np.ndarray, np.ndarray]], columns: int, *, l2: float = L2, steps: int = NEWTON_STEPS) -> np.ndarray:
+    """Weights of a multinomial logistic model among each question's candidates, by damped Newton on the L2-penalized log loss. Deterministic: linear solves, a fixed number of steps, halving a step that does not lower the loss."""
+    theta = np.zeros(columns)
+    penalty = np.eye(columns) * l2
+
+    def loss_of(values: np.ndarray) -> float:
+        total = 0.5 * l2 * float(values @ values)
+        for matrix, target in groups:
+            scores = matrix @ values
+            scores = scores - scores.max()
+            total -= float(target @ (scores - np.log(np.exp(scores).sum())))
+        return total
+
+    current = loss_of(theta)
+    for _ in range(steps):
+        gradient = l2 * theta
+        hessian = penalty + np.eye(columns) * 1e-6
+        for matrix, target in groups:
+            scores = matrix @ theta
+            scores = scores - scores.max()
+            p = np.exp(scores)
+            p /= p.sum()
+            mean = p @ matrix
+            gradient = gradient + mean - target @ matrix
+            hessian = hessian + (matrix * p[:, None]).T @ matrix - np.outer(mean, mean)
+        step = np.linalg.solve(hessian, gradient)
+        size = 1.0
+        while size > 1e-3:
+            trial = theta - size * step
+            value = loss_of(trial)
+            if value < current:
+                theta, current = trial, value
+                break
+            size /= 2.0
+        else:
+            break
+    return np.round(theta, 6)
+
+
 def fold_report(rows: Sequence["CandidateRecord"], folds: int = FOLDS) -> dict:
     """Weights fit on all folds but one, read out of fold on the one left: top-1 right per question, against the prior order. What the chooser's weights are worth on families neither saw."""
     right = base = questions = 0
@@ -116,8 +171,7 @@ def fold_report(rows: Sequence["CandidateRecord"], folds: int = FOLDS) -> dict:
         held = [row for row in rows if fold_of(row.family, folds) == fold]
         if not kept or not held:
             continue
-        weights, bias = fit_logistic(matrix_of(kept), np.asarray([row.right for row in kept], dtype=np.float64))
-        chooser = Chooser(dict(zip(FEATURES, (float(value) for value in weights))), bias)
+        chooser = Chooser(dict(zip(FEATURES, (float(value) for value in fit_conditional(groups_of(kept), len(FEATURES))))))
         by_question: dict[str, list[CandidateRecord]] = {}
         for row in held:
             by_question.setdefault(row.question, []).append(row)
@@ -180,17 +234,17 @@ def calibrate(logits: np.ndarray, labels: np.ndarray) -> tuple[float, float]:
     return (round(float(weights[0]), 6), round(float(bias), 6))
 
 
-def choose_thresholds(best: Sequence[tuple[str, float, bool]], target_wrong: float = TARGET_WRONG) -> dict[str, float]:
-    """For each form, the lowest threshold whose answered questions are at most target_wrong wrong, from each question's chosen candidate (form, probability, right). None reaching it leaves the top one."""
+def choose_thresholds(best: Sequence[tuple[str, float, bool]], cost: float) -> dict[str, float]:
+    """For each form, the threshold where right answers less cost x wrong ones is highest, from each question's chosen candidate (form, probability, right). Ties go to the higher threshold."""
     out = {}
     for form in FORMS:
         rows = [(p, right) for held, p, right in best if held == form]
-        chosen = THRESHOLDS[-1]
+        chosen, most = THRESHOLDS[-1], None
         for threshold in THRESHOLDS:
             answered = [right for p, right in rows if p >= threshold]
-            if answered and sum(not right for right in answered) / len(answered) <= target_wrong:
-                chosen = threshold
-                break
+            value = sum(answered) - cost * (len(answered) - sum(answered))
+            if most is None or value >= most:
+                chosen, most = threshold, value
         out[form] = chosen
     return out
 
@@ -200,53 +254,64 @@ def fit_chooser(fit: Sequence[CandidateRecord], held: Sequence[CandidateRecord])
     shared = {record.family for record in fit} & {record.family for record in held}
     if shared:
         raise ValueError(f"{len(shared)} families both fit and calibrate")
-    matrix = matrix_of(fit)
-    labels = np.asarray([record.right for record in fit], dtype=np.float64)
-    weights, bias = fit_logistic(matrix, labels)
-    fitted = dict(zip(FEATURES, (float(value) for value in weights)))
-    return calibrated(Chooser(fitted, bias), held)
+    fitted = dict(zip(FEATURES, (float(value) for value in fit_conditional(groups_of(fit), len(FEATURES)))))
+    return calibrated(Chooser(fitted), held)
 
 
 def calibrated(base: Chooser, held: Sequence[CandidateRecord]) -> Chooser:
     """base's weights, with each form's calibration, its threshold and the margin set on held."""
     weights = np.asarray([float(base.weights.get(name, 0.0)) for name in FEATURES])
-    logits_of = lambda rows: matrix_of(rows) @ weights + base.bias
+    questions: dict[str, list[tuple[float, int, CandidateRecord]]] = {}
+    for record, logit in zip(held, (matrix_of(held) @ weights + base.bias).tolist()):
+        if record.ran:
+            questions.setdefault(record.question, []).append((round(logit, 4), record.rank, record))
+    ranked = [sorted(questions[question], key=lambda row: (-row[0], row[1])) for question in sorted(questions)]
     calibration = {}
     for form in FORMS:
-        rows = [record for record in held if record.form == form]
-        if rows:
-            calibration[form] = calibrate(logits_of(rows), np.asarray([record.right for record in rows], dtype=np.float64))
+        chosen = [rows[0] for rows in ranked if rows[0][2].form == form]
+        if chosen:
+            calibration[form] = calibrate(np.asarray([row[0] for row in chosen]), np.asarray([row[2].right for row in chosen], dtype=np.float64))
     chooser = Chooser(base.weights, base.bias, calibration)
-    questions: dict[str, list[tuple[float, int, CandidateRecord]]] = {}
-    for record, logit in zip(held, logits_of(list(held)).tolist()):
-        questions.setdefault(record.question, []).append((round(logit, 4), record.rank, record))
-    ranked = [sorted(rows, key=lambda row: (-row[0], row[1])) for rows in questions.values()]
-    thresholds = choose_thresholds([(rows[0][2].form, chooser.probability(rows[0][0], rows[0][2].form), rows[0][2].right) for rows in ranked])
-    return Chooser(base.weights, base.bias, calibration, thresholds, choose_margin(ranked, chooser, thresholds))
+    thresholds, margin = choose_policy(ranked, chooser, len({record.question for record in held}))
+    return Chooser(base.weights, base.bias, calibration, thresholds, margin)
 
 
-def choose_margin(ranked: list[list[tuple[float, int, CandidateRecord]]], chooser: Chooser, thresholds: dict[str, float], target_wrong: float = TARGET_WRONG) -> float:
-    """How close another answer may sit before the reading is asked about: the margin with the most right among those keeping answered questions at most target_wrong wrong, else the widest. Ties go to the wider."""
+def choose_policy(ranked: list[list[tuple[float, int, CandidateRecord]]], chooser: Chooser, questions: int, target_wrong: float = TARGET_WRONG) -> tuple[dict[str, float], float]:
+    """Each form's threshold and the margin with the most right among those keeping wrong answers at most target_wrong of all questions: a higher cost of a wrong answer raises the thresholds, a wider margin asks about close readings. A candidate that must be asked about stands aside. Ties go to the wider margin and the higher cost."""
     rows = []
     for candidates in ranked:
         logit, _, best = candidates[0]
-        p = chooser.probability(logit, best.form)
-        other = next((chooser.probability(row[0], row[2].form) for row in candidates[1:] if row[2].answer != best.answer), None)
-        rows.append((p, p - other if other is not None else 1.0, best.right, thresholds.get(best.form, 0.5)))
-    chosen, most = MARGINS[-1], -1
+        if best.features.get("needs_asking") or best.features.get("adds_twice"):
+            continue
+        other = next((row[0] for row in candidates[1:] if row[2].answer != best.answer), None)
+        rows.append((best.form, chooser.probability(logit, best.form), logit - other if other is not None else float("inf"), best.right))
+    found: tuple | None = None
     for margin in MARGINS:
-        answered = [right for p, gap, right, threshold in rows if p >= threshold and gap >= margin]
-        wrong = sum(not right for right in answered)
-        if answered and wrong / len(answered) <= target_wrong and sum(answered) >= most:
-            chosen, most = margin, sum(answered)
-    return chosen
+        kept = [(form, p, right) for form, p, gap, right in rows if gap >= margin]
+        for cost in WRONG_COSTS:
+            thresholds = choose_thresholds(kept, cost)
+            answered = [right for form, p, right in kept if p >= thresholds[form]]
+            right, wrong = sum(answered), len(answered) - sum(answered)
+            if wrong <= target_wrong * max(1, questions) and (found is None or right >= found[0]):
+                found = (right, thresholds, margin)
+    if found is None:
+        return {form: THRESHOLDS[-1] for form in FORMS}, MARGINS[-1]
+    return found[1], found[2]
 
 
 def fit_slot_weights(records: Sequence[CandidateRecord]) -> Weights:
     """The decoder's slot weights, from each candidate's per-slot sum of readings. Clipped above zero: a slot that argued against the right program is read as silent, never inverted."""
-    matrix = np.asarray([[record.slots.get(slot, 0.0) for slot in SLOTS] for record in records], dtype=np.float64).reshape(len(records), len(SLOTS))
-    labels = np.asarray([record.right for record in records], dtype=np.float64)
-    weights, _ = fit_logistic(matrix, labels)
+    by_question: dict[str, list[CandidateRecord]] = {}
+    for record in records:
+        if record.ran:
+            by_question.setdefault(record.question, []).append(record)
+    groups = []
+    for question in sorted(by_question):
+        group = by_question[question]
+        right = np.asarray([record.right for record in group], dtype=np.float64)
+        if right.sum() and not right.all():
+            groups.append((np.asarray([[record.slots.get(slot, 0.0) for slot in SLOTS] for record in group], dtype=np.float64), right / right.sum()))
+    weights = fit_conditional(groups, len(SLOTS), l2=L2) if groups else np.ones(len(SLOTS))
     return Weights({slot: round(float(max(value, 0.0)), 6) for slot, value in zip(SLOTS, weights)})
 
 
@@ -282,7 +347,7 @@ def main() -> None:
     print(json.dumps({"questions": len({record.question for record in records}), "candidates": len(records), "right": sum(record.right for record in records), "fit_families": len({record.family for record in fit}), "held_families": len({record.family for record in held}), "calibration": dict(chooser.calibration), "thresholds": dict(chooser.thresholds)}, sort_keys=True), flush=True)
 
 
-__all__ = ["CandidateRecord", "answer_key", "calibrate", "calibrated", "choose_margin", "choose_thresholds", "collect", "cross_fit", "decision_of", "fit_chooser", "fit_logistic", "fit_slot_weights", "fold_of", "fold_report", "records_of"]
+__all__ = ["CandidateRecord", "answer_key", "calibrate", "calibrated", "choose_policy", "choose_thresholds", "collect", "cross_fit", "decision_of", "fit_chooser", "fit_conditional", "fit_logistic", "groups_of", "fit_slot_weights", "fold_of", "fold_report", "records_of"]
 
 if __name__ == "__main__":
     main()

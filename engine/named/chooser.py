@@ -1,6 +1,6 @@
-"""The chooser: a logistic model over named evidence per candidate, its contributions shown, calibrated per form on held-out families. It replaces a cross-encoder ranker: no text is read here, only the evidence below by name.
+"""The chooser: a multinomial logistic model over named evidence among a question's candidates, its contributions shown, calibrated per form on held-out families. It replaces a cross-encoder ranker: no text is read here, only the evidence below by name.
 
-logit = bias + sum over features of weight x evidence. A probability is that logit through its form's calibration. answer_or_ask then answers, or asks: a program with a link no name supports is always asked about (named or asked); so is a probability under the form's threshold, and two readings with different answers too close to tell apart, as "X or Y?".
+logit = bias + sum over features of weight x evidence. A probability is the chosen candidate's logit through its form's calibration. answer_or_ask then answers, or asks: a program with a link no name supports is always asked about (named or asked); so is a probability under the form's threshold, and two readings with different answers within the margin in logits, as "X or Y?".
 """
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
 _KINDS = {SLOT_MEASURE: "measure", SLOT_KEY: "key", SLOT_SHOWN: "shown", SLOT_VALUE: "value", SLOT_CONTAINS: "contains", SLOT_LINE: "line", SLOT_SECTION: "section"}
 _FLAGS = {EV_TYPE_AGREES: "type_agrees", EV_SHAPE_AGREES: "shape_agrees", EV_PRINTED_TIE: "printed_tie", EV_BARE_ZERO: "bare_zero", EV_EMPTY: "empty", EV_FAILED: "failed", EV_ROW_DUMP: "row_dump", EV_MANY_ROWS: "many_rows", EV_WRONG_KIND: "wrong_kind", EV_ROW_COUNT_FOR_AMOUNT: "row_count_for_amount", EV_FRACTION_FOR_COUNT: "fraction_for_count", EV_TOO_LARGE_FOR_SHARE: "too_large_for_share", EV_FILTER_DID_NOTHING: "filter_did_nothing", EV_REPEATED_LINES: "repeated_lines", EV_ADDS_TWICE: "adds_twice"}
-FEATURES = ("fine_type", "words_explained", "words_unexplained", "parts_asked", "parts_unasked", "link_mean", "link_min", *(f"link_{kind}" for kind in _KINDS.values()), "rule_exact", "rule_partial", "rule_prefix", *_FLAGS.values(), "form_prior", "decoder_score", "rank_inverse", "score_margin", "conditions", "class_agreement", "needs_asking", "open_similarity")
+FEATURES = ("fine_type", "shown_columns", "words_explained", "words_unexplained", "parts_asked", "parts_unasked", "link_mean", "link_min", *(f"link_{kind}" for kind in _KINDS.values()), "rule_exact", "rule_partial", "rule_prefix", *_FLAGS.values(), "form_prior", "decoder_score", "rank_inverse", "score_margin", "conditions", "class_agreement", "needs_asking", "open_similarity")
 ROLE_MIN = 0.5
 SUPPORT_NOTE = "no_named_support"
 ASK_LOW = "low_confidence"
@@ -140,6 +140,7 @@ def features_of(verified: Verified, named: NamedReading, catalog: Catalog, *, ra
     column = answer_column(program)
     features = {
         "fine_type": named.fine_support(column.table, column.position) if column is not None else 0.0,
+        "shown_columns": float(max(len(getattr(program, "shown", ())) - 1, 0)),
         "words_explained": len(explained & set(content)) / max(1, len(content)),
         "words_unexplained": len(set(roleful) - explained) / max(1, len(content)),
         "parts_asked": len(asked) / max(1, len(parts)),
@@ -216,8 +217,8 @@ def _answer_key(rows) -> tuple:
     return tuple(tuple(cell(value) for value in row) for row in rows)
 
 
-def reasons_to_ask(probability: float, form: str, other: float | None, needs_support: bool, adds_twice: bool, chooser: Chooser) -> tuple[str, ...]:
-    """The rule itself. other: the probability of the best reading with a different answer."""
+def reasons_to_ask(probability: float, form: str, gap: float | None, needs_support: bool, adds_twice: bool, chooser: Chooser) -> tuple[str, ...]:
+    """The rule itself. gap: how far, in logits, the best reading stands above the best with a different answer."""
     reasons = []
     if needs_support:
         reasons.append(SUPPORT_NOTE)
@@ -225,7 +226,7 @@ def reasons_to_ask(probability: float, form: str, other: float | None, needs_sup
         reasons.append(ASK_ADDS_TWICE)
     if probability < chooser.threshold(form):
         reasons.append(ASK_LOW)
-    if other is not None and probability - other < chooser.margin:
+    if gap is not None and gap < chooser.margin:
         reasons.append(ASK_CLOSE)
     return tuple(reasons)
 
@@ -237,7 +238,7 @@ def answer_or_ask(candidates: Sequence[Candidate], chooser: Chooser) -> Decision
         return Decision(ASK, None, None, (ASK_NOTHING,))
     best = ran[0]
     other = next((candidate for candidate in ran[1:] if not _same_answer(best, candidate)), None)
-    reasons = reasons_to_ask(best.probability, form_of(best.verified.scored.program), other.probability if other is not None else None, best.needs_asking, best.verified.held(EV_ADDS_TWICE), chooser)
+    reasons = reasons_to_ask(best.probability, form_of(best.verified.scored.program), best.logit - other.logit if other is not None else None, best.needs_asking, best.verified.held(EV_ADDS_TWICE), chooser)
     return Decision(ASK if reasons else ANSWER, best, other, reasons)
 
 

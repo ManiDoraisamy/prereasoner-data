@@ -30,7 +30,7 @@ from engine.program.scoring import score_program
 from engine.program.store import RequestTables
 from engine.program.verifier import Evidence, Verified
 from training.named.augment import SURVIVAL_OPS, add_columns, augmented, mutate_catalog, reorder_columns
-from training.named.choose import MARGINS, CandidateRecord, calibrate, choose_margin, choose_thresholds, fit_chooser, fit_logistic, fit_slot_weights
+from training.named.choose import MARGINS, CandidateRecord, calibrate, choose_policy, choose_thresholds, cross_fit, decision_of, fit_chooser, fit_conditional, fit_logistic, fit_slot_weights, fold_of, groups_of
 from training.named.data import TabExample, check_held_out, read_examples, split_families, write_shard
 from training.named.evaluate import GATE_A, Item, gate_a, graded, record_of, run_mode, run_survival
 from training.named.fake import MEANINGS, HashBackbone, fake_catalog, fake_examples, fake_name_set, fake_rows
@@ -423,9 +423,9 @@ def test_stable_ties_and_asking_between_close_readings() -> None:
     def candidate(position: int, rank: int, probability: float, needs: bool = False) -> Candidate:
         program = Show("t0", (Col("t0", position),), ())
         verified = Verified(score_program(program, named.reading, catalog), run(program, prepared.tables), ())
-        return Candidate(verified, {}, 0.0, probability, (), needs, rank)
+        return Candidate(verified, {}, probability * 10.0, probability, (), needs, rank)
 
-    open_chooser = Chooser({}, thresholds={form: 0.0 for form in FORMS}, margin=0.05)
+    open_chooser = Chooser({}, thresholds={form: 0.0 for form in FORMS}, margin=0.5)
     assert answer_or_ask([candidate(2, 0, 0.9), candidate(3, 1, 0.5)], open_chooser).kind == ANSWER
     close = answer_or_ask([candidate(2, 0, 0.9), candidate(3, 1, 0.88)], open_chooser)
     assert close.kind == ASK and close.reasons == ("close_readings",) and close.other is not None
@@ -454,22 +454,34 @@ def test_fit_is_deterministic_and_finds_the_signal() -> None:
     logit = rng.normal(size=200)
     a2, b2 = calibrate(logit, (logit + rng.normal(size=200) * 0.3 > 0).astype(float))
     assert a2 > 1.0 and abs(b2) < 1.0
-    thresholds = choose_thresholds([("agg", 0.9, True)] * 9 + [("agg", 0.9, False)] + [("agg", 0.5, False)] * 5)
+    thresholds = choose_thresholds([("agg", 0.9, True)] * 9 + [("agg", 0.9, False)] + [("agg", 0.5, False)] * 5, 1.0)
     assert 0.5 < thresholds["agg"] <= 0.9
+    assert choose_thresholds([("agg", 0.9, True)] * 3 + [("agg", 0.4, True)] * 3 + [("agg", 0.4, False)] * 3, 0.5)["agg"] <= 0.4
 
 
 def _record(question: str, family: str, right: bool, value: float, rank: int = 0) -> CandidateRecord:
-    return CandidateRecord(question, family, "agg", {"words_explained": value, "type_agrees": float(right)}, {"measure": value}, right, rank)
+    return CandidateRecord(question, family, "agg", {"words_explained": value, "type_agrees": float(right)}, {"measure": value}, right, rank, "x" if right else "y")
 
 
 def test_chooser_fit_keeps_families_apart() -> None:
-    fit = [_record(f"q{at}", "a", at % 2 == 0, (at % 2) * 0.1 + 0.2, 0) for at in range(40)]
-    held = [_record(f"h{at}", "b", at % 2 == 0, 0.5, at % 3) for at in range(40)]
+    fit = [_record(f"q{at // 2}", "a", at % 2 == 0, (at % 2) * 0.1 + 0.2, at % 2) for at in range(40)]
+    held = [_record(f"h{at}", "b", at % 2 == 0, 0.5, 0) for at in range(40)]
     chooser = fit_chooser(fit, held)
     assert chooser.weights["type_agrees"] > 0 and "agg" in chooser.calibration and "agg" in chooser.thresholds and chooser.margin in MARGINS
     assert calibrate(np.linspace(-2, 2, 60), (np.linspace(-2, 2, 60) < 0).astype(float)) == (1.0, 0.0)
-    near = [[(1.0, 0, CandidateRecord("q", "f", "agg", {}, {}, True, 0, "a")), (0.9, 1, CandidateRecord("q", "f", "agg", {}, {}, False, 1, "b"))], [(1.0, 0, CandidateRecord("r", "f", "agg", {}, {}, False, 0, "c")), (0.99, 1, CandidateRecord("r", "f", "agg", {}, {}, True, 1, "d"))]]
-    assert choose_margin(near, Chooser({}), {"agg": 0.0}, target_wrong=0.0) == 0.02
+    near = [[(1.0, 0, CandidateRecord("q", "f", "agg", {}, {}, True, 0, "a")), (0.5, 1, CandidateRecord("q", "f", "agg", {}, {}, False, 1, "b"))], [(1.0, 0, CandidateRecord("r", "f", "agg", {}, {}, False, 0, "c")), (0.99, 1, CandidateRecord("r", "f", "agg", {}, {}, True, 1, "d"))]]
+    assert choose_policy(near, Chooser({}), 2, target_wrong=0.0)[1] == 0.5
+    groups = groups_of([_record("q", "a", True, 1.0, 0), _record("q", "a", False, 0.0, 1), _record("r", "a", True, 1.0, 0), _record("r", "a", False, 0.2, 1)])
+    assert len(groups) == 2
+    question = [CandidateRecord(f"q{at}", "a", "agg", {"words_explained": 1.0, "conditions": at % 2}, {}, True, 0, "x") for at in range(30)] + [CandidateRecord(f"q{at}", "a", "agg", {"words_explained": 0.2, "conditions": 1.0}, {}, False, 1, "y") for at in range(30)]
+    groups = groups_of(question)
+    assert len(groups) == 30
+    theta = fit_conditional(groups, len(FEATURES))
+    assert theta[FEATURES.index("words_explained")] > 0, "the evidence that sets the right one apart gets the weight"
+    assert fit_conditional(groups, len(FEATURES)).tolist() == theta.tolist()
+    fold = fold_of("a")
+    decided = cross_fit(Chooser(dict(zip(FEATURES, theta.tolist()))), question + [CandidateRecord(f"z{at}", "b", "agg", {"words_explained": 0.5}, {}, True, 0, "x") for at in range(30)])
+    assert set(decided) == set(range(5)) and decision_of(question[:1] + question[30:31], decided[fold])[1] is not None
     try:
         fit_chooser(fit, [_record("x", "a", True, 0.1)])
     except ValueError:
@@ -582,6 +594,22 @@ def test_a_bundle_carries_learned_biases_per_kind_of_target() -> None:
     weights = link_weights_of(reader)
     assert weights.bias("value") == weights.bias("contains") and weights.bias("measure") == weights.bias("shown") == weights.bias("key")
     assert weights.bias("value") > weights.bias("measure") and weights.bias("period") == 0.0
+
+
+def test_training_resumes_from_its_state() -> None:
+    """A pod can die with hours of training on it (2026-11-02, step 14,800). What a lease brings back goes on from where it stood."""
+    with tempfile.TemporaryDirectory() as folder:
+        config = TrainConfig(reader=ReaderConfig(backbone="hash", hidden=36, blocks=1, open_dim=16, sample_rows=3), steps=8, questions=6, seed=0, held_share=0.2, eval_every=4, eval_tabs=2)
+        first = os.path.join(folder, "a")
+        Path(first).mkdir()
+        short = TrainConfig(reader=config.reader, steps=8, questions=6, seed=0, held_share=0.2, eval_every=4, eval_tabs=2, stop_at=4)
+        train(fake_examples(6), fake_name_set(), HashBackbone(), short, first, log_print=False)
+        state = os.path.join(first, "last_state.pt")
+        assert os.path.exists(state)
+        second = os.path.join(folder, "b")
+        again = TrainConfig(reader=config.reader, steps=8, questions=6, seed=0, held_share=0.2, eval_every=4, eval_tabs=2, resume=state)
+        summary = train(fake_examples(6), fake_name_set(), HashBackbone(), again, second, log_print=False)
+        assert summary["steps"] == 8 and summary["resumed_at"] == 4 and not os.path.exists(os.path.join(second, "last_state.pt"))
 
 
 def test_training_runs_under_autocast() -> None:

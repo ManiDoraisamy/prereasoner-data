@@ -262,6 +262,8 @@ def _table_words(table_id: str, index: TableIndex, question_words: set[str], raw
             seen.add((position, folded))
     for position, folded in seen:
         text = words_of(folded)
+        if all(word in _STOP for word in text):      # "a", "or", "in" as a cell: the question's small word is no reading of it
+            continue
         share = sum(word in question_words for word in text) / len(text) if text else 0.0
         whole = re.search(rf"(?<!\w){re.escape(folded)}(?!\w)", low) is not None
         out[coordinate(SLOT_VALUE, Col(table_id, position).name, folded)] = 1.0 if whole else 0.8 * share

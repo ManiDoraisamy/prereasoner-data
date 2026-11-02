@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import random
 import re
 import subprocess
@@ -27,6 +28,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
+import psutil
 import torch
 from torch import nn
 
@@ -74,6 +76,8 @@ class TrainConfig:
     amp: bool = False
     open_detached: bool = False
     augment: dict = field(default_factory=lambda: dict(TRAINING_SHARES))
+    resume: str | None = None      # a last_state.pt to go on from
+    stop_at: int | None = None     # stop here with the state written, for a test
 
 
 @dataclass
@@ -575,11 +579,21 @@ def train(examples: list[TabExample], names: NameSet, backbone: nn.Module, confi
     rng.shuffle(order)
     best = -1.0
     started = time.time()
+    begin = cursor_at = 0
+    if config.resume:
+        held_state = torch.load(config.resume, map_location=device, weights_only=False)
+        backbone.load_state_dict(held_state["backbone"])
+        reader.load_state_dict(held_state["reader"])
+        optimizer.load_state_dict(held_state["optimizer"])
+        scheduler.load_state_dict(held_state["scheduler"])
+        begin, cursor_at, best = int(held_state["step"]), int(held_state["cursor"]), float(held_state["best"])
+        rng.setstate(held_state["rng"])
+        del held_state
     first, last = [], []
     history = []
     use_amp = config.amp
     with open(out / "log.jsonl", "a", encoding="utf-8", newline="\n") as log:
-        step = cursor = 0
+        step, cursor = begin, cursor_at
         tick = time.perf_counter()
         spent = {"build": 0.0, "forward": 0.0, "texts": 0, "links": 0}
         while step < config.steps:
@@ -611,7 +625,7 @@ def train(examples: list[TabExample], names: NameSet, backbone: nn.Module, confi
             last = last[-max(10, config.steps // 10):]
             if step % 10 == 0 or step == config.steps:
                 now = time.perf_counter()
-                row = {"step": step, "loss": round(value, 4), **{name: round(float(part.detach()), 4) for name, part in parts.items()}, "seconds": round(time.time() - started, 1), "seconds_per_step": round((now - tick) / 10, 3), "build_seconds_per_step": round(spent["build"] / max(1, step), 3), "forward_seconds_per_step": round(spent["forward"] / max(1, step), 3), "texts_per_step": round(spent["texts"] / max(1, step), 1), "links_per_step": round(spent["links"] / max(1, step), 1)}
+                row = {"step": step, "loss": round(value, 4), **{name: round(float(part.detach()), 4) for name, part in parts.items()}, "rss_gb": round(psutil.Process().memory_info().rss / 1024 ** 3, 2), "seconds": round(time.time() - started, 1), "seconds_per_step": round((now - tick) / 10, 3), "build_seconds_per_step": round(spent["build"] / max(1, step), 3), "forward_seconds_per_step": round(spent["forward"] / max(1, step), 3), "texts_per_step": round(spent["texts"] / max(1, step), 1), "links_per_step": round(spent["links"] / max(1, step), 1)}
                 tick = now
                 log.write(json.dumps(row) + "\n")
                 log.flush()
@@ -629,9 +643,17 @@ def train(examples: list[TabExample], names: NameSet, backbone: nn.Module, confi
                     best = metrics["link_top1"]
                     write_bundle(out / "best", backbone, reader, names, reader_config, link_weights_of(reader), signatures=signatures, record={**(record or {}), "metrics": metrics, "step": step, "seed": config.seed})
                     (out / "best.json").write_text(json.dumps({**metrics, **(record or {})}, indent=1, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
+            if step % config.eval_every == 0 and step < config.steps:
+                # what a dead pod leaves: the lease brings out/ back, and the next one goes on from here
+                torch.save({"backbone": backbone.state_dict(), "reader": reader.state_dict(), "optimizer": optimizer.state_dict(), "scheduler": scheduler.state_dict(), "step": step, "cursor": cursor, "best": best, "rng": rng.getstate()}, out / "last_state.tmp")
+                os.replace(out / "last_state.tmp", out / "last_state.pt")
+            if config.stop_at is not None and step >= config.stop_at:
+                return {"steps": step}
+    if (out / "last_state.pt").exists():
+        (out / "last_state.pt").unlink()
     if not held:
         write_bundle(out / "best", backbone, reader, names, reader_config, link_weights_of(reader), signatures=signatures, record={**(record or {}), "step": step, "seed": config.seed})
-    return {"steps": step, "loss_first": round(float(np.mean(first)), 4), "loss_last": round(float(np.mean(last or first)), 4), "seconds": round(time.time() - started, 1), "train_tabs": len(kept), "held_tabs": len(held), "best_top1": best, "seconds_per_step": round((time.time() - started) / max(1, step), 3), "build_seconds_per_step": round(spent["build"] / max(1, step), 3), "texts_per_step": round(spent["texts"] / max(1, step), 1), "links_per_step": round(spent["links"] / max(1, step), 1)}
+    return {"steps": step, "resumed_at": begin, "loss_first": round(float(np.mean(first or last or [0.0])), 4), "loss_last": round(float(np.mean(last or first or [0.0])), 4), "seconds": round(time.time() - started, 1), "train_tabs": len(kept), "held_tabs": len(held), "best_top1": best, "seconds_per_step": round((time.time() - started) / max(1, step - begin), 3), "build_seconds_per_step": round(spent["build"] / max(1, step), 3), "texts_per_step": round(spent["texts"] / max(1, step), 1), "links_per_step": round(spent["links"] / max(1, step), 1)}
 
 
 def names_for(examples: list[TabExample]) -> NameSet:
@@ -662,6 +684,7 @@ def main() -> None:
     parser.add_argument("--eval-every", type=int, default=500)
     parser.add_argument("--eval-tabs", type=int, default=200)
     parser.add_argument("--amp", action="store_true")
+    parser.add_argument("--resume-from", help="a last_state.pt to go on from")
     parser.add_argument("--open-detached", action="store_true")
     parser.add_argument("--no-augment", action="store_true")
     args = parser.parse_args()
@@ -684,7 +707,7 @@ def main() -> None:
         signatures = ClassSignatures.from_groups(meaning_groups())
         reader_config = ReaderConfig(backbone=args.backbone, backbone_layers=args.layers, hidden=args.hidden, blocks=args.blocks, sample_rows=args.sample_rows, window_columns=args.window_columns)
     record["names_sha"] = names.sha
-    config = TrainConfig(reader=reader_config, steps=args.steps, accumulate=args.accumulate, questions=args.questions, lr=args.lr, head_lr=args.head_lr, seed=args.seed, held_share=args.held_share, eval_every=args.eval_every, eval_tabs=args.eval_tabs, amp=args.amp, open_detached=args.open_detached, augment={} if args.no_augment else dict(TRAINING_SHARES))
+    config = TrainConfig(reader=reader_config, steps=args.steps, accumulate=args.accumulate, questions=args.questions, lr=args.lr, head_lr=args.head_lr, seed=args.seed, held_share=args.held_share, eval_every=args.eval_every, eval_tabs=args.eval_tabs, amp=args.amp, open_detached=args.open_detached, augment={} if args.no_augment else dict(TRAINING_SHARES), resume=args.resume_from)
     summary = train(examples, names, backbone, config, out, record=record, signatures=signatures)
     (out / "summary.json").write_text(json.dumps({**summary, **record}, indent=1, sort_keys=True, default=str) + "\n", encoding="utf-8", newline="\n")
     print(json.dumps(summary, sort_keys=True), flush=True)

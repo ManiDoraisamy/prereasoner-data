@@ -110,10 +110,16 @@ def packed_examples(examples: str | Path, experiment: Path) -> Path:
     return archive
 
 
-def remote_command(backbone: str, steps: int, seed: int, *, hidden: int = 384, blocks: int = 3) -> str:
-    """Unpack, check CUDA by running a kernel, train into out/candidate. A failed run exits 4 with its log's tail; out/ always travels back."""
-    train = f"{ALLOC} NAMED_BACKBONE_ONLINE=1 python -m training.named.train --examples examples --experiment pod --out out/candidate --backbone {backbone} --steps {steps} --accumulate 4 --seed {seed} --hidden {hidden} --blocks {blocks} --amp --eval-every {max(500, steps // 10)}"
-    return f"cd /workspace && mkdir -p out && tar -xf examples.tar && {PIP}; {CUDA_CHECK}; {train} > out/train.log 2>&1 || {{ tail -5 out/train.log; exit 4; }}; tail -2 out/train.log; ls -la out/candidate out/candidate/best"
+def latest_state(experiment: Path) -> Path | None:
+    """The newest training state an earlier lease brought back, if any: the next one goes on from it."""
+    held = sorted(experiment.glob("out*/candidate/last_state.pt"), key=lambda path: path.stat().st_mtime)
+    return held[-1] if held else None
+
+
+def remote_command(backbone: str, steps: int, seed: int, *, hidden: int = 384, blocks: int = 3, resume: bool = False) -> str:
+    """Unpack, check CUDA by running a kernel, train into out/candidate. A failed run exits 4 with its log's tail; out/ always travels back. Evals come every tenth of the run, and the state is written with them."""
+    train = f"{ALLOC} NAMED_BACKBONE_ONLINE=1 python -m training.named.train --examples examples --experiment pod --out out/candidate --backbone {backbone} --steps {steps} --accumulate 4 --seed {seed} --hidden {hidden} --blocks {blocks} --amp --eval-every {max(500, steps // 10)}" + (" --resume-from resume_state.pt" if resume else "")
+    return f"cd /workspace && mkdir -p out && tar -xf examples.tar && {PIP}; pip install -q psutil 2>&1 | tail -1; {CUDA_CHECK}; {train} > out/train.log 2>&1 || {{ tail -5 out/train.log; exit 4; }}; tail -2 out/train.log; ls -la out/candidate out/candidate/best"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -137,9 +143,10 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--experiment takes letters, digits, '.', '_' and '-'")
     manifest = json.loads((Path(args.examples) / "manifest.json").read_text(encoding="utf-8"))
     plan = plan_candidate(args.backbone, int(manifest["tabs"]), int(manifest["gold"]), epochs=args.epochs, steps=args.steps)
-    remote = remote_command(args.backbone, plan.steps, args.seed)
     print(json.dumps(asdict(plan), indent=0, sort_keys=True))
     experiment = EXPERIMENTS_DIR / args.experiment
+    state = latest_state(experiment)
+    remote = remote_command(args.backbone, plan.steps, args.seed, resume=state is not None)
     args.minutes = args.minutes or plan.lease_minutes
     args.dry_run = not args.go
     if not args.go:
@@ -152,7 +159,13 @@ def main(argv: list[str] | None = None) -> int:
     if free < plan.bundle_mb / 1024 * 2 + 2:
         raise SystemExit(f"refused: {free:.1f} GB free")
     archive = packed_examples(args.examples, experiment)
-    return lease(args, "named", remote, [(str(archive), "/workspace/examples.tar")], GPUS, experiments=EXPERIMENTS_DIR, code=pod_code(), state="runpod_named")
+    uploads = [(str(archive), "/workspace/examples.tar")]
+    if state is not None:
+        kept = experiment / "resume_state.pt"
+        shutil.copyfile(state, kept)                  # out/ moves aside between attempts: the upload needs a path that stays
+        uploads.append((str(kept), "/workspace/resume_state.pt"))
+        print("going on from", state)
+    return lease(args, "named", remote, uploads, GPUS, experiments=EXPERIMENTS_DIR, code=pod_code(), state="runpod_named")
 
 
 if __name__ == "__main__":
