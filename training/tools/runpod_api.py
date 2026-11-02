@@ -4,7 +4,8 @@ whose ``training.readers.lease`` builds its jobs on this lease).
 
 The default ``lease`` command owns the complete pod lifecycle and terminates in
 ``finally``. A pod can outlive this process only when the operator explicitly
-passes ``--keep``, or a download stays incomplete (exit INCOMPLETE_EXIT). The
+passes ``--keep``, or when the remote command succeeded and anything stopped its
+download (exit INCOMPLETE_EXIT): the pod holds the only copy of finished work. The
 remote command runs detached on the pod and the lease polls its exit status, so
 a dropped ssh connection does not end it (``_run_detached``).
 
@@ -18,16 +19,19 @@ Environment overrides, each leaving the default below when unset:
 from __future__ import annotations
 
 import argparse
+import gzip
 import json
 import math
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import time
 import urllib.error
 import urllib.request
+import zlib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -204,12 +208,24 @@ def _remote_path(value: str) -> str:
     return value
 
 
-def _run_transfer(command: list[str], remaining, attempts: int = 3) -> None:
-    """Retry idempotent SCP uploads/downloads without ever retrying training."""
+TRANSFER_FLOOR_SECONDS = 15 * 60
+# The slowest link a transfer is still waited for. A flat 15 minutes could never bring back a 730 MB small.pt from a
+# host moving about 80 KB/s: 61 to 74 MB arrived, every attempt, and the pod went with the rest (2026-11-01).
+TRANSFER_BYTES_PER_SECOND = 50 * 1024
+
+
+def _transfer_seconds(size: int) -> float:
+    """How long a transfer of ``size`` bytes may take."""
+    return max(TRANSFER_FLOOR_SECONDS, size / TRANSFER_BYTES_PER_SECOND)
+
+
+def _run_transfer(command: list[str], remaining, attempts: int = 3, size: int = 0) -> None:
+    """Retry idempotent SCP uploads/downloads without ever retrying training. ``size``, the bytes moved, sets each
+    attempt's time limit; the lease's own deadline still bounds it."""
     last_error = None
     for attempt in range(attempts):
         try:
-            subprocess.run(command, check=True, timeout=min(remaining(), 15 * 60))
+            subprocess.run(command, check=True, timeout=min(remaining(), _transfer_seconds(size)))
             return
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
             last_error = exc
@@ -222,9 +238,24 @@ INCOMPLETE_EXIT = 5        # the lease command's exit code when the command succ
 
 
 class IncompleteDownload(RuntimeError):
-    """A downloaded file is still shorter or longer than the pod's after re-fetching it. The lease keeps the pod
-    (its provider-side watchdog still deletes it at the deadline) so the files can be pulled another way, since a
-    terminated pod takes them with it; the ``lease`` command exits with INCOMPLETE_EXIT."""
+    """The remote command succeeded and its files did not all arrive: a file is still shorter or longer than the
+    pod's after re-fetching it, or something stopped the download. The lease keeps the pod (its provider-side watchdog
+    still deletes it at the deadline) so the files can be pulled another way, since a terminated pod takes them with
+    it; the ``lease`` command exits with INCOMPLETE_EXIT."""
+
+
+def _upload(ssh: list[str], scp: list[str], ip: str, source: Path, remote: str, remaining) -> None:
+    """``source`` onto the pod at ``remote``, a folder file by file onto the same paths. ``scp -r`` into a folder that
+    exists nests inside it, so a retried or resumed upload left its copy one level down and the old code in place."""
+    target = _remote_path(remote)
+    if source.is_file():
+        _run_transfer([*scp, str(source), f"root@{ip}:{target}"], remaining, size=source.stat().st_size)
+        return
+    files = {path.relative_to(source).as_posix(): path for path in source.rglob("*") if path.is_file()}
+    folders = {target, *(f"{target}/{Path(relative).parent.as_posix()}" for relative in files if "/" in relative)}
+    _run_transfer([*ssh, shlex.join(["mkdir", "-p", "--", *sorted(folders)])], remaining)
+    for relative, path in sorted(files.items()):
+        _run_transfer([*scp, str(path), f"root@{ip}:{target}/{relative}"], remaining, size=path.stat().st_size)
 
 
 def _remote_sizes(ssh: list[str], remote: str, remaining) -> dict[str, int]:
@@ -241,21 +272,85 @@ def _remote_sizes(ssh: list[str], remote: str, remaining) -> dict[str, int]:
     return sizes
 
 
-def _verify_download(ssh: list[str], scp: list[str], ip: str, remote: str, destination: Path, remaining) -> None:
-    """Compare every downloaded file with the pod's size and re-fetch each one that differs, up to three times: scp
-    has returned success with a third of a file (2026-10-21, a stage-2 run's small.pt, lost with its pod)."""
+# The outputs compressed on the pod before they travel: held-out outputs and checkpoints of at least this size.
+COMPRESSED_SUFFIXES = (".jsonl", ".pt")
+COMPRESS_FROM_BYTES = 1024 * 1024
+COMPRESS_BYTES_PER_SECOND = 8 * 1024 * 1024     # what gzip -1 is given to finish, on a pod that may be busy
+
+
+def _outputs(listing: dict[str, int]) -> dict[str, int]:
+    """The pod's files without what ``_compress_outputs`` adds beside them, from this download or an earlier one."""
+    return {relative: size for relative, size in listing.items()
+            if not relative.endswith(".gz.part") and not (relative.endswith(".gz") and relative[:-3] in listing)}
+
+
+def _compress_outputs(ssh: list[str], root: str, sizes: dict[str, int], remaining) -> dict[str, int]:
+    """Gzip each large output beside itself on the pod; returns {path under ``root``: bytes of its gzip} for those it
+    made smaller. The originals stay, for pull_parts.sh, and a gzip appears under its name only whole. A gzip that fails
+    or does not finish in time only means that file travels as it is."""
+    large = [relative for relative, size in sizes.items()
+             if relative.endswith(COMPRESSED_SUFFIXES) and size >= COMPRESS_FROM_BYTES]
+    if not large:
+        return {}
+    steps = []
+    for relative in large:
+        path, gz, part = (shlex.quote(f"{root}/{relative}{suffix}") for suffix in ("", ".gz", ".gz.part"))
+        steps.append(f"rm -f -- {gz}; gzip -1 -c -- {path} > {part} && mv -f -- {part} {gz} || rm -f -- {part}")
+    script = "; ".join(steps)
+    seconds = sum(sizes[relative] for relative in large) / COMPRESS_BYTES_PER_SECOND
+    try:
+        subprocess.run([*ssh, script], check=True, timeout=min(remaining(), max(120, seconds)))
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+        print(f"compressing on the pod stopped ({type(exc).__name__}); the rest travels as it is", flush=True)
+    listing = _remote_sizes(ssh, root, remaining)
+    return {relative: listing[f"{relative}.gz"] for relative in large
+            if listing.get(f"{relative}.gz", sizes[relative]) < sizes[relative]}
+
+
+def _fetch(scp: list[str], ip: str, source: str, local: Path, size: int, packed: int | None, remaining) -> None:
+    """One try at bringing ``source`` to ``local``, by way of its gzip when it has one (``packed``, its bytes). The
+    restored file appears only whole, and a gzip that does not read back (scp has returned success with a third of a
+    file) is removed, so the next try fetches it again."""
+    if packed is None:
+        _run_transfer([*scp, f"root@{ip}:{source}", str(local)], remaining, attempts=1, size=size)
+        return
+    carrier, restoring = local.with_name(f"{local.name}.gz"), local.with_name(f"{local.name}.part")
+    _run_transfer([*scp, f"root@{ip}:{source}.gz", str(carrier)], remaining, attempts=1, size=packed)
+    try:
+        with gzip.open(carrier, "rb") as plain, open(restoring, "wb") as sink:
+            shutil.copyfileobj(plain, sink, 1024 * 1024)
+    except (OSError, EOFError, zlib.error):
+        carrier.unlink(missing_ok=True)
+        restoring.unlink(missing_ok=True)
+        raise
+    os.replace(restoring, local)
+    carrier.unlink()
+
+
+def _download(ssh: list[str], scp: list[str], ip: str, remote: str, destination: Path, remaining, fresh: bool) -> None:
+    """Bring back every file the pod holds under ``remote``, smallest first, each onto its own path, so a retry lands
+    where the first try did: ``scp -r`` into a folder a failed try had made nested inside it, leaving out/out beside a
+    shorter copy (2026-11-01). Each file is compared with the pod's size and fetched again when it differs, up to three
+    times: scp has returned success with a third of a file (2026-10-21, a stage-2 run's small.pt, lost with its pod).
+    ``fresh``: this lease's command made the pod's files, so a local file of the same size from before is not one of
+    them. Otherwise a file already whole is not fetched again, which is how a kept pod's download finishes."""
+    root = _remote_path(remote)
+    sizes = _outputs(_remote_sizes(ssh, root, remaining))
+    packed = _compress_outputs(ssh, root, sizes, remaining)
     short = []
-    for relative, size in sorted(_remote_sizes(ssh, remote, remaining).items()):
+    for relative, size in sorted(sizes.items(), key=lambda item: (item[1], item[0])):
         local = destination / relative if relative else destination
-        source = f"{_remote_path(remote)}/{relative}" if relative else _remote_path(remote)
+        source = f"{root}/{relative}" if relative else root
+        local.parent.mkdir(parents=True, exist_ok=True)
+        if fresh:
+            local.unlink(missing_ok=True)
         for _ in range(3):
             if local.is_file() and local.stat().st_size == size:
                 break
-            local.parent.mkdir(parents=True, exist_ok=True)
             try:
-                _run_transfer([*scp, f"root@{ip}:{source}", str(local)], remaining, attempts=1)
-            except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
-                pass
+                _fetch(scp, ip, source, local, size, packed.get(relative), remaining)
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError, EOFError, zlib.error) as exc:
+                print(f"download of {source} stopped: {type(exc).__name__}", flush=True)
         if not (local.is_file() and local.stat().st_size == size):
             short.append(f"{source} ({local.stat().st_size if local.is_file() else 0} of {size} bytes)")
     if short:
@@ -341,6 +436,24 @@ def reconcile() -> None:
     STATE.unlink(missing_ok=True)
 
 
+RECOVERY_SECONDS = 30 * 60      # what a failed command's partial artifacts may take, smallest first
+# What a download leaves of the lease (half of what remains, when that is less) to pull the files another way: a pod kept
+# with the deadline at hand goes to its watchdog with them.
+PULL_RESERVE_SECONDS = 30 * 60
+
+
+def _within(remaining, seconds: float):
+    """``remaining`` that also runs out ``seconds`` from now."""
+    end = time.monotonic() + seconds
+
+    def left() -> float:
+        allowed = min(remaining(), end - time.monotonic())
+        if allowed <= 0:
+            raise TimeoutError("the time set for this transfer is over")
+        return allowed
+    return left
+
+
 def run_lease(max_minutes: int, command: list[str], keep: bool = False,
               uploads: tuple[tuple[str, str], ...] = (),
               downloads: tuple[tuple[str, str], ...] = (),
@@ -368,7 +481,8 @@ def run_lease(max_minutes: int, command: list[str], keep: bool = False,
         seconds_left = max_minutes * 60
     deadline = time.monotonic() + seconds_left
     scp, ip = None, None
-    downloaded = set()
+    finished = False       # the remote command, if any, succeeded: the pod now holds the only copy of what it made
+    failed = True
     try:
         if max_hourly_cost is not None:
             status, details = rest("GET", f"/pods/{pid}")
@@ -389,61 +503,59 @@ def run_lease(max_minutes: int, command: list[str], keep: bool = False,
             "-p", str(port), "-o", "StrictHostKeyChecking=accept-new",
             "-o", "ServerAliveInterval=30", "-o", "ServerAliveCountMax=6", f"root@{ip}",
         ]
+        # A dead connection ends an attempt here too, instead of waiting out a limit that can now be hours.
         scp = [
             "scp", "-i", str(Path.home() / ".ssh" / "runpod_prereasoner"),
-            "-P", str(port), "-o", "StrictHostKeyChecking=accept-new", "-r",
+            "-P", str(port), "-o", "StrictHostKeyChecking=accept-new",
+            "-o", "ServerAliveInterval=30", "-o", "ServerAliveCountMax=6",
         ]
         for local, remote in uploads:
             source = Path(local).resolve()
             if not source.exists():
                 raise FileNotFoundError(f"upload source does not exist: {source}")
-            _run_transfer(
-                [*scp, str(source), f"root@{ip}:{_remote_path(remote)}"],
-                remaining,
-            )
+            _upload(ssh, scp, ip, source, remote, remaining)
         if command:
             _run_detached(ssh, command, remaining)
-        for remote, local in downloads:
-            destination = Path(local).resolve()
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            _run_transfer(
-                [*scp, f"root@{ip}:{_remote_path(remote)}", str(destination)],
-                remaining,
-            )
-            _verify_download(ssh, scp, ip, remote, destination, remaining)
-            downloaded.add((remote, local))
-        return pid
-    finally:
-        # Recover partial artifacts on command/SSH failure before deleting our pod.
-        # Best effort: a dead pod or provider deadline can still prevent recovery.
-        if sys.exc_info()[0] is not None and scp is not None and ip:
+        finished = True
+        if downloads:
+            seconds = remaining()
+            downloading = _within(remaining, seconds - min(PULL_RESERVE_SECONDS, seconds / 2))
             for remote, local in downloads:
-                if (remote, local) in downloaded:
-                    continue
+                _download(ssh, scp, ip, remote, Path(local).resolve(), downloading, fresh=bool(command))
+        failed = False
+        return pid
+    except BaseException as exc:
+        # Whatever stopped the download, the pod keeps the finished work: a TimeoutExpired here once terminated the pod
+        # holding a reader's weights and four folds' outputs, after hours of paid training (2026-11-01).
+        if finished and not isinstance(exc, IncompleteDownload):
+            raise IncompleteDownload(f"the download stopped: {type(exc).__name__}: {exc}") from exc
+        raise
+    finally:
+        # A failed command's partial artifacts come back before its pod is deleted. Best effort, within a bound: a dead
+        # pod or provider deadline can still prevent recovery, and a failed run does not hold a pod for hours.
+        if failed and not finished and scp is not None and ip:
+            recovery = _within(remaining, RECOVERY_SECONDS)
+            for remote, local in downloads:
                 try:
-                    destination = Path(local).resolve()
-                    destination.parent.mkdir(parents=True, exist_ok=True)
-                    _run_transfer([*scp, f"root@{ip}:{_remote_path(remote)}", str(destination)],
-                                  remaining, attempts=2)
+                    _download(ssh, scp, ip, remote, Path(local).resolve(), recovery, fresh=bool(command))
                 except Exception as recovery_error:
                     print(f"artifact recovery failed: {remote}: {recovery_error}", file=sys.stderr)
-        incomplete = isinstance(sys.exc_info()[1], IncompleteDownload)
+        incomplete = failed and finished
         if keep or incomplete:
             print(
                 f"WARNING: {'an incomplete download' if incomplete else '--keep'} left billable pod {pid} running "
-                f"until its provider deadline (ssh root@{ip}); pull its files (training/readers/pull_parts.sh), "
-                "then terminate it",
+                f"until its provider deadline (ssh root@{ip}); pull its files (training/readers/pull_parts.sh for a "
+                "stage-2 run, or this lease again with --resume and no command), then terminate it",
                 file=sys.stderr,
             )
         else:
-            had_error = sys.exc_info()[0] is not None
             try:
                 terminate(pid)
             except Exception as cleanup_error:
                 # Preserve the training failure that triggered cleanup. The provider-side
                 # pod-local deletion watchdog remains the final cost bound if all deletes fail.
                 print(f"CRITICAL: pod {pid} cleanup failed: {cleanup_error}", file=sys.stderr)
-                if not had_error:
+                if not failed:
                     raise
 
 

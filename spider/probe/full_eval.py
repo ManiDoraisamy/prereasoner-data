@@ -369,8 +369,10 @@ def _ast_predict(enc, tabs, question, schema_fks, schema_cache, selection, execu
     candidate = chosen.candidate
     if candidate is None:
         # Why nothing is served: no candidate ran, none that ran is grounded, or the readers' refusal is not
-        # confident of the eligible ones.
-        if chosen.ranking:
+        # confident of the eligible ones or the one it chose found nothing.
+        if chosen.found_nothing:
+            error, stage = "the chosen candidate's result holds nothing", "refusal"
+        elif chosen.ranking:
             error, stage = "the readers are not confident of any eligible candidate", "refusal"
         elif any(chosen.executable):
             error, stage = "no executable candidate is grounded", "grounding"

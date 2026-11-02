@@ -406,6 +406,9 @@ builder makes each reading a typed AST.
    (`engine/tables.py:unsure_clarification`). In an analysis (the chat), a declined question longer than
    `decomposition.ONE_QUERY_WORDS` words, past what the readers were trained to read as one query, asks for a
    decomposition proposal instead (`decomposition.declined_compound`), as a set-operation reading does.
+7. A chosen candidate whose served result holds nothing, no row or only blank cells, gets the same reply
+   (`PoolSelection.found_nothing`), never a statement that the data is absent; a zero is a value and is answered. No
+   less probable candidate answers in its place: most pools hold one that drops the question's filter.
 
 The served response carries `read_as`, the readers' plain reading of the served query, which the thread shows as
 the turn's "read as" line, and a `coverage` record certifying the reading (the readers' acceptance; the world

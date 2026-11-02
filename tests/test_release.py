@@ -1,9 +1,12 @@
 """Hermetic invariants for a clean public source checkout."""
 from __future__ import annotations
 
+import gzip
 import hashlib
 import json
 import re
+import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -656,14 +659,22 @@ def test_runpod_failed_command_downloads_before_termination():
     from training.tools import runpod_api
 
     events = []
+
+    def run(command, **kwargs):
+        if command[-1].startswith("find "):
+            return subprocess.CompletedProcess(command, 0, stdout="result.log\t1\n")
+        raise subprocess.CalledProcessError(1, "ssh")
+
+    def transfer(command, remaining, attempts=3, size=0):
+        Path(command[-1]).write_text("x")
+        events.append("download")
+
     with tempfile.TemporaryDirectory() as directory, \
             patch.object(runpod_api, "reconcile"), \
             patch.object(runpod_api, "create", return_value="pod-recover"), \
             patch.object(runpod_api, "poll", return_value=("127.0.0.1", 22)), \
-            patch.object(runpod_api.subprocess, "run",
-                         side_effect=subprocess.CalledProcessError(1, "ssh")), \
-            patch.object(runpod_api, "_run_transfer",
-                         side_effect=lambda *args, **kwargs: events.append("download")), \
+            patch.object(runpod_api.subprocess, "run", side_effect=run), \
+            patch.object(runpod_api, "_run_transfer", side_effect=transfer), \
             patch.object(runpod_api, "terminate",
                          side_effect=lambda *args: events.append("terminate")):
         try:
@@ -720,15 +731,10 @@ def test_runpod_downloads_match_the_pods_files_before_termination():
         with tempfile.TemporaryDirectory() as directory:
             out = Path(directory) / "out"
 
-            def transfer(command, remaining, attempts=3):
-                target = Path(command[-1])
-                if target == out:
-                    (out / "stage2").mkdir(parents=True, exist_ok=True)
-                    target = out / "stage2" / "small.pt"
-                size = writes.pop(0) if writes else 0
-                target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_bytes(b"x" * size)
-                events.append(("transfer", size))
+            def transfer(command, remaining, attempts=3, size=0):
+                written = writes.pop(0) if writes else 0
+                Path(command[-1]).write_bytes(b"x" * written)
+                events.append(("transfer", written))
 
             listing = "".join(f"{name}\t{size}\n" for name, size in remote_sizes.items())
             with patch.object(runpod_api, "reconcile"), \
@@ -747,12 +753,312 @@ def test_runpod_downloads_match_the_pods_files_before_termination():
     # A truncated file is fetched again, and the lease ends normally once it matches.
     events = lease({"stage2/small.pt": 10}, [4, 10])
     assert events == [("transfer", 4), ("transfer", 10), "terminate"], events
-    # A file that stays short keeps the pod: three re-fetches, no termination, the shortfall named.
+    # A file that stays short keeps the pod: three tries, no termination, the shortfall named.
     events = lease({"stage2/small.pt": 10}, [4, 4, 4, 4])
     assert [e for e in events if e == "terminate"] == [], events
     assert events[-1][0] == "incomplete" and "4 of 10 bytes" in events[-1][1], events
     # Contrast: a complete download is checked once and terminated as before.
     assert lease({"stage2/small.pt": 10}, [10]) == [("transfer", 10), "terminate"]
+
+
+class _FakePod:
+    """subprocess.run standing in for ssh and scp, with a folder as the pod's disk: `find`, `mkdir`, the gzip steps and
+    scp behave as the real ones do, scp -r nesting inside a folder that exists. ``on_scp(source, target, timeout)``, when
+    set, runs before each copy: it may raise, or write a short file and return True to say the copy happened. Every scp
+    is kept in ``scps`` as (command, timeout)."""
+
+    def __init__(self, disk):
+        self.disk = Path(disk)
+        self.scps = []
+        self.on_scp = None
+        self.gzip_works = True
+        self.exit_status = "0"
+        self.listing_fails = None
+
+    def file(self, path, content=b"x"):
+        target = self.disk / path.lstrip("/")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(content)
+        return target
+
+    def path(self, remote):
+        return self.disk / remote.split(":", 1)[-1].lstrip("/")
+
+    def run(self, command, **kwargs):
+        from training.tools import runpod_api
+
+        if command[0] == "scp":
+            return self._scp(command, kwargs.get("timeout"))
+        remote, stdout = command[-1], ""
+        if remote.startswith("find "):
+            if self.listing_fails:
+                raise self.listing_fails
+            root = self.path(shlex.split(remote)[1])
+            stdout = "".join(f"{file.relative_to(root).as_posix()}\t{file.stat().st_size}\n"
+                             for file in sorted(root.rglob("*")) if file.is_file())
+        elif remote.startswith("mkdir "):
+            for folder in shlex.split(remote)[3:]:
+                self.path(folder).mkdir(parents=True, exist_ok=True)
+        elif remote.startswith(f"cat {runpod_api.EXIT_FILE}"):
+            stdout = self.exit_status
+        elif " gzip -1 -c -- " in remote and self.gzip_works:
+            for path in re.findall(r"gzip -1 -c -- (\S+) >", remote):
+                packed = self.path(path)
+                packed.with_name(packed.name + ".gz").write_bytes(gzip.compress(packed.read_bytes(), 1))
+        return subprocess.CompletedProcess(command, 0, stdout=stdout)
+
+    def _scp(self, command, timeout):
+        self.scps.append((command, timeout))
+        downloading = "@" in command[-2]
+        source = self.path(command[-2]) if downloading else Path(command[-2])
+        target = Path(command[-1]) if downloading else self.path(command[-1])
+        if self.on_scp and self.on_scp(source, target, timeout):
+            return subprocess.CompletedProcess(command, 0)
+        if source.is_dir():
+            if "-r" not in command:
+                raise subprocess.CalledProcessError(1, command)
+            shutil.copytree(source, target / source.name if target.exists() else target, dirs_exist_ok=True)
+        else:
+            shutil.copyfile(source, target)
+        return subprocess.CompletedProcess(command, 0)
+
+
+def _lease_on(pod, argv, minutes=120):
+    """The ``lease`` command on ``pod``: (its exit code or what it raised, whether it terminated the pod)."""
+    from training.tools import runpod_api
+
+    with patch.object(runpod_api, "reconcile"), \
+            patch.object(runpod_api, "create", return_value="pod-fake"), \
+            patch.object(runpod_api, "poll", return_value=("127.0.0.1", 22)), \
+            patch.object(runpod_api, "credentials", return_value=("test-key", "")), \
+            patch.object(runpod_api, "POLL_SECONDS", 0), \
+            patch.object(runpod_api.time, "sleep"), \
+            patch.object(runpod_api.subprocess, "run", side_effect=pod.run), \
+            patch.object(runpod_api, "terminate") as terminate:
+        try:
+            code = runpod_api.main(["lease", "--max-minutes", str(minutes), *argv, "--", "true"])
+        except BaseException as exc:  # noqa: BLE001 - what the old lease let through is the test's subject
+            code = exc
+    return code, terminate.called
+
+
+def test_a_download_that_stops_after_the_command_succeeded_keeps_the_pod():
+    # 2026-11-01: readers_v17b's small.pt and all four readers_v17a folds' outputs were on their pods when a download
+    # hit scp's flat 15 minutes. TimeoutExpired is no IncompleteDownload, so the lease terminated the pods after hours of
+    # paid training. Whatever stops a download once the command succeeded, the pod stays and the exit says so.
+    from training.tools import runpod_api
+
+    def stopped(failure, listing_fails=None):
+        with tempfile.TemporaryDirectory() as directory:
+            pod = _FakePod(Path(directory) / "pod")
+            pod.file("/workspace/out/stage2/small.pt", b"weights")
+            pod.listing_fails = listing_fails
+
+            def stop(source, target, timeout):
+                raise failure
+
+            pod.on_scp = stop
+            return _lease_on(pod, ["--download", "/workspace/out", str(Path(directory) / "out")])
+
+    for failure in (subprocess.TimeoutExpired("scp", 900), subprocess.CalledProcessError(255, "scp"),
+                    OSError("no space left"), RuntimeError("anything else"), KeyboardInterrupt()):
+        code, terminated = stopped(failure)
+        assert not terminated, f"{failure!r} terminated the pod holding the only copy"
+        assert code == runpod_api.INCOMPLETE_EXIT, f"{failure!r} ended the lease with {code!r}"
+    code, terminated = stopped(None, listing_fails=subprocess.TimeoutExpired("ssh", 120))
+    assert not terminated and code == runpod_api.INCOMPLETE_EXIT, (code, terminated)
+
+    # Contrast: a command that failed has no finished work to protect: its pod goes, after its files come back.
+    with tempfile.TemporaryDirectory() as directory:
+        pod = _FakePod(Path(directory) / "pod")
+        pod.file("/workspace/out/stage2.log", b"failed")
+        pod.exit_status = "4"
+        out = Path(directory) / "out"
+        code, terminated = _lease_on(pod, ["--download", "/workspace/out", str(out)])
+        assert terminated and isinstance(code, subprocess.CalledProcessError), (code, terminated)
+        assert (out / "stage2.log").read_bytes() == b"failed"
+    # Contrast: a whole download ends the lease as before, and a file of the same size from before this lease's command
+    # is not taken for what the command made.
+    with tempfile.TemporaryDirectory() as directory:
+        pod = _FakePod(Path(directory) / "pod")
+        pod.file("/workspace/out/stage2/small.pt", b"weights")
+        out = Path(directory) / "out"
+        (out / "stage2").mkdir(parents=True)
+        (out / "stage2" / "small.pt").write_bytes(b"earlier")
+        assert _lease_on(pod, ["--download", "/workspace/out", str(out)]) == (0, True)
+        assert (out / "stage2" / "small.pt").read_bytes() == b"weights"
+
+
+def test_a_kept_pod_is_finished_by_a_resumed_lease_with_no_command():
+    # What a kept pod is for, on any job, where pull_parts.sh knows only a stage-2 run: the same download again, bringing
+    # back only what is missing, then the pod's termination.
+    import time
+
+    from training.tools import runpod_api
+
+    with tempfile.TemporaryDirectory() as directory:
+        pod = _FakePod(Path(directory) / "pod")
+        pod.file("/workspace/out/fold0/best.json", b"{}")
+        pod.file("/workspace/out/fold0/calibration_outputs.jsonl", b"held out")
+        out = Path(directory) / "out"
+        (out / "fold0").mkdir(parents=True)
+        (out / "fold0" / "best.json").write_bytes(b"{}")
+        state = Path(directory) / "state.json"
+        state.write_text(json.dumps({"pod_id": "pod-kept", "token": "kept", "created_at": time.time(), "max_minutes": 30}),
+                         encoding="utf-8")
+        with patch.object(runpod_api, "STATE", state), \
+                patch.object(runpod_api, "rest", return_value=(200, {"name": "prereasoner-train-kept"})), \
+                patch.object(runpod_api, "poll", return_value=("127.0.0.1", 22)), \
+                patch.object(runpod_api.subprocess, "run", side_effect=pod.run), \
+                patch.object(runpod_api, "terminate") as terminate:
+            assert runpod_api.run_lease(30, [], downloads=(("/workspace/out", str(out)),), resume=True) == "pod-kept"
+        terminate.assert_called_once_with("pod-kept")
+        assert (out / "fold0" / "calibration_outputs.jsonl").read_bytes() == b"held out"
+        assert [command[-2].rsplit("/", 1)[-1] for command, _ in pod.scps] == ["calibration_outputs.jsonl"]
+
+
+def test_a_transfers_time_limit_follows_the_files_size():
+    # A flat 15 minutes could never bring a 730 MB small.pt from a host moving about 80 KB/s (2026-11-01).
+    from training.tools import runpod_api
+
+    size = 64 * 1024 * 1024
+    with tempfile.TemporaryDirectory() as directory:
+        pod = _FakePod(Path(directory) / "pod")
+        pod.file("/workspace/out/best.json", b"{}")
+        with open(pod.file("/workspace/out/weights.bin"), "r+b") as weights:
+            weights.truncate(size)
+        code, terminated = _lease_on(pod, ["--download", "/workspace/out", str(Path(directory) / "out")])
+        assert (code, terminated) == (0, True), (code, terminated)
+    limits = [timeout for _, timeout in pod.scps]
+    assert max(limits) > 15 * 60, f"a {size:,}-byte file is still held to the flat 15 minutes: {limits}"
+    assert max(limits) == size / runpod_api.TRANSFER_BYTES_PER_SECOND
+    assert min(limits) == runpod_api.TRANSFER_FLOOR_SECONDS, "a small file keeps the floor"
+    assert runpod_api._transfer_seconds(2 * size) == 2 * runpod_api._transfer_seconds(size)
+    # The lease's own deadline still bounds it.
+    with patch.object(runpod_api.subprocess, "run") as run:
+        runpod_api._run_transfer(["scp", "source", "target"], lambda: 100.0, size=size)
+    assert run.call_args.kwargs["timeout"] == 100.0
+
+    # And a download leaves time to pull the files another way: a pod kept with its deadline at hand goes to its watchdog
+    # with them, so a file that cannot arrive stops short of that.
+    def stopped_with(minutes):
+        with tempfile.TemporaryDirectory() as directory:
+            pod = _FakePod(Path(directory) / "pod")
+            with open(pod.file("/workspace/out/weights.bin"), "r+b") as weights:
+                weights.truncate(512 * 1024 * 1024)
+
+            def too_slow(source, target, timeout):
+                raise subprocess.TimeoutExpired("scp", timeout)
+
+            pod.on_scp = too_slow
+            code, terminated = _lease_on(pod, ["--download", "/workspace/out", str(Path(directory) / "out")], minutes=minutes)
+            assert (code, terminated) == (runpod_api.INCOMPLETE_EXIT, False), (code, terminated)
+            return pod.scps[0][1]
+
+    assert 89 * 60 < stopped_with(120) <= 90 * 60, "two hours left: all but the half hour a pull takes"
+    assert 9 * 60 < stopped_with(20) <= 10 * 60, "little left: half of it"
+
+
+def test_a_retried_download_lands_on_the_same_paths():
+    # 2026-11-01: a timed-out `scp -r` had made out/, so its retry nested inside it: out/out and out.None/out beside a
+    # shorter copy. Each file now goes to its own path, and a retry replaces what the failed try left.
+    dropped = []
+
+    def drop_once(source, target, timeout):
+        if not dropped:
+            dropped.append(source)
+            partial = target / "stage2" / "best.json" if source.is_dir() else target
+            partial.parent.mkdir(parents=True, exist_ok=True)
+            partial.write_bytes(b"{")
+            raise subprocess.TimeoutExpired("scp", 900)
+
+    with tempfile.TemporaryDirectory() as directory:
+        pod = _FakePod(Path(directory) / "pod")
+        pod.file("/workspace/out/stage2/best.json", b'{"epoch": 12}')
+        pod.file("/workspace/out/stage2/small.pt", b"weights")
+        pod.on_scp = drop_once
+        out = Path(directory) / "out"
+        code, terminated = _lease_on(pod, ["--download", "/workspace/out", str(out)])
+        assert not (out / "out").exists(), "a retried download nested inside the folder its first try made"
+        assert (code, terminated) == (0, True), (code, terminated)
+        assert sorted(file.relative_to(out).as_posix() for file in out.rglob("*") if file.is_file()) == [
+            "stage2/best.json", "stage2/small.pt"]
+        assert (out / "stage2" / "best.json").read_bytes() == b'{"epoch": 12}'
+
+
+def test_a_retried_or_resumed_upload_does_not_nest_either():
+    # scp -r into a folder that exists nests the same way: a retried upload, or any upload on a resumed pod, left the
+    # code at /workspace/engine/engine and the old code running.
+    dropped = []
+
+    def drop_once(source, target, timeout):
+        if not dropped:
+            dropped.append(source)
+            if source.is_dir():
+                target.mkdir(parents=True, exist_ok=True)
+            raise subprocess.TimeoutExpired("scp", 900)
+
+    with tempfile.TemporaryDirectory() as directory:
+        code_dir = Path(directory) / "code" / "engine"
+        (code_dir / "readers").mkdir(parents=True)
+        (code_dir / "__init__.py").write_text("")
+        (code_dir / "readers" / "models.py").write_text("new")
+        pod = _FakePod(Path(directory) / "pod")
+        pod.file("/workspace/engine/readers/models.py", b"old")
+        code, terminated = _lease_on(pod, ["--upload", str(code_dir), "/workspace/engine"])
+        assert (code, terminated) == (0, True), (code, terminated)
+        assert pod.path("/workspace/engine/readers/models.py").read_text() == "new", "the resumed pod kept the old code"
+        assert not pod.path("/workspace/engine/engine").exists(), "the upload nested inside the folder that exists"
+        # A failed try replaced by its retry.
+        pod = _FakePod(Path(directory) / "retried")
+        pod.on_scp = drop_once
+        code, terminated = _lease_on(pod, ["--upload", str(code_dir), "/workspace/engine"])
+        assert (code, terminated) == (0, True), (code, terminated)
+        assert not pod.path("/workspace/engine/engine").exists(), "the retried upload nested"
+        assert pod.path("/workspace/engine/readers/models.py").read_text() == "new"
+
+
+def test_large_outputs_travel_compressed_and_come_back_whole():
+    # Held-out outputs and checkpoints are gzipped on the pod, their originals kept there for pull_parts.sh, and restored
+    # here. The folds lost on 2026-11-01 had 6,159 to 15,918 lines of a slow single stream.
+    outputs = b'{"question": 1, "outputs": [0.25, 0.5]}\n' * 60000
+
+    def lease(prepare=lambda pod: None):
+        with tempfile.TemporaryDirectory() as directory:
+            pod = _FakePod(Path(directory) / "pod")
+            pod.file("/workspace/out/fold0/calibration_outputs.jsonl", outputs)
+            pod.file("/workspace/out/fold0/best.json", b"{}")
+            prepare(pod)
+            out = Path(directory) / "out"
+            code, terminated = _lease_on(pod, ["--download", "/workspace/out", str(out)])
+            assert (code, terminated) == (0, True), (code, terminated)
+            assert (out / "fold0" / "calibration_outputs.jsonl").read_bytes() == outputs
+            assert (out / "fold0" / "best.json").read_bytes() == b"{}"
+            assert sorted(file.name for file in (out / "fold0").iterdir()) == ["best.json", "calibration_outputs.jsonl"]
+            assert pod.path("/workspace/out/fold0/calibration_outputs.jsonl").read_bytes() == outputs
+            return [command[-2].rsplit("/", 1)[-1] for command, _ in pod.scps]
+
+    assert lease() == ["best.json", "calibration_outputs.jsonl.gz"], "large outputs travel gzipped, small files as they are"
+
+    # A gzip scp cut short (it has returned success with a third of a file) is fetched again, never restored short.
+    def truncate_once(pod):
+        cut = []
+
+        def truncated(source, target, timeout):
+            if source.name.endswith(".gz") and not cut:
+                cut.append(source)
+                target.write_bytes(source.read_bytes()[:100])
+                return True
+
+        pod.on_scp = truncated
+
+    assert lease(truncate_once).count("calibration_outputs.jsonl.gz") == 2
+
+    # A pod that cannot compress sends the file as it is.
+    def no_gzip(pod):
+        pod.gzip_works = False
+
+    assert lease(no_gzip) == ["best.json", "calibration_outputs.jsonl"]
 
 
 def test_a_dropped_connection_does_not_end_the_remote_command():
@@ -834,6 +1140,35 @@ def test_a_readers_lease_never_trains_again_after_its_download_broke():
         assert runpod_api.main(["lease", "--max-minutes", "5", "--", "true"]) == runpod_api.INCOMPLETE_EXIT
 
 
+def test_a_readers_lease_names_what_it_moves_aside():
+    # 2026-11-01: an out/ an earlier lease left went to a folder literally named out.None: nothing had run before this
+    # lease's first attempt, so there was no cloud to name.
+    import argparse
+
+    from training.readers import lease as readers_lease
+
+    with tempfile.TemporaryDirectory() as directory:
+        experiment = Path(directory) / "x"
+        (experiment / "out").mkdir(parents=True)
+        (experiment / "out" / "earlier.log").write_text("earlier")
+
+        def run(command, **kwargs):
+            (experiment / "out").mkdir()
+            (experiment / "out" / "attempt.log").write_text(kwargs["env"]["RUNPOD_CLOUD"])
+            return subprocess.CompletedProcess(command, 1)
+
+        with patch.object(readers_lease, "EXPERIMENTS_DIR", Path(directory)), \
+                patch.object(readers_lease, "stage_code"), \
+                patch.object(readers_lease.subprocess, "run", side_effect=run):
+            args = argparse.Namespace(experiment="x", minutes=10, max_hourly_cost=1.0, gpus=None, image=None,
+                                      cuda=None, dry_run=False, clouds="SECURE,COMMUNITY", resume=False)
+            assert readers_lease.lease(args, "full", "true", [], ["NVIDIA A40"]) == 1
+        assert not (experiment / "out.None").exists(), "out/ was moved aside to a folder named out.None"
+        assert (experiment / "out.earlier" / "earlier.log").read_text() == "earlier"
+        assert (experiment / "out.SECURE" / "attempt.log").read_text() == "SECURE"
+        assert (experiment / "out" / "attempt.log").read_text() == "COMMUNITY"
+
+
 def test_runpod_transfers_are_inside_the_owned_lease():
     from training.tools import runpod_api
 
@@ -849,8 +1184,11 @@ def test_runpod_transfers_are_inside_the_owned_lease():
         return 204, None
 
     def fake_run(command, **kwargs):
-        exit_status = "0" if command[-1].startswith(f"cat {runpod_api.EXIT_FILE}") else ""
-        return subprocess.CompletedProcess(command, 0, stdout=exit_status)
+        if command[0] == "scp" and "@" in command[-2]:
+            Path(command[-1]).write_text("{}", encoding="utf-8")
+        stdout = ("0" if command[-1].startswith(f"cat {runpod_api.EXIT_FILE}")
+                  else "result.json\t2\n" if command[-1].startswith("find ") else "")
+        return subprocess.CompletedProcess(command, 0, stdout=stdout)
 
     with tempfile.TemporaryDirectory() as directory, \
             patch.object(runpod_api, "STATE", Path(directory) / "active.json"), \
@@ -873,9 +1211,9 @@ def test_runpod_transfers_are_inside_the_owned_lease():
         assert "nohup setsid" in run.call_args_list[1].args[0][-1]
         assert run.call_args_list[2].args[0][-1].startswith(f"cat {runpod_api.EXIT_FILE}")
         assert run.call_args_list[3].args[0][-1] == f"cat {runpod_api.OUTPUT_FILE}"
-        assert "/workspace/output" in run.call_args_list[4].args[0][-2]
-        # The pod's file sizes, read after the download and before termination (_verify_download).
-        assert run.call_args_list[5].args[0][-1].startswith("find /workspace/output -type f")
+        # The pod's files and sizes, then each one onto its own path, before termination (_download).
+        assert run.call_args_list[4].args[0][-1].startswith("find /workspace/output -type f")
+        assert "/workspace/output/result.json" in run.call_args_list[5].args[0][-2]
         assert events[-1] == ("DELETE", "/pods/pod-3")
         assert not runpod_api.STATE.exists()
         try:
@@ -1497,7 +1835,14 @@ TESTS = [
     test_runpod_price_cap_terminates_before_any_work,
     test_runpod_failed_command_downloads_before_termination,
     test_runpod_downloads_match_the_pods_files_before_termination,
+    test_a_download_that_stops_after_the_command_succeeded_keeps_the_pod,
+    test_a_kept_pod_is_finished_by_a_resumed_lease_with_no_command,
+    test_a_transfers_time_limit_follows_the_files_size,
+    test_a_retried_download_lands_on_the_same_paths,
+    test_a_retried_or_resumed_upload_does_not_nest_either,
+    test_large_outputs_travel_compressed_and_come_back_whole,
     test_a_readers_lease_never_trains_again_after_its_download_broke,
+    test_a_readers_lease_names_what_it_moves_aside,
     test_a_dropped_connection_does_not_end_the_remote_command,
     test_runpod_resume_requires_ownership_and_never_creates_a_pod,
     test_runpod_retries_only_idempotent_transfers,

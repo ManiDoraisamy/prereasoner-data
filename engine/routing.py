@@ -46,7 +46,8 @@ class Route(enum.Enum):
 
 def reads_upload_whole(question, selection, schema) -> bool:
     """Whether the upload answers ``question`` alone: the readers' learned refusal accepted one of their readings
-    (``selection.selected``, engine/tables.py:select_query), no reading of theirs names a value the upload holds
+    (``selection.selected``, engine/tables.py:select_query, or the one declined only because it found nothing:
+    ``found_nothing``, where the delegate's reply asks), no reading of theirs names a value the upload holds
     nowhere (engine/sql_grounding.unheld_literals), and the question names no world type or world measure the
     uploaded ``schema`` (the planner's column records) lacks (``asked_world_types``, ``WORLD_MEASURES``). Such a
     question builds no compose plan: compose stands only on a NECESSARY world dependency (``compose_owns``).
@@ -57,7 +58,7 @@ def reads_upload_whole(question, selection, schema) -> bool:
     from engine.knowledge_query import asked_world_types
     from engine.sql_grounding import unheld_literals
 
-    if selection is None or selection.selected is None:
+    if selection is None or (selection.selected is None and not selection.found_nothing):
         return False
     if unheld_literals(selection.pool, schema):
         return False

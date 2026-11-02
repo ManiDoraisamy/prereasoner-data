@@ -265,13 +265,98 @@ test('typing while reading and answering preserves the draft even on failure', a
   await expect(page.locator('#question')).toHaveValue('and for Germany?');
 });
 
-test('the Sheets sidebar explains an incomplete import without asking users to select a scope', async ({page}) => {
-  await openSidebar(page, orders, {}, {skipped: [
-    {name: 'SI', reason: 'cells'}, {name: 'Log', reason: 'rows'}, {name: 'Wide', reason: 'columns'}
-  ]});
-  await expect(page.locator('.sheet-error')).toContainText('SI, Log, Wide');
-  await expect(page.locator('.sheet-error')).toContainText('Hide or close unrelated large tabs');
+test('a tab left out of a read is told once in the reading status, and the other tabs are read', async ({page}) => {
+  // Five real workbooks failed to open over one tab (2026-11-01). The other tabs are read; the tab left out is named
+  // once, with why, in the status the sidebar already shows, with no button and no notice to dismiss.
+  const leftOut = 'Not read: “Results” (it has more than 1,000,000 cells), “Archive” (one read holds 8 tabs). The other tabs are read.';
+  await openSidebar(page, orders, {}, {tabs: ['Orders', 'Results'], tabLeftOut: {Results: 'it has more than 1,000,000 cells'},
+    leftOut: [{name: 'Archive', reason: 'one read holds 8 tabs'}]});
+  await expect(page.locator('#thread .statusline')).toHaveText(leftOut);
+  await expect(page.locator('#thread .sheet-error')).toHaveCount(0);
+  await expect(page.locator('#suggestions .starter-question')).toHaveCount(3);
+  await expect.poll(async () => (await calls(page, 'syncPrereasonerConversation')).length).toBe(1);
+  const [sync] = await calls(page, 'syncPrereasonerConversation');
+  expect(sync.arg.tables.map(table => table.name)).toEqual(['Orders']);
+  // The saved chat remembers it was told, and the next question's read does not tell it again.
+  await expect.poll(async () => JSON.stringify((await calls(page, 'savePrereasonerSheetConversation')).map(call => call.arg.state.leftOutTold)))
+    .toContain('Results');
+  await page.locator('#question').fill('total amount');
+  await page.locator('#question').press('Enter');
+  await expect(page.locator('#scroll')).not.toContainText('Not read');
+  await expect.poll(() => page.evaluate(() => Boolean(window.__server.pendingAsk))).toBe(true);
+  await answer(page, 'Total sales are **US$1,860**.', views);
+  await expect(page.locator('#scroll')).not.toContainText('Not read');
+});
+
+test('a chat that was told about a tab left out is not told again when the sidebar reopens', async ({page}) => {
+  const saved = {client: 'google-sheets-addon', version: 2, turns: [{question: 'total', reply: 'Total is 1'}],
+    history: [], syncedFingerprint: '', leftOutTold: ['Results']};
+  await openSidebar(page, orders, {}, {tabs: ['Orders', 'Results'], tabLeftOut: {Results: 'it has more than 1,000,000 cells'},
+    restored: {conversationId: conversation, state: saved, stale: false}});
+  await expect(page.locator('.turn.user')).toHaveText('total');
+  await expect.poll(async () => (await calls(page, 'syncPrereasonerConversation')).length).toBe(1);
+  await expect(page.locator('#scroll')).not.toContainText('Not read');
+});
+
+test('a tab the importer cannot hold is left out the same way', async ({page}) => {
+  // WORKBOOK_IMPORT.convert with `leaveOut`: the sidebar has no picker for the user to choose again from.
+  await openSidebar(page, orders, {}, {tabs: ['Orders', 'Huge'], tabRows: {Huge: [['note'], ['x'.repeat(200)]]}});
+  await expect.poll(async () => (await calls(page, 'syncPrereasonerConversation')).length).toBe(1);
+  await page.evaluate(() => { window.UPLOAD_LIMITS = Object.assign({}, window.UPLOAD_LIMITS, {tableChars: 100}); });
+  await page.locator('#question').fill('total amount');
+  await page.locator('#question').press('Enter');
+  await expect.poll(() => page.evaluate(() => Boolean(window.__server.pendingAsk))).toBe(true);
+  const [, changed] = await calls(page, 'syncPrereasonerConversation');
+  expect(changed.arg.tables.map(table => table.name)).toEqual(['Orders']);
+  await answer(page, 'Total sales are **US$1,860**.', views);
+  await expect(page.locator('#thread > .loading .statusline')).toHaveText(
+    'Not read: “Huge” (an expanded worksheet is too large). The other tabs are read.');
+});
+
+test('a sheet with every tab left out says why instead of asking for a populated tab', async ({page}) => {
+  await openSidebar(page, orders, {}, {tabs: ['Results'], tabLeftOut: {Results: 'it has more than 1,000,000 cells'}});
+  await expect(page.locator('.sheet-error')).toHaveText('Not read: “Results” (it has more than 1,000,000 cells).');
   await expect(page.locator('#suggestions')).toBeHidden();
+});
+
+test('a failed start-up shows its real reason on every question, never a missing function', async ({page}) => {
+  // 2026-11-01: a chart tab or a tab over the limits failed getSidebarContext, so the sidebar knew nothing of the
+  // script. Every question then called a function the script no longer has, and "runner[name] is not a function"
+  // was the whole reply, ten times on five workbooks.
+  const reason = 'The action is not supported for OBJECT sheet.';
+  await openSidebar(page, orders, {getSidebarContext: 'Exception: ' + reason});
+  await expect(page.locator('.empty.sheet-error')).toHaveText(reason);
+  await page.locator('#question').fill('total amount');
+  await page.locator('#question').press('Enter');
+  await expect(page.locator('.answer.error')).toHaveText(reason);
+  await expect(page.locator('#scroll')).not.toContainText('runner');
+  expect((await calls(page, 'getSidebarContext')).length).toBe(2);
+  expect(await calls(page, 'askPrereasoner')).toEqual([]);
+});
+
+test('a start-up that failed once is made whole by the next question', async ({page}) => {
+  // The context says how the script works: the question that recovers it uploads once and asks by hash, as a sidebar
+  // that opened cleanly does, and signs in with its token.
+  await openSidebar(page, orders, {}, {failOnce: {getSidebarContext: 'Exception: Service error: Spreadsheets'}});
+  await expect(page.locator('.empty.sheet-error')).toHaveText('Service error: Spreadsheets');
+  await expect(page.locator('#newConversation')).toBeEnabled();
+  await page.locator('#question').fill('total amount');
+  await page.locator('#question').press('Enter');
+  await expect.poll(() => page.evaluate(() => Boolean(window.__server.pendingAsk))).toBe(true);
+  const ask = await page.evaluate(() => window.__server.pendingAsk.arg);
+  expect(ask.sourceHash).toBe('a'.repeat(64));
+  expect(ask.tables).toBeUndefined();
+  expect(await page.evaluate(() => window.__signedInWith)).toBe('google-token');
+  expect((await calls(page, 'getSidebarContext')).length).toBe(2);
+});
+
+test('a function the running script does not have fails in plain words', async ({page}) => {
+  await openSidebar(page, orders, {}, {missing: ['getWorkbookPlan']});
+  await expect(page.locator('#newConversation')).toBeEnabled();
+  await page.locator('#question').fill('total amount');
+  await page.locator('#question').press('Enter');
+  await expect(page.locator('.answer.error')).toContainText('This copy of Prereasoner is out of date');
+  await expect(page.locator('#scroll')).not.toContainText('runner');
 });
 
 test('an automatically selected active-sheet scope reads the current sheet without a selectbox', async ({page}) => {
@@ -280,8 +365,8 @@ test('an automatically selected active-sheet scope reads the current sheet witho
   await expect(page.locator('#sheetScope')).toHaveCount(0);
   await page.locator('#question').fill('total amount');
   await page.locator('#question').press('Enter');
-  await expect.poll(async () => (await calls(page, 'getWorkbookGrids')).length).toBe(1);
-  expect((await calls(page,'getWorkbookGrids'))[0].arg).toEqual({scope:'active'});
+  await expect.poll(async () => (await calls(page, 'getWorkbookPlan')).length).toBe(1);
+  expect((await calls(page,'getWorkbookPlan'))[0].arg).toEqual({scope:'active'});
 });
 
 test('a saved chat that cannot be read is tried again, and never replaced by a new chat', async ({page}) => {
@@ -389,7 +474,7 @@ test('the Sheets sidebar explains a multi-account refusal instead of blaming the
   // A user signed in to two Google accounts (2026-10-02): the menu opened the sidebar, then Apps Script
   // refused every sidebar call, made as the browser's default account, before any add-on code ran.
   const refused = 'Authorization is required to perform that action.';
-  await openSidebar(page, orders, {getSidebarContext: refused, getWorkbookGrids: refused});
+  await openSidebar(page, orders, {getSidebarContext: refused});
   const account = 'This happens when the browser is signed in to more than one Google account. Open the sheet in a ' +
     'window signed in only to the account that installed Prereasoner (an Incognito window works)';
   await expect(page.locator('.empty.sheet-error')).toContainText(account);
@@ -407,6 +492,7 @@ test('the Sheets sidebar keeps the answer without a notice when sheet history ca
   await openSidebar(page, orders, {savePrereasonerSheetConversation: 'Prereasoner: spreadsheet session limit reached.'});
   await page.locator('#question').fill('What are total sales in France?');
   await expect(page.locator('#send')).toBeEnabled();
+  await expect.poll(async () => (await calls(page, 'savePrereasonerSheetConversation')).length).toBe(1);
   await page.locator('#question').press('Enter');
   await expect.poll(() => page.evaluate(() => Boolean(window.__server.pendingAsk))).toBe(true);
   await answer(page, 'Total sales in France are **US$1,240**.', views);
@@ -507,8 +593,8 @@ test('a question asked while the sheet is being sent waits for that upload and s
   expect((await calls(page, 'syncPrereasonerConversation')).length).toBe(1);
 });
 
-test('a script that reads tab by tab gives the token first, then each tab, and the sheet reads the same', async ({page}) => {
-  await openSidebar(page, orders, {}, {tabReads: true});
+test('the script gives the token first, then each tab, and the sheet reads the same', async ({page}) => {
+  await openSidebar(page, orders);
   await expect.poll(async () => (await calls(page, 'syncPrereasonerConversation')).length).toBe(1);
   expect((await calls(page, 'getWorkbookTab')).map(call => call.arg)).toEqual([{name: 'Orders'}]);
   expect(await page.evaluate(() => window.__signedInWith)).toBe('google-token');
@@ -520,7 +606,6 @@ test('a script that reads tab by tab gives the token first, then each tab, and t
   await expect.poll(() => page.evaluate(() => Boolean(window.__server.pendingAsk))).toBe(true);
   expect((await calls(page, 'getWorkbookPlan')).length).toBe(1);
   expect((await calls(page, 'getWorkbookTab')).length).toBe(2);
-  expect(await calls(page, 'getWorkbookGrids')).toEqual([]);
 });
 
 test('a sidebar with no sign-in token uploads through the script', async ({page}) => {
@@ -577,7 +662,7 @@ test('a slow sheet is read once: a question asked while it is read waits, and la
   await expect(page.locator('#suggestions')).toBeHidden();
   await page.clock.fastForward(21000);
   await expect.poll(() => page.evaluate(() => Boolean(window.__server.pendingAsk))).toBe(true);
-  expect(await calls(page, 'getWorkbookGrids')).toEqual([]);
+  expect(await calls(page, 'getWorkbookPlan')).toEqual([]);
   await answer(page, 'Total sales are **US$1,860**.', views);
   await expect(page.locator('#syncStatus')).toHaveText('Synced just now');
   await page.clock.fastForward(5 * 60000);
@@ -590,13 +675,13 @@ test('a slow sheet is read once: a question asked while it is read waits, and la
   await page.locator('#question').fill('and in France?');
   await page.locator('#question').press('Enter');
   await expect.poll(() => page.evaluate(() => window.__server.pendingAsk.arg.question)).toBe('and in France?');
-  expect(await calls(page, 'getWorkbookGrids')).toEqual([]);
+  expect(await calls(page, 'getWorkbookPlan')).toEqual([]);
   await answer(page, 'Total sales in France are **US$1,240**.', views);
   await expect(page.locator('#syncStatus')).toHaveText('Synced 2 days ago');
 
   await page.evaluate(() => { window.__server.rows = window.__server.rows.concat([['Spain', 100]]); });
   await page.locator('#syncStatus').click();
-  await expect.poll(async () => (await calls(page, 'getWorkbookGrids')).length).toBe(1);
+  await expect.poll(async () => (await calls(page, 'getWorkbookPlan')).length).toBe(1);
   await expect(page.locator('#syncStatus')).toHaveText('Synced just now');
   // A sheet the click finds changed is sent at once.
   await expect.poll(async () => (await calls(page, 'syncPrereasonerConversation')).length).toBe(2);
@@ -608,6 +693,6 @@ test('a quick sheet is read again before each question, so an edit is in the ans
   await page.locator('#question').fill('total amount');
   await page.locator('#question').press('Enter');
   await expect.poll(() => page.evaluate(() => Boolean(window.__server.pendingAsk))).toBe(true);
-  expect((await calls(page, 'getWorkbookGrids')).length).toBe(1);
+  expect((await calls(page, 'getWorkbookPlan')).length).toBe(1);
   await expect(page.locator('#liveTurn .statusline')).not.toContainText('Waiting');
 });

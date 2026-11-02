@@ -107,6 +107,16 @@ def unmatched_names(unmatched):
     return f"{shown} and {unmatched['more']} more" if unmatched["more"] else shown
 
 
+def unsure_reason(read_as: Any) -> str:
+    """The question back when a reading cannot be stood behind: how it read the question, when that is known, so the
+    person can see what was understood and ask again in the sheet's own terms."""
+    if read_as:
+        return (f"I read this as “{read_as}”, but I'm not confident that is what you asked. "
+                "Ask again with the column names as your sheet spells them.")
+    return ("I'm not confident I read this question right. "
+            "Ask again with the column names as your sheet spells them.")
+
+
 def terminal_reply(shaped: dict[str, Any]) -> str:
     """Render the engine's terminal facts, without an external presentation model."""
     if shaped.get("status") == "clarify":
@@ -141,14 +151,15 @@ def terminal_reply(shaped: dict[str, Any]) -> str:
     # How the question was read is the turn's "read as" line (the engine's ``read_as``), never a paragraph here:
     # appended to the answer, it was a second answer to read (2026-10-04).
     suffix = ("\n\n" + " ".join(notes)) if notes else ""
+    # A result that holds nothing is a reading to question, never a statement that the data is absent: on real sheets
+    # 34 of 186 replies said so while the rows existed (2026-11-01). The own-data selection asks before this
+    # (engine/tables.py:TableQuery._choose); this is the world and composed routes' empty result.
+    if all(blank_cell(value) for row in rows for value in row):
+        return clarify_reply({"reason": unsure_reason(shaped.get("read_as"))}) + suffix
     if len(rows) == 1 and len(rows[0]) == 1:
-        if _blank(rows[0][0]):
-            return 'No value was recorded for the matching rows.' + suffix
         currency = output_currency(shaped)
         value = _data_text(readable_value(shaped, rows[0][0]))
         return (f"{value} {currency}" if currency else value) + suffix
-    if not rows:
-        return 'No matching rows were found.' + suffix
     columns = answer.get('columns') or []
     if columns and all(len(row) == len(columns) for row in rows):
         # A long answer lists its first rows and says how many there are. "The result and its reasoning are
@@ -178,7 +189,7 @@ def _listed(columns: list, rows: list, provenance: Any, currency: str) -> str:
     labels = [_label(name, currency) for name in columns]
 
     def cell(index, value):
-        if _blank(value):
+        if blank_cell(value):
             return 'Not recorded'
         if index in measures:
             value = readable_scalar(value, bool(currency) and currency in labels[index].split())
@@ -215,7 +226,7 @@ def _listed_names(names) -> str:
     return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
 
 
-def _blank(value: Any) -> bool:
+def blank_cell(value: Any) -> bool:
     """An empty cell: serving writes a missing value as "", which answered a blank cell with an
     empty reply (2026-10-04)."""
     return value is None or not str(value).strip()

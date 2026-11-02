@@ -17,8 +17,8 @@ Jobs:
 Every remote command: cd /workspace, unzip the data, pip install transformers>=4.44,<5, exit 3 when CUDA is
 unavailable, train (exit 4 when training fails), shrink (``> log && test -s small.pt && rm model.pt``), list out/.
 The pod's /workspace/out comes back to training/readers/data/experiments/<id>/out (a failed attempt's recovered
-out/ is moved aside to out.<cloud>, so the next attempt never nests into it); each attempt's log is
-<id>/lease_<cloud>.log and the code that ran is <id>/code. The lease's state file is
+out/ is moved aside to out.<cloud>, and one an earlier lease left to out.earlier, so the next attempt's files never mix
+with them); each attempt's log is <id>/lease_<cloud>.log and the code that ran is <id>/code. The lease's state file is
 ~/.cache/prereasoner/runpod_readers_<id>.json, so parallel leases never share one.
 
 usage: python -m training.readers.lease full --experiment <id> --data <dir with stage2.jsonl[.gz]>
@@ -179,7 +179,7 @@ def lease(args, job, remote, uploads, gpus):
     for local, path in uploads:
         command += ["--upload", local, path]
     command += ["--download", "/workspace/out", str(out), "--", "bash", "-lc", remote]
-    code, previous = 1, None
+    code, previous = 1, "earlier"                          # before this lease's first attempt, an earlier lease's
     for cloud in args.clouds.split(","):
         if out.exists():                                   # a failed attempt's recovered artifacts
             aside = experiment / f"out.{previous}"

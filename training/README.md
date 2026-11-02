@@ -56,7 +56,10 @@ expensive encoder pass can use a GPU.
 GPU runs go through `training/tools/runpod_api.py lease`. It creates a time-bounded pod from the
 digest-pinned runner image, verifies the image's CUDA-enabled Torch version, installs every other
 dependency from the committed lock, and terminates the pod on success, failure, timeout, interruption,
-or process exit. `--keep` is the explicit exceptional behavior.
+or process exit. `--keep` is the explicit exceptional behavior, and a command that succeeded but whose
+download did not finish keeps its pod until its provider deadline (exit 5): the pod holds the only copy.
+The same lease with `--resume`, its `--download` and no command brings back what is missing, then
+terminates the pod. Large `.jsonl` and `.pt` outputs travel gzipped and are restored on arrival.
 
 ```powershell
 python -m training.tools.runpod_api lease --help

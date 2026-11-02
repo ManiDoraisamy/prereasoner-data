@@ -485,6 +485,147 @@ def test_select_query_serves_the_reading_that_keeps_the_named_date():
     assert plain.candidate.sql == undated.sql and not any(plain.date_satisfied)
 
 
+SALES = {"name": "sales", "columns": ["region", "year", "amount", "note"], "rows": [
+    ["East", 2023, 100, ""], ["East", 2024, 250, ""], ["West", 2024, 300, ""], ["West", 2025, 50, ""]]}
+
+
+def _reply(response, question):
+    """What the person reads of a served response, by the path serving takes: the world routes' terminal check
+    (engine/knowledge_query.verify_nonempty), the tool's shape, the one renderer."""
+    from engine.answer_presentation import terminal_reply
+    from engine.knowledge_query import verify_nonempty
+    from mcp_server.engine_client import shape_reason_response
+
+    return terminal_reply(shape_reason_response(verify_nonempty(response, question), None))
+
+
+def test_a_reading_that_finds_nothing_is_asked_about_and_never_answered():
+    """Real sheets, 2026-11-01: 34 of 186 replies said "No matching rows were found", "No value was recorded" or "No rows
+    in your data match" while the rows existed: the chosen reading's result was empty, and the reply stated that as a
+    fact about the data. Such a result is no answer. The reply says what was read and asks, in the one question back.
+    No less probable reading answers in its place: nearly every pool holds one that drops the filter."""
+    from engine.deterministic.context import analysis_execution_context
+
+    planner = _hermetic_planner()
+    unfiltered = _model_query(planner, "SELECT SUM(amount) FROM sales", [SALES], score=-2.0, read_as="total amount of sales")
+    for sql, read_as in (
+            ("SELECT SUM(amount) FROM sales WHERE year = 2031", "total amount of sales where year is 2031"),
+            ("SELECT region FROM sales WHERE year = 2031", "region of sales where year is 2031"),
+            ("SELECT note FROM sales WHERE year = 2024", "note of sales where year is 2024")):
+        question = "the sales for 2031" if "2031" in sql else "the note for 2024"
+        reading = _model_query(planner, sql, [SALES], score=-0.4, read_as=read_as)
+        planner.pool = [reading, unfiltered]
+        selection = _select(planner, question, [SALES])
+        assert selection.selected is None and selection.candidate is None, f"{sql} was chosen though it finds nothing"
+        assert selection.declined == 0 and selection.found_nothing and selection.record()["found_nothing"]
+        response = planner.serve([SALES], question)
+        assert response.get("clarify") is True and response["result"] is None, response
+        assert response["valid"] is False and response["read_as"] == read_as
+        reply = _reply(response, question)
+        assert f"I read this as “{read_as}”" in reply and reply.rstrip().endswith("?"), reply
+        for flat in ("No matching rows", "No value was recorded", "No rows in your data"):
+            assert flat not in reply, reply
+        # A named request, which runs the query's deterministic program, is asked about the same way.
+        with analysis_execution_context({"slug": "sales", "revision": 1}, "c_" + "8" * 32):
+            named = planner.serve([SALES], question)
+        assert named.get("clarify") is True and named["result"] is None and named["read_as"] == read_as, named
+
+    # A question whose only reading of the date finds nothing is asked about too: the more probable reading drops the
+    # date, and the date rule keeps the choice to the reading that realizes it.
+    contracts = {"name": "contracts", "columns": ["contract", "value", "signed"], "rows": [
+        ["NDA", 5000, "2026-07-06"], ["License", 900000, "2026-07-05"]]}
+    undated = _model_query(planner, "SELECT SUM(value) FROM contracts", [contracts], score=1.0)
+    dated = _model_query(planner, "SELECT SUM(value) FROM contracts WHERE signed < '2020-07-10'", [contracts], score=0.0)
+    question = "What is the total value of contracts signed before July 10, 2020?"
+    selection = _select(planner, question, [contracts], searched=[undated, dated])
+    assert selection.found_nothing and selection.declined == 1 and selection.selected is None, selection.record()
+
+    # Nothing else in the pool: the same question back.
+    planner.pool = [reading]
+    assert _select(planner, question, [SALES]).found_nothing
+
+
+def test_a_reading_that_finds_something_is_served_as_before():
+    """The same questions over the same sheet with a year that has rows, and the results that only look empty: every
+    question with an answer keeps it."""
+    planner = _hermetic_planner()
+    unfiltered = _model_query(planner, "SELECT SUM(amount) FROM sales", [SALES], score=-2.0)
+    total = _model_query(planner, "SELECT SUM(amount) FROM sales WHERE year = 2024", [SALES], score=-0.4)
+    planner.pool = [total, unfiltered]
+    selection = _select(planner, "the sales for 2024", [SALES])
+    assert selection.selected == 0 and not selection.found_nothing and selection.candidate.sql == total.sql
+    response = planner.serve([SALES], "the sales for 2024")
+    assert not response.get("clarify") and response["result"]["rows"] == [[550]], response
+    assert _reply(response, "the sales for 2024") == "550"
+
+    # A reading the re-scorer prefers that finds nothing still gives way to a more probable one that finds rows
+    # (``outread_by_rows``, unchanged): the rows exist, and the answer is theirs.
+    echo = _model_query(planner, "SELECT SUM(amount) FROM sales WHERE year = 2031", [SALES], score=-1.0)
+    with patch.object(planner.readers, "rescore", return_value=[0.0, 1.0]):
+        outread = _select(planner, "the sales for 2024", [SALES], searched=[total, echo])
+    assert outread.ranking == (1, 0) and outread.selected == 0 and not outread.found_nothing, outread.record()
+
+    # A zero is a value: a count of no rows answers 0, and the less probable reading that counts all of them does not
+    # replace it.
+    none = _model_query(planner, "SELECT COUNT(*) FROM sales WHERE year = 2031", [SALES], score=-0.4)
+    every = _model_query(planner, "SELECT COUNT(*) FROM sales", [SALES], score=-2.0)
+    planner.pool = [none, every]
+    response = planner.serve([SALES], "how many sales in 2031")
+    assert response["selection"]["selected"] == 0 and response["result"]["rows"] == [[0]], response
+    assert _reply(response, "how many sales in 2031") == "0"
+
+    # A list with some blank cells holds something, and is listed.
+    noted = dict(SALES, rows=[row[:3] + ["call back" if row[2] == 300 else ""] for row in SALES["rows"]])
+    listing = _model_query(planner, "SELECT note FROM sales WHERE year = 2024", [noted], score=-0.4)
+    planner.pool = [listing]
+    response = planner.serve([noted], "the note for 2024")
+    assert not response.get("clarify") and response["result"]["rows"] == [[""], ["call back"]], response
+
+    # What is served is the served form: a ranking of groups whose largest group has no name returns a blank from the
+    # pool's own query, and the name of the next group when served (sql_ast.named_groups). It stays the answer.
+    industries = {"name": "deals", "columns": ["industry", "amount"], "rows": [
+        ["", 900], ["", 800], ["Retail", 300], ["Energy", 100]]}
+    ranking = _model_query(planner, "SELECT industry FROM deals GROUP BY industry ORDER BY SUM(amount) DESC LIMIT 1",
+                           [industries], score=-0.4)
+    planner.pool = [ranking]
+    selection = _select(planner, "which industry brings in the most", [industries])
+    assert selection.selected == 0 and not selection.found_nothing, selection.record()
+    response = planner.serve([industries], "which industry brings in the most")
+    assert response["result"]["rows"] == [["Retail"]], response
+    # The same ranking over a sheet with no named group at all has no answer.
+    unnamed = dict(industries, rows=[["", 900], ["", 800]])
+    planner.pool = [_model_query(planner, ranking.sql, [unnamed], score=-0.4)]
+    assert _select(planner, "which industry brings in the most", [unnamed]).found_nothing
+
+
+def test_a_reading_that_finds_nothing_keeps_its_route():
+    """A declined choice otherwise reads as the readers having no answer: a semantic search would stand in for it and
+    the world lookup would run. It is still the upload's reading (engine/routing.py, KnowledgeQuery._readers_decline),
+    and a compound question's leaf keeps its order: a leaf is a step of the plan, not the answer."""
+    from engine.decomposition import leaf_candidates
+    from engine.knowledge_query import KnowledgeQuery
+    from engine.routing import reads_upload_whole
+
+    planner = _hermetic_planner()
+    empty = _model_query(planner, "SELECT SUM(amount) FROM sales WHERE year = 2031", [SALES], score=-0.4)
+    later = _model_query(planner, "SELECT SUM(amount) FROM sales WHERE year = 2024", [SALES], score=-2.0)
+    planner.pool = [later, empty]
+    question = "the sales for 2031"
+    selection = _select(planner, question, [SALES])
+    assert selection.found_nothing and selection.declined == 1
+    assert reads_upload_whole(question, selection, _request(planner, [SALES])[2])
+    assert not KnowledgeQuery._readers_decline(planner, [SALES], question)
+    assert [reading.sql for reading in leaf_candidates(selection, "a", question, False)] == [empty.sql, later.sql]
+
+    # Contrast: a refusal that is not confident is the readers having no answer, as before.
+    unsure = _hermetic_planner(confident=False)
+    unsure.pool = [_model_query(unsure, "SELECT SUM(amount) FROM sales WHERE year = 2024", [SALES])]
+    refused = _select(unsure, "the sales for 2024", [SALES])
+    assert refused.selected is None and not refused.found_nothing
+    assert not reads_upload_whole("the sales for 2024", refused, _request(unsure, [SALES])[2])
+    assert KnowledgeQuery._readers_decline(unsure, [SALES], "the sales for 2024")
+
+
 def test_select_query_never_chooses_a_query_that_does_not_run():
     """A pooled query that does not finish within the SQLite step budget (EXECUTION_OP_LIMIT) is
     never chosen, and a question whose pool holds none that runs is not answered."""
@@ -1052,21 +1193,28 @@ def test_named_request_never_serves_or_decomposes_a_lower_read_set_operation():
     question = "total amount for restaurants in United States"
     planner = _hermetic_planner()
     total = _model_query(planner, "SELECT SUM(amount) FROM catering", tables)
-    invented = _model_query(planner, ("SELECT SUM(amount) FROM catering WHERE event = 'breakfast' "
-                                      "INTERSECT SELECT SUM(amount) FROM catering WHERE event = 'lunch'"),
+    invented = _model_query(planner, ("SELECT SUM(amount) FROM catering WHERE amount > 0 "
+                                      "UNION SELECT SUM(amount) FROM catering WHERE amount > 1"),
                             tables, score=1.0)
     planner.pool = [total, invented]
     selection = _select(planner, question, tables)
     assert selection.candidate.sql == invented.sql, "evaluation serves the re-scorer's choice"
     probe = search_probe(planner, tables, question)
     assert not probe.decomposition_required and probe.selection.selected == 1
-    with analysis_execution_context({"slug": "catering", "revision": 1}, "c_" + "8" * 32):
-        named = planner.serve(tables, question)
-    assert not named.get("decomposition_required"), named
-    # A named request runs the served query's deterministic program; its SQL is the program's, its AST the total.
-    assert named["valid"] and named["ast"] == repr(total.query), named
-    assert named["deterministic"]["mode"] == "python" and named["result"]["rows"] == [[26000]], named
-    assert named["selection"]["selected"] == 0
+    for lower_read in (invented, _model_query(planner, (
+            "SELECT SUM(amount) FROM catering WHERE event = 'breakfast' "
+            "INTERSECT SELECT SUM(amount) FROM catering WHERE event = 'lunch'"), tables, score=1.0)):
+        planner.pool = [total, lower_read]
+        with analysis_execution_context({"slug": "catering", "revision": 1}, "c_" + "8" * 32):
+            named = planner.serve(tables, question)
+        assert not named.get("decomposition_required"), named
+        # A named request runs the served query's deterministic program; its SQL is the program's, its AST the total.
+        assert named["valid"] and named["ast"] == repr(total.query), named
+        assert named["deterministic"]["mode"] == "python" and named["result"]["rows"] == [[26000]], named
+        assert named["selection"]["selected"] == 0
+    # The INTERSECT finds nothing, so evaluation, which serves no set operation away, asks instead.
+    empty = _select(planner, question, tables)
+    assert empty.selected is None and empty.found_nothing and empty.declined == 1, empty.record()
 
 
 def test_proposal_import_rejects_malformed_model_text():
@@ -3025,6 +3173,9 @@ TESTS = [
     test_shared_ranking_rule_preserves_date_then_double_count_then_calculation_precedence,
     test_pool_oracle_counts_only_eligible_denotation_hits_and_validates_checkpoints,
     test_select_query_serves_the_reading_that_keeps_the_named_date,
+    test_a_reading_that_finds_nothing_is_asked_about_and_never_answered,
+    test_a_reading_that_finds_something_is_served_as_before,
+    test_a_reading_that_finds_nothing_keeps_its_route,
     test_select_query_never_chooses_a_query_that_does_not_run,
     test_a_join_that_multiplies_two_tables_rows_stops_at_their_cells_budget,
     test_select_query_copies_the_tables_once_and_runs_each_query_once,
