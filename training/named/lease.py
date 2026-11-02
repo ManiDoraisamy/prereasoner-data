@@ -125,6 +125,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--epochs", type=float, default=4.0)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--max-hourly-cost", type=float, default=0.80)
+    parser.add_argument("--minutes", type=int, help="the lease's limit, over the plan's")
     parser.add_argument("--clouds", default="SECURE,COMMUNITY")
     parser.add_argument("--gpus")
     parser.add_argument("--image", default=RECORDED_IMAGE)
@@ -139,7 +140,7 @@ def main(argv: list[str] | None = None) -> int:
     remote = remote_command(args.backbone, plan.steps, args.seed)
     print(json.dumps(asdict(plan), indent=0, sort_keys=True))
     experiment = EXPERIMENTS_DIR / args.experiment
-    args.minutes = plan.lease_minutes
+    args.minutes = args.minutes or plan.lease_minutes
     args.dry_run = not args.go
     if not args.go:
         print("remote command:", remote)
