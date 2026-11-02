@@ -15,11 +15,11 @@ Each stage can run again: replies are journalled with their token counts, so a r
 
 `run_batch.sh` runs 2 to 5 for the next tabs of a side. `ledger.py` adds up the tokens.
 
-Beside them: `build_names.py` and `vocabulary.py` (the name set, `engine/data/named_coordinates.json`), `coverage.py` and `label_sample.py` (its coverage), `anchors.py` (label-beside-formula truth), `public.py` and `isolated.py` (other industries, under `python -I`), `emails_fetch.py` and `emails_pilot.py`, `audit.py`, `leakage.py`.
+Beside them: `build_names.py` and `vocabulary.py` (the name set, `engine/data/named_coordinates.json`), `coverage.py` and `label_sample.py` (its coverage), `anchors.py` (label-beside-formula truth), `public.py` and `isolated.py` (other industries, under `python -I`), `emails_fetch.py`, `emails_extract.py` and `emails_pilot.py`, `audit.py`, `leakage.py`.
 
 ## Rules
 
 - The split is `split.py`'s reading of `design/corpora_family_map.json`, seed 20261102. A frozen, studied or dropped workbook is never listed.
-- A workbook that fires the screen sends no cell. `stacey_white__39035` is never opened.
+- A workbook that fires the screen sends no cell; for a public company's SEC filing, a tab. `stacey_white__39035` is never opened.
 - Run `llm_run.py` from the readers' worktree, whose `engine/llm.py` is the one Gemini client; it stops at 97% of the hard budget in `ledger.py`.
 - No stage prints a cell or a question.

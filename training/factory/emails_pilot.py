@@ -31,7 +31,6 @@ CAP_USD = 1.0
 _QUOTED = re.compile(r"(?im)^(?:>.*|-+ ?original message ?-+.*|from: .*|sent: .*|to: .*|subject: .*|cc: .*)$")
 _SENTENCE = re.compile(r"[^.!?\n]{8,300}[.!?]")
 _FIGURE = re.compile(r"(?<![\w/-])\$?\d[\d,]*(?:\.\d+)?(?![\w/-])")
-_SCHEDULE = TAB_LINE = "TRIAGE"
 
 
 def _digits(text: str) -> float | None:
