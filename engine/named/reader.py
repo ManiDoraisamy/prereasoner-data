@@ -39,7 +39,7 @@ LOG_FLOOR = -6.0
 # Frames an unlikely head would open cost search time for nothing: below this a head's class writes no coordinate.
 HEAD_MIN = 0.02
 LEFT_MIN = 0.5
-_STATED_SLOTS = (SLOT_PERIOD, SLOT_NUMBER, SLOT_COMPARISON, SLOT_CONTAINS)
+_STATED_SLOTS = (SLOT_PERIOD, SLOT_NUMBER, SLOT_COMPARISON, SLOT_CONTAINS, SLOT_VALUE)
 
 
 @dataclass(slots=True)
@@ -275,7 +275,7 @@ class _Builder:
         return out
 
     def stated(self) -> None:
-        """Periods, numbers, comparisons and contained phrases come from the words alone: read as the rules they are."""
+        """Periods, numbers, comparisons, contained phrases, and a number a column holds, come from the words alone: read as the rules they are."""
         for name, score in sorted(self.rule_values.items()):
             slot = slot_of(name)
             if slot not in _STATED_SLOTS or name in self.book:

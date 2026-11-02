@@ -28,6 +28,7 @@ _DATE_FORMS = re.compile(r"\b\d{1,2}/\d{1,2}/\d{2,4}\b|\b\d{4}-\d{2}-\d{2}\b|\b\
 _NUMBER = re.compile(r"(?<![\w/.-])[$]?\d[\d,]*(?:\.\d+)?\s*(?:%|percent\b|k\b|m\b|mm\b)?")
 _COMPARE = ((GE, re.compile(r"\b(at least|or more|or better|or higher|or above|no less than|minimum of)\b")), (LE, re.compile(r"\b(at most|or less|or lower|or below|no more than|maximum of|up to)\b")),
             (GT, re.compile(r"\b(above|over|greater than|more than|exceeds?|exceeding|higher than)\b")), (LT, re.compile(r"\b(below|under|less than|lower than|fewer than)\b")), (NE, re.compile(r"\b(other than|excluding|except)\b")))
+_SIGNED_ZERO = ((GT, re.compile(r"\b(positive|above zero|greater than zero|in the money|gains?)\b")), (LT, re.compile(r"\b(negative|below zero|less than zero|out of the money|losses)\b")), (NE, re.compile(r"\b(non-?zero|not zero)\b")))
 _HIGH = re.compile(r"\b(most|highest|largest|biggest|top|peak|max(?:imum)?|greatest|best|busiest|furthest|latest|last|heaviest|longest)\b")
 _LOW = re.compile(r"\b(least|lowest|smallest|min(?:imum)?|fewest|worst|earliest|first|shortest)\b")
 _SUM = re.compile(r"\b(total|sum|altogether|combined|overall|net|aggregate|cumulative|how much)\b")
@@ -63,6 +64,8 @@ NO_ROW_WORD = -2.0
 NO_CALC_WORD = -2.0
 # Row arithmetic names two measures where a plain measure names one: its operator costs what the second name would add.
 ROW_WORD = -1.0
+# A number the question states that a number column holds as it stands.
+STATED_NUMBER_HELD = 0.8
 # Of two named columns under - or /, the one named first reads as the left: a word order, breaking what would otherwise be a tie.
 LEFT_BY_WORD_ORDER = 0.05
 # A condition beyond what the question's words can read costs this; one they read and the program leaves out, this.
@@ -186,7 +189,11 @@ def _span_score(period, out: dict[str, float], score: float) -> None:
 
 
 def _numbers(low: str, out: dict[str, float]) -> None:
-    """Numbers the question states, with what compares them."""
+    """Numbers the question states, with what compares them. A sign word states a comparison with zero: positive, negative, nonzero."""
+    for op, pattern in _SIGNED_ZERO:
+        if pattern.search(low):
+            out[coordinate(SLOT_NUMBER, number_text(0.0))] = 1.0
+            out[coordinate(SLOT_COMPARISON, op)] = 1.0
     asked = [op for op, pattern in _COMPARE if pattern.search(low)]
     strength = 1.0 if asked else NUMBER_ALONE
     found = False
@@ -255,6 +262,13 @@ def _table_words(table_id: str, index: TableIndex, question_words: set[str], raw
     for place, (_, position) in enumerate(sorted(named, key=lambda item: item[0])):
         if place == 0 and len(named) >= 2:
             out[coordinate(SLOT_CALC_LEFT, coordinate(SLOT_MEASURE, Col(table_id, position).name))] = LEFT_BY_WORD_ORDER
+    # a number the question states, standing in a number column: a key such as an id or a year may be asked for as itself
+    stated = [name.split(":", 1)[1] for name in out if name.startswith(f"{SLOT_NUMBER}:")]
+    for text in stated:
+        value = float(text)
+        for position in index.number_columns:
+            if value and any(number == value for number in table.numbers[position]):
+                out[coordinate(SLOT_VALUE, Col(table_id, position).name, number_text(value))] = STATED_NUMBER_HELD
     # an axis: its name or its members' names in the question, and the word across. One named only by a total beside it, or a flag axis, needs a word of its own
     for axis in table.table.axes:
         names = [index.name_words.get(position, frozenset()) for position in axis.positions]

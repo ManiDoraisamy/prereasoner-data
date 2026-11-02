@@ -801,6 +801,25 @@ def test_a_word_only_one_column_holds_says_which():
     assert scores[coordinate("measure", Col(table.id, 1).name)] >= 0.6 and coordinate("measure", Col(table.id, 0).name) not in scores
 
 
+def test_a_sign_word_compares_with_zero():
+    catalog, table, tables, col = _trades()
+    decoder = Decoder(catalog)
+    reading = read_question("How many deals have negative volume?", catalog, decoder)
+    assert reading.scores[coordinate("number", "0")] == 1.0 and reading.scores[coordinate("comparison", "<")] == 1.0
+    assert Agg(COUNT, None, table.id, (Compare(col(3), "<", 0.0),)) in decoder.enumerate(reading, k=200)[0]
+
+
+def test_a_stated_number_a_column_holds_reads_as_its_value():
+    """"total col b for 1015": a number held as a key is asked for as itself, not only as a comparison."""
+    rows = [["Group", "Amount", "Kind"], [1015.0, 58.5, "x"], [1020.0, 3.0, "y"], [1030.0, 4.0, "x"], [1040.0, 5.0, "y"]]
+    catalog = _catalog(rows)
+    table = catalog.tables[0]
+    decoder = Decoder(catalog)
+    reading = read_question("total amount for 1015", catalog, decoder)
+    assert reading.scores[coordinate("value", Col(table.id, 0).name, "1015")] > 0
+    assert Agg(SUM, Col(table.id, 1), table.id, (Equals(Col(table.id, 0), 1015.0),)) in decoder.enumerate(reading, k=100)[0]
+
+
 def test_a_family_adding_twice_says_so():
     """Family.adds_twice: members repeat each other's lines. A sum or count across the members is flagged; one member's lines, or a read, are not."""
     def book(tab):
@@ -949,7 +968,7 @@ def test_explain_carries_the_named_contributions():
 
 
 TESTS = [
-    test_a_misspelled_word_reads_as_the_sheets_word, test_a_word_only_one_column_holds_says_which, test_several_columns_shown_type_the_same_however_they_stand, test_across_adds_peer_columns_of_a_line, test_the_decoder_reaches_across_when_a_word_asks, test_a_text_other_than, test_the_decoder_reads_other_than_from_the_words, test_answer_types_place_money_quantity, test_decoder_ties_do_not_follow_sheet_order, test_a_family_adding_twice_says_so, test_axes_are_read_by_their_kind, test_a_question_reads_the_tables_its_links_reach, test_verifier_stops_at_its_budget_of_lines,
+    test_a_sign_word_compares_with_zero, test_a_stated_number_a_column_holds_reads_as_its_value, test_a_misspelled_word_reads_as_the_sheets_word, test_a_word_only_one_column_holds_says_which, test_several_columns_shown_type_the_same_however_they_stand, test_across_adds_peer_columns_of_a_line, test_the_decoder_reaches_across_when_a_word_asks, test_a_text_other_than, test_the_decoder_reads_other_than_from_the_words, test_answer_types_place_money_quantity, test_decoder_ties_do_not_follow_sheet_order, test_a_family_adding_twice_says_so, test_axes_are_read_by_their_kind, test_a_question_reads_the_tables_its_links_reach, test_verifier_stops_at_its_budget_of_lines,
     test_every_name_is_from_a_closed_list, test_forms_refuse_what_they_cannot_say, test_signs, test_printed_lines_are_read_by_label_and_never_added, test_shortest_label_first_and_unlabelled_printed_lines, test_a_column_filled_only_on_printed_lines_reads_them,
     test_partial_value_match, test_case_and_spacing_do_not_count, test_periods, test_blanks, test_ties_keep_every_tied_line, test_units, test_mixed_columns, test_repeated_rows, test_sections_nested_bands_and_the_section_shown, test_python_masks_agree_with_the_sql,
     test_calc_shapes, test_rank_across_peer_columns, test_new_ast_nodes_render_and_validate, test_plan_schema_holds_only_what_a_query_reads, test_perfect_readings_give_the_gold_first, test_decoder_is_deterministic_and_order_free, test_the_list_does_not_depend_on_hash_order,
