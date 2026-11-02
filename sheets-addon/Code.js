@@ -17,6 +17,8 @@ var FIREBASE_TOKEN_URL = 'https://identitytoolkit.googleapis.com/v1/accounts:sig
 // The upload's worksheet limits (web/public/lib/upload-limits.js; tests pin this copy to it), checked
 // before any cell is read, plus a cell cap that bounds what one sidebar call reads and sends.
 var GRID_LIMITS = {sheets: 8, rows: 50000, columns: 256, cells: 1000000};
+// The most one execution reads of a tab past those limits to find out whether what it holds fits them.
+var TRIM_READ_CELLS = 2000000;
 var REQUEST_LIMITS = {questionChars: 20000, historyItems: 24, historyChars: 80000};
 // The strings Sheets returns for a cell whose formula failed.
 var SHEETS_ERRORS = /^#(?:NULL!|DIV\/0!|VALUE!|REF!|NAME\?|NUM!|N\/A|ERROR!)$/;
@@ -79,6 +81,7 @@ function getSidebarContext() {
     tabs: plan.tabs,
     scope: plan.scope,
     availableTabs: plan.availableTabs,
+    leftOut: plan.leftOut,
     uploadOnce: true
   };
 }
@@ -87,14 +90,8 @@ function getSidebarContext() {
 function getWorkbookSchema(request) {
   var spreadsheet = activeSpreadsheet_();
   var active = spreadsheet.getActiveSheet().getName();
-  var visible = spreadsheet.getSheets().filter(function(sheet) {
-    return !sheet.isSheetHidden() && sheet.getLastRow() > 1 && sheet.getLastColumn() > 0;
-  });
+  var visible = dataTabs_(spreadsheet);
   if (!visible.length || visible.length > 64) throw new Error('Schema suggestions unavailable for this workbook.');
-  var total = visible.reduce(function(n, sheet) { return n + sheet.getLastRow() * sheet.getLastColumn(); }, 0);
-  var allFit = visible.length <= GRID_LIMITS.sheets && total <= GRID_LIMITS.cells && visible.every(function(sheet) {
-    return sheet.getLastRow() - 1 <= GRID_LIMITS.rows && sheet.getLastColumn() <= GRID_LIMITS.columns;
-  });
   // Visible, populated tabs only (the privacy page's promise): hidden tabs' names and headers went to
   // the suggestion service when the sidebar opened (2026-10-04).
   var schemas = visible.map(function(sheet) {
@@ -106,7 +103,7 @@ function getWorkbookSchema(request) {
     })) reliable = false;
     return {name: sheet.getName(), columns: reliable ? headers.map(function(value) { return value.trim(); }) : []};
   });
-  var scope = request && request.scope === 'active' ? [active] : allFit ? visible.map(function(s) { return s.getName(); }) : [active];
+  var scope = request && request.scope === 'active' ? [active] : withinOneRead_(activeFirst_(visible, active)).tabs;
   // Uncertain headers wait for the shared importer's positional names, without guessing.
   return {sheets: schemas, active_sheet: active, scope: scope};
 }
@@ -128,12 +125,10 @@ function getWorkbookPlan(request) {
 function getWorkbookTab(request) {
   var spreadsheet = activeSpreadsheet_();
   var name = String((request && request.name) || '');
-  var sheet = spreadsheet.getSheets().filter(function(candidate) {
-    return candidate.getName() === name && !candidate.isSheetHidden();
-  })[0];
+  var sheet = dataTabs_(spreadsheet).filter(function(candidate) { return candidate.getName() === name; })[0];
   if (!sheet) throw new Error('This spreadsheet changed while it was being read. Try again.');
-  checkTab_(sheet);
-  return readTab_(sheet, spreadsheet.getSpreadsheetTimeZone() || 'UTC');
+  var timeZone = spreadsheet.getSpreadsheetTimeZone() || 'UTC';
+  return overLimit_(sheet.getLastRow(), sheet.getLastColumn()) ? readTrimmed_(sheet, timeZone) : readTab_(sheet, timeZone);
 }
 
 // The sheet's conversation and saved sidebar. The cells are not sent: the sidebar compares the sheet's
@@ -245,61 +240,176 @@ function requestTables_(request) {
   });
 }
 
-// The tabs to read: visible and non-empty, the active one first.
+// The tabs that hold cells to read: visible, non-empty grids. A chart tab has no cells, and refuses even being asked
+// how long it is ("The action is not supported for OBJECT sheet"): four real workbooks failed to open over one
+// (2026-11-01). The type comes first, so nothing else is asked of it.
+function dataTabs_(spreadsheet) {
+  return spreadsheet.getSheets().filter(function(sheet) {
+    return String(sheet.getType()) === 'GRID' && !sheet.isSheetHidden() && sheet.getLastRow() > 1 && sheet.getLastColumn() > 0;
+  });
+}
+
+function activeFirst_(sheets, activeName) {
+  return sheets.slice().sort(function(a, b) {
+    if (a.getName() === activeName) return -1;
+    if (b.getName() === activeName) return 1;
+    return a.getIndex() - b.getIndex();
+  });
+}
+
+// The tabs to read, the active one first, as many as one read holds, and why it leaves out any other.
 function workbookPlan_(spreadsheet, requestedScope) {
   var scope = requestedScope || 'auto';
   if (['auto', 'active', 'all'].indexOf(scope) < 0) throw new Error('Choose the active sheet or all tabs.');
-  var active = spreadsheet.getActiveSheet();
-  var sheets = spreadsheet.getSheets().filter(function(sheet) {
-    return !sheet.isSheetHidden() && sheet.getLastRow() > 1 && sheet.getLastColumn() > 0;
-  });
-  sheets.sort(function(a, b) {
-    if (a.getSheetId() === active.getSheetId()) return -1;
-    if (b.getSheetId() === active.getSheetId()) return 1;
-    return a.getIndex() - b.getIndex();
-  });
+  var active = spreadsheet.getActiveSheet().getName();
+  var sheets = activeFirst_(dataTabs_(spreadsheet), active);
   if (!sheets.length) throw new Error('This spreadsheet needs a header row and at least one data row.');
-  var total = sheets.reduce(function(sum, sheet) { return sum + sheet.getLastRow() * sheet.getLastColumn(); }, 0);
-  var allFit = sheets.length <= GRID_LIMITS.sheets && total <= GRID_LIMITS.cells && sheets.every(function(sheet) {
-    return sheet.getLastRow() - 1 <= GRID_LIMITS.rows && sheet.getLastColumn() <= GRID_LIMITS.columns;
-  });
   var available = sheets.map(function(sheet) { return sheet.getName(); });
-  // Use the whole visible workbook only when it fits the bounded read. Otherwise keep
-  // the user's question moving with the current sheet; scope is automatic in the UI.
-  if (scope === 'auto') scope = allFit ? 'all' : 'active';
-  if (scope === 'all' && !allFit) scope = 'active';
-  var fitting = scope === 'active' ? sheets.filter(function(sheet) { return sheet.getSheetId() === active.getSheetId(); }) : sheets;
-  if (!fitting.length) throw new Error('The current sheet has no data rows. Open a populated sheet and try again.');
-  fitting.forEach(checkTab_);
-  return {tabs: fitting.map(function(sheet) { return sheet.getName(); }), scope: scope, availableTabs: available};
+  if (scope === 'auto') scope = 'all';
+  var wanted = scope === 'active' ? sheets.filter(function(sheet) { return sheet.getName() === active; }) : sheets;
+  if (!wanted.length) throw new Error('The current sheet has no data rows. Open a populated sheet and try again.');
+  var fit = withinOneRead_(wanted);
+  return {tabs: fit.tabs, scope: scope, availableTabs: available, leftOut: fit.leftOut};
 }
 
-function checkTab_(sheet) {
-  var rows = sheet.getLastRow(), columns = sheet.getLastColumn();
-  if (rows - 1 > GRID_LIMITS.rows) throw new Error('Sheet "' + sheet.getName() + '": each worksheet may contain at most ' + grouped_(GRID_LIMITS.rows) + ' data rows');
-  if (columns > GRID_LIMITS.columns) throw new Error('Sheet "' + sheet.getName() + '": each worksheet may contain at most 256 columns');
-  if (rows * columns > GRID_LIMITS.cells) throw new Error('The active sheet exceeds the current analysis capacity of ' + grouped_(GRID_LIMITS.cells) + ' cells.');
+// Of `sheets` in order, the names one read holds and {name, reason} for the rest: one tab too many or too large never
+// takes the others down. A tab past the worksheet limits stays in: only reading it can tell whether what it holds fits
+// them (readTrimmed_), and that does not hold up the sidebar's token, which this plan travels with.
+function withinOneRead_(sheets) {
+  var tabs = [], leftOut = [], cells = 0;
+  sheets.forEach(function(sheet) {
+    var rows = sheet.getLastRow(), columns = sheet.getLastColumn();
+    if (tabs.length >= GRID_LIMITS.sheets) {
+      leftOut.push({name: sheet.getName(), reason: 'one read holds ' + GRID_LIMITS.sheets + ' tabs'});
+    } else if (overLimit_(rows, columns)) {
+      tabs.push(sheet.getName());
+    } else if (cells + rows * columns > GRID_LIMITS.cells) {
+      leftOut.push({name: sheet.getName(), reason: 'one read holds ' + grouped_(GRID_LIMITS.cells) + ' cells'});
+    } else {
+      cells += rows * columns;
+      tabs.push(sheet.getName());
+    }
+  });
+  return {tabs: tabs, leftOut: leftOut};
 }
 
-// One tab as a cell grid: values, number formats, failed formulas and merged ranges.
-function readTab_(sheet, timeZone) {
-  var range = sheet.getRange(1, 1, sheet.getLastRow(), sheet.getLastColumn());
-  var values = range.getValues();
+// Which worksheet limit a tab of this size is past, in the words the sidebar tells the user; '' when none.
+function overLimit_(rows, columns) {
+  if (rows - 1 > GRID_LIMITS.rows) return 'it has more than ' + grouped_(GRID_LIMITS.rows) + ' data rows';
+  if (columns > GRID_LIMITS.columns) return 'it has more than ' + GRID_LIMITS.columns + ' columns';
+  if (rows * columns > GRID_LIMITS.cells) return 'it has more than ' + grouped_(GRID_LIMITS.cells) + ' cells';
+  return '';
+}
+
+// A tab past the limits, as a grid of the columns and rows that hold anything when those fit them: one number in column
+// IV made a 7,827-row tab with 31,943 filled cells a grid of 2,003,712 (2026-11-01). No filled cell is dropped.
+// Otherwise {name, leftOut: why}, and the other tabs are read without it, as they are when the read itself fails.
+function readTrimmed_(sheet, timeZone) {
+  var height = sheet.getLastRow();
+  var over = {name: sheet.getName(), leftOut: overLimit_(height, sheet.getLastColumn())};
+  try {
+    var columns = filledColumns_(sheet, height);
+    if (!columns) return over;
+    var width = columns.reduce(function(sum, run) { return sum + run[1] - run[0] + 1; }, 0);
+    return height * width > TRIM_READ_CELLS ? over : readTab_(sheet, timeZone, columns);
+  } catch (error) {
+    return over;
+  }
+}
+
+// The [first, last] runs of `sheet`'s columns that hold anything, asking whether a band is blank and halving those that
+// are not, so a wide empty stretch takes one question. Null once more are filled than a worksheet may have.
+function filledColumns_(sheet, height) {
+  var runs = [], filled = 0;
+  function walk(first, last) {
+    if (filled > GRID_LIMITS.columns || sheet.getRange(1, first, height, last - first + 1).isBlank()) return;
+    if (first < last) {
+      var middle = Math.floor((first + last) / 2);
+      walk(first, middle);
+      walk(middle + 1, last);
+      return;
+    }
+    filled++;
+    var run = runs[runs.length - 1];
+    if (run && run[1] === first - 1) run[1] = first;
+    else runs.push([first, first]);
+  }
+  walk(1, sheet.getLastColumn());
+  return filled > GRID_LIMITS.columns ? null : runs;
+}
+
+// One tab as a cell grid: values, number formats, failed formulas and merged ranges. `columns`: the runs a tab past the
+// limits is trimmed to (readTrimmed_); its blank rows go too when the columns alone do not bring it within them, one
+// kept between filled stretches, as a blank row separates what the importer reads. A trimmed tab still past them comes
+// back as {name, leftOut: why}.
+function readTab_(sheet, timeZone, columns) {
+  var height = sheet.getLastRow(), lastColumn = sheet.getLastColumn();
+  var ranges = (columns || [[1, lastColumn]]).map(function(run) {
+    return sheet.getRange(1, run[0], height, run[1] - run[0] + 1);
+  });
+  var values = sideBySide_(ranges.map(function(range) { return range.getValues(); }));
+  var kept = null;
+  if (columns) {
+    kept = overLimit_(height, values[0].length) ? rowsWorthKeeping_(values) : values.map(function(_, r) { return r; });
+    values = kept.map(function(r) { return values[r]; });
+    var still = overLimit_(values.length, values[0].length);
+    if (still) return {name: sheet.getName(), leftOut: still};
+  }
   var offsets = {};
   var rows = values.map(function(row) {
     return row.map(function(value) { return gridValue_(value, timeZone, offsets); });
   });
+  var formats = sideBySide_(ranges.map(function(range) { return range.getNumberFormats(); }));
+  if (kept) formats = kept.map(function(r) { return formats[r]; });
   return {
     name: sheet.getName(),
     rows: rows,
-    columnFormats: columnFormats_(range.getNumberFormats(), rows),
+    columnFormats: columnFormats_(formats, rows),
     errorCells: errorCells_(values),
-    merges: range.getMergedRanges().map(function(merged) {
-      return {s: {r: merged.getRow() - 1, c: merged.getColumn() - 1},
-              e: {r: merged.getLastRow() - 1, c: merged.getLastColumn() - 1}};
-    }),
+    merges: kept ? trimmedMerges_(sheet.getRange(1, 1, height, lastColumn).getMergedRanges(), kept, columns)
+      : ranges[0].getMergedRanges().map(function(merged) {
+        return {s: {r: merged.getRow() - 1, c: merged.getColumn() - 1},
+                e: {r: merged.getLastRow() - 1, c: merged.getLastColumn() - 1}};
+      }),
     date1904: false
   };
+}
+
+// Column runs read separately, as one matrix.
+function sideBySide_(matrices) {
+  if (matrices.length === 1) return matrices[0];
+  return matrices[0].map(function(_, r) {
+    return Array.prototype.concat.apply([], matrices.map(function(matrix) { return matrix[r]; }));
+  });
+}
+
+function rowsWorthKeeping_(values) {
+  function blank(row) { return row.every(function(value) { return value === '' || value === null; }); }
+  var kept = [];
+  values.forEach(function(row, r) {
+    if (!blank(row) || (r > 0 && !blank(values[r - 1]))) kept.push(r);
+  });
+  return kept;
+}
+
+// Merged ranges at their place among the kept rows (`kept`, zero-based) and column runs. A range whose first cell went
+// held nothing, and one left a single cell merges nothing.
+function trimmedMerges_(merges, kept, columns) {
+  var rowAt = {}, columnAt = {}, next = 0;
+  kept.forEach(function(row, index) { rowAt[row + 1] = index; });
+  columns.forEach(function(run) {
+    for (var column = run[0]; column <= run[1]; column++) columnAt[column] = next++;
+  });
+  var trimmed = [];
+  merges.forEach(function(merged) {
+    var r = rowAt[merged.getRow()], c = columnAt[merged.getColumn()];
+    if (r === undefined || c === undefined) return;
+    var lastRow = merged.getLastRow(), lastColumn = merged.getLastColumn();
+    while (rowAt[lastRow] === undefined) lastRow--;
+    while (columnAt[lastColumn] === undefined) lastColumn--;
+    if (rowAt[lastRow] > r || columnAt[lastColumn] > c) trimmed.push({s: {r: r, c: c}, e: {r: rowAt[lastRow], c: columnAt[lastColumn]}});
+  });
+  return trimmed;
 }
 
 // Each column's number format once, with the rows whose format differs ({f, x: [[row, format]]}), instead of a

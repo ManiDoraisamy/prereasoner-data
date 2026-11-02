@@ -866,7 +866,9 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         """Whether the readers have no answer to the question, the one case a semantic search stands in for them when
         the question filters by no place. A word check sent every question it found no aggregate word in to the
         search, before any reader saw it: "what are the priciest terms to advertise on" returned whole rows by
-        similarity (2026-10-30). "who ordered a trench coat in France" stays a search: the world filter is its point."""
+        similarity (2026-10-30). "who ordered a trench coat in France" stays a search: the world filter is its point.
+        A reading declined over a value the column lacks or a result that holds nothing is an answer of a kind: the
+        reply asks about it, and rows ranked by similarity would not answer that question either."""
         from engine.decomposition import DecompositionError, search_probe
         try:
             probe = search_probe(self, tables, question)
@@ -874,7 +876,8 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
             return True
         return (probe.decomposition_required is None
                 and (probe.selection is None or (probe.selection.selected is None
-                                                 and probe.selection.absent_value is None)))
+                                                 and probe.selection.absent_value is None
+                                                 and not probe.selection.found_nothing)))
 
     @staticmethod
     def _searchable(plan):

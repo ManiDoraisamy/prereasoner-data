@@ -306,12 +306,15 @@ def leaf_candidates(selection, node_id: str, question: str, feeds_cross: bool):
     """Return all single-query readings in selection order, with named measures projected.
 
     Readings follow the selection's order, with its choice first and each names-only ranking
-    projected with its measure. The caller must enforce the measure and ranking-grain
+    projected with its measure. A choice that found nothing stays first: a leaf is a step of the
+    plan, not the answer, and an empty one is sound ("customers who never ordered" takes nothing
+    away when none is missing). The caller must enforce the measure and ranking-grain
     contracts separately: a lower-ranked pool member may be compatible even when the
     preferred reading is not.
     """
-    order = [selection.selected] if selection.selected is not None else []
-    order += [index for index in selection.ranking if index != selection.selected]
+    first = selection.declined if selection.found_nothing else selection.selected
+    order = [first] if first is not None else []
+    order += [index for index in selection.ranking if index != first]
     readings = []
     seen_sql = set()
     for index in order:

@@ -5111,3 +5111,50 @@ measured (`spider/results/RESULTS.md`, 2026-10-31) and none ships:
 A word-coverage check for silently dropped filters was also measured and refused: even its narrowest form, one aggregate of one
 whole table with a question word the query does not account for, flags 27 right answers per 7 wrong on Spider calibration. Dropped
 filters are a reading failure, for the readers and the re-scorer.
+
+## A result that holds nothing is a question back, one tab never takes a workbook down, a finished lease keeps its pod (2026-11-02)
+
+Three defects from the 100-workbook Enron test and the leases of 2026-11-01.
+
+**False "no data".** 34 of 186 replies said "No matching rows were found", "No value was recorded" or "No rows in your data
+match" while the rows existed: the chosen reading's result was empty, and the reply stated that as a fact about the data. A
+chosen reading whose served result holds no row or only blank cells is now declined in `TableQuery._choose`
+(`PoolSelection.found_nothing`), so serving, decomposition leaves, the Spider evaluator and the regression gate all see it, and
+the reply is the existing question back (`unsure_reason`). A zero is a value and is answered. `terminal_reply` words the world
+and composed routes' empty result the same way; `verify_nonempty`'s sentence stays for the world routes, where the join was read.
+
+Serving a less probable reading that returns rows instead was measured and refused. On the recorded replay of the 186 questions
+(`evals/enron`, shipped bundle), 36 chosen readings came back empty, all graded wrong. 32 of the 36 had another eligible reading
+with rows, and none of those 32 was right: most pools hold a reading that drops the filter, so a genuinely empty result would
+become a silent wrong number. The existing `outread_by_rows` rule still moves to a more probable reading that finds rows. Those 36
+now ask: 26 right / 54 asked / 106 wrong becomes 26 / 90 / 70 on that replay. Only those 36 were re-run; every other question's
+selection is unchanged by construction (the rule acts only when the choice holds nothing).
+
+**The price on Spider, and the decision to ship.** Empty answers are often right there: its gold has them. Calibration, whole_db,
+served, a fresh run: 708 strict of 1,053, 280 wrong, 65 unanswered, against 723 / 295 / 35 at `2941ae5`. That is below the former 716
+bar. Of the 31 newly unanswered, 18 were right and 13 wrong before; one unanswered question now answers wrong, so the net is 30. The
+frozen test was not re-run; its stored per-example records put 100 of 2,147 served results empty, 54 of them right, so about 1,531 to
+1,477. The same fixes on real sheets: messy dev 44 right / 21 asked / 55 wrong to 44 / 23 / 53 of 120, the Enron replay 26 / 54 / 106
+to 26 / 90 / 70 of 186. Complex datasets 10 of 10, live `tests.test_datasets` passed. The owner decided to ship anyway: real sheets are
+the bar now. The rows are in `spider/results/RESULTS.md`.
+
+**Real workbooks.** A chart tab refuses `getLastRow` ("The action is not supported for OBJECT sheet"), and one tab over the limits
+threw, so five workbooks never opened. `dataTabs_` is the one walk of the tabs, and asks each one's type first. A tab past the limits
+stays in the plan, which travels with the sidebar's token and reads no cells, and `getWorkbookTab` reads it as its filled columns
+(`isBlank` over halved bands) and, when those are not enough, its filled rows: no filled cell is dropped. The real tab, 7,827 rows by
+256 columns with 31,943 cells filled, is 18 columns. What still does not fit is left out and named once in the reading status, as
+is what one read cannot hold, and the importer leaves a tab out the same way for the sidebar (`convert`'s `leaveOut`), which has no
+picker. The whole read no longer falls back to the active tab.
+
+"runner[name] is not a function" was the sidebar calling `getWorkbookGrids` after a failed `getSidebarContext`. That error on
+production proves Marketplace serves a script without that function, which was the removal condition recorded on 2026-10-30, so its
+branch, the `workbook` context and `skipped` are gone. A failed start-up now asks for the context again on the next question, and
+shows the script's reason. Excel's `worksheets` lists no chart sheets, so its path has no such failure; its over-limit tab still
+refuses the workbook.
+
+**The lease.** Once the command has succeeded, anything that stops the download keeps the pod and exits INCOMPLETE_EXIT, and the
+download stops short of the deadline (`PULL_RESERVE_SECONDS`) so the kept pod is still there to pull from: a kept pod at its deadline
+goes to its watchdog with the files. Each file travels alone onto its own path, so no retry can nest, under a limit set by its size.
+Large `.jsonl` and `.pt` outputs are gzipped on the pod beside their originals and restored here. A folder upload goes file by file
+too: `scp -r` left a resumed pod running its old code. `--resume` with a `--download` and no command brings back what is missing and
+terminates the pod, for the jobs `pull_parts.sh` does not know.

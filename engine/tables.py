@@ -218,6 +218,8 @@ class _PoolRuns:
         self.shapes = {}
         # Whether each query that ran matched no row: none came back, or an aggregate's one NULL total or zero count.
         self.matched_nothing = {}
+        # Whether what each query that ran returned holds nothing: no row, or only blank cells. A zero is a value.
+        self.blank = {}
 
     def database(self):
         if self._database is None:
@@ -439,6 +441,9 @@ class TableQuery:
            questions its threshold was matched on (engine/decomposition.py:ONE_QUERY_WORDS); otherwise nothing is
            selected, the refused choice is recorded as ``declined``, and the reply says how it read the question
            (or, for a long question in an analysis, asks for the decomposition proposal).
+        5. A choice whose served result holds nothing, no row or only blank cells, is declined the same way
+           (``found_nothing``): the reply asks, and says how it read the question, never that the data is absent. A
+           less probable reading does not answer in its place: most pools hold one that drops the question's filter.
 
         This is the one own-data selection: serving, decomposition leaves, the Spider evaluator and
         the offline regression gate all call it. The decomposition probe reads only its first stage
@@ -473,7 +478,7 @@ class TableQuery:
         from engine.sql_expansion import tokens as question_tokens
         from engine.sql_grounding import absent_value, double_counted_members, grounded_members, shared_headers
         from engine.currency_intent import currency_conversion_target
-        from engine.sql_rank import PoolSelection, mixed_currencies, outread_by_rows, select_ranked_candidate
+        from engine.sql_rank import PoolSelection, mixed_currencies, outread_by_rows, select_ranked_candidate, served_member
 
         pool = tuple(pool)
         executable = self._executable(pool, tablemap, runs)
@@ -501,10 +506,15 @@ class TableQuery:
         request_timing.count("pool", len(pool))
         undecided = self._undecided(pool, ranking, runs)
         outread = outread_by_rows(pool, ranking, [runs.matched_nothing.get(member.sql, False) for member in pool])
+        currencies = {} if currency_conversion_target(question) else mixed_currencies(graph)
+        # What is served is the member's served form: a ranking whose first group has no name still names the next.
+        eligible = set(ranking)
+        blank = tuple(index in eligible and runs.blank.get(member.sql, False)
+                      and self._holds_nothing(served_member(member, currencies), tablemap, runs)
+                      for index, member in enumerate(pool))
         selection = PoolSelection(pool, tuple(executable), tuple(grounded), ranking, None,
                                   tuple(calculation_satisfied), tuple(date_satisfied), double_counted, undecided,
-                                  shared, outread=outread,
-                                  currencies={} if currency_conversion_target(question) else mixed_currencies(graph))
+                                  shared, outread=outread, blank=blank, currencies=currencies)
         selected = select_ranked_candidate(ranking, calculation_satisfied, date_satisfied, double_counted, undecided,
                                            outread)
         confidence = readers.confidence(pool, scores, shapes, selected) if selected is not None else None
@@ -517,7 +527,16 @@ class TableQuery:
         absent = absent_value(pool[selected].query, graph) if selected is not None else None
         if absent is not None:
             return replace(selection, confidence=confidence, declined=selected, absent_value=absent)
-        return replace(selection, selected=selected, confidence=confidence)
+        chosen = replace(selection, selected=selected, confidence=confidence)
+        if selected is not None and self._holds_nothing(chosen.candidate, tablemap, runs):
+            return replace(selection, confidence=confidence, declined=selected, found_nothing=True)
+        return chosen
+
+    def _holds_nothing(self, candidate, tablemap, runs):
+        """Whether ``candidate``, run on the copy of the request's tables in ``runs`` unless it ran there already,
+        returns no row or only blank cells. One that does not run says nothing: its execution reports why."""
+        self._executable((candidate,), tablemap, runs)
+        return runs.blank.get(candidate.sql, False)
 
     @staticmethod
     def _undecided(pool, ranking, runs):
@@ -559,7 +578,7 @@ class TableQuery:
         selection = self.select_query(question, norm, fks, sch, tablemap, searched=searched, graph=graph)
         candidates = selection.pool
         candidate = selection.candidate
-        if candidate is None:
+        if candidate is None and not (selection.found_nothing and analysis_context is not None):
             if not candidates:
                 return None, None, "planner: no valid AST candidate", candidates, selection
             return None, None, NO_EXECUTABLE_CANDIDATE, candidates, selection
@@ -572,7 +591,8 @@ class TableQuery:
             selection = selection.constrained(single_branch)
             candidate = selection.candidate
             if candidate is None:
-                return None, None, "planner: no single-query AST candidate", candidates, selection
+                why = NO_EXECUTABLE_CANDIDATE if selection.found_nothing else "planner: no single-query AST candidate"
+                return None, None, why, candidates, selection
         ok, why = self.guard(candidate.sql)
         if not ok:
             return candidate, None, "guard: " + why, candidates, selection
@@ -621,6 +641,7 @@ class TableQuery:
         A query ``runs`` already ran keeps its outcome."""
         if not pool:
             return ()
+        from engine.answer_presentation import blank_cell
         from engine.request_deadline import expired, remaining
         from engine.sql_rank import execution_op_limit
         steps = budget = interval = 0
@@ -646,14 +667,16 @@ class TableQuery:
                             # Eligibility needs completion, but not a second materialized copy
                             # of tens of thousands of result rows for each candidate.
                             cursor = con.execute(candidate.sql)
-                            rows, first = 0, None
+                            rows, first, holds = 0, None, False
                             while chunk := cursor.fetchmany(1024):
                                 first = chunk[0] if first is None else first
                                 rows += len(chunk)
+                                holds = holds or not all(blank_cell(value) for row in chunk for value in row)
                                 remaining()
                             runs.shapes[candidate.sql] = (rows, len(cursor.description or ()))
                             runs.matched_nothing[candidate.sql] = rows == 0 or (
                                 rows == 1 and all(value in (None, 0) for value in first))
+                            runs.blank[candidate.sql] = not holds
                             ran = True
                         except sqlite3.Error:
                             ran = False
@@ -984,16 +1007,11 @@ def shared_header_clarification(header):
 
 
 def unsure_clarification(candidate):
-    """The reply when the readers' refusal is not confident of any runnable reading: how the best-ranked one read
-    the question, so the person can see what was understood and ask again in the sheet's own terms."""
+    """The reply when the readers' refusal is not confident of any runnable reading, or the chosen one holds nothing:
+    how it read the question (engine/answer_presentation.py:unsure_reason)."""
+    from engine.answer_presentation import unsure_reason
     read_as = read_as_of(candidate)
-    if read_as:
-        reason = (f"I read this as “{read_as}”, but I'm not confident that is what you asked. "
-                  "Ask again with the column names as your sheet spells them.")
-    else:
-        reason = ("I'm not confident I read this question right. "
-                  "Ask again with the column names as your sheet spells them.")
-    return {"clarify": True, "reason": reason, "dropped": [], "read_as": read_as}
+    return {"clarify": True, "reason": unsure_reason(read_as), "dropped": [], "read_as": read_as}
 
 
 def absent_value_clarification(candidate, absent):

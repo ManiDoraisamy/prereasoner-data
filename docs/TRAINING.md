@@ -158,7 +158,9 @@ python -m training.tools.runpod_api lease --help
 The wrapper creates a bounded lease from a digest-pinned image and terminates the pod on success,
 failure, timeout, interruption, and process exit. The runner verifies its CUDA-enabled Torch before
 installing the rest of the hash-locked training closure. `--keep` is the explicit exceptional
-behavior. Never use an ad hoc pod-creation command for repository training.
+behavior, and a command that succeeded but whose download did not finish keeps its pod until its
+provider deadline (exit 5), because the pod holds the only copy. Never use an ad hoc pod-creation
+command for repository training.
 
 ## Runtime Artifacts
 

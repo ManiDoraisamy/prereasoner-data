@@ -122,9 +122,14 @@ def test_a_blank_answer_or_a_link_in_a_cell_is_shown_as_data():
     """Serving writes a missing value as "", which answered a blank cell with an empty reply, and a
     cell holding "[x](https://…)" rendered as a live link in the chat (2026-10-04)."""
     from engine.answer_presentation import terminal_reply
-    for blank in ('', '   ', None):
-        assert terminal_reply({'status': 'answered', 'answer': {'columns': ['note'], 'rows': [[blank]]}}) \
-            == 'No value was recorded for the matching rows.'
+    # A result that holds nothing is a question back, with how it was read when the route says: a flat "No matching rows
+    # were found" or "No value was recorded" was false 34 times in 186 on real sheets (2026-11-01).
+    unsure = ("I'm not confident I read this question right. Ask again with the column names as your sheet spells them. "
+              "Which interpretation should I use?")
+    for rows in ([], [['']], [['   ']], [[None]], [['', None], ['', '']]):
+        assert terminal_reply({'status': 'answered', 'answer': {'columns': ['note'], 'rows': rows}}) == unsure
+    read = terminal_reply({'status': 'answered', 'read_as': 'note where id is 5', 'answer': {'columns': ['note'], 'rows': []}})
+    assert read.startswith('I read this as “note where id is 5”, but')
     rows = [['Ava', ''], ['Cleo', 'Travel']]
     assert terminal_reply({'status': 'answered', 'answer': {'columns': ['customer', 'category'], 'rows': rows}}) \
         == '- customer: Ava; category: Not recorded\n- customer: Cleo; category: Travel'

@@ -40,20 +40,31 @@
         // or two and is always read fresh.
         var READ_REUSE_MS = 15000;
         // `uploadOnce`: the add-on's script uploads a sheet once and asks by its hash (getSidebarContext says so).
+        // `contextRead`: getSidebarContext has answered; until it does, nothing is known of the script or the sheet.
         // `sourceHash` names the conversation's stored copy of the sheet the sidebar last uploaded.
+        // `leftOut`: the tabs the last read left out, each told once (`leftOutTold`, kept with the saved chat).
         var state = {conversationId: null, turns: [], history: [], tables: [], syncedFingerprint: '', ready: false,
-          uploadOnce: false, tabReads: false, sourceHash: '', uploading: null, savedReadMs: 0,
+          uploadOnce: false, contextRead: false, sourceHash: '', uploading: null, savedReadMs: 0,
           restored: false, sheetError: '', uid: null, signedIn: null, busy: false, live: null, scope: 'auto',
-          loading: null, loaded: null, restoring: null, print: '', readMs: 0, syncedAt: 0, syncing: false};
+          loading: null, loaded: null, restoring: null, print: '', readMs: 0, syncedAt: 0, syncing: false,
+          leftOut: [], leftOutTold: {}, leftOutNote: ''};
         // The chat service's answer for a conversation deleted elsewhere (orchestrator/server.py).
         var NOT_FOUND = /conversation not found/i;
         var SYNC_URL = new URL('/api/conversation/sync', REASON_BASE).href;
 
+        // The sidebar deploys before a script version is published, so the script may not have a function yet. A failed
+        // start-up once sent every question to one it no longer had, and "runner[name] is not a function" was the whole
+        // reply on five real workbooks (2026-11-01).
         function callServer(name, arg) {
           return new Promise(function (resolve, reject) {
             var runner = google.script.run.withSuccessHandler(resolve).withFailureHandler(reject);
-            if (arg === undefined) runner[name]();
-            else runner[name](arg);
+            if (typeof runner[name] !== 'function') {
+              reject(new Error('This copy of Prereasoner is out of date. Close and reopen the sidebar, and try again later if it still fails.'));
+            } else if (arg === undefined) {
+              runner[name]();
+            } else {
+              runner[name](arg);
+            }
           });
         }
 
@@ -65,8 +76,9 @@
           'the browser is signed in to more than one Google account. Open the sheet in a window signed in only to the ' +
           'account that installed Prereasoner (an Incognito window works), then choose Extensions → Prereasoner → Ask a question.';
 
+        // Apps Script hands the sidebar the script's error as "Exception: ..." or "Error: ...".
         function errorText(error) {
-          var message = String((error && error.message) || error || 'Something went wrong.');
+          var message = String((error && error.message) || error || 'Something went wrong.').replace(/^(?:Exception|Error):\s*/, '');
           return ACCOUNT_MISMATCH.test(message) ? ACCOUNT_MESSAGE : message;
         }
 
@@ -86,15 +98,16 @@
         // The sheet through the web upload importer: the same header, date, duration, merge, total and
         // formula-error rule as an upload of the same cells.
         function importGrids(workbook) {
-          if (workbook.skipped && workbook.skipped.length) {
-            throw new Error('These visible tabs could not be included: ' + workbook.skipped.map(function (tab) {
-              return typeof tab === 'string' ? tab : tab.name;
-            }).join(', ') + '. Hide or close unrelated large tabs, then try again.');
-          }
           state.scope = workbook.scope || (state.scope === 'auto' ? 'all' : state.scope);
-          var result = window.WORKBOOK_IMPORT.convert({grids: workbook.grids}, window.XLSX, window.UPLOAD_LIMITS);
+          var result = workbook.grids.length
+            ? window.WORKBOOK_IMPORT.convert({grids: workbook.grids, leaveOut: true}, window.XLSX, window.UPLOAD_LIMITS)
+            : {ok: true, sheets: [], leftOut: []};
           if (!result.ok) throw new Error(result.error);
-          if (!result.sheets.length) throw new Error('There are no data rows in the selected sheets. Choose a populated tab.');
+          var leftOut = workbook.leftOut.concat(result.leftOut);
+          if (!result.sheets.length) {
+            throw new Error(leftOut.length ? leftOutText(leftOut) : 'There are no data rows in the selected sheets. Choose a populated tab.');
+          }
+          state.leftOut = leftOut;
           return result.sheets.map(function (sheet) {
             return {name: sheet.name, data: sheet.csv, source: {kind: 'google-sheets-addon',
               warnings: (sheet.import && sheet.import.warnings || []).map(function (warning) { return warning.slice(0,4096); }),
@@ -103,8 +116,14 @@
           });
         }
 
+        // Which tabs a read left out and why, as the sidebar says it.
+        function leftOutText(leftOut) {
+          return 'Not read: ' + leftOut.map(function (tab) { return '“' + tab.name + '” (' + tab.reason + ')'; }).join(', ') + '.';
+        }
+
         // The cells, several tabs at once, each in its own Apps Script execution: one execution read a six-tab
-        // workbook in 1:50 (2026-10-30). A script published before reads them all itself (getWorkbookGrids).
+        // workbook in 1:50 (2026-10-30). A tab past the limits comes back as {name, leftOut: why}, and the plan names the
+        // tabs one read cannot hold: neither takes the other tabs down.
         var READ_AT_ONCE = 4;
         function readTabs(plan) {
           var grids = [], next = 0;
@@ -119,7 +138,11 @@
           var readers = [];
           for (var i = 0; i < READ_AT_ONCE; i++) readers.push(reader());
           return Promise.all(readers).then(function () {
-            return {grids: grids, scope: plan.scope, availableTabs: plan.availableTabs};
+            var leftOut = grids.filter(function (grid) { return grid.leftOut; }).map(function (grid) {
+              return {name: grid.name, reason: grid.leftOut};
+            });
+            return {grids: grids.filter(function (grid) { return !grid.leftOut; }),
+              leftOut: leftOut.concat(plan.leftOut || []), scope: plan.scope, availableTabs: plan.availableTabs};
           });
         }
 
@@ -140,15 +163,26 @@
           return tables;
         }
 
-        // Read the sheet again (before a question, or on the header's click), shown as syncing.
+        // What the script's context says of itself, once it has answered.
+        function useContext(context) {
+          state.contextRead = true;
+          state.uploadOnce = !!context.uploadOnce;
+          state.signedIn = signIn(context.token);
+          state.signedIn.catch(function () {});
+          return context;
+        }
+
+        // Read the sheet again (before a question, or on the header's click), shown as syncing. When the read that opened
+        // the sidebar never got the script's context, it is asked for again: a sheet that can now be read is read, and one
+        // that cannot says why.
         async function readSheet() {
           state.syncing = true;
           renderSync();
           try {
             var startedAt = Date.now();
-            return await takeWorkbook(await (state.tabReads
-              ? callServer('getWorkbookPlan', {scope: state.scope}).then(readTabs)
-              : callServer('getWorkbookGrids', {scope: state.scope})), startedAt);
+            var plan = state.contextRead ? await callServer('getWorkbookPlan', {scope: state.scope})
+              : useContext(await callServer('getSidebarContext'));
+            return await takeWorkbook(await readTabs(plan), startedAt);
           } finally {
             state.syncing = false;
             renderSync();
@@ -282,6 +316,20 @@
           window.requestAnimationFrame(function () { scrollEl.scrollTop = scrollEl.scrollHeight; });
         }
 
+        // The tabs the last read left out, told once in the status of the sheet being read, until the next question. It
+        // waits for the saved chat, which says what was told before.
+        function leftOutStatus() {
+          if (!state.restoring) {
+            var fresh = state.leftOut.filter(function (tab) { return !state.leftOutTold[tab.name]; });
+            if (fresh.length) {
+              fresh.forEach(function (tab) { state.leftOutTold[tab.name] = true; });
+              state.leftOutNote = leftOutText(fresh) + ' The other tabs are read.';
+            }
+          }
+          return state.leftOutNote && !state.sheetError
+            ? '<div class="loading" role="status"><div class="statusline">' + R.escapeHtml(state.leftOutNote) + '</div></div>' : '';
+        }
+
         // An empty sidebar is the composer and three starter questions, under the reading status while the
         // sheet is read. A chat adds the header: New chat, and the sheet's sync time.
         function render() {
@@ -290,7 +338,7 @@
           var empty = !html;
           if (empty && state.sheetError) html = '<div class="empty sheet-error">' + R.escapeHtml(state.sheetError) + '</div>';
           else if (empty && state.loading) html = loadingHtml(state.loading);
-          threadEl.innerHTML = html;
+          threadEl.innerHTML = html + leftOutStatus();
           toplineEl.hidden = !state.turns.length;
           renderSync();
           suggestions.setActive(!state.turns.length && !state.live && !state.sheetError);
@@ -391,7 +439,8 @@
         function snapshot() {
           return {client: 'google-sheets-addon', version: 2, turns: state.turns.slice(-24),
             history: state.history.slice(-24), syncedFingerprint: state.syncedFingerprint,
-            syncedSourceHash: state.sourceHash, readMs: state.readMs || state.savedReadMs};
+            syncedSourceHash: state.sourceHash, readMs: state.readMs || state.savedReadMs,
+            leftOutTold: Object.keys(state.leftOutTold)};
         }
 
         // Saved sidebars: version 2 keeps the shared rail's steps; version 1 (before the shared rail)
@@ -419,6 +468,7 @@
             state.history = restored.state && Array.isArray(restored.state.history) ? restored.state.history.slice(-24) : [];
             state.syncedFingerprint = (restored.state && restored.state.syncedFingerprint) || '';
             state.savedReadMs = (restored.state && restored.state.readMs) || 0;
+            ((restored.state && restored.state.leftOutTold) || []).forEach(function (name) { state.leftOutTold[name] = true; });
             // The stored sheet is the one this sidebar last uploaded only while the conversation still stores the
             // hash saved with that upload; otherwise the next question uploads the sheet again. Only a script that
             // uploads once restores without the cells, before the sidebar knows which script it runs.
@@ -493,6 +543,7 @@
           var live = {question: question, turnId: randomId(), startedAt: Date.now(), steps: [], asks: [], reply: '',
             status: state.loading ? 'Waiting for the sheet to finish reading…' : 'Reading the sheet…'};
           state.live = live;
+          state.leftOutNote = '';
           render();
           var stopLive = function () {};
           try {
@@ -672,12 +723,9 @@
         readSuggestionMetadata();            // headers only: starts before the full read
         var contextStarted = Date.now();
         state.loaded = callServer('getSidebarContext').then(async function (context) {
-          state.uploadOnce = !!context.uploadOnce;
-          state.tabReads = Array.isArray(context.tabs);
-          state.signedIn = signIn(context.token);
-          state.signedIn.catch(function () {});
+          useContext(context);
           try {
-            var workbook = state.tabReads ? await readTabs(context) : context.workbook;
+            var workbook = await readTabs(context);
             state.loading.stage = 'preparing';
             render();
             await takeWorkbook(workbook, contextStarted);

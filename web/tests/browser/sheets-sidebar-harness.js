@@ -82,25 +82,33 @@ async function openSidebar(page, rows, failing = {}, workbookOptions = {}) {
         conversation_id: body.id || 'c_0123456789abcdef0123456789abcdef', source_hash: 'a'.repeat(64)}),
       {status: message ? 500 : 200, headers: {'content-type': 'application/json'}});
     };
-    // What Code.js:readGrids_ returns: the upload-once script sends each column's format once and the cells
-    // holding an error; a script published before it (`uploadOnce: false`) sends both for every cell.
-    const grids = () => {
-      const rows = window.__server.rows;
-      const cells = window.__server.workbookOptions.uploadOnce === false
+    // What Code.js:readTab_ returns: the upload-once script sends each column's format once and the cells
+    // holding an error; a script published before it (`uploadOnce: false`) sends both for every cell. A tab named in
+    // `tabLeftOut` is past the limits: {name, leftOut: why}. `grids` gives whole tabs, and `tabRows` other tabs' rows.
+    const tab = name => {
+      const options = window.__server.workbookOptions;
+      const given = (options.grids || []).find(grid => grid.name === name);
+      if (given) return given;
+      const leftOut = (options.tabLeftOut || {})[name];
+      if (leftOut) return {name, leftOut};
+      const rows = (options.tabRows || {})[name] || window.__server.rows;
+      const cells = options.uploadOnce === false
         ? {formats: rows.map(row => row.map(() => 'General')), errors: rows.map(row => row.map(() => false))}
         : {columnFormats: (rows[0] || []).map(() => ({f: 'General'})), errorCells: []};
-      return Object.assign({grids: [Object.assign({name: 'Orders', rows, merges: [], date1904: false}, cells)]},
-        window.__server.workbookOptions);
+      return Object.assign({name, rows, merges: [], date1904: false}, cells);
+    };
+    // What Code.js:workbookPlan_ returns: the tabs one read holds, and why it leaves out any other.
+    const plan = () => {
+      const options = window.__server.workbookOptions;
+      return {tabs: options.tabs || ['Orders'], scope: options.scope || 'all',
+        availableTabs: options.availableTabs || options.tabs || ['Orders'], leftOut: options.leftOut || []};
     };
     const handlers = {
       // The script that uploads a sheet once says so; `uploadOnce: false` is a script published before it.
-      // `tabReads`: the script that returns the tabs to read, and each tab's cells on its own call.
       getSidebarContext: (_, ok) => ok(Object.assign({token: 'google-token', spreadsheetId: 'sheet-1', name: 'Sales',
-        uploadOnce: window.__server.workbookOptions.uploadOnce !== false},
-      window.__server.workbookOptions.tabReads ? {tabs: ['Orders'], scope: 'all', availableTabs: ['Orders']} : {workbook: grids()})),
-      getWorkbookGrids: (_, ok) => ok(grids()),
-      getWorkbookPlan: (_, ok) => ok({tabs: ['Orders'], scope: 'all', availableTabs: ['Orders']}),
-      getWorkbookTab: (_, ok) => ok(grids().grids[0]),
+        uploadOnce: window.__server.workbookOptions.uploadOnce !== false}, plan())),
+      getWorkbookPlan: (_, ok) => ok(plan()),
+      getWorkbookTab: (arg, ok) => ok(tab(arg.name)),
       getWorkbookSchema: (arg, ok) => {
         if(window.__server.holdSchemas) window.__server.pendingSchemas.push({arg,ok});
         else ok(workbookOptions.schema || {sheets:[{name:'Orders',columns:window.__server.rows[0]}],active_sheet:'Orders',scope:['Orders']});
@@ -118,7 +126,8 @@ async function openSidebar(page, rows, failing = {}, workbookOptions = {}) {
     };
     window.google = {script: {run: {withSuccessHandler(ok) {
       return {withFailureHandler(fail) {
-        return new Proxy({}, {get: (_, name) => arg => {
+        // `missing`: functions this script does not have, as google.script.run has none it was not published with.
+        return new Proxy({}, {get: (_, name) => (workbookOptions.missing || []).includes(name) ? undefined : arg => {
           window.__calls.push({name, arg: arg === undefined ? null : JSON.parse(JSON.stringify(arg))});
           // `failOnce` rejects only the next call to a function, as a deleted conversation does.
           const once = window.__server.workbookOptions.failOnce || {};

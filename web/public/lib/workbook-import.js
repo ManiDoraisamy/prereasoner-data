@@ -193,8 +193,15 @@
   }
   // The whole conversion: file bytes ({buffer}) or live cells ({grids}) -> {ok, sheets} or {ok:false,
   // error}, within the upload limits. The upload worker (lib/xlsx-worker.js) runs it off the page; the
-  // Google Sheets add-on's sidebar runs it on its page.
+  // Google Sheets add-on's sidebar runs it on its page. One tab past the limits refuses the workbook,
+  // unless the caller has no picker to choose again from (`leaveOut`, the sidebar): that tab is named in
+  // leftOut with the reason, and the others come back.
   function convert(data,XLSX,limits){
+    const leftOut=[];
+    const leaving=(name,reason,named=true)=>{
+      if(!data.leaveOut)throw new Error(named?'Sheet "'+name+'": '+reason:reason);
+      leftOut.push({name,reason});
+    };
     try{
       const bytes=Array.isArray(data.grids)?new Uint8Array(gridWorkbook(data.grids,XLSX)):new Uint8Array(data.buffer);
       const workbook=XLSX.read(bytes,{
@@ -216,14 +223,15 @@
           if(range&&range.e.c-range.s.c+1>limits.columns)throw new Error('each worksheet may contain at most 256 columns');
           normalized=normalize(sheet,XLSX,{date1904});
           if(normalized&&normalized.csv.length>limits.tableChars)throw new Error('an expanded worksheet is too large');
-        }catch(error){throw new Error('Sheet "'+name+'": '+((error&&error.message)||String(error)));}
+        }catch(error){leaving(name,(error&&error.message)||String(error));continue;}
         if(!normalized)continue;
+        if(total+normalized.csv.length+(normalized.summaryCsv?normalized.summaryCsv.length:0)>limits.totalChars){
+          leaving(name,'the expanded workbook is too large',false);continue;
+        }
         total+=normalized.csv.length;
-        if(total>limits.totalChars)throw new Error('the expanded workbook is too large');
         sheets.push({name,...normalized});
         if(normalized.summaryCsv){
           total+=normalized.summaryCsv.length;
-          if(total>limits.totalChars)throw new Error('the expanded workbook is too large');
           const base=name+' summaries';let summaryName=base;
           while(workbook.SheetNames.includes(summaryName)||sheets.some(s=>s.name===summaryName))summaryName+=' summary';
           sheets.push({name:summaryName,csv:normalized.summaryCsv,import:{...normalized.import,section:'summaries',warnings:[],dataRows:normalized.summaryCsv.split('\n').length-1}});
@@ -243,7 +251,7 @@
         else region.import.warnings=region.import.warnings.map(warning=>/separated into a summaries table/.test(warning)?
           'Explicit total/subtotal rows were left out to avoid counting them twice; the workbook already fills '+limits.sheets+' tables.':warning);
       }
-      return {ok:true,sheets:kept};
+      return {ok:true,sheets:kept,leftOut};
     }catch(error){
       return {ok:false,error:(error&&error.message)||String(error)};
     }

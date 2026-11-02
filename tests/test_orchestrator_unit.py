@@ -869,7 +869,7 @@ def test_a_one_number_answer_reaches_the_model_as_the_reply_writes_it():
 def test_unverified_currency_sign_is_never_added_to_terminal_value():
     shaped = {"status":"answered", "answer":{"rows":[["250.78"]]}}
     assert orchestrator._grounded_presentation(shaped, "$250.78 per order") == "250.78"
-    assert orchestrator._terminal_fallback({'status': 'answered', 'answer': {'rows': [[None]]}}) == 'No value was recorded for the matching rows.'
+    assert "No value was recorded" not in orchestrator._terminal_fallback({'status': 'answered', 'answer': {'rows': [[None]]}})
     assert orchestrator._terminal_fallback({'status': 'answered', 'answer': {'rows': [[0]]}}) == '0'
 
 

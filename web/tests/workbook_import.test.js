@@ -166,4 +166,21 @@ assert.equal(rateFile.ok,true,rateFile.error);
 assert.equal(rateFile.sheets[0].csv,'item,tax_percent,discount\nA,20%,0.2\nB,7.5%,-0.05\nC,-5%,0.333');
 const [rateGrid]=normalizeGrids([{name:'Rates',rows:rates,formats:rateFormats}]);
 assert.equal(rateGrid.csv,rateFile.sheets[0].csv,'a host grid reads percentages like a file');
-console.log('workbook layout: 37 checks passed (including 3 downloaded originals, 3 timezones, 2 date systems and host grids)');
+// One tab past the limits refuses the workbook, unless the caller has no picker to choose again from: the Sheets sidebar
+// names it and goes on with the others.
+{
+  const small={name:'Small',rows:[['a','b'],[1,2]]},big={name:'Big',rows:[['note'],['x'.repeat(200)]]};
+  const limits={sheets:8,rows:50000,columns:256,tableChars:100,totalChars:150};
+  const refused=WORKBOOK_IMPORT.convert({grids:[small,big]},XLSX,limits);
+  assert.equal(refused.ok,false);
+  assert.equal(refused.error,'Sheet "Big": an expanded worksheet is too large');
+  const kept=WORKBOOK_IMPORT.convert({grids:[small,big],leaveOut:true},XLSX,limits);
+  assert.deepEqual(kept.sheets.map(sheet=>sheet.name),['Small']);
+  assert.deepEqual(kept.leftOut,[{name:'Big',reason:'an expanded worksheet is too large'}]);
+  const whole={name:'Whole',rows:[['note'],['y'.repeat(80)]]},more={name:'More',rows:[['note'],['z'.repeat(80)]]};
+  assert.equal(WORKBOOK_IMPORT.convert({grids:[whole,more]},XLSX,limits).error,'the expanded workbook is too large');
+  const spared=WORKBOOK_IMPORT.convert({grids:[whole,more],leaveOut:true},XLSX,limits);
+  assert.deepEqual(spared.sheets.map(sheet=>sheet.name),['Whole']);
+  assert.deepEqual(spared.leftOut,[{name:'More',reason:'the expanded workbook is too large'}]);
+}
+console.log('workbook layout: 38 checks passed (including 3 downloaded originals, 3 timezones, 2 date systems and host grids)');

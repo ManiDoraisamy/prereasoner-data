@@ -5,6 +5,56 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
+## A result that holds nothing asks back: calibration 723 -> 708 strict, messy dev 44 / 21 / 55 -> 44 / 23 / 53, Enron replay 26 / 54 / 106 -> 26 / 90 / 70 (2026-11-02)
+
+Commit b52c7b0 plus the Phase 0 changes this entry ships with (`worktree_dirty: true`; the record carries each source file's hash).
+Shipped bundle: weights manifest 40605578..., `weight_bundle` 4545a4810fa25f4b, `encoder` 53fd3d37c64525be, dataset `dev`
+268103700b08b658, `tables` 1ae061436b77d4b6. Spider calibration, `whole_db`, `--selection served`, `--backend auto`, fresh, not a delta.
+Records: `C:/work/prereasoner-readers-artifacts/evals/sqlite/full_eval_{,per_example_}calibration_phase0.json`; logs in `evals/phase0/`.
+
+| Calibration (1,053) | 2941ae5 | this change |
+|---|---:|---:|
+| Strict right | 723 (68.7%) | 708 (67.2%) |
+| Lenient right | 799 | 799 |
+| Wrong (strict) | 295 | 280 |
+| Unanswered | 35 | 65 (refusal 64, grounding 1) |
+| Scalar gold | 317 / 377 | 317 / 377 |
+
+Transitions, 2941ae5 to this change, which also span the rules of 1be6875 and feb491a: 703 stayed right, 277 stayed wrong, 34 stayed
+unanswered; 18 right and 13 wrong became unanswered; 5 wrong became right, 2 right became wrong, 1 unanswered became wrong. By difficulty,
+strict of n: easy 209 of 238, medium 262 of 412, hard 145 of 233, extra 92 of 170. Candidate-pool recall was not measured: the
+rule acts after selection and builds no candidate.
+
+This is below the former bar of 716. Spider's gold holds empty answers, so a rule that asks back on an empty result costs right answers
+there. The frozen test was not re-run. Its stored records put 100 of 2,147 served results empty, 54 of them right: about 1,531 to 1,477,
+an estimate. The owner decided to ship anyway, since real sheets are the bar now (DECISIONS.md, 2026-11-02).
+
+| Real-sheet measure | Before: right / asked / wrong | After |
+|---|---:|---:|
+| Messy dev, `regress/run_messy.py --split dev`, of 120, measured | 44 / 21 / 55 | 44 / 23 / 53 |
+| Enron replay, shipped bundle, of 186, only the 36 empty readings changed | 26 / 54 / 106 | 26 / 90 / 70 |
+
+Other gates on these changes: hermetic `tests.run_all` passed, live `tests.test_datasets` passed (`chat:` follow-ups excluded there),
+complex datasets 10 of 10. The replay runs `select_query` offline; it reproduces all 25 of production's right answers, and agrees less on
+asked versus wrong, so production's own count after this release has yet to be measured on all 186.
+
+The evaluation of 2026-11-01, on production before these changes (b52c7b0, `prereasoner-api-00214-w54`, `prereasoner-chat-00168-r48`),
+through the add-on in Google Sheets: 100 Enron workbooks, 191 questions, 5 void from Google's import, 186 graded. Right / asked or
+declined / wrong or failed: **25 / 49 / 112** (25 right, 40 asked, 9 declined, 99 wrong, 13 failed). Report and per-question records:
+`C:/work/enron_corpus/eval/{REPORT.md,results.jsonl}`.
+
+| Same 186 questions, offline replay | Right | Asked | Wrong |
+|---|---:|---:|---:|
+| Shipped readers | 26 | 54 | 106 |
+| Gemini writes SQL over the same tables (yardstick) | 130 | 14 | 42 |
+| Gemini writes SQL over tables an LLM marked (yardstick) | 140 | 21 | 25 |
+| Gemini writes a program over the raw cells (yardstick) | 165 | 2 | 19 |
+
+The yardstick is a measure of what the questions allow, not a serving option: no model writes SQL here (CLAUDE.md). LLM agents wrote the
+questions and their expected answers after reading the sheets, so an LLM's score is a ceiling. These 100 workbooks are now studied dev
+data; a frozen set must be drawn fresh. Records: `C:/work/prereasoner-readers-artifacts/evals/enron/`.
+
+
 ## Messy questions at 3a34166: dev 44 right / 21 asked / 55 wrong of 120; the owner's two real sheets 6 / 0 / 8 of 14 (2026-10-31)
 
 Shipped bundle (weights manifest 40605578...), served path, `regress/run_messy.py --split dev`, clean worktree at 3a34166, a

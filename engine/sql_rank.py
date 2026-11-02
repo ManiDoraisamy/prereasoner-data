@@ -331,7 +331,8 @@ class PoolSelection:
     rows where a less probable member finds none (``outread``) or satisfies a registered calculation intent can
     prefer a later eligible member (``select_ranked_candidate``),
     and the readers' refusal leaves it
-    None when it is not confident of the choice. The first pool member is the readers' most probable
+    None when it is not confident of the choice, as does a choice whose served result holds nothing
+    (``found_nothing``). The first pool member is the readers' most probable
     reading of the question (engine/decomposition.compound_candidate).
     """
     pool: tuple[ScoredQuery, ...]
@@ -359,34 +360,34 @@ class PoolSelection:
     # table -> the column naming each row's currency, for tables that hold several currencies and a question that asks
     # for no conversion (``mixed_currencies``): a total of money is served per currency (``per_currency``).
     currencies: Mapping[str, ColumnRef] = field(default_factory=dict)
+    # Which eligible members' served form returns no row or only blank cells.
+    blank: tuple[bool, ...] = ()
+    # The choice was declined for that: it is the readers' reading of the upload, and the reply asks about it.
+    found_nothing: bool = False
 
     @property
     def candidate(self) -> ScoredQuery | None:
-        """The member served: the selected pool member, a top-1 ranking keeping every tied row
-        (sql_ast.keep_ties). Ranking and evidence read the pool member itself."""
-        if self.selected is None:
-            return None
-        member = self.pool[self.selected]
-        split = per_currency(member.query, self.currencies)
-        served = keep_ties(named_groups(split))
-        if served is member.query:
-            return member
-        evidence = member.evidence
-        if split is not member.query and evidence:
-            evidence = (f"{evidence[0]}, for each {spaced_name(split.group_by[-1].name).lower()}", *evidence[1:])
-        return ScoredQuery(served, render_query(served), member.score, evidence)
+        """The member served: the selected pool member in its served form (``served_member``). Ranking and evidence
+        read the pool member itself."""
+        return None if self.selected is None else served_member(self.pool[self.selected], self.currencies)
 
     def constrained(self, admissible) -> PoolSelection:
         """This selection under a caller's contract, a filter on the ranking and never a rescore.
 
         Unchanged when the selected member satisfies ``admissible``; otherwise re-selected to the
         best-ranked eligible member that does (``selected`` is None when none does), so the record
-        always describes the member that was actually served.
+        always describes the member that was actually served. A choice declined only because it found
+        nothing is filtered the same way, and a re-selected member whose result holds nothing is declined
+        as ``select_query`` declines one.
         """
-        if self.selected is not None and admissible(self.pool[self.selected]):
+        chosen = self.declined if self.found_nothing else self.selected
+        if chosen is not None and admissible(self.pool[chosen]):
             return self
         selected = next((index for index in self.ranking if admissible(self.pool[index])), None)
-        return replace(self, selected=selected)
+        if selected is not None and self.blank and self.blank[selected]:
+            return replace(self, selected=None, declined=selected, found_nothing=True)
+        return replace(self, selected=selected, declined=None if self.found_nothing else self.declined,
+                       found_nothing=False)
 
     def record(self) -> dict:
         """JSON evidence: pool counts, the winner's place among the eligible members, its readers' log
@@ -400,6 +401,7 @@ class PoolSelection:
             "selected": self.selected,
             "confidence": None if self.confidence is None else round(self.confidence, 4),
             "declined": self.declined,
+            "found_nothing": self.found_nothing,
         }
         if self.selected is not None:
             evidence.update(
@@ -412,6 +414,19 @@ class PoolSelection:
                 undecided=bool(self.undecided and self.undecided[self.selected]),
             )
         return evidence
+
+
+def served_member(member: ScoredQuery, currencies: Mapping[str, ColumnRef]) -> ScoredQuery:
+    """Pool ``member`` as it is served: a total of mixed money per currency (``per_currency``), a ranking of groups over
+    the groups that have a name (sql_ast.named_groups), and a top-1 ranking keeping every tied row (sql_ast.keep_ties)."""
+    split = per_currency(member.query, currencies)
+    served = keep_ties(named_groups(split))
+    if served is member.query:
+        return member
+    evidence = member.evidence
+    if split is not member.query and evidence:
+        evidence = (f"{evidence[0]}, for each {spaced_name(split.group_by[-1].name).lower()}", *evidence[1:])
+    return ScoredQuery(served, render_query(served), member.score, evidence)
 
 
 def mixed_currencies(graph) -> dict[str, ColumnRef]:
@@ -453,8 +468,8 @@ def outread_by_rows(pool: Sequence[ScoredQuery], ranking: Sequence[int],
     The re-scorer reads a question beside each reading, and a reading that repeats the question's words reads well:
     "sales for long term customers (above 6 months)" ranked duration = 'above 6 months' over the value the column
     holds, 'Greater than 6 months', which the readers found more probable, and the answer said no rows matched
-    (2026-10-30). A reading the readers rated highest keeps its empty answer: "orders from Mars" matches nothing,
-    and no less probable reading of another country or of no filter answers it instead.
+    (2026-10-30). A reading the readers rated highest stays the reading: "orders from Mars" matches nothing, no less
+    probable reading of another country or of no filter answers it instead, and the reply asks (``found_nothing``).
     """
     best = max((pool[i].score for i in ranking if not matched_nothing[i]), default=None)
     return tuple(bool(matched_nothing[i] and best is not None and best > pool[i].score) for i in range(len(pool)))
