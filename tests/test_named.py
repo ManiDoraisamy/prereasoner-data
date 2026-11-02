@@ -26,7 +26,7 @@ from engine.program.catalog import Catalog, CatalogTable
 from engine.program.execute import run
 from engine.program.language import Agg, Col, Show
 from engine.program.names import ANSWER_TYPES, FORMS, SLOT_KEY, SLOT_MEASURE, SLOT_VALUE, SUM, coordinate
-from engine.program.scoring import score_program
+from engine.program.scoring import Reading, score_program
 from engine.program.store import RequestTables
 from engine.program.verifier import Evidence, Verified
 from training.named.augment import SURVIVAL_OPS, add_columns, augmented, mutate_catalog, reorder_columns
@@ -461,6 +461,14 @@ def test_fit_is_deterministic_and_finds_the_signal() -> None:
 
 def _record(question: str, family: str, right: bool, value: float, rank: int = 0) -> CandidateRecord:
     return CandidateRecord(question, family, "agg", {"words_explained": value, "type_agrees": float(right)}, {"measure": value}, right, rank, "x" if right else "y")
+
+
+def test_biases_move_a_reading_by_kind() -> None:
+    from training.named.choose import biased
+    reading = Reading({"measure:t0.1": 0.5, "shown:t0.1": 0.5, "value:t0.2=a": -1.0, "contains:t0.2=b": 0.0, "section:t0=c": 2.0, "form:agg": -0.5})
+    held = {"measure": 1.0, "key": 1.0, "shown": 1.0, "value": 2.0, "contains": 2.0, "line": 1.0, "section": 1.0}
+    moved = biased(reading, held, {"column": 0.0, "value": 0.5, "label": 1.0}).scores
+    assert moved["measure:t0.1"] == 1.5 and moved["shown:t0.1"] == 1.5 and moved["value:t0.2=a"] == 0.5 and moved["contains:t0.2=b"] == 1.5 and moved["section:t0=c"] == 2.0 and moved["form:agg"] == -0.5
 
 
 def test_chooser_fit_keeps_families_apart() -> None:

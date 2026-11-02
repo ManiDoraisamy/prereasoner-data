@@ -20,7 +20,7 @@ from engine.named.units import T_BAND, T_COLUMN, T_LINE, T_TABLE, T_VALUE, colla
 from engine.program.catalog import Catalog
 from engine.program.decoder import Decoder, table_reach
 from engine.program.index import index_of, stem
-from engine.program.language import Program, coordinates
+from engine.program.language import Col, Program, SECTION, coordinates
 from engine.program.names import (CALC, MINUS, OVER, ROLE_OF_SLOT, SIGNED, SLOT_ANSWER_TYPE, SLOT_BLANK, SLOT_CALC_LEFT, SLOT_COMPARISON, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE, SLOT_MEASURE, SLOT_NUMBER, SLOT_PERIOD, SLOT_ROW_OP, SLOT_SECTION, SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, coarse_type, coordinate, slot_of)
 from engine.program.scoring import Reading
 from engine.program.words import _STOP, FILTER_NAME_SHARE, read_question
@@ -285,6 +285,13 @@ class _Builder:
             text = body.split("=", 1)[1] if slot == SLOT_CONTAINS and "=" in body else ""
             self.write(name, words_in_text(self.read.words, text) if text else (), (), rules, 0.0, False)
 
+    def section(self, table) -> None:
+        """A table's section, as a key or a shown column, reads as an unlinked column does, not as a coordinate nobody scored: a band's words link to the band."""
+        if any(line.section for line in table.lines):
+            name = Col(table.id, SECTION).name
+            for slot in (SLOT_KEY, SLOT_SHOWN):
+                self.scores.setdefault(coordinate(slot, name), round(-self.weights.bias(slot), 4))
+
     def conditions(self, table_id: str) -> None:
         """How many conditions: the head's log probability and the words' count of what they can read."""
         head = self.read.closed[SLOT_CONDITIONS]
@@ -320,6 +327,7 @@ def build_reading(read: QuestionRead, windex: WorkbookIndex, catalog: Catalog, d
             n = np.where(builder.content[:, None], n, 0.0)
         dots = question_open @ (view.open.astype(np.float64) / 127.0).T if len(read.words) and len(view.targets) else np.zeros((0, len(view.targets)))
         builder.table(table.id, view, n, dots)
+        builder.section(table)
         builder.conditions(table.id)
     builder.stated()
     builder.calc_left()

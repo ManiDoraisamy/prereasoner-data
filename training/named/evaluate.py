@@ -482,7 +482,7 @@ def main() -> None:
         choosers = row.pop("_choosers", None)
         if row.get("chooser_all") is not None:
             Path(f"{args.out}.chooser_{mode}.json").write_text(json.dumps(row["chooser_all"], indent=1, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
-        survival = run_survival(items, row, engine, mode, args.survival, choosers, args.folds) if args.survival else None
+        survival = run_survival(items, row, engine, mode, args.survival, choosers, args.folds) if args.survival and mode in (MODE_NAMED, MODE_WORDS) else None     # the gate's mode: the other is a measurement of the cost
         row["survival"] = survival
         row["gate_a"] = gate_a(row, survival)
         report["modes"][mode] = row

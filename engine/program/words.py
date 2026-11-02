@@ -53,6 +53,8 @@ _SUPERLATIVE = r"most|biggest|largest|highest|lowest|smallest|least|peak|top|fur
 
 # A column's name in a question says little about a condition on it until a value is read there too.
 FILTER_NAME_SHARE = 0.2
+# A word only one column's name holds says which column it means, however long the name.
+ONLY_NAME_WITH_WORD = 0.6
 # A number with no comparison word near it ("500 kV") is weak evidence of a comparison.
 NUMBER_ALONE = 0.3
 # A rank with no word asking for one reads below any other form; arithmetic with no word for it, below its one column.
@@ -230,6 +232,9 @@ def _table_words(table_id: str, index: TableIndex, question_words: set[str], raw
     """Word index matches on one table: names, then values, then printed labels and bands."""
     table = index.table
     title = index.title_words
+    spelled = [index.spelled_as(word) for word in question_words if word not in index.name_counts and word not in index.value_words and word not in _STOP]
+    if any(spelled):                           # a misspelled word reads as the word of this sheet it means
+        question_words = question_words | {word for word in spelled if word}
     if title:
         hits = (title & question_words)
         if hits:
@@ -237,13 +242,16 @@ def _table_words(table_id: str, index: TableIndex, question_words: set[str], raw
     for position, name in index.name_words.items():
         if not name:
             continue
-        share = len(name & question_words) / len(name)
+        held = name & question_words
+        share = len(held) / len(name)
+        if any(index.name_counts[word] == 1 and word not in _STOP for word in held):
+            share = max(share, ONLY_NAME_WITH_WORD)
         if share:
             col = Col(table_id, position).name
             for slot in (SLOT_MEASURE, SLOT_KEY, SLOT_SHOWN):
                 out[coordinate(slot, col)] = share
             out[coordinate(SLOT_FILTER, col)] = share * FILTER_NAME_SHARE
-    named = [(min(raw_words.index(word) for word in raw_words if stem(word) in name), position) for position, name in index.name_words.items() if name & question_words]
+    named = [(min((raw_words.index(word) for word in raw_words if stem(word) in name), default=len(raw_words)), position) for position, name in index.name_words.items() if name & question_words]
     for place, (_, position) in enumerate(sorted(named, key=lambda item: item[0])):
         if place == 0 and len(named) >= 2:
             out[coordinate(SLOT_CALC_LEFT, coordinate(SLOT_MEASURE, Col(table_id, position).name))] = LEFT_BY_WORD_ORDER

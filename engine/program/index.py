@@ -25,6 +25,26 @@ _LINE_GROUP = -2
 _SECTION_GROUP = -3
 
 
+FUZZY_SHORTEST = 5
+FUZZY_LONG = 8
+
+
+def _within(a: str, b: str, most: int) -> int | None:
+    """The edit distance between two words, a swap of neighbours counting one, or None past most."""
+    previous2, previous = None, list(range(len(b) + 1))
+    for i, x in enumerate(a, 1):
+        current = [i]
+        for j, y in enumerate(b, 1):
+            cost = min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + (x != y))
+            if previous2 is not None and j > 1 and x == b[j - 2] and a[i - 2] == y:
+                cost = min(cost, previous2[j - 2] + 1)
+            current.append(cost)
+        if min(current) > most:
+            return None
+        previous2, previous = previous, current
+    return previous[-1] if previous[-1] <= most else None
+
+
 def words_of(text: str) -> tuple[str, ...]:
     """A text's words: folded, letters and digits, a plural's s off."""
     return tuple(stem(word) for word in _TOKEN.findall(fold(text)))
@@ -180,7 +200,7 @@ class TableIndex:
 
     def warm(self) -> None:
         """Every word index and shape a question reads."""
-        _ = (self.value_lines, self.number_columns, self.text_columns, self.date_columns, self.structural_atoms, self.value_words, self.sorted_words, self.name_words, self.title_words, self.printed_labels, self.bands, self.peer_sets, self.peer_marks, self.table.column_rank, self.day_lines)
+        _ = (self.name_counts, self.sheet_words, self.value_lines, self.number_columns, self.text_columns, self.date_columns, self.structural_atoms, self.value_words, self.sorted_words, self.name_words, self.title_words, self.printed_labels, self.bands, self.peer_sets, self.peer_marks, self.table.column_rank, self.day_lines)
 
     def atom_of(self, condition: Condition, group: int) -> Atom:
         return self._atom(condition, group)
@@ -244,6 +264,42 @@ class TableIndex:
     @cached_property
     def name_words(self) -> dict[int, frozenset[str]]:
         return {column.position: frozenset(words_of(column.name)) for column in self.table.columns}
+
+    @cached_property
+    def name_counts(self) -> dict[str, int]:
+        """How many of this table's columns hold a word in their names."""
+        out: dict[str, int] = {}
+        for words in self.name_words.values():
+            for word in words:
+                out[word] = out.get(word, 0) + 1
+        return out
+
+    @cached_property
+    def sheet_words(self) -> dict[int, tuple[str, ...]]:
+        """The words a question's misspelling may mean, by length: the table's names, then its text values."""
+        by_length: dict[int, set[str]] = {}
+        for word in (*self.name_counts, *self.value_words):
+            if len(word) >= FUZZY_SHORTEST - 1:
+                by_length.setdefault(len(word), set()).add(word)
+        return {length: tuple(sorted(words)) for length, words in by_length.items()}
+
+    def spelled_as(self, word: str) -> str | None:
+        """The one word of this table a misspelled word means: one edit away, two from a long word, the first letter kept. None when none is, or when two are equally near."""
+        if len(word) < FUZZY_SHORTEST or word.isdigit():
+            return None
+        most = 2 if len(word) >= FUZZY_LONG else 1
+        found: list[tuple[int, str]] = []
+        for length in range(len(word) - most, len(word) + most + 1):
+            for held in self.sheet_words.get(length, ()):
+                if held[0] == word[0]:
+                    distance = _within(word, held, most)
+                    if distance is not None:
+                        found.append((distance, held))
+        if not found:
+            return None
+        nearest = min(distance for distance, _ in found)
+        held = [word for distance, word in found if distance == nearest]
+        return held[0] if len(held) == 1 else None
 
     @cached_property
     def title_words(self) -> frozenset[str]:

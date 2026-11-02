@@ -13,7 +13,7 @@ import gzip
 import json
 import pickle
 import shutil
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Sequence
 
@@ -24,8 +24,9 @@ from engine.named.reader import unsupported_links
 from engine.named.bundle import BUNDLE_META, BUNDLE_STATE
 from engine.named.pipeline import NamedEngine, load_bundle
 from engine.program.language import coordinates, form_of
-from engine.program.names import FORMS, SLOTS
-from engine.program.scoring import Weights
+from engine.program.execute import run
+from engine.program.names import FORMS, SLOTS, slot_of
+from engine.program.scoring import Reading, Weights
 from engine.program.verifier import verify
 from training.named.data import family_share
 
@@ -35,6 +36,7 @@ MIN_CALIBRATION = 30
 TARGET_WRONG = 0.12         # of all gold questions, on the folds that set a policy: Gate A's bar is 15% and a fold's estimate is not the bar's
 THRESHOLDS = tuple(round(0.05 * step, 2) for step in range(0, 20))
 MARGINS = (0.0, 0.1, 0.25, 0.5, 1.0, 1.5, 2.0, 3.0)
+BIAS_GRID = {"column": (0.0, 0.5, 1.0, 1.9), "value": (0.25, 0.75, 1.25, 2.2), "label": (0.25, 0.75, 1.5)}
 WRONG_COSTS = (0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0, 8.0, 12.0)
 FOLDS = 5
 FOLD_SEED = 20261102
@@ -299,6 +301,53 @@ def choose_policy(ranked: list[list[tuple[float, int, CandidateRecord]]], choose
     return found[1], found[2]
 
 
+BIAS_SLOTS = {"column": ("measure", "key", "shown"), "value": ("value", "contains"), "label": ("line", "section")}
+
+
+def biased(reading: Reading, held: dict[str, float], wanted: dict[str, float]) -> Reading:
+    """A reading with each kind's bias moved from what it was read under to what is wanted."""
+    moves = {slot: held[slot] - wanted[kind] for kind, slots in BIAS_SLOTS.items() for slot in slots}
+    return Reading({name: round(score + moves.get(slot_of(name), 0.0), 4) for name, score in reading.scores.items()})
+
+
+def fit_biases(items: list, engine: NamedEngine, *, k: int = 50, progress: bool = False) -> tuple[dict[str, float], list[dict]]:
+    """What each kind of link must reach to read above nothing, on families the reader never trained on: the reader learned these against its own share of "links to nothing", which is the sampling's and not the questions', so they are set on what the decoder lists. Every grid point reads every question; a program runs once a question. By right answers in the top 5, then listed, then first."""
+    from training.named.evaluate import Runner
+    runner = Runner(engine)
+    grid = [{"column": column, "value": value, "label": label} for column in BIAS_GRID["column"] for value in BIAS_GRID["value"] for label in BIAS_GRID["label"]]
+    counts = [{"first": 0, "top5": 0, "listed": 0, "questions": 0} for _ in grid]
+    start = {slot: engine.weights.bias(slot) for slots in BIAS_SLOTS.values() for slot in slots}
+    gold = [item for item in items if item.label == "gold"]
+    for at, item in enumerate(gold):
+        prepared = runner.prepare(item)
+        named = engine.read(item.question, prepared)
+        memo: dict = {}
+
+        def right(program) -> bool:
+            held = memo.get(program)
+            if held is None:
+                try:
+                    rows = run(program, prepared.tables).rows
+                    held = bool(rows) and bool(item.grade(list(rows)) or (item.alternate is not None and item.alternate(list(rows))))
+                except Exception:      # a candidate that fails answers nothing
+                    held = False
+                memo[program] = held
+            return held
+
+        for row, point in zip(counts, grid):
+            programs = prepared.decoder.decode(biased(named.reading, start, point), k=k, weights=engine.slot_weights).programs
+            rights = [place for place, scored in enumerate(programs[:k]) if right(scored.program)]
+            row["questions"] += 1
+            row["first"] += bool(rights) and rights[0] == 0
+            row["top5"] += bool(rights) and rights[0] < 5
+            row["listed"] += bool(rights)
+        if progress and (at + 1) % 50 == 0:
+            print(f"biases {at + 1} of {len(gold)}", flush=True)
+    runner.close()
+    best = max(range(len(grid)), key=lambda at: (counts[at]["top5"], counts[at]["listed"], counts[at]["first"], -at))
+    return {slot: grid[best][kind] for kind, slots in BIAS_SLOTS.items() for slot in slots}, [{**point, **row} for point, row in zip(grid, counts)]
+
+
 def fit_slot_weights(records: Sequence[CandidateRecord]) -> Weights:
     """The decoder's slot weights, from each candidate's per-slot sum of readings. Clipped above zero: a slot that argued against the right program is read as silent, never inverted."""
     by_question: dict[str, list[CandidateRecord]] = {}
@@ -324,11 +373,19 @@ def main() -> None:
     parser.add_argument("--limit", type=int)
     parser.add_argument("--out", required=True, help="a new bundle folder under the experiment: the reader's weights copied, this fit beside them")
     parser.add_argument("--records", help="where to keep the candidates' records, to fit again without reading")
+    parser.add_argument("--biases", type=int, default=0, help="how many questions set each kind's bias first")
+    parser.add_argument("--no-slot-weights", action="store_true", help="the decoder's slots stay at weight 1")
     args = parser.parse_args()
     from training.named.evaluate import load_factory_set
     families = json.loads(Path(args.families).read_text(encoding="utf-8"))
     items = load_factory_set(args.side, limit=args.limit, families=families, over_quota=True)
     engine = load_bundle(args.bundle)
+    if args.biases:
+        chosen, table = fit_biases(items[:: max(1, len(items) // args.biases)], engine, progress=True)
+        print(json.dumps({"biases": chosen}, sort_keys=True), flush=True)
+        for row in sorted(table, key=lambda item: -item["top5"])[:12]:
+            print(json.dumps(row, sort_keys=True), flush=True)
+        engine.weights = replace(engine.weights, slot_biases={**engine.weights.slot_biases, **chosen})
     records = collect(items, engine, progress=True)
     if args.records:
         with gzip.open(args.records, "wb") as sink:
@@ -337,17 +394,18 @@ def main() -> None:
     fit = [record for record in records if family_share(record.family, args.seed + 1) >= 0.5]
     held = [record for record in records if family_share(record.family, args.seed + 1) < 0.5]
     chooser = fit_chooser(fit, held)
-    slot_weights = fit_slot_weights(fit)
+    slot_weights = engine.slot_weights if args.no_slot_weights else fit_slot_weights(fit)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(Path(args.bundle) / BUNDLE_STATE, out / BUNDLE_STATE)
     document = json.loads((Path(args.bundle) / BUNDLE_META).read_text(encoding="utf-8"))
     document.update(chooser=chooser.record(), slot_weights=dict(sorted(slot_weights.by_slot.items())))
+    document["weights"] = {**document["weights"], "slot_biases": dict(sorted(engine.weights.slot_biases.items()))}
     (out / BUNDLE_META).write_text(json.dumps(document, indent=0, sort_keys=True, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
     print(json.dumps({"questions": len({record.question for record in records}), "candidates": len(records), "right": sum(record.right for record in records), "fit_families": len({record.family for record in fit}), "held_families": len({record.family for record in held}), "calibration": dict(chooser.calibration), "thresholds": dict(chooser.thresholds)}, sort_keys=True), flush=True)
 
 
-__all__ = ["CandidateRecord", "answer_key", "calibrate", "calibrated", "choose_policy", "choose_thresholds", "collect", "cross_fit", "decision_of", "fit_chooser", "fit_conditional", "fit_logistic", "groups_of", "fit_slot_weights", "fold_of", "fold_report", "records_of"]
+__all__ = ["CandidateRecord", "answer_key", "calibrate", "calibrated", "choose_policy", "choose_thresholds", "collect", "cross_fit", "decision_of", "fit_chooser", "fit_biases", "fit_conditional", "fit_logistic", "groups_of", "fit_slot_weights", "fold_of", "fold_report", "records_of"]
 
 if __name__ == "__main__":
     main()

@@ -40,6 +40,7 @@ class Policy:
     strong_condition: float = 1.0  # past the policy's count of conditions, only conditions the reading scores this high
     compared_columns: int = 5      # columns tried against each other, by score, when a reading asks for a comparison
     linked_tables: int = 8         # a question reads the tables its links reach best
+    shown_together: float = 0.5    # a column joins another shown only where the reading says so this firmly
     max_pops: int = 4_000_000      # a hard stop, deterministic, on the search
 
 
@@ -567,7 +568,7 @@ class _Search:
         """One shown column, or several when the reading names several: only columns it scores positively combine."""
         singles = self.column_options(table, positions, SLOT_SHOWN, typed=True)
         options = [_Option(option.score, (option.payload,)) for option in singles]
-        named = [option for option in singles if self.reading.score(coordinate(SLOT_SHOWN, option.payload.name)) > 0][:8]
+        named = [option for option in singles if self.reading.score(coordinate(SLOT_SHOWN, option.payload.name)) > self.policy.shown_together][:8]
         for size in (2, 3):
             for group in combinations(sorted(named, key=lambda option: option.payload.position), size):
                 shown = tuple(option.payload for option in group)
