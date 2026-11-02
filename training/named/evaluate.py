@@ -3,7 +3,7 @@
 Writes a report with the code commit, dirty state, dataset identity, bundle hash and flags. Prints counts, never a cell or a question.
 
 usage: python -m training.named.evaluate --set val --bundle <dir> [--limit N] [--survival 200] [--modes named,named_plus_open] [--folds 5] --out <report.json>
-       python -m training.named.evaluate --set studied|messy --bundle <dir> --chooser <report>.chooser_named.json --out <report.json>
+       python -m training.named.evaluate --set studied|messy --bundle <dir> --chooser <the validation report> --out <report.json>
        --words: the floor, the reading from words alone with no model
 On validation, --folds decides each question by a chooser calibrated on the other folds (training/named/choose.py:cross_fit); the fit of all folds is written beside the report for the sets read after it.
 Each question's misses are put in a stage: compile (the gold program itself no longer gives the gold answer), links (a gold link outside the top 10), decode (the gold links stand and no right program reached the top 50), verify (the gold program is listed and its result is not graded right), choose (a right candidate was listed and not answered with).
@@ -456,7 +456,7 @@ def main() -> None:
     parser.add_argument("--limit", type=int)
     parser.add_argument("--survival", type=int, default=0, help="how many right questions each survival test re-reads; 0 for none")
     parser.add_argument("--folds", type=int, default=0, help="decide each question by a chooser calibrated on the other folds")
-    parser.add_argument("--chooser", help="a chooser record to decide with, over the bundle's")
+    parser.add_argument("--chooser", help="a validation report, whose fit of all folds decides, per mode, over the bundle's chooser")
     parser.add_argument("--keep-candidates", action="store_true", help="write every candidate's evidence beside the report, to fit again without reading")
     parser.add_argument("--out", required=True)
     args = parser.parse_args()
@@ -476,7 +476,7 @@ def main() -> None:
     for mode in modes:
         started = time.time()
         if engine is not None:
-            engine.chooser = Chooser.from_record(json.loads(Path(args.chooser.replace("named", mode)).read_text(encoding="utf-8"))) if args.chooser else bundle_chooser
+            engine.chooser = Chooser.from_record(json.loads(Path(f"{args.chooser}.chooser_{mode}.json").read_text(encoding="utf-8"))) if args.chooser else bundle_chooser
         row = run_mode(items, engine, mode, progress=True, folds=args.folds, keep_candidates=f"{args.out}.candidates_{mode}.pkl.gz" if args.keep_candidates else None)
         row["wall_seconds"] = round(time.time() - started, 1)
         choosers = row.pop("_choosers", None)
