@@ -423,6 +423,72 @@ def test_a_total_word_naming_a_column_can_be_a_header():
     assert model.tables[0].header_rows == (1,) and model.tables[0].columns[3].name == "Grand Total" and not model.tables[0].printed
 
 
+def test_a_closing_total_ends_its_table_when_records_resume():
+    # Phase 2, 40.2: closed deals came after TOTAL DEALS on the same header, and a sum ran across both.
+    rows = [["Deal", "Region", "Value"], ["a", "East", 10], ["b", "West", 20], ["1Q TOTAL", "", 30], ["c", "East", 5], ["d", "West", 7], ["2Q TOTAL", "", 12], ["TOTAL DEALS", "", 42], ["x", "East", 100], ["y", "West", 200], ["z", "East", 300]]
+    model = _tab_heads(rows, {1}, formulas=[[3, 2, "=SUM(C2:C3)"], [6, 2, "=SUM(C5:C6)"], [7, 2, "=C4+C7"]])
+    assert [t.header_rows for t in model.tables] == [(1,), (1,)]
+    assert sum(line.cells[2].value for line in model.tables[0].lines) == 42 and [line.row for line in model.tables[1].lines] == [9, 10, 11]
+    assert model.tables[0].printed[-1].label == "TOTAL DEALS" and not model.tables[1].printed
+    # A section's own total closes nothing: the sections are one table, down to the grand total.
+    rows = [["Deal", "Value"], ["a", 10], ["b", 20], ["A TOTAL", 30], ["c", 5], ["d", 7], ["B TOTAL", 12], ["GRAND TOTAL", 42]]
+    model = _tab_heads(rows, {1}, formulas=[[3, 1, "=SUM(B2:B3)"], [6, 1, "=SUM(B5:B6)"], [7, 1, "=B4+B7"]])
+    assert len(model.tables) == 1 and len(model.tables[0].lines) == 4
+
+
+def test_titles_with_one_cell_a_block_part_side_by_side_blocks():
+    # Phase 2, 18.2: a sparse title above a repeated header is a band of its own block, with no gutter between the blocks.
+    def block(hub, base):
+        return [[f"{hub} PURCHASES", "", "", f"{hub} SALES", "", ""], ["", "MW", "PRICE", "", "MW", "PRICE"]] + [[f"c{i}", base + i, 1.5, f"s{i}", base - i, 2.5] for i in range(4)]
+
+    rows = block("COB", 10) + [[]] + block("MIDC", 20) + [[]] + block("PV", 30)
+    model = _tab_heads(rows, {1, 2, 8, 9, 15, 16})
+    assert len(model.tables) == 2
+    left, right = model.tables
+    assert [c.letter for c in left.columns] == ["A", "B", "C"] and [c.letter for c in right.columns] == ["D", "E", "F"]
+    assert [text for _, text in left.bands] == ["COB PURCHASES", "MIDC PURCHASES", "PV PURCHASES"]
+    assert [text for _, text in right.bands] == ["COB SALES", "MIDC SALES", "PV SALES"]
+    assert left.lines[-1].section == ("PV PURCHASES",) and right.lines[0].section == ("COB SALES",) and left.columns[1].path == ("MW",)
+
+
+def test_each_side_by_side_list_has_its_own_bands():
+    # Phase 2, 13.1: in lists of accounts under people, the person with an extension heads the accounts under them, per list.
+    rows = [["Settlements", "Ext.", "", "Upstream", "Ext."]]
+    for i in range(1, 4):
+        rows += [[f"Team {i}", 3000 + i, "", f"Person {i}", 4000 + i], ["", "", "", f"Account {i}a", ""], ["", "", "", f"Account {i}b", ""], ["", "", "", f"Account {i}c", ""]]
+    model = _tab_heads(rows, {1})
+    upstream = model.tables[1]
+    assert [text for _, text in upstream.bands] == ["Person 1", "Person 2", "Person 3"]
+    assert {line.row: line.section for line in upstream.lines}[7] == ("Person 2",)
+    assert not model.tables[0].bands
+
+
+def test_a_lone_label_between_a_total_and_figures_is_a_band():
+    # Phase 2, 31.1: a month alone on its line in the key column, after the last block's total and over the next block's figures, stayed a record.
+    rows = [["Item", "Amt", "Net"], [], ["July '00"], ["run", 2.5, 3.5], ["more", 4.5, 5.5], ["", 7.0, 9.0], ["Aug"], ["run", 1.5, 2.5], ["more", 3.5, 4.5], ["", 5.0, 7.0], ["Sep"], ["run", 6.5, 7.5], ["more", 8.5, 9.5]]
+    formulas = [[5, 1, "=SUM(B4:B5)"], [5, 2, "=SUM(C4:C5)"], [9, 1, "=SUM(B8:B9)"], [9, 2, "=SUM(C8:C9)"]]
+    table = _tab_heads(rows, {1}, formulas=formulas).tables[0]
+    assert [text for _, text in table.bands] == ["July '00", "Aug", "Sep"]
+    assert {line.row: line.section for line in table.lines}[8] == ("Aug",)
+
+
+def test_axes_cross_spacers_and_totals_and_reach_flag_columns():
+    # Phase 2, 6.1: books under no shared label, a total between them and spacers around: peers no axis stated.
+    rows = [["Desk", "Phys", "", "Total", "", "Store", "", "Bridge", "Swap", "Opt", "", "Total"], ["a", 2.5, "", 2.5, "", 1.5, "", 3.5, 4.5, 5.5, "", 15.0], ["b", 3.5, "", 3.5, "", 2.5, "", 4.5, 5.5, 6.5, "", 19.0], ["c", 4.5, "", 4.5, "", 3.5, "", 5.5, 6.5, 7.5, "", 23.0]]
+    table = _tab_heads(rows, {1}).tables[0]
+    axis = next(a for a in table.axes if a.kind == names.AXIS_TOTALLED)
+    assert [table.columns[p].letter for p in axis.positions] == ["B", "F", "H", "I", "J"]
+    assert {c.letter: c.role for c in table.columns}["D"] == ROW_TOTAL and {c.letter: c.role for c in table.columns}["L"] == ROW_TOTAL
+    # Phase 2, 1.1: agreement columns marked Y and N.
+    rows = [["Deal", "Entity", "Master", "Omnibus", "Netting", "Letter", "Date"], ["a", "ENA", "N", "Y", "N", "N", "n/a"], ["b", "EPMI", "N", "Y", "N", "Y", "n/a"], ["c", "ENA", "Y", "Y", "N", "N", "n/a"]]
+    table = _tab_heads(rows, {1}).tables[0]
+    assert [(a.kind, a.positions) for a in table.axes] == [(names.AXIS_FLAG, (2, 3, 4, 5))]
+    # Phase 2, 53.3: a month with nothing in it yet is still a month of the axis.
+    rows = [["Day", "JAN", "FEB", "MAR", "APR"], [1, "", "", 8.5, 7.5], [2, "", "", 6.5, 5.5], [3, "", "", 4.5, 3.5]]
+    table = _tab_heads(rows, {1}).tables[0]
+    assert [(a.kind, a.positions) for a in table.axes] == [(AXIS_PERIOD, (1, 2, 3, 4))]
+
+
 def test_a_spacer_column_does_not_part_labels_from_their_figures():
     # F7: labels A:C and figures E:H across a spacer, on the same lines, became two tables, so no question could filter by quarter and sum value; line labels were parted from their figures.
     rows = [["Deal", "", "Quarter", "", "Team", "Region", "", "Value"]]
@@ -451,14 +517,14 @@ def test_statistic_lines_under_a_date_key_are_printed():
 def test_a_repeated_block_that_differs_opens_a_section():
     # F8: hubs named on repeated header lines went to repeated rows with no section, so every record sat under the first hub's name.
     def block(hub, base):
-        return [[f"{hub} PURCHASES", "", "", f"{hub} SALES", "", ""], ["", "MW", "PRICE", "", "MW", "PRICE"]] + [[f"c{i}", base + i, 1.5, f"s{i}", base - i, 2.5] for i in range(4)]
+        return [[f"{hub} PURCHASES", "", ""], ["", "MW", "PRICE"]] + [[f"c{i}", base + i, 1.5] for i in range(4)]
 
     rows = block("COB", 10) + [[]] + block("MIDC", 20) + [[]] + block("PV", 30)
     table = _tab_heads(rows, {1, 2, 8, 9, 15, 16}).tables[0]
     assert table.repeated_header_rows == (8, 9, 15, 16)
-    assert [line.section for line in table.lines if line.row in (3, 10, 17)] == [("COB PURCHASES COB SALES",), ("MIDC PURCHASES MIDC SALES",), ("PV PURCHASES PV SALES",)]
+    assert [line.section for line in table.lines if line.row in (3, 10, 17)] == [("COB PURCHASES",), ("MIDC PURCHASES",), ("PV PURCHASES",)]
     assert [c.path for c in table.columns if c.letter in ("B", "C")] == [("MW",), ("PRICE",)], "the first hub is the first block's section, not part of a column's name"
-    assert [text for _, text in table.bands] == ["COB PURCHASES COB SALES", "MIDC PURCHASES MIDC SALES", "PV PURCHASES PV SALES"]
+    assert [text for _, text in table.bands] == ["COB PURCHASES", "MIDC PURCHASES", "PV PURCHASES"]
 
 
 def test_a_repeat_after_a_band_keeps_the_bands_section():
@@ -734,6 +800,7 @@ TESTS = [
     test_total_lines_are_printed_and_never_records, test_total_word_inside_a_name_stays_a_record, test_total_word_inside_every_key_is_no_mark, test_total_word_beside_a_blank_key_stays_printed,
     test_grand_total_and_subtotals_that_tie_never_leave, test_a_key_left_of_repeated_names_goes_with_every_block, test_all_names_alike_are_a_peer_run_not_blocks, test_a_column_beyond_the_named_blocks_stays_in_a_table,
     test_the_line_model_artifact_is_small_pinned_and_retrains_the_same, test_training_labels_hold_row_numbers_and_hashes_only, test_a_units_line_repeating_over_new_names_opens_a_table, test_a_total_word_naming_a_column_can_be_a_header,
+    test_a_closing_total_ends_its_table_when_records_resume, test_titles_with_one_cell_a_block_part_side_by_side_blocks, test_each_side_by_side_list_has_its_own_bands, test_a_lone_label_between_a_total_and_figures_is_a_band, test_axes_cross_spacers_and_totals_and_reach_flag_columns,
     test_rule_lines_are_spacers_and_never_names, test_no_header_inside_the_filter_range, test_a_data_line_joined_to_a_repeated_header_stays_data, test_a_lone_data_line_called_a_header_stays_in_its_table,
     test_a_spacer_column_does_not_part_labels_from_their_figures, test_statistic_lines_under_a_date_key_are_printed, test_a_repeated_block_that_differs_opens_a_section, test_a_repeat_after_a_band_keeps_the_bands_section,
     test_the_lone_title_over_a_header_is_the_first_band, test_text_records_after_a_dated_title_stay_records, test_a_solid_block_ending_early_does_not_fill_down, test_a_sparse_comment_right_of_a_full_key_does_not_fill_down,

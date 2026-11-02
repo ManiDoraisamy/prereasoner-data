@@ -6,7 +6,7 @@ from collections import Counter
 from engine.sheet.grid import Grid
 from engine.sheet.line_facts import LineFacts, line_facts
 from engine.sheet.line_model import final_scores, line_features, load_model
-from engine.sheet.names import (BAND, HEADER, NOTE, RECORD, S_ABOVE_TABLE, S_ALONE_AFTER_GAP, S_ALONE_BEFORE_HEADER, S_ALONE_STYLED, S_ARITHMETIC_TIE, S_AUTOFILTER_TOP, S_BELOW_TABLE, S_FIGURES, S_FORMULA_CLOSES_BLOCK,
+from engine.sheet.names import (BAND, HEADER, NOTE, RECORD, S_ABOVE_TABLE, S_ALONE_AFTER_GAP, S_ALONE_AFTER_TOTAL, S_ALONE_BEFORE_HEADER, S_ALONE_STYLED, S_ARITHMETIC_TIE, S_AUTOFILTER_TOP, S_BELOW_TABLE, S_FIGURES, S_FORMULA_CLOSES_BLOCK,
                                 S_FORMULA_COMPUTED, S_FORMULA_TOTAL, S_FROZEN_LAST, S_JOINED_ABOVE, S_JOINED_BELOW, S_LABEL_VALUE, S_MERGED_OVER_COLUMNS, S_MODEL, S_NAMES_BODY, S_TEXT_LINE, S_TOTAL_WORD, S_TOTAL_WORD_IN_KEY, TITLE, TOTAL)
 
 _WORD_ON_MOST_LINES = 8
@@ -118,6 +118,7 @@ def assign_roles(grid: Grid, facts: dict[int, LineFacts], heads: dict[int, list[
     for r in rows:
         if (first_head is None or r > first_head) and r not in heads and r not in printed and facts[r].number + facts[r].date > 0:
             last_figures = r
+    leftmost = min(f.first_col for f in facts.values())
     roles: dict[int, tuple[str, tuple[str, ...]]] = {}
     for r in rows:
         f = facts[r]
@@ -131,7 +132,7 @@ def assign_roles(grid: Grid, facts: dict[int, LineFacts], heads: dict[int, list[
             roles[r] = (TOTAL, tuple(printed[r]))
             continue
         styled = f.bold >= 0.5 or f.fill >= 0.5 or f.under >= 0.5 or f.wide_merge > 1
-        alone = f.filled == 1 and f.text == 1 and f.longest <= 60
+        alone = f.filled == 1 and f.text + f.period == 1 and f.longest <= 60
         figures = f.number + f.date
         if first_head is None:
             if figures == 0 and f.label_value:
@@ -167,6 +168,8 @@ def assign_roles(grid: Grid, facts: dict[int, LineFacts], heads: dict[int, list[
                 roles[r] = (BAND, (S_ALONE_BEFORE_HEADER,))
             elif f.gap_above and following is not None and following.filled >= 2:
                 roles[r] = (BAND, (S_ALONE_AFTER_GAP,))
+            elif f.prev in printed and following is not None and following.number > 0 and following.next not in heads and f.first_col == leftmost:
+                roles[r] = (BAND, (S_ALONE_AFTER_TOTAL,))
             else:
                 roles[r] = (RECORD, (S_TEXT_LINE,))
             continue
@@ -214,6 +217,11 @@ def _clear_filter_range(heads: dict[int, list[str]], grid: Grid) -> None:
             del heads[r]
 
 
+def _figures_outnumber_names(f: LineFacts) -> bool:
+    """A line of real figures with fewer names beside them holds data, whatever else it looks like."""
+    return f.real_figures >= 3 and f.real_figures > f.text + f.date + f.period + (f.number - f.real_figures)
+
+
 def header_lines(grid: Grid, facts: dict[int, LineFacts], printed: dict[int, list[str]]) -> dict[int, list[str]]:
     """Header lines with their signals. The autofilter's top line is a header outright (right on 16 of 16 tabs); the line model decides the rest (line_model.py, a sum over named features), and each block then grows over its name lines."""
     tab = grid.tab
@@ -225,7 +233,7 @@ def header_lines(grid: Grid, facts: dict[int, LineFacts], printed: dict[int, lis
     model = load_model()
     scores = final_scores(facts, grid, features, model)
     for r in sorted(facts):
-        if r not in printed and scores[r] >= model["threshold"]:
+        if r not in printed and scores[r] >= model["threshold"] and not _figures_outnumber_names(facts[r]):
             heads.setdefault(r, []).append(S_MODEL)
         elif r in printed and printed[r] == [S_TOTAL_WORD] and scores[r] >= model["threshold"] + _WORD_YIELDS and facts[r].real_figures * 2 <= facts[r].text:
             # "Date, Total, Grand Total" over the columns it names: the word names a column, and the line holds more names than figures.

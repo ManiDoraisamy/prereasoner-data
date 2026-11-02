@@ -108,7 +108,9 @@ FORMULA_SHAPES = (FX_AGG_COLUMN, FX_AGG_ROW, FX_AGG_OTHER, FX_AGG_RUN, FX_COND_A
 AXIS_PERIOD = "period"
 AXIS_SEQUENCE = "sequence"     # 1, 2, 3 ... across: hours of a day
 AXIS_GROUP = "group"           # columns sharing a group label above them
-AXIS_KINDS = (AXIS_PERIOD, AXIS_SEQUENCE, AXIS_GROUP)
+AXIS_TOTALLED = "totalled"     # columns a total-named column stands beside: books, then their total, across spacers and totals
+AXIS_FLAG = "flag"             # text columns marking the same few values: Y and N across
+AXIS_KINDS = (AXIS_PERIOD, AXIS_SEQUENCE, AXIS_GROUP, AXIS_TOTALLED, AXIS_FLAG)
 
 # The tab a host read.
 SHEET_GRID = "grid"
@@ -143,6 +145,8 @@ S_STRAY_KEY = "stray_key"                      # text where the key column holds
 S_DATA_LINE = "data_line"                      # called a header, but its cells fit the columns of the table it sits in
 S_FILLED_DOWN = "filled_down"                  # a sparse label column's cell above fills a blank on this line
 S_REPEATED_HEADER = "repeated_header"          # repeats its table's header
+S_ALONE_AFTER_TOTAL = "alone_after_total"      # a lone label in the key column between a printed line and the next block's figures
+S_KEY_OVER_KEYS = "key_over_keys"              # in a side-by-side list of keys, the key with a figure beside it heads the keys under it
 LINE_SIGNALS = (S_TOTAL_WORD, S_FORMULA_TOTAL, S_FORMULA_COMPUTED, S_FORMULA_CLOSES_BLOCK, S_ARITHMETIC_TIE, S_AUTOFILTER_TOP, S_FROZEN_LAST, S_JOINED_ABOVE, S_JOINED_BELOW, S_MERGED_OVER_COLUMNS, S_ALONE_STYLED,
                 S_ALONE_BEFORE_HEADER, S_ALONE_AFTER_GAP, S_ABOVE_TABLE, S_BELOW_TABLE, S_LABEL_VALUE, S_FIGURES, S_TEXT_LINE, S_NAMES_BODY, S_MODEL, S_RULE_LINE, S_TOTAL_WORD_IN_KEY, S_TOTAL_OTHER_BLOCK, S_STRAY_KEY,
-                S_DATA_LINE, S_FILLED_DOWN, S_REPEATED_HEADER)
+                S_DATA_LINE, S_FILLED_DOWN, S_REPEATED_HEADER, S_ALONE_AFTER_TOTAL, S_KEY_OVER_KEYS)
