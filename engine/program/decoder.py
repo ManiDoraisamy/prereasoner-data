@@ -348,7 +348,7 @@ class _Search:
         shared = set(held[0].payload.names)
         for option in held:
             shared &= set(option.payload.names)
-        taken = sum(self.s(name) for name in shared)
+        taken = sum(self.s(name) for name in sorted(shared))
         return [_Option(option.score - taken, option.payload) for option in held]
 
     def left_atoms(self, held: list[_Option], *, shared_only: bool = False) -> list[_Option]:
@@ -376,7 +376,7 @@ class _Search:
         return [options[at] for at in order]
 
     def set_score(self, atoms: tuple[Atom, ...]) -> float:
-        return sum(self.s(name) for name in {name for atom in atoms for name in atom.names})
+        return sum(self.s(name) for name in sorted({name for atom in atoms for name in atom.names}))
 
     def reading_atoms(self, table: CatalogTable, index: TableIndex) -> list[Atom]:
         """Conditions only a reading can state: a contained phrase, a period, a stated number, a blank, a value no cell list holds, a label or band read in part."""

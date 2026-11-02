@@ -1,6 +1,8 @@
 """The program language on small synthetic sheets: one test per fixed semantic, the decoder's k-best, the verifier's evidence, the proof beside an answer. Hermetic: no model, no network, no Postgres. Question counts in the docstrings are from design/program_language.txt, the 186 hand-written programs."""
 from __future__ import annotations
 
+import os
+import subprocess
 import sys
 
 from engine.deterministic import lower_select_query
@@ -441,6 +443,25 @@ def test_decoder_is_deterministic_and_order_free():
     assert best == Agg(SUM, Col("t0", 4), "t0", (Equals(Col("t0", 0), "gas"),))     # the highest score: sum of amount where gas, nothing added
 
 
+_HASH_ORDER_PROBE = """
+import hashlib
+from tests.test_program import CALC_ROWS, _catalog, Decoder, Reading, read_question
+catalog = _catalog(CALC_ROWS)
+decoder = Decoder(catalog)
+decoded = decoder.decode(read_question("What is the total amount for Gas in H01?", catalog, decoder), k=300)
+print(hashlib.sha256(repr([(item.program, item.score) for item in decoded.programs]).encode()).hexdigest())
+"""
+
+
+def test_the_list_does_not_depend_on_hash_order():
+    """Search and ranking stay deterministic across processes: no hash-order dependence, down to the floats."""
+    outputs = set()
+    for seed in ("1", "2", "977"):
+        done = subprocess.run([sys.executable, "-c", _HASH_ORDER_PROBE], capture_output=True, text=True, env={**os.environ, "PYTHONHASHSEED": seed}, check=True)
+        outputs.add(done.stdout.strip())
+    assert len(outputs) == 1, outputs
+
+
 def test_scores_come_in_as_data_and_nothing_else_moves_the_list():
     """A plugged-in reader only fills names: raising one coordinate puts its program on top."""
     catalog = _catalog(CALC_ROWS)
@@ -718,7 +739,7 @@ def test_explain_carries_the_named_contributions():
 TESTS = [
     test_every_name_is_from_a_closed_list, test_forms_refuse_what_they_cannot_say, test_signs, test_printed_lines_are_read_by_label_and_never_added, test_shortest_label_first_and_unlabelled_printed_lines, test_a_column_filled_only_on_printed_lines_reads_them,
     test_partial_value_match, test_case_and_spacing_do_not_count, test_periods, test_blanks, test_ties_keep_every_tied_line, test_units, test_mixed_columns, test_repeated_rows, test_sections_nested_bands_and_the_section_shown, test_python_masks_agree_with_the_sql,
-    test_calc_shapes, test_rank_across_peer_columns, test_new_ast_nodes_render_and_validate, test_plan_schema_holds_only_what_a_query_reads, test_perfect_readings_give_the_gold_first, test_decoder_is_deterministic_and_order_free,
+    test_calc_shapes, test_rank_across_peer_columns, test_new_ast_nodes_render_and_validate, test_plan_schema_holds_only_what_a_query_reads, test_perfect_readings_give_the_gold_first, test_decoder_is_deterministic_and_order_free, test_the_list_does_not_depend_on_hash_order,
     test_scores_come_in_as_data_and_nothing_else_moves_the_list, test_contributions_are_named_and_sum_to_the_score, test_intervention_a_named_coordinate_moves_the_score_by_its_weight, test_policy_prunes_values_only_where_it_says, test_conditions_stay_on_distinct_columns,
     test_answer_type_rule, test_words_alone_read_a_question, test_verifier_shape_and_type_evidence, test_printed_total_ties_only_under_its_exact_conditions, test_verifier_runs_the_top_programs_and_never_raises, test_read_as_in_the_sheets_own_words,
     test_cells_are_the_exact_addresses_used, test_formula_a_user_can_check, test_explain_carries_the_named_contributions,
