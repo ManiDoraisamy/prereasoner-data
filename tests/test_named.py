@@ -1,0 +1,723 @@
+"""The named reader's contract, on the production owners: every decision reads named coordinates, each moves a link by exactly its weight, order cannot matter, the same input gives the same bytes on 1 and on 4 threads, unnamed similarity may propose and never decide, no LLM is on the path, families stay held out. Hermetic: a tiny hashing backbone (training/named/fake.py), the real reader, index, links, decoder, verifier and chooser. NAMED_REAL_BACKBONE=1 adds bge-small from local files. Runs with: python -m tests.test_named."""
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+import numpy as np
+import torch
+
+from engine.fk_edges import edges, table_edges
+from engine.named.bundle import read_bundle, write_bundle
+from engine.named.chooser import ANSWER, ASK, FEATURES, PRIOR, Candidate, Chooser, FeatureTerm, answer_or_ask, features_of, score_candidates
+from engine.named.index import ClassSignatures, IndexCache, TabIndex, content_hash, group_tables, index_workbook
+from engine.named.links import EXACT, RULES, SCALE, RuleHit, contributions_of, link_total, named_matrix, rule_evidence, uniform_weights
+from engine.named.model import NamedReader, ReaderConfig
+from engine.named.names import CLOSED_HEADS, NameSet, closed_labels, load_name_set
+from engine.named.pipeline import NamedEngine, load_bundle
+from engine.named.reader import MODE_NAMED, MODE_NAMED_PLUS_OPEN, PROPOSAL_SCORE, build_reading, closed_reading, needs_asking, read_questions, unsupported_links
+from engine.named.units import T_COLUMN, T_VALUE, UnitsConfig, cell_text, column_order, sampled_lines, table_graphs, targets_of
+from engine.program.catalog import Catalog, CatalogTable
+from engine.program.execute import run
+from engine.program.language import Agg, Col, Show
+from engine.program.names import ANSWER_TYPES, FORMS, SLOT_KEY, SLOT_MEASURE, SLOT_VALUE, SUM, coordinate
+from engine.program.scoring import score_program
+from engine.program.store import RequestTables
+from engine.program.verifier import Evidence, Verified
+from training.named.augment import SURVIVAL_OPS, add_columns, augmented, mutate_catalog, reorder_columns
+from training.named.choose import MARGINS, CandidateRecord, calibrate, choose_margin, choose_thresholds, fit_chooser, fit_logistic, fit_slot_weights
+from training.named.data import TabExample, check_held_out, read_examples, split_families, write_shard
+from training.named.evaluate import GATE_A, Item, gate_a, graded, record_of, run_mode, run_survival
+from training.named.fake import MEANINGS, HashBackbone, fake_catalog, fake_examples, fake_name_set, fake_rows
+from training.named.lease import bundle_mb, ensure_same_tables, ensure_size_aware, plan_candidate, pod_code, remote_command
+from training.named.train import TrainConfig, build_batch, train
+
+HERE = Path(__file__).resolve().parent
+ROOT = HERE.parent
+CONFIG = ReaderConfig(backbone="hash", hidden=48, blocks=2, open_dim=16, keep=8, sample_rows=4, window_columns=12, row_mates=2)
+
+
+def _engine(seed: int = 0, config: ReaderConfig = CONFIG, chooser: Chooser = PRIOR, signatures=None, cache=None) -> NamedEngine:
+    torch.manual_seed(seed)
+    names = fake_name_set()
+    backbone = HashBackbone()
+    reader = NamedReader(backbone.dim, len(names), config).float()
+    return NamedEngine(backbone, reader, names, config, uniform_weights(len(names)), chooser=chooser, signatures=signatures, cache=cache)
+
+
+def _silent_read(engine: NamedEngine, question: str):
+    """A question's reading with every named coordinate and open vector at zero: a test then sets the one it means."""
+    read = read_questions(engine.backbone, engine.reader, engine.config, [question])[0]
+    read.coordinates = np.zeros_like(read.coordinates)
+    read.open = np.zeros_like(read.open)
+    return read
+
+
+def _build(engine, read, prepared, mode=MODE_NAMED, weights=None):
+    return build_reading(read, prepared.index, prepared.catalog, prepared.decoder, engine.names, weights or engine.weights, mode=mode, signatures=engine.signatures)
+
+
+def _target_at(view, kind: str, position: int) -> int:
+    return next(at for at, target in enumerate(view.targets) if target.kind == kind and target.position == position)
+
+
+# --------------------------------------------------------------------------------------------------- the formula
+def test_link_is_exactly_its_terms() -> None:
+    """link = sum of weight x question x target + rule evidence, each returned, and the matrix computes the same number."""
+    names = ("a", "b", "c", "d")
+    weights = np.asarray([0.5, 2.0, 1.0, 0.25])
+    question = np.asarray([1000, 500, 0, 250], dtype=np.int16)
+    ids = np.asarray([0, 1, 2, 3])
+    values = np.asarray([1000, 250, 1000, 0], dtype=np.int16)
+    terms = contributions_of(question, ids, values, weights, names)
+    assert [term.coordinate for term in terms] == ["a", "b"]
+    assert terms[0].value == 0.5 and terms[1].value == 2.0 * 0.5 * 0.25
+    rules = (RuleHit(EXACT, 0.75, 1.0),)
+    assert link_total(terms, rules) == 0.5 + 0.25 + 0.75
+    matrix = named_matrix(question[None], ids[None], values[None], weights)
+    assert abs(matrix[0, 0] - sum(term.value for term in terms)) < 1e-12
+    records = [term.record() for term in terms]
+    assert records[0]["coordinate"] == "a" and records[0]["contribution"] == 0.5
+
+
+def test_intervention_moves_a_link_by_exactly_its_weight() -> None:
+    """Where the question reads a coordinate at 1, moving the target's coordinate from 0 to 1 moves the program coordinate by exactly that coordinate's weight, through the whole reading, and a program's score by that times its slot's weight. Nothing else moves."""
+    engine = _engine()
+    catalog = fake_catalog(1)
+    prepared = engine.prepare(catalog)
+    read = _silent_read(engine, "total gas this year")
+    c = engine.names.at(MEANINGS[2])
+    word = read.words.index("gas")
+    read.coordinates[word, c] = SCALE
+    weight = 0.75
+    coordinates = np.ones(len(engine.names))
+    coordinates[c] = weight
+    weights = uniform_weights(len(engine.names))
+    object.__setattr__(weights, "coordinates", coordinates)
+    view = prepared.index.views["t0"]
+    at = _target_at(view, T_COLUMN, 2)
+    view.ids[at] = c
+    view.values[at] = 0
+    view.ids[at, 1:] = np.arange(1, view.ids.shape[1])
+    before = _build(engine, read, prepared, weights=weights)
+    view.values[at, 0] = SCALE
+    after = _build(engine, read, prepared, weights=weights)
+    name = coordinate(SLOT_MEASURE, Col("t0", 2).name)
+    # the word's role joins a link once the link exists: taken out by its own named term, so the coordinate's own move is what is held
+    moved = after.reading.score(name) - before.reading.score(name) - after.book[name].role
+    assert abs(moved - weight) < 1e-4, moved
+    terms = after.book[name].contributions
+    assert [term.coordinate for term in terms] == [MEANINGS[2]] and terms[0].value == weight
+    others = {key: value for key, value in after.reading.scores.items() if key.split(":", 1)[1] != "t0.2" and not key.startswith("calc_left")}
+    assert others == {key: value for key, value in before.reading.scores.items() if key.split(":", 1)[1] != "t0.2" and not key.startswith("calc_left")}
+    program = Agg(SUM, Col("t0", 2), "t0")
+    delta = score_program(program, after.reading, catalog).score - score_program(program, before.reading, catalog).score
+    assert abs(delta - (after.reading.score(name) - before.reading.score(name))) < 1e-9     # the program's score carries the coordinate's move, nothing more
+
+
+def test_class_is_a_superposition_of_property_scores() -> None:
+    """A table's class moves by exactly a property's weight in logit: the additive computation of engine/schema_decode.py, named terms only."""
+    signatures = ClassSignatures({"class:gas": {"bias": -1.0, "signature": [{"property": MEANINGS[2], "weight": 2.0}, {"property": MEANINGS[3], "weight": 0.5}]}})
+    logit = lambda p: np.log(p / (1 - p))
+    low = signatures.scores({MEANINGS[2]: 0.0, MEANINGS[3]: 0.0})["class:gas"]
+    high = signatures.scores({MEANINGS[2]: 0.5, MEANINGS[3]: 0.0})["class:gas"]
+    assert abs((logit(high) - logit(low)) - 1.0) < 0.01
+    engine = _engine(signatures=signatures)
+    prepared = engine.prepare(fake_catalog(0))
+    view = prepared.index.views["t0"]
+    assert set(view.classes) == {"class:gas"} and set(view.profile) <= {MEANINGS[2], MEANINGS[3]}
+    assert view.classes["class:gas"] == signatures.scores(view.profile)["class:gas"]
+
+
+def test_rules_are_named_and_come_from_the_word_reading() -> None:
+    assert rule_evidence("value:t0.1=ena", 1.0, set()) == ((EXACT, 1.0),)
+    assert rule_evidence("value:t0.1=ena gas", 0.4, set())[0][0] == "partial"
+    assert rule_evidence("contains:t0.1=tran", 0.4, set())[0][0] == "prefix"
+    assert rule_evidence("period:2001", 0.9, set())[0][0] == "date"
+    assert rule_evidence("number:500", 1.0, set())[0][0] == "stated"
+    assert rule_evidence(coordinate(SLOT_MEASURE, "t0.1"), 0.0, set()) == ()
+    engine = _engine()
+    prepared = engine.prepare(fake_catalog(0))
+    table = prepared.catalog.tables[0]
+    value = next(text for text in table.folds[0] if text)
+    read = _silent_read(engine, f"volume for {value}")
+    named = _build(engine, read, prepared)
+    evidence = named.book[coordinate(SLOT_VALUE, Col("t0", 0).name, value)]
+    assert {hit.rule for hit in evidence.rules} == {EXACT} and evidence.supported and evidence.span
+    assert all(rule in RULES for hit in evidence.rules for rule in [hit.rule])
+
+
+# ----------------------------------------------------------------------------------------------------- order
+def test_order_invariance_by_construction() -> None:
+    """Columns shuffled, lines reversed: the encoder gets the same units in the same order, bit for bit, and each target its same coordinates wherever it stands."""
+    engine = _engine()
+    catalog = fake_catalog(2, lines=20)
+    table = catalog.tables[0]
+    moved_table, mapping = reorder_columns(table.table, 3)
+    moved_table.lines.reverse()
+    moved = CatalogTable("t0", moved_table, table.kind)
+    units = CONFIG.units
+    assert [line for line in [table.lines[i].row for i in sampled_lines(table, 4)]] == [moved.lines[i].row for i in sampled_lines(moved, 4)]
+    assert table_graphs(table, units)[0].texts == table_graphs(moved, units)[0].texts
+    assert [table.columns[p].name for p in column_order(table)] == [moved.columns[p].name for p in column_order(moved)]
+    assert np.array_equal(table_graphs(table, units)[0].edges, table_graphs(moved, units)[0].edges)
+    first = engine.encoder.index_group([table], "a")
+    second = engine.encoder.index_group([moved], "b")
+
+    def keyed(index: TabIndex, column_of):
+        return {(target.kind, column_of(target.position) if target.kind in (T_COLUMN, T_VALUE) else -1, target.text): (index.ids[at].tolist(), index.values[at].tolist(), index.open[at].tolist()) for at, target in enumerate(index.targets)}
+
+    assert keyed(first, lambda position: mapping[position]) == keyed(second, lambda position: position)
+    read_a = engine.ask("total volume", engine.prepare(catalog))
+    read_b = engine.ask("total volume", engine.prepare(Catalog([moved], catalog.name)))
+    assert read_a.kind == read_b.kind and read_a.rows == read_b.rows
+
+
+def test_table_edges_are_the_edges_of_the_owner() -> None:
+    """The vectorized table graph equals engine/fk_edges.py's pairwise edges() on every kind of pair."""
+    kinds, cols, rows = ["table", "name", "name", "value", "value", "value", "value", "value"], [-1, 0, 1, 0, 1, 0, 1, 0], [-1, -1, -1, 0, 0, 1, 1, 0]
+    units = [{"group": "schema", "kind": kind, "table": 0, "col": col, "row": row} for kind, col, row in zip(kinds, cols, rows)]
+    assert np.array_equal(edges(units), table_edges(kinds, cols, rows))
+
+
+def test_cell_units_read_kinds_not_figures() -> None:
+    from engine.sheet.grid import read_cell
+    assert cell_text(read_cell(1, 1, 1234.5, None, False)) == "number 4 digits fraction"
+    assert cell_text(read_cell(1, 1, -7.0, None, False)) == "number 1 digits negative"
+    assert cell_text(read_cell(1, 1, "Aquila Inc", None, False)) == "Aquila Inc"
+
+
+# --------------------------------------------------------------------------------------------- determinism
+_DIGEST = """
+import hashlib, json, os, sys
+import numpy as np, torch
+torch.set_num_threads(int(os.environ["OMP_NUM_THREADS"]))
+sys.path.insert(0, os.getcwd())
+from tests.test_named import _engine, CONFIG
+from training.named.fake import fake_catalog
+engine = _engine()
+prepared = engine.prepare(fake_catalog(3, lines=40))
+digest = hashlib.sha256()
+for tab in prepared.index.tabs:
+    digest.update(tab.to_bytes())
+outcome = engine.ask("average price in the east region", prepared)
+digest.update(json.dumps(sorted(outcome.named.reading.scores.items())).encode())
+digest.update(repr(outcome.decision.candidate.verified.scored.program if outcome.decision.candidate else None).encode())
+print(digest.hexdigest())
+"""
+
+
+def test_determinism_across_threads_and_hash_seeds() -> None:
+    """The index's bytes, the reading and the choice: one digest on 1 and 4 threads, under two hash seeds."""
+    seen = set()
+    for threads, seed in ((1, "0"), (4, "12345")):
+        env = dict(os.environ, OMP_NUM_THREADS=str(threads), MKL_NUM_THREADS=str(threads), PYTHONHASHSEED=seed)
+        output = subprocess.run([sys.executable, "-c", _DIGEST], capture_output=True, text=True, env=env, cwd=ROOT, timeout=300)
+        assert output.returncode == 0, output.stderr[-800:]
+        seen.add(output.stdout.strip().splitlines()[-1])
+    assert len(seen) == 1, seen
+
+
+def test_real_backbone_determinism_when_asked() -> None:
+    """bge-small from local files, 1 and 4 threads: rounded coordinates equal. Only with NAMED_REAL_BACKBONE=1: it is a model load."""
+    if os.environ.get("NAMED_REAL_BACKBONE") != "1":
+        return
+    from engine.named.backbone import load_backbone
+    backbone = load_backbone("bge-small", layers=3)
+    names = fake_name_set()
+    config = ReaderConfig(backbone="bge-small", backbone_layers=3, hidden=96, blocks=2, sample_rows=4)
+    torch.manual_seed(0)
+    reader = NamedReader(backbone.dim, len(names), config).float()
+    engine = NamedEngine(backbone, reader, names, config, uniform_weights(len(names)))
+    catalog = fake_catalog(2, lines=30)
+    digests = []
+    for threads in (1, 4):
+        torch.set_num_threads(threads)
+        tab = engine.encoder.index_group(catalog.tables[:1], "a")
+        read = read_questions(backbone, reader, config, ["total volume for duke"])[0]
+        digests.append(hashlib.sha256(tab.to_bytes() + read.coordinates.tobytes() + json.dumps(read.closed, sort_keys=True).encode()).hexdigest())
+    assert digests[0] == digests[1]
+
+
+def test_scores_are_rounded_before_compare() -> None:
+    engine = _engine()
+    prepared = engine.prepare(fake_catalog(0))
+    named = engine.read("total volume", prepared)
+    assert all(round(value, 4) == value for value in named.reading.scores.values())
+    assert named.read.coordinates.dtype == np.int16
+    assert prepared.index.views["t0"].values.dtype == np.int16
+    assert next(engine.reader.parameters()).dtype == torch.float32
+
+
+# ------------------------------------------------------------------------------------------ the index, the cache
+def test_index_round_trips_and_is_compact() -> None:
+    engine = _engine()
+    prepared = engine.prepare(fake_catalog(1))
+    tab = prepared.index.tabs[0]
+    data = tab.to_bytes()
+    back = TabIndex.from_bytes(data)
+    assert back.to_bytes() == data and back.targets == tab.targets and back.tab_hash == tab.tab_hash
+    assert len(data) < 200 * len(tab.targets) + 2000
+
+
+def test_a_tab_is_read_once_per_hash() -> None:
+    with tempfile.TemporaryDirectory() as folder:
+        cache = IndexCache(folder)
+        engine = _engine(cache=cache)
+        catalog = fake_catalog(1)
+        first = index_workbook(engine.encoder, catalog, cache)
+        assert first.built == 1 and first.reused == 0
+        second = index_workbook(engine.encoder, catalog, cache)
+        assert second.built == 0 and second.reused == 1
+        fresh = IndexCache(folder)
+        third = index_workbook(engine.encoder, catalog, fresh)
+        assert third.built == 0 and third.reused == 1
+        changed = index_workbook(engine.encoder, fake_catalog(2), cache)
+        assert changed.built == 1
+        by_payload = index_workbook(engine.encoder, catalog, cache, {group.split(":", 1)[1]: "from-the-payload" for group in group_tables(catalog)})
+        assert by_payload.built == 1 and by_payload.tabs[0].tab_hash == "from-the-payload"
+        assert content_hash(catalog.tables) != content_hash(fake_catalog(2).tables)
+
+
+# ----------------------------------------------------------------------------------------- named or asked
+def _proposal_case():
+    engine = _engine()
+    catalog = fake_catalog(1)
+    prepared = engine.prepare(catalog)
+    read = _silent_read(engine, "zzqx")
+    view = prepared.index.views["t0"]
+    at = _target_at(view, T_COLUMN, 2)
+    view.open[:] = 0
+    view.open[at] = 0
+    view.open[at, 0] = 127
+    read.open[0, 0] = 127
+    return engine, prepared, read, view
+
+
+def test_open_channel_proposes_and_never_decides() -> None:
+    """A word whose only reach is similarity puts its target before the decoder at one fixed score, however similar. That link has no named support."""
+    engine, prepared, read, view = _proposal_case()
+    named = _build(engine, read, prepared)
+    name = coordinate(SLOT_MEASURE, Col("t0", 2).name)
+    evidence = named.book[name]
+    assert evidence.proposal and not evidence.supported and named.reading.score(name) == PROPOSAL_SCORE
+    read.open[0, 0] = 60                                # still above the proposal line, half as similar
+    read.open[0, 1] = 100
+    second = _build(engine, read, prepared)
+    assert second.reading.score(name) == PROPOSAL_SCORE
+    assert {key: value for key, value in named.reading.scores.items() if "=" not in key} == {key: value for key, value in second.reading.scores.items() if "=" not in key}
+
+
+def test_a_program_on_a_proposal_is_needs_asking_and_is_asked() -> None:
+    engine, prepared, read, view = _proposal_case()
+    named = _build(engine, read, prepared)
+    program = Show("t0", (Col("t0", 2),), ())
+    assert needs_asking(program, named, prepared.catalog)
+    assert unsupported_links(program, named, prepared.catalog)
+    scored = score_program(program, named.reading, prepared.catalog)
+    verified = Verified(scored, run(program, prepared.tables), (Evidence("ran", True),))
+    features = features_of(verified, named, prepared.catalog, rank=0, best_score=scored.score)
+    assert features["needs_asking"] == 1.0
+    eager = Chooser({"needs_asking": 100.0, "shape_agrees": 100.0}, 100.0)
+    decision = answer_or_ask(score_candidates([verified], named, prepared.catalog, eager), eager)
+    assert decision.kind == ASK and decision.reasons == ("no_named_support",)
+
+
+def test_only_the_other_mode_lets_similarity_decide() -> None:
+    engine, prepared, read, view = _proposal_case()
+    plus = _build(engine, read, prepared, mode=MODE_NAMED_PLUS_OPEN)
+    name = coordinate(SLOT_MEASURE, Col("t0", 2).name)
+    assert plus.reading.score(name) > PROPOSAL_SCORE
+    assert not plus.book[name].proposal
+    assert not needs_asking(Show("t0", (Col("t0", 2),), ()), plus, prepared.catalog)
+    try:
+        _build(engine, read, prepared, mode="anything_else")
+    except ValueError:
+        return
+    raise AssertionError("an unknown mode ran")
+
+
+def test_named_support_is_named_terms_or_rules() -> None:
+    engine = _engine()
+    prepared = engine.prepare(fake_catalog(1))
+    table = prepared.catalog.tables[0]
+    read = _silent_read(engine, f"{table.columns[3].name} please")
+    named = _build(engine, read, prepared)
+    assert named.book[coordinate(SLOT_MEASURE, Col("t0", 3).name)].supported
+    assert not named.book[coordinate(SLOT_KEY, Col("t0", 0).name)].supported
+
+
+def test_no_llm_on_the_path() -> None:
+    """Importing the whole path loads no LLM client and no generative model class."""
+    script = "import sys; import engine.named.pipeline, engine.named.chooser, engine.named.reader, engine.named.index, engine.program.verifier; print(json.dumps([name for name in sys.modules if name == 'engine.llm' or name.startswith(('google.genai', 'google.generativeai', 'vertexai', 'anthropic', 'openai', 'orchestrator'))]))"
+    output = subprocess.run([sys.executable, "-c", "import json\n" + script], capture_output=True, text=True, cwd=ROOT, timeout=300)
+    assert output.returncode == 0, output.stderr[-800:]
+    assert json.loads(output.stdout.strip().splitlines()[-1]) == []
+    for path in (ROOT / "engine" / "named").glob("*.py"):
+        text = path.read_text(encoding="utf-8")
+        for word in ("engine.llm", "generate(", "AutoModelForCausalLM"):
+            assert word not in text, f"{path.name}: {word}"
+
+
+# ---------------------------------------------------------------------------------------------- the closed heads
+def test_closed_heads_read_gold_coordinates() -> None:
+    labels = closed_labels(["form:rank", "answer_type:name", "table:t0", "entity:group", "direction:highest", "aggregate:sum", "measure:t0.2", "key:t0.0", "conditions:t0=1", "filter:t0.1", "value:t0.1=east", "comparison:>=@t0.1"])
+    assert labels["form"] == "rank" and labels["entity"] == "group" and labels["direction"] == "highest" and labels["aggregate"] == "sum" and labels["conditions"] == "1" and labels["comparison"] == ">="
+    assert labels["size"] == "signed" and labels["row_op"] == "none"
+    assert set(labels) == set(CLOSED_HEADS)
+    assert CLOSED_HEADS["form"] == FORMS
+
+
+def test_a_head_reads_as_log_odds_against_silence() -> None:
+    engine = _engine()
+    read = read_questions(engine.backbone, engine.reader, engine.config, ["how many deals"])[0]
+    read.closed["aggregate"] = {name: 0.0 for name in read.closed["aggregate"]}
+    read.closed["aggregate"].update({"none": 0.5, "count": 0.5, "sum": 0.0})
+    read.closed["form"] = {"show": 0.25, "agg": 0.25, "rank": 0.25, "calc": 0.25}
+    scores = closed_reading(read, engine.weights)
+    assert abs(scores["aggregate:count"]) < 1e-9
+    assert scores["aggregate:sum"] < -5 and abs(scores["form:agg"] - np.log(0.25)) < 1e-9
+
+
+def test_name_set_loader_and_its_forms() -> None:
+    document = {"schema_version": 1, "tiers": {"structure": {"names": [{"name": "form:show", "group": "form"}]}, "meaning": {"vocabulary": {"names": [{"name": "biz:price", "group": "finance"}]}}}}
+    with tempfile.TemporaryDirectory() as folder:
+        path = Path(folder) / "names.json"
+        path.write_text(json.dumps(document), encoding="utf-8")
+        names = load_name_set(path, extra=["schema:price"])
+    assert names.names == ("biz:price", "form:show", "schema:price") and names.at("form:show") == 1 and names.at("nothing") is None
+    assert names.sha != NameSet(("form:show",)).sha
+    fake = fake_name_set()
+    for answer in ANSWER_TYPES:
+        assert fake.at(f"answer_type:{answer}") is not None
+    try:
+        NameSet(("a", "a"))
+    except ValueError:
+        return
+    raise AssertionError("a name twice passed")
+
+
+# ------------------------------------------------------------------------------------------------- the chooser
+def test_chooser_contributions_are_the_logit() -> None:
+    chooser = Chooser({"words_explained": 2.0, "type_agrees": 1.0}, -0.5, {"agg": (2.0, 0.5)}, {"agg": 0.8})
+    logit, terms = chooser.logit({"words_explained": 0.5, "type_agrees": 1.0, "not_a_feature": 9.0})
+    assert logit == -0.5 + 1.0 + 1.0
+    assert logit == chooser.bias + sum(term.value for term in terms) and all(isinstance(term, FeatureTerm) and term.feature in FEATURES for term in terms)
+    assert chooser.probability(logit, "agg") == round(1 / (1 + np.exp(-(2.0 * logit + 0.5))), 4)
+    assert chooser.probability(logit, "show") == round(1 / (1 + np.exp(-logit)), 4)
+    back = Chooser.from_record(json.loads(json.dumps(chooser.record())))
+    assert back.logit({"type_agrees": 1.0})[0] == chooser.logit({"type_agrees": 1.0})[0] and back.threshold("agg") == 0.8
+
+
+def test_stable_ties_and_asking_between_close_readings() -> None:
+    engine = _engine()
+    prepared = engine.prepare(fake_catalog(0))
+    named = engine.read("price", prepared)
+    catalog = prepared.catalog
+
+    def candidate(position: int, rank: int, probability: float, needs: bool = False) -> Candidate:
+        program = Show("t0", (Col("t0", position),), ())
+        verified = Verified(score_program(program, named.reading, catalog), run(program, prepared.tables), ())
+        return Candidate(verified, {}, 0.0, probability, (), needs, rank)
+
+    open_chooser = Chooser({}, thresholds={form: 0.0 for form in FORMS}, margin=0.05)
+    assert answer_or_ask([candidate(2, 0, 0.9), candidate(3, 1, 0.5)], open_chooser).kind == ANSWER
+    close = answer_or_ask([candidate(2, 0, 0.9), candidate(3, 1, 0.88)], open_chooser)
+    assert close.kind == ASK and close.reasons == ("close_readings",) and close.other is not None
+    assert answer_or_ask([candidate(2, 0, 0.3)], Chooser({}, thresholds={"show": 0.5})).reasons == ("low_confidence",)
+    assert answer_or_ask([], open_chooser).reasons == ("nothing_ran",)
+    outcome = engine.ask("price", prepared)
+    assert outcome.kind in (ANSWER, ASK) and "total" in outcome.seconds
+    scored = score_candidates(verify_all(engine, prepared, named), named, catalog, PRIOR)
+    assert scored == sorted(scored, key=lambda item: (-item.logit, item.rank))
+
+
+def verify_all(engine, prepared, named):
+    from engine.program.verifier import verify
+    return verify(prepared.decoder.decode(named.reading, k=10).programs, prepared.tables, named.expected, top=10)
+
+
+def test_fit_is_deterministic_and_finds_the_signal() -> None:
+    rng = np.random.default_rng(0)
+    x = rng.normal(size=(300, 3))
+    y = (x[:, 0] - x[:, 1] > 0).astype(float)
+    a = fit_logistic(x, y)
+    b = fit_logistic(x, y)
+    assert np.array_equal(a[0], b[0]) and a[1] == b[1]
+    assert a[0][0] > 1 and a[0][1] < -1 and abs(a[0][2]) < 0.5
+    assert calibrate(np.zeros(5), np.zeros(5)) == (1.0, 0.0)
+    logit = rng.normal(size=200)
+    a2, b2 = calibrate(logit, (logit + rng.normal(size=200) * 0.3 > 0).astype(float))
+    assert a2 > 1.0 and abs(b2) < 1.0
+    thresholds = choose_thresholds([("agg", 0.9, True)] * 9 + [("agg", 0.9, False)] + [("agg", 0.5, False)] * 5)
+    assert 0.5 < thresholds["agg"] <= 0.9
+
+
+def _record(question: str, family: str, right: bool, value: float, rank: int = 0) -> CandidateRecord:
+    return CandidateRecord(question, family, "agg", {"words_explained": value, "type_agrees": float(right)}, {"measure": value}, right, rank)
+
+
+def test_chooser_fit_keeps_families_apart() -> None:
+    fit = [_record(f"q{at}", "a", at % 2 == 0, (at % 2) * 0.1 + 0.2, 0) for at in range(40)]
+    held = [_record(f"h{at}", "b", at % 2 == 0, 0.5, at % 3) for at in range(40)]
+    chooser = fit_chooser(fit, held)
+    assert chooser.weights["type_agrees"] > 0 and "agg" in chooser.calibration and "agg" in chooser.thresholds and chooser.margin in MARGINS
+    assert calibrate(np.linspace(-2, 2, 60), (np.linspace(-2, 2, 60) < 0).astype(float)) == (1.0, 0.0)
+    near = [[(1.0, 0, CandidateRecord("q", "f", "agg", {}, {}, True, 0, "a")), (0.9, 1, CandidateRecord("q", "f", "agg", {}, {}, False, 1, "b"))], [(1.0, 0, CandidateRecord("r", "f", "agg", {}, {}, False, 0, "c")), (0.99, 1, CandidateRecord("r", "f", "agg", {}, {}, True, 1, "d"))]]
+    assert choose_margin(near, Chooser({}), {"agg": 0.0}, target_wrong=0.0) == 0.02
+    try:
+        fit_chooser(fit, [_record("x", "a", True, 0.1)])
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("one family fit and calibrated both")
+    assert all(value >= 0 for value in fit_slot_weights(fit).by_slot.values())
+
+
+# ---------------------------------------------------------------------------------- augmentation, held-out data
+def test_survival_ops_keep_gold_answers() -> None:
+    catalog = fake_catalog(0, lines=16)
+    table = catalog.tables[0]
+    program = Show("t0", (Col("t0", 2),), ())
+    base = run(program, RequestTables(catalog)).rows
+    for name, operation in SURVIVAL_OPS.items():
+        mutated = mutate_catalog(catalog, operation)
+        assert [t.id for t in mutated.tables] == [t.id for t in catalog.tables]
+        new_table = mutated.tables[0]
+        if name == "added_columns":
+            assert len(new_table.columns) == len(table.columns) + 20
+        if name == "unreadable_headers":
+            assert all(column.name.startswith("Column ") for column in new_table.columns)
+        if name != "reorder":
+            assert run(program, RequestTables(mutated)).rows == base
+    moved, mapping = reorder_columns(table.table, 1)
+    assert sorted(mapping) == list(range(len(table.columns)))
+    assert moved.columns[mapping[2]].name == table.columns[2].name
+    assert moved.lines[0].cells[mapping[2]].raw == table.table.lines[0].cells[2].raw
+    added, added_map = add_columns(table.table, 1, 5)
+    assert added_map[2] == 2 and len(added.columns) == len(table.columns) + 5
+
+
+def test_augmentation_tracks_every_position() -> None:
+    import random
+    table = fake_catalog(0).tables[0].table
+    for seed in range(8):
+        out, mapping = augmented(table, random.Random(seed), {"rename": 1.0, "mask": 1.0, "shuffle": 1.0, "distract": 1.0})
+        assert all(out.lines[0].cells[new].raw == table.lines[0].cells[old].raw for old, new in mapping.items() if old in table.lines[0].cells)
+        assert len(out.columns) >= len(table.columns)
+
+
+def test_families_stay_held_out() -> None:
+    examples = fake_examples(6)
+    kept, held = split_families(examples, 0.5, 0)
+    assert not {e.family for e in kept} & {e.family for e in held} and kept and held
+    same = [TabExample("k", examples[0].family, "f", "t", "fake", [], [], {})]
+    try:
+        check_held_out(examples, same)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("a family on both sides passed")
+    frozen = [TabExample("k", "other", "f", "t", "frozen", [], [], {})]
+    try:
+        check_held_out(examples, frozen)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("a frozen tab passed")
+    with tempfile.TemporaryDirectory() as folder:
+        write_shard(folder, 0, frozen)
+        try:
+            read_examples(folder)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("a frozen shard was read")
+        write_shard(folder, 0, examples)
+        assert len(read_examples(folder, "fake")) == 6
+        try:
+            read_examples(folder, "train")
+        except ValueError:
+            return
+    raise AssertionError("a side was read as another")
+
+
+def test_batch_has_in_sheet_hard_negatives() -> None:
+    import random
+    example = fake_examples(1)[0]
+    names = fake_name_set()
+    batch = build_batch(example, CONFIG, names, random.Random(0), questions=8, shares=None)
+    assert batch.links and all(len(link.candidates) >= 2 for link in batch.links)
+    table_ids = {batch.targets[at].table for link in batch.links for at in link.candidates}
+    assert table_ids == {"t0"}
+    for link in batch.links:
+        assert len({batch.targets[at].kind for at in link.candidates}) == 1
+        assert link.rules.shape == (len(link.candidates), len(RULES))
+    assert batch.closed[0]["form"] in FORMS
+    augmented_batch = build_batch(example, CONFIG, names, random.Random(1), questions=8, shares={"shuffle": 1.0, "distract": 1.0, "mask": 1.0, "rename": 1.0})
+    assert augmented_batch.links
+
+
+# ------------------------------------------------------------------------------------------------- the pipeline
+def test_training_lowers_the_loss_and_is_repeatable() -> None:
+    """A pipeline check on the fake: loss falls, a bundle comes back, and it reads the same as what was trained. Not an accuracy result."""
+    with tempfile.TemporaryDirectory() as folder:
+        examples = fake_examples(6)
+        names = fake_name_set()
+
+        def once(out: str, seed: int = 0):
+            torch.manual_seed(seed)
+            config = TrainConfig(reader=ReaderConfig(backbone="hash", hidden=36, blocks=1, open_dim=16, sample_rows=3), steps=60, questions=6, head_lr=3e-3, lr=1e-3, seed=seed, held_share=0.2, eval_every=60, eval_tabs=4, augment={"shuffle": 0.5})
+            return train(examples, names, HashBackbone(), config, out, log_print=False), config
+
+        summary, config = once(os.path.join(folder, "a"))
+        assert summary["steps"] == 60 and summary["loss_last"] < summary["loss_first"], summary
+        assert summary["train_tabs"] and summary["held_tabs"]
+        again, _ = once(os.path.join(folder, "b"))
+        assert again["loss_last"] == summary["loss_last"]
+        held = set(json.loads(Path(folder, "a", "held_families.json").read_text(encoding="utf-8")))
+        assert held and held <= {example.family for example in examples}
+        engine = load_bundle(Path(folder, "a", "best"), backbone=HashBackbone())
+        catalog = fake_catalog(0)
+        prepared = engine.prepare(catalog)
+        outcome = engine.ask("total volume", prepared)
+        assert outcome.kind in (ANSWER, ASK)
+        bundle = read_bundle(Path(folder, "a", "best"), backbone=HashBackbone())
+        assert bundle.names.sha == names.sha and bundle.reader_id == engine.encoder.reader_id
+        assert len(bundle.weights.coordinates) == len(names)
+        write_bundle(Path(folder, "c"), bundle.backbone, bundle.reader, bundle.names, bundle.config, bundle.weights)
+        assert read_bundle(Path(folder, "c"), backbone=HashBackbone()).reader_id == bundle.reader_id
+
+
+def test_a_frozen_word_table_stays_out_of_a_bundle() -> None:
+    engine = _engine()
+    engine.backbone.table.weight.requires_grad_(False)
+    with tempfile.TemporaryDirectory() as folder:
+        write_bundle(folder, engine.backbone, engine.reader, engine.names, engine.config, engine.weights)
+        state = torch.load(Path(folder, "reader.pt"), weights_only=True)
+    assert "backbone.table.weight" not in state and "backbone.out.weight" in state
+
+
+def _items(families=(0, 1)) -> list[Item]:
+    items = []
+    for family in families:
+        catalog = fake_catalog(family)
+        for row in fake_rows(family, catalog):
+            record = record_of(row["answer"], row["form"])
+
+            def grade(rows, record=record):
+                from training.factory.agree import same_scalar
+                return bool(rows) and record["expected"] is not None and same_scalar(rows[0][0], record["expected"][0] if isinstance(record["expected"], list) else record["expected"])
+            items.append(Item(row["id"], row["question"], f"book{family}", row["family"], row["form"], "gold", lambda family=family: fake_catalog(family), grade, None, row["links"]))
+    return items
+
+
+def test_evaluation_runs_the_whole_engine_end_to_end() -> None:
+    """Sheet model, index, reader, decoder, verifier, chooser, answer or ask, both modes and the words floor; the report's fields and the survival tests. A pipeline check: the model is untrained."""
+    engine = _engine()
+    items = _items()
+    for mode in (MODE_NAMED, MODE_NAMED_PLUS_OPEN):
+        report = run_mode(items, engine, mode)
+        gold = report["by_label"]["gold"]
+        assert gold["right"] + gold["asked"] + gold["wrong"] == gold["n"] == len(items)
+        assert report["p50_ms"] > 0 and report["p99_ms"] >= report["p50_ms"] and report["links"] > 0 and report["link_top10"] is not None
+        assert report["peak_gb"] > 0
+        if mode == MODE_NAMED:                         # the next mode reads the same model's cached index
+            assert report["index_seconds_p50"] is not None and report["index_kb_p50"] > 0
+        assert {"read", "decode", "verify", "choose", "total"} <= set(report["stages_p50_ms"])
+    floor = run_mode(items, None, "words")
+    assert floor["by_label"]["gold"]["right"] > 0
+    survival = run_survival(items, floor, None, "words", 3)
+    assert set(survival) == set(SURVIVAL_OPS) and all(row["n"] <= 3 for row in survival.values())
+    named = run_survival(items, {"records": [{"id": item.id, "result": "right", "label": "gold"} for item in items]}, engine, MODE_NAMED, 2)
+    assert all(row["n"] == 2 for row in named.values())
+
+
+def test_grading_and_gate_a() -> None:
+    gold = Item("a", "q", "b", "f", "agg", "gold", lambda: None, lambda rows: rows == [(1,)], None, [])
+    assert graded(gold, ANSWER, [(1,)]) == "right" and graded(gold, ANSWER, [(2,)]) == "wrong" and graded(gold, ASK, ()) == "asked"
+    refusal = Item("b", "q", "b", "f", "", "refusal", lambda: None, lambda rows: False, None, [])
+    assert graded(refusal, ASK, ()) == "right" and graded(refusal, ANSWER, [(1,)]) == "wrong"
+    ambiguous = Item("c", "q", "b", "f", "", "ambiguous", lambda: None, lambda rows: False, lambda rows: rows == [(3,)], [])
+    assert graded(ambiguous, ASK, ()) == "right" and graded(ambiguous, ANSWER, [(3,)]) == "right" and graded(ambiguous, ANSWER, [(4,)]) == "wrong"
+    assert record_of([["ENA", 5.0]], "rank") == {"expected": "ENA", "alternates": {"figure": 5.0}, "accept_text": [], "tolerance": 0}
+    assert record_of([["a"], ["b"]], "show")["expected"] == ["a", "b"]
+    assert record_of([[None]], "agg")["expected"] is None
+    report = {"by_label": {"gold": {"right": 50, "asked": 40, "wrong": 10, "n": 100}}, "link_top10": 0.95, "p50_ms": 250.0}
+    survival = {name: {"n": 100, "share": GATE_A[name]} for name in ("reorder", "added_columns", "renames", "unreadable_headers")}
+    assert gate_a(report, survival)["passes"]
+    assert not gate_a(report, None)["passes"] and not gate_a(report, None)["all_measured"]
+    low = {"by_label": {"gold": {"right": 30, "asked": 60, "wrong": 10, "n": 100}}, "link_top10": 0.95, "p50_ms": 250.0}
+    assert gate_a(low, survival)["stop_line"] and not gate_a(report, survival)["stop_line"]
+
+
+# ----------------------------------------------------------------------------------------------------- the lease
+def test_lease_plan_is_size_aware() -> None:
+    small = plan_candidate("bge-small", 7000, 40000)
+    large = plan_candidate("xlmr-base", 7000, 40000)
+    assert small.steps == large.steps == 4 * 7000
+    assert small.bundle_mb < 120 and 300 < large.bundle_mb < 400 and bundle_mb("xlmr-base") == large.bundle_mb
+    assert large.transfer_minutes_limit > small.transfer_minutes_limit and large.lease_minutes > small.lease_minutes
+    assert 0 < small.dollars_low < small.dollars_high and small.dollars_low < large.dollars_low
+    assert plan_candidate("bge-small", 10, 10, steps=500).steps == 500
+    ensure_same_tables("HEAD")
+    command = remote_command("bge-small", 500, 3)
+    assert "training.named.train" in command and "--seed 3" in command and "--steps 500" in command and "exit 4" in command
+
+
+def test_lease_refuses_until_transfers_are_size_aware() -> None:
+    from training.tools import runpod_api
+    if all(hasattr(runpod_api, name) for name in ("_transfer_seconds", "_compress_outputs", "_download")):
+        ensure_size_aware()
+        return
+    try:
+        ensure_size_aware()
+    except SystemExit as stop:
+        assert "phase0" in str(stop)
+        return
+    raise AssertionError("a paid lease would have run on the 15-minute transfers")
+
+
+def test_pod_code_is_a_closed_set() -> None:
+    """What a pod receives imports the trainer with nothing else of the repository, and pulls in no SQL stack it does not have."""
+    with tempfile.TemporaryDirectory() as folder:
+        import shutil
+        for relative in pod_code():
+            target = Path(folder, relative)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(ROOT / relative, target)
+        env = {key: value for key, value in os.environ.items() if key != "PYTHONPATH"}
+        output = subprocess.run([sys.executable, "-c", "import sys; import training.named.train as t; print('sqlalchemy' in sys.modules, t.__file__)"], capture_output=True, text=True, cwd=folder, env=env, timeout=300)
+        assert output.returncode == 0, output.stderr[-1200:]
+        loaded, where = output.stdout.strip().splitlines()[-1].split(" ", 1)
+        assert loaded == "False", "the trainer pulled in sqlalchemy"
+        assert Path(where).resolve().is_relative_to(Path(folder).resolve())
+
+
+def test_units_config_defaults_are_the_readers() -> None:
+    assert ReaderConfig().units == UnitsConfig()
+    assert len(targets_of(fake_catalog(0).tables[0], UnitsConfig(value_cap=2))) < len(targets_of(fake_catalog(0).tables[0], UnitsConfig()))
+
+
+def main() -> int:
+    tests = [(name, item) for name, item in globals().items() if name.startswith("test_") and callable(item)]
+    failed = 0
+    for name, item in tests:
+        try:
+            item()
+        except Exception as exc:  # noqa: BLE001 - every test reports
+            failed += 1
+            import traceback
+            print(f"FAIL {name}: {type(exc).__name__}: {exc}")
+            traceback.print_exc(limit=4)
+    print(f"{len(tests) - failed} of {len(tests)} passed")
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

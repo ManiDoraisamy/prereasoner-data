@@ -136,20 +136,21 @@ def parse_job(text):
     return parts[0], parts[1], parts[2], "large" if len(parts) == 4 else "base"
 
 
-def stage_code(directory):
+def stage_code(directory, code=POD_CODE):
     """The pod-side modules copied into ``directory`` as their packages (uploaded as /workspace/engine and
     /workspace/training, so the pod runs them with python -m from /workspace)."""
     if directory.exists():
         shutil.rmtree(directory)
-    for relative in POD_CODE:
+    for relative in code:
         target = directory / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(ROOT / relative, target)
 
 
-def lease(args, job, remote, uploads, gpus):
-    """Run the lease on each cloud in turn until one succeeds; the exit code of the last attempt."""
-    experiment = EXPERIMENTS_DIR / args.experiment
+def lease(args, job, remote, uploads, gpus, *, experiments=None, code=POD_CODE, state="runpod_readers"):
+    """Run the lease on each cloud in turn until one succeeds; the exit code of the last attempt. The keywords are what
+    another training package (training/named/lease.py) brings to this one lease loop."""
+    experiment = (experiments or EXPERIMENTS_DIR) / args.experiment
     out = experiment / "out"
     code_dir = experiment / "code"
     uploads = [(str(code_dir / "engine"), "/workspace/engine"),
@@ -158,7 +159,7 @@ def lease(args, job, remote, uploads, gpus):
                "--max-hourly-cost", str(args.max_hourly_cost)] + (["--resume"] if args.resume else [])
     env = dict(os.environ, RUNPOD_GPUS=",".join(args.gpus.split(",") if args.gpus else gpus),
                PREREASONER_RUNPOD_STATE=str(Path.home() / ".cache" / "prereasoner"
-                                            / f"runpod_readers_{args.experiment}.json"))
+                                            / f"{state}_{args.experiment}.json"))
     for name, value in (("RUNPOD_IMAGE", args.image), ("RUNPOD_CUDA", args.cuda)):
         if value:
             env[name] = value
@@ -175,7 +176,7 @@ def lease(args, job, remote, uploads, gpus):
         print(f"{job} refused: {out} holds a finished run; pull or move it aside, never train it again")
         return 2
     experiment.mkdir(parents=True, exist_ok=True)
-    stage_code(code_dir)
+    stage_code(code_dir, code)
     for local, path in uploads:
         command += ["--upload", local, path]
     command += ["--download", "/workspace/out", str(out), "--", "bash", "-lc", remote]

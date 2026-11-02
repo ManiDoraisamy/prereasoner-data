@@ -64,3 +64,33 @@ def edges(units):
             elif g[i] == "sql" and g[j] == "sql":
                 E[i, j] = E_CLAUSE if cl[i] == cl[j] else E_SQLSEQ
     return E
+
+
+def table_edges(kinds, cols, rows):
+    """edges() for the units of one table, without its pairwise loop: a table graph runs to hundreds of units and is built at every index and every training step. tests.test_named holds the two equal."""
+    k = np.asarray(kinds)
+    c = np.asarray(cols, dtype=np.int64)
+    r = np.asarray(rows, dtype=np.int64)
+    S = len(k)
+    E = np.zeros((S, S), np.int64)
+    same_col = c[:, None] == c[None, :]
+    same_row = r[:, None] == r[None, :]
+    on_row = r[:, None] >= 0
+    value = k == "value"
+    E[value[:, None] & value[None, :] & same_row & on_row] = E_ROW
+    E[same_col & (c[:, None] >= 0)] = E_COL
+    E[same_col & same_row & on_row] = E_CELL
+    table = k == "table"
+    name = k == "name"
+    either_table = table[:, None] | table[None, :]
+    E[either_table] = E_NONE
+    E[either_table & (name[:, None] | name[None, :])] = E_COL
+    np.fill_diagonal(E, E_SELF)
+    return E
+
+
+def question_edges(size):
+    """edges() for the words of one question alone."""
+    E = np.full((size, size), E_QSEQ, np.int64)
+    np.fill_diagonal(E, E_SELF)
+    return E

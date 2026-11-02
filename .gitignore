@@ -43,6 +43,8 @@ training/data/pod_id.txt
 
 # training/sheet scratch: line model candidates (installed only by training/sheet/promote.py)
 training/sheet/data/
+# training/named scratch: reader candidates (promotion is separate), examples, caches
+training/named/data/
 
 # Logs & local state
 *.log
