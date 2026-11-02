@@ -85,15 +85,15 @@ def _repeats_block(grid: Grid, rows: list[int], names: dict[int, str]) -> bool:
     return same >= max(2, len(here) * 0.6)
 
 
-def _repeated_lines(grid: Grid, block: list[int], header_rows: list[int]) -> int:
-    """How many leading lines of a header block repeat the table's own header; 0 when the block opens a new table. A block whose first line repeats the header but whose later lines do not has data lines joined to it."""
-    heads = [grid.rows[h] for h in header_rows]
+def _repeated_lines(grid: Grid, block: list[int], region: _Region, roles: dict[int, tuple[str, tuple[str, ...]]]) -> int:
+    """How many leading lines of a header block repeat the table's own header; 0 when the block opens a new table. A block whose first line repeats the header and whose later lines are lines of that table's data repeats only that far; later lines that name something else open a table of their own, however like the first line a units line is."""
+    heads = [grid.rows[h] for h in region.header_rows]
     k = 0
     while k < len(block) and any(repeats_line(grid.rows[block[k]], h) for h in heads):
         k += 1
     if k:
-        return k
-    return len(block) if _repeats_block(grid, block, _names_of(grid, header_rows)) else 0
+        return k if all(_fits_body(grid, r, region, roles) for r in block[k:]) else 0
+    return len(block) if _repeats_block(grid, block, _names_of(grid, region.header_rows)) else 0
 
 
 def _kind_group(kind: str) -> str:
@@ -131,7 +131,7 @@ def _regions(grid: Grid, roles: dict[int, tuple[str, tuple[str, ...]]]) -> list[
             while i + 1 < len(filled) and roles[filled[i + 1]][0] == HEADER and filled[i + 1] - block[-1] <= 2:
                 i += 1
                 block.append(filled[i])
-            repeated = _repeated_lines(grid, block, current.header_rows) if current is not None and current.header_rows else 0
+            repeated = _repeated_lines(grid, block, current, roles) if current is not None and current.header_rows else 0
             if repeated:
                 current.repeats.append(block[:repeated])
                 for x in block[repeated:]:

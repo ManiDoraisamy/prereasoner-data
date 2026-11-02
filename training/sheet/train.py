@@ -1,149 +1,236 @@
-"""Train the line model: gradient-boosted trees for "this line is a header", on train-family workbooks only (design/corpora_family_map.json, seed fixed). Written experiment contract:
+"""Train the line model: gradient-boosted stumps for "this line is a header", on train-family tabs only. Written experiment contract:
 
-Hypothesis: a small boosted model over named line coordinates finds header blocks on report-shaped tabs better than the rules, which stall at 40 of 57 tabs.
-Frozen baseline: the rule version of the header decision, recorded in design/phase1_build.txt (blind batch B: precision .90, recall .72, first header block 18 of 22).
-Training data: hand labels on train-family tabs (labels.py; batch A's train-side tabs), plus free labels from train-family workbooks (autofilter top and last frozen row are headers; a formula total and the lines under an autofilter top are not), weighted lower. No frozen, validation or studied workbook; batch B's tabs left out.
-Objective: logistic loss. Seed 20261103. No GPU, no paid call, under a minute on CPU.
-Acceptance: beats the rules on batch A's non-train tabs and the silver markup, then on batch B once, blind. Result: kept at 300 stumps, one step function per named feature; trees of depth 2 and 3 scored no better on dev (design/phase1_build.txt).
-Output: engine/sheet/line_model.json only when asked with --keep (the branch's one artifact; it reaches production only at the cut-over); else the working file named by --out.
+Hypothesis: many more header labels from train families (an offline Gemini markup of about 2,000 tabs) over a few more named coordinates raise header recall past the 34 hand tabs and free labels, at no cost in precision.
+Frozen baseline: the artifact at 845898c, sha256 in design/phase1_finish.txt; dev recall .806 of lines, .755 of blocks on validation tabs V and the first blind batch.
+Training data: training/sheet/line_labels.json, row numbers only, no cell text, each tab named by a hash of its file and tab name: hand labels, the markup (journal design/phase1_finish_markup_journal.jsonl, screened as scan_corpus.py does), free labels from what authors marked. Every tab is a train-family tab by the split of seed 20261102. Validation, frozen and studied workbooks are not in it.
+Objective: logistic loss, weighted by source. No random draw at all. No GPU; minutes on CPU, in numpy with no scikit-learn. Stumps only, so the artifact stays one step function per named feature.
+Offline gates: beats the baseline on validation tabs V and the first blind batch; the gold run over compiled lines does not fall. Serving gate: none, nothing in production imports this until the cut-over.
+Output: training/sheet/data/experiments/<id>/line_model.json, disposable and gitignored. training/sheet/promote.py is the one writer of engine/data/sheet_line_model.json. Rollback: promote the earlier candidate, or git checkout the artifact and the manifest.
 
-usage: python -X utf8 -B -m training.sheet.train --design <evals/enron/design> [--workbooks 500] [--out model.json] [--keep]
+usage: python -X utf8 -B -m training.sheet.train --files <corpus folder> --cache <payload cache folder> --id <experiment id> [--trees 400] [--workers 4]
 """
 from __future__ import annotations
 
 import argparse
+import gzip
+import hashlib
 import json
 import math
-import random
-import sys
+import os
+import re
+from concurrent.futures import ProcessPoolExecutor
+from pathlib import Path
 
-SEED = 20261103
-HAND_WEIGHT = 1.0
-FREE_WEIGHT = 0.25
-THRESHOLD = 0.0      # chosen on dev (gold rows, batch A non-train tabs, silver); -0.5 and -1 lose precision and gain little
+WEIGHTS = {"hand": 1.0, "markup": 1.0, "free": 0.25}
+THRESHOLD = -0.5
+LEARNING_RATE = 0.08
+BINS = 64
+SMOOTHING = 5.0
+LEAST_WEIGHT = 2.0
+FOLDS = 3
+LABELS = Path(__file__).with_name("line_labels.json")
+EXPERIMENTS = Path(__file__).with_name("data") / "experiments"
 
 
-def _examples(design: str, workbooks: int):
-    sys.path.insert(0, design)
-    import phase1_common as common  # the evaluation's split and payload cache, outside this repository
-    from sheet_signals_hand_labels import LABELS, roles as hand_roles
+def short_hash(name: str) -> str:
+    """A name in the labels file: what ties a label to its tab, with no name of a person or a file in the repository."""
+    return hashlib.sha256(name.encode("utf-8")).hexdigest()[:16]
 
+
+def expand(text: str) -> list[int]:
+    out: list[int] = []
+    for part in text.split(","):
+        if not part:
+            continue
+        if "-" in part:
+            a, b = part.split("-")
+            out.extend(range(int(a), int(b) + 1))
+        else:
+            out.append(int(part))
+    return out
+
+
+def ranges(rows) -> str:
+    """Row numbers as "1-3,7"."""
+    parts: list[str] = []
+    ordered = sorted(set(rows))
+    at = 0
+    while at < len(ordered):
+        end = at
+        while end + 1 < len(ordered) and ordered[end + 1] == ordered[end] + 1:
+            end += 1
+        parts.append(str(ordered[at]) if end == at else f"{ordered[at]}-{ordered[end]}")
+        at = end + 1
+    return ",".join(parts)
+
+
+def payload(files: str, cache: str, name: str) -> dict:
+    """A corpus file's wire payload, cached."""
+    os.makedirs(cache, exist_ok=True)
+    out = os.path.join(cache, re.sub(r"[^\w.-]", "_", name) + ".json.gz")
+    if os.path.exists(out):
+        with gzip.open(out, "rt", encoding="utf-8") as source:
+            return json.load(source)
+    from engine.sheet.xlsx_reader import read_workbook
+    raw = read_workbook(os.path.join(files, name))
+    with gzip.open(out + ".tmp", "wt", encoding="utf-8", compresslevel=3) as sink:
+        json.dump(raw, sink)
+    os.replace(out + ".tmp", out)
+    return raw
+
+
+def fold_of(file_hash: str) -> int:
+    return int(file_hash, 16) % FOLDS
+
+
+def _tab_examples(job: tuple[str, str, str, list[dict], list[dict] | None]) -> list[tuple[str, list[float], int, int]]:
+    """One workbook's labelled lines as (source, feature values, is header, fold), in row order: the first reading's features, or, given first readings fitted without each fold, the second's, each tab scored by the reading that never saw it."""
     from engine.sheet.grid import Grid
-    from engine.sheet.line_model import FEATURES, line_features
     from engine.sheet.line_facts import line_facts
-    from engine.sheet.line_roles import printed_lines
+    from engine.sheet.line_model import FEATURES, SECOND_FEATURES, header_score, line_features, second_features
     from engine.sheet.payload import tab_from_json
-    from training.sheet.labels import LABELS_T, rows_of
 
-    side, family = common.side_table()
-    rows, targets, weights, groups = [], [], [], []
-    tabs = json.load(open(f"{common.DESIGN}phase1_label_tabs_T.json", encoding="utf-8"))
-
-    def add(tab, labelled: dict[int, bool], weight: float, group: str) -> None:
+    files, cache, name, entries, first_models = job
+    raw = payload(files, cache, name)
+    out: list[tuple[str, list[float], int, int]] = []
+    for entry in entries:
+        tab = next((t for t in raw["tabs"] if short_hash(t["name"]) == entry["tab"]), None)
+        if tab is None:
+            continue
         grid = Grid(tab_from_json(tab))
         facts = line_facts(grid)
         features = line_features(facts, grid)
-        for r in sorted(labelled):
+        names = FEATURES
+        fold = fold_of(entry["file"])
+        if first_models is not None:
+            features = second_features(facts, grid, {r: header_score(values, first_models[fold]) for r, values in features.items()})
+            names = SECOND_FEATURES
+        heads, others = set(expand(entry["head"])), set(expand(entry["other"]))
+        for r in sorted(heads | others):
             if r in features:
-                rows.append([float(features[r][name]) for name in FEATURES])
-                targets.append(int(labelled[r]))
-                weights.append(weight)
-                groups.append(group)
+                out.append((entry["source"], [float(features[r][f]) for f in names], int(r in heads), fold))
+    return out
 
-    for index, labels in sorted(LABELS_T.items()):
-        name, title = tabs[index]
-        assert side(name) == "train"
-        tab = common.find_tab(common.payload(common.FILES + name), title)
-        add(tab, {r: code == "H" for r, code in rows_of(labels).items()}, HAND_WEIGHT, family[name])
-    items, _ = common.hand_items(side)
-    used = set()
-    for batch, index, name, title, s in items:
-        used.add(name)
-        if batch == "A" and index in LABELS and s == "train":
-            tab = common.find_tab(common.payload(common.FILES + name), title)
-            truth = {r: role == "header" for r, role in hand_roles(index).items() if role is not None}
-            add(tab, truth, HAND_WEIGHT, family[name])
-    # Free labels: what the author marked.
-    by_family: dict[str, list[str]] = {}
-    for name in sorted(family):
-        if side(name) == "train" and name not in used:
-            by_family.setdefault(family[name], []).append(name)
-    rng = random.Random(SEED)
-    names = [rng.choice(by_family[f]) for f in sorted(by_family)]
-    rng.shuffle(names)
-    import os
-    taken = 0
-    for name in names:
-        if taken >= workbooks:
+
+def examples(files: str, cache: str, workers: int, labels_path: Path = LABELS, first_models: list[dict] | None = None) -> tuple[list[str], list[list[float]], list[int], list[int]]:
+    """Every labelled line, in the labels file's order, whatever the worker count."""
+    labels = json.load(open(labels_path, encoding="utf-8"))
+    names = {short_hash(n): n for n in sorted(os.listdir(files))}
+    by_file: dict[str, list[dict]] = {}
+    for entry in labels["tabs"]:
+        by_file.setdefault(entry["file"], []).append(entry)
+    jobs = [(files, cache, names[key], entries, first_models) for key, entries in by_file.items() if key in names]
+    sources: list[str] = []
+    rows: list[list[float]] = []
+    targets: list[int] = []
+    folds: list[int] = []
+    # A pool that loses a worker raises here; multiprocessing.Pool would wait for it forever.
+    with ProcessPoolExecutor(workers) as pool:
+        for lines in pool.map(_tab_examples, jobs, chunksize=8):
+            for source, values, target, fold in lines:
+                sources.append(source)
+                rows.append(values)
+                targets.append(target)
+                folds.append(fold)
+    return sources, rows, targets, folds
+
+
+def first_readings(rows, targets, weights, folds, trees: int, feature_names) -> list[dict]:
+    """One first reading per fold, fitted without that fold: the second reading must learn how far to trust a score on tabs the first never saw."""
+    out = []
+    for k in range(FOLDS):
+        keep = [at for at, fold in enumerate(folds) if fold != k]
+        out.append(fit([rows[at] for at in keep], [targets[at] for at in keep], [weights[at] for at in keep], trees, feature_names))
+    return out
+
+
+def _bins(column, limit: int = BINS):
+    """A feature's candidate cuts and each line's bin: a value at or below cuts[i] and above cuts[i - 1] is bin i, the serving rule."""
+    import numpy as np
+
+    values = np.unique(column)
+    if len(values) > limit:
+        values = np.unique(np.quantile(column, np.linspace(0, 1, limit + 1)[1:-1], method="lower"))
+    cuts = values[:-1] if len(values) > 1 else values[:0]
+    return cuts, np.searchsorted(cuts, column, side="left")
+
+
+def fit(rows, targets, weights, trees: int, feature_names, learning_rate: float = LEARNING_RATE, smoothing: float = SMOOTHING, least_weight: float = LEAST_WEIGHT) -> dict:
+    """Boosted stumps by Newton steps on the logistic loss, kept as one step function per named feature. Plain numpy with no random draw: the same rows give the same artifact byte for byte. smoothing and least_weight keep a stump off a handful of lines: nothing here can learn a step from one odd cell."""
+    import numpy as np
+
+    x = np.asarray(rows, dtype=np.float64)
+    y = np.asarray(targets, dtype=np.float64)
+    w = np.asarray(weights, dtype=np.float64)
+    prior = float((w * y).sum() / w.sum())
+    base = math.log(prior / (1 - prior))
+    binned = [_bins(x[:, j]) for j in range(x.shape[1])]
+    tables = [np.zeros(len(cuts) + 1) for cuts, _ in binned]
+    score = np.full(len(y), base)
+    for _ in range(trees):
+        p = 1 / (1 + np.exp(-score))
+        g = w * (p - y)
+        h = w * p * (1 - p)
+        best = (0.0, -1, -1, 0.0, 0.0)
+        for j, (cuts, at) in enumerate(binned):
+            if not len(cuts):
+                continue
+            gs = np.cumsum(np.bincount(at, g, len(cuts) + 1))
+            hs = np.cumsum(np.bincount(at, h, len(cuts) + 1))
+            gl, hl = gs[:-1], hs[:-1]
+            gr, hr = gs[-1] - gl, hs[-1] - hl
+            gain = gl * gl / (hl + smoothing) + gr * gr / (hr + smoothing) - gs[-1] * gs[-1] / (hs[-1] + smoothing)
+            gain[(hl < least_weight) | (hr < least_weight)] = -1.0
+            b = int(np.argmax(gain))
+            if gain[b] > best[0] + 1e-12:
+                best = (float(gain[b]), j, b, float(-gl[b] / (hl[b] + smoothing)), float(-gr[b] / (hr[b] + smoothing)))
+        _, j, b, left, right = best
+        if j < 0:
             break
-        if os.path.getsize(common.FILES + name) > 1_500_000:
-            continue
-        taken += 1
-        raw = common.payload(common.FILES + name)
-        for tab in raw["tabs"]:
-            if not tab.get("rows"):
-                continue
-            payload = tab_from_json(tab)
-            top = payload.autofilter[0] if payload.autofilter else None
-            frozen = payload.frozen_rows or None
-            if top is None and frozen is None:
-                continue
-            grid = Grid(payload)
-            facts = line_facts(grid)
-            head = top or frozen
-            if head not in facts or facts[head].filled < 2 or facts[head].real_figures * 3 > facts[head].filled:
-                continue
-            labelled = {head: True}
-            below = [r for r in sorted(facts) if r > head][1:30]
-            labelled.update({r: False for r in below})
-            labelled.update({r: False for r in printed_lines(facts)})
-            labelled[head] = True
-            add(tab, labelled, FREE_WEIGHT, family[name])
-    return rows, targets, weights, groups, taken
-
-
-def _export(model, feature_names) -> dict:
-    """Depth-one trees sum to one step function per feature: the cuts a feature's stumps split at, and the summed value of each stretch between them."""
-    prior = model.init_.class_prior_[1]
-    stumps: dict[int, list[tuple[float, float, float]]] = {}
-    for estimator in model.estimators_[:, 0]:
-        tree = estimator.tree_
-        if tree.children_left[0] < 0:
-            continue
-        stumps.setdefault(int(tree.feature[0]), []).append((float(tree.threshold[0]), float(tree.value[tree.children_left[0], 0, 0]), float(tree.value[tree.children_right[0], 0, 0])))
+        at = binned[j][1]
+        tables[j][:b + 1] += learning_rate * left
+        tables[j][b + 1:] += learning_rate * right
+        score += learning_rate * np.where(at <= b, left, right)
     steps = {}
-    for index in sorted(stumps):
-        cuts = sorted({round(t, 6) for t, _, _ in stumps[index]})
-        values = []
-        for at in range(len(cuts) + 1):
-            # A value in this stretch sits at or below cuts[at] and above cuts[at - 1].
-            probe = cuts[at] if at < len(cuts) else cuts[-1] + 1.0
-            values.append(round(model.learning_rate * sum(left if probe <= round(t, 6) else right for t, left, right in stumps[index]), 6))
-        steps[feature_names[index]] = {"cuts": cuts, "values": values}
-    return {"base": round(math.log(prior / (1 - prior)), 6), "threshold": THRESHOLD, "steps": steps}
+    for j, table in enumerate(tables):
+        if not np.any(table):
+            continue
+        cuts, values = [], [round(float(table[0]), 6)]
+        for b in range(1, len(table)):
+            value = round(float(table[b]), 6)
+            if value != values[-1]:
+                cuts.append(round(float(binned[j][0][b - 1]), 6))
+                values.append(value)
+        if cuts:
+            steps[feature_names[j]] = {"cuts": cuts, "values": values}
+    return {"base": round(base, 6), "threshold": THRESHOLD, "steps": steps}
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--design", default="C:/work/prereasoner-readers-artifacts/evals/enron/design/")
-    parser.add_argument("--workbooks", type=int, default=500)
-    parser.add_argument("--out", default="")
-    parser.add_argument("--keep", action="store_true")
-    parser.add_argument("--trees", type=int, default=300)
+    parser.add_argument("--files", required=True)
+    parser.add_argument("--cache", required=True)
+    parser.add_argument("--id", required=True)
+    parser.add_argument("--trees", type=int, default=800)
+    parser.add_argument("--second-trees", type=int, default=400)
+    parser.add_argument("--workers", type=int, default=4)
     args = parser.parse_args()
-    from sklearn.ensemble import GradientBoostingClassifier
 
-    from engine.sheet.line_model import ARTIFACT, FEATURES
+    from engine.sheet.line_model import FEATURES, SECOND_FEATURES
 
-    rows, targets, weights, groups, taken = _examples(args.design, args.workbooks)
-    print(f"examples {len(rows)} positives {sum(targets)} families {len(set(groups))} free-label workbooks read {taken}")
-    model = GradientBoostingClassifier(n_estimators=args.trees, max_depth=1, learning_rate=0.08, subsample=1.0, random_state=SEED)
-    model.fit(rows, targets, sample_weight=weights)
-    artifact = _export(model, FEATURES)
-    path = ARTIFACT if args.keep else args.out
-    with open(path, "w", encoding="utf-8", newline="\n") as sink:
+    sources, rows, targets, folds = examples(args.files, args.cache, args.workers)
+    print(f"examples {len(rows)} positives {sum(targets)} by source " + str({s: sources.count(s) for s in sorted(set(sources))}))
+    weights = [WEIGHTS[s] for s in sources]
+    artifact = fit(rows, targets, weights, args.trees, FEATURES)
+    held_out = first_readings(rows, targets, weights, folds, args.trees, FEATURES)
+    sources, rows, targets, _ = examples(args.files, args.cache, args.workers, first_models=held_out)
+    second = fit(rows, targets, [WEIGHTS[s] for s in sources], args.second_trees, SECOND_FEATURES)
+    artifact["second"] = {"base": second["base"], "steps": second["steps"]}
+    out = EXPERIMENTS / args.id
+    out.mkdir(parents=True, exist_ok=True)
+    with open(out / "line_model.json", "w", encoding="utf-8", newline="\n") as sink:
         json.dump(artifact, sink, separators=(",", ":"))
-    print("wrote", path)
+    print("wrote", out / "line_model.json")
 
 
 if __name__ == "__main__":

@@ -9,7 +9,7 @@ from engine.sheet import compile_tab, compile_workbook, line_roles, names
 from engine.sheet.formulas import classify
 from engine.sheet.grid import Grid
 from engine.sheet.line_facts import line_facts
-from engine.sheet.line_model import FEATURES, contributions, header_score, line_features, load_model
+from engine.sheet.line_model import FEATURES, SECOND_FEATURES, contributions, final_scores, header_score, line_features, load_model, second_features
 from engine.sheet.names import (AXIS_GROUP, AXIS_PERIOD, AXIS_SEQUENCE, BAND, COLUMN_ROLES, DATE, F_CURRENCY, F_DATE, F_GENERAL, F_PERCENT, FX_AGG_COLUMN, FX_AGG_ROW, FX_LINK_COLUMN, FX_ROW_ARITH, HEADER, KEY, LABEL, LINE_ROLES,
                                 MEASURE, NOTE, P_DAY, P_MONTH, P_QUARTER, P_RANGE, P_RELATIVE, P_SEASON, P_YEAR, PEER, ROW_TOTAL, S_AUTOFILTER_TOP, S_FORMULA_TOTAL, S_FROZEN_LAST, SECTION_LABEL, SHEET_CHART, STRAY_ERROR,
                                 STRAY_LABEL, STRAY_MARKER, STRAY_NUMBER_WITH_WORD, STRAY_REPEATED_HEADER, STRAY_TOTAL, SUBTOTAL, TAB_NAME, TITLE, TOTAL, V_NUMBER, V_TEXT)
@@ -372,12 +372,12 @@ def test_no_header_inside_the_filter_range():
     body = [[f"Plant {i}", f"Tank {i}", 100 + i] for i in range(1, 12)]
     odd = [["Legal description", "Tank number", "Location"]]
     rows = [["Plant", "Tank", "Vol"]] + body[:6] + odd + body[6:]
-    held, line_roles.header_score = line_roles.header_score, lambda values, model=None: 1.0 if values["text"] == 3 else -1.0
+    held, line_roles.final_scores = line_roles.final_scores, lambda facts, grid, features, model=None: {r: 1.0 if v["text"] == 3 else -1.0 for r, v in features.items()}
     try:
         model = _tab(rows, autofilter={"s": {"r": 0, "c": 0}, "e": {"r": len(rows) - 1, "c": 2}})
         repeat = _tab(rows[:9] + [["Plant", "Tank", "Vol"]] + rows[9:], autofilter={"s": {"r": 0, "c": 0}, "e": {"r": len(rows), "c": 2}})
     finally:
-        line_roles.header_score = held
+        line_roles.final_scores = held
     assert len(model.tables) == 1 and model.tables[0].header_rows == (1,)
     assert model.lines[7].role != HEADER and [c.name for c in model.tables[0].columns] == ["Plant", "Tank", "Vol"]
     assert len(repeat.tables) == 1 and repeat.tables[0].repeated_header_rows == (10,), "a page's header kept inside the range stays a repeat"
@@ -402,6 +402,25 @@ def test_a_lone_data_line_called_a_header_stays_in_its_table():
     # A real stacked header beneath a table still opens a new table.
     rows = [head] + [[f"Co{i}", f"P{i}", 100 + i, i, f"C{i}"] for i in range(1, 8)] + [["Trader", "Desk", "Pnl"], ["x", "d1", 1], ["y", "d2", 2], ["z", "d3", 3]]
     assert [t.header_rows for t in _tab_heads(rows, {1, 9}).tables] == [(1,), (9,)]
+
+
+def test_a_units_line_repeating_over_new_names_opens_a_table():
+    # A repeated units line over names of its own is the next table's header, not a repeat with data joined to it.
+    rows = [["$/Gj", "$/Gj", "$/Gj"], ["Price A", "Price B", "Price C"]] + [[1.5 + i, 2.5 * i, 3.5] for i in range(5)] + [[], ["$/Gj", "$/Gj", "$/Gj"], ["Risk A", "Risk B", "Risk C"]] + [[4.5 + i, 5.5 * i, 6.5] for i in range(5)]
+    model = _tab_heads(rows, {1, 2, 9, 10})
+    assert [t.header_rows for t in model.tables] == [(1, 2), (9, 10)]
+    assert model.tables[1].columns[0].path == ("$/Gj", "Risk A")
+
+
+def test_a_total_word_naming_a_column_can_be_a_header():
+    # "Date, Total, Grand Total" over the columns it names: printed lines took it, and its columns lost their names.
+    rows = [["Date", "Total", 2001, "Grand Total"]] + [[36892 + i, 1.5 + i, 2.5 * i, 3.5] for i in range(6)]
+    held, line_roles.final_scores = line_roles.final_scores, lambda facts, grid, features, model=None: {r: 3.0 if r == 1 else -3.0 for r in features}
+    try:
+        model = _tab(rows, columnFormats=[{"f": "mm/dd/yy"}])
+    finally:
+        line_roles.final_scores = held
+    assert model.tables[0].header_rows == (1,) and model.tables[0].columns[3].name == "Grand Total" and not model.tables[0].printed
 
 
 def test_a_spacer_column_does_not_part_labels_from_their_figures():
@@ -625,11 +644,51 @@ def test_every_fact_traces_to_a_cell():
 
 def test_header_decision_is_a_sum_over_named_features():
     grid = Grid(tab_from_json({"name": "S", "rows": CLEAN, "columnFormats": CLEAN_FORMATS}))
-    features = line_features(line_facts(grid), grid)[1]
+    facts = line_facts(grid)
+    every = line_features(facts, grid)
+    features = every[1]
     model = load_model()
     assert set(model["steps"]) <= set(FEATURES) and set(features) == set(FEATURES)
     parts = contributions(features)
     assert abs(model["base"] + sum(parts.values()) - header_score(features)) < 1e-9
+    # The second reading is one too, over named coordinates of the first reading's scores.
+    second = model["second"]
+    assert set(second["steps"]) <= set(SECOND_FEATURES)
+    values = second_features(facts, grid, {r: header_score(v, model) for r, v in every.items()})[1]
+    assert values["score"] == header_score(features) and set(values) == set(SECOND_FEATURES)
+    parts = contributions(values, second)
+    assert abs(second["base"] + sum(parts.values()) - final_scores(facts, grid, every, model)[1]) < 1e-9
+
+
+def test_the_line_model_artifact_is_small_pinned_and_retrains_the_same():
+    import hashlib
+    import json
+
+    from engine.sheet.line_model import ARTIFACT
+    from training.sheet.train import expand, fit, ranges
+
+    with open(ARTIFACT, "rb") as source:
+        data = source.read()
+    assert b"\r" not in data and len(data) < 32_000
+    manifest = json.load(open(os.path.join(os.path.dirname(ARTIFACT), "weights_manifest.json"), encoding="utf-8"))
+    assert manifest["committed_artifacts"]["sheet_line_model.json"]["sha256"] == hashlib.sha256(data).hexdigest()
+    rows = [[float(i % 7), float(i % 3)] for i in range(200)]
+    targets = [int(i % 7 == 0) for i in range(200)]
+    first, again = (fit(rows, targets, [1.0] * 200, 30, ("a", "b"), least_weight=0.1) for _ in range(2))
+    assert first == again and first["steps"]["a"]["cuts"]
+    assert expand(ranges({5, 1, 2, 3, 9})) == [1, 2, 3, 5, 9]
+
+
+def test_training_labels_hold_row_numbers_and_hashes_only():
+    import json
+
+    from training.sheet.train import LABELS, expand
+
+    labels = json.load(open(LABELS, encoding="utf-8"))["tabs"]
+    assert {t["source"] for t in labels} == {"hand", "markup", "free"} and len(labels) > 1500
+    for t in labels[:50] + labels[-50:]:
+        assert set(t) == {"file", "tab", "source", "head", "other"} and len(t["file"]) == 16 and len(t["tab"]) == 16
+        expand(t["head"]), expand(t["other"])
 
 
 def test_xlsx_reader_builds_the_wire_payload():
@@ -674,6 +733,7 @@ TESTS = [
     test_number_parser, test_period_parser, test_format_kinds, test_formula_shapes, test_clean_table_comes_out_unchanged, test_title_lines_give_context, test_multi_row_header_joins_with_merges,
     test_total_lines_are_printed_and_never_records, test_total_word_inside_a_name_stays_a_record, test_total_word_inside_every_key_is_no_mark, test_total_word_beside_a_blank_key_stays_printed,
     test_grand_total_and_subtotals_that_tie_never_leave, test_a_key_left_of_repeated_names_goes_with_every_block, test_all_names_alike_are_a_peer_run_not_blocks, test_a_column_beyond_the_named_blocks_stays_in_a_table,
+    test_the_line_model_artifact_is_small_pinned_and_retrains_the_same, test_training_labels_hold_row_numbers_and_hashes_only, test_a_units_line_repeating_over_new_names_opens_a_table, test_a_total_word_naming_a_column_can_be_a_header,
     test_rule_lines_are_spacers_and_never_names, test_no_header_inside_the_filter_range, test_a_data_line_joined_to_a_repeated_header_stays_data, test_a_lone_data_line_called_a_header_stays_in_its_table,
     test_a_spacer_column_does_not_part_labels_from_their_figures, test_statistic_lines_under_a_date_key_are_printed, test_a_repeated_block_that_differs_opens_a_section, test_a_repeat_after_a_band_keeps_the_bands_section,
     test_the_lone_title_over_a_header_is_the_first_band, test_text_records_after_a_dated_title_stay_records, test_a_solid_block_ending_early_does_not_fill_down, test_a_sparse_comment_right_of_a_full_key_does_not_fill_down,

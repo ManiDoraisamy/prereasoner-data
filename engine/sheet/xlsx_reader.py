@@ -1,4 +1,4 @@
-"""Build the host payload (engine/sheet/payload.py) from an .xlsx file with openpyxl: the reader evaluation and tests use, and what the upload path will use.
+"""Build the host payload (engine/sheet/payload.py) from an .xlsx file with openpyxl: the reader evaluation, training and tests use. It is not the upload path: the browser's SheetJS reader (web/public/lib/workbook-import.js) stays the one reader of an uploaded file and sends the same wire form at the cut-over; openpyxl stays out of the serving requirements, and the one test using it skips where it is absent.
 
 read_workbook(path) -> the workbook JSON a host would send. Cached values come from a second, read-only load, as a formula cell's value lives apart from its text. Nothing is
 printed, so no cell text leaves this module. openpyxl is imported here and nowhere else.

@@ -42,6 +42,7 @@ A local-only manifest intentionally refuses fresh-clone download. To retrain fro
 | `word_country.json` | 4 KB | ditto | yes |
 | `word_state.json` | 1 KB | ditto | yes |
 | `word_element.json` | 0.5 KB | ditto | yes |
+| `sheet_line_model.json` | 6 KB | The sheet compiler's header decision, one step function per named line coordinate (`engine.sheet.line_model`). Hash-pinned under `committed_artifacts`; installed only by `training/sheet/promote.py`. | yes |
 | `schema_org_v30.json` | 3.3 MB | Compiled Schema.org vocabulary and inheritance, read by `engine.schema_org`. Hash-pinned under `committed_artifacts`. | yes |
 | `schema_property_head.pt` | 289 KB | Schema.org named-property head (see below). | no (gitignored, `*.pt`; fetched) |
 | `schema_property_model.json` | 110 KB | Property-head metadata, read by `engine.schema_model` and `engine.router`. | yes |

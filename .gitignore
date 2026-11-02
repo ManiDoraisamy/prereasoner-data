@@ -41,6 +41,9 @@ training/schema_org/data/*
 training/data/pod_id.txt
 !training/schema_org/data/semantic_manifest.json
 
+# training/sheet scratch: line model candidates (installed only by training/sheet/promote.py)
+training/sheet/data/
+
 # Logs & local state
 *.log
 .firebase/

@@ -5,7 +5,7 @@ from collections import Counter
 
 from engine.sheet.grid import Grid
 from engine.sheet.line_facts import LineFacts, line_facts
-from engine.sheet.line_model import header_score, line_features, load_model
+from engine.sheet.line_model import final_scores, line_features, load_model
 from engine.sheet.names import (BAND, HEADER, NOTE, RECORD, S_ABOVE_TABLE, S_ALONE_AFTER_GAP, S_ALONE_BEFORE_HEADER, S_ALONE_STYLED, S_ARITHMETIC_TIE, S_AUTOFILTER_TOP, S_BELOW_TABLE, S_FIGURES, S_FORMULA_CLOSES_BLOCK,
                                 S_FORMULA_COMPUTED, S_FORMULA_TOTAL, S_FROZEN_LAST, S_JOINED_ABOVE, S_JOINED_BELOW, S_LABEL_VALUE, S_MERGED_OVER_COLUMNS, S_MODEL, S_NAMES_BODY, S_TEXT_LINE, S_TOTAL_WORD, S_TOTAL_WORD_IN_KEY, TITLE, TOTAL)
 
@@ -68,12 +68,14 @@ def _name_line(f: LineFacts) -> bool:
 
 _MOST_LINES_ABOVE = 4
 _TITLE_ZONE = 15
+_JOIN_FLOOR = -3.0
+_WORD_YIELDS = 1.0
 
 
-def grow_blocks(heads: dict[int, list[str]], facts: dict[int, LineFacts], printed: dict[int, list[str]]) -> dict[int, list[str]]:
-    """A header block grows from the lines named: down over adjacent name lines standing over typed cells, up over short name lines and merged group labels."""
+def grow_blocks(heads: dict[int, list[str]], facts: dict[int, LineFacts], printed: dict[int, list[str]], scores: dict[int, float]) -> dict[int, list[str]]:
+    """A header block grows from the lines named: down over adjacent name lines standing over typed cells, up over short name lines and merged group labels. A line the model reads as plainly no name stays out: a list's plain line above a header shows the same shape."""
     heads = dict(heads)
-    usable = {r: f for r, f in facts.items() if r not in printed and _name_line(f)}
+    usable = {r: f for r, f in facts.items() if r not in printed and _name_line(f) and scores[r] >= _JOIN_FLOOR}
     for r in sorted(heads):
         y = facts[r].next
         while y is not None and y - r <= 2 and y in usable and y not in heads and facts[y].real_figures == 0 and facts[y].over_figures >= 0.3 and facts[y].typed_below >= 0.5:
@@ -85,7 +87,7 @@ def grow_blocks(heads: dict[int, list[str]], facts: dict[int, LineFacts], printe
         while x is not None and r - x <= 2 and x not in printed and x not in heads and lines < _MOST_LINES_ABOVE:
             f = facts[x]
             over_some = f.wide_merge >= 2 and f.wide_merge < 0.8 * max(1, facts[r].last_col - facts[r].first_col + 1)
-            if not (x in usable and f.filled >= 2 and f.longest <= 40) and not (f.filled == 1 and over_some):
+            if not (x in usable and f.filled >= 2 and f.longest <= 40) and not (f.filled == 1 and over_some and scores[x] >= _JOIN_FLOOR):
                 break
             # A styled header is joined by lines styled like it: the plain lines above a repeated styled header are the last table's records.
             if (facts[r].bold >= 0.5 and f.bold < 0.5) or (facts[r].fill >= 0.5 and f.fill < 0.5):
@@ -221,13 +223,17 @@ def header_lines(grid: Grid, facts: dict[int, LineFacts], printed: dict[int, lis
     if top in facts:
         heads[top] = [S_AUTOFILTER_TOP]
     model = load_model()
+    scores = final_scores(facts, grid, features, model)
     for r in sorted(facts):
-        if r not in printed and header_score(features[r], model) >= model["threshold"]:
+        if r not in printed and scores[r] >= model["threshold"]:
+            heads.setdefault(r, []).append(S_MODEL)
+        elif r in printed and printed[r] == [S_TOTAL_WORD] and scores[r] >= model["threshold"] + _WORD_YIELDS and facts[r].real_figures * 2 <= facts[r].text:
+            # "Date, Total, Grand Total" over the columns it names: the word names a column, and the line holds more names than figures.
             heads.setdefault(r, []).append(S_MODEL)
     if tab.frozen_rows in heads:
         heads[tab.frozen_rows].append(S_FROZEN_LAST)
     _name_unnamed_bodies(heads, facts, printed)
-    heads = grow_blocks(heads, facts, printed)
+    heads = grow_blocks(heads, facts, printed, scores)
     _clear_filter_range(heads, grid)
     return heads
 
@@ -241,4 +247,5 @@ def read_roles(grid: Grid) -> dict[int, tuple[str, tuple[str, ...]]]:
     words = _words_of(facts, signals)
     printed = {r: s for r, s in signals.items() if r not in words}
     heads = {r: s for r, s in header_lines(grid, facts, printed).items() if r not in words}
+    printed = {r: s for r, s in printed.items() if r not in heads}
     return assign_roles(grid, facts, heads, printed, words)

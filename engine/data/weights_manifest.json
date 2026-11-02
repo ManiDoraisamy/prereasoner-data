@@ -15,6 +15,10 @@
     "schema_training_manifest.json": {
       "note": "tracked in git; immutable Schema.org training provenance installed only by promotion",
       "sha256": "9c8d92e288d706b3095db729bb42279d4f7d502976119678345ba521fdba7b96"
+    },
+    "sheet_line_model.json": {
+      "note": "tracked in git (not fetched); the sheet compiler's header decision, installed only by training/sheet/promote.py",
+      "sha256": "23aba5e8d0f838bf5181adf9b34d1dcc550a501b8ba70bcdbc72d385cc581dcc"
     }
   },
   "files": {
