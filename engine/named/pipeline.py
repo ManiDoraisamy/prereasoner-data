@@ -47,6 +47,7 @@ class Outcome:
     decision: Decision
     named: NamedReading
     seconds: dict = field(default_factory=dict)
+    candidates: tuple = ()
 
 
 class NamedEngine:
@@ -88,10 +89,10 @@ class NamedEngine:
         clock.append(time.perf_counter())
         seconds = {stage: round(clock[at + 1] - clock[at], 4) for at, stage in enumerate(("read", "decode", "verify", "choose"))}
         seconds["total"] = round(clock[-1] - clock[0], 4)
-        return outcome_of(question, decision, named, prepared.catalog, seconds)
+        return outcome_of(question, decision, named, prepared.catalog, seconds, tuple(candidates))
 
 
-def outcome_of(question: str, decision: Decision, named: NamedReading, catalog: Catalog, seconds: dict) -> Outcome:
+def outcome_of(question: str, decision: Decision, named: NamedReading, catalog: Catalog, seconds: dict, candidates: tuple = ()) -> Outcome:
     best = decision.candidate
     if decision.kind == ASK:
         words = ""
@@ -99,8 +100,8 @@ def outcome_of(question: str, decision: Decision, named: NamedReading, catalog: 
             words = f"{read_as(best.verified.scored.program, catalog)} or {read_as(decision.other.verified.scored.program, catalog)}?"
         elif best is not None:
             words = f"Do you mean {read_as(best.verified.scored.program, catalog)}?"
-        return Outcome(question, ASK, (), "", words or "Which figure or column do you mean?", decision, named, seconds)
-    return Outcome(question, decision.kind, best.rows, read_as(best.verified.scored.program, catalog), "", decision, named, seconds)
+        return Outcome(question, ASK, (), "", words or "Which figure or column do you mean?", decision, named, seconds, candidates)
+    return Outcome(question, decision.kind, best.rows, read_as(best.verified.scored.program, catalog), "", decision, named, seconds, candidates)
 
 
 def load_bundle(folder: str | Path, *, backbone: TextBackbone | None = None, chooser: Chooser | None = None, cache: IndexCache | None = None, policy: Policy = POLICY) -> NamedEngine:

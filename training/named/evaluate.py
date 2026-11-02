@@ -2,15 +2,18 @@
 
 Writes a report with the code commit, dirty state, dataset identity, bundle hash and flags. Prints counts, never a cell or a question.
 
-usage: python -m training.named.evaluate --set val --bundle <dir> [--limit N] [--survival 200] [--modes named,named_plus_open] --out <report.json>
-       python -m training.named.evaluate --set studied --bundle <dir> --out <report.json>
+usage: python -m training.named.evaluate --set val --bundle <dir> [--limit N] [--survival 200] [--modes named,named_plus_open] [--folds 5] --out <report.json>
+       python -m training.named.evaluate --set studied|messy --bundle <dir> --chooser <report>.chooser_named.json --out <report.json>
        --words: the floor, the reading from words alone with no model
+On validation, --folds decides each question by a chooser calibrated on the other folds (training/named/choose.py:cross_fit); the fit of all folds is written beside the report for the sets read after it.
+Each question's misses are put in a stage: compile (the gold program itself no longer gives the gold answer), links (a gold link outside the top 10), decode (the gold links stand and no right program reached the top 50), verify (the gold program is listed and its result is not graded right), choose (a right candidate was listed and not answered with).
 """
 from __future__ import annotations
 
 import argparse
 import gzip
 import hashlib
+import re
 import json
 import os
 import pickle
@@ -23,8 +26,9 @@ from typing import Callable, Iterable
 
 import numpy as np
 import psutil
+import torch
 
-from engine.named.chooser import ANSWER
+from engine.named.chooser import ANSWER, Chooser
 from engine.named.links import named_matrix
 from engine.named.pipeline import NamedEngine, Prepared, load_bundle
 from engine.named.reader import MODE_NAMED, MODE_NAMED_PLUS_OPEN, NamedReading
@@ -37,6 +41,7 @@ from engine.program.store import RequestTables
 from engine.program.verifier import verify
 from engine.program.words import predict_answer_type, read_question
 from training.named.augment import SURVIVAL_OPS, mutate_catalog
+from training.named.choose import SUPPORT_ALL, SUPPORT_NO_LINKS, answer_key, calibrated, cross_fit, decision_of, fold_of, records_of
 
 ENRON = "C:/work/prereasoner-readers-artifacts/evals/enron/"
 DESIGN = ENRON + "design/"
@@ -65,6 +70,7 @@ class Item:
     grade: Callable[[list], bool]
     alternate: Callable[[list], bool] | None
     links: list[dict]
+    program: str = ""
 
 
 def record_of(answer: list, form: str | None) -> dict:
@@ -98,18 +104,22 @@ def _book_loader(book: str) -> Callable[[], Catalog]:
     return load
 
 
-def load_factory_set(side: str, *, limit: int | None = None, families: Iterable[str] | None = None, grade: Callable | None = None, out_dir: str = FACTORY_OUT) -> list[Item]:
-    """A factory side's questions, in book order. A question id's hash draws a limit, so a small run is a fair sample."""
+def load_factory_set(side: str, *, limit: int | None = None, families: Iterable[str] | None = None, grade: Callable | None = None, out_dir: str = FACTORY_OUT, over_quota: bool = False) -> list[Item]:
+    """A factory side's questions, in book order, or several sides' by commas. A question id's hash draws a limit, so a small run is a fair sample."""
     grade = grade or enron_grader()
     wanted = set(families) if families is not None else None
     rows = []
-    with open(f"{out_dir}{side}.jsonl", encoding="utf-8") as source:
-        for line in source:
-            row = json.loads(line)
-            if row.get("side") != side:
-                raise ValueError("a row of another side")
-            if wanted is None or row["family"] in wanted:
-                rows.append(row)
+    for one in side.split(","):
+        for name in (f"{one}.jsonl", f"{one}.over_quota.jsonl") if over_quota else (f"{one}.jsonl",):
+            if not os.path.exists(f"{out_dir}{name}"):
+                continue
+            with open(f"{out_dir}{name}", encoding="utf-8") as source:
+                for line in source:
+                    row = json.loads(line)
+                    if row.get("side") != one:
+                        raise ValueError("a row of another side")
+                    if wanted is None or row["family"] in wanted:
+                        rows.append(row)
     if limit:
         rows = sorted(rows, key=lambda row: hashlib.blake2b(row["id"].encode(), digest_size=8).digest())[:limit]
     rows.sort(key=lambda row: (row["book"], row["id"]))
@@ -123,7 +133,7 @@ def load_factory_set(side: str, *, limit: int | None = None, families: Iterable[
             if shaped is not None:
                 other = record_of(shaped, row.get("form"))
                 alternate = lambda rows, other=other: grade(other, rows)
-        items.append(Item(row["id"], row["question"], row["book"], row["family"], row.get("form") or "", row["label"], _book_loader(row["book"]), lambda rows, record=record: grade(record, rows), alternate, row.get("links") or []))
+        items.append(Item(row["id"], row["question"], row["book"], row["family"], row.get("form") or "", row["label"], _book_loader(row["book"]), lambda rows, record=record: grade(record, rows), alternate, row.get("links") or [], row.get("program") or ""))
     return items
 
 
@@ -135,6 +145,34 @@ def load_studied(design: str = DESIGN) -> list[Item]:
     from phase2_common import GOLD, IDS, QUESTIONS, catalog_of, is_right
     items = [Item(i, QUESTIONS[i], str(GOLD[i]["workbook_n"]), str(GOLD[i]["file"]), "", "gold", lambda n=GOLD[i]["workbook_n"]: catalog_of(n), lambda rows, i=i: is_right(i, rows), None, []) for i in IDS]
     return sorted(items, key=lambda item: (int(item.book), item.id))
+
+
+_NUMERIC = re.compile(r"-?\d+(?:\.\d+)?")
+
+
+def _typed(cell: object) -> object:
+    """A benchmark workbook writes every cell as text, as a text upload does: a plain number reads as a number; "$1,234.50" and "25%" stay as written, and the sheet's reader takes them from there."""
+    if isinstance(cell, str) and _NUMERIC.fullmatch(cell.strip()):
+        return float(cell)
+    return cell
+
+
+def load_messy(split: str = "dev") -> list[Item]:
+    """regress/messy_cases.py's questions on its seeded workbooks, graded by its own grade. The frozen split is run later, once, and never from here."""
+    if split != "dev":
+        raise ValueError("the frozen split is not read here")
+    from engine.sheet import compile_workbook, workbook_from_json
+    from regress.messy_cases import cases, grade as messy_grade
+    from regress.messy_workbooks import workbook
+
+    def load(name: str) -> Catalog:
+        tabs = [{"name": tab["name"], "rows": [list(tab["columns"]), *[[_typed(cell) for cell in row] for row in tab["rows"]]]} for tab in workbook(name)]
+        return Catalog.from_model(compile_workbook(workbook_from_json({"name": name, "tabs": tabs})))
+
+    def right(expected, rows) -> bool:
+        return messy_grade(expected, {"result": {"columns": [], "rows": rows}})[0] == "right"
+
+    return [Item(f"messy{at}", case.question, case.workbook, case.workbook, case.family, "gold", lambda name=case.workbook: load(name), lambda rows, expected=case.expected: right(expected, rows), None, []) for at, case in enumerate(cases()) if case.split == "dev"]
 
 
 def words_outcome(item: Item, prepared: Prepared, k: int = 50) -> tuple[str, tuple, float]:
@@ -159,6 +197,36 @@ def graded(item: Item, kind: str, rows: tuple) -> str:
     if item.grade(list(rows)) or (item.alternate is not None and item.alternate(list(rows))):
         return RIGHT
     return WRONG
+
+
+def graded_choice(item: Item, kind: str, right: bool) -> str:
+    """The same reading as graded, from a record whose answer was graded when it was read."""
+    if item.label == "refusal":
+        return RIGHT if kind != ANSWER else WRONG
+    if kind != ANSWER:
+        return RIGHT if item.label == "ambiguous" else ASKED
+    return RIGHT if right else WRONG
+
+
+def stage_of(item: Item, outcome, prepared: Prepared, ranks: list[int], right_listed: bool) -> str:
+    """Where a gold question's right answer was lost. Reads the gold program only here, never for a decision."""
+    if right_listed:
+        return "choose"
+    if not item.program:
+        return "unknown"
+    from training.factory.grammar import Unbound, bind
+    from engine.program.execute import run
+    try:
+        gold = bind(item.program, prepared.catalog)
+        if not item.grade(list(run(gold, prepared.tables).rows)):
+            return "compile"
+    except (Unbound, ValueError, KeyError, RuntimeError):
+        return "compile"
+    if any(rank >= 10 for rank in ranks):
+        return "links"
+    if any(candidate.verified.scored.program == gold for candidate in outcome.candidates):
+        return "verify"
+    return "decode"
 
 
 def percentile(values: list[float], share: float) -> float | None:
@@ -244,35 +312,78 @@ def peak_gb() -> float:
     return round(getattr(info, "peak_wset", info.rss) / 1024 ** 3, 3)
 
 
-def run_mode(items: list[Item], engine: NamedEngine | None, mode: str, *, progress: bool = False) -> dict:
-    """Every item through one mode. Counts, by label and by form, the times, the links; per question only its id and result."""
+def run_mode(items: list[Item], engine: NamedEngine | None, mode: str, *, progress: bool = False, folds: int = 0, keep_candidates: str | None = None) -> dict:
+    """Every item through one mode. Counts, by label and by form, the times, the links; per question only its id and result. With folds, each question is decided by a chooser calibrated on the other folds."""
     runner = Runner(engine)
     records = []
     times: list[float] = []
     stages: dict[str, list[float]] = {}
     link_ranks: dict[str, list[int]] = {}
+    held: list[list] = []
+    lost: dict[str, str] = {}
+    listed_at: list[int] = []
+    digest = hashlib.sha256()
     for at, item in enumerate(items):
         prepared = runner.prepare(item)
         if mode == MODE_WORDS:
             kind, rows, seconds = words_outcome(item, prepared)
             reasons = ()
+            support = SUPPORT_NO_LINKS
         else:
             outcome = engine.ask(item.question, prepared, mode=mode)
             kind, rows, seconds, reasons = outcome.kind, outcome.rows, outcome.seconds["total"], outcome.decision.reasons
             for stage, value in outcome.seconds.items():
                 stages.setdefault(stage, []).append(value * 1000.0)
+            ranks = []
             for link in item.links:
                 rank = link_rank(outcome.named, engine, prepared, link)
                 if rank is not None:
                     link_ranks.setdefault(link["kind"], []).append(rank)
+                    ranks.append(rank)
+            kept = records_of(outcome.candidates, item, outcome.named, prepared.catalog)
+            held.append(kept)
+            right_at = [row.rank for row in kept if row.right]
+            if item.label == "gold":
+                listed_at.append(min(right_at) if right_at else -1)
+                if not right_at:
+                    lost[item.id] = stage_of(item, outcome, prepared, ranks, False)
+            support = next((row.support for row in kept if outcome.decision.candidate is not None and row.rank == outcome.decision.candidate.rank), SUPPORT_NO_LINKS)
+        digest.update(f"{item.id}|{kind}|{answer_key(rows)}\n".encode("utf-8", "surrogatepass"))
         times.append(seconds * 1000.0)
         result = graded(item, kind, rows)
-        records.append({"id": item.id, "label": item.label, "form": item.form, "kind": kind, "result": result, "reasons": list(reasons)})
+        records.append({"id": item.id, "label": item.label, "form": item.form, "family": item.family, "kind": kind, "result": result, "reasons": list(reasons), "support": support})
         if progress and (at + 1) % 50 == 0:
             print(f"{mode} {at + 1} of {len(items)}", flush=True)
     runner.close()
+    choosers = None
+    if folds and mode != MODE_WORDS:
+        gold = {item.id for item in items if item.label == "gold"}
+        rows_of_gold = [row for group in held for row in group if row.question in gold]
+        choosers = cross_fit(engine.chooser, rows_of_gold, folds)
+        for item, record, group in zip(items, records, held):
+            kind, best, reasons = decision_of(group, choosers[fold_of(item.family, folds)])
+            record.update(kind=kind, result=graded_choice(item, kind, bool(best is not None and best.right)), reasons=list(reasons), support=best.support if best is not None else SUPPORT_NO_LINKS)
+    if keep_candidates and held:
+        with gzip.open(keep_candidates, "wb") as sink:
+            pickle.dump(held, sink, protocol=4)
+    for record, group in zip(records, held):
+        if record["label"] == "gold" and record["result"] != RIGHT:
+            record["stage"] = lost.get(record["id"], "choose")
     all_ranks = [rank for ranks in link_ranks.values() for rank in ranks]
-    report = {"mode": mode, "by_label": {}, "by_form": {}, "p50_ms": percentile(times, 50), "p99_ms": percentile(times, 99), "stages_p50_ms": {stage: percentile(values, 50) for stage, values in stages.items()}, "index_seconds_p50": percentile(runner.index_seconds, 50), "index_seconds_p99": percentile(runner.index_seconds, 99), "index_kb_p50": round(percentile(runner.index_bytes, 50) / 1024, 1) if runner.index_bytes else None, "workbooks_indexed": len(runner.index_seconds), "link_top10": round(sum(rank < 10 for rank in all_ranks) / len(all_ranks), 4) if all_ranks else None, "links": len(all_ranks), "link_top10_by_kind": {kind: {"n": len(ranks), "top10": round(sum(rank < 10 for rank in ranks) / len(ranks), 4)} for kind, ranks in sorted(link_ranks.items())}, "peak_gb": peak_gb(), "records": records}
+    report = {"mode": mode, "by_label": {}, "by_form": {}, "p50_ms": percentile(times, 50), "p99_ms": percentile(times, 99), "stages_p50_ms": {stage: percentile(values, 50) for stage, values in stages.items()}, "index_seconds_p50": percentile(runner.index_seconds, 50), "index_seconds_p99": percentile(runner.index_seconds, 99), "index_kb_p50": round(percentile(runner.index_bytes, 50) / 1024, 1) if runner.index_bytes else None, "workbooks_indexed": len(runner.index_seconds), "link_top10": round(sum(rank < 10 for rank in all_ranks) / len(all_ranks), 4) if all_ranks else None, "links": len(all_ranks), "link_top10_by_kind": {kind: {"n": len(ranks), "top10": round(sum(rank < 10 for rank in ranks) / len(ranks), 4)} for kind, ranks in sorted(link_ranks.items())}, "peak_gb": peak_gb(), "records": records, "digest": digest.hexdigest()}
+    if listed_at:
+        report["right_listed"] = {"n": len(listed_at), **{f"top{cut}": sum(0 <= at < cut for at in listed_at) for cut in (1, 3, 5, 10, 20, 50)}}
+    answered = [record for record in records if record["kind"] == ANSWER]
+    report["answers"] = {"n": len(answered), "named_support": sum(record["support"] == SUPPORT_ALL for record in answered), "no_links_to_support": sum(record["support"] == SUPPORT_NO_LINKS for record in answered), "not_all_named": sum(record["support"] not in (SUPPORT_ALL, SUPPORT_NO_LINKS) for record in answered)}
+    stage_counts: dict[str, dict] = {}
+    for record in records:
+        if "stage" in record:
+            row = stage_counts.setdefault(record["stage"], {ASKED: 0, WRONG: 0})
+            row[record["result"]] = row.get(record["result"], 0) + 1
+    report["stages_of_misses"] = stage_counts
+    if choosers is not None:
+        report["_choosers"] = choosers
+        report["chooser_all"] = calibrated(engine.chooser, rows_of_gold).record()
     for key, field in (("by_label", "label"), ("by_form", "form")):
         groups: dict[str, dict] = {}
         for record in records:
@@ -283,8 +394,8 @@ def run_mode(items: list[Item], engine: NamedEngine | None, mode: str, *, progre
     return report
 
 
-def run_survival(items: list[Item], base: dict, engine: NamedEngine | None, mode: str, count: int) -> dict:
-    """Of the questions right on the sheet as it is, how many stay right when its columns are moved, added to, renamed, or stripped of their headers. A fair draw by id, each workbook re-read whole."""
+def run_survival(items: list[Item], base: dict, engine: NamedEngine | None, mode: str, count: int, choosers: dict | None = None, folds: int = 0) -> dict:
+    """Of the questions right on the sheet as it is, how many stay right when its columns are moved, added to, renamed, or stripped of their headers. A fair draw by id, each workbook re-read whole. Each question keeps the chooser it was decided by."""
     right = {record["id"] for record in base["records"] if record["result"] == RIGHT and record["label"] == "gold"}
     chosen = sorted((item for item in items if item.id in right), key=lambda item: hashlib.blake2b(item.id.encode(), digest_size=8).digest())[:count]
     chosen.sort(key=lambda item: item.book)
@@ -297,6 +408,8 @@ def run_survival(items: list[Item], base: dict, engine: NamedEngine | None, mode
             if mode == MODE_WORDS:
                 kind, rows, _ = words_outcome(item, prepared)
             else:
+                if choosers:
+                    engine.chooser = choosers[fold_of(item.family, folds)]
                 outcome = engine.ask(item.question, prepared, mode=mode)
                 kind, rows = outcome.kind, outcome.rows
             kept += graded(item, kind, rows) == RIGHT
@@ -336,16 +449,19 @@ def provenance(args: argparse.Namespace, items: list[Item]) -> dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="The whole engine offline, graded by enron_grade.")
-    parser.add_argument("--set", required=True, choices=("val", "studied"))
+    parser.add_argument("--set", required=True, choices=("val", "studied", "messy"))
     parser.add_argument("--bundle")
     parser.add_argument("--words", action="store_true", help="the reading from words alone, no model")
     parser.add_argument("--modes", default=f"{MODE_NAMED},{MODE_NAMED_PLUS_OPEN}")
     parser.add_argument("--limit", type=int)
     parser.add_argument("--survival", type=int, default=0, help="how many right questions each survival test re-reads; 0 for none")
+    parser.add_argument("--folds", type=int, default=0, help="decide each question by a chooser calibrated on the other folds")
+    parser.add_argument("--chooser", help="a chooser record to decide with, over the bundle's")
+    parser.add_argument("--keep-candidates", action="store_true", help="write every candidate's evidence beside the report, to fit again without reading")
     parser.add_argument("--out", required=True)
     args = parser.parse_args()
-    items = load_factory_set("val", limit=args.limit) if args.set == "val" else load_studied()
-    if args.limit and args.set == "studied":
+    items = load_factory_set("val", limit=args.limit) if args.set == "val" else load_messy() if args.set == "messy" else load_studied()
+    if args.limit and args.set != "val":
         items = items[:args.limit]
     report = {"provenance": provenance(args, items), "not_a_result_unless_candidate_passed_contract": True, "modes": {}}
     engine = None
@@ -354,21 +470,29 @@ def main() -> None:
         if not args.bundle:
             parser.error("--bundle, or --words")
         engine = load_bundle(args.bundle)
+        report["provenance"]["torch_threads"] = torch.get_num_threads()
+        report["provenance"]["machine"] = {"logical_cores": psutil.cpu_count(), "memory_gb": round(psutil.virtual_memory().total / 1024 ** 3, 1), "cpu_percent_at_start": psutil.cpu_percent(interval=1.0), "note": "the development machine, shared with other work, not Cloud Run"}
+    bundle_chooser = engine.chooser if engine is not None else None
     for mode in modes:
         started = time.time()
-        row = run_mode(items, engine, mode, progress=True)
+        if engine is not None:
+            engine.chooser = Chooser.from_record(json.loads(Path(args.chooser.replace("named", mode)).read_text(encoding="utf-8"))) if args.chooser else bundle_chooser
+        row = run_mode(items, engine, mode, progress=True, folds=args.folds, keep_candidates=f"{args.out}.candidates_{mode}.pkl.gz" if args.keep_candidates else None)
         row["wall_seconds"] = round(time.time() - started, 1)
-        survival = run_survival(items, row, engine, mode, args.survival) if args.survival else None
+        choosers = row.pop("_choosers", None)
+        if row.get("chooser_all") is not None:
+            Path(f"{args.out}.chooser_{mode}.json").write_text(json.dumps(row["chooser_all"], indent=1, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
+        survival = run_survival(items, row, engine, mode, args.survival, choosers, args.folds) if args.survival else None
         row["survival"] = survival
         row["gate_a"] = gate_a(row, survival)
         report["modes"][mode] = row
-        summary = {key: row[key] for key in ("mode", "by_label", "p50_ms", "p99_ms", "stages_p50_ms", "index_seconds_p50", "index_seconds_p99", "index_kb_p50", "link_top10", "link_top10_by_kind", "peak_gb", "survival", "gate_a")}
+        summary = {key: row.get(key) for key in ("mode", "by_label", "p50_ms", "p99_ms", "stages_p50_ms", "index_seconds_p50", "index_seconds_p99", "index_kb_p50", "link_top10", "link_top10_by_kind", "peak_gb", "survival", "gate_a", "right_listed", "answers", "stages_of_misses", "digest")}
         print(json.dumps(summary, sort_keys=True), flush=True)
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     Path(args.out).write_text(json.dumps(report, indent=0, sort_keys=True, default=str) + "\n", encoding="utf-8", newline="\n")
 
 
-__all__ = ["GATE_A", "Item", "gate_a", "graded", "load_factory_set", "load_studied", "record_of", "run_mode", "run_survival"]
+__all__ = ["GATE_A", "Item", "gate_a", "graded", "graded_choice", "load_factory_set", "load_messy", "load_studied", "record_of", "run_mode", "run_survival", "stage_of"]
 
 if __name__ == "__main__":
     main()

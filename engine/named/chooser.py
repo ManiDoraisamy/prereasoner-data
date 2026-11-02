@@ -216,24 +216,29 @@ def _answer_key(rows) -> tuple:
     return tuple(tuple(cell(value) for value in row) for row in rows)
 
 
+def reasons_to_ask(probability: float, form: str, other: float | None, needs_support: bool, adds_twice: bool, chooser: Chooser) -> tuple[str, ...]:
+    """The rule itself. other: the probability of the best reading with a different answer."""
+    reasons = []
+    if needs_support:
+        reasons.append(SUPPORT_NOTE)
+    if adds_twice:
+        reasons.append(ASK_ADDS_TWICE)
+    if probability < chooser.threshold(form):
+        reasons.append(ASK_LOW)
+    if other is not None and probability - other < chooser.margin:
+        reasons.append(ASK_CLOSE)
+    return tuple(reasons)
+
+
 def answer_or_ask(candidates: Sequence[Candidate], chooser: Chooser) -> Decision:
-    """The one decision after the reader. Asked when nothing ran; when the best reading has a link no name supports; when its calibrated probability is under its form's threshold; when another reading of a different answer sits within the margin."""
+    """The one decision after the reader. Asked when nothing ran; when the best reading has a link no name supports; when it would add a family's repeated lines twice; when its calibrated probability is under its form's threshold; when another reading of a different answer sits within the margin."""
     ran = [candidate for candidate in candidates if candidate.rows]
     if not ran:
         return Decision(ASK, None, None, (ASK_NOTHING,))
     best = ran[0]
     other = next((candidate for candidate in ran[1:] if not _same_answer(best, candidate)), None)
-    reasons = []
-    if best.needs_asking:
-        reasons.append(SUPPORT_NOTE)
-    if best.verified.held(EV_ADDS_TWICE):
-        reasons.append(ASK_ADDS_TWICE)
-    form = form_of(best.verified.scored.program)
-    if best.probability < chooser.threshold(form):
-        reasons.append(ASK_LOW)
-    if other is not None and best.probability - other.probability < chooser.margin:
-        reasons.append(ASK_CLOSE)
-    return Decision(ASK if reasons else ANSWER, best, other, tuple(reasons))
+    reasons = reasons_to_ask(best.probability, form_of(best.verified.scored.program), other.probability if other is not None else None, best.needs_asking, best.verified.held(EV_ADDS_TWICE), chooser)
+    return Decision(ASK if reasons else ANSWER, best, other, reasons)
 
 
-__all__ = ["ANSWER", "ASK", "ASK_ADDS_TWICE", "Candidate", "Chooser", "Decision", "FEATURES", "FORMS", "FeatureTerm", "PRIOR", "answer_or_ask", "features_of", "score_candidates", "unsupported_links"]
+__all__ = ["ANSWER", "ASK", "ASK_ADDS_TWICE", "Candidate", "Chooser", "Decision", "FEATURES", "FORMS", "FeatureTerm", "PRIOR", "answer_or_ask", "features_of", "reasons_to_ask", "score_candidates", "unsupported_links"]
