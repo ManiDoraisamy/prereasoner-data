@@ -128,15 +128,14 @@ def content_hash(tables: Sequence[CatalogTable]) -> str:
 
 def _top_coordinates(scores: np.ndarray, keep: int) -> tuple[np.ndarray, np.ndarray]:
     """Each row's top coordinates in thousandths, ties by head position, so what is kept never depends on sort internals."""
-    thousandths = to_thousandths(scores)
+    thousandths = to_thousandths(scores).astype(np.int32)
+    order = np.argsort(-thousandths, axis=1, kind="stable")[:, :keep]
+    held = np.take_along_axis(thousandths, order, axis=1)
+    held[held < _FLOOR] = 0
     ids = np.zeros((len(thousandths), keep), dtype=np.int32)
     values = np.zeros((len(thousandths), keep), dtype=np.int16)
-    for row, line in enumerate(thousandths):
-        order = np.lexsort((np.arange(len(line)), -line.astype(np.int32)))[:keep]
-        held = line[order]
-        held[held < _FLOOR] = 0
-        ids[row, :len(order)] = order
-        values[row, :len(order)] = held
+    ids[:, :order.shape[1]] = order
+    values[:, :order.shape[1]] = held
     return ids, values
 
 
@@ -171,9 +170,15 @@ class SheetEncoder:
                 texts = [text for graph in (*graphs, *value_graphs) for text in graph.texts]
                 distinct, vectors = self.backbone.encode_texts(texts, max_tokens=self.config.text_tokens)
                 lookup = {text: vectors[at] for at, text in enumerate(distinct)}
-                coords = np.zeros((len(targets), len(self.names)), dtype=np.float32)
+                ids = np.zeros((len(targets), self.config.keep), dtype=np.int32)      # the top names per target as each is read: a table of many values never holds its whole score matrix
+                values = np.zeros((len(targets), self.config.keep), dtype=np.int16)
+                column_scores: dict[int, np.ndarray] = {}
                 opens = np.zeros((len(targets), self.config.open_dim), dtype=np.float32)
                 where = {target.key: at for at, target in enumerate(targets)}
+
+                def hold(rows: list[int], logits: torch.Tensor) -> None:
+                    ids[rows], values[rows] = _top_coordinates(torch.sigmoid(logits).numpy(), self.config.keep)
+
                 table_hidden = []
                 for graph in graphs:
                     hidden = self.read_graphs([graph], lookup)[0]
@@ -183,13 +188,13 @@ class SheetEncoder:
                         units_at = torch.as_tensor([graph.columns[position] for position in positions])
                         logits = self.reader.coordinate_logits(hidden[units_at])
                         vectors_open = self.reader.open_target(hidden[units_at])
-                        for row, position in enumerate(positions):
-                            at = where[(table.id, T_COLUMN, position, table.columns[position].name)]
-                            coords[at] = torch.sigmoid(logits[row]).numpy()
-                            opens[at] = vectors_open[row].numpy()
+                        rows = [where[(table.id, T_COLUMN, position, table.columns[position].name)] for position in positions]
+                        hold(rows, logits)
+                        opens[rows] = vectors_open.numpy()
+                        column_scores.update(zip(rows, torch.sigmoid(logits).numpy()))
                 top_hidden = torch.stack(table_hidden).mean(0)
                 at = where[(table.id, T_TABLE, -1, "")]
-                coords[at] = torch.sigmoid(self.reader.coordinate_logits(top_hidden)).numpy()
+                hold([at], self.reader.coordinate_logits(top_hidden)[None])
                 opens[at] = self.reader.open_target(top_hidden).numpy()
                 for start in range(0, len(value_graphs), _VALUE_BATCH):
                     batch = value_graphs[start:start + _VALUE_BATCH]
@@ -198,32 +203,30 @@ class SheetEncoder:
                     picked = hidden[:, 1]
                     logits = self.reader.coordinate_logits(picked)
                     vectors_open = self.reader.open_target(picked)
-                    for row, target in enumerate(value_targets[start:start + _VALUE_BATCH]):
-                        at = where[target.key]
-                        coords[at] = torch.sigmoid(logits[row]).numpy()
-                        opens[at] = vectors_open[row].numpy()
-                ids, values = _top_coordinates(coords, self.config.keep)
+                    rows = [where[target.key] for target in value_targets[start:start + _VALUE_BATCH]]
+                    hold(rows, logits)
+                    opens[rows] = vectors_open.numpy()
                 ids_parts.append(ids)
                 value_parts.append(values)
                 norm = np.maximum(np.linalg.norm(opens, axis=1, keepdims=True), 1e-9)
                 open_parts.append(np.rint(opens / norm * 127.0).astype(np.int8))
                 all_targets.extend(Target(local, target.kind, target.position, target.text) for target in targets)
-                profile = _profile(coords, targets, self.names, self.signatures)
+                profile = _profile(column_scores, self.names, self.signatures)
                 profiles[local] = profile
                 classes[local] = self.signatures.scores(profile)
         return TabIndex(tab_hash, self.reader_id, all_targets, np.concatenate(ids_parts) if ids_parts else np.zeros((0, self.config.keep), np.int32), np.concatenate(value_parts) if value_parts else np.zeros((0, self.config.keep), np.int16), np.concatenate(open_parts) if open_parts else np.zeros((0, self.config.open_dim), np.int8), profiles, classes)
 
 
-def _profile(coords: np.ndarray, targets: list[Target], names: NameSet, signatures: ClassSignatures) -> dict[str, float]:
+def _profile(column_scores: Mapping[int, np.ndarray], names: NameSet, signatures: ClassSignatures) -> dict[str, float]:
     """A table's property scores: each signature name's highest score over its columns, in thousandths rounded. Only what a signature reads: the rest is not a class's business and an index stays small."""
     wanted = sorted({item["property"] for row in signatures.classes.values() for item in row["signature"]})
-    columns = [at for at, target in enumerate(targets) if target.kind == T_COLUMN]
+    columns = np.stack(list(column_scores.values())) if column_scores else None
     out = {}
     for name in wanted:
         position = names.at(name)
-        if position is None or not columns:
+        if position is None or columns is None:
             continue
-        value = float(np.rint(coords[columns, position].max() * SCALE)) / SCALE
+        value = float(np.rint(columns[:, position].max() * SCALE)) / SCALE
         if value > 0:
             out[name] = value
     return out

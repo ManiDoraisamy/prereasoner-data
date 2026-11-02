@@ -567,6 +567,20 @@ def test_families_stay_held_out() -> None:
     raise AssertionError("a side was read as another")
 
 
+def test_the_sheets_own_words_are_named_coordinates() -> None:
+    """A column's header words are names the head reads on both sides, and a word linked to it reads them too: labelled by what the sheet wrote, so an augmented header still has them to read back from its cells."""
+    import random
+    from training.named.train import WORD_PREFIX, word_tier
+    examples = fake_examples(4)
+    words = word_tier(examples * 4)
+    assert words and all(name.startswith(WORD_PREFIX) for name in words)
+    names = NameSet(tuple(sorted({*fake_name_set().names, *words})))
+    batch = build_batch(examples[0], ReaderConfig(backbone="hash", hidden=36, blocks=1, open_dim=16, sample_rows=3), names, random.Random(0), questions=6, shares={"unreadable": 1.0})
+    columns = [at for at, target in enumerate(batch.targets) if target.kind == T_COLUMN]
+    assert any(any(name.startswith(WORD_PREFIX) for name in batch.positive[at]) for at in columns), "an unreadable header keeps what the sheet wrote as its label"
+    assert all(target.text.startswith("Column ") for at, target in enumerate(batch.targets) if at in columns)
+
+
 def test_batch_has_in_sheet_hard_negatives() -> None:
     import random
     example = fake_examples(1)[0]

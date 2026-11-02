@@ -41,7 +41,7 @@ from engine.named.bundle import write_bundle
 from engine.named.units import T_BAND, T_COLUMN, T_LINE, T_TABLE, T_VALUE, Graph, Target, collate, question_graph, table_graphs, targets_of, value_graph
 from engine.program.catalog import Catalog, CatalogTable
 from engine.program.decoder import Decoder
-from engine.program.index import stem
+from engine.program.index import stem, words_of
 from engine.program.names import A_NAME, ROLE_CONTEXT, ROLE_FILTER, ROLE_KEY, ROLE_MEASURE, SLOT_ANSWER_TYPE, SLOT_CALC_LEFT, slot_of
 from engine.program.semantics import fold
 from engine.program.words import _STOP, read_question
@@ -57,6 +57,9 @@ VALUE_NEGATIVES = 16
 TABLES_PER_STEP = 3
 UNLINKED_WORDS = 2         # a question's content words no link stands on, read as links to nothing
 ROW_NAMES = 4.0            # about how many names a target or a word holds: scales the coordinates' summed log loss to one row's worth
+WORD_PREFIX = "word:"      # the sheet's own words as named coordinates: what a column's header or a value says, read by the same head on both sides
+WORD_NAMES = 3000
+WORD_MIN_TABS = 4
 LOSS_WEIGHTS = {"target": 1.0, "word": 1.0, "closed": 1.0, "role": 0.5, "side": 0.25, "link": 2.0, "open": 0.5}
 
 
@@ -103,6 +106,7 @@ class Batch:
     targets: list[Target]
     positive: list[list[str]]                   # per target: its named coordinates
     known_meaning: list[bool]                   # per target: the labels speak for its meaning tier
+    known_words: list[bool]                     # per target: its own header or text speaks for the word tier
     questions: list[str]
     closed: list[dict[str, str]]
     word_positive: list[list[list[str] | None]]  # per question, per word: names, or None when unknown
@@ -150,11 +154,16 @@ def build_batch(example: TabExample, reader_config: ReaderConfig, names: NameSet
     chosen = rng.sample(gold, min(questions, len(gold))) if rows is None else gold
     tables: dict[str, CatalogTable] = {}
     moved: dict[str, dict[int, int]] = {}
+    written: dict[str, dict[int, list[str]]] = {}      # a column's words as the sheet wrote them, whatever the augmentations did to its name: reading them back from its cells is what survives a rename
+
+    def word_names(text: str) -> list[str]:
+        return [f"{WORD_PREFIX}{word}" for word in sorted(set(words_of(text))) if names.at(f"{WORD_PREFIX}{word}") is not None]
     wanted = {link.get("table") for row in chosen for link in row.get("links", ()) if link.get("table")}
     order = sorted(example.tables, key=lambda item: (item[0] not in wanted, item[0]))
     for table_id, kind, table in order[:TABLES_PER_STEP]:
         if not table.lines and not table.printed:
             continue
+        written[table_id] = {column.position: word_names(column.name) for column in table.columns}
         if shares:
             table, mapping = augmented(table, rng, shares)
         else:
@@ -171,15 +180,17 @@ def build_batch(example: TabExample, reader_config: ReaderConfig, names: NameSet
     targets: list[Target] = []
     positive: list[list[str]] = []
     known: list[bool] = []
+    known_words: list[bool] = []
     at_target: dict[tuple, int] = {}
 
-    def add_target(target: Target, names_for: list[str], speaks: bool) -> int:
+    def add_target(target: Target, names_for: list[str], speaks: bool, words_known: bool = True) -> int:
         held = at_target.get(target.key)
         if held is None:
             held = at_target[target.key] = len(targets)
             targets.append(target)
             positive.append(names_for)
             known.append(speaks)
+            known_words.append(words_known)
         return held
 
     all_targets = {}
@@ -194,9 +205,11 @@ def build_batch(example: TabExample, reader_config: ReaderConfig, names: NameSet
                 column = table.columns[position]
                 old = inverse.get(position)
                 label_names, speaks = _labelled_names(example.labels.get(f"{table_id}.{old}")) if old is not None else ([], True)
+                own_words = written[table_id].get(old, []) if old is not None else []
                 union.update(label_names)
+                union.update(own_words)
                 speaks_table = speaks_table or speaks
-                at = add_target(Target(table_id, T_COLUMN, position, column.name), [*label_names, *_column_structure(column)], speaks)
+                at = add_target(Target(table_id, T_COLUMN, position, column.name), [*label_names, *own_words, *_column_structure(column)], speaks)
                 columns.append((at_graph, unit, at))
             at = add_target(Target(table_id, T_TABLE, -1, ""), sorted(union), speaks_table)
             tables_at.append((at_graph, at))
@@ -211,9 +224,9 @@ def build_batch(example: TabExample, reader_config: ReaderConfig, names: NameSet
         if target.kind == T_VALUE:
             inverse = {new: old for old, new in moved[target.table].items()}
             label_names, speaks = _labelled_names(example.labels.get(f"{target.table}.{inverse.get(target.position)}"), "value_coordinates")
-            at = add_target(target, [*label_names, "value_kind:text"], speaks)
+            at = add_target(target, [*label_names, *word_names(target.text), "value_kind:text"], speaks)
         else:
-            at = add_target(target, [f"line_role:{'band' if target.kind == T_BAND else 'total'}"], False)
+            at = add_target(target, [f"line_role:{'band' if target.kind == T_BAND else 'total'}", *word_names(target.text)], False)
         if fresh:
             value_graphs.append(value_graph(table, target, units, orders[target.table]))
             values.append(at)
@@ -231,7 +244,7 @@ def build_batch(example: TabExample, reader_config: ReaderConfig, names: NameSet
         at_question = len(texts)
         texts.append(question)
         closed.append(closed_of(row, example.labels))
-        word_names: list[list[str] | None] = [([] if stem(word) in _STOP else None) for word in words]
+        read_as: list[list[str] | None] = [([] if stem(word) in _STOP else None) for word in words]
         roles = [0] * len(words)
         sides = [0] * len(words)
         left_names = {name.split(":", 1)[1] for name in row.get("coordinates", ()) if slot_of(name) == SLOT_CALC_LEFT}
@@ -245,9 +258,14 @@ def build_batch(example: TabExample, reader_config: ReaderConfig, names: NameSet
                 continue
             role = link.get("role")
             names_of_link = list(link.get("coordinates") or ())
+            kind_of_link = link.get("kind")
+            if kind_of_link == "column" and link.get("table") in written:
+                names_of_link += written[link["table"]].get(link.get("position"), [])
+            elif kind_of_link in ("value", "line", "band") and link.get("target") is not None:
+                names_of_link += word_names(fold(link["target"]))
             for at in span:
                 if names_of_link:
-                    word_names[at] = (word_names[at] or []) + names_of_link
+                    read_as[at] = (read_as[at] or []) + names_of_link
                 if role in WORD_ROLE_CLASSES:
                     roles[at] = WORD_ROLE_CLASSES.index(role)
             kind = link.get("kind")
@@ -299,17 +317,17 @@ def build_batch(example: TabExample, reader_config: ReaderConfig, names: NameSet
                     nothing = None
                 if nothing is not None:
                     links.append(nothing)
-        unlinked = [at for at, word in enumerate(words) if word_names[at] is None and not is_stated_word(word) and not any(at in link.get("span", ()) for link in row.get("links", ()))]
+        unlinked = [at for at, word in enumerate(words) if read_as[at] is None and not is_stated_word(word) and not any(at in link.get("span", ()) for link in row.get("links", ()))]
         rng.shuffle(unlinked)
         for at in unlinked[:UNLINKED_WORDS]:
             table_id = sorted(tables)[rng.randrange(len(tables))]
             for nothing in (_nothing_among_columns(tables[table_id], table_id, [at], at_question, floor, stems, rng, at_target), _nothing_among_values(all_targets[table_id], [at], at_question, floor, stems, rng, add_value)):
                 if nothing is not None:
                     links.append(nothing)
-        word_positive.append(word_names)
+        word_positive.append(read_as)
         word_role.append(roles)
         word_side.append(sides)
-    return Batch(graphs, columns, tables_at, value_graphs, values, targets, positive, known, texts, closed, word_positive, word_role, word_side, links)
+    return Batch(graphs, columns, tables_at, value_graphs, values, targets, positive, known, known_words, texts, closed, word_positive, word_role, word_side, links)
 
 
 def _nothing_among_columns(table, table_id, span, question, floor, stems, rng, at_target) -> LinkExample | None:
@@ -457,8 +475,9 @@ def losses_of(reader: NamedReader, names: NameSet, batch: Batch, out: Forward, o
     n = len(names)
     labels = torch.zeros((len(batch.targets), n), device=device)
     mask = torch.zeros((len(batch.targets), n), device=device)
-    for at, (held, speaks) in enumerate(zip(batch.positive, batch.known_meaning)):
-        mask[at] = 1.0 if speaks else structure
+    word_tier = torch.as_tensor([1.0 if name.startswith(WORD_PREFIX) else 0.0 for name in names.names], device=device)
+    for at, (held, speaks, words_known) in enumerate(zip(batch.positive, batch.known_meaning, batch.known_words)):
+        mask[at] = 1.0 if speaks else (structure + word_tier if words_known else structure)
         for name in held:
             position = names.at(name)
             if position is not None:
@@ -596,7 +615,7 @@ def train(examples: list[TabExample], names: NameSet, backbone: nn.Module, confi
     backbone = backbone.to(device).float().train()
     reader_config = config.reader
     reader = NamedReader(backbone.dim, len(names), reader_config).to(device).float().train()
-    structure = torch.as_tensor([0.0 if name.startswith(("biz:", "schema:")) else 1.0 for name in names.names], device=device)
+    structure = torch.as_tensor([0.0 if name.startswith(("biz:", "schema:", WORD_PREFIX)) else 1.0 for name in names.names], device=device)
     backbone_parameters = [parameter for parameter in backbone.parameters() if parameter.requires_grad]
     optimizer = torch.optim.AdamW([{"params": backbone_parameters, "lr": config.lr}, {"params": list(reader.parameters()), "lr": config.head_lr}], weight_decay=config.weight_decay)
     warmup = max(1, config.steps // 20)
@@ -689,7 +708,24 @@ def train(examples: list[TabExample], names: NameSet, backbone: nn.Module, confi
 def names_for(examples: list[TabExample]) -> NameSet:
     """The name set's structure and vocabulary, and the schema.org names these labels use."""
     extra = sorted({name for example in examples for label in example.labels.values() for key in ("coordinates", "value_coordinates") for name in label.get(key) or () if name.startswith("schema:")})
-    return load_name_set(extra=extra)
+    return load_name_set(extra=[*extra, *word_tier(examples)])
+
+
+def word_tier(examples: list[TabExample]) -> list[str]:
+    """The sheet's own words as names: the words most tabs' headers, labels and bands hold, each a coordinate a person can read. Stable: by how many tabs hold it, then the word."""
+    counts: dict[str, int] = {}
+    for example in examples:
+        held: set[str] = set()
+        for _, _, table in example.tables:
+            for column in table.columns:
+                held.update(words_of(column.name))
+            for line in table.printed:
+                held.update(words_of(line.label))
+        for word in held:
+            if len(word) >= 2 and not word.isdigit() and word not in _STOP:
+                counts[word] = counts.get(word, 0) + 1
+    ranked = sorted((word for word, count in counts.items() if count >= WORD_MIN_TABS), key=lambda word: (-counts[word], word))
+    return [f"{WORD_PREFIX}{word}" for word in ranked[:WORD_NAMES]]
 
 
 def main() -> None:
@@ -704,6 +740,7 @@ def main() -> None:
     parser.add_argument("--blocks", type=int, default=3)
     parser.add_argument("--sample-rows", type=int, default=8)
     parser.add_argument("--window-columns", type=int, default=48)
+    parser.add_argument("--keep", type=int, default=16, help="named coordinates an index keeps per target")
     parser.add_argument("--steps", type=int, default=300)
     parser.add_argument("--accumulate", type=int, default=1, help="tabs read per optimizer step")
     parser.add_argument("--questions", type=int, default=8)
@@ -735,7 +772,7 @@ def main() -> None:
         backbone = load_backbone(args.backbone, layers=args.layers)
         backbone.freeze_table()
         signatures = ClassSignatures.from_groups(meaning_groups())
-        reader_config = ReaderConfig(backbone=args.backbone, backbone_layers=args.layers, hidden=args.hidden, blocks=args.blocks, sample_rows=args.sample_rows, window_columns=args.window_columns)
+        reader_config = ReaderConfig(backbone=args.backbone, backbone_layers=args.layers, hidden=args.hidden, blocks=args.blocks, sample_rows=args.sample_rows, window_columns=args.window_columns, keep=args.keep)
     record["names_sha"] = names.sha
     config = TrainConfig(reader=reader_config, steps=args.steps, accumulate=args.accumulate, questions=args.questions, lr=args.lr, head_lr=args.head_lr, seed=args.seed, held_share=args.held_share, eval_every=args.eval_every, eval_tabs=args.eval_tabs, amp=args.amp, open_detached=args.open_detached, augment={} if args.no_augment else dict(TRAINING_SHARES), resume=args.resume_from)
     summary = train(examples, names, backbone, config, out, record=record, signatures=signatures)
