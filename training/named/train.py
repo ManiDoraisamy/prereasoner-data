@@ -4,7 +4,7 @@ Losses, each on named outputs. Coordinates count every name's own log loss, unwe
   target coordinates   a column's, value's, line's and band's named coordinates: the factory's labels and, always, what the compiler knows (column role, value kind, line role)
   word coordinates     the same head over the question's words: a word in a link reads what its target is labelled; other words read none of the meaning tier
   closed heads         form, aggregate, direction, size, entity, comparison, row and calc operators, answer type, blank, how many conditions; word role and calc side per word
-  links                link(span, target) over the target and its in-sheet hard negatives: the sum over named coordinates of weight x question x target, plus named rule evidence and the word's role. The one formula of engine/named/links.py, its weights learned here. Beside the candidates stands "links to nothing", at a learned bias per kind of target: a content word no link stands on is an example of it. The bias is what a coordinate reads below at serving.
+  links                link(span, target) over the target and its in-sheet hard negatives: the sum over named coordinates of weight x question x target, plus named rule evidence and the word's role. The one formula of engine/named/links.py, its weights learned here. Beside the candidates stands "links to nothing", at a learned bias per kind of target: a content word no link stands on is an example of it. The bias is what a coordinate reads below at serving, so each kind needs its own such examples: a word linked to a column links to no value, and one linked to a value to no column. (With examples on columns alone the value bias stayed at .58, under what a value read from its word's role alone, and spurious values won: 57 of 207 misses lost most on the value slot.)
   open                 the separate unnamed channel, on the same candidates. It trains its own two projections and, unless --open-detached, the shared encoder.
 
 Each step reads one tab, and --accumulate of them make one optimizer step: its tables through the augmentations (renames, masks, shuffles, distractor columns; training/named/augment.py), its questions with the question words alone. A checkpoint is chosen on held-out families by top-1 link recall (top 10 among a link's in-sheet candidates is nearly full early on, and says little). float32 unless --amp. A candidate goes only to training/named/data/experiments/<id>/out/: promotion is separate.
@@ -290,19 +290,49 @@ def build_batch(example: TabExample, reader_config: ReaderConfig, names: NameSet
             if example_link is not None:
                 candidates, rules = example_link
                 links.append(LinkExample(at_question, span, kind, candidates, rules, role if role in WORD_ROLE_CLASSES else ROLE_FILTER))
+                # the same words read as the other kind: nothing there
+                if kind == "column":
+                    nothing = _nothing_among_values(all_targets[table_id], span, at_question, floor, stems, rng, add_value)
+                elif kind == "value":
+                    nothing = _nothing_among_columns(table, table_id, span, at_question, floor, stems, rng, at_target)
+                else:
+                    nothing = None
+                if nothing is not None:
+                    links.append(nothing)
         unlinked = [at for at, word in enumerate(words) if word_names[at] is None and not is_stated_word(word) and not any(at in link.get("span", ()) for link in row.get("links", ()))]
         rng.shuffle(unlinked)
         for at in unlinked[:UNLINKED_WORDS]:
             table_id = sorted(tables)[rng.randrange(len(tables))]
-            pool = [column for column in tables[table_id].columns if Target(table_id, T_COLUMN, column.position, column.name).key in at_target]
-            rng.shuffle(pool)
-            if pool:
-                candidates = [Target(table_id, T_COLUMN, column.position, column.name) for column in pool[:COLUMN_NEGATIVES]]
-                links.append(LinkExample(at_question, [at], "column", [at_target[item.key] for item in candidates], np.stack([_rule_row(item.coordinates(), floor, stems, tables[table_id]) for item in candidates]), ROLE_MEASURE, True))
+            for nothing in (_nothing_among_columns(tables[table_id], table_id, [at], at_question, floor, stems, rng, at_target), _nothing_among_values(all_targets[table_id], [at], at_question, floor, stems, rng, add_value)):
+                if nothing is not None:
+                    links.append(nothing)
         word_positive.append(word_names)
         word_role.append(roles)
         word_side.append(sides)
     return Batch(graphs, columns, tables_at, value_graphs, values, targets, positive, known, texts, closed, word_positive, word_role, word_side, links)
+
+
+def _nothing_among_columns(table, table_id, span, question, floor, stems, rng, at_target) -> LinkExample | None:
+    """These words link to no column of this table."""
+    pool = [column for column in table.columns if Target(table_id, T_COLUMN, column.position, column.name).key in at_target]
+    rng.shuffle(pool)
+    if not pool:
+        return None
+    candidates = [Target(table_id, T_COLUMN, column.position, column.name) for column in pool[:COLUMN_NEGATIVES]]
+    return LinkExample(question, span, "column", [at_target[item.key] for item in candidates], np.stack([_rule_row(item.coordinates(), floor, stems, table) for item in candidates]), ROLE_MEASURE, True)
+
+
+def _nothing_among_values(targets, span, question, floor, stems, rng, add_value) -> LinkExample | None:
+    """These words link to no stored value of this table: those their words reach, then any."""
+    pool = [target for target in targets if target.kind == T_VALUE]
+    if not pool:
+        return None
+    reached = [target for target in pool if target.coordinates()[0] in floor]
+    rest = [target for target in pool if target.coordinates()[0] not in floor]
+    rng.shuffle(reached)
+    rng.shuffle(rest)
+    candidates = (reached + rest)[:VALUE_NEGATIVES]
+    return LinkExample(question, span, "value", [add_value(item) for item in candidates], np.stack([_rule_row(item.coordinates(), floor, stems, None) for item in candidates]), ROLE_FILTER, True)
 
 
 def _rule_row(names: tuple[str, ...], floor: dict, stems: set[str], table) -> np.ndarray:
