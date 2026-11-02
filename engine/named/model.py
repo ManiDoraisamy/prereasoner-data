@@ -18,6 +18,8 @@ from engine.named.names import CALC_SIDES, CLOSED_HEADS, WORD_ROLE_CLASSES
 from engine.named.units import FEATURES, UnitsConfig
 
 _ONE = math.log(math.e - 1.0)   # softplus(_ONE) == 1
+_RARE = math.log(0.01 / 0.99)    # a coordinate is rare: its output starts where that is true, so training does not spend itself getting there
+LINK_KINDS = ("column", "value", "line", "band", "table")
 
 
 @dataclass(frozen=True)
@@ -52,6 +54,7 @@ class NamedReader(nn.Module):
         self.config = config
         self.relational = RelationalModel(in_dim=backbone_dim + FEATURES, H=config.hidden, layers=config.blocks, heads=config.heads, nc=config.hidden, n_edge=N_EDGE)
         self.coordinates = nn.Linear(config.hidden, coordinates)
+        nn.init.constant_(self.coordinates.bias, _RARE)
         self.closed = nn.ModuleDict({head: nn.Linear(config.hidden, len(classes)) for head, classes in CLOSED_HEADS.items()})
         self.word_role = nn.Linear(config.hidden, len(WORD_ROLE_CLASSES))
         self.calc_side = nn.Linear(config.hidden, len(CALC_SIDES))
@@ -61,6 +64,7 @@ class NamedReader(nn.Module):
         self.raw_rule_weights = nn.Parameter(torch.full((len(RULES),), _ONE))
         self.raw_role_weight = nn.Parameter(torch.tensor(_ONE))
         self.raw_closed_weight = nn.Parameter(torch.tensor(_ONE))
+        self.raw_link_bias = nn.Parameter(torch.full((len(LINK_KINDS),), _ONE))
 
     def hidden(self, inputs: torch.Tensor, edges: torch.Tensor, pad: torch.Tensor) -> torch.Tensor:
         return self.relational(inputs, edges, pad)["content"]
@@ -80,6 +84,10 @@ class NamedReader(nn.Module):
     def closed_weight(self) -> torch.Tensor:
         return nn.functional.softplus(self.raw_closed_weight)
 
+    def link_biases(self) -> torch.Tensor:
+        """What a link must reach, per kind of target, to say more than that the word links to nothing."""
+        return nn.functional.softplus(self.raw_link_bias)
+
     def closed_logits(self, words_hidden: torch.Tensor, pad: torch.Tensor) -> dict[str, torch.Tensor]:
         """A question's closed heads read the mean of its words."""
         keep = (~pad).unsqueeze(-1).float()
@@ -87,4 +95,4 @@ class NamedReader(nn.Module):
         return {head: layer(pooled) for head, layer in self.closed.items()}
 
 
-__all__ = ["NamedReader", "ReaderConfig"]
+__all__ = ["LINK_KINDS", "NamedReader", "ReaderConfig"]

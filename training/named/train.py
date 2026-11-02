@@ -1,13 +1,13 @@
 """Multi-task training of the reader, on family-held-out examples.
 
-Losses, each on named outputs:
+Losses, each on named outputs. Coordinates count every name's own log loss, unweighted: what the head outputs is then a probability, a word that means nothing reads nothing, and a link's sum means how much two readings share. (Balanced by class, the first candidate read 71 of 385 names on as true of every content word and 59 of every stop word, so every target linked at about the same high score and the decoder's additive sum filled every slot it could: 29 of 154 validation golds listed in its top 50.)
   target coordinates   a column's, value's, line's and band's named coordinates: the factory's labels and, always, what the compiler knows (column role, value kind, line role)
   word coordinates     the same head over the question's words: a word in a link reads what its target is labelled; other words read none of the meaning tier
   closed heads         form, aggregate, direction, size, entity, comparison, row and calc operators, answer type, blank, how many conditions; word role and calc side per word
-  links                link(span, target) over the target and its in-sheet hard negatives: the sum over named coordinates of weight x question x target, plus named rule evidence. The one formula of engine/named/links.py, its weights learned here.
+  links                link(span, target) over the target and its in-sheet hard negatives: the sum over named coordinates of weight x question x target, plus named rule evidence and the word's role. The one formula of engine/named/links.py, its weights learned here. Beside the candidates stands "links to nothing", at a learned bias per kind of target: a content word no link stands on is an example of it. The bias is what a coordinate reads below at serving.
   open                 the separate unnamed channel, on the same candidates. It trains its own two projections and, unless --open-detached, the shared encoder.
 
-Each step reads one tab, and --accumulate of them make one optimizer step: its tables through the augmentations (renames, masks, shuffles, distractor columns; training/named/augment.py), its questions with the question words alone. A checkpoint is chosen on held-out families by top-10 link recall. float32 unless --amp. A candidate goes only to training/named/data/experiments/<id>/out/: promotion is separate.
+Each step reads one tab, and --accumulate of them make one optimizer step: its tables through the augmentations (renames, masks, shuffles, distractor columns; training/named/augment.py), its questions with the question words alone. A checkpoint is chosen on held-out families by top-1 link recall (top 10 among a link's in-sheet candidates is nearly full early on, and says little). float32 unless --amp. A candidate goes only to training/named/data/experiments/<id>/out/: promotion is separate.
 
 Training needs an experiment contract (design/phase4_contract.txt, CLAUDE.md). This module incurs no spend by itself; a lease does (training/named/lease.py).
 
@@ -32,15 +32,15 @@ from torch import nn
 
 from engine.named.backbone import question_words
 from engine.named.index import ClassSignatures
-from engine.named.links import LinkWeights, RULES, SLOT_BIASES, rule_evidence
-from engine.named.model import NamedReader, ReaderConfig
+from engine.named.links import LinkWeights, RULES, SLOTS_OF_LINK_KIND, rule_evidence, is_stated_word
+from engine.named.model import LINK_KINDS, NamedReader, ReaderConfig
 from engine.named.names import CALC_SIDES, CLOSED_HEADS, LEFT, RIGHT, WORD_ROLE_CLASSES, NameSet, closed_labels, fine_answer_type, load_name_set, meaning_groups
 from engine.named.bundle import write_bundle
 from engine.named.units import T_BAND, T_COLUMN, T_LINE, T_TABLE, T_VALUE, Graph, Target, collate, question_graph, table_graphs, targets_of, value_graph
 from engine.program.catalog import Catalog, CatalogTable
 from engine.program.decoder import Decoder
 from engine.program.index import stem
-from engine.program.names import A_NAME, ROLE_KEY, ROLE_MEASURE, SLOT_ANSWER_TYPE, SLOT_CALC_LEFT, slot_of
+from engine.program.names import A_NAME, ROLE_CONTEXT, ROLE_FILTER, ROLE_KEY, ROLE_MEASURE, SLOT_ANSWER_TYPE, SLOT_CALC_LEFT, slot_of
 from engine.program.semantics import fold
 from engine.program.words import _STOP, read_question
 from training.named import EXPERIMENTS_DIR
@@ -53,6 +53,8 @@ _ROW_SIDES = re.compile(r"(?:^|\s|\()(\d+)\s*[-/]\s*(\d+)(?:\s|\)|$)")
 COLUMN_NEGATIVES = 24
 VALUE_NEGATIVES = 16
 TABLES_PER_STEP = 3
+UNLINKED_WORDS = 2         # a question's content words no link stands on, read as links to nothing
+ROW_NAMES = 4.0            # about how many names a target or a word holds: scales the coordinates' summed log loss to one row's worth
 LOSS_WEIGHTS = {"target": 1.0, "word": 1.0, "closed": 1.0, "role": 0.5, "side": 0.25, "link": 2.0, "open": 0.5}
 
 
@@ -76,12 +78,14 @@ class TrainConfig:
 
 @dataclass
 class LinkExample:
-    """One link of a question: its question, its words, and its candidates, the first the right one."""
+    """One link of a question: its question, its words, and its candidates, the first the right one; or, with nothing true, a word that links to none of them. role: the word role its span reads in."""
     question: int
     span: list[int]
     kind: str
     candidates: list[int]
     rules: np.ndarray
+    role: str = ROLE_MEASURE
+    nothing: bool = False
 
 
 @dataclass
@@ -264,7 +268,7 @@ def build_batch(example: TabExample, reader_config: ReaderConfig, names: NameSet
                 others = [Target(other, T_TABLE, -1, "") for other in sorted(tables) if other != table_id]
                 if gold.key in at_target and others and all(item.key in at_target for item in others):
                     candidates = [gold, *others]
-                    links.append(LinkExample(at_question, span, kind, [at_target[item.key] for item in candidates], np.stack([_rule_row(item.coordinates(), floor, stems, tables[item.table]) for item in candidates])))
+                    links.append(LinkExample(at_question, span, "table", [at_target[item.key] for item in candidates], np.stack([_rule_row(item.coordinates(), floor, stems, tables[item.table]) for item in candidates]), ROLE_CONTEXT))
                 continue
             example_link = None
             if kind == "column":
@@ -281,7 +285,16 @@ def build_batch(example: TabExample, reader_config: ReaderConfig, names: NameSet
                 example_link = _label_candidates(all_targets[table_id], table_id, T_LINE if kind == "line" else T_BAND, fold(value), floor, stems, rng, add_value)
             if example_link is not None:
                 candidates, rules = example_link
-                links.append(LinkExample(at_question, span, kind, candidates, rules))
+                links.append(LinkExample(at_question, span, kind, candidates, rules, role if role in WORD_ROLE_CLASSES else ROLE_FILTER))
+        unlinked = [at for at, word in enumerate(words) if word_names[at] is None and not is_stated_word(word) and not any(at in link.get("span", ()) for link in row.get("links", ()))]
+        rng.shuffle(unlinked)
+        for at in unlinked[:UNLINKED_WORDS]:
+            table_id = sorted(tables)[rng.randrange(len(tables))]
+            pool = [column for column in tables[table_id].columns if Target(table_id, T_COLUMN, column.position, column.name).key in at_target]
+            rng.shuffle(pool)
+            if pool:
+                candidates = [Target(table_id, T_COLUMN, column.position, column.name) for column in pool[:COLUMN_NEGATIVES]]
+                links.append(LinkExample(at_question, [at], "column", [at_target[item.key] for item in candidates], np.stack([_rule_row(item.coordinates(), floor, stems, tables[table_id]) for item in candidates]), ROLE_MEASURE, True))
         word_positive.append(word_names)
         word_role.append(roles)
         word_side.append(sides)
@@ -400,12 +413,10 @@ def run_batch(backbone: nn.Module, reader: NamedReader, config: ReaderConfig, ba
     return Forward(hidden, reader.coordinate_logits(hidden), [words for words, _ in questions], word_hidden, [reader.coordinate_logits(item) for item in word_hidden], closed)
 
 
-def _balanced_bce(logits: torch.Tensor, labels: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
-    """The mean of the loss on positives and on negatives, so 385 names that are mostly no do not drown the one that is yes."""
+def _row_loss(logits: torch.Tensor, labels: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+    """Each name's own log loss, summed over a row's names and averaged over its rows: minimized by the true probability, so a score reads as one."""
     losses = nn.functional.binary_cross_entropy_with_logits(logits, labels, reduction="none") * mask
-    pos = labels * mask
-    neg = (1.0 - labels) * mask
-    return 0.5 * ((losses * pos).sum() / pos.sum().clamp(min=1.0) + (losses * neg).sum() / neg.sum().clamp(min=1.0))
+    return losses.sum() / max(1, logits.shape[0]) / ROW_NAMES
 
 
 def losses_of(reader: NamedReader, names: NameSet, batch: Batch, out: Forward, open_detached: bool, structure: torch.Tensor, device: str) -> dict[str, torch.Tensor]:
@@ -419,7 +430,7 @@ def losses_of(reader: NamedReader, names: NameSet, batch: Batch, out: Forward, o
             if position is not None:
                 labels[at, position] = 1.0
                 mask[at, position] = 1.0
-    result = {"target": _balanced_bce(out.target_logits, labels, mask)}
+    result = {"target": _row_loss(out.target_logits, labels, mask)}
     word_losses = []
     role_losses = []
     side_losses = []
@@ -437,7 +448,7 @@ def losses_of(reader: NamedReader, names: NameSet, batch: Batch, out: Forward, o
                 position = names.at(name)
                 if position is not None:
                     w_labels[word_at, position] = 1.0
-        word_losses.append(_balanced_bce(logits, w_labels, w_mask))
+        word_losses.append(_row_loss(logits, w_labels, w_mask))
         role_losses.append(nn.functional.cross_entropy(reader.word_role(out.word_hidden[at]), torch.as_tensor(batch.word_role[at], device=device)))
         side_losses.append(nn.functional.cross_entropy(reader.calc_side(out.word_hidden[at]), torch.as_tensor(batch.word_side[at], device=device)))
     zero = out.target_logits.sum() * 0.0
@@ -453,15 +464,20 @@ def losses_of(reader: NamedReader, names: NameSet, batch: Batch, out: Forward, o
     if batch.links:
         weights = reader.coordinate_weights()
         rule_weights = reader.rule_weights()
+        biases = reader.link_biases()
         targets_read = torch.sigmoid(out.target_logits)
         open_targets = reader.open_target(out.target_hidden.detach() if open_detached else out.target_hidden)
         for link in batch.links:
             words_read = torch.sigmoid(out.word_logits[link.question][link.span]).mean(0)
             candidates = torch.as_tensor(link.candidates, device=device)
             rules = torch.as_tensor(link.rules, device=device)
-            scores = (weights * words_read * targets_read[candidates]).sum(-1) + (rules * rule_weights).sum(-1)
+            role = torch.softmax(reader.word_role(out.word_hidden[link.question][link.span]), -1)[:, WORD_ROLE_CLASSES.index(link.role)].mean()
+            scores = (weights * words_read * targets_read[candidates]).sum(-1) + (rules * rule_weights).sum(-1) + reader.role_weight() * role
+            wanted = torch.as_tensor([0 if link.nothing else 1], device=device)
+            link_terms.append(nn.functional.cross_entropy(torch.cat([biases[LINK_KINDS.index(link.kind)][None], scores])[None], wanted))
+            if link.nothing:
+                continue
             wanted = torch.zeros(1, dtype=torch.long, device=device)
-            link_terms.append(nn.functional.cross_entropy(scores[None], wanted))
             hidden = out.word_hidden[link.question][link.span].mean(0)
             word_open = nn.functional.normalize(reader.open_word(hidden.detach() if open_detached else hidden), dim=-1)
             target_open = nn.functional.normalize(open_targets[candidates], dim=-1)
@@ -474,7 +490,8 @@ def losses_of(reader: NamedReader, names: NameSet, batch: Batch, out: Forward, o
 def link_weights_of(reader: NamedReader) -> LinkWeights:
     """The learned weights as the plain numbers a bundle carries."""
     with torch.no_grad():
-        return LinkWeights(reader.coordinate_weights().cpu().double().numpy().round(6), {rule: round(float(value), 6) for rule, value in zip(RULES, reader.rule_weights().cpu().tolist())}, round(float(reader.role_weight()), 6), round(float(reader.closed_weight()), 6), dict(SLOT_BIASES))
+        biases = {slot: round(float(value), 6) for kind, value in zip(LINK_KINDS, reader.link_biases().cpu().tolist()) for slot in SLOTS_OF_LINK_KIND[kind]}
+        return LinkWeights(reader.coordinate_weights().cpu().double().numpy().round(6), {rule: round(float(value), 6) for rule, value in zip(RULES, reader.rule_weights().cpu().tolist())}, round(float(reader.role_weight()), 6), round(float(reader.closed_weight()), 6), biases)
 
 
 def held_metrics(backbone, reader, config, names, examples, device, limit: int, seed: int) -> dict:
@@ -482,7 +499,7 @@ def held_metrics(backbone, reader, config, names, examples, device, limit: int, 
     reader.eval()
     backbone.eval()
     rng = random.Random(seed)
-    top1 = top10 = links = 0
+    top1 = top10 = links = nothing_links = nothing_right = 0
     right = {head: 0 for head in CLOSED_HEADS}
     questions = 0
     with torch.no_grad():
@@ -499,6 +516,10 @@ def held_metrics(backbone, reader, config, names, examples, device, limit: int, 
                 candidates = torch.as_tensor(link.candidates, device=device)
                 rules = torch.as_tensor(link.rules, device=device)
                 scores = (weights * words_read * read[candidates]).sum(-1) + (rules * rule_weights).sum(-1)
+                if link.nothing:
+                    nothing_links += 1
+                    nothing_right += float(scores.max()) < float(reader.link_biases()[LINK_KINDS.index(link.kind)])
+                    continue
                 rank = int((scores > scores[0]).sum())
                 links += 1
                 top1 += rank == 0
@@ -509,7 +530,7 @@ def held_metrics(backbone, reader, config, names, examples, device, limit: int, 
             questions += len(batch.closed)
     reader.train()
     backbone.train()
-    return {"links": links, "link_top1": round(top1 / max(1, links), 4), "link_top10": round(top10 / max(1, links), 4), "questions": questions, "closed": {head: round(value / max(1, questions), 4) for head, value in right.items()}}
+    return {"links": links, "link_top1": round(top1 / max(1, links), 4), "link_top10": round(top10 / max(1, links), 4), "reads_nothing": round(nothing_right / max(1, nothing_links), 4), "questions": questions, "closed": {head: round(value / max(1, questions), 4) for head, value in right.items()}}
 
 
 def _commit() -> dict:
@@ -604,13 +625,13 @@ def train(examples: list[TabExample], names: NameSet, backbone: nn.Module, confi
                 log.flush()
                 if log_print:
                     print(json.dumps(metrics), flush=True)
-                if metrics["link_top10"] > best:
-                    best = metrics["link_top10"]
+                if metrics["link_top1"] > best:
+                    best = metrics["link_top1"]
                     write_bundle(out / "best", backbone, reader, names, reader_config, link_weights_of(reader), signatures=signatures, record={**(record or {}), "metrics": metrics, "step": step, "seed": config.seed})
                     (out / "best.json").write_text(json.dumps({**metrics, **(record or {})}, indent=1, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
     if not held:
         write_bundle(out / "best", backbone, reader, names, reader_config, link_weights_of(reader), signatures=signatures, record={**(record or {}), "step": step, "seed": config.seed})
-    return {"steps": step, "loss_first": round(float(np.mean(first)), 4), "loss_last": round(float(np.mean(last or first)), 4), "seconds": round(time.time() - started, 1), "train_tabs": len(kept), "held_tabs": len(held), "best_top10": best, "seconds_per_step": round((time.time() - started) / max(1, step), 3), "build_seconds_per_step": round(spent["build"] / max(1, step), 3), "texts_per_step": round(spent["texts"] / max(1, step), 1), "links_per_step": round(spent["links"] / max(1, step), 1)}
+    return {"steps": step, "loss_first": round(float(np.mean(first)), 4), "loss_last": round(float(np.mean(last or first)), 4), "seconds": round(time.time() - started, 1), "train_tabs": len(kept), "held_tabs": len(held), "best_top1": best, "seconds_per_step": round((time.time() - started) / max(1, step), 3), "build_seconds_per_step": round(spent["build"] / max(1, step), 3), "texts_per_step": round(spent["texts"] / max(1, step), 1), "links_per_step": round(spent["links"] / max(1, step), 1)}
 
 
 def names_for(examples: list[TabExample]) -> NameSet:

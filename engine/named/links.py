@@ -26,8 +26,9 @@ TAB_WORD = "tab_word"
 TITLE_WORD = "title_word"
 ONLY_OF_TYPE = "only_of_type"
 RULES = (EXACT, PARTIAL, PREFIX, DATE, STATED, TAB_WORD, TITLE_WORD, ONLY_OF_TYPE)
-# What a coordinate reads when nothing supports it: a column no word links to reads below one a word does.
+# What a coordinate reads when nothing supports it: a column no word links to reads below one a word does. A bundle carries these as learned, per kind of target.
 SLOT_BIASES = ((SLOT_MEASURE, 0.5), (SLOT_KEY, 0.5), (SLOT_SHOWN, 0.5))
+SLOTS_OF_LINK_KIND = {"column": (SLOT_MEASURE, SLOT_KEY, SLOT_SHOWN), "value": (SLOT_VALUE, SLOT_CONTAINS), "line": (SLOT_LINE,), "band": (SLOT_SECTION,), "table": (SLOT_TABLE,)}
 SCALE = 1000
 # Below this a link's named sum is noise, not support.
 SUPPORT = 0.05
@@ -155,4 +156,4 @@ def is_stated_word(word: str) -> bool:
     return bool(_MONTH_OR_DIGIT.search(word))
 
 
-__all__ = ["Contribution", "DATE", "EXACT", "LinkWeights", "ONLY_OF_TYPE", "PARTIAL", "PREFIX", "RULES", "RuleHit", "SCALE", "SLOT_BIASES", "STATED", "SUPPORT", "TAB_WORD", "TITLE_WORD", "contributions_of", "is_stated_word", "link_total", "named_matrix", "rule_evidence", "to_thousandths", "uniform_weights", "words_in_text"]
+__all__ = ["Contribution", "DATE", "EXACT", "LinkWeights", "ONLY_OF_TYPE", "PARTIAL", "PREFIX", "RULES", "RuleHit", "SCALE", "SLOTS_OF_LINK_KIND", "SLOT_BIASES", "STATED", "SUPPORT", "TAB_WORD", "TITLE_WORD", "contributions_of", "is_stated_word", "link_total", "named_matrix", "rule_evidence", "to_thousandths", "uniform_weights", "words_in_text"]

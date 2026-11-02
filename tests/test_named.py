@@ -564,6 +564,26 @@ def test_batch_has_in_sheet_hard_negatives() -> None:
 
 
 # ------------------------------------------------------------------------------------------------- the pipeline
+def test_coordinate_loss_reads_as_a_probability() -> None:
+    """A class-balanced loss put 71 of 385 names on for every word, and every target linked alike. Each name's own log loss is lowest at the true rate, so what the head says of a rare name stays rare."""
+    from training.named.train import _row_loss
+    labels = torch.zeros(1000, 1)
+    labels[:20] = 1.0
+    at_rate = _row_loss(torch.full((1000, 1), float(np.log(0.02 / 0.98))), labels, torch.ones(1000, 1))
+    assert all(at_rate < _row_loss(torch.full((1000, 1), float(np.log(rate / (1 - rate)))), labels, torch.ones(1000, 1)) for rate in (0.005, 0.1, 0.5))
+
+
+def test_a_bundle_carries_learned_biases_per_kind_of_target() -> None:
+    from training.named.train import link_weights_of
+    from engine.named.model import LINK_KINDS
+    reader = NamedReader(32, 8, ReaderConfig(backbone="hash", hidden=36, blocks=1, open_dim=16))
+    with torch.no_grad():
+        reader.raw_link_bias[LINK_KINDS.index("value")] = 2.0
+    weights = link_weights_of(reader)
+    assert weights.bias("value") == weights.bias("contains") and weights.bias("measure") == weights.bias("shown") == weights.bias("key")
+    assert weights.bias("value") > weights.bias("measure") and weights.bias("period") == 0.0
+
+
 def test_training_runs_under_autocast() -> None:
     """A lease trains under bf16 autocast, and the first one died at its first step mixing bf16 reads into a float32 tensor. The reads come out in float32, the losses count in it."""
     with tempfile.TemporaryDirectory() as folder:
