@@ -766,6 +766,21 @@ def test_decoder_ties_do_not_follow_sheet_order():
         assert listed == first, order
 
 
+def test_several_columns_shown_type_the_same_however_they_stand():
+    """57.1 flipped on a reorder: a show of a name and a figure took its answer type from whichever stood first."""
+    rows = [["Deal", "Value", "Book"], ["a", 1.0, "x"], ["b", 2.0, "y"], ["c", 3.0, "z"], ["d", 7.0, "w"]]
+    for order in ((0, 1, 2), (1, 0, 2), (2, 1, 0)):
+        catalog = _catalog(_reordered(rows, order), formats=[{"f": "General"}] * 3)
+        table = catalog.tables[0]
+        named = {column.name: Col(table.id, column.position) for column in table.columns}
+        program = Show(table.id, tuple(sorted((named["Deal"], named["Value"]))), (Equals(named["Book"], "x"),))
+        assert answer_type_of(program, catalog.column_kind) == A_NUMBER, order
+        decoder = Decoder(catalog)
+        reading = Reading({"form:show": 1.0, "answer_type:number": 1.0, coordinate("shown", named["Deal"].name): 1.0, coordinate("shown", named["Value"].name): 1.0, coordinate("value", named["Book"].name, "x"): 1.0})
+        scores = {item.program: item.score for item in decoder.decode(reading, k=30).programs}
+        assert scores[program] == score_program(program, reading, catalog).score
+
+
 def test_a_family_adding_twice_says_so():
     """Family.adds_twice: members repeat each other's lines. A sum or count across the members is flagged; one member's lines, or a read, are not."""
     def book(tab):
@@ -914,7 +929,7 @@ def test_explain_carries_the_named_contributions():
 
 
 TESTS = [
-    test_across_adds_peer_columns_of_a_line, test_the_decoder_reaches_across_when_a_word_asks, test_a_text_other_than, test_the_decoder_reads_other_than_from_the_words, test_answer_types_place_money_quantity, test_decoder_ties_do_not_follow_sheet_order, test_a_family_adding_twice_says_so, test_axes_are_read_by_their_kind, test_a_question_reads_the_tables_its_links_reach, test_verifier_stops_at_its_budget_of_lines,
+    test_several_columns_shown_type_the_same_however_they_stand, test_across_adds_peer_columns_of_a_line, test_the_decoder_reaches_across_when_a_word_asks, test_a_text_other_than, test_the_decoder_reads_other_than_from_the_words, test_answer_types_place_money_quantity, test_decoder_ties_do_not_follow_sheet_order, test_a_family_adding_twice_says_so, test_axes_are_read_by_their_kind, test_a_question_reads_the_tables_its_links_reach, test_verifier_stops_at_its_budget_of_lines,
     test_every_name_is_from_a_closed_list, test_forms_refuse_what_they_cannot_say, test_signs, test_printed_lines_are_read_by_label_and_never_added, test_shortest_label_first_and_unlabelled_printed_lines, test_a_column_filled_only_on_printed_lines_reads_them,
     test_partial_value_match, test_case_and_spacing_do_not_count, test_periods, test_blanks, test_ties_keep_every_tied_line, test_units, test_mixed_columns, test_repeated_rows, test_sections_nested_bands_and_the_section_shown, test_python_masks_agree_with_the_sql,
     test_calc_shapes, test_rank_across_peer_columns, test_new_ast_nodes_render_and_validate, test_plan_schema_holds_only_what_a_query_reads, test_perfect_readings_give_the_gold_first, test_decoder_is_deterministic_and_order_free, test_the_list_does_not_depend_on_hash_order,

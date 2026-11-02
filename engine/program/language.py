@@ -449,10 +449,16 @@ def answer_type_of(program: Program, column_kind) -> str:
     if isinstance(program, Show):
         if program.listing:
             return A_LIST
-        return _type_of_column(program.shown[0], column_kind)
+        return _type_of_shown(program.shown, column_kind)
     if program.entity == ENTITY_PEER:
         return A_NAME
-    return _type_of_column(program.key if program.entity == ENTITY_GROUP else program.shown[0], column_kind)
+    return _type_of_column(program.key, column_kind) if program.entity == ENTITY_GROUP else _type_of_shown(program.shown, column_kind)
+
+
+def _type_of_shown(shown: tuple[Col, ...], column_kind) -> str:
+    """Several columns shown answer as their kinds together, whichever stands first on the sheet: a figure if any is one, else a date, else a name."""
+    kinds = {_type_of_column(column, column_kind) for column in shown}
+    return A_NUMBER if A_NUMBER in kinds else A_DATE if A_DATE in kinds else A_NAME
 
 
 def _type_of_column(column: Col, column_kind) -> str:

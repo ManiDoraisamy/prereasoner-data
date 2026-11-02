@@ -566,7 +566,8 @@ class _Search:
         named = [option for option in singles if self.reading.score(coordinate(SLOT_SHOWN, option.payload.name)) > 0][:8]
         for size in (2, 3):
             for group in combinations(sorted(named, key=lambda option: option.payload.position), size):
-                options.append(_Option(sum(option.score for option in group), tuple(option.payload for option in group)))
+                shown = tuple(option.payload for option in group)
+                options.append(_Option(sum(self.s(coordinate(SLOT_SHOWN, column.name)) for column in shown) + self.type_score(answer_type_of(Show(table.id, shown), self.decoder.catalog.column_kind)), shown))
         order = sorted(range(len(options)), key=lambda at: (round(-options[at].score, _ROUND), len(options[at].payload), tuple(sorted(table.column_rank[column.position] for column in options[at].payload))))
         return [options[at] for at in order]
 
