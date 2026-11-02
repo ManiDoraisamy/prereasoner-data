@@ -23,7 +23,7 @@ from engine.named.chooser import ANSWER, ASK, ASK_NOTHING, FEATURES, PRIOR, Choo
 from engine.named.reader import unsupported_links
 from engine.named.bundle import BUNDLE_META, BUNDLE_STATE
 from engine.named.pipeline import NamedEngine, load_bundle
-from engine.program.language import coordinates, form_of
+from engine.program.language import TOGETHER, coordinates, form_of
 from engine.program.execute import run
 from engine.program.names import FORMS, SLOTS, slot_of
 from engine.program.scoring import Reading, Weights
@@ -71,7 +71,7 @@ def answer_key(rows) -> str:
 
 def support_of(program, named, catalog) -> int:
     """Whether a program's links stand on named evidence: it has none, all do, or some do not. What the report's count of answers carrying named support reads."""
-    links = [name for name in coordinates(program, catalog.column_kind) if name.split(":", 1)[0] in ("measure", "key", "shown", "value", "contains", "line", "section")]
+    links = [name for name in coordinates(program, catalog.column_kind) if name.split(":", 1)[0] in ("measure", "key", "shown", "value", "contains", "line", "section") and TOGETHER not in name]
     if not links:
         return SUPPORT_NO_LINKS
     return SUPPORT_SOME if unsupported_links(program, named, catalog) else SUPPORT_ALL

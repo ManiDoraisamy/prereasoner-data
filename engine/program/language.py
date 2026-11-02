@@ -15,6 +15,7 @@ from engine.program.semantics import fold, number_text
 from engine.sheet.names import P_DAY, P_MONTH, P_QUARTER, P_RANGE, P_YEAR, PERIOD_KINDS
 
 SECTION = -1     # the position of a table's section, which behaves as a text column
+TOGETHER = "together"
 
 
 @dataclass(frozen=True, slots=True, order=True)
@@ -385,6 +386,11 @@ def measure_coordinates(measure: Measure) -> list[str]:
     return left + [coordinate(SLOT_ROW_OP, measure.op)] + measure_coordinates(measure.right) + sided
 
 
+def shown_together(shown: tuple[Col, ...]) -> list[str]:
+    """Several columns shown read as a coordinate of their own: each column's link adds, and most questions ask for one thing."""
+    return [coordinate(SLOT_SHOWN, TOGETHER, len(shown))] if len(shown) > 1 else []
+
+
 def peers_name(peers: tuple[int, ...]) -> str:
     return ",".join(str(position) for position in peers)
 
@@ -397,6 +403,7 @@ def _body_coordinates(program: Program) -> list[str]:
     names.append(coordinate(SLOT_TABLE, program.table))
     if isinstance(program, Show):
         names.extend(coordinate(SLOT_SHOWN, column.name) for column in program.shown)
+        names.extend(shown_together(program.shown))
         if program.listing:
             names.append(coordinate(SLOT_LISTING, "yes"))
     elif isinstance(program, Agg):
@@ -413,6 +420,7 @@ def _body_coordinates(program: Program) -> list[str]:
         if program.measure is not None:
             names.extend(measure_coordinates(program.measure))
         names.extend(coordinate(SLOT_SHOWN, column.name) for column in program.shown)
+        names.extend(shown_together(program.shown))
         if program.key is not None:
             names.append(coordinate(SLOT_KEY, program.key.name))
         if program.peers:
@@ -469,4 +477,4 @@ def _type_of_column(column: Col, column_kind) -> str:
 
 
 __all__ = ["Across", "Agg", "Calc", "Col", "Compare", "CompareColumns", "Condition", "Contains", "DateOf", "Equals", "InPeriod", "InSection", "IsBlank", "IsNumber", "Measure", "NotEquals", "OnLine", "PeriodSpan", "Program", "Rank", "RowArithmetic", "SECTION", "Show", "Size",
-           "addresses_printed", "answer_type_of", "coordinates", "conditions_of", "form_of", "measure_columns", "tables_of", "peers_name"]
+           "TOGETHER", "addresses_printed", "answer_type_of", "coordinates", "shown_together", "conditions_of", "form_of", "measure_columns", "tables_of", "peers_name"]

@@ -20,7 +20,7 @@ from engine.named.units import T_BAND, T_COLUMN, T_LINE, T_TABLE, T_VALUE, colla
 from engine.program.catalog import Catalog
 from engine.program.decoder import Decoder, table_reach
 from engine.program.index import index_of, stem
-from engine.program.language import Col, Program, SECTION, coordinates
+from engine.program.language import Col, Program, SECTION, TOGETHER, coordinates
 from engine.program.names import (CALC, MINUS, OVER, ROLE_OF_SLOT, SIGNED, SLOT_ANSWER_TYPE, SLOT_BLANK, SLOT_CALC_LEFT, SLOT_COMPARISON, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE, SLOT_MEASURE, SLOT_NUMBER, SLOT_PERIOD, SLOT_ROW_OP, SLOT_SECTION, SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, coarse_type, coordinate, slot_of)
 from engine.program.scoring import Reading
 from engine.program.words import _STOP, FILTER_NAME_SHARE, read_question
@@ -292,6 +292,10 @@ class _Builder:
             for slot in (SLOT_KEY, SLOT_SHOWN):
                 self.scores.setdefault(coordinate(slot, name), round(-self.weights.bias(slot), 4))
 
+    def together(self) -> None:
+        for count in (2, 3):
+            self.scores[coordinate(SLOT_SHOWN, TOGETHER, count)] = self.floor[coordinate(SLOT_SHOWN, TOGETHER, count)]
+
     def conditions(self, table_id: str) -> None:
         """How many conditions: the head's log probability and the words' count of what they can read."""
         head = self.read.closed[SLOT_CONDITIONS]
@@ -330,6 +334,7 @@ def build_reading(read: QuestionRead, windex: WorkbookIndex, catalog: Catalog, d
         builder.section(table)
         builder.conditions(table.id)
     builder.stated()
+    builder.together()
     builder.calc_left()
     agreement = _class_agreement(read, windex, names, signatures)
     reading = Reading(builder.scores)
@@ -350,7 +355,7 @@ def unsupported_links(program: Program, named: NamedReading, catalog: Catalog) -
     """The program's links with no named support: a proposal, or nothing at all. Any of them and the program is needs_asking."""
     out = []
     for name in coordinates(program, catalog.column_kind):
-        if slot_of(name) not in LINK_SLOTS:
+        if slot_of(name) not in LINK_SLOTS or TOGETHER in name:
             continue
         evidence = named.book.get(name)
         if evidence is None or not evidence.supported:

@@ -15,7 +15,7 @@ from engine.named.names import NONE, WORD_ROLE_CLASSES
 from engine.named.reader import LINK_SLOTS, MODE_NAMED, NamedReading, needs_asking, unsupported_links
 from engine.program.catalog import Catalog
 from engine.program.index import stem
-from engine.program.language import Agg, Col, Program, Rank, Show, coordinates, form_of, tables_of
+from engine.program.language import Agg, Col, Program, Rank, Show, TOGETHER, coordinates, form_of, tables_of
 from engine.program.names import (ENTITY_GROUP, ENTITY_LINE, EV_ADDS_TWICE, EV_BARE_ZERO, EV_EMPTY, EV_FAILED, EV_FILTER_DID_NOTHING, EV_FRACTION_FOR_COUNT, EV_MANY_ROWS, EV_PRINTED_TIE, EV_REPEATED_LINES, EV_ROW_COUNT_FOR_AMOUNT, EV_ROW_DUMP, EV_SHAPE_AGREES, EV_TOO_LARGE_FOR_SHARE, EV_TYPE_AGREES, EV_WRONG_KIND, FORMS, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE, SLOT_MEASURE, SLOT_SECTION, SLOT_SHOWN, SLOT_VALUE, slot_of)
 from engine.program.words import _STOP
 
@@ -131,7 +131,7 @@ def features_of(verified: Verified, named: NamedReading, catalog: Catalog, *, ra
     roleful = [at for at in content if roles[at, none_at] < ROLE_MIN]
     explained = explained_words(program, named, catalog)
     names = coordinates(program, catalog.column_kind)
-    links = [name for name in names if slot_of(name) in LINK_SLOTS]
+    links = [name for name in names if slot_of(name) in LINK_SLOTS and TOGETHER not in name]
     strengths = []
     by_kind: dict[str, list[float]] = {}
     exact = partial = prefix = 0.0

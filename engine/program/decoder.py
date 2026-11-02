@@ -16,7 +16,7 @@ from typing import Callable, Sequence
 
 from engine.program.catalog import Catalog, CatalogTable
 from engine.program.index import Atom, TableIndex, index_of
-from engine.program.language import (Across, Agg, Calc, Col, Compare, CompareColumns, Condition, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, NotEquals, OnLine, Program, Rank, RowArithmetic, SECTION, Show, Size, answer_type_of, is_sound, measure_coordinates, peers_name, period_from_name)
+from engine.program.language import (Across, Agg, Calc, Col, Compare, CompareColumns, Condition, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, NotEquals, OnLine, Program, Rank, RowArithmetic, SECTION, Show, Size, answer_type_of, is_sound, measure_coordinates, peers_name, period_from_name, shown_together)
 from engine.program.names import (A_COUNT, A_LIST, A_NAME, A_NUMBER, A_PERCENT, AGG, ANCHORS, ANYWHERE, AVG, BY_SIZE, CALC, CALC_OPS, COMPARISONS, COUNT, COUNT_DISTINCT, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, MAX, MIN, MINUS, NE, NUMBER_AGGREGATES, OVER, PLUS, RANK, ROW_OPS, SHOW, SLOT_AGGREGATE,
                                   SLOT_ANSWER_TYPE, SLOT_BLANK, SLOT_CALC_LEFT, SLOT_CALC_OP, SLOT_COMPARISON, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_DIRECTION, SLOT_ENTITY, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE, SLOT_LISTING, SLOT_MEASURE, SLOT_NUMBER, SLOT_PEERS, SLOT_PERIOD, SLOT_ROW_OP, SLOT_SECTION,
                                   SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, STATED_BY_SIZE, SUM, TIMES, coordinate, slot_of)
@@ -572,7 +572,7 @@ class _Search:
         for size in (2, 3):
             for group in combinations(sorted(named, key=lambda option: option.payload.position), size):
                 shown = tuple(option.payload for option in group)
-                options.append(_Option(sum(self.s(coordinate(SLOT_SHOWN, column.name)) for column in shown) + self.type_score(answer_type_of(Show(table.id, shown), self.decoder.catalog.column_kind)), shown))
+                options.append(_Option(sum(self.s(coordinate(SLOT_SHOWN, column.name)) for column in shown) + sum(self.s(name) for name in shown_together(shown)) + self.type_score(answer_type_of(Show(table.id, shown), self.decoder.catalog.column_kind)), shown))
         order = sorted(range(len(options)), key=lambda at: (round(-options[at].score, _ROUND), len(options[at].payload), tuple(sorted(table.column_rank[column.position] for column in options[at].payload))))
         return [options[at] for at in order]
 

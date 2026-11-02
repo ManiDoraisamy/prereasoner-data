@@ -10,7 +10,7 @@ import re
 from engine.program.catalog import Catalog
 from engine.program.decoder import Decoder
 from engine.program.index import TableIndex, stem, words_of
-from engine.program.language import Col, PeriodSpan, peers_name
+from engine.program.language import Col, PeriodSpan, TOGETHER, peers_name
 from engine.program.names import (A_CODE, A_COMPANY, A_COUNT, A_DATE, A_LIST, A_MONEY, A_NUMBER, A_PERCENT, A_PERSON, A_PLACE, A_QUANTITY, AGG, AVG, BY_SIZE, CALC, COUNT, COUNT_DISTINCT, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, GE, GT, HIGHEST, LE, LOWEST, LT, MAX, MIN, MINUS, NE, OVER, PERIOD_NAMED, PERIOD_REST_OF, PLUS, RANK, SHOW,
                                   SLOT_AGGREGATE, SLOT_ANSWER_TYPE, SLOT_BLANK, SLOT_CALC_LEFT, SLOT_CALC_OP, SLOT_COMPARISON, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_DIRECTION, SLOT_ENTITY, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE, SLOT_MEASURE, SLOT_NUMBER, SLOT_PEERS, SLOT_PERIOD, SLOT_ROW_OP,
                                   SLOT_SECTION, SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, STATED_BY_SIZE, SUM, TIMES, coarse_type, coordinate)
@@ -64,6 +64,8 @@ NO_ROW_WORD = -2.0
 NO_CALC_WORD = -2.0
 # Row arithmetic names two measures where a plain measure names one: its operator costs what the second name would add.
 ROW_WORD = -1.0
+# Each column shown beside the first costs this: most questions ask for one thing, and a word that asks for two reads the second's link higher than this.
+SHOWN_MORE = 2.5
 # A number the question states that a number column holds as it stands.
 STATED_NUMBER_HELD = 0.8
 # Of two named columns under - or /, the one named first reads as the left: a word order, breaking what would otherwise be a tie.
@@ -152,6 +154,8 @@ def _closed(question: str, low: str, out: dict[str, float]) -> None:
     if _BLANK.search(low):
         out[coordinate(SLOT_BLANK, "blank")] = 0.3
     out[coordinate(SLOT_ANSWER_TYPE, coarse_type(predict_answer_type(question)))] = 0.5
+    for count in (2, 3):
+        out[coordinate(SLOT_SHOWN, TOGETHER, count)] = -SHOWN_MORE * (count - 1)
 
 
 def _periods(low: str, out: dict[str, float]) -> None:
