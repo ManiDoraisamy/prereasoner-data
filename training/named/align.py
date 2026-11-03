@@ -10,6 +10,7 @@ usage: python -m training.named.align collect --bundle <dir> --side train,pub_ei
        python -m training.named.align collect --bundle <dir> --side train,pub_eia,pub_sec --families <held_families.json> --out <file.pkl.gz>
        python -m training.named.align train --train <file> --held <file> --bundle <dir> --out <weights.json>
        python -m training.named.align chooser --held <file> --bundle <dir> --align <weights.json> --out <new bundle dir>
+       --readers <dir> on collect and chooser: today's readers propose beside the decoder, and the new bundle names them
 """
 from __future__ import annotations
 
@@ -306,6 +307,7 @@ def main() -> None:
     one.add_argument("--questions", type=int, help="draw whole workbooks by hash until this many gold questions")
     one.add_argument("--seed", type=int, default=SEED)
     one.add_argument("--out", required=True)
+    one.add_argument("--readers", help="a folder of today's readers to propose beside the decoder")
     two = sub.add_parser("train")
     two.add_argument("--train", required=True)
     two.add_argument("--held", required=True)
@@ -317,6 +319,7 @@ def main() -> None:
     three.add_argument("--bundle", required=True)
     three.add_argument("--align", required=True)
     three.add_argument("--out", required=True)
+    three.add_argument("--readers", help="the readers the held collection proposed with: the new bundle names them, as its chooser weighs their score")
     args = parser.parse_args()
     if args.command == "collect":
         from training.named.evaluate import load_factory_set
@@ -336,7 +339,7 @@ def main() -> None:
                 count += per_book[book]
             items = [item for item in items if item.book in wanted]
         print(json.dumps({"questions": len(items), "books": len({item.book for item in items}), "families": len({item.family for item in items})}), flush=True)
-        engine = load_bundle(args.bundle)
+        engine = load_bundle(args.bundle, readers=args.readers)
         collected = collect(items, engine, progress=True)
         with gzip.open(args.out, "wb") as sink:
             pickle.dump(collected, sink, protocol=4)
@@ -360,6 +363,9 @@ def main() -> None:
     out.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(Path(args.bundle) / BUNDLE_STATE, out / BUNDLE_STATE)
     document.update(chooser=chooser.record(), align=weights.record())
+    if args.readers:
+        from training.named.evaluate import readers_identity
+        document["readers"] = readers_identity(args.readers)
     (out / BUNDLE_META).write_text(json.dumps(document, indent=0, sort_keys=True, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
     print(json.dumps({"out_of_fold": report, "calibration": dict(chooser.calibration), "thresholds": dict(chooser.thresholds), "margin": chooser.margin}, sort_keys=True), flush=True)
 

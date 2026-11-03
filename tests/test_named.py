@@ -867,6 +867,21 @@ def test_a_program_reads_as_readings_that_build_back_to_it() -> None:
     assert view.signature == sheet_view(catalog).signature
 
 
+def test_view_names_hold_no_reading_marks() -> None:
+    """A tab or header holding ":" once broke the readers' read-as line ("month:t.c" reads a period): the view's names carry none of the readings' marks."""
+    from engine.named.proposals import sheet_view
+    from engine.readers.read_as import read_as
+    from engine.sheet import compile_workbook, workbook_from_json
+    rows = [["Desk: name", "Amount; USD", "Region|code"]] + [[f"d{at}", float(at), f"r{at % 3}"] for at in range(8)]
+    catalog = Catalog.from_model(compile_workbook(workbook_from_json({"name": "marks.xlsx", "tabs": [{"name": "Source: CERA", "rows": rows}]})))
+    view = sheet_view(catalog)
+    for table in view.graph.tables:
+        assert not set(":|;") & set(table)
+        for column in view.graph.by_table[table]:
+            assert not set(":|;") & set(column.ref.name)
+            assert read_as({"structure": "single", "blocks": [{"tables": [table], "distinct": False, "select": [[0, "SUM", f"{table}.{column.ref.name}", False]], "where": [], "conj": "AND", "group": [], "having": [], "order": [], "dir": None, "limit": None}]})
+
+
 def test_what_the_readings_cannot_hold_is_refused() -> None:
     from engine.named.proposals import program_readings, sheet_view
     from engine.program.language import Calc, IsBlank, RowArithmetic

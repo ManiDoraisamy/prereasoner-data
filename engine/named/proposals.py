@@ -43,8 +43,12 @@ class SheetView:
     signature: str = field(default="")
 
 
+# Marks the readings and their read-as line give a meaning: "t.c" a column, "month:t.c" a period of it, "|" and ";" the schema text's separators.
+_MARKS = str.maketrans({":": " ", "|": "/", ";": ","})
+
+
 def _unique(name: str, taken: set[str]) -> str:
-    name = " ".join(str(name).split()) or "column"
+    name = " ".join(str(name).translate(_MARKS).split()) or "column"
     out, n = name, 2
     while out.casefold() in taken:
         out, n = f"{name} {n}", n + 1
