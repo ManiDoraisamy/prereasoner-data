@@ -165,15 +165,15 @@ def fit_conditional(groups: Sequence[tuple[np.ndarray, np.ndarray]], columns: in
     return np.round(theta, 6)
 
 
-def fold_report(rows: Sequence["CandidateRecord"], folds: int = FOLDS) -> dict:
-    """Weights fit on all folds but one, read out of fold on the one left: top-1 right per question, against the prior order. What the chooser's weights are worth on families neither saw."""
+def fold_report(rows: Sequence["CandidateRecord"], folds: int = FOLDS, names: Sequence[str] = FEATURES) -> dict:
+    """Weights over names fit on all folds but one, read out of fold on the one left: top-1 right per question, against the prior order. What the chooser's weights are worth on families neither saw."""
     right = base = questions = 0
     for fold in range(folds):
         kept = [row for row in rows if fold_of(row.family, folds) != fold]
         held = [row for row in rows if fold_of(row.family, folds) == fold]
         if not kept or not held:
             continue
-        chooser = Chooser(dict(zip(FEATURES, (float(value) for value in fit_conditional(groups_of(kept), len(FEATURES))))))
+        chooser = Chooser(dict(zip(names, (float(value) for value in fit_conditional(groups_of(kept, names), len(names))))))
         by_question: dict[str, list[CandidateRecord]] = {}
         for row in held:
             by_question.setdefault(row.question, []).append(row)

@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Mapping, Sequence
 
+from engine.named.align import ALIGN_FEATURES, Aligner, Alignment
 from engine.named.links import EXACT, PARTIAL, PREFIX, is_stated_word
 from engine.named.names import NONE, WORD_ROLE_CLASSES
 from engine.named.reader import LINK_SLOTS, MODE_NAMED, NamedReading, needs_asking, unsupported_links
@@ -24,7 +25,7 @@ if TYPE_CHECKING:
 
 _KINDS = {SLOT_MEASURE: "measure", SLOT_KEY: "key", SLOT_SHOWN: "shown", SLOT_VALUE: "value", SLOT_CONTAINS: "contains", SLOT_LINE: "line", SLOT_SECTION: "section"}
 _FLAGS = {EV_TYPE_AGREES: "type_agrees", EV_SHAPE_AGREES: "shape_agrees", EV_PRINTED_TIE: "printed_tie", EV_BARE_ZERO: "bare_zero", EV_EMPTY: "empty", EV_FAILED: "failed", EV_ROW_DUMP: "row_dump", EV_MANY_ROWS: "many_rows", EV_WRONG_KIND: "wrong_kind", EV_ROW_COUNT_FOR_AMOUNT: "row_count_for_amount", EV_FRACTION_FOR_COUNT: "fraction_for_count", EV_TOO_LARGE_FOR_SHARE: "too_large_for_share", EV_FILTER_DID_NOTHING: "filter_did_nothing", EV_REPEATED_LINES: "repeated_lines", EV_ADDS_TWICE: "adds_twice"}
-FEATURES = ("fine_type", "shown_columns", "words_reused", "reach_gap", "words_explained", "words_unexplained", "parts_asked", "parts_unasked", "link_mean", "link_min", *(f"link_{kind}" for kind in _KINDS.values()), "rule_exact", "rule_partial", "rule_prefix", *_FLAGS.values(), "form_prior", "decoder_score", "rank_inverse", "score_margin", "conditions", "class_agreement", "needs_asking", "open_similarity")
+FEATURES = ("fine_type", "shown_columns", "words_reused", "reach_gap", "words_explained", "words_unexplained", "parts_asked", "parts_unasked", "link_mean", "link_min", *(f"link_{kind}" for kind in _KINDS.values()), "rule_exact", "rule_partial", "rule_prefix", *_FLAGS.values(), "form_prior", "decoder_score", "rank_inverse", "score_margin", "conditions", "class_agreement", "needs_asking", "open_similarity", *ALIGN_FEATURES)
 ROLE_MIN = 0.5
 SUPPORT_NOTE = "no_named_support"
 ASK_LOW = "low_confidence"
@@ -121,8 +122,8 @@ def answer_column(program: Program) -> Col | None:
     return None
 
 
-def features_of(verified: Verified, named: NamedReading, catalog: Catalog, *, rank: int, best_score: float) -> dict[str, float]:
-    """The named evidence of one candidate, rounded so a comparison never turns on a float's last bits."""
+def features_of(verified: Verified, named: NamedReading, catalog: Catalog, *, rank: int, best_score: float, alignment: Alignment | None = None) -> dict[str, float]:
+    """The named evidence of one candidate, rounded so a comparison never turns on a float's last bits. alignment: the candidate's word-to-part alignment, whose three sums join the evidence."""
     program = verified.scored.program
     words = named.read.words
     content = [at for at, word in enumerate(words) if stem(word) not in _STOP and not is_stated_word(word)]
@@ -179,6 +180,8 @@ def features_of(verified: Verified, named: NamedReading, catalog: Catalog, *, ra
         name = _FLAGS.get(item.name)
         if name is not None and item.holds:
             features[name] = 1.0
+    if alignment is not None:
+        features.update(alignment.features())
     return {name: round(float(value), 4) for name, value in features.items()}
 
 
@@ -192,13 +195,14 @@ class Candidate:
     terms: tuple[FeatureTerm, ...]
     needs_asking: bool
     rank: int
+    alignment: Alignment | None = None
 
     @property
     def rows(self) -> tuple[tuple, ...]:
         return self.verified.result.rows if self.verified.result is not None else ()
 
     def record(self) -> dict:
-        return {"probability": self.probability, "logit": round(self.logit, 4), "needs_asking": self.needs_asking, "terms": [term.record() for term in self.terms], "rank": self.rank}
+        return {"probability": self.probability, "logit": round(self.logit, 4), "needs_asking": self.needs_asking, "terms": [term.record() for term in self.terms], "rank": self.rank, **({"alignment": self.alignment.record()} if self.alignment is not None else {})}
 
 
 @dataclass(frozen=True, slots=True)
@@ -210,15 +214,17 @@ class Decision:
     reasons: tuple[str, ...]
 
 
-def score_candidates(verified: Sequence[Verified], named: NamedReading, catalog: Catalog, chooser: Chooser) -> list[Candidate]:
-    """Every candidate scored, best first: rounded logit, then the decoder's order. Stable: no tie depends on anything but those two."""
+def score_candidates(verified: Sequence[Verified], named: NamedReading, catalog: Catalog, chooser: Chooser, aligner: Aligner | None = None, *, terms: bool = False) -> list[Candidate]:
+    """Every candidate scored, best first: rounded logit, then the decoder's order. Stable: no tie depends on anything but those two. aligner: read each candidate's parts against the question's words (each part read once for all candidates); terms: keep every word's named terms for display."""
     best = verified[0].scored.score if verified else 0.0
+    builder = aligner.builder(named, catalog) if aligner is not None else None
     out = []
     for rank, item in enumerate(verified):
-        features = features_of(item, named, catalog, rank=rank, best_score=best)
-        logit, terms = chooser.logit(features)
+        alignment = aligner.align(item.scored.program, builder, catalog, terms=terms) if aligner is not None else None
+        features = features_of(item, named, catalog, rank=rank, best_score=best, alignment=alignment)
+        logit, kept = chooser.logit(features)
         logit = round(logit, 4)
-        out.append(Candidate(item, features, logit, chooser.probability(logit, form_of(item.scored.program)), terms, bool(features["needs_asking"]), rank))
+        out.append(Candidate(item, features, logit, chooser.probability(logit, form_of(item.scored.program)), kept, bool(features["needs_asking"]), rank, alignment))
     out.sort(key=lambda candidate: (-candidate.logit, candidate.rank))
     return out
 

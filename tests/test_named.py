@@ -782,6 +782,55 @@ def test_units_config_defaults_are_the_readers() -> None:
     assert len(targets_of(fake_catalog(0).tables[0], UnitsConfig(value_cap=2))) < len(targets_of(fake_catalog(0).tables[0], UnitsConfig()))
 
 
+# ---------------------------------------------------------------------------------------------- the alignment
+def _aligned_case():
+    from engine.named.align import prior_weights
+    engine = _engine()
+    engine.aligner = None
+    prepared = engine.prepare(fake_catalog(0))
+    named = engine.read("total volume mmbtu", prepared)
+    weights = prior_weights({"exact": 2.0, "prefix": 1.0, "stated": 1.0})
+    return engine, prepared, named, weights
+
+
+def test_alignment_gives_each_word_one_part_and_shows_its_terms() -> None:
+    from engine.named.align import Aligner, parts_of
+    engine, prepared, named, weights = _aligned_case()
+    aligner = Aligner(weights, engine.names, engine.weights.coordinates)
+    builder = aligner.builder(named, prepared.catalog)
+    asked = Agg(SUM, Col("t0", 2), "t0")
+    other = Agg(SUM, Col("t0", 3), "t0")
+    one, two = aligner.align(asked, builder, prepared.catalog, terms=True), aligner.align(other, builder, prepared.catalog, terms=True)
+    assert one.total > two.total                     # the header the question names beats a sibling column nobody named
+    assert len({word.at for word in one.words}) == len(one.words)
+    parts = set(parts_of(asked, prepared.catalog))
+    assert all(word.part is None or word.part in parts for word in one.words)
+    assert {part for part, _ in one.unasked} == parts - {word.part for word in one.words if word.part}
+    for word in one.words:                         # a word's score is its named terms, nothing else
+        assert abs(word.score - sum(weight * value for _, weight, value in word.terms)) < 1e-3
+    assert one.total == round(one.aligned + one.nothing + one.unasked_total, 4)
+    assert aligner.align(asked, aligner.builder(named, prepared.catalog), prepared.catalog).features() == one.features()
+
+
+def test_training_scores_are_the_serving_alignment() -> None:
+    import torch as _torch
+    from engine.named.align import compile_weights, parts_of
+    from training.named.align import Collected, _Tensors, _scores, _theta_of, CANDIDATE_FEATURES
+    from engine.named.align import EvidenceBuilder, align_parts
+    engine, prepared, named, weights = _aligned_case()
+    builder = EvidenceBuilder(named, prepared.catalog, engine.weights.coordinates, engine.names)
+    programs = [Agg(SUM, Col("t0", 2), "t0"), Agg(SUM, Col("t0", 3), "t0"), Show("t0", (Col("t0", 0),), ())]
+    names = sorted({name for program in programs for name in parts_of(program, prepared.catalog)})
+    rows = [{"parts": tuple(names.index(name) for name in parts_of(program, prepared.catalog)), "features": {}, "right": at == 0, "answer": "x" if at else "y", "rank": at} for at, program in enumerate(programs)]
+    question = Collected("q", "f", builder.question_evidence(), [builder.part(name) for name in names], rows)
+    tensors = _Tensors(question, _torch, len(engine.names))
+    assert tensors.ok and tensors.candidate.shape[1] == len(CANDIDATE_FEATURES)
+    score, _, _ = _scores(tensors, _theta_of(weights, engine.names, _torch), _torch)
+    compiled = compile_weights(weights, engine.names)
+    served = [align_parts(question.question, [question.parts[at] for at in row["parts"]], compiled).total for row in rows]
+    assert np.allclose(score.detach().numpy(), served, atol=1e-3)
+
+
 def main() -> int:
     tests = [(name, item) for name, item in globals().items() if name.startswith("test_") and callable(item)]
     failed = 0
