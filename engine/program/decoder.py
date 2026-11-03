@@ -435,11 +435,11 @@ class _Search:
         return sum(self.s(name) for name in sorted({name for atom in atoms for name in atom.names}))
 
     def reading_atoms(self, table: CatalogTable, index: TableIndex) -> list[Atom]:
-        """Conditions only a reading can state: a contained phrase, a period, a stated number, a blank, a value no cell list holds, a label or band read in part."""
+        """Conditions a reading states: a value, a phrase, a label or a band it holds a score for, however low, since it writes one only where a word reaches it; a period, a stated number, a blank where it scores them."""
         out: list[Atom] = []
         prefix = f"{table.id}."
         not_equal = self.reading.score(coordinate(SLOT_COMPARISON, NE)) > 0
-        for name in self.positive(SLOT_CONTAINS):
+        for name in self.by_slot.get(SLOT_CONTAINS, ()):
             body = name.split(":", 1)[1]
             if not body.startswith(prefix):
                 continue
@@ -449,7 +449,7 @@ class _Search:
             if head and tail in ANCHORS:
                 text, anchor = head, tail
             out.append(index.atom_of(Contains(Col(table.id, int(position)), text, anchor), int(position)))
-        for name in self.positive(SLOT_VALUE):
+        for name in self.by_slot.get(SLOT_VALUE, ()):
             body = name.split(":", 1)[1]
             if not body.startswith(prefix):
                 continue
@@ -464,7 +464,7 @@ class _Search:
                 out.append(index.atom_of(Equals(Col(table.id, position), value), position))
                 if not_equal:
                     out.append(index.atom_of(NotEquals(Col(table.id, position), value), position))
-        for name in self.positive(SLOT_LINE):
+        for name in self.by_slot.get(SLOT_LINE, ()):
             body = name.split(":", 1)[1]
             owner, _, rest = body.partition("=")
             if owner != table.id:
@@ -474,7 +474,7 @@ class _Search:
             if tail in PRINTED_ROLES and "=" in rest:
                 text, role = head, tail
             out.append(index.atom_of(OnLine(table.id, text, role), _LINE_GROUP))
-        for name in self.positive(SLOT_SECTION):
+        for name in self.by_slot.get(SLOT_SECTION, ()):
             owner, _, text = name.split(":", 1)[1].partition("=")
             if owner == table.id:
                 out.append(index.atom_of(InSection(table.id, text, text not in index.bands), _SECTION_GROUP))
