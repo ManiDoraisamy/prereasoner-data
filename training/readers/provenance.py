@@ -4,6 +4,7 @@ EVALUATION_SOURCES = frozenset({"dev", "test", "syn_dev", "syn_test"})
 SPIDER_TRAIN_SETS = ("train_spider", "train_others")
 ALLOWED_READER_SOURCES = frozenset({
     *SPIDER_TRAIN_SETS, "bird_train", "syn_train", "synsql", "reworded", "lookup", "structure",
+    "factory", "anchor",                           # the clean-sheet factory's train-side gold and anchors (sheet_gold.py)
 })
 
 

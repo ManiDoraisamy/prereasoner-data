@@ -65,7 +65,9 @@ def readers_share(readings, readers):
 
 
 class ReadingSearch:
-    def __init__(self, directory=READERS_DIR):
+    def __init__(self, directory=READERS_DIR, rescore=True):
+        """``rescore`` False loads the readers alone, for a caller that decides by its own named evidence
+        (engine/named/proposals.py): ``pool`` then serves and ``rescore`` refuses."""
         from transformers import AutoTokenizer
 
         from engine.readers import models
@@ -77,6 +79,9 @@ class ReadingSearch:
                         json.loads((path / "reader.json").read_text(encoding="utf-8")).get("anchored", True)
                         if (path / "reader.json").exists() else True)
                        for path in sorted(directory.glob("stage2_*"))]
+        if not rescore:
+            self.rescorers, self.choice = [], None
+            return
         self.rescorers = [models.load("rescorer", path) for path in sorted(directory.glob("rescorer_*"))]
         self.choice = json.loads((directory / "choice.json").read_text(encoding="utf-8"))
         computed = choice_feature_names(path.name for path in sorted(directory.glob("rescorer_*")))
@@ -185,6 +190,8 @@ class ReadingSearch:
         The re-scorers' logits depend only on the question and what each candidate says and returned, so a
         request's second selection over the same pool (the compose probe's, then the delegate's) reads them once
         (``_SCORES``: each candidate's logits, one per re-scorer)."""
+        if self.choice is None:
+            raise ValueError("these readers were loaded without their re-scorers and choice")
         ran = [i for i, shape in enumerate(shapes) if shape is not None]
         records = [{"read_as": pool[i].evidence[0], "rows": shapes[i][0], "columns": shapes[i][1],
                     "score": pool[i].score, "rank": dict(pool[i].features).get("rank", 0.0)} for i in ran]

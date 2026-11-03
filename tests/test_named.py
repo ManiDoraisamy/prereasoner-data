@@ -831,6 +831,97 @@ def test_training_scores_are_the_serving_alignment() -> None:
     assert np.allclose(score.detach().numpy(), served, atol=1e-3)
 
 
+# ------------------------------------------------------------------------------------------ the readers' proposals
+def _readable_programs(catalog):
+    from engine.program.language import InPeriod, Rank, period_from_name
+    from engine.program.names import COUNT, ENTITY_GROUP, ENTITY_LINE, HIGHEST, LOWEST
+    from engine.program.semantics import fold
+    t = catalog.tables[0].id
+    party, region, volume, price, day = Col(t, 0), Col(t, 1), Col(t, 2), Col(t, 3), Col(t, 4)
+    name = next(text for text in catalog.tables[0].texts[0] if text)
+    place = next(text for text in catalog.tables[0].texts[1] if text)
+    from engine.program.language import Compare, Contains, Equals
+    return [Agg(SUM, volume, t, (Equals(party, fold(name)),)), Agg(COUNT, None, t, (Contains(region, fold(place[:3])),)), Agg(SUM, price, t, (Compare(volume, ">=", 500.0),)),
+            Show(t, (region,), (Equals(party, fold(name)),)), Show(t, (party,), (), listing=True), Rank(ENTITY_GROUP, t, HIGHEST, (), measure=volume, key=region, function=SUM),
+            Rank(ENTITY_GROUP, t, LOWEST, (), key=party, function=COUNT), Rank(ENTITY_LINE, t, HIGHEST, (), measure=price, shown=(party,)), Agg(SUM, volume, t, (InPeriod(day, period_from_name("2001-03")),))]
+
+
+def test_a_program_reads_as_readings_that_build_back_to_it() -> None:
+    """The readers' gold: a program lowers to its typed query, rewritten onto the sheet's view, and the readings of that query build back to the same program; each runs to the same answer on the view as the program does on its sheet."""
+    from engine.named.proposals import program_key, program_of, program_readings, sheet_view
+    from engine.readers.readings import build
+    from engine.sql_ast import render_query
+    from spider.probe.evalutil import build_mem_db
+    catalog = fake_catalog(1)
+    view = sheet_view(catalog)
+    tables = RequestTables(catalog)
+    database = build_mem_db([{"name": table, "columns": [column.ref.name for column in view.graph.by_table[table]], "rows": [list(row) for row in zip(*(column.values for column in view.graph.by_table[table]))]} for table in view.graph.tables])
+    for program in _readable_programs(catalog):
+        readings = program_readings(program, view)
+        query = build(readings, view.graph)
+        assert program_key(program_of(query, view)) == program_key(program), program
+        if isinstance(program, Agg):
+            mine = [round(float(cell), 6) for row in run(program, tables).rows for cell in row]
+            theirs = [round(float(cell), 6) for row in database.execute(render_query(query)).fetchall() for cell in row]
+            assert mine == theirs, (program, mine, theirs)
+    assert view.signature == sheet_view(catalog).signature
+
+
+def test_what_the_readings_cannot_hold_is_refused() -> None:
+    from engine.named.proposals import program_readings, sheet_view
+    from engine.program.language import Calc, IsBlank, RowArithmetic
+    from engine.readers.readings import NotReadable
+    catalog = fake_catalog(0)
+    view = sheet_view(catalog)
+    t = catalog.tables[0].id
+    for program in (Calc(Agg(SUM, Col(t, 2), t), "-", Agg(SUM, Col(t, 3), t)), Agg(SUM, Col(t, 2), t, (IsBlank(Col(t, 1)),)), Agg(SUM, RowArithmetic(Col(t, 2), "*", Col(t, 3)), t), Agg(SUM, Col(t, 2), t, magnitude=True)):
+        try:
+            program_readings(program, view)
+        except NotReadable:
+            continue
+        raise AssertionError(f"read: {program}")
+
+
+class _FixedProposer:
+    """A stand-in for the readers: proposes the programs it is given, at the scores it is given."""
+
+    def __init__(self, proposals):
+        self.proposals = proposals
+
+    def propose(self, question, view):
+        return self.proposals
+
+
+def test_the_readers_propose_and_their_score_is_one_named_term() -> None:
+    """A reader's program joins the pool after the decoder's, verified, its probability one term of the chooser's logit and shown with the rest; a program both list is listed once; a chooser that does not weigh the term ranks as before."""
+    from engine.named.chooser import READER_SCORE
+    from engine.named.proposals import Proposal, program_key
+    engine = _engine()
+    catalog = fake_catalog(0)
+    t = catalog.tables[0].id
+    plain = engine.prepare(catalog)
+    named = engine.read("total volume", plain)
+    base = engine.pool("total volume", plain, named)
+    decoder_first = base.verified[0].scored.program
+    novel = next(program for program in _readable_programs(catalog) if program_key(program) not in {program_key(item.scored.program) for item in base.verified})
+    engine.proposer = _FixedProposer((Proposal(novel, 0.9, 0), Proposal(decoder_first, 0.4, 1)))
+    prepared = engine.prepare(catalog)
+    assert prepared.view is not None and prepared.view.table_ids[prepared.view.names[t]] == t
+    pool = engine.pool("total volume", prepared, named)
+    assert pool.decoded == len(base.verified) and len(pool.verified) == len(base.verified) + 1
+    assert program_key(pool.verified[-1].scored.program) == program_key(novel) and pool.verified[-1].result is not None
+    weighted = Chooser({**PRIOR.weights, READER_SCORE: 2.0}, PRIOR.bias)
+    scored = {program_key(candidate.verified.scored.program): candidate for candidate in engine.score(pool, named, prepared, weighted)}
+    assert scored[program_key(novel)].proposed == "reader" and scored[program_key(decoder_first)].proposed == "both"
+    assert scored[program_key(novel)].features[READER_SCORE] == 0.9 and scored[program_key(decoder_first)].features[READER_SCORE] == 0.4
+    term = next(term for term in scored[program_key(novel)].terms if term.feature == READER_SCORE)
+    assert term.value == 1.8 and abs(sum(term.value for term in scored[program_key(novel)].terms) + weighted.bias - scored[program_key(novel)].logit) < 1e-3
+    unweighted = [candidate.verified.scored.program for candidate in engine.score(pool, named, prepared, PRIOR) if candidate.proposed != "reader"]
+    assert unweighted == [candidate.verified.scored.program for candidate in engine.score(base, named, plain, PRIOR)]
+    outcome = engine.ask("total volume", prepared)
+    assert {"read", "decode", "propose", "verify", "choose", "total"} <= set(outcome.seconds)
+
+
 def main() -> int:
     tests = [(name, item) for name, item in globals().items() if name.startswith("test_") and callable(item)]
     failed = 0

@@ -28,19 +28,18 @@ import numpy as np
 
 from engine.named.align import DENSE, GROUPS, LINKED, NOTHING, ALIGN_FEATURES, AlignWeights, EvidenceBuilder, PartEvidence, QuestionEvidence, align_parts, compile_weights, parts_of, prior_weights
 from engine.named.bundle import BUNDLE_META, BUNDLE_STATE
-from engine.named.chooser import PRIOR, Chooser, score_candidates
+from engine.named.chooser import PRIOR, Chooser
 from engine.named.names import NameSet
 from engine.named.pipeline import NamedEngine, load_bundle
 from engine.program.language import Col, form_of
 from engine.program.names import coordinate, SLOT_FILTER, SLOT_KEY, SLOT_LINE, SLOT_MEASURE, SLOT_SECTION, SLOT_SHOWN, SLOT_VALUE
 from engine.program.output import read_as
 from engine.program.semantics import fold
-from engine.program.verifier import verify
 from training.named.choose import CandidateRecord, answer_key, fit_conditional, fold_report, groups_of, calibrated, support_of
 from training.named.data import family_share
 
 # What the chooser reads beside the alignment: the verifier's evidence and the program's own named facts. The summary link and word features (words_explained, parts_asked, link_*, rule_*) are what the alignment replaces.
-CANDIDATE_FEATURES = ("fine_type", "shown_columns", "words_reused", "reach_gap", "type_agrees", "shape_agrees", "printed_tie", "bare_zero", "empty", "failed", "row_dump", "many_rows", "wrong_kind", "row_count_for_amount", "fraction_for_count", "too_large_for_share", "filter_did_nothing", "repeated_lines", "adds_twice", "form_prior", "decoder_score", "rank_inverse", "conditions", "class_agreement", "needs_asking")
+CANDIDATE_FEATURES = ("fine_type", "shown_columns", "words_reused", "reach_gap", "type_agrees", "shape_agrees", "printed_tie", "bare_zero", "empty", "failed", "row_dump", "many_rows", "wrong_kind", "row_count_for_amount", "fraction_for_count", "too_large_for_share", "filter_did_nothing", "repeated_lines", "adds_twice", "form_prior", "decoder_score", "rank_inverse", "conditions", "class_agreement", "needs_asking", "reader_score")
 CHOOSER_FEATURES = (*ALIGN_FEATURES, *CANDIDATE_FEATURES)
 GOLD_WEIGHT = 0.5
 L2_DENSE = 1e-3
@@ -89,9 +88,8 @@ def collect(items: list, engine: NamedEngine, *, k: int = DECODE_K, progress: bo
     for at, item in enumerate(gold_items):
         prepared = runner.prepare(item)
         named = engine.read(item.question, prepared)
-        decoded = prepared.decoder.decode(named.reading, k=k, weights=engine.slot_weights)
-        verified = verify(decoded.programs, prepared.tables, named.expected, top=k)
-        candidates = score_candidates(verified, named, prepared.catalog, PRIOR)
+        pool = engine.pool(item.question, prepared, named, k=k)
+        candidates = engine.score(pool, named, prepared, PRIOR)
         builder = EvidenceBuilder(named, prepared.catalog, engine.weights.coordinates, engine.names)
         names: dict[str, int] = {}
         rows = []
@@ -103,7 +101,7 @@ def collect(items: list, engine: NamedEngine, *, k: int = DECODE_K, progress: bo
                     names[name] = -1
             result = candidate.rows
             right = bool(result) and bool(item.grade(list(result)) or (item.alternate is not None and item.alternate(list(result))))
-            rows.append({"parts": parts, "features": {name: candidate.features.get(name, 0.0) for name in CANDIDATE_FEATURES if candidate.features.get(name, 0.0)}, "right": right, "rank": candidate.rank, "form": form_of(program), "answer": answer_key(result), "support": support_of(program, named, prepared.catalog), "read_as": read_as(program, prepared.catalog)})
+            rows.append({"parts": parts, "features": {name: candidate.features.get(name, 0.0) for name in CANDIDATE_FEATURES if candidate.features.get(name, 0.0)}, "right": right, "rank": candidate.rank, "form": form_of(program), "answer": answer_key(result), "support": support_of(program, named, prepared.catalog), "read_as": read_as(program, prepared.catalog), "proposed": candidate.proposed})
         ordered = sorted(names)
         position = {name: at for at, name in enumerate(ordered)}
         parts = [builder.part(name) for name in ordered]
@@ -130,7 +128,7 @@ def candidate_records(collected: Sequence[Collected], weights: AlignWeights, nam
         for row in question.candidates:
             alignment = align_parts(question.question, [question.parts[at] for at in row["parts"]], compiled)
             features = {**row["features"], **{name: value for name, value in alignment.features().items() if value}}
-            out.append(CandidateRecord(question.id, question.family, row["form"], features, {}, row["right"], row["rank"], row["answer"], row["support"]))
+            out.append(CandidateRecord(question.id, question.family, row["form"], features, {}, row["right"], row["rank"], row["answer"], row["support"], row.get("proposed", "decoder")))
     return out
 
 

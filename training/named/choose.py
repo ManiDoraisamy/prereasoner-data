@@ -19,7 +19,7 @@ from typing import Sequence
 
 import numpy as np
 
-from engine.named.chooser import ANSWER, ASK, ASK_NOTHING, FEATURES, PRIOR, Chooser, reasons_to_ask, score_candidates
+from engine.named.chooser import ANSWER, ASK, ASK_NOTHING, FEATURES, PRIOR, Chooser, reasons_to_ask
 from engine.named.reader import unsupported_links
 from engine.named.bundle import BUNDLE_META, BUNDLE_STATE
 from engine.named.pipeline import NamedEngine, load_bundle
@@ -27,7 +27,6 @@ from engine.program.language import TOGETHER, coordinates, form_of
 from engine.program.execute import run
 from engine.program.names import FORMS, SLOTS, slot_of
 from engine.program.scoring import Reading, Weights
-from engine.program.verifier import verify
 from training.named.data import family_share
 
 L2 = 1.0
@@ -58,6 +57,7 @@ class CandidateRecord:
     rank: int
     answer: str = ""
     support: int = SUPPORT_NO_LINKS
+    proposed: str = "decoder"        # who listed it: decoder, reader, or both
 
     @property
     def ran(self) -> bool:
@@ -86,7 +86,7 @@ def records_of(candidates, item, named, catalog) -> list["CandidateRecord"]:
         for term in candidate.verified.scored.contributions:
             slots[term.slot] = slots.get(term.slot, 0.0) + term.score
         right = bool(rows) and (item.grade(list(rows)) or (item.alternate is not None and item.alternate(list(rows))))
-        out.append(CandidateRecord(item.id, item.family, form_of(candidate.verified.scored.program), {name: value for name, value in candidate.features.items() if value}, slots, right, candidate.rank, answer_key(rows), support_of(candidate.verified.scored.program, named, catalog)))
+        out.append(CandidateRecord(item.id, item.family, form_of(candidate.verified.scored.program), {name: value for name, value in candidate.features.items() if value}, slots, right, candidate.rank, answer_key(rows), support_of(candidate.verified.scored.program, named, catalog), candidate.proposed))
     return out
 
 
@@ -196,9 +196,8 @@ def collect(items: list, engine: NamedEngine, *, k: int = 50, progress: bool = F
             continue
         prepared = runner.prepare(item)
         named = engine.read(item.question, prepared)
-        decoded = prepared.decoder.decode(named.reading, k=k, weights=engine.slot_weights)
-        verified = verify(decoded.programs, prepared.tables, named.expected, top=k)
-        out.extend(records_of(score_candidates(verified, named, prepared.catalog, PRIOR), item, named, prepared.catalog))
+        pool = engine.pool(item.question, prepared, named, k=k)
+        out.extend(records_of(engine.score(pool, named, prepared, PRIOR), item, named, prepared.catalog))
         if progress and (at + 1) % 50 == 0:
             print(f"collected {at + 1} of {len(items)}", flush=True)
     runner.close()

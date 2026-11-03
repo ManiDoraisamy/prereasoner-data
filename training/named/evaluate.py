@@ -5,6 +5,8 @@ Writes a report with the code commit, dirty state, dataset identity, bundle hash
 usage: python -m training.named.evaluate --set val --bundle <dir> [--limit N] [--survival 200] [--modes named,named_plus_open] [--folds 5] --out <report.json>
        python -m training.named.evaluate --set studied|messy --bundle <dir> --chooser <the validation report> --out <report.json>
        --words: the floor, the reading from words alone with no model
+       --readers <dir>: today's readers propose beside the decoder (engine/named/proposals.py), over the readers the bundle names; --reader-cache <file.pkl.gz> keeps their proposals per question and sheet, so a second run reads none again
+The funnel counts, of gold questions, a right program listed, ranked first by the chooser and served; and the same through the chooser over only the decoder's candidates and over only the readers'.
 On validation, --folds decides each question by a chooser calibrated on the other folds (training/named/choose.py:cross_fit); the fit of all folds is written beside the report for the sets read after it.
 Each question's misses are put in a stage: compile (the gold program itself no longer gives the gold answer), links (a gold link outside the top 10), decode (the gold links stand and no right program reached the top 50), verify (the gold program is listed and its result is not graded right), choose (a right candidate was listed and not answered with).
 """
@@ -312,6 +314,29 @@ def peak_gb() -> float:
     return round(getattr(info, "peak_wset", info.rss) / 1024 ** 3, 3)
 
 
+FUNNEL_POOLS = {"all": ("decoder", "reader", "both"), "decoder_only": ("decoder", "both"), "reader_only": ("reader", "both")}
+
+
+def funnel(items: list[Item], held: list[list], chooser_of: Callable[[Item], Chooser]) -> dict:
+    """Of gold questions: a right program listed, ranked first by the chooser, served right, served wrong; over the whole pool and over each proposer's own candidates, each question decided by the chooser it is decided by."""
+    out = {}
+    for name, sources in FUNNEL_POOLS.items():
+        row = {"n": 0, "listed": 0, "first": 0, "served": 0, "served_wrong": 0}
+        for item, group in zip(items, held):
+            if item.label != "gold":
+                continue
+            kept = [record for record in group if record.proposed in sources]
+            row["n"] += 1
+            row["listed"] += any(record.right for record in kept)
+            ranked = sorted(((round(chooser_of(item).logit(record.features)[0], 4), record) for record in kept if record.ran), key=lambda pair: (-pair[0], pair[1].rank))
+            row["first"] += bool(ranked) and ranked[0][1].right
+            kind, best, _ = decision_of(kept, chooser_of(item))
+            row["served"] += kind == ANSWER and best is not None and best.right
+            row["served_wrong"] += kind == ANSWER and best is not None and not best.right
+        out[name] = row
+    return out
+
+
 def run_mode(items: list[Item], engine: NamedEngine | None, mode: str, *, progress: bool = False, folds: int = 0, keep_candidates: str | None = None) -> dict:
     """Every item through one mode. Counts, by label and by form, the times, the links; per question only its id and result. With folds, each question is decided by a chooser calibrated on the other folds."""
     runner = Runner(engine)
@@ -366,11 +391,15 @@ def run_mode(items: list[Item], engine: NamedEngine | None, mode: str, *, progre
     if keep_candidates and held:
         with gzip.open(keep_candidates, "wb") as sink:
             pickle.dump(held, sink, protocol=4)
+    if held:
+        report_funnel = funnel(items, held, (lambda item: choosers[fold_of(item.family, folds)]) if choosers is not None else (lambda item: engine.chooser))
     for record, group in zip(records, held):
         if record["label"] == "gold" and record["result"] != RIGHT:
             record["stage"] = lost.get(record["id"], "choose")
     all_ranks = [rank for ranks in link_ranks.values() for rank in ranks]
     report = {"mode": mode, "by_label": {}, "by_form": {}, "p50_ms": percentile(times, 50), "p99_ms": percentile(times, 99), "stages_p50_ms": {stage: percentile(values, 50) for stage, values in stages.items()}, "index_seconds_p50": percentile(runner.index_seconds, 50), "index_seconds_p99": percentile(runner.index_seconds, 99), "index_kb_p50": round(percentile(runner.index_bytes, 50) / 1024, 1) if runner.index_bytes else None, "workbooks_indexed": len(runner.index_seconds), "link_top10": round(sum(rank < 10 for rank in all_ranks) / len(all_ranks), 4) if all_ranks else None, "links": len(all_ranks), "link_top10_by_kind": {kind: {"n": len(ranks), "top10": round(sum(rank < 10 for rank in ranks) / len(ranks), 4)} for kind, ranks in sorted(link_ranks.items())}, "peak_gb": peak_gb(), "records": records, "digest": digest.hexdigest()}
+    if held:
+        report["funnel"] = report_funnel
     if listed_at:
         report["right_listed"] = {"n": len(listed_at), **{f"top{cut}": sum(0 <= at < cut for at in listed_at) for cut in (1, 3, 5, 10, 20, 50)}}
     answered = [record for record in records if record["kind"] == ANSWER]
@@ -441,9 +470,26 @@ def provenance(args: argparse.Namespace, items: list[Item]) -> dict:
         for name in ("reader.pt", "named_bundle.json"):
             digest.update((Path(args.bundle) / name).read_bytes())
         out["bundle_sha256"] = digest.hexdigest()
+    if getattr(args, "readers", None):
+        out["readers"] = readers_identity(args.readers)
     if args.set == "val":
         with open(f"{FACTORY_OUT}val.jsonl", "rb") as source:
             out["val_jsonl_sha256"] = hashlib.sha256(source.read()).hexdigest()
+    return out
+
+
+def readers_identity(folder: str) -> dict:
+    """A readers folder's identity: each model file's sha256 and each reader's anchoring."""
+    out = {"folder": str(folder)}
+    for path in sorted(Path(folder).glob("*/model.pt")):
+        digest = hashlib.sha256()
+        with open(path, "rb") as source:
+            for block in iter(lambda: source.read(1 << 24), b""):
+                digest.update(block)
+        out[path.parent.name] = digest.hexdigest()
+        reader = path.parent / "reader.json"
+        if reader.exists():
+            out[f"{path.parent.name}_reader"] = json.loads(reader.read_text(encoding="utf-8"))
     return out
 
 
@@ -458,6 +504,8 @@ def main() -> None:
     parser.add_argument("--folds", type=int, default=0, help="decide each question by a chooser calibrated on the other folds")
     parser.add_argument("--chooser", help="a validation report, whose fit of all folds decides, per mode, over the bundle's chooser")
     parser.add_argument("--keep-candidates", action="store_true", help="write every candidate's evidence beside the report, to fit again without reading")
+    parser.add_argument("--readers", help="a folder of today's readers to propose beside the decoder (default: the bundle's)")
+    parser.add_argument("--reader-cache", help="a .pkl.gz of the readers' proposals, read first and written back")
     parser.add_argument("--out", required=True)
     args = parser.parse_args()
     items = load_factory_set("val", limit=args.limit) if args.set == "val" else load_messy() if args.set == "messy" else load_studied()
@@ -469,7 +517,12 @@ def main() -> None:
     if not args.words:
         if not args.bundle:
             parser.error("--bundle, or --words")
-        engine = load_bundle(args.bundle)
+        engine = load_bundle(args.bundle, readers=args.readers)
+        if engine.proposer is not None and not args.readers:
+            report["provenance"]["readers"] = readers_identity(engine.proposer.directory)
+        if engine.proposer is not None and args.reader_cache and os.path.exists(args.reader_cache):
+            with gzip.open(args.reader_cache, "rb") as source:
+                engine.proposer.cache.update(pickle.load(source))
         report["provenance"]["torch_threads"] = torch.get_num_threads()
         report["provenance"]["machine"] = {"logical_cores": psutil.cpu_count(), "memory_gb": round(psutil.virtual_memory().total / 1024 ** 3, 1), "cpu_percent_at_start": psutil.cpu_percent(interval=1.0), "note": "the development machine, shared with other work, not Cloud Run"}
     bundle_chooser = engine.chooser if engine is not None else None
@@ -486,8 +539,12 @@ def main() -> None:
         row["survival"] = survival
         row["gate_a"] = gate_a(row, survival)
         report["modes"][mode] = row
-        summary = {key: row.get(key) for key in ("mode", "by_label", "p50_ms", "p99_ms", "stages_p50_ms", "index_seconds_p50", "index_seconds_p99", "index_kb_p50", "link_top10", "link_top10_by_kind", "peak_gb", "survival", "gate_a", "right_listed", "answers", "stages_of_misses", "digest")}
+        summary = {key: row.get(key) for key in ("mode", "by_label", "p50_ms", "p99_ms", "stages_p50_ms", "index_seconds_p50", "index_seconds_p99", "index_kb_p50", "link_top10", "link_top10_by_kind", "peak_gb", "survival", "gate_a", "right_listed", "funnel", "answers", "stages_of_misses", "digest")}
         print(json.dumps(summary, sort_keys=True), flush=True)
+        if engine is not None and engine.proposer is not None and args.reader_cache:
+            with gzip.open(args.reader_cache + ".tmp", "wb") as sink:
+                pickle.dump(engine.proposer.cache, sink, protocol=4)
+            os.replace(args.reader_cache + ".tmp", args.reader_cache)
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     Path(args.out).write_text(json.dumps(report, indent=0, sort_keys=True, default=str) + "\n", encoding="utf-8", newline="\n")
 

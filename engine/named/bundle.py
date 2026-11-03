@@ -1,4 +1,4 @@
-"""A bundle: a reader's numbers as JSON (the chooser's, and the alignment's weights under "align" where a bundle has them), its tensors as a state dict, in one directory. training/named writes candidates; promotion to the runtime is a separate, approved act.
+"""A bundle: a reader's numbers as JSON (the chooser's, the alignment's weights under "align" and the readers that propose beside the decoder under "readers" where a bundle has them), its tensors as a state dict, in one directory. training/named writes candidates; promotion to the runtime is a separate, approved act.
 
 The backbone's frozen word table stays out of a bundle: it is the named base model's, and a third to two thirds of the encoder's bytes.
 """
@@ -37,6 +37,7 @@ class Bundle:
     slot_weights: Weights
     reader_id: str
     align: AlignWeights | None = None
+    readers: str | None = None          # a folder of today's readers that propose beside the decoder (engine/named/proposals.py); its chooser weighs their score
 
 
 def write_bundle(folder: str | Path, backbone: TextBackbone, reader: NamedReader, names: NameSet, config: ReaderConfig, weights: LinkWeights, *, chooser: Chooser | None = None, slot_weights: Weights | None = None, signatures: ClassSignatures | None = None, record: dict | None = None) -> None:
@@ -79,7 +80,8 @@ def read_bundle(folder: str | Path, *, backbone: TextBackbone | None = None) -> 
     if any(not name.startswith("raw_") for name in fit.missing_keys) or fit.unexpected_keys:
         raise ValueError(f"a bundle's state does not fit its reader: {fit}")
     align = AlignWeights.from_record(document["align"]) if document.get("align") else None
-    return Bundle(backbone, reader, names, config, LinkWeights.from_record(document["weights"]), Chooser.from_record(document["chooser"]), ClassSignatures(document.get("signatures") or {}), Weights(dict(document["slot_weights"]), float(document.get("slot_bias", 0.0))), bundle_id(folder), align)
+    readers = (document.get("readers") or {}).get("folder")
+    return Bundle(backbone, reader, names, config, LinkWeights.from_record(document["weights"]), Chooser.from_record(document["chooser"]), ClassSignatures(document.get("signatures") or {}), Weights(dict(document["slot_weights"]), float(document.get("slot_bias", 0.0))), bundle_id(folder), align, readers)
 
 
 __all__ = ["BUNDLE_META", "BUNDLE_STATE", "Bundle", "bundle_id", "read_bundle", "write_bundle"]
