@@ -14,7 +14,6 @@ The weights are learned listwise over the decoder's own candidates (training/nam
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Mapping, Sequence
@@ -22,7 +21,7 @@ from typing import Mapping, Sequence
 import numpy as np
 
 from engine.named.links import SCALE, SUPPORT, is_stated_word
-from engine.named.names import NONE, WORD_ROLE_CLASSES, NameSet
+from engine.named.names import WORD_ROLE_CLASSES, NameSet
 from engine.program.catalog import Catalog
 from engine.program.index import index_of, stem, words_of
 from engine.program.language import TOGETHER, Program, coordinates, period_from_name

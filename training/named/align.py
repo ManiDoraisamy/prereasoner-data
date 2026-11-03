@@ -36,7 +36,7 @@ from engine.program.names import coordinate, SLOT_FILTER, SLOT_KEY, SLOT_LINE, S
 from engine.program.output import read_as
 from engine.program.semantics import fold
 from engine.program.verifier import verify
-from training.named.choose import CandidateRecord, answer_key, fit_conditional, fold_of, fold_report, groups_of, calibrated, support_of
+from training.named.choose import CandidateRecord, answer_key, fit_conditional, fold_report, groups_of, calibrated, support_of
 from training.named.data import family_share
 
 # What the chooser reads beside the alignment: the verifier's evidence and the program's own named facts. The summary link and word features (words_explained, parts_asked, link_*, rule_*) are what the alignment replaces.
