@@ -36,7 +36,7 @@ MIN_CALIBRATION = 30
 TARGET_WRONG = 0.12         # of all gold questions, on the folds that set a policy: Gate A's bar is 15% and a fold's estimate is not the bar's
 THRESHOLDS = tuple(round(0.05 * step, 2) for step in range(0, 20))
 MARGINS = (0.0, 0.1, 0.25, 0.5, 1.0, 1.5, 2.0, 3.0)
-BIAS_GRID = {"column": (0.0, 0.5, 1.0, 1.9), "value": (0.25, 0.75, 1.25, 2.2), "label": (0.25, 0.75, 1.5)}
+BIAS_GRID = {"column": (0.5, 1.0, 1.9), "value": (0.75, 1.25, 2.2), "label": (0.75, 1.5, 2.5)}
 WRONG_COSTS = (0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0, 8.0, 12.0)
 FOLDS = 5
 FOLD_SEED = 20261102
@@ -311,7 +311,7 @@ def biased(reading: Reading, held: dict[str, float], wanted: dict[str, float]) -
 
 
 def fit_biases(items: list, engine: NamedEngine, *, k: int = 50, progress: bool = False) -> tuple[dict[str, float], list[dict]]:
-    """What each kind of link must reach to read above nothing, on families the reader never trained on: the reader learned these against its own share of "links to nothing", which is the sampling's and not the questions', so they are set on what the decoder lists. Every grid point reads every question; a program runs once a question. By right answers in the top 5, then listed, then first."""
+    """What each kind of link must reach to read above nothing, on families the reader never trained on: the reader learned these against its own share of "links to nothing", which is the sampling's and not the questions', so they are set on what the decoder lists. Every grid point reads every question; a program runs once a question. By right answers first and in the top 5, then listed."""
     from training.named.evaluate import Runner
     runner = Runner(engine)
     grid = [{"column": column, "value": value, "label": label} for column in BIAS_GRID["column"] for value in BIAS_GRID["value"] for label in BIAS_GRID["label"]]
@@ -344,7 +344,7 @@ def fit_biases(items: list, engine: NamedEngine, *, k: int = 50, progress: bool 
         if progress and (at + 1) % 50 == 0:
             print(f"biases {at + 1} of {len(gold)}", flush=True)
     runner.close()
-    best = max(range(len(grid)), key=lambda at: (counts[at]["top5"], counts[at]["listed"], counts[at]["first"], -at))
+    best = max(range(len(grid)), key=lambda at: (counts[at]["top5"] + counts[at]["first"], counts[at]["listed"], -at))
     return {slot: grid[best][kind] for kind, slots in BIAS_SLOTS.items() for slot in slots}, [{**point, **row} for point, row in zip(grid, counts)]
 
 
