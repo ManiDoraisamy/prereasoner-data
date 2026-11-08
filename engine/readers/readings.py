@@ -17,7 +17,9 @@ about one schema item:
     per block   distinct, AND/OR between conditions, sort direction, limit, and whether the one shown aggregate is a
                 share of a whole: "share" names the conditions that make the part ([] or absent: no share)
 
-The builder adds nothing the readings do not say except the joins, which come from the schema's foreign-key graph.
+Blocks may carry an explicit ``root`` and ordered ``joins`` (table, kind, column pairs). These preserve which
+relationship is meant when two tables have several foreign keys. Item-reader blocks without these facts use the
+schema's foreign-key graph. An explicit binding is never replaced by a guessed path.
 ``readings_of`` turns a typed-AST query into readings, or raises NotReadable with the reason the form cannot hold it;
 ``build`` turns readings back into candidate queries.
 """
@@ -26,13 +28,15 @@ from __future__ import annotations
 from engine.readers.layout import HAVING_OPERATORS
 from engine.sql_ast import (
     DATE_PARTS, Aggregate, BinaryExpr, BooleanExpr, ColumnRef, Comparison, DatePart, ExistsPredicate, InPredicate,
-    Literal, Lower, OrderTerm, ScalarSubquery, SelectItem, SelectQuery, SetQuery, SQLType, Star,
+    Join, Literal, Lower, OrderTerm, ScalarSubquery, SelectItem, SelectQuery, SetQuery, SQLType, Star, validate_query,
 )
 
 AGGREGATES = ("plain", "COUNT", "SUM", "AVG", "MIN", "MAX")
 OPERATORS = ("=", "!=", ">", "<", ">=", "<=", "LIKE", "NOT LIKE", "IN", "NOT IN")
 STAR = "*"
 SUBQUERY = {"block": 1}
+MAX_EXPLICIT_JOINS = 6
+MAX_JOIN_PREDICATES = 4
 
 
 class NotReadable(Exception):
@@ -95,7 +99,7 @@ def _conditions(predicate, nested: list) -> tuple[str, list]:
     raise NotReadable(f"predicate:{type(predicate).__name__}")
 
 
-def _block(query, nested: list) -> dict:
+def _block(query, nested: list, include_joins=False) -> dict:
     if isinstance(query, SetQuery):
         raise NotReadable("set-inside-block")
     if not isinstance(query.from_table, str):
@@ -135,30 +139,38 @@ def _block(query, nested: list) -> dict:
         if distinct:
             raise NotReadable("distinct-aggregate-in-order")
         order.append([aggregate, column])
-    return {"tables": tables, "distinct": query.distinct, "select": select, "where": sorted(where, key=repr),
+    result = {"tables": tables, "distinct": query.distinct, "select": select, "where": sorted(where, key=repr),
             "conj": conj if len(where) > 1 else "AND", "group": sorted(_column(g) for g in query.group_by),
             "having": sorted(having, key=repr), "order": order,
             "dir": next(iter(directions)) if directions else None, "limit": query.limit}
+    if include_joins:
+        if len(query.joins) > MAX_EXPLICIT_JOINS or any(len(j.predicates) > MAX_JOIN_PREDICATES for j in query.joins):
+            raise NotReadable("join-profile-bound")
+        result.update(root=query.from_table, joins=[
+            {"table": join.table, "kind": join.kind,
+             "pairs": [[_column(left), _column(right)] for left, right in join.predicates]}
+            for join in query.joins])
+    return result
 
 
-def readings_of(query) -> dict:
-    """The readings of a typed-AST query: structure plus one or two blocks."""
+def readings_of(query, *, include_joins=False) -> dict:
+    """The readings of a typed AST; include exact relationship bindings when requested."""
     if isinstance(query, SetQuery):
         if isinstance(query.left, SetQuery) or isinstance(query.right, SetQuery):
             raise NotReadable("three-blocks")
         nested: list = []
-        left, right = _block(query.left, nested), _block(query.right, nested)
+        left, right = _block(query.left, nested, include_joins), _block(query.right, nested, include_joins)
         if nested:
             raise NotReadable("set-with-subquery")
         return {"structure": query.operator, "blocks": [left, right]}
     nested = []
-    outer = _block(query, nested)
+    outer = _block(query, nested, include_joins)
     if not nested:
         return {"structure": "single", "blocks": [outer]}
     if len(nested) > 1:
         raise NotReadable("two-subqueries")
     inner_nested: list = []
-    inner = _block(nested[0], inner_nested)
+    inner = _block(nested[0], inner_nested, include_joins)
     if inner_nested:
         raise NotReadable("three-blocks")
     return {"structure": "NESTED", "blocks": [outer, inner]}
@@ -282,9 +294,46 @@ def _join_options(graph, tables: list[str], read: list[str] = ()) -> list[tuple[
     return [(tree.root, tree.joins) for tree in chosen]
 
 
+def _explicit_joins(graph, block):
+    """Construct declared relationships exactly, with the AST owner's scope checks."""
+    root, specifications = block.get("root"), block.get("joins")
+    if not isinstance(root, str) or root not in graph.by_table or root not in block["tables"]:
+        raise NotReadable("explicit-join-root")
+    if not isinstance(specifications, list) or len(specifications) > MAX_EXPLICIT_JOINS:
+        raise NotReadable("explicit-join-bound")
+    joins = []
+    for specification in specifications:
+        if not isinstance(specification, dict) or set(specification) != {"table", "kind", "pairs"}:
+            raise NotReadable("explicit-join-shape")
+        table, kind, pairs = (specification[key] for key in ("table", "kind", "pairs"))
+        if not isinstance(table, str) or table not in graph.by_table or kind not in ("INNER", "LEFT"):
+            raise NotReadable("explicit-join-table-or-kind")
+        if not isinstance(pairs, list) or not 1 <= len(pairs) <= MAX_JOIN_PREDICATES:
+            raise NotReadable("explicit-join-predicates")
+        predicates = []
+        for pair in pairs:
+            if not isinstance(pair, list) or len(pair) != 2 or not all(isinstance(c, str) for c in pair):
+                raise NotReadable("explicit-join-column-pair")
+            left, right = (_ref(graph, c) for c in pair)
+            if not isinstance(left, ColumnRef) or not isinstance(right, ColumnRef):
+                raise NotReadable("explicit-join-column-pair")
+            predicates.append((left, right))
+        joins.append(Join(table, *predicates[0], kind=kind, additional=tuple(predicates[1:])))
+    if {root, *(join.table for join in joins)} != set(block["tables"]):
+        raise NotReadable("explicit-join-table-scope")
+    try:
+        validate_query(SelectQuery((SelectItem(Star()),), root, joins=tuple(joins)))
+    except ValueError as exc:
+        raise NotReadable("explicit-join-scope: " + str(exc)) from exc
+    return root, tuple(joins)
+
+
 def _build_block(graph, block: dict, subquery=None, joins_choice: int = 0) -> SelectQuery:
-    options = _join_options(graph, block["tables"], _read_tables(block))
-    root, joins = options[min(joins_choice, len(options) - 1)]
+    if "root" in block or "joins" in block:
+        root, joins = _explicit_joins(graph, block)
+    else:
+        options = _join_options(graph, block["tables"], _read_tables(block))
+        root, joins = options[min(joins_choice, len(options) - 1)]
     # A shown period is headed by the period it is, "month", not by its SQL.
     operands = [_operand(graph, aggregate, column, distinct)
                 for _, aggregate, column, distinct in sorted(block["select"], key=lambda item: item[0])]
@@ -379,7 +428,7 @@ def as_built(readings: dict, query) -> dict:
 
 
 def build(readings: dict, graph):
-    """The query the readings describe, joined along the schema's foreign keys."""
+    """Build the one typed AST, preserving explicit joins or using the schema graph."""
     blocks = readings["blocks"]
     structure = readings["structure"]
     if structure == "single":

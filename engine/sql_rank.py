@@ -421,12 +421,50 @@ def served_member(member: ScoredQuery, currencies: Mapping[str, ColumnRef]) -> S
     the groups that have a name (sql_ast.named_groups), and a top-1 ranking keeping every tied row (sql_ast.keep_ties)."""
     split = per_currency(member.query, currencies)
     served = keep_ties(named_groups(split))
-    if served is member.query:
+    if served is member.query and member.named_trace is None:
         return member
     evidence = member.evidence
     if split is not member.query and evidence:
         evidence = (f"{evidence[0]}, for each {spaced_name(split.group_by[-1].name).lower()}", *evidence[1:])
-    return ScoredQuery(served, render_query(served), member.score, evidence)
+    trace = member.named_trace
+    if trace is not None:
+        from engine.sql_ast import query_to_tree
+        trace = {**trace, "served_transform": {"owner": "engine.sql_rank.served_member",
+                 "operations": ["per_currency", "named_groups", "keep_ties"],
+                 "currencies": {table: {"table": column.table, "name": column.name,
+                                        "type": column.type.value}
+                                for table, column in sorted(currencies.items())},
+                 "input_ast": query_to_tree(member.query), "output_ast": query_to_tree(served)}}
+    return ScoredQuery(served, render_query(served), member.score, evidence, member.features, trace)
+
+
+def replay_served_transform(query, graph, trace):
+    """Check and apply the serving owner's transforms to a replayed model AST.
+
+    Currency bindings are derived again from the request graph; a trace cannot
+    invent them. Identity transforms are recorded and checked as well.
+    """
+    from engine.sql_ast import query_to_tree
+
+    currencies = mixed_currencies(graph)
+    reproduced = served_member(ScoredQuery(query, render_query(query), 0.0, (), named_trace={}), currencies)
+    if trace.get("served_transform") != reproduced.named_trace["served_transform"]:
+        raise ValueError("served transform differs from the request graph or active serving owner")
+    if query_to_tree(query) != trace.get("model_ast"):
+        raise ValueError("served transform starts from another model AST")
+    return reproduced.query
+
+
+def replay_served_query_trace(turns, graph, trace):
+    """Replay named decisions and their served AST without running an encoder."""
+    from engine.readers.grammar import replay_query_trace
+
+    query = replay_query_trace(turns, graph, trace)
+    if query is None:
+        if "served_transform" in trace:
+            raise ValueError("a refused reading cannot have a served transform")
+        return None
+    return replay_served_transform(query, graph, trace)
 
 
 def mixed_currencies(graph) -> dict[str, ColumnRef]:

@@ -14,6 +14,298 @@ pruning and the stage-2 row (`engine/readers/search.py`) are also imported from 
 
 Run every step as a module from the repository root: `python -m training.readers.<module> ...`.
 
+The unpromoted shared semantic candidate uses these same owners: `examples semantic` prepares
+masked targets; `examples semantic-grammar` labels the input-grounded choices of the recursive SQL
+schema owner; `train semantic` fits the shared named head; and `train semantic-evaluate` evaluates
+the saved candidate against its frozen dataset. `train semantic-qualify` applies the role-specific
+interface gates to complete held-out calibration predictions using their executed quantized values.
+It does not qualify whole-question accuracy or promote a bundle. Complete epochs use seeded,
+token-budgeted batches, including short tails. Exact adapter/head/optimizer/RNG/scheduler checkpoints
+can resume the same frozen experiment; full inputs are checked rather than truncated. Coordinate definitions belong to
+`engine/readers/layout.py:named_coordinate_contract`; the serving migration and its remaining gates
+are documented in [ARCHITECTURE.md](../../docs/ARCHITECTURE.md#shared-property-binding-migration).
+Measured candidate status belongs in [MODEL_CARD.md](../../docs/MODEL_CARD.md) and
+[RESULTS.md](../../spider/results/RESULTS.md). Preparation, schema/parser checks and coordinate
+diagnostics do not establish served SQL accuracy.
+
+## Local audit and gated CLEF execution plan
+
+The November 7 full run was cancelled before full-fit optimizer progress was
+confirmed. Its Pod and dedicated network volume were deleted. A new run is not
+authorized by the earlier training request: the owner requires local audit
+results and review before any paid compute.
+
+The November 8 baseline audits visited **32,798 question parents**. All **32,512
+non-clarification targets** passed schema, round-trip and actual APE parsing;
+**32,091** passed full-source SQL answer agreement. There were **292 binding
+rejections and 129 SQL timeouts**, affecting 421 records. Another 158 input-schema
+findings overlap the grouping/binding failures. There are also 21,940 property-only
+records, which are not English/ACE/SQL triples. These are data-check denominators,
+not trained-model accuracy. Empty answers cannot establish English correctness.
+
+The earlier `verified-*` export (327 direct repairs; 32,317 executable, 282
+clarification and 199 unresolved targets) remains an immutable historical snapshot.
+Later completed overlays independently check **158/158 grouping repairs** and
+**154/154 video-game-profile pairs** with actual APE parsing and full-source SQL.
+The publisher's complete 65,320-row video-game sales table matches the loaded
+data, including duplicates; its unit is millions of copies. The BIRD annotation
+claiming a 100,000-copy unit was wrong and is preserved separately from its repair.
+
+All seven previously empty source databases have now been restored from pinned
+author sources: **249,185,435 rows** in academic, geo, imdb, music_2, restaurants,
+scholar and yelp. The originals remain unchanged. All **4,235** affected questions
+have fresh checks on populated sources: **4,109** non-clarification programs pass
+actual APE parsing and **4,057** initially pass full-source SQL checks. Later
+bounded retries recover 17 SQL timeouts; a membership-plan repair checks three
+formerly oversized tip-answer records without increasing the row bound. These
+are overlapping staged witnesses, not additive question denominators. Private
+audit indexes now have complete typed-row and table-definition identity proofs,
+including Scholar's 147-million-row source. Empty-source witnesses cannot be
+reused for populated versions.
+
+The completed three-part traversal and reviewed overlays use **519 direct label
+records**, covering **627 question records** after sibling propagation. All
+**32,798** question records have regenerated labels and binding checks:
+**32,469 executable**, **297 clarification**, and **32 unresolved binding**
+targets. There are still 21,940 separate property-only records. The preceding
+506-label snapshot's 189 outstanding answer checks have been retried: 139 pass,
+46 time out and four reach its row cap. Later entity-grain repairs resolve three
+oversized results; the fourth valid donation request is fully checked over all
+2,738,779 rows with a declared finite 2,738,780-row/120-second verification bound.
+The current exact per-pair export links **all 32,501 non-clarification targets**
+to native APE evidence and **32,423 executable targets** to complete SQL answer
+checks. **46 SQL timeouts** remain. No row-cap failure remains in that export.
+None of these counts certifies complete English meaning or trained-model accuracy.
+
+Actual preparation has also been checked on **116 questions across 84 databases**,
+including all 32 remaining binding failures and every new direct repair since the
+498-record snapshot: 84 prepare and the same 32 reject. No encoder is loaded.
+The expanded goalie-season target has 296 decisions: the old 256-position setting
+rejects it, while 512 positions prepare it without truncation. This is a measured
+case, not a claim that all questions fit 512; complete preparation and token/position
+coverage must be checked before freezing a training dataset.
+
+A subsequent **119-question / 86-database** actual preparation check prepares
+**95** records and rejects **24**. On the original 116 identities, all 84 admitted
+records remain admitted and eight of 32 rejections recover; there are no losses.
+The three added regression records also prepare. The repairs include separate
+survey criteria, respondent identity counts, percentage arithmetic, stored street
+spellings and patient identity. This comparison includes reviewed target changes
+and input changes; it is not an isolated model or source-code ablation. The run
+took 540.70 seconds while full-corpus preparation ran concurrently, so it is not
+an isolated latency comparison. Its source and code identity checks pass.
+
+The consolidated diagnostic now covers **128 questions / 88 databases** using
+the same frozen preparation code and explicit later record overlays: **105
+prepare and 23 reject**. Relative to the original 116 identities, nine rejected
+questions recover, all 84 admissions remain admitted, and there are no losses.
+The 12 added questions also prepare. The per-record consolidation verifies code,
+source, prepared-feature and parent identities; it is not a new evaluator or a
+claim about the unvisited portion of the full preparation run.
+
+The existing audit diagnostic now checks a unique explicit numeric interval as
+well as individual inequalities. It keeps SQL scopes, negation and disjunctions
+separate and recognizes equivalent open integer endpoints. A scan of all 32,798
+question records found two source-label defects after excluding ambiguous or
+equivalent cases: omitted course-ID endpoints and an incorrect REAL-valued star
+upper bound. Both were repaired and the complete diagnostic scan rerun with zero
+remaining flags. This finite diagnostic does not certify English meaning.
+
+The newer staged input contains **536 direct label records**. All **20** recent
+reviewed questions pass actual preparation and mechanical/control checks; their
+**19 executable programs** pass native APE, schema/round-trip and full-source SQL
+checks, with one genuine clarification. Citation repairs reverse an outgoing-
+reference error and restrict answers to actual paper-catalog identities. A
+private covering index resolves the three 120-second execution timeouts after
+all ten tables and 147,416,275 typed rows are proved identical to the original
+Scholar source. The complete answers contain 1,290,651 and 2,565,518 paper IDs;
+ignoring catalog membership incorrectly includes 465 and 983 additional IDs.
+Two year-superlative repairs retain every maximum tie, count paper identities
+and return the requested year. An affiliation repair links publications through
+actual authorship rather than a shared research area. These are staged overlays,
+not a replacement whole-corpus count for the completed 519-label snapshot above.
+The actual full preparation run is frozen at 528 labels and remains in progress
+with 512 positions, 30-second optional source lookups, an eight-GiB disk floor
+and a four-hour process bound. Earlier failed attempts are retained separately:
+a decimal-key binding exception was fixed and replayed, and an insufficient
+compact-value proposal was rejected before the current run.
+
+The current artifacts are under
+`C:/work/prereasoner-data/training/readers/data/experiments/local-corpus-audit-20261107/repairs/`:
+`lineage-part-{0,1,2}-reviewed-parent-assessment.json` and
+`audit-lineage-part-{0,1,2}/assessment.json` freeze the baseline with per-record
+results. `audit-key-grouping/assessment.json` and `audit-sales-context/assessment.json`
+hold the completed early overlays. `author-source-databases.json` pins the seven
+restored sources. `answer-grain-reviewed-labels.jsonl.gz` identifies the completed
+519-label snapshot; `publication-affiliation-reviewed-labels.jsonl.gz` is the newer
+536-label input. `calendar-profile-part-*-*`, `remaining-meaning-*`, `measure-role-*`
+and `season-grain-*`, followed by `existence-answer-*` and `answer-grain-*`, retain
+the exact conformance lineage. `answer-evidence-corpus-assessment.json` has the
+merged counts. `answer-evidence-pairs.jsonl.gz` and its `pairs-assessment.json`
+contain every question's English, actual ACE JSON/text, typed SQL, exact native
+and answer witness links, source identities and unresolved reasons. The export
+does not attribute historical grounding rejections to a now-grounded pair; it
+requires a fresh SQL check for that transition. `preparation-pilot-contract.json`
+and `preparation-pilot-receipt.json` pin the actual preparation check. All older
+export assessments and per-record native/SQL witnesses are historical audit
+evidence, not a current admitted training corpus. Superseded derived pair exports
+were compacted with exact hashes and a deletion receipt; the latest
+`answer-evidence-pairs.jsonl.gz`, all parents, repairs and parser/SQL witnesses
+remain. `local-preparation-diagnostic-assessment.json` and its per-record output
+record the 128-question consolidation and matched transitions; `compact-meaning-*`,
+`closed-intervals-*`, `citation-direction-*` and `source-identity-*`, followed by
+`citation-membership-*`, `maximum-year-*` and `publication-affiliation-*`, retain
+the reviewed deltas. `citation-verified-index-lineage.json` and
+`citation-dangling-target-evidence.json` pin the source proof and counterexamples.
+`complete-preparation/`
+contains the current full-run contract and per-part progress. The prior source
+and input-bank failures are preserved under their descriptive failure directories.
+**Grammar admission is not training admission**: independent English-meaning
+review remains open and every shared question remains quarantined. All 522
+publisher description files have been recovered; descriptions attached to encoder
+input are source-hash verified and do not contain question-specific target hints.
+
+For the historical Qwen SQL corpus, all 7,151 train/evaluation pairs pass the
+bounded-template ACE/schema and three-fixture checks. Original-window execution
+checks cover 6,877 pairs; 43 mixed-status numeric questions require clarification,
+33 pairs lack three original source CSVs, and 198 synthetic joins have no original
+rows by generator design. These are distinct evidence categories. Current and
+historical heads/tags of both project repositories, plus 42 pull-request heads in
+the data repository, did not recover those three originals. The source search is
+not waiting for a GitHub rate-limit retry. No new training or model accuracy result
+follows from this audit.
+
+1. **Freeze and audit the source data locally.** Inventory the historical Qwen
+   question corpus and the current shared question/dialogue parents separately;
+   property-only examples are not English/ACE/SQL triples. Preserve original
+   records, hashes and splits. Give every parent a per-record result. Check ACE
+   schema, exact native-parser evidence, typed AST round trips, and execution on
+   the complete original database with explicit time/output bounds. Compare
+   original source question and SQL where available. Independently check the
+   finite English templates against the existing compiler and three fixture
+   seeds. These checks do not certify arbitrary natural-language meaning.
+   Record source-backed target repairs separately, rerun affected checks, and
+   quarantine ambiguous, ungrounded, unsupported or unreviewed examples.
+   Run the existing `examples semantic-grammar` preparation owner on every
+   prospective training record with the declared source registry, lookup budget
+   and position bound. Validation-only AST traversal does not establish that the
+   complete prepared bank fits its position or tokenizer limits. Preserve actual
+   preparation rejections and select bounds from measured whole-corpus maxima.
+2. **Complete meaning and binding supervision before admitting examples.**
+   Review original English, conversation context, schema and permitted source
+   evidence against ACE and SQL. Test negation, scope, aggregation, grouping,
+   NULLs, dates, units, ties, duplicates, joins and clarification. An SQL target
+   cannot justify its own missing literal. BIRD evidence is a separate input;
+   examples needing it must declare it and use evidence available at serving.
+   Add explicit noun/column/value span alignments to the same property axes;
+   the existing expected entity-value profiles alone do not supply these labels.
+   Keep reviewers' evidence and unresolved cases in the admission record.
+3. **Freeze independent splits and matched baselines.** Group original questions,
+   paraphrases, follow-ups and derivations together; hold out databases and
+   entities. Check exact and near duplicates. Audit both the historical 1,053
+   Spider calibration set and official DEV against all prior training and
+   threshold selection. Exposure disqualifies a set from blind-test claims.
+   Enron's 186 studied questions are a development regression gate, not evidence
+   of unseen generalization. Reserve a separate untouched messy-data challenge.
+4. **Use one encoder and one semantic interface.** Extend the existing readers
+   owners. CLEF reads the complete conversation beside schema and permitted row
+   evidence once. The existing named-coordinate contract supplies shared
+   Schema.org property axes plus operation, frame, structural and dialogue axes.
+   A deterministic grammar consumes these coordinates and input-grounded
+   bindings to construct the sole typed SQL AST. ACE is a lossless application
+   profile view of that meaning; SQL and Python execution use the existing
+   deterministic owners. This is not unrestricted ACE or proof that CLEF's hidden
+   states are interpretable. No residual neural channel may bypass the named
+   decisions when claiming an interpretable decision path.
+
+   The frozen contract contains **215 named coordinates**: 71 property, 64 SQL,
+   32 ACE frame, 32 structural/type/role and 16 dialogue coordinates. Earlier
+   inherited structural/intent names overlap these blocks; they are not added a
+   second time. Entity classes are profiles over the property axes, not one new
+   coordinate per entity. The noun, column and candidate value must be separately
+   observed in context and supervised onto this same property space. Physical
+   bindings still point to actual input spans, columns and cells; a semantic
+   profile does not authorize inventing a source value.
+5. **Review a small speed and learning experiment before paying for it.** After
+   the local admission gate passes, propose a measured pilot with representative
+   input lengths, schema widths and question families, plus database-disjoint
+   validation. Measure preprocessing, encoder throughput, head fitting, memory
+   and actual served decisions against an unchanged baseline. An initial
+   one-hour GPU ceiling is a proposed cap, not permission to run. Demonstrate
+   useful held-out learning before expanding. Feature reuse requires exact
+   native/loaded/quantized parity; the previous cache experiment failed this
+   gate. Profile the large candidate-bank input before changing it; pruning must
+   preserve measured grounding and candidate recall.
+   Check the intended Cloud Run CPU memory/latency budget before a full fit:
+   freezing or fitting the head does not reduce the encoder's inference cost.
+   Inspect pinned weight/config metadata first, then benchmark locally only if
+   the model fits the available RAM. A CPU-infeasible backbone needs a separately
+   controlled quantization or smaller-encoder experiment, with the same semantic
+   and accuracy gates; a full GPU training run does not solve CPU feasibility.
+6. **Train only after review of the audit and pilot.** Freeze code, corpus,
+   target definitions, splits, seeds and the sole changed variable. Use the
+   frozen encoder/head hypothesis first; consider an adapter experiment only
+   after diagnosing a measured representation limitation. Recalculate the
+   budget from observed throughput, including setup, complete-input audit,
+   training, calibration, evaluation, export and grace. Verify independent
+   cleanup and durable checkpoint export before starting the expensive phase.
+7. **Evaluate the served system and prove the trace.** Run the same
+   `TableQuery.select_query` on matched baseline and candidate, whole-database
+   Spider, all 186 all-tab Enron questions and the untouched messy-data set.
+   Report correct/incorrect/clarified counts, candidate recall, per-family
+   failures, wins/losses, repeated quantized decisions, cold reload, latency and
+   memory. Trace each answer through source rows/cells, bound columns/values,
+   named decisions, AST and execution result. Intervene on relevant named axes
+   and bindings to test causal consumption; also test irrelevant interventions.
+   Replaying a trace proves reproducibility, not correct English interpretation.
+8. **Use explicit acceptance and promotion gates.** Require an improvement over
+   the matched independent Spider baseline, all 186 Enron questions correct with
+   complete execution-linked traces, acceptable independently held-out messy-data
+   accuracy and a measured inference budget on the intended Cloud Run CPU.
+   Publish exact denominators and unresolved limits. Generalization and
+   determinism are measured properties under documented conditions; absence of
+   pretraining memorization is unproven. Promotion, deployment and publication
+   remain separate owner decisions. Any failure returns to its responsible
+   data/binding/grammar/representation/selection component before more training.
+
+Reproduce one frozen baseline part from the repository root into a fresh output
+directory (no models, network calls or paid services are used). Select the source
+and dictionary manifests cited by that part, rather than substituting a later
+source version under an earlier witness:
+
+```powershell
+python -m training.readers.semantic_audit corpus `
+  --experiments C:/work/prereasoner-data/training/readers/data/experiments `
+  --ace-study C:/Users/manid/.codex/visualizations/2026/11/04/01a1a892-3e93-7302-b7c0-0f00bbf9378e/ace-schema/english-sql-study `
+  --parents <repairs>/lineage-part-0-reviewed-parents.jsonl.gz `
+  --admissions <repairs>/lineage-part-0-reviewed-admissions.jsonl.gz `
+  --source-databases <repairs>/recovered-source-database-manifest.json `
+  --column-dictionaries <repairs>/source-column-dictionaries.json `
+  --database-overrides <repairs>/verified-index-database-manifest.json `
+  --out <fresh-output-directory>
+```
+
+`assessment.json` contains provenance and aggregate counts;
+`historical-records.jsonl.gz` and `question-records.jsonl.gz` retain every checked
+record. `admission-decisions.jsonl.gz` blocks unresolved shared question parents.
+It does not silently change the training corpus or make the old corpus safe to
+train. A future training export must consume reviewed admission decisions.
+
+The original Qwen SQL graphs store questions in `task=intent` records and SQL token programs in
+adjacent `task=role` records. `sources.unit_graph_pairs` checks companion metadata/schema, preserves
+question spans and physical links, and retains token kinds/clauses. `gold.read_unit_program` passes
+recoverable tokens to the existing offline SQL importer. Filter literal types and column datatypes
+can be missing: reject these cases rather than guessing them. When original quoted source records
+are available, `sources.match_unit_source` verifies metadata, every question annotation, program
+token and physical pointer before `gold.read_unit_program(source_record=..., column_types=...)`
+restores literal spellings and explicitly source-backed type declarations. Generator-required types
+are not observed CSV-cell facts. Check source-file/schema separation and question/SQL overlap before
+using a recovered eval split. Recovery is not automatic admission
+through `provenance.py`, original-data execution validation or independent English-intent certification.
+The historical generator randomizes table aliases; their English nouns do not supply ontology-class
+targets. Raw-file identity can instead be checked against the original full Git blob hashes before
+reconstructing typed rows with the pinned source converter.
+
 ## Rules
 
 - Training writes only under `training/readers/data/experiments/<id>/`. That path is gitignored by

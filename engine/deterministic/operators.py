@@ -10,7 +10,7 @@ from functools import cmp_to_key
 import re
 from typing import Generic, TypeVar
 
-from engine.numeric import decimal_divide
+from engine.numeric import decimal_divide, wire_document
 from engine.sql_ast import DAYS_PER_UNIT, day_number
 
 T = TypeVar("T")
@@ -23,12 +23,58 @@ class PythonRowLimitExceeded(RuntimeError):
 
 
 @dataclass(frozen=True)
+class SourceRowKey:
+    """A physical ORM source identity, not an inferred original row number."""
+
+    schema: str | None
+    table: str
+    columns: tuple[str, ...]
+    values: tuple[object, ...]
+
+    def record(self):
+        return {"schema": self.schema, "table": self.table, "key_columns": list(self.columns),
+                "key_values": [v.isoformat() if isinstance(v, (date, datetime)) else wire_document(v) for v in self.values]}
+
+
+def _source_keys(values):
+    from sqlalchemy import inspect
+
+    keys = []
+    for value in values:
+        if value is None:
+            continue  # The missing side of an outer join has no source row.
+        state = inspect(value, raiseerr=False)
+        if state is None or not hasattr(state, "mapper") or state.identity is None:
+            return None
+        table = state.mapper.local_table
+        keys.append(SourceRowKey(table.schema, table.name, tuple(c.name for c in state.mapper.primary_key), tuple(state.identity)))
+    return tuple(keys)
+
+
+def _merge_sources(parts):
+    """Preserve occurrences, including the same source row used more than once."""
+    result = []
+    for part in parts:
+        if part is None:
+            return None
+        result.extend(part)
+    return tuple(result)
+
+
+@dataclass(frozen=True)
 class View(Generic[T]):
     name: str
     rows: tuple[T, ...]
     row_limit: int | None = None
+    source_rows: tuple[tuple[SourceRowKey, ...] | None, ...] = field(default=(), compare=False, repr=False)
 
     def __post_init__(self) -> None:
+        if not self.source_rows and self.rows:
+            object.__setattr__(self, "source_rows", (None,) * len(self.rows))
+        if (not isinstance(self.source_rows, tuple) or len(self.source_rows) != len(self.rows)
+                or any(part is not None and (not isinstance(part, tuple) or any(not isinstance(k, SourceRowKey) for k in part))
+                       for part in self.source_rows)):
+            raise ValueError("view source identities must align with every output row")
         if self.row_limit is not None and (
             type(self.row_limit) is not int or self.row_limit < 0
         ):
@@ -56,19 +102,20 @@ class View(Generic[T]):
         construct: Callable[..., T],
         row_limit: int | None = None,
     ) -> View[T]:
-        materialized = []
+        materialized, origins = [], []
         for row in rows:
             values = tuple(row) if not isinstance(row, tuple) else row
             cls._append_bounded(
                 materialized, construct(*values), name, row_limit
             )
-        return cls(name, tuple(materialized), row_limit)
+            origins.append(_source_keys(values))
+        return cls(name, tuple(materialized), row_limit, tuple(origins))
 
     def for_each(
         self, name: str, emit: Callable[[T], U | Iterable[U] | None]
     ) -> View[U]:
-        materialized = []
-        for row in self.rows:
+        materialized, origins = [], []
+        for row, origin in zip(self.rows, self.source_rows, strict=True):
             produced = emit(row)
             if produced is None:
                 continue
@@ -77,20 +124,23 @@ class View(Generic[T]):
                     self._append_bounded(
                         materialized, value, name, self.row_limit
                     )
+                    origins.append(origin)
             else:
                 self._append_bounded(
                     materialized, produced, name, self.row_limit
                 )
-        return View(name, tuple(materialized), self.row_limit)
+                origins.append(origin)
+        return View(name, tuple(materialized), self.row_limit, tuple(origins))
 
     def filter(self, name: str, where: Callable[[T], bool | None]) -> View[T]:
-        materialized = []
-        for row in self.rows:
+        materialized, origins = [], []
+        for row, origin in zip(self.rows, self.source_rows, strict=True):
             if where(row) is True:
                 self._append_bounded(
                     materialized, row, name, self.row_limit
                 )
-        return View(name, tuple(materialized), self.row_limit)
+                origins.append(origin)
+        return View(name, tuple(materialized), self.row_limit, tuple(origins))
 
     def sort(self, name, keys, descending, limit=None, ties_on=0):
         """ORDER BY with explicit NULLS LAST; emitters supply deterministic tie keys. With ``ties_on``,
@@ -110,12 +160,13 @@ class View(Generic[T]):
                     return result
             return 0
 
-        ordered = sorted(self.rows, key=cmp_to_key(compare))
+        indices = sorted(range(len(self.rows)), key=cmp_to_key(lambda i, j: compare(self.rows[i], self.rows[j])))
+        ordered = [self.rows[i] for i in indices]
         end = limit
         if limit is not None and ties_on and limit > 0:
             while end < len(ordered) and compare(ordered[end], ordered[limit - 1], ties_on) == 0:
                 end += 1
-        return View(name, tuple(ordered[:end]), self.row_limit)
+        return View(name, tuple(ordered[:end]), self.row_limit, tuple(self.source_rows[i] for i in indices[:end]))
 
     def cross(
         self,
@@ -124,13 +175,14 @@ class View(Generic[T]):
         construct: Callable[[T, U], A],
     ) -> View[A]:
         """CROSS JOIN with a hard materialization bound."""
-        materialized = []
-        for left in self.rows:
-            for right in other.rows:
+        materialized, origins = [], []
+        for left, left_origin in zip(self.rows, self.source_rows, strict=True):
+            for right, right_origin in zip(other.rows, other.source_rows, strict=True):
                 self._append_bounded(
                     materialized, construct(left, right), name, self.row_limit
                 )
-        return View(name, tuple(materialized), self.row_limit)
+                origins.append(_merge_sources((left_origin, right_origin)))
+        return View(name, tuple(materialized), self.row_limit, tuple(origins))
 
     def anti_join(
         self,
@@ -166,9 +218,10 @@ class View(Generic[T]):
         output_limit = (
             None if self.row_limit is None else max(1, self.row_limit)
         )
+        origins = (_merge_sources(self.source_rows),)
         if finalize is not None:
-            return View(name, (finalize(result),), output_limit)
-        return View(name, (result,), output_limit)
+            return View(name, (finalize(result),), output_limit, origins)
+        return View(name, (result,), output_limit, origins)
 
     def group_reduce(
         self,
@@ -179,20 +232,24 @@ class View(Generic[T]):
         finalize: Callable[[A], U] | None = None,
     ) -> View[A] | View[U]:
         groups: dict[object, A] = {}
-        for row in self.rows:
+        origins = {}
+        for row, origin in zip(self.rows, self.source_rows, strict=True):
             group_key = key(row)
             if group_key not in groups:
                 current = initial(row)
             else:
                 current = groups[group_key]
             groups[group_key] = step(current, row)
+            origins.setdefault(group_key, []).append(origin)
+        lineage = tuple(_merge_sources(origins[k]) for k in groups)
         if finalize is not None:
             return View(
                 name,
                 tuple(finalize(value) for value in groups.values()),
                 self.row_limit,
+                lineage,
             )
-        return View(name, tuple(groups.values()), self.row_limit)
+        return View(name, tuple(groups.values()), self.row_limit, lineage)
 
 
 @dataclass(frozen=True)

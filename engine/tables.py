@@ -23,7 +23,7 @@ import numpy as np
 from engine import request_timing
 from engine.config import DATA_DIR, BASE_MODEL_ID as MODEL_ID  # noqa: F401 - public compatibility export
 from engine.fk_edges import edges
-from engine.numeric import parse_decimal, wire_decimal, observed_numeric_affinity, stored_as_numbers
+from engine.numeric import parse_decimal, wire_decimal, observed_numeric_affinity, stored_as_numbers, has_integer_padding
 from engine.relations import relate
 from engine.request_validation import canonical_table_name
 from engine.column_names import canonical_columns
@@ -143,7 +143,7 @@ def dim_label(dim):
 
 def _typed(v):
     v = v.strip() if isinstance(v, str) else v
-    if v in ("", None) or not isinstance(v, str):
+    if v in ("", None) or not isinstance(v, str) or has_integer_padding(v):
         return v
     try:
         numeric = parse_decimal(v)
@@ -239,12 +239,15 @@ class _PoolRuns:
 
 
 class TableQuery:
-    def __init__(self, deploy_dir=DATA_DIR):
+    named_reader = None
+
+    def __init__(self, deploy_dir=DATA_DIR, *, named_reader=None):
         # DEFERRED encoder: the serving closure never runs TableQuery standalone — engine.knowledge_query's
         # load_encoder OVERLAYS the trained encoder onto this instance right after construction (shared refs:
         # device/alloc/nc/dims/sid/thr/model/nL/tok/qwen/hdim — ONE model in memory). Nothing model-shaped is loaded
         # here, so startup does not pay for weights that would be immediately replaced.
         self.deploy_dir = Path(deploy_dir)
+        self.named_reader = named_reader
         self.alloc = None
         self.nc = None
         self.dims = []
@@ -353,21 +356,27 @@ class TableQuery:
         (`relations.memoized`): each record and mapping is the caller's own copy."""
         from engine.relations import content_key, memoized, table_cells
         sch, colidx, tablemap = memoized(
-            "planner_schema", lambda: (id(self.model), content_key(tables), repr(fks)),
+            "planner_schema", lambda: (id(self.model), id(self.named_reader), content_key(tables), repr(fks)),
             lambda: self._schema(tables, fks), table_cells(tables))
         return [dict(column) for column in sch], dict(colidx), dict(tablemap)
 
     def _schema(self, tables, fks):
         units, colidx = self._schema_name_units(tables, fks)
-        x = self._encode([u["text"] for u in units])
-        final = self._layers(units, x)[-1]
+        if self.named_reader is None:
+            x = self._encode([u["text"] for u in units])
+            final = self._layers(units, x)[-1]
+        else:
+            # Schema types are source observations. Semantic predictions are
+            # made once beside the question by the injected readers bundle.
+            x = np.zeros((len(units), 0), np.float32)
+            final = x
         pos = {(u["table"], u["colname"]): i for i, u in enumerate(units)}
         sch = []
         for t in tables:
             rowdicts = [dict(zip(t["columns"], r)) for r in t["rows"]]
             for c in t["columns"]:
                 i = pos[(t["name"], c)]; vec = final[i]
-                struct = {d["name"] for d in self.dims if d["family"] == "struct" and vec[d["dim_id"]] >= 0.5}
+                struct = {d["name"] for d in self.dims if d["family"] == "struct" and vec[d["dim_id"]] >= 0.5} if self.named_reader is None else set()
                 ace = sorted(((dim_label(d["name"])[1], vec[d["dim_id"]]) for d in self.dims if d["family"] == "ace"),
                              key=lambda z: -z[1])
                 vals = [rd.get(c) for rd in rowdicts]
@@ -379,6 +388,8 @@ class TableQuery:
                     # into missing numbers. Keep the cells and prevent arithmetic
                     # on this column; other columns and row counts remain usable.
                     aff = "TEXT"
+                elif self.named_reader is not None and ne and all(isinstance(v, bool) for v in ne):
+                    aff = "INTEGER"
                 else:
                     aff = affinity(struct)
                 sch.append({"table": t["name"], "name": str(c), "idx": colidx[(t["name"], c)], "struct": struct,
@@ -404,7 +415,7 @@ class TableQuery:
         return sims[0][0] if sims and sims[0][1] > 0.3 else None
 
     # ---------- planning ----------
-    def search_pool(self, question, norm, fks, sch, graph=None):
+    def search_pool(self, question, norm, fks, sch, graph=None, *, turns=None):
         """The readers' candidates under the pool contract: ``select_query``'s first stage
         (engine.readers.search.ReadingSearch.pool), with the registered calculations' expansions of them
         (engine.calculations.search). Its top candidate is the readers' most probable reading. The readers read
@@ -417,10 +428,14 @@ class TableQuery:
         if graph is None:
             graph = SchemaGraph.from_planner(sch, fks)
         with request_timing.span("readers"):
-            pool = reading_search().pool(question, one_of_each_layout(graph, question))
+            readers = self.named_reader or reading_search()
+            input_graph = one_of_each_layout(graph, question)
+            pool = readers.pool(question, input_graph, turns=turns) if turns is not None else readers.pool(question, input_graph)
+        if self.named_reader is not None:
+            return pool
         return pool + CalculationQueryExpander(graph).expand(question, pool)
 
-    def select_query(self, question, norm, fks, sch, tablemap, searched=None, graph=None):
+    def select_query(self, question, norm, fks, sch, tablemap, searched=None, graph=None, *, turns=None):
         """Choose the query to serve for an own-data question; returns a ``PoolSelection``.
 
         1. The readers read the question against the schema and build their most probable readings as
@@ -460,7 +475,7 @@ class TableQuery:
         if graph is None:
             graph = SchemaGraph.from_planner(sch, fks)
         if searched is None:
-            searched = self.search_pool(question, norm, fks, sch, graph=graph)
+            searched = self.search_pool(question, norm, fks, sch, graph=graph, turns=turns) if turns is not None else self.search_pool(question, norm, fks, sch, graph=graph)
         runs = _PoolRuns(self, tablemap, sch)
         try:
             return self._choose(question, norm, sch, tablemap, graph, searched, runs)
@@ -485,7 +500,7 @@ class TableQuery:
         with request_timing.span("pool_grounding"):
             grounded = grounded_members(pool, tablemap, graph)
             double_counted = double_counted_members(pool, tablemap)
-        readers = reading_search()
+        readers = self.named_reader or reading_search()
         shapes = [runs.shapes.get(member.sql) if ran else None for member, ran in zip(pool, executable)]
         with request_timing.span("rescore"):
             scores = readers.rescore(question, pool, shapes)
@@ -559,7 +574,7 @@ class TableQuery:
             undecided[index] = ranks_nothing(rows, limit, terms)
         return tuple(undecided)
 
-    def _serve_ast(self, question, norm, fks, sch, tablemap, graph=None):
+    def _serve_ast(self, question, norm, fks, sch, tablemap, graph=None, *, turns=None):
         """Select the own-data query (``select_query``) and execute it through this executor."""
         from engine.deterministic.context import current_analysis_context
         analysis_context = current_analysis_context()
@@ -567,7 +582,7 @@ class TableQuery:
         if analysis_context is not None:
             from engine.decomposition import compound_candidate
 
-            searched = self.search_pool(question, norm, fks, sch, graph=graph)
+            searched = self.search_pool(question, norm, fks, sch, graph=graph, turns=turns) if turns is not None else self.search_pool(question, norm, fks, sch, graph=graph)
             compound = compound_candidate(searched)
             if compound is not None:
                 # A named compound request needs a branch proposal before it has an
@@ -575,7 +590,7 @@ class TableQuery:
                 # fragment of the question and then throw its rows away: the search's own
                 # reading asks for the decomposition (tests.test_complex_datasets).
                 return compound, None, None, tuple(searched), None
-        selection = self.select_query(question, norm, fks, sch, tablemap, searched=searched, graph=graph)
+        selection = self.select_query(question, norm, fks, sch, tablemap, searched=searched, graph=graph, turns=turns) if turns is not None else self.select_query(question, norm, fks, sch, tablemap, searched=searched, graph=graph)
         candidates = selection.pool
         candidate = selection.candidate
         if candidate is None and not (selection.found_nothing and analysis_context is not None):
@@ -769,7 +784,10 @@ class TableQuery:
             conversation_id=context.conversation_id,
             revision=context.revision,
         )
-        set_execution_record(result.record())
+        execution_record = result.record()
+        if result.source_lineage is not None:
+            execution_record["source_lineage"]["input_order"] = database.source_row_snapshots(tablemap)
+        set_execution_record(execution_record)
         shown = result.output_rows()
         if shown:
             columns = list(shown[0])

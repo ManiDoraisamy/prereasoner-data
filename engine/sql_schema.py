@@ -9,7 +9,7 @@ from numbers import Real
 import re
 from typing import Any, Iterable, Sequence
 
-from engine.numeric import NUMBER_TEXT, NUMBER_WORD, parse_decimal
+from engine.numeric import NUMBER_TEXT, NUMBER_WORD, has_integer_padding, observed_numeric_affinity, parse_decimal
 from engine.relations import layout
 from engine.sql_ast import ColumnRef, Join, SQLType
 
@@ -23,11 +23,19 @@ _NAME_WORDS = frozenset({"name", "title", "label"})
 COPY_SHARE = 0.9
 
 
+def _annotations(value):
+    if not isinstance(value, dict) or any(not isinstance(k, str) or not isinstance(v, str)
+                                          for k, v in value.items()):
+        raise ValueError("source column annotations must be a text mapping")
+    return tuple(sorted(value.items()))
+
+
 @dataclass(frozen=True)
 class SchemaColumn:
     ref: ColumnRef
     values: tuple[Any, ...] = ()
     index: int = -1
+    annotations: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -86,7 +94,8 @@ class SchemaGraph:
     """Typed columns, observed values, and searchable foreign-key relationships."""
 
     def __init__(self, columns: Iterable[SchemaColumn], foreign_keys: Iterable[ForeignKey],
-                 value_index: dict[str, tuple[tuple[ColumnRef, Any], ...]] | None = None):
+                 value_index: dict[str, tuple[tuple[ColumnRef, Any], ...]] | None = None,
+                 *, source_rows: Iterable[tuple[str, int]] = ()):
         self.columns = tuple(columns)
         grouped: dict[str, list[SchemaColumn]] = {}
         for column in self.columns:
@@ -94,6 +103,11 @@ class SchemaGraph:
         self.by_table = {table: tuple(columns) for table, columns in grouped.items()}
         self.tables = tuple(grouped)
         self.column_map = {(column.ref.table, column.ref.name): column for column in self.columns}
+        self.source_rows = tuple(dict.fromkeys(source_rows))
+        if any(table not in self.by_table or type(row) is not int or row < 0
+               or row >= min(len(column.values) for column in self.by_table[table])
+               for table, row in self.source_rows):
+            raise ValueError("source evidence row does not identify complete observed cells")
         self.foreign_keys = tuple(
             foreign_key for foreign_key in foreign_keys
             if (foreign_key.from_column.table in self.by_table
@@ -133,7 +147,8 @@ class SchemaGraph:
                 values = tuple(_coerce_value(value, column_type) for value in raw_values)
                 ref = ColumnRef(name, column_name, column_type)
                 refs[(name, column_name)] = ref
-                columns.append(SchemaColumn(ref, values, index))
+                annotations = _annotations(table.get("column_annotations", {}).get(column_name, {}))
+                columns.append(SchemaColumn(ref, values, index, annotations))
                 index += 1
         edges = (_foreign_key(foreign_key, refs) for foreign_key in fks)
         return cls(columns, (edge for edge in edges if edge is not None))
@@ -169,6 +184,7 @@ class SchemaGraph:
                 tuple(_coerce_value(value, column_type)
                       for value in (column.get("values") or ())),
                 int(column.get("idx", index)),
+                _annotations(column.get("annotations", {})),
             ))
         edges = (_foreign_key(foreign_key, refs) for foreign_key in fks)
         return cls(columns, (edge for edge in edges if edge is not None))
@@ -259,7 +275,8 @@ class SchemaGraph:
                 if kept:
                     index[value] = kept
             self._without[tables] = SchemaGraph(
-                (column for column in self.columns if column.ref.table not in tables), self.foreign_keys, index)
+                (column for column in self.columns if column.ref.table not in tables), self.foreign_keys, index,
+                source_rows=((table, row) for table, row in self.source_rows if table not in tables))
         return self._without[tables]
 
     def repeats(self, columns: Iterable[ColumnRef]) -> bool:
@@ -534,8 +551,15 @@ def _infer_type(name: str, values: Sequence[Any]) -> SQLType:
     populated = [value for value in values if value is not None and str(value).strip()]
     if populated and all(_DATE_RE.match(str(value).strip()) for value in populated):
         return SQLType.DATE
+    # An integer-looking source string may be an identifier or postal code.
+    # Converting 0877 to 877 discards a distinguishing part of its value.
+    # Native numeric cells and ordinary decimal fractions keep their types.
+    if any(has_integer_padding(value) for value in populated):
+        return SQLType.TEXT
     if populated and all(NUMBER_TEXT.match(str(value).strip()) for value in populated):
-        return SQLType.REAL if any("." in str(value) for value in populated) else SQLType.INTEGER
+        # Apply the same exact storage bounds as the served request. Otherwise
+        # coercion would turn a too-wide/deep numeric string into None.
+        return SQLType(observed_numeric_affinity(populated).lower())
     if set(name_words(name)) & {"date", "datetime", "timestamp"}:
         return SQLType.DATE
     return SQLType.TEXT

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import itertools
+import hashlib
 import sys
 import threading
 import warnings
@@ -241,6 +242,35 @@ def assert_equivalent(
         raise VerificationMismatch(
             f"Python and SQL results differ: python={left!r}, sql={right!r}"
         )
+
+
+def python_source_trace(result, materialized):
+    """Record positive row provenance from the actual emitted Python execution.
+
+    Rows retain the Python execution order and a digest of their stored values;
+    SQL parity does not imply the same ordering of duplicate output values.
+    This is row provenance, not minimal cell influence or negative evidence.
+    """
+    stages, pool, index = {}, [], {}
+    for view, rows in zip(result.views, materialized, strict=True):
+        if len(view.rows) != len(rows):
+            raise ValueError("execution provenance rows do not match the materialized view")
+        outputs = []
+        for values, origins in zip(rows, view.source_rows, strict=True):
+            references = None
+            if origins is not None:
+                references = []
+                for origin in origins:
+                    if origin not in index:
+                        index[origin] = len(pool)
+                        pool.append(origin.record())
+                    references.append(index[origin])
+            digest = hashlib.sha256(repr(_canonical_rows((values,), ordered=True)[0]).encode()).hexdigest()
+            outputs.append({"row_value_sha256": digest, "source_keys": references})
+        stages[view.name] = {"rows": outputs}
+    return {"backend": "python", "row_order": "python_execution", "stages": stages, "source_keys": pool,
+            "semantics": "positive source-row occurrences; not minimal per-cell influence or negative-condition evidence",
+            "row_digest": "sha256(repr(runtime._canonical_rows((row,), ordered=True)[0]))"}
 
 
 def choose_execution_mode(

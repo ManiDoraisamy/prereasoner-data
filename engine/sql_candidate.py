@@ -13,3 +13,4 @@ class ScoredQuery:
     score: float
     evidence: tuple[str, ...]
     features: tuple[tuple[str, float], ...] = ()
+    named_trace: dict | None = None

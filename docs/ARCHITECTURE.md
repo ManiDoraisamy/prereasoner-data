@@ -337,7 +337,7 @@ builder makes each reading a typed AST.
 | `engine/readers/models.py` | The three model kinds (schema items, readings, re-scorer) and their inputs; serving runs each encoder in bfloat16 |
 | `engine/readers/layout.py` | The readings' output layout, shared by training, serving and decoding |
 | `engine/readers/decode.py` | Outputs to the most probable distinct readings, with generic semantics (dates, a pinned column not shown again, a matched column not counted distinct, a referencing column counted once, list marks) |
-| `engine/readers/readings.py` | The readings form and the deterministic builder (`build`, foreign-key joins, groups, set operations, nested conditions, shares) and its inverse (`readings_of`, for training labels) |
+| `engine/readers/readings.py` | The readings form and the deterministic builder (`build`, foreign-key or explicit joins, groups, set operations, nested conditions, shares) and its inverse (`readings_of`, with optional exact join bindings for training labels) |
 | `engine/readers/read_as.py` | The plain-English "read as" line of a reading |
 | `engine/sql_ast.py` | Immutable query nodes, type/visibility validation, rendering |
 | `engine/sql_schema.py` | Typed schema graph and deterministic join-tree enumeration |
@@ -427,6 +427,303 @@ The readers' pool and scores depend only on the question and the data, so a requ
 probe and the delegate each select. Selection is deterministic: the models run in fixed precision with no
 sampling, ties keep pool order, and nothing depends on hash order. The readers are trained by
 `training/readers/` and installed only by `training/readers/promote.py`.
+
+The readings builder also accepts an explicit block root and ordered join bindings, including join kind and every
+column pair of a composite key. `readings_of(query, include_joins=True)` preserves these facts; supplied joins are
+scope-validated and never replaced by a foreign-key guess. This matters when the same two tables have several
+relationships. The bounded ACE view (`engine/readers/ace.py`) can encode these bindings as actual Attempto parse
+tree productions and reconstruct the same typed AST. The joint-decision interface (`engine/readers/decisions.py`)
+is candidate work; it is not selected by the production reader loader, and no CLEF bundle has been promoted.
+Its canonical ACE profile can hold more selections, conditions and order keys than the current neural readout;
+successful corpus encoding is not evidence that the trained head can predict those wider programs.
+
+The candidate's causal input encoder places shared option spans after the complete conversation/schema state,
+so an option representation can read the column's own following type and samples. Reusing a span inside the
+state prevented that access. The earlier 512- and 2,048-step trial weights retain their original serialization
+contract; moving their spans is an explicit input ablation, not a compatible model-loader update. A model
+manifest must bind the exact encoder source as well as the weights.
+
+The candidate generic AST format derives its recursive JSON schema and preorder productions from the current
+typed-AST classes. Its compiler view can reify the tree as application ACE facts, validated by the actual
+Attempto parser. This view is distinct from a natural English paraphrase. The recursive candidate now lives in
+the readers owner and covers the current typed grammar, including derived sources and correlated scopes.
+It remains unpromoted; parser acceptance, schema validation and target execution agreement do not certify
+learned English-to-program accuracy.
+
+Training source-program checks are shared in `training/readers/gold.py:read_program`, before the narrower
+readings codec. `read_gold` uses that same check and retains its existing readings labels. A source AST can
+therefore be audited as a recursive target even when named readings cannot represent it. Schema generation
+uses the AST annotations; comparison operands include arithmetic expressions and a literal left operand,
+which the existing validator and renderer already support. Draft 2020-12 fixed-tuple schemas require a
+validator that implements `prefixItems`; ignoring it can falsely reject composite join pairs.
+The offline importer rejects source semantics the AST cannot preserve, including OFFSET, ordering/limits
+on a compound query, and SQLite integer division. The AST's division remains real and zero-safe; source
+INTEGER/INTEGER arithmetic must not be silently converted to it. Changed-row audits retain strict
+disagreements even when original-data execution happened to match.
+
+The existing Spider evaluator can partition calibration by input position and merge only exhaustive, disjoint
+checkpoints with identical code, model, data and configuration fingerprints. Dependency fingerprints also bind
+injected reader predictions, their adapter and the question representation. Sharding changes scheduling only;
+the existing serving selector and grading code still own every result.
+
+## Shared Property Binding Migration
+
+This is the owner's required target, not the current production behavior. Noun, column and
+contextualized-value meanings share a compact, selected property basis. Reuse the existing selection
+in `engine/data/alloc.json` and its provenance in `training/props/`, rather than allocating all 1,521
+ontology properties. The original basis had 67 property coordinates; the current allocation has 71
+property-named, 9 structural and 10 intent coordinates. `families.json` uses 47 distinct properties
+across its family signatures. Selection uses training support (at least 25 instances, plus explicit
+biology anchors), followed by distinctive family evidence (in-family firing at least 0.15 and at
+least three times the out-of-family mean). These are support/discriminability rules, not evidence
+that every ontology property underwent a downstream accuracy ablation.
+
+The later URI-indexed head separately trains 80 properties and qualifies 56 for release. Its
+qualification is not a replacement for the historical basis-selection rationale. Freeze the reused
+coordinate order, resolve historical non-property names explicitly, and justify any additions by
+coverage and held-out task evidence. `engine/schema_org.py` and the pinned Schema.org 30.0 artifact
+provide vocabulary validation and inheritance; their full catalog is not the model dimension budget.
+Nouns, columns and values are different input roles with distinct identities and
+contexts, not different semantic spaces. The current readers and the interrupted CLEF AST candidate
+do not expose that common interface. Their opaque table/column/value scores are not property
+contributions, even when their final SQL tree can be inspected.
+
+The migration extends `engine/schema_model.py` and the existing semantic encoder/reader owners.
+One trained profile interface must cover all three roles. Coordinate meaning, scale, masks and
+qualification belong to a frozen vocabulary/label contract. Expected concept-property evidence and
+observed instance-property evidence are distinct supervision sources; unknown or missing observations
+are masked, not silently labelled false. Ontology compatibility bounds possible properties and does
+not itself prove that a particular instance has them. The existing table-property head's calibration
+cannot be assumed to transfer to nouns or individual values.
+
+Semantic binding must consume these profiles and expose the exact per-property contribution,
+normalization, role/relationship gates and deterministic tie handling. Opaque encoders may read
+context upstream; opaque residuals, schema pruning or value-pointer scores must not independently
+choose a semantic binding downstream. Retained proposal retrieval must be identified and evaluated
+for recall. A property explanation added after an opaque choice does not satisfy the contract.
+
+Profiles retain physical table/column/cell pointers, dataset versions, literals and grounded
+entity/source keys. Paris and Lyon can have similar city profiles while remaining distinct values.
+Departure and arrival columns can share a type while requiring different argument/relationship
+roles. Unresolved identity or role ambiguity must abstain. Operations such as COUNT and SUM use
+separate named intent/operator coordinates, not invented Schema.org properties.
+
+```mermaid
+flowchart LR
+    N[Conversation and ACE noun spans] --> E[One semantic encoder]
+    C[Columns with schema and sample context] --> E
+    V[Values with column and conversation context] --> E
+    E --> P[Per-input profiles in one Schema.org property basis]
+    E --> I[Separate named intent and operation readings]
+    P --> B[Binding by named contributions and role/identity constraints]
+    I --> B
+    B --> R[Existing readings builder]
+    R --> A[Typed AST and validation]
+    A --> X[Deterministic SQL/Python execution]
+```
+
+Accepted bindings and operation readings feed the **existing** `engine/readers/readings.py:build`,
+typed AST, validation, deterministic SQL/Python emitters, request database and
+`TableQuery.select_query`. A migration must replace the current semantic binding callers coherently
+and leave one promoted bundle and selection path. It must inventory the property-head consumers in
+`engine/dimension.py`, `engine/knowledge_typing.py` and `engine/router.py`, preserve their evidence and
+source-key authorization, and recalibrate affected consumers before promotion. No serving migration
+has occurred. An unqualified shared-head feasibility candidate has been fitted; it does not yet
+provide recursive tree decisions or qualified cross-role bindings (see `docs/MODEL_CARD.md`).
+
+Acceptance requires cross-role property calibration and alignment; schema/entity/rewording holdouts;
+identity, relationship-role and property-poor-domain cases; and property-coordinate interventions
+whose effects agree with the actual binding formula. Contribution sums must reproduce the semantic
+score. Changing a hidden residual while holding the named interface and explicit constraints fixed
+must not change the binding. These gates supplement strict answer accuracy, pool recall,
+right/asked/wrong, wins/losses, latency and memory through the one serving evaluator. A separately
+frozen experiment contract, data manifest and approved budget are required before new training.
+
+### Defined candidate interface and evidence plumbing (2026-11-06)
+
+`engine/readers/layout.py:named_coordinate_contract` owns the candidate's **215 defined coordinates**:
+71 selected property URIs, 64 SQL coordinates, 32 bounded ACE meaning frames, 32 structural/type/role
+coordinates and 16 dialogue controls. This is not the inherited 90-coordinate runtime allocation.
+The 10 inherited intents are inside the 64 SQL coordinates; the nine structural signals are inside
+the 32. The proposal's AST-node-presence slots have become explicit argument roles; recursive AST
+node tags and scoped identity edges remain grammar fields. Every candidate coordinate starts
+uncalibrated. The frame vocabulary is an application meaning profile, not APE grammar production names.
+
+The property migration retires the class-named `GeoCoordinates` channel and trains the actual `geo`
+property afresh. It retires `taxonName`, projects scientific-name observations onto `name`, and adds
+`alternateName` as a separate alias target. These are new targets, not reinterpretations of old weights.
+No existing runtime allocation or promoted bundle changes.
+
+`NamedSemanticModel` and `NamedSemanticHead` in the existing readers model owner use one backbone and
+one shared projection. The CLEF construction discards the stock choice head and reads prefill states;
+it does not invoke generation or export lexical/residual choice scores. `semantic_encode` places
+schema/data and static column/value items before the conversation, then query items afterward.
+Consequently CLEF's causal static profiles cannot see a changed question. Physical IDs remain return
+maps, not input features. This is a non-autoregressive use of CLEF's causal backbone, not a claim that
+its attention has become bidirectional. The candidate is not selected by the promoted runtime loader.
+
+`engine/schema_decode.py:bind_profiles` compares expected semantic profiles. Each qualified,
+known coordinate contributes `weight * (min(query, candidate) - abs(query - candidate))` in a pinned
+integer scale. The denominator is fixed from known qualified query evidence; unknown candidates
+reduce coverage. Exact score/coverage/margin gates, explicit datatype/relationship/identity constraints,
+and ambiguity refusal are replayed with every contribution. `decisions.named_choice` maps its result
+to an existing builder choice. This primitive alone does not certify other AST decisions or integrate
+the shared model into serving. Zero profiles and ties cannot choose a physical identity.
+
+Qualification is role-specific and pinned in `BindingBasis.role_qualified`; the global mask is exactly
+its union. An omitted role has no qualified coordinates. The named head cannot export a coordinate
+for that role, even if a caller supplies an all-true evidence mask. The binder independently applies
+both query and candidate role masks and records their exclusions; an explicit identity cannot bypass
+them. Unqualified five-field candidate records retain their identity. Globally qualified prototype
+records without role-calibration evidence are rejected rather than silently licensed for all roles.
+The comparison basis is the two declared roles' calibrated intersection, fixed for the candidate set;
+unknown individual observations still reduce coverage. The meaning head only exports
+`expected_concept` evidence. `observed_instance` profiles require verified source evidence and cannot
+be manufactured by relabelling that head's probabilities.
+
+The existing `training/readers/gold.py:semantic_labels` derives all 64 SQL presence labels and scoped
+argument occurrences from the validated typed AST. `training/readers/examples.py semantic` prepares
+the original question/conversation state without inserting gold trees into input. The semantic fit
+mode in the existing trainer uses directly supervised, masked BCE; unknown coordinates have zero
+loss and gradient. Generated conversation controls require checked source-reading deltas and
+matching original turns/schema. Source readings preserve ordering history that AST optimization may
+rewrite into MIN/MAX. These annotations remain outside model input; arbitrary questions receive no
+inferred negative dialogue labels. The Schema.org signature owner estimates expected source-observation profiles
+from distinct real training groups with one annotated leaf class. These empirical priors are not
+negative facts about individual entities. Synthetic noun/column concept witnesses and held-out
+Wikidata value descriptions are labelled separately; the source relation's class-bearing prefix is
+excluded from value input. This does not establish real-column or English-to-ACE alignment accuracy.
+
+`engine/sql_ast.py` owns the recursive JSON schema and strict tree codec, derived from the same typed
+dataclasses/enums as SQL validation/rendering. Schema compliance does not establish English meaning
+or schema grounding. Historical experiment codecs are evidence, not active runtime owners.
+
+The shared workbook importer now records compact output-row-to-original-sheet-row ranges and source
+column letters, including skipped blank rows and separate summary rows. Request validation, snapshot
+persistence, server parse caches and browser fingerprints preserve/bind this metadata. Embedded
+newlines in summary cells do not inflate summary row counts. `ProvenanceContext.input_lineage`
+captures an immutable parsed-input snapshot lazily. `InputLineage` provides original source addresses,
+explicit section-label anchors/scopes and executor-supplied contributor occurrences, preserving
+duplicates. It never guesses physical rows for older imports or infers blank-fill scopes from questions.
+The existing Python execution operators now propagate source-row identities through projection,
+filtering, sorting, fan-out, joins and grouping. The runtime shares one source-key pool across stages
+and records output-row digests in Python execution order. `RequestDatabase.load` attests the exact
+inserted snapshot/order; `ProvenanceContext.execution_lineage` resolves those keys against the
+immutable request inputs and their importer address maps. Equal-valued duplicate rows keep separate
+identities. Unknown origins remain unknown. SQL-only execution reports unavailable provenance.
+This is positive source-row provenance, not minimal per-cell influence, negative-condition evidence,
+or proof of learned named-coordinate decisions. Model-originated Enron binding traces remain required.
+
+The same deterministic lowering owner implements projected-tuple DISTINCT with a grouping-only
+`ReducedView`, preserving every duplicate contributor before ordering/limiting. A distinct query
+cannot rank by an unprojected expression. Integer literals compared with text/date columns receive
+SQLite's text affinity in the Python lowering, including reversed operands; numeric columns retain
+numeric comparison semantics.
+
+The unpromoted decision owner now also decodes finite SQL enum choices directly from role-qualified
+named operation coordinates, using exact weighted prototype-distance terms and confidence/margin
+gates. Enum aliases share their semantic prototype. Missing evidence refuses; replay rejects changed
+contributions. `NamedSemanticModel.read` consumes the same input-only item bank as training in one
+prefill, exporting qualified profiles without a second choice head. Scoped operator requests are
+created before targets; inactive slots retain unknown labels and zero gradient. That bounded bank remains
+an adapter for the source readings format. The joint candidate uses the recursive controller below;
+earlier candidate weights/data retain their frozen contracts and do not become qualified by this code.
+
+`engine/readers/grammar.py:ASTGrammar` traverses the SQL owner's recursive JSON schema. It constructs finite,
+input-grounded choices for sources, scoped columns, literals, lists, node forms and executable enums. Aliases
+are alpha-normalized; all join sources precede join predicates. Sources and scope mappings remain grammar
+facts, and no target/predicted AST prefix enters the encoder bank. Forced and learned choices both count
+toward the explicit position bound. `NamedSemanticModel.read_query` performs one encoder prefill, combines
+each position state with its explicit candidate states, and applies the same 215-coordinate projection.
+Only qualified conditional role/operator propositions cross that bottleneck. `decisions.named_field_choice`
+uses exact quantized values, complements for absence, and score/margin refusal; there is no pointer, lexical
+residual or independent re-scoring head. `replay_query_trace` rebuilds successful ASTs and refusals without
+an encoder and rejects changed candidate domains, contributions or inputs. `ace.encode_query/decode_query`
+expose a lossless canonical application ACE view of that same tree. This is not independent validation of
+a fluent ACE reformulation of the user's English.
+
+Offline corpus preparation and the recursive bank share `grammar.source_schema`:
+physical names, observed types, original sample values and source-hash-verified
+publisher column descriptions. Explicit recovered database manifests pin both the
+author input and the restored file; a new source version invalidates earlier
+execution witnesses even if its AST is unchanged. Small reference tables expose
+aligned ID/description rows with a 128-row/12,000-character additional evidence
+bound. Generic word-form, calendar, clock, duration, unit and observed email-domain
+candidates preserve original cells and never select a meaning by themselves.
+`Sources.question_graph` retrieves additional rows using input names, labels and
+bounded reference-description matches. Low-cardinality related values can be
+sampled through declared relationships or equal-named, data-discovered proposals;
+this does not authorize a new planner relationship. Every sampled value is part
+of a complete, actual source row. `SchemaGraph.source_rows` identifies those rows
+so the grammar can expose their cells even when a code shares no question words.
+The same row and text bounds limit these facts. Filtering a table removes its
+row markers too.
+
+The recursive literal bank retains its relevance-ranked source choices and adds
+at most three compact observed strings for each of at most nine input-overlapping
+words per source column. Rare overlaps precede frequent ones; all ordering is
+stable. This keeps repeated long labels from crowding shorter recorded spellings
+out of the bank, without inventing an alias or deciding that two names denote
+the same entity. Numeric reference keys pass to SQLite through the existing
+canonical decimal representation instead of binary-float conversion.
+
+Preparation and auditing use this owner. An unfinished optional read discards
+every newly retrieved row and retains the original input bank with an unavailable
+receipt. The grammar still rejects required literals absent from that bank;
+genuine database errors propagate. This preserves valid question-span predicates
+without turning failed lookups into facts. Preparation receipts record source
+file hashes, code hashes, lookup outcomes and unchanged-source/code checks.
+These are candidate input rules, not independent English-meaning proofs or
+measured model accuracy.
+
+The joint wire format encodes source samples once and reuses their token spans for candidate values and
+column profiles. Long source observations have explicit previews, lengths and encoded-binary descriptions;
+the immutable source cells and finite literal bindings retain complete values. Whole original question spans
+remain available, with tokenizer character offsets; source previews never shorten the conversation. Opaque
+content hashes and physical return IDs do not become model features. Complete wire inputs must meet the
+candidate bundle's recorded token bound; they are never silently cut to fit it.
+
+`ReadingSearch` loads exactly the artifact format supplied to it. An explicitly injected named candidate
+enters `TableQuery.search_pool/select_query` with observed source types and no promoted encoder or external
+reader/ranker fallback. Optional conversation turns reach the same candidate. Recursive candidates bypass
+the bounded calculation expander; the shared selection, execution and refusal owner remains authoritative.
+`served_member` retains named traces and records deterministic served-tree transforms, including identity
+transforms and the currency bindings. `replay_served_query_trace` rebuilds the model AST from named values,
+derives currencies again from the request graph, and reruns this same serving owner. Changed transforms,
+bindings or ASTs are rejected. The existing Spider
+evaluator and Enron replay accept this candidate explicitly; neither changes its gold grading rule.
+
+`examples semantic-grammar` prepares one complete input-only bank per question and labels every checked
+choice, retaining rejected source pairs separately. `train semantic` uses masked named BCE and grouped CE
+on those same axes, bounded batches, complete seeded epochs and exact resumable checkpoints. Its input
+cache retains exact frozen records on ephemeral disk with bounded decoded-row memory. Full held-out
+`semantic-evaluate` predictions can produce role-specific `semantic-qualify` evidence; this is interface
+qualification, not answer accuracy or promotion. Static expected-property targets train jointly, but the
+recursive argument readout currently consumes conditional role/operator propositions. Real noun/column/value
+property-alignment qualification, causal use of all proposed blocks, independent English meaning checks,
+generalization and served accuracy remain separate uncompleted gates.
+
+The same trainer can initialize from a hash-pinned candidate and freeze its encoder while fitting
+the single named head. Frozen prefills explicitly run in inference mode, then clone their pooled
+states for head backpropagation: freezing parameter flags alone is insufficient when PEFT retains
+an input-gradient hook. A frozen encoder stays in evaluation mode. Native construction pins FP32
+matmul and deterministic convolution settings. Optional offline pooled-state caching binds exact
+input, adapter, tokenizer, serialization, pooling and numerical-policy identities and shares this
+same projection, loss and evaluator; it supplies no additional runtime score. Training references
+and fresh native reloads must agree on quantized calibration/short/median/long inputs. Conditional
+field diagnostics exclude forced choices and reject quantized ties; they are not served SQL scores.
+
+The Runpod lifecycle owner permits an explicitly renewed owned lease only with hourly and
+whole-duration compute bounds. Ordinary resume never extends its deadline. Renewal arms and reads
+back a provider-authenticated pod-local guard before replacing its predecessor. Candidate job
+orchestration exports durable evidence and additionally arms completion cleanup; it never promotes
+weights or changes the one production selector.
+
+The CSS experiment motivates explicit supervision of readable coordinates; it does not establish
+Schema.org/SQL performance or causal downstream use. It also reports that cross-format alignment
+does not follow automatically from RGB anchoring. See its pinned
+[loss](https://github.com/ManiDoraisamy/prereasoner-css/blob/c4a345509a6176cd7e07d534ee2b633e042af718/src/loss.py)
+and [paper](https://github.com/ManiDoraisamy/prereasoner-css/blob/c4a345509a6176cd7e07d534ee2b633e042af718/docs/PAPER.md).
 
 ## World Grounding And Composition
 

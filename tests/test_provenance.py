@@ -278,7 +278,199 @@ def test_rtdb_array_envelope_preserves_sparse_and_empty_results():
     assert json.loads(wire['columns']['json']) == ['amount', 'currency']
 
 
+def test_section_cell_lineage_keeps_the_original_and_the_exact_anchor():
+    from engine.provenance import InputLineage
+
+    table = {"name": "events", "columns": ["Type", "Contract"],
+             "rows": [["Expiration", "a"], [None, "b"], ["Termination", "c"], ["", "d"], [None, "e"]]}
+    lineage = InputLineage(table, source_id="upload/events").section_labels(
+        0, ((0, 2), (2, 4)), evidence="layout/source-scopes")
+    assert lineage.cell(1, 0)["original"] is None
+    assert lineage.cell(1, 0)["value"] == "Expiration"
+    assert lineage.cell(1, 0)["inputs"] == [{"row": 0, "column": 0}]
+    assert lineage.cell(1, 0)["scope"] == [0, 2]
+    assert lineage.cell(3, 0)["value"] == "Termination"
+    assert lineage.cell(4, 0)["value"] is None  # outside every declared scope
+    assert table["rows"][1][0] is None  # evidence does not rewrite the input
+    replay = InputLineage.replay(table, lineage.record())
+    assert replay.cell(1, 0) == lineage.cell(1, 0)
+
+
+def test_section_scope_conflicts_fail_atomically_without_overfilling():
+    from engine.provenance import InputLineage
+
+    table = {"name": "events", "columns": ["Type"], "rows": [["Expiration"], [None], ["Termination"], [None]]}
+    for scopes in (((0, 4),), ((1, 2),), ((0, 3), (2, 4)), ((3, 5),)):
+        lineage = InputLineage(table, source_id="events")
+        try:
+            lineage.section_labels(0, scopes, evidence="source")
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("an invalid section declaration was accepted")
+        assert lineage.record()["section_cells"] == []
+    lineage = InputLineage(table, source_id="events").section_labels(0, ((0, 2),), evidence="source")
+    before = lineage.record()
+    try:
+        lineage.section_labels(0, ((0, 2),), evidence="overwritten")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("a section declaration silently overwrote evidence")
+    assert lineage.record() == before
+
+
+def test_input_lineage_preserves_duplicate_observations_and_execution_multiplicity():
+    from engine.provenance import InputLineage
+
+    table = {"name": "payments", "columns": ["amount"], "rows": [[100], [100]]}
+    lineage = InputLineage(table, source_id="upload")
+    assert lineage.row_id(0) != lineage.row_id(1)
+    result = lineage.contributor_record((0, 1, 0), (0,))
+    assert result["row_count"] == 3 and result["distinct_source_rows"] == 2
+    assert [c["value"] for c in result["cell_lineage"]] == [100, 100, 100]
+    assert result["row_ids"][0] == result["row_ids"][2]
+
+
+def test_input_lineage_snapshot_hash_binds_types_values_and_layout():
+    from copy import deepcopy
+    from engine.provenance import InputLineage
+
+    table = {"name": "data", "columns": ["value"], "rows": [[123], [None]]}
+    original = InputLineage(table, source_id="upload")
+    for row in ([["123"], [None]], [[124], [None]], [[None], [123]]):
+        changed = {**table, "rows": row}
+        assert InputLineage(changed, source_id="upload").source_sha256 != original.source_sha256
+        try:
+            InputLineage.replay(changed, original.record())
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("a changed source replayed under the old identity")
+    wire = deepcopy(original.record())
+    wire["unaccounted_transform"] = True
+    try:
+        InputLineage.replay(table, wire)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("unaccounted source transforms crossed the lineage boundary")
+
+
+def test_section_intervention_changes_only_rows_in_its_scope():
+    from engine.provenance import InputLineage
+
+    rows = [["Expiration"], [None], [None], ["Termination"], [None]]
+    table = {"name": "events", "columns": ["Type"], "rows": rows}
+    before = InputLineage(table, source_id="upload").section_labels(0, ((0, 3), (3, 5)), evidence="sections")
+    after = InputLineage({**table, "rows": [["Termination"], *rows[1:]]}, source_id="upload").section_labels(
+        0, ((0, 3), (3, 5)), evidence="sections")
+    b = [before.cell(i, 0)["value"] for i in range(5)]
+    a = [after.cell(i, 0)["value"] for i in range(5)]
+    assert b.count("Expiration") == 3 and a.count("Expiration") == 0
+    assert b[3:] == a[3:] == ["Termination", "Termination"]
+
+
+def test_physical_cell_lineage_uses_importer_ranges_including_gaps_and_offsets():
+    from engine.provenance import InputLineage
+
+    table = {"name": "normalized", "columns": ["Type", "Contract"], "rows": [["Expiration", "a"], [None, "b"]]}
+    meta = {"sourceSheet": "Original Sheet", "sourceRange": "D5:E9",
+            "sourceRows": {"encoding": "ranges", "count": 2, "ranges": [[0, 6, 1], [1, 9, 1]]},
+            "columnBindings": [{"name": "Type", "column": "D"}, {"name": "Contract", "column": "E"}]}
+    lineage = InputLineage(table, source_id="upload", import_record=meta).section_labels(
+        0, ((0, 2),), evidence="source/section-annotation")
+    cell = lineage.cell(1, 0)
+    assert cell["source_cell"] == {"sheet": "Original Sheet", "row": 9, "column": "D", "address": "D9"}
+    assert cell["inputs"][0]["source_cell"]["address"] == "D6"
+    assert InputLineage.replay(table, lineage.record(), import_record=meta).cell(1, 0) == cell
+    try:
+        InputLineage.replay(table, lineage.record())
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("physical coordinates must replay against the original import, not self-asserted metadata")
+
+
+def test_legacy_import_lineage_never_guesses_an_excel_row_from_a_header_offset():
+    from engine.provenance import InputLineage
+
+    table = {"name": "t", "columns": ["v"], "rows": [[1], [2]]}
+    lineage = InputLineage(table, source_id="upload", import_record={"headerRow": 5, "skippedBlankRows": [7]})
+    assert lineage.cell(1, 0)["source_cell"] is None
+    assert lineage.cell(1, 0)["row"] == 1
+
+
+def test_physical_lineage_rejects_corrupt_or_out_of_range_row_maps():
+    from copy import deepcopy
+    from engine.provenance import InputLineage
+
+    table = {"name": "t", "columns": ["v"], "rows": [[1], [2]]}
+    meta = {"sourceSheet": "S", "sourceRange": "A1:A4", "columnBindings": [{"name": "v", "column": "A"}],
+            "sourceRows": {"encoding": "ranges", "count": 2, "ranges": [[0, 2, 2]]}}
+    for ranges in ([[0, 2, 1]], [[1, 2, 2]], [[0, 2, 1], [1, 2, 1]], [[0, 4, 2]]):
+        altered = deepcopy(meta)
+        altered["sourceRows"]["ranges"] = ranges
+        try:
+            InputLineage(table, source_id="upload", import_record=altered)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("corrupt physical row map accepted")
+    original = InputLineage(table, source_id="upload", import_record=meta)
+    moved = deepcopy(meta)
+    moved["sourceRows"]["ranges"] = [[0, 3, 2]]
+    assert InputLineage(table, source_id="upload", import_record=moved).source_sha256 != original.source_sha256
+
+
+def test_executor_row_key_resolution_requires_unique_keys_or_verified_row_order():
+    from engine.provenance import InputLineage
+
+    source = InputLineage({"name": "t", "columns": ["id", "v"], "rows": [["001", 3], ["002", 4]]}, source_id="input")
+    def key(columns, values):
+        return {"schema": "conversation", "table": "t", "key_columns": columns, "key_values": values}
+    keys = [key(["id"], [2]), key(["id"], [1]), key(["id"], [2])]
+    result = source.resolve_row_keys(keys, (1,), key_affinities={"id": "INTEGER"})
+    assert [c["original"] for c in result["cell_lineage"]] == [4, 3, 4]
+    assert len(source._row_key_lookups) == 1
+    native = [key(["rowid"], [2]), key(["rowid"], [1]), key(["rowid"], [2])]
+    for kwargs in ({}, {"rowid_source_sha256": "wrong-snapshot"}):
+        try: source.resolve_row_keys(native, (1,), **kwargs)
+        except ValueError: pass
+        else: raise AssertionError("unattested SQLite rowid was presented as an input ordinal")
+    assert source.resolve_row_keys(native, (1,), rowid_source_sha256=source.source_sha256)["row_ids"] == result["row_ids"]
+    duplicate = InputLineage({"name": "t", "columns": ["id"], "rows": [["x"], ["x"]]}, source_id="input")
+    try: duplicate.resolve_row_keys([key(["id"], ["x"])], (0,))
+    except ValueError: pass
+    else: raise AssertionError("ambiguous natural key attributed an arbitrary duplicate row")
+
+
+def test_context_lineage_captures_the_request_snapshot_and_rejects_ambiguous_names():
+    table = {"name": "t", "columns": ["v"], "rows": [[1], [2]]}
+    context = ProvenanceContext([table], uploaded_count=1)
+    table["rows"][0][0] = 99
+    assert context.input_lineage("t").cell(0, 0)["value"] == 1
+    assert context.input_lineage("t") is context.input_lineage("t")
+    for ctx, name in ((context, "absent"), (ProvenanceContext([table, table], uploaded_count=2), "t")):
+        try:
+            ctx.input_lineage(name)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("unknown or duplicate physical tables cannot produce an attributed trace")
+
+
 TESTS = [
+    test_executor_row_key_resolution_requires_unique_keys_or_verified_row_order,
+    test_context_lineage_captures_the_request_snapshot_and_rejects_ambiguous_names,
+    test_physical_cell_lineage_uses_importer_ranges_including_gaps_and_offsets,
+    test_legacy_import_lineage_never_guesses_an_excel_row_from_a_header_offset,
+    test_physical_lineage_rejects_corrupt_or_out_of_range_row_maps,
+    test_section_cell_lineage_keeps_the_original_and_the_exact_anchor,
+    test_section_scope_conflicts_fail_atomically_without_overfilling,
+    test_input_lineage_preserves_duplicate_observations_and_execution_multiplicity,
+    test_input_lineage_snapshot_hash_binds_types_values_and_layout,
+    test_section_intervention_changes_only_rows_in_its_scope,
     test_rtdb_array_envelope_preserves_sparse_and_empty_results,
     test_saved_reference_decimals_do_not_break_the_response,
     test_saved_reference_decimals_do_not_break_the_live_trace,

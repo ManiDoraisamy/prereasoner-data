@@ -56,6 +56,11 @@ def json_dumps(value: Any, **kwargs) -> str:
     return json.dumps(wire_document(value), **kwargs)
 
 
+def has_integer_padding(value: Any) -> bool:
+    """Whether numeric conversion would discard a zero-padded source code."""
+    return isinstance(value, str) and re.fullmatch(r"[+-]?0[0-9]+", value.strip()) is not None
+
+
 def stored_as_numbers(values: Iterable[Any]) -> bool:
     """Whether a column is stored as numbers: it has a filled cell and every filled one is a number (a blank
     is None or whitespace). Any other column is stored as text, cell by cell as str(value). The planner's
@@ -64,6 +69,8 @@ def stored_as_numbers(values: Iterable[Any]) -> bool:
     if not filled:
         return False
     for value in filled:
+        if has_integer_padding(value):
+            return False
         try:
             parse_decimal(value)
         except (TypeError, ValueError):
@@ -80,6 +87,8 @@ def observed_numeric_affinity(values: Iterable[Any]) -> str:
     """
     fractional = False
     for value in values:
+        if has_integer_padding(value):
+            return "TEXT"
         try:
             number = parse_decimal(value)
         except (TypeError, ValueError):

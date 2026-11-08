@@ -568,6 +568,26 @@ class RequestDatabase:
             self._fingerprints[key] = (rows, shape)
         return (tuple((column["name"], column["affinity"]) for column in columns), tuple(table["columns"]), shape)
 
+    def source_row_snapshots(self, tablemap):
+        """Attest row order only for tables matching this database's loaded input.
+
+        load() inserts those rows sequentially into an immutable private table;
+        its unshadowed SQLite rowid therefore identifies the 1-based input row.
+        Recompute the digest here rather than trusting a mutable caller cache.
+        """
+        snapshots = {}
+        for name, table in tablemap.items():
+            loaded = self._tables.get(name)
+            if loaded is None:
+                continue
+            digest = hashlib.sha256(json.dumps(table["rows"], default=str, ensure_ascii=False).encode("utf-8")).hexdigest()
+            if tuple(table["columns"]) != loaded[1] or digest != loaded[2]:
+                raise ValueError("executed table no longer matches its input-order snapshot")
+            snapshots[name] = {"columns": list(loaded[1]), "affinities": dict(loaded[0]),
+                               "rows_sha256": digest, "row_count": len(table["rows"]),
+                               "owner": "engine.prepared.RequestDatabase.load"}
+        return snapshots
+
     # ---- the knowledgebase part ----
     def catalog(self, table):
         """((column, PostgreSQL type), ...) of a knowledgebase table, in column order; () when it has none."""

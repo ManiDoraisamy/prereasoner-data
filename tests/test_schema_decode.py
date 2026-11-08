@@ -226,7 +226,236 @@ def test_artifact_chain_is_pinned():
     print("  PASS  artifact chain pinned: ontology == corpus identity across signatures + model meta")
 
 
+def _binding_fixture():
+    from engine.schema_decode import BindingBasis, BindingPolicy, BindingProfile
+
+    basis = BindingBasis((_p("address"), _p("geo"), _p("name")), (2, 3, 1), (True, True, True),
+                         "mechanism-fixture-not-serving-calibration", levels=8,
+                         role_qualified=tuple((kind, (True, True, True)) for kind in ("noun", "column", "value")))
+    policy = BindingPolicy((1, 2), (2, 3), (1, 10))
+
+    def profile(identity, values, kind="column", relationship="", datatype=""):
+        return BindingProfile(basis.identity, identity, kind, tuple(values), "expected_concept",
+                              relationship, datatype)
+    return basis, policy, profile
+
+
+def test_binding_qualification_cannot_transfer_between_input_roles():
+    from engine.schema_decode import BindingBasis, BindingPolicy, BindingProfile, bind_profiles, replay_binding
+
+    basis = BindingBasis((_p("geo"), "sql.project"), (1, 1), (True, True), "role-fixture", 8,
+                         (("noun", (True, False)), ("column", (True, False)), ("question", (False, True))))
+    policy = BindingPolicy((1, 2), (1, 1), (1, 10))
+    def profile(identity, kind, values):
+        return BindingProfile(basis.identity, identity, kind, values, "expected_concept")
+    query = profile("noun", "noun", (8, 8))
+    result = bind_profiles(basis, query, (profile("cities", "column", (8, 8)),), policy, candidate_kind="column")
+    assert result["selected"] == "cities"
+    assert result["candidates"][0]["contributions"][1]["masked_reason"] == "query_role_unqualified"
+    assert replay_binding(basis.record(), result) == result
+    # A coordinate calibrated only on question items cannot select a column,
+    # even if a malformed caller supplies a positive column value for it.
+    result = bind_profiles(basis, profile("query-op", "question", (8, 8)),
+                           (profile("cities", "column", (8, 8)),), policy,
+                           candidate_kind="column", required_identity="cities")
+    assert result["selected"] is None and result["candidates"][0]["coverage"] == [0, 1]
+    assert result["candidates"][0]["contributions"][1]["masked_reason"] == "candidate_role_unqualified"
+    result = bind_profiles(basis, query, (profile("paris", "value", (8, 8)),), policy, candidate_kind="value")
+    assert result["selected"] is None  # no value-role calibration was supplied
+    assert BindingBasis.from_record(basis.record()) == basis
+    # A question-side operation is outside a static column's calibrated space;
+    # it must neither select the column nor dilute genuine property coverage.
+    comparable = BindingBasis((_p("geo"), "sql.project"), (1, 1), (True, True), "role-projection", 8,
+                              (("noun", (True, True)), ("column", (True, False))))
+    q = BindingProfile(comparable.identity, "q", "noun", (8, 8), "expected_concept")
+    c = BindingProfile(comparable.identity, "c", "column", (8, None), "expected_concept")
+    result = bind_profiles(comparable, q, (c,), policy, candidate_kind="column")
+    assert result["selected"] == "c" and result["candidates"][0]["coverage"] == [1, 1]
+    assert result["candidates"][0]["normalizer"] == 8
+    unqualified = {"coordinates": ["a"], "weights": [1], "qualified": [False],
+                   "calibration_id": "unqualified", "levels": 8}
+    assert BindingBasis.from_record(unqualified).record() == unqualified
+    try:
+        BindingBasis.from_record({**unqualified, "qualified": [True]})
+    except ValueError as error:
+        assert "role" in str(error)
+    else:
+        raise AssertionError("a globally qualified prototype without role evidence was accepted")
+
+
+def test_binding_contributions_are_exact_and_replayable():
+    from fractions import Fraction
+    from engine.schema_decode import bind_profiles, replay_binding
+
+    basis, policy, profile = _binding_fixture()
+    query = profile("question/span/city", (8, 8, 8), "noun")
+    candidates = (profile("dataset/places/cities", (8, 8, 8)), profile("dataset/people/name", (0, 0, 8)))
+    trace = bind_profiles(basis, query, candidates, policy, candidate_kind="column")
+    assert trace["selected"] == "dataset/places/cities"
+    for row in trace["candidates"]:
+        assert row["numerator"] == sum(term["contribution"] for term in row["contributions"])
+        assert Fraction(*row["score"]) == Fraction(row["numerator"], row["normalizer"])
+    wire = json.loads(json.dumps(trace))
+    assert replay_binding(basis.record(), wire) == trace
+    try:
+        replay_binding(basis.record(), {**wire, "residual_score": 500})
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("an unaccounted score must not cross the replay interface")
+
+
+def test_binding_intervention_changes_only_the_declared_contribution():
+    from engine.schema_decode import bind_profiles
+
+    basis, policy, profile = _binding_fixture()
+    query = profile("noun", (8, 8, 8), "noun")
+    before = bind_profiles(basis, query, (profile("cities", (8, 8, 8)),), policy, candidate_kind="column")
+    after = bind_profiles(basis, query, (profile("cities", (8, 0, 8)),), policy, candidate_kind="column")
+    b, a = before["candidates"][0], after["candidates"][0]
+    assert b["numerator"] - a["numerator"] == 48  # geo: weight 3 * (8 - (-8))
+    assert b["contributions"][0] == a["contributions"][0]
+    assert b["contributions"][2] == a["contributions"][2]
+    assert before["state"] == "bound" and after["state"] == "clarify"
+
+
+def test_binding_unknowns_are_masked_and_cannot_win_by_tiny_overlap():
+    from engine.schema_decode import bind_profiles
+
+    basis, policy, profile = _binding_fixture()
+    query = profile("noun", (8, 8, 8), "noun")
+    sparse = bind_profiles(basis, query, (profile("sparse", (None, None, 8)),), policy, candidate_kind="column")
+    row = sparse["candidates"][0]
+    assert row["coverage"] == [1, 6] and row["score"] == [1, 6]
+    assert row["contributions"][0]["masked_reason"] == "candidate_unknown"
+    assert sparse["selected"] is None
+    assert bind_profiles(basis, profile("unknown", (None, None, None), "noun"),
+                         (profile("cities", (8, 8, 8)),), policy, candidate_kind="column")["selected"] is None
+    assert bind_profiles(basis, profile("zero", (0, 0, 0), "noun"),
+                         (profile("zero-column", (0, 0, 0)),), policy, candidate_kind="column")["selected"] is None
+
+
+def test_binding_same_profile_never_collapses_physical_identity():
+    from engine.schema_decode import bind_profiles
+
+    basis, policy, profile = _binding_fixture()
+    query = profile("noun-city", (8, 8, 8), "noun")
+    values = (profile("places/row-paris", (8, 8, 8), "value"), profile("places/row-lyon", (8, 8, 8), "value"))
+    first = bind_profiles(basis, query, values, policy, candidate_kind="value")
+    second = bind_profiles(basis, query, tuple(reversed(values)), policy, candidate_kind="value")
+    assert first == second and first["reason"] == "ambiguous_binding" and first["selected"] is None
+    pinned = bind_profiles(basis, query, values, policy, candidate_kind="value", required_identity="places/row-paris")
+    assert pinned["selected"] == "places/row-paris"
+
+
+def test_binding_relationship_and_datatype_are_causal_constraints():
+    from engine.schema_decode import bind_profiles
+
+    basis, policy, profile = _binding_fixture()
+    q = profile("origin", (8, 8, 8), "noun", "departure", "text")
+    candidates = (profile("arrival", (8, 8, 8), relationship="arrival", datatype="text"),
+                  profile("departure", (8, 8, 8), relationship="departure", datatype="text"),
+                  profile("duration", (8, 8, 8), relationship="departure", datatype="number"))
+    result = bind_profiles(basis, q, candidates, policy, candidate_kind="column")
+    assert result["selected"] == "departure"
+    reasons = {row["identity"]: row["rejected"] for row in result["candidates"]}
+    assert "relationship_mismatch" in reasons["arrival"] and "datatype_mismatch" in reasons["duration"]
+
+
+def test_binding_margin_accounts_for_a_runner_below_the_score_floor():
+    from engine.schema_decode import BindingBasis, BindingPolicy, BindingProfile, bind_profiles
+
+    basis = BindingBasis((_p("name"),), (1,), (True,), "margin-fixture", 100,
+                         (("noun", (True,)), ("column", (True,))))
+    q = BindingProfile(basis.identity, "q", "noun", (100,), "expected_concept")
+    # Score = (c - (100-c))/100. 75 -> .50, 74 -> .48.
+    profiles = tuple(BindingProfile(basis.identity, str(v), "column", (v,), "expected_concept") for v in (75, 74))
+    result = bind_profiles(basis, q, profiles, BindingPolicy((1, 2), (1, 1), (1, 10)), candidate_kind="column")
+    assert result["selected"] is None and result["margin"] == [1, 50]
+
+
+def test_binding_rejects_changed_calibration_and_malformed_values():
+    from dataclasses import replace
+    from engine.schema_decode import BindingBasis, BindingProfile, bind_profiles
+
+    basis, policy, profile = _binding_fixture()
+    query = profile("q", (8, 8, 8), "noun")
+    other = replace(basis, calibration_id="different-calibration")
+    cases = [(other, query, (profile("x", (8, 8, 8)),)),
+             (basis, query, (profile("x", (9, 8, 8)),)),
+             (basis, query, (profile("x", (8, 8, 8)), profile("x", (8, 8, 8))))]
+    for b, q, values in cases:
+        try:
+            bind_profiles(b, q, values, policy, candidate_kind="column")
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("invalid binding input accepted")
+    for make in (lambda: BindingBasis(("a", "a"), (1, 1), (True, True), "x"),
+                 lambda: BindingProfile(basis.identity, "x", "column", (float("nan"),), "expected_concept"),
+                 lambda: replace(basis, weights=(True, 1, 1))):
+        try:
+            make()
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("malformed named evidence accepted")
+
+
+def test_binding_unqualified_coordinates_do_not_decide():
+    from dataclasses import replace
+    from engine.schema_decode import BindingProfile, bind_profiles
+
+    basis, policy, _ = _binding_fixture()
+    basis = replace(basis, qualified=(True, False, True),
+                    role_qualified=tuple((kind, (True, False, True)) for kind in ("noun", "column", "value")))
+    q = BindingProfile(basis.identity, "q", "noun", (8, 8, 8), "expected_concept")
+    a = BindingProfile(basis.identity, "a", "column", (8, 8, 8), "expected_concept")
+    b = replace(a, identity="b", values=(8, 0, 8))
+    result = bind_profiles(basis, q, (a, b), policy, candidate_kind="column")
+    assert result["reason"] == "ambiguous_binding"
+    assert all(row["contributions"][1]["masked_reason"] == "unqualified" for row in result["candidates"])
+
+
+def test_expected_property_profiles_use_train_groups_and_do_not_assert_instance_absence():
+    from dataclasses import replace
+    from training.schema_org.instances import SemanticInstance
+    from training.schema_org.signatures import expected_observation_profiles
+
+    city, parent = "https://schema.org/City", "https://schema.org/Place"
+    name, geo = "https://schema.org/name", "https://schema.org/geo"
+    def item(identity, split, properties, classes=(city, parent), source="wikidata"):
+        return SemanticInstance(source, "snapshot", "relation", identity, "source description",
+                                classes, properties, split, "mapping")
+    train = [item("city/one", "train", (name,)), item("city/one#variant", "train", (geo,)),
+             item("city/two", "train", (name,))]
+    heldout = item("city/heldout", "test", (geo,))
+    result = expected_observation_profiles([*train, heldout], [name, geo], min_train_groups=2)
+    profile = result["profiles"][city]
+    assert profile["train_groups"] == 2
+    assert profile["probabilities"] == {name: 1.0, geo: 0.5}
+    assert expected_observation_profiles([*train, replace(heldout, properties=(name,))],
+                                         [name, geo], min_train_groups=2) == result
+    assert not result["calibrated"] and not result["servable"]
+    assert "not negative world facts" in result["meaning"]
+    assert not expected_observation_profiles(train, [name, geo], min_train_groups=3)["profiles"]
+    mixed = item("mixed", "train", (geo,), classes=(city, "https://schema.org/Country"))
+    templates = item("template", "train", (geo,), source="product_templates")
+    other = expected_observation_profiles([*train, mixed, templates], [name, geo], min_train_groups=2)
+    assert other["profiles"] == result["profiles"] and other["excluded_mixed_or_classless_groups"] == 1
+
+
 TESTS = [
+    test_binding_qualification_cannot_transfer_between_input_roles,
+    test_expected_property_profiles_use_train_groups_and_do_not_assert_instance_absence,
+    test_binding_contributions_are_exact_and_replayable,
+    test_binding_intervention_changes_only_the_declared_contribution,
+    test_binding_unknowns_are_masked_and_cannot_win_by_tiny_overlap,
+    test_binding_same_profile_never_collapses_physical_identity,
+    test_binding_relationship_and_datatype_are_causal_constraints,
+    test_binding_margin_accounts_for_a_runner_below_the_score_floor,
+    test_binding_rejects_changed_calibration_and_malformed_values,
+    test_binding_unqualified_coordinates_do_not_decide,
     test_ecb_profile_decodes_exchange_rate,
     test_evidence_reconstructs_the_class_decision,
     test_intervention_is_faithful_and_local,

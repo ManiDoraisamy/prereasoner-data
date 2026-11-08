@@ -122,6 +122,71 @@ def test_grouped_ast_rejects_ungrouped_ordering():
     raise AssertionError("aggregate query ordered by an ungrouped column")
 
 
+def test_star_is_only_a_projection_or_count_operand():
+    age = ColumnRef('people', 'Age', SQLType.INTEGER)
+    projection = (SelectItem(age),)
+    invalid = (
+        SelectQuery(projection, 'people', where=Comparison(Star(), '=', Literal(1))),
+        SelectQuery(projection, 'people', where=Comparison(age, '=', Star())),
+        SelectQuery(projection, 'people', where=InPredicate(Star(), (Literal(1),))),
+        SelectQuery(projection, 'people', where=InPredicate(age, (Star(),))),
+        SelectQuery(projection, 'people', order_by=(OrderTerm(Star(), 'ASC'),)),
+        SelectQuery((SelectItem(Star(), 'all_columns'),), 'people'),
+        SelectQuery((SelectItem(Aggregate('COUNT', Star())),), 'people',
+                    having=Comparison(Star(), '>', Literal(0))),
+    )
+    for query in invalid:
+        try:
+            render_query(query)
+        except ASTValidationError as exc:
+            assert 'star' in str(exc), exc
+        else:
+            raise AssertionError(f'bare star reached invalid SQL context: {query!r}')
+    assert execute([PEOPLE], render_query(SelectQuery((SelectItem(Star()),), 'people'))) == [
+        tuple(row) for row in PEOPLE['rows']]
+    assert execute([PEOPLE], render_query(SelectQuery((SelectItem(Aggregate('COUNT', Star())),), 'people'))) == [(3,)]
+
+
+def test_evaluator_shards_are_disjoint_complete_and_merge_only_matching_checkpoints():
+    import copy
+    from spider.probe.full_eval import _dependency_fingerprints, _merge_checkpoints, _shard_indices
+    picked = [2, 4, 7, 9, 12, 15, 19]
+    contract = {'picked': picked, 'shard': None, 'selection': 'served', 'dependencies': {'reader': 'a' * 64},
+                'artifacts': {'dev': 'questions', 'weight_bundle': 'weights', 'source': 'code'}}
+    shards = []
+    for i in range(3):
+        shard = f'{i}/3'; indices = _shard_indices(picked, shard)
+        shards.append({'contract': dict(contract, picked=indices, shard=shard),
+                       'records': [{'idx': index, 'ok': index % 2 == 0} for index in indices]})
+    merged = _merge_checkpoints(contract, shards[::-1])
+    assert sorted(merged) == picked
+    assert sum(r['ok'] for r in merged.values()) == sum(i % 2 == 0 for i in picked)
+    assert _shard_indices(picked, None) == picked
+    invalid = [shards[:2], shards + [shards[0]]]
+    for change in ['weights', 'denominator', 'gap', 'duplicate', 'selection', 'injected_model']:
+        broken = copy.deepcopy(shards)
+        if change == 'weights': broken[0]['contract']['artifacts']['weight_bundle'] = 'other'
+        elif change == 'denominator': broken[0]['contract']['picked'] = picked
+        elif change == 'gap': broken[0]['records'].pop()
+        elif change == 'duplicate': broken[0]['records'].append(broken[0]['records'][0])
+        elif change == 'injected_model': broken[0]['contract']['dependencies']['reader'] = 'b' * 64
+        else: broken[0]['contract']['selection'] = 'pool_oracle'
+        invalid.append(broken)
+    for checkpoints in invalid:
+        try: _merge_checkpoints(contract, checkpoints)
+        except ValueError: pass
+        else: raise AssertionError('incomplete or mismatched shard merge accepted')
+    for shard in ['1/0', '3/3', '-1/3', 'abc', '1/2/3']:
+        try: _shard_indices(picked, shard)
+        except ValueError: pass
+        else: raise AssertionError('invalid shard accepted')
+    assert _dependency_fingerprints(['reader=' + 'a' * 64]) == {'reader': 'a' * 64}
+    for items in [['bad/name=' + 'a' * 64], ['reader=short'], ['x=' + 'a' * 64] * 2]:
+        try: _dependency_fingerprints(items)
+        except ValueError: pass
+        else: raise AssertionError('invalid dependency fingerprint accepted')
+
+
 def test_typed_ast_rejects_mismatched_literal_payloads():
     code = ColumnRef("items", "code", SQLType.INTEGER)
     query = SelectQuery(
@@ -2055,6 +2120,47 @@ def test_pool_oracle_counts_only_eligible_denotation_hits_and_validates_checkpoi
             raise AssertionError("duplicate, out-of-denominator, or malformed checkpoint accepted")
 
 
+def test_named_serving_trace_replays_currency_grouping_ties_and_identity_and_rejects_tampering():
+    from copy import deepcopy
+    from engine.sql_ast import query_to_tree
+    from engine.sql_rank import mixed_currencies, replay_served_transform, served_member
+
+    graph = SchemaGraph.from_tables([
+        {"name": "sales", "columns": ["Plan", "Amount", "Currency"],
+         "rows": [["A", 10, "usd"], ["B", 20, "inr"], ["C", 20, "usd"]]}], [])
+    plan, amount = (graph.column_map[("sales", name)].ref for name in ("Plan", "Amount"))
+    total = SelectQuery((SelectItem(Aggregate("SUM", amount)),), "sales")
+    ranked = SelectQuery((SelectItem(plan),), "sales", order_by=(OrderTerm(amount, "DESC"),), limit=1)
+    listing = SelectQuery((SelectItem(plan),), "sales")
+    for query in (total, ranked, listing):
+        member = ScoredQuery(query, render_query(query), .9, (), named_trace={"model_ast": query_to_tree(query)})
+        served = served_member(member, mixed_currencies(graph))
+        assert replay_served_transform(query, graph, served.named_trace) == served.query
+        if query is total:
+            assert served.query.group_by == (graph.column_map[("sales", "Currency")].ref,)
+        elif query is ranked:
+            assert served.query.with_ties
+        else:
+            assert served.query == query
+        for field in ("currencies", "operations", "output_ast", "input_ast"):
+            changed = deepcopy(served.named_trace)
+            changed["served_transform"][field] = {} if field != "operations" else []
+            try:
+                replay_served_transform(query, graph, changed)
+            except ValueError:
+                pass
+            else:
+                raise AssertionError(f"tampered {field} accepted")
+        changed = deepcopy(served.named_trace)
+        changed["model_ast"] = {}
+        try:
+            replay_served_transform(query, graph, changed)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("a different model AST accepted")
+
+
 def test_shared_ranking_rule_preserves_date_then_double_count_then_calculation_precedence():
     from engine.sql_rank import select_ranked_candidate
     assert select_ranked_candidate((), ()) is None
@@ -2169,6 +2275,159 @@ def test_sql_import_maps_numeric_arithmetic_but_refuses_nonnumeric():
         pass
 
 
+def test_sql_import_preserves_arithmetic_over_aggregates():
+    from collections import Counter
+    import sqlite3
+    from training.readers.gold import read_gold, read_program
+    from typing import get_args, get_type_hints
+
+    sales = {'name': 'sales', 'columns': ['amount', 'units', 'cost', 'label'],
+             'rows': [[5, 2, 1, 'a'], [11, 3, 4, 'b']]}
+    graph = SchemaGraph.from_tables([sales], [])
+    cases = [
+        ('SELECT SUM(amount * units) * 1.0 / SUM(units) FROM sales', 8.6),
+        ('SELECT SUM(amount) - SUM(cost) FROM sales', 11),
+        ('SELECT SUM(amount) * 1.0 / COUNT(*) FROM sales', 8),
+    ]
+    for sql, expected in cases:
+        query = import_sql(sql, graph)
+        validate_query(query)
+        assert execute([sales], render_query(query)) == [(expected,)]
+    hints = get_type_hints(Comparison)
+    assert BinaryExpr in get_args(hints['left']) and BinaryExpr in get_args(hints['right'])
+    assert Literal in get_args(hints['left'])
+    for sql, expected in [
+        ('SELECT amount FROM sales WHERE amount * units > 10', [(11,)]),
+        ('SELECT amount FROM sales WHERE amount > 0.97 * (SELECT AVG(amount) FROM sales)', [(11,)]),
+        ('SELECT amount FROM sales WHERE 1 < units', [(5,), (11,)]),
+    ]:
+        query = import_sql(sql, graph)
+        validate_query(query)
+        assert execute([sales], render_query(query)) == expected
+    connection = sqlite3.connect(':memory:')
+    connection.execute('CREATE TABLE sales(amount REAL, units REAL, cost REAL, label TEXT)')
+    connection.executemany('INSERT INTO sales VALUES(?,?,?,?)', sales['rows'])
+    try:
+        for index, (sql, expected) in enumerate(cases):
+            counts, reasons = Counter(), Counter()
+            record, query, source_rows, agrees = read_program(
+                'fixture', index, {'db_id': 'fixture', 'query': sql}, connection, graph, counts, reasons)
+            assert agrees and source_rows == [[expected]] and query is not None
+            assert record == {'source': 'fixture', 'index': index, 'db_id': 'fixture'}
+            assert counts == {'questions': 1, 'imported': 1, 'ast_rows': 1} and not reasons
+        counts = Counter()
+        legacy = read_gold('fixture', 0, {'db_id': 'fixture', 'query': cases[0][0]},
+                           connection, graph, counts, Counter(), Counter())
+        assert legacy['status'].startswith('not-readable:') and counts['ast_rows'] == 1
+        counts = Counter()
+        ordinary = read_gold('fixture', 0, {'db_id': 'fixture', 'query': 'SELECT SUM(amount) FROM sales'},
+                             connection, graph, counts, Counter(), Counter())
+        assert ordinary['status'] == 'ok' and counts['questions'] == counts['rebuilt_rows'] == 1
+        counts = Counter()
+        failed = read_program('fixture', 0, {'db_id': 'fixture', 'query': 'SELECT ABS(amount) FROM sales'},
+                              connection, graph, counts, Counter())
+        assert failed[0]['status'] == 'import' and failed[1] is None and not failed[3]
+        assert counts == {'questions': 1}
+        invalid = read_program('fixture', 0, {'db_id': 'fixture', 'query': 'SELECT SUM(label) FROM sales'},
+                               connection, graph, Counter(), Counter())
+        assert not invalid[3] and 'requires a numeric column' in invalid[0]['ast_error']
+        assert 'source_error' not in invalid[0]
+        invalid_source = read_program('fixture', 0, {'db_id': 'fixture', 'query': 'SELECT SUM(SUM(amount)) FROM sales'},
+                                      connection, graph, Counter(), Counter())
+        assert not invalid_source[3] and invalid_source[0]['source_error']
+    finally:
+        connection.close()
+    for sql in ('SELECT SUM(SUM(amount)) FROM sales',
+                'SELECT SUM(SUM(amount) * 1.0 / units) FROM sales',
+                'SELECT SUM(amount) + SUM(label) FROM sales'):
+        try:
+            validate_query(import_sql(sql, graph))
+        except ASTValidationError:
+            pass
+        else:
+            raise AssertionError('invalid aggregate arithmetic accepted: ' + sql)
+
+
+def test_sql_import_refuses_semantics_the_ast_cannot_preserve():
+    from regress.sql_import import Unsupported
+
+    data = {'name': 'pay', 'columns': ['rate', 'count'], 'rows': [[5, 2], [3, 2], [1, 1]]}
+    graph = SchemaGraph.from_tables([data], [])
+    # These independently specified source results differ from the former,
+    # silently altered ASTs: real division and an omitted OFFSET, respectively.
+    assert execute([data], 'SELECT rate / count FROM pay ORDER BY rate DESC') == [(2,), (1,), (1,)]
+    assert execute([data], 'SELECT rate FROM pay ORDER BY rate DESC LIMIT 1, 1') == [(3,)]
+    for sql, reason in [
+        ('SELECT rate / count FROM pay', 'arithmetic:integer-division'),
+        ('SELECT SUM(rate) / COUNT(*) FROM pay', 'arithmetic:integer-division'),
+        ('SELECT rate FROM pay ORDER BY rate DESC LIMIT 1, 1', 'query:offset'),
+        ('SELECT rate FROM pay ORDER BY rate DESC LIMIT 1 OFFSET 1', 'query:offset'),
+        ('SELECT rate FROM pay WHERE rate > (SELECT rate FROM pay LIMIT 1 OFFSET 1)', 'query:offset'),
+        ('SELECT rate FROM pay UNION SELECT rate FROM pay ORDER BY rate LIMIT 1', 'query:compound-order-or-limit'),
+    ]:
+        try:
+            import_sql(sql, graph)
+        except Unsupported as exc:
+            assert str(exc) == reason, (sql, exc)
+        else:
+            raise AssertionError('source semantics were silently dropped: ' + sql)
+    for sql, expected in [
+        ('SELECT rate * 1.0 / count FROM pay ORDER BY rate DESC', [(2.5,), (1.5,), (1.0,)]),
+        ('SELECT SUM(rate) * 1.0 / COUNT(*) FROM pay', [(3.0,)]),
+        ('SELECT rate FROM pay ORDER BY rate DESC LIMIT 1', [(5,)]),
+        ('SELECT rate FROM pay UNION SELECT rate FROM pay', [(1,), (3,), (5,)]),
+    ]:
+        query = import_sql(sql, graph)
+        validate_query(query)
+        assert execute([data], render_query(query)) == expected
+
+
+def test_sql_import_preserves_like_negation():
+    data = {'name': 'items', 'columns': ['id', 'label'],
+            'rows': [[1, None], [2, 'ALPHA'], [3, 'beta'], [4, ''], [5, 'alphabet']]}
+    graph = SchemaGraph.from_tables([data], [])
+    for predicate, operator, expected in [
+        ("label LIKE 'alpha%'", 'LIKE', [(2,), (5,)]),
+        ("label NOT LIKE 'alpha%'", 'NOT LIKE', [(3,), (4,)]),
+        ("NOT (label LIKE 'alpha%')", 'NOT LIKE', [(3,), (4,)]),
+        ("NOT (label NOT LIKE 'alpha%')", 'LIKE', [(2,), (5,)]),
+    ]:
+        sql = 'SELECT id FROM items WHERE ' + predicate
+        query = import_sql(sql, graph)
+        assert query.where.operator == operator
+        assert execute([data], sql) == expected
+        assert execute([data], render_query(query)) == expected
+
+
+def test_sql_import_preserves_null_tests_and_lowercase():
+    from regress.sql_import import Unsupported
+
+    data = {'name': 'items', 'columns': ['id', 'label', 'score'],
+            'rows': [[1, None, None], [2, 'ALPHA', 0], [3, 'beta', 2], [4, '', -1]]}
+    graph = SchemaGraph.from_tables([data], [])
+    for sql, expected in [
+        ('SELECT id FROM items WHERE label IS NULL', [(1,)]),
+        ('SELECT id FROM items WHERE label IS NOT NULL', [(2,), (3,), (4,)]),
+        ('SELECT id FROM items WHERE NOT (label IS NULL)', [(2,), (3,), (4,)]),
+        ("SELECT id FROM items WHERE label IS NULL OR label = 'ALPHA'", [(1,), (2,)]),
+        ("SELECT LOWER(label) FROM items WHERE id = 2", [('alpha',)]),
+        ("SELECT id FROM items WHERE LOWER(label) = 'alpha'", [(2,)]),
+        ("SELECT id FROM items WHERE label = 'null'", []),
+        ("SELECT id FROM items WHERE label = ''", [(4,)]),
+    ]:
+        query = import_sql(sql, graph)
+        validate_query(query)
+        assert execute([data], render_query(query)) == expected, sql
+    for sql in ('SELECT id FROM items WHERE score IS TRUE',
+                'SELECT id FROM items WHERE score IS NOT FALSE', "SELECT LOWER('ALPHA') FROM items"):
+        try:
+            validate_query(import_sql(sql, graph))
+        except (Unsupported, ASTValidationError):
+            pass
+        else:
+            raise AssertionError('unsupported IS truthiness or non-column LOWER admitted: ' + sql)
+
+
 def test_sql_import_preserves_distinct_self_join_roles():
     from regress.sql_import import Unsupported
 
@@ -2277,6 +2536,21 @@ def test_date_ranges_lists_and_quarters_filter_one_span():
     assert read("orders from August 2026 onwards") == [((False, ">=", "2026-08-01"),)]
     assert read("orders in March and April") == [((True, ">=", 3), (True, "<=", 4))]
     assert read("orders in Q4") == [((True, ">=", 10), (True, "<=", 12))]
+    assert read("orders in the first half of 2026") == [
+        ((False, ">=", "2026-01-01"), (False, "<", "2026-07-01"))]
+    assert read("orders in the second half of the year 2025") == [
+        ((False, ">=", "2025-07-01"), (False, "<", "2026-01-01"))]
+    assert read("orders in the last month of the year 2025") == [
+        ((False, ">=", "2025-12-01"), (False, "<", "2026-01-01"))]
+    assert read("orders in the first month of 2026") == [
+        ((False, ">=", "2026-01-01"), (False, "<", "2026-02-01"))]
+    assert read("orders in the second half") == [((True, ">=", 7), (True, "<=", 12))]
+    assert read("orders in the last month") == []  # Needs a year or an explicit reference date.
+    assert read("orders in the last six months of 2026") == [
+        ((False, ">=", "2026-07-01"), (False, "<", "2027-01-01"))]
+    assert read("orders in the first three months of 2026") == [
+        ((False, ">=", "2026-01-01"), (False, "<", "2026-04-01"))]
+    assert read("orders in the last six months") == []  # No reference date supplied.
     # Negative: a list with a gap, a range with an impossible day and a yearless day range compare
     # nothing (the coverage gate asks), "before August" names no year, and "may" as a verb is no month.
     assert read("orders in January and March 2026") == [()]
@@ -2929,6 +3203,17 @@ def test_recursive_ast_set_query_in_derived_table_executes():
     assert execute([PEOPLE], render_query(query)) == [(1,)]
 
 
+def test_spider_comparison_keeps_nonfinite_spellings_as_stable_text():
+    from spider.probe.spider_eval import normalize_value
+    assert compare_spider_rows([["Nan"]], [["Nan"]])["strict"]
+    assert compare_spider_rows([["Nan"], ["$1,234.00"]], [[1234], ["nan"]])["strict"]
+    assert normalize_value("NaN") == "nan"
+    assert normalize_value("Infinity") == "infinity"
+    assert not compare_spider_rows([["Nan"]], [["Nantes"]])["strict"]
+    assert not compare_spider_rows([["Nan"], ["Nan"]], [["Nan"]])["strict"]
+    assert not compare_spider_rows([["Nan", 1]], [[1, "Nan"]])["strict"]
+
+
 def test_shared_spider_evaluation_contract():
     metadata = {
         "demo": {
@@ -3113,6 +3398,24 @@ def test_world_target_uses_the_synced_iso_currency_column():
     }
 
 
+def test_schema_graph_preserves_zero_padded_source_codes():
+    tables = [{'name': 'items', 'columns': ['id', 'quantity', 'fraction', 'native'],
+               'rows': [['0877', '5', '0.25', 877], ['877', '8', '0.50', 2]]}]
+    graph = SchemaGraph.from_tables(tables, [])
+    code, quantity, fraction, native = graph.columns
+    assert code.ref.type == SQLType.TEXT and code.values == ('0877', '877')
+    assert quantity.ref.type == SQLType.INTEGER and quantity.values == (5, 8)
+    assert fraction.ref.type == SQLType.REAL and native.ref.type == SQLType.INTEGER
+    padded = SelectQuery((SelectItem(Aggregate('COUNT', Star())),), 'items',
+                         where=Comparison(code.ref, '=', Literal('0877')))
+    plain = SelectQuery((SelectItem(Aggregate('COUNT', Star())),), 'items',
+                        where=Comparison(code.ref, '=', Literal('877')))
+    assert execute(tables, render_query(padded))[0][0] == 1
+    assert execute(tables, render_query(plain))[0][0] == 1
+    assert SchemaGraph.from_tables([{'name': 'codes', 'columns': ['postal'],
+                                    'rows': [['02110'], ['90210']]}], []).columns[0].values == ('02110', '90210')
+
+
 def test_schema_graph_resolves_normalized_foreign_key_names():
     graph = SchemaGraph.from_planner(
         [
@@ -3169,7 +3472,77 @@ def test_the_table_a_list_names_after_its_items_by_its_last_word_owns_them():
     assert request_fields("What are the names and ids of all entries with more than 3 models?", graph) == ()
 
 
+def test_recursive_json_ast_codec_preserves_decimal_arithmetic_and_composite_join_scope():
+    from decimal import Decimal
+    from engine.sql_ast import (Aggregate, BinaryExpr, ColumnRef, Comparison, Join, Literal, SelectItem,
+                                SelectQuery, SQLType, query_from_tree, query_to_tree, query_tree_schema)
+    from jsonschema import Draft202012Validator
+
+    a = ColumnRef("a", "amount", SQLType.REAL)
+    query = SelectQuery((SelectItem(BinaryExpr(Aggregate("SUM", a), "/", Literal(Decimal("3.0001")))),), "a",
+                        joins=(Join("b", ColumnRef("a", "id"), ColumnRef("b", "id"),
+                                    additional=((ColumnRef("a", "tenant"), ColumnRef("b", "tenant")),)),),
+                        where=Comparison(a, ">", Literal(Decimal("0.00000000000000000001"))))
+    tree = query_to_tree(query)
+    Draft202012Validator(query_tree_schema()).validate(tree)
+    recovered = query_from_tree(tree)
+    assert recovered == query and render_query(recovered) == render_query(query)
+    assert query_to_tree(recovered) == tree
+
+
+def test_recursive_json_ast_codec_rejects_unknown_fields_bad_tuples_and_nonfinite_values():
+    from copy import deepcopy
+    from engine.sql_ast import (ColumnRef, Join, Literal, SelectItem, SelectQuery,
+                                query_from_tree, query_to_tree)
+
+    q = SelectQuery((SelectItem(ColumnRef("a", "id")),), "a",
+                    joins=(Join("b", ColumnRef("a", "id"), ColumnRef("b", "id"),
+                                additional=((ColumnRef("a", "x"), ColumnRef("b", "x")),)),))
+    tree = query_to_tree(q)
+    corrupt = []
+    v = deepcopy(tree); v["raw_sql"] = "SELECT injected"; corrupt.append(v)
+    v = deepcopy(tree); v["limit"] = True; corrupt.append(v)
+    v = deepcopy(tree); v["joins"][0]["additional"][0].append({"node": "ColumnRef", "table": "a", "name": "z"}); corrupt.append(v)
+    v = deepcopy(tree); v["joins"][0]["kind"] = "left"; corrupt.append(v)
+    for value in (float("nan"), {"decimal": "NaN"}, {"decimal": "1_000"}, {"python": "run()"}):
+        corrupt.append({"node": "SelectQuery", "from_table": "a", "select": [
+            {"node": "SelectItem", "expression": {"node": "Literal", "value": value}}]})
+    for value in corrupt:
+        try:
+            query_from_tree(value)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("malformed typed AST document accepted")
+    try:
+        query_to_tree(SelectQuery((SelectItem(Literal(float("inf"))),), "a"))
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("nonfinite AST encoded")
+
+
+def test_recursive_json_ast_codec_enforces_resource_bounds_before_construction():
+    from engine.sql_ast import ColumnRef, SelectItem, SelectQuery, query_from_tree, query_to_tree
+
+    tree = query_to_tree(SelectQuery((SelectItem(ColumnRef("a", "id")),), "a"))
+    for limits in ({"max_depth": 1}, {"max_nodes": 1}):
+        try:
+            query_from_tree(tree, **limits)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("AST resource bound ignored")
+
+
 TESTS = [
+    test_schema_graph_preserves_zero_padded_source_codes,
+    test_recursive_json_ast_codec_preserves_decimal_arithmetic_and_composite_join_scope,
+    test_recursive_json_ast_codec_rejects_unknown_fields_bad_tuples_and_nonfinite_values,
+    test_recursive_json_ast_codec_enforces_resource_bounds_before_construction,
+    test_evaluator_shards_are_disjoint_complete_and_merge_only_matching_checkpoints,
+    test_star_is_only_a_projection_or_count_operand,
+    test_named_serving_trace_replays_currency_grouping_ties_and_identity_and_rejects_tampering,
     test_shared_ranking_rule_preserves_date_then_double_count_then_calculation_precedence,
     test_pool_oracle_counts_only_eligible_denotation_hits_and_validates_checkpoints,
     test_select_query_serves_the_reading_that_keeps_the_named_date,
@@ -3227,6 +3600,10 @@ TESTS = [
     test_spider_ingestion_keeps_discovered_and_declared_relationships,
     test_evaluator_grades_the_served_selection,
     test_sql_import_maps_numeric_arithmetic_but_refuses_nonnumeric,
+    test_sql_import_preserves_arithmetic_over_aggregates,
+    test_sql_import_refuses_semantics_the_ast_cannot_preserve,
+    test_sql_import_preserves_like_negation,
+    test_sql_import_preserves_null_tests_and_lowercase,
     test_sql_import_round_trip_executes_and_matches,
     test_sql_import_preserves_distinct_self_join_roles,
     test_typed_ast_rejects_invalid_aggregate,
@@ -3269,6 +3646,7 @@ TESTS = [
     test_recursive_ast_scalar_subquery_executes,
     test_recursive_ast_correlated_exists_executes,
     test_recursive_ast_set_query_in_derived_table_executes,
+    test_spider_comparison_keeps_nonfinite_spellings_as_stable_text,
     test_shared_spider_evaluation_contract,
     test_live_table_query_ast_mode_executes_typed_candidate,
     test_weight_manifest_detects_tampered_bundle,

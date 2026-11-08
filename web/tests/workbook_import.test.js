@@ -115,6 +115,25 @@ assert.equal(sections[1].name,'sales summaries');
 const regional=normalize([['item','region','amount'],['A','FR',2],['Total','FR',3]]);
 assert.equal(regional.csv,'item,region,amount\nA,FR,2');
 assert.equal(regional.summaryCsv,'item,region,amount\nTotal,FR,3');
+// Exact source rows survive skipped blanks and separated totals. Compact runs
+// identify physical observations, including duplicate-looking source rows.
+const [lineageData,lineageTotals]=normalizeGrids([{name:'Ledger',rows:[['item','amount'],['A',2],[],['A',2],['Total',4]]}]);
+assert.deepEqual(JSON.parse(JSON.stringify(lineageData.import.sourceRows)),
+  {encoding:'ranges',count:2,ranges:[[0,2,1],[1,4,1]]});
+assert.deepEqual(JSON.parse(JSON.stringify(lineageTotals.import.sourceRows)),
+  {encoding:'ranges',count:1,ranges:[[0,5,1]]});
+assert.equal(lineageData.import.sourceSheet,'Ledger');
+assert.equal(lineageTotals.import.sourceSheet,'Ledger');
+assert.equal(lineageTotals.import.dataRows,1);
+const [contiguous]=normalizeGrids([{name:'Run',rows:[['id','amount'],[1,2],[2,3],[3,4]]}]);
+assert.deepEqual(JSON.parse(JSON.stringify(contiguous.import.sourceRows)),
+  {encoding:'ranges',count:3,ranges:[[0,2,3]]});
+// Embedded newlines in a summary cell are not extra observations.
+const [notesData,notesTotal]=normalizeGrids([{name:'Notes',rows:[['item','note','amount'],['A','ok',2],['Total','first\nsecond',2]]}]);
+assert.equal(notesData.import.dataRows,1);
+assert.equal(notesTotal.import.dataRows,1);
+assert.deepEqual(JSON.parse(JSON.stringify(notesTotal.import.sourceRows)),
+  {encoding:'ranges',count:1,ranges:[[0,3,1]]});
 assert.equal(normalize([['region','amount','currency'],['FR',100,'USD'],['DE',50,'USD'],['Total',150,'USD']]).csv,
   'region,amount,currency\nFR,100,USD\nDE,50,USD');
 // Summaries give way before a workbook is refused: five tabs with a total row each were ten tables,
@@ -183,4 +202,4 @@ assert.equal(rateGrid.csv,rateFile.sheets[0].csv,'a host grid reads percentages 
   assert.deepEqual(spared.sheets.map(sheet=>sheet.name),['Whole']);
   assert.deepEqual(spared.leftOut,[{name:'More',reason:'the expanded workbook is too large'}]);
 }
-console.log('workbook layout: 38 checks passed (including 3 downloaded originals, 3 timezones, 2 date systems and host grids)');
+console.log('workbook layout: checks passed (including source-row lineage, 3 downloaded originals, 3 timezones, 2 date systems and host grids)');

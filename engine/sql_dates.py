@@ -162,6 +162,8 @@ def _year(tokens: Sequence[str], index: int) -> int | None:
 
 
 def _mentions(question: str, tokens: tuple[str, ...]) -> list[_Mention]:
+    from engine.readers.numerals import number
+
     found: list[_Mention] = []
     claimed: set[int] = set()
     for match in _ISO.finditer(question):
@@ -177,6 +179,18 @@ def _mentions(question: str, tokens: tuple[str, ...]) -> list[_Mention]:
                 break
     for index, token in enumerate(tokens):
         if index in claimed:
+            continue
+        if (token in {"first", "last", "final"} and index + 2 < len(tokens)
+                and tokens[index + 2] in {"month", "months"}):
+            count = number(tokens[index + 1])
+            end = index + 3
+            for filler in ("of", "the", "year"):
+                if tokens[end:end + 1] == (filler,):
+                    end += 1
+            year = _year(tokens, end)
+            if type(count) is int and 1 <= count <= 12 and year is not None:
+                month, last = (1, count) if token == "first" else (13 - count, 12)
+                found.append(_Mention(index, end + 1, month, year, None, last, token))
             continue
         if token in MONTHS:
             month, start, end, year, day = MONTHS[token], index, index + 1, None, None
@@ -194,6 +208,21 @@ def _mentions(question: str, tokens: tuple[str, ...]) -> list[_Mention]:
                       and (year is not None or not tokens[index - 1].isdigit())):
                     day, start = before, index - 1              # "10 August 2026", "10th August"
             found.append(_Mention(start, end, month, year, day, month, token))
+        elif (token in {"first", "second", "1st", "2nd", "last", "final"}
+              and tokens[index + 1:index + 2] in (("half",), ("month",))):
+            period = tokens[index + 1]
+            end = index + 2
+            for filler in ("of", "the", "year"):
+                if tokens[end:end + 1] == (filler,):
+                    end += 1
+            year = _year(tokens, end)
+            if period == "half":
+                month, last = (1, 6) if token in {"first", "1st"} else (7, 12)
+            elif year is not None and token in {"first", "1st", "last", "final"}:
+                month = last = 1 if token in {"first", "1st"} else 12
+            else:
+                continue
+            found.append(_Mention(index, end + (year is not None), month, year, None, last, token))
         elif token in QUARTERS or (token in _ORDINAL_QUARTERS and tokens[index + 1:index + 2] == ("quarter",)):
             quarter = QUARTERS.get(token) or _ORDINAL_QUARTERS[token]
             end = index + 1 if token in QUARTERS else index + 2

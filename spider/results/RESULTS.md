@@ -5,6 +5,486 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
+## Recursive ACE corpus and benchmark-input gates; no new accuracy score (2026-11-07)
+
+The full `shared-semantic-grammar-20261106` admission audit visits **32,798 question parents**.
+All **32,160 admitted executable records** pass the saved ACE JSON schema, exact typed-AST codec
+round trip and exact parse-tree agreement with the original Attempto APE parser. There are
+**12,788 distinct canonical programs**; equivalent programs share cached parser results, while
+every parent retains an individual audit record. **499 parents are rejected** because a target
+literal/limit is absent from input-derived candidates; **139 admitted clarification records** have
+no executable tree. No parser/schema failure is reported. The run took 1,491.46 seconds.
+`native-ape-assessment.json` pins the admission, schema and parser grammar hashes; individual
+records are in `native-ape-records.jsonl.gz`. This verifies canonical application-ACE representation,
+not an independent judgement that the original English was interpreted correctly.
+
+The frozen fit contains **46,952 train / 5,125 calibration / 2,162 held-out entity test records**;
+the fit reader excludes the test records. The complete served-input resource audit has no errors:
+the standing **1,053-question** Spider database-held-out calibration split has median **9,873**
+and maximum **13,850** tokens; all **186 all-tab Enron** questions have median **7,697** and
+maximum **23,814** tokens. These are input measurements, with no model predictions or gold-driven
+input selection. The private benchmark package pins all 20 Spider databases, 97 Enron workbooks,
+original graders and source code.
+
+Original Qwen-source recovery now has **528 exact Git-blob-verified CSVs**. The pinned converter
+reproduces every historical row count. Source-SQL/AST/ACE original-row parity and schema identity
+pass for **3,600 training / 360 evaluation pairs**. Two additional training pairs hit SQLite integer
+SUM overflow; **70 train / 15 eval** parity-pass records still have unparseable numeric-format
+evidence. The source audit does not gradient-admit these pairs or certify English meaning. As of
+this snapshot, **322 CSVs await a Software Heritage rate-limit retry and 24 are unavailable**;
+these are archive responses, not GitHub rate limits. Detailed outcomes remain in the existing
+`shared-semantic-dialogue-20261106/original-row-assessment.json` and recovery manifests.
+
+Serving traces now replay named choices and currency/group/tie transforms, re-derive currency
+bindings from the input graph and reject tampering. Fresh Enron source execution uses original
+importer worksheet maps and checks exact agreement with the selected answer. Focused suites pass
+**92 readers, 117 SQL AST, 75 deterministic emitter and 62 release tests**. These are mechanism
+checks. No new recursive CLEF Spider/Enron accuracy, CPU latency, real-property causal alignment,
+promotion or complete objective achievement is claimed by this entry.
+
+## Enron selected-query source tracing; no new model score (2026-11-06)
+
+The existing semantic audit examined all **186** saved all-tab baseline records on current workbook
+imports. It replayed saved selections through `TableQuery.execute`, the dual SQL/Python executor and
+request provenance owner, without loading a model or selecting a query. **57/96** saved selections
+now pass execution parity and resolve every retained source-row identity; **37/96** cannot be imported
+by the offline SQL adapter, and **2/96** remain unsupported or exceed the Python row bound. The
+remaining **90/186** records have no saved selected query. Original baseline verdicts remain
+**26 right / 70 wrong / 90 asked**, with pool recall **45/186**; these are not fresh accuracy results.
+
+Generic DISTINCT grouping and integer-to-text column affinity repairs removed measured execution
+gaps. The registered deterministic suite passes **75 tests** and decomposition **18 tests**. A
+duplicate-row regression proves both equal observations survive into one DISTINCT contributor set.
+The audit compares exact values at the same wire boundary as `TableQuery.execute`; decimal strings
+are not silently accepted as approximate numbers. Query 20.1 reproduces six counterparties with six
+resolved original worksheet rows, including the DISTINCT stage. This is positive row provenance,
+not minimal cell influence or learned named-dimension causality. The replay explicitly uses observed
+schema types, not the original model's schema predictions. Evidence, configuration, source/code
+hashes and every failure are in `shared-semantic-scoped-20261106/enron-evidence/`.
+
+No new shared-head fit, model qualification, serving promotion or Spider accuracy improvement has
+been established by this change.
+
+## Scoped named operator readout implemented; not yet fitted (2026-11-06)
+
+The shared-head inference consumer and operator decoder now use named coordinates to choose finite
+SQL enums, with exact contribution replay and refusal for unknown/unqualified alternatives. A
+mechanism intervention changes only SUM to AVG and changes the compiled/executed result from 207
+to 51.75 on the same four source rows. These are controlled profiles, not learned-model accuracy.
+Source annotations preserve separate occurrence paths and omitted ASC/INNER defaults. Input-derived
+operator banks remain identical when targets change; inactive slots have zero training gradient.
+
+Preparation retains **47,445 train / 5,131 calibration / 2,162 entity test records**, adding scoped
+operator items to query records. Dataset SHA256:
+`afe5d1d3063d52943f3d9ec85c85b76b2abaa9bc697976eb8db1739b78886880`.
+The registered readers suite passes **81 tests**, with zero failures/skips. This data is not fitted;
+the finite bank still has the existing readings bounds and is not a full recursive AST readout.
+There is no new serving/Enron score or model qualification. Evidence is under
+`shared-semantic-scoped-20261106/`.
+
+## Shared head: complete calibration; original Qwen sources recovered (2026-11-06)
+
+The corrected 256-update candidate was evaluated on **all 5,131 calibration records** exactly once:
+2,921 questions and 2,210 values, with 353,281 known coordinate targets. No test examples were fitted
+or evaluated. Candidate metadata SHA256:
+`20789f8f08a93c3bec50f029012b115fe64eb413c255ce4fc8c6b5388460dd11`;
+prediction SHA256: `2ebf4224f5eef2d7bc590e4cd780368f796f7ebecb912901a71e59594212adfb`.
+The frozen input package SHA256 is
+`956c517d363d818ea65f0b8be9d4ca90c02b3af2ccd19a4c471d7cebe0bb8dba`;
+commit, dirty-source manifests, dataset, seed and model revision are recorded with the pilot below.
+
+| Block | Known targets | MAE | TP / FP / FN / TN at 0.5 | Binary F1 |
+| --- | ---: | ---: | --- | ---: |
+| SQL | 185,664 | 0.05143 | 10,920 / 2,787 / 4,552 / 167,405 | 0.74848 |
+| Expected properties | 156,910 | 0.02485 | 2,388 / 68 / 1 / 117,809 | 0.98576 |
+| Dialogue | 10,707 | 0.00399 | 4,845 / 20 / 20 / 5,822 | 0.99589 |
+
+Fractional property targets are excluded from binary counts. Property supervision here is value-role
+evidence, not real noun/column binding qualification. Complete 64-coordinate SQL presence vectors
+match on only **641/2,901 answerable questions (22.1%)**. All **20/20 clarification cases** are
+incorrectly called answerable. SUM, MAX, MIN, several comparisons, OR, DISTINCT and other operations
+have zero recall at 0.5. Reconstructing the seeded 256-step schedule finds 170 questions, 86 values,
+zero clarification/noun/column examples, four SUM positives and eight AVG positives. Sparse-coordinate
+F1 does not establish question-to-SQL accuracy; coverage and undertraining are measured bottlenecks.
+
+The same candidate's fixed 64 serial diagnostic and full-calibration batch-eight evaluation differ
+on **262/13,760 quantized coordinates**, across 58 examples (maximum probability difference 0.05765).
+Separate load/allocation, visitation order and batching changed together; the cause is not isolated.
+The 649 mixed-length batches consumed 2,058.18 seconds of model-call/transfer time, excluding startup
+and tokenization; this is not per-request latency. GPU samples reached 45,896 MiB on an A40. Both
+completed-job GPUs were terminated after complete local artifact recovery. All 215 outputs remain
+unqualified; no new served Spider/Enron accuracy, promotion, deployment or CPU benchmark is claimed.
+Evidence: `shared-semantic-defaults-20261106/{full-calibration/,calibration-postprocess.json,
+calibration-coordinate-diagnostics.json,recovery-assessment.json}`.
+
+Searching all fourteen `C:/work/prereasoner-*` directories and the complete reachable histories of
+both repositories (908 commits/54 refs in prereasoner-data; 108 commits/one ref in prereasoner-flat-data)
+found the original single-table/join generators and quoted source corpora. Pinned flat-data revision:
+`a2cb5dd30378a6ddcdb9aaace7cf334fb2ff8549`. Its single-table and historical join training graphs match
+the local saved files after newline normalization. Every one of **6,481** original question/SQL
+records matches metadata, question annotations, physical pointers and program tokens. Literal
+spellings come from those verified originals; numeric column types are the pinned generators'
+declared NUM requirements, not inferred observed CSV types.
+
+All **6,481/6,481** now pass SQL/ACE JSON Schema, lossless codecs, source/AST/ACE parity on synthetic
+original/permuted/cloned fixtures, and actual pinned APE parsing with exact tree agreement. All
+**1,144 filter programs** have matching source rows in every fixture, avoiding vacuous empty-result
+parity. All 6,481 stored ten-intent question annotations agree with AST labels. These annotations
+do not independently certify every English argument or resolve ambiguous questions.
+
+The original held-out split has 922 records over 104 disjoint single-table files and two held-out
+join schemas, but includes 169 records representing 155 question/SQL pairs seen in training. Remove
+those, eight further eval duplicates, and 75 identical English questions with different SQL:
+**670 unique, non-intersecting eval pairs** remain (618 single-table, 52 joins), with zero question
+text or question/SQL overlap. All **670/670** pass the same schema/codec/fixture/parser gates and
+stored intent agreement; every filter program exercises matching rows. Neither recovered corpus
+is admitted to gradient training. Evidence and pinned source hashes:
+`shared-semantic-dialogue-20261106/{original-source-assessment.json,original-split-assessment.json,
+repository-history-assessment.json,qwen-program-assessment.json,qwen-ape/,original-eval/}`.
+
+The historical metadata also retains full Git blob hashes. Software Heritage supplied **118/874**
+referenced original raw CSVs (19,451,881 bytes), each verified by its Git blob hash. Reconstructing
+their typed rows with the pinned original converter matches all 118 historical row counts. Schema
+identity and source-SQL/AST/ACE row parity pass for **812 training and 62 strict-eval questions**,
+using the same first-60-row window as the source generator. **54 train + 11 eval questions** involve
+declared numeric columns still stored as formatted strings; all such values parse with the existing
+`engine.numeric.parse_decimal`. The audit records this evidence separately; it does not silently
+normalize original rows or certify English meanings. The remaining **756 CSVs** are deferred by the
+archive's anonymous rate limit, and join source schemas are synthetic. Per-file hashes, type-format
+evidence and per-pair statuses are in `original-csv-recovery-assessment.json` and
+`original-row-assessment.json`. Random table nouns in the original generator are aliases, not
+Schema.org class supervision.
+
+An input-identity audit also finds **20 training groups (42 records) and eight eval groups (16
+records)** with identical question, table names and complete schema units but different projections.
+Their ASTs are identical after removing the SELECT list. For example, a join top-k question never
+specifies which extra dimension attribute the generator projects. These are multiple plausible
+presentations, not a uniquely determined single-target AST. They need an explicit projection policy,
+output-column clarification or multiple accepted programs before admission; choosing one arbitrarily
+would conceal inconsistent supervision. The full audit retains every pair and records these
+conflicts in `qwen-source-conflicts.jsonl.gz`. The evidence seal is `source-recovery-assessment.json`.
+
+## Shared named head: first fit completed; AST-default label correction audited (2026-11-06)
+
+The shared 215-coordinate head completed **256 updates in 521.47 seconds** on one A40, using native
+CLEF prefill states and LoRA rank 16; its stock choice head is discarded. Dataset SHA256:
+`b73e14efcbd7eb1f29ac780896f0d5b82096e88ba6d4b81f8227fa41baaee830`.
+Counts: **47,445 train / 5,131 calibration / 2,162 entity test**. No test records fitted the model.
+Only 256 batch-one updates were taken; this is a feasibility pilot, not a full-corpus training claim.
+The experiment records commit `eb40c4c9144a926f0cc9260d9928fba343a0801f` and a dirty worktree; its
+immutable package manifest identifies the actual source bytes. Seed: 3407; pinned CLEF revision:
+`cfddda043dd190ef3b01cff449d5ee8cff1e8ec6`.
+
+All four adapter/head manifest hashes match recovered local files. Metadata SHA256:
+`1e791baca545a093109667890bfd660a9b359875a992a0546801a951cab08459`.
+Reload reproduces quantized output on the frozen reload example. Repeated forwards match on
+42-, 361- and 10,656-token inputs; paired-forward times are 0.522, 0.747 and 12.838 seconds,
+respectively, including their differing warm-up costs. These are not CPU or throughput benchmarks.
+
+The independent supervision-support audit exposed a label defect: canonical JSON omits default
+`OrderTerm.direction=ASC` and `Join.kind=INNER`, and the original selector labels ignored those defaults.
+The current gold owner now reads defaults from the typed dataclasses. Regeneration changed **2,467 ASC
+and 14,638 INNER flags across 16,318 records**; every one of **32,659** executable targets passes the
+SQL JSON Schema and an independent typed-field selector oracle. Corrected dataset SHA256:
+`a38436a695abf58efb09b061ca2d307ec175b5b5cbb8b95181f210db8b985af5`.
+Raw inputs, items and all other annotations are unchanged. This invalidates qualification against the
+original SQL labels. The controlled repeat changes only these two target labels.
+
+On the first fit's fixed **64 calibration records** (36 questions, 28 entity values), rescoring the
+saved predictions against corrected targets gives:
+
+| Coordinate block | Known targets | Initial MAE | Fitted MAE | TP / FP / FN / TN at 0.5 | F1 |
+| --- | ---: | ---: | ---: | --- | ---: |
+| SQL | 2,304 | 0.47866 | 0.04681 | 114 / 38 / 57 / 2,095 | 0.70588 |
+| Expected properties | 1,988 | 0.46800 | 0.02313 | 30 / 0 / 0 / 1,475 | 1.00000 |
+| Dialogue | 134 | 0.57207 | 0.00011 | 62 / 0 / 0 / 72 | 1.00000 |
+
+Property binary counts exclude fractional targets; this sample contains only value-role property
+evidence and no positive clarification/unsupported examples. These are sparse-coordinate diagnostics,
+not calibrated binding or answer accuracy. All 215 coordinates remain unqualified. Full calibration
+subsequently completed, as recorded above. There is no trained recursive tree readout, new served Spider/Enron score, CPU
+benchmark, promotion or deployment. The 708/1,053 Spider and 26/186 right Enron baseline below remains
+the latest serving evidence. Experiment artifacts are under ignored `training/readers/data/experiments/`
+directories `shared-semantic-20261106` and `shared-semantic-defaults-20261106`.
+
+The corrected-label repeat subsequently completed **256 updates in 519.34 seconds** and passed the
+saved-model quantized reload check. Same fixed 64-record diagnostic:
+
+| Coordinate block | Known targets | Fitted MAE | TP / FP / FN / TN at 0.5 | F1 |
+| --- | ---: | ---: | --- | ---: |
+| SQL | 2,304 | 0.04896 | 116 / 35 / 55 / 2,098 | 0.72050 |
+| Expected properties | 1,988 | 0.02401 | 30 / 0 / 0 / 1,475 | 1.00000 |
+| Dialogue | 134 | 0.00025 | 62 / 0 / 0 / 72 | 1.00000 |
+
+INNER positives improve from **0/12 to 6/12**; the one ASC positive remains below 0.5 (probability
+0.19229). SQL F1 rises while overall SQL MAE worsens; this is a mixed pilot result, not a release gain.
+Before fitting, **460/13,760** initial quantized outputs differ between the two A40 allocations, with
+maximum probability difference 0.01909. Model source and installed package versions match, but evaluator
+visitation order changed. Cross-run numerical identity is not established; the difference has not been
+causally attributed. Same-instance repeat/reload checks do not resolve it.
+
+The separate dialogue-data revision checks all **14,371** source conversations and labels 7,116
+previous-question references and 1,380 order/limit commands. Source readings retain 15 ordering histories
+that canonical AST MIN/MAX optimization erases. Input-derived sample anchors may vary between turns;
+column/type layout and original user text must match. Its data SHA256 is
+`5ab64d7df15d45df51ea3d59759349837257d98111a5fbe42b32fac818dfce31`; it is not yet trained.
+
+An earlier local audit incorrectly counted zero SQL programs in the original Qwen corpus by looking
+only for top-level query fields. Matching adjacent intent/role records recovers **6,335 single-table +
+146 join question/program-token pairs**, with matching metadata/schema and **zero pairing failures**.
+All **8,189** question links resolve to schema columns and SQL-token occurrences; 404 include exact
+literal-text identities. Role units preserve SQL token kinds/clauses, but unquoted literal text omits
+its original type. No execution or semantic correctness is claimed and no new source is gradient-admitted.
+The corrected recovery evidence is `shared-semantic-dialogue-20261106/qwen-recovery-assessment.json`.
+
+The token-only audit initially recovered 4,819 programs, then 4,821 after reusing the existing
+canonical column-name owner for duplicate headers. It excluded 1,660 cases requiring literal or
+numeric-column type evidence. The original-source recovery above now resolves all of those cases;
+the current per-pair audit and parser outputs cover all 6,481, with the same explicit limitation
+that representation checks are not training admission or original-data/English certification.
+
+## Shared-property requirement audit: AST trial interrupted; no new candidate accuracy claim (2026-11-06)
+
+The owner clarified that ACE noun, schema-column and contextualized-value meanings must share Schema.org
+property coordinates which causally determine semantic binding. A separate audit of both production and the
+CLEF candidate found that neither implements that interface for own-data binding. The CLEF trial uses raw
+contextual/lexical projections, a residual scorer and AST/action supervision; readable program trees are not
+the requested shared semantic representation. No comparison has established that a complete implementation
+of the owner's architecture failed. See the model card and architecture migration contract.
+
+The 512-step AST-format fit was interrupted on that steering. Checkpoint **384** and all fifteen file hashes
+were verified and retained on the original durable volume. Fourteen files recovered locally; the adapter
+transfer remained incomplete, so the local directory is not a complete model bundle. The GPU pod was deleted
+and a read-back returned not found. The prepared CPU VM was never allocated. The original training contract,
+data and objective remain unchanged; this is not a completed 512-step experiment, a shared-property model,
+or a promoted candidate. There is no new candidate Spider/Enron accuracy to report.
+
+The fresh production-only calibration run did finish: all four disjoint shards merged with matching
+fingerprints, reproducing **708/1,053 strict**, **799 lenient**, **988 answered**, under `whole_db`, served
+selection, AUTO execution and a 5,000-row cap. The fresh Enron baseline reproduced **26 right / 90 asked /
+70 wrong of 186**, with pool recall **45/186**. These are project calibration/baseline results, not an
+official Spider test result. No new frozen-test run occurred. Recovered evidence is under
+`clef-grammar-fit-20261105/recovered-evidence/`; semantic audit, coordinate order, annotation fixtures and
+an explicitly unapproved draft experiment contract are under `shared-property-audit/`.
+
+The direct source-program audit checked all **22,029** source pairs. After fixing offline import of NULL
+tests/LOWER and rejecting unrepresentable OFFSET, compound ordering/limits and SQLite integer division,
+**18,427** targets pass source-SQL/typed-AST execution, recursive JSON-schema validation and lossless ACE
+projection. All **18,427/18,427** pass the real pinned Attempto parser with exact generated-tree agreement.
+All accepted targets match source SQL on original, permuted and cloned rows, with **zero** disagreements;
+LIMIT cases were scored strictly. **3,602** sources remain excluded with recorded reasons, and **916**
+accepted targets fail the finite neural binding profile. This is not complete corpus support or independent
+certification of every original English intent. The two changed-data failures before the final importer
+hardening are retained with their diagnoses, not relabelled as passing ties. Final corpus evidence is in
+`clef-ast-20261105/source-programs/semantics-checked/`.
+
+Registered local suites pass **60 readers / 113 SQL AST**; compileall, focused Ruff F/E9 and diff checks pass.
+Forty local offline suites exit successfully, with explicit model-dependent skips. A model-provisioned Linux
+run passes 39 suites; its release suite's sole missing-Git-fixture failure is retained, and a rerun using
+authentic existing HEAD objects passes **57/57** release tests without source changes. Eleven live PostgreSQL
+suites and the live Gemini suite were omitted. Lossless disk-backed score storage also passes native64-record
+identity, concurrency, truncation/duplicate/corruption tests, and preserves every historical E novel-case SQL
+and verdict (**85/128**, robust answer programs **69/112**). These checks do not establish new learned accuracy.
+
+## Recursive ACE projection and generic AST input: GPU feasibility passed; fit interrupted (2026-11-06)
+
+The recursive application ACE view now passes the actual pinned Attempto parser for all **18,364/18,364**
+admitted pairs, with exact agreement between the parser tree and generated JSON tree, and no failures.
+This reifies the typed program as ACE facts and a result question; it does not establish that a fluent ACE
+paraphrase preserves every original English question. Evidence is `clef-ast-20261105/recursive-ape/actual-ape-audit.json`;
+parser revision `5f4d5354a45fb772763bf1a9543f508f15b28982`, projection SHA256
+`86c298e32fabb2581bf742d2ed2fbe7190ca52a7564970a7ca208df08a629dc8`.
+
+The generic typed-AST action input includes the actual engine constructors, field order and types once,
+followed by input-derived options and 256 positional decisions. All **12,397** training and **1,974** calibration
+records tokenize without truncation at 65,536 tokens; maxima are 50,085 and 21,968. Existing source-SQL execution
+checks match all **12,278/12,278** training answer targets and **1,952/1,954** calibration answer targets; 139
+records request clarification. The two calibration disagreements are nonunique LIMIT-3 boundaries and remain
+strict failures. No new model accuracy follows from target validation. Data hashes and classifications are in
+`clef-ast-20261105/target-audit-assessment.json`. Neural binding still excludes derived table sources; finite
+program, alias and grounding bounds remain. This is not complete SQLite support.
+
+The earlier generic-input native-head preflight completed two minimum-input forwards in 40.253 seconds and two
+median-input forwards in 5.999 seconds, peaking at 32,722,965,504 and 60,893,027,840 allocated bytes respectively.
+The widest 52,338-token input failed on a 96 GB GPU while requesting a further 108.88 GiB. These timings include
+different cold costs and are not throughput estimates. The proposed shared-span head execution preserves the
+parameters while avoiding repeated lexical embedding rows. CPU reference and native-function tests pass.
+On a fresh 96 GB RTX PRO 6000 Blackwell, all four native/shared-head FP32/BF16 inference/training parity cases
+passed, with identical selected options. Maximum logit error was 7.451e-8; maximum parameter-gradient errors
+were 2.384e-7 in FP32 and 0.015625 under BF16 autocast, within the predeclared tolerances.
+
+The refreshed full-model minimum/median/maximum inputs completed two repeated forwards each with identical
+choices: 40.320 / 4.749 / 24.140 seconds and 25,268,596,224 / 25,889,946,624 / 33,724,303,360 peak allocated bytes.
+The first timing includes cold compilation. Median and maximum backward probes completed in 72.312 and
+48.159 seconds, peaking at 30,024,672,768 and 48,157,903,360 allocated bytes, with finite loss and finite nonzero
+LoRA/head gradients. No optimizer was created or stepped. This establishes feasibility on that 96 GB GPU,
+not CPU or 40 GB training compatibility. The compact input differs from the earlier failed native preflight,
+so absolute before/after GPU timings are not a controlled speedup comparison. Evidence and the serialization
+clarification are in `clef-kernels-20261105/{preflight,kernel-parity-gpu,execution-addendum}.json`.
+
+Grammar decoding now retains native raw logits before legal-action normalization; softmax/API rounding can
+otherwise erase every legal action when an illegal action has the highest score. Registered tests cover this
+underflow. Readers **60/60**, SQL AST **113/113**, compileall, focused Ruff F/E9 and diff checks passed locally.
+The generic-target fit was interrupted after recovery of checkpoint384 on the owner's shared-property
+architecture correction; it did not complete its planned512 steps or candidate answer evaluation.
+Its initial contract was `7078296d9281523eaaaf862bbfdcc1e1b06690e34305b6533e8a5c43b20b44d0`, under
+`clef-grammar-fit-20261105`. A storage-only recovery froze contract
+`db9cfec43bad2e0405fa3e5e9f525b7c76984c7ea14edcbf6051d3353cc0f6d3`: the first allocation stalled before
+optimization while loading weights through FUSE. The replacement uses a local model cache and preserves the
+original deletion deadline. After downloading, its 1,184 tensors loaded in 5.6 seconds; this is a startup
+storage result, not an inference speedup. `cache-contract.json` verifies that the reload script's only change
+preserves the caller's cache setting; every other Python AST statement is unchanged. The fit continues the
+exact E adapter/head, frozen training serialization and data, with the existing learning rates and seed,
+and a five-hour / USD12.45 compute cap; preflight plus fit were bounded to USD14.94 compute. The GPU is deleted;
+no candidate reload, full answer-accuracy comparison or promotion was completed, and the
+frozen Spider test remains unrun. Candidate code/data and the failed native preflight remain under the existing
+`clef-ast-20261105` experiment. All three unsuccessful GCE allocation attempts left no VM or experiment disk.
+
+## Recursive SQL AST target prototype: 18,364 ACE pairs round-trip (2026-11-05)
+
+At the owner's request, the next target-format prototype uses a recursive JSON schema derived from the actual
+classes in `engine/sql_ast.py`, with the official SQLite 3.50.4 grammar pinned separately as the syntax reference.
+It is the engine's supported read-only AST, not a schema claiming every SQLite production. All 18,364 admitted
+ACE pairs converted to JSON AST, validated and round-tripped through the existing typed compiler without a
+different rendered query. A separate nine-projection/seven-condition/three-order-key example passed, and a
+weighted-average AST executed to the independently expected 8.6. Unknown nodes, extra SQL text and invalid
+COUNT(DISTINCT *) were rejected. No model was trained on these new targets and the named prediction slots
+were not replaced in serving. Prototype, schema, paired data and source hashes are under
+`C:/work/prereasoner-data/training/readers/data/experiments/clef-ast-20261105/`.
+
+## Longer CLEF training: calibration 720/1,053 strict, versus 708 baseline and 551 at 512 steps (2026-11-05)
+
+The 2,048-step controlled exposure trial retained the same base revision, data, seed, objective and original
+input serialization as the 512-step trial. Its linear learning-rate schedule scaled with the run length.
+The fresh matched Linux runs used the same pinned bundle, source snapshot, evaluator, `whole_db`, served
+selection, AUTO execution and 5,000-row cap. All four disjoint calibration shards merged successfully for
+each run; merged results retain the whole-dataset and injected-dependency fingerprints.
+
+| Reader | Strict right / 1,053 | Lenient right | Answered |
+|---|---:|---:|---:|
+| Current production bundle | 708 (67.2%) | 799 | 988 |
+| CLEF, 512 steps, original user wording | 551 (52.3%) | 674 | 956 |
+| CLEF, 2,048 steps, original user wording | 720 (68.4%) | 837 | 999 |
+
+Against production the longer candidate gained 104 correct answers and lost 92. A seeded bootstrap over the
+20 held-out databases gives a 95% interval of -4.692 to +5.664 percentage points for that difference; this
+does not establish a reliable improvement over production. Against the 512-step candidate it gained 204
+and lost 35. These are calibration results; the historical 1,535/2,147 frozen-test target remains untested.
+The matched runs used the frozen comparator before the separate nonfinite-spelling correction below.
+
+On the 128 untrained semantic fixtures, the longer model scored **85/128**, including 16 clarification cases.
+All **69/112** correct answer programs remained correct on both altered datasets. Its pools contained an
+original-data match for 104/128 cases, but only 80/112 answerable programs survived all three datasets.
+Calendar predicates, repeated headers, medians and weighted averages remain unresolved. These are direct
+compiler/program checks, not served Enron accuracy or fresh model inference on the altered rows.
+
+Artifacts are in `training/readers/data/experiments/clef-exposure-20261105/` under `C:/work/prereasoner-data`.
+The candidate manifest is `9ad9153b33a648958b5af7f1ce765726c12d6c71e0c73fad3c0d9f8201f87a5e`.
+All 11 recovered files match their hashes; the exact training serializer is retained alongside the manifest.
+Native predictions completed for 1,616 Spider routing requests, 186 Enron requests and 128 semantic requests,
+with zero native inference errors. Reload and repeated-decision checks passed. This does not certify
+correctness: GPU residency was 23,397,452,800 bytes and a 26,112-token input peaked at 30,051,629,056 bytes.
+No model was promoted or deployed. The full Enron replay scored **29 right / 115 asked / 42 wrong of 186**,
+versus the matched baseline's 26 / 90 / 70 and the 512-step candidate's 27 / 107 / 52. The longer candidate
+gained 12 correct answers and lost nine baseline-correct answers; its pool held a right answer for only 47/186,
+versus baseline 45/186. Raw-grid questions were 5/105 right, row-table questions 24/81. This fails the
+no-loss Enron gate and the requested all-question objective. Further run length alone has not solved workbook
+layout or the missing expression forms. The frozen Spider test was not run.
+
+The frozen-weight input ablation moved shared option spans after the complete state. On the matched 96-question
+Spider sample it stayed **57/96**, with six gains and six losses. On corrected semantic-fixture comparison it
+moved **53 to 83/128**; 37 versus 67 answerable programs survived both altered datasets. The older 46 and 75
+counts required output-column order even when the grouping question did not specify it. Historical reports
+are retained; `semantic_comparison/` records the corrected rule and both variants. The ablation reached its
+time cap after all semantic and Spider requests but only three Enron requests, so no Enron-sample result is
+claimed. All 12,397 training and 1,974 calibration records fit the revised serialization without truncation;
+the maximum was 32,611 tokens. Neither fine-tuned candidate was trained with that revised serialization.
+
+## ACE corpus capacity and nonfinite comparison correction (2026-11-05)
+
+The canonical profile's wider bounds recovered 49 source programs excluded by the neural head's smaller
+projection, condition and ordering limits. The shared benchmark comparator also interpreted text such as
+the city name `Nan` or a review containing `nan` as floating-point NaN, making identical answers unequal.
+It now retains nonfinite spellings as stable text, with a regression that fails before the fix.
+
+Re-running every source pair admitted **8,109/8,652 Spider**, **6,411/9,428 BIRD-train**, and
+**3,844/3,949 Spider-Syn-train** pairs. All **18,364** admitted documents passed the generated JSON schema,
+exact typed-AST round trips and the pinned real Attempto parser with exact JSON-tree agreement. All **3,665**
+remaining exclusions are retained. These are execution and compiler checks, not exhaustive English-meaning
+certification, and do not cover all historical property-head training inputs. Empty source databases,
+unstated functional dependencies and unsupported SQL shapes remain limitations.
+Records, schema and provenance: `training/readers/data/experiments/clef-supervision-20261105/finite-comparison/`.
+The existing fine-tuning data and promoted bundle were not changed by the corpus refresh.
+
+The changed-data audit then checked every admitted source pair again through the same gold oracle:
+18,364 original-data checks, 15,507 passing permutations and 15,516 passing clones. Ten permutations and
+one clone exposed result differences; those eleven labels remain flagged, including grouped projections
+that rely on unstated functional dependencies. The 2,847 LIMIT queries were excluded from both changed-data
+checks because cutoff results can be underdetermined. No exhaustive English-equivalence claim follows.
+The ACE encoder also rejects oversized literals/documents and invalid Unicode before exposing its tree;
+the added boundary regression and all current reader tests passed.
+
+Validation: readers 59/59, SQL AST 110/110, complex datasets 10/10. All 40 offline suites passed after fixing
+the disposable test setup: the complete run passed 39, and the release suite passed 57/57 after adding the
+existing hermetic runner's temporary Git fixture. Eleven live Postgres suites and the live orchestrator
+were explicitly skipped. This was not a full deployed-product release gate. Both paid compute pods were
+deleted after results and all candidate files were recovered; the network volume remains retained.
+
+## Unpromoted CLEF joint-reader trial: calibration 545/1,053 strict; original-wording ablation 549/1,053 (2026-11-05)
+
+Commit `eb40c4c9144a926f0cc9260d9928fba343a0801f`, dirty worktree. Candidate provenance, file hashes, exact-input captures,
+and per-example results are in `C:/work/prereasoner-data/training/readers/data/experiments/clef-conversation-20261105/`.
+This is an offline dependency injection into the existing `TableQuery.select_query` and `spider.probe.full_eval`,
+not a promoted runtime. The baseline bundle is `4545a4810fa25f4b1fbff73a1c05fcb898958ade0aff3e29f76b876f3e44bdfc`.
+All headline runs use the same 1,053 database-held-out calibration questions, `whole_db`, served selection,
+AUTO execution, and a 5,000-row cap. The frozen test was not run.
+
+| Reader / selector question | Strict right | Lenient right |
+|---|---:|---:|
+| Production bundle, freshly reproduced | 708 (67.2%) | 799 |
+| CLEF; top interpretation's canonical read-as passed to the selector | 545 (51.8%) | 670 |
+| Same CLEF predictions; original user wording passed to the selector | 549 (52.1%) | 676 |
+
+The separate SQL-backend pool-oracle ablation found an eligible strict match for **803/1,053 (76.3%)**.
+That is a raw candidate-pool ceiling, not served accuracy; served top-one and deterministic tie/null policies
+must not be replaced with oracle answers.
+
+`Cloudflare/clef` revision `cfddda043dd190ef3b01cff449d5ee8cff1e8ec6` was fine-tuned with NF4, rank-16 LoRA,
+and its joint decision head, seed 3407. The 512-step run exposed 1,024 of 12,397 training records (about 8.26%
+of one epoch), over 126 training databases; 20 calibration databases were excluded. Input-derived choices make
+readings, an ACE view, and typed ASTs; no model generates SQL text. Improved decision-head loss is not a SQL score.
+
+On the same 186 Enron offline questions, right / asked / wrong was 26 / 90 / 70 for the baseline,
+30 / 96 / 60 for canonical wording, and 29 / 101 / 56 for original wording. The canonical candidate gained 12
+previously incorrect answers and lost 8 previously correct ones; its pool contained a right answer for only 43/186,
+versus 45/186 for the baseline. The candidate fails promotion gates. Its weights remain outside `engine/data/`.
+
+The explicit-join codec extension preserved the original 545/1,053 and 30 / 96 / 60 counts. Its source-program
+audit passed 7,116 original pairs plus 6,275 permutations and 6,275 clones, with no mismatches. Those are compiler
+checks, not learned question accuracy; the current CLEF heads do not yet predict the added explicit join facts.
+
+Subsequent diagnostics kept the 512-step weights frozen. Removing the decoder's per-field top-three cutoff,
+while retaining 256 attempts and 16 unique ASTs, moved original-wording Spider from **549 to 551/1,053**
+(two gains, no losses). Enron moved from 29 / 101 / 56 to **27 / 107 / 52** (one gain, three losses), with a
+right answer somewhere in 48/186 pools. These are the `wide_decode/` results before the later bare-star
+validation fix; that fix requires fresh baseline and candidate results.
+
+A second encoder prefill of the **same** frozen model chose among complete typed candidate plans. On an
+outcome-blind sample of 96 calibration questions, strict right moved **57 to 64** (ten gains, three losses).
+On 32 sampled Enron questions, right / asked / wrong moved **6 / 17 / 9 to 6 / 22 / 4** (two right gains,
+two right losses). `rank_probe/` records the exact sample, request and weight hashes. This is a small development
+probe, not a full benchmark, frozen-test result or calibrated confidence estimate.
+
+On the separate 128 untrained conversation/schema/value fixtures, wider search retained a right outcome in
+96 pools; first-pass top-one remained 46. The same-model plan-choice prefill selected all 96: **80/112 answerable
+questions plus 16/16 clarification cases**. All 80 selected answer programs also stayed right on two altered
+datasets with refunds, extra matches, near-match names and changed numbers. Calendar ranges, repeated headers,
+medians and weighted averages remained 32 failures. These `novel_rank/` results exercise direct compiler/program
+semantics, not the served pipeline or fresh neural inference on altered data. They do not establish that all
+Enron questions work. Timings from the shared training GPU are not isolated inference latency.
+
+The longer-training trial remains separate; none of these diagnostics claims its accuracy or promotes a model.
+
 ## A result that holds nothing asks back: calibration 723 -> 708 strict, messy dev 44 / 21 / 55 -> 44 / 23 / 53, Enron replay 26 / 54 / 106 -> 26 / 90 / 70 (2026-11-02)
 
 Commit b52c7b0 plus the Phase 0 changes this entry ships with (`worktree_dirty: true`; the record carries each source file's hash).

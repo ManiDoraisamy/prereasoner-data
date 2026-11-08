@@ -90,11 +90,10 @@ def lower_select_query(
     )
     if (
         query.having is not None
-        or query.distinct
         or (query.limit is not None and not query.order_by and not harmless_scalar_order)
     ):
         raise UnsupportedDeterministicPlan(
-            "HAVING, DISTINCT, and unordered LIMIT are not supported"
+            "HAVING and unordered LIMIT are not supported"
         )
     if any(join.alias is not None or join.kind != "INNER" for join in query.joins):
         raise UnsupportedDeterministicPlan("only unaliased inner joins are supported")
@@ -106,6 +105,8 @@ def lower_select_query(
         if term.expression not in {item.expression for item in query.select}
     ))
     if ranking_only:
+        if query.distinct:
+            raise UnsupportedDeterministicPlan("DISTINCT cannot rank by an unprojected expression")
         used = set(shown_names)
         query = replace(query, select=query.select + tuple(
             SelectItem(expression, _next_unique(f"rank_{index}", used))
@@ -360,6 +361,13 @@ def lower_select_query(
             )
         )
         views.append(ProjectedView(f"{slug}_result", views[-1].name, values))
+    if query.distinct:
+        # DISTINCT identifies the whole projected tuple. Grouping carries all
+        # source-row occurrences into that tuple without choosing a duplicate.
+        views.append(ReducedView(
+            f"{slug}_distinct", views[-1].name, (),
+            tuple(SelectedValue(name, ViewValue(name)) for name in _select_names(query.select)),
+        ))
     if query.order_by and not harmless_scalar_order:
         output_names = _select_names(query.select)
         order = []
@@ -524,6 +532,12 @@ def _compared(value, other) -> Value:
     if (isinstance(value, Literal) and isinstance(value.value, str) and isinstance(other, ColumnRef)
             and other.type.numeric and _SQL_NUMBER.fullmatch(value.value)):
         return LiteralValue(Decimal(value.value.strip()))
+    # SQLite applies a TEXT column's affinity to an integer literal as well.
+    # An identifier stored among text values therefore compares with text;
+    # comparing Python str/int either silently misses equality or raises.
+    if (isinstance(value, Literal) and type(value.value) is int and isinstance(other, ColumnRef)
+            and other.type in {ASTType.TEXT, ASTType.DATE}):
+        return LiteralValue(str(value.value))
     return _value(value)
 
 

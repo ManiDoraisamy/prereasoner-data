@@ -30,7 +30,11 @@ function rememberConversationSource(j){
 /* ---- upload once (2026-10-02): the sheets go to the conversation when they change; a question names
    them by conversation and source hash instead of carrying every row ---- */
 async function sheetsFingerprint(){
-  const bytes=new TextEncoder().encode(JSON.stringify(SHEETS.map(s=>[s.name,s.data])));
+  const bytes=new TextEncoder().encode(JSON.stringify(SHEETS.map(s=>{
+    const origin=s.import&&s.import.sourceRows?s.import:null;
+    return [s.name,s.data,origin?[origin.sourceSheet,origin.sourceRange,origin.sourceRows,
+      (origin.columnBindings||[]).map(b=>[b.name,b.column])]:null];
+  })));
   const hash=await crypto.subtle.digest('SHA-256',bytes);
   return Array.from(new Uint8Array(hash),b=>b.toString(16).padStart(2,'0')).join('');
 }

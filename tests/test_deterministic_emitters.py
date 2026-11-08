@@ -436,6 +436,173 @@ def test_auto_python_has_a_hard_materialized_row_limit_and_sql_fallback():
         )
 
 
+def test_execution_source_rows_survive_duplicates_groups_fanout_and_join_multiplicity():
+    from engine.deterministic.operators import SourceRowKey, View
+
+    keys = [SourceRowKey("conversation", "t", ("rowid",), (i,)) for i in (1, 2, 3)]
+    view = View("input", (("a", 10), ("a", 10), ("b", 5)), source_rows=tuple((k,) for k in keys))
+    filtered = view.filter("only_a", lambda row: row[0] == "a")
+    assert filtered.source_rows == ((keys[0],), (keys[1],))
+    grouped = view.group_reduce("totals", lambda row: row[0], lambda _: 0, lambda total, row: total + row[1])
+    assert grouped.rows == (20, 5) and grouped.source_rows == ((keys[0], keys[1]), (keys[2],))
+    sorted_ = view.sort("top", keys=lambda row: (row[1],), descending=(True,), limit=1, ties_on=1)
+    assert sorted_.source_rows == ((keys[0],), (keys[1],))
+    fanout = filtered.for_each("copies", lambda row: [row, row])
+    assert fanout.source_rows == ((keys[0],), (keys[0],), (keys[1],), (keys[1],))
+    other = View("dimension", (1, 2), source_rows=((keys[2],), (keys[2],)))
+    product = filtered.cross("joined", other, lambda left, right: left[1] * right)
+    total = product.reduce("sum", 0, lambda current, value: current + value)
+    assert total.rows == (60,)
+    assert total.source_rows == ((keys[0], keys[2], keys[0], keys[2], keys[1], keys[2], keys[1], keys[2]),)
+    assert View("unknown", (10,)).reduce("sum", 0, lambda total, value: total + value).source_rows == (None,)
+    assert View("empty", ()).reduce("count", 0, lambda total, _: total + 1).source_rows == ((),)
+
+
+def test_served_execution_source_keys_resolve_to_original_duplicate_sheet_rows():
+    from engine.deterministic.context import analysis_execution_context, current_execution_record
+    from engine.deterministic.lower import lower_select_query
+    from engine.prepared import scratch_database
+    from engine.provenance import ProvenanceContext
+    from engine.sql_ast import Aggregate, ColumnRef, Comparison, Literal, SelectItem, SelectQuery, SQLType
+    from engine.tables import TableQuery
+
+    metadata = {"sourceSheet": "Sales", "sourceRange": "B5:C8",
+                "columnBindings": [{"name": "city", "column": "B"}, {"name": "amount", "column": "C"}],
+                "sourceRows": {"encoding": "ranges", "count": 3, "ranges": [[0, 6, 3]]}}
+    table = {"name": "orders", "columns": ["city", "amount"],
+             "rows": [["Paris", 10], ["Paris", 10], ["Berlin", 5]], "import": metadata}
+    schema = [{"table": "orders", "name": "city", "affinity": "TEXT", "values": ["Paris", "Paris", "Berlin"]},
+              {"table": "orders", "name": "amount", "affinity": "INTEGER", "values": [10, 10, 5]}]
+    query = SelectQuery((SelectItem(Aggregate("SUM", ColumnRef("orders", "amount", SQLType.INTEGER)), "total"),), "orders",
+                        where=Comparison(ColumnRef("orders", "city", SQLType.TEXT), "=", Literal("Paris")))
+    plan = lower_select_query("paris_total", query, schema, [])
+    context = ProvenanceContext([table], uploaded_count=1)
+    with scratch_database() as database, analysis_execution_context(None, "source-trace", execution_mode="verify"):
+        database.load({"orders": table}, schema)
+        _, answer = TableQuery.__new__(TableQuery)._execute_deterministic({"orders": table}, plan)
+        assert answer == [(20,)]
+        record = current_execution_record()
+        decorated = context.decorate_response({"computation": record})
+    trace = decorated["computation"]["source_lineage"]
+    assert trace["input_lineage_coverage"]["unknown_source_keys"] == 0
+    assert trace["input_lineage_coverage"]["unknown_output_row_occurrences"] == 0
+    final = trace["stages"][str(plan.output)]["rows"][0]
+    keys = [trace["source_keys"][i] for i in final["source_keys"]]
+    assert [key["key_values"] for key in keys] == [[1], [2]]
+    lineage = context.input_lineage("orders")
+    rows = [lineage.rows.index(("Paris", 10))]  # Equal values cannot identify both originals.
+    assert rows == [0]
+    contributors = lineage.resolve_row_keys([{k: key[k] for k in ("schema", "table", "key_columns", "key_values")} for key in keys],
+                                             (1,), rowid_source_sha256=lineage.source_sha256)
+    assert [cell["source_cell"]["address"] for cell in contributors["cell_lineage"]] == ["C6", "C7"]
+    assert context.decorate_response(decorated)["computation"]["source_lineage"] == trace
+    changed = {**table, "rows": [["Paris", 99], ["Paris", 10], ["Berlin", 5]]}
+    refused = ProvenanceContext([changed], uploaded_count=1).execution_lineage(record["source_lineage"])
+    assert refused["input_lineage_coverage"]["resolved_source_keys"] == 0
+    assert refused["input_lineage_coverage"]["unknown_source_keys"] == 2
+
+
+def test_distinct_projection_retains_all_duplicate_sources_before_order_and_limit():
+    from engine.provenance import ProvenanceContext
+    from engine.prepared import scratch_database
+    from engine.tables import TableQuery
+    from engine.deterministic.lower import UnsupportedDeterministicPlan
+
+    table = {"name": "items", "columns": ["kind", "value"],
+             "rows": [["red", 10], ["red", 10], [None, 5], [None, 5], ["red", 20]]}
+    schema = [{"table": "items", "name": name, "affinity": kind, "values": [row[i] for row in table["rows"]]}
+              for i, (name, kind) in enumerate((("kind", "TEXT"), ("value", "INTEGER")))]
+    query = SelectQuery((SelectItem(ColumnRef("items", "kind", SQLType.TEXT)),
+                         SelectItem(ColumnRef("items", "value", SQLType.INTEGER))), "items", distinct=True)
+    context = ProvenanceContext([table], uploaded_count=1)
+    for selected, expected in ((query, [("red", 10), (None, 5), ("red", 20)]),
+                               (replace(query, order_by=(OrderTerm(query.select[1].expression, "ASC"),), limit=1), [(None, 5)])):
+        plan = lower_select_query("kinds", selected, schema, [])
+        with scratch_database(), analysis_execution_context(None, "distinct-test", execution_mode="verify"):
+            planner = TableQuery()
+            columns, rows = planner.execute({"items": table}, schema, "", query=selected, deterministic_plan=plan)
+            assert set(rows) == set(expected) and len(rows) == len(expected)
+            trace = context.execution_lineage(current_execution_record()["source_lineage"])
+            assert trace["input_lineage_coverage"]["unknown_source_keys"] == 0
+            final = trace["stages"][str(plan.output)]["rows"]
+            assert sorted(len(row["source_keys"]) for row in final) == ([2] if selected.limit else [1, 2, 2])
+    unsafe = replace(query, select=(query.select[0],), order_by=(OrderTerm(query.select[1].expression, "ASC"),))
+    try:
+        lower_select_query("unsafe_distinct", unsafe, schema, [])
+    except UnsupportedDeterministicPlan:
+        pass
+    else:
+        raise AssertionError("an unprojected ranking key must not alter DISTINCT identity")
+    try:
+        ReducedView("empty", "source", ())
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("a reduction needs a grouping key or an aggregate")
+
+
+def test_selected_execution_audit_compares_exact_decimal_wire_values():
+    from training.readers.semantic_audit import selected_execution_trace
+    from engine.sql_schema import SchemaGraph
+    from regress.sql_import import import_sql
+
+    table = {"name": "items", "columns": ["amount"], "rows": [[1], [0], [0]],
+             "import": {"sourceSheet": "Payments", "sourceRange": "D5:D8",
+                        "sourceRows": {"encoding": "ranges", "count": 3, "ranges": [[0, 6, 3]]},
+                        "columnBindings": [{"name": "amount", "column": "D"}]}}
+    graph = SchemaGraph.from_tables([table], [])
+    base = {"id": "1.1", "sql": 'SELECT AVG("amount") FROM "items"', "rows": 1}
+    trace = selected_execution_trace(base, [table], graph, import_sql(base["sql"], graph))
+    assert trace["state"] == "execution_sources_resolved"
+    assert trace["selected_ast_sql_parity"] and trace["baseline_row_count_reproduced"]
+    assert trace["learned_named_dimensions_causally_traced"] is False
+    from engine.tables import TableQuery
+    from engine.sql_ast import query_to_tree
+    import hashlib
+    import json
+    query = import_sql(base["sql"], graph)
+    schema = [{"table": "items", "name": "amount", "affinity": "INTEGER"}]
+    columns, rows = TableQuery().execute({"items": table}, schema, base["sql"], query=query)
+    result = {"columns": columns, "rows": rows}
+    linked = selected_execution_trace(base, [table], graph, query, selected_result=result)
+    assert linked["selected_answer_reproduced"]
+    assert linked["source_lineage"]["source_tables"]["request/input/items"]["source_layout"]["sourceSheet"] == "Payments"
+    assert linked["selected_ast_sha256"] == hashlib.sha256(
+        json.dumps(query_to_tree(query), sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    try:
+        selected_execution_trace(base, [table], graph, query,
+                                 selected_result={"columns": columns, "rows": [[9]]})
+    except ValueError as error:
+        assert "selected answer" in str(error)
+    else:
+        raise AssertionError("source rows for a different answer accepted")
+
+
+def test_integer_literals_follow_text_column_affinity_in_both_operand_orders():
+    from engine.prepared import scratch_database
+    from engine.tables import TableQuery
+
+    table = {"name": "items", "columns": ["code", "amount"],
+             "rows": [["10", 10], ["2", 2], ["20", 20], ["note", 30], [None, None]]}
+    schema = [{"table": "items", "name": name, "affinity": kind, "values": [row[i] for row in table["rows"]]}
+              for i, (name, kind) in enumerate((("code", "TEXT"), ("amount", "INTEGER")))]
+    code, amount = ColumnRef("items", "code", SQLType.TEXT), ColumnRef("items", "amount", SQLType.INTEGER)
+    cases = [(Comparison(code, "=", Literal(2)), [("2",)]),
+             (Comparison(Literal(2), "=", code), [("2",)]),
+             (Comparison(code, "<", Literal(2)), [("10",)]),
+             (Comparison(code, ">=", Literal(2)), [("2",), ("20",), ("note",)]),
+             (Comparison(Literal(2), ">", code), [("10",)]),
+             (Comparison(amount, "<", Literal("2")), [])]
+    planner = TableQuery()
+    for predicate, expected in cases:
+        query = SelectQuery((SelectItem(code),), "items", where=predicate)
+        plan = lower_select_query("text_affinity", query, schema, [])
+        with scratch_database(), analysis_execution_context(None, "text-affinity", execution_mode="verify"):
+            _, rows = planner.execute({"items": table}, schema, "", query=query, deterministic_plan=plan)
+            _, direct = planner.execute({"items": table}, schema, "", query=query)
+        assert rows == direct == expected
+
+
 def test_python_operators_preserve_sql_boolean_text_and_none_group_state():
     from engine.deterministic.operators import TEXT, View
 

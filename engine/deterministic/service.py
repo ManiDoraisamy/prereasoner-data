@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from copy import deepcopy
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import date, datetime
@@ -39,6 +40,7 @@ from engine.deterministic.runtime import (
     execute_python,
     execute_sql_views,
     materialized_python_views,
+    python_source_trace,
 )
 
 from engine.numeric import wire_value
@@ -163,6 +165,7 @@ class ExecutionResult:
     reference_columns: Mapping[str, frozenset[str]] = field(default_factory=dict)
     labels: Mapping[str, str] = field(default_factory=dict)
     step_labels: Mapping[str, str] = field(default_factory=dict)
+    source_lineage: Mapping[str, object] | None = None
 
     def displayed(self, step: str, rows) -> tuple[dict[str, object], ...]:
         """A stage's rows as the user sees them: a knowledgebase entity in a reference column shows its
@@ -243,6 +246,8 @@ class ExecutionResult:
             ),
             "debug_path": str(self.debug_path) if self.debug_path is not None else None,
             "fallback_reason": self.fallback_reason,
+            "source_lineage": deepcopy(self.source_lineage) if self.source_lineage is not None else {
+                "state": "unavailable", "reason": "execution did not retain Python source-row provenance"},
         }
 
 
@@ -348,6 +353,7 @@ class DeterministicAnalysis:
         stages = self.plan.stages()
         output_index = tuple(view.name for view in stages).index(str(self.plan.output))
         fallback_reason = None
+        source_lineage = None
         if selected is ExecutionMode.PYTHON:
             try:
                 # AUTO is an availability policy as well as a size policy. A
@@ -365,11 +371,13 @@ class DeterministicAnalysis:
                     view_rows = materialized_python_views(
                         python_result, self.plan
                     )
+                    source_lineage = python_source_trace(python_result, view_rows)
                 rows = view_rows[output_index]
             except Exception as exc:
                 if requested is not ExecutionMode.AUTO:
                     raise
                 fallback_reason = f"{type(exc).__name__}: {exc}"
+                source_lineage = None
                 # Python-by-default is only trustworthy if a silent retreat to SQL is
                 # visible. Count it and name the exception type on the request's one
                 # [timing] line; the message itself may quote user data, so it stays in
@@ -395,6 +403,7 @@ class DeterministicAnalysis:
                     row_limit=python_row_limit,
                 )
                 python_views = materialized_python_views(python_result, self.plan)
+                source_lineage = python_source_trace(python_result, python_views)
             with request_timing.span("deterministic_sql"):
                 sql_views = execute_sql_views(emission.sql, bind)
             for step, python_rows, sql_rows in zip(
@@ -446,4 +455,5 @@ class DeterministicAnalysis:
             reference,
             labels,
             step_labels,
+            source_lineage,
         )
