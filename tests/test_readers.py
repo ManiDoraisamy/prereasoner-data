@@ -2540,6 +2540,18 @@ def test_question_spans_numbers_and_calendar_literals_use_only_input_evidence():
     for text, expected in (("30 000", 30000), ("ten million", 10000000),
                            ("10 million", 10000000), ("1.5 billion", 1500000000), ("half", 0.5)):
         assert list(mentions(text))[0][0] == expected
+    # A fraction is a written number as a share or a scale, never as the measure of a unit or a calendar part:
+    # "stayed longer than half a year" once became the literal 0.5 and a filter "past due is above 0.5"
+    # (messy dev, subscriptions, 2026-11-08), where the old reader asked back.
+    for text, expected in (("more than half of the orders", [0.5]), ("more than half", [0.5]),
+                           ("half a million", [500000]), ("a quarter of the stock", [0.25]),
+                           ("revenue from people who stayed longer than half a year", []),
+                           ("calls under half an hour", []), ("a quarter of an hour", []),
+                           ("revenue last quarter", []), ("sales by quarter", []),
+                           ("payments in the first half of 2004", [2004])):
+        assert [n for n, _, _ in mentions(text)] == expected, text
+    # The decoder reads a value span without its sentence: a lone fraction word is no literal there.
+    assert number("half") is None and number("quarter") is None
     graph = SchemaGraph.from_tables([{"name": "items", "columns": ["title", "date"],
                                      "rows": [["unrelated", "2001-01-01"]]}], [])
     turns = [{"role": "user", "content": "Find The Great Railway Bazaar during January 2012."}]

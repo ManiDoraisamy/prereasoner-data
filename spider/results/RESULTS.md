@@ -5,6 +5,29 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
+## Codex's reader work on main: served Spider 706/1,053, messy dev 44/23/53 (2026-11-08)
+
+Fresh serving-faithful run of the production bundle (`4545a481`, unchanged) at `86bedc9`, which brought Codex's
+worktree into main. Calibration 1,053, `whole_db`, served selection, AUTO execution, 5,000-row cap, two shards merged:
+**706 strict (67.0%) / 798 lenient / 988 answered**, against **708 / 799 / 988** at `eb40c4c` (Phase 0). Transitions:
+0 wins, 2 losses, 706 unchanged right, 345 unchanged wrong; 1,048 of 1,053 served queries are identical.
+
+All five changed queries trace to one owner change: a zero-padded integer string now stays text
+(`engine/sql_schema.py:_infer_type`). `behavior_monitoring.Addresses.zip_postcode` is `VARCHAR(20)` holding `002`
+and `062`, which integer typing turned into 2 and 62; questions 505 and 539 now compare `= '197'` and stay right.
+On the retyped schema the readers rank two other questions of that database differently and lose them (525 picks
+SUM for "highest average", 542 drops the Students arm of an INTERSECT); 904 changes and stays wrong. This is a
+correctness hardening with a measured cost of 2 strict, not an accuracy change, and it is not patched per question.
+
+Messy dev (120, served, `regress.run_messy`): **44 right / 22 asked / 54 wrong** at `86bedc9` against 44 / 23 / 53 at
+Phase 0. The one change was "revenue from people who stayed longer than half a year": the new number words read
+"half" as the literal 0.5 and served "past due is above 0.5". The follow-up commit keeps a fraction a number only as
+a share or a scale ("more than half of the orders", "half a million"); "half a year", "half an hour" and "last
+quarter" name no literal, and the decoder's context-free `number()` reads no lone fraction word. That question asks
+back again, as at Phase 0; it is the only messy question with such a word and no calibration question has one, so
+messy dev is **44 / 23 / 53** and Spider is unchanged by the fix. Per-example records:
+`C:/work/prereasoner-readers-artifacts/evals/codex_pull/spider-86bedc9/` and `evals/messy/messy_messy_served_86bedc9.json`.
+
 ## Recursive ACE corpus and benchmark-input gates; no new accuracy score (2026-11-07)
 
 The full `shared-semantic-grammar-20261106` admission audit visits **32,798 question parents**.

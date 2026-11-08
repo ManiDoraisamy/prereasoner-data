@@ -8,7 +8,10 @@ WORDS = {"zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six":
          "fifty": 50, "hundred": 100, "once": 1, "twice": 2, "single": 1, "both": 2}
 WORDS.update({"sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90,
               "thousand": 1000, "million": 1000000, "billion": 1000000000,
-              "trillion": 1000000000000, "half": 0.5, "quarter": 0.25})
+              "trillion": 1000000000000})
+# A fraction word is a number only in context (mentions/_fraction): alone, "half" in "half a year" or "quarter" in
+# "last quarter" is no literal, and number() reads a span without its sentence (the decoder's value spans).
+FRACTION_VALUES = {"half": 0.5, "quarter": 0.25}
 SCALES = {name: WORDS[name] for name in ("hundred", "thousand", "million", "billion", "trillion")}
 CARDINAL = {name: value for name, value in WORDS.items() if type(value) is int and value < 100
             and name not in {"once", "twice", "single", "both"}}
@@ -51,6 +54,38 @@ def number(text):
     return total + current
 
 
+FRACTIONS = frozenset(FRACTION_VALUES)
+PERIOD_ORDINALS = frozenset({"first", "second", "third", "fourth", "1st", "2nd", "3rd", "4th", "last", "final",
+                             "latter", "former", "previous", "next", "this", "each", "every", "per"})
+
+
+def _fraction(question, matches, i):
+    """A fraction word as a written number: (value, start, end, next token index), or None.
+
+    A fraction names a number when it is a share ("more than half", "half of the orders", "a quarter of the
+    stock") or scales one ("half a million"). Followed by an article and a unit ("half a year", "half an hour",
+    "a quarter of an hour") it measures that unit, which no cell holds as 0.5; "quarter" with no "of" after it is
+    the calendar period ("last quarter", "by quarter"). Neither is a literal to compare a column with.
+    """
+    match = matches[i]
+    word = match.group().lower()
+    if i and matches[i - 1].group().lower() in PERIOD_ORDINALS:
+        return None                      # "the first half of 2004", "last quarter": a part of a period
+    following = [m.group().lower() for m in matches[i + 1:i + 4]]
+    if following[:1] in (["a"], ["an"]):
+        if len(following) > 1 and following[1].rstrip("s") in SCALES:
+            scale = matches[i + 2]
+            return FRACTION_VALUES[word] * SCALES[following[1].rstrip("s")], match.start(), scale.end(), i + 3
+        return None
+    if following[:1] == ["of"]:
+        if following[1:2] in (["a"], ["an"]):
+            return None
+        return FRACTION_VALUES[word], match.start(), match.end(), i + 1
+    if word == "quarter":
+        return None
+    return FRACTION_VALUES[word], match.start(), match.end(), i + 1
+
+
 def mentions(question):
     """(number, start, end) for every number the question writes."""
     matches, i = list(TOKEN.finditer(question)), 0
@@ -89,6 +124,14 @@ def mentions(question):
                     yield number(part.group()), match.start() + part.start(), match.start() + part.end()
                 i += 1
                 continue
+        if span.lower() in FRACTIONS:
+            fraction = _fraction(question, matches, i)
+            if fraction is not None:
+                yield fraction[:3]
+                i = fraction[3]
+            else:
+                i += 1
+            continue
         if (value is not None and i + 1 < len(matches) and matches[i + 1].group().lower().rstrip("s") in SCALES
                 and re.fullmatch(r"\s*", question[match.end():matches[i + 1].start()])):
             yield value * SCALES[matches[i + 1].group().lower().rstrip("s")], start, matches[i + 1].end()
