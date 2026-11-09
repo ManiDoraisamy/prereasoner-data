@@ -5,6 +5,38 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
+## Named CLEF readout (S1) fails its gate: 0/100 strict, 10/300 with its gates removed (2026-11-09)
+
+Experiment `named-readout-20261108` (contract and package in `training/readers/data/experiments/named-readout-20261108/`,
+gitignored) fitted Codex's named readout at `86bedc9`: CLEF rev `cfddda04` with LoRA rank 16, one linear projection to
+the 215 named coordinates (contract `e85030a0`), 1,024 updates at batch 2, seed 3407, on the part-0 corpus (`42eec10d`,
+16,845 training records). It ran on one A100 80GB (SECURE) for 4.86 h. It saw **1,411 unique records (8.4%)**; the
+opaque-head run it was matched against took the same wall time for 4,096 samples. The candidate is
+`semantic-model.json` `b0aac69b` / `named-head.pt` `bbb38af2`, not promoted. The gate was Spider calibration
+>= 699/1,053 and Enron wrong <= 42.
+
+Calibration (1,818 held-out records; its 6 Spider databases share none with training): MAE **0.036** (a zero
+predictor scores 0.089), precision 0.93 and recall 0.82 at 0.5. Qualification (support >= 20 per class, precision and
+recall >= 0.95, MAE <= 0.1) seals **7 of 118** coordinate/role rows. Serving decides only on qualified coordinates, so
+the contract's served Spider run (`whole_db`, served selection, `--no-compose`, AUTO, 5,000-row cap) answered **0 of
+the first 100** questions (all `unqualified_or_unknown_proposition`); production answers 74 of them right. That run was
+stopped at 100 questions as a sample.
+
+Labelled ablation, not a gate: the same calibration re-sealed with the gates removed (support >= 1 per class)
+qualifies 42 of 118 rows. Served Spider, first 300 questions in dataset order: **16 answered, 10 strict** against
+production's 188 (0 wins, 178 losses). Of the unanswered questions, the first unbound decision was nearly always
+`below_score` (best option median score 0.31 against 1/2, median 4 legal options), at the projection column, the FROM
+table or a join. The coordinates involved are generic role coordinates (`role.projection`, `role.record_grain`,
+`role.join_left/right`, `role.relation_target`), not schema.org properties. Enron, 186 questions, all tabs: **0 right
+/ 185 asked / 1 wrong** (production bundle 26 / 90 / 70; opaque CLEF 29 / 115 / 42). Latency on the A100, one question
+at a time: Spider median 5.84 s (prefill 4.32 s over a median 18,127 input tokens), Enron median 4.3 s (13,397
+tokens).
+
+The named readout loses to the opaque head at matched compute by a wide margin. The causes measured here are a
+single-path decoder (one unbound decision returns no query), weak column/table grounding on unseen schemas, and
+under-exposure. Evidence: `evidence/` and `lease-output/` in the experiment directory (archive `export-manifest.json`
+hash-checked). Compute: 9.1 pod hours at $1.79/h (about $16.6 including two failed setups at $0.24).
+
 ## Codex's reader work on main: served Spider 706/1,053, messy dev 44/23/53 (2026-11-08)
 
 Fresh serving-faithful run of the production bundle (`4545a481`, unchanged) at `86bedc9`, which brought Codex's
