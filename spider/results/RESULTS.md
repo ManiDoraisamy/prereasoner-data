@@ -5,6 +5,128 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
+## CLEF served live: real sheets 133 right / 34 wrong of 306 at 1.4–1.9 s; on served Spider the chooser is 716 vs 710 (2026-11-09)
+
+Experiment `clef-serve-20261109` (gitignored, under `training/readers/data/experiments/`, with its contract). One H100
+80GB SXM pod ran for about 2.2 h at $3.99/h, about $9. It held one CLEF server (rev `cfddda04`, bf16 backbone, fp32
+heads, Cloudflare's Apache-2.0 release code, no Unsloth) with three heads:
+- the released head;
+- the sheet chooser (`clef-chooser-20261109` fit, adapter `c34cf656`);
+- the SQL chooser (`clef-sql-chooser-20261109` fit, adapter `f8e67c8c`).
+
+The owner's machine reached it through an ssh tunnel. No serving code changed and nothing was promoted.
+
+**The CLEF path, live end to end.** `local/clef_path.py` runs next-engine's own stages in order:
+1. The small reader (H5, bge-small, CPU).
+2. CLEF's reading of the decoder's slots, fused at w=2.
+3. The typed k-best decoder, top 50, every candidate run on the request's SQLite tables.
+4. The fitted chooser over the read-as sentences of the candidates that returned rows.
+5. Answer at p ≥ 0.575, amber flag from 0.42 to 0.575, ask below 0.42 or on none. The thresholds come from factory validation only.
+
+It reproduces the recorded-pool result. The decision is the same on 183 of 186 Enron questions and 119 of 120 messy
+ones; the four that differ sit at a threshold. Latency is per question, measured on the owner's machine through the
+tunnel. The workbook is compiled and indexed at upload, which is not counted.
+
+| Real-sheet questions | Right | Flagged right | Asked | Flagged wrong | Wrong | Total p50 / p90 |
+|---|---:|---:|---:|---:|---:|---:|
+| Enron studied, 186 | 52 | 25 | 90 | 6 | 13 | 1.93 s / 3.33 s |
+| Messy dev, 120 | 50 | 6 | 49 | 6 | 9 | 1.42 s / 3.18 s |
+| Total, 306 | 102 | 31 | 139 | 12 | 22 | |
+
+Per stage (p50, Enron / messy):
+
+| Stage | Enron | Messy |
+|---|---:|---:|
+| Small reader | 0.05 s | 0.05 s |
+| CLEF reading | 1.21 s | 0.81 s |
+| Decoder, 50 SQLite runs included | 0.04 s | 0.04 s |
+| CLEF chooser | 0.55 s | 0.49 s |
+
+CLEF's reading is 1.12 s / 0.70 s of GPU time at a median 8,765 / 4,692 tokens; the chooser is 0.49 s / 0.44 s at
+2,369 / 2,045 tokens.
+
+Of Enron's 90 asks, 62 are the chooser choosing none, which is the pool-recall gap. Flags mostly mark one slot, but some
+mark three to six, when the runner-up is a different reading.
+
+**Shortening CLEF's input costs right answers.** The reader's input is mostly the option lists: the sheet is 13–17% of
+its tokens. Trimming each slot's options and listing fewer candidates to the chooser, end to end on the same 306:
+
+| Variant | Right + flagged right | Asked | Wrong + flagged wrong | Total p50, Enron / messy |
+|---|---:|---:|---:|---:|
+| All options, 50 candidates | 133 | 139 | 34 | 1.93 s / 1.42 s |
+| Top 20 options, 20 candidates | 115 | 156 | 35 | 1.38 s / 1.22 s |
+| Top 10 options, 20 candidates | 105 | 163 | 38 | 1.17 s / 1.08 s |
+
+The loss is in the reading's pool, top 1/3/10/50 fused:
+
+| Options per slot | Enron | Messy |
+|---|---|---|
+| All | 84 / 103 / 116 / 128 | 42 / 60 / 68 / 78 |
+| Top 20 | 68 / 84 / 102 / 114 | 43 / 56 / 62 / 72 |
+| Top 10 | 60 / 80 / 95 / 108 | 37 / 48 / 57 / 71 |
+
+Capping the sheet at 3,000 tokens on top of the top-20 trim changes these by at most 3. Listing 20 candidates instead of
+50, on its own and measured on the recorded fused pools, gives 134 right and 39 wrong against 133 and 34. It takes 0.30 s of GPU time instead of 0.49 s. Each pass has a fixed cost of about 0.3 s.
+
+**Caching the sheet** (the workbook encoded once, each question run on a copy of its cache) gives no gain:
+- 1.16 s per question against 1.12 s uncached on Enron, and 0.74 s against 0.71 s on messy. The prefix is 1,400 / 504
+  tokens and takes about 0.2 s once per sheet, and copying the cache costs what it saves.
+- It is not exact: the top option differs on 1.4% of slot decisions against a single pass.
+- It needs the question after the sheet, which alone changes the top option on 13% of slot decisions. The fused pool is
+  no worse for it: Enron 84/103/120/133 and messy 44/60/69/77 against 84/103/116/128 and 42/60/68/78.
+
+None of these input changes reach a second.
+
+**Across GPUs.** Last night's pod was an H100 PCIe or NVL; today's was an H100 SXM.
+- The released head's reading kept the same top option on all 3,141 slot decisions, and 99% of probabilities moved
+  less than 0.004.
+- The chooser kept its top pick on 302 of 304 questions, but its probabilities moved by up to 0.11 and four
+  questions changed answer/flag/ask class.
+
+So the path is reproducible on one hardware type, not yet across types.
+
+**The B1 controlled check.** CLEF's released head, zero-shot, under the B1 fit pilot's exact input: each slot's top 20
+options plus none, state capped at 3,000 tokens, fused at w=2. Right within the top 1/3/10/50:
+
+| Input | Enron, 186 | Messy, 120 |
+|---|---|---|
+| Zero-shot, trimmed and capped | 68 / 83 / 101 / 111 | 43 / 56 / 62 / 71 |
+| B1 fit pilot, same input | 74 / 94 / 115 / 127 | 52 / 61 / 65 / 71 |
+| Zero-shot, untrimmed (reproduced exactly) | 84 / 103 / 116 / 128 | 42 / 60 / 68 / 78 |
+
+Fitting the reader helps, by up to 16 Enron and 9 messy questions. The pilot looked flat because the trim and the cap cost
+the zero-shot reading as much as the fit gains.
+
+**Spider, served.** Both runs are fresh served `whole_db` calibration runs of production's own `spider/probe/full_eval.py`
+on the pod (Linux, 256 CPUs, 4 threads per run, 8 shards each), paired on the same code (`6d5858c`, the code of
+`4bc611b`), the same pinned bundle (`4545a4810fa2`, fetched from the weights repository at `cd8a03ab`) and the same
+machine. In the CLEF run, `served_eval_live.py` injects one dependency, the readers' re-scorer
+(`ReadingSearch.rescore`, `confidence`, `confident`). It asks the SQL chooser live about every candidate that ran, in
+pool order, and always answers its pick (forced choice). Everything else is production's served path.
+
+| Calibration, 1,053 | Right (strict) | Wrong | Declined |
+|---|---:|---:|---:|
+| Production's shipped re-scorer | 710 | 278 | 65 |
+| CLEF SQL chooser in its place | 716 | 285 | 52 |
+
+The transitions are 668 both right, 48 CLEF wins, 42 CLEF losses and 295 neither. **The recorded-pool +34 does not
+survive serving.** Of the 54 questions the recorded measure gave CLEF that the served run does not:
+- 24 are declined because the chosen query's served result holds nothing. The shipped re-scorer sees each result's
+  shape; CLEF sees only the read-as lines.
+- 22 have the same query graded differently as a served answer than in the pool. Production loses 22 the same way,
+  which is also why production reads 710 here against 730 on the recorded pools.
+- 7 got a different choice, and 1 was refused.
+
+Where CLEF helps is in knowing when to decline. Declining each run's least confident answers until both decline the
+same number:
+
+| Declined | Production right / wrong | CLEF right / wrong |
+|---:|---:|---:|
+| 65 | 710 / 278 | 714 / 274 |
+| 150 | 678 / 225 | 703 / 200 |
+| 200 | 651 / 202 | 680 / 173 |
+| 300 | 607 / 146 | 622 / 131 |
+
 ## CLEF's own head as reader and chooser: real sheets 134 right / 35 wrong of 306, Spider pools 764 of 1,053 (2026-11-09)
 
 Measured on recorded candidate pools, not a fresh served run: no serving code changed and nothing was promoted. The
