@@ -5,6 +5,63 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
+## CLEF's own head as reader and chooser: real sheets 134 right / 35 wrong of 306, Spider pools 764 of 1,053 (2026-11-09)
+
+Measured on recorded candidate pools, not a fresh served run: no serving code changed and nothing was promoted. The
+experiments live under `training/readers/data/experiments/`, which is gitignored: `clef-chooser-20261109`,
+`clef-sql-chooser-20261109`, `clef-reading-zs-20261109` and `clef-reading-fit-20261109`, each with its contract. All
+use Cloudflare's Apache-2.0 release code (`joint_schema_model.py`: one prefill, its joint schema head scoring every
+option), CLEF rev `cfddda04` with LoRA rank 16, and no Unsloth.
+
+**The chooser** picks one program, or none (an ask), among a pool's executed candidates. Each candidate is shown as its
+read-as sentence. The sheet chooser was fit on 4,616 of the 6,011 pools collected for H7, over 577 updates. Pools come
+from next-engine's program decoder with the H5 reader (`named_bge_small_s0`); families are split, and the evaluation
+sets were never trained. Right first when it must choose:
+
+| Set | Decoder order | H7 trained alignment | CLEF zero-shot | CLEF fit | Right listed |
+|---|---:|---:|---:|---:|---:|
+| Held families, 4,282 | 1,321 | 1,711 | n/a | **2,124** | 3,031 |
+| Validation, 3,448 | 1,031 | n/a | n/a | 1,650 | 2,353 |
+| Enron studied, 186 | 41 | n/a | 58 | 67 | 101 |
+| Messy dev, 120 | 21 | n/a | 41 | 43 | 56 |
+
+**The reader**: the released head, zero-shot, reads the decoder's fields (form, aggregate, answer type, direction,
+table, measure, key, shown, filter, value, line, section) in one prefill over the compiled sheet. Its probabilities
+add w·(log p − log 1/n) to H5's coordinate scores, and the same decoder enumerates the pool. Right within the top
+1/3/10/50: Enron 41/65/86/101 at w=0 and 84/103/116/128 at w=2; messy 21/30/41/56 at w=0 and 42/60/68/78 at w=2. w was
+picked on Enron; messy is the same at w=1 and w=2 on top 50.
+
+**Reader and chooser together** (fused pools, fitted chooser): forced choice is right on 105 of 186 Enron questions
+and 64 of 120 messy ones. The ask and amber-flag thresholds were chosen on validation only (wrong budget 10%: ask below
+0.42, flag below 0.58). Served:
+
+| Real-sheet questions | Right | Flagged right | Asked | Flagged wrong | Wrong |
+|---|---:|---:|---:|---:|---:|
+| Enron studied, 186 | 51 | 27 | 88 | 7 | 13 |
+| Messy dev, 120 | 50 | 6 | 49 | 5 | 10 |
+| Total, 306 | 101 | 33 | 137 | 12 | 23 |
+
+Production on the same 306 is 70 right / 113 asked / 123 wrong (Enron replay 26 / 90 / 70, messy dev 44 / 23 / 53).
+Both sets have been studied before, and the frozen messy set was not read. Latency is two prefills on an H100: reading
+takes 1.0–1.8 s (4.7–8.8k tokens) and choosing 0.4–0.5 s, plus the CPU decoder at about 0.14 s. It is not sub-second.
+
+**Spider**: the same chooser was fit on the shipped re-scorer's union pools (`rescorer_train_g`: Spider train, other
+Spider train databases, BIRD train and Spider-Syn train; 10,368 records over 1,296 updates; dev and syn-dev were never
+trained). On cross-fold pools, forced choice is right on 712 of 1,016 dev questions (pool order 575, listed 774) and 509
+of 808 syn-dev questions (pool order 393, listed 560). **On production's own calibration pools** (a `pool_oracle` run at
+`4bc611b`: production bundle `4545a481`, `whole_db`, cap 5,000, SQL backend, 1,053 questions), production's selection
+is right on 730 (strict). CLEF zero-shot gets 727 and the CLEF fit **764 (72.6%, +34)**; the pool's ceiling is 882
+(83.8%). This is a recorded-pool measure, not a served `whole_db` run.
+
+**The B1 fit is a pilot with no clear gain.** CLEF's reader was trained on the factory's gold coordinates: 232 updates
+over 1,856 of 2,004 records. To fit in memory, each field kept the reader's top 20 options and the sheet state was
+capped at 3,000 tokens; scoring used the same cap. Fused at w=2 and compared with zero-shot, Enron's top 1/3/10/50 went
+from 84/103/116/128 to 74/94/115/127, and messy's from 42/60/68/78 to 52/61/65/71. The trim and the state cap confound
+this comparison, so it is not evidence either way. A zero-shot run under the same trim is the controlled check.
+
+RunPod compute for the night was $33.72, from a balance of $191.49 to $157.77, including three short failed setups. The
+headroom left is recall: 58 Enron and 42 messy questions have no right program in any pool.
+
 ## Named CLEF readout (S1) fails its gate: 0/100 strict, 10/300 with its gates removed (2026-11-09)
 
 Experiment `named-readout-20261108` (contract and package in `training/readers/data/experiments/named-readout-20261108/`,
