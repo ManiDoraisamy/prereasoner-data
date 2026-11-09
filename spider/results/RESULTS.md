@@ -5,6 +5,99 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
+## Three CLEF follow-ups: a full-input reader fit sharpens the pools but not the answers; result sizes do not help the SQL chooser; Flash reads 2-3x faster but weaker (2026-11-09)
+
+Three experiments, all gitignored under `training/readers/data/experiments/`, each with its contract. Cost about $47.
+No serving code changed and nothing was promoted. Each one tests one change against the configuration in the next
+entry: the small reader, CLEF's released head reading at w=2, and the fitted sheet chooser.
+
+**1. Reader fit on full option lists** (`clef-reader-full-20261109`; H100 80GB HBM3 at $3.99/h for 6.3 h, about $25;
+a first attempt at about $1 ran out of memory).
+- Data: 4,000 of the 6,011 factory B1 reading records (train parts 0–2). The 142 gold options the small reader never
+  proposed are removed, because serving never shows them.
+- Fit: each record is held to 12,288 tokens by dropping the lowest-ranked options of the longest fields; 1,718 records
+  were cut. 500 updates in 4.8 h, LoRA rank 16, seed 20261109. Adapter `cadbd732`, head `840702bc`.
+- Enron and messy were never trained on.
+
+On the recorded reading records, with the same fusion and decoder, right within the decoder's top 1/3/10/50:
+
+| Reading | Enron studied, 186 | Messy dev, 120 |
+|---|---:|---:|
+| Released head | 84 / 103 / 116 / 128 | 42 / 60 / 68 / 78 |
+| Reader fit | 94 / 112 / 135 / 144 | 49 / 61 / 69 / 76 |
+
+Live end to end, the chooser and thresholds unchanged, the pool gain does not reach the answers. Right and wrong
+include the flagged ones:
+
+| Live, 306 questions | Right | Asked | Wrong | Total p50, Enron / messy |
+|---|---:|---:|---:|---:|
+| Released reading (next entry) | 133 | 139 | 34 | 1.93 s / 1.42 s |
+| Reader fit | 127 | 150 | 29 | 2.69 s / 2.42 s |
+
+Question by question, Enron has 10 wins and 13 losses; messy has 5 wins and 8 losses. Of Enron's 112 questions not
+answered right, 70 had a right candidate in the fit's top 50:
+- 37 were asked because the chooser's pick fell below 0.42;
+- 23 were asked because the chooser chose none;
+- 10 were answered wrong.
+
+The chooser and its thresholds were fitted on pools from the released reading, so the next controlled step is a
+chooser refit on the fit's pools. Caveats:
+- Both arms come from different pods. This pod's round trip is about 0.3 s longer, which explains most of the
+  latency gap: the fit's reading takes 1.36 s / 0.98 s of GPU time, against 1.12 s / 0.70 s for the released head.
+- Reader decisions were stable across GPUs in the earlier check (3,141 of 3,141).
+
+**2. SQL chooser with result sizes** (`clef-sql-shape-20261109`; H100 NVL at $3.19/h for 3.5 h, about $11). This is
+the earlier SQL chooser's recipe with two changes:
+- each listed reading says how many rows and columns it returns;
+- the label is right *and* returns a row.
+
+Everything else is the same: data, 1,296 updates, seed. Adapter `fd8031f3`.
+
+Offline, with first choice forced, against the earlier fit:
+
+| Set | Right (served label) | Right (pool label) | Picks an empty result |
+|---|---:|---:|---:|
+| dev, 990 with candidates | 684 vs 681 | 698 vs 712 | 34 vs 72 |
+| syn_dev, 793 with candidates | 485 vs 483 | 499 vs 509 | 54 vs 94 |
+
+Served Spider calibration, 1,053 questions, `whole_db`, on one 224-CPU pod (`clef-spider-flash-20261109`; H100 SXM at
+$3.99/h for 2.6 h, about $10). Each arm ran in 8 shards of 4 threads. The SQL head was called live inside the shipped
+`select_query`:
+
+| Arm | Right | Wrong | Declined |
+|---|---:|---:|---:|
+| Production re-scorer | 710 | 278 | 65 |
+| Result-size chooser | 709 | 314 | 30 |
+| Result-size chooser, its 35 least confident answers declined | 708 | 280 | 65 |
+| Earlier chooser (next entry, other pod) | 716 | 285 | 52 |
+
+Against production the transitions are 40 wins and 41 losses. Production reproduced exactly across pods: 710 of 710
+right in common, no transitions. The hypothesis fails. Avoiding empty results turns declines into answers, and those
+answers are wrong.
+
+**3. Clef-Flash 9B** (rev `fb4417d3`, released head, zero shot). It was measured on the reader fit's pod: Flash on
+port 8766, and the 27B with only the sheet chooser on 8765, together using 73.5 GB of 81.5. Pod C had brought Flash up
+first, but my monitor missed its start. It served unused for 95 minutes until its deadline, about $6 lost.
+
+Reading pools, top 1/3/10/50, with the same records, fusion and decoder:
+
+| Reading | Enron studied, 186 | Messy dev, 120 |
+|---|---:|---:|
+| 27B released | 84 / 103 / 116 / 128 | 42 / 60 / 68 / 78 |
+| Flash released | 65 / 91 / 111 / 124 | 36 / 52 / 66 / 76 |
+
+Live end to end, Flash reading with the 27B sheet chooser:
+- 124 right, 153 asked, 29 wrong of 306. The 27B reading gives 133 / 139 / 34.
+- Total p50 is 1.71 s / 1.55 s on this pod, where the 27B fit took 2.69 s / 2.42 s.
+- Flash's reading is 0.47 s / 0.34 s of GPU time at the same tokens, against 1.36 s / 0.98 s for the 27B.
+
+Flash's top-1 loss could be partly the w=2 fusion weight, which was picked for the 27B. A Flash reader fit, or a w
+picked for Flash, is untested.
+
+Spend: the RunPod total for the CLEF program is about $90 of the $100 approved, $33.72 overnight plus about $57 today.
+That includes the next entry's pod.
+
+
 ## CLEF served live: real sheets 133 right / 34 wrong of 306 at 1.4–1.9 s; on served Spider the chooser is 716 vs 710 (2026-11-09)
 
 Experiment `clef-serve-20261109` (gitignored, under `training/readers/data/experiments/`, with its contract). One H100
