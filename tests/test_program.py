@@ -429,6 +429,49 @@ def test_perfect_readings_give_the_gold_first():
         assert top.score == score_program(gold, reading, catalog).score
 
 
+AGES = [["Name", "Region", "Age"], ["a", "x", 30.0], ["b", "y", 50.0], ["c", "x", 50.0], ["d", "z", 20.0], ["e", "y", 40.0], ["f", "x", 40.0]]
+
+
+def test_a_rank_keeps_as_many_as_the_question_states():
+    """"The 3 oldest" keeps exactly three lines, a tie broken by sheet order; "the 2 most common" two groups, a tie broken by
+    the key; a rank of one still keeps every tied top. The count is named (the stated number), the answer is a list, the
+    read-as says how many, and a count is refused where it means nothing."""
+    catalog, table, tables = _setup(AGES)
+    name, region, age = (Col(table.id, at) for at in range(3))
+    top3 = Rank(ENTITY_LINE, table.id, HIGHEST, (), age, (name,), count=3)
+    rows = _answer(top3, tables)
+    assert [row[0] for row in rows] == ["b", "c", "e"] and [float(row[-1]) for row in rows] == [50.0, 50.0, 40.0], rows
+    assert len(_answer(Rank(ENTITY_LINE, table.id, HIGHEST, (), age, (name,)), tables)) == 2
+    assert [float(row[0]) for row in _answer(Rank(ENTITY_LINE, table.id, LOWEST, (), age, (age,), count=2), tables)] == [20.0, 30.0]
+    common = _answer(Rank(ENTITY_GROUP, table.id, HIGHEST, (), None, key=region, function=COUNT, count=2), tables)
+    assert [row[0] for row in common] == ["x", "y"], common
+    assert [row[0] for row in _answer(Rank(ENTITY_GROUP, table.id, HIGHEST, (), age, key=region, function=SUM, count=2), tables)] == ["x", "y"]
+    names = coordinates(top3, catalog.column_kind)
+    assert any(slot_of(n) == "number" for n in names) and coordinate("answer_type", A_LIST) in names, names
+    assert "the 3 lines" in read_as(top3, catalog)
+    for bad in (lambda: Rank(ENTITY_LINE, table.id, HIGHEST, (), age, (name,), count=0), lambda: Rank(ENTITY_PEER, table.id, peers=(1, 2), count=2)):
+        try:
+            bad()
+        except ValueError:
+            continue
+        raise AssertionError("a rank accepted a count it cannot keep")
+    checked = verify_one(score_program(top3, Reading({}), catalog), tables, A_NAME)
+    assert not checked.held(EV_MANY_ROWS) and checked.held(EV_SHAPE_AGREES)
+
+
+def test_the_decoder_proposes_how_many_a_question_states():
+    """Given a top-3 program's coordinates (the stated number among them), the decoder returns it first, and with no
+    stated number it proposes no count at all."""
+    catalog = _catalog(AGES)
+    table = catalog.tables[0]
+    gold = Rank(ENTITY_LINE, table.id, HIGHEST, (), Col(table.id, 2), (Col(table.id, 0),), count=3)
+    reading = Reading({name: 1.0 for name in coordinates(gold, catalog.column_kind)})
+    decoded = Decoder(catalog).decode(reading, k=50)
+    assert decoded.programs and decoded.programs[0].program == gold, decoded.programs[:3]
+    plain = Reading({name: 1.0 for name in coordinates(gold, catalog.column_kind) if slot_of(name) != "number"})
+    assert all(getattr(p.program, "count", 1) == 1 for p in Decoder(catalog).decode(plain, k=50).programs)
+
+
 def test_decoder_is_deterministic_and_order_free():
     """The same scores give the same list, whatever order they came in; ties break by the frames' order, fewer conditions first."""
     catalog = _catalog(CALC_ROWS)
@@ -985,7 +1028,7 @@ TESTS = [
     test_several_shown_columns_cost_a_named_coordinate, test_a_sign_word_compares_with_zero, test_a_stated_number_a_column_holds_reads_as_its_value, test_a_misspelled_word_reads_as_the_sheets_word, test_a_word_only_one_column_holds_says_which, test_several_columns_shown_type_the_same_however_they_stand, test_across_adds_peer_columns_of_a_line, test_the_decoder_reaches_across_when_a_word_asks, test_a_text_other_than, test_the_decoder_reads_other_than_from_the_words, test_answer_types_place_money_quantity, test_decoder_ties_do_not_follow_sheet_order, test_a_family_adding_twice_says_so, test_axes_are_read_by_their_kind, test_a_question_reads_the_tables_its_links_reach, test_verifier_stops_at_its_budget_of_lines,
     test_every_name_is_from_a_closed_list, test_forms_refuse_what_they_cannot_say, test_signs, test_printed_lines_are_read_by_label_and_never_added, test_shortest_label_first_and_unlabelled_printed_lines, test_a_column_filled_only_on_printed_lines_reads_them,
     test_partial_value_match, test_case_and_spacing_do_not_count, test_periods, test_blanks, test_ties_keep_every_tied_line, test_units, test_mixed_columns, test_repeated_rows, test_sections_nested_bands_and_the_section_shown, test_python_masks_agree_with_the_sql,
-    test_calc_shapes, test_rank_across_peer_columns, test_new_ast_nodes_render_and_validate, test_plan_schema_holds_only_what_a_query_reads, test_perfect_readings_give_the_gold_first, test_decoder_is_deterministic_and_order_free, test_the_list_does_not_depend_on_hash_order,
+    test_calc_shapes, test_rank_across_peer_columns, test_a_rank_keeps_as_many_as_the_question_states, test_the_decoder_proposes_how_many_a_question_states, test_new_ast_nodes_render_and_validate, test_plan_schema_holds_only_what_a_query_reads, test_perfect_readings_give_the_gold_first, test_decoder_is_deterministic_and_order_free, test_the_list_does_not_depend_on_hash_order,
     test_scores_come_in_as_data_and_nothing_else_moves_the_list, test_contributions_are_named_and_sum_to_the_score, test_intervention_a_named_coordinate_moves_the_score_by_its_weight, test_policy_prunes_values_only_where_it_says, test_conditions_stay_on_distinct_columns,
     test_answer_type_rule, test_words_alone_read_a_question, test_verifier_shape_and_type_evidence, test_printed_total_ties_only_under_its_exact_conditions, test_verifier_runs_the_top_programs_and_never_raises, test_read_as_in_the_sheets_own_words,
     test_cells_are_the_exact_addresses_used, test_formula_a_user_can_check, test_explain_carries_the_named_contributions,

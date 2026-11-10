@@ -64,6 +64,7 @@ def _periods(atom: Atom) -> frozenset[str]:
 
 _ONCE = (f"{SLOT_NUMBER}:", f"{SLOT_BLANK}:", f"{SLOT_COMPARISON}:")
 _PERIOD = f"{SLOT_PERIOD}:"
+RANK_COUNT_MOST = 50           # a rank keeps at most this many when the question states how many
 _ROUND = 9                     # scores compare at this many places, so a float's last bits, which follow the order terms were added in, never break a tie
 _CLOSE = 1e-8
 _LINK_SLOTS = {SLOT_MEASURE: 0, SLOT_KEY: 0, SLOT_SHOWN: 0, SLOT_VALUE: 1, SLOT_CONTAINS: 1, SLOT_LINE: 1, SLOT_SECTION: 1, SLOT_TABLE: 2}
@@ -372,6 +373,16 @@ class _Search:
     def positive(self, slot: str) -> list[str]:
         return [name for name in self.by_slot.get(slot, ()) if self.reading.score(name) > 0]
 
+    def rank_counts(self) -> list[tuple[int, str]]:
+        """The whole numbers the question states that could say how many a rank keeps (2 to RANK_COUNT_MOST), each with
+        the coordinate that states it; at most two, the likeliest first."""
+        out = []
+        for name in sorted(self.positive(SLOT_NUMBER), key=lambda name: (round(-self.s(name), _ROUND), name)):
+            value = float(name.split(":", 1)[1])
+            if value.is_integer() and 2 <= value <= RANK_COUNT_MOST and int(value) not in {n for n, _ in out}:
+                out.append((int(value), name))
+        return out[:2]
+
     def type_score(self, kind: str) -> float:
         return self.s(coordinate(SLOT_ANSWER_TYPE, kind))
 
@@ -643,6 +654,7 @@ class _Search:
         # rank
         rank = s(coordinate(SLOT_FORM, RANK)) + table_score
         rank_measures = self.measure_options(table, index, dates=True)
+        counts = self.rank_counts()
         group_keys = self.column_options(table, all_positions + ([SECTION] if any(line.section for line in table.lines) else []), SLOT_KEY, typed=True)
         for direction in DIRECTIONS:
             turn = rank + s(coordinate(SLOT_DIRECTION, direction))
@@ -656,6 +668,12 @@ class _Search:
             frames += self.condition_frames(sized, (group_keys, plain), lambda options, where, d=direction: Rank(ENTITY_GROUP, table.id, d, where, options[1], key=options[0], function=SUM, by_size=True), table, index, atoms, rank=True, max_policy=2)
             counted = group + s(coordinate(SLOT_AGGREGATE, COUNT))
             frames += self.condition_frames(counted, (group_keys,), lambda options, where, d=direction: Rank(ENTITY_GROUP, table.id, d, where, None, key=options[0], function=COUNT), table, index, atoms, rank=True, max_policy=2)
+            for n, stated in counts:     # "the 5 oldest", "the 2 most common": exactly that many, scored by the stated number
+                many = s(stated) + self.type_score(A_LIST)
+                frames += self.condition_frames(line + many, (shown, rank_measures), lambda options, where, d=direction, n=n: Rank(ENTITY_LINE, table.id, d, where, options[1], options[0], count=n), table, index, atoms, rank=True)
+                frames += self.condition_frames(counted + many, (group_keys,), lambda options, where, d=direction, n=n: Rank(ENTITY_GROUP, table.id, d, where, None, key=options[0], function=COUNT, count=n), table, index, atoms, rank=True, max_policy=2)
+                summed = group + s(coordinate(SLOT_AGGREGATE, SUM)) + many
+                frames += self.condition_frames(summed, (group_keys, measures), lambda options, where, d=direction, n=n: Rank(ENTITY_GROUP, table.id, d, where, options[1], key=options[0], function=SUM, count=n), table, index, atoms, rank=True, max_policy=2)
             peer_sets = self.peer_options(table, index)
             peer = turn + s(coordinate(SLOT_ENTITY, ENTITY_PEER)) + self.type_score(A_NAME)
             if peer_sets:

@@ -124,12 +124,14 @@ def read_as(program: Program, catalog: Catalog) -> str:
     tail = f" where {where}" if where else ""
     if program.entity == ENTITY_LINE:
         shown = ", ".join(_name(catalog, column) for column in program.shown)
-        return f"{shown} of the line with the {way} {_measure_words(catalog, program.measure)} {place}{tail}"
+        lines = f"the {program.count} lines" if program.count > 1 else "the line"
+        return f"{shown} of {lines} with the {way} {_measure_words(catalog, program.measure)} {place}{tail}"
     if program.entity == ENTITY_GROUP:
         what = "the most lines" if program.function == COUNT and program.direction == HIGHEST else "the fewest lines" if program.function == COUNT else f"the {way} {_AGG_WORDS[program.function]} of {_measure_words(catalog, program.measure)}"
         if program.by_size:
             what += " by size"
-        return f"the {_name(catalog, program.key)} with {what} {place}{tail}"
+        which = f"the {program.count} values of {_name(catalog, program.key)}" if program.count > 1 else f"the {_name(catalog, program.key)}"
+        return f"{which} with {what} {place}{tail}"
     names = [table.columns[position].name for position in program.peers]
     span = f"{names[0]} to {names[-1]}" if len(names) > 3 else ", ".join(names)
     if program.mark is not None:

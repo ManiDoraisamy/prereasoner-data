@@ -293,6 +293,8 @@ class Rank:
     group  the key whose lines give the top f(measure), or the top count when function is count.
     peer   which of the peer columns (positions) holds the top sum across the kept lines, or with mark the most cells equal to it.
     by_size ranks groups and peers by size, the sign dropped; a line's size is a Size measure.
+    count  how many lines or groups the question asks for ("the 5 oldest"): one keeps every tied top; more keeps exactly
+           that many, ties broken by sheet order (a line) or by the key (a group).
     """
     entity: str
     table: str
@@ -305,8 +307,11 @@ class Rank:
     peers: tuple[int, ...] = ()
     by_size: bool = False
     mark: str | None = None
+    count: int = 1
 
     def __post_init__(self):
+        if not isinstance(self.count, int) or self.count < 1 or (self.count > 1 and self.entity == ENTITY_PEER):
+            raise ValueError("a rank keeps one or more lines or groups, and one peer column")
         if self.entity not in RANK_ENTITIES:
             raise ValueError(f"unknown rank entity: {self.entity}")
         if self.direction not in DIRECTIONS:
@@ -429,6 +434,8 @@ def _body_coordinates(program: Program) -> list[str]:
             names.append(coordinate(SLOT_SIZE, BY_SIZE))
         if program.mark is not None:
             names.append(coordinate(SLOT_VALUE, program.table, fold(program.mark)))
+        if program.count > 1:
+            names.append(coordinate(SLOT_NUMBER, number_text(program.count)))
     for condition in program.where:
         names.extend(condition_coordinates(condition))
     return names
@@ -458,6 +465,8 @@ def answer_type_of(program: Program, column_kind) -> str:
         if program.listing:
             return A_LIST
         return _type_of_shown(program.shown, column_kind)
+    if program.count > 1:
+        return A_LIST
     if program.entity == ENTITY_PEER:
         return A_NAME
     return _type_of_column(program.key, column_kind) if program.entity == ENTITY_GROUP else _type_of_shown(program.shown, column_kind)

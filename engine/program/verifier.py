@@ -91,6 +91,12 @@ def shape_evidence(rows: tuple[tuple, ...], program: Program, expected: str | No
         out.append(Evidence(EV_ROW_DUMP, True))
     if expected is None:
         return out
+    if isinstance(program, Rank) and program.count > 1:     # "the 5 oldest" asks for that many rows, whatever their kind
+        too_many = len(rows) > program.count
+        if too_many:
+            out.append(Evidence(EV_MANY_ROWS, True, f"{len(rows)} rows"))
+        out.append(Evidence(EV_SHAPE_AGREES, not too_many))
+        return out
     wants = coarse_type(expected)
     kinds = {_kind(cell) for row in rows[:SHAPE_ROWS] for cell in row} - {"null"}
     bad: str | None = None

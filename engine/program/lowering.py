@@ -179,6 +179,8 @@ def _rank_query(program: Rank, catalog: Catalog) -> SelectQuery:
         value = _measure(program.measure)
         select = tuple(SelectItem(_shown(column), f"shown_{at}") for at, column in enumerate(program.shown)) + (SelectItem(value, VALUE),)
         where = _where(None if printed else _data_lines(table), *map(_condition, program.where), _present(program.measure))
+        if program.count > 1:      # exactly that many lines, a tie broken by sheet order
+            return SelectQuery(select, table, where=where, order_by=(OrderTerm(value, order), OrderTerm(ColumnRef(table, LINE, SQLType.INTEGER))), limit=program.count)
         return SelectQuery(select, table, where=where, order_by=(OrderTerm(value, order),), limit=1, with_ties=True)
     if program.entity == ENTITY_GROUP:
         key = _fold(program.key)
@@ -187,7 +189,10 @@ def _rank_query(program: Rank, catalog: Catalog) -> SelectQuery:
         else:
             value, guard = Aggregate(_FUNCTIONS[program.function], _measure(program.measure)), _present(program.measure)
         where = _where(None if printed else _data_lines(table), *map(_condition, program.where), _is_null(key, negated=True), guard)
-        return SelectQuery((SelectItem(key, KEY), SelectItem(value, VALUE)), table, where=where, group_by=(key,), order_by=(OrderTerm(Abs(value) if program.by_size else value, order),), limit=1, with_ties=True)
+        ranked = OrderTerm(Abs(value) if program.by_size else value, order)
+        if program.count > 1:      # exactly that many groups, a tie broken by the key
+            return SelectQuery((SelectItem(key, KEY), SelectItem(value, VALUE)), table, where=where, group_by=(key,), order_by=(ranked, OrderTerm(key)), limit=program.count)
+        return SelectQuery((SelectItem(key, KEY), SelectItem(value, VALUE)), table, where=where, group_by=(key,), order_by=(ranked,), limit=1, with_ties=True)
     return _peer_query(program, printed, order)
 
 
