@@ -582,8 +582,9 @@ class _Search:
         return out
 
     def line_compared_atoms(self, table: CatalogTable, index: TableIndex) -> list[Atom]:
-        """"More medals than Canada": a comparison the reading names, against a text value it names on this table (the
-        line), for the number columns it reads likeliest as filter or measure; the two likeliest values, three columns."""
+        """"More medals than Canada": a comparison the reading names, against a text value it names on this table that
+        one data line holds (the line; "not much competition" names a category, not a line), for the number columns it
+        reads likeliest as filter or measure; the two likeliest values, three columns."""
         asked = [op for op in dict.fromkeys(name.split(":", 1)[1] for name in self.positive(SLOT_COMPARISON)) if op in COMPARE_OPS]
         if not asked or not index.number_columns:
             return []
@@ -595,7 +596,8 @@ class _Search:
                 continue
             position, _, value = body[len(prefix):].partition("=")
             position = int(position)
-            if 0 <= position < len(table.columns) and position not in index.number_columns and _number_or_none(value) is None:
+            names_one_line = sum(table.is_data[i] for i in index.value_lines.get(position, {}).get(fold(value), ())) == 1
+            if 0 <= position < len(table.columns) and position not in index.number_columns and _number_or_none(value) is None and names_one_line:
                 named.append((position, value))
         if not named:
             return []

@@ -908,6 +908,12 @@ def test_a_number_compares_with_the_line_a_value_names():
     reading = read_question("How many nations received more medals than Canada?", catalog, Decoder(catalog))
     assert reading.scores.get(coordinate("comparison", GT)) == 1.0
     assert counted in Decoder(catalog).enumerate(reading, k=50)[0]
+    # a value many lines hold names a category, not a line ("not much competition": Competition is Low on hundreds)
+    tiers, tier_table, _ = _setup([["Name", "Tier", "Score"], ["a", "low", 1.0], ["b", "low", 5.0], ["c", "high", 9.0]])
+    def lined(value_column, value):
+        reading = Reading({coordinate("comparison", GT): 1.0, coordinate("value", Col(tier_table.id, value_column).name, value): 1.0, coordinate("form", "agg"): 1.0})
+        return any(isinstance(c, CompareLine) for p in Decoder(tiers).enumerate(reading, k=200)[0] for c in getattr(p, "where", ()))
+    assert lined(0, "c") and not lined(1, "low")
     assert read_question("Which nations won the same number of gold medals as Japan?", catalog, Decoder(catalog)).scores.get(coordinate("comparison", EQ)) == 1.0
     assert read_question("Who is taller than Bo?", catalog, Decoder(catalog)).scores.get(coordinate("comparison", GT)) == 1.0
     assert read_question("Who is younger than Bo?", catalog, Decoder(catalog)).scores.get(coordinate("comparison", LT)) == 1.0
