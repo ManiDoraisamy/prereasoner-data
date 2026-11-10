@@ -531,7 +531,7 @@ def test_the_decoder_checks_only_when_the_reading_names_a_check():
 def test_a_choice_among_named_values():
     """"Which of x or z has more lines": OneOf keeps the lines whose cell is one of the named values, the same in the
     index, the catalog, the typed SQL and the dual emitter; it names each value, reads as 'is "x" or "z"', refuses a
-    single value or an unsorted set, and the decoder proposes it for a rank only, never as an aggregate's filter."""
+    single value or an unsorted set, and the decoder proposes it for a rank, a total and a count (one figure over both), never an average's filter."""
     catalog, table, tables = _setup(AGES)
     name, region, age = (Col(table.id, at) for at in range(3))
     either = OneOf(region, ("x", "z"))
@@ -552,8 +552,13 @@ def test_a_choice_among_named_values():
     reading = Reading({name_: 1.0 for name_ in coordinates(winner, catalog.column_kind)})
     decoded = Decoder(catalog).decode(reading, k=50)
     assert decoded.programs[0].program == winner, decoded.programs[:3]
+    # "the US and Jamaica combined" (WikiTableQuestions dev): a total or a count over the choice is one figure over both
     summed = Reading({**{n: 1.0 for n in coordinates(Agg(SUM, age, table.id, (Equals(region, "x"),)), catalog.column_kind)}, coordinate("value", region.name, "z"): 1.0})
-    assert not any(isinstance(c, OneOf) for p in Decoder(catalog).decode(summed, k=200).programs if isinstance(p.program, Agg) for c in p.program.where)
+    both = Agg(SUM, age, table.id, (either,))
+    assert both in [p.program for p in Decoder(catalog).decode(summed, k=50).programs]
+    assert _one(_answer(both, tables)) == _one(_answer(Agg(SUM, age, table.id, (Equals(region, "x"),)), tables)) + _one(_answer(Agg(SUM, age, table.id, (Equals(region, "z"),)), tables))
+    averaged = Reading({**{n: 1.0 for n in coordinates(Agg(AVG, age, table.id, (Equals(region, "x"),)), catalog.column_kind)}, coordinate("value", region.name, "z"): 1.0})
+    assert not any(isinstance(c, OneOf) for p in Decoder(catalog).decode(averaged, k=200).programs if isinstance(p.program, Agg) and p.program.function == AVG for c in p.program.where)
 
 
 def test_a_check_asks_what_the_top_one_is():

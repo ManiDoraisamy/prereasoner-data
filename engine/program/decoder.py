@@ -740,12 +740,14 @@ class _Search:
         unit = Col(table.id, index.currency_column) if index.currency_column is not None else None
         for function in NUMBER_AGGREGATES:     # per currency where the lines name theirs (_per_unit)
             base = agg + s(coordinate(SLOT_AGGREGATE, function)) + self.type_score(A_NUMBER)
-            frames += self.condition_frames(base, (measures,), lambda options, where, f=function: _per_unit(Agg(f, options[0], table.id, where), unit), table, index, atoms)
+            frames += self.condition_frames(base, (measures,), lambda options, where, f=function: _per_unit(Agg(f, options[0], table.id, where), unit), table, index, atoms, choices=function == SUM)
         magnitude = agg + s(coordinate(SLOT_AGGREGATE, SUM)) + self.type_score(A_NUMBER) + s(coordinate(SLOT_SIZE, STATED_BY_SIZE))
         plain = self.column_options(table, index.number_columns, SLOT_MEASURE)
         frames += self.condition_frames(magnitude, (plain,), lambda options, where: Agg(SUM, options[0], table.id, where, magnitude=True), table, index, atoms)
         count = agg + s(coordinate(SLOT_AGGREGATE, COUNT)) + self.type_score(A_COUNT)
-        frames += self.condition_frames(count, (), lambda options, where: Agg(COUNT, None, table.id, where), table, index, atoms)
+        # "the US and Jamaica combined", "members from Lawton and Oklahoma City": a total or a count over a choice of named
+        # values is one figure over both; an average, a lowest or a highest of a choice is a rank's question
+        frames += self.condition_frames(count, (), lambda options, where: Agg(COUNT, None, table.id, where), table, index, atoms, choices=True)
         distinct = agg + s(coordinate(SLOT_AGGREGATE, COUNT_DISTINCT)) + self.type_score(A_COUNT)
         keys = self.column_options(table, all_positions, SLOT_MEASURE)
         frames += self.condition_frames(distinct, (keys,), lambda options, where: Agg(COUNT_DISTINCT, options[0], table.id, where), table, index, atoms, max_policy=2)
