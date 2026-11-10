@@ -273,6 +273,33 @@ def test_stray_cells_are_set_apart_by_kind():
     assert sum(line.cells[1].value for line in table.lines if line.cells[1].stray is None) == 1 + 5 + 9 + 10 + 11 + 12 + 13 + 14
 
 
+def test_a_column_of_one_unit_reads_as_numbers():
+    """"1,370 tons", "20 knots" (WikiTableQuestions: "which name has the largest displacement?" could not rank a text
+    column): a column whose cells nearly all state a number with one unit reads as numbers of it, each cell showing what
+    the sheet wrote. Different words after numbers (addresses) or several units stay text."""
+    from engine.program.catalog import Catalog
+    from engine.program.semantics import cell_text
+    rows = [["Name", "Displacement", "Address", "Result"], ["River", "1,370 tons", "10 Main St", "3 wins"], ["Kaibokan", "870 tons", "22 Oak Ave", "2 losses"],
+            ["FMR", "1,200 tons", "5 Pine Rd", "4 draws"], ["Flower", "1 ton", "7 Elm Ct", "1 win"]]
+    model = _tab(rows)
+    table = model.tables[0]
+    shipped, address, result = table.columns[1], table.columns[2], table.columns[3]
+    assert (shipped.kind, shipped.unit) == (V_NUMBER, "ton"), (shipped.kind, shipped.unit)
+    assert address.kind == V_TEXT and result.kind == V_TEXT
+    assert [line.cells[1].value for line in table.lines] == [1370.0, 870.0, 1200.0, 1.0]
+    assert [cell_text(line.cells[1]) for line in table.lines] == ["1,370 tons", "870 tons", "1,200 tons", "1 ton"]
+    catalog = Catalog.from_model(compile_workbook(workbook_from_json({"name": "ships", "tabs": [{"name": "Sheet1", "rows": rows}]})))
+    assert catalog.tables[0].numbers[1] == [1370.0, 870.0, 1200.0, 1.0] and catalog.tables[0].texts[1][0] == "1,370 tons"
+    from engine.program.index import index_of        # its texts are still values a question names ("the 870 tons one")
+    index = index_of(catalog.tables[0])
+    assert index.quantity_columns == {1} and (1, "870 tons") in index.value_words["870"]
+    # A scale is not a unit: "$48 million" keeps its column as it was.
+    assert _tab([["Film", "Budget"], ["a", "$48 million"], ["b", "$12 million"], ["c", "$7 million"]]).tables[0].columns[1].kind == V_TEXT
+    # Fewer than 4 in 5 cells with the unit: the column stays text, the stated numbers its strays as before.
+    mixed = _tab([["Name", "Speed"], ["a", "20 knots"], ["b", "fast"], ["c", "21 knots"], ["d", "slow"], ["e", "19 knots"]]).tables[0]
+    assert mixed.columns[1].kind == V_TEXT
+
+
 def test_hidden_lines_and_columns_are_kept_and_flagged():
     model = _tab(CLEAN, columnFormats=CLEAN_FORMATS, hiddenRows=[[2, 2]], hiddenColumns=[[1, 1]])
     table = model.tables[0]
@@ -829,7 +856,7 @@ TESTS = [
     test_continuation_lines_take_no_label, test_a_family_says_how_much_its_members_repeat_each_other, test_a_date_from_the_clock_is_no_as_of, test_an_unchanged_sheet_keeps_its_hash_and_its_model,
     test_an_axis_holds_one_grain_and_no_totals, test_a_group_axis_needs_one_format, test_a_tall_merge_over_a_number_is_one_figure, test_a_name_keeps_what_the_sheet_wrote, test_running_balance_is_not_a_total, test_bands_give_sections,
     test_sparse_label_column_fills_down_and_traces_to_its_source, test_stacked_tables_split, test_repeated_header_continues_its_table, test_side_by_side_blocks_split, test_spacer_columns_do_not_split_one_table,
-    test_repeated_blocks_merge_into_one_family, test_months_across_are_an_axis, test_sequence_and_group_axes, test_stray_cells_are_set_apart_by_kind, test_hidden_lines_and_columns_are_kept_and_flagged,
+    test_repeated_blocks_merge_into_one_family, test_months_across_are_an_axis, test_sequence_and_group_axes, test_stray_cells_are_set_apart_by_kind, test_a_column_of_one_unit_reads_as_numbers, test_hidden_lines_and_columns_are_kept_and_flagged,
     test_label_value_notes, test_tab_family_merges_with_the_tab_name_as_a_column, test_direct_markers_name_the_header, test_style_alone_never_moves_the_first_header, test_a_chart_tab_and_empty_tabs_do_not_crash,
     test_origin_shifts_addresses, test_compile_is_deterministic, test_every_fact_traces_to_a_cell, test_header_decision_is_a_sum_over_named_features, test_xlsx_reader_builds_the_wire_payload,
 ]

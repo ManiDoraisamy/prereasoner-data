@@ -19,7 +19,7 @@ from engine.sheet.names import (AXIS_FLAG, AXIS_GROUP, AXIS_PERIOD, AXIS_SEQUENC
                                 P_YEAR, PEER, PERIOD, PRINTED_ROLES, RECORD, ROW_TOTAL, S_DATA_LINE, S_FILLED_DOWN, S_REPEATED_HEADER, S_RULE_LINE, S_STRAY_KEY, S_TOTAL_OTHER_BLOCK, S_TOTAL_WORD, SECTION_LABEL, SHEET_CHART, SPACER, STRAY_DATE,
                                 STRAY_ERROR, STRAY_LABEL, STRAY_MARKER, STRAY_NOTE, STRAY_NUMBER_WITH_WORD, STRAY_REPEATED_HEADER, STRAY_TOTAL, SUBTOTAL, TITLE, TOTAL, V_BLANK, V_BOOL, V_DATE, V_ERROR, V_MARKER, V_NUMBER, V_PERIOD, V_TEXT)
 from engine.sheet.payload import TabPayload
-from engine.sheet.values import Period, number_with_word, parse_period, year_number
+from engine.sheet.values import Period, number_with_word, parse_period, quantity_of, year_number
 
 _UNIT_IN_TITLE = re.compile(r"\$\s?000s?|\$\s?MM\b|\(000'?s?\)|\bin\s+(?:thousands|millions|billions)\b|\bin\s+(?:[A-Z]{2,}\w*|US\$|\$\w*)")
 _UNIT_IN_NAME = re.compile(r"\(([^()]{1,12})\)\s*$")
@@ -398,6 +398,18 @@ def _stray_kind(cell: Cell, header_name: str) -> str | None:
     return STRAY_LABEL
 
 
+def _quantity_unit(cells: list[Cell], counted: int) -> str | None:
+    """The one unit at least 4 in 5 of a column's counted cells state after a number ("1,370 tons"), or None. Different
+    words after numbers ("10 Main St", "22 Oak Ave") are not a unit."""
+    if len(cells) < 3:
+        return None
+    units = Counter(quantity[1] for cell in cells if cell.kind == V_TEXT and (quantity := quantity_of(str(cell.value))) is not None)
+    if not units:
+        return None
+    unit, held = min(units.items(), key=lambda item: (-item[1], item[0]))
+    return unit if held * 5 >= counted * 4 else None
+
+
 def _type_column(column: Column, cells: list[Cell], strays: list[Stray], tab: str) -> None:
     """A column's type by its majority, markers aside; cells of a typed column that do not fit are set apart by kind and stay on their lines."""
     counts = Counter(cell.kind for cell in cells)
@@ -411,6 +423,13 @@ def _type_column(column: Column, cells: list[Cell], strays: list[Stray], tab: st
         column.kind, column.role = V_TEXT, LABEL
         return
     top = V_NUMBER if counts[V_NUMBER] * 2 >= counted and counts[V_NUMBER] else V_DATE if counts[V_DATE] * 2 >= counted and counts[V_DATE] else V_PERIOD if counts[V_PERIOD] * 2 >= counted and counts[V_PERIOD] else None
+    unit = _quantity_unit(cells, counted) if top is None else None
+    if unit is not None:     # "1,370 tons", "20 knots": numbers of one unit; each reads its number and shows the sheet's text
+        for cell in cells:
+            quantity = quantity_of(str(cell.value)) if cell.kind == V_TEXT else None
+            if quantity is not None and quantity[1] == unit:
+                cell.kind, cell.value = V_NUMBER, quantity[0]
+        top, column.unit = V_NUMBER, unit
     if top is None:
         top_share = max(counts[V_TEXT], 0) * 2 >= counted
         column.kind = V_TEXT if top_share else MIXED
@@ -848,7 +867,7 @@ def _table_of(grid: Grid, tab: str, index: int, block_number: int, region: _Regi
         _type_column(column, cells, strays, tab)
         if column.position in fill:
             column.role = SECTION_LABEL
-        column.unit = _unit_of(column)
+        column.unit = _unit_of(column) or column.unit
     strays.sort(key=lambda s: (s.row, s.position))
     header_grain: dict[int, str | None] = {}
     sequence: dict[int, float] = {}

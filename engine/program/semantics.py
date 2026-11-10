@@ -72,6 +72,8 @@ def cell_text(cell: Cell | None) -> str | None:
     if cell is None or cell.kind == V_BLANK:
         return None
     if cell.kind == V_NUMBER and not isinstance(cell.value, bool):
+        if isinstance(cell.raw, str) and parse_number(cell.raw) is None:     # "1,370 tons": its number read, its words shown
+            return " ".join(cell.raw.split())
         return number_text(cell.value)
     if cell.kind == V_DATE and cell.value is not None:
         return str(cell.value)

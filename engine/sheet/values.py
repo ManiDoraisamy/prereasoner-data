@@ -71,6 +71,26 @@ def number_with_word(text: str) -> NumberReading | None:
     return parse_number(m.group("number")) if m else None
 
 
+_QUANTITY = re.compile(r"^(?P<number>\(?[-+$]?\s*\d[\d,]*(?:\.\d+)?\)?)\s+(?P<unit>[A-Za-z][A-Za-z/.-]*(?: [A-Za-z][A-Za-z/.-]*){0,2})$")
+# "48 million" states a scale, not a unit: such a column is not read as quantities.
+_MAGNITUDE_WORD = re.compile(r"^(?:hundred|thousand|million|billion|trillion|mn|bn|mil)\b", re.I)
+
+
+def quantity_of(text: str) -> tuple[float, str] | None:
+    """A number with its unit after it, as "1,370 tons" or "20 knots": (the number, the unit folded: lower case, a final s
+    or full stop dropped), or None. A column holding one unit throughout reads as numbers of it (compiler._type_column)."""
+    m = _QUANTITY.match(" ".join(text.split()))
+    if m is None or len(m.group("unit")) > 20 or _MAGNITUDE_WORD.match(m.group("unit")):
+        return None
+    reading = parse_number(m.group("number"))
+    if reading is None:
+        return None
+    unit = m.group("unit").lower().rstrip(".")
+    if len(unit) > 3 and unit.endswith("s") and not unit.endswith("ss"):
+        unit = unit[:-1]
+    return reading.value, unit
+
+
 # ------------------------------------------------------------------------------------------- periods
 _MONTHS = ("january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december")
 _MONTH = r"(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?"

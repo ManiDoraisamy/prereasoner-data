@@ -16,6 +16,7 @@ from engine.program.catalog import CatalogTable
 from engine.program.language import Col, Compare, Condition, Contains, Equals, InPeriod, InSection, IsBlank, IsNumber, OnLine, OneOf, condition_coordinates
 from engine.program.names import ENDS, GE, GT, LE, LT, NE, STARTS
 from engine.program.semantics import fold
+from engine.sheet.values import parse_number
 from engine.sheet.names import AXIS_FLAG, AXIS_TOTALLED, F_DATE, PEER, ROW_TOTAL, V_NUMBER
 
 # A low-cardinality number column's values are values too, up to this many (design/program_language.txt, section 3).
@@ -118,6 +119,17 @@ class TableIndex:
     @cached_property
     def number_columns(self) -> tuple[int, ...]:
         return tuple(position for position, numbers in enumerate(self.table.numbers) if any(number is not None for number in numbers))
+
+    @cached_property
+    def quantity_columns(self) -> frozenset[int]:
+        """Number columns the sheet writes with a unit ("12 months"): at least 4 in 5 of their texts are not plain numbers.
+        Their texts are values a question names too ("products that give 12 months")."""
+        out = set()
+        for position in self.number_columns:
+            texts = [text for text in self.table.texts[position] if text is not None]
+            if texts and sum(parse_number(text) is None for text in texts) * 5 >= len(texts) * 4:
+                out.add(position)
+        return frozenset(out)
 
     @cached_property
     def text_columns(self) -> tuple[int, ...]:
@@ -316,7 +328,7 @@ class TableIndex:
         """A word -> the (column, fold) of the text values holding it."""
         out: dict[str, list[tuple[int, str]]] = {}
         for position, lines in self.value_lines.items():
-            if self.table.columns[position].kind == V_NUMBER:
+            if self.table.columns[position].kind == V_NUMBER and position not in self.quantity_columns:
                 continue
             for folded in lines:
                 for word in set(words_of(folded)):
