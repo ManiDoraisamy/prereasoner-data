@@ -677,7 +677,7 @@ class _Search:
             counted = group + s(coordinate(SLOT_AGGREGATE, COUNT))
             frames += self.condition_frames(counted, (group_keys,), lambda options, where, d=direction: Rank(ENTITY_GROUP, table.id, d, where, None, key=options[0], function=COUNT), table, index, atoms, rank=True, max_policy=2)
             for n, stated in counts:     # "the 5 oldest", "the 2 most common": exactly that many, scored by the stated number
-                many = s(stated) + self.type_score(A_LIST)
+                many = s(stated)
                 frames += self.condition_frames(line + many, (shown, rank_measures), lambda options, where, d=direction, n=n: Rank(ENTITY_LINE, table.id, d, where, options[1], options[0], count=n), table, index, atoms, rank=True)
                 frames += self.condition_frames(counted + many, (group_keys,), lambda options, where, d=direction, n=n: Rank(ENTITY_GROUP, table.id, d, where, None, key=options[0], function=COUNT, count=n), table, index, atoms, rank=True, max_policy=2)
                 summed = group + s(coordinate(SLOT_AGGREGATE, SUM)) + many

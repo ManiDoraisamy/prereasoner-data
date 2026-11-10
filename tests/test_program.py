@@ -434,8 +434,8 @@ AGES = [["Name", "Region", "Age"], ["a", "x", 30.0], ["b", "y", 50.0], ["c", "x"
 
 def test_a_rank_keeps_as_many_as_the_question_states():
     """"The 3 oldest" keeps exactly three lines, a tie broken by sheet order; "the 2 most common" two groups, a tie broken by
-    the key; a rank of one still keeps every tied top. The count is named (the stated number), the answer is a list, the
-    read-as says how many, and a count is refused where it means nothing."""
+    the key; a rank of one still keeps every tied top. The count is named (the stated number), the answer is typed by what it
+    shows, a top-N may show the column it ranks, the read-as says how many, and a count is refused where it means nothing."""
     catalog, table, tables = _setup(AGES)
     name, region, age = (Col(table.id, at) for at in range(3))
     top3 = Rank(ENTITY_LINE, table.id, HIGHEST, (), age, (name,), count=3)
@@ -447,7 +447,10 @@ def test_a_rank_keeps_as_many_as_the_question_states():
     assert [row[0] for row in common] == ["x", "y"], common
     assert [row[0] for row in _answer(Rank(ENTITY_GROUP, table.id, HIGHEST, (), age, key=region, function=SUM, count=2), tables)] == ["x", "y"]
     names = coordinates(top3, catalog.column_kind)
-    assert any(slot_of(n) == "number" for n in names) and coordinate("answer_type", A_LIST) in names, names
+    assert any(slot_of(n) == "number" for n in names) and coordinate("answer_type", A_NAME) in names, names     # several names: the type of what it shows
+    ages = Rank(ENTITY_LINE, table.id, HIGHEST, (), age, (age,), count=2)
+    assert is_sound(ages) and [float(row[0]) for row in _answer(ages, tables)] == [50.0, 50.0]                 # "the 2 highest ages" shows its own measure
+    assert not is_sound(Rank(ENTITY_LINE, table.id, HIGHEST, (), age, (age,)))
     assert "the 3 lines" in read_as(top3, catalog)
     for bad in (lambda: Rank(ENTITY_LINE, table.id, HIGHEST, (), age, (name,), count=0), lambda: Rank(ENTITY_PEER, table.id, peers=(1, 2), count=2)):
         try:

@@ -394,8 +394,8 @@ def is_sound(program: Program) -> bool:
     measured = set(measure_columns(program.measure)) if program.measure is not None else set()
     if isinstance(program, Agg):
         return not fixed & measured
-    if program.entity == ENTITY_LINE:
-        return not fixed & (measured | set(program.shown)) and not measured & set(program.shown)
+    if program.entity == ENTITY_LINE:      # "the 5 highest ages" shows the column it ranks; one line's own measure is an agg
+        return not fixed & (measured | set(program.shown)) and (program.count > 1 or not measured & set(program.shown))
     if program.entity == ENTITY_GROUP:
         return program.key not in measured and program.key not in fixed and not fixed & measured
     return True
@@ -515,8 +515,6 @@ def answer_type_of(program: Program, column_kind) -> str:
         if program.listing:
             return A_LIST
         return _type_of_shown(program.shown, column_kind)
-    if program.count > 1:
-        return A_LIST
     if program.entity == ENTITY_PEER:
         return A_NAME
     return _type_of_column(program.key, column_kind) if program.entity == ENTITY_GROUP else _type_of_shown(program.shown, column_kind)
