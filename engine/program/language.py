@@ -88,6 +88,21 @@ class Equals:
 
 
 @dataclass(frozen=True, slots=True)
+class OneOf:
+    """A text cell is one of these values ("Germany or France"), each read as Equals reads it, case and spacing aside.
+    Two or more different values, in their folded order, so one set of values is one condition."""
+    column: Col
+    values: tuple[str, ...]
+
+    def __post_init__(self):
+        if len(self.values) < 2 or not all(isinstance(value, str) for value in self.values):
+            raise ValueError("one of takes two or more text values")
+        folded = [fold(value) for value in self.values]
+        if len(set(folded)) != len(folded) or folded != sorted(folded):
+            raise ValueError("one of takes different values in their folded order")
+
+
+@dataclass(frozen=True, slots=True)
 class NotEquals:
     """A text cell is some other value: "other than EES". A blank is no other value and never passes, as with a number's != (Compare)."""
     column: Col
@@ -217,7 +232,7 @@ class OnLine:
     role: str | None = None
 
 
-Condition: TypeAlias = Equals | NotEquals | Contains | InPeriod | Compare | CompareColumns | IsBlank | IsNumber | InSection | OnLine
+Condition: TypeAlias = Equals | OneOf | NotEquals | Contains | InPeriod | Compare | CompareColumns | IsBlank | IsNumber | InSection | OnLine
 
 
 def addresses_printed(where: tuple[Condition, ...]) -> bool:
@@ -228,6 +243,8 @@ def condition_coordinates(condition: Condition) -> tuple[str, ...]:
     if isinstance(condition, Equals):
         value = number_text(condition.value) if isinstance(condition.value, (int, float)) else fold(condition.value)
         return (coordinate(SLOT_FILTER, condition.column.name), coordinate(SLOT_VALUE, condition.column.name, value))
+    if isinstance(condition, OneOf):
+        return (coordinate(SLOT_FILTER, condition.column.name), *(coordinate(SLOT_VALUE, condition.column.name, fold(value)) for value in condition.values))
     if isinstance(condition, NotEquals):
         return (coordinate(SLOT_FILTER, condition.column.name), coordinate(SLOT_COMPARISON, NE), coordinate(SLOT_VALUE, condition.column.name, fold(condition.value)))
     if isinstance(condition, Contains):
@@ -533,5 +550,5 @@ def _type_of_column(column: Col, column_kind) -> str:
     return A_NUMBER if kind == "number" else A_DATE if kind in ("date", "period") else A_NAME
 
 
-__all__ = ["Across", "Agg", "Calc", "Check", "Col", "Compare", "CompareColumns", "Condition", "Contains", "DateOf", "Equals", "InPeriod", "InSection", "IsBlank", "IsNumber", "Measure", "NotEquals", "OnLine", "PeriodSpan", "Program", "Rank", "RowArithmetic", "SECTION", "Show", "Size",
+__all__ = ["Across", "Agg", "Calc", "Check", "OneOf", "Col", "Compare", "CompareColumns", "Condition", "Contains", "DateOf", "Equals", "InPeriod", "InSection", "IsBlank", "IsNumber", "Measure", "NotEquals", "OnLine", "PeriodSpan", "Program", "Rank", "RowArithmetic", "SECTION", "Show", "Size",
            "TOGETHER", "addresses_printed", "answer_type_of", "coordinates", "shown_together", "conditions_of", "form_of", "measure_columns", "tables_of", "peers_name"]

@@ -16,7 +16,8 @@ from typing import Callable, Sequence
 
 from engine.program.catalog import Catalog, CatalogTable
 from engine.program.index import Atom, TableIndex, index_of
-from engine.program.language import (Across, Agg, Calc, Check, Col, Compare, CompareColumns, Condition, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, NotEquals, OnLine, Program, Rank, RowArithmetic, SECTION, Show, Size, answer_type_of, is_sound, measure_coordinates, peers_name, period_from_name, shown_together)
+from engine.program.semantics import fold
+from engine.program.language import (Across, Agg, Calc, Check, Col, OneOf, Compare, CompareColumns, Condition, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, NotEquals, OnLine, Program, Rank, RowArithmetic, SECTION, Show, Size, answer_type_of, is_sound, measure_coordinates, peers_name, period_from_name, shown_together)
 from engine.program.names import (A_COUNT, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, ANY, CHECK, CHECK_OPS, EQ, EVERY, GT, LT, NO, SLOT_QUANTIFIER, VERSUS, AGG, ANCHORS, ANYWHERE, AVG, BY_SIZE, CALC, CALC_OPS, COMPARISONS, COUNT, COUNT_DISTINCT, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, MAX, MIN, MINUS, NE, NUMBER_AGGREGATES, OVER, PLUS, RANK, ROW_OPS, SHOW, SLOT_AGGREGATE,
                                   SLOT_ANSWER_TYPE, SLOT_BLANK, SLOT_CALC_LEFT, SLOT_CALC_OP, SLOT_COMPARISON, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_DIRECTION, SLOT_ENTITY, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE, SLOT_LISTING, SLOT_MEASURE, SLOT_NUMBER, SLOT_PEERS, SLOT_PERIOD, SLOT_ROW_OP, SLOT_SECTION,
                                   SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, STATED_BY_SIZE, SUM, TIMES, coordinate, slot_of)
@@ -239,6 +240,11 @@ class _Conditions:
         return totals[self.count]
 
 
+def _without_choices(atoms: list) -> list:
+    """The atoms that are not a choice among named values (OneOf): only a rank's frames take those."""
+    return [option for option in atoms if not isinstance(option.payload.condition, OneOf)]
+
+
 def _every(table_id: str, where: tuple, at: int) -> "Check | None":
     """Every line the other conditions keep also meets where[at]: two counts of one table, equal."""
     if at >= len(where):
@@ -381,6 +387,28 @@ class _Search:
     def positive(self, slot: str) -> list[str]:
         return [name for name in self.by_slot.get(slot, ()) if self.reading.score(name) > 0]
 
+    def one_of_atoms(self, table: CatalogTable, index: TableIndex) -> list[Atom]:
+        """"Germany or France": a column whose text values the reading scores positively, two or more of them, kept as
+        one condition; each pair of its three likeliest values."""
+        prefix = f"{table.id}."
+        stated: dict[int, list[str]] = {}
+        for name in sorted(self.positive(SLOT_VALUE), key=lambda name: (round(-self.s(name), _ROUND), name)):
+            body = name.split(":", 1)[1]
+            if not body.startswith(prefix):
+                continue
+            position, _, value = body[len(prefix):].partition("=")
+            position = int(position)
+            if 0 <= position < len(table.columns) and _number_or_none(value) is None and fold(value) not in {fold(v) for v in stated.get(position, [])}:
+                stated.setdefault(position, []).append(value)
+        out = []
+        for position, values in sorted(stated.items()):
+            top = values[:3]
+            for i in range(len(top)):
+                for j in range(i + 1, len(top)):
+                    pair = tuple(sorted((top[i], top[j]), key=fold))
+                    out.append(index.atom_of(OneOf(Col(table.id, position), pair), position))
+        return out
+
     def rank_counts(self) -> list[tuple[int, str]]:
         """The whole numbers the question states that could say how many a rank keeps (2 to RANK_COUNT_MOST), each with
         the coordinate that states it; at most two, the likeliest first."""
@@ -483,6 +511,7 @@ class _Search:
                 out.append(index.atom_of(Equals(Col(table.id, position), value), position))
                 if not_equal:
                     out.append(index.atom_of(NotEquals(Col(table.id, position), value), position))
+        out.extend(self.one_of_atoms(table, index))
         for name in self.by_slot.get(SLOT_LINE, ()):
             body = name.split(":", 1)[1]
             owner, _, rest = body.partition("=")
@@ -596,9 +625,11 @@ class _Search:
         return [options[at] for at in order]
 
     # ------------------------------------------------------------------------------------------------ frames
-    def condition_slot(self, table: CatalogTable, index: TableIndex, atoms: list[_Option], count: int, rank: bool, any_line: bool = False):
-        """The sets of count conditions the policy keeps, or None: all values with one condition, the top 50 of a column for a rank form; the top 50 with two; the top 20 with three; beyond that only what the reading scores strongly."""
-        key = (table.id, count, rank and count == 1, any_line)
+    def condition_slot(self, table: CatalogTable, index: TableIndex, atoms: list[_Option], count: int, rank: bool, any_line: bool = False, choices: bool = False):
+        """The sets of count conditions the policy keeps, or None: all values with one condition, the top 50 of a column for a rank form; the top 50 with two; the top 20 with three; beyond that only what the reading scores strongly. A choice among named values (OneOf) only where choices says so: a rank's "which of A or B"."""
+        key = (table.id, count, rank and count == 1, any_line, choices)
+        if not choices:
+            atoms = _without_choices(atoms)
         held = self.slots.get(key, False)
         if held is not False:
             return held
@@ -611,7 +642,7 @@ class _Search:
         self.slots[key] = slot
         return slot
 
-    def condition_frames(self, base: float, slots: tuple, build, table: CatalogTable, index: TableIndex, atoms: list[_Option], *, min_conditions: int = 0, max_policy: int = 3, rank: bool = False, any_line: bool = False) -> list[_Frame]:
+    def condition_frames(self, base: float, slots: tuple, build, table: CatalogTable, index: TableIndex, atoms: list[_Option], *, min_conditions: int = 0, max_policy: int = 3, rank: bool = False, any_line: bool = False, choices: bool = False) -> list[_Frame]:
         """One frame per number of conditions, fewest first. Past max_policy, only conditions the reading scores strongly."""
         frames = []
         for count in range(min_conditions, 7):
@@ -620,9 +651,9 @@ class _Search:
                 frames.append(_Frame(total, slots, lambda options, b=build: b(options, ())))
                 continue
             if count > max_policy and count <= 3:
-                slot = _Conditions([option for option in atoms if option.score >= self.policy.strong_condition], count, index, table, self.set_score, any_line=any_line)
+                slot = _Conditions([option for option in (atoms if choices else _without_choices(atoms)) if option.score >= self.policy.strong_condition], count, index, table, self.set_score, any_line=any_line)
             else:
-                slot = self.condition_slot(table, index, atoms, count, rank, any_line)
+                slot = self.condition_slot(table, index, atoms, count, rank, any_line, choices)
             if isinstance(slot, _Conditions) and slot.groups < count:
                 continue
             frames.append(_Frame(total, slots + (slot,), lambda options, b=build: b(options[:-1], tuple(atom.condition for atom in options[-1]))))
@@ -667,15 +698,15 @@ class _Search:
         for direction in DIRECTIONS:
             turn = rank + s(coordinate(SLOT_DIRECTION, direction))
             line = turn + s(coordinate(SLOT_ENTITY, ENTITY_LINE))
-            frames += self.condition_frames(line, (shown, rank_measures), lambda options, where, d=direction: Rank(ENTITY_LINE, table.id, d, where, options[1], options[0]), table, index, atoms, rank=True)
+            frames += self.condition_frames(line, (shown, rank_measures), lambda options, where, d=direction: Rank(ENTITY_LINE, table.id, d, where, options[1], options[0]), table, index, atoms, rank=True, choices=True)
             group = turn + s(coordinate(SLOT_ENTITY, ENTITY_GROUP))
             for function in (SUM, AVG, MIN, MAX):
                 base = group + s(coordinate(SLOT_AGGREGATE, function))
-                frames += self.condition_frames(base, (group_keys, measures if function == SUM else plain), lambda options, where, d=direction, f=function: Rank(ENTITY_GROUP, table.id, d, where, options[1], key=options[0], function=f), table, index, atoms, rank=True, max_policy=2)
+                frames += self.condition_frames(base, (group_keys, measures if function == SUM else plain), lambda options, where, d=direction, f=function: Rank(ENTITY_GROUP, table.id, d, where, options[1], key=options[0], function=f), table, index, atoms, rank=True, max_policy=2, choices=True)
             sized = group + s(coordinate(SLOT_AGGREGATE, SUM)) + s(coordinate(SLOT_SIZE, BY_SIZE))
             frames += self.condition_frames(sized, (group_keys, plain), lambda options, where, d=direction: Rank(ENTITY_GROUP, table.id, d, where, options[1], key=options[0], function=SUM, by_size=True), table, index, atoms, rank=True, max_policy=2)
             counted = group + s(coordinate(SLOT_AGGREGATE, COUNT))
-            frames += self.condition_frames(counted, (group_keys,), lambda options, where, d=direction: Rank(ENTITY_GROUP, table.id, d, where, None, key=options[0], function=COUNT), table, index, atoms, rank=True, max_policy=2)
+            frames += self.condition_frames(counted, (group_keys,), lambda options, where, d=direction: Rank(ENTITY_GROUP, table.id, d, where, None, key=options[0], function=COUNT), table, index, atoms, rank=True, max_policy=2, choices=True)
             for n, stated in counts:     # "the 5 oldest", "the 2 most common": exactly that many, scored by the stated number
                 many = s(stated)
                 frames += self.condition_frames(line + many, (shown, rank_measures), lambda options, where, d=direction, n=n: Rank(ENTITY_LINE, table.id, d, where, options[1], options[0], count=n), table, index, atoms, rank=True)
@@ -744,6 +775,7 @@ class _Search:
 
     def calc_frames(self, table: CatalogTable, index: TableIndex, atoms: list[_Option], measures: list[_Option], plain: list[_Option]) -> list[_Frame]:
         """Calc as a contrast: two sides differing in one slot. Spent only when the reading scores calc at all."""
+        atoms = _without_choices(atoms)
         s = self.s
         form = s(coordinate(SLOT_FORM, CALC))
         if coordinate(SLOT_FORM, CALC) not in self.reading.scores:

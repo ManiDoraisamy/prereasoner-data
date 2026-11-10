@@ -10,7 +10,7 @@ from engine.program.catalog import Catalog
 from engine.program.decoder import Decoder, POLICY
 from engine.program.execute import run, run_dual
 from engine.program.index import TableIndex
-from engine.program.language import (Across, Agg, Calc, Check, Col, Compare, CompareColumns, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, NotEquals, OnLine, PeriodSpan, Rank, RowArithmetic, SECTION, Show, Size, answer_type_of, coordinates, tables_of, is_sound, period_from_name)
+from engine.program.language import (Across, Agg, Calc, Check, Col, OneOf, Compare, CompareColumns, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, NotEquals, OnLine, PeriodSpan, Rank, RowArithmetic, SECTION, Show, Size, answer_type_of, coordinates, tables_of, is_sound, period_from_name)
 from engine.program.lowering import plan_schema, to_query
 from engine.program.names import (A_COMPANY, A_COUNT, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, ANY, CHECK, EQ, EVERY, LT, NO, VERSUS, ANSWER_TYPES, AVG, CALC, COMPARISONS, COUNT, COUNT_DISTINCT, ENDS, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, EV_ADDS_TWICE, EV_BARE_ZERO, EV_EMPTY, EV_FAILED, EV_FILTER_DID_NOTHING, EV_FRACTION_FOR_COUNT, EV_MANY_ROWS, EV_PRINTED_TIE, EV_RAN,
                                   EV_REPEATED_LINES, EV_ROW_COUNT_FOR_AMOUNT, EV_SHAPE_AGREES, EV_TOO_LARGE_FOR_SHARE, EV_TYPE_AGREES, EV_WRONG_KIND, EVIDENCE, FORMS, GE, GT, HIGHEST, LOWEST, MAX, MIN, MINUS, OVER, PERIOD_NAMED, PERIOD_REST_OF, PERIOD_SO_FAR, PLUS, SEMANTICS, SIGN_LOSS, SIGN_MAGNITUDE, SIGN_NET,
@@ -520,6 +520,34 @@ def test_the_decoder_checks_only_when_the_reading_names_a_check():
         assert decoded.programs and decoded.programs[0].program == gold, (gold, decoded.programs[:3])
         plain = Reading({name: 1.0 for name in coordinates(gold, catalog.column_kind) if name != coordinate("form", CHECK)})
         assert not any(isinstance(p.program, Check) for p in Decoder(catalog).decode(plain, k=50).programs)
+
+
+def test_a_choice_among_named_values():
+    """"Which of x or z has more lines": OneOf keeps the lines whose cell is one of the named values, the same in the
+    index, the catalog, the typed SQL and the dual emitter; it names each value, reads as 'is "x" or "z"', refuses a
+    single value or an unsorted set, and the decoder proposes it for a rank only, never as an aggregate's filter."""
+    catalog, table, tables = _setup(AGES)
+    name, region, age = (Col(table.id, at) for at in range(3))
+    either = OneOf(region, ("x", "z"))
+    index = TableIndex(table)
+    assert index.mask(either) == table.condition_mask(either) == table.condition_mask(Equals(region, "x")) | table.condition_mask(Equals(region, "z"))
+    winner = Rank(ENTITY_GROUP, table.id, HIGHEST, (either,), None, key=region, function=COUNT)
+    assert [row[0] for row in _answer(winner, tables)] == ["x"], _answer(winner, tables)
+    assert [row[0] for row in _answer(Rank(ENTITY_GROUP, table.id, LOWEST, (either,), None, key=region, function=COUNT), tables)] == ["z"]
+    names = coordinates(winner, catalog.column_kind)
+    assert coordinate("value", region.name, "x") in names and coordinate("value", region.name, "z") in names
+    assert '"x" or "z"' in read_as(winner, catalog)
+    for bad in (lambda: OneOf(region, ("x",)), lambda: OneOf(region, ("z", "x")), lambda: OneOf(region, ("x", "X"))):
+        try:
+            bad()
+        except ValueError:
+            continue
+        raise AssertionError("one of accepted what it cannot say")
+    reading = Reading({name_: 1.0 for name_ in coordinates(winner, catalog.column_kind)})
+    decoded = Decoder(catalog).decode(reading, k=50)
+    assert decoded.programs[0].program == winner, decoded.programs[:3]
+    summed = Reading({**{n: 1.0 for n in coordinates(Agg(SUM, age, table.id, (Equals(region, "x"),)), catalog.column_kind)}, coordinate("value", region.name, "z"): 1.0})
+    assert not any(isinstance(c, OneOf) for p in Decoder(catalog).decode(summed, k=200).programs if isinstance(p.program, Agg) for c in p.program.where)
 
 
 def test_decoder_is_deterministic_and_order_free():
@@ -1078,7 +1106,7 @@ TESTS = [
     test_several_shown_columns_cost_a_named_coordinate, test_a_sign_word_compares_with_zero, test_a_stated_number_a_column_holds_reads_as_its_value, test_a_misspelled_word_reads_as_the_sheets_word, test_a_word_only_one_column_holds_says_which, test_several_columns_shown_type_the_same_however_they_stand, test_across_adds_peer_columns_of_a_line, test_the_decoder_reaches_across_when_a_word_asks, test_a_text_other_than, test_the_decoder_reads_other_than_from_the_words, test_answer_types_place_money_quantity, test_decoder_ties_do_not_follow_sheet_order, test_a_family_adding_twice_says_so, test_axes_are_read_by_their_kind, test_a_question_reads_the_tables_its_links_reach, test_verifier_stops_at_its_budget_of_lines,
     test_every_name_is_from_a_closed_list, test_forms_refuse_what_they_cannot_say, test_signs, test_printed_lines_are_read_by_label_and_never_added, test_shortest_label_first_and_unlabelled_printed_lines, test_a_column_filled_only_on_printed_lines_reads_them,
     test_partial_value_match, test_case_and_spacing_do_not_count, test_periods, test_blanks, test_ties_keep_every_tied_line, test_units, test_mixed_columns, test_repeated_rows, test_sections_nested_bands_and_the_section_shown, test_python_masks_agree_with_the_sql,
-    test_calc_shapes, test_rank_across_peer_columns, test_a_rank_keeps_as_many_as_the_question_states, test_the_decoder_proposes_how_many_a_question_states, test_a_check_says_yes_or_no, test_the_decoder_checks_only_when_the_reading_names_a_check, test_new_ast_nodes_render_and_validate, test_plan_schema_holds_only_what_a_query_reads, test_perfect_readings_give_the_gold_first, test_decoder_is_deterministic_and_order_free, test_the_list_does_not_depend_on_hash_order,
+    test_calc_shapes, test_rank_across_peer_columns, test_a_rank_keeps_as_many_as_the_question_states, test_the_decoder_proposes_how_many_a_question_states, test_a_check_says_yes_or_no, test_the_decoder_checks_only_when_the_reading_names_a_check, test_a_choice_among_named_values, test_new_ast_nodes_render_and_validate, test_plan_schema_holds_only_what_a_query_reads, test_perfect_readings_give_the_gold_first, test_decoder_is_deterministic_and_order_free, test_the_list_does_not_depend_on_hash_order,
     test_scores_come_in_as_data_and_nothing_else_moves_the_list, test_contributions_are_named_and_sum_to_the_score, test_intervention_a_named_coordinate_moves_the_score_by_its_weight, test_policy_prunes_values_only_where_it_says, test_conditions_stay_on_distinct_columns,
     test_answer_type_rule, test_words_alone_read_a_question, test_verifier_shape_and_type_evidence, test_printed_total_ties_only_under_its_exact_conditions, test_verifier_runs_the_top_programs_and_never_raises, test_read_as_in_the_sheets_own_words,
     test_cells_are_the_exact_addresses_used, test_formula_a_user_can_check, test_explain_carries_the_named_contributions,

@@ -8,7 +8,7 @@ from __future__ import annotations
 import hashlib
 from functools import cached_property
 
-from engine.program.language import (Col, Compare, CompareColumns, Condition, Contains, Equals, InPeriod, InSection, IsBlank, IsNumber, NotEquals, OnLine, SECTION)
+from engine.program.language import (Col, Compare, CompareColumns, Condition, Contains, Equals, InPeriod, InSection, IsBlank, IsNumber, NotEquals, OnLine, OneOf, SECTION)
 from engine.program.names import ANYWHERE, ENDS, GE, GT, LE, LT, NE, STARTS
 from engine.program.semantics import cell_day, cell_fold, cell_number, cell_text, fold, is_filled, is_serial_day
 from engine.sheet.model import Cell, Column, Context, Line, SheetModel, Table
@@ -158,6 +158,8 @@ class CatalogTable:
                 number = self.numbers[condition.column.position][i]
                 return number is not None and number == condition.value
             return self._fold_of(condition.column.position, i) == fold(condition.value)
+        if isinstance(condition, OneOf):
+            return self._fold_of(condition.column.position, i) in {fold(value) for value in condition.values}
         if isinstance(condition, NotEquals):
             text = self._fold_of(condition.column.position, i)
             return text is not None and text != fold(condition.value)

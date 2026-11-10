@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 from engine.program.catalog import Catalog, CatalogTable, KIND_FAMILY
 from engine.program.index import index_of
-from engine.program.language import (Across, Agg, Calc, Check, Col, Compare, CompareColumns, Condition, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, Measure, NotEquals, Program, Rank, RowArithmetic, SECTION, Show, Size, addresses_printed, answer_type_of, measure_columns)
+from engine.program.language import (Across, Agg, Calc, Check, Col, OneOf, Compare, CompareColumns, Condition, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, Measure, NotEquals, Program, Rank, RowArithmetic, SECTION, Show, Size, addresses_printed, answer_type_of, measure_columns)
 from engine.program.names import (A_PERCENT, ANY, ANYWHERE, EQ, EVERY, NO, AVG, COUNT, COUNT_DISTINCT, ENDS, ENTITY_GROUP, ENTITY_LINE, GE, GT, HIGHEST, LE, LT, MAX, MIN, MINUS, NE, OVER, PLUS, STARTS, SUM, TIMES)
 from engine.program.scoring import ScoredProgram
 from engine.program.semantics import fold, number_text, share_forms
@@ -54,6 +54,9 @@ def _value_words(catalog: Catalog, column: Col, value: str | float) -> str:
 def _condition_words(catalog: Catalog, condition: Condition) -> str:
     if isinstance(condition, Equals):
         return f'{_name(catalog, condition.column)} is "{_value_words(catalog, condition.column, condition.value)}"'
+    if isinstance(condition, OneOf):
+        named = " or ".join(f'"{_value_words(catalog, condition.column, value)}"' for value in condition.values)
+        return f"{_name(catalog, condition.column)} is {named}"
     if isinstance(condition, NotEquals):
         return f'{_name(catalog, condition.column)} is other than "{_value_words(catalog, condition.column, condition.value)}"'
     if isinstance(condition, Contains):

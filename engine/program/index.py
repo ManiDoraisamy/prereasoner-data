@@ -13,7 +13,7 @@ from functools import cached_property
 import numpy as np
 
 from engine.program.catalog import CatalogTable
-from engine.program.language import Col, Compare, Condition, Contains, Equals, InPeriod, InSection, IsBlank, IsNumber, OnLine, condition_coordinates
+from engine.program.language import Col, Compare, Condition, Contains, Equals, InPeriod, InSection, IsBlank, IsNumber, OnLine, OneOf, condition_coordinates
 from engine.program.names import ENDS, GE, GT, LE, LT, NE, STARTS
 from engine.program.semantics import fold
 from engine.sheet.names import AXIS_FLAG, AXIS_TOTALLED, F_DATE, PEER, ROW_TOTAL, V_NUMBER
@@ -229,6 +229,9 @@ class TableIndex:
             found = (text.startswith(want) if condition.anchor == STARTS else text.endswith(want) if condition.anchor == ENDS else want in text for text in self.value_lines[position])
             lines = [line for text, hit in zip(self.value_lines[position], found) if hit for line in self.value_lines[position][text]]
             return bitmask(lines, size)
+        if isinstance(condition, OneOf) and condition.column.position >= 0:
+            lines = self.value_lines[condition.column.position]
+            return bitmask([line for value in condition.values for line in lines.get(fold(value), [])], size)
         if isinstance(condition, Compare):
             return _as_mask(COMPARE_ARRAYS[condition.op](self.number_arrays[condition.column.position], condition.number) & ~np.isnan(self.number_arrays[condition.column.position]))
         if isinstance(condition, IsNumber):

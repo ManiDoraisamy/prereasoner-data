@@ -9,7 +9,7 @@ from dataclasses import replace
 
 from engine.deterministic import AnalysisPlan, lower_calculation, lower_select_query
 from engine.program.catalog import Catalog
-from engine.program.language import (Across, Agg, Calc, Check, Col, Compare, CompareColumns, Condition, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, Measure, NotEquals, OnLine, Program, Rank, RowArithmetic, SECTION, Show, Size, addresses_printed)
+from engine.program.language import (Across, Agg, Calc, Check, Col, OneOf, Compare, CompareColumns, Condition, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, Measure, NotEquals, OnLine, Program, Rank, RowArithmetic, SECTION, Show, Size, addresses_printed)
 from engine.program.names import ANY, ANYWHERE, AVG, COUNT, COUNT_DISTINCT, ENDS, ENTITY_GROUP, ENTITY_LINE, EQ, EVERY, GE, GT, HIGHEST, LE, LT, MAX, MIN, MINUS, NE, NO, OVER, PLUS, STARTS, SUM
 from engine.program.semantics import fold as fold_text
 from engine.program.store import (LABEL, LABEL_LENGTH, LINE, ONE_ROW, PEER_FOLD, PEER_NAME, PEER_NUMBER, ROLE, SECTION_FOLD, SECTION_PATH, SECTION_TEXT, day_column, fold_column, number_column, peers_table, text_column)
@@ -52,6 +52,8 @@ def _condition(condition: Condition):
         if isinstance(condition.value, (int, float)):
             return Comparison(_number(condition.column), "=", Literal(float(condition.value)))
         return Comparison(_fold(condition.column), "=", Literal(fold_text(condition.value), SQLType.TEXT))
+    if isinstance(condition, OneOf):
+        return BooleanExpr("OR", tuple(Comparison(_fold(condition.column), "=", Literal(fold_text(value), SQLType.TEXT)) for value in condition.values))
     if isinstance(condition, NotEquals):
         return Comparison(_fold(condition.column), "!=", Literal(fold_text(condition.value), SQLType.TEXT))
     if isinstance(condition, Contains):
