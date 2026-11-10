@@ -797,6 +797,19 @@ def test_answer_type_rule():
     assert predict_answer_type("Which counterparty owes the most?") == A_COMPANY and predict_answer_type("What are the delivery points?") == A_LIST
 
 
+def test_a_value_of_a_few_valued_number_column_is_named():
+    """"How many cars are from the year 2020?" (DataBench Second): a year column of numbers held the condition (a number
+    column of at most 30 distinct numbers states each as a value) but no question word named it, so it was never read.
+    Such a column's numbers are words a question names, as a text column's cells are."""
+    catalog, table, tables = _setup([["Make", "Year", "Price"], ["Seat", 2020.0, 100.0], ["Kia", 2019.0, 210.0], ["Audi", 2020.0, 330.0], ["VW", 2018.0, 150.0]])
+    reading = read_question("How many cars are from the year 2020?", catalog, Decoder(catalog))
+    assert reading.scores.get(coordinate("value", Col(table.id, 1).name, "2020")) == 1.0
+    programs, _, _, _ = Decoder(catalog).enumerate(reading, k=50)
+    gold = Agg(COUNT, None, table.id, (Equals(Col(table.id, 1), 2020.0),))
+    assert gold in programs[:10], programs[:5]
+    assert _one(_answer(gold, tables)) == 2.0
+
+
 def test_times_read_as_numbers_in_the_sheet_and_the_question():
     """A race's times ("35:00", "2:05:31"; WikiTableQuestions: 16 of 346 dev tables hold them) were text, so nothing
     could rank or compare them. A column of times reads its numbers (h:mm:ss as seconds, a:b as a * 60 + b), each cell
@@ -1270,7 +1283,7 @@ TESTS = [
     test_partial_value_match, test_case_and_spacing_do_not_count, test_periods, test_blanks, test_ties_keep_every_tied_line, test_units, test_mixed_columns, test_repeated_rows, test_sections_nested_bands_and_the_section_shown, test_python_masks_agree_with_the_sql,
     test_calc_shapes, test_rank_across_peer_columns, test_a_rank_keeps_as_many_as_the_question_states, test_the_decoder_proposes_how_many_a_question_states, test_a_check_says_yes_or_no, test_the_decoder_checks_only_when_the_reading_names_a_check, test_a_choice_among_named_values, test_a_check_asks_what_the_top_one_is, test_a_check_asks_whether_the_top_one_is_the_same_or_compares_two_aggregates, test_a_read_takes_the_line_after_or_before_the_kept_one, test_new_ast_nodes_render_and_validate, test_plan_schema_holds_only_what_a_query_reads, test_perfect_readings_give_the_gold_first, test_decoder_is_deterministic_and_order_free, test_the_list_does_not_depend_on_hash_order,
     test_scores_come_in_as_data_and_nothing_else_moves_the_list, test_contributions_are_named_and_sum_to_the_score, test_intervention_a_named_coordinate_moves_the_score_by_its_weight, test_policy_prunes_values_only_where_it_says, test_conditions_stay_on_distinct_columns,
-    test_answer_type_rule, test_times_read_as_numbers_in_the_sheet_and_the_question, test_an_ordinal_is_not_a_stated_number, test_words_alone_read_a_question, test_verifier_shape_and_type_evidence, test_printed_total_ties_only_under_its_exact_conditions, test_verifier_runs_the_top_programs_and_never_raises, test_read_as_in_the_sheets_own_words,
+    test_answer_type_rule, test_a_value_of_a_few_valued_number_column_is_named, test_times_read_as_numbers_in_the_sheet_and_the_question, test_an_ordinal_is_not_a_stated_number, test_words_alone_read_a_question, test_verifier_shape_and_type_evidence, test_printed_total_ties_only_under_its_exact_conditions, test_verifier_runs_the_top_programs_and_never_raises, test_read_as_in_the_sheets_own_words,
     test_cells_are_the_exact_addresses_used, test_formula_a_user_can_check, test_explain_carries_the_named_contributions,
 ]
 

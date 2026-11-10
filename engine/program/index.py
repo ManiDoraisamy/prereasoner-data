@@ -121,6 +121,18 @@ class TableIndex:
         return tuple(position for position, numbers in enumerate(self.table.numbers) if any(number is not None for number in numbers))
 
     @cached_property
+    def few_numbers(self) -> dict[int, list[float]]:
+        """Number columns holding at most NUMBER_VALUES distinct numbers (a year, a rating, a count of acts), each with
+        its numbers in order: their values are conditions ("cars from 2020") and words a question names."""
+        out = {}
+        for position, column in enumerate(self.table.columns):
+            if column.kind == V_NUMBER:
+                numbers = sorted({number for number in self.table.numbers[position] if number is not None})
+                if len(numbers) <= NUMBER_VALUES:
+                    out[position] = numbers
+        return out
+
+    @cached_property
     def quantity_columns(self) -> frozenset[int]:
         """Number columns the sheet writes with a unit ("12 months"): at least 4 in 5 of their texts are not plain numbers.
         Their texts are values a question names too ("products that give 12 months")."""
@@ -172,9 +184,7 @@ class TableIndex:
             col = Col(table.id, position)
             lines = self.value_lines[position]
             if column.kind == V_NUMBER:
-                numbers = sorted({number for number in table.numbers[position] if number is not None})
-                if len(numbers) <= NUMBER_VALUES:
-                    out.extend(self._atom(Equals(col, number), position) for number in numbers)
+                out.extend(self._atom(Equals(col, number), position) for number in self.few_numbers.get(position, ()))
                 continue
             if table.is_date_column(position) or column.format_kind == F_DATE:
                 continue
@@ -328,7 +338,7 @@ class TableIndex:
         """A word -> the (column, fold) of the text values holding it."""
         out: dict[str, list[tuple[int, str]]] = {}
         for position, lines in self.value_lines.items():
-            if self.table.columns[position].kind == V_NUMBER and position not in self.quantity_columns:
+            if self.table.columns[position].kind == V_NUMBER and position not in self.quantity_columns and position not in self.few_numbers:
                 continue
             for folded in lines:
                 for word in set(words_of(folded)):
