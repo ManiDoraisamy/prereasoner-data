@@ -18,7 +18,7 @@ from engine.program.catalog import Catalog, CatalogTable
 from engine.program.index import Atom, TableIndex, index_of
 from engine.program.semantics import fold
 from engine.program.language import (Across, Agg, Calc, Check, Col, OneOf, Compare, CompareColumns, Condition, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, NotEquals, OnLine, Program, Rank, RowArithmetic, SECTION, Show, Size, answer_type_of, is_sound, measure_coordinates, peers_name, period_from_name, shown_together)
-from engine.program.names import (A_COUNT, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, ANY, CHECK, CHECK_OPS, EQ, EVERY, GT, IS, LT, NO, SLOT_QUANTIFIER, VERSUS, AGG, ANCHORS, ANYWHERE, AVG, BY_SIZE, CALC, CALC_OPS, COMPARISONS, COUNT, COUNT_DISTINCT, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, MAX, MIN, MINUS, NE, NUMBER_AGGREGATES, OVER, PLUS, RANK, ROW_OPS, SHOW, SLOT_AGGREGATE,
+from engine.program.names import (A_COUNT, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, ANY, CHECK, CHECK_OPS, EQ, EVERY, GT, IS, LT, NEIGHBOURS, NO, SLOT_NEIGHBOUR, SLOT_QUANTIFIER, VERSUS, AGG, ANCHORS, ANYWHERE, AVG, BY_SIZE, CALC, CALC_OPS, COMPARISONS, COUNT, COUNT_DISTINCT, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, MAX, MIN, MINUS, NE, NUMBER_AGGREGATES, OVER, PLUS, RANK, ROW_OPS, SHOW, SLOT_AGGREGATE,
                                   SLOT_ANSWER_TYPE, SLOT_BLANK, SLOT_CALC_LEFT, SLOT_CALC_OP, SLOT_COMPARISON, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_DIRECTION, SLOT_ENTITY, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE, SLOT_LISTING, SLOT_MEASURE, SLOT_NUMBER, SLOT_PEERS, SLOT_PERIOD, SLOT_ROW_OP, SLOT_SECTION,
                                   SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, STATED_BY_SIZE, SUM, TIMES, coordinate, slot_of)
 from engine.program.scoring import DEFAULT_WEIGHTS, Reading, ScoredProgram, Weights, score_program
@@ -686,6 +686,11 @@ class _Search:
         form = s(coordinate(SLOT_FORM, SHOW)) + table_score
         shown = self.shown_options(table, all_positions + ([SECTION] if any(line.section for line in table.lines) else []))
         frames += self.condition_frames(form, (shown,), lambda options, where: Show(table.id, options[0], where), table, index, atoms, min_conditions=1, any_line=True)
+        # the line after or before the one the conditions keep ("who finished after Bo?"): spent only when a reading
+        # names a neighbour, as CLEF's can and the small reader's cannot
+        for step in NEIGHBOURS:
+            if coordinate(SLOT_NEIGHBOUR, step) in self.reading.scores:
+                frames += self.condition_frames(form + s(coordinate(SLOT_NEIGHBOUR, step)), (shown,), lambda options, where, st=step: Show(table.id, options[0], where, step=st), table, index, atoms, min_conditions=1, max_policy=2, any_line=True)
         # show a list
         listed = form + s(coordinate(SLOT_LISTING, "yes")) + self.type_score(A_LIST)
         columns = self.column_options(table, all_positions, SLOT_SHOWN)

@@ -12,7 +12,7 @@ from engine.program.execute import run, run_dual
 from engine.program.index import TableIndex
 from engine.program.language import (Across, Agg, Calc, Check, Col, OneOf, Compare, CompareColumns, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, NotEquals, OnLine, PeriodSpan, Rank, RowArithmetic, SECTION, Show, Size, answer_type_of, coordinates, tables_of, is_sound, period_from_name)
 from engine.program.lowering import plan_schema, to_query
-from engine.program.names import (A_COMPANY, A_COUNT, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, ANY, CHECK, EQ, EVERY, IS, LT, NE, NO, VERSUS, ANSWER_TYPES, AVG, CALC, COMPARISONS, COUNT, COUNT_DISTINCT, ENDS, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, EV_ADDS_TWICE, EV_BARE_ZERO, EV_EMPTY, EV_FAILED, EV_FILTER_DID_NOTHING, EV_FRACTION_FOR_COUNT, EV_MANY_ROWS, EV_PRINTED_TIE, EV_RAN,
+from engine.program.names import (A_COMPANY, A_COUNT, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, AFTER, ANY, BEFORE, CHECK, EQ, EVERY, IS, LT, NE, NO, VERSUS, ANSWER_TYPES, AVG, CALC, COMPARISONS, COUNT, COUNT_DISTINCT, ENDS, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, EV_ADDS_TWICE, EV_BARE_ZERO, EV_EMPTY, EV_FAILED, EV_FILTER_DID_NOTHING, EV_FRACTION_FOR_COUNT, EV_MANY_ROWS, EV_PRINTED_TIE, EV_RAN,
                                   EV_REPEATED_LINES, EV_ROW_COUNT_FOR_AMOUNT, EV_SHAPE_AGREES, EV_TOO_LARGE_FOR_SHARE, EV_TYPE_AGREES, EV_WRONG_KIND, EVIDENCE, FORMS, GE, GT, HIGHEST, LOWEST, MAX, MIN, MINUS, OVER, PERIOD_NAMED, PERIOD_REST_OF, PERIOD_SO_FAR, PLUS, SEMANTICS, SIGN_LOSS, SIGN_MAGNITUDE, SIGN_NET,
                                   SIGN_SIZE, SLOT_AGGREGATE, SLOT_FORM, SLOTS, STARTS, SUM, TIMES, coarse_type, coordinate, slot_of)
 from engine.program.output import cells_used, compress, explain, formula, read_as
@@ -582,6 +582,48 @@ def test_a_check_asks_what_the_top_one_is():
         assert decoded.programs and decoded.programs[0].program == gold, (gold, decoded.programs[:3])
 
 
+def test_a_read_takes_the_line_after_or_before_the_kept_one():
+    """"Who comes after c?", "what is the age of the one before e?" (WikiTableQuestions dev: 145 of 2,831 questions read
+    a neighbouring line and none could run): the data line nearest the first line the conditions keep, below or above it,
+    the same in the typed SQL and the dual emitter; nothing past the last line or when no line is kept; a printed line
+    between is skipped. It may show the column its condition names, names the neighbour, reads as a sentence, cites the
+    neighbour's cell, and the decoder proposes it only when a reading names a neighbour."""
+    catalog, table, tables = _setup(AGES)
+    name, region, age = (Col(table.id, at) for at in range(3))
+    after_c = Show(table.id, (name,), (Equals(name, "c"),), step=AFTER)
+    cases = [(after_c, (("d",),)), (Show(table.id, (age,), (Equals(name, "e"),), step=BEFORE), ((20.0,),)),
+             (Show(table.id, (name,), (Equals(region, "y"),), step=AFTER), (("c",),)),       # the first kept line is b's
+             (Show(table.id, (name,), (Equals(name, "f"),), step=AFTER), ()),                # nothing after the last line
+             (Show(table.id, (name,), (Equals(name, "a"),), step=BEFORE), ()),
+             (Show(table.id, (name,), (Equals(region, "w"),), step=AFTER), ())]              # no line kept
+    for program, want in cases:
+        got = _answer(program, tables)
+        text = lambda rows: tuple(tuple(str(int(c)) if isinstance(c, float) and c.is_integer() else str(c) for c in row) for row in rows)  # noqa: E731
+        assert text(got) == text(want), (program, got)
+    assert is_sound(after_c) and not is_sound(Show(table.id, (name,), (Equals(name, "c"),)))
+    assert coordinate("neighbour", AFTER) in coordinates(after_c, catalog.column_kind)
+    assert read_as(after_c, catalog).startswith("Name") and "the line after the line where" in read_as(after_c, catalog)
+    assert cells_used(after_c, tables, ()) == cells_used(Show(table.id, (name,), (Equals(name, "d"),)), tables, ())
+    for bad in (lambda: Show(table.id, (name,), (), step=AFTER), lambda: Show(table.id, (name,), (Equals(name, "c"),), listing=True, step=AFTER),
+                lambda: Show(table.id, (name,), (Equals(name, "c"),), step="next")):
+        try:
+            bad()
+        except ValueError:
+            continue
+        raise AssertionError("a neighbouring read accepted what it cannot say")
+    # A printed line between two data lines is not a neighbour.
+    printed = [["Name", "Book", "Volume"], ["a", "East", 10.0], ["b", "East", 30.0], ["Total", "", 40.0], ["c", "West", 5.0]]
+    _, books, stores = _setup(printed)
+    assert [line.role for line in books.lines] == ["record", "record", "subtotal", "record"]
+    assert _answer(Show(books.id, (Col(books.id, 0),), (Equals(Col(books.id, 0), "b"),), step=AFTER), stores)[0][0] == "c"
+    # The decoder: first from the neighbour's own coordinates; never without a reading that names one.
+    reading = Reading({n: 1.0 for n in coordinates(after_c, catalog.column_kind)})
+    decoded = Decoder(catalog).decode(reading, k=50)
+    assert decoded.programs and decoded.programs[0].program == after_c, decoded.programs[:3]
+    plain = Reading({n: 1.0 for n in coordinates(Show(table.id, (age,), (Equals(name, "c"),)), catalog.column_kind)})
+    assert not any(isinstance(p.program, Show) and p.program.step for p in Decoder(catalog).decode(plain, k=200).programs)
+
+
 def test_decoder_is_deterministic_and_order_free():
     """The same scores give the same list, whatever order they came in; ties break by the frames' order, fewer conditions first."""
     catalog = _catalog(CALC_ROWS)
@@ -1138,7 +1180,7 @@ TESTS = [
     test_several_shown_columns_cost_a_named_coordinate, test_a_sign_word_compares_with_zero, test_a_stated_number_a_column_holds_reads_as_its_value, test_a_misspelled_word_reads_as_the_sheets_word, test_a_word_only_one_column_holds_says_which, test_several_columns_shown_type_the_same_however_they_stand, test_across_adds_peer_columns_of_a_line, test_the_decoder_reaches_across_when_a_word_asks, test_a_text_other_than, test_the_decoder_reads_other_than_from_the_words, test_answer_types_place_money_quantity, test_decoder_ties_do_not_follow_sheet_order, test_a_family_adding_twice_says_so, test_axes_are_read_by_their_kind, test_a_question_reads_the_tables_its_links_reach, test_verifier_stops_at_its_budget_of_lines,
     test_every_name_is_from_a_closed_list, test_forms_refuse_what_they_cannot_say, test_signs, test_printed_lines_are_read_by_label_and_never_added, test_shortest_label_first_and_unlabelled_printed_lines, test_a_column_filled_only_on_printed_lines_reads_them,
     test_partial_value_match, test_case_and_spacing_do_not_count, test_periods, test_blanks, test_ties_keep_every_tied_line, test_units, test_mixed_columns, test_repeated_rows, test_sections_nested_bands_and_the_section_shown, test_python_masks_agree_with_the_sql,
-    test_calc_shapes, test_rank_across_peer_columns, test_a_rank_keeps_as_many_as_the_question_states, test_the_decoder_proposes_how_many_a_question_states, test_a_check_says_yes_or_no, test_the_decoder_checks_only_when_the_reading_names_a_check, test_a_choice_among_named_values, test_a_check_asks_what_the_top_one_is, test_new_ast_nodes_render_and_validate, test_plan_schema_holds_only_what_a_query_reads, test_perfect_readings_give_the_gold_first, test_decoder_is_deterministic_and_order_free, test_the_list_does_not_depend_on_hash_order,
+    test_calc_shapes, test_rank_across_peer_columns, test_a_rank_keeps_as_many_as_the_question_states, test_the_decoder_proposes_how_many_a_question_states, test_a_check_says_yes_or_no, test_the_decoder_checks_only_when_the_reading_names_a_check, test_a_choice_among_named_values, test_a_check_asks_what_the_top_one_is, test_a_read_takes_the_line_after_or_before_the_kept_one, test_new_ast_nodes_render_and_validate, test_plan_schema_holds_only_what_a_query_reads, test_perfect_readings_give_the_gold_first, test_decoder_is_deterministic_and_order_free, test_the_list_does_not_depend_on_hash_order,
     test_scores_come_in_as_data_and_nothing_else_moves_the_list, test_contributions_are_named_and_sum_to_the_score, test_intervention_a_named_coordinate_moves_the_score_by_its_weight, test_policy_prunes_values_only_where_it_says, test_conditions_stay_on_distinct_columns,
     test_answer_type_rule, test_words_alone_read_a_question, test_verifier_shape_and_type_evidence, test_printed_total_ties_only_under_its_exact_conditions, test_verifier_runs_the_top_programs_and_never_raises, test_read_as_in_the_sheets_own_words,
     test_cells_are_the_exact_addresses_used, test_formula_a_user_can_check, test_explain_carries_the_named_contributions,

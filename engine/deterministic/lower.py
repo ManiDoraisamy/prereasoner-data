@@ -6,9 +6,10 @@ import keyword
 import re
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
-from dataclasses import replace
+from dataclasses import fields, is_dataclass, replace
 from datetime import date
 from decimal import Decimal
+from types import MappingProxyType
 
 from engine.deterministic.plan import (
     AggregateValue,
@@ -56,6 +57,23 @@ from engine.sql_ast import (
 from engine.sql_ast import SQLType as ASTType
 from engine.sql_ast import share_aggregate
 from engine.sql_schema import is_surrogate_key
+
+
+_UNBOUND: Mapping = MappingProxyType({})
+
+
+def _outer_nodes(node, kind):
+    """Every node of a kind in an AST node, in tree order, not looking inside scalar subqueries."""
+    if isinstance(node, kind):
+        yield node
+    if isinstance(node, ScalarSubquery):
+        return
+    if is_dataclass(node) and not isinstance(node, type):
+        for field in fields(node):
+            yield from _outer_nodes(getattr(node, field.name), kind)
+    elif isinstance(node, (tuple, list)):
+        for item in node:
+            yield from _outer_nodes(item, kind)
 
 
 class UnsupportedDeterministicPlan(ValueError):
@@ -226,12 +244,44 @@ def lower_select_query(
     )
 
     views = [CombinedView(f"{slug}_combined", table_order)]
+    # A row filter may compare with a scalar subquery ("the line after the first line a condition keeps": a line
+    # number above the MIN of the kept lines' numbers). Each subquery lowers as its own branch, as a calculation's do;
+    # the merge stages take value relations, so the columns the query reads are projected into named values first,
+    # crossed with each branch's one value, and every later stage reads those names (`bound`).
+    anchors = tuple(dict.fromkeys(_outer_nodes(query.where, ScalarSubquery)))
+    bound: dict[object, str] = {}
+    if anchors:
+        if any(isinstance(item.expression, Abs) or share_aggregate(item.expression, query) is not None
+               for item in query.select):
+            raise UnsupportedDeterministicPlan("a share or a size beside a filter on a scalar subquery")
+        refs = tuple(dict.fromkeys(_outer_nodes(query, ColumnRef)))
+        names = _unique_identifiers(tuple(f"{ref.table}__{ref.name}" for ref in refs))
+        bound.update(zip(refs, names, strict=True))
+        views.append(ProjectedView(f"{slug}_rows", views[-1].name, tuple(
+            SelectedValue(name, ColumnValue(ref.table, ref.name)) for ref, name in zip(refs, names, strict=True))))
+        rows = views[-1].name
+        for at, anchor in enumerate(anchors, 1):
+            if not isinstance(anchor.query, SelectQuery):
+                raise UnsupportedDeterministicPlan("a filter compares with a scalar SELECT")
+            branch = lower_select_query(f"{slug}_anchor_{at}", anchor.query, schema, foreign_keys)
+            outputs = branch.view_columns()[str(branch.output)]
+            if len(outputs) != 1:
+                raise UnsupportedDeterministicPlan("a scalar subquery has one output")
+            for table in branch.tables:     # a table the query reads keeps its own spec
+                if table.name not in {spec.name for spec in table_specs}:
+                    table_specs += (table,)
+            views.extend(branch.views)
+            views.append(ProjectedView(f"{slug}_anchor_{at}_value", str(branch.output),
+                                       (SelectedValue(f"anchor_{at}", ViewValue(outputs[0])),)))
+            views.append(CrossView(f"{slug}_anchored_{at}", rows, views[-1].name))
+            rows = views[-1].name
+            bound[anchor] = f"anchor_{at}"
     if query.where is not None:
         views.append(
             FilteredView(
                 f"{slug}_filtered",
                 views[-1].name,
-                _predicate(query.where),
+                _predicate(query.where, bound),
             )
         )
 
@@ -283,11 +333,11 @@ def lower_select_query(
             elif isinstance(expression.operand, (BinaryExpr, Abs)):
                 calculated_name = f"aggregate_operand_{index + 1}"
                 calculations.append(
-                    SelectedValue(calculated_name, _value(expression.operand))
+                    SelectedValue(calculated_name, _value(expression.operand, bound))
                 )
                 operand = ViewValue(calculated_name)
             else:
-                operand = _value(expression.operand)
+                operand = _value(expression.operand, bound)
             aggregate_values.append(
                 AggregateValue(output_name, expression.function, operand, distinct=expression.distinct)
             )
@@ -309,7 +359,7 @@ def lower_select_query(
                 "projected group columns must match GROUP BY and precede aggregates"
             )
         grouped = [
-            SelectedValue(name, _value(item.expression))
+            SelectedValue(name, _value(item.expression, bound))
             for item, name in zip(query.select, output_names, strict=True)
             if isinstance(item.expression, (ColumnRef, DatePart))
         ]
@@ -381,7 +431,7 @@ def lower_select_query(
         if any(isinstance(item.expression, Star) for item in query.select):
             raise UnsupportedDeterministicPlan("SELECT * projection is not supported")
         values = tuple(
-            SelectedValue(name, _value(item.expression))
+            SelectedValue(name, _value(item.expression, bound))
             for item, name in zip(
                 query.select, _select_names(query.select), strict=True
             )
@@ -582,10 +632,10 @@ def _relationship_edges(query, foreign_keys, included):
     return tuple(edges)
 
 
-def _predicate(value) -> PredicateValue:
+def _predicate(value, bound: Mapping = _UNBOUND) -> PredicateValue:
     if isinstance(value, BooleanExpr):
         return JunctionValue(
-            value.operator, tuple(_predicate(term) for term in value.terms)
+            value.operator, tuple(_predicate(term, bound) for term in value.terms)
         )
     if not isinstance(value, Comparison):
         raise UnsupportedDeterministicPlan(
@@ -596,16 +646,16 @@ def _predicate(value) -> PredicateValue:
             f"comparison {value.operator!r} is not supported"
         )
     if value.operator in {"IS", "IS NOT", "LIKE"}:
-        return PredicateValue(_value(value.left), value.operator, _value(value.right))
-    return PredicateValue(_compared(value.left, value.right), value.operator,
-                          _compared(value.right, value.left))
+        return PredicateValue(_value(value.left, bound), value.operator, _value(value.right, bound))
+    return PredicateValue(_compared(value.left, value.right, bound), value.operator,
+                          _compared(value.right, value.left, bound))
 
 
 # A SQL numeric literal written as text: what SQLite's column affinity reads as a number.
 _SQL_NUMBER = re.compile(r"\s*[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?\s*")
 
 
-def _compared(value, other) -> Value:
+def _compared(value, other, bound: Mapping = _UNBOUND) -> Value:
     """``value`` as a comparison with ``other`` reads it. A number written as text and compared with a numeric
     column is that number, as SQLite's column affinity reads it, so the Python program finds the rows the SQL
     program finds: "the names of goods that receive a rating of 10." compared rating with '10.' and the Python
@@ -613,10 +663,14 @@ def _compared(value, other) -> Value:
     if (isinstance(value, Literal) and isinstance(value.value, str) and isinstance(other, ColumnRef)
             and other.type.numeric and _SQL_NUMBER.fullmatch(value.value)):
         return LiteralValue(Decimal(value.value.strip()))
-    return _value(value)
+    return _value(value, bound)
 
 
-def _value(value) -> Value:
+def _value(value, bound: Mapping = _UNBOUND) -> Value:
+    """An AST value as a plan value. `bound` names the values a stage reads in place of columns and scalar subqueries
+    (lower_select_query's filter on a scalar subquery); without it a column is its table's column."""
+    if isinstance(value, (ColumnRef, ScalarSubquery)) and value in bound:
+        return ViewValue(bound[value])
     if isinstance(value, ColumnRef):
         return ColumnValue(value.table, value.name)
     if isinstance(value, Literal):
@@ -632,17 +686,17 @@ def _value(value) -> Value:
             literal = Decimal(str(literal))
         return LiteralValue(literal)
     if isinstance(value, BinaryExpr):
-        return BinaryValue(_value(value.left), value.operator, _value(value.right))
+        return BinaryValue(_value(value.left, bound), value.operator, _value(value.right, bound))
     if isinstance(value, DatePart):
-        return FunctionValue("YEAR_MONTH" if value.part == "year_month" else "MONTH", _value(value.operand))
+        return FunctionValue("YEAR_MONTH" if value.part == "year_month" else "MONTH", _value(value.operand, bound))
     if isinstance(value, Lower):
-        return FunctionValue("LOWER", _value(value.operand))
+        return FunctionValue("LOWER", _value(value.operand, bound))
     if isinstance(value, Abs):
-        return FunctionValue("ABS", _value(value.operand))
+        return FunctionValue("ABS", _value(value.operand, bound))
     if isinstance(value, BlankAsZero):
-        return FunctionValue("BLANK_ZERO", _value(value.operand))
+        return FunctionValue("BLANK_ZERO", _value(value.operand, bound))
     if isinstance(value, DateSpan):
-        return SpanValue(_value(value.start), None if value.end is None else _value(value.end), value.unit,
+        return SpanValue(_value(value.start, bound), None if value.end is None else _value(value.end, bound), value.unit,
                          value.until)
     raise UnsupportedDeterministicPlan(
         f"expression {type(value).__name__} is not supported"

@@ -10,7 +10,7 @@ from dataclasses import replace
 from engine.deterministic import AnalysisPlan, lower_calculation, lower_select_query
 from engine.program.catalog import Catalog
 from engine.program.language import (Across, Agg, Calc, Check, Col, OneOf, Compare, CompareColumns, Condition, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, Measure, NotEquals, OnLine, Program, Rank, RowArithmetic, SECTION, Show, Size, addresses_printed)
-from engine.program.names import ANY, IS, ANYWHERE, AVG, COUNT, COUNT_DISTINCT, ENDS, ENTITY_GROUP, ENTITY_LINE, EQ, EVERY, GE, GT, HIGHEST, LE, LT, MAX, MIN, MINUS, NE, NO, OVER, PLUS, STARTS, SUM
+from engine.program.names import AFTER, ANY, IS, ANYWHERE, AVG, COUNT, COUNT_DISTINCT, ENDS, ENTITY_GROUP, ENTITY_LINE, EQ, EVERY, GE, GT, HIGHEST, LE, LT, MAX, MIN, MINUS, NE, NO, OVER, PLUS, STARTS, SUM
 from engine.program.semantics import fold as fold_text
 from engine.program.store import (LABEL, LABEL_LENGTH, LINE, ONE_ROW, PEER_FOLD, PEER_NAME, PEER_NUMBER, ROLE, SECTION_FOLD, SECTION_PATH, SECTION_TEXT, day_column, fold_column, number_column, peers_table, text_column)
 from engine.sheet.names import RECORD
@@ -145,7 +145,15 @@ def _show_query(program: Show, *, scalar: bool = False) -> SelectQuery:
         return SelectQuery((SelectItem(key, VALUE),), program.table, where=where, group_by=(key,), order_by=(OrderTerm(Aggregate("MIN", ColumnRef(program.table, LINE, SQLType.INTEGER))),))
     columns = [_number(program.shown[0])] if scalar else [_shown(column) for column in program.shown]
     select = tuple(SelectItem(column, f"shown_{at}") for at, column in enumerate(columns))
-    order = [OrderTerm(ColumnRef(program.table, LINE, SQLType.INTEGER))]
+    line = ColumnRef(program.table, LINE, SQLType.INTEGER)
+    if program.step is not None:
+        # The data line nearest the first line the conditions keep, below it (after) or above it (before).
+        after = program.step == AFTER
+        anchor = SelectQuery((SelectItem(Aggregate("MIN", line), VALUE),), program.table, where=_where(*map(_condition, program.where)))
+        beside = Comparison(line, ">" if after else "<", ScalarSubquery(anchor))
+        return SelectQuery(select, program.table, where=_where(_data_lines(program.table), beside),
+                           order_by=(OrderTerm(line, "ASC" if after else "DESC"),), limit=1)
+    order = [OrderTerm(line)]
     if addresses_printed(program.where):
         order.insert(0, OrderTerm(ColumnRef(program.table, LABEL_LENGTH, SQLType.INTEGER)))
     return SelectQuery(select, program.table, where=_where(*map(_condition, program.where)), order_by=tuple(order), limit=1)

@@ -1505,6 +1505,43 @@ def test_a_contained_text_runs_in_both_programs():
     assert labels["filtered"] == "where contestant_name LIKE '%al%'", labels
 
 
+def test_a_filter_on_a_scalar_subquery_reads_a_neighbouring_line_in_both_programs():
+    # "who finished after Bo?" (WikiTableQuestions dev: 145 of 2,831 questions read the line after or before the one
+    # a condition keeps, and none could run): the line number above the first kept line's, nearest first. The
+    # subquery lowers as its own branch and the rows cross it, so both programs keep the same line.
+    from engine.sql_ast import BooleanExpr, ScalarSubquery
+
+    line = ColumnRef("results", "line", SQLType.INTEGER)
+    name = ColumnRef("results", "name", SQLType.TEXT)
+    schema = [{"table": "results", "name": "line", "affinity": "INTEGER", "values": [1, 2, 3, 4]},
+              {"table": "results", "name": "name", "affinity": "TEXT", "values": ["Ada", "Bo", "Cy", "Di"]}]
+    statements = [
+        "CREATE TABLE conversation.results (line INTEGER, name TEXT)",
+        "INSERT INTO conversation.results VALUES (1, 'Ada'), (2, 'Bo'), (3, 'Cy'), (4, 'Di')",
+    ]
+
+    def neighbour(who, after):
+        anchor = SelectQuery((SelectItem(Aggregate("MIN" if after else "MAX", line), "value"),), "results",
+                             where=Comparison(name, "=", Literal(who)))
+        return SelectQuery((SelectItem(name, "value"),), "results",
+                           where=BooleanExpr("AND", (Comparison(line, ">" if after else "<", ScalarSubquery(anchor)),
+                                                     Comparison(name, "<>", Literal("")))),
+                           order_by=(OrderTerm(line, "ASC" if after else "DESC"),), limit=1)
+
+    for who, after, expected in (("Bo", True, [("Cy",)]), ("Bo", False, [("Ada",)]),
+                                 ("Di", True, []),        # no line after the last
+                                 ("Zed", True, [])):      # the condition keeps no line: the subquery is NULL
+        result = _execute_fixture(lower_select_query("neighbour", neighbour(who, after), schema, ()), statements,
+                                  estimated_rows=4)
+        assert result.mode.value == "verify", result.mode   # both programs ran and agreed
+        assert [tuple(row.values()) for row in result.rows] == expected, (who, after, result.rows)
+    # Contrast: a filter with no subquery lowers as before, with no projected rows and no cross.
+    plain = lower_select_query("plain", replace(neighbour("Bo", True), where=Comparison(name, "=", Literal("Bo"))),
+                               schema, ())
+    assert not any(isinstance(view, CrossView) for view in plain.views)
+    assert [type(view).__name__ for view in plain.views][:2] == ["CombinedView", "FilteredView"]
+
+
 def test_a_share_of_the_whole_runs_in_both_programs():
     # "what share of the total amount comes from Paris?" (2026-10-02): the kept rows' total, crossed with
     # the total of every row and divided, in both programs. The fractions are exact in binary, as SQLite's

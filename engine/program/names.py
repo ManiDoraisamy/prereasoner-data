@@ -61,6 +61,12 @@ VERSUS = "versus"      # one number against a stated number or another program's
 IS = "is"              # the top line's shown value, or the top group's key, against a stated text or number
 QUANTIFIERS = (ANY, NO, EVERY, VERSUS, IS)
 
+# Which line a read takes beside the one its conditions keep ("who finished after Bo?"): a slot the small reader has
+# no head for; CLEF's reading names it.
+AFTER = "after"        # the first data line below the first kept line
+BEFORE = "before"      # the last data line above it
+NEIGHBOURS = (AFTER, BEFORE)
+
 # Arithmetic on one line, and between two programs.
 PLUS = "+"
 MINUS = "-"
@@ -147,8 +153,9 @@ SLOT_PEERS = "peers"
 SLOT_LISTING = "listing"
 SLOT_CONDITIONS = "conditions"
 SLOT_QUANTIFIER = "quantifier"
+SLOT_NEIGHBOUR = "neighbour"
 SLOTS = (SLOT_FORM, SLOT_AGGREGATE, SLOT_DIRECTION, SLOT_SIZE, SLOT_ENTITY, SLOT_COMPARISON, SLOT_ROW_OP, SLOT_CALC_OP, SLOT_CALC_LEFT, SLOT_ANSWER_TYPE, SLOT_TABLE, SLOT_MEASURE, SLOT_KEY, SLOT_SHOWN, SLOT_FILTER, SLOT_VALUE,
-         SLOT_CONTAINS, SLOT_LINE, SLOT_SECTION, SLOT_PERIOD, SLOT_NUMBER, SLOT_BLANK, SLOT_PEERS, SLOT_LISTING, SLOT_CONDITIONS, SLOT_QUANTIFIER)
+         SLOT_CONTAINS, SLOT_LINE, SLOT_SECTION, SLOT_PERIOD, SLOT_NUMBER, SLOT_BLANK, SLOT_PEERS, SLOT_LISTING, SLOT_CONDITIONS, SLOT_QUANTIFIER, SLOT_NEIGHBOUR)
 
 # The fixed semantics, each named so a read-as line or a test can cite one.
 SEM_SIGNS = "signs"

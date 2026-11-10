@@ -8,7 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TypeAlias
 
-from engine.program.names import (A_COUNT, A_DATE, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, ANY, CHECK, CHECK_OPS, EQ, EVERY, IS, NO, QUANTIFIERS, SLOT_QUANTIFIER, AGG, AGGREGATES, ANCHORS, ANYWHERE, BY_SIZE, CALC, CALC_OPS, COMPARISONS, COUNT, COUNT_DISTINCT, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, HIGHEST,
+from engine.program.names import (A_COUNT, A_DATE, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, AFTER, ANY, BEFORE, CHECK, CHECK_OPS, EQ, EVERY, IS, NO, QUANTIFIERS, SLOT_NEIGHBOUR, SLOT_QUANTIFIER, AGG, AGGREGATES, ANCHORS, ANYWHERE, BY_SIZE, CALC, CALC_OPS, COMPARISONS, COUNT, COUNT_DISTINCT, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, HIGHEST,
                                   MINUS, NE, NUMBER_AGGREGATES, OVER, PLUS, RANK, RANK_ENTITIES, ROW_OPS, SHOW, SLOT_AGGREGATE, SLOT_ANSWER_TYPE, SLOT_BLANK, SLOT_CALC_LEFT, SLOT_CALC_OP, SLOT_COMPARISON, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_DIRECTION, SLOT_ENTITY, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE,
                                   SLOT_LISTING, SLOT_MEASURE, SLOT_NUMBER, SLOT_PEERS, SLOT_PERIOD, SLOT_ROW_OP, SLOT_SECTION, SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, STATED_BY_SIZE, coordinate)
 from engine.program.semantics import fold, number_text
@@ -271,17 +271,23 @@ def condition_coordinates(condition: Condition) -> tuple[str, ...]:
 # ------------------------------------------------------------------------------------------------------------ forms
 @dataclass(frozen=True, slots=True)
 class Show:
-    """The cell at a labelled line and named column (the first such line, printed lines included), or with listing=True the distinct values on the kept data lines."""
+    """The cell at a labelled line and named column (the first such line, printed lines included), or with listing=True the distinct values on the kept data lines.
+
+    step   AFTER reads the first data line below the first line the conditions keep, BEFORE the last data line above
+           it ("who finished after Bo?"); None reads the kept line itself."""
     table: str
     shown: tuple[Col, ...]
     where: tuple[Condition, ...] = ()
     listing: bool = False
+    step: str | None = None
 
     def __post_init__(self):
         if not self.shown:
             raise ValueError("a show names a column")
         if self.listing and len(self.shown) != 1:
             raise ValueError("a list shows one column")
+        if self.step is not None and (self.step not in (AFTER, BEFORE) or self.listing or not self.where):
+            raise ValueError("a neighbouring line is after or before the line a read's conditions keep")
 
 
 @dataclass(frozen=True, slots=True)
@@ -420,8 +426,8 @@ def is_sound(program: Program) -> bool:
     if isinstance(program, Check):
         return all(is_sound(side) for side in _sides(program))
     fixed = {condition.column for condition in program.where if isinstance(condition, Equals)}
-    if isinstance(program, Show):
-        return not fixed.intersection(program.shown)
+    if isinstance(program, Show):           # the line after Bo's may show the column that names Bo
+        return program.step is not None or not fixed.intersection(program.shown)
     measured = set(measure_columns(program.measure)) if program.measure is not None else set()
     if isinstance(program, Agg):
         return not fixed & measured
@@ -493,6 +499,8 @@ def _body_coordinates(program: Program) -> list[str]:
         names.extend(shown_together(program.shown))
         if program.listing:
             names.append(coordinate(SLOT_LISTING, "yes"))
+        if program.step is not None:
+            names.append(coordinate(SLOT_NEIGHBOUR, program.step))
     elif isinstance(program, Agg):
         names.append(coordinate(SLOT_AGGREGATE, program.function))
         if program.measure is not None:

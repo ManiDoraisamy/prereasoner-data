@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from engine.program.catalog import Catalog, CatalogTable, KIND_FAMILY
 from engine.program.index import index_of
 from engine.program.language import (Across, Agg, Calc, Check, Col, OneOf, Compare, CompareColumns, Condition, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, Measure, NotEquals, Program, Rank, RowArithmetic, SECTION, Show, Size, addresses_printed, answer_type_of, measure_columns)
-from engine.program.names import (A_PERCENT, ANY, ANYWHERE, EQ, EVERY, IS, NO, AVG, COUNT, COUNT_DISTINCT, ENDS, ENTITY_GROUP, ENTITY_LINE, GE, GT, HIGHEST, LE, LT, MAX, MIN, MINUS, NE, OVER, PLUS, STARTS, SUM, TIMES)
+from engine.program.names import (A_PERCENT, AFTER, ANY, ANYWHERE, EQ, EVERY, IS, NO, AVG, COUNT, COUNT_DISTINCT, ENDS, ENTITY_GROUP, ENTITY_LINE, GE, GT, HIGHEST, LE, LT, MAX, MIN, MINUS, NE, OVER, PLUS, STARTS, SUM, TIMES)
 from engine.program.scoring import ScoredProgram
 from engine.program.semantics import fold, number_text, share_forms
 from engine.program.store import RequestTables
@@ -130,6 +130,8 @@ def read_as(program: Program, catalog: Catalog) -> str:
         where = _where_words(catalog, program.where)
         if program.listing:
             return f"the different {shown} {place}" + (f" where {where}" if where else "")
+        if program.step is not None:
+            return f"{shown} {place} on the line {program.step} the line where {where}"
         return f"{shown} {place} where {where}"
     if isinstance(program, Agg):
         where = _where_words(catalog, program.where)
@@ -173,9 +175,14 @@ def kept_lines(program: Program, table: CatalogTable, index) -> list[int]:
 
 
 def _read_line(program: Show, table: CatalogTable, kept: list[int]) -> int | None:
-    """The line a read takes: the shortest matching label, then the first in sheet order."""
+    """The line a read takes: the shortest matching label, then the first in sheet order; for a neighbouring line,
+    the data line nearest the first kept line, below it (after) or above it (before), as its query reads."""
     if not kept:
         return None
+    if program.step is not None:
+        data = [i for i in range(len(table.lines)) if table.data_mask >> i & 1]
+        beside = [i for i in data if i > kept[0]] if program.step == AFTER else [i for i in data if i < kept[0]][::-1]
+        return beside[0] if beside else None
     if addresses_printed(program.where):
         return min(kept, key=lambda i: (len(table.label_folds[i]), i))
     return kept[0]
