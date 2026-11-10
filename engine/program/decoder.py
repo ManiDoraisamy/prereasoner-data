@@ -17,8 +17,8 @@ from typing import Callable, Sequence
 from engine.program.catalog import Catalog, CatalogTable
 from engine.program.index import Atom, TableIndex, index_of
 from engine.program.semantics import fold
-from engine.program.language import (Across, Agg, Calc, Check, Col, OneOf, Compare, CompareColumns, Condition, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, NotEquals, OnLine, Program, Rank, RowArithmetic, SECTION, Show, Size, answer_type_of, is_sound, measure_coordinates, peers_name, period_from_name, shown_together)
-from engine.program.names import (A_COUNT, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, ANY, CHECK, CHECK_OPS, COMPARE_OPS, EQ, EVERY, GT, IS, LT, NEIGHBOURS, NO, SAME, SLOT_NEIGHBOUR, SLOT_QUANTIFIER, VERSUS, AGG, ANCHORS, ANYWHERE, AVG, BY_SIZE, CALC, CALC_OPS, COUNT, COUNT_DISTINCT, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, MAX, MIN, MINUS, NE, NUMBER_AGGREGATES, OVER, PLUS, RANK, ROW_OPS, SHOW, SLOT_AGGREGATE,
+from engine.program.language import (Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, Condition, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, NotEquals, OnLine, Program, Rank, RowArithmetic, SECTION, Show, Size, answer_type_of, is_sound, measure_coordinates, peers_name, period_from_name, shown_together)
+from engine.program.names import (A_COUNT, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, ANY, BREAKDOWN, CHECK, CHECK_OPS, COMPARE_OPS, EQ, EVERY, GT, IS, LT, NEIGHBOURS, NO, SAME, SLOT_NEIGHBOUR, SLOT_QUANTIFIER, VERSUS, AGG, ANCHORS, ANYWHERE, AVG, BY_SIZE, CALC, CALC_OPS, COUNT, COUNT_DISTINCT, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, MAX, MIN, MINUS, NE, NUMBER_AGGREGATES, OVER, PLUS, RANK, ROW_OPS, SHOW, SLOT_AGGREGATE,
                                   SLOT_ANSWER_TYPE, SLOT_BLANK, SLOT_CALC_LEFT, SLOT_CALC_OP, SLOT_COMPARISON, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_DIRECTION, SLOT_ENTITY, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE, SLOT_LISTING, SLOT_MEASURE, SLOT_NUMBER, SLOT_PEERS, SLOT_PERIOD, SLOT_ROW_OP, SLOT_SECTION,
                                   SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, STATED_BY_SIZE, SUM, TIMES, coordinate, slot_of)
 from engine.program.scoring import DEFAULT_WEIGHTS, Reading, ScoredProgram, Weights, score_program
@@ -26,6 +26,9 @@ from engine.sheet.names import PRINTED_ROLES
 
 _LINE_GROUP = -2
 _SECTION_GROUP = -3
+# A figure given per unit stands just above the same figure added across units: amounts in different currencies do
+# not add, so where a table names each line's currency the split is the plain reading of a total, an average or a top.
+UNIT_SPLIT = 0.01
 
 
 @dataclass(frozen=True, slots=True)
@@ -710,6 +713,11 @@ class _Search:
         distinct = agg + s(coordinate(SLOT_AGGREGATE, COUNT_DISTINCT)) + self.type_score(A_COUNT)
         keys = self.column_options(table, all_positions, SLOT_MEASURE)
         frames += self.condition_frames(distinct, (keys,), lambda options, where: Agg(COUNT_DISTINCT, options[0], table.id, where), table, index, atoms, max_policy=2)
+        unit = Col(table.id, index.currency_column) if index.currency_column is not None else None
+        if unit is not None:          # the same figure per currency, beside each figure of a table naming its lines' currency
+            for function in NUMBER_AGGREGATES:
+                base = agg + s(coordinate(SLOT_AGGREGATE, function)) + self.type_score(A_NUMBER) + UNIT_SPLIT
+                frames += self.condition_frames(base, (measures,), lambda options, where, f=function: Breakdown(f, options[0], table.id, (), where, unit=unit), table, index, atoms)
         # rank
         rank = s(coordinate(SLOT_FORM, RANK)) + table_score
         rank_measures = self.measure_options(table, index, dates=True)
@@ -747,6 +755,26 @@ class _Search:
                 frames += self.condition_frames(peer, (marks,), lambda options, where, d=direction: Rank(ENTITY_PEER, table.id, d, where, peers=index.mark_columns(options[0]), mark=options[0]), table, index, atoms, rank=True, max_policy=0)
         frames += self.calc_frames(table, index, atoms, measures, plain)
         frames += self.check_frames(table, index, atoms, measures, plain)
+        frames += self.breakdown_frames(table, index, atoms, measures, plain, group_keys, unit)
+        return frames
+
+    def breakdown_frames(self, table: CatalogTable, index: TableIndex, atoms: list[_Option], measures: list[_Option], plain: list[_Option], keys: list[_Option], unit: Col | None) -> list[_Frame]:
+        """A figure for each group of a key column ("visits per department"): a sum, an average, a lowest, a highest, or a
+        count of lines; per currency too where the table names its lines' currency. Spent only when the reading names the
+        breakdown form, which CLEF's reading can and the small reader cannot (its form head is the four FORMS)."""
+        if coordinate(SLOT_FORM, BREAKDOWN) not in self.reading.scores:
+            return []
+        s = self.s
+        each = s(coordinate(SLOT_FORM, BREAKDOWN)) + s(coordinate(SLOT_TABLE, table.id)) + self.type_score(A_LIST)
+        frames: list[_Frame] = []
+        for function in NUMBER_AGGREGATES:
+            base = each + s(coordinate(SLOT_AGGREGATE, function))
+            figures = measures if function == SUM else plain
+            frames += self.condition_frames(base, (keys, figures), lambda options, where, f=function: Breakdown(f, options[1], table.id, (options[0],), where), table, index, atoms, max_policy=2)
+            if unit is not None:      # a key other than the unit, each group's figure per currency
+                frames += self.condition_frames(base + UNIT_SPLIT, ([option for option in keys if option.payload != unit], figures), lambda options, where, f=function: Breakdown(f, options[1], table.id, (options[0],), where, unit=unit), table, index, atoms, max_policy=2)
+        counted = each + s(coordinate(SLOT_AGGREGATE, COUNT))
+        frames += self.condition_frames(counted, (keys,), lambda options, where: Breakdown(COUNT, None, table.id, (options[0],), where), table, index, atoms, max_policy=2)
         return frames
 
     def check_frames(self, table: CatalogTable, index: TableIndex, atoms: list[_Option], measures: list[_Option], plain: list[_Option]) -> list[_Frame]:

@@ -8,7 +8,7 @@ from sqlalchemy.pool import StaticPool
 
 from engine.deterministic import DeterministicAnalysis, ExecutionMode
 from engine.prepared import SharedConnection
-from engine.program.language import Calc, Check, Col, Program, Rank, Show, tables_of
+from engine.program.language import Breakdown, Calc, Check, Col, Program, Rank, Show, tables_of
 from engine.program.lowering import to_plan, to_query
 from engine.program.names import ENTITY_GROUP, ENTITY_PEER
 from engine.program.store import RequestTables
@@ -44,6 +44,10 @@ def _displayed(program: Program, rows, tables: RequestTables) -> tuple[tuple, ..
         return ()
     if isinstance(program, Check):          # a verdict, 1 or 0 from either program, reads as the yes or no it is
         return (("True" if rows[0][0] else "False",),)
+    if isinstance(program, Breakdown):      # each group's cells by their fold, back in the sheet's spelling
+        spellings = [tables.catalog.table(column.table).spelling[column.position] for column in program.groups]
+        width = len(spellings)
+        return tuple(tuple(words.get(cell, cell) for words, cell in zip(spellings, row[:width])) + tuple(row[width:]) for row in rows)
     keyed: Col | None = None
     if isinstance(program, Show) and program.listing:
         keyed = program.shown[0]

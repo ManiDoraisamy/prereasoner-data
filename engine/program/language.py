@@ -8,7 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TypeAlias
 
-from engine.program.names import (A_COUNT, A_DATE, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, AFTER, ANY, BEFORE, CHECK, CHECK_OPS, COMPARE_OPS, EQ, EVERY, IS, NO, QUANTIFIERS, SAME, SLOT_NEIGHBOUR, SLOT_QUANTIFIER, AGG, AGGREGATES, ANCHORS, ANYWHERE, BY_SIZE, CALC, CALC_OPS, COUNT, COUNT_DISTINCT, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, HIGHEST,
+from engine.program.names import (A_COUNT, A_DATE, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, AFTER, ANY, BEFORE, BREAKDOWN, CHECK, CHECK_OPS, COMPARE_OPS, EQ, EVERY, IS, NO, QUANTIFIERS, SAME, SLOT_NEIGHBOUR, SLOT_QUANTIFIER, AGG, AGGREGATES, ANCHORS, ANYWHERE, BY_SIZE, CALC, CALC_OPS, COUNT, COUNT_DISTINCT, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, HIGHEST,
                                   MINUS, NE, NUMBER_AGGREGATES, OVER, PLUS, RANK, RANK_ENTITIES, ROW_OPS, SHOW, SLOT_AGGREGATE, SLOT_ANSWER_TYPE, SLOT_BLANK, SLOT_CALC_LEFT, SLOT_CALC_OP, SLOT_COMPARISON, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_DIRECTION, SLOT_ENTITY, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE,
                                   SLOT_LISTING, SLOT_MEASURE, SLOT_NUMBER, SLOT_PEERS, SLOT_PERIOD, SLOT_ROW_OP, SLOT_SECTION, SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, STATED_BY_SIZE, coordinate)
 from engine.program.semantics import fold, number_text
@@ -424,7 +424,41 @@ class Check:
                 raise ValueError("versus reads programs of one number each")
 
 
-Program: TypeAlias = Show | Agg | Rank | Calc | Check
+@dataclass(frozen=True, slots=True)
+class Breakdown:
+    """f of a measure, or a count, over the kept data lines for each group: one row per group, its key cells first, the
+    figure last, in the order the groups first appear on the sheet. A line with no key cell, or no figure, is in no group.
+
+    keys   the columns whose values make the groups ("visits per department"); none when only the unit splits a figure.
+    unit   the column naming the unit each line's figure is in (a currency code column): figures in different units do
+           not add, so each group's figure is given per unit, the unit's cell after the keys'."""
+    function: str
+    measure: Measure | None
+    table: str
+    keys: tuple[Col, ...] = ()
+    where: tuple[Condition, ...] = ()
+    unit: Col | None = None
+
+    def __post_init__(self):
+        if self.function not in (*NUMBER_AGGREGATES, COUNT):
+            raise ValueError(f"a breakdown sums, averages, takes the lowest or highest, or counts: {self.function}")
+        if (self.function == COUNT) != (self.measure is None):
+            raise ValueError("count alone takes no measure")
+        if not self.keys and self.unit is None:
+            raise ValueError("a breakdown groups by a key or by a unit")
+        if self.unit is not None and self.function == COUNT:
+            raise ValueError("a count is in no unit")
+        groups = (*self.keys, *((self.unit,) if self.unit is not None else ()))
+        if len(self.keys) > 2 or len(set(groups)) != len(groups) or any(column.table != self.table for column in groups):
+            raise ValueError("a breakdown groups by one or two distinct key columns of its table, its unit none of them")
+
+    @property
+    def groups(self) -> tuple[Col, ...]:
+        """The columns a row is grouped by, in the order its cells stand: the keys, then the unit."""
+        return (*self.keys, *((self.unit,) if self.unit is not None else ()))
+
+
+Program: TypeAlias = Show | Agg | Rank | Calc | Check | Breakdown
 
 
 def _sides(program: "Check") -> tuple["Program", ...]:
@@ -443,6 +477,8 @@ def is_sound(program: Program) -> bool:
     measured = set(measure_columns(program.measure)) if program.measure is not None else set()
     if isinstance(program, Agg):
         return not fixed & measured
+    if isinstance(program, Breakdown):      # a group fixed to one value is one figure, an agg; the unit too
+        return not fixed & (measured | set(program.groups)) and not measured & set(program.groups)
     if program.entity == ENTITY_LINE:      # "the 5 highest ages" shows the column it ranks; one line's own measure is an agg
         return not fixed & (measured | set(program.shown)) and (program.count > 1 or not measured & set(program.shown))
     if program.entity == ENTITY_GROUP:
@@ -451,6 +487,9 @@ def is_sound(program: Program) -> bool:
 
 
 def form_of(program: Program) -> str:
+    """The form a program answers in. A figure only its unit splits answers as one figure does: an agg."""
+    if isinstance(program, Breakdown):
+        return BREAKDOWN if program.keys else AGG
     return SHOW if isinstance(program, Show) else AGG if isinstance(program, Agg) else RANK if isinstance(program, Rank) else CHECK if isinstance(program, Check) else CALC
 
 
@@ -519,6 +558,11 @@ def _body_coordinates(program: Program) -> list[str]:
             names.extend(measure_coordinates(program.measure))
         if program.magnitude:
             names.append(coordinate(SLOT_SIZE, STATED_BY_SIZE))
+    elif isinstance(program, Breakdown):     # the unit is the sheet's, not the question's: it fills no coordinate
+        names.append(coordinate(SLOT_AGGREGATE, program.function))
+        if program.measure is not None:
+            names.extend(measure_coordinates(program.measure))
+        names.extend(coordinate(SLOT_KEY, key.name) for key in program.keys)
     else:
         names.append(coordinate(SLOT_ENTITY, program.entity))
         names.append(coordinate(SLOT_DIRECTION, program.direction))
@@ -565,6 +609,8 @@ def answer_type_of(program: Program, column_kind) -> str:
         return A_PERCENT if program.op == OVER else A_NUMBER
     if isinstance(program, Agg):
         return A_COUNT if program.function in (COUNT, COUNT_DISTINCT) else A_NUMBER
+    if isinstance(program, Breakdown):
+        return A_LIST if program.keys else A_NUMBER
     if isinstance(program, Show):
         if program.listing:
             return A_LIST
@@ -587,5 +633,5 @@ def _type_of_column(column: Col, column_kind) -> str:
     return A_NUMBER if kind == "number" else A_DATE if kind in ("date", "period") else A_NAME
 
 
-__all__ = ["Across", "Agg", "Calc", "Check", "OneOf", "Col", "Compare", "CompareColumns", "Condition", "Contains", "DateOf", "Equals", "InPeriod", "InSection", "IsBlank", "IsNumber", "Measure", "NotEquals", "OnLine", "PeriodSpan", "Program", "Rank", "RowArithmetic", "SECTION", "Show", "Size",
+__all__ = ["Across", "Agg", "Breakdown", "Calc", "Check", "OneOf", "Col", "Compare", "CompareColumns", "Condition", "Contains", "DateOf", "Equals", "InPeriod", "InSection", "IsBlank", "IsNumber", "Measure", "NotEquals", "OnLine", "PeriodSpan", "Program", "Rank", "RowArithmetic", "SECTION", "Show", "Size",
            "TOGETHER", "addresses_printed", "answer_type_of", "coordinates", "shown_together", "conditions_of", "form_of", "measure_columns", "tables_of", "peers_name"]

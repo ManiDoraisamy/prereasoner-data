@@ -9,7 +9,7 @@ from dataclasses import replace
 
 from engine.deterministic import AnalysisPlan, lower_calculation, lower_select_query
 from engine.program.catalog import Catalog
-from engine.program.language import (Across, Agg, Calc, Check, Col, OneOf, Compare, CompareColumns, Condition, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, Measure, NotEquals, OnLine, Program, Rank, RowArithmetic, SECTION, Show, Size, addresses_printed)
+from engine.program.language import (Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, Condition, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, Measure, NotEquals, OnLine, Program, Rank, RowArithmetic, SECTION, Show, Size, addresses_printed)
 from engine.program.names import AFTER, ANY, IS, SAME, ANYWHERE, AVG, COUNT, COUNT_DISTINCT, ENDS, ENTITY_GROUP, ENTITY_LINE, EQ, EVERY, GE, GT, HIGHEST, LE, LT, MAX, MIN, MINUS, NE, NO, OVER, PLUS, STARTS, SUM
 from engine.program.semantics import fold as fold_text
 from engine.program.store import (LABEL, LABEL_LENGTH, LINE, ONE_ROW, PEER_FOLD, PEER_NAME, PEER_NUMBER, ROLE, SECTION_FOLD, SECTION_PATH, SECTION_TEXT, day_column, fold_column, number_column, peers_table, text_column)
@@ -181,6 +181,21 @@ def _agg_query(program: Agg, catalog: Catalog) -> SelectQuery:
     return SelectQuery((SelectItem(value, VALUE),), table, where=where)
 
 
+def _breakdown_query(program: Breakdown, catalog: Catalog) -> SelectQuery:
+    """One row per group: its key cells (and its unit) by fold, then the figure; groups in the order they first appear."""
+    table = program.table
+    if program.function == COUNT:
+        value, guard = Aggregate("COUNT", Star()), None
+    else:
+        value, guard = Aggregate(_FUNCTIONS[program.function], _measure(program.measure)), _present(program.measure)
+    groups = tuple(_fold(column) for column in program.groups)
+    printed = addresses_printed(program.where) or (program.measure is not None and _reads_printed(program.measure, catalog.table(table)))
+    where = _where(None if printed else _data_lines(table), *map(_condition, program.where), *(_is_null(group, negated=True) for group in groups), guard)
+    select = tuple(SelectItem(group, f"{KEY}_{at}") for at, group in enumerate(groups)) + (SelectItem(value, VALUE),)
+    first = OrderTerm(Aggregate("MIN", ColumnRef(table, LINE, SQLType.INTEGER)))
+    return SelectQuery(select, table, where=where, group_by=groups, order_by=(first, *(OrderTerm(group) for group in groups)))
+
+
 def _rank_query(program: Rank, catalog: Catalog) -> SelectQuery:
     table = program.table
     printed = addresses_printed(program.where) or (program.measure is not None and _reads_printed(program.measure, catalog.table(table)))
@@ -300,6 +315,8 @@ def to_query(program: Program, catalog: Catalog) -> SelectQuery:
         return _agg_query(program, catalog)
     if isinstance(program, Rank):
         return _rank_query(program, catalog)
+    if isinstance(program, Breakdown):
+        return _breakdown_query(program, catalog)
     expression = BinaryExpr(_scalar(program.left, catalog), program.op, _scalar(program.right, catalog))
     return SelectQuery((SelectItem(Abs(expression) if program.magnitude else expression, VALUE),), ONE_ROW)
 

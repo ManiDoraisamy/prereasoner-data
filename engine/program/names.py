@@ -11,9 +11,10 @@ AGG = "agg"            # sum, average, lowest, highest, count or distinct count 
 RANK = "rank"          # the top line, group or peer column
 CALC = "calc"          # the difference, sum or ratio of two programs that each give one number
 FORMS = (SHOW, AGG, RANK, CALC)
-# A fifth form the small reader has no head for (its closed form head is FORMS): CLEF's reading and the decoder name it.
+# Two forms the small reader has no head for (its closed form head is FORMS): CLEF's reading and the decoder name them.
 CHECK = "check"        # a yes or no: whether any, no or every kept line meets a condition, or how one number compares
-PROGRAM_FORMS = (*FORMS, CHECK)
+BREAKDOWN = "breakdown"  # a figure (sum, average, lowest, highest or count) for each group of a key column: one row each
+PROGRAM_FORMS = (*FORMS, CHECK, BREAKDOWN)
 
 # What an aggregate does.
 SUM = "sum"

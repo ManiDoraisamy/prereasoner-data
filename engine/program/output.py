@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 from engine.program.catalog import Catalog, CatalogTable, KIND_FAMILY
 from engine.program.index import index_of
-from engine.program.language import (Across, Agg, Calc, Check, Col, OneOf, Compare, CompareColumns, Condition, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, Measure, NotEquals, Program, Rank, RowArithmetic, SECTION, Show, Size, addresses_printed, answer_type_of, measure_columns)
+from engine.program.language import (Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, Condition, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, Measure, NotEquals, Program, Rank, RowArithmetic, SECTION, Show, Size, addresses_printed, answer_type_of, measure_columns)
 from engine.program.names import (A_PERCENT, AFTER, ANY, SAME, ANYWHERE, EQ, EVERY, IS, NO, AVG, COUNT, COUNT_DISTINCT, ENDS, ENTITY_GROUP, ENTITY_LINE, GE, GT, HIGHEST, LE, LT, MAX, MIN, MINUS, NE, OVER, PLUS, STARTS, SUM, TIMES)
 from engine.program.scoring import ScoredProgram
 from engine.program.semantics import fold, number_text, share_forms
@@ -135,6 +135,11 @@ def read_as(program: Program, catalog: Catalog) -> str:
         if program.step is not None:
             return f"{shown} {place} on the line {program.step} the line where {where}"
         return f"{shown} {place} where {where}"
+    if isinstance(program, Breakdown):
+        where = _where_words(catalog, program.where)
+        head = "the number of lines" if program.function == COUNT else f"the {_AGG_WORDS[program.function]} of {_measure_words(catalog, program.measure)}"
+        each = " and ".join(_name(catalog, column) for column in program.groups)
+        return f"{head} for each {each} {place}" + (f" where {where}" if where else "")
     if isinstance(program, Agg):
         where = _where_words(catalog, program.where)
         if program.function == COUNT:
@@ -228,8 +233,11 @@ def cells_used(program: Program, tables: RequestTables, rows: tuple[tuple, ...])
             if line is not None:
                 for column in program.shown:
                     add(line, column.position)
-    elif isinstance(program, Agg):
+    elif isinstance(program, (Agg, Breakdown)):
         columns = measure_columns(program.measure) if isinstance(program.measure, (Col, RowArithmetic, Size, DateOf, Across)) else ()
+        if isinstance(program, Breakdown):      # a line with a blank key or unit is in no group
+            folds = [table.section_folds if column.position == SECTION else table.folds[column.position] for column in program.groups]
+            kept = [i for i in kept if all(held[i] is not None for held in folds)]
         for i in kept:
             for column in columns:
                 add(i, column.position)
@@ -396,7 +404,48 @@ def formula(program: Program, tables: RequestTables) -> str:
         return "=UNIQUE(VSTACK(" + ",".join(cells) + "))" if cells else "=NA()"
     if isinstance(program, Agg):
         return _agg_formula(program, table, tables)
+    if isinstance(program, Breakdown):
+        return _breakdown_formula(program, table, tables)
     return _rank_formula(program, table, tables)
+
+
+def _filter_array(catalog: Catalog, where: tuple[Condition, ...]) -> str | None:
+    """Conditions as one array of 1s and 0s over a table's ranges (GROUPBY's filter), or None when one has no plain test."""
+    tests = []
+    for condition in where:
+        if isinstance(condition, (Equals, Compare, Contains, InPeriod, IsBlank)):
+            range_ = _range(catalog.table(condition.column.table), condition.column.position)
+        if isinstance(condition, Equals):
+            value = f"{condition.value:g}" if isinstance(condition.value, (int, float)) else '"' + _value_words(catalog, condition.column, condition.value).replace('"', '""') + '"'
+            tests.append(f"({range_}={value})")
+        elif isinstance(condition, Compare):
+            tests.append(f"({range_}{_VERDICT_FORMULA[condition.op]}{condition.number:g})")
+        elif isinstance(condition, Contains):
+            tests.append(f'ISNUMBER(SEARCH("{condition.text}",{range_}))')
+        elif isinstance(condition, InPeriod) and condition.span.start is not None:
+            tests.append(f'({range_}>=DATEVALUE("{condition.span.start}"))*({range_}<=DATEVALUE("{condition.span.end or condition.span.start}"))')
+        elif isinstance(condition, IsBlank):
+            tests.append(f'({range_}{"<>" if condition.filled else "="}"")')
+        else:
+            return None
+    return "*".join(tests)
+
+
+def _breakdown_formula(program: Breakdown, table: CatalogTable, tables: RequestTables) -> str:
+    """GROUPBY over the groups' ranges and the measure's, the kept lines as its filter; a band, a printed line inside the
+    range or a measure computed line by line has no plain range, and is stated by its read-as and cells."""
+    tests = _filter_array(tables.catalog, program.where)
+    if tests is None or not _plain_range(table) or any(column.position == SECTION for column in program.groups):
+        return "=NA()"
+    if program.function == COUNT:
+        values, function = _range(table, program.groups[0].position), "COUNTA"
+    elif isinstance(program.measure, Col):
+        values, function = _range(table, program.measure.position), _SHEET_FUNCTION[program.function]
+    else:
+        return "=NA()"
+    ranges = [_range(table, column.position) for column in program.groups]
+    fields = ranges[0] if len(ranges) == 1 else "HSTACK(" + ",".join(ranges) + ")"
+    return f"=GROUPBY({fields},{values},{function},0,0" + (f",,{tests})" if tests else ")")
 
 
 def _agg_formula(program: Agg, table: CatalogTable, tables: RequestTables) -> str:

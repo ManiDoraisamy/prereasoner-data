@@ -10,9 +10,9 @@ from engine.program.catalog import Catalog
 from engine.program.decoder import Decoder, POLICY
 from engine.program.execute import run, run_dual
 from engine.program.index import TableIndex
-from engine.program.language import (Across, Agg, Calc, Check, Col, OneOf, Compare, CompareColumns, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, NotEquals, OnLine, PeriodSpan, Rank, RowArithmetic, SECTION, Show, Size, answer_type_of, coordinates, tables_of, is_sound, period_from_name)
+from engine.program.language import (Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, NotEquals, OnLine, PeriodSpan, Rank, RowArithmetic, SECTION, Show, Size, answer_type_of, coordinates, form_of, tables_of, is_sound, period_from_name)
 from engine.program.lowering import plan_schema, to_query
-from engine.program.names import (A_COMPANY, A_COUNT, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, AFTER, ANY, BEFORE, SAME, CHECK, EQ, EVERY, IS, LT, NE, NO, VERSUS, ANSWER_TYPES, AVG, CALC, COMPARISONS, COUNT, COUNT_DISTINCT, ENDS, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, EV_ADDS_TWICE, EV_BARE_ZERO, EV_EMPTY, EV_FAILED, EV_FILTER_DID_NOTHING, EV_FRACTION_FOR_COUNT, EV_MANY_ROWS, EV_PRINTED_TIE, EV_RAN,
+from engine.program.names import (A_COMPANY, A_COUNT, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, AFTER, ANY, BEFORE, BREAKDOWN, SAME, CHECK, EQ, EVERY, IS, LT, NE, NO, VERSUS, ANSWER_TYPES, AVG, CALC, COMPARISONS, COUNT, COUNT_DISTINCT, ENDS, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, EV_ADDS_TWICE, EV_BARE_ZERO, EV_EMPTY, EV_FAILED, EV_FILTER_DID_NOTHING, EV_FRACTION_FOR_COUNT, EV_MANY_ROWS, EV_PRINTED_TIE, EV_RAN,
                                   EV_REPEATED_LINES, EV_ROW_COUNT_FOR_AMOUNT, EV_SHAPE_AGREES, EV_TOO_LARGE_FOR_SHARE, EV_TYPE_AGREES, EV_WRONG_KIND, EVIDENCE, FORMS, GE, GT, HIGHEST, LOWEST, MAX, MIN, MINUS, OVER, PERIOD_NAMED, PERIOD_REST_OF, PERIOD_SO_FAR, PLUS, SEMANTICS, SIGN_LOSS, SIGN_MAGNITUDE, SIGN_NET,
                                   SIGN_SIZE, SLOT_AGGREGATE, SLOT_FORM, SLOTS, STARTS, SUM, TIMES, coarse_type, coordinate, slot_of)
 from engine.program.output import cells_used, compress, explain, formula, read_as
@@ -835,6 +835,80 @@ def test_a_number_condition_may_be_an_equality():
     assert level in Decoder(games).enumerate(reading, k=200)[0]
 
 
+SUBSCRIPTIONS = [["Customer", "Plan", "Currency", "Amount", "Sector"],
+                 ["a", "monthly", "usd", 100.0, "Retail"],
+                 ["b", "yearly", "INR", 5000.0, "Retail"],
+                 ["c", "monthly", "usd", 50.0, "Education"],
+                 ["d", "yearly", "eur", 70.0, "Retail"],
+                 ["e", "monthly", "inr", 2500.0, "Education"],
+                 ["f", "monthly", "", 10.0, ""]]
+
+
+def test_a_breakdown_gives_a_figure_for_each_group():
+    """"Visits per department", "pipeline by rep": the four forms gave one figure, one top group or a list, never a
+    figure for each group (12 of 35 messy dev questions with no right candidate asked for one). A breakdown is a sum, an
+    average, a lowest, a highest or a count of lines for each group of a key column: one row per group, its key cell
+    first, the groups in the order they first stand on the sheet, the same in the typed SQL and the dual emitter. A line
+    with a blank key is in no group, and its cells are not among those used."""
+    catalog, table, tables = _setup(SUBSCRIPTIONS)
+    plan, amount, sector = Col(table.id, 1), Col(table.id, 3), Col(table.id, 4)
+    counted = Breakdown(COUNT, None, table.id, (plan,))
+    assert _answer(counted, tables) == (("monthly", 4), ("yearly", 2))
+    summed = Breakdown(SUM, amount, table.id, (sector,), (Equals(plan, "monthly"),))
+    assert _answer(summed, tables) == (("Retail", 100.0), ("Education", 2550.0))
+    assert read_as(summed, catalog) == 'the total of Amount for each Sector on "Sheet1" where Plan is "monthly"'
+    assert formula(summed, tables) == "=GROUPBY('Sheet1'!E2:E7,'Sheet1'!D2:D7,SUM,0,0,,('Sheet1'!B2:B7=\"monthly\"))"
+    assert len(cells_used(summed, tables, ())) == 3, "line f has no sector: its amount is in no group"
+    assert form_of(summed) == BREAKDOWN and answer_type_of(summed, catalog.column_kind) == A_LIST
+    assert coordinate("key", sector.name) in coordinates(summed, catalog.column_kind)
+    assert not is_sound(Breakdown(SUM, amount, table.id, (sector,), (Equals(sector, "retail"),))), "a group fixed to one value is one figure"
+    for bad in (lambda: Breakdown(SUM, amount, table.id), lambda: Breakdown(COUNT, None, table.id, (plan,), unit=Col(table.id, 2)),
+                lambda: Breakdown(SUM, amount, table.id, (sector,), unit=sector), lambda: Breakdown(COUNT_DISTINCT, sector, table.id, (plan,))):
+        try:
+            bad()
+        except ValueError:
+            continue
+        raise AssertionError("a breakdown groups by a key or a unit, counts in no unit, and sums, averages, lowest, highest or counts")
+    verified = verify_one(score_program(summed, Reading({}), catalog), tables, A_NUMBER)
+    assert verified.held(EV_SHAPE_AGREES), "a row per group is a breakdown's own shape"
+
+
+def test_amounts_in_several_currencies_are_given_per_currency():
+    """A payments export names each line's currency ("usd", "inr"); the messy subscriptions questions ("how much sales
+    from retailers", 7 of 120 dev) had no right candidate, since a total added rupees to dollars. A text column whose every
+    filled cell is an ISO 4217 code, holding two or more, is the lines' unit: a total, an average, a lowest or a highest
+    over its table is also given per currency, ranked just above the same figure added across currencies, and it answers
+    as the figure does (form agg). A column of one code, or one holding a word, is no unit."""
+    catalog, table, tables = _setup(SUBSCRIPTIONS)
+    currency, amount, sector = Col(table.id, 2), Col(table.id, 3), Col(table.id, 4)
+    assert TableIndex(table).currency_column == 2
+    assert TableIndex(_setup([["Item", "Currency", "Cost"], ["a", "usd", 1.0], ["b", "usd", 2.0]])[1]).currency_column is None
+    assert TableIndex(_setup([["Item", "Code", "Cost"], ["a", "usd", 1.0], ["b", "cat", 2.0], ["c", "inr", 3.0]])[1]).currency_column is None
+    retail = Breakdown(SUM, amount, table.id, (), (Equals(sector, "retail"),), unit=currency)
+    assert _answer(retail, tables) == (("usd", 100.0), ("INR", 5000.0), ("eur", 70.0))
+    assert form_of(retail) == "agg" and answer_type_of(retail, catalog.column_kind) == A_NUMBER
+    assert read_as(retail, catalog) == 'the total of Amount for each Currency on "Sheet1" where Sector is "Retail"'
+    plain = Agg(SUM, amount, table.id, (Equals(sector, "retail"),))
+    reading = Reading({name: 1.0 for name in coordinates(plain, catalog.column_kind)})
+    programs = Decoder(catalog).enumerate(reading, k=50)[0]
+    assert programs.index(retail) < programs.index(plain) < 5, "the figure per currency stands just above the one added across them"
+    split = Breakdown(SUM, amount, table.id, (sector,), unit=currency)
+    assert _answer(split, tables)[:2] == (("Retail", "usd", 100.0), ("Retail", "INR", 5000.0))
+    assert TableIndex(_setup(TRADES, formats=TRADE_FORMATS)[1]).currency_column is None
+
+
+def test_the_decoder_breaks_down_only_when_the_reading_names_a_breakdown():
+    """The small reader's form head is the four FORMS, and an unread form scores 0 (a log probability of 1): breakdown
+    frames are spent only where a reading names the form, as CLEF's can; then the breakdown is in the top 50."""
+    catalog, table, tables = _setup(SUBSCRIPTIONS)
+    plan = Col(table.id, 1)
+    gold = Breakdown(COUNT, None, table.id, (plan,))
+    named = {name: 1.0 for name in coordinates(gold, catalog.column_kind)}
+    assert gold in Decoder(catalog).enumerate(Reading(named), k=50)[0]
+    unread = Reading({name: score for name, score in named.items() if name != coordinate("form", BREAKDOWN)})
+    assert not any(isinstance(p, Breakdown) and p.keys for p in Decoder(catalog).enumerate(unread, k=200)[0])
+
+
 def test_times_read_as_numbers_in_the_sheet_and_the_question():
     """A race's times ("35:00", "2:05:31"; WikiTableQuestions: 16 of 346 dev tables hold them) were text, so nothing
     could rank or compare them. A column of times reads its numbers (h:mm:ss as seconds, a:b as a * 60 + b), each cell
@@ -1308,7 +1382,7 @@ TESTS = [
     test_partial_value_match, test_case_and_spacing_do_not_count, test_periods, test_blanks, test_ties_keep_every_tied_line, test_units, test_mixed_columns, test_repeated_rows, test_sections_nested_bands_and_the_section_shown, test_python_masks_agree_with_the_sql,
     test_calc_shapes, test_rank_across_peer_columns, test_a_rank_keeps_as_many_as_the_question_states, test_the_decoder_proposes_how_many_a_question_states, test_a_check_says_yes_or_no, test_the_decoder_checks_only_when_the_reading_names_a_check, test_a_choice_among_named_values, test_a_check_asks_what_the_top_one_is, test_a_check_asks_whether_the_top_one_is_the_same_or_compares_two_aggregates, test_a_read_takes_the_line_after_or_before_the_kept_one, test_new_ast_nodes_render_and_validate, test_plan_schema_holds_only_what_a_query_reads, test_perfect_readings_give_the_gold_first, test_decoder_is_deterministic_and_order_free, test_the_list_does_not_depend_on_hash_order,
     test_scores_come_in_as_data_and_nothing_else_moves_the_list, test_contributions_are_named_and_sum_to_the_score, test_intervention_a_named_coordinate_moves_the_score_by_its_weight, test_policy_prunes_values_only_where_it_says, test_conditions_stay_on_distinct_columns,
-    test_answer_type_rule, test_a_value_of_a_few_valued_number_column_is_named, test_a_number_condition_may_be_an_equality, test_times_read_as_numbers_in_the_sheet_and_the_question, test_an_ordinal_is_not_a_stated_number, test_words_alone_read_a_question, test_verifier_shape_and_type_evidence, test_printed_total_ties_only_under_its_exact_conditions, test_verifier_runs_the_top_programs_and_never_raises, test_read_as_in_the_sheets_own_words,
+    test_answer_type_rule, test_a_value_of_a_few_valued_number_column_is_named, test_a_number_condition_may_be_an_equality, test_a_breakdown_gives_a_figure_for_each_group, test_amounts_in_several_currencies_are_given_per_currency, test_the_decoder_breaks_down_only_when_the_reading_names_a_breakdown, test_times_read_as_numbers_in_the_sheet_and_the_question, test_an_ordinal_is_not_a_stated_number, test_words_alone_read_a_question, test_verifier_shape_and_type_evidence, test_printed_total_ties_only_under_its_exact_conditions, test_verifier_runs_the_top_programs_and_never_raises, test_read_as_in_the_sheets_own_words,
     test_cells_are_the_exact_addresses_used, test_formula_a_user_can_check, test_explain_carries_the_named_contributions,
 ]
 

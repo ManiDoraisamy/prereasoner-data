@@ -15,7 +15,7 @@ import numpy as np
 from engine.program.catalog import CatalogTable
 from engine.program.language import Col, Compare, Condition, Contains, Equals, InPeriod, InSection, IsBlank, IsNumber, OnLine, OneOf, condition_coordinates
 from engine.program.names import ENDS, EQ, GE, GT, LE, LT, NE, STARTS
-from engine.program.semantics import fold
+from engine.program.semantics import CURRENCY_CODES, fold
 from engine.sheet.values import parse_number
 from engine.sheet.names import AXIS_FLAG, AXIS_TOTALLED, F_DATE, PEER, ROW_TOTAL, V_NUMBER
 
@@ -142,6 +142,16 @@ class TableIndex:
             if texts and sum(parse_number(text) is None for text in texts) * 5 >= len(texts) * 4:
                 out.add(position)
         return frozenset(out)
+
+    @cached_property
+    def currency_column(self) -> int | None:
+        """The first text column whose every filled cell is an ISO 4217 code, holding at least two: it names the currency
+        of its line's amounts, and a figure over lines in different currencies is given per currency."""
+        for position in self.text_columns:
+            codes = set(self.value_lines.get(position, {}))
+            if len(codes) >= 2 and codes <= CURRENCY_CODES:
+                return position
+        return None
 
     @cached_property
     def text_columns(self) -> tuple[int, ...]:
