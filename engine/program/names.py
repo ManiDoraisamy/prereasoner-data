@@ -52,6 +52,9 @@ NE = "!="
 COMPARISONS = (GE, GT, LE, LT, NE)
 EQ = "="
 CHECK_OPS = (GE, GT, LE, LT, EQ, NE)
+# What a number condition may do: the small reader's closed head reads COMPARISONS; equality ("with zero calories",
+# "exactly 3 wins") is the plain reading of a stated number no comparison word qualifies.
+COMPARE_OPS = (EQ, *COMPARISONS)
 
 # What a check asks of the kept lines.
 ANY = "any"            # some kept line exists

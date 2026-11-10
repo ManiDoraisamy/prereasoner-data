@@ -14,7 +14,7 @@ import numpy as np
 
 from engine.program.catalog import CatalogTable
 from engine.program.language import Col, Compare, Condition, Contains, Equals, InPeriod, InSection, IsBlank, IsNumber, OnLine, OneOf, condition_coordinates
-from engine.program.names import ENDS, GE, GT, LE, LT, NE, STARTS
+from engine.program.names import ENDS, EQ, GE, GT, LE, LT, NE, STARTS
 from engine.program.semantics import fold
 from engine.sheet.values import parse_number
 from engine.sheet.names import AXIS_FLAG, AXIS_TOTALLED, F_DATE, PEER, ROW_TOTAL, V_NUMBER
@@ -75,7 +75,7 @@ class _LazyArrays(dict):
         return self[position]
 
 
-COMPARE_ARRAYS = {GE: np.greater_equal, GT: np.greater, LE: np.less_equal, LT: np.less, NE: np.not_equal}
+COMPARE_ARRAYS = {EQ: np.equal, GE: np.greater_equal, GT: np.greater, LE: np.less_equal, LT: np.less, NE: np.not_equal}
 
 
 def _as_mask(flags: np.ndarray) -> int:

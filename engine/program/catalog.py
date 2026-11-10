@@ -9,7 +9,7 @@ import hashlib
 from functools import cached_property
 
 from engine.program.language import (Col, Compare, CompareColumns, Condition, Contains, Equals, InPeriod, InSection, IsBlank, IsNumber, NotEquals, OnLine, OneOf, SECTION)
-from engine.program.names import ANYWHERE, ENDS, GE, GT, LE, LT, NE, STARTS
+from engine.program.names import ANYWHERE, ENDS, EQ, GE, GT, LE, LT, NE, STARTS
 from engine.program.semantics import cell_day, cell_fold, cell_number, cell_text, duration_numbers, fold, is_filled, is_serial_day
 from engine.sheet.model import Cell, Column, Context, Line, SheetModel, Table
 from engine.sheet.names import LABEL, NOTE, PRINTED_ROLES, RECORD, V_DATE, V_NUMBER, V_PERIOD, V_TEXT
@@ -207,7 +207,7 @@ class CatalogTable:
 
 
 def _compared(a: float, op: str, b: float) -> bool:
-    return a >= b if op == GE else a > b if op == GT else a <= b if op == LE else a < b if op == LT else a != b if op == NE else False
+    return a >= b if op == GE else a > b if op == GT else a <= b if op == LE else a < b if op == LT else a != b if op == NE else a == b if op == EQ else False
 
 
 def _mask(indices) -> int:

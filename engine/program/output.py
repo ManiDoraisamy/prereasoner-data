@@ -16,7 +16,7 @@ from engine.program.store import RequestTables
 from engine.sheet.formulas import column_letter
 
 _AGG_WORDS = {SUM: "total", AVG: "average", MIN: "lowest", MAX: "highest", COUNT: "number of lines", COUNT_DISTINCT: "number of different"}
-_COMPARE_WORDS = {GE: "at least", GT: "above", LE: "at most", LT: "below", NE: "other than"}
+_COMPARE_WORDS = {EQ: "equal to", GE: "at least", GT: "above", LE: "at most", LT: "below", NE: "other than"}
 _OP_WORDS = {PLUS: "plus", MINUS: "minus", TIMES: "times", OVER: "over"}
 _VERDICT_WORDS = {GT: "above", GE: "at least", LT: "below", LE: "at most", EQ: "equal to", NE: "different from"}
 _VERDICT_FORMULA = {GT: ">", GE: ">=", LT: "<", LE: "<=", EQ: "=", NE: "<>"}
