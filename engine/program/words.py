@@ -41,7 +41,11 @@ _NUMBER_WORD = re.compile(r"\b(" + "|".join(_NUMBER_WORDS) + r")\b(?!-)")
 _COMPARED_BEFORE = re.compile(r"\b(?:more than|less than|fewer than|at least|at most|over|under|above|below|exactly)\s+$")
 _COMPARE = ((EQ, re.compile(r"\b(exactly|equal to|equals)\b")), (GE, re.compile(r"\b(at least|or more|or better|or higher|or above|no less than|minimum of)\b")), (LE, re.compile(r"\b(at most|or less|or lower|or below|no more than|maximum of|up to)\b")),
             (GT, re.compile(r"\b(above|over|greater than|more than|exceeds?|exceeding|higher than)\b")), (LT, re.compile(r"\b(below|under|less than|lower than|fewer than)\b")), (NE, re.compile(r"\b(other than|excluding|except)\b")))
-_SIGNED_ZERO = ((GT, re.compile(r"\b(positive|above zero|greater than zero|in the money|gains?)\b")), (LT, re.compile(r"\b(negative|below zero|less than zero|out of the money|losses)\b")), (NE, re.compile(r"\b(non-?zero|not zero)\b")))
+# A change described as going one way states its sign ("terms growing year over year", "what is trending up"): the
+# progressive forms only, as "the increase in sales" asks for an amount, not for lines whose change is above zero.
+_SIGNED_ZERO = ((GT, re.compile(r"\b(positive|above zero|greater than zero|in the money|gains?|growing|rising|increasing|trending up|on the rise|going up)\b")),
+                (LT, re.compile(r"\b(negative|below zero|less than zero|out of the money|losses|declining|falling|decreasing|shrinking|trending down|going down|on the decline)\b")),
+                (NE, re.compile(r"\b(non-?zero|not zero)\b")))
 _HIGH = re.compile(r"\b(most|highest|largest|biggest|top|peak|max(?:imum)?|greatest|best|busiest|furthest|latest|last|heaviest|longest)\b")
 _LOW = re.compile(r"\b(least|lowest|smallest|min(?:imum)?|fewest|worst|earliest|first|shortest)\b")
 _SUM = re.compile(r"\b(total|sum|altogether|combined|overall|net|aggregate|cumulative|how much)\b")

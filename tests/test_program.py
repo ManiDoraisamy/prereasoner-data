@@ -1222,6 +1222,12 @@ def test_a_sign_word_compares_with_zero():
     reading = read_question("How many deals have negative volume?", catalog, decoder)
     assert reading.scores[coordinate("number", "0")] == 1.0 and reading.scores[coordinate("comparison", "<")] == 1.0
     assert Agg(COUNT, None, table.id, (Compare(col(3), "<", 0.0),)) in decoder.enumerate(reading, k=200)[0]
+    # A change going one way states its sign ("how many terms are growing year over year", messy dev); "the increase"
+    # asks for an amount and states none.
+    growing = read_question("How many deals are growing?", catalog, decoder)
+    assert growing.scores.get(coordinate("number", "0")) == 1.0 and growing.scores.get(coordinate("comparison", ">")) == 1.0
+    assert read_question("What is trending down?", catalog, decoder).scores.get(coordinate("comparison", "<")) == 1.0
+    assert coordinate("number", "0") not in read_question("What was the increase in volume?", catalog, decoder).scores
 
 
 def test_a_stated_number_a_column_holds_reads_as_its_value():
