@@ -5,6 +5,111 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
+## A day of reading and grammar: 594 -> 657 of 906 always answering (DataBench 250, messy 98, WikiTableQuestions 187, Enron 122); the reader round fails its rule; first-cell grading (2026-11-10)
+
+This is stage 1 of PLAN 2026-11-10 and the code half of stage 2 (the plan sits at the top of the RUNBOOK).
+- Experiments: `phase1-data-20261110`, `phase1-reader-20261110` (the reader round and its gate), `phase1-pools-20261110`
+  (serving-path pools), `phase2-choose-verify-20261111` (the stage-2 pod: measurements while it served, then the chooser
+  and verifier training), all gitignored under `training/readers/data/experiments/`.
+- Engine: next-engine, local commits 162decc .. 172994b on branch next-engine (none pushed); each run names its commit.
+- Every number below is the live path: the small reader, CLEF reading (adapter cadbd7327ca3, the reader fit) fused at
+  w=2, the typed decoder's top 50, every candidate run, the refit chooser with evidence choosing; always answering, the
+  top answer graded. Development sets only: Enron studied 186, messy dev 120, DataBench dev 300 (050-065), the
+  WikiTableQuestions dev sample 300 (random-split-1-dev). No frozen set was read.
+
+| Set | n | morning (91755e5, reader fit) | evening (de878a6, marks options) | right listed |
+|---|---|---|---|---|
+| Enron studied | 186 | 121 | 122 | 146 -> 149 |
+| Messy dev | 120 | 79 | 98 | 85 -> 111 |
+| DataBench dev | 300 | 223 | 250 | 249 -> 275 |
+| WikiTableQuestions dev sample | 300 | 171 | 187 | 215 -> 225 |
+| Total | 906 | 594 (65.6%) | 657 (72.5%) | 695 -> 760 |
+
+DataBench dev (83.3%) and messy dev (81.7%) pass 80% always answering; Enron (65.6%) and WikiTableQuestions (62.3%) do
+not. Listed exceeds right by 103 questions: the chooser, not reach, is now the larger loss.
+
+**The answer extraction was wrong, and on WikiTableQuestions it read the gold.** The DataBench and WikiTableQuestions
+adapters chose which cell of a row is the answer by the answer type (the last number for a number; on
+WikiTableQuestions a number cell whenever the gold was numeric). Both now take each row's first cell, the engine's own
+display rule (`execute._displayed`: the key or shown column first). Every earlier number for both sets used the old rule.
+
+**WikiTableQuestions adapter defect (fixed this evening, after the runs above):** the dataset's csv escapes a quote
+inside a quoted cell with a backslash; the default csv dialect kept the backslashes, so a quoted song title never
+matched its gold, and 4 of the 182 sample tables split their columns wrongly. With the backslash as escapechar, 154 of
+the 182 tables equal the dataset's own tsv (137 before; the rest differ only in spaces). 31 of the 300 sample questions
+read those tables, so the WikiTableQuestions numbers in this entry undercount them.
+
+**The reader round (phase1-reader-20261110): the reader fit is kept.** The rule, written before the gate ran: adopt
+reader2 if its always-answer top right, summed over the four sets, is above the reader fit's and no set is lower by
+more than 2. Same pod, same engine (91755e5), same chooser.
+
+| Set | reader fit | reader2 | wins | losses |
+|---|---|---|---|---|
+| Enron studied | 121 | 124 | 8 | 5 |
+| Messy dev | 79 | 76 | 1 | 4 |
+| DataBench dev | 223 | 174 | 8 | 57 |
+| WikiTableQuestions | 171 | 147 | 11 | 35 |
+| Total | 594 | 521 | | |
+
+Cause: 61% of reader2's 8,000 records (WikiTableQuestions and DataBench train) were labelled by answer, as the union of
+the coordinates of every candidate in the decoder's top 500 whose answer graded right under the old extraction: 1.73
+labels per field (shown 2.79, value 3.2; 30% of fields multi-labelled) against 1.01 for the factory's gold, so the reader
+learned to spread the shown column (DataBench list[number] 49 -> 26 of 60). Distillation labels one program per question.
+
+**Engine commits, each with a regression test (all suites green: program 69, sheet_compile 69, deterministic_emitters
+71, sql_ast 107, named 48, factory 14, calculations 181, analysis 8, sheet_sessions 7, messy_benchmark 5):**
+- 162decc the line after or before the one a condition keeps ("who finished after Bo?"; the dual plan lowers a row
+  filter on a scalar subquery); 6a74307 Check same, an aggregate against an aggregate, "all unique"; a90964e one column
+  on two lines; b0820a0 an ordinal is no stated number; 044bbe9 numbers with one unit ("1,370 tons"); 52b13a9 a total word
+  in prose or a list is no total mark (DataBench had lost records as subtotals: 8,825 utility patents for 8,848); 35db27f
+  number words; 471ce33 ISO year-months; 0f816ac times ("35:00"); c0ae92b a few-valued number column names its values;
+  91d5554 equality ("zero calories"). Small-reader WikiTableQuestions dev reach (2,831) top 1 / 50 / 200: 647 / 1,627 /
+  1,907 -> 674 / 1,652 / 1,932.
+- da7f0c8 Breakdown: a sum, average, lowest, highest or count for each group of a key ("visits per department",
+  "pipeline by rep"), groups in sheet order, the same in the typed SQL and the dual emitter, with read-as, cells and a
+  GROUPBY formula; the four forms could not say it (12 of the 35 messy dev questions with no right candidate). A text
+  column of ISO 4217 codes (two or more) is its lines' unit.
+- de878a6 amounts in different currencies never add: the per-currency figure replaces the plain one unless a condition
+  fixes one currency (7 messy totals on a payments export); a breakdown answers in its figure's type and keeps named
+  groups. fdca189 a figure added across currencies says "(all Currency together)".
+- 0b6205f a top-N of groups by an average, a lowest or a highest; af8ce94 a change going one way states its sign
+  ("growing", "trending up"); 02ba66f CompareLine, a number against the same column on the line a value names ("more
+  medals than Canada", "taller than van Hatchell", "the same number as Japan"), and closed lists of comparatives;
+  ebbac92 only a value one data line holds names a line; 172994b a total or a count over a choice of named values ("the
+  US and Jamaica combined").
+
+**Measured on the live path, each against the run before it on the same pod and chooser:**
+
+| Change | Enron | messy | DataBench | WikiTableQuestions |
+|---|---|---|---|---|
+| 91d5554 + stage2 reading options (neighbour, same), vs morning | 121 -> 121 (+3 -3) | 79 -> 80 (+1 -0) | 223 -> 245 (+26 -4) | 171 -> 185 (+17 -3) |
+| da7f0c8 + breakdown reading option | 121 -> 122 (+1 -0) | 80 -> 88 (+8 -0) | 245 -> 248 (+4 -1) | 185 -> 183 (+1 -3) |
+| de878a6 + marks reading options | 122 -> 122 (+2 -2) | 88 -> 98 (+12 -2) | 248 -> 250 (+6 -4) | 183 -> 187 (+4 -0) |
+
+The marks options: expanded values ordered by their column's count of distinct texts (they had tied and sorted by
+coordinate text, so the 160-value cap cut them arbitrarily: "rupees" never offered Currency = inr), a mark column's one
+value ("Yes" beside blanks), and at most 20 proposed values per column (the word "deal" matched a thousand deal names
+and filled the cap). Messy's two losses are a breakdown the chooser swapped for another and "avg searches across
+everything", whose gold reads the first tab where the chooser took the union.
+
+**Offline replay (replay_reach.py: the run's own recorded CLEF fields, fused and decoded under another engine; a run
+under its own engine reproduces exactly, 101 of 101 on messy).** On the newest engine (172994b): messy listed 111 ->
+112, Enron 149 -> 149, DataBench 274 -> 276 (the bottom 2 branches and locations by average rating), WikiTableQuestions
+224 -> 234 (with the adapter fix; none lost). Listed only: the chooser was not replayed.
+
+**Pools for stage 2 (phase1-pools-20261110):** 7,256 serving-path questions no reader trained on (WikiTableQuestions
+train 4,798, factory held 1,911, DataBench train 547), next-engine 91d5554 with the stage2 options; a right candidate
+listed for 69%. Hand-off: the chooser's 6,023 (4,177 with a right candidate) and the verifier's 12,044 train / 2,434
+held records (held split by workbook), sha256 checked on the pod. These pools have no breakdowns, per-currency figures
+or line comparisons: a chooser trained on them has never seen one.
+
+**Chooser-miss census (last night's runs):** 40-45% of the wrong picks are the decoder's first candidate; the right one
+sits past position 5 in more than half; the median probability gap is 0.11 to 0.32.
+
+**Spend:** the reader pod (H100, 14.2 h, $3.99/h, about $57) and the stage-2 pod since 17:00 ($3.99/h, 18 h lease
+cap $72). Five exited pods of 2026-10-30 holding billed volumes were deleted at the owner's word.
+
+
 ## The night's grammar on four dev sets: DataBench 100 -> 195 and WikiTableQuestions 172 of 300 always answering; the evidence chooser fit fails its gate (2026-11-10)
 
 This is the second part of PLAN 2026-11-10's first night (the plan sits at the top of the RUNBOOK).
