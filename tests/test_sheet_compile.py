@@ -151,6 +151,29 @@ def test_total_word_inside_a_name_stays_a_record():
     assert [line.row for line in table.printed] == [5]
 
 
+def test_total_word_in_prose_is_no_mark():
+    """A patent abstract that ends "... of the total." or mentions a subtotal is a record (DataBench Patents: 23 records
+    read as printed subtotals and left out of every count); a long label that starts with the word is still a total."""
+    prose = "A method that reduces the energy used to a fraction of the total."
+    rows = [["Id", "Kind", "Claims", "Abstract"], ["1", "utility", 12, prose], ["2", "design", 3, "A lamp shade."],
+            ["3", "utility", 7, "The subtotal of each batch is stored before the sum is formed by the device."], ["4", "utility", 9, "A chair."]]
+    table = _tab(rows).tables[0]
+    assert [line.row for line in table.lines] == [2, 3, 4, 5] and not table.printed
+    labelled = [["Item", "Q1", "Q2"], ["Gas", 10, 20], ["Power", 30, 40], ["Total for the twelve months ended December 31, 2001", 40, 60]]
+    assert [line.row for line in _tab(labelled).tables[0].printed] == [4]
+    # A list of words, and a name ending in the word past the record's other texts (DataBench Second: a seller "Motor
+    # Total"), are records; "East Total" as the line's first text is still a printed total.
+    cars = [["Id", "Make", "Model", "Fuel", "Seller", "Price"], ["a1", "Nissan", "Qashqai", "diesel", "Motor Total", 100], ["a2", "Seat", "Leon", "petrol", "Autos Sur", 200],
+            ["a3", "Kia", "Ceed", "petrol", "Motor Total", 300], ["a4", "Audi", "A3", "diesel", "Car Hub", 400]]
+    assert not _tab(cars).tables[0].printed
+    # On a shorter line the same end word still marks it ("Gas | East | Total" is a subtotal's label).
+    assert [line.row for line in _tab([["Book", "Desk", "Label", "Vol"], ["Gas", "East", "", 10], ["Gas", "West", "", 20], ["Gas", "", "Gas Total", 30]]).tables[0].printed] == [4]
+    keywords = [["Id", "Keywords", "Claims"], ["1", "['maximum', 'horizontal', 'total']", 4], ["2", "['lamp']", 2], ["3", "['chair', 'leg']", 3]]
+    assert not _tab(keywords).tables[0].printed
+    banded = [["Region", "Book", "Volume"], ["East", "Gas", 10], ["East", "Power", 20], ["East Total", "", 30], ["West", "Gas", 5], ["West Total", "", 5]]
+    assert [line.row for line in _tab(banded).tables[0].printed] == [4, 6]
+
+
 def test_total_word_inside_every_key_is_no_mark():
     rows = [["Customer", "Amt"]] + [[f"C{i} Total", i] for i in range(1, 11)]
     model = _tab(rows)
@@ -846,7 +869,7 @@ def test_xlsx_reader_builds_the_wire_payload():
 
 TESTS = [
     test_number_parser, test_period_parser, test_format_kinds, test_formula_shapes, test_clean_table_comes_out_unchanged, test_title_lines_give_context, test_multi_row_header_joins_with_merges,
-    test_total_lines_are_printed_and_never_records, test_total_word_inside_a_name_stays_a_record, test_total_word_inside_every_key_is_no_mark, test_total_word_beside_a_blank_key_stays_printed,
+    test_total_lines_are_printed_and_never_records, test_total_word_inside_a_name_stays_a_record, test_total_word_in_prose_is_no_mark, test_total_word_inside_every_key_is_no_mark, test_total_word_beside_a_blank_key_stays_printed,
     test_grand_total_and_subtotals_that_tie_never_leave, test_a_key_left_of_repeated_names_goes_with_every_block, test_all_names_alike_are_a_peer_run_not_blocks, test_a_column_beyond_the_named_blocks_stays_in_a_table,
     test_the_line_model_artifact_is_small_pinned_and_retrains_the_same, test_training_labels_hold_row_numbers_and_hashes_only, test_a_units_line_repeating_over_new_names_opens_a_table, test_a_total_word_naming_a_column_can_be_a_header,
     test_a_closing_total_ends_its_table_when_records_resume, test_titles_with_one_cell_a_block_part_side_by_side_blocks, test_each_side_by_side_list_has_its_own_bands, test_a_lone_label_between_a_total_and_figures_is_a_band, test_axes_cross_spacers_and_totals_and_reach_flag_columns,

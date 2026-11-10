@@ -13,6 +13,7 @@ TOTAL_WORD = re.compile(r"\b(?:grand\s*total|sub-?\s*total|totals?)\b", re.I)
 _LABEL_VALUE = re.compile(r"^[^:]{2,40}:(\s|$)")
 _STRONG_TOTAL = re.compile(r"(?:^|\s)(?:grand\s*total|sub-?\s*total)\b", re.I)
 _GRAND_TOTAL = re.compile(r"\bgrand\s*total", re.I)
+_LEADING_TOTAL = re.compile(r"^\W*(?:grand\s*total|sub-?\s*total|totals?)\b", re.I)
 _STYLE_WINDOW = 8
 _BELOW_WINDOW = 14
 
@@ -85,7 +86,14 @@ def is_total_mark(cells: list) -> bool:
         text = str(cell.value)
         if not TOTAL_WORD.search(text):
             continue
-        if len(texts) == 1 or TOTAL_WORD.search(text.split()[-1]) or _STRONG_TOTAL.search(text):
+        if len(texts) > 1 and (len(text) > 40 or len(text.split()) >= 6) and not _LEADING_TOTAL.match(text):
+            continue        # prose beside a record's other texts ("... of the total."); a line's only text may be a long label
+        if text.startswith("[") and text.endswith("]"):
+            continue        # a list of words ("['maximum', 'total']") is no label
+        # A total word ending a cell is the line's label ("East Total"); on a line filled like a record (5 texts or more)
+        # it ends a name when other texts stand before it ("Motor Total", a seller beside the record's ids and make).
+        ends = TOTAL_WORD.search(text.split()[-1]) and (len(texts) < 5 or cell is min(texts, key=lambda c: c.col))
+        if len(texts) == 1 or ends or _STRONG_TOTAL.search(text):
             return True
         if text.lower().startswith("total") and not any(other is not cell and other.col < cell.col + 3 for other in texts):
             return True
