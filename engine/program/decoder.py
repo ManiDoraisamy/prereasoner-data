@@ -18,7 +18,7 @@ from engine.program.catalog import Catalog, CatalogTable
 from engine.program.index import Atom, TableIndex, index_of
 from engine.program.semantics import fold
 from engine.program.language import (Across, Agg, Calc, Check, Col, OneOf, Compare, CompareColumns, Condition, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, NotEquals, OnLine, Program, Rank, RowArithmetic, SECTION, Show, Size, answer_type_of, is_sound, measure_coordinates, peers_name, period_from_name, shown_together)
-from engine.program.names import (A_COUNT, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, ANY, CHECK, CHECK_OPS, EQ, EVERY, GT, IS, LT, NEIGHBOURS, NO, SLOT_NEIGHBOUR, SLOT_QUANTIFIER, VERSUS, AGG, ANCHORS, ANYWHERE, AVG, BY_SIZE, CALC, CALC_OPS, COMPARISONS, COUNT, COUNT_DISTINCT, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, MAX, MIN, MINUS, NE, NUMBER_AGGREGATES, OVER, PLUS, RANK, ROW_OPS, SHOW, SLOT_AGGREGATE,
+from engine.program.names import (A_COUNT, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, ANY, CHECK, CHECK_OPS, EQ, EVERY, GT, IS, LT, NEIGHBOURS, NO, SAME, SLOT_NEIGHBOUR, SLOT_QUANTIFIER, VERSUS, AGG, ANCHORS, ANYWHERE, AVG, BY_SIZE, CALC, CALC_OPS, COMPARISONS, COUNT, COUNT_DISTINCT, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, MAX, MIN, MINUS, NE, NUMBER_AGGREGATES, OVER, PLUS, RANK, ROW_OPS, SHOW, SLOT_AGGREGATE,
                                   SLOT_ANSWER_TYPE, SLOT_BLANK, SLOT_CALC_LEFT, SLOT_CALC_OP, SLOT_COMPARISON, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_DIRECTION, SLOT_ENTITY, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE, SLOT_LISTING, SLOT_MEASURE, SLOT_NUMBER, SLOT_PEERS, SLOT_PERIOD, SLOT_ROW_OP, SLOT_SECTION,
                                   SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, STATED_BY_SIZE, SUM, TIMES, coordinate, slot_of)
 from engine.program.scoring import DEFAULT_WEIGHTS, Reading, ScoredProgram, Weights, score_program
@@ -774,6 +774,28 @@ class _Search:
                     frames += self.condition_frames(head + s(coordinate(SLOT_AGGREGATE, function)), (measures if function == SUM else plain,), lambda options, where, f=function, o=op, n=number: Check(VERSUS, Agg(f, options[0], table.id, where), op=o, number=n), table, index, atoms, max_policy=2)
                 frames += self.condition_frames(head + counted, (), lambda options, where, o=op, n=number: Check(VERSUS, Agg(COUNT, None, table.id, where), op=o, number=n), table, index, atoms, max_policy=2)
         frames += self.is_frames(table, index, atoms, base, asked)
+        # a number against another aggregate of the same lines ("is the average of a above the average of b?"), and
+        # whether a column's values are all different (its distinct count is the count of lines)
+        for op in asked:
+            head = versus + s(coordinate(SLOT_COMPARISON, op))
+            for function in NUMBER_AGGREGATES:
+                frames += self.condition_frames(head + s(coordinate(SLOT_AGGREGATE, function)), (measures if function == SUM else plain, plain), lambda options, where, f=function, o=op: _versus_aggregate(table.id, options, where, f, o), table, index, atoms, max_policy=1)
+        all_positions = [column.position for column in table.columns]
+        distinct = versus + s(coordinate(SLOT_COMPARISON, EQ)) + s(coordinate(SLOT_AGGREGATE, COUNT_DISTINCT)) + counted
+        frames += self.condition_frames(distinct, (self.column_options(table, all_positions, SLOT_MEASURE),), lambda options, where: Check(VERSUS, Agg(COUNT_DISTINCT, options[0], table.id, where), op=EQ, right=Agg(COUNT, None, table.id, where)), table, index, atoms, max_policy=1)
+        # whether the top one by one rank is also the top one by another: the same line, or the same group's key
+        same = base + s(coordinate(SLOT_QUANTIFIER, SAME))
+        rank_measures = self.measure_options(table, index, dates=True)
+        shown = self.shown_options(table, all_positions)
+        keys = self.column_options(table, all_positions, SLOT_KEY, typed=True)
+        for first in DIRECTIONS:
+            for second in DIRECTIONS:
+                turn = same + s(coordinate(SLOT_DIRECTION, first)) + s(coordinate(SLOT_DIRECTION, second))
+                frames += self.condition_frames(turn + s(coordinate(SLOT_ENTITY, ENTITY_LINE)), (shown, rank_measures, rank_measures), lambda options, where, a=first, b=second: _same_lines(table.id, options, where, a, b), table, index, atoms, max_policy=1)
+                grouped = turn + s(coordinate(SLOT_ENTITY, ENTITY_GROUP))
+                frames += self.condition_frames(grouped + counted + s(coordinate(SLOT_AGGREGATE, SUM)), (keys, measures), lambda options, where, a=first, b=second: _same_groups(table.id, options[0], where, (COUNT, None, a), (SUM, options[1], b)), table, index, atoms, max_policy=1)
+                frames += self.condition_frames(grouped + s(coordinate(SLOT_AGGREGATE, SUM)), (keys, measures, measures), lambda options, where, a=first, b=second: _same_groups(table.id, options[0], where, (SUM, options[1], a), (SUM, options[2], b)), table, index, atoms, max_policy=1)
+                frames += self.condition_frames(grouped + s(coordinate(SLOT_AGGREGATE, AVG)), (keys, plain, plain), lambda options, where, a=first, b=second: _same_groups(table.id, options[0], where, (AVG, options[1], a), (AVG, options[2], b)), table, index, atoms, max_policy=1)
         return frames
 
     def is_frames(self, table: CatalogTable, index: TableIndex, atoms: list[_Option], base: float, asked: list[str]) -> list[_Frame]:
@@ -946,6 +968,31 @@ def _columns_on_a_line(table, options, op):
         return None
     where = tuple(atom.condition for atom in atoms)
     return Calc(Show(table.id, (a,), where), op, Show(table.id, (b,), where))
+
+
+def _versus_aggregate(table_id, options, where, function, op):
+    a, b = options
+    if a == b:
+        return None
+    return Check(VERSUS, Agg(function, a, table_id, where), op=op, right=Agg(function, b, table_id, where))
+
+
+def _same_lines(table_id, options, where, first, second):
+    """Whether the line with the first-most of one measure is the line with the second-most of another."""
+    shown, a, b = options
+    try:
+        return Check(SAME, Rank(ENTITY_LINE, table_id, first, where, a, shown), right=Rank(ENTITY_LINE, table_id, second, where, b, shown))
+    except ValueError:
+        return None
+
+
+def _same_groups(table_id, key, where, left, right):
+    """Whether one group key tops two ranks of the same groups: each side (function, measure, direction)."""
+    sides = [Rank(ENTITY_GROUP, table_id, direction, where, measure, key=key, function=function) for function, measure, direction in (left, right)]
+    try:
+        return Check(SAME, sides[0], right=sides[1])
+    except ValueError:
+        return None
 
 
 def _two_measures(table, options, op):

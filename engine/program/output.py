@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from engine.program.catalog import Catalog, CatalogTable, KIND_FAMILY
 from engine.program.index import index_of
 from engine.program.language import (Across, Agg, Calc, Check, Col, OneOf, Compare, CompareColumns, Condition, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, Measure, NotEquals, Program, Rank, RowArithmetic, SECTION, Show, Size, addresses_printed, answer_type_of, measure_columns)
-from engine.program.names import (A_PERCENT, AFTER, ANY, ANYWHERE, EQ, EVERY, IS, NO, AVG, COUNT, COUNT_DISTINCT, ENDS, ENTITY_GROUP, ENTITY_LINE, GE, GT, HIGHEST, LE, LT, MAX, MIN, MINUS, NE, OVER, PLUS, STARTS, SUM, TIMES)
+from engine.program.names import (A_PERCENT, AFTER, ANY, SAME, ANYWHERE, EQ, EVERY, IS, NO, AVG, COUNT, COUNT_DISTINCT, ENDS, ENTITY_GROUP, ENTITY_LINE, GE, GT, HIGHEST, LE, LT, MAX, MIN, MINUS, NE, OVER, PLUS, STARTS, SUM, TIMES)
 from engine.program.scoring import ScoredProgram
 from engine.program.semantics import fold, number_text, share_forms
 from engine.program.store import RequestTables
@@ -110,6 +110,8 @@ def _check_words(program: Check, catalog: Catalog) -> str:
             return f"whether every line {place}" + (f" where {base}" if base else "") + f" also has {extra}"
         where = _where_words(catalog, program.left.where)
         return f"whether there is {'any' if program.quantifier == ANY else 'no'} line {place}" + (f" where {where}" if where else "")
+    if program.quantifier == SAME:
+        return f"whether {read_as(program.left, catalog)} is also {read_as(program.right, catalog)}"
     if program.quantifier == IS and program.text is not None:
         return f'whether {read_as(program.left, catalog)} is {"not " if program.op == NE else ""}"{program.text}"'
     other = number_text(program.number) if program.number is not None else read_as(program.right, catalog)
@@ -380,7 +382,7 @@ def formula(program: Program, tables: RequestTables) -> str:
         if program.quantifier in (ANY, NO):
             return f"=({left}){'>' if program.quantifier == ANY else '='}0"
         right = number_text(program.number) if program.number is not None else f'"{program.text}"' if program.text is not None else f"({formula(program.right, tables).lstrip('=')})"
-        return f"=({left}){'=' if program.quantifier == EVERY else _VERDICT_FORMULA[program.op]}{right}"
+        return f"=({left}){'=' if program.quantifier in (EVERY, SAME) else _VERDICT_FORMULA[program.op]}{right}"
     if isinstance(program, Calc):
         left, right = formula(program.left, tables).lstrip("="), formula(program.right, tables).lstrip("=")
         body = f"({left}) {program.op} ({right})"

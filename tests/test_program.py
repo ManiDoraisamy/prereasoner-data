@@ -12,7 +12,7 @@ from engine.program.execute import run, run_dual
 from engine.program.index import TableIndex
 from engine.program.language import (Across, Agg, Calc, Check, Col, OneOf, Compare, CompareColumns, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, NotEquals, OnLine, PeriodSpan, Rank, RowArithmetic, SECTION, Show, Size, answer_type_of, coordinates, tables_of, is_sound, period_from_name)
 from engine.program.lowering import plan_schema, to_query
-from engine.program.names import (A_COMPANY, A_COUNT, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, AFTER, ANY, BEFORE, CHECK, EQ, EVERY, IS, LT, NE, NO, VERSUS, ANSWER_TYPES, AVG, CALC, COMPARISONS, COUNT, COUNT_DISTINCT, ENDS, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, EV_ADDS_TWICE, EV_BARE_ZERO, EV_EMPTY, EV_FAILED, EV_FILTER_DID_NOTHING, EV_FRACTION_FOR_COUNT, EV_MANY_ROWS, EV_PRINTED_TIE, EV_RAN,
+from engine.program.names import (A_COMPANY, A_COUNT, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, AFTER, ANY, BEFORE, SAME, CHECK, EQ, EVERY, IS, LT, NE, NO, VERSUS, ANSWER_TYPES, AVG, CALC, COMPARISONS, COUNT, COUNT_DISTINCT, ENDS, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, EV_ADDS_TWICE, EV_BARE_ZERO, EV_EMPTY, EV_FAILED, EV_FILTER_DID_NOTHING, EV_FRACTION_FOR_COUNT, EV_MANY_ROWS, EV_PRINTED_TIE, EV_RAN,
                                   EV_REPEATED_LINES, EV_ROW_COUNT_FOR_AMOUNT, EV_SHAPE_AGREES, EV_TOO_LARGE_FOR_SHARE, EV_TYPE_AGREES, EV_WRONG_KIND, EVIDENCE, FORMS, GE, GT, HIGHEST, LOWEST, MAX, MIN, MINUS, OVER, PERIOD_NAMED, PERIOD_REST_OF, PERIOD_SO_FAR, PLUS, SEMANTICS, SIGN_LOSS, SIGN_MAGNITUDE, SIGN_NET,
                                   SIGN_SIZE, SLOT_AGGREGATE, SLOT_FORM, SLOTS, STARTS, SUM, TIMES, coarse_type, coordinate, slot_of)
 from engine.program.output import cells_used, compress, explain, formula, read_as
@@ -580,6 +580,53 @@ def test_a_check_asks_what_the_top_one_is():
         reading = Reading({n: 1.0 for n in coordinates(gold, catalog.column_kind)})
         decoded = Decoder(catalog).decode(reading, k=50)
         assert decoded.programs and decoded.programs[0].program == gold, (gold, decoded.programs[:3])
+
+
+LOANS = [["Name", "Region", "Loan", "Months", "Score"], ["a", "x", 100.0, 12.0, 1.0], ["b", "y", 500.0, 48.0, 9.0], ["c", "x", 300.0, 60.0, 5.0], ["d", "z", 50.0, 6.0, 2.0]]
+
+
+def test_a_check_asks_whether_the_top_one_is_the_same_or_compares_two_aggregates():
+    """"Is the borrower with the highest loan also the one with the longest loan?", "is the region with the most lines
+    also the one with the most loans?" (DataBench dev: 9 of 60 yes/no questions), "is the average loan above the average
+    months?", "are all names unique?": the same line or group key on both sides, or one aggregate against another, the
+    same in the typed SQL and the dual emitter; the decoder returns each first from its own coordinates."""
+    catalog, table, tables = _setup(LOANS)
+    name, region, loan, months, score = (Col(table.id, at) for at in range(5))
+
+    def top(measure, direction=HIGHEST):
+        return Rank(ENTITY_LINE, table.id, direction, (), measure, (name,))
+
+    def group(function, measure, direction=HIGHEST):
+        return Rank(ENTITY_GROUP, table.id, direction, (), measure, key=region, function=function)
+
+    cases = [(Check(SAME, top(loan), right=top(score)), "True"), (Check(SAME, top(loan), right=top(months)), "False"),
+             (Check(SAME, top(loan, LOWEST), right=top(months, LOWEST)), "True"),
+             (Check(SAME, group(COUNT, None), right=group(SUM, loan)), "False"), (Check(SAME, group(SUM, score), right=group(SUM, loan)), "True"),
+             (Check(VERSUS, Agg(AVG, loan, table.id), op=GT, right=Agg(AVG, months, table.id)), "True"),
+             (Check(VERSUS, Agg(MAX, months, table.id), op=GT, right=Agg(MAX, loan, table.id)), "False"),
+             (Check(VERSUS, Agg(COUNT_DISTINCT, name, table.id), op=EQ, right=Agg(COUNT, None, table.id)), "True"),
+             (Check(VERSUS, Agg(COUNT_DISTINCT, region, table.id), op=EQ, right=Agg(COUNT, None, table.id)), "False")]
+    for program, want in cases:
+        assert _answer(program, tables) == ((want,),), (program, _answer(program, tables))
+    first = cases[0][0]
+    assert coordinate("quantifier", SAME) in coordinates(first, catalog.column_kind)
+    assert read_as(first, catalog).startswith("whether ") and " is also " in read_as(first, catalog) and formula(first, tables).startswith("=(")
+    # A tie goes to the first line on both sides.
+    _, tied, tied_tables = _setup([["Name", "A", "B"], ["p", 5.0, 1.0], ["q", 5.0, 7.0], ["r", 1.0, 7.0]])
+    tie = Check(SAME, Rank(ENTITY_LINE, tied.id, HIGHEST, (), Col(tied.id, 1), (Col(tied.id, 0),)), right=Rank(ENTITY_LINE, tied.id, HIGHEST, (), Col(tied.id, 2), (Col(tied.id, 0),)))
+    assert _answer(tie, tied_tables) == (("False",),)          # p tops A, q tops B (the first of the tied q and r)
+    for bad in (lambda: Check(SAME, top(loan), right=top(loan)), lambda: Check(SAME, top(loan)), lambda: Check(SAME, top(loan), op=EQ, right=top(score)),
+                lambda: Check(SAME, top(loan), right=group(SUM, loan)), lambda: Check(SAME, group(SUM, loan), right=Rank(ENTITY_GROUP, table.id, HIGHEST, (), loan, key=name, function=SUM)),
+                lambda: Check(SAME, Rank(ENTITY_LINE, table.id, HIGHEST, (), loan, (name,), count=2), right=top(score))):
+        try:
+            bad()
+        except ValueError:
+            continue
+        raise AssertionError("a same-check accepted what it cannot say")
+    for gold in (cases[1][0], cases[3][0], cases[5][0], cases[7][0]):
+        reading = Reading({n: 1.0 for n in coordinates(gold, catalog.column_kind)})
+        decoded = Decoder(catalog).decode(reading, k=50)
+        assert decoded.programs and decoded.programs[0].program == gold, (gold, [p.program for p in decoded.programs[:3]])
 
 
 def test_a_read_takes_the_line_after_or_before_the_kept_one():
@@ -1196,7 +1243,7 @@ TESTS = [
     test_several_shown_columns_cost_a_named_coordinate, test_a_sign_word_compares_with_zero, test_a_stated_number_a_column_holds_reads_as_its_value, test_a_misspelled_word_reads_as_the_sheets_word, test_a_word_only_one_column_holds_says_which, test_several_columns_shown_type_the_same_however_they_stand, test_across_adds_peer_columns_of_a_line, test_the_decoder_reaches_across_when_a_word_asks, test_a_text_other_than, test_the_decoder_reads_other_than_from_the_words, test_answer_types_place_money_quantity, test_decoder_ties_do_not_follow_sheet_order, test_a_family_adding_twice_says_so, test_axes_are_read_by_their_kind, test_a_question_reads_the_tables_its_links_reach, test_verifier_stops_at_its_budget_of_lines,
     test_every_name_is_from_a_closed_list, test_forms_refuse_what_they_cannot_say, test_signs, test_printed_lines_are_read_by_label_and_never_added, test_shortest_label_first_and_unlabelled_printed_lines, test_a_column_filled_only_on_printed_lines_reads_them,
     test_partial_value_match, test_case_and_spacing_do_not_count, test_periods, test_blanks, test_ties_keep_every_tied_line, test_units, test_mixed_columns, test_repeated_rows, test_sections_nested_bands_and_the_section_shown, test_python_masks_agree_with_the_sql,
-    test_calc_shapes, test_rank_across_peer_columns, test_a_rank_keeps_as_many_as_the_question_states, test_the_decoder_proposes_how_many_a_question_states, test_a_check_says_yes_or_no, test_the_decoder_checks_only_when_the_reading_names_a_check, test_a_choice_among_named_values, test_a_check_asks_what_the_top_one_is, test_a_read_takes_the_line_after_or_before_the_kept_one, test_new_ast_nodes_render_and_validate, test_plan_schema_holds_only_what_a_query_reads, test_perfect_readings_give_the_gold_first, test_decoder_is_deterministic_and_order_free, test_the_list_does_not_depend_on_hash_order,
+    test_calc_shapes, test_rank_across_peer_columns, test_a_rank_keeps_as_many_as_the_question_states, test_the_decoder_proposes_how_many_a_question_states, test_a_check_says_yes_or_no, test_the_decoder_checks_only_when_the_reading_names_a_check, test_a_choice_among_named_values, test_a_check_asks_what_the_top_one_is, test_a_check_asks_whether_the_top_one_is_the_same_or_compares_two_aggregates, test_a_read_takes_the_line_after_or_before_the_kept_one, test_new_ast_nodes_render_and_validate, test_plan_schema_holds_only_what_a_query_reads, test_perfect_readings_give_the_gold_first, test_decoder_is_deterministic_and_order_free, test_the_list_does_not_depend_on_hash_order,
     test_scores_come_in_as_data_and_nothing_else_moves_the_list, test_contributions_are_named_and_sum_to_the_score, test_intervention_a_named_coordinate_moves_the_score_by_its_weight, test_policy_prunes_values_only_where_it_says, test_conditions_stay_on_distinct_columns,
     test_answer_type_rule, test_an_ordinal_is_not_a_stated_number, test_words_alone_read_a_question, test_verifier_shape_and_type_evidence, test_printed_total_ties_only_under_its_exact_conditions, test_verifier_runs_the_top_programs_and_never_raises, test_read_as_in_the_sheets_own_words,
     test_cells_are_the_exact_addresses_used, test_formula_a_user_can_check, test_explain_carries_the_named_contributions,

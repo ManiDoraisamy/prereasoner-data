@@ -59,7 +59,8 @@ NO = "no"              # no kept line exists
 EVERY = "every"        # every line the base conditions keep also meets one more condition
 VERSUS = "versus"      # one number against a stated number or another program's number
 IS = "is"              # the top line's shown value, or the top group's key, against a stated text or number
-QUANTIFIERS = (ANY, NO, EVERY, VERSUS, IS)
+SAME = "same"          # the top line (or group) by one rank is also the top one by another
+QUANTIFIERS = (ANY, NO, EVERY, VERSUS, IS, SAME)
 
 # Which line a read takes beside the one its conditions keep ("who finished after Bo?"): a slot the small reader has
 # no head for; CLEF's reading names it.
