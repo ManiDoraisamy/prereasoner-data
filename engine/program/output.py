@@ -153,7 +153,7 @@ def read_as(program: Program, catalog: Catalog) -> str:
             head = f"the {_AGG_WORDS[program.function]} of {_measure_words(catalog, program.measure)} {place}"
         if program.magnitude:
             head = f"the size of {head}"
-        return head + (f" where {where}" if where else "")
+        return head + (f" where {where}" if where else "") + _units_added(program, table, catalog)
     way = "highest" if program.direction == HIGHEST else "lowest"
     where = _where_words(catalog, program.where)
     tail = f" where {where}" if where else ""
@@ -175,6 +175,17 @@ def read_as(program: Program, catalog: Catalog) -> str:
 
 
 # ----------------------------------------------------------------------------------------------------------- cells
+def _units_added(program: Agg, table: CatalogTable, catalog: Catalog) -> str:
+    """A figure over a table whose lines name their currency, no condition fixing one, adds amounts in several
+    currencies together: the read-as says so, as the person and the chooser should both see it."""
+    unit = index_of(table).currency_column
+    if unit is None or program.function not in _SHEET_FUNCTION:
+        return ""
+    if any(isinstance(condition, (Equals, OneOf)) and condition.column.position == unit for condition in program.where):
+        return ""
+    return f" (all {_name(catalog, Col(table.id, unit))} together)"
+
+
 def kept_lines(program: Program, table: CatalogTable, index) -> list[int]:
     """The line positions a program's conditions keep, in sheet order: the same lines its query reads."""
     every_line = addresses_printed(program.where) or (isinstance(program, Show) and not program.listing) or (isinstance(getattr(program, "measure", None), Col) and program.measure.position in table.printed_only_columns)

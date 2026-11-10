@@ -934,6 +934,8 @@ def test_amounts_in_several_currencies_are_given_per_currency():
     assert form_of(retail) == "agg" and answer_type_of(retail, catalog.column_kind) == A_NUMBER
     assert read_as(retail, catalog) == 'the total of Amount for each Currency on "Sheet1" where Sector is "Retail"'
     plain = Agg(SUM, amount, table.id, (Equals(sector, "retail"),))
+    assert read_as(plain, catalog).endswith("(all Currency together)"), "a total added across currencies says so"
+    assert not read_as(Agg(SUM, amount, table.id, (Equals(currency, "usd"),)), catalog).endswith("together)")
     reading = Reading({name: 1.0 for name in coordinates(plain, catalog.column_kind)})
     programs = Decoder(catalog).enumerate(reading, k=50)[0]
     assert programs.index(retail) < programs.index(plain) < 5, "the figure per currency stands just above the one added across them"
