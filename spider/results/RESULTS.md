@@ -5,6 +5,88 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
+## The night's grammar on four dev sets: DataBench 100 -> 195 and WikiTableQuestions 172 of 300 always answering; the evidence chooser fit fails its gate (2026-11-10)
+
+This is the second part of PLAN 2026-11-10's first night (the plan sits at the top of the RUNBOOK).
+- Experiments: `clef-chooser-evidence-20261110` (evidence records, a chooser fit, two gates) and `clef-evidence-20261110`
+  (analysis), both gitignored under `training/readers/data/experiments/`.
+- Engine: next-engine local commits d289719, 289c8bb, 4a6f637, 9337000 and 91755e5 (every suite green: test_program
+  59, test_named 48, test_factory 14, test_deterministic_emitters 70, test_sql_ast 107, test_calculations 181,
+  test_analysis 8). Not in this repository and not served.
+- GPU: two H100 SXM pods at $3.99/h, about $24 (attempt 1 about $10.9, attempt 2 about $12.7). Nothing promoted.
+
+**What the night added to the program language.** Each operation is in both deterministic emitters with execution
+parity tests.
+- `Rank` keeps as many lines or groups as the question states ("the 5 oldest"), typed by what it shows (d289719,
+  4a6f637). Typing a top-N as a list had cost it the small reader's list penalty: DataBench number lists went from 0
+  to 9 of 60 at top 1.
+- `Check`, a yes-or-no form (289c8bb): any, no, every, and a number against a stated one, lowered to a verdict over
+  scalar subqueries on one row.
+- `OneOf` for a rank's kept lines ("Germany or France", 9337000). The WikiTableQuestions dev "or" questions reached
+  in the top 200 went from 100 to 112, and right at top 1 from 14 to 30.
+- `is` checks of what the top one is ("is the oldest one male?", 91755e5), with verdicts that compare text in both
+  emitters.
+
+The reading records also changed:
+- Value expansion: every distinct value of a column with at most 30, value field capped at 160.
+- The check options: form `check`, a quantifier field, answer type `yes_no`. Only CLEF reads them.
+
+**The whole path, always answering.** Small reader, the reader fit's reading fused at w=2, decoder top 50, every
+candidate run, refit chooser with evidence. "Session" is the earlier engine (5aa5526) without value expansion or check
+options; "tonight" is next-engine at 91755e5 with both.
+
+| Set | Questions | Right listed, session | Right listed, tonight | Top answer right, session | Top answer right, tonight |
+|---|---:|---:|---:|---:|---:|
+| Enron studied | 186 | 144 | 147 | 119 | **122** (66%) |
+| Messy dev | 120 | 76 | 85 | 70 | **79** (66%) |
+| DataBench dev | 300 | 110 | 219 | 100 | **195** (65%) |
+| WikiTableQuestions dev sample | 300 | - | 214 | - | **172** (57%) |
+
+- The WikiTableQuestions sample is a fixed 300 of random-split-1-dev (seed 20261110). This is the first CLEF number on
+  it.
+- The chooser picks a right answer in 83% (Enron), 93% (messy), 89% (DataBench) and 80% (WikiTableQuestions) of the
+  questions where one is listed. The rest are the reader's and decoder's: no right program in the top 50.
+- Latency per question on one H100 SXM, the two CLEF passes included: messy p50 4.1 s, p90 7.3 s; WikiTableQuestions
+  p50 3.1 s, p90 3.6 s.
+
+DataBench dev by answer type (60 each), top answer right:
+
+| Answer type | Session | Tonight | Right listed, tonight |
+|---|---:|---:|---:|
+| Category | 49 | 49 | 57 |
+| Number | 41 | 42 | 43 |
+| Yes/no | 3 | 33 | 39 |
+| Category list | 6 | 41 | 48 |
+| Number list | 1 | 30 | 32 |
+
+**The warning icon is still far from the launch bar.** Using the chooser's top probability as the signal:
+- Warning on 20% of answers leaves 30 of 186 (Enron), 18 of 120 (messy), 56 of 300 (DataBench) and 71 of 300
+  (WikiTableQuestions) wrong without a warning.
+- Holding that to 2% needs warnings on 125, 68, 239 and 254 of them.
+- Grouping candidates by their answer moves this little.
+- The bar (at least 80% right, at most 2% wrong without a warning, at most 20% warned) needs accuracy near 85-90% and a
+  verifier, as the RUNBOOK's WARNING SIGNALS line says.
+
+**A defect the run found.** 21 of 300 DataBench questions (053_Patents, 063_Influencers) read nothing from CLEF: the
+reading schema needed 35,116 to 51,414 tokens against 32,768. Free-text cells (patent abstracts of up to 5,607
+characters, posts) entered the value and line options uncut, though the sheet description already cuts cells to 30.
+- Only 3 of the 21 were answered right.
+- Option texts are now cut at 160 characters (`reading_records.py`, OPTION_CHARS). Not yet re-measured.
+
+**The evidence chooser fit fails its gate.**
+- Training: the refit chooser trained further on evidence records (sheet plus each candidate's answer) for held
+  factory questions, 162 updates, none skipped.
+- Records: 1,293, not the planned 2,000. A stopped task left a collector alive, two writers interleaved shard 0, and
+  705 records were lost (266 recovered).
+- Gate, top answer right with evidence, against the refit with evidence zero-shot: Enron 119 vs 119, messy 68 vs 70,
+  DataBench dev 98 vs 100. The zero-shot refit stays.
+- Attempt 1 crashed in cuDNN attention at about update 75 before saving, about $10.9 lost. The trainer now disables
+  cuDNN attention and guards each record.
+
+**Running at the time of writing:** `phase1-reader-20261110`, the reader trained further on 8,000 records (factory
+gold, WikiTableQuestions train and DataBench train, labelled by answer), at update 430 of 1,000.
+
+
 ## The first measurements on data other than Enron, the loss census, and three levers: evidence for the chooser, value expansion, top-N lists (2026-11-10)
 
 This is PLAN 2026-11-10's first night (the plan sits at the top of the RUNBOOK).
