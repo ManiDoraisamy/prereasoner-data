@@ -629,8 +629,8 @@ def answer_type_of(program: Program, column_kind) -> str:
         return A_PERCENT if program.op == OVER else A_NUMBER
     if isinstance(program, Agg):
         return A_COUNT if program.function in (COUNT, COUNT_DISTINCT) else A_NUMBER
-    if isinstance(program, Breakdown):
-        return A_LIST if program.keys else A_NUMBER
+    if isinstance(program, Breakdown):      # a figure for each group: the figure's type
+        return A_COUNT if program.function == COUNT else A_NUMBER
     if isinstance(program, Show):
         if program.listing:
             return A_LIST

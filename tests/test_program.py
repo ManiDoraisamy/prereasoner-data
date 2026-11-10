@@ -865,7 +865,8 @@ def test_a_breakdown_gives_a_figure_for_each_group():
     assert read_as(summed, catalog) == 'the total of Amount for each Sector on "Sheet1" where Plan is "monthly"'
     assert formula(summed, tables) == "=GROUPBY('Sheet1'!E2:E7,'Sheet1'!D2:D7,SUM,0,0,,('Sheet1'!B2:B7=\"monthly\"))"
     assert len(cells_used(summed, tables, ())) == 3, "line f has no sector: its amount is in no group"
-    assert form_of(summed) == BREAKDOWN and answer_type_of(summed, catalog.column_kind) == A_LIST
+    assert form_of(summed) == BREAKDOWN and answer_type_of(summed, catalog.column_kind) == A_NUMBER     # a figure per group
+    assert answer_type_of(counted, catalog.column_kind) == A_COUNT
     assert coordinate("key", sector.name) in coordinates(summed, catalog.column_kind)
     assert not is_sound(Breakdown(SUM, amount, table.id, (sector,), (Equals(sector, "retail"),))), "a group fixed to one value is one figure"
     for bad in (lambda: Breakdown(SUM, amount, table.id), lambda: Breakdown(COUNT, None, table.id, (plan,), unit=Col(table.id, 2)),
@@ -922,7 +923,8 @@ def test_amounts_in_several_currencies_are_given_per_currency():
     """A payments export names each line's currency ("usd", "inr"); the messy subscriptions questions ("how much sales
     from retailers", 7 of 120 dev) had no right candidate, since a total added rupees to dollars. A text column whose every
     filled cell is an ISO 4217 code, holding two or more, is the lines' unit: a total, an average, a lowest or a highest
-    over its table is also given per currency, ranked just above the same figure added across currencies, and it answers
+    over its table is given per currency in place of the same figure added across currencies (unless a condition fixes one
+    currency, when it is the plain figure), and it answers
     as the figure does (form agg). A column of one code, or one holding a word, is no unit."""
     catalog, table, tables = _setup(SUBSCRIPTIONS)
     currency, amount, sector = Col(table.id, 2), Col(table.id, 3), Col(table.id, 4)
@@ -938,7 +940,9 @@ def test_amounts_in_several_currencies_are_given_per_currency():
     assert not read_as(Agg(SUM, amount, table.id, (Equals(currency, "usd"),)), catalog).endswith("together)")
     reading = Reading({name: 1.0 for name in coordinates(plain, catalog.column_kind)})
     programs = Decoder(catalog).enumerate(reading, k=50)[0]
-    assert programs.index(retail) < programs.index(plain) < 5, "the figure per currency stands just above the one added across them"
+    assert retail in programs[:3] and plain not in programs, "amounts in different currencies never add: the split replaces the total"
+    usd = Agg(SUM, amount, table.id, (Equals(currency, "usd"),))
+    assert usd in Decoder(catalog).enumerate(Reading({name: 1.0 for name in coordinates(usd, catalog.column_kind)}), k=50)[0][:3], "one currency fixed: a plain total"
     split = Breakdown(SUM, amount, table.id, (sector,), unit=currency)
     assert _answer(split, tables)[:2] == (("Retail", "usd", 100.0), ("Retail", "INR", 5000.0))
     assert TableIndex(_setup(TRADES, formats=TRADE_FORMATS)[1]).currency_column is None

@@ -26,9 +26,6 @@ from engine.sheet.names import PRINTED_ROLES
 
 _LINE_GROUP = -2
 _SECTION_GROUP = -3
-# A figure given per unit stands just above the same figure added across units: amounts in different currencies do
-# not add, so where a table names each line's currency the split is the plain reading of a total, an average or a top.
-UNIT_SPLIT = 0.01
 
 
 @dataclass(frozen=True, slots=True)
@@ -318,6 +315,16 @@ class Decoder:
 
 def _size(slot) -> int:
     return slot.size() if isinstance(slot, _Conditions) else len(slot)
+
+
+def _per_unit(program: Agg | Breakdown, unit: Col | None) -> Agg | Breakdown:
+    """Amounts in different currencies do not add: where a table names each line's currency (TableIndex.currency_column),
+    a sum, average, lowest or highest is given per currency, unless a condition fixes one currency."""
+    if unit is None or any(isinstance(condition, Equals) and condition.column == unit for condition in program.where):
+        return program
+    if isinstance(program, Agg):
+        return Breakdown(program.function, program.measure, program.table, (), program.where, unit=unit)
+    return Breakdown(program.function, program.measure, program.table, program.keys, program.where, unit=unit)
 
 
 def _bound(frame: _Frame, indices: tuple[int, ...]) -> float | None:
@@ -728,9 +735,10 @@ class _Search:
         # agg
         agg = s(coordinate(SLOT_FORM, AGG)) + table_score
         measures = self.measure_options(table, index)
-        for function in NUMBER_AGGREGATES:
+        unit = Col(table.id, index.currency_column) if index.currency_column is not None else None
+        for function in NUMBER_AGGREGATES:     # per currency where the lines name theirs (_per_unit)
             base = agg + s(coordinate(SLOT_AGGREGATE, function)) + self.type_score(A_NUMBER)
-            frames += self.condition_frames(base, (measures,), lambda options, where, f=function: Agg(f, options[0], table.id, where), table, index, atoms)
+            frames += self.condition_frames(base, (measures,), lambda options, where, f=function: _per_unit(Agg(f, options[0], table.id, where), unit), table, index, atoms)
         magnitude = agg + s(coordinate(SLOT_AGGREGATE, SUM)) + self.type_score(A_NUMBER) + s(coordinate(SLOT_SIZE, STATED_BY_SIZE))
         plain = self.column_options(table, index.number_columns, SLOT_MEASURE)
         frames += self.condition_frames(magnitude, (plain,), lambda options, where: Agg(SUM, options[0], table.id, where, magnitude=True), table, index, atoms)
@@ -739,11 +747,6 @@ class _Search:
         distinct = agg + s(coordinate(SLOT_AGGREGATE, COUNT_DISTINCT)) + self.type_score(A_COUNT)
         keys = self.column_options(table, all_positions, SLOT_MEASURE)
         frames += self.condition_frames(distinct, (keys,), lambda options, where: Agg(COUNT_DISTINCT, options[0], table.id, where), table, index, atoms, max_policy=2)
-        unit = Col(table.id, index.currency_column) if index.currency_column is not None else None
-        if unit is not None:          # the same figure per currency, beside each figure of a table naming its lines' currency
-            for function in NUMBER_AGGREGATES:
-                base = agg + s(coordinate(SLOT_AGGREGATE, function)) + self.type_score(A_NUMBER) + UNIT_SPLIT
-                frames += self.condition_frames(base, (measures,), lambda options, where, f=function: Breakdown(f, options[0], table.id, (), where, unit=unit), table, index, atoms)
         # rank
         rank = s(coordinate(SLOT_FORM, RANK)) + table_score
         rank_measures = self.measure_options(table, index, dates=True)
@@ -796,16 +799,15 @@ class _Search:
         if coordinate(SLOT_FORM, BREAKDOWN) not in self.reading.scores:
             return []
         s = self.s
-        each = s(coordinate(SLOT_FORM, BREAKDOWN)) + s(coordinate(SLOT_TABLE, table.id)) + self.type_score(A_LIST)
+        each = s(coordinate(SLOT_FORM, BREAKDOWN)) + s(coordinate(SLOT_TABLE, table.id))
         frames: list[_Frame] = []
-        for function in NUMBER_AGGREGATES:
-            base = each + s(coordinate(SLOT_AGGREGATE, function))
+        grouped = [option for option in keys if option.payload != unit]      # the unit is no group of its own
+        for function in NUMBER_AGGREGATES:     # "monthly vs yearly": a choice among named values keeps those groups
+            base = each + s(coordinate(SLOT_AGGREGATE, function)) + self.type_score(A_NUMBER)
             figures = measures if function == SUM else plain
-            frames += self.condition_frames(base, (keys, figures), lambda options, where, f=function: Breakdown(f, options[1], table.id, (options[0],), where), table, index, atoms, max_policy=2)
-            if unit is not None:      # a key other than the unit, each group's figure per currency
-                frames += self.condition_frames(base + UNIT_SPLIT, ([option for option in keys if option.payload != unit], figures), lambda options, where, f=function: Breakdown(f, options[1], table.id, (options[0],), where, unit=unit), table, index, atoms, max_policy=2)
-        counted = each + s(coordinate(SLOT_AGGREGATE, COUNT))
-        frames += self.condition_frames(counted, (keys,), lambda options, where: Breakdown(COUNT, None, table.id, (options[0],), where), table, index, atoms, max_policy=2)
+            frames += self.condition_frames(base, (grouped, figures), lambda options, where, f=function: _per_unit(Breakdown(f, options[1], table.id, (options[0],), where), unit), table, index, atoms, max_policy=2, choices=True)
+        counted = each + s(coordinate(SLOT_AGGREGATE, COUNT)) + self.type_score(A_COUNT)
+        frames += self.condition_frames(counted, (keys,), lambda options, where: Breakdown(COUNT, None, table.id, (options[0],), where), table, index, atoms, max_policy=2, choices=True)
         return frames
 
     def check_frames(self, table: CatalogTable, index: TableIndex, atoms: list[_Option], measures: list[_Option], plain: list[_Option]) -> list[_Frame]:
