@@ -623,7 +623,11 @@ def test_a_check_asks_whether_the_top_one_is_the_same_or_compares_two_aggregates
         except ValueError:
             continue
         raise AssertionError("a same-check accepted what it cannot say")
-    for gold in (cases[1][0], cases[3][0], cases[5][0], cases[7][0]):
+    # One column on two lines ("was a's loan above c's?", WikiTableQuestions' yes/no): two one-line reads against each other.
+    two_lines = Check(VERSUS, Show(table.id, (loan,), (Equals(name, "a"),)), op=GT, right=Show(table.id, (loan,), (Equals(name, "c"),)))
+    assert _answer(two_lines, tables) == (("False",),)
+    assert _answer(Check(VERSUS, two_lines.left, op=LT, right=two_lines.right), tables) == (("True",),)
+    for gold in (cases[1][0], cases[3][0], cases[5][0], cases[7][0], two_lines):
         reading = Reading({n: 1.0 for n in coordinates(gold, catalog.column_kind)})
         decoded = Decoder(catalog).decode(reading, k=50)
         assert decoded.programs and decoded.programs[0].program == gold, (gold, [p.program for p in decoded.programs[:3]])

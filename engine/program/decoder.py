@@ -783,6 +783,12 @@ class _Search:
         all_positions = [column.position for column in table.columns]
         distinct = versus + s(coordinate(SLOT_COMPARISON, EQ)) + s(coordinate(SLOT_AGGREGATE, COUNT_DISTINCT)) + counted
         frames += self.condition_frames(distinct, (self.column_options(table, all_positions, SLOT_MEASURE),), lambda options, where: Check(VERSUS, Agg(COUNT_DISTINCT, options[0], table.id, where), op=EQ, right=Agg(COUNT, None, table.id, where)), table, index, atoms, max_policy=1)
+        # one number column on two lines or two sets of lines ("was a's time above b's?")
+        shown_numbers = self.column_options(table, index.number_columns, SLOT_SHOWN)
+        two = s(coordinate(SLOT_CONDITIONS, table.id, 2))
+        for held, other in self.contrast_groups(table, _without_choices(atoms)):
+            for op in asked:
+                frames.append(_Frame(versus + s(coordinate(SLOT_COMPARISON, op)) + two, (shown_numbers, held, other), lambda options, o=op: _versus_lines(table, options, o)))
         # whether the top one by one rank is also the top one by another: the same line, or the same group's key
         same = base + s(coordinate(SLOT_QUANTIFIER, SAME))
         rank_measures = self.measure_options(table, index, dates=True)
@@ -847,6 +853,14 @@ class _Search:
         self.slots[key] = [options[at] for at in order]
         return self.slots[key]
 
+    def contrast_groups(self, table: CatalogTable, atoms: list[_Option]) -> list[tuple]:
+        """Per column, two of its conditions to set against each other (two lines, or two sets of lines): a calc's a - b,
+        a check's a against b. Each as (left options, right options), columns in the sheet's rank order."""
+        by_column: dict[int, list[_Option]] = {}
+        for option in self.per_column(atoms, self.policy.calc_values):
+            by_column.setdefault(option.payload.group, []).append(option)
+        return [(self.left_atoms(held, shared_only=True), self.without_shared(held)) for group, held in sorted(by_column.items(), key=lambda item: table.column_rank.get(item[0], item[0])) if len(held) >= 2]
+
     def calc_frames(self, table: CatalogTable, index: TableIndex, atoms: list[_Option], measures: list[_Option], plain: list[_Option]) -> list[_Frame]:
         """Calc as a contrast: two sides differing in one slot. Spent only when the reading scores calc at all."""
         atoms = _without_choices(atoms)
@@ -863,11 +877,7 @@ class _Search:
         def conditions(count: int) -> float:
             return s(coordinate(SLOT_CONDITIONS, table.id, count))
 
-        contrast = self.per_column(atoms, self.policy.calc_values)
-        by_column: dict[int, list[_Option]] = {}
-        for option in contrast:
-            by_column.setdefault(option.payload.group, []).append(option)
-        groups = [(self.left_atoms(held, shared_only=True), self.without_shared(held)) for group, held in sorted(by_column.items(), key=lambda item: table.column_rank.get(item[0], item[0])) if len(held) >= 2]
+        groups = self.contrast_groups(table, atoms)
         aggregate = s(coordinate(SLOT_AGGREGATE, SUM))
         shown_numbers = self.column_options(table, index.number_columns, SLOT_SHOWN)
         left_shown = self.left_columns(shown_numbers, SLOT_SHOWN)
@@ -968,6 +978,13 @@ def _columns_on_a_line(table, options, op):
         return None
     where = tuple(atom.condition for atom in atoms)
     return Calc(Show(table.id, (a,), where), op, Show(table.id, (b,), where))
+
+
+def _versus_lines(table, options, op):
+    column, left, right = options
+    if left is right:
+        return None
+    return Check(VERSUS, Show(table.id, (column,), (left.condition,)), op=op, right=Show(table.id, (column,), (right.condition,)))
 
 
 def _versus_aggregate(table_id, options, where, function, op):
