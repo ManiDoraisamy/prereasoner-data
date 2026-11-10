@@ -807,6 +807,11 @@ def test_an_ordinal_is_not_a_stated_number():
     assert not any(name.startswith("number:") for name in ordinal), ordinal
     programs, _, _, _ = decoder.enumerate(read_question("Who is the 3rd oldest in region x?", catalog, decoder), k=500)
     assert not any(isinstance(p, Rank) and p.count == 3 for p in programs)
+    # A number written as a word states it ("at least forty"); "one" only after a comparison, never "which one".
+    worded = read_question("Who is at least forty?", catalog, decoder).scores
+    assert worded.get(coordinate("number", "40"), 0) > 0 and worded.get(coordinate("comparison", ">="), 0) > 0
+    assert not any(name.startswith("number:") for name in read_question("Which one is the oldest?", catalog, decoder).scores)
+    assert read_question("Are there more than one in region x?", catalog, decoder).scores.get(coordinate("number", "1"), 0) > 0
     cardinal = read_question("Who are the 3 oldest in region x?", catalog, decoder).scores
     assert cardinal.get(coordinate("number", "3"), 0) > 0
     programs, _, _, _ = decoder.enumerate(read_question("Who are the 3 oldest in region x?", catalog, decoder), k=500)

@@ -29,6 +29,13 @@ _NUMBER = re.compile(r"(?<![\w/.-])[$]?\d[\d,]*(?:\.\d+)?\s*(?:%|percent\b|k\b|m
 # An ordinal ("3rd place", "the 2nd highest") names a position, not an amount or how many: read as a number it made "the
 # last year they came in 3rd" rank the 3 latest years (WikiTableQuestions dev, 2026-11-10). A cell holding it is a value.
 _ORDINAL_AFTER = re.compile(r"(?:st|nd|rd|th)\b")
+# A number written as a word states it as its figure does ("eight or more goals"). "one" is a number only right after a
+# comparison ("more than one", "at least one"): "which one", "one of the" name no number.
+_NUMBER_WORDS = {"zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+                 "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14, "fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18,
+                 "nineteen": 19, "twenty": 20, "thirty": 30, "forty": 40, "fifty": 50, "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90}
+_NUMBER_WORD = re.compile(r"\b(" + "|".join(_NUMBER_WORDS) + r")\b(?!-)")
+_COMPARED_BEFORE = re.compile(r"\b(?:more than|less than|fewer than|at least|at most|over|under|above|below|exactly)\s+$")
 _COMPARE = ((GE, re.compile(r"\b(at least|or more|or better|or higher|or above|no less than|minimum of)\b")), (LE, re.compile(r"\b(at most|or less|or lower|or below|no more than|maximum of|up to)\b")),
             (GT, re.compile(r"\b(above|over|greater than|more than|exceeds?|exceeding|higher than)\b")), (LT, re.compile(r"\b(below|under|less than|lower than|fewer than)\b")), (NE, re.compile(r"\b(other than|excluding|except)\b")))
 _SIGNED_ZERO = ((GT, re.compile(r"\b(positive|above zero|greater than zero|in the money|gains?)\b")), (LT, re.compile(r"\b(negative|below zero|less than zero|out of the money|losses)\b")), (NE, re.compile(r"\b(non-?zero|not zero)\b")))
@@ -215,6 +222,12 @@ def _numbers(low: str, out: dict[str, float]) -> None:
         out[coordinate(SLOT_NUMBER, number_text(value))] = strength
         if "%" in text or "percent" in text:
             out[coordinate(SLOT_NUMBER, number_text(value * 100))] = strength / 2
+    for match in _NUMBER_WORD.finditer(low):     # "eight or more goals"; "one" only after a comparison ("more than one")
+        word = match.group(1)
+        if word == "one" and not _COMPARED_BEFORE.search(low, 0, match.start()):
+            continue
+        found = True
+        out[coordinate(SLOT_NUMBER, number_text(float(_NUMBER_WORDS[word])))] = strength
     for op in asked:
         if found or op == NE:          # "other than EES" needs no number
             out[coordinate(SLOT_COMPARISON, op)] = 1.0
