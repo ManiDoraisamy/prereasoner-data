@@ -120,6 +120,7 @@ _Q_WORD = _rx(r"([1-4])(?:st|nd|rd|th)\s+(?:quarter|qtr)\.?[\s'’\-]*(\d{2}|\d{
 _Q_WORD_FIRST = _rx(r"(?:quarter|qtr)\.?\s+([1-4])(?:[\s'’\-]+(\d{2}|\d{4}))?")
 _HALF = _rx(r"(?:([12])h[\s'’\-]*(\d{2}|\d{4})|h([12])[\s'’\-]+(\d{2}|\d{4}))")
 _YEAR = _rx(r"((?:19|20)\d{2})")
+_YEAR_MONTH = _rx(r"(?:(\d{4})[-/](\d{1,2})|(\d{1,2})/(\d{4}))")
 _CAL = _rx(r"(?:cal|cy|fy)[\s'’\-]*(\d{2}|\d{4})")
 _SEASON_YEAR = _rx(r"(sum(?:mer)?|win(?:ter)?|spr(?:ing)?|fall|aut(?:umn)?)[\s'’\-]*(\d{2}|\d{4})")
 _SEASON = _rx(r"(summer|winter|spring|fall|autumn)")
@@ -209,6 +210,12 @@ def parse_period(text: str) -> Period | None:
         return _span(P_MONTH, full_year(m[2]), month, month, month=month)
     if _MON.match(s):
         return Period(P_MONTH, month=_month_number(s))
+    if m := _YEAR_MONTH.match(s):
+        # "2019-04", "2019/4", "4/2019": a month; "2011-12" and "2001-02" are a season or a fiscal year (the month is the
+        # next year's last two digits), as before
+        year, month = (int(m[1]), int(m[2])) if m[1] else (int(m[4]), int(m[3]))
+        if 1900 <= year <= 2100 and 1 <= month <= 12 and not (m[1] and month == (year + 1) % 100):
+            return _span(P_MONTH, year, month, month, month=month)
     if m := _MON_Y_RANGE.match(s):
         first, last = _month_number(m[1]), _month_number(m[3])
         left, right = _span(P_MONTH, full_year(m[2]), first, first), _span(P_MONTH, full_year(m[4]), last, last)

@@ -60,6 +60,12 @@ def test_period_parser():
     assert parse_period("2001-03-04").start == "2001-03-04"
     assert parse_period("March 4, 2001").start == "2001-03-04"
     assert parse_period("Q2").kind == P_QUARTER and parse_period("Q2").quarter == 2 and parse_period("Q2").start is None
+    # A year and a month as exports write them (DataBench Disneyland's "2019-4"); a season or fiscal year ("2011-12",
+    # "2001-02": the month is the next year's last two digits) and an id ("1234-5") are no month.
+    for text in ("2019-04", "2019-4", "2019/04", "4/2019"):
+        assert (parse_period(text).kind, parse_period(text).start, parse_period(text).end) == (P_MONTH, "2019-04-01", "2019-04-30"), text
+    for text in ("2011-12", "2001-02", "1234-5", "2019-13"):
+        assert parse_period(text) is None, text
     assert (parse_period("2Q01").start, parse_period("2Q01").end) == ("2001-04-01", "2001-06-30")
     assert parse_period("Q2 01").start == "2001-04-01"
     assert parse_period("2nd Quarter").quarter == 2
