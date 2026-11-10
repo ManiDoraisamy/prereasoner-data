@@ -9,7 +9,7 @@ from dataclasses import replace
 
 from engine.deterministic import AnalysisPlan, lower_calculation, lower_select_query
 from engine.program.catalog import Catalog
-from engine.program.language import (Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, Condition, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, Measure, NotEquals, OnLine, Program, Rank, RowArithmetic, SECTION, Show, Size, addresses_printed)
+from engine.program.language import (Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Condition, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, Measure, NotEquals, OnLine, Program, Rank, RowArithmetic, SECTION, Show, Size, addresses_printed)
 from engine.program.names import AFTER, ANY, IS, SAME, ANYWHERE, AVG, COUNT, COUNT_DISTINCT, ENDS, ENTITY_GROUP, ENTITY_LINE, EQ, EVERY, GE, GT, HIGHEST, LE, LT, MAX, MIN, MINUS, NE, NO, OVER, PLUS, STARTS, SUM
 from engine.program.semantics import fold as fold_text
 from engine.program.store import (LABEL, LABEL_LENGTH, LINE, ONE_ROW, PEER_FOLD, PEER_NAME, PEER_NUMBER, ROLE, SECTION_FOLD, SECTION_PATH, SECTION_TEXT, day_column, fold_column, number_column, peers_table, text_column)
@@ -67,6 +67,12 @@ def _condition(condition: Condition):
         return Comparison(_number(condition.column), "!=" if condition.op == NE else condition.op, Literal(float(condition.number)))
     if isinstance(condition, CompareColumns):
         return Comparison(_number(condition.column), "!=" if condition.op == NE else condition.op, _number(condition.other))
+    if isinstance(condition, CompareLine):     # against the first data line the value names; that line's key kept out
+        table, key, named = condition.column.table, _fold(condition.key), Literal(fold_text(condition.value), SQLType.TEXT)
+        anchor = ScalarSubquery(SelectQuery((SelectItem(_number(condition.column), VALUE),), table, where=_where(_data_lines(table), Comparison(key, "=", named)),
+                                            order_by=(OrderTerm(ColumnRef(table, LINE, SQLType.INTEGER)),), limit=1))
+        other = BooleanExpr("OR", (_is_null(key), Comparison(key, "!=", named)))
+        return BooleanExpr("AND", (Comparison(_number(condition.column), "!=" if condition.op == NE else condition.op, anchor), other))
     if isinstance(condition, IsBlank):
         return _is_null(_fold(condition.column), negated=condition.filled)
     if isinstance(condition, IsNumber):

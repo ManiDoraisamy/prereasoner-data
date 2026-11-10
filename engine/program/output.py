@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 from engine.program.catalog import Catalog, CatalogTable, KIND_FAMILY
 from engine.program.index import index_of
-from engine.program.language import (Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, Condition, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, Measure, NotEquals, Program, Rank, RowArithmetic, SECTION, Show, Size, addresses_printed, answer_type_of, measure_columns)
+from engine.program.language import (Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Condition, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, Measure, NotEquals, Program, Rank, RowArithmetic, SECTION, Show, Size, addresses_printed, answer_type_of, measure_columns)
 from engine.program.names import (A_PERCENT, AFTER, ANY, SAME, ANYWHERE, EQ, EVERY, IS, NO, AVG, COUNT, COUNT_DISTINCT, ENDS, ENTITY_GROUP, ENTITY_LINE, GE, GT, HIGHEST, LE, LT, MAX, MIN, MINUS, NE, OVER, PLUS, STARTS, SUM, TIMES)
 from engine.program.scoring import ScoredProgram
 from engine.program.semantics import fold, number_text, share_forms
@@ -68,6 +68,9 @@ def _condition_words(catalog: Catalog, condition: Condition) -> str:
         return f"{_name(catalog, condition.column)} is {_COMPARE_WORDS[condition.op]} {condition.number:g}"
     if isinstance(condition, CompareColumns):
         return f"{_name(catalog, condition.column)} is {_COMPARE_WORDS[condition.op]} {_name(catalog, condition.other)}"
+    if isinstance(condition, CompareLine):
+        name = _name(catalog, condition.column)
+        return f'{name} is {_COMPARE_WORDS[condition.op]} the {name} of the line where {_name(catalog, condition.key)} is "{_value_words(catalog, condition.key, condition.value)}"'
     if isinstance(condition, IsBlank):
         return f"{_name(catalog, condition.column)} is {'filled' if condition.filled else 'blank'}"
     if isinstance(condition, IsNumber):
@@ -377,6 +380,12 @@ def _criteria(catalog: Catalog, where: tuple[Condition, ...]) -> list[str] | Non
         elif isinstance(condition, IsBlank):
             table = catalog.table(condition.column.table)
             out.extend((_range(table, condition.column.position), '"<>"' if condition.filled else '""'))
+        elif isinstance(condition, CompareLine):      # "<>X" passes a blank key, as the line kept out is only X's
+            table = catalog.table(condition.column.table)
+            range_, keys = _range(table, condition.column.position), _range(table, condition.key.position)
+            named = _value_words(catalog, condition.key, condition.value).replace('"', '""')
+            op = "<>" if condition.op == NE else condition.op
+            out.extend((range_, f'"{op}"&INDEX({range_},MATCH("{named}",{keys},0))', keys, f'"<>{named}"'))
         else:
             return None
     return out

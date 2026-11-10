@@ -17,7 +17,7 @@ from typing import Callable, Sequence
 from engine.program.catalog import Catalog, CatalogTable
 from engine.program.index import Atom, TableIndex, index_of
 from engine.program.semantics import fold
-from engine.program.language import (Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, Condition, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, NotEquals, OnLine, Program, Rank, RowArithmetic, SECTION, Show, Size, answer_type_of, is_sound, measure_coordinates, peers_name, period_from_name, shown_together)
+from engine.program.language import (Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Condition, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, NotEquals, OnLine, Program, Rank, RowArithmetic, SECTION, Show, Size, answer_type_of, is_sound, measure_coordinates, peers_name, period_from_name, shown_together)
 from engine.program.names import (A_COUNT, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, ANY, BREAKDOWN, CHECK, CHECK_OPS, COMPARE_OPS, EQ, EVERY, GT, IS, LT, NEIGHBOURS, NO, SAME, SLOT_NEIGHBOUR, SLOT_QUANTIFIER, VERSUS, AGG, ANCHORS, ANYWHERE, AVG, BY_SIZE, CALC, CALC_OPS, COUNT, COUNT_DISTINCT, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, MAX, MIN, MINUS, NE, NUMBER_AGGREGATES, OVER, PLUS, RANK, ROW_OPS, SHOW, SLOT_AGGREGATE,
                                   SLOT_ANSWER_TYPE, SLOT_BLANK, SLOT_CALC_LEFT, SLOT_CALC_OP, SLOT_COMPARISON, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_DIRECTION, SLOT_ENTITY, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE, SLOT_LISTING, SLOT_MEASURE, SLOT_NUMBER, SLOT_PEERS, SLOT_PERIOD, SLOT_ROW_OP, SLOT_SECTION,
                                   SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, STATED_BY_SIZE, SUM, TIMES, coordinate, slot_of)
@@ -565,6 +565,7 @@ class _Search:
             scored = sorted((position for position in index.number_columns if self.s(coordinate(SLOT_FILTER, Col(table.id, position).name)) > 0), key=lambda position: (round(-self.s(coordinate(SLOT_FILTER, Col(table.id, position).name)), _ROUND), table.column_rank[position]))[:self.policy.compared_columns]
             for a in scored:
                 out.extend(index.atom_of(CompareColumns(Col(table.id, a), op, Col(table.id, b)), a) for b in scored if a != b)
+        out.extend(self.line_compared_atoms(table, index))
         for blank in self.positive(SLOT_BLANK):
             word = blank.split(":", 1)[1]
             if word == "number":
@@ -572,6 +573,31 @@ class _Search:
             else:
                 out.extend(index.atom_of(IsBlank(Col(table.id, position), filled=word == "filled"), position) for position in range(len(table.columns)))
         return out
+
+    def line_compared_atoms(self, table: CatalogTable, index: TableIndex) -> list[Atom]:
+        """"More medals than Canada": a comparison the reading names, against a text value it names on this table (the
+        line), for the number columns it reads likeliest as filter or measure; the two likeliest values, three columns."""
+        asked = [op for op in dict.fromkeys(name.split(":", 1)[1] for name in self.positive(SLOT_COMPARISON)) if op in COMPARE_OPS]
+        if not asked or not index.number_columns:
+            return []
+        prefix = f"{table.id}."
+        named: list[tuple[int, str]] = []
+        for name in sorted(self.positive(SLOT_VALUE), key=lambda name: (round(-self.s(name), _ROUND), name)):
+            body = name.split(":", 1)[1]
+            if not body.startswith(prefix):
+                continue
+            position, _, value = body[len(prefix):].partition("=")
+            position = int(position)
+            if 0 <= position < len(table.columns) and position not in index.number_columns and _number_or_none(value) is None:
+                named.append((position, value))
+        if not named:
+            return []
+        def read(position: int) -> float:
+            col = Col(table.id, position).name
+            return max(self.s(coordinate(SLOT_FILTER, col)), self.s(coordinate(SLOT_MEASURE, col)))
+        columns = sorted(index.number_columns, key=lambda position: (round(-read(position), _ROUND), table.column_rank[position]))[:3]
+        return [index.atom_of(CompareLine(Col(table.id, position), op, Col(table.id, key), value), position)
+                for op in asked for key, value in named[:2] for position in columns]
 
     def per_column(self, atoms: list[_Option], keep: int) -> list[_Option]:
         """The top options of each column, in overall order."""
@@ -756,8 +782,10 @@ class _Search:
                     flags = sorted((_Option(s(coordinate(SLOT_PEERS, table.id, peers_name(held))), held) for held in index.flag_sets), key=lambda option: (round(-option.score, _ROUND), sorted(table.column_rank[position] for position in option.payload)))
                     frames += self.condition_frames(peer, (flags, marks), lambda options, where, d=direction: Rank(ENTITY_PEER, table.id, d, where, peers=options[0], mark=options[1]), table, index, atoms, rank=True, max_policy=0)
                 frames += self.condition_frames(peer, (marks,), lambda options, where, d=direction: Rank(ENTITY_PEER, table.id, d, where, peers=index.mark_columns(options[0]), mark=options[0]), table, index, atoms, rank=True, max_policy=0)
-        frames += self.calc_frames(table, index, atoms, measures, plain)
-        frames += self.check_frames(table, index, atoms, measures, plain)
+        # a check or a calc spends the comparison in its head: a line comparison inside one of its sides would read it twice
+        unlined = [option for option in atoms if not isinstance(option.payload.condition, CompareLine)]
+        frames += self.calc_frames(table, index, unlined, measures, plain)
+        frames += self.check_frames(table, index, unlined, measures, plain)
         frames += self.breakdown_frames(table, index, atoms, measures, plain, group_keys, unit)
         return frames
 

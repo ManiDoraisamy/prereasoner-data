@@ -8,7 +8,7 @@ from __future__ import annotations
 import hashlib
 from functools import cached_property
 
-from engine.program.language import (Col, Compare, CompareColumns, Condition, Contains, Equals, InPeriod, InSection, IsBlank, IsNumber, NotEquals, OnLine, OneOf, SECTION)
+from engine.program.language import (Col, Compare, CompareColumns, CompareLine, Condition, Contains, Equals, InPeriod, InSection, IsBlank, IsNumber, NotEquals, OnLine, OneOf, SECTION)
 from engine.program.names import ANYWHERE, ENDS, EQ, GE, GT, LE, LT, NE, STARTS
 from engine.program.semantics import cell_day, cell_fold, cell_number, cell_text, duration_numbers, fold, is_filled, is_serial_day
 from engine.sheet.model import Cell, Column, Context, Line, SheetModel, Table
@@ -186,6 +186,9 @@ class CatalogTable:
         if isinstance(condition, CompareColumns):
             a, b = self.numbers[condition.column.position][i], self.numbers[condition.other.position][i]
             return a is not None and b is not None and _compared(a, condition.op, b)
+        if isinstance(condition, CompareLine):
+            number, anchor = self.numbers[condition.column.position][i], self.line_number(condition)
+            return number is not None and anchor is not None and self._fold_of(condition.key.position, i) != fold(condition.value) and _compared(number, condition.op, anchor)
         if isinstance(condition, IsBlank):
             filled = is_filled(self.lines[i].cells.get(condition.column.position))
             return filled if condition.filled else not filled
@@ -201,6 +204,14 @@ class CatalogTable:
             want = fold(condition.text)
             return want in self.label_folds[i] if want else not self.label_folds[i]
         raise TypeError(f"unknown condition: {type(condition).__name__}")
+
+    def line_number(self, condition: CompareLine) -> float | None:
+        """The number a CompareLine compares with: its column's cell on the first data line whose key is its value."""
+        want = fold(condition.value)
+        for i, data in enumerate(self.is_data):
+            if data and self._fold_of(condition.key.position, i) == want:
+                return self.numbers[condition.column.position][i]
+        return None
 
     def _fold_of(self, position: int, i: int) -> str | None:
         return self.section_folds[i] if position == SECTION else self.folds[position][i]

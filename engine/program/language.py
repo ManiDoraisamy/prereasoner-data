@@ -204,6 +204,24 @@ class CompareColumns:
 
 
 @dataclass(frozen=True, slots=True)
+class CompareLine:
+    """A number cell compares with the same column's number on the line a value names ("more medals than Canada"):
+    the first data line whose key cell is value. That line, and every line its key names the same, is the measure and
+    is not kept ("the same number as Japan" asks for the others). A blank cell never passes; with no such line, or a
+    blank number on it, no line does."""
+    column: Col
+    op: str
+    key: Col
+    value: str
+
+    def __post_init__(self):
+        if self.op not in COMPARE_OPS:
+            raise ValueError(f"unknown comparison: {self.op}")
+        if self.key.table != self.column.table or self.key == self.column or self.key.position < 0:
+            raise ValueError("a line is named by another column of the same table")
+
+
+@dataclass(frozen=True, slots=True)
 class IsBlank:
     """A cell is blank, or with filled=True is not. A marker such as "-" is filled."""
     column: Col
@@ -232,7 +250,7 @@ class OnLine:
     role: str | None = None
 
 
-Condition: TypeAlias = Equals | OneOf | NotEquals | Contains | InPeriod | Compare | CompareColumns | IsBlank | IsNumber | InSection | OnLine
+Condition: TypeAlias = Equals | OneOf | NotEquals | Contains | InPeriod | Compare | CompareColumns | CompareLine | IsBlank | IsNumber | InSection | OnLine
 
 
 def addresses_printed(where: tuple[Condition, ...]) -> bool:
@@ -257,6 +275,8 @@ def condition_coordinates(condition: Condition) -> tuple[str, ...]:
         return (coordinate(SLOT_FILTER, condition.column.name), coordinate(SLOT_COMPARISON, condition.op), coordinate(SLOT_NUMBER, number_text(condition.number)))
     if isinstance(condition, CompareColumns):
         return (coordinate(SLOT_FILTER, condition.column.name), coordinate(SLOT_FILTER, condition.other.name), coordinate(SLOT_COMPARISON, condition.op), coordinate(SLOT_COMPARISON, f"{condition.op}@{condition.column.name}"))
+    if isinstance(condition, CompareLine):
+        return (coordinate(SLOT_FILTER, condition.column.name), coordinate(SLOT_COMPARISON, condition.op), coordinate(SLOT_VALUE, condition.key.name, fold(condition.value)))
     if isinstance(condition, IsBlank):
         return (coordinate(SLOT_FILTER, condition.column.name), coordinate(SLOT_BLANK, "filled" if condition.filled else "blank"))
     if isinstance(condition, IsNumber):
@@ -633,5 +653,5 @@ def _type_of_column(column: Col, column_kind) -> str:
     return A_NUMBER if kind == "number" else A_DATE if kind in ("date", "period") else A_NAME
 
 
-__all__ = ["Across", "Agg", "Breakdown", "Calc", "Check", "OneOf", "Col", "Compare", "CompareColumns", "Condition", "Contains", "DateOf", "Equals", "InPeriod", "InSection", "IsBlank", "IsNumber", "Measure", "NotEquals", "OnLine", "PeriodSpan", "Program", "Rank", "RowArithmetic", "SECTION", "Show", "Size",
+__all__ = ["Across", "Agg", "Breakdown", "Calc", "Check", "OneOf", "Col", "Compare", "CompareColumns", "CompareLine", "Condition", "Contains", "DateOf", "Equals", "InPeriod", "InSection", "IsBlank", "IsNumber", "Measure", "NotEquals", "OnLine", "PeriodSpan", "Program", "Rank", "RowArithmetic", "SECTION", "Show", "Size",
            "TOGETHER", "addresses_printed", "answer_type_of", "coordinates", "shown_together", "conditions_of", "form_of", "measure_columns", "tables_of", "peers_name"]

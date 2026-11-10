@@ -39,8 +39,13 @@ _NUMBER_WORDS = {"zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5
                  "nineteen": 19, "twenty": 20, "thirty": 30, "forty": 40, "fifty": 50, "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90}
 _NUMBER_WORD = re.compile(r"\b(" + "|".join(_NUMBER_WORDS) + r")\b(?!-)")
 _COMPARED_BEFORE = re.compile(r"\b(?:more than|less than|fewer than|at least|at most|over|under|above|below|exactly)\s+$")
-_COMPARE = ((EQ, re.compile(r"\b(exactly|equal to|equals)\b")), (GE, re.compile(r"\b(at least|or more|or better|or higher|or above|no less than|minimum of)\b")), (LE, re.compile(r"\b(at most|or less|or lower|or below|no more than|maximum of|up to)\b")),
-            (GT, re.compile(r"\b(above|over|greater than|more than|exceeds?|exceeding|higher than)\b")), (LT, re.compile(r"\b(below|under|less than|lower than|fewer than)\b")), (NE, re.compile(r"\b(other than|excluding|except)\b")))
+# A comparison stated against something other than a number: "than" or "the same ... as" with a name after it.
+_COMPARED_WITH = re.compile(r"\bthan\s+[a-z]|\bthe same(?:\s+\w+){0,4}\s+as\s+[a-z]")
+# A comparative names its direction ("taller than", "more medals than", "the same number of gold medals as"): closed lists
+# of the language's comparatives, not of one sheet's columns.
+_COMPARE = ((EQ, re.compile(r"\b(exactly|equal to|equals|the same(?:\s+\w+){0,4}\s+as)\b")), (GE, re.compile(r"\b(at least|or more|or better|or higher|or above|no less than|minimum of)\b")), (LE, re.compile(r"\b(at most|or less|or lower|or below|no more than|maximum of|up to)\b")),
+            (GT, re.compile(r"\b(above|over|greater than|more than|exceeds?|exceeding|higher than|(?:taller|longer|bigger|larger|older|heavier|later|faster|wider|deeper|stronger|better) than|more(?:\s+\w+){1,3}\s+than)\b")),
+            (LT, re.compile(r"\b(below|under|less than|lower than|fewer than|(?:shorter|younger|smaller|lighter|earlier|slower|weaker|cheaper|worse) than|(?:less|fewer)(?:\s+\w+){1,3}\s+than)\b")), (NE, re.compile(r"\b(other than|excluding|except)\b")))
 # A change described as going one way states its sign ("terms growing year over year", "what is trending up"): the
 # progressive forms only, as "the increase in sales" asks for an amount, not for lines whose change is above zero.
 _SIGNED_ZERO = ((GT, re.compile(r"\b(positive|above zero|greater than zero|in the money|gains?|growing|rising|increasing|trending up|on the rise|going up)\b")),
@@ -240,8 +245,9 @@ def _numbers(low: str, out: dict[str, float]) -> None:
             continue
         found = True
         out[coordinate(SLOT_NUMBER, number_text(float(_NUMBER_WORDS[word])))] = strength
+    compared = bool(_COMPARED_WITH.search(low))      # "more medals than Canada": a comparison with a named line, no number
     for op in asked:
-        if found or op == NE:          # "other than EES" needs no number
+        if found or op == NE or compared:          # "other than EES" needs no number
             out[coordinate(SLOT_COMPARISON, op)] = 1.0
 
 
