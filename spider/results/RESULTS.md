@@ -5,6 +5,67 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
+## The sheet chooser refitted on the reader fit's pools: +4 right and −4 wrong at matched asks, but at the old threshold it answers more and errs more (2026-11-10)
+
+Experiment `clef-chooser-refit-20261109` (gitignored, under `training/readers/data/experiments/`, with its contract).
+One H100 PCIe pod ran at $2.89/h for 3.1 h, after a first pod that never exposed SSH; about $9.6 in all. No serving
+code changed and nothing was promoted.
+
+**The question.** The full-input reader fit (previous entry) put more right programs into the pools, but the sheet
+chooser converted fewer of them. The chooser was trained on pools the fit's reading does not produce, so it was fitted
+further on pools that the live path builds with the fit's reading.
+
+**Training pools.**
+- 1,016 held factory questions from 180 families. The small reader, the reader fit and both choosers never trained on
+  these families.
+- Each pool was built exactly as serving builds it: the small reader, the fit's reading fused at w=2, the typed
+  decoder's top 50, and every candidate run on the question's SQLite tables.
+- 885 pools hold a right executed candidate, and no reading failed.
+- 2,000 questions were sampled. Collection stopped at a time bound, because CLEF's reading of held workbooks averaged
+  about 4 s on this GPU, and 2,000 would have overrun the pod's deadline.
+- Train-family questions could not be used. The reader fit's training order could not be reproduced: only 7 of its 50
+  logged cut windows match, against 4 for a random order. So their pools would mix in readings of questions the fit
+  had trained on.
+
+**The fit.** The sheet chooser was continued from its own adapter and head for one epoch: 127 updates, seed 20261109,
+otherwise the original recipe. Adapter `5af7ae6f`, head `b119340b`.
+
+Live on the 306 real-sheet questions, thresholds unchanged (ask below 0.42, flag below 0.575). Right and wrong
+include the flagged ones:
+
+| Reading + chooser | Enron 186: right / asked / wrong | Messy 120 | Total |
+|---|---:|---:|---:|
+| Fit reading + refit | 87 / 73 / 26 | 57 / 48 / 15 | 144 / 121 / 41 |
+| Fit reading + sheet chooser (same-pod control) | 76 / 88 / 22 | 54 / 56 / 10 | 130 / 144 / 32 |
+| Released reading + refit | 79 / 85 / 22 | 62 / 42 / 16 | 141 / 127 / 38 |
+| Released reading + sheet chooser (previous entries, other pod) | 77 / 90 / 19 | 56 / 49 / 15 | 133 / 139 / 34 |
+
+Against the control, the refit has 16 wins and 2 losses, but 11 questions move from asked to wrong. It is more
+confident: it asks 23 fewer times, and nearly half of those new answers are wrong at a threshold set for the old
+chooser.
+
+At matched asks it is better on both counts:
+- at the control's 144 asks, 134 right / 28 wrong against 130 / 32;
+- at the released configuration's 139 asks, 137 / 30 against 133 / 34.
+
+The contract's gate was more right answers than the control without more wrong ones, at fixed thresholds. It fails.
+The ranking gain is real but small, 4 questions of 306, and the refit needs its own threshold, set on factory data,
+before any use.
+
+Latency on this pod is not comparable, because two runs shared one H100 PCIe.
+
+The loss stack on Enron, with the fit reading and the refit:
+- the grammar expresses 182 of 186 hand-written programs;
+- 144 have a right program in the top 50;
+- the chooser's top pick is right on about 106;
+- 87 are answered right.
+
+Both reading and choosing must improve; another refit will not close the gap.
+
+Spend: the CLEF program's RunPod total is now about $100 of the first $100. The owner approved $60 more on
+2026-11-10.
+
+
 ## Three CLEF follow-ups: a full-input reader fit sharpens the pools but not the answers; result sizes do not help the SQL chooser; Flash reads 2-3x faster but weaker (2026-11-09)
 
 Three experiments, all gitignored under `training/readers/data/experiments/`, each with its contract. Cost about $47.
