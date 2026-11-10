@@ -15,7 +15,7 @@ from engine.program.names import (A_CODE, A_COMPANY, A_COUNT, A_DATE, A_LIST, A_
                                   SLOT_AGGREGATE, SLOT_ANSWER_TYPE, SLOT_BLANK, SLOT_CALC_LEFT, SLOT_CALC_OP, SLOT_COMPARISON, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_DIRECTION, SLOT_ENTITY, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE, SLOT_MEASURE, SLOT_NUMBER, SLOT_PEERS, SLOT_PERIOD, SLOT_ROW_OP,
                                   SLOT_SECTION, SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, STATED_BY_SIZE, SUM, TIMES, coarse_type, coordinate)
 from engine.program.scoring import Reading
-from engine.program.semantics import exact_wins, fold, number_text, read_period, read_sign, sign_word_of, stated_number
+from engine.program.semantics import DURATION, duration_seconds, exact_wins, fold, number_text, read_period, read_sign, sign_word_of, stated_number
 from engine.sheet.names import AXIS_FLAG, P_DAY, P_MONTH, P_QUARTER, P_RANGE, P_YEAR
 from engine.sheet.values import parse_period
 
@@ -29,6 +29,9 @@ _NUMBER = re.compile(r"(?<![\w/.-])[$]?\d[\d,]*(?:\.\d+)?\s*(?:%|percent\b|k\b|m
 # An ordinal ("3rd place", "the 2nd highest") names a position, not an amount or how many: read as a number it made "the
 # last year they came in 3rd" rank the 3 latest years (WikiTableQuestions dev, 2026-11-10). A cell holding it is a value.
 _ORDINAL_AFTER = re.compile(r"(?:st|nd|rd|th)\b")
+# A time a question states ("35:00", "2:05:31"), read by semantics.duration_seconds as the sheet's time cells are; a clock
+# time with am or pm is not one.
+_TIME_STATED = re.compile(r"(?<![\w.:])" + DURATION.pattern + r"(?![\w:])(?!\s*[ap]\.?m\b)")
 # A number written as a word states it as its figure does ("eight or more goals"). "one" is a number only right after a
 # comparison ("more than one", "at least one"): "which one", "one of the" name no number.
 _NUMBER_WORDS = {"zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
@@ -211,9 +214,14 @@ def _numbers(low: str, out: dict[str, float]) -> None:
     asked = [op for op, pattern in _COMPARE if pattern.search(low)]
     strength = 1.0 if asked else NUMBER_ALONE
     found = False
+    times = []
+    for match in _TIME_STATED.finditer(low):     # "at least 35:00": a time, read as a sheet's time cells are
+        found = True
+        times.append(match.span())
+        out[coordinate(SLOT_NUMBER, number_text(duration_seconds(match.group(0))))] = strength
     for match in _NUMBER.finditer(low):
         text = match.group(0).strip()
-        if _ORDINAL_AFTER.match(low, match.end()):
+        if _ORDINAL_AFTER.match(low, match.end()) or any(start <= match.start() < end for start, end in times):
             continue
         value = stated_number(re.sub(r"\s*percent$", "%", text))
         if value is None or _YEAR_WORD.fullmatch(text):

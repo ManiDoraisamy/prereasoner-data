@@ -51,6 +51,31 @@ def cell_number(cell: Cell | None) -> float | None:
     return float(cell.value)
 
 
+DURATION = re.compile(r"(\d{1,3}):([0-5]\d)(?::([0-5]\d))?(\.\d+)?")
+
+
+def duration_seconds(text: str) -> float | None:
+    """A time written as h:mm:ss, m:ss or m:ss.f ("2:05:31", "35:00", "1:23.45") as one number of its smallest unit:
+    h:mm:ss reads as seconds, a:b as a * 60 + b. The same reading for a sheet's cells and a question's words, so "at
+    least 35:00" keeps the cells it says. A clock time with am or pm is not one. None when the text is no such time."""
+    m = DURATION.fullmatch(text.strip())
+    if m is None:
+        return None
+    first, second, third, fraction = m.groups()
+    value = int(first) * 3600 + int(second) * 60 + int(third) if third else int(first) * 60 + int(second)
+    return value + (float(fraction) if fraction else 0.0)
+
+
+def duration_numbers(texts: list[str | None]) -> list[float | None] | None:
+    """A text column's cells as durations, when at least 4 in 5 of its 3 or more filled cells are one (a race time, a
+    time spent): each cell's duration, or None. None when the column is no such column."""
+    filled = [text for text in texts if text is not None]
+    if len(filled) < 3:
+        return None
+    read = [None if text is None else duration_seconds(text) for text in texts]
+    return read if sum(value is not None for value in read) * 5 >= len(filled) * 4 else None
+
+
 def cell_day(cell: Cell | None) -> str | None:
     """The first ISO day a cell names: a date, a period with a year, or a whole number in the serial-day range. A number is a day only where a condition reads it as one."""
     if cell is None:

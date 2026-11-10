@@ -10,7 +10,7 @@ from functools import cached_property
 
 from engine.program.language import (Col, Compare, CompareColumns, Condition, Contains, Equals, InPeriod, InSection, IsBlank, IsNumber, NotEquals, OnLine, OneOf, SECTION)
 from engine.program.names import ANYWHERE, ENDS, GE, GT, LE, LT, NE, STARTS
-from engine.program.semantics import cell_day, cell_fold, cell_number, cell_text, fold, is_filled, is_serial_day
+from engine.program.semantics import cell_day, cell_fold, cell_number, cell_text, duration_numbers, fold, is_filled, is_serial_day
 from engine.sheet.model import Cell, Column, Context, Line, SheetModel, Table
 from engine.sheet.names import LABEL, NOTE, PRINTED_ROLES, RECORD, V_DATE, V_NUMBER, V_PERIOD, V_TEXT
 
@@ -44,7 +44,10 @@ class CatalogTable:
             cells = [line.cells.get(position) for line in self.lines]
             self.texts.append([cell_text(cell) for cell in cells])
             self.folds.append([cell_fold(cell) for cell in cells])
-            self.numbers.append([cell_number(cell) for cell in cells])
+            numbers = [cell_number(cell) for cell in cells]
+            if table.columns[position].kind != V_NUMBER and not any(number is not None for number in numbers):
+                numbers = duration_numbers(self.texts[-1]) or numbers     # "35:00", "2:05:31": times read as numbers too
+            self.numbers.append(numbers)
             self.days.append([cell_day(cell) for cell in cells])
 
     def __repr__(self) -> str:
