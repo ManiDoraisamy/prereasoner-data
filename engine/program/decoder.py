@@ -741,6 +741,9 @@ class _Search:
                 frames += self.condition_frames(counted + many, (group_keys,), lambda options, where, d=direction, n=n: Rank(ENTITY_GROUP, table.id, d, where, None, key=options[0], function=COUNT, count=n), table, index, atoms, rank=True, max_policy=2)
                 summed = group + s(coordinate(SLOT_AGGREGATE, SUM)) + many
                 frames += self.condition_frames(summed, (group_keys, measures), lambda options, where, d=direction, n=n: Rank(ENTITY_GROUP, table.id, d, where, options[1], key=options[0], function=SUM, count=n), table, index, atoms, rank=True, max_policy=2)
+                for function in (AVG, MIN, MAX):     # "the bottom 2 branches by average rating"
+                    figured = group + s(coordinate(SLOT_AGGREGATE, function)) + many
+                    frames += self.condition_frames(figured, (group_keys, plain), lambda options, where, d=direction, n=n, f=function: Rank(ENTITY_GROUP, table.id, d, where, options[1], key=options[0], function=f, count=n), table, index, atoms, rank=True, max_policy=2)
             peer_sets = self.peer_options(table, index)
             peer = turn + s(coordinate(SLOT_ENTITY, ENTITY_PEER)) + self.type_score(A_NAME)
             if peer_sets:

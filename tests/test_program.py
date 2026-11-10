@@ -473,6 +473,12 @@ def test_the_decoder_proposes_how_many_a_question_states():
     assert decoded.programs and decoded.programs[0].program == gold, decoded.programs[:3]
     plain = Reading({name: 1.0 for name in coordinates(gold, catalog.column_kind) if slot_of(name) != "number"})
     assert all(getattr(p.program, "count", 1) == 1 for p in Decoder(catalog).decode(plain, k=50).programs)
+    # "the bottom 2 branches by average rating" (DataBench dev): a top-N of groups by an average, a lowest or a highest
+    # too, not only by a count or a sum
+    bottom = Rank(ENTITY_GROUP, table.id, LOWEST, (), Col(table.id, 2), key=Col(table.id, 1), function=AVG, count=2)
+    decoded = Decoder(catalog).decode(Reading({name: 1.0 for name in coordinates(bottom, catalog.column_kind)}), k=50)
+    assert decoded.programs[0].program == bottom, decoded.programs[:3]
+    assert len(_answer(bottom, RequestTables(catalog))) == 2
 
 
 def test_a_check_says_yes_or_no():
