@@ -8,7 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TypeAlias
 
-from engine.program.names import (A_COUNT, A_DATE, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, ANY, CHECK, CHECK_OPS, EVERY, NO, QUANTIFIERS, SLOT_QUANTIFIER, AGG, AGGREGATES, ANCHORS, ANYWHERE, BY_SIZE, CALC, CALC_OPS, COMPARISONS, COUNT, COUNT_DISTINCT, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, HIGHEST,
+from engine.program.names import (A_COUNT, A_DATE, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, ANY, CHECK, CHECK_OPS, EQ, EVERY, IS, NO, QUANTIFIERS, SLOT_QUANTIFIER, AGG, AGGREGATES, ANCHORS, ANYWHERE, BY_SIZE, CALC, CALC_OPS, COMPARISONS, COUNT, COUNT_DISTINCT, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, HIGHEST,
                                   MINUS, NE, NUMBER_AGGREGATES, OVER, PLUS, RANK, RANK_ENTITIES, ROW_OPS, SHOW, SLOT_AGGREGATE, SLOT_ANSWER_TYPE, SLOT_BLANK, SLOT_CALC_LEFT, SLOT_CALC_OP, SLOT_COMPARISON, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_DIRECTION, SLOT_ENTITY, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE,
                                   SLOT_LISTING, SLOT_MEASURE, SLOT_NUMBER, SLOT_PEERS, SLOT_PERIOD, SLOT_ROW_OP, SLOT_SECTION, SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, STATED_BY_SIZE, coordinate)
 from engine.program.semantics import fold, number_text
@@ -364,16 +364,30 @@ class Check:
     any     some line the count keeps exists (left, a count, is above 0);
     no      no such line exists (left, a count, is 0);
     every   every line right keeps also meets left's one more condition (two counts of one table, equal);
-    versus  one number (left) against a stated number (number) or another program's number (right), by op."""
+    versus  one number (left) against a stated number (number) or another program's number (right), by op;
+    is      the top line's one shown value, or the top group's key (left, a rank of one), against a stated text (equal
+            or not, case and spacing aside) or a stated number (by op)."""
     quantifier: str
     left: "Program"
     op: str | None = None
     number: float | None = None
     right: "Program | None" = None
+    text: str | None = None
 
     def __post_init__(self):
         if self.quantifier not in QUANTIFIERS:
             raise ValueError(f"unknown quantifier: {self.quantifier}")
+        if self.quantifier == IS:
+            rank = self.left
+            if not (isinstance(rank, Rank) and rank.count == 1 and rank.entity in (ENTITY_LINE, ENTITY_GROUP)) or (rank.entity == ENTITY_LINE and len(rank.shown) != 1):
+                raise ValueError("is reads the top line's one shown value or the top group's key")
+            if self.op not in CHECK_OPS or (self.number is None) == (self.text is None) or self.right is not None:
+                raise ValueError("is compares with one stated number or text")
+            if self.text is not None and self.op not in (EQ, NE):
+                raise ValueError("a text is equal or not")
+            return
+        if self.text is not None:
+            raise ValueError("only is compares with a text")
         if self.quantifier in (ANY, NO, EVERY):
             if not (isinstance(self.left, Agg) and self.left.function == COUNT) or self.op is not None or self.number is not None:
                 raise ValueError("any, no and every read a count and nothing else")
@@ -467,6 +481,9 @@ def _body_coordinates(program: Program) -> list[str]:
     if isinstance(program, Check):
         stated = [coordinate(SLOT_COMPARISON, program.op)] if program.op is not None else []
         stated += [coordinate(SLOT_NUMBER, number_text(program.number))] if program.number is not None else []
+        if program.text is not None:
+            compared = program.left.shown[0] if program.left.entity == ENTITY_LINE else program.left.key
+            stated.append(coordinate(SLOT_VALUE, compared.name, fold(program.text)))
         return [coordinate(SLOT_QUANTIFIER, program.quantifier), *stated, *(name for side in _sides(program) for name in _body_coordinates(side))]
     if isinstance(program, Calc):
         return [coordinate(SLOT_CALC_OP, program.op), *([coordinate(SLOT_SIZE, STATED_BY_SIZE)] if program.magnitude else []), *_body_coordinates(program.left), *_body_coordinates(program.right)]

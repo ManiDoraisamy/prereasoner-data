@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from functools import cmp_to_key
 import re
 from typing import Generic, TypeVar
@@ -403,11 +403,16 @@ def LE(left, right):
     return left <= right
 
 
-def _verdict(holds: Callable[[Decimal, Decimal], bool], left, right):
-    """A verdict as SQL computes one: 1 or 0, None when a side is missing; two numbers compare by their decimal values."""
+def _verdict(holds: Callable, left, right):
+    """A verdict as SQL computes one: 1 or 0, None when a side is missing; two numbers compare by their decimal values,
+    anything else (an equality of texts) by its text."""
     if left is None or right is None:
         return None
-    return 1 if holds(Decimal(str(left)), Decimal(str(right))) else 0
+    try:
+        a, b = Decimal(str(left)), Decimal(str(right))
+    except InvalidOperation:
+        a, b = str(left), str(right)
+    return 1 if holds(a, b) else 0
 
 
 def VERDICT_GT(left, right):

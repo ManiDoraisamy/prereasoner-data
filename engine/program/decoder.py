@@ -18,7 +18,7 @@ from engine.program.catalog import Catalog, CatalogTable
 from engine.program.index import Atom, TableIndex, index_of
 from engine.program.semantics import fold
 from engine.program.language import (Across, Agg, Calc, Check, Col, OneOf, Compare, CompareColumns, Condition, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, NotEquals, OnLine, Program, Rank, RowArithmetic, SECTION, Show, Size, answer_type_of, is_sound, measure_coordinates, peers_name, period_from_name, shown_together)
-from engine.program.names import (A_COUNT, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, ANY, CHECK, CHECK_OPS, EQ, EVERY, GT, LT, NO, SLOT_QUANTIFIER, VERSUS, AGG, ANCHORS, ANYWHERE, AVG, BY_SIZE, CALC, CALC_OPS, COMPARISONS, COUNT, COUNT_DISTINCT, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, MAX, MIN, MINUS, NE, NUMBER_AGGREGATES, OVER, PLUS, RANK, ROW_OPS, SHOW, SLOT_AGGREGATE,
+from engine.program.names import (A_COUNT, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, ANY, CHECK, CHECK_OPS, EQ, EVERY, GT, IS, LT, NO, SLOT_QUANTIFIER, VERSUS, AGG, ANCHORS, ANYWHERE, AVG, BY_SIZE, CALC, CALC_OPS, COMPARISONS, COUNT, COUNT_DISTINCT, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, MAX, MIN, MINUS, NE, NUMBER_AGGREGATES, OVER, PLUS, RANK, ROW_OPS, SHOW, SLOT_AGGREGATE,
                                   SLOT_ANSWER_TYPE, SLOT_BLANK, SLOT_CALC_LEFT, SLOT_CALC_OP, SLOT_COMPARISON, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_DIRECTION, SLOT_ENTITY, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE, SLOT_LISTING, SLOT_MEASURE, SLOT_NUMBER, SLOT_PEERS, SLOT_PERIOD, SLOT_ROW_OP, SLOT_SECTION,
                                   SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, STATED_BY_SIZE, SUM, TIMES, coordinate, slot_of)
 from engine.program.scoring import DEFAULT_WEIGHTS, Reading, ScoredProgram, Weights, score_program
@@ -243,6 +243,20 @@ class _Conditions:
 def _without_choices(atoms: list) -> list:
     """The atoms that are not a choice among named values (OneOf): only a rank's frames take those."""
     return [option for option in atoms if not isinstance(option.payload.condition, OneOf)]
+
+
+def _is_text(rank: Rank, text: str) -> "Check | None":
+    try:
+        return Check(IS, rank, op=EQ, text=text) if is_sound(rank) else None
+    except ValueError:
+        return None
+
+
+def _is_number(rank: Rank, op: str, number: float) -> "Check | None":
+    try:
+        return Check(IS, rank, op=op, number=number) if is_sound(rank) else None
+    except ValueError:
+        return None
 
 
 def _every(table_id: str, where: tuple, at: int) -> "Check | None":
@@ -754,6 +768,39 @@ class _Search:
                 for function in NUMBER_AGGREGATES:
                     frames += self.condition_frames(head + s(coordinate(SLOT_AGGREGATE, function)), (measures if function == SUM else plain,), lambda options, where, f=function, o=op, n=number: Check(VERSUS, Agg(f, options[0], table.id, where), op=o, number=n), table, index, atoms, max_policy=2)
                 frames += self.condition_frames(head + counted, (), lambda options, where, o=op, n=number: Check(VERSUS, Agg(COUNT, None, table.id, where), op=o, number=n), table, index, atoms, max_policy=2)
+        frames += self.is_frames(table, index, atoms, base, asked)
+        return frames
+
+    def is_frames(self, table: CatalogTable, index: TableIndex, atoms: list[_Option], base: float, asked: list[str]) -> list[_Frame]:
+        """Is the top line's shown value, or the top group's key, a text the reading names on that column ("is the
+        oldest one male?"), or how does a shown number compare with a stated one ("older than 30")?"""
+        s = self.s
+        head = base + s(coordinate(SLOT_QUANTIFIER, IS)) + s(coordinate(SLOT_FORM, RANK))
+        prefix = f"{table.id}."
+        texts = []
+        for name in sorted(self.positive(SLOT_VALUE), key=lambda name: (round(-self.s(name), _ROUND), name)):
+            body = name.split(":", 1)[1]
+            if body.startswith(prefix):
+                position, _, value = body[len(prefix):].partition("=")
+                if 0 <= int(position) < len(table.columns) and _number_or_none(value) is None:
+                    texts.append((int(position), value, name))
+        texts = texts[:3]
+        numbers = [(float(name.split(":", 1)[1]), name) for name in self.positive(SLOT_NUMBER)[:2]]
+        rank_measures = self.measure_options(table, index, dates=True)
+        frames: list[_Frame] = []
+        for direction in DIRECTIONS:
+            turn = head + s(coordinate(SLOT_DIRECTION, direction))
+            line = turn + s(coordinate(SLOT_ENTITY, ENTITY_LINE))
+            group = turn + s(coordinate(SLOT_ENTITY, ENTITY_GROUP)) + s(coordinate(SLOT_AGGREGATE, COUNT))
+            for position, value, name in texts:
+                column = Col(table.id, position)
+                frames += self.condition_frames(line + s(name), (rank_measures,), lambda options, where, d=direction, c=column, v=value: _is_text(Rank(ENTITY_LINE, table.id, d, where, options[0], (c,)), v), table, index, atoms, rank=True, max_policy=2)
+                frames += self.condition_frames(group + s(name), (), lambda options, where, d=direction, c=column, v=value: _is_text(Rank(ENTITY_GROUP, table.id, d, where, None, key=c, function=COUNT), v), table, index, atoms, rank=True, max_policy=2)
+            for number, name in numbers:
+                for position in index.number_columns:
+                    column = Col(table.id, position)
+                    for op in asked:
+                        frames += self.condition_frames(line + s(name) + s(coordinate(SLOT_COMPARISON, op)) + s(coordinate(SLOT_SHOWN, column.name)), (rank_measures,), lambda options, where, d=direction, c=column, o=op, n=number: _is_number(Rank(ENTITY_LINE, table.id, d, where, options[0], (c,)), o, n), table, index, atoms, rank=True, max_policy=1)
         return frames
 
     def peer_options(self, table: CatalogTable, index: TableIndex) -> list[_Option]:

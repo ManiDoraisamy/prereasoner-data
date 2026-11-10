@@ -10,7 +10,7 @@ from dataclasses import replace
 from engine.deterministic import AnalysisPlan, lower_calculation, lower_select_query
 from engine.program.catalog import Catalog
 from engine.program.language import (Across, Agg, Calc, Check, Col, OneOf, Compare, CompareColumns, Condition, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, Measure, NotEquals, OnLine, Program, Rank, RowArithmetic, SECTION, Show, Size, addresses_printed)
-from engine.program.names import ANY, ANYWHERE, AVG, COUNT, COUNT_DISTINCT, ENDS, ENTITY_GROUP, ENTITY_LINE, EQ, EVERY, GE, GT, HIGHEST, LE, LT, MAX, MIN, MINUS, NE, NO, OVER, PLUS, STARTS, SUM
+from engine.program.names import ANY, IS, ANYWHERE, AVG, COUNT, COUNT_DISTINCT, ENDS, ENTITY_GROUP, ENTITY_LINE, EQ, EVERY, GE, GT, HIGHEST, LE, LT, MAX, MIN, MINUS, NE, NO, OVER, PLUS, STARTS, SUM
 from engine.program.semantics import fold as fold_text
 from engine.program.store import (LABEL, LABEL_LENGTH, LINE, ONE_ROW, PEER_FOLD, PEER_NAME, PEER_NUMBER, ROLE, SECTION_FOLD, SECTION_PATH, SECTION_TEXT, day_column, fold_column, number_column, peers_table, text_column)
 from engine.sheet.names import RECORD
@@ -236,9 +236,34 @@ def _scalar(side: Program, catalog: Catalog):
 _VERDICT_SQL = {GT: ">", GE: ">=", LT: "<", LE: "<=", EQ: "=", NE: "<>"}
 
 
+def _top_value(program: Rank, catalog: Catalog, numeric: bool) -> ScalarSubquery:
+    """The one value a rank of one gives a check: the top line's shown cell (its number, or its folded text) or the top
+    group's folded key; a tie goes to the first line in sheet order, or the first key."""
+    table = program.table
+    printed = addresses_printed(program.where) or (program.measure is not None and _reads_printed(program.measure, catalog.table(table)))
+    order = _order(program.direction)
+    if program.entity == ENTITY_LINE:
+        column = program.shown[0]
+        value = ColumnRef(table, number_column(column.position), SQLType.REAL) if numeric and column.position != SECTION else _fold(column)
+        measure = _measure(program.measure)
+        where = _where(None if printed else _data_lines(table), *map(_condition, program.where), _present(program.measure))
+        return ScalarSubquery(SelectQuery((SelectItem(value, VALUE),), table, where=where, order_by=(OrderTerm(measure, order), OrderTerm(ColumnRef(table, LINE, SQLType.INTEGER))), limit=1))
+    key = _fold(program.key)
+    if program.function == COUNT:
+        ranked, guard = Aggregate("COUNT", Star()), None
+    else:
+        ranked, guard = Aggregate(_FUNCTIONS[program.function], _measure(program.measure)), _present(program.measure)
+    where = _where(None if printed else _data_lines(table), *map(_condition, program.where), _is_null(key, negated=True), guard)
+    return ScalarSubquery(SelectQuery((SelectItem(key, VALUE),), table, where=where, group_by=(key,), order_by=(OrderTerm(Abs(ranked) if program.by_size else ranked, order), OrderTerm(key)), limit=1))
+
+
 def _check_query(program: Check, catalog: Catalog) -> SelectQuery:
     """A check is one verdict over one-number programs on the one-row table: any is count > 0, no is count = 0,
     every is (count with the one more condition) = (count of the base lines), versus is left op (number or right)."""
+    if program.quantifier == IS:
+        left = _top_value(program.left, catalog, numeric=program.number is not None)
+        right = Literal(program.number) if program.number is not None else Literal(fold_text(program.text), SQLType.TEXT)
+        return SelectQuery((SelectItem(BinaryExpr(left, _VERDICT_SQL[program.op], right), VALUE),), ONE_ROW)
     left = _scalar(program.left, catalog)
     if program.quantifier == ANY:
         verdict = BinaryExpr(left, ">", Literal(0))

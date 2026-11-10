@@ -511,8 +511,9 @@ class SQLEmitter:
                 raise ValueError(f"table {value.table!r} is unavailable")
             return _q(_flat(value.table, value.column))
         if isinstance(value, BinaryValue):
-            if value.operator in _ORDERED:          # a verdict: two numbers compared exactly, 1 or 0
-                return f"({self._compare(self._value(value.left, tables, values), value.operator, self._value(value.right, tables, values), True)})"
+            if value.operator in _ORDERED:          # a verdict, 1 or 0: two numbers compared exactly, texts as texts
+                numeric = self._plan.numeric(value.left, self._numbers) and self._plan.numeric(value.right, self._numbers)
+                return f"({self._compare(self._value(value.left, tables, values), value.operator, self._value(value.right, tables, values), numeric)})"
             return (
                 f"{_DECIMAL[value.operator]}({self._value(value.left, tables, values)}, "
                 f"{self._value(value.right, tables, values)})"

@@ -58,7 +58,8 @@ ANY = "any"            # some kept line exists
 NO = "no"              # no kept line exists
 EVERY = "every"        # every line the base conditions keep also meets one more condition
 VERSUS = "versus"      # one number against a stated number or another program's number
-QUANTIFIERS = (ANY, NO, EVERY, VERSUS)
+IS = "is"              # the top line's shown value, or the top group's key, against a stated text or number
+QUANTIFIERS = (ANY, NO, EVERY, VERSUS, IS)
 
 # Arithmetic on one line, and between two programs.
 PLUS = "+"

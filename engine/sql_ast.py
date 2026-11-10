@@ -829,6 +829,8 @@ def _validate_expr(expr: ScalarExpr, visible: frozenset[str]) -> None:
                 )
             _validate_expr(side, visible)
             side_type = expression_type(side)
+            if expr.operator in ("=", "<>"):      # an equality verdict also compares texts ("is the oldest one male?")
+                continue
             if (side_type == SQLType.UNKNOWN and isinstance(side, Literal)
                     and side.value is not None
                     and not (isinstance(side.value, (Real, Decimal)) and not isinstance(side.value, bool))):
