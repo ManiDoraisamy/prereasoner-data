@@ -64,6 +64,8 @@ class ScalarSubquery:
 
 
 ARITHMETIC_OPERATORS = frozenset({"+", "-", "*", "/"})
+# A verdict compares two numbers and is 1 (true) or 0 (false): a program's yes or no (engine.program's Check).
+VERDICT_OPERATORS = frozenset({">", ">=", "<", "<=", "=", "<>"})
 
 
 @dataclass(frozen=True)
@@ -386,6 +388,8 @@ def expression_type(expr: ScalarExpr) -> SQLType:
             return SQLType.REAL
         return expression_type(expr.operand)
     if isinstance(expr, BinaryExpr):
+        if expr.operator in VERDICT_OPERATORS:
+            return SQLType.INTEGER
         if expr.operator == "/":
             return SQLType.REAL
         if SQLType.REAL in (expression_type(expr.left), expression_type(expr.right)):
@@ -815,7 +819,7 @@ def _validate_expr(expr: ScalarExpr, visible: frozenset[str]) -> None:
             _validate_expr(expr.operand, visible)               # e.g. SUM(amount * rate)
         return
     if isinstance(expr, BinaryExpr):
-        if expr.operator not in ARITHMETIC_OPERATORS:
+        if expr.operator not in ARITHMETIC_OPERATORS | VERDICT_OPERATORS:
             raise ASTValidationError(f"unsupported arithmetic operator: {expr.operator}")
         for side in (expr.left, expr.right):
             if not isinstance(side, (ColumnRef, Literal, Aggregate, BinaryExpr, ScalarSubquery, Abs, BlankAsZero)):
@@ -905,6 +909,11 @@ def _render_expr(expr: ScalarExpr, dialect: str = "standard") -> str:
             }.get(function, function)
         return f"{function}({distinct}{_render_expr(expr.operand, dialect)})"
     if isinstance(expr, BinaryExpr):
+        if expr.operator in VERDICT_OPERATORS:
+            left, right = _render_expr(expr.left, dialect), _render_expr(expr.right, dialect)
+            if dialect == "sqlite_decimal":
+                return f"(decimal_cmp({left}, {right}) {expr.operator} 0)"
+            return f"({left} {expr.operator} {right})"
         if dialect == "sqlite_decimal":
             function = {"+": "decimal_add", "-": "decimal_sub", "*": "decimal_mul", "/": "decimal_div"}[
                 expr.operator
@@ -986,6 +995,8 @@ def value_type(expr: ScalarExpr) -> SQLType:
         return value_type(expr.operand)
     if isinstance(expr, (Abs, BlankAsZero)):
         return value_type(expr.operand)
+    if isinstance(expr, BinaryExpr) and expr.operator in VERDICT_OPERATORS:
+        return SQLType.INTEGER
     if isinstance(expr, BinaryExpr) and expr.operator != "/":
         return (SQLType.REAL if SQLType.REAL in (value_type(expr.left), value_type(expr.right))
                 else SQLType.INTEGER)

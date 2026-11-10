@@ -49,7 +49,8 @@ _TYPE = {
     SQLType.TEXT: ("str", "Text"),
     SQLType.UNKNOWN: ("object", "Text"),
 }
-_BINARY_FUNCTION = {"+": "ADD", "-": "SUBTRACT", "*": "MULTIPLY", "/": "DIVIDE"}
+_BINARY_FUNCTION = {"+": "ADD", "-": "SUBTRACT", "*": "MULTIPLY", "/": "DIVIDE",
+                    ">": "VERDICT_GT", ">=": "VERDICT_GE", "<": "VERDICT_LT", "<=": "VERDICT_LE", "=": "VERDICT_EQ", "<>": "VERDICT_NE"}
 _PREDICATE_FUNCTION = {
     "=": "EQ",
     "!=": "NE",

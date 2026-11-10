@@ -11,6 +11,9 @@ AGG = "agg"            # sum, average, lowest, highest, count or distinct count 
 RANK = "rank"          # the top line, group or peer column
 CALC = "calc"          # the difference, sum or ratio of two programs that each give one number
 FORMS = (SHOW, AGG, RANK, CALC)
+# A fifth form the small reader has no head for (its closed form head is FORMS): CLEF's reading and the decoder name it.
+CHECK = "check"        # a yes or no: whether any, no or every kept line meets a condition, or how one number compares
+PROGRAM_FORMS = (*FORMS, CHECK)
 
 # What an aggregate does.
 SUM = "sum"
@@ -47,6 +50,15 @@ LE = "<="
 LT = "<"
 NE = "!="
 COMPARISONS = (GE, GT, LE, LT, NE)
+EQ = "="
+CHECK_OPS = (GE, GT, LE, LT, EQ, NE)
+
+# What a check asks of the kept lines.
+ANY = "any"            # some kept line exists
+NO = "no"              # no kept line exists
+EVERY = "every"        # every line the base conditions keep also meets one more condition
+VERSUS = "versus"      # one number against a stated number or another program's number
+QUANTIFIERS = (ANY, NO, EVERY, VERSUS)
 
 # Arithmetic on one line, and between two programs.
 PLUS = "+"
@@ -69,8 +81,9 @@ A_NAME = "name"
 A_PLACE = "place"
 A_MONEY = "money"
 A_QUANTITY = "quantity"
+A_YES_NO = "yes_no"
 ANSWER_TYPES = (A_NUMBER, A_COUNT, A_PERCENT, A_DATE, A_PERSON, A_COMPANY, A_CODE, A_LIST, A_PLACE, A_MONEY, A_QUANTITY)
-PROGRAM_ANSWER_TYPES = (A_NUMBER, A_COUNT, A_PERCENT, A_DATE, A_NAME, A_LIST)
+PROGRAM_ANSWER_TYPES = (A_NUMBER, A_COUNT, A_PERCENT, A_DATE, A_NAME, A_LIST, A_YES_NO)
 NAME_TYPES = (A_PERSON, A_COMPANY, A_CODE, A_PLACE)
 FIGURE_TYPES = (A_MONEY, A_QUANTITY)
 
@@ -132,8 +145,9 @@ SLOT_BLANK = "blank"
 SLOT_PEERS = "peers"
 SLOT_LISTING = "listing"
 SLOT_CONDITIONS = "conditions"
+SLOT_QUANTIFIER = "quantifier"
 SLOTS = (SLOT_FORM, SLOT_AGGREGATE, SLOT_DIRECTION, SLOT_SIZE, SLOT_ENTITY, SLOT_COMPARISON, SLOT_ROW_OP, SLOT_CALC_OP, SLOT_CALC_LEFT, SLOT_ANSWER_TYPE, SLOT_TABLE, SLOT_MEASURE, SLOT_KEY, SLOT_SHOWN, SLOT_FILTER, SLOT_VALUE,
-         SLOT_CONTAINS, SLOT_LINE, SLOT_SECTION, SLOT_PERIOD, SLOT_NUMBER, SLOT_BLANK, SLOT_PEERS, SLOT_LISTING, SLOT_CONDITIONS)
+         SLOT_CONTAINS, SLOT_LINE, SLOT_SECTION, SLOT_PERIOD, SLOT_NUMBER, SLOT_BLANK, SLOT_PEERS, SLOT_LISTING, SLOT_CONDITIONS, SLOT_QUANTIFIER)
 
 # The fixed semantics, each named so a read-as line or a test can cite one.
 SEM_SIGNS = "signs"

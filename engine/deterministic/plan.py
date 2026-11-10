@@ -19,7 +19,7 @@ from engine.sql_ast import DAYS_PER_UNIT, ISO_DAY, SQLType
 
 _SCHEMAS = frozenset({"conversation", "knowledgebase", "public"})
 _AGGREGATES = frozenset({"SUM", "MAX", "MIN", "COUNT", "AVG"})
-_BINARY = frozenset({"+", "-", "*", "/"})
+_BINARY = frozenset({"+", "-", "*", "/", ">", ">=", "<", "<=", "=", "<>"})   # a verdict (>, =, ...) is 1 or 0
 _COMPARISONS = frozenset({"=", "!=", "<>", ">", "<", ">=", "<=", "IS", "IS NOT", "LIKE"})
 
 

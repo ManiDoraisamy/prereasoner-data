@@ -8,7 +8,7 @@ from sqlalchemy.pool import StaticPool
 
 from engine.deterministic import DeterministicAnalysis, ExecutionMode
 from engine.prepared import SharedConnection
-from engine.program.language import Calc, Col, Program, Rank, Show, tables_of
+from engine.program.language import Calc, Check, Col, Program, Rank, Show, tables_of
 from engine.program.lowering import to_plan, to_query
 from engine.program.names import ENTITY_GROUP, ENTITY_PEER
 from engine.program.store import RequestTables
@@ -42,6 +42,8 @@ def _displayed(program: Program, rows, tables: RequestTables) -> tuple[tuple, ..
     """Rows with the sheet's spelling back, and no row at all for a result that says nothing: a sum over no lines is one row of NULL."""
     if not rows or all(all(cell is None for cell in row) for row in rows):
         return ()
+    if isinstance(program, Check):          # a verdict, 1 or 0 from either program, reads as the yes or no it is
+        return (("True" if rows[0][0] else "False",),)
     keyed: Col | None = None
     if isinstance(program, Show) and program.listing:
         keyed = program.shown[0]

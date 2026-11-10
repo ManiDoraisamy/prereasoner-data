@@ -9,8 +9,8 @@ from dataclasses import replace
 
 from engine.deterministic import AnalysisPlan, lower_calculation, lower_select_query
 from engine.program.catalog import Catalog
-from engine.program.language import (Across, Agg, Calc, Col, Compare, CompareColumns, Condition, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, Measure, NotEquals, OnLine, Program, Rank, RowArithmetic, SECTION, Show, Size, addresses_printed)
-from engine.program.names import ANYWHERE, AVG, COUNT, COUNT_DISTINCT, ENDS, ENTITY_GROUP, ENTITY_LINE, HIGHEST, MAX, MIN, MINUS, NE, OVER, PLUS, STARTS, SUM
+from engine.program.language import (Across, Agg, Calc, Check, Col, Compare, CompareColumns, Condition, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, Measure, NotEquals, OnLine, Program, Rank, RowArithmetic, SECTION, Show, Size, addresses_printed)
+from engine.program.names import ANY, ANYWHERE, AVG, COUNT, COUNT_DISTINCT, ENDS, ENTITY_GROUP, ENTITY_LINE, EQ, EVERY, GE, GT, HIGHEST, LE, LT, MAX, MIN, MINUS, NE, NO, OVER, PLUS, STARTS, SUM
 from engine.program.semantics import fold as fold_text
 from engine.program.store import (LABEL, LABEL_LENGTH, LINE, ONE_ROW, PEER_FOLD, PEER_NAME, PEER_NUMBER, ROLE, SECTION_FOLD, SECTION_PATH, SECTION_TEXT, day_column, fold_column, number_column, peers_table, text_column)
 from engine.sheet.names import RECORD
@@ -231,8 +231,29 @@ def _scalar(side: Program, catalog: Catalog):
     raise TypeError("a calc reads two programs of one number each")
 
 
+_VERDICT_SQL = {GT: ">", GE: ">=", LT: "<", LE: "<=", EQ: "=", NE: "<>"}
+
+
+def _check_query(program: Check, catalog: Catalog) -> SelectQuery:
+    """A check is one verdict over one-number programs on the one-row table: any is count > 0, no is count = 0,
+    every is (count with the one more condition) = (count of the base lines), versus is left op (number or right)."""
+    left = _scalar(program.left, catalog)
+    if program.quantifier == ANY:
+        verdict = BinaryExpr(left, ">", Literal(0))
+    elif program.quantifier == NO:
+        verdict = BinaryExpr(left, "=", Literal(0))
+    elif program.quantifier == EVERY:
+        verdict = BinaryExpr(left, "=", _scalar(program.right, catalog))
+    else:
+        right = Literal(program.number) if program.number is not None else _scalar(program.right, catalog)
+        verdict = BinaryExpr(left, _VERDICT_SQL[program.op], right)
+    return SelectQuery((SelectItem(verdict, VALUE),), ONE_ROW)
+
+
 def to_query(program: Program, catalog: Catalog) -> SelectQuery:
     """The typed query a program means."""
+    if isinstance(program, Check):
+        return _check_query(program, catalog)
     if isinstance(program, Show):
         return _show_query(program)
     if isinstance(program, Agg):
@@ -262,7 +283,7 @@ def to_plan(program: Program, catalog: Catalog, slug: str = "program") -> Analys
     """The one plan both deterministic emitters read."""
     query = to_query(program, catalog)
     schema = plan_schema(query, catalog)
-    plan = lower_calculation(slug, query, schema, ()) if isinstance(program, Calc) else lower_select_query(slug, query, schema, ())
+    plan = lower_calculation(slug, query, schema, ()) if isinstance(program, (Calc, Check)) else lower_select_query(slug, query, schema, ())
     # The store holds a number as the sheet's float: both programs read it as its shortest decimal, one exact reading.
     tables = tuple(replace(table, columns=tuple(replace(column, binary_float=column.type == SQLType.REAL) for column in table.columns)) for table in plan.tables)
     return replace(plan, tables=tables)

@@ -8,7 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TypeAlias
 
-from engine.program.names import (A_COUNT, A_DATE, A_LIST, A_NAME, A_NUMBER, A_PERCENT, AGG, AGGREGATES, ANCHORS, ANYWHERE, BY_SIZE, CALC, CALC_OPS, COMPARISONS, COUNT, COUNT_DISTINCT, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, HIGHEST,
+from engine.program.names import (A_COUNT, A_DATE, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, ANY, CHECK, CHECK_OPS, EVERY, NO, QUANTIFIERS, SLOT_QUANTIFIER, AGG, AGGREGATES, ANCHORS, ANYWHERE, BY_SIZE, CALC, CALC_OPS, COMPARISONS, COUNT, COUNT_DISTINCT, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, HIGHEST,
                                   MINUS, NE, NUMBER_AGGREGATES, OVER, PLUS, RANK, RANK_ENTITIES, ROW_OPS, SHOW, SLOT_AGGREGATE, SLOT_ANSWER_TYPE, SLOT_BLANK, SLOT_CALC_LEFT, SLOT_CALC_OP, SLOT_COMPARISON, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_DIRECTION, SLOT_ENTITY, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE,
                                   SLOT_LISTING, SLOT_MEASURE, SLOT_NUMBER, SLOT_PEERS, SLOT_PERIOD, SLOT_ROW_OP, SLOT_SECTION, SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, STATED_BY_SIZE, coordinate)
 from engine.program.semantics import fold, number_text
@@ -341,13 +341,53 @@ class Calc:
                 raise ValueError("a calc reads two programs of one number each")
 
 
-Program: TypeAlias = Show | Agg | Rank | Calc
+@dataclass(frozen=True, slots=True)
+class Check:
+    """A yes or no over counts and numbers the other forms compute:
+    any     some line the count keeps exists (left, a count, is above 0);
+    no      no such line exists (left, a count, is 0);
+    every   every line right keeps also meets left's one more condition (two counts of one table, equal);
+    versus  one number (left) against a stated number (number) or another program's number (right), by op."""
+    quantifier: str
+    left: "Program"
+    op: str | None = None
+    number: float | None = None
+    right: "Program | None" = None
+
+    def __post_init__(self):
+        if self.quantifier not in QUANTIFIERS:
+            raise ValueError(f"unknown quantifier: {self.quantifier}")
+        if self.quantifier in (ANY, NO, EVERY):
+            if not (isinstance(self.left, Agg) and self.left.function == COUNT) or self.op is not None or self.number is not None:
+                raise ValueError("any, no and every read a count and nothing else")
+            if self.quantifier == EVERY:
+                if not (isinstance(self.right, Agg) and self.right.function == COUNT and self.right.table == self.left.table):
+                    raise ValueError("every compares two counts of one table")
+                if not set(self.right.where) < set(self.left.where) or len(set(self.left.where) - set(self.right.where)) != 1:
+                    raise ValueError("every's count keeps the base lines and exactly one more condition")
+            elif self.right is not None:
+                raise ValueError("any and no read one count")
+            return
+        if self.op not in CHECK_OPS or (self.number is None) == (self.right is None):
+            raise ValueError("versus compares one number with a stated number or another program's number")
+        for side in (self.left, self.right):
+            if side is not None and (not isinstance(side, (Show, Agg, Calc)) or (isinstance(side, Show) and (side.listing or len(side.shown) != 1))):
+                raise ValueError("versus reads programs of one number each")
+
+
+Program: TypeAlias = Show | Agg | Rank | Calc | Check
+
+
+def _sides(program: "Check") -> tuple["Program", ...]:
+    return (program.left,) + ((program.right,) if program.right is not None else ())
 
 
 def is_sound(program: Program) -> bool:
     """A program that says something: a column does not rank or show under a condition fixing that same column to one value, nor group or rank by itself. Conditions are free otherwise: a measure may compare with a number (61.2), a list may hold a word (18.2)."""
     if isinstance(program, Calc):
         return is_sound(program.left) and is_sound(program.right)
+    if isinstance(program, Check):
+        return all(is_sound(side) for side in _sides(program))
     fixed = {condition.column for condition in program.where if isinstance(condition, Equals)}
     if isinstance(program, Show):
         return not fixed.intersection(program.shown)
@@ -362,18 +402,22 @@ def is_sound(program: Program) -> bool:
 
 
 def form_of(program: Program) -> str:
-    return SHOW if isinstance(program, Show) else AGG if isinstance(program, Agg) else RANK if isinstance(program, Rank) else CALC
+    return SHOW if isinstance(program, Show) else AGG if isinstance(program, Agg) else RANK if isinstance(program, Rank) else CHECK if isinstance(program, Check) else CALC
 
 
 def tables_of(program: Program) -> tuple[str, ...]:
     if isinstance(program, Calc):
         return tuple(dict.fromkeys(tables_of(program.left) + tables_of(program.right)))
+    if isinstance(program, Check):
+        return tuple(dict.fromkeys(table for side in _sides(program) for table in tables_of(side)))
     return (program.table,)
 
 
 def conditions_of(program: Program) -> tuple[Condition, ...]:
     if isinstance(program, Calc):
         return conditions_of(program.left) + conditions_of(program.right)
+    if isinstance(program, Check):
+        return tuple(condition for side in _sides(program) for condition in conditions_of(side))
     return program.where
 
 
@@ -403,6 +447,10 @@ def peers_name(peers: tuple[int, ...]) -> str:
 def _body_coordinates(program: Program) -> list[str]:
     """What a program fills, its form aside."""
     names: list[str] = []
+    if isinstance(program, Check):
+        stated = [coordinate(SLOT_COMPARISON, program.op)] if program.op is not None else []
+        stated += [coordinate(SLOT_NUMBER, number_text(program.number))] if program.number is not None else []
+        return [coordinate(SLOT_QUANTIFIER, program.quantifier), *stated, *(name for side in _sides(program) for name in _body_coordinates(side))]
     if isinstance(program, Calc):
         return [coordinate(SLOT_CALC_OP, program.op), *([coordinate(SLOT_SIZE, STATED_BY_SIZE)] if program.magnitude else []), *_body_coordinates(program.left), *_body_coordinates(program.right)]
     names.append(coordinate(SLOT_TABLE, program.table))
@@ -457,6 +505,8 @@ def coordinates(program: Program, column_kind=None) -> tuple[str, ...]:
 
 def answer_type_of(program: Program, column_kind) -> str:
     """The coarse type a program answers with. column_kind(Col) says a column's value kind."""
+    if isinstance(program, Check):
+        return A_YES_NO
     if isinstance(program, Calc):
         return A_PERCENT if program.op == OVER else A_NUMBER
     if isinstance(program, Agg):
@@ -485,5 +535,5 @@ def _type_of_column(column: Col, column_kind) -> str:
     return A_NUMBER if kind == "number" else A_DATE if kind in ("date", "period") else A_NAME
 
 
-__all__ = ["Across", "Agg", "Calc", "Col", "Compare", "CompareColumns", "Condition", "Contains", "DateOf", "Equals", "InPeriod", "InSection", "IsBlank", "IsNumber", "Measure", "NotEquals", "OnLine", "PeriodSpan", "Program", "Rank", "RowArithmetic", "SECTION", "Show", "Size",
+__all__ = ["Across", "Agg", "Calc", "Check", "Col", "Compare", "CompareColumns", "Condition", "Contains", "DateOf", "Equals", "InPeriod", "InSection", "IsBlank", "IsNumber", "Measure", "NotEquals", "OnLine", "PeriodSpan", "Program", "Rank", "RowArithmetic", "SECTION", "Show", "Size",
            "TOGETHER", "addresses_printed", "answer_type_of", "coordinates", "shown_together", "conditions_of", "form_of", "measure_columns", "tables_of", "peers_name"]

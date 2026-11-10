@@ -16,8 +16,8 @@ from typing import Callable, Sequence
 
 from engine.program.catalog import Catalog, CatalogTable
 from engine.program.index import Atom, TableIndex, index_of
-from engine.program.language import (Across, Agg, Calc, Col, Compare, CompareColumns, Condition, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, NotEquals, OnLine, Program, Rank, RowArithmetic, SECTION, Show, Size, answer_type_of, is_sound, measure_coordinates, peers_name, period_from_name, shown_together)
-from engine.program.names import (A_COUNT, A_LIST, A_NAME, A_NUMBER, A_PERCENT, AGG, ANCHORS, ANYWHERE, AVG, BY_SIZE, CALC, CALC_OPS, COMPARISONS, COUNT, COUNT_DISTINCT, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, MAX, MIN, MINUS, NE, NUMBER_AGGREGATES, OVER, PLUS, RANK, ROW_OPS, SHOW, SLOT_AGGREGATE,
+from engine.program.language import (Across, Agg, Calc, Check, Col, Compare, CompareColumns, Condition, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, NotEquals, OnLine, Program, Rank, RowArithmetic, SECTION, Show, Size, answer_type_of, is_sound, measure_coordinates, peers_name, period_from_name, shown_together)
+from engine.program.names import (A_COUNT, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, ANY, CHECK, CHECK_OPS, EQ, EVERY, GT, LT, NO, SLOT_QUANTIFIER, VERSUS, AGG, ANCHORS, ANYWHERE, AVG, BY_SIZE, CALC, CALC_OPS, COMPARISONS, COUNT, COUNT_DISTINCT, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, MAX, MIN, MINUS, NE, NUMBER_AGGREGATES, OVER, PLUS, RANK, ROW_OPS, SHOW, SLOT_AGGREGATE,
                                   SLOT_ANSWER_TYPE, SLOT_BLANK, SLOT_CALC_LEFT, SLOT_CALC_OP, SLOT_COMPARISON, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_DIRECTION, SLOT_ENTITY, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE, SLOT_LISTING, SLOT_MEASURE, SLOT_NUMBER, SLOT_PEERS, SLOT_PERIOD, SLOT_ROW_OP, SLOT_SECTION,
                                   SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, STATED_BY_SIZE, SUM, TIMES, coordinate, slot_of)
 from engine.program.scoring import DEFAULT_WEIGHTS, Reading, ScoredProgram, Weights, score_program
@@ -237,6 +237,14 @@ class _Conditions:
             for k in range(self.count, 0, -1):
                 totals[k] += totals[k - 1] * size
         return totals[self.count]
+
+
+def _every(table_id: str, where: tuple, at: int) -> "Check | None":
+    """Every line the other conditions keep also meets where[at]: two counts of one table, equal."""
+    if at >= len(where):
+        return None
+    base = tuple(condition for i, condition in enumerate(where) if i != at)
+    return Check(EVERY, Agg(COUNT, None, table_id, where), right=Agg(COUNT, None, table_id, base))
 
 
 @dataclass(slots=True)
@@ -687,6 +695,34 @@ class _Search:
                     frames += self.condition_frames(peer, (flags, marks), lambda options, where, d=direction: Rank(ENTITY_PEER, table.id, d, where, peers=options[0], mark=options[1]), table, index, atoms, rank=True, max_policy=0)
                 frames += self.condition_frames(peer, (marks,), lambda options, where, d=direction: Rank(ENTITY_PEER, table.id, d, where, peers=index.mark_columns(options[0]), mark=options[0]), table, index, atoms, rank=True, max_policy=0)
         frames += self.calc_frames(table, index, atoms, measures, plain)
+        frames += self.check_frames(table, index, atoms, measures, plain)
+        return frames
+
+    def check_frames(self, table: CatalogTable, index: TableIndex, atoms: list[_Option], measures: list[_Option], plain: list[_Option]) -> list[_Frame]:
+        """A yes or no: whether any or no kept line exists, whether every base line also meets one more condition, and
+        an aggregate or a count against a number the question states. Spent only when the reading names the check form,
+        which CLEF's reading can and the small reader cannot (its form head is the four FORMS)."""
+        if coordinate(SLOT_FORM, CHECK) not in self.reading.scores:
+            return []
+        s = self.s
+        base = s(coordinate(SLOT_FORM, CHECK)) + s(coordinate(SLOT_TABLE, table.id)) + self.type_score(A_YES_NO)
+        counted = s(coordinate(SLOT_AGGREGATE, COUNT))
+        frames: list[_Frame] = []
+        for quantifier in (ANY, NO):
+            head = base + s(coordinate(SLOT_QUANTIFIER, quantifier)) + counted
+            frames += self.condition_frames(head, (), lambda options, where, q=quantifier: Check(q, Agg(COUNT, None, table.id, where)), table, index, atoms, min_conditions=1, max_policy=2)
+        every = base + s(coordinate(SLOT_QUANTIFIER, EVERY)) + counted
+        for at in range(3):          # which kept condition is the one every base line must also meet
+            frames += self.condition_frames(every, (), lambda options, where, i=at: _every(table.id, where, i), table, index, atoms, min_conditions=at + 1, max_policy=2)
+        asked = [op for op in CHECK_OPS if coordinate(SLOT_COMPARISON, op) in self.reading.scores and self.s(coordinate(SLOT_COMPARISON, op)) > 0] or [GT, LT, EQ]
+        versus = base + s(coordinate(SLOT_QUANTIFIER, VERSUS))
+        for stated in self.positive(SLOT_NUMBER)[:2]:
+            number = float(stated.split(":", 1)[1])
+            for op in asked:
+                head = versus + s(coordinate(SLOT_COMPARISON, op)) + s(stated)
+                for function in NUMBER_AGGREGATES:
+                    frames += self.condition_frames(head + s(coordinate(SLOT_AGGREGATE, function)), (measures if function == SUM else plain,), lambda options, where, f=function, o=op, n=number: Check(VERSUS, Agg(f, options[0], table.id, where), op=o, number=n), table, index, atoms, max_policy=2)
+                frames += self.condition_frames(head + counted, (), lambda options, where, o=op, n=number: Check(VERSUS, Agg(COUNT, None, table.id, where), op=o, number=n), table, index, atoms, max_policy=2)
         return frames
 
     def peer_options(self, table: CatalogTable, index: TableIndex) -> list[_Option]:

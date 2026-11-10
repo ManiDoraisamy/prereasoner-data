@@ -456,6 +456,8 @@ def lower_calculation(
         if isinstance(node, BinaryExpr):
             left = read(node.left)
             return BinaryValue(left, node.operator, read(node.right))
+        if isinstance(node, Literal) and isinstance(node.value, (int, float, Decimal)) and not isinstance(node.value, bool):
+            return LiteralValue(Decimal(str(node.value)))      # a stated number a verdict compares with ("above 50")
         if not isinstance(node, ScalarSubquery) or not isinstance(node.query, SelectQuery):
             raise UnsupportedDeterministicPlan("a calculation reads scalar subqueries")
         branch = lower_select_query(f"{slug}_{len(branches) + 1}", node.query, schema, foreign_keys)

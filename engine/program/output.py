@@ -8,16 +8,18 @@ from dataclasses import dataclass
 
 from engine.program.catalog import Catalog, CatalogTable, KIND_FAMILY
 from engine.program.index import index_of
-from engine.program.language import (Across, Agg, Calc, Col, Compare, CompareColumns, Condition, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, Measure, NotEquals, Program, Rank, RowArithmetic, SECTION, Show, Size, addresses_printed, answer_type_of, measure_columns)
-from engine.program.names import (A_PERCENT, ANYWHERE, AVG, COUNT, COUNT_DISTINCT, ENDS, ENTITY_GROUP, ENTITY_LINE, GE, GT, HIGHEST, LE, LT, MAX, MIN, MINUS, NE, OVER, PLUS, STARTS, SUM, TIMES)
+from engine.program.language import (Across, Agg, Calc, Check, Col, Compare, CompareColumns, Condition, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, Measure, NotEquals, Program, Rank, RowArithmetic, SECTION, Show, Size, addresses_printed, answer_type_of, measure_columns)
+from engine.program.names import (A_PERCENT, ANY, ANYWHERE, EQ, EVERY, NO, AVG, COUNT, COUNT_DISTINCT, ENDS, ENTITY_GROUP, ENTITY_LINE, GE, GT, HIGHEST, LE, LT, MAX, MIN, MINUS, NE, OVER, PLUS, STARTS, SUM, TIMES)
 from engine.program.scoring import ScoredProgram
-from engine.program.semantics import fold, share_forms
+from engine.program.semantics import fold, number_text, share_forms
 from engine.program.store import RequestTables
 from engine.sheet.formulas import column_letter
 
 _AGG_WORDS = {SUM: "total", AVG: "average", MIN: "lowest", MAX: "highest", COUNT: "number of lines", COUNT_DISTINCT: "number of different"}
 _COMPARE_WORDS = {GE: "at least", GT: "above", LE: "at most", LT: "below", NE: "other than"}
 _OP_WORDS = {PLUS: "plus", MINUS: "minus", TIMES: "times", OVER: "over"}
+_VERDICT_WORDS = {GT: "above", GE: "at least", LT: "below", LE: "at most", EQ: "equal to", NE: "different from"}
+_VERDICT_FORMULA = {GT: ">", GE: ">=", LT: "<", LE: "<=", EQ: "=", NE: "<>"}
 _SHEET_FUNCTION = {SUM: "SUM", AVG: "AVERAGE", MIN: "MIN", MAX: "MAX"}
 _IFS = {SUM: "SUMIFS", AVG: "AVERAGEIFS", MIN: "MINIFS", MAX: "MAXIFS"}
 _MAX_CELLS = 2000
@@ -95,8 +97,24 @@ def _in_tab(table: CatalogTable) -> str:
     return f'on "{table.tab}"'
 
 
+def _check_words(program: Check, catalog: Catalog) -> str:
+    if program.quantifier in (ANY, NO, EVERY):
+        table = catalog.table(program.left.table)
+        place = _in_tab(table)
+        if program.quantifier == EVERY:
+            base = _where_words(catalog, program.right.where)
+            extra = _where_words(catalog, tuple(c for c in program.left.where if c not in program.right.where))
+            return f"whether every line {place}" + (f" where {base}" if base else "") + f" also has {extra}"
+        where = _where_words(catalog, program.left.where)
+        return f"whether there is {'any' if program.quantifier == ANY else 'no'} line {place}" + (f" where {where}" if where else "")
+    other = number_text(program.number) if program.number is not None else read_as(program.right, catalog)
+    return f"whether {read_as(program.left, catalog)} is {_VERDICT_WORDS[program.op]} {other}"
+
+
 def read_as(program: Program, catalog: Catalog) -> str:
     """The program in the sheet's own words."""
+    if isinstance(program, Check):
+        return _check_words(program, catalog)
     if isinstance(program, Calc):
         sentence = f"{read_as(program.left, catalog)}, {_OP_WORDS[program.op]} {read_as(program.right, catalog)}"
         return f"the size of ({sentence})" if program.magnitude else sentence
@@ -173,6 +191,9 @@ def cells_used(program: Program, tables: RequestTables, rows: tuple[tuple, ...])
     """The exact cells behind an answer: the cell a read takes; the measure cells of the kept lines; for a rank, the top line's, the top group's or the top peer column's."""
     if isinstance(program, Calc):
         return tuple(dict.fromkeys(cells_used(program.left, tables, ()) + cells_used(program.right, tables, ())))
+    if isinstance(program, Check):
+        sides = (program.left,) + ((program.right,) if program.right is not None else ())
+        return tuple(dict.fromkeys(cell for side in sides for cell in cells_used(side, tables, ())))
     catalog = tables.catalog
     table = catalog.table(program.table)
     index = index_of(table)
@@ -342,6 +363,12 @@ def _criteria(catalog: Catalog, where: tuple[Condition, ...]) -> list[str] | Non
 def formula(program: Program, tables: RequestTables) -> str:
     """An equivalent spreadsheet formula a user can paste. A printed line read is its own cell. Where the kept lines cannot be stated as plain criteria (a band, printed lines inside the range, a month of any year, row arithmetic), it adds the kept cells themselves, which is the same number on these cells."""
     catalog = tables.catalog
+    if isinstance(program, Check):
+        left = formula(program.left, tables).lstrip("=")
+        if program.quantifier in (ANY, NO):
+            return f"=({left}){'>' if program.quantifier == ANY else '='}0"
+        right = number_text(program.number) if program.number is not None else f"({formula(program.right, tables).lstrip('=')})"
+        return f"=({left}){'=' if program.quantifier == EVERY else _VERDICT_FORMULA[program.op]}{right}"
     if isinstance(program, Calc):
         left, right = formula(program.left, tables).lstrip("="), formula(program.right, tables).lstrip("=")
         body = f"({left}) {program.op} ({right})"

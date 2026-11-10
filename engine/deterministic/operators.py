@@ -403,6 +403,37 @@ def LE(left, right):
     return left <= right
 
 
+def _verdict(holds: Callable[[Decimal, Decimal], bool], left, right):
+    """A verdict as SQL computes one: 1 or 0, None when a side is missing; two numbers compare by their decimal values."""
+    if left is None or right is None:
+        return None
+    return 1 if holds(Decimal(str(left)), Decimal(str(right))) else 0
+
+
+def VERDICT_GT(left, right):
+    return _verdict(lambda a, b: a > b, left, right)
+
+
+def VERDICT_GE(left, right):
+    return _verdict(lambda a, b: a >= b, left, right)
+
+
+def VERDICT_LT(left, right):
+    return _verdict(lambda a, b: a < b, left, right)
+
+
+def VERDICT_LE(left, right):
+    return _verdict(lambda a, b: a <= b, left, right)
+
+
+def VERDICT_EQ(left, right):
+    return _verdict(lambda a, b: a == b, left, right)
+
+
+def VERDICT_NE(left, right):
+    return _verdict(lambda a, b: a != b, left, right)
+
+
 def IS(left, right):
     return left is right if right is None else left == right
 

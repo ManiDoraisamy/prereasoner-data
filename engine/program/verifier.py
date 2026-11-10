@@ -11,8 +11,8 @@ from dataclasses import dataclass
 
 from engine.program.execute import Result, run
 from engine.program.index import index_of
-from engine.program.language import Agg, Calc, Col, Contains, Equals, InPeriod, InSection, OnLine, Program, Rank, Show, addresses_printed, answer_type_of, conditions_of, measure_columns
-from engine.program.names import (A_CODE, A_COUNT, A_DATE, A_LIST, A_NAME, A_NUMBER, A_PERCENT, COUNT, COUNT_DISTINCT, ENTITY_LINE, EV_ADDS_TWICE, EV_BARE_ZERO, EV_EMPTY, EV_FAILED, EV_FILTER_DID_NOTHING, EV_FRACTION_FOR_COUNT, EV_MANY_ROWS, EV_PRINTED_TIE, EV_RAN, EV_REPEATED_LINES, EV_ROW_COUNT_FOR_AMOUNT, EV_ROW_DUMP, EV_SHAPE_AGREES,
+from engine.program.language import Agg, Calc, Check, Col, Contains, Equals, InPeriod, InSection, OnLine, Program, Rank, Show, addresses_printed, answer_type_of, conditions_of, measure_columns
+from engine.program.names import (A_CODE, A_COUNT, A_DATE, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, COUNT, COUNT_DISTINCT, ENTITY_LINE, EV_ADDS_TWICE, EV_BARE_ZERO, EV_EMPTY, EV_FAILED, EV_FILTER_DID_NOTHING, EV_FRACTION_FOR_COUNT, EV_MANY_ROWS, EV_PRINTED_TIE, EV_RAN, EV_REPEATED_LINES, EV_ROW_COUNT_FOR_AMOUNT, EV_ROW_DUMP, EV_SHAPE_AGREES,
                                   EV_TOO_LARGE_FOR_SHARE, EV_TYPE_AGREES, EV_WRONG_KIND, SUM, coarse_type)
 from engine.program.scoring import ScoredProgram
 from engine.program.semantics import fold
@@ -90,6 +90,9 @@ def shape_evidence(rows: tuple[tuple, ...], program: Program, expected: str | No
     if len(first) >= 4:
         out.append(Evidence(EV_ROW_DUMP, True))
     if expected is None:
+        return out
+    if isinstance(program, Check):           # a yes or no answers a yes-or-no question and nothing else
+        out.append(Evidence(EV_SHAPE_AGREES, coarse_type(expected) == A_YES_NO))
         return out
     if isinstance(program, Rank) and program.count > 1:     # "the 5 oldest" asks for that many rows, whatever their kind
         too_many = len(rows) > program.count
@@ -190,6 +193,8 @@ def adds_across_members(program: Program, catalog) -> bool:
     """Whether a program adds lines across a family whose members repeat each other's lines (Family.adds_twice): the same figures would count twice. A condition on the member's own column reads one member and adds nothing twice."""
     if isinstance(program, Calc):
         return adds_across_members(program.left, catalog) or adds_across_members(program.right, catalog)
+    if isinstance(program, Check):
+        return any(adds_across_members(side, catalog) for side in (program.left, program.right) if side is not None)
     table = catalog.table(program.table)
     if not table.adds_twice or isinstance(program, Show):
         return False
@@ -209,6 +214,8 @@ MIN_RUN = 10
 def _lines_of(program: Program, catalog) -> int:
     if isinstance(program, Calc):
         return _lines_of(program.left, catalog) + _lines_of(program.right, catalog)
+    if isinstance(program, Check):
+        return sum(_lines_of(side, catalog) for side in (program.left, program.right) if side is not None)
     return len(catalog.table(program.table).lines)
 
 
