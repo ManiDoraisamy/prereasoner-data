@@ -5,6 +5,88 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
+## The first measurements on data other than Enron, the loss census, and three levers: evidence for the chooser, value expansion, top-N lists (2026-11-10)
+
+This is PLAN 2026-11-10's first night (the plan sits at the top of the RUNBOOK).
+- Experiments: `clef-evidence-20261110`, `databench-20261110` and `wtq-20261110`, all gitignored under
+  `training/readers/data/experiments/`.
+- GPU: one H100 SXM pod for 1.5 h, about $6.
+- Nothing served or promoted.
+
+The product now always answers its top pick, with a warning icon when it is not confident. So the headline number is
+the top answer right, and the threshold only decides the icon.
+
+**External sets, frozen by hash before use.** The test splits are recorded in `frozen_test_manifest.json` and their
+loaders refuse them.
+- DataBench (SemEval-2025 Task 8, MIT): dev is 300 questions on 15 datasets; the 16th dev dataset, 065_RFM with 541,909
+  rows, is too large for the owner's machine.
+- WikiTableQuestions 1.0.2 (CC BY-SA 4.0): dev is 2,831 questions; graded by a Python 3 port of the release's own
+  evaluator, with CoreNLP canonical targets.
+
+**Reach of the grammar.** The small reader alone (no CLEF), with the typed decoder's top 200 run and graded:
+- WikiTableQuestions dev: a right program at top 1 for 649, in the top 50 for 1,646 (58%), in the top 200 for 1,920
+  (68%) of 2,831.
+- DataBench dev: top 50 for 68 and top 200 for 74 of the 237 measured. By answer type in the top 200: category 37 of
+  48, number 28 of 48, yes/no 3 of 48, category list 5 of 48, number list 1 of 45.
+- Why DataBench is low: the language had no yes/no form, `Rank` kept only the top one, and a list showed distinct
+  values only.
+
+**The CLEF path, always answering.** Small reader, the reader fit's reading fused at w=2, decoder top 50, top answer
+right:
+
+| Chooser | Enron 186 | Messy 120 | DataBench dev 300 |
+|---|---:|---:|---:|
+| Refit chooser, blind (served) | 112 | 61 | 96 |
+| Released head, blind | 103 | 55 | 96 |
+| Released head, with evidence | 111 | 62 | 95 |
+| Refit chooser, with evidence (never trained on it) | **119** | **70** | **100** |
+| A right answer is listed at all | 144 | 76 | 110 |
+
+"With evidence" means STATE also describes the workbook as the reader saw it (capped at 6,000 tokens), and each option
+ends with the answer its candidate returns.
+- On the 306 real-sheet questions, evidence lifts the refit from 173 to 189, and it then picks right in 86% of the
+  questions where a right answer is listed.
+- Grouping candidates that return the same answer moves the counts by 2 or less.
+- DataBench by answer type, refit with evidence: category 49 of 60, number 41 of 60 (90 of 120, 75%, on data never
+  seen), yes/no 3 of 60, category lists 6 of 60, number lists 1 of 60.
+
+**The warning icon is not calibrated yet.** Holding wrong answers without the icon to 2% of questions means warning on
+64 of 120 messy and 131 of 186 Enron answers, far from the 20% bar.
+
+**The loss census.**
+- Enron: hand programs run right on the compiled sheets for 182 of 186 questions.
+- With the fit's reading, a right program is in the top 1 / 3 / 10 / 50 / 500 for 92 / 112 / 134 / 150 / 159. Depth
+  beyond 50 adds 9.
+- By form, top 50 then answered right: aggregates 63 then 40 of 70; lookups 36 then 21 of 47; top group 23 then 14 of
+  24; top row 15 then 7 of 19; calculations 6 then 1 of 11; top column 5 then 2 of 10.
+- Messy: 76 of 120 in the top 50 and 80 in the top 500. By messiness kind:
+
+| Messiness kind | Questions | In the top 50 | Not within 500 | Answered right |
+|---|---:|---:|---:|---:|
+| Plain (the sheet's own words) | 15 | 13 | 1 | 14 |
+| Column paraphrase | 46 | 31 | 13 | 19 |
+| Value paraphrase | 50 | 30 | 19 | 23 |
+| Structure | 9 | 2 | 7 | 1 |
+
+- Correction to the plan: CLEF already reads every column (694 of 744 Enron column fields, all 480 messy). The
+  binding caps are the 80-value limit of the value field and the decoder's ranking.
+
+**Value expansion.** Every distinct value of a column with at most 30 distinct texts becomes a value option. Expanded
+values sort after the proposed ones, those of likelier filter columns first, and the field holds at most 160.
+- Same engine (next-engine 5aa5526), reader and chooser. Messy: listed 76 to 85 (value paraphrase 31 to 39), refit
+  blind right 61 to 67, released head with evidence 62 to 70.
+- Enron: listed 144 to 146, right 112 to 114.
+- Reading tokens rise 34% (Enron median 8,765 to 11,767).
+
+**Top-N lists added to the language.** next-engine `d289719`, local:
+- `Rank.count` keeps exactly N lines or groups, with ties broken by sheet order or by the key. It is the same in the
+  typed SQL and the deterministic dual emitter.
+- The count is named as the stated number, the answer type is a list, and the read-as says how many.
+- The decoder proposes it only for a stated whole number from 2 to 50.
+- Tests: `tests.test_program` 55 of 55 (two new), `tests.test_named` 48 of 48, `tests.test_factory` 14 of 14.
+- Its effect on DataBench is not measured yet; a run on the old engine preceded it.
+
+
 ## The sheet chooser refitted on the reader fit's pools: +4 right and −4 wrong at matched asks, but at the old threshold it answers more and errs more (2026-11-10)
 
 Experiment `clef-chooser-refit-20261109` (gitignored, under `training/readers/data/experiments/`, with its contract).
