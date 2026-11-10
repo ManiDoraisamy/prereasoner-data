@@ -746,6 +746,22 @@ def test_answer_type_rule():
     assert predict_answer_type("Which counterparty owes the most?") == A_COMPANY and predict_answer_type("What are the delivery points?") == A_LIST
 
 
+def test_an_ordinal_is_not_a_stated_number():
+    """"The last year they came in 3rd place" (WikiTableQuestions dev): read as a number, 3rd made the rank keep the 3
+    latest years. An ordinal names a position, so the question states no number and no rank keeps 3; a cardinal ("the 3
+    oldest") still states how many."""
+    catalog, table, _ = _setup(AGES)
+    decoder = Decoder(catalog)
+    ordinal = read_question("Who is the 3rd oldest in region x?", catalog, decoder).scores
+    assert not any(name.startswith("number:") for name in ordinal), ordinal
+    programs, _, _, _ = decoder.enumerate(read_question("Who is the 3rd oldest in region x?", catalog, decoder), k=500)
+    assert not any(isinstance(p, Rank) and p.count == 3 for p in programs)
+    cardinal = read_question("Who are the 3 oldest in region x?", catalog, decoder).scores
+    assert cardinal.get(coordinate("number", "3"), 0) > 0
+    programs, _, _, _ = decoder.enumerate(read_question("Who are the 3 oldest in region x?", catalog, decoder), k=500)
+    assert any(isinstance(p, Rank) and p.count == 3 for p in programs)
+
+
 def test_words_alone_read_a_question():
     catalog, table, tables, col = _trades()
     decoder = Decoder(catalog)
@@ -1182,7 +1198,7 @@ TESTS = [
     test_partial_value_match, test_case_and_spacing_do_not_count, test_periods, test_blanks, test_ties_keep_every_tied_line, test_units, test_mixed_columns, test_repeated_rows, test_sections_nested_bands_and_the_section_shown, test_python_masks_agree_with_the_sql,
     test_calc_shapes, test_rank_across_peer_columns, test_a_rank_keeps_as_many_as_the_question_states, test_the_decoder_proposes_how_many_a_question_states, test_a_check_says_yes_or_no, test_the_decoder_checks_only_when_the_reading_names_a_check, test_a_choice_among_named_values, test_a_check_asks_what_the_top_one_is, test_a_read_takes_the_line_after_or_before_the_kept_one, test_new_ast_nodes_render_and_validate, test_plan_schema_holds_only_what_a_query_reads, test_perfect_readings_give_the_gold_first, test_decoder_is_deterministic_and_order_free, test_the_list_does_not_depend_on_hash_order,
     test_scores_come_in_as_data_and_nothing_else_moves_the_list, test_contributions_are_named_and_sum_to_the_score, test_intervention_a_named_coordinate_moves_the_score_by_its_weight, test_policy_prunes_values_only_where_it_says, test_conditions_stay_on_distinct_columns,
-    test_answer_type_rule, test_words_alone_read_a_question, test_verifier_shape_and_type_evidence, test_printed_total_ties_only_under_its_exact_conditions, test_verifier_runs_the_top_programs_and_never_raises, test_read_as_in_the_sheets_own_words,
+    test_answer_type_rule, test_an_ordinal_is_not_a_stated_number, test_words_alone_read_a_question, test_verifier_shape_and_type_evidence, test_printed_total_ties_only_under_its_exact_conditions, test_verifier_runs_the_top_programs_and_never_raises, test_read_as_in_the_sheets_own_words,
     test_cells_are_the_exact_addresses_used, test_formula_a_user_can_check, test_explain_carries_the_named_contributions,
 ]
 

@@ -26,6 +26,9 @@ _MONTH_WORD = re.compile(r"\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|m
 _YEAR_WORD = re.compile(r"\b((?:19|20)\d{2})\b")
 _DATE_FORMS = re.compile(r"\b\d{1,2}/\d{1,2}/\d{2,4}\b|\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}-[a-z]{3}-\d{2,4}\b|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.? \d{1,2},? \d{4}\b|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*[ '-]+\d{2,4}\b|\b[1-4]q\d{2,4}\b|\bq[1-4][ '-]*\d{2,4}\b|\bcalendar \d{4}\b")
 _NUMBER = re.compile(r"(?<![\w/.-])[$]?\d[\d,]*(?:\.\d+)?\s*(?:%|percent\b|k\b|m\b|mm\b)?")
+# An ordinal ("3rd place", "the 2nd highest") names a position, not an amount or how many: read as a number it made "the
+# last year they came in 3rd" rank the 3 latest years (WikiTableQuestions dev, 2026-11-10). A cell holding it is a value.
+_ORDINAL_AFTER = re.compile(r"(?:st|nd|rd|th)\b")
 _COMPARE = ((GE, re.compile(r"\b(at least|or more|or better|or higher|or above|no less than|minimum of)\b")), (LE, re.compile(r"\b(at most|or less|or lower|or below|no more than|maximum of|up to)\b")),
             (GT, re.compile(r"\b(above|over|greater than|more than|exceeds?|exceeding|higher than)\b")), (LT, re.compile(r"\b(below|under|less than|lower than|fewer than)\b")), (NE, re.compile(r"\b(other than|excluding|except)\b")))
 _SIGNED_ZERO = ((GT, re.compile(r"\b(positive|above zero|greater than zero|in the money|gains?)\b")), (LT, re.compile(r"\b(negative|below zero|less than zero|out of the money|losses)\b")), (NE, re.compile(r"\b(non-?zero|not zero)\b")))
@@ -203,6 +206,8 @@ def _numbers(low: str, out: dict[str, float]) -> None:
     found = False
     for match in _NUMBER.finditer(low):
         text = match.group(0).strip()
+        if _ORDINAL_AFTER.match(low, match.end()):
+            continue
         value = stated_number(re.sub(r"\s*percent$", "%", text))
         if value is None or _YEAR_WORD.fullmatch(text):
             continue
