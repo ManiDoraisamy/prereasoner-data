@@ -5,6 +5,54 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
+## Chooser round 2: chooser3 is +22 summed (687 vs 665 of 906) but messy −8, so the refit stays; every messy loss is a choice between tabs with the same headers (2026-11-11)
+
+- Experiment `chooser-round2-20261111` (H100, about $30 of its $48 cap; gitignored under
+  `training/readers/data/experiments/`). Engine: next-engine 172994b (local, not pushed), worktree
+  `prereasoner-next-gate`. Development sets only; no frozen set was read.
+- Round-2 pools: 6,211 questions collected under 172994b with the stage-2 reading switches and lines (factory first,
+  then WikiTableQuestions; every question round 1 never reached went first). Training rows: 9,416 (5,209 from round 2,
+  round 1 for the rest; the verifier's held workbooks left out), 6,736 with a right candidate.
+- chooser3: the refit (adapter 5af7ae6f) trained one more pass, 1,177 updates in 5.2 h (last logged loss 0.58), the
+  objective otherwise unchanged. Variant `round2`: chooser3 serving, the refit with evidence choosing over the same 50
+  beside it. Always answering, top answer graded on its first cell.
+
+**The rule (experiment-contract.json, written before any round-2 pool):** adopt chooser3 if its right, summed over the
+four sets, is above the refit's on the same lists and no set is lower by more than 2.
+
+| Set | n | refit | chooser3 | wins | losses | wrong without a warning at ≤20% warned (refit / chooser3) |
+|---|---|---|---|---|---|---|
+| Enron studied | 186 | 124 | 128 | 8 | 4 | 31 / 31 |
+| Messy dev | 120 | 93 | 85 | 2 | 10 | 10 / 21 |
+| DataBench dev | 300 | 249 | 257 | 11 | 3 | 21 / 17 |
+| WikiTableQuestions dev sample | 300 | 199 | 217 | 19 | 1 | 47 / 29 |
+| Total | 906 | 665 (73.4%) | 687 (75.8%) | 40 | 18 | |
+
+Messy is 8 lower, so the refit stays. Its column repeats the lines run exactly (124 / 93 / 249 / 199); the lists are
+the same.
+
+**Every messy loss is a twin-tab choice:** the reading is right, but chooser3 takes it on another tab with the same
+headers. In the subscriptions workbook (messy0–21) it takes SI or FF instead of NT; in the keywords workbook
+(messy22–37) it takes Forklift, Inspection or Sheet1 instead of Checklist. The messy cases label the workbook's first
+and largest tab. chooser2 lost 6 of the same questions at the stage-2 gate (messy4, 5, 25, 27, 30, 32). chooser3's 2
+wins are a count over one named value instead of a choice of two (messy69), and a total instead of a count (messy70).
+
+**No rule fixes it.** The training pools do not follow messy's convention. Where a factory question's list spans
+twin tabs and one tab is right, the first tab is the right one in 125 of 259 (round-2 pools). Moving the recorded
+pick to the group's first tab would turn 41 right picks wrong and only 33 wrong ones right (226 twin picks, round 1
+and round 2). That holds even when it applies only if the question does not name the picked tab (40 / 33). An unnamed
+tab among twins is ambiguous; the warning icon is the right answer to it, not a default.
+
+**Not adopted, recorded:** averaging the two choosers' probabilities would score 128 / 93 / 256 / 212 = 689, messy
+unchanged. That was measured after the gate, under no rule. It also needs two chooser passes per question, and
+chooser3's weights were not kept (they are pulled only on adoption).
+
+**The launch bar on dev is still not met** (served: the refit with lines): right 66.7% / 77.5% / 83.0% / 66.3%, and
+8.3% to 16.7% of answers are wrong without a warning when at most 20% are warned. Getting that to 2% would mean
+warning on 44% to 85% of answers. Stage 3 stays held. Stage 2's GPU spend: about $70 (pod B) + about $30 (round 2) of
+about $120.
+
+
 ## Stage 2's gate: the refit chooser stays (chooser2 is +30 summed but messy −4) and no verifier; the lines option is adopted, 658 -> 665 of 906 always answering (2026-11-11)
 
 - Experiment `phase2-choose-verify-20261111` (the stage-2 pod, H100, read head cadbd7327ca3; gitignored under
