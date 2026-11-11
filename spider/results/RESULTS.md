@@ -5,6 +5,90 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
+## The reach census: 132 of 241 dev misses have no right answer in the list; the launch bar's warning clause needs 91–95% right; no large model, about 20% right; a wider decode does not help (2026-11-11)
+
+- Experiment `reach-census-20261111` (no GPU; gitignored under `training/readers/data/experiments/`). Everything is
+  read from the round-2 gate's records (`round2_real`, `round2_ext`: the refit with evidence and the lines option, the
+  served path) or replayed offline from their recorded CLEF fields under next-engine 172994b (`reach_depth.py`; a
+  replay at the gate's own settings reproduces its lists). Development sets only; no frozen set was read. Enron rows
+  hold ids, counts and label names only.
+
+**Where the 241 misses are (always answering, first cell graded):**
+
+| Set | n | right | no right answer in the 50 | listed, not chosen (right in the first 5 / deeper) | couldn't compute |
+|---|---|---|---|---|---|
+| Enron studied | 186 | 124 | 39 | 23 (9 / 14) | 0 |
+| Messy dev | 120 | 93 | 8 | 19 (11 / 8) | 0 |
+| DataBench dev | 300 | 249 | 25 | 26 (18 / 8) | 0 |
+| WikiTableQuestions dev sample | 300 | 199 | 60 | 39 (12 / 27) | 2 |
+| Total | 906 | 665 | 132 | 107 | 2 |
+
+**The warning clause of the launch bar (at most 2% wrong without a warning, at most 20% warned) needs 91–95% right
+with today's warning.** The run's right and wrong answers keep their confidence distributions and are remixed to a
+given right rate (`census_records.py`, `bar_table.py`):
+
+| Set | AUROC of the chooser's confidence | wrong without a warning at 20% warned, now | at 80% right | at 85% | at 90% | right rate that meets 2% / 20% |
+|---|---|---|---|---|---|---|
+| Enron studied | 0.82 | 16.7% (31; 14 of them not listed) | 7.7% | 5.8% | 3.4% | 94% |
+| Messy dev | 0.90 | 8.3% (10; 1) | 7.4% | 4.4% | 2.2% | 91% |
+| DataBench dev | 0.84 | 7.0% (21; 9) | 8.2% | 6.2% | 3.5% | 93% |
+| WikiTableQuestions dev sample | 0.81 | 15.7% (47; 27) | 7.7% | 5.3% | 3.4% | 94.5% |
+
+Four warning signals have now been measured and none beats the chooser's own top probability: the trained verifier
+(stage 2's gate); the pick's answer-group mass (wrong without a warning 32 / 11 / 19 / 45 against 31 / 10 / 21 / 47)
+or its margin (34 / 11 / 18 / 47); a logistic model over eleven recorded signals, fitted on three sets and scored on
+the fourth (`warning_combo.py`: AUROC 0.86 / 0.90 / 0.84 / 0.84, 32 / 11 / 17 / 45); and disagreement between the
+refit and chooser3 on the same lists (`agree_signal.py`: 38 / 13 / 16 / 45). When the two choosers agree they are
+still wrong on 38 of 148 Enron answers and 45 of 228 WikiTableQuestions answers: with no right answer in the list,
+both take the same wrong one.
+
+**What the large model carries (the shipped model is to be a distilled encoder):**
+
+| Set | small reader alone: engine's first candidate right / listed in 50 | CLEF's reading: first candidate right / listed | CLEF's reading and chooser: right |
+|---|---|---|---|
+| Enron studied | 40 / 99 | 91 / 147 | 124 |
+| Messy dev | 23 / 59 | 59 / 112 | 93 |
+| WikiTableQuestions dev sample | 59 / 181 | 136 / 238 | 199 |
+| DataBench dev | not replayed | 179 / 275 | 249 |
+
+With no large model the path answers about 20% right, and a perfect chooser over the small reader's own list would
+stop at 53% / 49% / 60%. Stage 3's assumption (a CPU encoder keeps at least 95% of the teacher) is untested.
+
+**A wider decode is not a free gain.** Decode 500, rank as served, keep the first 50 (`reach_depth.py --all`,
+`wider_decode.py`):
+
+| Set | gate list (decode 50) | first 50 of 500 | gained / lost | first 100 | first 200 | anywhere in 500 |
+|---|---|---|---|---|---|---|
+| Enron studied | 147 | 152 | 11 / 6 | 155 | 157 | 159 |
+| Messy dev | 112 | 101 | 2 / 13 | 106 | 108 | 114 |
+| WikiTableQuestions dev sample | 238 | 232 | 6 / 12 | 242 | 252 | 257 |
+
+Right answers do sit past position 50 (12 of Enron's 39 unlisted questions, 19 of WikiTableQuestions' 62, 2 of
+messy's 8, 3 of DataBench's 25), but the ranking that feeds the chooser cannot bring them forward without pushing
+others out. Several of the WikiTableQuestions ones match the gold by coincidence (a total over one unrelated line).
+
+**Why a right answer is not listed.**
+- Enron (39; the need labels of `evals/enron/labels.jsonl`): 29 need domain knowledge. Questions that need none are
+  52 of 57 right; questions that need domain knowledge are 52 of 95. By form, the weakest are a difference or ratio
+  (1 of 7 right, 6 not listed), a top column across a line (`cross_argmax`: 2 of 9, 5 not listed) and a cell lookup (30 of 49, 11 not
+  listed); by sheet shape, cross-tabs (2 of 10 right) and stacked tables (7 of 19).
+- WikiTableQuestions (62 with the 2 that could not be computed; each read from its question, gold, columns and first
+  candidates): a number, duration or list inside a text cell 16; a form the language lacks 11 (three named values,
+  highest minus lowest, a line by its position, groups kept by their count, the column that holds a value on a line, a
+  period's end); a comparison answered with a name, yes/no or more/less 9; table layout (a turned table, a header
+  merged with data, unnamed columns, side-by-side blocks) 7; a partial value the reading did not propose 6; a negation
+  or before/after read the other way 4; grouping by a date's month or year 4; an unclear question or doubtful gold 5.
+- DataBench (25): ties and stated tie-breaks in a top-N list 7; word counts of a text column 5; forms (a median per
+  group, a group kept by its count, existence under a numeric condition, a nested top group) 5; cells that hold lists
+  3; survey scales or a doubtful gold 2; the replay's 60,000-row cap 2; unclear 1.
+- Messy (8): a paraphrased value or a polarity the reading missed 4 (pay annually, churn, rupees, used a promo);
+  deeper in the decode 2; "vs" read as a subtraction 1; one column compared with another 1.
+
+**What follows.** Recall and chooser work can lift right answers, but the bar's warning clause is met only above 90%
+right, the encoder that ships is far below the teacher today, and WikiTableQuestions' misses are mostly Wikipedia-table
+forms. A redrawn plan was put to the owner (RUNBOOK); no spend, no engine change.
+
+
 ## Chooser round 2: chooser3 is +22 summed (687 vs 665 of 906) but messy −8, so the refit stays; every messy loss is a choice between tabs with the same headers (2026-11-11)
 
 - Experiment `chooser-round2-20261111` (H100, about $30 of its $48 cap; gitignored under
