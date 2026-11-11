@@ -5,6 +5,75 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
+## Stage 2's gate: the refit chooser stays (chooser2 is +30 summed but messy −4) and no verifier; the lines option is adopted, 658 -> 665 of 906 always answering (2026-11-11)
+
+- Experiment `phase2-choose-verify-20261111` (the stage-2 pod, H100, read head cadbd7327ca3; gitignored under
+  `training/readers/data/experiments/`). Engine: next-engine 172994b (local, not pushed), worktree
+  `prereasoner-next-gate`. Development sets only (Enron studied 186, messy dev 120, DataBench dev 300, the
+  WikiTableQuestions dev sample 300); no frozen set was read.
+- Variant `phase2`: the read head, the decoder's top 50, every candidate run; chooser2 (the refit trained one pass on
+  the stage-1 pools: 6,023 questions, 4,177 with a right candidate; 753 updates, loss 0.490) serving, the warning
+  verifier scoring its pick, and the refit with evidence choosing over the same 50 beside it. Always answering, the
+  top answer graded on its first cell.
+
+**The chooser rule (written before the gate):** adopt chooser2 if its right, summed over the four sets, is above the
+refit's and no set is lower by more than 2.
+
+| Set | n | refit | chooser2 | wins | losses |
+|---|---|---|---|---|---|
+| Enron studied | 186 | 122 | 126 | 6 | 2 |
+| Messy dev | 120 | 94 | 90 | 3 | 7 |
+| DataBench dev | 300 | 249 | 260 | 16 | 5 |
+| WikiTableQuestions dev sample | 300 | 193 | 212 | 21 | 2 |
+| Total | 906 | 658 (72.6%) | 688 (75.9%) | 46 | 16 |
+
+Messy is 4 lower, so the refit stays. Only 1,911 of the stage-1 pools' questions are factory (messy-like) ones, and
+their engine (91d5554) had no breakdown, per-currency figure or line comparison; round 2 (below) collects the
+factory questions first, on the newest engine.
+
+**The warning verifier is not adopted.** Trained 1,506 updates (loss 0.408) on 12,044 serving records, calibrated on
+2,434 held records (1,217 questions by workbook, 54.3% right). On the held split, the best threshold within 20% warned
+leaves 25.9% of answers wrong without a warning by the verifier's probability against 28.2% by the chooser's own; to
+reach 2% the warning would cover 74% (verifier) or 90% (chooser) of answers. On the dev sets at the held thresholds,
+the verifier leaves more answers silently wrong on every set (Enron 51 vs 27, messy 25 vs 22, DataBench 31 vs 25,
+WikiTableQuestions 45 vs 31; chooser2's served pick), because its threshold warns far fewer dev answers (10, 5, 10, 43
+vs 39, 10, 29, 65).
+
+**The launch bar on dev is not met:** right always answering is 65.6% / 78.3% / 83.0% / 64.3% with the refit
+(chooser2: 67.7% / 75.0% / 86.7% / 70.7%), and 8% to 18% of answers are wrong without a warning at the held
+threshold, against at most 2%. Stage 3 stays held.
+
+**The lines option (rule written before the run: adopt if summed right is above the control's and no set is lower by
+more than 2):** variant `lines_b`, the refit serving, run beside the gate on the same pod and engine; the control is
+the gate run's refit pick, so only the option differs. The reading also offers each table's line labels (a table of
+more than 60 labelled data lines offers only its printed ones).
+
+| Set | control | lines | wins | losses | right listed | request tokens p50 |
+|---|---|---|---|---|---|---|
+| Enron studied | 122 | 124 | 2 | 0 | 149 -> 147 | 12,231 -> 13,697 |
+| Messy dev | 94 | 93 | 0 | 1 | 112 -> 112 | 5,217 -> 5,483 |
+| DataBench dev | 249 | 249 | 2 | 2 | 275 -> 275 | 7,366 -> 7,384 |
+| WikiTableQuestions dev sample | 193 | 199 | 9 | 3 | 233 -> 238 | 4,288 -> 5,220 |
+| Total | 658 | 665 (73.4%) | 13 | 6 | 769 -> 772 | |
+
+Adopted: the round-2 pools and the round-2 gate use it. Read seconds p50 unchanged (3.4 / 2.1 / 2.4 / 1.4 s vs 3.3 /
+2.6 / 2.0 / 1.3 s); 2 Enron read errors vs 1.
+
+**Messy is 98 at de878a6 (last evening) and 94 at 172994b, the refit choosing in both.** CLEF's recorded readings
+are identical on all 120 questions; 5 losses and 1 win, and all 5 losses still list a right answer. On two (messy39,
+messy138) the decoder's first candidate at 172994b is an answer absent from de878a6's 50 and the refit takes it
+(messy39 had been right at p 0.92); on the other three the right candidates moved within the list and the pick
+changed. The same comparison: Enron 122 -> 122, DataBench 250 -> 249, WikiTableQuestions 187 -> 193 (+7 −1; the csv
+fix included). The two new first candidates are to be replayed and named before a cause is claimed.
+
+**Round 2 (started 05:20, no result yet):** pools on 172994b with breakdown, marks and lines
+(`collect_wide.py --prefix pools2 --new-first`): the 4,032 stage-1 questions never reached first (factory 2,371,
+WikiTableQuestions 1,661), then re-collection; then chooser3 trained from the refit on them (`chooser-round2-20261111`,
+contract written before results, at most $48), judged by the same rule against the refit on the same 50.
+
+**Spend:** the stage-2 pod at $3.99/h since 17:00 (lease cap $71.82, serving until about 10:50).
+
+
 ## A day of reading and grammar: 594 -> 657 of 906 always answering (DataBench 250, messy 98, WikiTableQuestions 187, Enron 122); the reader round fails its rule; first-cell grading (2026-11-10)
 
 This is stage 1 of PLAN 2026-11-10 and the code half of stage 2 (the plan sits at the top of the RUNBOOK).
