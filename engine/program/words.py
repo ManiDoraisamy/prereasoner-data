@@ -10,7 +10,7 @@ import re
 from engine.program.catalog import Catalog
 from engine.program.decoder import Decoder
 from engine.program.index import TableIndex, stem, words_of
-from engine.program.language import Col, PeriodSpan, TOGETHER, peers_name
+from engine.program.language import Col, PeriodSpan, TOGETHER, open_span, peers_name
 from engine.program.names import (EQ, A_CODE, A_COMPANY, A_COUNT, A_DATE, A_LIST, A_MONEY, A_NUMBER, A_PERCENT, A_PERSON, A_PLACE, A_QUANTITY, AGG, AVG, BY_SIZE, CALC, COUNT, COUNT_DISTINCT, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, GE, GT, HIGHEST, LE, LOWEST, LT, MAX, MIN, MINUS, NE, OVER, PERIOD_NAMED, PERIOD_REST_OF, PLUS, RANK, SHOW,
                                   SLOT_AGGREGATE, SLOT_ANSWER_TYPE, SLOT_BLANK, SLOT_CALC_LEFT, SLOT_CALC_OP, SLOT_COMPARISON, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_DIRECTION, SLOT_ENTITY, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE, SLOT_MEASURE, SLOT_NUMBER, SLOT_PEERS, SLOT_PERIOD, SLOT_ROW_OP,
                                   SLOT_SECTION, SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, STATED_BY_SIZE, SUM, TIMES, coarse_type, coordinate)
@@ -45,7 +45,20 @@ _COMPARED_WITH = re.compile(r"\bthan\s+[a-z]|\bthe same(?:\s+\w+){0,4}\s+as\s+[a
 # of the language's comparatives, not of one sheet's columns.
 _COMPARE = ((EQ, re.compile(r"\b(exactly|equal to|equals|the same(?:\s+\w+){0,4}\s+as)\b")), (GE, re.compile(r"\b(at least|or more|or better|or higher|or above|no less than|minimum of)\b")), (LE, re.compile(r"\b(at most|or less|or lower|or below|no more than|maximum of|up to)\b")),
             (GT, re.compile(r"\b(above|over|greater than|more than|exceeds?|exceeding|higher than|(?:taller|longer|bigger|larger|older|heavier|later|faster|wider|deeper|stronger|better) than|more(?:\s+\w+){1,3}\s+than)\b")),
-            (LT, re.compile(r"\b(below|under|less than|lower than|fewer than|(?:shorter|younger|smaller|lighter|earlier|slower|weaker|cheaper|worse) than|(?:less|fewer)(?:\s+\w+){1,3}\s+than)\b")), (NE, re.compile(r"\b(other than|excluding|except)\b")))
+            (LT, re.compile(r"\b(below|under|less than|lower than|fewer than|(?:shorter|younger|smaller|lighter|earlier|slower|weaker|cheaper|worse) than|(?:less|fewer)(?:\s+\w+){1,3}\s+than)\b")), (NE, re.compile(r"\b(other than|excluding|except|besides|apart from|aside from|anything but|not|non)\b|n't\b")))     # "not from Denmark", "aren't juniors", "non-members": the named value is the one left out
+# A date, a year or a number bounded on one side: "before 1980", "since March 2021", "after 6/1/2020", "through 2019",
+# "built after 1800". The word states the comparison; a date column reads it as an open period (language.open_span),
+# a number column as the comparison with that number. "on or before" is read before "before".
+_BOUND_LEAD = r"\s+(?:the\s+)?(?:year\s+|start of\s+|beginning of\s+|end of\s+)?"
+_BOUNDS = ((LE, re.compile(r"\b(?:on or before|no later than|until|till|through|up to)" + _BOUND_LEAD + r"$")),
+           (GE, re.compile(r"\b(?:on or after|no earlier than|since|starting(?:\s+(?:in|from|on))?)" + _BOUND_LEAD + r"$")),
+           (LT, re.compile(r"\b(?:before|prior to|earlier than)" + _BOUND_LEAD + r"$")),
+           (GT, re.compile(r"\b(?:after|later than)" + _BOUND_LEAD + r"$")))
+_BOUND_NUMBER = r"(?=" + _BOUND_LEAD + r"\d)"
+_BOUND_COMPARE = ((LE, re.compile(r"\b(?:on or before|no later than|until|till|through)" + _BOUND_NUMBER)),
+                  (GE, re.compile(r"\b(?:on or after|no earlier than|since)" + _BOUND_NUMBER)),
+                  (LT, re.compile(r"(?<!on or )\b(?:before|prior to)" + _BOUND_NUMBER)),
+                  (GT, re.compile(r"(?<!on or )\bafter" + _BOUND_NUMBER)))
 # A change described as going one way states its sign ("terms growing year over year", "what is trending up"): the
 # progressive forms only, as "the increase in sales" asks for an amount, not for lines whose change is above zero.
 _SIGNED_ZERO = ((GT, re.compile(r"\b(positive|above zero|greater than zero|in the money|gains?|growing|rising|increasing|trending up|on the rise|going up)\b")),
@@ -190,6 +203,7 @@ def _periods(low: str, out: dict[str, float]) -> None:
         reading = read_period(match.group(0))
         if reading is not None and reading.kind == PERIOD_NAMED and reading.period is not None and reading.period.start is not None:
             _span_score(reading.period, out, 1.0)
+            _open_score(low, match.start(), reading.period, out)
     for match in _MONTH_WORD.finditer(low):
         word = match.group(1)
         if word == "may" and not re.search(r"\b(?:in|of|for|during) may\b|\bmay (?:\d|19|20)", low):
@@ -200,8 +214,26 @@ def _periods(low: str, out: dict[str, float]) -> None:
             period = parse_period(f"{word[:3]} {year}")
             if period is not None:
                 _span_score(period, out, 1.0)
+                _open_score(low, match.start(), period, out)
     for year in years:
         out.setdefault(coordinate(SLOT_PERIOD, year), 0.9)
+    for match in _YEAR_WORD.finditer(low):
+        _open_score(low, match.start(), parse_period(match.group(1)), out)
+
+
+def _bound(low: str, start: int) -> str | None:
+    """The comparison a word right before a date or a year states, if one does."""
+    for op, pattern in _BOUNDS:
+        if pattern.search(low, 0, start):
+            return op
+    return None
+
+
+def _open_score(low: str, start: int, period, out: dict[str, float]) -> None:
+    """A date bounded on one side ("before 1980", "since March 2021") is every day up to it or from it on."""
+    op = _bound(low, start)
+    if op is not None and period is not None and period.start is not None:
+        out[coordinate(SLOT_PERIOD, open_span(op, period.start, period.end or period.start).name)] = 1.0
 
 
 def _span_score(period, out: dict[str, float], score: float) -> None:
@@ -221,6 +253,7 @@ def _numbers(low: str, out: dict[str, float]) -> None:
             out[coordinate(SLOT_NUMBER, number_text(0.0))] = 1.0
             out[coordinate(SLOT_COMPARISON, op)] = 1.0
     asked = [op for op, pattern in _COMPARE if pattern.search(low)]
+    asked += [op for op, pattern in _BOUND_COMPARE if pattern.search(low) and op not in asked]
     strength = 1.0 if asked else NUMBER_ALONE
     found = False
     times = []
@@ -233,7 +266,7 @@ def _numbers(low: str, out: dict[str, float]) -> None:
         if _ORDINAL_AFTER.match(low, match.end()) or any(start <= match.start() < end for start, end in times):
             continue
         value = stated_number(re.sub(r"\s*percent$", "%", text))
-        if value is None or _YEAR_WORD.fullmatch(text):
+        if value is None or (_YEAR_WORD.fullmatch(text) and _bound(low, match.start()) is None):     # a year is a period, and a number too once a word bounds it ("built before 1980" on a column of years)
             continue
         found = True
         out[coordinate(SLOT_NUMBER, number_text(value))] = strength
@@ -309,6 +342,14 @@ def _table_words(table_id: str, index: TableIndex, question_words: set[str], raw
         for position in index.number_columns:
             if value and any(number == value for number in table.numbers[position]):
                 out[coordinate(SLOT_VALUE, Col(table_id, position).name, number_text(value))] = STATED_NUMBER_HELD
+    # a year the question states, standing in a column of years written as plain numbers ("cars from 2020" on a Year
+    # column of many years): a period on a date column, and on a column of years the value itself, as a stated number
+    # is. A column that only happens to hold the number (a volume of 2,000) is not asked for by a year.
+    for year in dict.fromkeys(_YEAR_WORD.findall(low)):
+        value = float(year)
+        for position in index.year_columns:
+            if any(number == value for number in table.numbers[position]):
+                out.setdefault(coordinate(SLOT_VALUE, Col(table_id, position).name, number_text(value)), STATED_NUMBER_HELD)
     # an axis: its name or its members' names in the question, and the word across. One named only by a total beside it, or a flag axis, needs a word of its own
     for axis in table.table.axes:
         names = [index.name_words.get(position, frozenset()) for position in axis.positions]

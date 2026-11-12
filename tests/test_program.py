@@ -1176,6 +1176,75 @@ def test_the_decoder_reads_other_than_from_the_words():
     assert Agg(COUNT, None, t, (NotEquals(Col(t, 4), "closed"),)) in programs
 
 
+def test_a_column_blank_on_some_lines_is_offered_filled_as_well_as_blank():
+    """"How many used a promo" names no value: a column filled on some lines and blank on others can be asked for either way, and the reading's own blank coordinates say which ranks first."""
+    catalog = _catalog(ACROSS_ROWS, formats=ACROSS_FORMATS)
+    decoder = Decoder(catalog)
+    t = catalog.tables[0].id
+    status = Col(t, 4)
+    offered = {atom.condition for atom in decoder.indexes[t].structural_atoms}
+    assert IsBlank(status) in offered and IsBlank(status, filled=True) in offered
+    assert not any(isinstance(condition, IsBlank) and condition.column == Col(t, 0) for condition in offered), "a column with no blank offers neither"
+    filled, blank = Agg(COUNT, None, t, (IsBlank(status, filled=True),)), Agg(COUNT, None, t, (IsBlank(status),))
+    base = {"form:agg": 3.0, "aggregate:count": 3.0, coordinate("filter", status.name): 4.0}
+    programs = [item.program for item in decoder.decode(Reading({**base, "blank:filled": -1.0, "blank:blank": -2.0}), k=20).programs]
+    assert filled in programs and blank in programs and programs.index(filled) < programs.index(blank)
+    programs = [item.program for item in decoder.decode(Reading({**base, "blank:filled": -2.0, "blank:blank": -1.0}), k=20).programs]
+    assert programs.index(blank) < programs.index(filled)
+
+
+def test_a_date_bounded_on_one_side_is_an_open_period():
+    """"Before 1980" is not "in 1980": a date or a year with before, after, since or until in front reads as every day up to it or from it on; a column of years stored as numbers reads the same words as a comparison with the year."""
+    from engine.program.language import open_span
+    from engine.program.names import LE
+    catalog, table, tables, col = _trades()
+    decoder = Decoder(catalog)
+    date = col(2)
+    reading = read_question("How many trades were made before February 2001?", catalog, decoder)
+    assert reading.scores[coordinate("period", "0001-01-01..2001-01-31")] == 1.0
+    count = lambda span: _one(_answer(Agg(COUNT, None, table.id, (InPeriod(date, span),)), tables))
+    assert count(open_span(LT, "2001-02-01", "2001-02-28")) == 3.0      # Jan 1, 2 and 29
+    assert count(open_span(LE, "2001-02-01", "2001-02-28")) == 4.0
+    assert count(open_span(GT, "2001-02-01", "2001-02-28")) == 1.0      # Apr 19
+    assert count(open_span(GE, "2001-02-01", "2001-02-28")) == 2.0
+    before = Agg(COUNT, None, table.id, (InPeriod(date, open_span(LT, "2001-02-01", "2001-02-28")),))
+    assert before in decoder.enumerate(reading, k=300)[0]
+    assert "is on or before 2001-01-31" in read_as(before, catalog)
+    assert "is on or after 2001-03-01" in read_as(Agg(COUNT, None, table.id, (InPeriod(date, open_span(GT, "2001-02-01", "2001-02-28")),)), catalog)
+    assert "falls in 2001-01" in read_as(Agg(COUNT, None, table.id, (InPeriod(date, period_from_name("2001-01")),)), catalog)
+    since = read_question("What is the total volume since 1/29/2001?", catalog, decoder).scores
+    assert since[coordinate("period", "2001-01-29..9999-12-31")] == 1.0
+    assert not [name for name in read_question("Who traded after Transco?", catalog, decoder).scores if name.startswith("period:")]
+    years = _catalog([["Mill", "Built"], ["a", 1790.0], ["b", 1805.0], ["c", 1990.0], ["d", 2001.0]])
+    mills = Decoder(years)
+    built = read_question("How many mills were built before 1995?", years, mills)
+    assert built.scores[coordinate("comparison", "<")] == 1.0 and [name for name in built.scores if name.startswith("number:") and float(name.split(":")[1]) == 1995.0]
+    assert Agg(COUNT, None, years.tables[0].id, (Compare(Col(years.tables[0].id, 1), LT, 1995.0),)) in mills.enumerate(built, k=300)[0]
+    assert not [name for name in read_question("How many mills were built in 1995?", years, mills).scores if name.startswith("number:")], "a year no word bounds is a period only"
+
+
+def test_a_negation_leaves_out_the_named_value_and_only_it():
+    """"Which books are not open": a "not" in front of a named value reads as other than it, beside the plain reading; a value whose own words negate ("will not renew") is not the one left out; and of many loosely matched values only a column's two likeliest get the other-than reading."""
+    catalog = _catalog(ACROSS_ROWS, formats=ACROSS_FORMATS)
+    decoder = Decoder(catalog)
+    t = catalog.tables[0].id
+    reading = read_question("How many books are not closed?", catalog, decoder)
+    assert reading.scores[coordinate("comparison", "!=")] == 1.0
+    programs = decoder.enumerate(reading, k=300)[0]
+    assert Agg(COUNT, None, t, (NotEquals(Col(t, 4), "closed"),)) in programs and Agg(COUNT, None, t, (Equals(Col(t, 4), "closed"),)) in programs
+    rows = [["Member", "Plan", "Answer"]] + [[f"m{at}", ("gold", "silver", "bronze", "basic")[at % 4], ("will renew", "will not renew")[at % 2]] for at in range(12)]
+    members = _catalog(rows)
+    readers = Decoder(members)
+    table = members.tables[0].id
+    said = read_question("How many members said they will not renew?", members, readers)
+    conditions = {condition for program in readers.enumerate(said, k=300)[0] for condition in getattr(program, "where", ())}
+    assert Equals(Col(table, 2), "will not renew") in conditions
+    assert not [c for c in conditions if isinstance(c, NotEquals) and c.column == Col(table, 2) and c.value == "will not renew"], "the not is the value's own"
+    scores = {"form:agg": 2.0, "aggregate:count": 2.0, "comparison:!=": 1.0, **{coordinate("value", Col(table, 1).name, plan): score for plan, score in (("gold", 3.0), ("silver", 2.0), ("bronze", 1.0), ("basic", 0.5))}}
+    left_out = {c.value for program in readers.enumerate(Reading(scores), k=400)[0] for c in getattr(program, "where", ()) if isinstance(c, NotEquals)}
+    assert left_out == {"gold", "silver"}, left_out
+
+
 def test_answer_types_place_money_quantity():
     assert {"place", "money", "quantity"} <= set(ANSWER_TYPES)
     assert coarse_type("place") == A_NAME and coarse_type("money") == coarse_type("quantity") == A_NUMBER and coarse_type("count") == A_COUNT
@@ -1295,6 +1364,22 @@ def test_a_stated_number_a_column_holds_reads_as_its_value():
     reading = read_question("total amount for 1015", catalog, decoder)
     assert reading.scores[coordinate("value", Col(table.id, 0).name, "1015")] > 0
     assert Agg(SUM, Col(table.id, 1), table.id, (Equals(Col(table.id, 0), 1015.0),)) in decoder.enumerate(reading, k=100)[0]
+
+
+def test_a_stated_year_a_number_column_holds_reads_as_its_value():
+    """"Cars from 2010" on a Year column of plain numbers, too many years to list as values: the year is a period for a date column and the value itself for a number column that holds it."""
+    rows = [["Car", "Year", "Price"]] + [[f"car {at}", float(1960 + at % 60), 100.0 + at] for at in range(120)]
+    catalog = _catalog(rows)
+    table = catalog.tables[0]
+    decoder = Decoder(catalog)
+    assert 1 not in decoder.indexes[table.id].few_numbers, "sixty years are not a few values"
+    reading = read_question("How many cars are from 2010?", catalog, decoder)
+    assert reading.scores[coordinate("value", Col(table.id, 1).name, "2010")] > 0
+    assert Agg(COUNT, None, table.id, (Equals(Col(table.id, 1), 2010.0),)) in decoder.enumerate(reading, k=100)[0]
+    assert not [name for name in read_question("How many cars are from 2031?", catalog, decoder).scores if name.startswith("value:") and name.endswith("=2031")], "a year no cell holds names no value"
+    volumes = _catalog([["Deal", "Volume"]] + [[f"deal {at}", float(1000 + 100 * (at % 40))] for at in range(120)])
+    assert not Decoder(volumes).indexes[volumes.tables[0].id].year_columns, "volumes that pass through 2,000 are no years"
+    assert not [name for name in read_question("What was the volume in 2000?", volumes, Decoder(volumes)).scores if name.startswith("value:") and name.endswith("=2000")]
 
 
 def test_a_family_adding_twice_says_so():
@@ -1452,6 +1537,8 @@ TESTS = [
     test_scores_come_in_as_data_and_nothing_else_moves_the_list, test_contributions_are_named_and_sum_to_the_score, test_intervention_a_named_coordinate_moves_the_score_by_its_weight, test_policy_prunes_values_only_where_it_says, test_conditions_stay_on_distinct_columns,
     test_answer_type_rule, test_a_value_of_a_few_valued_number_column_is_named, test_a_number_condition_may_be_an_equality, test_a_breakdown_gives_a_figure_for_each_group, test_amounts_in_several_currencies_are_given_per_currency, test_a_number_compares_with_the_line_a_value_names, test_the_decoder_breaks_down_only_when_the_reading_names_a_breakdown, test_times_read_as_numbers_in_the_sheet_and_the_question, test_an_ordinal_is_not_a_stated_number, test_words_alone_read_a_question, test_verifier_shape_and_type_evidence, test_printed_total_ties_only_under_its_exact_conditions, test_verifier_runs_the_top_programs_and_never_raises, test_read_as_in_the_sheets_own_words,
     test_cells_are_the_exact_addresses_used, test_formula_a_user_can_check, test_explain_carries_the_named_contributions,
+    test_a_column_blank_on_some_lines_is_offered_filled_as_well_as_blank, test_a_date_bounded_on_one_side_is_an_open_period, test_a_stated_year_a_number_column_holds_reads_as_its_value,
+    test_a_negation_leaves_out_the_named_value_and_only_it,
 ]
 
 if __name__ == "__main__":

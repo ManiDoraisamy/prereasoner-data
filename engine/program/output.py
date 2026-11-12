@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 from engine.program.catalog import Catalog, CatalogTable, KIND_FAMILY
 from engine.program.index import index_of
-from engine.program.language import (Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Condition, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, Measure, NotEquals, Program, Rank, RowArithmetic, SECTION, Show, Size, addresses_printed, answer_type_of, measure_columns)
+from engine.program.language import (OPEN_FIRST, OPEN_LAST, Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Condition, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, Measure, NotEquals, Program, Rank, RowArithmetic, SECTION, Show, Size, addresses_printed, answer_type_of, measure_columns)
 from engine.program.names import (A_PERCENT, AFTER, ANY, SAME, ANYWHERE, EQ, EVERY, IS, NO, AVG, COUNT, COUNT_DISTINCT, ENDS, ENTITY_GROUP, ENTITY_LINE, GE, GT, HIGHEST, LE, LT, MAX, MIN, MINUS, NE, OVER, PLUS, STARTS, SUM, TIMES)
 from engine.program.scoring import ScoredProgram
 from engine.program.semantics import fold, number_text, share_forms
@@ -63,7 +63,12 @@ def _condition_words(catalog: Catalog, condition: Condition) -> str:
         where = {ANYWHERE: "holds", STARTS: "starts with", ENDS: "ends with"}[condition.anchor]
         return f'{_name(catalog, condition.column)} {where} "{condition.text}"'
     if isinstance(condition, InPeriod):
-        return f"{_name(catalog, condition.column)} falls in {condition.span.name}"
+        span = condition.span
+        if span.start == OPEN_FIRST and span.end is not None:     # "before 1980": every day up to one
+            return f"{_name(catalog, condition.column)} is on or before {span.end}"
+        if span.end == OPEN_LAST and span.start is not None:
+            return f"{_name(catalog, condition.column)} is on or after {span.start}"
+        return f"{_name(catalog, condition.column)} falls in {span.name}"
     if isinstance(condition, Compare):
         return f"{_name(catalog, condition.column)} is {_COMPARE_WORDS[condition.op]} {condition.number:g}"
     if isinstance(condition, CompareColumns):
