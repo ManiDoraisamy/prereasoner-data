@@ -5,7 +5,7 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
-## The basis audit: the 71 properties cover 3% of sheet columns; 11 are added by a rule (82); a third of gold links point at columns schema.org has no property for (2026-11-12)
+## The basis audit: the 71 properties cover 3% of sheet columns; 12 are added by a rule (83); a third of gold links point at columns schema.org has no property for (2026-11-12)
 
 - The owner's correction of the evening: the reader's meaning dimensions are the selected basis of
   `engine/data/alloc.json`, never the 1,521-property catalogue the entry below trained on, and each must be a real
@@ -37,12 +37,19 @@ over the 574 held-out tabs with the candidates listed); and a direct property of
 properties can describe. Twelve pass: price (4,810 train columns, 532 families, 580 of 591 agree), identifier
 (2,662, 213/214), startDate (1,117, 79/83), description (933, 71/78), observationDate (544, 62/62), orderQuantity
 (443, 54/54), customer (426, 68/74), orderDate (352, 24/24), endDate (271, 28/28), seller (222, 12/13), duration
-(212, 17/17) and currency (72, 11/12). Eleven are added (next-engine `be5127c`, `alloc.json` dim 90-100, evidence in
-`training/props/basis_additions_20261112.json`); **currency is not**: the allocation already has a structural
-dimension of that name, and adding a second is the owner's call. Left out by the rule: legalName and employee (no
-class needs them), temporalCoverage (52 of 98 agree), amount (63/77), validFrom (36/52), validThrough (27/42),
-paymentDueDate (11/15), areaServed (5/12), participant, department; value and comment as generic catch-alls. Main's
-`alloc.json` is untouched until integration.
+(212, 17/17) and currency (72, 11/12). Eleven were added first (next-engine `be5127c`, `alloc.json` dim 90-100,
+evidence in `training/props/basis_additions_20261112.json`); currency waited on the owner, because the allocation
+already had a structural dimension of that name. **His call, the same evening: no redundant dimensions.** The
+structural one was labelled by a character check (a value holding a dollar, pound or euro sign), which the new
+engine's sheet compiler already reads as a format fact; it is removed, and the schema.org property takes the name
+(next-engine `e74776d`, dim 101, dim 8 left unused; basis 83). It has what the structural one never had: Gemini's
+label on 71 train and 12 held-out columns and 667 training instances in the world corpus. Coverage moves by those
+columns only: factory train 14,021 to 14,092 columns (14.0%), held-out 16.2% to 16.3%, messy dev 25.4% to 26.4%,
+every other row and the gold-link bound below unchanged; no property is co-held with it. The two GPU runs already
+started on 82 were stopped about 45 minutes in (about $1.20) and relaunched on 83. Left out by the rule: legalName
+and employee (no class needs them), temporalCoverage (52 of 98 agree), amount (63/77), validFrom (36/52),
+validThrough (27/42), paymentDueDate (11/15), areaServed (5/12), participant, department; value and comment as
+generic catch-alls. Main's `alloc.json` is untouched until integration.
 
 **What this bounds.** Of the factory's 4,693 held-out gold links to a column or a value, the sheet's own text reaches
 46.2%. Of the rest, the target column carries a basis property for 3.7% with the 71 and 14.9% with the 82, another
