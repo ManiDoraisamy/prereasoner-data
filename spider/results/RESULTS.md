@@ -5,7 +5,7 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
-## The distillation probe: small CPU encoders in CLEF's two places keep 56% of its right answers (the rule asked 85%), so CLEF spend is held; a sheet glossary lifts the small reader on messy from 58 to 77 listed; four generic engine fixes; a dev twin of the fresh set (2026-11-12)
+## The distillation probe: small CPU encoders in CLEF's two places keep 56% of its right answers (the rule asked 85%), so CLEF spend is held; a dev twin of the fresh set; two engine changes written by hand were withdrawn (2026-11-12)
 
 - The owner approved the redrawn plan's steps 2 to 5 on 2026-11-12 (the launch bar becomes at least 80% right, at most
   8% wrong without a warning, at most 20% warned on the fresh real sheets, messy and DataBench; WikiTableQuestions a
@@ -57,34 +57,19 @@ small encoder's students):**
   7.3, 2.5 / 4.5 over a median of 386 / 174 / 155 options; placed chooser 1.6 / 2.7, 1.5 / 2.1, 1.5 / 2.3; engine and
   both 8.3 / 14.2, 4.7 / 10.3, 4.2 / 6.7. The bar proposed to the owner is 2 s p50 and 5 s p90.
 
-**Four generic engine fixes (next-engine `b6e836b`, local, on 172994b; test_program 73, test_named 48,
-test_factory 14, deterministic emitters 71, SQL AST 107, calculations 181, analysis 8).** Each came from a question
-with no right answer listed:
-- A column filled on some lines and blank on others is offered as "is filled" beside "is blank" ("how many used a
-  promo": the reading had the column right and no value to name).
-- A date or year bounded on one side ("before 1980", "since March 2021", "through 2019") reads as an open period on a
-  date column and as that comparison on a number column; it read as "falls in 1980".
-- A negation in front of a named value ("not from Denmark", "aren't juniors", "apart from") reads as other than it,
-  beside the plain reading; only a column's two likeliest named values, never a value whose own words negate ("I will
-  not vote").
-- A year the question states is the value itself on a column that holds only years written as plain numbers ("cars
-  from 2020" over sixty years); a volume of 2,000 is no year.
-
-Right answer listed, offline replay of the round-2 gate's recorded readings (`replay_reach.py`; the chooser is not
-replayed):
-
-| Set | gate (172994b) | with the four fixes | gained | lost |
-|---|---|---|---|---|
-| Enron studied | 147 | 147 | 1 | 1 |
-| Messy dev | 112 | 113 | 1 | 0 |
-| DataBench dev | 275 | 275 | 1 | 1 |
-| WikiTableQuestions dev sample | 238 | 242 | 4 | 0 |
-
-Two first versions were measured and narrowed: the year rule matched any number column holding the year and cost an
-Enron question (back with the narrowing), and the negation rule gave every loosely matched value an other-than twin and
-cost two DataBench questions (one is back; the other, "did any respondent say they will not vote", is still displaced
-though its value is no longer negated). The Enron question lost had its right answer at place 43 of 50 and nine "is
-filled" candidates moved ahead of it; the same fix lists another Enron question's right answer.
+**Withdrawn: hand-written words.** Two changes made this night were reverted at the owner's word ("this is cheating"):
+hard-coded words checked deterministically are against a generalized, not memorized, encoder-read model, and do not
+carry to another language. Their numbers are not results.
+- A per-workbook glossary of phrases for the ten messy dev workbooks' columns and values, written by hand by the
+  developing session after it had read dev questions, and an engine hook to read it (next-engine 57b97dc, reverted in
+  13fc833). The data and the hook are deleted.
+- Four "generic" readings designed from dev failures (next-engine b6e836b, reverted in fb5b79b): English trigger words
+  added to the word floor (negation: not, n't, besides, apart from; bounds: before, since, until, through), an English
+  negation check on cell values, an "is filled" condition, an open period and a year column's value. The engine is back
+  to 172994b exactly (test_program 69, test_named 48).
+- The word floor itself (engine/program/words.py) is English closed lists from before this night: on French it reads
+  neither "pas" nor "avant", and splits accented words ("expédiées" -> "exp", "di", "es"). The small reader's encoder
+  (bge-small-en) is English too. Language reach has to come from the learned readers, not from word lists.
 
 **What CLEF never reads.** The reading record offers CLEF thirteen fields; a condition's comparison (and so a
 negation), filled or blank, a calculation's operation and a rank's entity come from the small reader and the word
@@ -97,31 +82,6 @@ questions, Gemini $6.44; 20 golds recomputed independently, all confirmed. No ur
 frozen manifest; 8 workbooks from a publication the frozen set also draws on are left out of development by default
 (176 questions on 44 workbooks). Every workbook compiles. Floor, the small reader alone with the engine's first
 candidate: 38 of 176 right, a right answer listed for 74.
-
-**A sheet glossary, measured at no spend (`glossary-probe-20261112`).** The probe says the small encoders cannot learn
-CLEF's linking of a question's words to a sheet's; the census says that linking is where the sheet sets lose. So the
-linking was moved to the sheet side: a glossary written once per workbook, the phrases a person might say for each
-column and each low-cardinality value ("billing cycle", "annually" for yearly, "churned" for canceled, "London" for
-LON), read by the word index beside the sheet's own words (next-engine `57b97dc`: `Catalog.with_glossary`, the
-index's alias maps, the word reading; a phrase reads at 0.9 of the sheet's own word; with no glossary a table reads
-exactly as before; test_program 74). For this probe the developing session wrote the glossary for the ten messy dev
-workbooks from their columns and values alone (141 columns, 166 values), as a large model would at upload; it had seen
-about 25 of the 120 questions that night, none of them in four of the workbooks.
-
-Messy dev, the small reader alone (no CLEF, the engine with the four fixes; `eval_encoder_path.py --glossary`):
-
-| Questions | n | right answer listed: no glossary -> glossary (CLEF's reading) | engine's first candidate right: no glossary -> glossary (CLEF's reading) |
-|---|---|---|---|
-| Workbooks with no question seen (roster, expenses, marks, appointments) | 44 | 23 -> 34 (44) | 7 -> 15 (23) |
-| Workbooks with a question seen | 76 | 35 -> 43 (68) | 16 -> 18 (36) |
-| All | 120 | 58 -> 77 (112) | 23 -> 33 (59) |
-
-20 questions gain a listed right answer and 1 loses it; the reading takes the same time (0.05 s). On the workbooks no
-question was seen from, the glossary recovers about half of what CLEF's reading adds. With the placed chooser student on
-top the path answers 36 of 120 right (the reader student's path 33, CLEF's path 93): the list is better, the small
-chooser still cannot use it. Not measured: a glossary written by a model at upload (Gemini), the other sets, and the
-glossary beside CLEF's reading (the recorded fields do not line up with a changed option list).
-
 
 ## The reach census: 132 of 241 dev misses have no right answer in the list; the launch bar's warning clause needs 91–95% right; no large model, about 20% right; a wider decode does not help (2026-11-11)
 
