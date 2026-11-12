@@ -603,6 +603,25 @@ def test_a_columns_property_is_its_meaning_and_its_linked_words_read_it() -> Non
     assert linked and all(name in MEANINGS for held in linked for name in held)
 
 
+def test_a_labels_own_meaning_trains_the_meaning_tier_and_leaves_the_closed_heads_alone() -> None:
+    """label["meaning"] (another labelling pass's basis properties; [] none; None unknown) is what a column's meaning tier and
+    its linked words learn, while the closed heads keep reading the label itself: an unknown meaning is masked, not off."""
+    import random
+    from dataclasses import replace
+    example = fake_examples(4)[0]
+    names = fake_name_set()
+    config = ReaderConfig(backbone="hash", hidden=36, blocks=1, open_dim=16, sample_rows=3)
+    keys = sorted(example.labels)
+    unknown, other = keys[0], keys[1]
+    swapped = {**example.labels, unknown: {**example.labels[unknown], "meaning": None}, other: {**example.labels[other], "meaning": [MEANINGS[0]]}}
+    before = build_batch(example, config, names, random.Random(0), questions=6, shares=None)
+    after = build_batch(replace(example, labels=swapped), config, names, random.Random(0), questions=6, shares=None)
+    column = {f"{target.table}.{target.position}": at for at, target in enumerate(after.targets) if target.kind == T_COLUMN}
+    assert after.meaning[column[unknown]] is None and after.meaning[column[other]] == [MEANINGS[0]]
+    assert before.meaning[column[unknown]] == [MEANINGS[int(unknown.split(".")[1])]]
+    assert after.closed == before.closed, "the closed heads read the label, not its meaning"
+
+
 def test_the_meaning_tier_starts_from_each_propertys_own_text() -> None:
     """Each basis property is its own named output (a sigmoid, like a structure name), started at its own text: untrained, a unit whose text is a property's own text reads that property first and high, the others low. Labels anchor the outputs from there."""
     names = fake_name_set()

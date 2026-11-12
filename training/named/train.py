@@ -147,6 +147,15 @@ def _labelled_names(label: dict | None) -> list[str] | None:
     return list(label.get("coordinates") or ()) or None
 
 
+def _meaning_names(label: dict | None) -> list[str] | None:
+    """What a column's label says of the basis for the meaning targets alone. An examples folder may give that apart from the
+    label the closed heads read, as label["meaning"] (a list of basis properties, [] for none, None for unknown), when the
+    meaning comes from another labelling pass than the closed heads' answer types; otherwise it is the label's own reading."""
+    if label and "meaning" in label:
+        return label["meaning"]
+    return _labelled_names(label)
+
+
 def _value_class(label: dict | None) -> list[str]:
     """A column's values' schema.org class at the threshold, as a class name."""
     if not label or not label.get("value_class") or int(label.get("value_conf", 0)) < THRESHOLD:
@@ -229,7 +238,7 @@ def build_batch(example: TabExample, reader_config: ReaderConfig, names: NameSet
             for position, unit in sorted(graph.columns.items()):
                 column = table.columns[position]
                 old = inverse.get(position)
-                label_names = _labelled_names(example.labels.get(f"{table_id}.{old}")) if old is not None else None
+                label_names = _meaning_names(example.labels.get(f"{table_id}.{old}")) if old is not None else None
                 union.update(label_names or [])
                 at = add_target(Target(table_id, T_COLUMN, position, column.name), _column_structure(column), label_names)
                 columns.append((at_graph, unit, at))
@@ -245,7 +254,7 @@ def build_batch(example: TabExample, reader_config: ReaderConfig, names: NameSet
         table = tables[target.table]
         if target.kind == T_VALUE:
             inverse = {new: old for old, new in moved[target.table].items()}
-            at = add_target(target, ["value_kind:text"], _labelled_names(example.labels.get(f"{target.table}.{inverse.get(target.position)}")))
+            at = add_target(target, ["value_kind:text"], _meaning_names(example.labels.get(f"{target.table}.{inverse.get(target.position)}")))
         else:
             at = add_target(target, [f"line_role:{'band' if target.kind == T_BAND else 'total'}"], None)
         if fresh:
@@ -285,7 +294,7 @@ def build_batch(example: TabExample, reader_config: ReaderConfig, names: NameSet
             if not span:
                 continue
             role = link.get("role")
-            known = _labelled_names(example.labels.get(f"{link.get('table')}.{link.get('position')}")) if link.get("kind") in ("column", "value") else None
+            known = _meaning_names(example.labels.get(f"{link.get('table')}.{link.get('position')}")) if link.get("kind") in ("column", "value") else None
             names_of_link = None if known is None else [name for name in known if names.at(name) is not None]
             for at in span:
                 if names_of_link is not None:
