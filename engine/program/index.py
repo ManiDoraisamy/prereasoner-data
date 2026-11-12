@@ -21,7 +21,6 @@ from engine.sheet.names import AXIS_FLAG, AXIS_TOTALLED, F_DATE, PEER, ROW_TOTAL
 
 # A low-cardinality number column's values are values too, up to this many (design/program_language.txt, section 3).
 NUMBER_VALUES = 30
-YEAR_FIRST, YEAR_LAST = 1800, 2100     # a number column whose every value is a whole number in this range is a column of years
 _TOKEN = re.compile(r"[a-z0-9]+")
 _LINE_GROUP = -2
 _SECTION_GROUP = -3
@@ -173,7 +172,7 @@ class TableIndex:
 
     @cached_property
     def blank_columns(self) -> tuple[int, ...]:
-        """Columns filled on some data lines and blank on others, where "is blank" and "is filled" are real conditions."""
+        """Columns filled on some data lines and blank on others, where "is blank" is a real condition."""
         out = []
         for position, folds in enumerate(self.table.folds):
             data = [folded is None for folded, is_data in zip(folds, self.table.is_data) if is_data]
@@ -190,7 +189,6 @@ class TableIndex:
             out.append(self._atom(IsNumber(Col(table.id, position)), position))
         for position in self.blank_columns:
             out.append(self._atom(IsBlank(Col(table.id, position)), position))
-            out.append(self._atom(IsBlank(Col(table.id, position), filled=True), position))
         for position in range(len(table.columns)):
             column = table.columns[position]
             col = Col(table.id, position)
@@ -224,9 +222,7 @@ class TableIndex:
         """The conditions no word can reach and a question can still mean: what a column's shape says, and a printed line the sheet leaves unlabelled. Everything else comes through the reading's own coordinates."""
         table = self.table
         out = [self._atom(IsNumber(Col(table.id, position)), position) for position in self.mixed_columns]
-        for position in self.blank_columns:     # either way: "has no code" and "used a code" name no value
-            out.append(self._atom(IsBlank(Col(table.id, position)), position))
-            out.append(self._atom(IsBlank(Col(table.id, position), filled=True), position))
+        out.extend(self._atom(IsBlank(Col(table.id, position)), position) for position in self.blank_columns)
         roles: dict[str, None] = {}
         for line, data, label in zip(table.lines, table.is_data, table.label_folds):
             if not data and not label:
@@ -346,19 +342,6 @@ class TableIndex:
         nearest = min(distance for distance, _ in found)
         held = [word for distance, word in found if distance == nearest]
         return held[0] if len(held) == 1 else None
-
-    @cached_property
-    def year_columns(self) -> tuple[int, ...]:
-        """Number columns that hold years and nothing else: every number a whole one from YEAR_FIRST to YEAR_LAST, two
-        or more of them. A volume of 2,000 beside other volumes is no year."""
-        out = []
-        for position, column in enumerate(self.table.columns):
-            if column.kind != V_NUMBER or self.table.is_date_column(position):
-                continue
-            numbers = {number for number in self.table.numbers[position] if number is not None}
-            if len(numbers) >= 2 and all(float(number).is_integer() and YEAR_FIRST <= number <= YEAR_LAST for number in numbers):
-                out.append(position)
-        return tuple(out)
 
     @cached_property
     def title_words(self) -> frozenset[str]:

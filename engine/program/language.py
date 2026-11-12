@@ -6,10 +6,9 @@ is a choice a program makes. coordinates() names what a program fills, one coord
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, timedelta
 from typing import TypeAlias
 
-from engine.program.names import (A_COUNT, A_DATE, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, AFTER, ANY, BEFORE, BREAKDOWN, CHECK, CHECK_OPS, COMPARE_OPS, EQ, GE, GT, LE, LT, EVERY, IS, NO, QUANTIFIERS, SAME, SLOT_NEIGHBOUR, SLOT_QUANTIFIER, AGG, AGGREGATES, ANCHORS, ANYWHERE, BY_SIZE, CALC, CALC_OPS, COUNT, COUNT_DISTINCT, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, HIGHEST,
+from engine.program.names import (A_COUNT, A_DATE, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, AFTER, ANY, BEFORE, BREAKDOWN, CHECK, CHECK_OPS, COMPARE_OPS, EQ, EVERY, IS, NO, QUANTIFIERS, SAME, SLOT_NEIGHBOUR, SLOT_QUANTIFIER, AGG, AGGREGATES, ANCHORS, ANYWHERE, BY_SIZE, CALC, CALC_OPS, COUNT, COUNT_DISTINCT, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, HIGHEST,
                                   MINUS, NE, NUMBER_AGGREGATES, OVER, PLUS, RANK, RANK_ENTITIES, ROW_OPS, SHOW, SLOT_AGGREGATE, SLOT_ANSWER_TYPE, SLOT_BLANK, SLOT_CALC_LEFT, SLOT_CALC_OP, SLOT_COMPARISON, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_DIRECTION, SLOT_ENTITY, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE,
                                   SLOT_LISTING, SLOT_MEASURE, SLOT_NUMBER, SLOT_PEERS, SLOT_PERIOD, SLOT_ROW_OP, SLOT_SECTION, SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, STATED_BY_SIZE, coordinate)
 from engine.program.semantics import fold, number_text
@@ -149,23 +148,6 @@ class PeriodSpan:
         if self.kind == P_QUARTER:
             return f"{self.start[:4]}-q{(int(self.start[5:7]) + 2) // 3}"
         return f"{self.start}..{self.end}"
-
-
-# A period open on one side ("before 1980", "since March 2021") is a range that starts at the first day or ends at the last.
-OPEN_FIRST, OPEN_LAST = "0001-01-01", "9999-12-31"
-
-
-def open_span(op: str, first: str, last: str) -> PeriodSpan:
-    """Every day a comparison with the period first..last keeps: before it (<), up to its end (<=), after it (>), from its start on (>=)."""
-    if op == LT:
-        return PeriodSpan(P_RANGE, OPEN_FIRST, (date.fromisoformat(first) - timedelta(days=1)).isoformat())
-    if op == LE:
-        return PeriodSpan(P_RANGE, OPEN_FIRST, last)
-    if op == GT:
-        return PeriodSpan(P_RANGE, (date.fromisoformat(last) + timedelta(days=1)).isoformat(), OPEN_LAST)
-    if op == GE:
-        return PeriodSpan(P_RANGE, first, OPEN_LAST)
-    raise ValueError(f"a period is open before or after, not {op}")
 
 
 def period_from_name(name: str) -> PeriodSpan:
@@ -671,5 +653,5 @@ def _type_of_column(column: Col, column_kind) -> str:
     return A_NUMBER if kind == "number" else A_DATE if kind in ("date", "period") else A_NAME
 
 
-__all__ = ["OPEN_FIRST", "OPEN_LAST", "open_span", "Across", "Agg", "Breakdown", "Calc", "Check", "OneOf", "Col", "Compare", "CompareColumns", "CompareLine", "Condition", "Contains", "DateOf", "Equals", "InPeriod", "InSection", "IsBlank", "IsNumber", "Measure", "NotEquals", "OnLine", "PeriodSpan", "Program", "Rank", "RowArithmetic", "SECTION", "Show", "Size",
+__all__ = ["Across", "Agg", "Breakdown", "Calc", "Check", "OneOf", "Col", "Compare", "CompareColumns", "CompareLine", "Condition", "Contains", "DateOf", "Equals", "InPeriod", "InSection", "IsBlank", "IsNumber", "Measure", "NotEquals", "OnLine", "PeriodSpan", "Program", "Rank", "RowArithmetic", "SECTION", "Show", "Size",
            "TOGETHER", "addresses_printed", "answer_type_of", "coordinates", "shown_together", "conditions_of", "form_of", "measure_columns", "tables_of", "peers_name"]

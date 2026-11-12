@@ -10,7 +10,6 @@ Pruned on links, for the worst case: a question reads the tables its links reach
 from __future__ import annotations
 
 import heapq
-import re
 from dataclasses import dataclass
 from itertools import combinations
 from typing import Callable, Sequence
@@ -71,8 +70,6 @@ _ROUND = 9                     # scores compare at this many places, so a float'
 _CLOSE = 1e-8
 _LINK_SLOTS = {SLOT_MEASURE: 0, SLOT_KEY: 0, SLOT_SHOWN: 0, SLOT_VALUE: 1, SLOT_CONTAINS: 1, SLOT_LINE: 1, SLOT_SECTION: 1, SLOT_TABLE: 2}
 _ATOM_KINDS = {IsNumber: 0, IsBlank: 1, InSection: 3, OnLine: 4}
-NEGATED_VALUES = 2             # a negation the question states may leave out each column's this many likeliest named values
-_NEGATING = re.compile(r"\b(?:not|no|non|never|without|except)\b|n't\b")     # a value whose own words negate ("I will not vote") is not the one a "not" leaves out
 
 
 def table_reach(reading: Reading) -> dict[str, float]:
@@ -512,7 +509,7 @@ class _Search:
         """Conditions a reading states: a value, a phrase, a label or a band it holds a score for, however low, since it writes one only where a word reaches it; a period, a stated number, a blank where it scores them."""
         out: list[Atom] = []
         prefix = f"{table.id}."
-        negatable = self.negatable_values(prefix) if self.reading.score(coordinate(SLOT_COMPARISON, NE)) > 0 else frozenset()
+        not_equal = self.reading.score(coordinate(SLOT_COMPARISON, NE)) > 0
         for name in self.by_slot.get(SLOT_CONTAINS, ()):
             body = name.split(":", 1)[1]
             if not body.startswith(prefix):
@@ -536,7 +533,7 @@ class _Search:
                 out.append(index.atom_of(Equals(Col(table.id, position), number), position))
             else:
                 out.append(index.atom_of(Equals(Col(table.id, position), value), position))
-                if name in negatable:
+                if not_equal:
                     out.append(index.atom_of(NotEquals(Col(table.id, position), value), position))
         out.extend(self.one_of_atoms(table, index))
         for name in self.by_slot.get(SLOT_LINE, ()):
@@ -583,23 +580,6 @@ class _Search:
             else:
                 out.extend(index.atom_of(IsBlank(Col(table.id, position), filled=word == "filled"), position) for position in range(len(table.columns)))
         return out
-
-    def negatable_values(self, prefix: str) -> frozenset[str]:
-        """The value coordinates of one table a stated negation may leave out ("not from Denmark"): each column's
-        NEGATED_VALUES likeliest positively read ones, since a "not" beside twenty loosely matched names leaves out none of
-        them in particular; and never a value whose own words negate ("I will not vote"), where the "not" is the value's."""
-        kept: dict[str, list[str]] = {}
-        for name in sorted(self.positive(SLOT_VALUE), key=lambda name: (round(-self.s(name), _ROUND), name)):
-            body = name.split(":", 1)[1]
-            if not body.startswith(prefix):
-                continue
-            position, _, value = body[len(prefix):].partition("=")
-            if _NEGATING.search(fold(value)):
-                continue
-            held = kept.setdefault(position, [])
-            if len(held) < NEGATED_VALUES:
-                held.append(name)
-        return frozenset(name for names in kept.values() for name in names)
 
     def line_compared_atoms(self, table: CatalogTable, index: TableIndex) -> list[Atom]:
         """"More medals than Canada": a comparison the reading names, against a text value it names on this table that
