@@ -17,7 +17,7 @@ from collections import defaultdict
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-ALLOWED_SIDES = ("train", "val", "fake", "pub_eia", "pub_sec")          # never a frozen side, never the other-industry source held out for the frozen test
+ALLOWED_SIDES = ("train", "val", "fake", "pub_eia", "pub_sec", "clef", "clef_held")          # never a frozen side, never the other-industry source held out for the frozen test; clef: a training-split question with the teacher's recorded picks, clef_held: the same on the verifier's held workbooks, measured and never trained on
 SHARD_TABS = 200
 MANIFEST = "manifest.json"
 

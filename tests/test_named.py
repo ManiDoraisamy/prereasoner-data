@@ -729,6 +729,70 @@ def test_anchoring_alone_trains_with_the_corpus_and_keeps_the_last_measure() -> 
     assert check["steps"] == 20 and any("anchor" in row and "profile" in row for row in log)
 
 
+def _pick_example(side: str = "clef", family: int = 0) -> TabExample:
+    """The fake's first tab with one question that has no gold program, only a teacher's picks: the measure is column 2 of two options, no line is picked, the aggregate is sum."""
+    from engine.named.units import Target
+    example = fake_examples(family + 1)[family]
+    table_id = example.tables[0][0]
+    column = lambda position: Target(table_id, T_COLUMN, position, "").coordinates()[0]
+    row = {"id": f"pick{family}", "question": "how much gas did Aquila take", "label": "pick", "tables": [table_id],
+           "picks": {"measure": {"coordinates": [column(3), column(2)], "pick": 1}, "key": {"coordinates": [Target(table_id, T_COLUMN, 0, "").coordinates()[1]], "pick": None}},
+           "closed": {"aggregate": "sum", "form": "agg"}}
+    return TabExample(f"pick|{example.key}", example.family, example.file, example.tab, side, example.tables, [row], {})
+
+
+def test_a_pick_is_a_link_to_the_teachers_choice_with_no_span_and_no_invented_target() -> None:
+    """Step 4: a field's pick becomes a link whose first candidate is the teacher's choice and whose span is every word (the best-linking one is used); a field it picked none of is a link to nothing; only the closed heads it named are trained. Nothing is labelled on any dimension."""
+    import random
+    from training.named.train import UNKNOWN, losses_of, run_batch
+    names = fake_name_set()
+    example = _pick_example()
+    batch = build_batch(example, CONFIG, names, random.Random(0), questions=4, shares=None)
+    assert len(batch.links) == 2 and all(link.any_word for link in batch.links)
+    measure, key = batch.links
+    assert not measure.nothing and batch.targets[measure.candidates[0]].position == 2 and batch.targets[measure.candidates[1]].position == 3, "the pick first, then the other options"
+    assert key.nothing and key.role == "key" and measure.span == list(range(len(batch.questions[0].split())))
+    assert batch.closed[0]["aggregate"] == "sum" and batch.closed[0]["form"] == "agg" and batch.closed[0]["direction"] is None
+    assert batch.word_positive[0] == [None] * len(measure.span) and set(batch.word_role[0]) == {UNKNOWN}, "no word is given a meaning or a role"
+    torch.manual_seed(0)
+    backbone = HashBackbone()
+    reader = NamedReader(backbone.dim, names.meaning_start, names.meaning, CONFIG).float()
+    read_descriptions(backbone, reader, names)
+    out = run_batch(backbone, reader, CONFIG, batch, "cpu")
+    parts = losses_of(reader, names, batch, out, False, "cpu")
+    assert float(parts["pick"]) > 0 and float(parts["link"]) == 0 and float(parts["role"]) == 0 and float(parts["meaning"]) == 0
+    parts["pick"].backward()
+    assert reader.raw_coordinate_weights.grad is not None and float(reader.structure.weight.grad.abs().sum()) > 0, "the gradient reaches the named readings through the link's sum"
+    assert reader.open_word.weight.grad is None, "the unnamed channel is not in the sum a pick trains"
+
+
+def test_only_qualified_properties_enter_a_links_sum() -> None:
+    from training.named.train import link_weights_of, qualified_mask
+    names = fake_name_set()
+    with tempfile.TemporaryDirectory() as folder:
+        gate = Path(folder) / "gate.json"
+        gate.write_text(json.dumps({"qualified_for_links": [MEANINGS[0]]}), encoding="utf-8")
+        mask = qualified_mask(gate, names, "cpu")
+    assert mask[:names.meaning_start].sum() == names.meaning_start and mask[names.meaning_start:].tolist() == [1.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    reader = NamedReader(32, names.meaning_start, names.meaning, ReaderConfig(backbone="hash", hidden=36, blocks=1, open_dim=16))
+    weights = link_weights_of(reader, mask).coordinates
+    assert weights[names.meaning_start] > 0 and not weights[names.meaning_start + 1:].any(), "a property the gate did not qualify weighs nothing in a bundle's links"
+
+
+def test_training_on_picks_beside_the_sheets() -> None:
+    with tempfile.TemporaryDirectory() as folder:
+        picks = Path(folder) / "picks"
+        picks.mkdir()
+        write_shard(picks, 0, [_pick_example("clef", 0), _pick_example("clef", 1), _pick_example("clef_held", 2)])
+        config = TrainConfig(reader=ReaderConfig(backbone="hash", hidden=36, blocks=1, open_dim=16, sample_rows=3), steps=9, questions=6, seed=0, held_share=0.2, eval_every=4, eval_tabs=2, picks=str(picks), open_detached=True)
+        out = Path(folder) / "out"
+        summary = train(fake_examples(6), fake_name_set(), HashBackbone(), config, out, log_print=False)
+        log = [json.loads(line) for line in (out / "log.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert summary["steps"] == 9 and any(row.get("pick", 0) > 0 for row in log if "loss" in row), "a pick batch joins the sheets"
+    measured = [row for row in log if "pick_top1" in row]
+    assert measured and measured[-1]["picks"] == 2, "the held pick example is measured, never trained on"
+
+
 def test_batch_has_in_sheet_hard_negatives() -> None:
     import random
     example = fake_examples(1)[0]
