@@ -1,530 +1,420 @@
 {
- "n_content": 101,
+ "n_content": 83,
  "dims": [
-  {
-   "name": "is_str",
-   "family": "struct",
-   "dim_id": 0
-  },
-  {
-   "name": "is_num",
-   "family": "struct",
-   "dim_id": 1
-  },
-  {
-   "name": "num_frac",
-   "family": "struct",
-   "dim_id": 2
-  },
-  {
-   "name": "is_time",
-   "family": "struct",
-   "dim_id": 3
-  },
-  {
-   "name": "is_bool",
-   "family": "struct",
-   "dim_id": 4
-  },
-  {
-   "name": "is_enum",
-   "family": "struct",
-   "dim_id": 5
-  },
-  {
-   "name": "is_key",
-   "family": "struct",
-   "dim_id": 6
-  },
-  {
-   "name": "is_ref",
-   "family": "struct",
-   "dim_id": 7
-  },
   {
    "name": "GeoCoordinates",
    "family": "taxonomy",
-   "dim_id": 9
+   "dim_id": 0
   },
   {
    "name": "about",
    "family": "taxonomy",
-   "dim_id": 10
+   "dim_id": 1
   },
   {
    "name": "actor",
    "family": "taxonomy",
-   "dim_id": 11
+   "dim_id": 2
   },
   {
    "name": "address",
    "family": "taxonomy",
-   "dim_id": 12
+   "dim_id": 3
   },
   {
    "name": "addressCountry",
    "family": "taxonomy",
-   "dim_id": 13
+   "dim_id": 4
   },
   {
    "name": "affiliation",
    "family": "taxonomy",
-   "dim_id": 14
+   "dim_id": 5
   },
   {
    "name": "aggregateRating",
    "family": "taxonomy",
-   "dim_id": 15
+   "dim_id": 6
   },
   {
    "name": "asin",
    "family": "taxonomy",
-   "dim_id": 16
+   "dim_id": 7
   },
   {
    "name": "author",
    "family": "taxonomy",
-   "dim_id": 17
+   "dim_id": 8
   },
   {
    "name": "award",
    "family": "taxonomy",
-   "dim_id": 18
+   "dim_id": 9
   },
   {
    "name": "birthDate",
    "family": "taxonomy",
-   "dim_id": 19
+   "dim_id": 10
   },
   {
    "name": "brand",
    "family": "taxonomy",
-   "dim_id": 20
+   "dim_id": 11
   },
   {
    "name": "byArtist",
    "family": "taxonomy",
-   "dim_id": 21
+   "dim_id": 12
   },
   {
    "name": "character",
    "family": "taxonomy",
-   "dim_id": 22
+   "dim_id": 13
   },
   {
    "name": "color",
    "family": "taxonomy",
-   "dim_id": 23
+   "dim_id": 14
   },
   {
    "name": "connectedTo",
    "family": "taxonomy",
-   "dim_id": 24
+   "dim_id": 15
   },
   {
    "name": "contentLocation",
    "family": "taxonomy",
-   "dim_id": 25
+   "dim_id": 16
   },
   {
    "name": "countryOfOrigin",
    "family": "taxonomy",
-   "dim_id": 26
+   "dim_id": 17
   },
   {
    "name": "dateCreated",
    "family": "taxonomy",
-   "dim_id": 27
+   "dim_id": 18
   },
   {
    "name": "director",
    "family": "taxonomy",
-   "dim_id": 28
+   "dim_id": 19
   },
   {
    "name": "dissolutionDate",
    "family": "taxonomy",
-   "dim_id": 29
+   "dim_id": 20
   },
   {
    "name": "distance",
    "family": "taxonomy",
-   "dim_id": 30
+   "dim_id": 21
   },
   {
    "name": "editor",
    "family": "taxonomy",
-   "dim_id": 31
+   "dim_id": 22
   },
   {
    "name": "email",
    "family": "taxonomy",
-   "dim_id": 32
+   "dim_id": 23
   },
   {
    "name": "founder",
    "family": "taxonomy",
-   "dim_id": 33
+   "dim_id": 24
   },
   {
    "name": "foundingLocation",
    "family": "taxonomy",
-   "dim_id": 34
+   "dim_id": 25
   },
   {
    "name": "gender",
    "family": "taxonomy",
-   "dim_id": 35
+   "dim_id": 26
   },
   {
    "name": "genre",
    "family": "taxonomy",
-   "dim_id": 36
+   "dim_id": 27
   },
   {
    "name": "hasOccupation",
    "family": "taxonomy",
-   "dim_id": 37
+   "dim_id": 28
   },
   {
    "name": "hasPart",
    "family": "taxonomy",
-   "dim_id": 38
+   "dim_id": 29
   },
   {
    "name": "height",
    "family": "taxonomy",
-   "dim_id": 39
+   "dim_id": 30
   },
   {
    "name": "image",
    "family": "taxonomy",
-   "dim_id": 40
+   "dim_id": 31
   },
   {
    "name": "inLanguage",
    "family": "taxonomy",
-   "dim_id": 41
+   "dim_id": 32
   },
   {
    "name": "isBasedOn",
    "family": "taxonomy",
-   "dim_id": 42
+   "dim_id": 33
   },
   {
    "name": "isPartOf",
    "family": "taxonomy",
-   "dim_id": 43
+   "dim_id": 34
   },
   {
    "name": "issn",
    "family": "taxonomy",
-   "dim_id": 44
+   "dim_id": 35
   },
   {
    "name": "leiCode",
    "family": "taxonomy",
-   "dim_id": 45
+   "dim_id": 36
   },
   {
    "name": "license",
    "family": "taxonomy",
-   "dim_id": 46
+   "dim_id": 37
   },
   {
    "name": "location",
    "family": "taxonomy",
-   "dim_id": 47
+   "dim_id": 38
   },
   {
    "name": "locationCreated",
    "family": "taxonomy",
-   "dim_id": 48
+   "dim_id": 39
   },
   {
    "name": "logo",
    "family": "taxonomy",
-   "dim_id": 49
+   "dim_id": 40
   },
   {
    "name": "lyricist",
    "family": "taxonomy",
-   "dim_id": 50
+   "dim_id": 41
   },
   {
    "name": "mainEntityOfPage",
    "family": "taxonomy",
-   "dim_id": 51
+   "dim_id": 42
   },
   {
    "name": "memberOf",
    "family": "taxonomy",
-   "dim_id": 52
+   "dim_id": 43
   },
   {
    "name": "name",
    "family": "taxonomy",
-   "dim_id": 53
+   "dim_id": 44
   },
   {
    "name": "nationality",
    "family": "taxonomy",
-   "dim_id": 54
+   "dim_id": 45
   },
   {
    "name": "numberOfEmployees",
    "family": "taxonomy",
-   "dim_id": 55
+   "dim_id": 46
   },
   {
    "name": "operatingSystem",
    "family": "taxonomy",
-   "dim_id": 56
+   "dim_id": 47
   },
   {
    "name": "owns",
    "family": "taxonomy",
-   "dim_id": 57
+   "dim_id": 48
   },
   {
    "name": "parentOrganization",
    "family": "taxonomy",
-   "dim_id": 58
+   "dim_id": 49
   },
   {
    "name": "parentTaxon",
    "family": "taxonomy",
-   "dim_id": 59
+   "dim_id": 50
   },
   {
    "name": "partOfSeries",
    "family": "taxonomy",
-   "dim_id": 60
+   "dim_id": 51
   },
   {
    "name": "postalCode",
    "family": "taxonomy",
-   "dim_id": 61
+   "dim_id": 52
   },
   {
    "name": "previousItem",
    "family": "taxonomy",
-   "dim_id": 62
+   "dim_id": 53
   },
   {
    "name": "producer",
    "family": "taxonomy",
-   "dim_id": 63
+   "dim_id": 54
   },
   {
    "name": "productionCompany",
    "family": "taxonomy",
-   "dim_id": 64
+   "dim_id": 55
   },
   {
    "name": "programmingLanguage",
    "family": "taxonomy",
-   "dim_id": 65
+   "dim_id": 56
   },
   {
    "name": "provider",
    "family": "taxonomy",
-   "dim_id": 66
+   "dim_id": 57
   },
   {
    "name": "publisher",
    "family": "taxonomy",
-   "dim_id": 67
+   "dim_id": 58
   },
   {
    "name": "servesCuisine",
    "family": "taxonomy",
-   "dim_id": 68
+   "dim_id": 59
   },
   {
    "name": "softwareVersion",
    "family": "taxonomy",
-   "dim_id": 69
+   "dim_id": 60
   },
   {
    "name": "startTime",
    "family": "taxonomy",
-   "dim_id": 70
+   "dim_id": 61
   },
   {
    "name": "subOrganization",
    "family": "taxonomy",
-   "dim_id": 71
+   "dim_id": 62
   },
   {
    "name": "taxonName",
    "family": "taxonomy",
-   "dim_id": 72
+   "dim_id": 63
   },
   {
    "name": "taxonRank",
    "family": "taxonomy",
-   "dim_id": 73
+   "dim_id": 64
   },
   {
    "name": "telephone",
    "family": "taxonomy",
-   "dim_id": 74
+   "dim_id": 65
   },
   {
    "name": "timeRequired",
    "family": "taxonomy",
-   "dim_id": 75
+   "dim_id": 66
   },
   {
    "name": "uploadDate",
    "family": "taxonomy",
-   "dim_id": 76
+   "dim_id": 67
   },
   {
    "name": "video",
    "family": "taxonomy",
-   "dim_id": 77
+   "dim_id": 68
   },
   {
    "name": "weight",
    "family": "taxonomy",
-   "dim_id": 78
+   "dim_id": 69
   },
   {
    "name": "width",
    "family": "taxonomy",
-   "dim_id": 79
-  },
-  {
-   "name": "intent_agg_count",
-   "family": "intent",
-   "dim_id": 80
-  },
-  {
-   "name": "intent_agg_sum",
-   "family": "intent",
-   "dim_id": 81
-  },
-  {
-   "name": "intent_agg_avg",
-   "family": "intent",
-   "dim_id": 82
-  },
-  {
-   "name": "intent_filter_eq",
-   "family": "intent",
-   "dim_id": 83
-  },
-  {
-   "name": "intent_filter_gt",
-   "family": "intent",
-   "dim_id": 84
-  },
-  {
-   "name": "intent_filter_lt",
-   "family": "intent",
-   "dim_id": 85
-  },
-  {
-   "name": "intent_group",
-   "family": "intent",
-   "dim_id": 86
-  },
-  {
-   "name": "intent_sort_desc",
-   "family": "intent",
-   "dim_id": 87
-  },
-  {
-   "name": "intent_sort_asc",
-   "family": "intent",
-   "dim_id": 88
-  },
-  {
-   "name": "intent_limit",
-   "family": "intent",
-   "dim_id": 89
+   "dim_id": 70
   },
   {
    "name": "price",
    "family": "taxonomy",
-   "dim_id": 90
+   "dim_id": 71
   },
   {
    "name": "identifier",
    "family": "taxonomy",
-   "dim_id": 91
+   "dim_id": 72
   },
   {
    "name": "startDate",
    "family": "taxonomy",
-   "dim_id": 92
+   "dim_id": 73
   },
   {
    "name": "description",
    "family": "taxonomy",
-   "dim_id": 93
+   "dim_id": 74
   },
   {
    "name": "observationDate",
    "family": "taxonomy",
-   "dim_id": 94
+   "dim_id": 75
   },
   {
    "name": "orderQuantity",
    "family": "taxonomy",
-   "dim_id": 95
+   "dim_id": 76
   },
   {
    "name": "customer",
    "family": "taxonomy",
-   "dim_id": 96
+   "dim_id": 77
   },
   {
    "name": "orderDate",
    "family": "taxonomy",
-   "dim_id": 97
+   "dim_id": 78
   },
   {
    "name": "endDate",
    "family": "taxonomy",
-   "dim_id": 98
+   "dim_id": 79
   },
   {
    "name": "seller",
    "family": "taxonomy",
-   "dim_id": 99
+   "dim_id": 80
   },
   {
    "name": "duration",
    "family": "taxonomy",
-   "dim_id": 100
+   "dim_id": 81
   },
   {
    "name": "currency",
    "family": "taxonomy",
-   "dim_id": 101
+   "dim_id": 82
   }
- ],
- "warm_from_alloc": {
-  "is_str": 0,
-  "is_num": 1,
-  "num_frac": 2,
-  "is_time": 3,
-  "is_bool": 4,
-  "is_enum": 5,
-  "is_key": 6,
-  "is_ref": 7,
-  "intent_agg_count": 83,
-  "intent_agg_sum": 84,
-  "intent_agg_avg": 85,
-  "intent_filter_eq": 86,
-  "intent_filter_gt": 87,
-  "intent_filter_lt": 88,
-  "intent_group": 89,
-  "intent_sort_desc": 90,
-  "intent_sort_asc": 91,
-  "intent_limit": 92
- }
+ ]
 }

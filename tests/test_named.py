@@ -412,6 +412,7 @@ def test_name_set_loader_and_its_forms() -> None:
     migrated = {"GeoCoordinates": "geo", "taxonName": "alternateName"}
     basis = tuple(f"schema:{migrated.get(row['name'], row['name'])}" for row in sorted(allocation["dims"], key=lambda row: row["dim_id"]) if row["family"] == "taxonomy")
     assert shipped.names[shipped.meaning_start:] == basis == meaning_names(), "the meaning tier is the selected basis, in alloc.json's order"
+    assert {row["family"] for row in allocation["dims"]} == {"taxonomy"} and [row["dim_id"] for row in allocation["dims"]] == list(range(allocation["n_content"])) == list(range(len(basis))), "alloc.json holds only schema.org properties, no structural or intent dimension beside them"
     assert shipped.meaning == len(basis) < 200 and not any(name.startswith(("biz:", "word:")) for name in shipped.names)
     fake = fake_name_set()
     for answer in ANSWER_TYPES:

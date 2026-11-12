@@ -37,10 +37,13 @@ from engine.fetch_weights import _downloadable_files
 MANIFEST = Path("training/schema_org/data/semantic_manifest.json")
 MODEL_META = DATA_DIR / "schema_property_model.json"
 
-# The pre-existing Wikidata-derived basis this model must not regress below. `alloc.json` is the shipped
-# 9-family router's basis: 90 content dims = 9 structural + 71 schema.org property + 10 intent.
+# The pre-existing Wikidata-derived basis this model must not regress below: the 71 schema.org properties of
+# `alloc.json`. The file holds only schema.org properties; the ones the sheet addition rule added since
+# (training/props/basis_additions_20261112.json, each with its train, held-out and agreement evidence) are the
+# reader's, not this world head's, so the ratchet measures the 71 and every other entry must have its record.
 LEGACY_PROPERTY_DIMS = 71
-_STRUCT = {"is_str", "is_num", "num_frac", "is_time", "is_bool", "is_enum", "is_key", "is_ref", "currency"}
+ADDITIONS = Path(__file__).resolve().parents[1] / "training" / "props" / "basis_additions_20261112.json"
+ADDITION_EVIDENCE = ("train_columns", "held_out_columns", "two_pass_agreement")
 
 # Entity properties whose starvation caused Country/City/Hospital/Taxon/MusicGroup to fail calibration.
 # `birthDate` survives because it is carried by the class-free Horse pool, where no class domain constrains
@@ -91,18 +94,29 @@ def _uri(name):
     return f"https://schema.org/{name}"
 
 
-def _legacy_property_names():
+def _basis_and_additions():
     alloc = json.loads((DATA_DIR / "alloc.json").read_text(encoding="utf-8"))
-    return {d["name"] for d in alloc["dims"]
-            if d["name"] not in _STRUCT and not d["name"].startswith("intent_")}
+    additions = json.loads(ADDITIONS.read_text(encoding="utf-8"))["properties"]
+    return {d["name"] for d in alloc["dims"]}, additions
+
+
+def _legacy_property_names():
+    basis, additions = _basis_and_additions()
+    return basis - {entry["property"] for entry in additions}
 
 
 def test_legacy_basis_is_the_documented_size():
-    # Pins the baseline this ratchet measures against, so a change to alloc.json can't silently move the bar.
+    # Pins the baseline this ratchet measures against, so a change to alloc.json can't silently move the bar:
+    # an entry without an addition record grows the legacy set, and a record must name an entry with its evidence.
+    basis, additions = _basis_and_additions()
     names = _legacy_property_names()
     assert len(names) == LEGACY_PROPERTY_DIMS, \
         f"legacy basis changed: alloc.json has {len(names)} property dims, ratchet assumes {LEGACY_PROPERTY_DIMS}"
-    print(f"  PASS  legacy basis pinned at {LEGACY_PROPERTY_DIMS} schema.org property dims")
+    stray = sorted(entry["property"] for entry in additions if entry["property"] not in basis)
+    unevidenced = sorted(entry["property"] for entry in additions if any(entry.get(key) is None for key in ADDITION_EVIDENCE))
+    assert not stray and not unevidenced, f"addition records outside alloc.json {stray} or without evidence {unevidenced}"
+    print(f"  PASS  legacy basis pinned at {LEGACY_PROPERTY_DIMS} schema.org property dims, "
+          f"{len(additions)} additions each with its evidence record")
 
 
 def test_trained_basis_covers_the_legacy_one():

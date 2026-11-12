@@ -7,7 +7,7 @@
  "properties": [
   {
    "property": "price",
-   "dim_id": 90,
+   "dim_id": 71,
    "train_columns": 4810,
    "by_source": {
     "train": 4662,
@@ -27,7 +27,7 @@
   },
   {
    "property": "identifier",
-   "dim_id": 91,
+   "dim_id": 72,
    "train_columns": 2662,
    "by_source": {
     "train": 2553,
@@ -48,7 +48,7 @@
   },
   {
    "property": "startDate",
-   "dim_id": 92,
+   "dim_id": 73,
    "train_columns": 1117,
    "by_source": {
     "train": 770,
@@ -69,7 +69,7 @@
   },
   {
    "property": "description",
-   "dim_id": 93,
+   "dim_id": 74,
    "train_columns": 933,
    "by_source": {
     "train": 728,
@@ -89,7 +89,7 @@
   },
   {
    "property": "observationDate",
-   "dim_id": 94,
+   "dim_id": 75,
    "train_columns": 544,
    "by_source": {
     "train": 543,
@@ -107,7 +107,7 @@
   },
   {
    "property": "orderQuantity",
-   "dim_id": 95,
+   "dim_id": 76,
    "train_columns": 443,
    "by_source": {
     "train": 442,
@@ -125,7 +125,7 @@
   },
   {
    "property": "customer",
-   "dim_id": 96,
+   "dim_id": 77,
    "train_columns": 426,
    "by_source": {
     "train": 426
@@ -142,7 +142,7 @@
   },
   {
    "property": "orderDate",
-   "dim_id": 97,
+   "dim_id": 78,
    "train_columns": 352,
    "by_source": {
     "train": 350,
@@ -160,7 +160,7 @@
   },
   {
    "property": "endDate",
-   "dim_id": 98,
+   "dim_id": 79,
    "train_columns": 271,
    "by_source": {
     "train": 218,
@@ -181,7 +181,7 @@
   },
   {
    "property": "seller",
-   "dim_id": 99,
+   "dim_id": 80,
    "train_columns": 222,
    "by_source": {
     "train": 220,
@@ -200,7 +200,7 @@
   },
   {
    "property": "duration",
-   "dim_id": 100,
+   "dim_id": 81,
    "train_columns": 212,
    "by_source": {
     "train": 124,
@@ -220,7 +220,7 @@
   },
   {
    "property": "currency",
-   "dim_id": 101,
+   "dim_id": 82,
    "train_columns": 72,
    "by_source": {
     "train": 71,
@@ -423,5 +423,91 @@
    ]
   }
  ],
- "struct_currency_removed": "owner, 2026-11-12: no redundant dimensions. The allocation's structural dimension named currency (dim_id 8) was labelled by a character check, a value holding $, the pound or the euro sign (training/props/build_assignment21_v2.py); the new engine's sheet compiler reads that from the cell's format and symbol as a fact, so no learned dimension holds it. It is removed here and the schema.org property currency (the currency a monetary amount is expressed in) takes the name, as a taxonomy entry. Main's alloc.json, which describes the promoted 90-dimension model, changes at integration. Its dim_id 8 is left unused, so no other dimension's id moves; the property is dim_id 101."
+ "struct_currency_removed": "owner, 2026-11-12: no redundant dimensions. The allocation's structural dimension named currency (dim_id 8) was labelled by a character check, a value holding $, the pound or the euro sign (training/props/build_assignment21_v2.py); the new engine's sheet compiler reads that from the cell's format and symbol as a fact, so no learned dimension holds it. It is removed here and the schema.org property currency (the currency a monetary amount is expressed in) takes the name, as a taxonomy entry. Main's alloc.json, which describes the promoted 90-dimension model, changes at integration.",
+ "structure_and_intent_removed": "owner, 2026-11-12: no redundant dimensions, so alloc.json holds only schema.org properties. The other 8 structural dimensions (is_str, is_num, num_frac, is_time, is_bool, is_enum, is_key, is_ref) and the 10 intent dimensions (intent_agg_count ... intent_limit) are removed with the warm-start map that named them: the new engine's sheet compiler states value kinds and column roles as facts, and its 100 closed structure names (engine/program/names.py, engine/sheet/names.py) carry aggregate, condition and ranking, trained from compiler labels and gold programs; nothing in engine/named, engine/program, engine/sheet or training/named read them. dim_id is now the property's place in the basis, in the same order (the 71 were 9-82 and the additions 90-101). The promoted 90-dimension model on main and the old props pipeline (training/props/, training/taxonomy/) still use main's alloc.json, which changes at integration.",
+ "dim_ids_before_renumbering": {
+  "GeoCoordinates": 9,
+  "about": 10,
+  "actor": 11,
+  "address": 12,
+  "addressCountry": 13,
+  "affiliation": 14,
+  "aggregateRating": 15,
+  "asin": 16,
+  "author": 17,
+  "award": 18,
+  "birthDate": 19,
+  "brand": 20,
+  "byArtist": 21,
+  "character": 22,
+  "color": 23,
+  "connectedTo": 24,
+  "contentLocation": 25,
+  "countryOfOrigin": 26,
+  "dateCreated": 27,
+  "director": 28,
+  "dissolutionDate": 29,
+  "distance": 30,
+  "editor": 31,
+  "email": 32,
+  "founder": 33,
+  "foundingLocation": 34,
+  "gender": 35,
+  "genre": 36,
+  "hasOccupation": 37,
+  "hasPart": 38,
+  "height": 39,
+  "image": 40,
+  "inLanguage": 41,
+  "isBasedOn": 42,
+  "isPartOf": 43,
+  "issn": 44,
+  "leiCode": 45,
+  "license": 46,
+  "location": 47,
+  "locationCreated": 48,
+  "logo": 49,
+  "lyricist": 50,
+  "mainEntityOfPage": 51,
+  "memberOf": 52,
+  "name": 53,
+  "nationality": 54,
+  "numberOfEmployees": 55,
+  "operatingSystem": 56,
+  "owns": 57,
+  "parentOrganization": 58,
+  "parentTaxon": 59,
+  "partOfSeries": 60,
+  "postalCode": 61,
+  "previousItem": 62,
+  "producer": 63,
+  "productionCompany": 64,
+  "programmingLanguage": 65,
+  "provider": 66,
+  "publisher": 67,
+  "servesCuisine": 68,
+  "softwareVersion": 69,
+  "startTime": 70,
+  "subOrganization": 71,
+  "taxonName": 72,
+  "taxonRank": 73,
+  "telephone": 74,
+  "timeRequired": 75,
+  "uploadDate": 76,
+  "video": 77,
+  "weight": 78,
+  "width": 79,
+  "price": 90,
+  "identifier": 91,
+  "startDate": 92,
+  "description": 93,
+  "observationDate": 94,
+  "orderQuantity": 95,
+  "customer": 96,
+  "orderDate": 97,
+  "endDate": 98,
+  "seller": 99,
+  "duration": 100,
+  "currency": 101
+ }
 }

@@ -26,8 +26,8 @@ versioned database releases and are not intended to be memorized in model weight
   `engine/data/qwen_lora/`) trained jointly with `engine.encoder_model.RelationalModel`: one
   896→384 projection and 10 relational-attention blocks (6 heads, 384 wide). Both are frozen at
   serving. No decoder is used.
-- Named coordinates: 90 output coordinates carry names (`encoder_meta.pt["alloc"]`, mirrored in
-  `engine/data/alloc.json`): 9 structural
+- Named coordinates: 90 output coordinates carry names (`encoder_meta.pt["alloc"]`; on this branch
+  `engine/data/alloc.json` holds only the new reader's 83 schema.org properties): 9 structural
   types (`is_str`, `is_num`, `is_time`, `is_key`, `currency`, ...), 71 property names such as
   `addressCountry`, `birthDate`, `brand`, and `postalCode`, and 10 query intents (`intent_agg_sum`,
   `intent_filter_gt`, `intent_sort_desc`, `intent_limit`, ...).

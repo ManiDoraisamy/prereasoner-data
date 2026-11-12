@@ -48,9 +48,13 @@ This track produced the Qwen LoRA and relational readout loaded by serving. It s
 intent for composition and the world routes, column typing, and the representation consumed by the
 Schema.org head. The own-data SQL planner reads questions with the readers below instead.
 
-Its `alloc.json` retains a historical 90-content-dimension allocation: 9 structural, 71
-property-named, and 10 intent dimensions. Two old labels are not valid Schema.org 30.0 properties.
-Those coordinates are compatibility and diagnostic outputs, not the active class vocabulary.
+Its allocation (`encoder_meta.pt["alloc"]`) retains a historical 90-content-dimension layout: 9
+structural, 71 property-named, and 10 intent dimensions. Two old labels are not valid Schema.org 30.0
+properties. Those coordinates are compatibility and diagnostic outputs, not the active class
+vocabulary. On this branch `engine/data/alloc.json` no longer mirrors it: it holds only the schema.org
+property basis of the new reader (the 71 and 12 additions with their evidence in
+`training/props/basis_additions_20261112.json`), and the old props pipeline (`training/props/`,
+`training/taxonomy/`) that reads the structural and intent entries runs from main until integration.
 
 The exact runtime bytes are hash-pinned, but the original encoder training run predates the current
 corpus manifest and does not have complete source/split provenance. Treat
