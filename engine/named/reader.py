@@ -230,12 +230,16 @@ class _Builder:
         texts = list(index.text_columns)
         value_rows = [at for at, target in enumerate(view.targets) if target.kind in (T_VALUE, T_LINE, T_BAND)]
         if len(value_rows) > VALUE_TOP:
-            value_rows = sorted(sorted(value_rows, key=lambda at: (-round(float(best[at]), 4), view.targets[at].text, catalog_table.column_rank.get(view.targets[at].position, -1)))[:VALUE_TOP])
+            rows = np.asarray(value_rows)
+            # by score rounded to 4 places, then text, then column rank: what a stable sort on those keys gives
+            order = np.lexsort((view.text_rank(catalog_table.column_rank)[rows], -np.round(best[rows].astype(np.float64), 4)))
+            value_rows = sorted(rows[order][:VALUE_TOP].tolist())
         wanted = set(value_rows) | {at for at, target in enumerate(view.targets) if target.kind in (T_COLUMN, T_TABLE)} | set(proposals)
-        for at, target in enumerate(view.targets):
-            names = target.coordinates()
-            if at not in wanted and not any(name in self.rule_values for name in names):
-                continue
+        wanted.update(at for name in self.rule_values for at in view.targets_named(name))
+        coordinates_of = view.coordinates()
+        for at in sorted(wanted):
+            target = view.targets[at]
+            names = coordinates_of[at]
             span = _span_of(n[:, at], self.content) if n.size else ()
             terms = ()
             if span and best[at] > 0:

@@ -7,7 +7,7 @@ from __future__ import annotations
 import hashlib
 import json
 import zlib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Mapping, Sequence
 
@@ -82,13 +82,41 @@ class TabIndex:
 
 @dataclass
 class TableView:
-    """One catalog table's part of a workbook's index."""
+    """One catalog table's part of a workbook's index. What is the index's and not a question's is read once and kept: each target's coordinates, the targets by kind and by coordinate name, and their order by text."""
     targets: list[Target]
     ids: np.ndarray
     values: np.ndarray
     open: np.ndarray
     profile: dict[str, float]
     classes: dict[str, float]
+    _coordinates: list[tuple[str, ...]] | None = field(default=None, repr=False, compare=False)
+    _by_name: dict[str, list[int]] | None = field(default=None, repr=False, compare=False)
+    _text_rank: np.ndarray | None = field(default=None, repr=False, compare=False)
+
+    def coordinates(self) -> list[tuple[str, ...]]:
+        """Each target's program coordinates (Target.coordinates), by target."""
+        if self._coordinates is None:
+            self._coordinates = [target.coordinates() for target in self.targets]
+        return self._coordinates
+
+    def targets_named(self, name: str) -> list[int]:
+        """The targets whose coordinates hold this name, in target order."""
+        if self._by_name is None:
+            by_name: dict[str, list[int]] = {}
+            for at, names in enumerate(self.coordinates()):
+                for held in names:
+                    by_name.setdefault(held, []).append(at)
+            self._by_name = by_name
+        return self._by_name.get(name, [])
+
+    def text_rank(self, column_rank: Mapping[int, int]) -> np.ndarray:
+        """Each target's place in (text, column rank) order, ties by target order: the tie-break after a question's score."""
+        if self._text_rank is None:
+            order = sorted(range(len(self.targets)), key=lambda at: (self.targets[at].text, column_rank.get(self.targets[at].position, -1)))
+            rank = np.empty(len(self.targets), dtype=np.int64)
+            rank[order] = np.arange(len(order))
+            self._text_rank = rank
+        return self._text_rank
 
 
 class IndexCache:
