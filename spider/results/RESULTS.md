@@ -5,6 +5,124 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
+## The distillation probe: small CPU encoders in CLEF's two places keep 56% of its right answers (the rule asked 85%), so CLEF spend is held; a sheet glossary lifts the small reader on messy from 58 to 77 listed; four generic engine fixes; a dev twin of the fresh set (2026-11-12)
+
+- The owner approved the redrawn plan's steps 2 to 5 on 2026-11-12 (the launch bar becomes at least 80% right, at most
+  8% wrong without a warning, at most 20% warned on the fresh real sheets, messy and DataBench; WikiTableQuestions a
+  reported check at 70%). This entry is the first night: step 2 (the probe), the free engine work, step 5 (the dev twin).
+  No CLEF pod ran. Development sets only; no frozen set was read.
+
+**The probe (`distill-probe-20261112`, contract and rule written before any student was trained).** Cross-encoder
+students, one logit per (question, option) pair, softmax within the group, trained on CLEF's saved outputs for the
+pooled questions: a chooser student on 9,416 questions' lists (the refit's probabilities and the graded right options)
+and a reader student on the round-2 pools' 6,211 questions, their reading records regenerated offline under the pools'
+engine and switches (79,211 fields, none dropped: every option id matched CLEF's). Held = the verifier's held
+workbooks (1,841 chooser questions, 12,535 reader fields). Three epochs, RTX 4090 pods at $0.89/h, about $4.5 in all.
+
+| Encoder | chooser as CLEF's record states the options: right of 1,841 | chooser with each option's place and answer agreement | reader: top option is CLEF's, of 12,535 fields |
+|---|---|---|---|
+| CLEF (the teacher) | 1,047 | | |
+| bge-small (33M) | 862 | 932 | 10,617 (84.7%) |
+| MiniLM-L12 (33M) | 889 | 949 | 10,670 (85.1%) |
+| bge-reranker-base (278M) | 896 | 961 | 10,616 (84.7%) |
+
+The first chooser student could not see what CLEF's chooser reads from the option order, a candidate's place in the
+decoder's list; the second kind (an amendment recorded in the contract after the first dev scores) writes the place
+and how many listed candidates return the same answer into each option. The learning curve on the small encoder: a
+quarter, half and all of the questions give the placed chooser 860 / 900 / 932 right and the reader 80.6% / 83.2% /
+84.7% agreement; each doubling buys less.
+
+**On the dev sets (offline on CPU, `eval_encoder_path.py`; the serving path with the students in CLEF's places, the
+small encoder's students):**
+
+| Path | Enron studied 186 | Messy dev 120 | WikiTableQuestions 300 | sum of 606 |
+|---|---|---|---|---|
+| CLEF's reading and CLEF's chooser (the round-2 gate) | 124 | 93 | 199 | 416 |
+| CLEF's reading, the engine's own first candidate | 91 | 59 | 136 | 286 |
+| CLEF's reading, the first chooser student | 91 | 38 | 167 | 296 |
+| CLEF's reading, the placed chooser student | 106 | 58 | 170 | 334 |
+| right answer listed: CLEF's reading / the reader student / the small reader alone | 147 / 96 / 99 | 112 / 68 / 59 | 238 / 220 / 181 | 497 / 384 / 339 |
+| engine's first candidate: CLEF's reading / the reader student / the small reader alone | 91 / 43 / 40 | 59 / 29 / 23 | 136 / 114 / 59 | 286 / 186 / 122 |
+| **the encoder path: the reader student and the placed chooser student** | **55** | **33** | **146** | **234** |
+
+- **The rule's ratio is 234 / 416 = 0.56 against 0.85, so every CLEF spend is held** (the redrawn plan's chooser round
+  3 and reader round) and the number goes to the owner. DataBench was not run on the encoder path: with all 249 of
+  CLEF's DataBench answers added the ratio would still be 0.73.
+- The chooser student adds about a third of what CLEF's chooser adds over no chooser (+48 of +130) and nothing on
+  messy; the base encoder on messy picks 64 (the small one 58, no chooser 59).
+- The reader student recovers most of CLEF's reading on WikiTableQuestions and little on the sheet sets: on Enron it
+  lists fewer right answers than the small reader alone. Its top option is CLEF's on 77.0% / 78.3% / 88.5% of dev
+  fields (Enron, messy, WikiTableQuestions).
+- CPU seconds per question on four threads, p50 / p90 (other jobs shared the machine): reader student 6.2 / 11.8, 2.8 /
+  7.3, 2.5 / 4.5 over a median of 386 / 174 / 155 options; placed chooser 1.6 / 2.7, 1.5 / 2.1, 1.5 / 2.3; engine and
+  both 8.3 / 14.2, 4.7 / 10.3, 4.2 / 6.7. The bar proposed to the owner is 2 s p50 and 5 s p90.
+
+**Four generic engine fixes (next-engine `b6e836b`, local, on 172994b; test_program 73, test_named 48,
+test_factory 14, deterministic emitters 71, SQL AST 107, calculations 181, analysis 8).** Each came from a question
+with no right answer listed:
+- A column filled on some lines and blank on others is offered as "is filled" beside "is blank" ("how many used a
+  promo": the reading had the column right and no value to name).
+- A date or year bounded on one side ("before 1980", "since March 2021", "through 2019") reads as an open period on a
+  date column and as that comparison on a number column; it read as "falls in 1980".
+- A negation in front of a named value ("not from Denmark", "aren't juniors", "apart from") reads as other than it,
+  beside the plain reading; only a column's two likeliest named values, never a value whose own words negate ("I will
+  not vote").
+- A year the question states is the value itself on a column that holds only years written as plain numbers ("cars
+  from 2020" over sixty years); a volume of 2,000 is no year.
+
+Right answer listed, offline replay of the round-2 gate's recorded readings (`replay_reach.py`; the chooser is not
+replayed):
+
+| Set | gate (172994b) | with the four fixes | gained | lost |
+|---|---|---|---|---|
+| Enron studied | 147 | 147 | 1 | 1 |
+| Messy dev | 112 | 113 | 1 | 0 |
+| DataBench dev | 275 | 275 | 1 | 1 |
+| WikiTableQuestions dev sample | 238 | 242 | 4 | 0 |
+
+Two first versions were measured and narrowed: the year rule matched any number column holding the year and cost an
+Enron question (back with the narrowing), and the negation rule gave every loosely matched value an other-than twin and
+cost two DataBench questions (one is back; the other, "did any respondent say they will not vote", is still displaced
+though its value is no longer negated). The Enron question lost had its right answer at place 43 of 50 and nine "is
+filled" candidates moved ahead of it; the same fix lists another Enron question's right answer.
+
+**What CLEF never reads.** The reading record offers CLEF thirteen fields; a condition's comparison (and so a
+negation), filled or blank, a calculation's operation and a rank's entity come from the small reader and the word
+lists alone. `reading_records.py` now has a `conditions` switch that offers CLEF those four as closed fields (off, a
+record is unchanged); it is unmeasured until a CLEF pod runs.
+
+**The dev twin of the fresh frozen set (`C:/work/datasets/fresh-dev-20261112`, built by an agent with the frozen set's
+own pipeline and none of its questions).** 52 public US government workbooks (35 xlsx, 17 csv, 26 health), 208
+questions, Gemini $6.44; 20 golds recomputed independently, all confirmed. No url, hash or table is shared with the
+frozen manifest; 8 workbooks from a publication the frozen set also draws on are left out of development by default
+(176 questions on 44 workbooks). Every workbook compiles. Floor, the small reader alone with the engine's first
+candidate: 38 of 176 right, a right answer listed for 74.
+
+**A sheet glossary, measured at no spend (`glossary-probe-20261112`).** The probe says the small encoders cannot learn
+CLEF's linking of a question's words to a sheet's; the census says that linking is where the sheet sets lose. So the
+linking was moved to the sheet side: a glossary written once per workbook, the phrases a person might say for each
+column and each low-cardinality value ("billing cycle", "annually" for yearly, "churned" for canceled, "London" for
+LON), read by the word index beside the sheet's own words (next-engine `57b97dc`: `Catalog.with_glossary`, the
+index's alias maps, the word reading; a phrase reads at 0.9 of the sheet's own word; with no glossary a table reads
+exactly as before; test_program 74). For this probe the developing session wrote the glossary for the ten messy dev
+workbooks from their columns and values alone (141 columns, 166 values), as a large model would at upload; it had seen
+about 25 of the 120 questions that night, none of them in four of the workbooks.
+
+Messy dev, the small reader alone (no CLEF, the engine with the four fixes; `eval_encoder_path.py --glossary`):
+
+| Questions | n | right answer listed: no glossary -> glossary (CLEF's reading) | engine's first candidate right: no glossary -> glossary (CLEF's reading) |
+|---|---|---|---|
+| Workbooks with no question seen (roster, expenses, marks, appointments) | 44 | 23 -> 34 (44) | 7 -> 15 (23) |
+| Workbooks with a question seen | 76 | 35 -> 43 (68) | 16 -> 18 (36) |
+| All | 120 | 58 -> 77 (112) | 23 -> 33 (59) |
+
+20 questions gain a listed right answer and 1 loses it; the reading takes the same time (0.05 s). On the workbooks no
+question was seen from, the glossary recovers about half of what CLEF's reading adds. With the placed chooser student on
+top the path answers 36 of 120 right (the reader student's path 33, CLEF's path 93): the list is better, the small
+chooser still cannot use it. Not measured: a glossary written by a model at upload (Gemini), the other sets, and the
+glossary beside CLEF's reading (the recorded fields do not line up with a changed option list).
+
+
 ## The reach census: 132 of 241 dev misses have no right answer in the list; the launch bar's warning clause needs 91–95% right; no large model, about 20% right; a wider decode does not help (2026-11-11)
 
 - Experiment `reach-census-20261111` (no GPU; gitignored under `training/readers/data/experiments/`). Everything is
