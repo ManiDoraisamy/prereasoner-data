@@ -217,6 +217,32 @@
     "QuantitativeValueDistribution",
     "ServicePeriod"
    ]
+  },
+  {
+   "property": "currency",
+   "dim_id": 101,
+   "train_columns": 72,
+   "by_source": {
+    "train": 71,
+    "wtq_train": 1
+   },
+   "families": 18,
+   "held_out_columns": 12,
+   "two_pass_agreement": [
+    11,
+    12
+   ],
+   "classes_needing_it": [
+    "DatedMoneySpecification",
+    "ExchangeRateSpecification",
+    "MonetaryAmount",
+    "MonetaryAmountDistribution"
+   ],
+   "corpus_instances": {
+    "train": 667,
+    "validation": 70,
+    "test": 85
+   }
   }
  ],
  "considered_and_left_out": [
@@ -395,18 +421,7 @@
     "agreement",
     "class_need"
    ]
-  },
-  {
-   "property": "currency",
-   "train_columns": 72,
-   "held_out_columns": 12,
-   "two_pass_agreement": [
-    11,
-    12
-   ],
-   "failed": [
-    "passes the rule, but the allocation already has a dimension of this name in family struct (dim_id 8): the owner's call"
-   ]
   }
- ]
+ ],
+ "struct_currency_removed": "owner, 2026-11-12: no redundant dimensions. The allocation's structural dimension named currency (dim_id 8) was labelled by a character check, a value holding $, the pound or the euro sign (training/props/build_assignment21_v2.py); the new engine's sheet compiler reads that from the cell's format and symbol as a fact, so no learned dimension holds it. It is removed here and the schema.org property currency (the currency a monetary amount is expressed in) takes the name, as a taxonomy entry. Main's alloc.json, which describes the promoted 90-dimension model, changes at integration. Its dim_id 8 is left unused, so no other dimension's id moves; the property is dim_id 101."
 }

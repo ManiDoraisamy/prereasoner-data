@@ -42,11 +42,6 @@
    "dim_id": 7
   },
   {
-   "name": "currency",
-   "family": "struct",
-   "dim_id": 8
-  },
-  {
    "name": "GeoCoordinates",
    "family": "taxonomy",
    "dim_id": 9
@@ -505,6 +500,11 @@
    "name": "duration",
    "family": "taxonomy",
    "dim_id": 100
+  },
+  {
+   "name": "currency",
+   "family": "taxonomy",
+   "dim_id": 101
   }
  ],
  "warm_from_alloc": {
@@ -516,7 +516,6 @@
   "is_enum": 5,
   "is_key": 6,
   "is_ref": 7,
-  "currency": 8,
   "intent_agg_count": 83,
   "intent_agg_sum": 84,
   "intent_agg_avg": 85,

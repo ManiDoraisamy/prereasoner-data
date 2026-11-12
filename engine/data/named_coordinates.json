@@ -518,7 +518,7 @@
 },
 "provenance": "training/props/",
 "schema_org": "30.0",
-"count": 82,
+"count": 83,
 "prefix": "schema:"
 },
 "properties": [
@@ -1013,6 +1013,12 @@
 "uri": "https://schema.org/duration",
 "text": "duration: The duration of the item (movie, audio recording, event, etc.) in [ISO 8601 duration format](http://en.wikipedia.org/wiki/ISO_8601).",
 "fine": null
+},
+{
+"name": "schema:currency",
+"uri": "https://schema.org/currency",
+"text": "currency: The currency in which the monetary amount is expressed.\\n\\nUse standard formats: [ISO 4217 currency format](http://en.wikipedia.org/wiki/ISO_4217), e.g. \"USD\"; [Ticker symbol](https://en.wikipedia.org/wiki/List_of_cryptocurrencies) for cryptocurrencies, e.g. \"BTC\"; well known names for [Local Exchange Trading Systems](https://en.wikipedia.org/wiki/Local_exchange_trading_system) (LETS) and other currency types, e.g. \"Ithaca HOUR\".",
+"fine": null
 }
 ],
 "classes": [
@@ -1341,6 +1347,10 @@
 "bias": -4.0,
 "signature": [
 {
+"property": "schema:currency",
+"weight": 4.0
+},
+{
 "property": "schema:endDate",
 "weight": 4.0
 },
@@ -1495,6 +1505,16 @@
 ]
 },
 {
+"name": "class:ExchangeRateSpecification",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:currency",
+"weight": 4.0
+}
+]
+},
+{
 "name": "class:ExerciseAction",
 "bias": -4.0,
 "signature": [
@@ -1633,6 +1653,16 @@
 ]
 },
 {
+"name": "class:LoanOrCredit",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:currency",
+"weight": 4.0
+}
+]
+},
+{
 "name": "class:MediaObject",
 "bias": -4.0,
 "signature": [
@@ -1672,6 +1702,26 @@
 },
 {
 "property": "schema:startDate",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:MonetaryAmount",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:currency",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:MonetaryAmountDistribution",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:currency",
 "weight": 4.0
 }
 ]
