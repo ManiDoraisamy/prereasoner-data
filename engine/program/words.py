@@ -91,8 +91,6 @@ _SUPERLATIVE = r"most|biggest|largest|highest|lowest|smallest|least|peak|top|fur
 FILTER_NAME_SHARE = 0.2
 # A word only one column's name holds says which column it means, however long the name.
 ONLY_NAME_WITH_WORD = 0.6
-# A sheet glossary's phrase for a column or a value reads a little under the sheet's own words for it.
-ALIAS_SHARE = 0.9
 # A number with no comparison word near it ("500 kV") is weak evidence of a comparison.
 NUMBER_ALONE = 0.3
 # A rank with no word asking for one reads below any other form; arithmetic with no word for it, below its one column.
@@ -322,16 +320,12 @@ def _table_words(table_id: str, index: TableIndex, question_words: set[str], raw
         if hits:
             out[coordinate(SLOT_TABLE, table_id)] = len(hits) / max(3, len(title))
     for position, name in index.name_words.items():
-        share = 0.0
-        if name:
-            held = name & question_words
-            share = len(held) / len(name)
-            if any(index.name_counts[word] == 1 and word not in _STOP for word in held):
-                share = max(share, ONLY_NAME_WITH_WORD)
-        for other in index.alias_names.get(position, ()):     # a sheet glossary's other name for the column, by how much of it the question says
-            said = other & question_words
-            if said - _STOP:
-                share = max(share, ALIAS_SHARE * len(said) / len(other))
+        if not name:
+            continue
+        held = name & question_words
+        share = len(held) / len(name)
+        if any(index.name_counts[word] == 1 and word not in _STOP for word in held):
+            share = max(share, ONLY_NAME_WITH_WORD)
         if share:
             col = Col(table_id, position).name
             for slot in (SLOT_MEASURE, SLOT_KEY, SLOT_SHOWN):
@@ -376,24 +370,6 @@ def _table_words(table_id: str, index: TableIndex, question_words: set[str], raw
         share = sum(word in question_words for word in text) / len(text) if text else 0.0
         whole = re.search(rf"(?<!\w){re.escape(folded)}(?!\w)", low) is not None
         out[coordinate(SLOT_VALUE, Col(table_id, position).name, folded)] = 1.0 if whole else 0.8 * share
-    # a sheet glossary's other wording of a value ("annually" for yearly, "churned" for canceled): read as the value, a
-    # little under the sheet's own words, by the phrase the question covers most
-    reached: set[tuple[int, str]] = set()
-    for word in question_words:
-        if word not in _STOP:
-            reached.update(index.alias_words.get(word, ()))
-    for position, folded in sorted(reached):
-        best = 0.0
-        for phrase in index.alias_phrases[(position, folded)]:
-            text = words_of(phrase)
-            if not text or all(word in _STOP for word in text):
-                continue
-            share = sum(word in question_words for word in text) / len(text)
-            whole = share == 1.0 and (len(text) == 1 or re.search(rf"(?<!\w){re.escape(phrase)}(?!\w)", low) is not None or " ".join(text) in " ".join(stem(word) for word in raw_words))
-            best = max(best, 1.0 if whole else 0.8 * share)
-        name = coordinate(SLOT_VALUE, Col(table_id, position).name, folded)
-        if best > 0 and ALIAS_SHARE * best > out.get(name, 0.0):
-            out[name] = ALIAS_SHARE * best
     # a phrase inside longer cells: the partial match, whole words first, then a word's prefix
     phrases = _phrases(raw_words)
     for position, lines in index.value_lines.items():

@@ -1245,27 +1245,6 @@ def test_a_negation_leaves_out_the_named_value_and_only_it():
     assert left_out == {"gold", "silver"}, left_out
 
 
-def test_a_sheet_glossary_reads_other_wordings_of_columns_and_values():
-    """A glossary written once for the sheet gives the word reading the phrases a person might say: "annually" for the value yearly, "billing cycle" for its column. A phrase reads a little under the sheet's own words; with no glossary a table reads exactly as before."""
-    rows = [["Customer", "Subscription", "Amount"]] + [[f"c{at}", ("monthly", "yearly")[at % 2], 10.0 + at] for at in range(8)]
-    plain = _catalog(rows)
-    t = plain.tables[0].id
-    yearly = coordinate("value", Col(t, 1).name, "yearly")
-    before = read_question("How many customers pay annually?", plain, Decoder(plain)).scores
-    assert yearly not in before
-    catalog = _catalog(rows).with_glossary({"columns": {"subscription": ["billing cycle"]}, "values": {"Subscription": {"yearly": ["annual", "annually", "per year"], "weekly": ["every week"]}}})
-    decoder = Decoder(catalog)
-    assert (1, "weekly") not in decoder.indexes[t].alias_phrases, "a value the sheet does not hold is ignored"
-    reading = read_question("How many customers pay annually?", catalog, decoder)
-    assert reading.scores[yearly] == 0.9
-    assert Agg(COUNT, None, t, (Equals(Col(t, 1), "yearly"),)) in decoder.enumerate(reading, k=100)[0]
-    assert read_question("How many customers pay per year?", catalog, decoder).scores[yearly] == 0.9
-    assert read_question("total amount by billing cycle", catalog, decoder).scores[coordinate("key", Col(t, 1).name)] == 0.9
-    assert read_question("How many yearly customers?", catalog, decoder).scores[yearly] == 1.0, "the sheet's own word still reads whole"
-    again = _catalog(rows).with_glossary(None)
-    assert read_question("How many customers pay annually?", again, Decoder(again)).scores == before
-
-
 def test_answer_types_place_money_quantity():
     assert {"place", "money", "quantity"} <= set(ANSWER_TYPES)
     assert coarse_type("place") == A_NAME and coarse_type("money") == coarse_type("quantity") == A_NUMBER and coarse_type("count") == A_COUNT
@@ -1559,7 +1538,7 @@ TESTS = [
     test_answer_type_rule, test_a_value_of_a_few_valued_number_column_is_named, test_a_number_condition_may_be_an_equality, test_a_breakdown_gives_a_figure_for_each_group, test_amounts_in_several_currencies_are_given_per_currency, test_a_number_compares_with_the_line_a_value_names, test_the_decoder_breaks_down_only_when_the_reading_names_a_breakdown, test_times_read_as_numbers_in_the_sheet_and_the_question, test_an_ordinal_is_not_a_stated_number, test_words_alone_read_a_question, test_verifier_shape_and_type_evidence, test_printed_total_ties_only_under_its_exact_conditions, test_verifier_runs_the_top_programs_and_never_raises, test_read_as_in_the_sheets_own_words,
     test_cells_are_the_exact_addresses_used, test_formula_a_user_can_check, test_explain_carries_the_named_contributions,
     test_a_column_blank_on_some_lines_is_offered_filled_as_well_as_blank, test_a_date_bounded_on_one_side_is_an_open_period, test_a_stated_year_a_number_column_holds_reads_as_its_value,
-    test_a_negation_leaves_out_the_named_value_and_only_it, test_a_sheet_glossary_reads_other_wordings_of_columns_and_values,
+    test_a_negation_leaves_out_the_named_value_and_only_it,
 ]
 
 if __name__ == "__main__":
