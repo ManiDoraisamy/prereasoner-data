@@ -127,10 +127,10 @@ def latest_state(experiment: Path) -> Path | None:
     return held[-1] if held else None
 
 
-def remote_command(backbone: str, steps: int, seed: int, *, hidden: int = 384, blocks: int = 3, resume: bool = False, extra: str = "") -> str:
+def remote_command(backbone: str, steps: int, seed: int, *, hidden: int = 384, blocks: int = 3, resume: bool = False, extra: str = "", picks: bool = False) -> str:
     """Unpack, check CUDA by running a kernel, train into out/candidate. A failed run exits 4 with its log's tail; out/ always travels back. Evals come every tenth of the run, and the state is written with them."""
     train = f"{ALLOC} NAMED_BACKBONE_ONLINE=1 python -m training.named.train --examples examples --experiment pod --out out/candidate --backbone {backbone} --steps {steps} --accumulate 4 --seed {seed} --hidden {hidden} --blocks {blocks} --amp --eval-every {max(500, steps // 10)}" + (f" {extra}" if extra else "") + (" --resume-from resume_state.pt" if resume else "")
-    return f"cd /workspace && mkdir -p out && tar -xf examples.tar && {PIP}; pip install -q psutil 2>&1 | tail -1; {CUDA_CHECK}; {train} > out/train.log 2>&1 || {{ tail -5 out/train.log; exit 4; }}; tail -2 out/train.log; ls -la out/candidate out/candidate/best"
+    return f"cd /workspace && mkdir -p out && tar -xf examples.tar && {'tar -xf picks.tar && ' if picks else ''}{PIP}; pip install -q psutil 2>&1 | tail -1; {CUDA_CHECK}; {train} > out/train.log 2>&1 || {{ tail -5 out/train.log; exit 4; }}; tail -2 out/train.log; ls -la out/candidate out/candidate/best"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -150,6 +150,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--corpus", help="the schema.org corpus's semantic_instances.jsonl: uploaded, and trained on as table profiles")
     parser.add_argument("--init", help="a bundle to start from (the step before): uploaded")
+    parser.add_argument("--picks", help="a folder of pick examples (the teacher's recorded picks): uploaded")
+    parser.add_argument("--qualified", help="a gate.json: uploaded; only the properties it qualified enter a link")
     parser.add_argument("--train-flags", default="", help="more flags for training.named.train, as one string (--link-weight 0 --anchor-steps 300)")
     parser.add_argument("--go", action="store_true", help="lease and pay; without it, only the plan")
     args = parser.parse_args(argv)
@@ -160,8 +162,8 @@ def main(argv: list[str] | None = None) -> int:
     print(json.dumps(asdict(plan), indent=0, sort_keys=True))
     experiment = EXPERIMENTS_DIR / args.experiment
     state = latest_state(experiment)
-    extra = " ".join(part for part in (args.train_flags, "--corpus corpus.jsonl" if args.corpus else "", "--init init" if args.init else "") if part)
-    remote = remote_command(args.backbone, plan.steps, args.seed, resume=state is not None, extra=extra)
+    extra = " ".join(part for part in (args.train_flags, "--corpus corpus.jsonl" if args.corpus else "", "--init init" if args.init else "", "--picks picks" if args.picks else "", "--qualified gate.json" if args.qualified else "") if part)
+    remote = remote_command(args.backbone, plan.steps, args.seed, resume=state is not None, extra=extra, picks=bool(args.picks))
     args.minutes = args.minutes or plan.lease_minutes
     args.dry_run = not args.go
     if not args.go:
@@ -177,6 +179,14 @@ def main(argv: list[str] | None = None) -> int:
     uploads = [(str(archive), "/workspace/examples.tar")]
     if args.corpus:
         uploads.append((str(Path(args.corpus)), "/workspace/corpus.jsonl"))
+    if args.picks:
+        packed = experiment / "picks.tar"
+        if not packed.exists():
+            with tarfile.open(packed, "w") as sink:
+                sink.add(Path(args.picks), arcname="picks")
+        uploads.append((str(packed), "/workspace/picks.tar"))
+    if args.qualified:
+        uploads.append((str(Path(args.qualified)), "/workspace/gate.json"))
     if args.init:
         uploads.extend((str(Path(args.init) / name), f"/workspace/init/{name}") for name in ("named_bundle.json", "reader.pt"))
     if state is not None:
