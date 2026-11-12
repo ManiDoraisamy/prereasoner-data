@@ -227,6 +227,26 @@ def value_graph(table: CatalogTable, target: Target, config: UnitsConfig, order)
     return Graph(texts, np.asarray(features, dtype=np.float32), table_edges(kinds, cols, rows), {}, 0)
 
 
+def rendered_graph(columns: list[tuple[str, list[str]]], context: str = "") -> Graph:
+    """A table given as headers and sample values with nothing compiled: its table unit, then each column's name unit and values, kinds and roles unknown. For text that is not a sheet: a property's own schema.org text as a lone header, a corpus instance's columns."""
+    texts, features, kinds, cols, rows = [context], [_features(UNIT_TABLE)], [UNIT_TABLE], [-1], [-1]
+    names: dict[int, int] = {}
+    for col_at, (header, values) in enumerate(columns):
+        names[col_at] = len(texts)
+        texts.append(header)
+        features.append(_features(UNIT_NAME))
+        kinds.append(UNIT_NAME)
+        cols.append(col_at)
+        rows.append(-1)
+        for row_at, value in enumerate(values):
+            texts.append(_clip(value))
+            features.append(_features(UNIT_VALUE))
+            kinds.append(UNIT_VALUE)
+            cols.append(col_at)
+            rows.append(row_at)
+    return Graph(texts, np.asarray(features, dtype=np.float32), table_edges(kinds, cols, rows), names, 0)
+
+
 def word_features(count: int) -> np.ndarray:
     return np.asarray([_features(UNIT_WORD)] * count, dtype=np.float32).reshape(count, FEATURES)
 
@@ -255,4 +275,4 @@ def collate(graphs: list[Graph], vectors: list[torch.Tensor]) -> tuple[torch.Ten
     return inputs, edges, pad
 
 
-__all__ = ["FEATURES", "Graph", "T_BAND", "T_COLUMN", "T_LINE", "T_TABLE", "T_VALUE", "TARGET_KINDS", "Target", "UnitsConfig", "cell_text", "collate", "question_graph", "sampled_lines", "table_context", "table_graphs", "targets_of", "value_graph", "word_features"]
+__all__ = ["FEATURES", "Graph", "T_BAND", "T_COLUMN", "T_LINE", "T_TABLE", "T_VALUE", "TARGET_KINDS", "Target", "UnitsConfig", "cell_text", "collate", "question_graph", "rendered_graph", "sampled_lines", "table_context", "table_graphs", "targets_of", "value_graph", "word_features"]

@@ -127,9 +127,9 @@ def latest_state(experiment: Path) -> Path | None:
     return held[-1] if held else None
 
 
-def remote_command(backbone: str, steps: int, seed: int, *, hidden: int = 384, blocks: int = 3, resume: bool = False) -> str:
+def remote_command(backbone: str, steps: int, seed: int, *, hidden: int = 384, blocks: int = 3, resume: bool = False, extra: str = "") -> str:
     """Unpack, check CUDA by running a kernel, train into out/candidate. A failed run exits 4 with its log's tail; out/ always travels back. Evals come every tenth of the run, and the state is written with them."""
-    train = f"{ALLOC} NAMED_BACKBONE_ONLINE=1 python -m training.named.train --examples examples --experiment pod --out out/candidate --backbone {backbone} --steps {steps} --accumulate 4 --seed {seed} --hidden {hidden} --blocks {blocks} --amp --eval-every {max(500, steps // 10)}" + (" --resume-from resume_state.pt" if resume else "")
+    train = f"{ALLOC} NAMED_BACKBONE_ONLINE=1 python -m training.named.train --examples examples --experiment pod --out out/candidate --backbone {backbone} --steps {steps} --accumulate 4 --seed {seed} --hidden {hidden} --blocks {blocks} --amp --eval-every {max(500, steps // 10)}" + (f" {extra}" if extra else "") + (" --resume-from resume_state.pt" if resume else "")
     return f"cd /workspace && mkdir -p out && tar -xf examples.tar && {PIP}; pip install -q psutil 2>&1 | tail -1; {CUDA_CHECK}; {train} > out/train.log 2>&1 || {{ tail -5 out/train.log; exit 4; }}; tail -2 out/train.log; ls -la out/candidate out/candidate/best"
 
 
@@ -148,6 +148,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--image", default=RECORDED_IMAGE)
     parser.add_argument("--cuda", default=RECORDED_CUDA)
     parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--corpus", help="the schema.org corpus's semantic_instances.jsonl: uploaded, and trained on as table profiles")
+    parser.add_argument("--init", help="a bundle to start from (the step before): uploaded")
+    parser.add_argument("--train-flags", default="", help="more flags for training.named.train, as one string (--link-weight 0 --anchor-steps 300)")
     parser.add_argument("--go", action="store_true", help="lease and pay; without it, only the plan")
     args = parser.parse_args(argv)
     if not NAME.fullmatch(args.experiment):
@@ -157,7 +160,8 @@ def main(argv: list[str] | None = None) -> int:
     print(json.dumps(asdict(plan), indent=0, sort_keys=True))
     experiment = EXPERIMENTS_DIR / args.experiment
     state = latest_state(experiment)
-    remote = remote_command(args.backbone, plan.steps, args.seed, resume=state is not None)
+    extra = " ".join(part for part in (args.train_flags, "--corpus corpus.jsonl" if args.corpus else "", "--init init" if args.init else "") if part)
+    remote = remote_command(args.backbone, plan.steps, args.seed, resume=state is not None, extra=extra)
     args.minutes = args.minutes or plan.lease_minutes
     args.dry_run = not args.go
     if not args.go:
@@ -171,6 +175,10 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit(f"refused: {free:.1f} GB free")
     archive = packed_examples(args.examples, experiment)
     uploads = [(str(archive), "/workspace/examples.tar")]
+    if args.corpus:
+        uploads.append((str(Path(args.corpus)), "/workspace/corpus.jsonl"))
+    if args.init:
+        uploads.extend((str(Path(args.init) / name), f"/workspace/init/{name}") for name in ("named_bundle.json", "reader.pt"))
     if state is not None:
         kept = experiment / "resume_state.pt"
         shutil.copyfile(state, kept)                  # out/ moves aside between attempts: the upload needs a path that stays

@@ -3,6 +3,9 @@
 Losses, each on named outputs. Every coordinate counts its own log loss, unweighted, so what it outputs is a probability: the structure tier's names always; each basis property (engine/named/model.py) on units whose meaning is known, the anchor that keeps each output its property's. A link's sum means how much two readings share.
   target coordinates   a column's, value's, line's and band's structure names, always: what the compiler knows (column role, value kind, line role); and the basis properties where Gemini's label speaks (training/factory/schema_labels.py): a basis property at the threshold is on and the rest off, a property outside the basis or none all off, an unsure label nothing
   word coordinates     the same head over the question's words: a word in a link to a column or a value reads that column's properties as known; other words have no meaning label
+  self-anchors         each basis property's own schema.org label and comment, as a lone header, reads that property at 1; a property the frozen base encoder reads at RELATED_AT or more on that text keeps that soft value, every other goes to 0. Only schema.org's text: no structure definition is read. --anchor-steps trains the property rows alone on them first (backbone and relational blocks frozen); afterwards they stay as an auxiliary loss
+  profiles             --corpus: main's schema.org corpus (training/schema_org, rendered tables of Wikidata and publisher instances with the set of properties each shows): the highest reading of each property over a table's columns must be its set, the table's profile, from which its class is the superposition. The first part of an instance's text names its source relation and so its class: never read
+Gemini names a single property per column, so the properties that hold together with it on one column are unknown there, not absent: <examples>/co_held.json lists them, measured on a multi-label pass over one tab of each of 600 train families, and they are masked on a unit labelled with the property alone. Properties whose texts merely read alike (RELATED_AT) keep their negatives: a start date is not an end date. A label of a property outside the basis says nothing of the basis and is masked whole.
   closed heads         form, aggregate, direction, size, entity, comparison, row and calc operators, answer type, blank, how many conditions; word role and calc side per word
   links                link(span, target) over the target and its in-sheet hard negatives: the sum over named coordinates of weight x question x target, plus named rule evidence and the word's role. The one formula of engine/named/links.py, its weights learned here. Beside the candidates stands "links to nothing", at a learned bias per kind of target: a content word no link stands on is an example of it. The bias is what a coordinate reads below at serving, so each kind needs its own such examples: a word linked to a column links to no value, and one linked to a value to no column. (With examples on columns alone the value bias stayed at .58, under what a value read from its word's role alone, and spurious values won: 57 of 207 misses lost most on the value slot.)
   open                 the separate unnamed channel, on the same candidates. It trains its own two projections and, unless --open-detached, the shared encoder.
@@ -38,9 +41,9 @@ from engine.named.backbone import question_words
 from engine.named.index import ClassSignatures
 from engine.named.links import LinkWeights, RULES, SLOTS_OF_LINK_KIND, rule_evidence, is_stated_word
 from engine.named.model import LINK_KINDS, NamedReader, ReaderConfig
-from engine.named.names import CALC_SIDES, CLASS_PREFIX, CLOSED_HEADS, LEFT, RIGHT, WORD_ROLE_CLASSES, NameSet, closed_labels, fine_answer_type, load_name_set, meaning_names, property_texts
+from engine.named.names import CALC_SIDES, CLASS_PREFIX, CLOSED_HEADS, LEFT, MEANING_PREFIX, RIGHT, WORD_ROLE_CLASSES, NameSet, closed_labels, fine_answer_type, load_name_set, meaning_names, property_texts
 from engine.named.bundle import write_bundle
-from engine.named.units import T_BAND, T_COLUMN, T_LINE, T_TABLE, T_VALUE, Graph, Target, collate, question_graph, table_graphs, targets_of, value_graph
+from engine.named.units import T_BAND, T_COLUMN, T_LINE, T_TABLE, T_VALUE, Graph, Target, collate, question_graph, rendered_graph, table_graphs, targets_of, value_graph
 from engine.program.catalog import Catalog, CatalogTable
 from engine.program.decoder import Decoder
 from engine.program.names import A_NAME, ROLE_CONTEXT, ROLE_FILTER, ROLE_KEY, ROLE_MEASURE, SLOT_ANSWER_TYPE, SLOT_CALC_LEFT, slot_of
@@ -58,8 +61,12 @@ VALUE_NEGATIVES = 16
 TABLES_PER_STEP = 3
 UNLINKED_WORDS = 2         # a question's content words no link stands on, read as links to nothing
 ROW_NAMES = 4.0            # about how many names a target or a word holds: scales the coordinates' summed log loss to one row's worth
-LOSS_WEIGHTS = {"target": 1.0, "meaning": 1.0, "word": 1.0, "closed": 1.0, "role": 0.5, "side": 0.25, "link": 2.0, "open": 0.5}
+LOSS_WEIGHTS = {"target": 1.0, "meaning": 1.0, "word": 1.0, "closed": 1.0, "role": 0.5, "side": 0.25, "link": 2.0, "open": 0.5, "anchor": 0.25, "profile": 1.0}
 DESCRIPTION_TOKENS = 64
+RELATED_AT = 0.1           # the frozen base encoder reads a property at this or more on another's own text: related, a soft target there and masked on a labelled unit
+ANCHOR_EVERY = 4           # the self-anchors and a corpus batch join every this many steps
+CORPUS_PER_STEP = 16
+CORPUS_VALUES = 6
 
 
 @dataclass
@@ -78,6 +85,12 @@ class TrainConfig:
     amp: bool = False
     open_detached: bool = False
     augment: dict = field(default_factory=lambda: dict(TRAINING_SHARES))
+    link_weight: float = LOSS_WEIGHTS["link"]     # 0: anchoring alone, the links' weights left where they start
+    open_weight: float = LOSS_WEIGHTS["open"]
+    anchor_steps: int = 0          # the property rows alone on the self-anchors first
+    corpus: str | None = None      # the schema.org corpus's instances (semantic_instances.jsonl)
+    co_held: str | None = None     # <examples>/co_held.json: the properties that hold together on one column
+    init: str | None = None        # a bundle to start from: the step before this one
     resume: str | None = None      # a last_state.pt to go on from
     stop_at: int | None = None     # stop here with the state written, for a test
 
@@ -115,14 +128,14 @@ class Batch:
 
 
 def _labelled_names(label: dict | None) -> list[str] | None:
-    """What a column's label says of the basis: its properties at the threshold; [] when it said none or named a property outside the basis at the threshold (none of the basis holds); None when there is no label or it is unsure."""
+    """What a column's label says of the basis: its properties at the threshold; [] when it said no schema.org property fits; None (unknown, masked) when there is no label, it is unsure, or it names a property outside the basis, which says nothing of the basis."""
     if not label:
         return None
     if str(label.get("raw", "")).lower() == "none":
         return []
     if int(label.get("conf", 0)) < THRESHOLD:
         return None
-    return list(label.get("coordinates") or ())
+    return list(label.get("coordinates") or ()) or None
 
 
 def _value_class(label: dict | None) -> list[str]:
@@ -483,25 +496,158 @@ def _row_loss(logits: torch.Tensor, labels: torch.Tensor, mask: torch.Tensor) ->
     return losses.sum() / max(1, logits.shape[0]) / ROW_NAMES
 
 
-def _meaning_loss(logits: torch.Tensor, labelled: list[list[str] | None], names: NameSet) -> torch.Tensor | None:
-    """The anchor: each basis property's own log loss on the rows whose meaning is known, its labelled properties on and the rest off. None when no row is known."""
-    rows, wanted = [], []
+def meaning_targets(labelled: list[list[str] | None], names: NameSet, related: torch.Tensor | None, device) -> tuple[list[int], torch.Tensor, torch.Tensor]:
+    """(the known rows, their targets, their masks): a labelled property on, the properties related to it masked, the rest off."""
+    rows, wanted, masks = [], [], []
     for at, held in enumerate(labelled):
         if held is None:
             continue
-        target = torch.zeros(logits.shape[-1], device=logits.device)
-        for name in held:
-            position = names.at(name)
-            if position is not None:
-                target[position - names.meaning_start] = 1.0
+        target = torch.zeros(names.meaning, device=device)
+        mask = torch.ones(names.meaning, device=device)
+        on = [names.at(name) - names.meaning_start for name in held if names.at(name) is not None]
+        for position in on:
+            if related is not None:
+                mask[related[position]] = 0.0
+        for position in on:
+            target[position] = 1.0
+            mask[position] = 1.0
         rows.append(at)
         wanted.append(target)
+        masks.append(mask)
+    empty = torch.zeros((0, names.meaning), device=device)
+    return rows, (torch.stack(wanted) if rows else empty), (torch.stack(masks) if rows else empty)
+
+
+def _meaning_loss(logits: torch.Tensor, labelled: list[list[str] | None], names: NameSet, related: torch.Tensor | None = None) -> torch.Tensor | None:
+    """The anchor: each basis property's own log loss on the rows whose meaning is known. None when no row is known."""
+    rows, wanted, masks = meaning_targets(labelled, names, related, logits.device)
     if not rows:
         return None
-    return _row_loss(logits[torch.as_tensor(rows, device=logits.device)], torch.stack(wanted), torch.ones((len(rows), logits.shape[-1]), device=logits.device))
+    return _row_loss(logits[torch.as_tensor(rows, device=logits.device)], wanted, masks)
 
 
-def losses_of(reader: NamedReader, names: NameSet, batch: Batch, out: Forward, open_detached: bool, device: str) -> dict[str, torch.Tensor]:
+@dataclass
+class SelfAnchors:
+    """Each basis property's own schema.org text as a lone header (its label and comment, then its label alone), what each should read, and which properties' texts read alike."""
+    graphs: list[Graph]
+    targets: torch.Tensor       # [texts, properties]
+    related: torch.Tensor       # [properties, properties] bool, symmetric, never a property with itself
+
+
+def co_held_matrix(path: str | Path, names: NameSet, device: str) -> torch.Tensor:
+    """[properties, properties] bool: row P marks the properties that hold together with P on one column, masked on a unit labelled P alone."""
+    out = torch.zeros((names.meaning, names.meaning), dtype=torch.bool, device=device)
+    for name, others in json.loads(Path(path).read_text(encoding="utf-8"))["co_held"].items():
+        for other in others:
+            if names.at(name) is not None and names.at(other) is not None:
+                out[names.at(name) - names.meaning_start, names.at(other) - names.meaning_start] = True
+    return out
+
+
+def self_anchors(backbone, reader: NamedReader, names: NameSet, device: str) -> SelfAnchors:
+    """Built once, at the start, from the base encoder and the outputs' starting rows (read_descriptions), before any state is loaded: a text's own property 1; a property read at RELATED_AT or more keeps that value; every other 0."""
+    text_of = dict(zip(meaning_names(), property_texts()))
+    texts = [text_of[name] for name in names.names[names.meaning_start:]]
+    was_training = backbone.training
+    backbone.eval()
+    with torch.no_grad():
+        distinct, vectors = backbone.encode_texts(texts, max_tokens=DESCRIPTION_TOKENS, batch=64)
+        at = {text: row for row, text in enumerate(distinct)}
+        base = torch.stack([vectors[at[text]] for text in texts]).float()
+        read = torch.sigmoid(reader.meaning_text(nn.functional.normalize(base, dim=-1)))
+    backbone.train(was_training)
+    targets = torch.where(read >= RELATED_AT, read, torch.zeros_like(read))
+    targets.fill_diagonal_(1.0)
+    related = (targets >= RELATED_AT) | (targets.T >= RELATED_AT)
+    related.fill_diagonal_(False)
+    labels = [text.split(":", 1)[0] for text in texts]
+    return SelfAnchors([rendered_graph([(text, [])]) for text in (*texts, *labels)], torch.cat([targets, targets]).to(device), related.to(device))
+
+
+def _read_rendered(backbone, reader: NamedReader, graphs: list[Graph], tokens: int) -> tuple[torch.Tensor, list[torch.Tensor]]:
+    """(hidden [graphs, units, hidden], each graph's units' own text vectors)."""
+    distinct, vectors = backbone.encode_texts([text for graph in graphs for text in graph.texts], max_tokens=tokens, batch=64)
+    lookup = {text: row for row, text in enumerate(distinct)}
+    bases = [vectors[torch.as_tensor([lookup[text] for text in graph.texts], device=vectors.device)].float() for graph in graphs]
+    inputs, edges, pad = collate(graphs, bases)
+    return reader.hidden(inputs, edges, pad).float(), bases
+
+
+def anchor_loss(backbone, reader: NamedReader, anchors: SelfAnchors) -> torch.Tensor:
+    hidden, bases = _read_rendered(backbone, reader, anchors.graphs, DESCRIPTION_TOKENS)
+    logits = reader.meaning_logits(hidden[:, 1], torch.stack([base[1] for base in bases]))     # unit 1: the header after the table unit
+    return _row_loss(logits, anchors.targets, torch.ones_like(anchors.targets))
+
+
+def train_self_anchors(backbone, reader: NamedReader, anchors: SelfAnchors, steps: int, lr: float) -> dict:
+    """Step 1: the property rows alone on the self-anchors, backbone and relational blocks frozen (read once). Returns what the check needs: every text's reading of its own property, the highest reading of an unrelated one, and the pairs still read at 0.3 or more."""
+    was_backbone, was_reader = backbone.training, reader.training
+    backbone.eval()
+    reader.eval()
+    with torch.no_grad():
+        hidden, bases = _read_rendered(backbone, reader, anchors.graphs, DESCRIPTION_TOKENS)
+        hidden, base = hidden[:, 1], torch.stack([item[1] for item in bases])
+    rows = [reader.meaning_text.weight, reader.meaning_text.bias, reader.meaning_read.weight, reader.meaning_read.bias]
+    optimizer = torch.optim.Adam(rows, lr=lr)
+    with torch.enable_grad():
+        for _ in range(steps):
+            loss = _row_loss(reader.meaning_logits(hidden, base), anchors.targets, torch.ones_like(anchors.targets))
+            optimizer.zero_grad(set_to_none=True)
+            loss.backward()
+            optimizer.step()
+    with torch.no_grad():
+        read = torch.sigmoid(reader.meaning_logits(hidden, base))[: anchors.related.shape[0]]
+    backbone.train(was_backbone)
+    reader.train(was_reader)
+    own = read.diagonal()
+    unrelated = read.masked_fill(anchors.related | torch.eye(len(own), dtype=torch.bool, device=read.device), 0.0)
+    close = [(int(a), int(b), round(float(read[a, b]), 3)) for a, b in (read * anchors.related).ge(0.3).nonzero().tolist()]
+    return {"steps": steps, "own_lowest": round(float(own.min()), 4), "unrelated_highest": round(float(unrelated.max()), 4), "related_pairs": int(anchors.related.sum()) // 2, "read_at_0.3_or_more": close}
+
+
+@dataclass
+class CorpusInstance:
+    """One rendered table of the schema.org corpus: its columns as (header, sample values), the basis properties it shows, its classes, its split."""
+    columns: list[tuple[str, list[str]]]
+    properties: list[str]
+    classes: list[str]
+    split: str
+
+
+def read_corpus(path: str | Path, names: NameSet) -> list[CorpusInstance]:
+    """training/schema_org's semantic_instances.jsonl. An instance's text is 'table <source relation> | header: values; ... | ...': the first part is dropped, as it names the class."""
+    out = []
+    with open(path, encoding="utf-8") as source:
+        for line in source:
+            row = json.loads(line)
+            columns = []
+            for part in row["text"].split(" | ")[1:]:
+                header, _, values = part.partition(": ")
+                columns.append((header, [value for value in values.split("; ") if value][:CORPUS_VALUES]))
+            if columns:
+                shown = [f"{MEANING_PREFIX}{uri.rsplit('/', 1)[-1]}" for uri in row["properties"]]
+                out.append(CorpusInstance(columns, [name for name in shown if names.at(name) is not None], [uri.rsplit("/", 1)[-1] for uri in row["classes"]], row["split"]))
+    return out
+
+
+def profile_logits(backbone, reader: NamedReader, config: ReaderConfig, instances: list[CorpusInstance]) -> torch.Tensor:
+    """[instances, properties]: each table's profile, the highest logit of each property over its columns' name units."""
+    graphs = [rendered_graph(instance.columns) for instance in instances]
+    hidden, bases = _read_rendered(backbone, reader, graphs, config.text_tokens)
+    profiles = []
+    for at, graph in enumerate(graphs):
+        units = torch.as_tensor(sorted(graph.columns.values()), device=hidden.device)
+        profiles.append(reader.meaning_logits(hidden[at, units], bases[at][units]).max(0).values)
+    return torch.stack(profiles)
+
+
+def profile_loss(backbone, reader: NamedReader, config: ReaderConfig, names: NameSet, instances: list[CorpusInstance], related: torch.Tensor | None) -> torch.Tensor:
+    logits = profile_logits(backbone, reader, config, instances)
+    _, wanted, masks = meaning_targets([instance.properties for instance in instances], names, related, logits.device)
+    return _row_loss(logits, wanted, masks)
+
+
+def losses_of(reader: NamedReader, names: NameSet, batch: Batch, out: Forward, open_detached: bool, device: str, related: torch.Tensor | None = None) -> dict[str, torch.Tensor]:
     structure_labels = torch.zeros((len(batch.targets), names.meaning_start), device=device)
     for at, held in enumerate(batch.positive):
         for name in held:
@@ -511,7 +657,7 @@ def losses_of(reader: NamedReader, names: NameSet, batch: Batch, out: Forward, o
     structure_logits = reader.structure(out.target_hidden)
     zero = structure_logits.sum() * 0.0
     result = {"target": _row_loss(structure_logits, structure_labels, torch.ones_like(structure_labels))}
-    meaning = _meaning_loss(reader.meaning_logits(out.target_hidden, out.target_base), batch.meaning, names)
+    meaning = _meaning_loss(reader.meaning_logits(out.target_hidden, out.target_base), batch.meaning, names, related)
     result["meaning"] = meaning if meaning is not None else zero
     word_losses = []
     role_losses = []
@@ -519,7 +665,7 @@ def losses_of(reader: NamedReader, names: NameSet, batch: Batch, out: Forward, o
     for at, word_names in enumerate(batch.word_positive):
         if not len(out.word_hidden[at]):
             continue
-        word_meaning = _meaning_loss(reader.meaning_logits(out.word_hidden[at], out.word_base[at]), word_names, names)
+        word_meaning = _meaning_loss(reader.meaning_logits(out.word_hidden[at], out.word_base[at]), word_names, names, related)
         if word_meaning is not None:
             word_losses.append(word_meaning)
         role_losses.append(nn.functional.cross_entropy(reader.word_role(out.word_hidden[at]), torch.as_tensor(batch.word_role[at], device=device)))
@@ -643,12 +789,20 @@ def train(examples: list[TabExample], names: NameSet, backbone: nn.Module, confi
     reader_config = config.reader
     reader = NamedReader(backbone.dim, names.meaning_start, names.meaning, reader_config).to(device).float().train()
     read_descriptions(backbone, reader, names)
+    anchors = self_anchors(backbone, reader, names, device) if names.meaning else None
+    out = Path(out)
+    out.mkdir(parents=True, exist_ok=True)
+    if anchors is not None and config.anchor_steps and not config.resume and not config.init:
+        (out / "self_anchors.json").write_text(json.dumps({**train_self_anchors(backbone, reader, anchors, config.anchor_steps, config.head_lr), "names": list(names.names[names.meaning_start:])}, indent=1) + "\n", encoding="utf-8", newline="\n")
+    if config.init and not config.resume:
+        start_from(config.init, backbone, reader, names, device)
+    corpus = [instance for instance in read_corpus(config.corpus, names) if instance.split == "train"] if config.corpus else []
+    weights_of_losses = {**LOSS_WEIGHTS, "link": config.link_weight, "open": config.open_weight}
+    co_held = co_held_matrix(config.co_held, names, device) if config.co_held else None
     backbone_parameters = [parameter for parameter in backbone.parameters() if parameter.requires_grad]
     optimizer = torch.optim.AdamW([{"params": backbone_parameters, "lr": config.lr}, {"params": list(reader.parameters()), "lr": config.head_lr}], weight_decay=config.weight_decay)
     warmup = max(1, config.steps // 20)
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lambda step: min(1.0, (step + 1) / warmup) * max(0.0, (config.steps - step) / max(1, config.steps - warmup)))
-    out = Path(out)
-    out.mkdir(parents=True, exist_ok=True)
     (out / "held_families.json").write_text(json.dumps(sorted({example.family for example in held}), indent=0), encoding="utf-8", newline="\n")
     rng = random.Random(config.seed)
     order = sorted(kept, key=lambda item: item.key)
@@ -684,8 +838,14 @@ def train(examples: list[TabExample], names: NameSet, backbone: nn.Module, confi
             with torch.autocast(device_type=device, dtype=torch.bfloat16, enabled=use_amp):
                 outputs = run_batch(backbone, reader, reader_config, batch, device)
             with torch.autocast(device_type=device, enabled=False):
-                parts = losses_of(reader, names, batch, outputs, config.open_detached, device)
-                loss = sum(LOSS_WEIGHTS[name] * value for name, value in parts.items())
+                parts = losses_of(reader, names, batch, outputs, config.open_detached, device, co_held)
+            if anchors is not None and step % ANCHOR_EVERY == 0:
+                with torch.autocast(device_type=device, dtype=torch.bfloat16, enabled=use_amp):
+                    parts["anchor"] = anchor_loss(backbone, reader, anchors)
+                    if corpus:
+                        parts["profile"] = profile_loss(backbone, reader, reader_config, names, rng.sample(corpus, min(CORPUS_PER_STEP, len(corpus))), None)     # a corpus table's property set is whole
+            with torch.autocast(device_type=device, enabled=False):
+                loss = sum(weights_of_losses[name] * value.float() for name, value in parts.items())
             (loss / config.accumulate).backward()
             if (step + 1) % config.accumulate == 0:
                 nn.utils.clip_grad_norm_([*backbone_parameters, *reader.parameters()], 1.0)
@@ -715,8 +875,10 @@ def train(examples: list[TabExample], names: NameSet, backbone: nn.Module, confi
                 log.flush()
                 if log_print:
                     print(json.dumps(metrics), flush=True)
-                if metrics["link_top1"] > best:
-                    best = metrics["link_top1"]
+                # with the links untrained (anchoring alone) the last measure is the one kept
+                reached = metrics["link_top1"] if config.link_weight > 0 else float(step)
+                if reached > best:
+                    best = reached
                     write_bundle(out / "best", backbone, reader, names, reader_config, link_weights_of(reader), signatures=signatures, record={**(record or {}), "metrics": metrics, "step": step, "seed": config.seed})
                     (out / "best.json").write_text(json.dumps({**metrics, **(record or {})}, indent=1, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
             if step % config.eval_every == 0 and step < config.steps:
@@ -730,6 +892,25 @@ def train(examples: list[TabExample], names: NameSet, backbone: nn.Module, confi
     if not held:
         write_bundle(out / "best", backbone, reader, names, reader_config, link_weights_of(reader), signatures=signatures, record={**(record or {}), "step": step, "seed": config.seed})
     return {"steps": step, "resumed_at": begin, "loss_first": round(float(np.mean(first or last or [0.0])), 4), "loss_last": round(float(np.mean(last or first or [0.0])), 4), "seconds": round(time.time() - started, 1), "train_tabs": len(kept), "held_tabs": len(held), "best_top1": best, "seconds_per_step": round((time.time() - started) / max(1, step - begin), 3), "build_seconds_per_step": round(spent["build"] / max(1, step), 3), "texts_per_step": round(spent["texts"] / max(1, step), 1), "links_per_step": round(spent["links"] / max(1, step), 1)}
+
+
+def start_from(folder: str | Path, backbone, reader: NamedReader, names: NameSet, device: str) -> None:
+    """Start from a bundle, the step before this one: its tensors, and its link weights back into the parameters they came from."""
+    from engine.named.bundle import BUNDLE_META, BUNDLE_STATE
+    document = json.loads((Path(folder) / BUNDLE_META).read_text(encoding="utf-8"))
+    if document["names_sha"] != names.sha:
+        raise ValueError("a start bundle of another name set")
+    state = torch.load(Path(folder) / BUNDLE_STATE, map_location=device, weights_only=True)
+    backbone.load_state_dict({name[len("backbone."):]: value for name, value in state.items() if name.startswith("backbone.")}, strict=False)
+    reader.load_state_dict({name[len("reader."):]: value for name, value in state.items() if name.startswith("reader.")}, strict=False)
+    weights = LinkWeights.from_record(document["weights"])
+    raw = lambda values: torch.log(torch.expm1(torch.as_tensor(values, dtype=torch.float32, device=device).clamp(min=1e-4)))     # softplus undone
+    with torch.no_grad():
+        reader.raw_coordinate_weights.copy_(raw(weights.coordinates))
+        reader.raw_rule_weights.copy_(raw([weights.rules[rule] for rule in RULES]))
+        reader.raw_role_weight.copy_(raw(weights.role))
+        reader.raw_closed_weight.copy_(raw(weights.closed))
+        reader.raw_link_bias.copy_(raw([weights.bias(SLOTS_OF_LINK_KIND[kind][0]) for kind in LINK_KINDS]))
 
 
 def read_descriptions(backbone, reader: NamedReader, names: NameSet) -> None:
@@ -771,6 +952,11 @@ def main() -> None:
     parser.add_argument("--resume-from", help="a last_state.pt to go on from")
     parser.add_argument("--open-detached", action="store_true")
     parser.add_argument("--no-augment", action="store_true")
+    parser.add_argument("--link-weight", type=float, default=LOSS_WEIGHTS["link"], help="0: anchoring alone")
+    parser.add_argument("--open-weight", type=float, default=LOSS_WEIGHTS["open"])
+    parser.add_argument("--anchor-steps", type=int, default=0, help="the property rows alone on the self-anchors first")
+    parser.add_argument("--corpus", help="the schema.org corpus's semantic_instances.jsonl")
+    parser.add_argument("--init", help="a bundle to start from")
     args = parser.parse_args()
     out = Path(args.out) if args.out else EXPERIMENTS_DIR / args.experiment / "out"
     record = {"experiment": args.experiment, **_commit(), "examples": args.examples, "fake": args.fake, "flags": {k: v for k, v in vars(args).items() if k not in ("examples", "experiment", "out", "fake")}}
@@ -791,7 +977,8 @@ def main() -> None:
         signatures = ClassSignatures.from_ontology()
         reader_config = ReaderConfig(backbone=args.backbone, backbone_layers=args.layers, hidden=args.hidden, blocks=args.blocks, sample_rows=args.sample_rows, window_columns=args.window_columns, keep=args.keep)
     record["names_sha"] = names.sha
-    config = TrainConfig(reader=reader_config, steps=args.steps, accumulate=args.accumulate, questions=args.questions, lr=args.lr, head_lr=args.head_lr, seed=args.seed, held_share=args.held_share, eval_every=args.eval_every, eval_tabs=args.eval_tabs, amp=args.amp, open_detached=args.open_detached, augment={} if args.no_augment else dict(TRAINING_SHARES), resume=args.resume_from)
+    config = TrainConfig(reader=reader_config, steps=args.steps, accumulate=args.accumulate, questions=args.questions, lr=args.lr, head_lr=args.head_lr, seed=args.seed, held_share=args.held_share, eval_every=args.eval_every, eval_tabs=args.eval_tabs, amp=args.amp, open_detached=args.open_detached, augment={} if args.no_augment else dict(TRAINING_SHARES), resume=args.resume_from, link_weight=args.link_weight, open_weight=args.open_weight, anchor_steps=args.anchor_steps, corpus=args.corpus, init=args.init,
+                         co_held=str(Path(args.examples) / "co_held.json") if args.examples and (Path(args.examples) / "co_held.json").exists() else None)
     summary = train(examples, names, backbone, config, out, record=record, signatures=signatures)
     (out / "summary.json").write_text(json.dumps({**summary, **record}, indent=1, sort_keys=True, default=str) + "\n", encoding="utf-8", newline="\n")
     print(json.dumps(summary, sort_keys=True), flush=True)

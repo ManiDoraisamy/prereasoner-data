@@ -632,6 +632,103 @@ def test_the_meaning_anchor_is_each_propertys_own_log_loss() -> None:
     assert abs(float(loss) - expected) < 1e-5
 
 
+def test_self_anchors_are_schema_orgs_own_text_and_nothing_of_ours() -> None:
+    """Step 1: each basis property's own schema.org text reads that property at 1; a related property keeps its soft value, an unrelated one goes to 0; the property rows alone train on them. No structure definition is anchor text."""
+    from training.named.train import RELATED_AT, self_anchors, train_self_anchors
+    names = fake_name_set()
+    backbone = HashBackbone()
+    torch.manual_seed(0)
+    reader = NamedReader(backbone.dim, names.meaning_start, names.meaning, ReaderConfig(backbone="hash", hidden=36, blocks=1, open_dim=16)).float()
+    read_descriptions(backbone, reader, names)
+    anchors = self_anchors(backbone, reader, names, "cpu")
+    count = names.meaning
+    assert anchors.targets.shape == (2 * count, count) and torch.equal(anchors.targets[:count].diagonal(), torch.ones(count))
+    assert torch.equal(anchors.related, anchors.related.T) and not anchors.related.diagonal().any()
+    off = anchors.targets[:count][~torch.eye(count, dtype=torch.bool)]
+    assert bool(((off == 0) | (off >= RELATED_AT)).all()), "an unrelated property's target is 0, a related one keeps its soft value"
+    text_of = dict(zip(meaning_names(), property_texts()))
+    assert [graph.texts[1] for graph in anchors.graphs[:count]] == [text_of[name] for name in MEANINGS], "the anchor text is the property's own schema.org text"
+    before = {name: value.clone() for name, value in reader.state_dict().items()}
+    check = train_self_anchors(backbone, reader, anchors, 200, 0.05)
+    assert check["own_lowest"] >= 0.9 and check["unrelated_highest"] <= 0.1, check
+    moved = {name for name, value in reader.state_dict().items() if not torch.equal(value, before[name])}
+    assert moved and all(name.startswith(("meaning_text", "meaning_read")) for name in moved), "only the property rows train on the self-anchors"
+
+
+def test_unknown_and_related_properties_are_masked_never_trained_as_zero() -> None:
+    from training.named.train import _labelled_names, meaning_targets
+    names = fake_name_set()
+    assert _labelled_names(None) is None and _labelled_names({"raw": "price", "conf": 3, "coordinates": [MEANINGS[0]]}) is None, "no label, or an unsure one: unknown"
+    assert _labelled_names({"raw": "legalName", "conf": 8, "coordinates": []}) is None, "a property outside the basis says nothing of the basis"
+    assert _labelled_names({"raw": "none", "conf": 8, "coordinates": []}) == [] and _labelled_names({"raw": "name", "conf": 8, "coordinates": [MEANINGS[0]]}) == [MEANINGS[0]]
+    related = torch.zeros((names.meaning, names.meaning), dtype=torch.bool)
+    related[0, 1] = related[1, 0] = True
+    rows, wanted, masks = meaning_targets([[MEANINGS[0]], None, []], names, related, "cpu")
+    assert rows == [0, 2]
+    assert wanted[0].tolist() == [1.0, 0.0, 0.0, 0.0, 0.0, 0.0] and masks[0].tolist() == [1.0, 0.0, 1.0, 1.0, 1.0, 1.0], "the labelled property on, its related one masked, the rest off"
+    assert wanted[1].sum() == 0 and masks[1].sum() == names.meaning, "a column no schema.org property fits: every property off"
+
+
+def test_a_corpus_table_is_read_as_its_property_profile_without_its_class_name() -> None:
+    """Steps 2-3: a corpus instance is its columns; the part of its text that names the source relation, and so the class, is never read. The profile is the highest reading of each property over the columns."""
+    from engine.named.units import rendered_graph
+    from training.named.train import profile_logits, profile_loss, read_corpus
+    names = fake_name_set()
+    row = {"text": "table wikidata Movie | title: Alpha; Beta | made in: Peru", "properties": ["https://schema.org/name", "https://schema.org/director", "https://schema.org/location"],
+           "classes": ["https://schema.org/Movie"], "split": "train"}
+    with tempfile.TemporaryDirectory() as folder:
+        path = Path(folder) / "corpus.jsonl"
+        path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+        corpus = read_corpus(path, names)
+    assert corpus[0].columns == [("title", ["Alpha", "Beta"]), ("made in", ["Peru"])] and corpus[0].classes == ["Movie"]
+    assert corpus[0].properties == ["schema:name", "schema:location"], "the basis properties it shows; one outside the name set is not a label"
+    backbone = HashBackbone()
+    torch.manual_seed(0)
+    config = ReaderConfig(backbone="hash", hidden=36, blocks=1, open_dim=16)
+    reader = NamedReader(backbone.dim, names.meaning_start, names.meaning, config).float()
+    read_descriptions(backbone, reader, names)
+    assert not any("Movie" in text for text in rendered_graph(corpus[0].columns).texts)
+    with torch.no_grad():
+        profile = profile_logits(backbone, reader, config, corpus)
+        assert profile.shape == (1, names.meaning) and float(profile_loss(backbone, reader, config, names, corpus, None)) > 0
+
+
+def test_a_step_starts_from_the_bundle_of_the_step_before() -> None:
+    from engine.named.bundle import write_bundle
+    from training.named.train import link_weights_of, start_from
+    names = fake_name_set()
+    backbone = HashBackbone()
+    config = ReaderConfig(backbone="hash", hidden=36, blocks=1, open_dim=16)
+    torch.manual_seed(1)
+    reader = NamedReader(backbone.dim, names.meaning_start, names.meaning, config).float()
+    with torch.no_grad():
+        reader.raw_coordinate_weights.normal_()
+        reader.raw_link_bias.normal_()
+    with tempfile.TemporaryDirectory() as folder:
+        write_bundle(folder, backbone, reader, names, config, link_weights_of(reader))
+        torch.manual_seed(2)
+        again = NamedReader(backbone.dim, names.meaning_start, names.meaning, config).float()
+        start_from(folder, backbone, again, names, "cpu")
+    assert np.allclose(link_weights_of(again).coordinates, link_weights_of(reader).coordinates, atol=1e-4) and link_weights_of(again).slot_biases == link_weights_of(reader).slot_biases
+    assert all(torch.equal(value, again.state_dict()[name]) for name, value in reader.state_dict().items() if not name.startswith("raw_"))
+
+
+def test_anchoring_alone_trains_with_the_corpus_and_keeps_the_last_measure() -> None:
+    """Steps 1-3 as one run on the fake: the self-anchors first, then anchoring with the links untrained, a corpus batch beside the sheets."""
+    row = {"text": "table x.y | counterparty: Aquila; Duke | region: East", "properties": ["https://schema.org/name", "https://schema.org/location"], "classes": [], "split": "train"}
+    with tempfile.TemporaryDirectory() as folder:
+        corpus = Path(folder) / "corpus.jsonl"
+        corpus.write_text("".join(json.dumps(row) + "\n" for _ in range(4)), encoding="utf-8")
+        config = TrainConfig(reader=ReaderConfig(backbone="hash", hidden=36, blocks=1, open_dim=16, sample_rows=3), steps=9, questions=6, seed=0, held_share=0.2, eval_every=4, eval_tabs=2,
+                             link_weight=0.0, open_weight=0.0, anchor_steps=20, corpus=str(corpus))
+        out = Path(folder) / "out"
+        summary = train(fake_examples(6), fake_name_set(), HashBackbone(), config, out, log_print=False)
+        log = [json.loads(line) for line in (out / "log.jsonl").read_text(encoding="utf-8").splitlines()]
+        check = json.loads((out / "self_anchors.json").read_text(encoding="utf-8"))
+    assert summary["steps"] == 9 and summary["best_top1"] == 9.0, "with the links untrained the last measure is kept"
+    assert check["steps"] == 20 and any("anchor" in row and "profile" in row for row in log)
+
+
 def test_batch_has_in_sheet_hard_negatives() -> None:
     import random
     example = fake_examples(1)[0]
