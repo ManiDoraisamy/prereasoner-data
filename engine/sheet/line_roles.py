@@ -1,26 +1,13 @@
-"""Line roles, in the signal order the evidence gives: printed lines by rule from words, formulas and style (rules reach them: total recall .81 to .96); header lines by the small line model where rules stall; bands, notes, titles and records by rule from where each line sits."""
+"""Line roles, in the signal order the evidence gives: printed lines by rule from formulas, arithmetic and style (rules reach them: total recall .81 to .96); header lines by the small line model where rules stall; bands, notes, titles and records by rule from where each line sits."""
 from __future__ import annotations
 
-from collections import Counter
 
 from engine.sheet.grid import Grid
 from engine.sheet.line_facts import LineFacts, line_facts
 from engine.sheet.line_model import final_scores, line_features, load_model
 from engine.sheet.names import (BAND, HEADER, NOTE, RECORD, S_ABOVE_TABLE, S_ALONE_AFTER_GAP, S_ALONE_AFTER_TOTAL, S_ALONE_BEFORE_HEADER, S_ALONE_STYLED, S_ARITHMETIC_TIE, S_AUTOFILTER_TOP, S_BELOW_TABLE, S_FIGURES, S_FORMULA_CLOSES_BLOCK,
-                                S_FORMULA_COMPUTED, S_FORMULA_TOTAL, S_FROZEN_LAST, S_JOINED_ABOVE, S_JOINED_BELOW, S_LABEL_VALUE, S_MERGED_OVER_COLUMNS, S_MODEL, S_NAMES_BODY, S_STYLE_OF_HEADER, S_TEXT_LINE, S_TOTAL_WORD, S_TOTAL_WORD_IN_KEY, TITLE, TOTAL)
+                                S_FORMULA_COMPUTED, S_FORMULA_TOTAL, S_FROZEN_LAST, S_JOINED_ABOVE, S_JOINED_BELOW, S_LABEL_VALUE, S_MERGED_OVER_COLUMNS, S_MODEL, S_NAMES_BODY, S_STYLE_OF_HEADER, S_TEXT_LINE, TITLE, TOTAL)
 
-_WORD_ON_MOST_LINES = 8
-
-
-def words_in_keys(facts: dict[int, LineFacts], worded: list[int]) -> set[int]:
-    """When the total word sits on most figure lines it may be no mark at all: a pasted pivot's records all end in it. Such a line is a record only when the word is inside the record's own key and its figures add up nothing above them. A grand total, a word beside a blank key (an invoice's "Ticket Total") and a line that ties keep their printed role."""
-    if len(worded) < _WORD_ON_MOST_LINES or len(worded) * 2 < sum(1 for f in facts.values() if f.number > 0):
-        return set()
-    held = set(worded)
-    others = Counter(f.first_col for r, f in facts.items() if f.number > 0 and r not in held)
-    starts = others or Counter(facts[r].first_col for r in worded)
-    key_col = min(starts, key=lambda c: (-starts[c], c))
-    return {r for r in worded if facts[r].word_col == key_col and not facts[r].grand and not facts[r].word_ties}
 
 
 def _printed_signals(facts: dict[int, LineFacts]) -> dict[int, list[str]]:
@@ -30,8 +17,6 @@ def _printed_signals(facts: dict[int, LineFacts]) -> dict[int, list[str]]:
         if (f.number and not f.real_figures) or f.sequence:
             continue
         signals = []
-        if f.total_word and f.number > 0:
-            signals.append(S_TOTAL_WORD)
         if f.formula_major:
             signals.append(S_FORMULA_TOTAL)
         elif f.formula_line and (f.gap_above or f.gap_below or f.bold >= 0.5):
@@ -40,20 +25,17 @@ def _printed_signals(facts: dict[int, LineFacts]) -> dict[int, list[str]]:
             signals.append(S_FORMULA_CLOSES_BLOCK)
         if f.arith_ties >= 2 and f.arith_ties * 2 >= f.number and (f.bold_prev or f.fill_prev):
             signals.append(S_ARITHMETIC_TIE)
+        elif f.block_ties and f.text <= 2:
+            # its figures are their columns' sums since the last such line: a printed total in any language, whatever its label says
+            signals.append(S_ARITHMETIC_TIE)
         if signals:
             printed[r] = signals
     return printed
 
 
-def _words_of(facts: dict[int, LineFacts], signals: dict[int, list[str]]) -> set[int]:
-    return words_in_keys(facts, [r for r, s in signals.items() if s == [S_TOTAL_WORD]])
-
-
 def printed_lines(facts: dict[int, LineFacts]) -> dict[int, list[str]]:
-    """The printed lines and their signals, the words that sit inside record keys left out."""
-    signals = _printed_signals(facts)
-    words = _words_of(facts, signals)
-    return {r: s for r, s in signals.items() if r not in words}
+    """The printed lines and their signals."""
+    return _printed_signals(facts)
 
 
 def _name_line(f: LineFacts) -> bool:
@@ -69,7 +51,6 @@ def _name_line(f: LineFacts) -> bool:
 _MOST_LINES_ABOVE = 4
 _TITLE_ZONE = 15
 _JOIN_FLOOR = -3.0
-_WORD_YIELDS = 1.0
 STYLE_FLOOR = -2.0
 
 
@@ -110,7 +91,7 @@ def _fills_table(grid: Grid, r: int, f: LineFacts, heads: dict[int, list[str]]) 
     return f.filled >= 3 or (f.filled * 2 >= len(named) and not f.wordy and f.longest <= 60)
 
 
-def assign_roles(grid: Grid, facts: dict[int, LineFacts], heads: dict[int, list[str]], printed: dict[int, list[str]], words_in_key: set[int] = frozenset()) -> dict[int, tuple[str, tuple[str, ...]]]:
+def assign_roles(grid: Grid, facts: dict[int, LineFacts], heads: dict[int, list[str]], printed: dict[int, list[str]]) -> dict[int, tuple[str, tuple[str, ...]]]:
     """Every line's role given its header and printed lines: bands, notes, titles and records follow from where each line sits."""
     rows = sorted(facts)
     first_head = min(heads) if heads else None
@@ -123,9 +104,6 @@ def assign_roles(grid: Grid, facts: dict[int, LineFacts], heads: dict[int, list[
     roles: dict[int, tuple[str, tuple[str, ...]]] = {}
     for r in rows:
         f = facts[r]
-        if r in words_in_key:
-            roles[r] = (RECORD, (S_TOTAL_WORD_IN_KEY,))
-            continue
         if r in heads:
             roles[r] = (HEADER, tuple(dict.fromkeys(heads[r])))
             continue
@@ -258,12 +236,11 @@ def header_lines(grid: Grid, facts: dict[int, LineFacts], printed: dict[int, lis
     for r in sorted(facts):
         if r not in printed and scores[r] >= model["threshold"] and not _figures_outnumber_names(facts[r]):
             heads.setdefault(r, []).append(S_MODEL)
-        elif r in printed and printed[r] == [S_TOTAL_WORD] and scores[r] >= model["threshold"] + _WORD_YIELDS and facts[r].real_figures * 2 <= facts[r].text:
-            # "Date, Total, Grand Total" over the columns it names: the word names a column, and the line holds more names than figures.
-            heads.setdefault(r, []).append(S_MODEL)
     _styled_like_a_header(heads, facts, grid, printed, scores, model["threshold"])
     if tab.frozen_rows in heads:
         heads[tab.frozen_rows].append(S_FROZEN_LAST)
+    elif tab.frozen_rows in facts and _name_line(facts[tab.frozen_rows]):
+        heads[tab.frozen_rows] = [S_FROZEN_LAST]     # the last frozen line, when it holds names, is a header outright, as the autofilter's top is
     _name_unnamed_bodies(heads, facts, printed, scores)
     heads = grow_blocks(heads, facts, printed, scores)
     _clear_filter_range(heads, grid)
@@ -275,9 +252,7 @@ def read_roles(grid: Grid) -> dict[int, tuple[str, tuple[str, ...]]]:
     facts = line_facts(grid)
     if not facts:
         return {}
-    signals = _printed_signals(facts)
-    words = _words_of(facts, signals)
-    printed = {r: s for r, s in signals.items() if r not in words}
-    heads = {r: s for r, s in header_lines(grid, facts, printed).items() if r not in words}
+    printed = _printed_signals(facts)
+    heads = header_lines(grid, facts, printed)
     printed = {r: s for r, s in printed.items() if r not in heads}
-    return assign_roles(grid, facts, heads, printed, words)
+    return assign_roles(grid, facts, heads, printed)

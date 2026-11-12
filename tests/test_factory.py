@@ -165,7 +165,8 @@ def test_quotas_hold_by_script_and_keep_what_they_set_apart() -> None:
 
 
 def test_overlap() -> None:
-    assert overlap_of("total volumes east", {"volume", "price"}) == ["volume"], "a plural is the word"
+    assert overlap_of("total volume east", {"volume", "price"}) == ["volume"], "a shared word is the word"
+    assert overlap_of("total volumes east", {"volume", "price"}) == [], "no language's plural is cut: a near form is no shared word"
     assert overlap_of("vol east", {"volume"}) == [], "an abbreviation does not share it"
 
 

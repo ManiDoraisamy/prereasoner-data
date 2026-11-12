@@ -13,7 +13,7 @@ from pathlib import Path
 import torch
 from torch import nn
 
-WORD = re.compile(r"[a-z0-9]+")
+WORD = re.compile(r"[^\W_]+")     # a word of any script, as engine/program/index.words_of reads the sheet
 
 
 def question_words(question: str) -> list[str]:

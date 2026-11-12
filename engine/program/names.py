@@ -176,17 +176,8 @@ SEM_REPEATED = "repeated_rows"
 SEMANTICS = (SEM_SIGNS, SEM_BLANKS, SEM_PRINTED, SEM_TIES, SEM_PERIODS, SEM_UNITS, SEM_PARTIAL, SEM_FOLD, SEM_MIXED, SEM_REPEATED)
 
 # What a question's sign word says: how a figure stored with a sign is read.
-SIGN_NET = "net"              # net, position, value: the signed sum
-SIGN_LOSS = "loss"            # a loss, owing, short, most sold, largest credit: the lowest where stored negative
-SIGN_SIZE = "size"            # biggest driver, moved most, out of balance, biggest payment: by size
-SIGN_MAGNITUDE = "magnitude"  # a burn, a payment, an amount due: the signed figure stated as its size
-SIGN_WORDS = (SIGN_NET, SIGN_LOSS, SIGN_SIZE, SIGN_MAGNITUDE)
 
 # What a question's period words say.
-PERIOD_NAMED = "named"        # a day, a month, a month of any year, a quarter, a year: a condition on a date column
-PERIOD_SO_FAR = "so_far"      # whatever the table holds: no condition of its own
-PERIOD_REST_OF = "rest_of"    # a status column says it, not a date
-PERIOD_READINGS = (PERIOD_NAMED, PERIOD_SO_FAR, PERIOD_REST_OF)
 
 # The verifier's evidence. Each result carries these by name; none of them decides alone until the chooser weighs them.
 EV_RAN = "ran"

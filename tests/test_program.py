@@ -12,15 +12,14 @@ from engine.program.execute import run, run_dual
 from engine.program.index import TableIndex
 from engine.program.language import (Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, NotEquals, OnLine, PeriodSpan, Rank, RowArithmetic, SECTION, Show, Size, answer_type_of, coordinates, form_of, tables_of, is_sound, period_from_name)
 from engine.program.lowering import plan_schema, to_query
-from engine.program.names import (A_COMPANY, A_COUNT, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, AFTER, ANY, BEFORE, BREAKDOWN, SAME, CHECK, EQ, EVERY, IS, LT, NE, NO, VERSUS, ANSWER_TYPES, AVG, CALC, COMPARISONS, COUNT, COUNT_DISTINCT, ENDS, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, EV_ADDS_TWICE, EV_BARE_ZERO, EV_EMPTY, EV_FAILED, EV_FILTER_DID_NOTHING, EV_FRACTION_FOR_COUNT, EV_MANY_ROWS, EV_PRINTED_TIE, EV_RAN,
-                                  EV_REPEATED_LINES, EV_ROW_COUNT_FOR_AMOUNT, EV_SHAPE_AGREES, EV_TOO_LARGE_FOR_SHARE, EV_TYPE_AGREES, EV_WRONG_KIND, EVIDENCE, FORMS, GE, GT, HIGHEST, LOWEST, MAX, MIN, MINUS, OVER, PERIOD_NAMED, PERIOD_REST_OF, PERIOD_SO_FAR, PLUS, SEMANTICS, SIGN_LOSS, SIGN_MAGNITUDE, SIGN_NET,
-                                  SIGN_SIZE, SLOT_AGGREGATE, SLOT_FORM, SLOTS, STARTS, SUM, TIMES, coarse_type, coordinate, slot_of)
+from engine.program.names import (A_COUNT, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, AFTER, ANY, BEFORE, BREAKDOWN, SAME, CHECK, EQ, EVERY, IS, LT, NE, NO, VERSUS, ANSWER_TYPES, AVG, CALC, COMPARISONS, COUNT, COUNT_DISTINCT, ENDS, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, EV_ADDS_TWICE, EV_BARE_ZERO, EV_EMPTY, EV_FAILED, EV_FILTER_DID_NOTHING, EV_FRACTION_FOR_COUNT, EV_MANY_ROWS, EV_PRINTED_TIE, EV_RAN,
+                                  EV_REPEATED_LINES, EV_ROW_COUNT_FOR_AMOUNT, EV_SHAPE_AGREES, EV_TOO_LARGE_FOR_SHARE, EV_TYPE_AGREES, EV_WRONG_KIND, EVIDENCE, FORMS, GE, GT, HIGHEST, LOWEST, MAX, MIN, MINUS, OVER, PLUS, SEMANTICS, SLOT_AGGREGATE, SLOT_FORM, SLOTS, STARTS, SUM, TIMES, coarse_type, coordinate, slot_of)
 from engine.program.output import cells_used, compress, explain, formula, read_as
 from engine.program.scoring import Reading, Weights, score_program
-from engine.program.semantics import (SEMANTIC_COUNTS, cell_day, exact_wins, fold, read_period, read_sign, share_forms, sign_word_of, stated_number)
+from engine.program.semantics import (SEMANTIC_COUNTS, cell_day, exact_wins, fold, share_forms, stated_number)
 from engine.program.store import RequestTables
 from engine.program.verifier import LINES_READ, MIN_RUN, adds_across_members, is_exact, significant_digits, verify, verify_one
-from engine.program.words import predict_answer_type, read_question
+from engine.program.words import read_question
 from engine.sheet import compile_workbook, workbook_from_json
 from engine.sql_ast import (Abs, Aggregate, ASTValidationError, BinaryExpr, BlankAsZero, ColumnRef, OrderTerm, SelectItem, SelectQuery, SQLType, render_query)
 
@@ -115,14 +114,6 @@ def test_forms_refuse_what_they_cannot_say():
 # ------------------------------------------------------------------------------------------------- the fixed semantics
 def test_signs():
     """37 questions; 15 of 18 direction or size programs fail if read as the plain largest signed value. A loss is the lowest where stored negative, biggest by size drops the sign, a payment may be stated as its size, net is the signed sum."""
-    assert sign_word_of("What is the biggest loss this month?") == SIGN_LOSS and sign_word_of("Who owes the most?") == SIGN_LOSS
-    assert sign_word_of("Who is the biggest driver of the change?") == SIGN_SIZE and sign_word_of("Which day moved the most?") == SIGN_SIZE and sign_word_of("which day is most out of balance?") == SIGN_SIZE
-    assert sign_word_of("What is our net position?") == SIGN_NET and sign_word_of("How much did we burn in April?") == SIGN_MAGNITUDE and sign_word_of("How much gas is there?") is None
-    assert read_sign(SIGN_LOSS, stored_negative=True).direction == LOWEST
-    assert read_sign(SIGN_LOSS, stored_negative=False).direction == HIGHEST
-    assert read_sign(SIGN_SIZE, stored_negative=True).by_size
-    assert read_sign(SIGN_MAGNITUDE, stored_negative=True).magnitude and not read_sign(SIGN_MAGNITUDE, stored_negative=False).magnitude
-    assert read_sign(SIGN_NET, stored_negative=True) == read_sign(None, stored_negative=True) and read_sign(SIGN_NET, stored_negative=True).direction == HIGHEST
     _, table, tables, col = _trades()
     assert _answer(Rank(ENTITY_LINE, table.id, LOWEST, (), col(3), (col(0),)), tables)[0][0] == "Dynegy"       # a loss: the lowest signed
     assert _answer(Rank(ENTITY_LINE, table.id, HIGHEST, (), col(3), (col(0),)), tables)[0][0] == "EES"          # plain largest
@@ -161,14 +152,15 @@ def test_shortest_label_first_and_unlabelled_printed_lines():
 
 def test_a_column_filled_only_on_printed_lines_reads_them():
     """A column that holds figures only on subtotal lines: those are its data, since nothing else fills it (9.2)."""
-    rows = [["Well", "Pipe", "Volume", "DBQ"], ["A", "X", 1.0, ""], ["B", "X", 2.0, ""], ["Subtotal X", "", 3.0, 10.0], ["C", "Y", 4.0, ""], ["D", "Y", 5.0, ""], ["Subtotal Y", "", 9.0, 20.0]]
+    rows = [["Well", "Pipe", "Volume", "DBQ"], ["A", "X", 1.0, ""], ["B", "X", 2.0, ""], ["E", "X", 4.0, ""], ["Subtotal X", "", 7.0, 10.0],
+            ["C", "Y", 4.0, ""], ["D", "Y", 5.0, ""], ["F", "Y", 6.0, ""], ["Subtotal Y", "", 15.0, 20.0]]
     _, table, tables = _setup(rows)
     roles = [line.role for line in table.lines]
-    if "subtotal" in roles or "total" in roles:
-        assert 3 in table.printed_only_columns
-        assert _one(_answer(Agg(SUM, Col(table.id, 3), table.id), tables)) == 30.0
-        assert cells_used(Agg(SUM, Col(table.id, 3), table.id), tables, ()) == ("'Sheet1'!D4", "'Sheet1'!D7")
-    assert _one(_answer(Agg(SUM, Col(table.id, 2), table.id), tables)) == 12.0
+    assert "subtotal" in roles or "total" in roles, roles      # by their arithmetic: each Volume is its block's sum
+    assert 3 in table.printed_only_columns
+    assert _one(_answer(Agg(SUM, Col(table.id, 3), table.id), tables)) == 30.0
+    assert cells_used(Agg(SUM, Col(table.id, 3), table.id), tables, ()) == ("'Sheet1'!D5", "'Sheet1'!D9")
+    assert _one(_answer(Agg(SUM, Col(table.id, 2), table.id), tables)) == 22.0
 
 
 def test_partial_value_match():
@@ -200,14 +192,6 @@ def test_case_and_spacing_do_not_count():
 
 def test_periods():
     """32 programs use a period, 55 more name one the tab already is. So far is whatever the table holds; rest of is a status column, not a date; calendar 2002 is a year; a quarter takes its year; a month of any year; a day; serial days."""
-    assert read_period("so far").kind == PERIOD_SO_FAR and read_period("to date").kind == PERIOD_SO_FAR
-    assert read_period("the rest of May").kind == PERIOD_REST_OF
-    assert read_period("calendar 2002").kind == PERIOD_NAMED and read_period("calendar 2002").period.start == "2002-01-01" and read_period("calendar 2002").period.end == "2002-12-31"
-    assert read_period("Q4 2001").period.start == "2001-10-01" and read_period("Q4", year=2001).period.end == "2001-12-31"
-    assert read_period("not a period") is None
-    rest = _trades()
-    assert not [name for name in read_question("What is the total volume for the rest of May?", rest[0], Decoder(rest[0])).scores if name.startswith("period:")]
-    assert coordinate("period", "m02") in read_question("What is the total volume in February so far?", rest[0], Decoder(rest[0])).scores
     assert period_from_name("2001-02").end == "2001-02-28" and period_from_name("2000-02").end == "2000-02-29" and period_from_name("m02").month == 2 and period_from_name("2001-q4").start == "2001-10-01"
     assert period_from_name("2001-11-29").kind == "day" and period_from_name("2001-01-05..2001-02-01").end == "2001-02-01"
     for name in ("2002", "2001-02", "2001-11-29", "m02", "2001-q4", "2001-01-05..2001-02-01"):
@@ -222,11 +206,8 @@ def test_periods():
     assert count(period_from_name("2001-q1")) == 4.0
     assert count(period_from_name("2002")) == 0.0
     assert count(period_from_name("2001-01-02..2001-02-28")) == 3.0
-    serial = [["Term Start", "Rate"], [36892, 1.0], [36923, 2.0], [36951, 3.0], [36982, 4.0]]
-    _, plain, stores = _setup(serial)
-    assert plain.is_date_column(0)
-    assert _one(_answer(Show(plain.id, (Col(plain.id, 1),), (InPeriod(Col(plain.id, 0), period_from_name("2001-03")),)), stores)) == 3.0
-    assert not _setup([["Volume", "Rate"], [36892, 1.0], [36923, 2.0], [36951, 3.0]])[1].is_date_column(0)
+    for header in ("Term Start", "Volume"):      # whole serial days the sheet did not format are numbers, whatever the header says
+        assert not _setup([[header, "Rate"], [36892, 1.0], [36923, 2.0], [36951, 3.0]])[1].is_date_column(0)
 
 
 def test_blanks():
@@ -262,7 +243,7 @@ def test_ties_keep_every_tied_line():
 
 def test_units():
     """21 questions. Percent cells are fractions: 10% or better is >= 0.1. A share may be stated either way. Thousands are reported as printed, never scaled."""
-    assert stated_number("10%") == 0.1 and stated_number("$1,000") == 1000.0 and stated_number("30M") == 30e6 and stated_number("10", percent_column=True) == 0.1 and stated_number("0.5", percent_column=True) == 0.5 and stated_number("ten") is None
+    assert stated_number("10%") == 0.1 and stated_number("$1,000") == 1000.0 and stated_number("30M") is None and stated_number("10", percent_column=True) == 0.1 and stated_number("0.5", percent_column=True) == 0.5 and stated_number("ten") is None
     assert share_forms(0.25) == (0.25, 25.0)
     rows = [["Deal", "Prob", "Value (000's)"], ["a", "5%", 10.0], ["b", "10%", 20.0], ["c", "50%", 30.0], ["d", "100%", 40.0]]
     _, table, tables = _setup(rows)
@@ -674,9 +655,9 @@ def test_a_read_takes_the_line_after_or_before_the_kept_one():
             continue
         raise AssertionError("a neighbouring read accepted what it cannot say")
     # A printed line between two data lines is not a neighbour.
-    printed = [["Name", "Book", "Volume"], ["a", "East", 10.0], ["b", "East", 30.0], ["Total", "", 40.0], ["c", "West", 5.0]]
+    printed = [["Name", "Book", "Volume"], ["a", "East", 10.0], ["g", "East", 20.0], ["b", "East", 30.0], ["Total", "", 60.0], ["c", "West", 5.0]]
     _, books, stores = _setup(printed)
-    assert [line.role for line in books.lines] == ["record", "record", "subtotal", "record"]
+    assert [line.role for line in books.lines] == ["record", "record", "record", "subtotal", "record"]
     assert _answer(Show(books.id, (Col(books.id, 0),), (Equals(Col(books.id, 0), "b"),), step=AFTER), stores)[0][0] == "c"
     # The decoder: first from the neighbour's own coordinates; never without a reading that names one.
     reading = Reading({n: 1.0 for n in coordinates(after_c, catalog.column_kind)})
@@ -801,11 +782,6 @@ def test_conditions_stay_on_distinct_columns():
 
 
 # ------------------------------------------------------------------------------------------------------------ the words
-def test_answer_type_rule():
-    assert predict_answer_type("How many deals are open?") == A_COUNT and coarse_type(predict_answer_type("How many MW are scheduled?")) == A_NUMBER
-    assert predict_answer_type("What share of volume is gas?") == A_PERCENT and predict_answer_type("How much did we sell?") == A_NUMBER
-    assert predict_answer_type("On what date did the price peak?") == "date" and predict_answer_type("Who covers Tampa Electric?") == "person"
-    assert predict_answer_type("Which counterparty owes the most?") == A_COMPANY and predict_answer_type("What are the delivery points?") == A_LIST
 
 
 def test_a_value_of_a_few_valued_number_column_is_named():
@@ -817,7 +793,7 @@ def test_a_value_of_a_few_valued_number_column_is_named():
     assert reading.scores.get(coordinate("value", Col(table.id, 1).name, "2020")) == 1.0
     programs, _, _, _ = Decoder(catalog).enumerate(reading, k=50)
     gold = Agg(COUNT, None, table.id, (Equals(Col(table.id, 1), 2020.0),))
-    assert gold in programs[:10], programs[:5]
+    assert gold in programs, programs[:5]
     assert _one(_answer(gold, tables)) == 2.0
 
 
@@ -832,9 +808,8 @@ def test_a_number_condition_may_be_an_equality():
     zero = Agg(COUNT, None, table.id, (Compare(calories, EQ, 0.0),))
     assert _one(_answer(zero, tables)) == 2.0
     assert "Calories is equal to 0" in read_as(zero, catalog)
-    assert read_question("Which teams have exactly 3 wins?", catalog, Decoder(catalog)).scores.get(coordinate("comparison", EQ)) == 1.0
-    programs, _, _, _ = Decoder(catalog).enumerate(read_question("How many foods have zero calories?", catalog, Decoder(catalog)), k=50)
-    assert zero in programs, "the equality must be in the decoder's top 50 from words alone"
+    programs, _, _, _ = Decoder(catalog).enumerate(Reading({n: 1.0 for n in coordinates(zero, catalog.column_kind)}), k=50)
+    assert zero in programs, "the equality must be in the decoder's top 50 from its reading"
     programs, _, _, _ = Decoder(_setup([["Make", "Year"], ["a", 2020.0], ["b", 2019.0], ["c", 2020.0]])[0]).enumerate(Reading({coordinate("number", "2020"): 1.0, coordinate("form", "agg"): 1.0}), k=200)
     assert not any(isinstance(c, Compare) and c.op == EQ for p in programs if isinstance(p, Agg) for c in p.where)
     # Two columns equal on a line ("games where the home score equals the away score"): a stated equality between two
@@ -894,7 +869,7 @@ def test_a_number_compares_with_the_line_a_value_names():
     same number of gold medals as Japan?" (WikiTableQuestions dev): a number condition against the same column's number on
     the first data line a value names, that line itself kept out (a blank name is not that line). The same lines in the
     typed SQL, the dual emitter, the index and the catalog; read as the sheet says it; a formula a user can paste; and from
-    the question's words alone the decoder proposes it."""
+    its reading the decoder proposes it."""
     catalog, table, tables = _setup(MEDALS)
     nation, gold, total = Col(table.id, 0), Col(table.id, 1), Col(table.id, 2)
     more = CompareLine(total, GT, nation, "canada")
@@ -910,8 +885,7 @@ def test_a_number_compares_with_the_line_a_value_names():
     assert formula(counted, tables) == "=COUNTIFS('Sheet1'!C2:C7,\">\"&INDEX('Sheet1'!C2:C7,MATCH(\"Canada\",'Sheet1'!A2:A7,0)),'Sheet1'!A2:A7,\"<>Canada\")"
     by_gold = Breakdown(COUNT, None, table.id, (gold,), (more,))
     assert _answer(by_gold, tables) == (("10", 1), ("3", 2))
-    reading = read_question("How many nations received more medals than Canada?", catalog, Decoder(catalog))
-    assert reading.scores.get(coordinate("comparison", GT)) == 1.0
+    reading = Reading({n: 1.0 for n in coordinates(counted, catalog.column_kind)})
     assert counted in Decoder(catalog).enumerate(reading, k=50)[0]
     # a value many lines hold names a category, not a line ("not much competition": Competition is Low on hundreds)
     tiers, tier_table, _ = _setup([["Name", "Tier", "Score"], ["a", "low", 1.0], ["b", "low", 5.0], ["c", "high", 9.0]])
@@ -919,9 +893,6 @@ def test_a_number_compares_with_the_line_a_value_names():
         reading = Reading({coordinate("comparison", GT): 1.0, coordinate("value", Col(tier_table.id, value_column).name, value): 1.0, coordinate("form", "agg"): 1.0})
         return any(isinstance(c, CompareLine) for p in Decoder(tiers).enumerate(reading, k=200)[0] for c in getattr(p, "where", ()))
     assert lined(0, "c") and not lined(1, "low")
-    assert read_question("Which nations won the same number of gold medals as Japan?", catalog, Decoder(catalog)).scores.get(coordinate("comparison", EQ)) == 1.0
-    assert read_question("Who is taller than Bo?", catalog, Decoder(catalog)).scores.get(coordinate("comparison", GT)) == 1.0
-    assert read_question("Who is younger than Bo?", catalog, Decoder(catalog)).scores.get(coordinate("comparison", LT)) == 1.0
     for bad in (lambda: CompareLine(total, GT, total, "x"), lambda: CompareLine(total, "~", nation, "x")):
         try:
             bad()
@@ -988,20 +959,10 @@ def test_times_read_as_numbers_in_the_sheet_and_the_question():
 
 
 def test_an_ordinal_is_not_a_stated_number():
-    """"The last year they came in 3rd place" (WikiTableQuestions dev): read as a number, 3rd made the rank keep the 3
-    latest years. An ordinal names a position, so the question states no number and no rank keeps 3; a cardinal ("the 3
-    oldest") still states how many."""
+    """A number the question writes in digits ("the 3 oldest") states how many a rank keeps. Whether a figure is a
+    position or an amount is the learned readers' to read: no word of any language says it here."""
     catalog, table, _ = _setup(AGES)
     decoder = Decoder(catalog)
-    ordinal = read_question("Who is the 3rd oldest in region x?", catalog, decoder).scores
-    assert not any(name.startswith("number:") for name in ordinal), ordinal
-    programs, _, _, _ = decoder.enumerate(read_question("Who is the 3rd oldest in region x?", catalog, decoder), k=500)
-    assert not any(isinstance(p, Rank) and p.count == 3 for p in programs)
-    # A number written as a word states it ("at least forty"); "one" only after a comparison, never "which one".
-    worded = read_question("Who is at least forty?", catalog, decoder).scores
-    assert worded.get(coordinate("number", "40"), 0) > 0 and worded.get(coordinate("comparison", ">="), 0) > 0
-    assert not any(name.startswith("number:") for name in read_question("Which one is the oldest?", catalog, decoder).scores)
-    assert read_question("Are there more than one in region x?", catalog, decoder).scores.get(coordinate("number", "1"), 0) > 0
     cardinal = read_question("Who are the 3 oldest in region x?", catalog, decoder).scores
     assert cardinal.get(coordinate("number", "3"), 0) > 0
     programs, _, _, _ = decoder.enumerate(read_question("Who are the 3 oldest in region x?", catalog, decoder), k=500)
@@ -1011,18 +972,18 @@ def test_an_ordinal_is_not_a_stated_number():
 def test_words_alone_read_a_question():
     catalog, table, tables, col = _trades()
     decoder = Decoder(catalog)
-    reading = read_question("What is the total volume for EES in January 2001?", catalog, decoder)
+    reading = read_question("What is the total volume for EES in 2001-01?", catalog, decoder)
     scores = reading.scores
     assert scores[coordinate("measure", col(3).name)] == 1.0
     assert scores[coordinate("value", col(0).name, "ees")] == 1.0
     assert scores[coordinate("period", "2001-01")] == 1.0
-    assert scores["aggregate:sum"] > scores["aggregate:avg"]
+    assert not any(name.startswith(("aggregate:", "form:", "comparison:", "direction:")) for name in scores), "no word of any language reads a closed slot"
     programs, _, _, _ = decoder.enumerate(reading, k=2000)
     gold = Agg(SUM, col(3), table.id, (Equals(col(0), "ees"), InPeriod(col(2), period_from_name("2001-01"))))
     alternatives = [p for p in programs if isinstance(p, Agg) and p.function == SUM and p.measure == col(3) and len(p.where) == 2 and set(map(repr, p.where)) == set(map(repr, gold.where))]
     assert alternatives, "words alone must keep the gold"
     comparisons = read_question("Which deals are at least 10% likely?", *_two(_setup([["Deal", "Prob"], ["a", "5%"], ["b", "20%"]]))).scores
-    assert comparisons[coordinate("number", "0.1")] == 1.0 and comparisons[coordinate("comparison", GE)] == 1.0
+    assert comparisons[coordinate("number", "0.1")] > 0 and coordinate("comparison", GE) not in comparisons
 
 
 def _two(triple):
@@ -1146,7 +1107,7 @@ def test_the_decoder_reaches_across_when_a_word_asks():
     decoder = Decoder(catalog)
     t = catalog.tables[0].id
     months = Agg(SUM, Across((Col(t, 1), Col(t, 2), Col(t, 3))), t, (Equals(Col(t, 0), "b"),))
-    asked = read_question("What is the total for b across the months?", catalog, decoder)
+    asked = Reading({n: 1.0 for n in coordinates(months, catalog.column_kind)})
     assert months in decoder.enumerate(asked, k=300)[0]
     plain = Reading({"form:agg": 1.0, "aggregate:sum": 1.0, f"measure:{t}.1": 1.0})
     assert not [p for p in decoder.enumerate(plain, k=300)[0] if isinstance(p, Agg) and isinstance(p.measure, Across)], "no row operator read, no sum across"
@@ -1166,21 +1127,11 @@ def test_a_text_other_than():
     assert coordinate("comparison", "!=") in coordinates(Agg(COUNT, None, t, (other,)), tables.catalog.column_kind)
 
 
-def test_the_decoder_reads_other_than_from_the_words():
-    catalog = _catalog(ACROSS_ROWS, formats=ACROSS_FORMATS)
-    decoder = Decoder(catalog)
-    t = catalog.tables[0].id
-    reading = read_question("How many lines have a status other than closed?", catalog, decoder)
-    assert reading.scores[coordinate("comparison", "!=")] == 1.0
-    programs = decoder.enumerate(reading, k=300)[0]
-    assert Agg(COUNT, None, t, (NotEquals(Col(t, 4), "closed"),)) in programs
 
 
 def test_answer_types_place_money_quantity():
     assert {"place", "money", "quantity"} <= set(ANSWER_TYPES)
     assert coarse_type("place") == A_NAME and coarse_type("money") == coarse_type("quantity") == A_NUMBER and coarse_type("count") == A_COUNT
-    assert predict_answer_type("Where is the Waha hub?") == "place" and predict_answer_type("Which city has the most deals?") == "place"
-    assert predict_answer_type("How much did we pay Transco?") == "money" and predict_answer_type("How many MW are scheduled?") == "quantity"
     catalog, table, tables, col = _trades()
     assert verify_one(score_program(Show(table.id, (col(0),), (Equals(col(1), "west"),)), Reading({}), catalog), tables, "place").held(EV_TYPE_AGREES)
     assert verify_one(score_program(Agg(SUM, col(3), table.id), Reading({}), catalog), tables, "money").held(EV_TYPE_AGREES)
@@ -1272,18 +1223,6 @@ def test_several_shown_columns_cost_a_named_coordinate():
     assert "shown:together=2" in coordinates(two, catalog.column_kind) and "shown:together=2" not in coordinates(one, catalog.column_kind)
 
 
-def test_a_sign_word_compares_with_zero():
-    catalog, table, tables, col = _trades()
-    decoder = Decoder(catalog)
-    reading = read_question("How many deals have negative volume?", catalog, decoder)
-    assert reading.scores[coordinate("number", "0")] == 1.0 and reading.scores[coordinate("comparison", "<")] == 1.0
-    assert Agg(COUNT, None, table.id, (Compare(col(3), "<", 0.0),)) in decoder.enumerate(reading, k=200)[0]
-    # A change going one way states its sign ("how many terms are growing year over year", messy dev); "the increase"
-    # asks for an amount and states none.
-    growing = read_question("How many deals are growing?", catalog, decoder)
-    assert growing.scores.get(coordinate("number", "0")) == 1.0 and growing.scores.get(coordinate("comparison", ">")) == 1.0
-    assert read_question("What is trending down?", catalog, decoder).scores.get(coordinate("comparison", "<")) == 1.0
-    assert coordinate("number", "0") not in read_question("What was the increase in volume?", catalog, decoder).scores
 
 
 def test_a_stated_number_a_column_holds_reads_as_its_value():
@@ -1343,7 +1282,7 @@ def test_a_question_reads_the_tables_its_links_reach():
     catalog = Catalog.from_model(compile_workbook(workbook_from_json({"name": "book", "tabs": tabs})))
     decoder = Decoder(catalog)
     far = catalog.tables[-1]
-    reading = read_question(f"What is the total {far.columns[1].name}?", catalog, decoder)
+    reading = Reading({coordinate("form", "agg"): 1.0, coordinate("aggregate", "sum"): 1.0, coordinate("measure", Col(far.id, 1).name): 1.0})
     programs = decoder.enumerate(reading, k=50)[0]
     assert {tables_of(program)[0] for program in programs} <= {table.id for table in catalog.tables}
     assert any(tables_of(program)[0] == far.id for program in programs)
@@ -1445,12 +1384,12 @@ def test_explain_carries_the_named_contributions():
 
 
 TESTS = [
-    test_several_shown_columns_cost_a_named_coordinate, test_a_sign_word_compares_with_zero, test_a_stated_number_a_column_holds_reads_as_its_value, test_a_misspelled_word_reads_as_the_sheets_word, test_a_word_only_one_column_holds_says_which, test_several_columns_shown_type_the_same_however_they_stand, test_across_adds_peer_columns_of_a_line, test_the_decoder_reaches_across_when_a_word_asks, test_a_text_other_than, test_the_decoder_reads_other_than_from_the_words, test_answer_types_place_money_quantity, test_decoder_ties_do_not_follow_sheet_order, test_a_family_adding_twice_says_so, test_axes_are_read_by_their_kind, test_a_question_reads_the_tables_its_links_reach, test_verifier_stops_at_its_budget_of_lines,
+    test_several_shown_columns_cost_a_named_coordinate, test_a_stated_number_a_column_holds_reads_as_its_value, test_a_misspelled_word_reads_as_the_sheets_word, test_a_word_only_one_column_holds_says_which, test_several_columns_shown_type_the_same_however_they_stand, test_across_adds_peer_columns_of_a_line, test_the_decoder_reaches_across_when_a_word_asks, test_a_text_other_than, test_answer_types_place_money_quantity, test_decoder_ties_do_not_follow_sheet_order, test_a_family_adding_twice_says_so, test_axes_are_read_by_their_kind, test_a_question_reads_the_tables_its_links_reach, test_verifier_stops_at_its_budget_of_lines,
     test_every_name_is_from_a_closed_list, test_forms_refuse_what_they_cannot_say, test_signs, test_printed_lines_are_read_by_label_and_never_added, test_shortest_label_first_and_unlabelled_printed_lines, test_a_column_filled_only_on_printed_lines_reads_them,
     test_partial_value_match, test_case_and_spacing_do_not_count, test_periods, test_blanks, test_ties_keep_every_tied_line, test_units, test_mixed_columns, test_repeated_rows, test_sections_nested_bands_and_the_section_shown, test_python_masks_agree_with_the_sql,
     test_calc_shapes, test_rank_across_peer_columns, test_a_rank_keeps_as_many_as_the_question_states, test_the_decoder_proposes_how_many_a_question_states, test_a_check_says_yes_or_no, test_the_decoder_checks_only_when_the_reading_names_a_check, test_a_choice_among_named_values, test_a_check_asks_what_the_top_one_is, test_a_check_asks_whether_the_top_one_is_the_same_or_compares_two_aggregates, test_a_read_takes_the_line_after_or_before_the_kept_one, test_new_ast_nodes_render_and_validate, test_plan_schema_holds_only_what_a_query_reads, test_perfect_readings_give_the_gold_first, test_decoder_is_deterministic_and_order_free, test_the_list_does_not_depend_on_hash_order,
     test_scores_come_in_as_data_and_nothing_else_moves_the_list, test_contributions_are_named_and_sum_to_the_score, test_intervention_a_named_coordinate_moves_the_score_by_its_weight, test_policy_prunes_values_only_where_it_says, test_conditions_stay_on_distinct_columns,
-    test_answer_type_rule, test_a_value_of_a_few_valued_number_column_is_named, test_a_number_condition_may_be_an_equality, test_a_breakdown_gives_a_figure_for_each_group, test_amounts_in_several_currencies_are_given_per_currency, test_a_number_compares_with_the_line_a_value_names, test_the_decoder_breaks_down_only_when_the_reading_names_a_breakdown, test_times_read_as_numbers_in_the_sheet_and_the_question, test_an_ordinal_is_not_a_stated_number, test_words_alone_read_a_question, test_verifier_shape_and_type_evidence, test_printed_total_ties_only_under_its_exact_conditions, test_verifier_runs_the_top_programs_and_never_raises, test_read_as_in_the_sheets_own_words,
+    test_a_value_of_a_few_valued_number_column_is_named, test_a_number_condition_may_be_an_equality, test_a_breakdown_gives_a_figure_for_each_group, test_amounts_in_several_currencies_are_given_per_currency, test_a_number_compares_with_the_line_a_value_names, test_the_decoder_breaks_down_only_when_the_reading_names_a_breakdown, test_times_read_as_numbers_in_the_sheet_and_the_question, test_an_ordinal_is_not_a_stated_number, test_words_alone_read_a_question, test_verifier_shape_and_type_evidence, test_printed_total_ties_only_under_its_exact_conditions, test_verifier_runs_the_top_programs_and_never_raises, test_read_as_in_the_sheets_own_words,
     test_cells_are_the_exact_addresses_used, test_formula_a_user_can_check, test_explain_carries_the_named_contributions,
 ]
 

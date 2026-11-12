@@ -10,16 +10,15 @@ from functools import cached_property
 
 from engine.program.language import (Col, Compare, CompareColumns, CompareLine, Condition, Contains, Equals, InPeriod, InSection, IsBlank, IsNumber, NotEquals, OnLine, OneOf, SECTION)
 from engine.program.names import ANYWHERE, ENDS, EQ, GE, GT, LE, LT, NE, STARTS
-from engine.program.semantics import cell_day, cell_fold, cell_number, cell_text, duration_numbers, fold, is_filled, is_serial_day
+from engine.program.semantics import cell_day, cell_fold, cell_number, cell_text, duration_numbers, fold, is_filled
 from engine.sheet.model import Cell, Column, Context, Line, SheetModel, Table
 from engine.sheet.names import LABEL, NOTE, PRINTED_ROLES, RECORD, V_DATE, V_NUMBER, V_PERIOD, V_TEXT
 
 KIND_TABLE = "table"
 KIND_FAMILY = "family"
 KIND_NOTES = "notes"
+SECTION_NAME = "§"      # the band column's shown name: a sign, not a word a question could hold
 
-# A column whose cells are all whole numbers in the serial-day range and whose name says date reads as dates, though the sheet did not format them.
-_DATE_NAME_WORDS = ("date", "start", "end", "day", "begin", "term", "month")
 
 
 class CatalogTable:
@@ -62,7 +61,7 @@ class CatalogTable:
         return self.table.tab
 
     def column_name(self, position: int) -> str:
-        return "section" if position == SECTION else self.table.columns[position].name
+        return SECTION_NAME if position == SECTION else self.table.columns[position].name
 
     def col(self, position: int) -> Col:
         return Col(self.id, position)
@@ -139,17 +138,9 @@ class CatalogTable:
         return {SECTION: -1, **{position: at for at, position in enumerate(self.column_order)}}
 
     def is_date_column(self, position: int) -> bool:
-        """A column conditions read as days: typed dates or periods, or whole serial days under a date-like name."""
-        column = self.table.columns[position]
-        if column.kind in (V_DATE, V_PERIOD):
-            return True
-        if column.kind != V_NUMBER:
-            return False
-        name = column.name.lower()
-        if not any(word in name for word in _DATE_NAME_WORDS):
-            return False
-        numbers = [number for number in self.numbers[position] if number is not None]
-        return bool(numbers) and all(is_serial_day(number) for number in numbers)
+        """A column conditions read as days: the dates and periods the file types as such (a date format, a written
+        date). A column of plain numbers is not read as days by its header's words."""
+        return self.table.columns[position].kind in (V_DATE, V_PERIOD)
 
     def condition_mask(self, condition: Condition) -> int:
         """The lines a condition keeps, as a bitmask over self.lines. The same reading the SQL makes: tests hold the two together."""
@@ -242,9 +233,9 @@ def _notes_table(tab: str, notes: list, index: int) -> Table | None:
         lines.append(Line(tab=tab, row=note.row, role=RECORD, cells={0: label, 1: note.value}, label=note.label))
     if not lines:
         return None
-    columns = [Column(position=0, col=0, letter="", name="Label", role=LABEL, kind=V_TEXT, filled=len(lines), distinct=len(lines)),
-               Column(position=1, col=0, letter="", name="Value", role=NOTE, kind=V_TEXT, filled=len(lines), distinct=len(lines))]
-    return Table(tab=tab, index=index, name=f"{tab} notes", columns=columns, lines=lines, printed=[], header_rows=(), first_row=lines[0].row, last_row=lines[-1].row, context=Context(tab=tab))
+    columns = [Column(position=0, col=0, letter="", name="", role=LABEL, kind=V_TEXT, filled=len(lines), distinct=len(lines)),
+               Column(position=1, col=0, letter="", name="", role=NOTE, kind=V_TEXT, filled=len(lines), distinct=len(lines))]
+    return Table(tab=tab, index=index, name=tab, columns=columns, lines=lines, printed=[], header_rows=(), first_row=lines[0].row, last_row=lines[-1].row, context=Context(tab=tab))
 
 
 class Catalog:

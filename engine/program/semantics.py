@@ -1,4 +1,4 @@
-"""The semantics a program does not choose: one reading of a cell and of a question's sign, period and unit words.
+"""The semantics a program does not choose: one reading of a cell, and of a number a question states. No word of any language: a question's sign, period and unit words are the learned readers' to read.
 
 Each rule here came from running 186 hand-written programs over real workbooks and flipping the rule to see which answers depend on it (design/program_language.txt, section 4). SEMANTIC_COUNTS holds those question counts beside the
 rule, so a read-as line or a test can cite why a rule is what it is. No score reaches this module: the same slots always give the same program and the same answer.
@@ -6,15 +6,13 @@ rule, so a read-as line or a test can cite why a rule is what it is. No score re
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
 from decimal import Decimal
 
 from engine.numeric import canonical_decimal
-from engine.program.names import (HIGHEST, LOWEST, PERIOD_NAMED, PERIOD_REST_OF, PERIOD_SO_FAR, SEM_BLANKS, SEM_FOLD, SEM_MIXED, SEM_PARTIAL, SEM_PERIODS, SEM_PRINTED, SEM_REPEATED, SEM_SIGNS, SEM_TIES, SEM_UNITS, SIGN_LOSS, SIGN_MAGNITUDE,
-                                  SIGN_NET, SIGN_SIZE)
+from engine.program.names import (SEM_BLANKS, SEM_FOLD, SEM_MIXED, SEM_PARTIAL, SEM_PERIODS, SEM_PRINTED, SEM_REPEATED, SEM_SIGNS, SEM_TIES, SEM_UNITS)
 from engine.sheet.model import Cell
 from engine.sheet.names import V_BLANK, V_DATE, V_MARKER, V_NUMBER, V_PERIOD
-from engine.sheet.values import parse_number, parse_period, serial_to_date
+from engine.sheet.values import parse_number, serial_to_date
 
 SEMANTIC_COUNTS = {
     SEM_SIGNS: "37 questions; 15 of 18 direction or size programs fail if read as the plain largest signed value",
@@ -132,78 +130,6 @@ def is_filled(cell: Cell | None) -> bool:
 def exact_wins(text: str, cells: set[str]) -> bool:
     """A partial word reads as the whole cell when some cell is exactly it: Transco is not Transcolorado."""
     return fold(text) in cells
-
-
-# ------------------------------------------------------------------------------------------------------------ signs
-_SIGN_WORDS = (
-    (SIGN_SIZE, re.compile(r"\b(biggest (?:driver|payment|swing|move|change)|moved? (?:the )?most|out of balance|by size|in absolute|largest (?:change|move|swing|variance)|biggest by)\b")),
-    (SIGN_LOSS, re.compile(r"\b(loss|losses|lost|losing|owing|owes?|owed|short|most sold|sold the most|largest credit|deficit|negative)\b")),
-    (SIGN_MAGNITUDE, re.compile(r"\b(burn|burned|consumption|consumed|payment|paid|amount due)\b")),
-    (SIGN_NET, re.compile(r"\b(net|position|value)\b")),
-)
-
-
-@dataclass(frozen=True, slots=True)
-class SignReading:
-    """How a figure with a sign is read: which way it ranks, by size or as stored, and whether the result is stated by its size."""
-    direction: str
-    by_size: bool = False
-    magnitude: bool = False
-
-
-def sign_word_of(question: str) -> str | None:
-    """The sign word of a question, or None. A closed list, in order of which reading overrides which."""
-    low = fold(question)
-    for name, pattern in _SIGN_WORDS:
-        if pattern.search(low):
-            return name
-    return None
-
-
-def read_sign(word: str | None, stored_negative: bool, asked: str = HIGHEST) -> SignReading:
-    """Net, position, value: the signed sum, as asked. A loss, owing, short, most sold: the lowest where the column stores them negative, the sign as stored; a column of positive losses ranks as asked. Biggest driver, moved most,
-    out of balance, biggest payment: by size. A burn, a payment or an amount due stored negative is stated as its size."""
-    if word == SIGN_LOSS:
-        return SignReading(LOWEST if stored_negative else asked)
-    if word == SIGN_SIZE:
-        return SignReading(HIGHEST, by_size=True)
-    if word == SIGN_MAGNITUDE:
-        return SignReading(asked, magnitude=stored_negative)
-    if word in (SIGN_NET, None):
-        return SignReading(asked)
-    raise ValueError(f"unknown sign word: {word}")
-
-
-# ---------------------------------------------------------------------------------------------------------- periods
-_SO_FAR = re.compile(r"\b(so far|to date|thus far|as of now)\b")
-_REST_OF = re.compile(r"\b(rest|remainder|remaining|balance) of\b")
-_CALENDAR = re.compile(r"\b(?:calendar|cal|cy)[\s'-]*(\d{4}|\d{2})\b")
-_YEARLESS_QUARTER = re.compile(r"\b(?:q([1-4])|([1-4])q)\b")
-
-
-@dataclass(frozen=True, slots=True)
-class PeriodReading:
-    """What a question's period words say. kind PERIOD_NAMED carries the sheet parser's period; so far and rest of carry none: so far is whatever the table holds, rest of is a status column."""
-    kind: str
-    period: object = None
-
-
-def read_period(words: str, year: int | None = None) -> PeriodReading | None:
-    """One period's words. "so far" adds no condition; "rest of May" is a status column, not a date; "calendar 2002" is that year; "Q4" takes the year the table's context gives."""
-    low = fold(words)
-    if _SO_FAR.search(low):
-        return PeriodReading(PERIOD_SO_FAR)
-    if _REST_OF.search(low):
-        return PeriodReading(PERIOD_REST_OF)
-    calendar = _CALENDAR.search(low)
-    if calendar:
-        digits = calendar.group(1)
-        return PeriodReading(PERIOD_NAMED, parse_period(digits if len(digits) == 4 else f"20{digits}"))
-    quarter = _YEARLESS_QUARTER.fullmatch(low)
-    if quarter and year is not None:
-        return PeriodReading(PERIOD_NAMED, parse_period(f"Q{quarter.group(1) or quarter.group(2)} {year}"))
-    period = parse_period(words)
-    return None if period is None else PeriodReading(PERIOD_NAMED, period)
 
 
 # ------------------------------------------------------------------------------------------------------------ units

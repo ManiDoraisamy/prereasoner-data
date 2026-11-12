@@ -11,7 +11,6 @@ from engine.sheet.model import Axis, Cell, Column, Context, Family, Line, Member
 from engine.sheet.names import P_DAY, TAB_NAME, V_DATE, V_PERIOD, V_TEXT
 from engine.sheet.values import parse_period
 
-_MONTH = re.compile(r"\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\b", re.I)
 _MATCH = 0.8
 _REPEATED = 0.9
 _REPEATED_MEMBER_LINES = 10
@@ -21,7 +20,8 @@ BASIS_BLOCKS = "repeated_blocks"
 
 
 def _mask(name: str) -> str:
-    return re.sub(r"\d+", "#", _MONTH.sub("@", name.lower()))
+    """A header name with its digits masked, so "Volume 2001" and "Volume 2002" read as one member's column."""
+    return re.sub(r"\d+", "#", name.casefold())
 
 
 def _signature(table: Table) -> set[str]:
@@ -124,8 +124,8 @@ def find_families(tabs: list[TabModel]) -> list[Family]:
         for key in blocks:
             group = blocks[key]
             if len(group) >= 2:
-                names = [f"block {t.block}" for t in group]
-                families.append(merge_tables(group, names, "Block", BASIS_BLOCKS))
+                names = [str(t.block) for t in group]
+                families.append(merge_tables(group, names, "", BASIS_BLOCKS))
     groups: list[tuple[str, list[Table]]] = []
     for tab in tabs:
         for table in tab.tables:
@@ -145,5 +145,5 @@ def find_families(tabs: list[TabModel]) -> list[Family]:
                 groups.append((BASIS_NAMES if len(names) >= 2 else BASIS_LABELS, [table]))
     for basis, group in groups:
         if len(group) >= 2:
-            families.append(merge_tables(group, [t.tab for t in group], "Tab", basis))
+            families.append(merge_tables(group, [t.tab for t in group], "", basis))
     return families

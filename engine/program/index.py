@@ -21,7 +21,7 @@ from engine.sheet.names import AXIS_FLAG, AXIS_TOTALLED, F_DATE, PEER, ROW_TOTAL
 
 # A low-cardinality number column's values are values too, up to this many (design/program_language.txt, section 3).
 NUMBER_VALUES = 30
-_TOKEN = re.compile(r"[a-z0-9]+")
+_TOKEN = re.compile(r"[^\W_]+")     # a word of any script: letters and digits, case folded before
 _LINE_GROUP = -2
 _SECTION_GROUP = -3
 
@@ -47,12 +47,8 @@ def _within(a: str, b: str, most: int) -> int | None:
 
 
 def words_of(text: str) -> tuple[str, ...]:
-    """A text's words: folded, letters and digits, a plural's s off."""
-    return tuple(stem(word) for word in _TOKEN.findall(fold(text)))
-
-
-def stem(word: str) -> str:
-    return word[:-1] if len(word) > 3 and word.endswith("s") and not word.endswith("ss") else word
+    """A text's words, in any script: folded, letters and digits. No language's word endings are cut; a near spelling reads through spelled_as."""
+    return tuple(_TOKEN.findall(fold(text)))
 
 
 @dataclass(frozen=True, slots=True)
@@ -404,7 +400,7 @@ class TableIndex:
             out.append(peers)
         run: list[int] = []
         for position in range(len(columns) + 1):
-            if position < len(columns) and position in self.number_columns and columns[position].role != ROW_TOTAL and "total" not in self.name_words[position]:
+            if position < len(columns) and position in self.number_columns and columns[position].role != ROW_TOTAL:
                 run.append(position)
                 continue
             if len(run) >= 3:

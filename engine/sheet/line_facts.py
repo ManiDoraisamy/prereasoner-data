@@ -1,4 +1,4 @@
-"""Line facts: line_facts(grid) reads each filled line of a tab into named coordinates, in the signal order the evidence gives: values, formulas, style, merges. Only the total word is a word here: no domain's vocabulary."""
+"""Line facts: line_facts(grid) reads each filled line of a tab into named coordinates, in the signal order the evidence gives: values, formulas, style, merges. No word of any language is read here: no domain's vocabulary."""
 from __future__ import annotations
 
 import re
@@ -9,11 +9,7 @@ from engine.sheet.grid import Grid
 from engine.sheet.names import F_CURRENCY, FX_AGG_COLUMN, FX_AGG_ROW, FX_COLUMN_ARITH, FX_LINK_COLUMN, V_DATE, V_ERROR, V_MARKER, V_NUMBER, V_PERIOD, V_TEXT
 from engine.sheet.values import year_number
 
-TOTAL_WORD = re.compile(r"\b(?:grand\s*total|sub-?\s*total|totals?)\b", re.I)
 _LABEL_VALUE = re.compile(r"^[^:]{2,40}:(\s|$)")
-_STRONG_TOTAL = re.compile(r"(?:^|\s)(?:grand\s*total|sub-?\s*total)\b", re.I)
-_GRAND_TOTAL = re.compile(r"\bgrand\s*total", re.I)
-_LEADING_TOTAL = re.compile(r"^\W*(?:grand\s*total|sub-?\s*total|totals?)\b", re.I)
 _STYLE_WINDOW = 8
 _BELOW_WINDOW = 14
 
@@ -33,13 +29,13 @@ class LineFacts:
     last_col: int
     wordy: int                  # cells of six words or more
     longest: int                # characters in its longest text cell
-    total_word: bool            # the word sits on the line as a mark, not inside a longer name
     agg_column: int             # cells adding their own column
     agg_row: int                # cells adding their own row
     computed: int               # cells computed from their own column, not as a running series
     formula_major: bool         # aggregates make most of its figures
     formula_line: bool          # computed cells make most of its figures
     arith_ties: int             # figures equal to the sum of the cells above them
+    block_ties: int             # figures equal to their column's sum since the last such line (_block_ties)
     bold: float
     fill: float
     under: float
@@ -62,9 +58,6 @@ class LineFacts:
     typed_below: float          # share of the lines under it, from the first typed line, that hold figures or dates
     overlap_below: float        # share of the columns filled under it that it covers
     over_figures: float         # share of its cells standing over a figure on the first line of figures under it
-    word_col: int               # the column holding the total word, 0 when no cell holds it as a mark
-    grand: bool                 # the word is a grand total
-    word_ties: int              # figures equal to the sum of their column since the last line bearing the total word
 
 
 def _written_index(cell) -> bool:
@@ -79,25 +72,32 @@ def _style_share(grid: Grid, row: int) -> tuple[float, float, float]:
     return (counts[1] / counts[0], counts[2] / counts[0], counts[3] / counts[0])
 
 
-def is_total_mark(cells: list) -> bool:
-    """The total word as a mark: the line's only text, or the end of its cell, or the start of a cell with no other text beside it. "Total Fina Elf" beside a book and a trader is a name."""
-    texts = [c for c in cells if c.kind == V_TEXT]
-    for cell in texts:
-        text = str(cell.value)
-        if not TOTAL_WORD.search(text):
+BLOCK_TIE_CELLS = 3     # a block total sums at least this many nonzero cells: two small figures adding to a third is chance
+
+
+def _block_ties(grid: Grid) -> dict[int, int]:
+    """For each line, how many of its figures equal, to the cent and nonzero, the sum of their column over the lines since
+    the last line whose figures did so (or since the top), summing at least BLOCK_TIE_CELLS nonzero cells: a printed total
+    or subtotal by its arithmetic, in any language and whatever its label says."""
+    ties: dict[int, int] = {}
+    running: dict[int, float] = {}
+    counted: dict[int, int] = {}
+    shapes = grid.shapes or {}
+    for r in grid.filled:
+        numbers = {c: cell.value for c, cell in grid.rows[r].items() if cell.kind == V_NUMBER}
+        # a cell its own formula computes other than as its column's sum (a running balance, a line's arithmetic) is no
+        # block's total, whatever it equals; a formula sum is read as one by the formula rules
+        running_cells = {c for c in numbers if (shape := shapes.get((r, c))) is not None and shape.kind != FX_AGG_COLUMN}
+        hits = sum(1 for c, v in numbers.items() if v and c not in running_cells and counted.get(c, 0) >= BLOCK_TIE_CELLS and abs(running.get(c, 0.0) - v) < 0.005)
+        if hits and hits * 2 >= len(numbers):
+            ties[r] = hits
+            running, counted = {}, {}
             continue
-        if len(texts) > 1 and (len(text) > 40 or len(text.split()) >= 6) and not _LEADING_TOTAL.match(text):
-            continue        # prose beside a record's other texts ("... of the total."); a line's only text may be a long label
-        if text.startswith("[") and text.endswith("]"):
-            continue        # a list of words ("['maximum', 'total']") is no label
-        # A total word ending a cell is the line's label ("East Total"); on a line filled like a record (5 texts or more)
-        # it ends a name when other texts stand before it ("Motor Total", a seller beside the record's ids and make).
-        ends = TOTAL_WORD.search(text.split()[-1]) and (len(texts) < 5 or cell is min(texts, key=lambda c: c.col))
-        if len(texts) == 1 or ends or _STRONG_TOTAL.search(text):
-            return True
-        if text.lower().startswith("total") and not any(other is not cell and other.col < cell.col + 3 for other in texts):
-            return True
-    return False
+        for c, v in numbers.items():
+            running[c] = running.get(c, 0.0) + v
+            if v:
+                counted[c] = counted.get(c, 0) + 1
+    return ties
 
 
 def _arith_ties(grid: Grid) -> dict[int, int]:
@@ -124,21 +124,6 @@ def _arith_ties(grid: Grid) -> dict[int, int]:
                 nonzero += 1
             prefix[round(total * 100)] = nonzero
     return tied
-
-
-def _word_ties(grid: Grid, worded: set[int]) -> dict[int, int]:
-    """For each line bearing the total word, how many of its figures equal, to the cent and nonzero, the sum of their column on the lines since the last such line: a printed line has something to add up."""
-    ties: dict[int, int] = {}
-    running: dict[int, float] = {}
-    for r in grid.filled:
-        numbers = {c: cell.value for c, cell in grid.rows[r].items() if cell.kind == V_NUMBER}
-        if r in worded:
-            ties[r] = sum(1 for c, v in numbers.items() if v and c in running and abs(running[c] - v) < 0.01)
-            running = {}
-        else:
-            for c, v in numbers.items():
-                running[c] = running.get(c, 0.0) + v
-    return ties
 
 
 def _value_scores(grid: Grid, row: int, later: list[int]) -> tuple[float, int]:
@@ -218,11 +203,10 @@ def line_facts(grid: Grid) -> dict[int, LineFacts]:
     filled = grid.filled
     shapes = grid.shapes
     ties = _arith_ties(grid)
+    blocks = _block_ties(grid)
     repeats = _repeats(grid)
     style = {r: _style_share(grid, r) for r in filled}
     position = {r: i for i, r in enumerate(filled)}
-    marks = {r: is_total_mark(list(grid.rows[r].values())) for r in filled}
-    word_ties = _word_ties(grid, {r for r, mark in marks.items() if mark})
 
     def apart(row: int, attr: int, step: int) -> bool:
         if style[row][attr] < 0.5:
@@ -280,14 +264,12 @@ def line_facts(grid: Grid) -> dict[int, LineFacts]:
         facts[r] = LineFacts(
             row=r, filled=len(cells), text=kinds[V_TEXT], number=len(numbers), date=kinds[V_DATE], period=kinds[V_PERIOD], error=kinds[V_ERROR], marker=kinds[V_MARKER],
             first_col=columns[0], last_col=columns[-1], wordy=sum(len(t.split()) >= 6 for t in texts), longest=max((len(t) for t in texts), default=0),
-            total_word=marks[r], agg_column=agg_column, agg_row=agg_row, computed=computed,
+            agg_column=agg_column, agg_row=agg_row, computed=computed,
             formula_major=agg_column > 0 and (agg_column + agg_row) * 2 >= figures,
             formula_line=bool(numbers) and computed + agg_column > 0 and (agg_column + agg_row + computed) * 2 >= figures,
-            arith_ties=ties.get(r, 0), bold=style[r][0], fill=style[r][1], under=style[r][2],
+            arith_ties=ties.get(r, 0), block_ties=blocks.get(r, 0), bold=style[r][0], fill=style[r][1], under=style[r][2],
             bold_next=apart(r, 0, 1), fill_next=apart(r, 1, 1), under_next=apart(r, 2, 1), bold_prev=apart(r, 0, -1), fill_prev=apart(r, 1, -1),
             repeated=r in repeats, real_figures=real_figures, sequence=sequence, gap_above=prev_row is None or prev_row != r - 1, gap_below=next_row is None or next_row != r + 1,
             prev=prev_row, next=next_row, wide_merge=wide[1] - wide[0] + 1 if wide else 0, label_value=any(_LABEL_VALUE.match(t) for t in texts),
-            value_score=score, named=named, typed_below=typed_share, overlap_below=overlap, over_figures=over_figures,
-            word_col=next((c for c, cell in line.items() if cell.kind == V_TEXT and TOTAL_WORD.search(str(cell.value))), 0) if marks[r] else 0,
-            grand=marks[r] and any(_GRAND_TOTAL.search(t) for t in texts), word_ties=word_ties.get(r, 0))
+            value_score=score, named=named, typed_below=typed_share, overlap_below=overlap, over_figures=over_figures)
     return facts

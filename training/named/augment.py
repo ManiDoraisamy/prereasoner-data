@@ -14,10 +14,7 @@ from engine.sheet.formulas import column_letter
 from engine.sheet.grid import read_cell
 from engine.sheet.model import Column, Line, Table
 from engine.sheet.names import MEASURE, V_NUMBER, V_TEXT
-from training.factory.noise import SHORTHAND
 
-_VOWELS = str.maketrans("", "", "aeiouAEIOU")
-_UNRELATED = ("Ref", "Internal code", "Batch", "Seq", "Flag", "Audit", "Reviewer", "Load id", "Rev", "Source file", "Check", "Row id", "Stamp", "Grp", "Note", "Tmp", "Key2", "Old ref", "Export", "Misc")
 
 
 def _rng(*parts: object) -> random.Random:
@@ -47,14 +44,12 @@ def reorder_columns(table: Table, seed: object = 0) -> tuple[Table, dict[int, in
 
 
 def renamed(name: str, rng: random.Random) -> str:
-    """The same name as another desk would write it: the trade's shorthand, or its vowels dropped from a long word."""
+    """The same name as another desk would write it: a long word cut to its first three or four letters, in any script."""
     out = []
     for word in name.split():
-        low = word.lower().strip(".,:;()")
-        if low in SHORTHAND:
-            out.append(SHORTHAND[low])
-        elif len(low) >= 5 and rng.random() < 0.7:
-            out.append(low[0] + low[1:].translate(_VOWELS))
+        low = word.casefold().strip(".,:;()")
+        if len(low) >= 5 and rng.random() < 0.7:
+            out.append(low[:rng.choice((3, 4))])
         else:
             out.append(word)
     return " ".join(out)
@@ -68,12 +63,12 @@ def rename_columns(table: Table, seed: object = 0) -> tuple[Table, dict[int, int
 
 def unreadable_headers(table: Table, seed: object = 0) -> tuple[Table, dict[int, int]]:
     """Every header gone: what the compiler calls a column nothing names."""
-    names = {column.position: f"Column {column.letter or column_letter(column.position + 1)}" for column in table.columns}
+    names = {column.position: column.letter or column_letter(column.position + 1) for column in table.columns}
     return rebuilt(table, list(range(len(table.columns))), names)
 
 
 def mask_some(table: Table, rng: random.Random, share: float = 0.3) -> tuple[Table, dict[int, int]]:
-    names = {column.position: f"Column {column.letter or column_letter(column.position + 1)}" for column in table.columns if rng.random() < share}
+    names = {column.position: column.letter or column_letter(column.position + 1) for column in table.columns if rng.random() < share}
     return rebuilt(table, list(range(len(table.columns))), names)
 
 
@@ -89,7 +84,7 @@ def shuffle(table: Table, rng: random.Random) -> tuple[Table, dict[int, int]]:
 
 
 def add_columns(table: Table, seed: object = 0, count: int = 20) -> tuple[Table, dict[int, int]]:
-    """count distractor columns after the real ones, half figures, half codes, under names that mean nothing here. Old positions keep."""
+    """count distractor columns after the real ones, half figures, half codes, under codes that name nothing. Old positions keep."""
     rng = _rng("add", table.name, seed)
     start = len(table.columns)
     base = max((column.col for column in table.columns), default=0)
@@ -98,7 +93,7 @@ def add_columns(table: Table, seed: object = 0, count: int = 20) -> tuple[Table,
     for offset in range(count):
         position = start + offset
         col = base + offset + 1
-        name = f"{_UNRELATED[offset % len(_UNRELATED)]} {rng.randrange(10, 99)}"
+        name = f"{chr(65 + offset % 26)}{rng.randrange(10, 99)}"     # a code that names nothing, in no language
         number = offset % 2 == 0
         kinds = 0
         for row_at, line in enumerate(table.lines):

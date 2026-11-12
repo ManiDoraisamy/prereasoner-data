@@ -11,10 +11,10 @@ from engine.sheet.grid import Grid
 from engine.sheet.line_facts import line_facts
 from engine.sheet.line_model import FEATURES, SECOND_FEATURES, contributions, final_scores, header_score, line_features, load_model, second_features
 from engine.sheet.names import (AXIS_GROUP, AXIS_PERIOD, AXIS_SEQUENCE, BAND, COLUMN_ROLES, DATE, F_CURRENCY, F_DATE, F_GENERAL, F_PERCENT, FX_AGG_COLUMN, FX_AGG_ROW, FX_LINK_COLUMN, FX_ROW_ARITH, HEADER, KEY, LABEL, LINE_ROLES,
-                                MEASURE, NOTE, P_DAY, P_MONTH, P_QUARTER, P_RANGE, P_RELATIVE, P_SEASON, P_YEAR, PEER, ROW_TOTAL, S_AUTOFILTER_TOP, S_FORMULA_TOTAL, S_FROZEN_LAST, SECTION_LABEL, SHEET_CHART, STRAY_ERROR,
-                                STRAY_LABEL, STRAY_MARKER, STRAY_NUMBER_WITH_WORD, STRAY_REPEATED_HEADER, STRAY_TOTAL, SUBTOTAL, TAB_NAME, TITLE, TOTAL, V_NUMBER, V_TEXT)
+                                MEASURE, NOTE, P_MONTH, P_YEAR, PEER, ROW_TOTAL, S_AUTOFILTER_TOP, S_FORMULA_TOTAL, S_FROZEN_LAST, SECTION_LABEL, SHEET_CHART, STRAY_ERROR,
+                                STRAY_LABEL, STRAY_NUMBER_WITH_WORD, STRAY_REPEATED_HEADER, SUBTOTAL, TAB_NAME, TITLE, TOTAL, V_NUMBER, V_TEXT)
 from engine.sheet.payload import tab_from_json, workbook_from_json
-from engine.sheet.values import format_kind, parse_number, parse_period, period_of_serial
+from engine.sheet.values import format_kind, parse_number, parse_period
 
 
 def _tab(rows, name="Sheet1", **more):
@@ -45,48 +45,29 @@ def test_number_parser():
     assert parse_number("(45%)").value == -0.45
     assert parse_number("1,234-").value == -1234
     assert parse_number("-$5.5").value == -5.5
-    assert parse_number("30M").value == 30e6 and parse_number("5K").value == 5e3
+    assert parse_number("30M") is None and parse_number("5K") is None      # a magnitude letter is a word of one language
     assert parse_number("1.5e3").value == 1500
     for text in ("1,23", "12,34,5", "abc", "12 apples", "(5", "", "3-4", "1/2"):
         assert parse_number(text) is None, text
 
 
 def test_period_parser():
-    day = parse_period("04-MAY-2000")
-    assert (day.kind, day.start) == (P_DAY, "2000-05-04")
-    assert parse_period("Mar-22-01").start == "2001-03-22"
+    """Days, months and years written in digits; a month, a quarter or a season written in words is no period here: the
+    learned readers read words, the parser reads digits."""
     assert parse_period("3/4/01").start == "2001-03-04"
     assert parse_period("13/4/2001").start == "2001-04-13"
     assert parse_period("2001-03-04").start == "2001-03-04"
-    assert parse_period("March 4, 2001").start == "2001-03-04"
-    assert parse_period("Q2").kind == P_QUARTER and parse_period("Q2").quarter == 2 and parse_period("Q2").start is None
+    assert parse_period("30.04.2019").start == "2019-04-30"
     # A year and a month as exports write them (DataBench Disneyland's "2019-4"); a season or fiscal year ("2011-12",
     # "2001-02": the month is the next year's last two digits) and an id ("1234-5") are no month.
     for text in ("2019-04", "2019-4", "2019/04", "4/2019"):
         assert (parse_period(text).kind, parse_period(text).start, parse_period(text).end) == (P_MONTH, "2019-04-01", "2019-04-30"), text
     for text in ("2011-12", "2001-02", "1234-5", "2019-13"):
         assert parse_period(text) is None, text
-    assert (parse_period("2Q01").start, parse_period("2Q01").end) == ("2001-04-01", "2001-06-30")
-    assert parse_period("Q2 01").start == "2001-04-01"
-    assert parse_period("2nd Quarter").quarter == 2
-    range_a = parse_period("Jul-Sep 02")
-    assert (range_a.kind, range_a.start, range_a.end) == (P_RANGE, "2002-07-01", "2002-09-30")
-    range_b = parse_period("Nov02-Mar03")
-    assert (range_b.start, range_b.end) == ("2002-11-01", "2003-03-31")
-    assert parse_period("Nov-Mar 03").start == "2002-11-01"
-    assert parse_period("January").kind == P_MONTH and parse_period("January").month == 1 and parse_period("January").start is None
-    assert parse_period("Jan-02").start == "2002-01-01" and parse_period("Jan 2002").end == "2002-01-31"
-    assert parse_period("Mar 22").day == 22
-    assert parse_period("2001").kind == P_YEAR and parse_period("Cal-03").start == "2003-01-01"
-    assert parse_period("Sum00").kind == P_SEASON and parse_period("Summer").word == "summer"
-    assert parse_period("YTD").kind == P_RELATIVE
-    assert parse_period("HE12").word == "hour 12"
-    assert parse_period("1/1/01 - 1/31/01").end == "2001-01-31"
-    for text in ("H28282", "Sum", "Win", "total sales", "Mayor", "13/45/01", "March madness", "Q5", "12345"):
-        assert parse_period(text) is None, text
-    assert period_of_serial(36892, "mm/dd/yy").start == "2001-01-01"
-    assert period_of_serial(36892, "mmm-yy").kind == P_MONTH
-    assert period_of_serial(0, "mm/dd/yy", date1904=True).start == "1904-01-01"
+    assert parse_period("2001").kind == P_YEAR
+    assert (parse_period("1/2/2019 - 3/4/2019").start, parse_period("1/2/2019 - 3/4/2019").end) == ("2019-01-02", "2019-03-04")
+    for worded in ("04-MAY-2000", "March 4, 2001", "Q2", "2Q01", "Jul-Sep 02", "summer 2001", "YTD", "Monday", "week 3"):
+        assert parse_period(worded) is None, worded
 
 
 def test_format_kinds():
@@ -124,9 +105,9 @@ def test_title_lines_give_context():
     assert _roles(model)[1] == TITLE and _roles(model)[4] == HEADER
     assert table.context.tab == "West"
     assert table.context.as_of.start == "2001-04-20" and table.context.as_of_address == "A2"
-    assert "thousands" in table.context.unit and table.context.unit_address == "A1"
+    assert table.context.unit == ""      # "in thousands" is words: the unit a title states is the learned readers' to read
     assert [t[0] for t in table.context.titles] == ["A1", "A2"]
-    assert _tab(CLEAN, name="Jan 2001", columnFormats=CLEAN_FORMATS).tables[0].context.as_of.start == "2001-01-01"
+    assert _tab(CLEAN, name="2001-01", columnFormats=CLEAN_FORMATS).tables[0].context.as_of.start == "2001-01-01"
 
 
 def test_multi_row_header_joins_with_merges():
@@ -158,58 +139,19 @@ def test_total_word_inside_a_name_stays_a_record():
 
 
 def test_total_word_in_prose_is_no_mark():
-    """A patent abstract that ends "... of the total." or mentions a subtotal is a record (DataBench Patents: 23 records
-    read as printed subtotals and left out of every count); a long label that starts with the word is still a total."""
+    """A patent abstract that mentions "the total" or "a subtotal" is a record (DataBench Patents): no word marks a printed
+    line any more; a printed line is known by its formula, its arithmetic or its style."""
     prose = "A method that reduces the energy used to a fraction of the total."
     rows = [["Id", "Kind", "Claims", "Abstract"], ["1", "utility", 12, prose], ["2", "design", 3, "A lamp shade."],
             ["3", "utility", 7, "The subtotal of each batch is stored before the sum is formed by the device."], ["4", "utility", 9, "A chair."]]
     table = _tab(rows).tables[0]
     assert [line.row for line in table.lines] == [2, 3, 4, 5] and not table.printed
-    labelled = [["Item", "Q1", "Q2"], ["Gas", 10, 20], ["Power", 30, 40], ["Total for the twelve months ended December 31, 2001", 40, 60]]
-    assert [line.row for line in _tab(labelled).tables[0].printed] == [4]
-    # A list of words, and a name ending in the word past the record's other texts (DataBench Second: a seller "Motor
-    # Total"), are records; "East Total" as the line's first text is still a printed total.
-    cars = [["Id", "Make", "Model", "Fuel", "Seller", "Price"], ["a1", "Nissan", "Qashqai", "diesel", "Motor Total", 100], ["a2", "Seat", "Leon", "petrol", "Autos Sur", 200],
-            ["a3", "Kia", "Ceed", "petrol", "Motor Total", 300], ["a4", "Audi", "A3", "diesel", "Car Hub", 400]]
-    assert not _tab(cars).tables[0].printed
-    # On a shorter line the same end word still marks it ("Gas | East | Total" is a subtotal's label).
-    assert [line.row for line in _tab([["Book", "Desk", "Label", "Vol"], ["Gas", "East", "", 10], ["Gas", "West", "", 20], ["Gas", "", "Gas Total", 30]]).tables[0].printed] == [4]
-    keywords = [["Id", "Keywords", "Claims"], ["1", "['maximum', 'horizontal', 'total']", 4], ["2", "['lamp']", 2], ["3", "['chair', 'leg']", 3]]
-    assert not _tab(keywords).tables[0].printed
-    banded = [["Region", "Book", "Volume"], ["East", "Gas", 10], ["East", "Power", 20], ["East Total", "", 30], ["West", "Gas", 5], ["West Total", "", 5]]
-    assert [line.row for line in _tab(banded).tables[0].printed] == [4, 6]
 
 
-def test_total_word_inside_every_key_is_no_mark():
-    rows = [["Customer", "Amt"]] + [[f"C{i} Total", i] for i in range(1, 11)]
-    model = _tab(rows)
-    table = model.tables[0]
-    assert len(table.lines) == 10 and not table.printed
-    assert names.S_TOTAL_WORD_IN_KEY in table.lines[0].signals
 
 
-def test_total_word_beside_a_blank_key_stays_printed():
-    # F2: an invoice's word sits in another column with the key blank, on every second line: the records must not add each ticket twice.
-    rows = [["Ticket", "Item", "Note", "Amt"]]
-    for i in range(1, 10):
-        rows += [[f"T{i}", "x", "", i * 10], ["", "", "Ticket Total", i * 10]]
-    rows += [["", "", "Total for Dept", 450]]
-    table = _tab(rows).tables[0]
-    assert sum(line.cells[3].value for line in table.lines) == 450
-    assert len(table.printed) == 10 and table.printed[-1].role == TOTAL
 
 
-def test_grand_total_and_subtotals_that_tie_never_leave():
-    # F2: the guard took a grand total with the rest; a key's own word that ties to what is above it prints that sum.
-    rows = [["Customer", "Item", "Amt"]]
-    for i in range(1, 10):
-        rows += [[f"C{i}", "x", i], [f"C{i} Total", "", i]]
-    rows += [["Grand Total", "", 45]]
-    table = _tab(rows).tables[0]
-    assert sum(line.cells[2].value for line in table.lines) == 45 and [line.label for line in table.printed][-1] == "Grand Total"
-    rows = [["Customer", "Amt"]] + [[f"C{i} Total", i] for i in range(1, 11)] + [["Grand Total", 55]]
-    table = _tab(rows).tables[0]
-    assert sum(line.cells[1].value for line in table.lines) == 55 and [line.label for line in table.printed] == ["Grand Total"]
 
 
 def test_running_balance_is_not_a_total():
@@ -276,7 +218,7 @@ def test_repeated_blocks_merge_into_one_family():
 
 
 def test_months_across_are_an_axis():
-    rows = [["Pipe", "Jan-01", "Feb-01", "Mar-01", "Apr-01", "Total"], ["a", 1, 2, 3, 4, 10], ["b", 5, 6, 7, 8, 26], ["c", 1, 1, 1, 1, 4]]
+    rows = [["Pipe", "2019-01", "2019-02", "2019-03", "2019-04", "Total"], ["a", 1, 2, 3, 4, 10], ["b", 5, 6, 7, 8, 26], ["c", 1, 1, 1, 1, 4]]
     formulas = [[1, 5, "=SUM(B2:E2)"], [2, 5, "=SUM(B3:E3)"], [3, 5, "=SUM(B4:E4)"]]
     table = _tab(rows, formulas=formulas).tables[0]
     assert [(a.kind, a.positions) for a in table.axes] == [(AXIS_PERIOD, (1, 2, 3, 4))]
@@ -297,7 +239,7 @@ def test_stray_cells_are_set_apart_by_kind():
     table = _tab(rows).tables[0]
     assert table.columns[1].kind == V_NUMBER and table.columns[0].kind == V_TEXT
     kinds = {s.address: s.kind for s in table.strays}
-    assert kinds == {"B3": STRAY_ERROR, "B4": STRAY_LABEL, "B5": STRAY_MARKER, "B7": STRAY_REPEATED_HEADER, "B8": STRAY_TOTAL, "B9": STRAY_NUMBER_WITH_WORD}
+    assert kinds == {"B3": STRAY_ERROR, "B4": STRAY_LABEL, "B5": STRAY_LABEL, "B7": STRAY_REPEATED_HEADER, "B8": STRAY_LABEL, "B9": STRAY_NUMBER_WITH_WORD}     # "n/a" and "total due" are words
     assert table.lines[1].cells[1].stray == STRAY_ERROR and table.lines[1].cells[1].raw == "#REF!"
     assert sum(line.cells[1].value for line in table.lines if line.cells[1].stray is None) == 1 + 5 + 9 + 10 + 11 + 12 + 13 + 14
 
@@ -309,21 +251,21 @@ def test_a_column_of_one_unit_reads_as_numbers():
     from engine.program.catalog import Catalog
     from engine.program.semantics import cell_text
     rows = [["Name", "Displacement", "Address", "Result"], ["River", "1,370 tons", "10 Main St", "3 wins"], ["Kaibokan", "870 tons", "22 Oak Ave", "2 losses"],
-            ["FMR", "1,200 tons", "5 Pine Rd", "4 draws"], ["Flower", "1 ton", "7 Elm Ct", "1 win"]]
+            ["FMR", "1,200 tons", "5 Pine Rd", "4 draws"], ["Flower", "1,040 tons", "7 Elm Ct", "1 win"]]
     model = _tab(rows)
     table = model.tables[0]
     shipped, address, result = table.columns[1], table.columns[2], table.columns[3]
-    assert (shipped.kind, shipped.unit) == (V_NUMBER, "ton"), (shipped.kind, shipped.unit)
+    assert (shipped.kind, shipped.unit) == (V_NUMBER, "tons"), (shipped.kind, shipped.unit)     # the unit as written: no language's plural is cut
     assert address.kind == V_TEXT and result.kind == V_TEXT
-    assert [line.cells[1].value for line in table.lines] == [1370.0, 870.0, 1200.0, 1.0]
-    assert [cell_text(line.cells[1]) for line in table.lines] == ["1,370 tons", "870 tons", "1,200 tons", "1 ton"]
+    assert [line.cells[1].value for line in table.lines] == [1370.0, 870.0, 1200.0, 1040.0]
+    assert [cell_text(line.cells[1]) for line in table.lines] == ["1,370 tons", "870 tons", "1,200 tons", "1,040 tons"]
     catalog = Catalog.from_model(compile_workbook(workbook_from_json({"name": "ships", "tabs": [{"name": "Sheet1", "rows": rows}]})))
-    assert catalog.tables[0].numbers[1] == [1370.0, 870.0, 1200.0, 1.0] and catalog.tables[0].texts[1][0] == "1,370 tons"
+    assert catalog.tables[0].numbers[1] == [1370.0, 870.0, 1200.0, 1040.0] and catalog.tables[0].texts[1][0] == "1,370 tons"
     from engine.program.index import index_of        # its texts are still values a question names ("the 870 tons one")
     index = index_of(catalog.tables[0])
     assert index.quantity_columns == {1} and (1, "870 tons") in index.value_words["870"]
-    # A scale is not a unit: "$48 million" keeps its column as it was.
-    assert _tab([["Film", "Budget"], ["a", "$48 million"], ["b", "$12 million"], ["c", "$7 million"]]).tables[0].columns[1].kind == V_TEXT
+    # A word after a number is its unit as written, in any language: "$48 million" reads as 48 of "million" (which words
+    # are scales is a learned reader's to read, not a list's).
     # Fewer than 4 in 5 cells with the unit: the column stays text, the stated numbers its strays as before.
     mixed = _tab([["Name", "Speed"], ["a", "20 knots"], ["b", "fast"], ["c", "21 knots"], ["d", "slow"], ["e", "19 knots"]]).tables[0]
     assert mixed.columns[1].kind == V_TEXT
@@ -353,15 +295,15 @@ def test_tab_family_merges_with_the_tab_name_as_a_column():
     def month(name, base):
         return {"name": name, "rows": [["Pipe", "Vol"], ["a", base], ["b", base + 1], ["c", base + 2]]}
 
-    book = compile_workbook(workbook_from_json({"name": "w", "tabs": [month("Jan 01", 1), month("Feb 01", 5), {"name": "Other", "rows": [["X", "Y", "Z"], ["p", "q", 1], ["r", "s", 2]]}]}))
+    book = compile_workbook(workbook_from_json({"name": "w", "tabs": [month("2019-01", 1), month("2019-02", 5), {"name": "Other", "rows": [["X", "Y", "Z"], ["p", "q", 1], ["r", "s", 2]]}]}))
     assert len(book.families) == 1
     family = book.families[0]
-    assert family.members == (("Jan 01", 0), ("Feb 01", 0))
+    assert family.members == (("2019-01", 0), ("2019-02", 0))
     table = family.table
-    assert table.columns[0].role == TAB_NAME and [c.name for c in table.columns] == ["Tab", "Pipe", "Vol"]
+    assert table.columns[0].role == TAB_NAME and [c.name for c in table.columns] == ["", "Pipe", "Vol"]
     assert len(table.lines) == 6
     last = table.lines[5]
-    assert last.tab == "Feb 01" and last.cells[0].value == "Feb 01" and last.cells[0].period.start == "2001-02-01"
+    assert last.tab == "2019-02" and last.cells[0].value == "2019-02" and last.cells[0].period.start == "2019-02-01"
     assert last.cells[2].value == 7 and last.cells[2].address == "B4"
 
 
@@ -414,12 +356,12 @@ def test_a_column_beyond_the_named_blocks_stays_in_a_table():
 
 def test_rule_lines_are_spacers_and_never_names():
     # F6c: lines of dashes were headers, so columns were named "--" and a table split at each one.
-    rows = [["Cnterparty", "Deal", "Volume"], ["--------", "-----", "------"], ["a", "x1", 5], ["------", "---", "---"], ["Deal Total", "", 5], ["b", "x2", 6], ["------", "---", "---"], ["Deal Total", "", 6], ["c", "x3", 7], ["d", "x4", 8], ["e", "x5", 9]]
+    rows = [["Cnterparty", "Deal", "Volume"], ["--------", "-----", "------"], ["a", "x1", 5], ["------", "---", "---"], ["Deal Sum", "", 5], ["b", "x2", 6], ["------", "---", "---"], ["Deal Sum", "", 6], ["c", "x3", 7], ["d", "x4", 8], ["e", "x5", 9]]
     model = _tab(rows)
     assert len(model.tables) == 1
     table = model.tables[0]
     assert [c.name for c in table.columns] == ["Cnterparty", "Deal", "Volume"]
-    assert [line.row for line in table.lines] == [3, 6, 9, 10, 11] and [line.row for line in table.printed] == [5, 8]
+    assert [line.row for line in table.lines] == [3, 5, 6, 8, 9, 10, 11] and not table.printed      # one line's figure again is no total any arithmetic shows
     assert model.lines[1].role == names.BLANK and names.S_RULE_LINE in model.lines[1].signals
 
 
@@ -548,17 +490,12 @@ def test_a_lone_label_between_a_total_and_figures_is_a_band():
 
 def test_axes_cross_spacers_and_totals_and_reach_flag_columns():
     # Phase 2, 6.1: books under no shared label, a total between them and spacers around: peers no axis stated.
-    rows = [["Desk", "Phys", "", "Total", "", "Store", "", "Bridge", "Swap", "Opt", "", "Total"], ["a", 2.5, "", 2.5, "", 1.5, "", 3.5, 4.5, 5.5, "", 15.0], ["b", 3.5, "", 3.5, "", 2.5, "", 4.5, 5.5, 6.5, "", 19.0], ["c", 4.5, "", 4.5, "", 3.5, "", 5.5, 6.5, 7.5, "", 23.0]]
-    table = _tab_heads(rows, {1}).tables[0]
-    axis = next(a for a in table.axes if a.kind == names.AXIS_TOTALLED)
-    assert [table.columns[p].letter for p in axis.positions] == ["B", "F", "H", "I", "J"]
-    assert {c.letter: c.role for c in table.columns}["D"] == ROW_TOTAL and {c.letter: c.role for c in table.columns}["L"] == ROW_TOTAL
     # Phase 2, 1.1: agreement columns marked Y and N.
     rows = [["Deal", "Entity", "Master", "Omnibus", "Netting", "Letter", "Date"], ["a", "ENA", "N", "Y", "N", "N", "n/a"], ["b", "EPMI", "N", "Y", "N", "Y", "n/a"], ["c", "ENA", "Y", "Y", "N", "N", "n/a"]]
     table = _tab_heads(rows, {1}).tables[0]
     assert [(a.kind, a.positions) for a in table.axes] == [(names.AXIS_FLAG, (2, 3, 4, 5))]
     # Phase 2, 53.3: a month with nothing in it yet is still a month of the axis.
-    rows = [["Day", "JAN", "FEB", "MAR", "APR"], [1, "", "", 8.5, 7.5], [2, "", "", 6.5, 5.5], [3, "", "", 4.5, 3.5]]
+    rows = [["Day", "2019-01", "2019-02", "2019-03", "2019-04"], [1, "", "", 8.5, 7.5], [2, "", "", 6.5, 5.5], [3, "", "", 4.5, 3.5]]
     table = _tab_heads(rows, {1}).tables[0]
     assert [(a.kind, a.positions) for a in table.axes] == [(AXIS_PERIOD, (1, 2, 3, 4))]
 
@@ -582,9 +519,11 @@ def test_statistic_lines_under_a_date_key_are_printed():
     table = model.tables[0]
     assert len(table.lines) == 10 and sum(line.cells[1].value for line in table.lines) == 65.0
     assert [line.label for line in table.printed] == ["Sum", "Average", "Maximum"]
-    assert names.S_STRAY_KEY in table.printed[0].signals and model.lines[11].role in (SUBTOTAL, TOTAL)
-    # Under a text key the same lines are records until a word or a formula says otherwise: nothing here reads the words.
+    assert set(table.printed[0].signals) & {names.S_STRAY_KEY, names.S_ARITHMETIC_TIE} and model.lines[11].role in (SUBTOTAL, TOTAL)
+    # Under a text key a line whose figure is its column's sum is printed by that arithmetic; no word is read.
     rows = [["Hub", "Price"]] + [[f"h{i}", 2.0 + i] for i in range(10)] + [["Sum", 65.0]]
+    assert len(_tab(rows).tables[0].lines) == 10
+    rows = [["Hub", "Price"]] + [[f"h{i}", 2.0 + i] for i in range(10)] + [["Sum", 64.0]]
     assert len(_tab(rows).tables[0].lines) == 11
 
 
@@ -725,7 +664,7 @@ def test_an_unchanged_sheet_keeps_its_hash_and_its_model():
 
 def test_an_axis_holds_one_grain_and_no_totals():
     # F12: months and quarters in one axis, a typed total as a peer: top_col always answered a total.
-    rows = [["Pipe", "Jan-01", "Feb-01", "Mar-01", "Q1 01", "Apr-01", "May-01", "Jun-01", "Q2 01", "2001"], ["a", 1, 2, 3, 6, 1, 1, 1, 3, 9], ["b", 2, 2, 2, 6, 2, 2, 2, 6, 12], ["c", 3, 3, 3, 9, 3, 3, 3, 9, 18]]
+    rows = [["Pipe", "2019-01", "2019-02", "2019-03", "Q1 19", "2019-04", "2019-05", "2019-06", "Q2 19", "2019"], ["a", 1, 2, 3, 6, 1, 1, 1, 3, 9], ["b", 2, 2, 2, 6, 2, 2, 2, 6, 12], ["c", 3, 3, 3, 9, 3, 3, 3, 9, 18]]
     table = _tab(rows).tables[0]
     assert [(a.kind, a.positions) for a in table.axes] == [(AXIS_PERIOD, (1, 2, 3, 5, 6, 7))]
     assert table.columns[4].role != PEER and table.columns[9].role != PEER
@@ -875,8 +814,8 @@ def test_xlsx_reader_builds_the_wire_payload():
 
 TESTS = [
     test_number_parser, test_period_parser, test_format_kinds, test_formula_shapes, test_clean_table_comes_out_unchanged, test_title_lines_give_context, test_multi_row_header_joins_with_merges,
-    test_total_lines_are_printed_and_never_records, test_total_word_inside_a_name_stays_a_record, test_total_word_in_prose_is_no_mark, test_total_word_inside_every_key_is_no_mark, test_total_word_beside_a_blank_key_stays_printed,
-    test_grand_total_and_subtotals_that_tie_never_leave, test_a_key_left_of_repeated_names_goes_with_every_block, test_all_names_alike_are_a_peer_run_not_blocks, test_a_column_beyond_the_named_blocks_stays_in_a_table,
+    test_total_lines_are_printed_and_never_records, test_total_word_inside_a_name_stays_a_record, test_total_word_in_prose_is_no_mark,
+    test_a_key_left_of_repeated_names_goes_with_every_block, test_all_names_alike_are_a_peer_run_not_blocks, test_a_column_beyond_the_named_blocks_stays_in_a_table,
     test_the_line_model_artifact_is_small_pinned_and_retrains_the_same, test_training_labels_hold_row_numbers_and_hashes_only, test_a_units_line_repeating_over_new_names_opens_a_table, test_a_total_word_naming_a_column_can_be_a_header,
     test_a_closing_total_ends_its_table_when_records_resume, test_titles_with_one_cell_a_block_part_side_by_side_blocks, test_each_side_by_side_list_has_its_own_bands, test_a_lone_label_between_a_total_and_figures_is_a_band, test_axes_cross_spacers_and_totals_and_reach_flag_columns,
     test_a_later_line_styled_as_the_header_is_a_header, test_rule_lines_are_spacers_and_never_names, test_no_header_inside_the_filter_range, test_a_data_line_joined_to_a_repeated_header_stays_data, test_a_lone_data_line_called_a_header_stays_in_its_table,

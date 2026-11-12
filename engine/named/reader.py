@@ -19,11 +19,11 @@ from engine.named.names import CALC_SIDES, CLOSED_HEADS, FINE_OF_NAME, LEFT, NON
 from engine.named.units import T_BAND, T_COLUMN, T_LINE, T_TABLE, T_VALUE, collate, question_graph
 from engine.program.catalog import Catalog
 from engine.program.decoder import Decoder, table_reach
-from engine.program.index import index_of, stem
+from engine.program.index import index_of
 from engine.program.language import Col, Program, SECTION, TOGETHER, coordinates
 from engine.program.names import (CALC, MINUS, OVER, ROLE_OF_SLOT, SIGNED, SLOT_ANSWER_TYPE, SLOT_BLANK, SLOT_CALC_LEFT, SLOT_COMPARISON, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE, SLOT_MEASURE, SLOT_NUMBER, SLOT_PERIOD, SLOT_ROW_OP, SLOT_SECTION, SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, coarse_type, coordinate, slot_of)
 from engine.program.scoring import Reading
-from engine.program.words import _STOP, FILTER_NAME_SHARE, read_question
+from engine.program.words import FILTER_NAME_SHARE, read_question
 
 MODE_NAMED = "named"
 MODE_NAMED_PLUS_OPEN = "named_plus_open"
@@ -183,8 +183,8 @@ def _span_of(row: np.ndarray, content: np.ndarray) -> tuple[int, ...]:
 class _Builder:
     def __init__(self, read: QuestionRead, windex: WorkbookIndex, catalog: Catalog, decoder: Decoder, names: NameSet, weights: LinkWeights, mode: str):
         self.read, self.windex, self.catalog, self.decoder, self.names, self.weights, self.mode = read, windex, catalog, decoder, names, weights, mode
-        self.stems = {stem(word) for word in read.words}
-        self.content = np.asarray([stem(word) not in _STOP for word in read.words], dtype=bool)
+        self.stems = set(read.words)
+        self.content = np.ones(len(read.words), dtype=bool)     # every word may link: no language's small words are listed
         self.scores: dict[str, float] = {}
         self.book: dict[str, Evidence] = {}
         self.floor = read_question(read.question, catalog, decoder).scores

@@ -32,7 +32,6 @@ DEFINITIONS = {
     "condition": {"equals": "a cell is this value", "contains": "a cell holds this text", "period": "a date falls in this period", "comparison": "a number compares with a number stated", "not_equals": "a text cell is some other value", "blank": "a cell is blank or filled", "section": "a band above the line says this", "line": "a line's own label holds this"},
     "anchor": {"anywhere": "the text sits anywhere in the cell", "starts": "the cell starts with it", "ends": "the cell ends with it"},
     "measure_kind": {"column": "one column's figures", "row_arithmetic": "two columns of one line under an operator", "size": "a measure with its sign dropped", "date": "a date column read as its day", "across": "peer columns of one line added"},
-    "sign_word": {"net": "net, position, value: the signed sum", "loss": "a loss, owing, short: lowest where stored negative", "size": "biggest driver, moved most: by size", "magnitude": "a burn, a payment: the signed figure stated as its size"},
     "period": {"day": "one day", "month": "one month", "quarter": "one quarter", "half": "one half year", "season": "a trading season: winter, summer", "year": "one year", "range": "a span between two days", "relative": "YTD, MTD, BOM, prompt", "weekday": "a weekday", "week": "one week", "hour": "one hour"},
     "column_role": {"key": "text naming the record, mostly distinct", "label": "text with repeats, a category", "section_label": "a sparse label filled down over the lines under it", "measure": "numbers", "date": "typed or written days", "period": "months, quarters, years as words", "peer": "one of several columns of one axis", "row_total": "adds up its own line", "derived": "arithmetic on its own line", "tab_name": "the tab a family member came from", "spacer": "empty inside a table's range"},
     "line_role": {"record": "a data line", "subtotal": "a printed summary of part of a table", "total": "a printed summary of a whole table", "band": "a section label over the lines under it", "header": "names columns", "title": "context above a table", "note": "a label and value outside a table", "blank": "nothing on the line"},
@@ -44,7 +43,7 @@ def structure_tier() -> list[dict]:
     from engine.program import names as program
     from engine.sheet import names as sheet
     lists = {"form": program.FORMS, "aggregate": program.AGGREGATES, "direction": program.DIRECTIONS, "size": program.SIZES, "entity": program.RANK_ENTITIES, "comparison": program.COMPARISONS, "row_op": program.ROW_OPS, "calc_op": program.CALC_OPS,
-             "answer_type": program.ANSWER_TYPES, "word_role": program.WORD_ROLES, "condition": program.CONDITION_KINDS, "anchor": program.ANCHORS, "measure_kind": program.MEASURE_KINDS, "sign_word": program.SIGN_WORDS,
+             "answer_type": program.ANSWER_TYPES, "word_role": program.WORD_ROLES, "condition": program.CONDITION_KINDS, "anchor": program.ANCHORS, "measure_kind": program.MEASURE_KINDS,
              "period": sheet.PERIOD_KINDS, "column_role": sheet.COLUMN_ROLES, "line_role": sheet.LINE_ROLES, "value_kind": sheet.VALUE_KINDS}
     out = []
     for group, members in lists.items():

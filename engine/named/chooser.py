@@ -15,10 +15,8 @@ from engine.named.links import EXACT, PARTIAL, PREFIX, is_stated_word
 from engine.named.names import NONE, WORD_ROLE_CLASSES
 from engine.named.reader import LINK_SLOTS, MODE_NAMED, NamedReading, needs_asking, unsupported_links
 from engine.program.catalog import Catalog
-from engine.program.index import stem
 from engine.program.language import Agg, Breakdown, Col, Program, Rank, Show, TOGETHER, coordinates, form_of, tables_of
 from engine.program.names import (ENTITY_GROUP, ENTITY_LINE, EV_ADDS_TWICE, EV_BARE_ZERO, EV_EMPTY, EV_FAILED, EV_FILTER_DID_NOTHING, EV_FRACTION_FOR_COUNT, EV_MANY_ROWS, EV_PRINTED_TIE, EV_REPEATED_LINES, EV_ROW_COUNT_FOR_AMOUNT, EV_ROW_DUMP, EV_SHAPE_AGREES, EV_TOO_LARGE_FOR_SHARE, EV_TYPE_AGREES, EV_WRONG_KIND, FORMS, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE, SLOT_MEASURE, SLOT_SECTION, SLOT_SHOWN, SLOT_VALUE, slot_of)
-from engine.program.words import _STOP
 
 if TYPE_CHECKING:
     from engine.program.verifier import Verified
@@ -26,7 +24,7 @@ if TYPE_CHECKING:
 _KINDS = {SLOT_MEASURE: "measure", SLOT_KEY: "key", SLOT_SHOWN: "shown", SLOT_VALUE: "value", SLOT_CONTAINS: "contains", SLOT_LINE: "line", SLOT_SECTION: "section"}
 _FLAGS = {EV_TYPE_AGREES: "type_agrees", EV_SHAPE_AGREES: "shape_agrees", EV_PRINTED_TIE: "printed_tie", EV_BARE_ZERO: "bare_zero", EV_EMPTY: "empty", EV_FAILED: "failed", EV_ROW_DUMP: "row_dump", EV_MANY_ROWS: "many_rows", EV_WRONG_KIND: "wrong_kind", EV_ROW_COUNT_FOR_AMOUNT: "row_count_for_amount", EV_FRACTION_FOR_COUNT: "fraction_for_count", EV_TOO_LARGE_FOR_SHARE: "too_large_for_share", EV_FILTER_DID_NOTHING: "filter_did_nothing", EV_REPEATED_LINES: "repeated_lines", EV_ADDS_TWICE: "adds_twice"}
 FEATURES = ("fine_type", "shown_columns", "words_reused", "reach_gap", "words_explained", "words_unexplained", "parts_asked", "parts_unasked", "link_mean", "link_min", *(f"link_{kind}" for kind in _KINDS.values()), "rule_exact", "rule_partial", "rule_prefix", *_FLAGS.values(), "form_prior", "decoder_score", "rank_inverse", "score_margin", "conditions", "class_agreement", "needs_asking", "open_similarity", *ALIGN_FEATURES, "reader_score")
-READER_SCORE = "reader_score"           # the readers' probability for a program they proposed (engine/named/proposals.py), 0 for one they did not: unnamed, one term among the named ones
+READER_SCORE = "reader_score"           # held at 0: no other readers propose beside the decoder; the fitted chooser keeps its shape until it is refit (PLAN 2026-11-12 step 3)
 ROLE_MIN = 0.5
 SUPPORT_NOTE = "no_named_support"
 ASK_LOW = "low_confidence"
@@ -129,7 +127,7 @@ def features_of(verified: Verified, named: NamedReading, catalog: Catalog, *, ra
     """The named evidence of one candidate, rounded so a comparison never turns on a float's last bits. alignment: the candidate's word-to-part alignment, whose three sums join the evidence; reader_score: the readers' probability for it, 0 when they did not propose it."""
     program = verified.scored.program
     words = named.read.words
-    content = [at for at, word in enumerate(words) if stem(word) not in _STOP and not is_stated_word(word)]
+    content = [at for at, word in enumerate(words) if not is_stated_word(word)]
     roles = named.read.roles
     none_at = WORD_ROLE_CLASSES.index(NONE)
     roleful = [at for at in content if roles[at, none_at] < ROLE_MIN]
@@ -219,22 +217,17 @@ class Decision:
     reasons: tuple[str, ...]
 
 
-def score_candidates(verified: Sequence[Verified], named: NamedReading, catalog: Catalog, chooser: Chooser, aligner: Aligner | None = None, *, terms: bool = False, reader_scores: Mapping[tuple, float] | None = None, decoded: int | None = None) -> list[Candidate]:
+def score_candidates(verified: Sequence[Verified], named: NamedReading, catalog: Catalog, chooser: Chooser, aligner: Aligner | None = None, *, terms: bool = False) -> list[Candidate]:
     """Every candidate scored, best first: rounded logit, then the pool's order. Stable: no tie depends on anything but those two. aligner: read each candidate's parts against the question's words (each part read once for all candidates); terms: keep every word's named terms for display. reader_scores: the readers' probability by program_key for what they proposed; decoded: how many of verified, from the front, the decoder listed (all when None)."""
-    from engine.named.proposals import program_key
     best = verified[0].scored.score if verified else 0.0
     builder = aligner.builder(named, catalog) if aligner is not None else None
-    reader_scores = reader_scores or {}
-    decoded = len(verified) if decoded is None else decoded
     out = []
     for rank, item in enumerate(verified):
         alignment = aligner.align(item.scored.program, builder, catalog, terms=terms) if aligner is not None else None
-        read = reader_scores.get(program_key(item.scored.program)) if reader_scores else None
-        features = features_of(item, named, catalog, rank=rank, best_score=best, alignment=alignment, reader_score=read or 0.0)
+        features = features_of(item, named, catalog, rank=rank, best_score=best, alignment=alignment)
         logit, kept = chooser.logit(features)
         logit = round(logit, 4)
-        proposed = "both" if rank < decoded and read is not None else "decoder" if rank < decoded else "reader"
-        out.append(Candidate(item, features, logit, chooser.probability(logit, form_of(item.scored.program)), kept, bool(features["needs_asking"]), rank, alignment, proposed))
+        out.append(Candidate(item, features, logit, chooser.probability(logit, form_of(item.scored.program)), kept, bool(features["needs_asking"]), rank, alignment))
     out.sort(key=lambda candidate: (-candidate.logit, candidate.rank))
     return out
 

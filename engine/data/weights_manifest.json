@@ -18,7 +18,7 @@
     },
     "sheet_line_model.json": {
       "note": "tracked in git (not fetched); the sheet compiler's header decision, installed only by training/sheet/promote.py",
-      "sha256": "23aba5e8d0f838bf5181adf9b34d1dcc550a501b8ba70bcdbc72d385cc581dcc"
+      "sha256": "ea2338b493f03a3643c5bc0488979c402673e69f9ef21b126adc2bd121f369c4"
     }
   },
   "files": {

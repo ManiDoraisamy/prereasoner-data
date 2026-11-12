@@ -5,7 +5,6 @@ Writes a report with the code commit, dirty state, dataset identity, bundle hash
 usage: python -m training.named.evaluate --set val --bundle <dir> [--limit N] [--survival 200] [--modes named,named_plus_open] [--folds 5] --out <report.json>
        python -m training.named.evaluate --set studied|messy --bundle <dir> --chooser <the validation report> --out <report.json>
        --words: the floor, the reading from words alone with no model
-       --readers <dir>: today's readers propose beside the decoder (engine/named/proposals.py), over the readers the bundle names; --reader-cache <file.pkl.gz> keeps their proposals per question and sheet, so a second run reads none again
 The funnel counts, of gold questions, a right program listed, ranked first by the chooser and served; and the same through the chooser over only the decoder's candidates and over only the readers'.
 On validation, --folds decides each question by a chooser calibrated on the other folds (training/named/choose.py:cross_fit); the fit of all folds is written beside the report for the sets read after it.
 Each question's misses are put in a stage: compile (the gold program itself no longer gives the gold answer), links (a gold link outside the top 10), decode (the gold links stand and no right program reached the top 50), verify (the gold program is listed and its result is not graded right), choose (a right candidate was listed and not answered with).
@@ -41,7 +40,7 @@ from engine.program.names import EV_EMPTY, EV_SHAPE_AGREES
 from engine.program.semantics import fold
 from engine.program.store import RequestTables
 from engine.program.verifier import verify
-from engine.program.words import predict_answer_type, read_question
+from engine.program.words import read_question
 from training.named.augment import SURVIVAL_OPS, mutate_catalog
 from training.named.choose import SUPPORT_ALL, SUPPORT_NO_LINKS, answer_key, calibrated, cross_fit, decision_of, fold_of, records_of
 
@@ -182,7 +181,7 @@ def words_outcome(item: Item, prepared: Prepared, k: int = 50) -> tuple[str, tup
     started = time.perf_counter()
     reading = read_question(item.question, prepared.catalog, prepared.decoder)
     decoded = prepared.decoder.decode(reading, k=k)
-    checked = verify(decoded.programs, prepared.tables, predict_answer_type(item.question), top=k)
+    checked = verify(decoded.programs, prepared.tables, None, top=k)     # no answer type from words: the floor states none
     seconds = time.perf_counter() - started
     for candidate in checked:
         if candidate.result is not None and candidate.result.rows and candidate.held(EV_SHAPE_AGREES) and not candidate.held(EV_EMPTY):
@@ -470,26 +469,9 @@ def provenance(args: argparse.Namespace, items: list[Item]) -> dict:
         for name in ("reader.pt", "named_bundle.json"):
             digest.update((Path(args.bundle) / name).read_bytes())
         out["bundle_sha256"] = digest.hexdigest()
-    if getattr(args, "readers", None):
-        out["readers"] = readers_identity(args.readers)
     if args.set == "val":
         with open(f"{FACTORY_OUT}val.jsonl", "rb") as source:
             out["val_jsonl_sha256"] = hashlib.sha256(source.read()).hexdigest()
-    return out
-
-
-def readers_identity(folder: str) -> dict:
-    """A readers folder's identity: each model file's sha256 and each reader's anchoring."""
-    out = {"folder": str(folder)}
-    for path in sorted(Path(folder).glob("*/model.pt")):
-        digest = hashlib.sha256()
-        with open(path, "rb") as source:
-            for block in iter(lambda: source.read(1 << 24), b""):
-                digest.update(block)
-        out[path.parent.name] = digest.hexdigest()
-        reader = path.parent / "reader.json"
-        if reader.exists():
-            out[f"{path.parent.name}_reader"] = json.loads(reader.read_text(encoding="utf-8"))
     return out
 
 
@@ -504,8 +486,6 @@ def main() -> None:
     parser.add_argument("--folds", type=int, default=0, help="decide each question by a chooser calibrated on the other folds")
     parser.add_argument("--chooser", help="a validation report, whose fit of all folds decides, per mode, over the bundle's chooser")
     parser.add_argument("--keep-candidates", action="store_true", help="write every candidate's evidence beside the report, to fit again without reading")
-    parser.add_argument("--readers", help="a folder of today's readers to propose beside the decoder (default: the bundle's)")
-    parser.add_argument("--reader-cache", help="a .pkl.gz of the readers' proposals, read first and written back")
     parser.add_argument("--out", required=True)
     args = parser.parse_args()
     items = load_factory_set("val", limit=args.limit) if args.set == "val" else load_messy() if args.set == "messy" else load_studied()
@@ -517,12 +497,7 @@ def main() -> None:
     if not args.words:
         if not args.bundle:
             parser.error("--bundle, or --words")
-        engine = load_bundle(args.bundle, readers=args.readers)
-        if engine.proposer is not None and not args.readers:
-            report["provenance"]["readers"] = readers_identity(engine.proposer.directory)
-        if engine.proposer is not None and args.reader_cache and os.path.exists(args.reader_cache):
-            with gzip.open(args.reader_cache, "rb") as source:
-                engine.proposer.cache.update(pickle.load(source))
+        engine = load_bundle(args.bundle)
         report["provenance"]["torch_threads"] = torch.get_num_threads()
         report["provenance"]["machine"] = {"logical_cores": psutil.cpu_count(), "memory_gb": round(psutil.virtual_memory().total / 1024 ** 3, 1), "cpu_percent_at_start": psutil.cpu_percent(interval=1.0), "note": "the development machine, shared with other work, not Cloud Run"}
     bundle_chooser = engine.chooser if engine is not None else None
@@ -541,10 +516,6 @@ def main() -> None:
         report["modes"][mode] = row
         summary = {key: row.get(key) for key in ("mode", "by_label", "p50_ms", "p99_ms", "stages_p50_ms", "index_seconds_p50", "index_seconds_p99", "index_kb_p50", "link_top10", "link_top10_by_kind", "peak_gb", "survival", "gate_a", "right_listed", "funnel", "answers", "stages_of_misses", "digest")}
         print(json.dumps(summary, sort_keys=True), flush=True)
-        if engine is not None and engine.proposer is not None and args.reader_cache:
-            with gzip.open(args.reader_cache + ".tmp", "wb") as sink:
-                pickle.dump(engine.proposer.cache, sink, protocol=4)
-            os.replace(args.reader_cache + ".tmp", args.reader_cache)
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     Path(args.out).write_text(json.dumps(report, indent=0, sort_keys=True, default=str) + "\n", encoding="utf-8", newline="\n")
 

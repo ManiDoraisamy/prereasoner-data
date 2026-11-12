@@ -17,7 +17,7 @@ from engine.sheet.names import V_DATE, V_ERROR, V_MARKER, V_NUMBER, V_PERIOD, V_
 
 ARTIFACT = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "sheet_line_model.json")
 
-FEATURES = ("filled", "text", "real_figures", "year_or_index", "date", "period", "error", "marker", "label_share", "width_share", "starts_left", "wordy", "longest", "total_word",
+FEATURES = ("filled", "text", "real_figures", "year_or_index", "date", "period", "error", "marker", "label_share", "width_share", "starts_left", "wordy", "longest",
             "bold", "fill", "under", "bold_next", "fill_next", "under_next", "repeated", "sequence", "gap_above", "gap_below", "wide_merge", "label_value", "value_score", "named", "typed_below",
             "overlap_below", "over_figures", "order", "is_first", "frozen_last", "in_frozen", "autofilter_top", "prev_filled", "prev_figures", "prev_bold", "prev_gap", "prev_single",
             "next_filled", "next_figures", "next_bold", "next_over_figures", "next_value_score", "next_same_columns", "next_same_kinds", "formula_cells",
@@ -110,7 +110,7 @@ def line_features(facts: dict[int, LineFacts], grid: Grid) -> dict[int, dict[str
         blank_above = r - before.row - 1 if before is not None else r - 1
         out[r] = {
             "filled": f.filled, "text": f.text, "real_figures": f.real_figures, "year_or_index": f.number - f.real_figures, "date": f.date, "period": f.period, "error": f.error, "marker": f.marker,
-            "label_share": labels / f.filled, "width_share": f.filled / width, "starts_left": float(f.first_col == leftmost), "wordy": f.wordy, "longest": f.longest, "total_word": float(f.total_word),
+            "label_share": labels / f.filled, "width_share": f.filled / width, "starts_left": float(f.first_col == leftmost), "wordy": f.wordy, "longest": f.longest,
             "bold": f.bold, "fill": f.fill, "under": f.under, "bold_next": float(f.bold_next), "fill_next": float(f.fill_next), "under_next": float(f.under_next), "repeated": float(f.repeated),
             "sequence": float(f.sequence), "gap_above": float(f.gap_above), "gap_below": float(f.gap_below), "wide_merge": f.wide_merge, "label_value": float(f.label_value), "value_score": f.value_score,
             "named": f.named, "typed_below": f.typed_below, "overlap_below": f.overlap_below, "over_figures": f.over_figures, "order": min(at, 64), "is_first": float(at == 0),

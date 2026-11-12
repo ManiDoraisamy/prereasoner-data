@@ -41,10 +41,10 @@ from engine.named.bundle import write_bundle
 from engine.named.units import T_BAND, T_COLUMN, T_LINE, T_TABLE, T_VALUE, Graph, Target, collate, question_graph, table_graphs, targets_of, value_graph
 from engine.program.catalog import Catalog, CatalogTable
 from engine.program.decoder import Decoder
-from engine.program.index import stem, words_of
+from engine.program.index import words_of
 from engine.program.names import A_NAME, ROLE_CONTEXT, ROLE_FILTER, ROLE_KEY, ROLE_MEASURE, SLOT_ANSWER_TYPE, SLOT_CALC_LEFT, slot_of
 from engine.program.semantics import fold
-from engine.program.words import _STOP, read_question
+from engine.program.words import read_question
 from training.named import EXPERIMENTS_DIR
 from training.named.augment import TRAINING_SHARES, augmented
 from training.named.data import TabExample, check_held_out, read_examples, split_families
@@ -244,14 +244,14 @@ def build_batch(example: TabExample, reader_config: ReaderConfig, names: NameSet
         at_question = len(texts)
         texts.append(question)
         closed.append(closed_of(row, example.labels))
-        read_as: list[list[str] | None] = [([] if stem(word) in _STOP else None) for word in words]
+        read_as: list[list[str] | None] = [None for _ in words]     # no word is listed as meaning nothing: what a word reads as comes from the links alone
         roles = [0] * len(words)
         sides = [0] * len(words)
         left_names = {name.split(":", 1)[1] for name in row.get("coordinates", ()) if slot_of(name) == SLOT_CALC_LEFT}
         calc = row.get("form") == "calc"
         row_sides = _ROW_SIDES.search(str(row.get("program", "")).split(" where ")[0]) if not calc else None
         floor = read_question(question, catalog, decoder).scores
-        stems = {stem(word) for word in words}
+        stems = set(words)
         for link in row.get("links", ()):
             span = [at for at in link.get("span", ()) if at < len(words)]
             if not span:
@@ -722,7 +722,7 @@ def word_tier(examples: list[TabExample]) -> list[str]:
             for line in table.printed:
                 held.update(words_of(line.label))
         for word in held:
-            if len(word) >= 2 and not word.isdigit() and word not in _STOP:
+            if len(word) >= 2 and not word.isdigit():
                 counts[word] = counts.get(word, 0) + 1
     ranked = sorted((word for word, count in counts.items() if count >= WORD_MIN_TABS), key=lambda word: (-counts[word], word))
     return [f"{WORD_PREFIX}{word}" for word in ranked[:WORD_NAMES]]

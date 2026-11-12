@@ -20,7 +20,6 @@ from engine.program.store import RequestTables
 from engine.sheet.names import PRINTED_ROLES, TOTAL
 
 _ISO = re.compile(r"^\d{4}-\d{2}(-\d{2})?")
-_TOTAL_WORD = re.compile(r"\b(?:grand\s+total|sub-?\s*total|totals?|net|sum)\b")
 TIE_RELATIVE = 1e-6
 TIE_ABSOLUTE = 1e-9
 TIE_DIGITS = 4
@@ -138,7 +137,7 @@ def shape_evidence(rows: tuple[tuple, ...], program: Program, expected: str | No
 
 
 def _label_agrees(line, program: Program) -> bool:
-    """A printed line's label agrees with what a program keeps: it names one of the program's filter values, or, for a program with no filter, it is the table's own total."""
+    """A printed line's label agrees with what a program keeps: it names one of the program's filter values, or, for a program with no filter, the compiler reads it as the table's own total (by the sheet's arithmetic and layout, not by its words)."""
     label = fold(line.label)
     words: list[str] = []
     for condition in conditions_of(program):
@@ -151,7 +150,7 @@ def _label_agrees(line, program: Program) -> bool:
     bands = fold(" ".join(line.section))
     if words:
         return any(word and (word in label or word in bands) for word in words)
-    return line.role == TOTAL or bool(_TOTAL_WORD.search(label))
+    return line.role == TOTAL
 
 
 def printed_tie_evidence(program: Program, value: float, tables: RequestTables) -> list[Evidence]:

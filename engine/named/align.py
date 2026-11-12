@@ -23,12 +23,11 @@ import numpy as np
 from engine.named.links import SCALE, SUPPORT, is_stated_word
 from engine.named.names import WORD_ROLE_CLASSES, NameSet
 from engine.program.catalog import Catalog
-from engine.program.index import index_of, stem, words_of
+from engine.program.index import index_of, words_of
 from engine.program.language import TOGETHER, Program, coordinates, period_from_name
 from engine.program.names import (ROLE_OF_SLOT, SLOT_AGGREGATE, SLOT_ANSWER_TYPE, SLOT_BLANK, SLOT_CALC_LEFT, SLOT_CALC_OP, SLOT_COMPARISON, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_DIRECTION, SLOT_ENTITY, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE, SLOT_LISTING,
                                   SLOT_MEASURE, SLOT_NUMBER, SLOT_PEERS, SLOT_PERIOD, SLOT_ROW_OP, SLOT_SECTION, SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, slot_of)
 from engine.program.semantics import fold, number_text
-from engine.program.words import _ACROSS, _AVG, _BLANK, _CALC_MINUS, _CALC_OVER, _CALC_PLUS, _COMPARE, _COUNT, _DISTINCT, _HIGH, _LOW, _MONTHS, _ROW_MINUS, _ROW_PLUS, _ROW_TIMES, _SIGNED_ZERO, _STOP, _SUM
 
 GROUP_OF_SLOT = {SLOT_FORM: "form", SLOT_AGGREGATE: "aggregate", SLOT_DIRECTION: "order", SLOT_ENTITY: "order", SLOT_SIZE: "operator", SLOT_ROW_OP: "operator", SLOT_CALC_OP: "operator", SLOT_PEERS: "operator", SLOT_LISTING: "operator", SLOT_BLANK: "operator",
                  SLOT_MEASURE: "measure", SLOT_KEY: "key", SLOT_SHOWN: "shown", SLOT_FILTER: "condition_column", SLOT_VALUE: "condition_value", SLOT_CONTAINS: "condition_value", SLOT_LINE: "label", SLOT_SECTION: "label",
@@ -44,10 +43,6 @@ STRUCTURE_MIN = 0.5
 ROUND = 4
 # The coordinates no word is read against: what the decoder states for bookkeeping, not a part a question asks for.
 _SKIPPED = (SLOT_ANSWER_TYPE, SLOT_CONDITIONS, SLOT_CALC_LEFT)
-_LEXICON = {"aggregate:sum": (_SUM,), "aggregate:avg": (_AVG,), "aggregate:count": (_COUNT,), "aggregate:countd": (_DISTINCT,), "aggregate:max": (_HIGH,), "aggregate:min": (_LOW,),
-            "direction:highest": (_HIGH,), "direction:lowest": (_LOW,), "form:rank": (_HIGH, _LOW), "form:agg": (_SUM, _AVG, _COUNT), "form:calc": (_CALC_MINUS, _CALC_OVER, _CALC_PLUS),
-            "calc_op:-": (_CALC_MINUS,), "calc_op:/": (_CALC_OVER,), "calc_op:+": (_CALC_PLUS,), "row_op:*": (_ROW_TIMES,), "row_op:-": (_ROW_MINUS,), "row_op:+": (_ROW_PLUS,), "row_op:/": (_CALC_OVER,),
-            "blank:blank": (_BLANK,), "blank:filled": (_BLANK,), **{f"comparison:{op}": (pattern,) for op, pattern in (*_COMPARE, *_SIGNED_ZERO)}}
 _STRUCTURE_OF_SLOT = {SLOT_MEASURE: "word_role:measure", SLOT_KEY: "word_role:key", SLOT_SHOWN: "word_role:key", SLOT_FILTER: "word_role:filter", SLOT_VALUE: "condition:equals", SLOT_CONTAINS: "condition:contains", SLOT_LINE: "condition:line",
                       SLOT_SECTION: "condition:section", SLOT_PERIOD: "condition:period", SLOT_NUMBER: "condition:comparison", SLOT_BLANK: "condition:blank", SLOT_TABLE: "word_role:context", SLOT_PEERS: "measure_kind:across", SLOT_LISTING: "answer_type:list"}
 
@@ -143,48 +138,26 @@ class QuestionEvidence:
     content: np.ndarray
 
 
-def _lexicon_words(low: str, words: Sequence[str], patterns) -> np.ndarray:
-    """Which words sit inside a match of any of the patterns, by character spans."""
-    out = np.zeros(len(words), dtype=bool)
-    if not patterns:
-        return out
-    spans = []
-    at = 0
-    for word in words:
-        start = low.find(word, at)
-        if start < 0:
-            spans.append((-1, -1))
-            continue
-        spans.append((start, start + len(word)))
-        at = start + len(word)
-    for pattern in patterns:
-        for match in pattern.finditer(low):
-            for position, (start, end) in enumerate(spans):
-                if start >= 0 and start < match.end() and end > match.start():
-                    out[position] = True
-    return out
-
-
 def _date_tokens(body: str) -> set[str]:
-    """The words a period's name can be said by: its years, its months as words and numbers, its days."""
+    """The digits a period's name can be said by: its years, its months' and days' numbers, its quarter's number."""
     out: set[str] = set()
     try:
         span = period_from_name(body)
     except (ValueError, IndexError):
         return out
     if span.month is not None:
-        out.update({_MONTHS[span.month - 1], str(span.month)})
+        out.add(str(span.month))
     for day in (span.start, span.end):
         if not day:
             continue
         year, month, date = (day.split("-") + ["", "", ""])[:3]
         out.add(year)
         if month.isdigit():
-            out.update({_MONTHS[int(month) - 1], str(int(month))})
+            out.add(str(int(month)))
         if date.isdigit() and span.kind == "day":
             out.add(str(int(date)))
     if "-q" in body:
-        out.update({f"q{body[-1]}", body[-1]})
+        out.add(body[-1])
     return out
 
 
@@ -195,15 +168,14 @@ class EvidenceBuilder:
         self.named, self.catalog, self.link_weights, self.names = named, catalog, link_weights, names
         read = named.read
         self.words = tuple(read.words)
-        self.stems = tuple(stem(word) for word in self.words)
+        self.stems = self.words
         self.low = fold(read.question).replace("’", "'")
         self.question = read.coordinates.astype(np.float64) / SCALE if len(self.words) else np.zeros((0, len(names)))
         self.roles = read.roles if len(self.words) else np.zeros((0, len(WORD_ROLE_CLASSES)))
         self.stated = np.asarray([is_stated_word(word) for word in self.words], dtype=bool)
-        self.content = np.asarray([stem not in _STOP for stem in self.stems], dtype=bool) | self.stated
+        self.content = np.ones(len(self.words), dtype=bool)     # every word may take part: no language's small words are listed
         self.parts: dict[str, PartEvidence] = {}
         self._targets: dict[str, tuple[str, int]] | None = None
-        self._lexicon: dict[str, np.ndarray] = {}
         self._question: QuestionEvidence | None = None
 
     def targets(self) -> dict[str, tuple[str, int]]:
@@ -229,12 +201,6 @@ class EvidenceBuilder:
             held = self.parts[name] = self._build(name)
         return held
 
-    def _lexicon_for(self, name: str) -> np.ndarray:
-        held = self._lexicon.get(name)
-        if held is None:
-            held = self._lexicon[name] = _lexicon_words(self.low, self.words, _LEXICON.get(name, ()) + ((_ACROSS,) if slot_of(name) == SLOT_PEERS else ()))
-        return held
-
     def _build(self, name: str) -> PartEvidence:
         group = group_of(name)
         slot = slot_of(name)
@@ -253,7 +219,7 @@ class EvidenceBuilder:
             table = self._table(table_id)
             if table is not None and position.lstrip("-").isdigit():
                 index = index_of(table)
-                own = index.name_words.get(int(position), frozenset()) if int(position) >= 0 else frozenset({"section"})
+                own = index.name_words.get(int(position), frozenset()) if int(position) >= 0 else frozenset()
                 unique = frozenset(word for word in own if index.name_counts.get(word, 0) == 1)
         elif slot in (SLOT_VALUE, SLOT_CONTAINS):
             column, _, rest = body.partition("=")
@@ -272,8 +238,6 @@ class EvidenceBuilder:
             spelled_index = index_of(table) if table is not None else None
             covered = sum(word in set(self.stems) for word in own) / len(own)
             for position, word in enumerate(self.stems):
-                if word in _STOP and not self.stated[position]:
-                    continue
                 if word in own:
                     dense[position, at["exact"]] = 1.0
                     dense[position, at["share"]] = covered
@@ -288,16 +252,13 @@ class EvidenceBuilder:
         if slot == SLOT_PERIOD:
             tokens = _date_tokens(body)
             for position, word in enumerate(self.words):
-                if self.stated[position] and (word in tokens or word[:3] in tokens):
+                if self.stated[position] and word in tokens:
                     dense[position, at["stated"]] = 1.0
         if slot == SLOT_NUMBER:
             for position, word in enumerate(self.words):
                 if word.isdigit() and number_text(float(word)) == body:
                     dense[position, at["stated"]] = 1.0
-                elif body == "0" and self._lexicon_for("comparison:>")[position] | self._lexicon_for("comparison:<")[position] | self._lexicon_for("comparison:!=")[position]:
-                    dense[position, at["stated"]] = 1.0
-        lexicon = self._lexicon_for(name)
-        dense[:, at["lexicon"]] = lexicon.astype(np.float64)
+        # "lexicon" stays a zero column: no word list is read; the fitted alignment weights keep their shape until the reader is refit (PLAN 2026-11-12 step 2)
         structure = self.names.at(structure_name(name)) if structure_name(name) else None
         if structure is not None and count:
             dense[:, at["structure"]] = self.question[:, structure]

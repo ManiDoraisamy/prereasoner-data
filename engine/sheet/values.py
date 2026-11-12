@@ -1,9 +1,10 @@
 """The one parser for numbers and the one parser for dates and periods, plus what a number format says.
 
-parse_number("(1,234.50)") reads parentheses, currency marks, percent, thousands and a magnitude letter; a percent is a
-fraction, as a percent cell stores it. parse_period("Jul-Sep 02") reads days, months, quarters, seasons, years and ranges
-written as text. The two-digit year window is Excel's: 00-29 are 20xx and 30-99 are 19xx. A day is month first (US), unless
-the first figure cannot be a month. Everything here is pure and deterministic.
+No word of any language is read here: a number is digits with its signs, currency marks, percent and grouping; a date
+or a period is digits and separators (2019-04-30, 4/30/2019, 2019-04, 4/2019, 2019), and a date the file stores as a
+serial day reads through its number format. A month or a quarter written in words stays text: its meaning is the
+learned readers' to read. The two-digit year window is Excel's: 00-29 are 20xx and 30-99 are 19xx. A day is month first
+(US), unless the first figure cannot be a month. Everything here is pure and deterministic.
 """
 from __future__ import annotations
 
@@ -13,15 +14,15 @@ import re
 from dataclasses import dataclass
 from functools import lru_cache
 
-from engine.sheet.names import (F_CURRENCY, F_DATE, F_DURATION, F_GENERAL, F_NUMBER, F_PERCENT, F_TEXT, F_TIME, P_DAY, P_HALF, P_HOUR, P_MONTH, P_QUARTER, P_RANGE, P_RELATIVE,
-                                P_SEASON, P_WEEK, P_WEEKDAY, P_YEAR)
+from engine.sheet.names import (F_CURRENCY, F_DATE, F_DURATION, F_GENERAL, F_NUMBER, F_PERCENT, F_TEXT, F_TIME, P_DAY, P_MONTH, P_RANGE, P_YEAR)
 
 _NUMBER = re.compile(r"^(?P<open>\(?)\s*(?P<lead>[-+]?)\s*(?P<money>[$€£¥]?)\s*(?P<sign>[-+]?)\s*(?P<body>\d[\d,]*(?:\.\d*)?|\.\d+)(?:[eE](?P<exp>[-+]?\d+))?\s*"
-                     r"(?P<mag>[kKmM]{0,2})\s*(?P<pct>%?)\s*(?P<trail>-?)\s*(?P<close>\)?)$")
+                     r"(?P<pct>%?)\s*(?P<trail>-?)\s*(?P<close>\)?)$")
 _THOUSANDS_OK = re.compile(r"^\d{1,3}(?:,\d{3})+(?:\.\d*)?$")
-_ERROR = re.compile(r"^#(?:NULL!|DIV/0!|VALUE!|REF!|NAME\?|NUM!|N/A|ERROR!|GETTING_DATA)$", re.I)
-_MARKERS = frozenset({"-", "--", "---", "n/a", "na", "#n/a", "tbd", "tba", "none", "nil", "?", "??", "n.a.", "nm", "*", "**", ".", "nan"})
-_WITH_WORD = re.compile(r"^(?P<number>\(?[-+$]?\s*\d[\d,]*(?:\.\d+)?\)?%?)\s+\(?[A-Za-z][\w /.-]*\)?$")
+_ERROR = re.compile(r"^#(?:NULL!|DIV/0!|VALUE!|REF!|NAME\?|NUM!|N/A|ERROR!|GETTING_DATA)$", re.I)     # the file format's own error codes
+_MARKERS = frozenset({"-", "--", "---", "?", "??", "*", "**", "."})     # marks, not words: a filled cell saying there is no value
+_LETTER = r"[^\W\d_]"     # a letter of any script
+_WITH_WORD = re.compile(rf"^(?P<number>\(?[-+$]?\s*\d[\d,]*(?:\.\d+)?\)?%?)\s+\(?{_LETTER}[\w /.-]*\)?$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,11 +43,7 @@ def parse_number(text: str) -> NumberReading | None:
         return None
     if bool(m.group("open")) != bool(m.group("close")):
         return None
-    magnitude = m.group("mag").lower()
-    if magnitude not in ("", "k", "m", "mm"):
-        return None
     value = float(body.replace(",", "") + (f"e{m.group('exp')}" if m.group("exp") else ""))
-    value *= {"": 1.0, "k": 1e3, "m": 1e6, "mm": 1e6}[magnitude]
     percent = bool(m.group("pct"))
     if percent:
         value /= 100.0
@@ -61,8 +58,8 @@ def is_error(text: str) -> bool:
 
 
 def is_marker(text: str) -> bool:
-    """A filled cell that says there is no value."""
-    return text.strip().lower() in _MARKERS
+    """A filled cell that says there is no value: a mark such as "-" or "?"."""
+    return text.strip() in _MARKERS
 
 
 def number_with_word(text: str) -> NumberReading | None:
@@ -71,64 +68,35 @@ def number_with_word(text: str) -> NumberReading | None:
     return parse_number(m.group("number")) if m else None
 
 
-_QUANTITY = re.compile(r"^(?P<number>\(?[-+$]?\s*\d[\d,]*(?:\.\d+)?\)?)\s+(?P<unit>[A-Za-z][A-Za-z/.-]*(?: [A-Za-z][A-Za-z/.-]*){0,2})$")
-# "48 million" states a scale, not a unit: such a column is not read as quantities.
-_MAGNITUDE_WORD = re.compile(r"^(?:hundred|thousand|million|billion|trillion|mn|bn|mil)\b", re.I)
+_QUANTITY = re.compile(rf"^(?P<number>\(?[-+$]?\s*\d[\d,]*(?:\.\d+)?\)?)\s+(?P<unit>{_LETTER}[^\W\d_/.-]*[/.-]?(?:[ /.-]?{_LETTER}[^\W\d_/.-]*){{0,2}})$")
 
 
 def quantity_of(text: str) -> tuple[float, str] | None:
-    """A number with its unit after it, as "1,370 tons" or "20 knots": (the number, the unit folded: lower case, a final s
-    or full stop dropped), or None. A column holding one unit throughout reads as numbers of it (compiler._type_column)."""
+    """A number with a unit after it, as "1,370 tons" or "20 knots": (the number, the unit folded: lower case, a final
+    full stop dropped), or None. A column holding one unit throughout reads as numbers of it (compiler._type_column)."""
     m = _QUANTITY.match(" ".join(text.split()))
-    if m is None or len(m.group("unit")) > 20 or _MAGNITUDE_WORD.match(m.group("unit")):
+    if m is None or len(m.group("unit")) > 20:
         return None
     reading = parse_number(m.group("number"))
     if reading is None:
         return None
-    unit = m.group("unit").lower().rstrip(".")
-    if len(unit) > 3 and unit.endswith("s") and not unit.endswith("ss"):
-        unit = unit[:-1]
-    return reading.value, unit
+    return reading.value, m.group("unit").casefold().rstrip(".")
 
 
 # ------------------------------------------------------------------------------------------- periods
-_MONTHS = ("january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december")
-_MONTH = r"(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?"
-_TIME = r"(?:\s+\d{1,2}:\d{2}(?::\d{2})?(?:\s*[ap]\.?m\.?)?)?"
-_ORD = r"(?:st|nd|rd|th)?"
+_TIME = r"(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?"
 
 
 def _rx(pattern: str) -> re.Pattern:
-    return re.compile(rf"^{pattern}$", re.I)
+    return re.compile(rf"^{pattern}$")
 
 
 _ISO = _rx(r"(\d{4})-(\d{1,2})-(\d{1,2})(?:[T ]\d{1,2}:\d{2}.*)?")
 _MDY = _rx(rf"(\d{{1,2}})([/.\-])(\d{{1,2}})\2(\d{{2}}|\d{{4}}){_TIME}")
 _MD = _rx(r"(\d{1,2})/(\d{1,2})")
-_D_MON_Y = _rx(rf"(\d{{1,2}}){_ORD}[\s\-]+({_MONTH})[\s,\-]*(\d{{2}}|\d{{4}}){_TIME}")
-_MON_D_Y = _rx(rf"({_MONTH})[\s\-]*(\d{{1,2}}){_ORD}[\s,\-]+(\d{{2}}|\d{{4}}){_TIME}")
-_D_MON = _rx(rf"(\d{{1,2}}){_ORD}[\s\-]+({_MONTH})")
-_MON_D = _rx(rf"({_MONTH})\s+([1-9]|[12]\d|3[01]){_ORD}")
-_MON_Y = _rx(rf"({_MONTH})[\s'’,.\-]*(\d{{2}}|\d{{4}})")
-_MON = _rx(_MONTH)
-_MON_RANGE = _rx(rf"({_MONTH})\s*(?:-|–|/|to|thru|through)\s*({_MONTH})[\s'’,\-]*(\d{{2}}|\d{{4}})?")
-_MON_Y_RANGE = _rx(rf"({_MONTH})[\s'’\-]*(\d{{2}}|\d{{4}})\s*(?:-|–|/|to|thru|through)\s*({_MONTH})[\s'’\-]*(\d{{2}}|\d{{4}})")
-_RANGE_SPLIT = re.compile(r"\s+(?:-|–|to|thru|through)\s+|(?<=\d)-(?=\d{1,2}/)", re.I)
-_Q_FIRST = _rx(r"q(?:tr)?\.?\s*([1-4])(?:[\s'’\-]*(\d{2}|\d{4}))?")
-_Q_AFTER = _rx(r"([1-4])q(?:tr)?[\s'’\-]*(\d{2}|\d{4})?")
-_Q_WORD = _rx(r"([1-4])(?:st|nd|rd|th)\s+(?:quarter|qtr)\.?[\s'’\-]*(\d{2}|\d{4})?")
-_Q_WORD_FIRST = _rx(r"(?:quarter|qtr)\.?\s+([1-4])(?:[\s'’\-]+(\d{2}|\d{4}))?")
-_HALF = _rx(r"(?:([12])h[\s'’\-]*(\d{2}|\d{4})|h([12])[\s'’\-]+(\d{2}|\d{4}))")
 _YEAR = _rx(r"((?:19|20)\d{2})")
 _YEAR_MONTH = _rx(r"(?:(\d{4})[-/](\d{1,2})|(\d{1,2})/(\d{4}))")
-_CAL = _rx(r"(?:cal|cy|fy)[\s'’\-]*(\d{2}|\d{4})")
-_SEASON_YEAR = _rx(r"(sum(?:mer)?|win(?:ter)?|spr(?:ing)?|fall|aut(?:umn)?)[\s'’\-]*(\d{2}|\d{4})")
-_SEASON = _rx(r"(summer|winter|spring|fall|autumn)")
-_RELATIVE = _rx(r"(ytd|mtd|qtd|bom|prompt|year[\s\-]to[\s\-]date|month[\s\-]to[\s\-]date)")
-_WEEKDAY = _rx(r"(mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun)(?:day)?|tuesday|wednesday|thursday|saturday")
-_WEEK = _rx(r"(?:week|wk)\.?\s*#?\s*(\d{1,2})")
-_HOUR = _rx(r"(?:he|hour|hr)\.?\s*(\d{1,2})")
-_SEASON_WORDS = {"sum": "summer", "win": "winter", "spr": "spring", "aut": "fall", "fall": "fall"}
+_RANGE_SPLIT = re.compile(r"\s+[-–]\s+|(?<=\d)-(?=\d{1,2}/)")
 
 
 @dataclass(frozen=True, slots=True)
@@ -148,10 +116,6 @@ def full_year(text: str) -> int:
     if len(text) >= 4:
         return year
     return 2000 + year if year < 30 else 1900 + year
-
-
-def _month_number(word: str) -> int:
-    return next(i for i, name in enumerate(_MONTHS, 1) if name.startswith(word.strip(".").lower()[:3]))
 
 
 def _last_day(year: int, month: int) -> int:
@@ -184,7 +148,7 @@ def _whole_range(left: Period, right: Period) -> Period | None:
 
 @lru_cache(maxsize=65536)
 def parse_period(text: str) -> Period | None:
-    """A cell's text as a day or a period, or None. Only the whole cell counts: a sentence holding a date is not a date."""
+    """A cell's text as a day or a period written in digits, or None. Only the whole cell counts: a sentence holding a date is not a date."""
     s = re.sub(r"\s+", " ", text.strip())
     if not s or len(s) > 48:
         return None
@@ -192,68 +156,18 @@ def parse_period(text: str) -> Period | None:
         return _day(int(m[1]), int(m[2]), int(m[3]))
     if m := _MDY.match(s):
         return _month_day_year(int(m[1]), int(m[3]), full_year(m[4]))
-    if m := _D_MON_Y.match(s):
-        return _day(full_year(m[3]), _month_number(m[2]), int(m[1]))
-    if m := _MON_D_Y.match(s):
-        return _day(full_year(m[3]), _month_number(m[1]), int(m[2]))
     if m := _MD.match(s):
         first, second = int(m[1]), int(m[2])
         month, day = (second, first) if first > 12 else (first, second)
         return Period(P_DAY, month=month, day=day) if 1 <= month <= 12 and 1 <= day <= 31 else None
-    if m := _D_MON.match(s):
-        return Period(P_DAY, month=_month_number(m[2]), day=int(m[1])) if 1 <= int(m[1]) <= 31 else None
-    if m := _MON_D.match(s):
-        # "Mar 22" is a day; a leading zero or a hyphen ("Jan 02", "Jan-02") reads as a month and year below.
-        return Period(P_DAY, month=_month_number(m[1]), day=int(m[2]))
-    if m := _MON_Y.match(s):
-        month = _month_number(m[1])
-        return _span(P_MONTH, full_year(m[2]), month, month, month=month)
-    if _MON.match(s):
-        return Period(P_MONTH, month=_month_number(s))
     if m := _YEAR_MONTH.match(s):
         # "2019-04", "2019/4", "4/2019": a month; "2011-12" and "2001-02" are a season or a fiscal year (the month is the
         # next year's last two digits), as before
         year, month = (int(m[1]), int(m[2])) if m[1] else (int(m[4]), int(m[3]))
         if 1900 <= year <= 2100 and 1 <= month <= 12 and not (m[1] and month == (year + 1) % 100):
             return _span(P_MONTH, year, month, month, month=month)
-    if m := _MON_Y_RANGE.match(s):
-        first, last = _month_number(m[1]), _month_number(m[3])
-        left, right = _span(P_MONTH, full_year(m[2]), first, first), _span(P_MONTH, full_year(m[4]), last, last)
-        return _whole_range(left, right) if left and right else None
-    if m := _MON_RANGE.match(s):
-        first, last = _month_number(m[1]), _month_number(m[2])
-        if not m[3]:
-            return Period(P_RANGE, month=first, word=f"{_MONTHS[first - 1]}-{_MONTHS[last - 1]}")
-        year = full_year(m[3])
-        left, right = _span(P_MONTH, year - (first > last), first, first), _span(P_MONTH, year, last, last)
-        return _whole_range(left, right) if left and right else None
-    for pattern in (_Q_FIRST, _Q_AFTER, _Q_WORD, _Q_WORD_FIRST):
-        if m := pattern.match(s):
-            quarter = int(m[1])
-            if not m[2]:
-                return Period(P_QUARTER, quarter=quarter)
-            return _span(P_QUARTER, full_year(m[2]), 3 * quarter - 2, 3 * quarter, quarter=quarter)
-    if m := _HALF.match(s):
-        half, year = int(m[1] or m[3]), full_year(m[2] or m[4])
-        return _span(P_HALF, year, 6 * half - 5, 6 * half)
     if m := _YEAR.match(s):
         return _span(P_YEAR, int(m[1]), 1, 12)
-    if m := _CAL.match(s):
-        return _span(P_YEAR, full_year(m[1]), 1, 12)
-    if m := _SEASON_YEAR.match(s):
-        word = _SEASON_WORDS[m[1][:3].lower() if not m[1].lower().startswith("fall") else "fall"]
-        year = full_year(m[2])
-        return Period(P_SEASON, f"{year:04d}-01-01", f"{year:04d}-12-31", word=word)
-    if m := _SEASON.match(s):
-        return Period(P_SEASON, word=_SEASON_WORDS[m[1][:3].lower() if m[1].lower() != "fall" else "fall"])
-    if m := _RELATIVE.match(s):
-        return Period(P_RELATIVE, word=m[1].lower())
-    if _WEEKDAY.match(s):
-        return Period(P_WEEKDAY, word=s[:3].lower())
-    if m := _WEEK.match(s):
-        return Period(P_WEEK, word=f"week {int(m[1])}")
-    if m := _HOUR.match(s):
-        return Period(P_HOUR, word=f"hour {int(m[1])}")
     if len(parts := _RANGE_SPLIT.split(s)) == 2:
         left, right = parse_period(parts[0]), parse_period(parts[1])
         if left and right and left.kind in (P_DAY, P_MONTH) and right.kind in (P_DAY, P_MONTH):

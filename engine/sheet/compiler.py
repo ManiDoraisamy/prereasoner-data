@@ -12,19 +12,16 @@ from dataclasses import dataclass, field
 
 from engine.sheet.formulas import column_letter
 from engine.sheet.grid import Grid, clean
-from engine.sheet.line_facts import TOTAL_WORD, is_total_mark
 from engine.sheet.line_roles import read_roles, repeats_line
 from engine.sheet.model import Axis, Cell, Column, Context, Line, Note, Stray, TabModel, Table
-from engine.sheet.names import (AXIS_FLAG, AXIS_GROUP, AXIS_PERIOD, AXIS_SEQUENCE, AXIS_TOTALLED, BAND, BLANK, DATE, DERIVED, F_CURRENCY, F_GENERAL, F_NUMBER, F_PERCENT, FX_AGG_COLUMN, FX_AGG_ROW, FX_ROW_ARITH, FX_VOLATILE, HEADER, KEY, LABEL, MEASURE, MIXED, NOTE,
-                                P_YEAR, PEER, PERIOD, PRINTED_ROLES, RECORD, ROW_TOTAL, S_DATA_LINE, S_FILLED_DOWN, S_REPEATED_HEADER, S_RULE_LINE, S_STRAY_KEY, S_TOTAL_OTHER_BLOCK, S_TOTAL_WORD, SECTION_LABEL, SHEET_CHART, SPACER, STRAY_DATE,
-                                STRAY_ERROR, STRAY_LABEL, STRAY_MARKER, STRAY_NOTE, STRAY_NUMBER_WITH_WORD, STRAY_REPEATED_HEADER, STRAY_TOTAL, SUBTOTAL, TITLE, TOTAL, V_BLANK, V_BOOL, V_DATE, V_ERROR, V_MARKER, V_NUMBER, V_PERIOD, V_TEXT)
+from engine.sheet.names import (AXIS_FLAG, AXIS_GROUP, AXIS_PERIOD, AXIS_SEQUENCE, BAND, BLANK, DATE, DERIVED, F_CURRENCY, F_GENERAL, F_NUMBER, F_PERCENT, FX_AGG_COLUMN, FX_AGG_ROW, FX_ROW_ARITH, FX_VOLATILE, HEADER, KEY, LABEL, MEASURE, MIXED, NOTE,
+                                P_YEAR, PEER, PERIOD, PRINTED_ROLES, RECORD, ROW_TOTAL, S_DATA_LINE, S_FILLED_DOWN, S_REPEATED_HEADER, S_RULE_LINE, S_STRAY_KEY, S_TOTAL_OTHER_BLOCK, SECTION_LABEL, SHEET_CHART, SPACER, STRAY_DATE,
+                                STRAY_ERROR, STRAY_LABEL, STRAY_MARKER, STRAY_NOTE, STRAY_NUMBER_WITH_WORD, STRAY_REPEATED_HEADER, SUBTOTAL, TITLE, TOTAL, V_BLANK, V_BOOL, V_DATE, V_ERROR, V_MARKER, V_NUMBER, V_PERIOD, V_TEXT)
 from engine.sheet.payload import TabPayload
 from engine.sheet.values import Period, number_with_word, parse_period, quantity_of, year_number
 
-_UNIT_IN_TITLE = re.compile(r"\$\s?000s?|\$\s?MM\b|\(000'?s?\)|\bin\s+(?:thousands|millions|billions)\b|\bin\s+(?:[A-Z]{2,}\w*|US\$|\$\w*)")
 _UNIT_IN_NAME = re.compile(r"\(([^()]{1,12})\)\s*$")
-_DATE_IN_TEXT = re.compile(r"\b\d{1,2}/\d{1,2}/\d{2,4}\b|\b\d{1,2}-[A-Za-z]{3,9}-\d{2,4}\b|\b[A-Za-z]{3,9}\.?\s+\d{1,2},?\s+\d{4}\b|\b[A-Za-z]{3,9}\.?[\s'-]+\d{4}\b|\b[A-Za-z]{3,9}-\d{2}\b|\b\d{4}-\d{2}-\d{2}\b")
-_TOTAL_MEMBER = re.compile(r"^\s*(?:grand\s*|sub-?\s*)?totals?\b|\btotals?\s*$", re.I)
+_DATE_IN_TEXT = re.compile(r"\b\d{1,2}/\d{1,2}/\d{2,4}\b|\b\d{4}-\d{2}-\d{2}\b")     # a date written in digits; a month in words is no date here
 _DIGITS = re.compile(r"\d+")
 _FILTER_RECENT = 30
 _FIT_SHARE = 0.8
@@ -32,7 +29,6 @@ _ADJACENT_MOST = 0.7
 _AXIS_TIE_SHARE = 0.8
 _LINED_UP = 0.7
 _STRAY_KEY_DATED = 0.7
-_GRAND_TOTAL = re.compile(r"\bgrand\s*total", re.I)
 _KEYS_ALONE = 0.6
 _FLAG_VALUES = 3
 _FLAG_LENGTH = 3
@@ -173,14 +169,12 @@ def _regions(grid: Grid, roles: dict[int, tuple[str, tuple[str, ...]]]) -> list[
 
 
 def _closes_table(grid: Grid, r: int, printed: list[int], later_printed: list[int]) -> bool:
-    """A printed line that totals every printed line above it, in a table no later printed line adds it into, closes its table: its formula reads them all, it ties to their sum, or it says grand total. One printed line closes nothing: it may be the first section's. A total some later line reads is a level of the same table."""
+    """A printed line that totals every printed line above it, in a table no later printed line adds it into, closes its table: its formula reads them all, or it ties to their sum. One printed line closes nothing: it may be the first section's. A total some later line reads is a level of the same table."""
     for x in later_printed:
         for c in grid.rows[x]:
             shape = grid.shapes.get((x, c))
             if shape is not None and shape.kind == FX_AGG_COLUMN and shape.span and shape.span[0] <= r <= shape.span[1]:
                 return False
-    if any(cell.kind == V_TEXT and _GRAND_TOTAL.search(str(cell.value)) for cell in grid.rows[r].values()):
-        return True
     for c, cell in grid.rows[r].items():
         shape = grid.shapes.get((r, c))
         if printed and shape is not None and shape.kind == FX_AGG_COLUMN and shape.span and all(shape.span[0] <= p <= shape.span[1] for p in printed):
@@ -368,9 +362,9 @@ def _unique_names(paths: dict[int, tuple[list[str], list[str]]], columns: list[i
     seen: Counter = Counter()
     names = []
     for c in columns:
-        base = " ".join(paths[c][0]) or f"Column {column_letter(c)}"
+        base = " ".join(paths[c][0]) or column_letter(c)
         seen[base.lower()] += 1
-        names.append(base if seen[base.lower()] == 1 else f"{base} [column {column_letter(c)}]")
+        names.append(base if seen[base.lower()] == 1 else f"{base} [{column_letter(c)}]")
     return names
 
 
@@ -389,8 +383,6 @@ def _stray_kind(cell: Cell, header_name: str) -> str | None:
     text = str(cell.value)
     if text.lower() == header_name.lower():
         return STRAY_REPEATED_HEADER
-    if TOTAL_WORD.search(text):
-        return STRAY_TOTAL
     if number_with_word(text) is not None:
         return STRAY_NUMBER_WITH_WORD
     if len(text) > 40 or len(text.split()) >= 6:
@@ -484,11 +476,10 @@ def _ties_to_others(member: Column, others: list[Column], records: list[Line]) -
 
 
 def _true_members(members: list[Column], records: list[Line]) -> list[Column]:
-    """An axis's members, without those that print a total of the others: a member whose own name says total, or one that ties to those before it. It is marked as what it is."""
+    """An axis's members, without those that print a total of the others: one that ties to those before it. It is marked as what it is."""
     kept: list[Column] = []
     for column in members:
-        word = bool(column.path) and bool(_TOTAL_MEMBER.search(column.path[-1]))
-        if word or _ties_to_others(column, kept, records):
+        if _ties_to_others(column, kept, records):
             column.role = ROW_TOTAL
         else:
             kept.append(column)
@@ -530,13 +521,22 @@ def _axes(columns: list[Column], header_grain: dict[int, str | None], sequence_n
     taken: set[int] = set()
     numeric = [c for c in columns if c.kind == V_NUMBER]
     runs: list[list[Column]] = []
+    since: list[Column] = []      # the run's members since its last total column
     for column in columns:
         if column.kind not in (V_NUMBER, V_BLANK) or not header_grain.get(column.position):
             continue
-        if runs and all(c.role == SPACER or c.position in {x.position for x in runs[-1]} or not c.filled for c in columns[runs[-1][-1].position + 1:column.position]):
+        between = columns[runs[-1][-1].position + 1:column.position] if runs else []
+        # a figure column between two members that adds up the members since the run's last such column ("Q1" after three
+        # months, whatever its header says) is the run's total, not a break: marked so, it stays out of the axis
+        totals = [c for c in between if c.kind == V_NUMBER and c.filled and _ties_to_others(c, since, records)]
+        if runs and all(c.role == SPACER or c.position in {x.position for x in runs[-1]} or not c.filled or c in totals for c in between):
+            for c in totals:
+                c.role = ROW_TOTAL
             runs[-1].append(column)
+            since = [column] if totals else since + [column]
         else:
             runs.append([column])
+            since = [column]
     for run in runs:
         grains = Counter(header_grain[c.position] for c in run)
         for grain in sorted(grains, key=lambda g: min(c.position for c in run if header_grain[c.position] == g)):
@@ -567,18 +567,6 @@ def _axes(columns: list[Column], header_grain: dict[int, str | None], sequence_n
         if len(members) >= 3 and len({_format_family(c) for c in members}) == 1:
             axes.append(Axis(AXIS_GROUP, members[0].path[0], tuple(c.position for c in members)))
             taken.update(c.position for c in members)
-    totals = [c for c in numeric if c.position not in taken and any(_TOTAL_MEMBER.search(part) for part in c.path)]
-    if totals:
-        for column in totals:
-            column.role = ROW_TOTAL
-        beside = [c for c in numeric if c.position not in taken and c.path and c.position < totals[-1].position and c.role != ROW_TOTAL]
-        formats = Counter(_format_family(c) for c in beside)
-        if formats:
-            usual = min(formats, key=lambda f: (-formats[f], f))
-            members = [c for c in beside if _format_family(c) == usual]
-            if len(members) >= 3:
-                axes.append(Axis(AXIS_TOTALLED, "", tuple(c.position for c in members)))
-                taken.update(c.position for c in members)
     flags = _flag_axes(columns, records, taken)
     axes.extend(flags)
     taken.update(p for axis in flags for p in axis.positions)
@@ -611,8 +599,6 @@ def _context(grid: Grid, tab: str, title_rows: list[int]) -> Context:
             elif cell.kind == V_TEXT:
                 if (found := _as_of_in(text)) is not None:
                     as_of, as_of_address = found, cell.address
-                if m := _UNIT_IN_TITLE.search(text):
-                    unit, unit_address = m.group(0), cell.address
     if as_of is None:
         as_of = parse_period(tab) or _as_of_in(tab)
         if as_of is not None and as_of.start is None:
@@ -668,14 +654,11 @@ def _fill_down(position: int, records: list[Line], printed: list[Line]) -> int:
 
 
 def _printed_kinds(printed: list[Line], last_record_row: int) -> None:
-    """Totals from subtotals: the word says, else the last printed line under every record, or one whose formula reads other printed lines, is the total."""
+    """Totals from subtotals: the last printed line under every record, or one whose formula reads other printed lines, is the total."""
     rows = {line.row for line in printed}
     for at, line in enumerate(printed):
-        text = line.label.lower()
         reads_printed = line.scope is not None and any(line.scope[0] <= r <= line.scope[1] for r in rows if r != line.row)
-        if re.search(r"sub-?\s*total", text):
-            line.role = SUBTOTAL
-        elif re.search(r"grand\s*total", text) or reads_printed or (at == len(printed) - 1 and line.row > last_record_row):
+        if reads_printed or (at == len(printed) - 1 and line.row > last_record_row):
             line.role = TOTAL
         else:
             line.role = SUBTOTAL
@@ -822,10 +805,8 @@ def _table_of(grid: Grid, tab: str, index: int, block_number: int, region: _Regi
         if role == TOTAL and block_number:
             # In a block of side-by-side tables the line's role follows the block's own cells.
             own = list(cut.values())
-            if not is_total_mark(own) and not any(cell.shape == FX_AGG_COLUMN for cell in own):
+            if not any(cell.shape == FX_AGG_COLUMN for cell in own):
                 role, signals = RECORD, (S_TOTAL_OTHER_BLOCK,)
-        elif role == RECORD and block_number and is_total_mark(list(cut.values())) and any(cell.kind == V_NUMBER for cell in cut.values()):
-            role, signals = TOTAL, (S_TOTAL_WORD,)
         hidden = r in hidden_rows
         if r in key_heads:
             text = _text_of([cell for _, cell in sorted(cut.items()) if cell.kind == V_TEXT and cell.col not in block.shared])

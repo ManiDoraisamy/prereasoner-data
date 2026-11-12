@@ -14,7 +14,7 @@ from typing import Mapping, Sequence
 
 import numpy as np
 
-from engine.program.index import stem, words_of
+from engine.program.index import words_of
 from engine.program.names import SLOT_COMPARISON, SLOT_CONTAINS, SLOT_FILTER, SLOT_KEY, SLOT_LINE, SLOT_MEASURE, SLOT_NUMBER, SLOT_PERIOD, SLOT_SECTION, SLOT_SHOWN, SLOT_TABLE, SLOT_VALUE, slot_of
 
 EXACT = "exact"
@@ -33,7 +33,7 @@ SCALE = 1000
 # Below this a link's named sum is noise, not support.
 SUPPORT = 0.05
 _PREFIX_SCORE = 0.4
-_MONTH_OR_DIGIT = re.compile(r"\d|^(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*$")
+_DIGIT = re.compile(r"\d")
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,7 +124,7 @@ def link_total(contributions: Sequence[Contribution], rules: Sequence[RuleHit]) 
     return sum(term.value for term in contributions) + sum(hit.value for hit in rules)
 
 
-def rule_evidence(name: str, score: float, question_stems: set[str], table=None) -> tuple[tuple[str, float], ...]:
+def rule_evidence(name: str, score: float, question_words: set[str], table=None) -> tuple[tuple[str, float], ...]:
     """A coordinate of the words reading as the named rule behind it: (rule, evidence in 0..1). words.py scores a whole value 1, a part by what the question covers, a word's prefix 0.4 inside a longer cell."""
     slot = slot_of(name)
     if score <= 0:
@@ -140,7 +140,7 @@ def rule_evidence(name: str, score: float, question_stems: set[str], table=None)
     if slot in (SLOT_NUMBER, SLOT_COMPARISON):
         return ((STATED, min(score, 1.0)),)
     if slot == SLOT_TABLE and table is not None:
-        tab = set(words_of(table.tab)) & question_stems
+        tab = set(words_of(table.tab)) & question_words
         return ((TAB_WORD, min(score, 1.0)),) if tab else ((TITLE_WORD, min(score, 1.0)),)
     return ()
 
@@ -148,12 +148,12 @@ def rule_evidence(name: str, score: float, question_stems: set[str], table=None)
 def words_in_text(words: Sequence[str], text: str) -> tuple[int, ...]:
     """Which of the question's words (by position) a target's own text holds."""
     have = set(words_of(text))
-    return tuple(at for at, word in enumerate(words) if stem(word) in have or any(len(word) >= 3 and held.startswith(word) for held in have))
+    return tuple(at for at, word in enumerate(words) if word in have or any(len(word) >= 3 and held.startswith(word) for held in have))
 
 
 def is_stated_word(word: str) -> bool:
-    """A number, or a month: a word the question states rather than links."""
-    return bool(_MONTH_OR_DIGIT.search(word))
+    """A number: a word the question states rather than links. A month written in words is the learned readers' to read."""
+    return bool(_DIGIT.search(word))
 
 
 __all__ = ["Contribution", "DATE", "EXACT", "LinkWeights", "ONLY_OF_TYPE", "PARTIAL", "PREFIX", "RULES", "RuleHit", "SCALE", "SLOTS_OF_LINK_KIND", "SLOT_BIASES", "STATED", "SUPPORT", "TAB_WORD", "TITLE_WORD", "contributions_of", "is_stated_word", "link_total", "named_matrix", "rule_evidence", "to_thousandths", "uniform_weights", "words_in_text"]
