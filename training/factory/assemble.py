@@ -27,11 +27,9 @@ ROLE_OF = {"measure": "measure", "key": "key", "shown": "key", "peers": "key", "
 
 
 def schema_names() -> set[str]:
-    from engine.schema_org import schema_name  # noqa: F401 - the contract's reader owns the file's place
-    from engine.config import DATA_DIR
-    with open(os.path.join(DATA_DIR, "schema_org_v30.json"), encoding="utf-8") as source:
-        contract = json.load(source)
-    return {uri.rsplit("/", 1)[-1] for uri in (*contract["property_order"], *contract["class_order"])}
+    """The names a label may carry: the basis properties of the reader's name set (engine/data/named_coordinates.json), never the catalogue."""
+    from engine.named.names import meaning_names
+    return {name.split(":", 1)[1] for name in meaning_names()}
 
 
 def named(name: str | None, schema: set[str]) -> str | None:

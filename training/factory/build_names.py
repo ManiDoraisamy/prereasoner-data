@@ -1,7 +1,7 @@
-"""Build engine/data/named_coordinates.json, the name set's structure tier, and point at its meaning tier.
+"""Build engine/data/named_coordinates.json: the name set's structure tier and its meaning tier.
 
 (a) operation and structure: the closed lists of engine/program/names.py and engine/sheet/names.py, read from them, never copied; each name gets its one line here, and a list name without a definition fails the build.
-(b) meaning: schema.org 30.0's 1,521 properties, by reference to their contract (engine/data/schema_org_v30.json), read by engine/named/names.py in the contract's order; its 926 classes are their superpositions. No vocabulary of any trade or language is written here.
+(b) meaning: the owner's selected property basis, never the 1,521-property catalogue (docs/ARCHITECTURE.md, Shared Property Binding Migration): the "taxonomy" dimensions of engine/data/alloc.json in that file's order, provenance training/props/, with the documented migration of its two non-property names (the class-named GeoCoordinates becomes the geo property; taxonName, absent from schema.org 30.0, becomes alternateName). Each property is written with its own label and comment and the fine answer type its ranges hold; each schema.org class that is itself a domain of a basis property is written as the superposition of those properties; the classes under the fine answer types' roots are written with their type. training/schema_org/basis.py reads the catalogue for these, through engine/schema_org.py; the runtime reads this file. A property enters the basis only through alloc.json, with coverage and held-out evidence and the owner's OK. No vocabulary of any trade or language is written here.
 
 usage: python -m training.factory.build_names
 """
@@ -50,17 +50,15 @@ def structure_tier() -> list[dict]:
 
 def main() -> None:
     """The worktree's own closed lists, not the factory's pinned commit: the name set is the runtime's."""
-    from engine.named.names import schema_contract
-    contract = schema_contract()
+    from training.schema_org.basis import meaning_tier
+    meaning = meaning_tier()
     structure = structure_tier()
     document = {
-        "schema_version": 2,
+        "schema_version": 3,
         "builder": "training/factory/build_names.py",
         "tiers": {
             "structure": {"note": "closed lists, read from engine/program/names.py and engine/sheet/names.py", "count": len(structure), "names": structure},
-            "meaning": {
-                "schema_org": {"version": contract["version"], "contract_sha256": contract["contract_sha256"], "properties": len(contract["properties"]), "classes": len(contract["classes"]), "prefix": "schema:", "note": "read by engine/named/names.py in the contract's order: a property is a named dimension, a class the superposition of its properties; not copied here"},
-            },
+            "meaning": meaning,
         },
         "licenses": [
             {"source": "schema.org 30.0", "url": "https://schema.org/docs/terms.html", "license": "CC BY-SA 3.0", "use": "names and contract, already in the runtime bundle"},
@@ -69,7 +67,7 @@ def main() -> None:
     text = json.dumps(document, indent=0, ensure_ascii=False) + "\n"
     with open(OUT, "w", encoding="utf-8", newline="\n") as sink:
         sink.write(text)
-    print("structure", len(structure), "schema", len(contract["properties"]), len(contract["classes"]), "sha", hashlib.sha256(text.encode()).hexdigest()[:12])
+    print("structure", len(structure), "basis", meaning["basis"]["count"], "classes", len(meaning["classes"]), "fine classes", len(meaning["fine_classes"]), "sha", hashlib.sha256(text.encode()).hexdigest()[:12])
 
 
 if __name__ == "__main__":

@@ -1,22 +1,19 @@
-"""The names the reader fills: the structure tier's closed names, one head output each; the meaning tier's schema.org properties, one each, read as how near a unit stands to the property's own label and comment; and the closed heads of a question.
+"""The names the reader fills: the structure tier's closed names, one head output each; the meaning tier's basis properties, one each, read as how near a unit stands to the property's own label and comment; and the closed heads of a question.
 
-The structure tier is engine/data/named_coordinates.json, written by training/factory/build_names.py from the program's and the sheet's closed lists. The meaning tier is schema.org 30.0's 1,521 properties, read from their contract (engine/data/schema_org_v30.json) in its order: a property is a named dimension, the same in every language, its meaning its own text. A table's class is a schema.org class, the superposition of its properties (class_signatures). No vocabulary of any trade or language is kept.
+Both tiers are engine/data/named_coordinates.json, written by training/factory/build_names.py. The meaning tier is the owner's selected schema.org property basis, never the 1,521-property catalogue (docs/ARCHITECTURE.md): engine/data/alloc.json's "taxonomy" dimensions in that file's order, migrated to schema.org 30.0 properties. Each is a named dimension, the same in every language, its meaning its own text. A table's class is a schema.org class, the superposition of the basis properties it is a domain of. Nothing here reads the catalogue; no vocabulary of any trade or language is kept.
 """
 from __future__ import annotations
 
 import functools
 import hashlib
 import json
-import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable
 
 from engine.program.names import (A_CODE, A_COMPANY, A_COUNT, A_DATE, A_LIST, A_MONEY, A_NAME, A_NUMBER, A_PERCENT, A_PERSON, A_PLACE, A_QUANTITY, AGGREGATES, CALC_OPS, COMPARISONS, DIRECTIONS, FORMS, RANK_ENTITIES, ROW_OPS, SIGNED, SIZES, SLOT_AGGREGATE, SLOT_ANSWER_TYPE, SLOT_BLANK, SLOT_CALC_OP, SLOT_COMPARISON, SLOT_CONDITIONS, SLOT_DIRECTION, SLOT_ENTITY, SLOT_FORM, SLOT_ROW_OP, SLOT_SIZE, WORD_ROLES, coarse_type, slot_of)
 
-DATA = Path(__file__).resolve().parents[1] / "data"
-NAME_SET_PATH = DATA / "named_coordinates.json"
-SCHEMA_PATH = DATA / "schema_org_v30.json"
+NAME_SET_PATH = Path(__file__).resolve().parents[1] / "data" / "named_coordinates.json"
 MEANING_PREFIX = "schema:"
 CLASS_PREFIX = "class:"
 NONE = "none"
@@ -25,54 +22,36 @@ RIGHT = "right"
 MAX_CONDITIONS = 6
 # What a question asks for, as finely as it says: what a program can state is coarse (engine/program/names.py:coarse_type), and the head's classes add up to that.
 ANSWER_READINGS = (A_NUMBER, A_MONEY, A_QUANTITY, A_COUNT, A_PERCENT, A_DATE, A_NAME, A_PERSON, A_COMPANY, A_CODE, A_PLACE, A_LIST)
-# The fine answer types as schema.org classes: a value of the class, or of a class under it, is of that type. A property whose every range is one of them holds it.
+# The fine answer types as schema.org classes: a value of the class, or of a class under it, is of that type; a property whose every range is one of them holds it (written by build_names.py).
 FINE_CLASSES = {A_PERSON: "Person", A_COMPANY: "Organization", A_PLACE: "Place", A_MONEY: "MonetaryAmount", A_QUANTITY: "QuantitativeValue"}
-# A table's class from its properties: each property the class itself is a domain of adds this much to its log odds over a bias that an empty table stays under.
-CLASS_WEIGHT = 4.0
-CLASS_BIAS = -4.0
-_CAMEL = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
-_MARKUP = re.compile(r"<[^>]*>|\[\[|\]\]")
 
 
-@functools.lru_cache(maxsize=1)
-def schema_contract() -> dict:
-    """The ontology contract (engine/schema_org.py's file): properties and classes in a fixed order."""
-    return json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
-
-
-def _name(uri: str) -> str:
-    return uri.rsplit("/", 1)[-1]
+@functools.lru_cache(maxsize=4)
+def _meaning(path: str = str(NAME_SET_PATH)) -> dict:
+    document = json.loads(Path(path).read_text(encoding="utf-8"))
+    if document.get("schema_version") != 3:
+        raise ValueError("unsupported name set")
+    return document["tiers"]["meaning"]
 
 
 def meaning_names() -> tuple[str, ...]:
-    """The meaning tier, one name per schema.org property, in the contract's order."""
-    return tuple(f"{MEANING_PREFIX}{row['name']}" for row in schema_contract()["properties"])
+    """The meaning tier, one name per basis property, in the basis's order."""
+    return tuple(row["name"] for row in _meaning()["properties"])
 
 
 def property_texts() -> tuple[str, ...]:
-    """Each property's own text, as the backbone reads it: its label in words and its comment, markup cut. A property's coordinate is how near a unit stands to this text."""
-    return tuple(f"{_CAMEL.sub(' ', row['label']).lower()}: {' '.join(_MARKUP.sub('', row['comment']).split())}" for row in schema_contract()["properties"])
+    """Each basis property's own text, as the backbone reads it. A coordinate is how near a unit stands to this text."""
+    return tuple(row["text"] for row in _meaning()["properties"])
 
 
 @functools.lru_cache(maxsize=1)
 def _fines() -> dict[str, str]:
-    contract = schema_contract()
-    ancestors = {row["name"]: {row["name"], *(_name(uri) for uri in row["ancestors"])} for row in contract["classes"]}
-
-    def fine_of_class(name: str) -> str | None:
-        found = {fine for fine, held in FINE_CLASSES.items() if held in ancestors.get(name, ())}
-        return found.pop() if len(found) == 1 else None
-
-    out = {f"{CLASS_PREFIX}{name}": fine for name in ancestors if (fine := fine_of_class(name))}
-    for row in contract["properties"]:
-        found = {fine_of_class(_name(uri)) for uri in row["ranges"]}
-        if len(found) == 1 and None not in found:
-            out[f"{MEANING_PREFIX}{row['name']}"] = found.pop()
-    return out
+    meaning = _meaning()
+    return {**{row["name"]: row["fine"] for row in meaning["properties"] if row["fine"]}, **meaning["fine_classes"]}
 
 
 def fine_of(name: str) -> str | None:
-    """The fine answer type a property or a class name holds by the ontology alone, or None."""
+    """The fine answer type a basis property or a class name holds by the ontology alone, or None."""
     return _fines().get(name)
 
 
@@ -86,13 +65,8 @@ def fine_answer_type(coarse: str, names_of_answer: Iterable[str]) -> str:
 
 
 def class_signatures() -> dict[str, dict]:
-    """Every schema.org class with a property of its own, as the superposition of those properties: {class:<name>: {bias, signature: [{property, weight}]}}."""
-    out = {}
-    for row in schema_contract()["classes"]:
-        own = sorted(f"{MEANING_PREFIX}{_name(uri)}" for uri in row["direct_properties"])
-        if own:
-            out[f"{CLASS_PREFIX}{row['name']}"] = {"bias": CLASS_BIAS, "signature": [{"property": name, "weight": CLASS_WEIGHT} for name in own]}
-    return out
+    """Every schema.org class that is a domain of a basis property, as the superposition of those properties: {class:<name>: {bias, signature: [{property, weight}]}}."""
+    return {row["name"]: {"bias": row["bias"], "signature": row["signature"]} for row in _meaning()["classes"]}
 
 
 # One choice per question. A head with NONE may stay silent; the rest always say something.
@@ -163,12 +137,13 @@ class NameSet:
 
 
 def load_name_set(path: str | Path = NAME_SET_PATH, meaning: Iterable[str] | None = None) -> NameSet:
-    """The head's names: the structure tier from the name set, sorted, then the meaning tier, schema.org's properties in the contract's order unless given."""
+    """The head's names: the structure tier from the name set, sorted, then the meaning tier, the basis in its order unless given."""
     document = json.loads(Path(path).read_text(encoding="utf-8"))
-    if document.get("schema_version") != 2:
+    if document.get("schema_version") != 3:
         raise ValueError("unsupported name set")
     structure = tuple(sorted(row["name"] for row in document["tiers"]["structure"]["names"]))
-    return NameSet(structure + tuple(meaning_names() if meaning is None else meaning), len(structure))
+    basis = tuple(row["name"] for row in document["tiers"]["meaning"]["properties"])
+    return NameSet(structure + (basis if meaning is None else tuple(meaning)), len(structure))
 
 
-__all__ = ["ANSWER_READINGS", "CALC_SIDES", "CLASS_PREFIX", "CLOSED_HEADS", "FINE_CLASSES", "LEFT", "MAX_CONDITIONS", "MEANING_PREFIX", "NAME_SET_PATH", "NONE", "NameSet", "RIGHT", "WORD_ROLE_CLASSES", "class_signatures", "closed_labels", "fine_answer_type", "fine_of", "load_name_set", "meaning_names", "property_texts", "schema_contract"]
+__all__ = ["ANSWER_READINGS", "CALC_SIDES", "CLASS_PREFIX", "CLOSED_HEADS", "FINE_CLASSES", "LEFT", "MAX_CONDITIONS", "MEANING_PREFIX", "NAME_SET_PATH", "NONE", "NameSet", "RIGHT", "WORD_ROLE_CLASSES", "class_signatures", "closed_labels", "fine_answer_type", "fine_of", "load_name_set", "meaning_names", "property_texts"]

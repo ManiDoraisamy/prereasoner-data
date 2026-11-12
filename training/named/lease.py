@@ -29,7 +29,7 @@ DOLLARS_PER_HOUR = (0.60, 0.80)
 QUESTIONS_PER_STEP = 8
 # Whole packages the pod imports, globbed at staging, and the single modules besides them.
 POD_PACKAGES = ("engine/named", "engine/sheet", "engine/program", "training/named")
-POD_FILES = ("engine/__init__.py", "engine/encoder_model.py", "engine/fk_edges.py", "engine/numeric.py", "engine/data/sheet_line_model.json", "engine/data/named_coordinates.json", "engine/data/schema_org_v30.json", "training/__init__.py", "training/factory/__init__.py", "training/factory/noise.py", "training/factory/paths.py", "training/readers/__init__.py", "training/tools/__init__.py")
+POD_FILES = ("engine/__init__.py", "engine/encoder_model.py", "engine/fk_edges.py", "engine/numeric.py", "engine/data/sheet_line_model.json", "engine/data/named_coordinates.json", "training/__init__.py", "training/factory/__init__.py", "training/factory/noise.py", "training/factory/paths.py", "training/readers/__init__.py", "training/tools/__init__.py")
 
 
 @dataclass(frozen=True)

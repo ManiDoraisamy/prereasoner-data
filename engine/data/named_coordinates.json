@@ -1,5 +1,5 @@
 {
-"schema_version": 2,
+"schema_version": 3,
 "builder": "training/factory/build_names.py",
 "tiers": {
 "structure": {
@@ -509,13 +509,1766 @@
 ]
 },
 "meaning": {
-"schema_org": {
-"version": "30.0",
-"contract_sha256": "4045fe8ff4c674e13fd7a4c2ec5842897255a4af5ff1369b3b2db57a313b3f56",
-"properties": 1521,
-"classes": 926,
-"prefix": "schema:",
-"note": "read by engine/named/names.py in the contract's order: a property is a named dimension, a class the superposition of its properties; not copied here"
+"basis": {
+"source": "engine/data/alloc.json",
+"family": "taxonomy",
+"migration": {
+"GeoCoordinates": "geo",
+"taxonName": "alternateName"
+},
+"provenance": "training/props/",
+"schema_org": "30.0",
+"count": 71,
+"prefix": "schema:"
+},
+"properties": [
+{
+"name": "schema:geo",
+"uri": "https://schema.org/geo",
+"text": "geo: The geo coordinates of the place.",
+"fine": null
+},
+{
+"name": "schema:about",
+"uri": "https://schema.org/about",
+"text": "about: The subject matter of an object.",
+"fine": null
+},
+{
+"name": "schema:actor",
+"uri": "https://schema.org/actor",
+"text": "actor: An actor (individual or a group), e.g. in TV, radio, movie, video games etc., or in an event. Actors can be associated with individual items or with a series, episode, clip.",
+"fine": null
+},
+{
+"name": "schema:address",
+"uri": "https://schema.org/address",
+"text": "address: Physical address of the item.",
+"fine": null
+},
+{
+"name": "schema:addressCountry",
+"uri": "https://schema.org/addressCountry",
+"text": "address country: The country. Recommended to be in 2-letter [ISO 3166-1 alpha-2](http://en.wikipedia.org/wiki/ISO_3166-1) format, for example \"US\". For backward compatibility, a 3-letter [ISO 3166-1 alpha-3](https://en.wikipedia.org/wiki/ISO_3166-1_alpha-3) country code such as \"SGP\" or a full country name such as \"Singapore\" can also be used.",
+"fine": null
+},
+{
+"name": "schema:affiliation",
+"uri": "https://schema.org/affiliation",
+"text": "affiliation: An organization that this person is affiliated with. For example, a school/university, a club, or a team.",
+"fine": "company"
+},
+{
+"name": "schema:aggregateRating",
+"uri": "https://schema.org/aggregateRating",
+"text": "aggregate rating: The overall rating, based on a collection of reviews or ratings, of the item.",
+"fine": null
+},
+{
+"name": "schema:asin",
+"uri": "https://schema.org/asin",
+"text": "asin: An Amazon Standard Identification Number (ASIN) is a 10-character alphanumeric unique identifier assigned by Amazon.com and its partners for product identification within the Amazon organization (summary from [Wikipedia](https://en.wikipedia.org/wiki/Amazon_Standard_Identification_Number)'s article). Note also that this is a definition for how to include ASINs in Schema.org data, and not a definition of ASINs in general - see documentation from Amazon for authoritative details. ASINs are most commonly encoded as text strings, but the [asin] property supports URL/URI as potential values too.",
+"fine": null
+},
+{
+"name": "schema:author",
+"uri": "https://schema.org/author",
+"text": "author: The author of this content or rating. Please note that author is special in that HTML 5 provides a special mechanism for indicating authorship via the rel tag. That is equivalent to this and may be used interchangeably.",
+"fine": null
+},
+{
+"name": "schema:award",
+"uri": "https://schema.org/award",
+"text": "award: An award won by or for this item.",
+"fine": null
+},
+{
+"name": "schema:birthDate",
+"uri": "https://schema.org/birthDate",
+"text": "birth date: Date of birth.",
+"fine": null
+},
+{
+"name": "schema:brand",
+"uri": "https://schema.org/brand",
+"text": "brand: The brand(s) associated with a product or service, or the brand(s) maintained by an organization or business person.",
+"fine": null
+},
+{
+"name": "schema:byArtist",
+"uri": "https://schema.org/byArtist",
+"text": "by artist: The artist that performed this album or recording.",
+"fine": null
+},
+{
+"name": "schema:character",
+"uri": "https://schema.org/character",
+"text": "character: Fictional person connected with a creative work.",
+"fine": "person"
+},
+{
+"name": "schema:color",
+"uri": "https://schema.org/color",
+"text": "color: The color of the product.",
+"fine": null
+},
+{
+"name": "schema:connectedTo",
+"uri": "https://schema.org/connectedTo",
+"text": "connected to: Other anatomical structures to which this structure is connected.",
+"fine": null
+},
+{
+"name": "schema:contentLocation",
+"uri": "https://schema.org/contentLocation",
+"text": "content location: The location depicted or described in the content. For example, the location in a photograph or painting.",
+"fine": "place"
+},
+{
+"name": "schema:countryOfOrigin",
+"uri": "https://schema.org/countryOfOrigin",
+"text": "country of origin: The country of origin of something, including products as well as creative works such as movie and TV content. In the case of TV and movie, this would be the country of the principle offices of the production company or individual responsible for the movie. For other kinds of CreativeWork it is difficult to provide fully general guidance, and properties such as contentLocation and locationCreated may be more applicable. In the case of products, the country of origin of the product. The exact interpretation of this may vary by context and product type, and cannot be fully enumerated here.",
+"fine": "place"
+},
+{
+"name": "schema:dateCreated",
+"uri": "https://schema.org/dateCreated",
+"text": "date created: The date on which the CreativeWork was created or the item was added to a DataFeed.",
+"fine": null
+},
+{
+"name": "schema:director",
+"uri": "https://schema.org/director",
+"text": "director: A director of e.g. TV, radio, movie, video gaming etc. content, or of an event. Directors can be associated with individual items or with a series, episode, clip.",
+"fine": "person"
+},
+{
+"name": "schema:dissolutionDate",
+"uri": "https://schema.org/dissolutionDate",
+"text": "dissolution date: The date that this organization was dissolved.",
+"fine": null
+},
+{
+"name": "schema:distance",
+"uri": "https://schema.org/distance",
+"text": "distance: The distance travelled, e.g. exercising or travelling.",
+"fine": null
+},
+{
+"name": "schema:editor",
+"uri": "https://schema.org/editor",
+"text": "editor: Specifies the Person who edited the CreativeWork.",
+"fine": "person"
+},
+{
+"name": "schema:email",
+"uri": "https://schema.org/email",
+"text": "email: Email address.",
+"fine": null
+},
+{
+"name": "schema:founder",
+"uri": "https://schema.org/founder",
+"text": "founder: A person or organization who founded this organization.",
+"fine": null
+},
+{
+"name": "schema:foundingLocation",
+"uri": "https://schema.org/foundingLocation",
+"text": "founding location: The place where the Organization was founded.",
+"fine": "place"
+},
+{
+"name": "schema:gender",
+"uri": "https://schema.org/gender",
+"text": "gender: Gender of something, typically a Person, but possibly also fictional characters, animals, etc. While https://schema.org/Male and https://schema.org/Female may be used, text strings are also acceptable for people who are not a binary gender. The gender property can also be used in an extended sense to cover e.g. the gender of sports teams. As with the gender of individuals, we do not try to enumerate all possibilities. A mixed-gender SportsTeam can be indicated with a text value of \"Mixed\".",
+"fine": null
+},
+{
+"name": "schema:genre",
+"uri": "https://schema.org/genre",
+"text": "genre: Genre of the creative work, broadcast channel or group.",
+"fine": null
+},
+{
+"name": "schema:hasOccupation",
+"uri": "https://schema.org/hasOccupation",
+"text": "has occupation: The Person's occupation. For past professions, use Role for expressing dates.",
+"fine": null
+},
+{
+"name": "schema:hasPart",
+"uri": "https://schema.org/hasPart",
+"text": "has part: Indicates an item or CreativeWork that is part of this item, or CreativeWork (in some sense).",
+"fine": null
+},
+{
+"name": "schema:height",
+"uri": "https://schema.org/height",
+"text": "height: The height of the item.",
+"fine": null
+},
+{
+"name": "schema:image",
+"uri": "https://schema.org/image",
+"text": "image: An image of the item. This can be a URL or a fully described ImageObject.",
+"fine": null
+},
+{
+"name": "schema:inLanguage",
+"uri": "https://schema.org/inLanguage",
+"text": "in language: The language of the content or performance or used in an action. Please use one of the language codes from the [IETF BCP 47 standard](http://tools.ietf.org/html/bcp47). See also availableLanguage.",
+"fine": null
+},
+{
+"name": "schema:isBasedOn",
+"uri": "https://schema.org/isBasedOn",
+"text": "is based on: A resource from which this work is derived or from which it is a modification or adaptation.",
+"fine": null
+},
+{
+"name": "schema:isPartOf",
+"uri": "https://schema.org/isPartOf",
+"text": "is part of: Indicates an item or CreativeWork that this item, or CreativeWork (in some sense), is part of.",
+"fine": null
+},
+{
+"name": "schema:issn",
+"uri": "https://schema.org/issn",
+"text": "issn: The International Standard Serial Number (ISSN) that identifies this serial publication. You can repeat this property to identify different formats of, or the linking ISSN (ISSN-L) for, this serial publication.",
+"fine": null
+},
+{
+"name": "schema:leiCode",
+"uri": "https://schema.org/leiCode",
+"text": "lei code: An organization identifier that uniquely identifies a legal entity as defined in ISO 17442.",
+"fine": null
+},
+{
+"name": "schema:license",
+"uri": "https://schema.org/license",
+"text": "license: A license document that applies to this content, typically indicated by URL.",
+"fine": null
+},
+{
+"name": "schema:location",
+"uri": "https://schema.org/location",
+"text": "location: The location of, for example, where an event is happening, where an organization is located, or where an action takes place.",
+"fine": null
+},
+{
+"name": "schema:locationCreated",
+"uri": "https://schema.org/locationCreated",
+"text": "location created: The location where the CreativeWork was created, which may not be the same as the location depicted in the CreativeWork.",
+"fine": "place"
+},
+{
+"name": "schema:logo",
+"uri": "https://schema.org/logo",
+"text": "logo: An associated logo.",
+"fine": null
+},
+{
+"name": "schema:lyricist",
+"uri": "https://schema.org/lyricist",
+"text": "lyricist: The person who wrote the words.",
+"fine": "person"
+},
+{
+"name": "schema:mainEntityOfPage",
+"uri": "https://schema.org/mainEntityOfPage",
+"text": "main entity of page: Indicates a page (or other CreativeWork) for which this thing is the main entity being described. See [background notes](/docs/datamodel.html#mainEntityBackground) for details.",
+"fine": null
+},
+{
+"name": "schema:memberOf",
+"uri": "https://schema.org/memberOf",
+"text": "member of: An Organization (or ProgramMembership) to which this Person or Organization belongs.",
+"fine": null
+},
+{
+"name": "schema:name",
+"uri": "https://schema.org/name",
+"text": "name: The name of the item.",
+"fine": null
+},
+{
+"name": "schema:nationality",
+"uri": "https://schema.org/nationality",
+"text": "nationality: Nationality of the person.",
+"fine": "place"
+},
+{
+"name": "schema:numberOfEmployees",
+"uri": "https://schema.org/numberOfEmployees",
+"text": "number of employees: The number of employees in an organization, e.g. business.",
+"fine": "quantity"
+},
+{
+"name": "schema:operatingSystem",
+"uri": "https://schema.org/operatingSystem",
+"text": "operating system: Operating systems supported (Windows 7, OS X 10.6, Android 1.6).",
+"fine": null
+},
+{
+"name": "schema:owns",
+"uri": "https://schema.org/owns",
+"text": "owns: Things owned by the organization or person.",
+"fine": null
+},
+{
+"name": "schema:parentOrganization",
+"uri": "https://schema.org/parentOrganization",
+"text": "parent organization: The larger organization that this organization is a subOrganization of, if any.",
+"fine": "company"
+},
+{
+"name": "schema:parentTaxon",
+"uri": "https://schema.org/parentTaxon",
+"text": "parent taxon: Closest parent taxon of the taxon in question.",
+"fine": null
+},
+{
+"name": "schema:partOfSeries",
+"uri": "https://schema.org/partOfSeries",
+"text": "part of series: The series to which this episode or season belongs.",
+"fine": null
+},
+{
+"name": "schema:postalCode",
+"uri": "https://schema.org/postalCode",
+"text": "postal code: The postal code. For example, 94043.",
+"fine": null
+},
+{
+"name": "schema:previousItem",
+"uri": "https://schema.org/previousItem",
+"text": "previous item: A link to the ListItem that precedes the current one.",
+"fine": null
+},
+{
+"name": "schema:producer",
+"uri": "https://schema.org/producer",
+"text": "producer: The person or organization who produced the work (e.g. music album, movie, TV/radio series etc.).",
+"fine": null
+},
+{
+"name": "schema:productionCompany",
+"uri": "https://schema.org/productionCompany",
+"text": "production company: The production company or studio responsible for the item, e.g. series, video game, episode etc.",
+"fine": "company"
+},
+{
+"name": "schema:programmingLanguage",
+"uri": "https://schema.org/programmingLanguage",
+"text": "programming language: The computer programming language.",
+"fine": null
+},
+{
+"name": "schema:provider",
+"uri": "https://schema.org/provider",
+"text": "provider: The service provider, service operator, or service performer; the goods producer. Another party (a seller) may offer those services or goods on behalf of the provider. A provider may also serve as the seller.",
+"fine": null
+},
+{
+"name": "schema:publisher",
+"uri": "https://schema.org/publisher",
+"text": "publisher: The publisher of the article in question.",
+"fine": null
+},
+{
+"name": "schema:servesCuisine",
+"uri": "https://schema.org/servesCuisine",
+"text": "serves cuisine: The cuisine of the restaurant.",
+"fine": null
+},
+{
+"name": "schema:softwareVersion",
+"uri": "https://schema.org/softwareVersion",
+"text": "software version: Version of the software instance.",
+"fine": null
+},
+{
+"name": "schema:startTime",
+"uri": "https://schema.org/startTime",
+"text": "start time: The startTime of something. For a reserved event or service (e.g. FoodEstablishmentReservation), the time that it is expected to start. For actions that span a period of time, when the action was performed. E.g. John wrote a book from *January* to December. For media, including audio and video, it's the time offset of the start of a clip within a larger file.\\n\\nNote that Event uses startDate/endDate instead of startTime/endTime, even when describing dates with times. This situation may be clarified in future revisions.",
+"fine": null
+},
+{
+"name": "schema:subOrganization",
+"uri": "https://schema.org/subOrganization",
+"text": "sub organization: A relationship between two organizations where the first includes the second, e.g., as a subsidiary. See also: the more specific 'department' property.",
+"fine": "company"
+},
+{
+"name": "schema:alternateName",
+"uri": "https://schema.org/alternateName",
+"text": "alternate name: An alias for the item.",
+"fine": null
+},
+{
+"name": "schema:taxonRank",
+"uri": "https://schema.org/taxonRank",
+"text": "taxon rank: The taxonomic rank of this taxon given preferably as a URI from a controlled vocabulary – typically the ranks from TDWG TaxonRank ontology or equivalent Wikidata URIs.",
+"fine": null
+},
+{
+"name": "schema:telephone",
+"uri": "https://schema.org/telephone",
+"text": "telephone: The telephone number.",
+"fine": null
+},
+{
+"name": "schema:timeRequired",
+"uri": "https://schema.org/timeRequired",
+"text": "time required: Approximate or typical time it usually takes to work with or through the content of this work for the typical or target audience.",
+"fine": null
+},
+{
+"name": "schema:uploadDate",
+"uri": "https://schema.org/uploadDate",
+"text": "upload date: Date (including time if available) when this media object was uploaded to this site.",
+"fine": null
+},
+{
+"name": "schema:video",
+"uri": "https://schema.org/video",
+"text": "video: An embedded video object.",
+"fine": null
+},
+{
+"name": "schema:weight",
+"uri": "https://schema.org/weight",
+"text": "weight: The weight of the product or person.",
+"fine": null
+},
+{
+"name": "schema:width",
+"uri": "https://schema.org/width",
+"text": "width: The width of the item.",
+"fine": null
+}
+],
+"classes": [
+{
+"name": "class:Action",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:location",
+"weight": 4.0
+},
+{
+"property": "schema:provider",
+"weight": 4.0
+},
+{
+"property": "schema:startTime",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:AnatomicalStructure",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:connectedTo",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:Blog",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:issn",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:Brand",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:aggregateRating",
+"weight": 4.0
+},
+{
+"property": "schema:logo",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:BroadcastChannel",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:genre",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:BroadcastService",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:inLanguage",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:BusinessAudience",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:numberOfEmployees",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:Certification",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:about",
+"weight": 4.0
+},
+{
+"property": "schema:logo",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:Clip",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:actor",
+"weight": 4.0
+},
+{
+"property": "schema:director",
+"weight": 4.0
+},
+{
+"property": "schema:partOfSeries",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:CommunicateAction",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:about",
+"weight": 4.0
+},
+{
+"property": "schema:inLanguage",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:ContactPoint",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:email",
+"weight": 4.0
+},
+{
+"property": "schema:telephone",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:CreativeWork",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:about",
+"weight": 4.0
+},
+{
+"property": "schema:aggregateRating",
+"weight": 4.0
+},
+{
+"property": "schema:author",
+"weight": 4.0
+},
+{
+"property": "schema:award",
+"weight": 4.0
+},
+{
+"property": "schema:character",
+"weight": 4.0
+},
+{
+"property": "schema:contentLocation",
+"weight": 4.0
+},
+{
+"property": "schema:countryOfOrigin",
+"weight": 4.0
+},
+{
+"property": "schema:dateCreated",
+"weight": 4.0
+},
+{
+"property": "schema:editor",
+"weight": 4.0
+},
+{
+"property": "schema:genre",
+"weight": 4.0
+},
+{
+"property": "schema:hasPart",
+"weight": 4.0
+},
+{
+"property": "schema:inLanguage",
+"weight": 4.0
+},
+{
+"property": "schema:isBasedOn",
+"weight": 4.0
+},
+{
+"property": "schema:isPartOf",
+"weight": 4.0
+},
+{
+"property": "schema:license",
+"weight": 4.0
+},
+{
+"property": "schema:locationCreated",
+"weight": 4.0
+},
+{
+"property": "schema:producer",
+"weight": 4.0
+},
+{
+"property": "schema:provider",
+"weight": 4.0
+},
+{
+"property": "schema:publisher",
+"weight": 4.0
+},
+{
+"property": "schema:timeRequired",
+"weight": 4.0
+},
+{
+"property": "schema:video",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:CreativeWorkSeason",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:actor",
+"weight": 4.0
+},
+{
+"property": "schema:director",
+"weight": 4.0
+},
+{
+"property": "schema:partOfSeries",
+"weight": 4.0
+},
+{
+"property": "schema:productionCompany",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:CreativeWorkSeries",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:issn",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:DataFeedItem",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:dateCreated",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:Dataset",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:issn",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:DefinedRegion",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:addressCountry",
+"weight": 4.0
+},
+{
+"property": "schema:postalCode",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:DefinedTerm",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:about",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:DefinedTermSet",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:about",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:Demand",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:asin",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:EducationalOccupationalProgram",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:provider",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:Episode",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:actor",
+"weight": 4.0
+},
+{
+"property": "schema:director",
+"weight": 4.0
+},
+{
+"property": "schema:partOfSeries",
+"weight": 4.0
+},
+{
+"property": "schema:productionCompany",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:Event",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:about",
+"weight": 4.0
+},
+{
+"property": "schema:actor",
+"weight": 4.0
+},
+{
+"property": "schema:aggregateRating",
+"weight": 4.0
+},
+{
+"property": "schema:director",
+"weight": 4.0
+},
+{
+"property": "schema:inLanguage",
+"weight": 4.0
+},
+{
+"property": "schema:location",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:ExerciseAction",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:distance",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:FinancialIncentive",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:provider",
+"weight": 4.0
+},
+{
+"property": "schema:publisher",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:FoodEstablishment",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:servesCuisine",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:FoodEstablishmentReservation",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:startTime",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:GeoCoordinates",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:address",
+"weight": 4.0
+},
+{
+"property": "schema:addressCountry",
+"weight": 4.0
+},
+{
+"property": "schema:postalCode",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:GeoShape",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:address",
+"weight": 4.0
+},
+{
+"property": "schema:addressCountry",
+"weight": 4.0
+},
+{
+"property": "schema:postalCode",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:InteractionCounter",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:location",
+"weight": 4.0
+},
+{
+"property": "schema:startTime",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:Invoice",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:provider",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:LinkRole",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:inLanguage",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:ListItem",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:previousItem",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:MediaObject",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:height",
+"weight": 4.0
+},
+{
+"property": "schema:productionCompany",
+"weight": 4.0
+},
+{
+"property": "schema:startTime",
+"weight": 4.0
+},
+{
+"property": "schema:uploadDate",
+"weight": 4.0
+},
+{
+"property": "schema:width",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:Movie",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:actor",
+"weight": 4.0
+},
+{
+"property": "schema:countryOfOrigin",
+"weight": 4.0
+},
+{
+"property": "schema:director",
+"weight": 4.0
+},
+{
+"property": "schema:productionCompany",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:MovieSeries",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:actor",
+"weight": 4.0
+},
+{
+"property": "schema:director",
+"weight": 4.0
+},
+{
+"property": "schema:productionCompany",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:MusicAlbum",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:byArtist",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:MusicComposition",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:lyricist",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:MusicGroup",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:genre",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:MusicRecording",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:byArtist",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:Offer",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:aggregateRating",
+"weight": 4.0
+},
+{
+"property": "schema:asin",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:OfferShippingDetails",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:height",
+"weight": 4.0
+},
+{
+"property": "schema:weight",
+"weight": 4.0
+},
+{
+"property": "schema:width",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:Organization",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:address",
+"weight": 4.0
+},
+{
+"property": "schema:aggregateRating",
+"weight": 4.0
+},
+{
+"property": "schema:award",
+"weight": 4.0
+},
+{
+"property": "schema:brand",
+"weight": 4.0
+},
+{
+"property": "schema:dissolutionDate",
+"weight": 4.0
+},
+{
+"property": "schema:email",
+"weight": 4.0
+},
+{
+"property": "schema:founder",
+"weight": 4.0
+},
+{
+"property": "schema:foundingLocation",
+"weight": 4.0
+},
+{
+"property": "schema:leiCode",
+"weight": 4.0
+},
+{
+"property": "schema:location",
+"weight": 4.0
+},
+{
+"property": "schema:logo",
+"weight": 4.0
+},
+{
+"property": "schema:memberOf",
+"weight": 4.0
+},
+{
+"property": "schema:numberOfEmployees",
+"weight": 4.0
+},
+{
+"property": "schema:owns",
+"weight": 4.0
+},
+{
+"property": "schema:parentOrganization",
+"weight": 4.0
+},
+{
+"property": "schema:subOrganization",
+"weight": 4.0
+},
+{
+"property": "schema:telephone",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:ParcelDelivery",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:provider",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:Person",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:address",
+"weight": 4.0
+},
+{
+"property": "schema:affiliation",
+"weight": 4.0
+},
+{
+"property": "schema:award",
+"weight": 4.0
+},
+{
+"property": "schema:birthDate",
+"weight": 4.0
+},
+{
+"property": "schema:brand",
+"weight": 4.0
+},
+{
+"property": "schema:email",
+"weight": 4.0
+},
+{
+"property": "schema:gender",
+"weight": 4.0
+},
+{
+"property": "schema:hasOccupation",
+"weight": 4.0
+},
+{
+"property": "schema:height",
+"weight": 4.0
+},
+{
+"property": "schema:memberOf",
+"weight": 4.0
+},
+{
+"property": "schema:nationality",
+"weight": 4.0
+},
+{
+"property": "schema:owns",
+"weight": 4.0
+},
+{
+"property": "schema:telephone",
+"weight": 4.0
+},
+{
+"property": "schema:weight",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:Place",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:address",
+"weight": 4.0
+},
+{
+"property": "schema:aggregateRating",
+"weight": 4.0
+},
+{
+"property": "schema:geo",
+"weight": 4.0
+},
+{
+"property": "schema:logo",
+"weight": 4.0
+},
+{
+"property": "schema:telephone",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:PodcastSeries",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:actor",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:PostalAddress",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:addressCountry",
+"weight": 4.0
+},
+{
+"property": "schema:postalCode",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:Product",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:aggregateRating",
+"weight": 4.0
+},
+{
+"property": "schema:asin",
+"weight": 4.0
+},
+{
+"property": "schema:award",
+"weight": 4.0
+},
+{
+"property": "schema:brand",
+"weight": 4.0
+},
+{
+"property": "schema:color",
+"weight": 4.0
+},
+{
+"property": "schema:countryOfOrigin",
+"weight": 4.0
+},
+{
+"property": "schema:height",
+"weight": 4.0
+},
+{
+"property": "schema:logo",
+"weight": 4.0
+},
+{
+"property": "schema:weight",
+"weight": 4.0
+},
+{
+"property": "schema:width",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:PronounceableText",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:inLanguage",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:RadioSeries",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:actor",
+"weight": 4.0
+},
+{
+"property": "schema:director",
+"weight": 4.0
+},
+{
+"property": "schema:productionCompany",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:Rating",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:author",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:Reservation",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:provider",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:Schedule",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:startTime",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:Service",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:aggregateRating",
+"weight": 4.0
+},
+{
+"property": "schema:award",
+"weight": 4.0
+},
+{
+"property": "schema:brand",
+"weight": 4.0
+},
+{
+"property": "schema:logo",
+"weight": 4.0
+},
+{
+"property": "schema:provider",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:ShippingConditions",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:height",
+"weight": 4.0
+},
+{
+"property": "schema:weight",
+"weight": 4.0
+},
+{
+"property": "schema:width",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:SoftwareApplication",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:operatingSystem",
+"weight": 4.0
+},
+{
+"property": "schema:softwareVersion",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:SoftwareSourceCode",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:programmingLanguage",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:SportsTeam",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:gender",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:TVEpisode",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:countryOfOrigin",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:TVSeason",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:countryOfOrigin",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:TVSeries",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:actor",
+"weight": 4.0
+},
+{
+"property": "schema:countryOfOrigin",
+"weight": 4.0
+},
+{
+"property": "schema:director",
+"weight": 4.0
+},
+{
+"property": "schema:productionCompany",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:Taxon",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:parentTaxon",
+"weight": 4.0
+},
+{
+"property": "schema:taxonRank",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:Thing",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:alternateName",
+"weight": 4.0
+},
+{
+"property": "schema:image",
+"weight": 4.0
+},
+{
+"property": "schema:mainEntityOfPage",
+"weight": 4.0
+},
+{
+"property": "schema:name",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:TravelAction",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:distance",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:Trip",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:provider",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:VideoGame",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:actor",
+"weight": 4.0
+},
+{
+"property": "schema:director",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:VideoGameSeries",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:actor",
+"weight": 4.0
+},
+{
+"property": "schema:director",
+"weight": 4.0
+},
+{
+"property": "schema:productionCompany",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:VideoObject",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:actor",
+"weight": 4.0
+},
+{
+"property": "schema:director",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:VisualArtwork",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:height",
+"weight": 4.0
+},
+{
+"property": "schema:weight",
+"weight": 4.0
+},
+{
+"property": "schema:width",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:WebSite",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:issn",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:WriteAction",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:inLanguage",
+"weight": 4.0
+}
+]
+}
+],
+"fine_classes": {
+"class:Accommodation": "place",
+"class:AdministrativeArea": "place",
+"class:Airline": "company",
+"class:Airport": "place",
+"class:Apartment": "place",
+"class:ApartmentComplex": "place",
+"class:Aquarium": "place",
+"class:Beach": "place",
+"class:BoatTerminal": "place",
+"class:BodyOfWater": "place",
+"class:Bridge": "place",
+"class:BuddhistTemple": "place",
+"class:BusStation": "place",
+"class:BusStop": "place",
+"class:CampingPitch": "place",
+"class:Canal": "place",
+"class:CatholicChurch": "place",
+"class:Cemetery": "place",
+"class:Church": "place",
+"class:City": "place",
+"class:CityHall": "place",
+"class:CivicStructure": "place",
+"class:Consortium": "company",
+"class:Continent": "place",
+"class:Cooperative": "company",
+"class:Corporation": "company",
+"class:Country": "place",
+"class:Courthouse": "place",
+"class:Crematorium": "place",
+"class:DanceGroup": "company",
+"class:DefenceEstablishment": "place",
+"class:DefinedRegion": "place",
+"class:DiagnosticLab": "company",
+"class:Embassy": "place",
+"class:EventVenue": "place",
+"class:FundingAgency": "company",
+"class:FundingScheme": "company",
+"class:GatedResidenceCommunity": "place",
+"class:GovernmentBuilding": "place",
+"class:GovernmentOrganization": "company",
+"class:HinduTemple": "place",
+"class:HotelRoom": "place",
+"class:House": "place",
+"class:LakeBodyOfWater": "place",
+"class:Landform": "place",
+"class:LandmarksOrHistoricalBuildings": "place",
+"class:LegislativeBuilding": "place",
+"class:LibrarySystem": "company",
+"class:MedicalOrganization": "company",
+"class:MeetingRoom": "place",
+"class:MonetaryAmount": "money",
+"class:Mosque": "place",
+"class:Mountain": "place",
+"class:Museum": "place",
+"class:MusicGroup": "company",
+"class:MusicVenue": "place",
+"class:NGO": "company",
+"class:NewsMediaOrganization": "company",
+"class:Observation": "quantity",
+"class:OceanBodyOfWater": "place",
+"class:OnlineBusiness": "company",
+"class:OnlineMarketplace": "company",
+"class:OnlineStore": "company",
+"class:Organization": "company",
+"class:Park": "place",
+"class:ParkingFacility": "place",
+"class:Patient": "person",
+"class:PerformingArtsTheater": "place",
+"class:PerformingGroup": "company",
+"class:Person": "person",
+"class:Place": "place",
+"class:PlaceOfWorship": "place",
+"class:Playground": "place",
+"class:PoliticalParty": "company",
+"class:Pond": "place",
+"class:Project": "company",
+"class:PublicToilet": "place",
+"class:QuantitativeValue": "quantity",
+"class:RVPark": "place",
+"class:ResearchOrganization": "company",
+"class:ResearchProject": "company",
+"class:Reservoir": "place",
+"class:Residence": "place",
+"class:RiverBodyOfWater": "place",
+"class:Room": "place",
+"class:SchoolDistrict": "place",
+"class:SeaBodyOfWater": "place",
+"class:SearchRescueOrganization": "company",
+"class:SingleFamilyResidence": "place",
+"class:SportsOrganization": "company",
+"class:SportsTeam": "company",
+"class:State": "place",
+"class:SubwayStation": "place",
+"class:Suite": "place",
+"class:Synagogue": "place",
+"class:TaxiStand": "place",
+"class:TheaterGroup": "company",
+"class:TouristAttraction": "place",
+"class:TouristDestination": "place",
+"class:TrainStation": "place",
+"class:VeterinaryCare": "company",
+"class:Volcano": "place",
+"class:Waterfall": "place",
+"class:WorkersUnion": "company",
+"class:Zoo": "place"
 }
 }
 },

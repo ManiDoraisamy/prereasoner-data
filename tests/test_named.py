@@ -387,25 +387,30 @@ def test_a_head_reads_as_log_odds_against_silence() -> None:
 
 
 def test_name_set_loader_and_its_forms() -> None:
-    """The structure tier from the name set, then schema.org's properties: every one of them, in the contract's order, and nothing of any trade's vocabulary."""
-    document = {"schema_version": 2, "tiers": {"structure": {"names": [{"name": "form:show", "group": "form"}, {"name": "aggregate:sum", "group": "aggregate"}]}}}
+    """The structure tier from the name set, then the owner's selected property basis in its order (engine/data/alloc.json, migrated), never the 1,521-property catalogue, and nothing of any trade's vocabulary."""
+    document = {"schema_version": 3, "tiers": {"structure": {"names": [{"name": "form:show", "group": "form"}, {"name": "aggregate:sum", "group": "aggregate"}]},
+                                                "meaning": {"properties": [{"name": "schema:name", "text": "name: the name of the item", "fine": None}]}}}
     with tempfile.TemporaryDirectory() as folder:
         path = Path(folder) / "names.json"
         path.write_text(json.dumps(document), encoding="utf-8")
-        names = load_name_set(path, meaning=["schema:price"])
+        names = load_name_set(path, meaning=["schema:weight"])
         full = load_name_set(path)
-    assert names.names == ("aggregate:sum", "form:show", "schema:price") and names.meaning_start == 2 and names.meaning == 1 and names.at("form:show") == 1 and names.at("nothing") is None
-    assert full.meaning == 1521 and full.names[2:] == meaning_names()
+    assert names.names == ("aggregate:sum", "form:show", "schema:weight") and names.meaning_start == 2 and names.meaning == 1 and names.at("form:show") == 1 and names.at("nothing") is None
+    assert full.names == ("aggregate:sum", "form:show", "schema:name")
     assert names.sha != NameSet(("form:show",)).sha
-    for misplaced in ((("schema:price", "form:show"), 1), (("form:show", "aggregate:sum"), 1)):
+    for misplaced in ((("schema:name", "form:show"), 1), (("form:show", "aggregate:sum"), 1)):
         try:
             NameSet(*misplaced)
         except ValueError:
             continue
         raise AssertionError("a meaning tier that is not schema.org's names after the structure tier was taken")
-    assert fine_of("schema:employee") == "person" and fine_of("class:Corporation") == "company" and fine_of("class:City") == "place" and fine_of("schema:price") is None, "fine answer types by the ontology alone"
+    assert fine_of("schema:director") == "person" and fine_of("class:Corporation") == "company" and fine_of("class:City") == "place" and fine_of("schema:name") is None, "fine answer types by the ontology alone"
     shipped = load_name_set()
-    assert shipped.meaning == 1521 and not any(name.startswith(("biz:", "word:")) for name in shipped.names)
+    allocation = json.loads((ROOT / "engine" / "data" / "alloc.json").read_text(encoding="utf-8"))
+    migrated = {"GeoCoordinates": "geo", "taxonName": "alternateName"}
+    basis = tuple(f"schema:{migrated.get(row['name'], row['name'])}" for row in sorted(allocation["dims"], key=lambda row: row["dim_id"]) if row["family"] == "taxonomy")
+    assert shipped.names[shipped.meaning_start:] == basis == meaning_names(), "the meaning tier is the selected basis, in alloc.json's order"
+    assert shipped.meaning == len(basis) < 200 and not any(name.startswith(("biz:", "word:")) for name in shipped.names)
     fake = fake_name_set()
     for answer in ANSWER_TYPES:
         assert fake.at(f"answer_type:{answer}") is not None
@@ -778,7 +783,7 @@ def test_lease_plan_is_size_aware() -> None:
     pickled = 'class Cell:\n    """one cell"""\n    raw: str\n    kind: str\n'
     assert dataclass_fields(pickled) == dataclass_fields(pickled.replace("one cell", "a cell")), "a docstring is nothing a pickle holds"
     assert dataclass_fields(pickled) != dataclass_fields(pickled.replace("    kind: str\n", "")), "a field is"
-    assert "engine/data/schema_org_v30.json" in pod_code(), "the meaning tier's contract travels with the pod"
+    assert "engine/data/schema_org_v30.json" not in pod_code(), "the pod reads the name set's basis, never the catalogue"
     command = remote_command("bge-small", 500, 3)
     assert "training.named.train" in command and "--seed 3" in command and "--steps 500" in command and "exit 4" in command
 

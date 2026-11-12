@@ -19,7 +19,7 @@ from engine.sheet import compile_workbook, workbook_from_json
 from engine.sheet.names import COLUMN_ROLES, LINE_ROLES, VALUE_KINDS
 from training.named.data import TabExample
 
-MEANINGS = ("schema:customer", "schema:areaServed", "schema:orderQuantity", "schema:price", "schema:orderDate", "schema:orderNumber")
+MEANINGS = ("schema:name", "schema:location", "schema:weight", "schema:width", "schema:startTime", "schema:leiCode")      # basis properties (engine/data/named_coordinates.json)
 # Each family's own words for the same columns: the reader must carry the meaning, not the spelling.
 FAMILY_HEADERS = (("Counterparty", "Region", "Volume MMBtu", "Price", "Trade Date", "Deal"),
                   ("Shipper", "Area", "Qty", "Px", "Flow Day", "Ticket"),

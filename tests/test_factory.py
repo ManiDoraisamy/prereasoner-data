@@ -15,7 +15,7 @@ from engine.program.names import ANSWER_TYPES, FORMS
 from engine.program.store import RequestTables
 from engine.sheet import compile_workbook, workbook_from_json
 from training.factory.agree import agrees, as_day, same_scalar
-from training.factory.assemble import apply_quotas, is_subject_only, link_records, named, rule_reaches
+from training.factory.assemble import apply_quotas, is_subject_only, link_records, named, rule_reaches, schema_names
 from training.factory.overlap import common_words
 from training.factory.factory import parse_author
 from training.factory.grammar import Unbound, bind
@@ -113,7 +113,7 @@ def test_agree() -> None:
 
 
 def test_parse_author() -> None:
-    parsed = parse_author('ROLE gas scheduler\nCOL t0.2 schema:orderQuantity 8 val schema:Product 7\nCOL t0.1 region_trading 9\nQ1|east vol|agg sum 2 @t0 where 1="East"|east>V1;vol>2\nR1|who approved|not held\nnoise\n')
+    parsed = parse_author('ROLE gas scheduler\nCOL t0.2 schema:weight 8 val schema:Product 7\nCOL t0.1 region_trading 9\nQ1|east vol|agg sum 2 @t0 where 1="East"|east>V1;vol>2\nR1|who approved|not held\nnoise\n')
     assert parsed["role"] == "gas scheduler" and len(parsed["columns"]) == 2 and parsed["columns"][0]["val"] == "schema:Product"
     assert parsed["questions"][0]["program"] == 'agg sum 2 @t0 where 1="East"'
     assert parsed["refusals"][0]["question"] == "who approved"
@@ -152,11 +152,11 @@ def test_links_and_rule() -> None:
     assert rule_reaches("hh", "Henry Hub")
     q = {"program": 'agg sum 2 @t0 where 1="East"', "question": "east burn total", "links": "east>V1;burn>2;total>C;missing>3;burn>9", "coordinates": ["measure:t0.2", "filter:t0.1", "value:t0.1=east"], "overlap": []}
     columns = {"t0": {0: [0, "Counterparty", "text", "key"], 1: [1, "Region", "text", "label"], 2: [2, "Volume", "number", "measure"]}}
-    labels = {("t0", "2"): {"coordinates": ["schema:orderQuantity"], "value_coordinates": []}, ("t0", "1"): {"coordinates": ["schema:areaServed"], "value_coordinates": ["schema:areaServed"]}}
+    labels = {("t0", "2"): {"coordinates": ["schema:weight"], "value_coordinates": []}, ("t0", "1"): {"coordinates": ["schema:location"], "value_coordinates": ["schema:location"]}}
     links = link_records(q, {}, columns, labels, frozenset())
     assert [(link["kind"], link.get("position")) for link in links] == [("value", 1), ("column", 2), ("context", None)], "a word not in the question or a column the table lacks is dropped"
     assert links[0]["target"] == "East" and links[0]["own_words"] is True and links[0]["role"] == "filter"
-    assert links[1]["coordinates"] == ["schema:orderQuantity"] and links[1]["role"] == "measure"
+    assert links[1]["coordinates"] == ["schema:weight"] and links[1]["role"] == "measure"
     unlinked = {"program": 'agg sum 2 @t0 where 1="East"', "question": "total volume east", "links": "", "coordinates": ["measure:t0.2", "filter:t0.1"], "overlap": ["volume"], "used": [{"table": "t0", "position": 2, "letter": "C", "name": "Volume"}, {"table": "t0", "position": 1, "letter": "B", "name": "Region"}]}
     by_rule = link_records(unlinked, {}, columns, labels, frozenset())
     assert {(link["kind"], link["words"], link["source"]) for link in by_rule} == {("column", "volume", "rule"), ("value", "east", "rule")}, "what a question says outright links by rule"
@@ -185,9 +185,10 @@ def test_overlap() -> None:
 
 
 def test_named_coordinates() -> None:
-    schema = {"price", "Organization"}
-    assert named("schema:price", schema) == "schema:price"
-    assert named("price", schema) == "schema:price"
+    schema = schema_names()
+    assert named("schema:weight", schema) == "schema:weight"
+    assert named("weight", schema) == "schema:weight"
+    assert named("schema:price", schema) is None, "a catalogue property outside the basis names nothing"
     assert named("schema:nosuch", schema) is None and named("biz:counterparty", schema) is None and named("counterparty", schema) is None and named("none", schema) is None, "no trade's vocabulary: schema.org's names only"
 
 
@@ -228,8 +229,13 @@ def test_name_set_is_whole() -> None:
     assert all(f"form:{form}" in names for form in FORMS)
     assert all(f"answer_type:{kind}" in names for kind in ANSWER_TYPES)
     assert all(row["definition"] for row in structure)
-    assert document["schema_version"] == 2 and set(document["tiers"]) == {"structure", "meaning"} and set(document["tiers"]["meaning"]) == {"schema_org"}, "the meaning tier is schema.org's, by reference, and nothing else"
-    assert document["tiers"]["meaning"]["schema_org"]["properties"] == 1521 and document["tiers"]["meaning"]["schema_org"]["classes"] == 926
+    assert set(document["tiers"]) == {"structure", "meaning"}, "two tiers and nothing else"
+    meaning = document["tiers"]["meaning"]
+    assert document["schema_version"] == 3 and set(meaning) == {"basis", "properties", "classes", "fine_classes"}
+    assert meaning["basis"]["source"] == "engine/data/alloc.json" and meaning["basis"]["count"] == len(meaning["properties"]) == 71, "the selected basis, never the catalogue"
+    assert all(row["name"].startswith("schema:") and row["text"] for row in meaning["properties"])
+    basis = {row["name"] for row in meaning["properties"]}
+    assert all(item["property"] in basis for row in meaning["classes"] for item in row["signature"]), "classes are superpositions over the basis"
 
 
 def main() -> int:
