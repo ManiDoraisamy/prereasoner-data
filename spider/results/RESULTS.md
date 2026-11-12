@@ -5,6 +5,62 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
+## The basis audit: the 71 properties cover 3% of sheet columns; 11 are added by a rule (82); a third of gold links point at columns schema.org has no property for (2026-11-12)
+
+- The owner's correction of the evening: the reader's meaning dimensions are the selected basis of
+  `engine/data/alloc.json`, never the 1,521-property catalogue the entry below trained on, and each must be a real
+  anchored output, not a similarity lookup. The plan he approved is the top entry of the RUNBOOK; this is its step 0a.
+  No model is trained here. Gemini's column labels only ($4.06 for this audit, on top of the $18.70 of the
+  catalogue-wide factory labels); counts and schema.org names, never a header or a cell. No Enron dev sheet was sent:
+  the factory's held-out families stand in. Dev coverage is reported, never used to pick a property.
+  `training/readers/data/experiments/basis-audit-20261112` (contract, `local/report.py`, `result/`).
+
+**What the 71 cover.** They came from the Wikidata world corpus (actor, director, taxonRank). On sheets only 32 of
+them ever label a column, and `name` alone is 2,264 of the 2,985 train columns that carry one.
+
+| Source (columns) | a property of the 71 | of the 82 | a property outside the 82 | no schema.org property | unsure |
+|---|---|---|---|---|---|
+| Factory train (100,310) | 3.0% | 14.0% | 9.1% | 64.0% | 12.9% |
+| Factory held-out families (9,206) | 2.6% | 16.2% | 8.8% | 61.2% | 13.8% |
+| Public EIA sheets (2,973) | 0.2% | 5.1% | 10.3% | 83.5% | 1.1% |
+| Public SEC statements (4,718) | 0.1% | 0.2% | 25.0% | 67.5% | 7.3% |
+| WikiTableQuestions train tables (8,392) | 15.3% | 24.3% | 22.7% | 46.9% | 6.0% |
+| DataBench train tables (808) | 9.2% | 14.7% | 23.1% | 59.2% | 3.0% |
+| Messy dev (295) | 9.2% | 25.4% | 26.8% | 43.1% | 4.7% |
+| DataBench dev (323) | 12.1% | 18.0% | 18.3% | 60.1% | 3.7% |
+| WikiTableQuestions dev sample (1,202) | 15.3% | 23.3% | 22.5% | 50.2% | 4.0% |
+| Fresh dev twin (3,031) | 1.8% | 4.5% | 11.4% | 77.2% | 6.9% |
+
+**The addition rule**, written before the paid half: at least 25 train columns at confidence 6+ in at least 10
+families; at least 10 held-out columns; two-pass agreement of at least 0.9 (a second, independent multi-label pass
+over the 574 held-out tabs with the candidates listed); and a direct property of a class that fewer than 5 basis
+properties can describe. Twelve pass: price (4,810 train columns, 532 families, 580 of 591 agree), identifier
+(2,662, 213/214), startDate (1,117, 79/83), description (933, 71/78), observationDate (544, 62/62), orderQuantity
+(443, 54/54), customer (426, 68/74), orderDate (352, 24/24), endDate (271, 28/28), seller (222, 12/13), duration
+(212, 17/17) and currency (72, 11/12). Eleven are added (next-engine `be5127c`, `alloc.json` dim 90-100, evidence in
+`training/props/basis_additions_20261112.json`); **currency is not**: the allocation already has a structural
+dimension of that name, and adding a second is the owner's call. Left out by the rule: legalName and employee (no
+class needs them), temporalCoverage (52 of 98 agree), amount (63/77), validFrom (36/52), validThrough (27/42),
+paymentDueDate (11/15), areaServed (5/12), participant, department; value and comment as generic catch-alls. Main's
+`alloc.json` is untouched until integration.
+
+**What this bounds.** Of the factory's 4,693 held-out gold links to a column or a value, the sheet's own text reaches
+46.2%. Of the rest, the target column carries a basis property for 3.7% with the 71 and 14.9% with the 82, another
+property for 7.1%, and no schema.org property for 31.8%. So named meaning terms and exact text together can carry at
+most about 61% of gold links, every dimension perfect; a third of links point at columns schema.org has no property
+for (trade columns, and on the fresh dev twin 77% of all columns). Those rest on the structure dimensions, and on the
+one labelled unnamed-similarity term the owner allowed.
+
+**Two findings that changed the labelling.** (1) 12.1% of held-out columns hold two or more listed properties, so a
+single-property label must not train its companions as absent. Which properties hold together was measured on a
+multi-label pass over one tab of each of 600 train families: startDate with observationDate (51 of 93), description
+with name (18/60), orderDate with startDate (16/34) and dateCreated (9/34), customer with name (9/34), location with
+name (7/17), seller with customer (6/22). These are masked on a unit labelled with the other; the second pass keeps
+the first pass's label on 1,161 of 1,233 columns. (2) Two other candidate rules for "related" properties were tried
+and dropped: range-class containment in the ontology relates 233 pairs (customer with birthDate), and likeness of
+the schema.org texts under the base encoder relates name with description and startDate with endDate, whose
+negatives are exactly what tells them apart.
+
 ## Step 2's measure: the schema.org reader lists 55-57% of the CLEF path's right answers alone and 74-76% with a distilled field reader; the gate asks 90% (2026-11-12)
 
 - PLAN 2026-11-12 step 2 on the five dev sets (Enron studied 186, messy dev 120, WikiTableQuestions dev sample 300,
