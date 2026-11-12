@@ -5,6 +5,57 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
+## Step 2's measure: the schema.org reader lists 55-57% of the CLEF path's right answers alone and 74-76% with a distilled field reader; the gate asks 90% (2026-11-12)
+
+- PLAN 2026-11-12 step 2 on the five dev sets (Enron studied 186, messy dev 120, WikiTableQuestions dev sample 300,
+  DataBench dev 300, the fresh dev twin 176), next-engine 5871dd7, offline on CPU (`eval_encoder_path.py`, the decoder's
+  first candidate, no chooser). Development sets only. The step-1 CLEF pod was released at 10:16 (about $24); the two
+  reader leases cost about $1.4 (XLM-R base, L40) and $1.9 (bge-small, A40).
+
+**The two schema.org readers** (contracts `schema_reader_s0` and `schema_reader_xlmr_s0`, the 39,285 steps of the reader
+they replace, examples_v2: the same factory rows with Gemini's schema.org labels). Held out, the linked target ranks
+first among its in-sheet candidates 66.95% (bge-small, best at step 35,352) and 68.2% (XLM-R base); the reader they
+replace, which read the trade pack and the corpus's header words, 70.9%. The labelled property is the top one for 74.7%
+and 71.7% of 5,555 held units; the answer-type head reads 86.9% and 88.8% (the old reader 78.6%).
+
+**The gate's measure: of the questions the CLEF path answers right, how many the small path's list holds** (583 of the
+five sets: studied 77, messy 74, WikiTableQuestions 144, DataBench 212, dev twin 76):
+
+| Path | studied | messy | WikiTableQuestions | DataBench | dev twin | listed of 583 |
+|---|---|---|---|---|---|---|
+| bge-small schema.org reader | 49 | 39 | 100 | 107 | 37 | 332 (56.9%) |
+| XLM-R base schema.org reader | 49 | 41 | 103 | 95 | 35 | 323 (55.4%) |
+| the old reader (trade pack, corpus words), no-word engine | 54 | 41 | 107 | 101 | 39 | 342 (58.7%) |
+| bge-small reader + the field student | 51 | 47 | 135 | 150 | 51 | 434 (74.4%) |
+| XLM-R base reader + the field student | 56 | 49 | 135 | 150 | 51 | 441 (75.6%) |
+
+The field student is distill-probe-20261112's reader student (a bge-small cross-encoder trained on CLEF's recorded field
+probabilities over the round-2 pools), fused into the reading at w=2 as CLEF's fields are. It is an encoder and reads
+no word list: the options it scores are the engine's own reading record of the sheet. On every question of the sets,
+right answer listed / first candidate right:
+
+| Path | studied | messy | WikiTableQuestions | DataBench | dev twin | sum |
+|---|---|---|---|---|---|---|
+| bge-small schema.org reader | 84 / 30 | 49 / 18 | 167 / 50 | 130 / 62 | 48 / 23 | 478 / 183 |
+| + the field student | 99 / 42 | 64 / 28 | 220 / 96 | 187 / 105 | 85 / 51 | 655 / 322 |
+| XLM-R base schema.org reader | 85 / 32 | 53 / 20 | 173 / 47 | 111 / 53 | 44 / 19 | 466 / 171 |
+| + the field student | 98 / 44 | 69 / 28 | 222 / 101 | 191 / 94 | 84 / 53 | 664 / 320 |
+| the old reader, no-word engine | 95 / 36 | 54 / 23 | 179 / 57 | 121 / 66 | 53 / 27 | 502 / 209 |
+
+What this says. The schema.org meaning tier alone reaches a little less than the reader it replaces (478 and 466
+against 502 listed); that reader held 283 hand-written trade names and the corpus's own header words, which is the
+lookup the owner ruled out, so it is not a candidate. The meaning tier's labels are thin: Gemini found a schema.org
+property for 23% of the factory's columns. The lever is the field reader distilled from the teacher: +177 and +198
+listed, and on WikiTableQuestions 135 of the CLEF path's 144 right answers listed (93.8%). On the dev twin the small
+path lists a right answer for 85 questions, 34 of them ones the CLEF path does not answer right. The gate (90% of the
+CLEF path's right answers listed) is not met: 74-76%. The student reads 157-386 options per question; alone on 4
+threads it took 1.1-3.2 s p50, over step 3's 2 s budget, so its options will be scored against cached sheet vectors
+or pruned before serving.
+
+Next (running): step 3's chooser on the bge-small reader + field student path, from that path's own lists on the
+training splits (about 4,500 questions, the graded right options as labels); and the field student trained again on
+CLEF's fields over the no-word engine's records (6,300 questions of the step-1 pools, with the four condition fields).
+
 ## No word of any language is read: the engine and its training data without word lists, the honest CLEF-path baseline on the no-lookup engine, and the reader's meaning tier made schema.org's 1,521 properties (2026-11-12)
 
 - PLAN 2026-11-12 (RUNBOOK line 1), the owner's rule of the night: no word of any language in code or config that
