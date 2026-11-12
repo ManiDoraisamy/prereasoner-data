@@ -1,20 +1,25 @@
 """The gate of the named dimensions: does each basis property read correctly on held-out examples, role by role.
 
 For every basis property and each role it is read in (a column, a question's word linked to a column or value, a corpus
-table's profile): a threshold is set on calibration units the bundle did not train on (the run's held-out train families
-for sheets; the corpus's validation split for profiles) as the lowest reading whose precision there is MIN_PRECISION, and
-on held-out units (the factory's val side under the second pass's multi-label truth; the corpus's test split) the
-precision and recall at that threshold are measured. A dimension passes a role with at least MIN_HELD held-out positives
-and precision of at least MIN_PRECISION; with fewer positives it is not passed: reported as lacking evidence. A dimension
-qualifies for links when it passes both as a column and as a word, since a link needs both sides. Unknown labels are
-never counted either way (training/named/train.py:meaning_targets, the same masks as training).
+table's profile): a threshold is the lowest reading whose precision on calibration units is MIN_PRECISION, and on units
+it did not calibrate on the precision and recall at that threshold are measured. One truth sets and judges a threshold.
+For sheets that is the second pass's multi-label truth on the factory's val side, whose families no run trained on: the
+val families fall in FOLDS folds, and each fold's units are read at the threshold the other folds' units set, so every
+val unit is judged once and never by a threshold its own reading set. (The first pass's single labels cannot calibrate:
+its "none" turns off every property on a column the second pass often gives one, so a threshold set there fell far from
+the precision the second pass then measured: the anchoring bundle's price column read 0.73 against 0.99 at one reading.)
+For profiles, the corpus's validation split calibrates and its test split judges. A dimension passes a role with at
+least MIN_HELD judged positives and precision of at least MIN_PRECISION; with fewer positives it is not passed: reported
+as lacking evidence. A dimension qualifies for links when it passes both as a column and as a word, since a link needs
+both sides. Unknown labels are never counted either way (training/named/train.py:meaning_targets, the same masks as
+training).
 
 Classes are not fitted: a corpus table's class is read back from its property profile through count-made signatures
 (training/schema_org/signatures.py:_signature_candidates on the train split, the basis only), and the share of held-out
 tables whose own class comes first is reported per class.
 
 Writes <bundle>/../gate.json and prints the table: names, counts and rates only.
-usage: python -m training.named.gate_dimensions --bundle DIR --examples <train examples> --held-families <out/held_families.json>
+usage: python -m training.named.gate_dimensions --bundle DIR --examples <train examples, for co_held.json>
        --val-examples <val examples> [--second-pass audit_second_val] [--corpus semantic_instances.jsonl]"""
 from __future__ import annotations
 
@@ -31,13 +36,15 @@ import torch
 from engine.named.bundle import read_bundle
 from engine.named.names import MEANING_PREFIX
 from engine.named.units import T_COLUMN
-from training.named.data import TabExample, read_examples  # noqa: F401 - the shards name TabExample under the module that wrote them, as train.py's own import serves
+from training.named.data import TabExample, family_share, read_examples  # noqa: F401 - the shards name TabExample under the module that wrote them, as train.py's own import serves
 from training.named.train import THRESHOLD, build_batch, co_held_matrix, meaning_targets, profile_logits, read_corpus, run_batch
 
 MIN_PRECISION = 0.95       # main's property gate (training/schema_org/train_property_head.py:MIN_PROPERTY_PRECISION)
 MIN_HELD = 25              # held-out positives a dimension needs to be judged (main's support rule)
 MIN_CALIBRATION = 10       # predicted positives a threshold must rest on
 ROLES = ("column", "word", "profile")
+FOLDS = 2                  # the val families' folds: each fold is judged at the threshold the others set
+FOLD_SEED = 2              # family_share's seed for the folds
 
 
 def second_pass_labels(journal: str, names) -> dict[tuple[str, str], dict]:
@@ -115,28 +122,35 @@ def threshold_of(scores: np.ndarray, truth: np.ndarray) -> float | None:
     return float(scores[order][at[-1]]) if len(at) else None
 
 
-def judge(calibration, held, names) -> dict[str, dict]:
-    """Per property: the threshold, and on the held-out units the positives, precision and recall."""
+def judge(pairs, names) -> dict[str, dict]:
+    """Per property, over (calibration, judged) pairs of units: each pair's judged units read at the threshold its calibration
+    units set, then the judged positives, precision and recall over every pair. A property passes only with a threshold on
+    every pair."""
     out = {}
-    c_scores, c_truth, c_mask = calibration
-    h_scores, h_truth, h_mask = held
     for at, name in enumerate(names.names[names.meaning_start:]):
-        row = {"calibration_positives": 0, "threshold": None, "held_positives": 0, "held_predicted": 0, "precision": None, "recall": None, "passes": False, "why": "no calibration units"}
-        if c_scores.size:
-            known = c_mask[:, at] > 0
-            row["calibration_positives"] = int(c_truth[known, at].sum())
-            row["threshold"] = threshold_of(c_scores[known, at], c_truth[known, at])
-        if h_scores.size:
-            known = h_mask[:, at] > 0
-            truth = h_truth[known, at] > 0
-            row["held_positives"] = int(truth.sum())
-            if row["threshold"] is not None:
-                said = h_scores[known, at] >= row["threshold"]
-                row["held_predicted"] = int(said.sum())
-                right = int((said & truth).sum())
-                row["precision"] = round(right / max(1, int(said.sum())), 4) if said.any() else None
-                row["recall"] = round(right / max(1, int(truth.sum())), 4)
-        if row["threshold"] is None:
+        row = {"calibration_positives": 0, "thresholds": [], "held_positives": 0, "held_predicted": 0, "precision": None, "recall": None, "passes": False, "why": "no calibration units"}
+        said, truth = [], []
+        for (c_scores, c_truth, c_mask), (h_scores, h_truth, h_mask) in pairs:
+            threshold = None
+            if c_scores.size:
+                known = c_mask[:, at] > 0
+                row["calibration_positives"] += int(c_truth[known, at].sum())
+                threshold = threshold_of(c_scores[known, at], c_truth[known, at])
+            row["thresholds"].append(threshold)
+            if h_scores.size:
+                known = h_mask[:, at] > 0
+                truth.append(h_truth[known, at] > 0)
+                said.append(h_scores[known, at] >= threshold if threshold is not None else np.zeros(int(known.sum()), dtype=bool))
+        truth = np.concatenate(truth) if truth else np.zeros(0, dtype=bool)
+        said = np.concatenate(said) if said else np.zeros(0, dtype=bool)
+        row["held_positives"] = int(truth.sum())
+        complete = bool(row["thresholds"]) and all(threshold is not None for threshold in row["thresholds"])
+        if complete:
+            row["held_predicted"] = int(said.sum())
+            right = int((said & truth).sum())
+            row["precision"] = round(right / int(said.sum()), 4) if said.any() else None
+            row["recall"] = round(right / max(1, int(truth.sum())), 4)
+        if not complete:
             row["why"] = "no threshold reaches the precision on the calibration units"
         elif row["held_positives"] < MIN_HELD:
             row["why"] = f"fewer than {MIN_HELD} held-out positives: not judged"
@@ -146,6 +160,11 @@ def judge(calibration, held, names) -> dict[str, dict]:
             row["passes"], row["why"] = True, ""
         out[name] = row
     return out
+
+
+def folded(parts: list[tuple[np.ndarray, np.ndarray, np.ndarray]]) -> list[tuple]:
+    """(calibration, judged) pairs from folds of units: each fold judged by the others."""
+    return [(stacked([part for other, part in enumerate(parts) if other != at and part[0].size]), part) for at, part in enumerate(parts)]
 
 
 def class_reconstruction(bundle, corpus) -> dict:
@@ -189,9 +208,8 @@ def class_reconstruction(bundle, corpus) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--bundle", required=True)
-    parser.add_argument("--examples", required=True, help="the training examples: their held-out families calibrate the thresholds")
-    parser.add_argument("--held-families", required=True)
-    parser.add_argument("--val-examples", required=True, help="the factory's val side: the held-out units")
+    parser.add_argument("--examples", required=True, help="the training examples: their co_held.json")
+    parser.add_argument("--val-examples", required=True, help="the factory's val side: the units every threshold is set and judged on, by fold")
     parser.add_argument("--second-pass", default="audit_second_val")
     parser.add_argument("--corpus")
     parser.add_argument("--limit-tabs", type=int)
@@ -202,20 +220,19 @@ def main() -> None:
     names = bundle.names
     co = Path(args.examples) / "co_held.json"
     co_held = co_held_matrix(co, names, "cpu") if co.exists() else None
-    held_families = set(json.loads(Path(args.held_families).read_text(encoding="utf-8")))
-    calibration = [example for example in read_examples(args.examples) if example.family in held_families][: args.limit_tabs]
     truth = second_pass_labels(args.second_pass, names)
     held = []
     for example in read_examples(args.val_examples)[: args.limit_tabs]:
         labels = {key: truth[(example.key, key)] for key in example.labels if (example.key, key) in truth}
         held.append(replace(example, labels=labels))
-    report = {"bundle": args.bundle, "min_precision": MIN_PRECISION, "min_held_positives": MIN_HELD, "calibration_tabs": len(calibration), "held_out_tabs": len(held), "roles": {}}
-    c_read, h_read = sheet_readings(bundle, calibration, co_held), sheet_readings(bundle, held, co_held)
+    folds = [[example for example in held if int(family_share(example.family, FOLD_SEED) * FOLDS) == at] for at in range(FOLDS)]
+    report = {"bundle": args.bundle, "min_precision": MIN_PRECISION, "min_held_positives": MIN_HELD, "truth": args.second_pass, "fold_tabs": [len(fold) for fold in folds], "fold_seed": FOLD_SEED, "roles": {}}
+    read = [sheet_readings(bundle, fold, co_held) for fold in folds]
     for role in ("column", "word"):
-        report["roles"][role] = judge(stacked(c_read[role]), stacked(h_read[role]), names)
+        report["roles"][role] = judge(folded([stacked(part[role]) for part in read]), names)
     if args.corpus:
         corpus = read_corpus(args.corpus, names)
-        report["roles"]["profile"] = judge(stacked(profile_readings(bundle, [i for i in corpus if i.split == "validation"])), stacked(profile_readings(bundle, [i for i in corpus if i.split == "test"])), names)
+        report["roles"]["profile"] = judge([(stacked(profile_readings(bundle, [i for i in corpus if i.split == "validation"])), stacked(profile_readings(bundle, [i for i in corpus if i.split == "test"])))], names)
         report["classes"] = class_reconstruction(bundle, corpus)
     link = [name for name in names.names[names.meaning_start:] if report["roles"]["column"][name]["passes"] and report["roles"]["word"][name]["passes"]]
     report["qualified_for_links"] = link
@@ -225,7 +242,7 @@ def main() -> None:
         print(f"{role}: {len(passed)} pass of {len(judged)} with {MIN_HELD}+ held-out positives ({len(rows)} properties)")
         for name, row in sorted(rows.items(), key=lambda item: -item[1]["held_positives"]):
             if row["held_positives"] or row["calibration_positives"]:
-                print(f"  {name[len(MEANING_PREFIX):]}: held-out positives {row['held_positives']} threshold {row['threshold'] if row['threshold'] is None else round(row['threshold'], 3)} precision {row['precision']} recall {row['recall']} {'PASS' if row['passes'] else row['why']}")
+                print(f"  {name[len(MEANING_PREFIX):]}: held-out positives {row['held_positives']} thresholds {[None if threshold is None else round(threshold, 3) for threshold in row['thresholds']]} precision {row['precision']} recall {row['recall']} {'PASS' if row['passes'] else row['why']}")
     print("qualified for links (pass as a column and as a word):", [name[len(MEANING_PREFIX):] for name in link])
     if "classes" in report:
         print("classes read back from the property profile:", {key: value for key, value in report["classes"].items() if key != "per_class"})

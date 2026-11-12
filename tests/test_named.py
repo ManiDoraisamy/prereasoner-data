@@ -1048,6 +1048,26 @@ def test_training_scores_are_the_serving_alignment() -> None:
     assert np.allclose(score.detach().numpy(), served, atol=1e-3)
 
 
+def test_the_gate_judges_each_fold_at_the_threshold_the_other_folds_set():
+    """The gate sets and judges thresholds on one truth: its val folds, each judged at the threshold the other folds set, never
+    by its own reading. The anchoring bundle failed every dimension when the first pass's single labels set the thresholds and
+    the second pass's judged them (price as a column: 0.73 against 0.99 at one reading)."""
+    from types import SimpleNamespace
+    from training.named.gate_dimensions import folded, judge
+    names = SimpleNamespace(names=("meaning:a",), meaning_start=0)
+
+    def fold(positive: float, negative: float, n: int = 40):
+        scores = np.array([[positive]] * n + [[negative]] * n)
+        return scores, np.array([[1.0]] * n + [[0.0]] * n), np.ones((2 * n, 1))
+
+    row = judge(folded([fold(0.9, 0.6), fold(0.7, 0.65)]), names)["meaning:a"]
+    assert row["thresholds"] == [0.7, 0.9], row["thresholds"]          # fold 0 at fold 1's threshold, fold 1 at fold 0's
+    assert row["passes"] and row["precision"] == 1.0 and row["recall"] == 0.5 and row["held_positives"] == 80
+    never = judge(folded([fold(0.9, 0.6), fold(0.5, 0.95)]), names)["meaning:a"]
+    assert never["thresholds"][1] is not None and never["thresholds"][0] is None and not never["passes"]
+    assert never["why"] == "no threshold reaches the precision on the calibration units"
+
+
 def main() -> int:
     tests = [(name, item) for name, item in globals().items() if name.startswith("test_") and callable(item)]
     failed = 0
