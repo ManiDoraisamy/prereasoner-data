@@ -5,6 +5,86 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
+## No word of any language is read: the engine and its training data without word lists, the honest CLEF-path baseline on the no-lookup engine, and the reader's meaning tier made schema.org's 1,521 properties (2026-11-12)
+
+- PLAN 2026-11-12 (RUNBOOK line 1), the owner's rule of the night: no word of any language in code or config that
+  matches or interprets a question, header, cell, value or reply; meaning only from learned encoders; schema.org's
+  properties are the named dimensions and its classes their superpositions. Development sets only; no frozen set was
+  read. Commits on next-engine: f56138c, fe0d404, 4f6f2c3, 18e90d4, 5871dd7.
+
+**Step 0, the word lists removed.** The engine (next-engine f56138c): the stop list, word endings, spelled months and
+weekdays, the "total" and sign words, English magnitude letters and the English regular expressions of the words floor,
+the sheet compiler and the line roles are gone. A printed total is read by its formulas, style and arithmetic (a new
+block-sum tie), a number or date by its digits, a word's commonness by its own sheet. The factory that writes the
+training data (fe0d404): its stop list became the words in at least 2% of the side's own written questions (counted,
+not written), its table of trade shorthand became a long word cut to its first three or four letters, its ASCII-only
+patterns read any script, and mail quotes are cut by their structure. `tests/test_no_word_lookups.py` fails on any
+regular expression holding a word, any spelled month or weekday, and the old names of the lists, in the engine and in
+the training packages; the exceptions it names are the program grammar, the factory's own reply format, one public
+source's URL layout and the privacy screen.
+
+What the small reader (the old bundle, unchanged) loses without the words, right answer listed / first candidate right:
+
+| Set | with the words | without |
+|---|---|---|
+| Enron studied (186) | 96 / 43 | 95 / 36 |
+| Messy dev (120) | 68 / 29 | 54 / 23 |
+| WikiTableQuestions dev sample (300) | 220 / 114 | 179 / 57 |
+| DataBench dev (300) | | 121 / 66 |
+| Fresh dev twin (176) | | 53 / 27 |
+
+**Step 1, the CLEF path on the no-lookup engine** (pod 64.247.201.45, next-engine f56138c, `run_e2e.py nowords`: the
+round-2 gate's switches plus CLEF reading comparison, filled/blank, calc operator and entity). Served:
+
+| Set | right | right, warned | asked | wrong, warned | wrong |
+|---|---|---|---|---|---|
+| Enron studied (186) | 43 | 34 | 95 | 6 | 8 |
+| — round 2, with the words | 20 | 29 | 130 | 3 | 4 |
+| Messy dev (120) | 64 | 10 | 40 | 4 | 2 |
+| — round 2 | 49 | 14 | 52 | 4 | 1 |
+| DataBench dev (300) | 177 | 35 | 68 | 10 | 10 |
+| — round 2 | 125 | 39 | 128 | 2 | 6 |
+| WikiTableQuestions dev sample (300) | 96 | 48 | 138 | 8 | 10 |
+| — round 2 | 55 | 52 | 182 | 3 | 8 |
+
+Right answers rise on every set (summed 507 vs 383 of 906) and asks fall (341 vs 492), with wrong answers up from 31
+to 58. Two things changed at once, the engine's words and the four new CLEF fields, and this run does not separate them.
+The dev twin's first run stopped on a grader error (a date outside Python's range, fixed); it is run again.
+
+Step 2's gate is a share of these right answers: of the 507 the CLEF path answers right on the four sets, the no-word
+small reader lists 303 (59.8%: Enron 54 of 77, messy 41 of 74, WikiTableQuestions 107 of 144, DataBench 101 of 212).
+The gate asks 90%.
+
+**Step 2 begins: the meaning tier is schema.org's.** The reader's 445 named dimensions held 283 names of a
+hand-written English trade pack and 58 schema.org properties. Now (4f6f2c3) the name set is the program's 100 closed
+structure names and all 1,521 schema.org 30.0 properties; the pack, its FIBO labeller and the tier of corpus header
+words are deleted. A property's coordinate is a share of a softmax over all properties and none: its logit is the
+cosine between where the unit stands (its own text as the backbone reads it, plus what the relational read adds, which
+starts at zero) and the property's own label and comment read by the same backbone. Untrained it is the zero-shot
+reading; training moves units and never what a property means, and a multilingual backbone takes it to other
+languages with a retrain. A table's class is a schema.org class, the logistic superposition of the properties it is
+a domain of; a fine answer type comes from the ontology (a property whose ranges all fall under Person, Organization,
+Place, MonetaryAmount or QuantitativeValue).
+
+Zero-shot, on 3,000 of the factory's validation gold links to a column, the linked column ranks first among its
+table's:
+
+| Ranking | bge-small | bge-large |
+|---|---|---|
+| chance (first column) | 18.1% | 18.1% |
+| the sheet's own words (rule) | 41.3% | 41.3% |
+| direct similarity of words and header | 52.8% | 53.1% |
+| through the 1,521 properties (softmax at 0.05) | 44.7% | 46.2% |
+
+A larger encoder barely moves either; training is the lever. The teacher's labels: Gemini named the schema.org
+property and value class of every column of the factory's 8,429 tabs (`training/factory/schema_labels.py`, $18.70):
+23% of train columns carry a property at confidence 6 or more (215 distinct), 64% none, the rest below the bar.
+Most Enron trade columns have no schema.org property; their links carry them. Two readers train on these labels and
+the factory's gold links (contracts `schema_reader_s0`, bge-small, and `schema_reader_xlmr_s0`, XLM-R base), the
+same 39,285 steps as the reader they replace; at a tenth of the run the held-out link is first among its in-sheet
+candidates 57.7% (bge-small) and 62.1% (XLM-R base) of 1,673 links, and the labelled property is the top one for
+57.4% and 23.4% of 5,555 held units (the old reader's held link, at the end of its run: 70.9%).
+
 ## The distillation probe: small CPU encoders in CLEF's two places keep 56% of its right answers (the rule asked 85%), so CLEF spend is held; a dev twin of the fresh set; two engine changes written by hand were withdrawn (2026-11-12)
 
 - The owner approved the redrawn plan's steps 2 to 5 on 2026-11-12 (the launch bar becomes at least 80% right, at most
