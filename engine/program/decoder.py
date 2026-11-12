@@ -43,9 +43,20 @@ class Policy:
     linked_tables: int = 8         # a question reads the tables its links reach best
     shown_together: float = 0.5    # a column joins another shown only where the reading says so this firmly
     max_pops: int = 4_000_000      # a hard stop, deterministic, on the search
+    condition_checks: int = 2_000_000   # a hard stop, deterministic, on one question's search for condition sets that occur: every slot draws on it
 
 
 POLICY = Policy()
+
+
+class _Checks:
+    """What is left of one question's condition checks. Every condition slot of the question draws on it, so a question whose
+    conditions never occur together stops at the same check on every run instead of searching their combinations without end."""
+
+    __slots__ = ("left",)
+
+    def __init__(self, left: int):
+        self.left = left
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,8 +132,9 @@ class _Conditions:
 
     A prefix tree over the conditions in score order. A node's next conditions are those later in the order, on another column, that keep a line with it, computed only when the node is reached, so a prefix that keeps few lines costs one AND per condition and rules most of them out at once. A heap holds each node's next child at an upper bound of its best completion. Bitmasks make the check one AND."""
 
-    def __init__(self, atoms: list[_Option], count: int, index: TableIndex, table: CatalogTable, score_of: Callable[[tuple[Atom, ...]], float], *, any_line: bool = False):
+    def __init__(self, atoms: list[_Option], count: int, index: TableIndex, table: CatalogTable, score_of: Callable[[tuple[Atom, ...]], float], checks: _Checks, *, any_line: bool = False):
         self.atoms = atoms
+        self.checks = checks
         self.any_line = any_line
         self.scores = [option.score for option in atoms]
         self.facts: list[tuple | None] = [None] * len(atoms)
@@ -170,7 +182,11 @@ class _Conditions:
 
     def _next(self) -> bool:
         while self.heap:
+            if self.checks.left <= 0:
+                self.heap.clear()                          # the question's checks are spent: no further set, at the same check on every run
+                return False
             negative, _, node, at = heapq.heappop(self.heap)
+            self.checks.left -= 1
             if isinstance(node, tuple):
                 self.found.append(_Option(-negative, node))
                 return True
@@ -178,6 +194,7 @@ class _Conditions:
             start = at
             while at < limit and not self._fits(node, at):
                 at += 1
+            self.checks.left -= at - start
             if at >= limit:
                 continue
             if at != start:
@@ -400,6 +417,7 @@ class _Search:
         self.reading = reading
         self.weights = weights
         self.policy = decoder.policy
+        self.checks = _Checks(self.policy.condition_checks)
         self.slots: dict[tuple, object] = {}
         self.by_slot: dict[str, list[str]] = {}
         for name in sorted(reading.scores):
@@ -691,7 +709,7 @@ class _Search:
             slot = [_Option(option.score, (option.payload,)) for option in keep]
         else:
             keep = self.per_column(atoms, self.policy.two_values if count == 2 else self.policy.three_values) if count <= 3 else [option for option in atoms if option.score >= self.policy.strong_condition]
-            slot = _Conditions(keep, count, index, table, self.set_score, any_line=any_line)
+            slot = _Conditions(keep, count, index, table, self.set_score, self.checks, any_line=any_line)
         self.slots[key] = slot
         return slot
 
@@ -704,7 +722,7 @@ class _Search:
                 frames.append(_Frame(total, slots, lambda options, b=build: b(options, ())))
                 continue
             if count > max_policy and count <= 3:
-                slot = _Conditions([option for option in (atoms if choices else _without_choices(atoms)) if option.score >= self.policy.strong_condition], count, index, table, self.set_score, any_line=any_line)
+                slot = _Conditions([option for option in (atoms if choices else _without_choices(atoms)) if option.score >= self.policy.strong_condition], count, index, table, self.set_score, self.checks, any_line=any_line)
             else:
                 slot = self.condition_slot(table, index, atoms, count, rank, any_line, choices)
             if isinstance(slot, _Conditions) and slot.groups < count:
