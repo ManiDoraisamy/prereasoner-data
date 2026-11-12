@@ -1,6 +1,6 @@
 """The per-tab index: what the encoder read of a tab, once, as whole thousandths on named coordinates, under the tab's hash.
 
-For each target (a table, a column, a stored value, a printed label, a band) the top named coordinates and their scores, and a small open vector kept apart. A table's class is the additive superposition of its columns' property scores (engine/schema_decode.py's formula), each term kept. An index is a deterministic function of the tab and the model: its bytes are compared in the tests, and a cached one is read back by hash, never recomputed.
+For each target (a table, a column, a stored value, a printed label, a band) the top named coordinates and their scores, and a small open vector kept apart. A table's class is a schema.org class, the superposition of its columns' property shares over the properties the class is a domain of (engine/named/names.py:class_signatures, engine/schema_decode.py's formula), each term kept; a class below CLASS_FLOOR is not stored. An index is a deterministic function of the tab and the model: its bytes are compared in the tests, and a cached one is read back by hash, never recomputed.
 """
 from __future__ import annotations
 
@@ -24,6 +24,7 @@ from engine.program.catalog import KIND_FAMILY, Catalog, CatalogTable
 _MAGIC = b"NAMEDIDX1"
 _VALUE_BATCH = 128
 _FLOOR = 2                     # thousandths below which a coordinate is not stored
+CLASS_FLOOR = 0.05             # a class this unlikely says nothing about a table
 
 
 @dataclass(frozen=True)
@@ -32,14 +33,16 @@ class ClassSignatures:
     classes: Mapping[str, Mapping]
 
     @classmethod
-    def from_groups(cls, groups: Mapping[str, Sequence[str]], weight: float = 1.0, bias: float = -1.0) -> "ClassSignatures":
-        """The vocabulary's groups as classes: a table of gas names reads as gas, in a sum one can read."""
-        return cls({f"class:{group}": {"bias": bias, "signature": [{"property": name, "weight": weight} for name in members]} for group, members in groups.items()})
+    def from_ontology(cls) -> "ClassSignatures":
+        """schema.org's classes, each the superposition of the properties it is a domain of."""
+        from engine.named.names import class_signatures
+        return cls(class_signatures())
 
     def scores(self, profile: Mapping[str, float]) -> dict[str, float]:
-        """Each class's logistic superposition of a profile's property scores, rounded, zero terms skipped."""
+        """Each class's logistic superposition of a profile's property scores, rounded; a class under CLASS_FLOOR left out."""
         from engine.schema_decode import ClassDecoder      # only a bundle with signatures reads this: a training pod has neither it nor the config it brings
-        return {name: round(ClassDecoder.score_signature(profile, row["signature"], bias=float(row.get("bias", 0.0)), score_model="logistic_property_probability"), 3) for name, row in sorted(self.classes.items())}
+        scored = ((name, round(ClassDecoder.score_signature(profile, row["signature"], bias=float(row.get("bias", 0.0)), score_model="logistic_property_probability"), 3)) for name, row in sorted(self.classes.items()))
+        return {name: score for name, score in scored if score >= CLASS_FLOOR}
 
 
 @dataclass
@@ -176,35 +179,39 @@ class SheetEncoder:
                 opens = np.zeros((len(targets), self.config.open_dim), dtype=np.float32)
                 where = {target.key: at for at, target in enumerate(targets)}
 
-                def hold(rows: list[int], logits: torch.Tensor) -> None:
-                    ids[rows], values[rows] = _top_coordinates(torch.sigmoid(logits).numpy(), self.config.keep)
+                def hold(rows: list[int], probabilities: torch.Tensor) -> None:
+                    ids[rows], values[rows] = _top_coordinates(probabilities.numpy(), self.config.keep)
 
-                table_hidden = []
+                def base_of(graph: Graph, unit: int) -> torch.Tensor:
+                    return lookup[graph.texts[unit]] if graph.texts else torch.zeros(self.backbone.dim)
+
+                table_hidden, table_base = [], []
                 for graph in graphs:
                     hidden = self.read_graphs([graph], lookup)[0]
                     table_hidden.append(hidden[graph.table])
+                    table_base.append(base_of(graph, graph.table))
                     positions = sorted(graph.columns)
                     if positions:
                         units_at = torch.as_tensor([graph.columns[position] for position in positions])
-                        logits = self.reader.coordinate_logits(hidden[units_at])
+                        probabilities = self.reader.coordinate_probabilities(hidden[units_at], torch.stack([base_of(graph, graph.columns[position]) for position in positions]))
                         vectors_open = self.reader.open_target(hidden[units_at])
                         rows = [where[(table.id, T_COLUMN, position, table.columns[position].name)] for position in positions]
-                        hold(rows, logits)
+                        hold(rows, probabilities)
                         opens[rows] = vectors_open.numpy()
-                        column_scores.update(zip(rows, torch.sigmoid(logits).numpy()))
+                        column_scores.update(zip(rows, probabilities.numpy()))
                 top_hidden = torch.stack(table_hidden).mean(0)
                 at = where[(table.id, T_TABLE, -1, "")]
-                hold([at], self.reader.coordinate_logits(top_hidden)[None])
+                hold([at], self.reader.coordinate_probabilities(top_hidden[None], torch.stack(table_base).mean(0)[None]))
                 opens[at] = self.reader.open_target(top_hidden).numpy()
                 for start in range(0, len(value_graphs), _VALUE_BATCH):
                     batch = value_graphs[start:start + _VALUE_BATCH]
                     hidden = self.read_graphs(batch, lookup)
                     # the value's unit is second in every value graph: after a name, or after a table's context
                     picked = hidden[:, 1]
-                    logits = self.reader.coordinate_logits(picked)
+                    probabilities = self.reader.coordinate_probabilities(picked, torch.stack([base_of(graph, 1) for graph in batch]))
                     vectors_open = self.reader.open_target(picked)
                     rows = [where[target.key] for target in value_targets[start:start + _VALUE_BATCH]]
-                    hold(rows, logits)
+                    hold(rows, probabilities)
                     opens[rows] = vectors_open.numpy()
                 ids_parts.append(ids)
                 value_parts.append(values)

@@ -42,7 +42,7 @@ class Line:
 
 @dataclass(slots=True)
 class Column:
-    """One column of a table. letter is the sheet's column; name joins the header path, or is "Column F" when nothing names it; header_cells are the addresses the name came from."""
+    """One column of a table. letter is the sheet's column; name joins the header path, or is the column's letter when nothing names it; header_cells are the addresses the name came from."""
     position: int
     col: int
     letter: str

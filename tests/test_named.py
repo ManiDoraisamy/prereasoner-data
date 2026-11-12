@@ -18,7 +18,7 @@ from engine.named.chooser import ANSWER, ASK, FEATURES, PRIOR, Candidate, Choose
 from engine.named.index import ClassSignatures, IndexCache, TabIndex, content_hash, group_tables, index_workbook
 from engine.named.links import EXACT, RULES, SCALE, RuleHit, contributions_of, link_total, named_matrix, rule_evidence, uniform_weights
 from engine.named.model import NamedReader, ReaderConfig
-from engine.named.names import CLOSED_HEADS, NameSet, closed_labels, load_name_set
+from engine.named.names import CLOSED_HEADS, NameSet, closed_labels, fine_of, load_name_set, meaning_names, property_texts
 from engine.named.pipeline import NamedEngine, load_bundle
 from engine.named.reader import MODE_NAMED, MODE_NAMED_PLUS_OPEN, PROPOSAL_SCORE, build_reading, closed_reading, needs_asking, read_questions, unsupported_links
 from engine.named.units import T_COLUMN, T_VALUE, UnitsConfig, cell_text, sampled_lines, table_graphs, targets_of
@@ -35,7 +35,7 @@ from training.named.data import TabExample, check_held_out, read_examples, split
 from training.named.evaluate import GATE_A, Item, gate_a, graded, record_of, run_mode, run_survival
 from training.named.fake import MEANINGS, HashBackbone, fake_catalog, fake_examples, fake_name_set, fake_rows
 from training.named.lease import bundle_mb, ensure_same_tables, ensure_size_aware, plan_candidate, pod_code, remote_command
-from training.named.train import TrainConfig, build_batch, train
+from training.named.train import TrainConfig, build_batch, read_descriptions, train
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
@@ -46,7 +46,8 @@ def _engine(seed: int = 0, config: ReaderConfig = CONFIG, chooser: Chooser = PRI
     torch.manual_seed(seed)
     names = fake_name_set()
     backbone = HashBackbone()
-    reader = NamedReader(backbone.dim, len(names), config).float()
+    reader = NamedReader(backbone.dim, names.meaning_start, names.meaning, config).float()
+    read_descriptions(backbone, reader, names)
     return NamedEngine(backbone, reader, names, config, uniform_weights(len(names)), chooser=chooser, signatures=signatures, cache=cache)
 
 
@@ -232,7 +233,8 @@ def test_real_backbone_determinism_when_asked() -> None:
     names = fake_name_set()
     config = ReaderConfig(backbone="bge-small", backbone_layers=3, hidden=96, blocks=2, sample_rows=4)
     torch.manual_seed(0)
-    reader = NamedReader(backbone.dim, len(names), config).float()
+    reader = NamedReader(backbone.dim, names.meaning_start, names.meaning, config).float()
+    read_descriptions(backbone, reader, names)
     engine = NamedEngine(backbone, reader, names, config, uniform_weights(len(names)))
     catalog = fake_catalog(2, lines=30)
     digests = []
@@ -385,13 +387,25 @@ def test_a_head_reads_as_log_odds_against_silence() -> None:
 
 
 def test_name_set_loader_and_its_forms() -> None:
-    document = {"schema_version": 1, "tiers": {"structure": {"names": [{"name": "form:show", "group": "form"}]}, "meaning": {"vocabulary": {"names": [{"name": "biz:price", "group": "finance"}]}}}}
+    """The structure tier from the name set, then schema.org's properties: every one of them, in the contract's order, and nothing of any trade's vocabulary."""
+    document = {"schema_version": 2, "tiers": {"structure": {"names": [{"name": "form:show", "group": "form"}, {"name": "aggregate:sum", "group": "aggregate"}]}}}
     with tempfile.TemporaryDirectory() as folder:
         path = Path(folder) / "names.json"
         path.write_text(json.dumps(document), encoding="utf-8")
-        names = load_name_set(path, extra=["schema:price"])
-    assert names.names == ("biz:price", "form:show", "schema:price") and names.at("form:show") == 1 and names.at("nothing") is None
+        names = load_name_set(path, meaning=["schema:price"])
+        full = load_name_set(path)
+    assert names.names == ("aggregate:sum", "form:show", "schema:price") and names.meaning_start == 2 and names.meaning == 1 and names.at("form:show") == 1 and names.at("nothing") is None
+    assert full.meaning == 1521 and full.names[2:] == meaning_names()
     assert names.sha != NameSet(("form:show",)).sha
+    for misplaced in ((("schema:price", "form:show"), 1), (("form:show", "aggregate:sum"), 1)):
+        try:
+            NameSet(*misplaced)
+        except ValueError:
+            continue
+        raise AssertionError("a meaning tier that is not schema.org's names after the structure tier was taken")
+    assert fine_of("schema:employee") == "person" and fine_of("class:Corporation") == "company" and fine_of("class:City") == "place" and fine_of("schema:price") is None, "fine answer types by the ontology alone"
+    shipped = load_name_set()
+    assert shipped.meaning == 1521 and not any(name.startswith(("biz:", "word:")) for name in shipped.names)
     fake = fake_name_set()
     for answer in ANSWER_TYPES:
         assert fake.at(f"answer_type:{answer}") is not None
@@ -567,18 +581,35 @@ def test_families_stay_held_out() -> None:
     raise AssertionError("a side was read as another")
 
 
-def test_the_sheets_own_words_are_named_coordinates() -> None:
-    """A column's header words are names the head reads on both sides, and a word linked to it reads them too: labelled by what the sheet wrote, so an augmented header still has them to read back from its cells."""
+def test_a_columns_property_is_its_meaning_and_its_linked_words_read_it() -> None:
+    """A column's schema.org property, as labelled, is what its meaning tier learns, whatever an augmentation did to its header; a word linked to the column learns the same property. No word of the sheet is a coordinate."""
     import random
-    from training.named.train import WORD_PREFIX, word_tier
     examples = fake_examples(4)
-    words = word_tier(examples * 4)
-    assert words and all(name.startswith(WORD_PREFIX) for name in words)
-    names = NameSet(tuple(sorted({*fake_name_set().names, *words})))
+    names = fake_name_set()
     batch = build_batch(examples[0], ReaderConfig(backbone="hash", hidden=36, blocks=1, open_dim=16, sample_rows=3), names, random.Random(0), questions=6, shares={"unreadable": 1.0})
     columns = [at for at, target in enumerate(batch.targets) if target.kind == T_COLUMN]
-    assert any(any(name.startswith(WORD_PREFIX) for name in batch.positive[at]) for at in columns), "an unreadable header keeps what the sheet wrote as its label"
     assert all(target.text.isalpha() and target.text.isupper() for at, target in enumerate(batch.targets) if at in columns)
+    assert all(batch.meaning[at] == [MEANINGS[batch.targets[at].position]] for at in columns), "an unreadable header keeps its column's property"
+    assert all(names.at(name) < names.meaning_start for held in batch.positive for name in held), "structure names only in the structure tier's labels"
+    linked = [held for question in batch.word_positive for held in question if held]
+    assert linked and all(name in MEANINGS for held in linked for name in held)
+
+
+def test_the_meaning_tier_starts_from_each_propertys_own_text() -> None:
+    """Untrained, a unit stands where its own text puts it: a unit whose text is a property's own text reads that property first. Training moves units, never what a property means."""
+    names = fake_name_set()
+    backbone = HashBackbone()
+    reader = NamedReader(backbone.dim, names.meaning_start, names.meaning, ReaderConfig(backbone="hash", hidden=36, blocks=1, open_dim=16)).float()
+    read_descriptions(backbone, reader, names)
+    text_of = dict(zip(meaning_names(), property_texts()))
+    texts = [text_of[name] for name in MEANINGS]
+    _, base = backbone.encode_texts(texts)
+    order = {text: at for at, text in enumerate(sorted(set(texts), key=lambda text: (len(text), text)))}
+    base = torch.stack([base[order[text]] for text in texts])
+    with torch.no_grad():
+        read = reader.coordinate_probabilities(torch.randn(len(texts), 36), base)[:, names.meaning_start:]
+    assert read.argmax(-1).tolist() == list(range(len(MEANINGS)))
+    assert all(abs(float(row.sum()) - 1.0) < 1.0 for row in read), "a share of the properties and none"
 
 
 def test_batch_has_in_sheet_hard_negatives() -> None:
@@ -610,7 +641,7 @@ def test_coordinate_loss_reads_as_a_probability() -> None:
 def test_a_bundle_carries_learned_biases_per_kind_of_target() -> None:
     from training.named.train import link_weights_of
     from engine.named.model import LINK_KINDS
-    reader = NamedReader(32, 8, ReaderConfig(backbone="hash", hidden=36, blocks=1, open_dim=16))
+    reader = NamedReader(32, 6, 2, ReaderConfig(backbone="hash", hidden=36, blocks=1, open_dim=16))
     with torch.no_grad():
         reader.raw_link_bias[LINK_KINDS.index("value")] = 2.0
     weights = link_weights_of(reader)

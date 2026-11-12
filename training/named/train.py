@@ -1,11 +1,13 @@
 """Multi-task training of the reader, on family-held-out examples.
 
-Losses, each on named outputs. Coordinates count every name's own log loss, unweighted: what the head outputs is then a probability, a word that means nothing reads nothing, and a link's sum means how much two readings share. (Balanced by class, the first candidate read 71 of 385 names on as true of every content word and 59 of every stop word, so every target linked at about the same high score and the decoder's additive sum filled every slot it could: 29 of 154 validation golds listed in its top 50.)
-  target coordinates   a column's, value's, line's and band's named coordinates: the factory's labels and, always, what the compiler knows (column role, value kind, line role)
-  word coordinates     the same head over the question's words: a word in a link reads what its target is labelled; other words read none of the meaning tier
+Losses, each on named outputs. The structure tier counts every name's own log loss, unweighted, so what it outputs is a probability. The meaning tier is a share over schema.org's properties and none (engine/named/model.py): a labelled unit's log loss on its labelled properties. A link's sum means how much two readings share.
+  target coordinates   a column's, value's, line's and band's structure names, always: what the compiler knows (column role, value kind, line role); and a column's or a value's schema.org property where Gemini named one at the threshold (training/factory/schema_labels.py)
+  word coordinates     the same head over the question's words: a word in a link to a column or a value reads that column's property; other words have no meaning label
   closed heads         form, aggregate, direction, size, entity, comparison, row and calc operators, answer type, blank, how many conditions; word role and calc side per word
   links                link(span, target) over the target and its in-sheet hard negatives: the sum over named coordinates of weight x question x target, plus named rule evidence and the word's role. The one formula of engine/named/links.py, its weights learned here. Beside the candidates stands "links to nothing", at a learned bias per kind of target: a content word no link stands on is an example of it. The bias is what a coordinate reads below at serving, so each kind needs its own such examples: a word linked to a column links to no value, and one linked to a value to no column. (With examples on columns alone the value bias stayed at .58, under what a value read from its word's role alone, and spurious values won: 57 of 207 misses lost most on the value slot.)
   open                 the separate unnamed channel, on the same candidates. It trains its own two projections and, unless --open-detached, the shared encoder.
+
+The properties' own texts are read by the backbone at the start and again before each held-out measure, so the meaning tier's axes stay where the backbone reads them.
 
 Each step reads one tab, and --accumulate of them make one optimizer step: its tables through the augmentations (renames, masks, shuffles, distractor columns; training/named/augment.py), its questions with the question words alone. A checkpoint is chosen on held-out families by top-1 link recall (top 10 among a link's in-sheet candidates is nearly full early on, and says little). float32 unless --amp. A candidate goes only to training/named/data/experiments/<id>/out/: promotion is separate.
 
@@ -36,12 +38,11 @@ from engine.named.backbone import question_words
 from engine.named.index import ClassSignatures
 from engine.named.links import LinkWeights, RULES, SLOTS_OF_LINK_KIND, rule_evidence, is_stated_word
 from engine.named.model import LINK_KINDS, NamedReader, ReaderConfig
-from engine.named.names import CALC_SIDES, CLOSED_HEADS, LEFT, RIGHT, WORD_ROLE_CLASSES, NameSet, closed_labels, fine_answer_type, load_name_set, meaning_groups
+from engine.named.names import CALC_SIDES, CLASS_PREFIX, CLOSED_HEADS, LEFT, RIGHT, WORD_ROLE_CLASSES, NameSet, closed_labels, fine_answer_type, load_name_set, meaning_names, property_texts
 from engine.named.bundle import write_bundle
 from engine.named.units import T_BAND, T_COLUMN, T_LINE, T_TABLE, T_VALUE, Graph, Target, collate, question_graph, table_graphs, targets_of, value_graph
 from engine.program.catalog import Catalog, CatalogTable
 from engine.program.decoder import Decoder
-from engine.program.index import words_of
 from engine.program.names import A_NAME, ROLE_CONTEXT, ROLE_FILTER, ROLE_KEY, ROLE_MEASURE, SLOT_ANSWER_TYPE, SLOT_CALC_LEFT, slot_of
 from engine.program.semantics import fold
 from engine.program.words import read_question
@@ -57,10 +58,8 @@ VALUE_NEGATIVES = 16
 TABLES_PER_STEP = 3
 UNLINKED_WORDS = 2         # a question's content words no link stands on, read as links to nothing
 ROW_NAMES = 4.0            # about how many names a target or a word holds: scales the coordinates' summed log loss to one row's worth
-WORD_PREFIX = "word:"      # the sheet's own words as named coordinates: what a column's header or a value says, read by the same head on both sides
-WORD_NAMES = 3000
-WORD_MIN_TABS = 4
-LOSS_WEIGHTS = {"target": 1.0, "word": 1.0, "closed": 1.0, "role": 0.5, "side": 0.25, "link": 2.0, "open": 0.5}
+LOSS_WEIGHTS = {"target": 1.0, "meaning": 1.0, "word": 1.0, "closed": 1.0, "role": 0.5, "side": 0.25, "link": 2.0, "open": 0.5}
+DESCRIPTION_TOKENS = 64
 
 
 @dataclass
@@ -104,26 +103,29 @@ class Batch:
     value_graphs: list[Graph]
     values: list[int]                           # target per value graph
     targets: list[Target]
-    positive: list[list[str]]                   # per target: its named coordinates
-    known_meaning: list[bool]                   # per target: the labels speak for its meaning tier
-    known_words: list[bool]                     # per target: its own header or text speaks for the word tier
+    positive: list[list[str]]                   # per target: its structure names
+    meaning: list[list[str]]                    # per target: its schema.org properties, empty when none is labelled
     questions: list[str]
     closed: list[dict[str, str]]
-    word_positive: list[list[list[str] | None]]  # per question, per word: names, or None when unknown
+    word_positive: list[list[list[str] | None]]  # per question, per word: properties, or None when unknown
     word_role: list[list[int]]
     word_side: list[list[int]]
     links: list[LinkExample]
     texts: int = 0
 
 
-def _labelled_names(label: dict | None, key: str = "coordinates") -> tuple[list[str], bool]:
-    """(the names a label gives, whether it speaks for the meaning tier at all)."""
-    if not label:
-        return [], False
-    names = list(label.get(key) or ())
-    if names:
-        return names, True
-    return [], str(label.get("raw", "")).lower() == "none" and int(label.get("conf", 0)) >= THRESHOLD
+def _labelled_names(label: dict | None) -> list[str]:
+    """The schema.org properties a column's label gives at the threshold. A column said to be none of them, or named below the threshold, has no meaning label: what it reads as is left to the links."""
+    if not label or int(label.get("conf", 0)) < THRESHOLD:
+        return []
+    return list(label.get("coordinates") or ())
+
+
+def _value_class(label: dict | None) -> list[str]:
+    """A column's values' schema.org class at the threshold, as a class name."""
+    if not label or not label.get("value_class") or int(label.get("value_conf", 0)) < THRESHOLD:
+        return []
+    return [f"{CLASS_PREFIX}{label['value_class']}"]
 
 
 def _column_structure(column) -> list[str]:
@@ -138,9 +140,14 @@ def closed_of(row: dict, labels: dict[str, dict]) -> dict[str, str]:
     closed = closed_labels(row.get("coordinates", ()))
     coarse = closed[SLOT_ANSWER_TYPE]
     wanted = ROLE_KEY if coarse == A_NAME else ROLE_MEASURE
-    names = [name for link in row.get("links", ()) if link.get("role") == wanted for name in link.get("coordinates") or ()]
+    names = []
+    for link in row.get("links", ()):
+        if link.get("role") == wanted and link.get("position") is not None:
+            label = labels.get(f"{link.get('table')}.{link.get('position')}")
+            names.extend(_value_class(label) + _labelled_names(label))
     for used in row.get("used", ()):
-        names.extend((labels.get(f"{used.get('table')}.{used.get('position')}") or {}).get("coordinates") or ())
+        label = labels.get(f"{used.get('table')}.{used.get('position')}")
+        names.extend(_value_class(label) + _labelled_names(label))
     closed[SLOT_ANSWER_TYPE] = fine_answer_type(coarse, names)
     return closed
 
@@ -154,16 +161,11 @@ def build_batch(example: TabExample, reader_config: ReaderConfig, names: NameSet
     chosen = rng.sample(gold, min(questions, len(gold))) if rows is None else gold
     tables: dict[str, CatalogTable] = {}
     moved: dict[str, dict[int, int]] = {}
-    written: dict[str, dict[int, list[str]]] = {}      # a column's words as the sheet wrote them, whatever the augmentations did to its name: reading them back from its cells is what survives a rename
-
-    def word_names(text: str) -> list[str]:
-        return [f"{WORD_PREFIX}{word}" for word in sorted(set(words_of(text))) if names.at(f"{WORD_PREFIX}{word}") is not None]
     wanted = {link.get("table") for row in chosen for link in row.get("links", ()) if link.get("table")}
     order = sorted(example.tables, key=lambda item: (item[0] not in wanted, item[0]))
     for table_id, kind, table in order[:TABLES_PER_STEP]:
         if not table.lines and not table.printed:
             continue
-        written[table_id] = {column.position: word_names(column.name) for column in table.columns}
         if shares:
             table, mapping = augmented(table, rng, shares)
         else:
@@ -179,18 +181,16 @@ def build_batch(example: TabExample, reader_config: ReaderConfig, names: NameSet
     tables_at: list[tuple[int, int]] = []
     targets: list[Target] = []
     positive: list[list[str]] = []
-    known: list[bool] = []
-    known_words: list[bool] = []
+    meaning: list[list[str]] = []
     at_target: dict[tuple, int] = {}
 
-    def add_target(target: Target, names_for: list[str], speaks: bool, words_known: bool = True) -> int:
+    def add_target(target: Target, structure: list[str], properties: list[str]) -> int:
         held = at_target.get(target.key)
         if held is None:
             held = at_target[target.key] = len(targets)
             targets.append(target)
-            positive.append(names_for)
-            known.append(speaks)
-            known_words.append(words_known)
+            positive.append(structure)
+            meaning.append([name for name in properties if names.at(name) is not None])
         return held
 
     all_targets = {}
@@ -200,18 +200,14 @@ def build_batch(example: TabExample, reader_config: ReaderConfig, names: NameSet
             at_graph = len(graphs)
             graphs.append(graph)
             union: set[str] = set()
-            speaks_table = False
             for position, unit in sorted(graph.columns.items()):
                 column = table.columns[position]
                 old = inverse.get(position)
-                label_names, speaks = _labelled_names(example.labels.get(f"{table_id}.{old}")) if old is not None else ([], True)
-                own_words = written[table_id].get(old, []) if old is not None else []
+                label_names = _labelled_names(example.labels.get(f"{table_id}.{old}")) if old is not None else []
                 union.update(label_names)
-                union.update(own_words)
-                speaks_table = speaks_table or speaks
-                at = add_target(Target(table_id, T_COLUMN, position, column.name), [*label_names, *own_words, *_column_structure(column)], speaks)
+                at = add_target(Target(table_id, T_COLUMN, position, column.name), _column_structure(column), label_names)
                 columns.append((at_graph, unit, at))
-            at = add_target(Target(table_id, T_TABLE, -1, ""), sorted(union), speaks_table)
+            at = add_target(Target(table_id, T_TABLE, -1, ""), [], sorted(union))
             tables_at.append((at_graph, at))
         all_targets[table_id] = targets_of(table, units)
     value_graphs: list[Graph] = []
@@ -223,10 +219,9 @@ def build_batch(example: TabExample, reader_config: ReaderConfig, names: NameSet
         table = tables[target.table]
         if target.kind == T_VALUE:
             inverse = {new: old for old, new in moved[target.table].items()}
-            label_names, speaks = _labelled_names(example.labels.get(f"{target.table}.{inverse.get(target.position)}"), "value_coordinates")
-            at = add_target(target, [*label_names, *word_names(target.text), "value_kind:text"], speaks)
+            at = add_target(target, ["value_kind:text"], _labelled_names(example.labels.get(f"{target.table}.{inverse.get(target.position)}")))
         else:
-            at = add_target(target, [f"line_role:{'band' if target.kind == T_BAND else 'total'}", *word_names(target.text)], False)
+            at = add_target(target, [f"line_role:{'band' if target.kind == T_BAND else 'total'}"], [])
         if fresh:
             value_graphs.append(value_graph(table, target, units, orders[target.table]))
             values.append(at)
@@ -257,12 +252,7 @@ def build_batch(example: TabExample, reader_config: ReaderConfig, names: NameSet
             if not span:
                 continue
             role = link.get("role")
-            names_of_link = list(link.get("coordinates") or ())
-            kind_of_link = link.get("kind")
-            if kind_of_link == "column" and link.get("table") in written:
-                names_of_link += written[link["table"]].get(link.get("position"), [])
-            elif kind_of_link in ("value", "line", "band") and link.get("target") is not None:
-                names_of_link += word_names(fold(link["target"]))
+            names_of_link = [name for name in _labelled_names(example.labels.get(f"{link.get('table')}.{link.get('position')}")) if names.at(name) is not None] if link.get("kind") in ("column", "value") else []
             for at in span:
                 if names_of_link:
                     read_as[at] = (read_as[at] or []) + names_of_link
@@ -327,7 +317,7 @@ def build_batch(example: TabExample, reader_config: ReaderConfig, names: NameSet
         word_positive.append(read_as)
         word_role.append(roles)
         word_side.append(sides)
-    return Batch(graphs, columns, tables_at, value_graphs, values, targets, positive, known, known_words, texts, closed, word_positive, word_role, word_side, links)
+    return Batch(graphs, columns, tables_at, value_graphs, values, targets, positive, meaning, texts, closed, word_positive, word_role, word_side, links)
 
 
 def _nothing_among_columns(table, table_id, span, question, floor, stems, rng, at_target) -> LinkExample | None:
@@ -414,13 +404,19 @@ def _label_candidates(targets, table_id, kind, value, floor, stems, rng, add_val
 
 @dataclass
 class Forward:
-    """What a batch read, as logits."""
+    """What a batch read: each target's and word's hidden state and its own text as the backbone read it (the meaning tier's base), and the closed heads' logits."""
     target_hidden: torch.Tensor
-    target_logits: torch.Tensor
+    target_base: torch.Tensor
     words: list[list[str]]
     word_hidden: list[torch.Tensor]
-    word_logits: list[torch.Tensor]
+    word_base: list[torch.Tensor]
     closed_logits: dict[str, torch.Tensor]
+
+    def target_read(self, reader: NamedReader) -> torch.Tensor:
+        return reader.coordinate_probabilities(self.target_hidden, self.target_base)
+
+    def word_read(self, reader: NamedReader, question: int) -> torch.Tensor:
+        return reader.coordinate_probabilities(self.word_hidden[question], self.word_base[question])
 
 
 def run_batch(backbone: nn.Module, reader: NamedReader, config: ReaderConfig, batch: Batch, device: str) -> Forward:
@@ -434,35 +430,46 @@ def run_batch(backbone: nn.Module, reader: NamedReader, config: ReaderConfig, ba
         return vectors[torch.as_tensor([lookup[text] for text in graph.texts], device=vectors.device)] if graph.texts else torch.zeros((1, backbone.dim), device=vectors.device)
 
     by_graph: dict[int, torch.Tensor] = {}
+    base_of: dict[int, torch.Tensor] = {}
     for at, graph in enumerate(batch.graphs):
-        inputs, edges, pad = collate([graph], [stack(graph)])
+        base_of[at] = stack(graph)
+        inputs, edges, pad = collate([graph], [base_of[at]])
         by_graph[at] = reader.hidden(inputs, edges, pad)[0]
-    rows, sources = [], []
+    rows, sources, bases = [], [], []
     for graph_at, unit, target in batch.columns:
         rows.append(target)
         sources.append(by_graph[graph_at][unit])
-    per_table: dict[int, list[torch.Tensor]] = {}
+        bases.append(base_of[graph_at][unit])
+    per_table: dict[int, list[tuple[torch.Tensor, torch.Tensor]]] = {}
     for graph_at, target in batch.tables_at:
-        per_table.setdefault(target, []).append(by_graph[graph_at][batch.graphs[graph_at].table])
+        table_unit = batch.graphs[graph_at].table
+        per_table.setdefault(target, []).append((by_graph[graph_at][table_unit], base_of[graph_at][table_unit]))
     for target, parts in per_table.items():
         rows.append(target)
-        sources.append(torch.stack(parts).mean(0))
+        sources.append(torch.stack([hidden for hidden, _ in parts]).mean(0))
+        bases.append(torch.stack([base for _, base in parts]).mean(0))
     if batch.value_graphs:
-        inputs, edges, pad = collate(batch.value_graphs, [stack(graph) for graph in batch.value_graphs])
+        value_bases = [stack(graph) for graph in batch.value_graphs]
+        inputs, edges, pad = collate(batch.value_graphs, value_bases)
         read = reader.hidden(inputs, edges, pad)
         rows.extend(batch.values)
         sources.extend(read[:, 1].unbind(0))
+        bases.extend(base[1] for base in value_bases)
     hidden = torch.zeros((len(batch.targets), config.hidden), device=device)
+    target_base = torch.zeros((len(batch.targets), backbone.dim), device=device)
     if rows:
         read_out = torch.stack(sources).float()          # what the encoder read under autocast comes out in float32: the head and the losses count in it
-        hidden = hidden.index_copy(0, torch.as_tensor(rows, device=hidden.device), read_out)
+        index = torch.as_tensor(rows, device=hidden.device)
+        hidden = hidden.index_copy(0, index, read_out)
+        target_base = target_base.index_copy(0, index, torch.stack(bases).float())
     questions = backbone.encode_questions(batch.questions, max_tokens=config.question_tokens)
     graphs = [question_graph(words) for words, _ in questions]
     inputs, edges, pad = collate(graphs, [vectors_q if len(words) else torch.zeros((1, backbone.dim), device=vectors.device) for words, vectors_q in questions])
     word_hidden_all = reader.hidden(inputs, edges, pad).float()
     closed = reader.closed_logits(word_hidden_all, pad)
     word_hidden = [word_hidden_all[at, :len(words)] for at, (words, _) in enumerate(questions)]
-    return Forward(hidden, reader.coordinate_logits(hidden), [words for words, _ in questions], word_hidden, [reader.coordinate_logits(item) for item in word_hidden], closed)
+    word_base = [vectors_q[:len(words)].float() for words, vectors_q in questions]
+    return Forward(hidden, target_base, [words for words, _ in questions], word_hidden, word_base, closed)
 
 
 def _row_loss(logits: torch.Tensor, labels: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
@@ -471,40 +478,45 @@ def _row_loss(logits: torch.Tensor, labels: torch.Tensor, mask: torch.Tensor) ->
     return losses.sum() / max(1, logits.shape[0]) / ROW_NAMES
 
 
-def losses_of(reader: NamedReader, names: NameSet, batch: Batch, out: Forward, open_detached: bool, structure: torch.Tensor, device: str) -> dict[str, torch.Tensor]:
-    n = len(names)
-    labels = torch.zeros((len(batch.targets), n), device=device)
-    mask = torch.zeros((len(batch.targets), n), device=device)
-    word_tier = torch.as_tensor([1.0 if name.startswith(WORD_PREFIX) else 0.0 for name in names.names], device=device)
-    for at, (held, speaks, words_known) in enumerate(zip(batch.positive, batch.known_meaning, batch.known_words)):
-        mask[at] = 1.0 if speaks else (structure + word_tier if words_known else structure)
+def _meaning_loss(logits: torch.Tensor, labelled: list[list[str]], names: NameSet) -> torch.Tensor | None:
+    """The labelled rows' log loss on the meaning tier: each row's labelled properties share its target equally. None when no row is labelled."""
+    rows, wanted = [], []
+    for at, held in enumerate(labelled):
+        positions = [names.at(name) - names.meaning_start for name in held or () if names.at(name) is not None]
+        if positions:
+            target = torch.zeros(logits.shape[-1], device=logits.device)
+            target[positions] = 1.0 / len(positions)
+            rows.append(at)
+            wanted.append(target)
+    if not rows:
+        return None
+    log_shares = torch.log_softmax(logits[torch.as_tensor(rows, device=logits.device)], dim=-1)
+    return -(torch.stack(wanted) * log_shares).sum(-1).mean()
+
+
+def losses_of(reader: NamedReader, names: NameSet, batch: Batch, out: Forward, open_detached: bool, device: str) -> dict[str, torch.Tensor]:
+    structure_labels = torch.zeros((len(batch.targets), names.meaning_start), device=device)
+    for at, held in enumerate(batch.positive):
         for name in held:
             position = names.at(name)
-            if position is not None:
-                labels[at, position] = 1.0
-                mask[at, position] = 1.0
-    result = {"target": _row_loss(out.target_logits, labels, mask)}
+            if position is not None and position < names.meaning_start:
+                structure_labels[at, position] = 1.0
+    structure_logits = reader.structure(out.target_hidden)
+    zero = structure_logits.sum() * 0.0
+    result = {"target": _row_loss(structure_logits, structure_labels, torch.ones_like(structure_labels))}
+    meaning = _meaning_loss(reader.meaning_logits(out.target_hidden, out.target_base), batch.meaning, names)
+    result["meaning"] = meaning if meaning is not None else zero
     word_losses = []
     role_losses = []
     side_losses = []
-    for at, (word_names, logits) in enumerate(zip(batch.word_positive, out.word_logits)):
-        if not len(logits):
+    for at, word_names in enumerate(batch.word_positive):
+        if not len(out.word_hidden[at]):
             continue
-        w_labels = torch.zeros_like(logits)
-        w_mask = torch.zeros_like(logits)
-        for word_at, held in enumerate(word_names):
-            if held is None:
-                w_mask[word_at] = structure
-                continue
-            w_mask[word_at] = 1.0
-            for name in held:
-                position = names.at(name)
-                if position is not None:
-                    w_labels[word_at, position] = 1.0
-        word_losses.append(_row_loss(logits, w_labels, w_mask))
+        word_meaning = _meaning_loss(reader.meaning_logits(out.word_hidden[at], out.word_base[at]), word_names, names)
+        if word_meaning is not None:
+            word_losses.append(word_meaning)
         role_losses.append(nn.functional.cross_entropy(reader.word_role(out.word_hidden[at]), torch.as_tensor(batch.word_role[at], device=device)))
         side_losses.append(nn.functional.cross_entropy(reader.calc_side(out.word_hidden[at]), torch.as_tensor(batch.word_side[at], device=device)))
-    zero = out.target_logits.sum() * 0.0
     result["word"] = torch.stack(word_losses).mean() if word_losses else zero
     result["role"] = torch.stack(role_losses).mean() if role_losses else zero
     result["side"] = torch.stack(side_losses).mean() if side_losses else zero
@@ -518,10 +530,11 @@ def losses_of(reader: NamedReader, names: NameSet, batch: Batch, out: Forward, o
         weights = reader.coordinate_weights()
         rule_weights = reader.rule_weights()
         biases = reader.link_biases()
-        targets_read = torch.sigmoid(out.target_logits)
+        targets_read = out.target_read(reader)
+        words_by_question = {question: out.word_read(reader, question) for question in sorted({link.question for link in batch.links})}
         open_targets = reader.open_target(out.target_hidden.detach() if open_detached else out.target_hidden)
         for link in batch.links:
-            words_read = torch.sigmoid(out.word_logits[link.question][link.span]).mean(0)
+            words_read = words_by_question[link.question][link.span].mean(0)
             candidates = torch.as_tensor(link.candidates, device=device)
             rules = torch.as_tensor(link.rules, device=device)
             role = torch.softmax(reader.word_role(out.word_hidden[link.question][link.span]), -1)[:, WORD_ROLE_CLASSES.index(link.role)].mean()
@@ -552,7 +565,7 @@ def held_metrics(backbone, reader, config, names, examples, device, limit: int, 
     reader.eval()
     backbone.eval()
     rng = random.Random(seed)
-    top1 = top10 = links = nothing_links = nothing_right = 0
+    top1 = top10 = links = nothing_links = nothing_right = labelled = labelled_right = 0
     right = {head: 0 for head in CLOSED_HEADS}
     questions = 0
     with torch.no_grad():
@@ -563,9 +576,16 @@ def held_metrics(backbone, reader, config, names, examples, device, limit: int, 
             if batch is None:
                 continue
             out = run_batch(backbone, reader, config, batch, device)
-            read = torch.sigmoid(out.target_logits)
+            read = out.target_read(reader)
+            words = {question: out.word_read(reader, question) for question in sorted({link.question for link in batch.links})}
+            meaning_at = torch.as_tensor([at for at, held in enumerate(batch.meaning) if held], device=device)
+            if len(meaning_at):
+                top = read[meaning_at, names.meaning_start:].argmax(-1).tolist()
+                for at, best in zip(meaning_at.tolist(), top):
+                    labelled += 1
+                    labelled_right += names.names[names.meaning_start + best] in batch.meaning[at]
             for link in batch.links:
-                words_read = torch.sigmoid(out.word_logits[link.question][link.span]).mean(0)
+                words_read = words[link.question][link.span].mean(0)
                 candidates = torch.as_tensor(link.candidates, device=device)
                 rules = torch.as_tensor(link.rules, device=device)
                 scores = (weights * words_read * read[candidates]).sum(-1) + (rules * rule_weights).sum(-1)
@@ -583,7 +603,7 @@ def held_metrics(backbone, reader, config, names, examples, device, limit: int, 
             questions += len(batch.closed)
     reader.train()
     backbone.train()
-    return {"links": links, "link_top1": round(top1 / max(1, links), 4), "link_top10": round(top10 / max(1, links), 4), "reads_nothing": round(nothing_right / max(1, nothing_links), 4), "questions": questions, "closed": {head: round(value / max(1, questions), 4) for head, value in right.items()}}
+    return {"links": links, "link_top1": round(top1 / max(1, links), 4), "link_top10": round(top10 / max(1, links), 4), "reads_nothing": round(nothing_right / max(1, nothing_links), 4), "labelled": labelled, "property_top1": round(labelled_right / max(1, labelled), 4), "questions": questions, "closed": {head: round(value / max(1, questions), 4) for head, value in right.items()}}
 
 
 def _commit() -> dict:
@@ -614,8 +634,8 @@ def train(examples: list[TabExample], names: NameSet, backbone: nn.Module, confi
         raise ValueError("no examples to train on")
     backbone = backbone.to(device).float().train()
     reader_config = config.reader
-    reader = NamedReader(backbone.dim, len(names), reader_config).to(device).float().train()
-    structure = torch.as_tensor([0.0 if name.startswith(("biz:", "schema:", WORD_PREFIX)) else 1.0 for name in names.names], device=device)
+    reader = NamedReader(backbone.dim, names.meaning_start, names.meaning, reader_config).to(device).float().train()
+    read_descriptions(backbone, reader, names)
     backbone_parameters = [parameter for parameter in backbone.parameters() if parameter.requires_grad]
     optimizer = torch.optim.AdamW([{"params": backbone_parameters, "lr": config.lr}, {"params": list(reader.parameters()), "lr": config.head_lr}], weight_decay=config.weight_decay)
     warmup = max(1, config.steps // 20)
@@ -657,7 +677,7 @@ def train(examples: list[TabExample], names: NameSet, backbone: nn.Module, confi
             with torch.autocast(device_type=device, dtype=torch.bfloat16, enabled=use_amp):
                 outputs = run_batch(backbone, reader, reader_config, batch, device)
             with torch.autocast(device_type=device, enabled=False):
-                parts = losses_of(reader, names, batch, outputs, config.open_detached, structure, device)
+                parts = losses_of(reader, names, batch, outputs, config.open_detached, device)
                 loss = sum(LOSS_WEIGHTS[name] * value for name, value in parts.items())
             (loss / config.accumulate).backward()
             if (step + 1) % config.accumulate == 0:
@@ -681,6 +701,8 @@ def train(examples: list[TabExample], names: NameSet, backbone: nn.Module, confi
                 history.append(row)
                 if log_print and step % 50 == 0:
                     print(json.dumps(row), flush=True)
+            if step % config.eval_every == 0 or step == config.steps:
+                read_descriptions(backbone, reader, names)
             if (step % config.eval_every == 0 or step == config.steps) and held:
                 metrics = held_metrics(backbone, reader, reader_config, names, held, device, config.eval_tabs, config.seed)
                 metrics.update(step=step, seconds=round(time.time() - started, 1))
@@ -701,31 +723,22 @@ def train(examples: list[TabExample], names: NameSet, backbone: nn.Module, confi
     if (out / "last_state.pt").exists():
         (out / "last_state.pt").unlink()
     if not held:
+        read_descriptions(backbone, reader, names)
         write_bundle(out / "best", backbone, reader, names, reader_config, link_weights_of(reader), signatures=signatures, record={**(record or {}), "step": step, "seed": config.seed})
     return {"steps": step, "resumed_at": begin, "loss_first": round(float(np.mean(first or last or [0.0])), 4), "loss_last": round(float(np.mean(last or first or [0.0])), 4), "seconds": round(time.time() - started, 1), "train_tabs": len(kept), "held_tabs": len(held), "best_top1": best, "seconds_per_step": round((time.time() - started) / max(1, step - begin), 3), "build_seconds_per_step": round(spent["build"] / max(1, step), 3), "texts_per_step": round(spent["texts"] / max(1, step), 1), "links_per_step": round(spent["links"] / max(1, step), 1)}
 
 
-def names_for(examples: list[TabExample]) -> NameSet:
-    """The name set's structure and vocabulary, and the schema.org names these labels use."""
-    extra = sorted({name for example in examples for label in example.labels.values() for key in ("coordinates", "value_coordinates") for name in label.get(key) or () if name.startswith("schema:")})
-    return load_name_set(extra=[*extra, *word_tier(examples)])
-
-
-def word_tier(examples: list[TabExample]) -> list[str]:
-    """The sheet's own words as names: the words most tabs' headers, labels and bands hold, each a coordinate a person can read. Stable: by how many tabs hold it, then the word."""
-    counts: dict[str, int] = {}
-    for example in examples:
-        held: set[str] = set()
-        for _, _, table in example.tables:
-            for column in table.columns:
-                held.update(words_of(column.name))
-            for line in table.printed:
-                held.update(words_of(line.label))
-        for word in held:
-            if len(word) >= 2 and not word.isdigit():
-                counts[word] = counts.get(word, 0) + 1
-    ranked = sorted((word for word, count in counts.items() if count >= WORD_MIN_TABS), key=lambda word: (-counts[word], word))
-    return [f"{WORD_PREFIX}{word}" for word in ranked[:WORD_NAMES]]
+def read_descriptions(backbone, reader: NamedReader, names: NameSet) -> None:
+    """The meaning tier's axes: each property's own text as the backbone reads it now, no gradient, dropout off."""
+    text_of = dict(zip(meaning_names(), property_texts()))
+    texts = [text_of[name] for name in names.names[names.meaning_start:]]
+    was_training = backbone.training
+    backbone.eval()
+    with torch.no_grad():
+        distinct, vectors = backbone.encode_texts(list(texts), max_tokens=DESCRIPTION_TOKENS, batch=64)
+        at = {text: row for row, text in enumerate(distinct)}
+        reader.set_descriptions(torch.stack([vectors[at[text]] for text in texts]))
+    backbone.train(was_training)
 
 
 def main() -> None:
@@ -768,10 +781,10 @@ def main() -> None:
         from engine.named.backbone import load_backbone
         examples = read_examples(args.examples)
         record["examples_sha256"] = examples_sha(args.examples)
-        names = names_for(examples)
+        names = load_name_set()
         backbone = load_backbone(args.backbone, layers=args.layers)
         backbone.freeze_table()
-        signatures = ClassSignatures.from_groups(meaning_groups())
+        signatures = ClassSignatures.from_ontology()
         reader_config = ReaderConfig(backbone=args.backbone, backbone_layers=args.layers, hidden=args.hidden, blocks=args.blocks, sample_rows=args.sample_rows, window_columns=args.window_columns, keep=args.keep)
     record["names_sha"] = names.sha
     config = TrainConfig(reader=reader_config, steps=args.steps, accumulate=args.accumulate, questions=args.questions, lr=args.lr, head_lr=args.head_lr, seed=args.seed, held_share=args.held_share, eval_every=args.eval_every, eval_tabs=args.eval_tabs, amp=args.amp, open_detached=args.open_detached, augment={} if args.no_augment else dict(TRAINING_SHARES), resume=args.resume_from)

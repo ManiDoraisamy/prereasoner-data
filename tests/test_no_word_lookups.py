@@ -26,7 +26,7 @@ FORMAT_GRAMMAR = {
     ("engine/sheet/grid.py", None),
     ("training/factory/grammar.py", None),
     ("training/factory/factory.py", _REPLY_FORMAT),
-    ("training/factory/label_sample.py", r"^(?:COL\s+)?([tfn]\d+)\.(\d+)\s+(\S+)\s+([1-9])(?:\s+val\s+(\S+)\s+([1-9]))?\s*$"),
+    ("training/factory/schema_labels.py", r"^([tfn]\d+)\.(\d+)\s+(\S+)(?:\s+([1-9]))?(?:\s+val\s+(\S+)\s+([1-9]))?\s*$"),
     ("training/factory/public.py", r"edgar/data/(\d+)/(\d{10}-\d{2}-\d{6})\.txt"),
     ("training/factory/screen.py", None),
 }

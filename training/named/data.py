@@ -24,7 +24,7 @@ MANIFEST = "manifest.json"
 
 @dataclass
 class TabExample:
-    """One tab: the tables a question on it may read, under the ids their programs use; its questions; its columns' labels."""
+    """One tab: the tables a question on it may read, under the ids their programs use; its questions; its columns' schema.org labels by '<table>.<position>'."""
     key: str
     family: str
     file: str
@@ -99,7 +99,7 @@ def tab_records(side: str, limit_tabs: int | None, max_lines: int, out_dir: str 
                     raise ValueError("a row whose workbook is not on this side")
                 by_tab[f"{row['book']}|{row['tab']}"].append(row)
     labels: dict[str, dict] = {}
-    with open(f"{OUT}{side}.labels.jsonl", encoding="utf-8") as source:
+    with open(f"{OUT}{side}.schema_labels.jsonl", encoding="utf-8") as source:     # every column's schema.org property and values' class (training/factory/schema_labels.py)
         for line in source:
             record = json.loads(line)
             labels[record["key"]] = record["labels"]

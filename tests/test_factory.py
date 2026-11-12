@@ -23,7 +23,6 @@ from training.factory.noise import SHARE, messy
 from training.factory.overlap import overlap_of
 from training.factory.prompts import plan_slots
 from training.factory.screen import screen_text, screen_workbook
-from training.factory.vocabulary import PACK
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SHEET = {"name": "t.xlsx", "tabs": [{"name": "Deals", "rows": [["Counterparty", "Region", "Volume", "Price", "Trade Date"], ["ENA", "East", 100.0, 3.5, "2001-02-01"], ["ENA", "West", 50.0, 4.0, "2001-03-01"], ["Duke", "East", 25.0, 3.0, "2001-02-15"], ["Reliant", "West", 75.0, 2.5, "2001-03-15"], ["Total", "", 250.0, "", ""]]}]}
@@ -114,8 +113,8 @@ def test_agree() -> None:
 
 
 def test_parse_author() -> None:
-    parsed = parse_author('ROLE gas scheduler\nCOL t0.2 biz:volume 8 val biz:commodity 7\nCOL t0.1 region_trading 9\nQ1|east vol|agg sum 2 @t0 where 1="East"|east>V1;vol>2\nR1|who approved|not held\nnoise\n')
-    assert parsed["role"] == "gas scheduler" and len(parsed["columns"]) == 2 and parsed["columns"][0]["val"] == "biz:commodity"
+    parsed = parse_author('ROLE gas scheduler\nCOL t0.2 schema:orderQuantity 8 val schema:Product 7\nCOL t0.1 region_trading 9\nQ1|east vol|agg sum 2 @t0 where 1="East"|east>V1;vol>2\nR1|who approved|not held\nnoise\n')
+    assert parsed["role"] == "gas scheduler" and len(parsed["columns"]) == 2 and parsed["columns"][0]["val"] == "schema:Product"
     assert parsed["questions"][0]["program"] == 'agg sum 2 @t0 where 1="East"'
     assert parsed["refusals"][0]["question"] == "who approved"
     assert parsed["junk"] == 1
@@ -153,11 +152,11 @@ def test_links_and_rule() -> None:
     assert rule_reaches("hh", "Henry Hub")
     q = {"program": 'agg sum 2 @t0 where 1="East"', "question": "east burn total", "links": "east>V1;burn>2;total>C;missing>3;burn>9", "coordinates": ["measure:t0.2", "filter:t0.1", "value:t0.1=east"], "overlap": []}
     columns = {"t0": {0: [0, "Counterparty", "text", "key"], 1: [1, "Region", "text", "label"], 2: [2, "Volume", "number", "measure"]}}
-    labels = {("t0", "2"): {"coordinates": ["biz:volume"], "value_coordinates": []}, ("t0", "1"): {"coordinates": ["biz:region_trading"], "value_coordinates": ["biz:region_trading"]}}
+    labels = {("t0", "2"): {"coordinates": ["schema:orderQuantity"], "value_coordinates": []}, ("t0", "1"): {"coordinates": ["schema:areaServed"], "value_coordinates": ["schema:areaServed"]}}
     links = link_records(q, {}, columns, labels, frozenset())
     assert [(link["kind"], link.get("position")) for link in links] == [("value", 1), ("column", 2), ("context", None)], "a word not in the question or a column the table lacks is dropped"
     assert links[0]["target"] == "East" and links[0]["own_words"] is True and links[0]["role"] == "filter"
-    assert links[1]["coordinates"] == ["biz:volume"] and links[1]["role"] == "measure"
+    assert links[1]["coordinates"] == ["schema:orderQuantity"] and links[1]["role"] == "measure"
     unlinked = {"program": 'agg sum 2 @t0 where 1="East"', "question": "total volume east", "links": "", "coordinates": ["measure:t0.2", "filter:t0.1"], "overlap": ["volume"], "used": [{"table": "t0", "position": 2, "letter": "C", "name": "Volume"}, {"table": "t0", "position": 1, "letter": "B", "name": "Region"}]}
     by_rule = link_records(unlinked, {}, columns, labels, frozenset())
     assert {(link["kind"], link["words"], link["source"]) for link in by_rule} == {("column", "volume", "rule"), ("value", "east", "rule")}, "what a question says outright links by rule"
@@ -187,11 +186,9 @@ def test_overlap() -> None:
 
 def test_named_coordinates() -> None:
     schema = {"price", "Organization"}
-    assert named("biz:counterparty", schema) == "biz:counterparty"
-    assert named("counterparty", schema) == "biz:counterparty"
     assert named("schema:price", schema) == "schema:price"
     assert named("price", schema) == "schema:price"
-    assert named("schema:nosuch", schema) is None and named("biz:nosuch", schema) is None and named("none", schema) is None
+    assert named("schema:nosuch", schema) is None and named("biz:counterparty", schema) is None and named("counterparty", schema) is None and named("none", schema) is None, "no trade's vocabulary: schema.org's names only"
 
 
 def test_plan_carries_rare_forms_where_they_fit() -> None:
@@ -222,8 +219,8 @@ def test_sandbox_runs_and_refuses() -> None:
 
 
 def test_name_set_is_whole() -> None:
-    from engine.config import DATA_DIR
-    with open(os.path.join(DATA_DIR, "named_coordinates.json"), encoding="utf-8") as source:
+    from engine.named.names import NAME_SET_PATH
+    with open(NAME_SET_PATH, encoding="utf-8") as source:
         document = json.load(source)
     structure = document["tiers"]["structure"]["names"]
     names = {row["name"] for row in structure}
@@ -231,11 +228,8 @@ def test_name_set_is_whole() -> None:
     assert all(f"form:{form}" in names for form in FORMS)
     assert all(f"answer_type:{kind}" in names for kind in ANSWER_TYPES)
     assert all(row["definition"] for row in structure)
-    vocabulary = document["tiers"]["meaning"]["vocabulary"]["names"]
-    assert {row["name"] for row in vocabulary} == {f"biz:{name}" for _, name, _ in PACK}
-    assert all(row["definition"] for row in vocabulary)
+    assert document["schema_version"] == 2 and set(document["tiers"]) == {"structure", "meaning"} and set(document["tiers"]["meaning"]) == {"schema_org"}, "the meaning tier is schema.org's, by reference, and nothing else"
     assert document["tiers"]["meaning"]["schema_org"]["properties"] == 1521 and document["tiers"]["meaning"]["schema_org"]["classes"] == 926
-    assert any(row["use"].startswith("NOT USED") for row in document["licenses"])
 
 
 def main() -> int:

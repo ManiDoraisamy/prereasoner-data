@@ -15,7 +15,7 @@ Each stage can run again: replies are journalled with their token counts, so a r
 
 `run_batch.sh` runs 2 to 5 for the next tabs of a side. `ledger.py` adds up the tokens.
 
-Beside them: `build_names.py` and `vocabulary.py` (the name set, `engine/data/named_coordinates.json`), `coverage.py` and `label_sample.py` (its coverage), `anchors.py` (label-beside-formula truth), `public.py` and `isolated.py` (other industries, under `python -I`), `emails_fetch.py`, `emails_extract.py` and `emails_pilot.py`, `audit.py`, `leakage.py`.
+Beside them: `build_names.py` (the name set's structure tier, `engine/data/named_coordinates.json`; its meaning tier is schema.org's properties), `schema_labels.py` (every column's schema.org property and values' class, Gemini's), `coverage.py` (coverage), `anchors.py` (label-beside-formula truth), `public.py` and `isolated.py` (other industries, under `python -I`), `emails_fetch.py`, `emails_extract.py` and `emails_pilot.py`, `audit.py`, `leakage.py`.
 
 ## Rules
 

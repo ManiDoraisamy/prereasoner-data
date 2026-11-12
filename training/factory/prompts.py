@@ -7,9 +7,8 @@ from __future__ import annotations
 import hashlib
 import random
 
-from training.factory.vocabulary import PACK
 
-PROMPT_VERSION = "f6"
+PROMPT_VERSION = "f7"
 
 COMMON = {
     "sum_filter": "agg sum, one filter", "sum_all": "agg sum over the whole table", "avg": "agg avg, one filter", "minmax": "agg min or max", "count_filter": "agg count, one filter", "count_all": "agg count of the lines",
@@ -26,13 +25,13 @@ RARE = {
 NO_NUMBER_COMMON = ("count_filter", "count_all", "show", "list", "rank_group_count")
 NO_FILTER_SHAPES = ("sum_all", "count_all", "minmax", "rank_group", "rank_line", "peer")
 
-AUTHOR_SYSTEM = f"""You write training data for a question box over real working spreadsheets. You see one tab of a company's workbook as an analyst sees it, then its compiled tables by id and position.
+AUTHOR_SYSTEM = """You write training data for a question box over real working spreadsheets. You see one tab of a company's workbook as an analyst sees it, then its compiled tables by id and position.
 
 Decide who uses this tab day to day. For each slot write what that person would really type, then the program that answers it.
 
 Reply with lines only, nothing else, in this order:
 ROLE <2 to 4 words>
-COL <table>.<position> <name> <1-9> [val <name> <1-9>]    one per column a question could read; peers once, as <table>.a0. name says what the column means: a biz: name below, or any schema.org term as schema:term, or none. 1-9 is how sure. val names what its text values are when that adds something.
+COL <table>.<position> <name> <1-9> [val <name> <1-9>]    one per column a question could read; peers once, as <table>.a0. name says what the column means: the schema.org property whose values it holds, as schema:property, or none. 1-9 is how sure. val names what its text values are when that adds something.
 Q<slot>|<question>|<program>|<links>
 R<n>|<question>|<why>    a question this tab cannot answer, which that person might well type
 
@@ -47,9 +46,7 @@ calc (agg sum 3 @t0 where 1="A") - (agg sum 3 @t0 where 1="B")    operators - + 
 Conditions, comma separated: 1="X" 1=5 | 1~"X" holds, 1^"X" starts, 1$"X" ends | 0 in 2001-02 (2002, 2001-02, 2001-11-29, m02 any year's month, 2001-q4, 2001-01-01..2001-03-31) | 3>=36 > <= < != on numbers only | 3>c4 another column | 1 blank, 1 filled | band="X" band~"X" | line="X" line="X" total line total line subtotal
 Fixed meanings: agg, rank and list read data lines only, never printed totals, unless a line= condition is used. Case and spacing do not matter. Blanks are skipped. Copy cell text exactly in conditions. Use only table ids and positions you are shown. Prefer a tab's own table to a family.
 
-Links: which of the question's words point at what, separated by ; as words>ref. ref: 3 a column | V3 a value of column 3 | L a printed line's label | B a band | C the tab, title or subject | P0 a period on column 0 | N3 a number compared on column 3 | A0 an axis. Words like total, how many, top need no link. In a calc or other-table read, prefix the table: t1:3.
-
-biz: names: {" ".join(name for _, name, _ in PACK)}"""
+Links: which of the question's words point at what, separated by ; as words>ref. ref: 3 a column | V3 a value of column 3 | L a printed line's label | B a band | C the tab, title or subject | P0 a period on column 0 | N3 a number compared on column 3 | A0 an axis. Words like total, how many, top need no link. In a calc or other-table read, prefix the table: t1:3."""
 
 REWRITE_SYSTEM = """You rewrite questions typed into a question box over a spreadsheet, so they stop using the words of the sheet's headers. Keep the exact meaning: same figure, same filters. Use the word a person in that trade would use, a shorthand, or name the thing another way; a value may stay as it is. At most 6 words unless a slot says L. Reply with lines only: <id>|<new question>|<links>. Links: words>ref separated by ; refs as given beside each question: a number is a column, V3 a value of column 3, L a printed line, B a band, C the sheet's subject, P0 a period, N3 a number, A0 an axis. If you cannot avoid a word, still give your best."""
 

@@ -1,20 +1,16 @@
-"""Build engine/data/named_coordinates.json, the name set: three tiers of named coordinates.
+"""Build engine/data/named_coordinates.json, the name set's structure tier, and point at its meaning tier.
 
-(a) operation and structure: the closed lists of engine/program/names.py and engine/sheet/names.py, read from them, never copied; each name gets its one line here, and a list name without a definition fails the build. Three answer types the brief asks for and engine/program/names.py does not hold yet (place, money, quantity) are added here and marked pending.
-(b) meaning: schema.org 30.0's 1,521 properties and 926 classes by reference to their contract, and the vocabulary pack (vocabulary.py), each pack name with its FIBO IRI where its label is one.
-(c) the sheet's own words: matched by rule at serving, no list.
+(a) operation and structure: the closed lists of engine/program/names.py and engine/sheet/names.py, read from them, never copied; each name gets its one line here, and a list name without a definition fails the build.
+(b) meaning: schema.org 30.0's 1,521 properties, by reference to their contract (engine/data/schema_org_v30.json), read by engine/named/names.py in the contract's order; its 926 classes are their superpositions. No vocabulary of any trade or language is written here.
 
-usage: python -m training.factory.build_names [fibo_labels.json]
+usage: python -m training.factory.build_names
 """
 from __future__ import annotations
 
 import hashlib
 import json
-import os
-import sys
 
-from training.factory.paths import NEXT, PUBLIC, pin
-from training.factory.vocabulary import PACK
+from training.factory.paths import NEXT
 
 OUT = f"{NEXT}/engine/data/named_coordinates.json"
 
@@ -52,55 +48,28 @@ def structure_tier() -> list[dict]:
     return out
 
 
-def meaning_tier(fibo: dict[str, str]) -> list[dict]:
-    seen = set()
-    out = []
-    for group, name, definition in PACK:
-        if name in seen:
-            raise ValueError(f"a pack name twice: {name}")
-        seen.add(name)
-        row = {"name": f"biz:{name}", "group": group, "definition": definition}
-        label = name.replace("_", " ")
-        if label in fibo:
-            row["fibo"] = fibo[label]
-        out.append(row)
-    return out
-
-
 def main() -> None:
-    pin()
-    from engine.config import DATA_DIR
-    fibo_path = sys.argv[1] if len(sys.argv) > 1 else PUBLIC + "fibo_labels.json"
-    with open(fibo_path, encoding="utf-8") as source:
-        fibo = json.load(source)
-    with open(os.path.join(DATA_DIR, "schema_org_v30.json"), encoding="utf-8") as source:
-        contract = json.load(source)
+    """The worktree's own closed lists, not the factory's pinned commit: the name set is the runtime's."""
+    from engine.named.names import schema_contract
+    contract = schema_contract()
     structure = structure_tier()
-    pack = meaning_tier(fibo)
     document = {
-        "schema_version": 1,
+        "schema_version": 2,
         "builder": "training/factory/build_names.py",
         "tiers": {
             "structure": {"note": "closed lists, read from engine/program/names.py and engine/sheet/names.py", "count": len(structure), "names": structure},
             "meaning": {
-                "schema_org": {"version": contract["version"], "contract_sha256": contract["contract_sha256"], "properties": len(contract["properties"]), "classes": len(contract["classes"]), "prefix": "schema:", "note": "representable by name through engine/schema_org.py; not copied here"},
-                "vocabulary": {"prefix": "biz:", "count": len(pack), "names": pack},
+                "schema_org": {"version": contract["version"], "contract_sha256": contract["contract_sha256"], "properties": len(contract["properties"]), "classes": len(contract["classes"]), "prefix": "schema:", "note": "read by engine/named/names.py in the contract's order: a property is a named dimension, a class the superposition of its properties; not copied here"},
             },
-            "words": {"note": "the sheet's own words are matched by rule at serving and need no list"},
         },
         "licenses": [
             {"source": "schema.org 30.0", "url": "https://schema.org/docs/terms.html", "license": "CC BY-SA 3.0", "use": "names and contract, already in the runtime bundle"},
-            {"source": "FIBO", "url": "https://github.com/edmcouncil/fibo", "license": "MIT", "notice": "Copyright (c) 2020 Enterprise Data Management Council", "use": "a pack name whose label is a FIBO label carries its IRI; definitions are our own"},
-            {"source": "EIA glossary and tables", "url": "https://www.eia.gov/about/copyrights_reuse.php", "license": "US government, public domain", "use": "read for what the words mean; definitions are our own"},
-            {"source": "US GAAP taxonomy (FASB)", "url": "https://xbrl.fasb.org/terms/TaxonomiesTermsConditions.html", "license": "royalty-free for financial reporting; modification barred without consent", "use": "NOT USED: a derived vocabulary reads as a modification"},
-            {"source": "IFRS taxonomy", "url": "https://www.ifrs.org/issued-standards/ifrs-taxonomy/", "license": "copyright IFRS Foundation", "use": "NOT USED: terms not clearly open"},
-            {"source": "ISDA and NAESB definitions", "url": "https://www.isda.org/", "license": "proprietary", "use": "NOT USED"},
         ],
     }
     text = json.dumps(document, indent=0, ensure_ascii=False) + "\n"
     with open(OUT, "w", encoding="utf-8", newline="\n") as sink:
         sink.write(text)
-    print("structure", len(structure), "pack", len(pack), "with a fibo label", sum("fibo" in row for row in pack), "schema", len(contract["properties"]), len(contract["classes"]), "sha", hashlib.sha256(text.encode()).hexdigest()[:12])
+    print("structure", len(structure), "schema", len(contract["properties"]), len(contract["classes"]), "sha", hashlib.sha256(text.encode()).hexdigest()[:12])
 
 
 if __name__ == "__main__":

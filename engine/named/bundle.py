@@ -46,7 +46,7 @@ def write_bundle(folder: str | Path, backbone: TextBackbone, reader: NamedReader
     state = {f"backbone.{name}": value.cpu() for name, value in backbone.state_dict().items() if name not in frozen}
     state.update({f"reader.{name}": value.cpu() for name, value in reader.state_dict().items() if not name.startswith("raw_")})
     torch.save(state, folder / BUNDLE_STATE)
-    document = {"config": config.record(), "names": list(names.names), "names_sha": names.sha, "weights": weights.record(), "slot_weights": dict(sorted((slot_weights or DEFAULT_WEIGHTS).by_slot.items())), "slot_bias": (slot_weights or DEFAULT_WEIGHTS).bias, "chooser": (chooser or PRIOR).record(), "signatures": dict((signatures or ClassSignatures({})).classes), "backbone": backbone.name, "record": record or {}}
+    document = {"config": config.record(), "names": list(names.names), "meaning_start": names.meaning_start, "names_sha": names.sha, "weights": weights.record(), "slot_weights": dict(sorted((slot_weights or DEFAULT_WEIGHTS).by_slot.items())), "slot_bias": (slot_weights or DEFAULT_WEIGHTS).bias, "chooser": (chooser or PRIOR).record(), "signatures": dict((signatures or ClassSignatures({})).classes), "backbone": backbone.name, "record": record or {}}
     (folder / BUNDLE_META).write_text(json.dumps(document, indent=0, sort_keys=True, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
 
 
@@ -65,7 +65,7 @@ def read_bundle(folder: str | Path, *, backbone: TextBackbone | None = None) -> 
     folder = Path(folder)
     document = json.loads((folder / BUNDLE_META).read_text(encoding="utf-8"))
     config = ReaderConfig(**document["config"])
-    names = NameSet(tuple(document["names"]))
+    names = NameSet(tuple(document["names"]), int(document["meaning_start"]))
     if names.sha != document["names_sha"]:
         raise ValueError("a bundle's names do not match their sha")
     if backbone is None:
@@ -74,7 +74,7 @@ def read_bundle(folder: str | Path, *, backbone: TextBackbone | None = None) -> 
         backbone = load_backbone(config.backbone, layers=config.backbone_layers)
     state = torch.load(folder / BUNDLE_STATE, map_location="cpu", weights_only=True)
     backbone.load_state_dict({name[len("backbone."):]: value for name, value in state.items() if name.startswith("backbone.")}, strict=False)
-    reader = NamedReader(backbone.dim, len(names), config).float()
+    reader = NamedReader(backbone.dim, names.meaning_start, names.meaning, config).float()
     fit = reader.load_state_dict({name[len("reader."):]: value for name, value in state.items() if name.startswith("reader.")}, strict=False)
     if any(not name.startswith("raw_") for name in fit.missing_keys) or fit.unexpected_keys:
         raise ValueError(f"a bundle's state does not fit its reader: {fit}")

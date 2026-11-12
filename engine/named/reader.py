@@ -15,7 +15,7 @@ from engine.named.backbone import TextBackbone
 from engine.named.index import ClassSignatures, TableView, WorkbookIndex
 from engine.named.links import ONLY_OF_TYPE, SCALE, SUPPORT, Contribution, LinkWeights, RuleHit, contributions_of, named_matrix, rule_evidence, to_thousandths, words_in_text
 from engine.named.model import NamedReader, ReaderConfig
-from engine.named.names import CALC_SIDES, CLOSED_HEADS, FINE_OF_NAME, LEFT, NONE, WORD_ROLE_CLASSES, NameSet
+from engine.named.names import CALC_SIDES, CLOSED_HEADS, LEFT, NONE, WORD_ROLE_CLASSES, NameSet, fine_of
 from engine.named.units import T_BAND, T_COLUMN, T_LINE, T_TABLE, T_VALUE, collate, question_graph
 from engine.program.catalog import Catalog
 from engine.program.decoder import Decoder, table_reach
@@ -110,7 +110,7 @@ class NamedReading:
         fine = self.expected_fine
         for target, ids, values in zip(view.targets, view.ids, view.values):
             if target.kind == T_COLUMN and target.position == position:
-                return max((value / SCALE for coordinate_id, value in zip(ids.tolist(), values.tolist()) if FINE_OF_NAME.get(self.names.names[coordinate_id]) == fine), default=0.0)
+                return max((value / SCALE for coordinate_id, value in zip(ids.tolist(), values.tolist()) if fine_of(self.names.names[coordinate_id]) == fine), default=0.0)
         return 0.0
 
     def form_prior(self, form: str) -> float:
@@ -135,7 +135,7 @@ def read_questions(backbone: TextBackbone, reader: NamedReader, config: ReaderCo
             closed = reader.closed_logits(hidden, pad)
             probabilities = {head: {name: round(float(p), 4) for name, p in zip(CLOSED_HEADS[head], torch.softmax(logits[0], -1).tolist())} for head, logits in closed.items()}
             word_hidden = hidden[0, :len(words)]
-            scores = torch.sigmoid(reader.coordinate_logits(word_hidden)).numpy()
+            scores = reader.coordinate_probabilities(word_hidden, vectors[:len(words)]).numpy() if len(words) else np.zeros((0, reader.structure_count + reader.meaning_count))
             opens = reader.open_word(word_hidden).numpy()
             norm = np.maximum(np.linalg.norm(opens, axis=1, keepdims=True), 1e-9)
             out.append(QuestionRead(question, words, to_thousandths(scores), np.round(torch.softmax(reader.word_role(word_hidden), -1).numpy().astype(np.float64), 3), np.round(torch.softmax(reader.calc_side(word_hidden), -1).numpy().astype(np.float64), 3), probabilities, np.rint(opens / norm * 127.0).astype(np.int8)))

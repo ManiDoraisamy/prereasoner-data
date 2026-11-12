@@ -19,10 +19,8 @@ from training.factory.overlap import common_words
 from training.factory.paths import OUT, pin
 from training.factory.prompts import PROMPT_VERSION
 from training.factory.split import mailbox
-from training.factory.vocabulary import PACK
 
 THRESHOLD = 6                  # a label's 1-9 at or above this counts as named
-PACK_NAMES = frozenset(name for _, name, _ in PACK)
 SHORT_WORDS = 6
 _REF_TOKEN = re.compile(r"[^\W_]+")
 ROLE_OF = {"measure": "measure", "key": "key", "shown": "key", "peers": "key", "filter": "filter", "value": "filter", "contains": "filter", "line": "filter", "section": "filter", "period": "filter", "number": "filter", "blank": "filter", "table": "context"}
@@ -37,21 +35,11 @@ def schema_names() -> set[str]:
 
 
 def named(name: str | None, schema: set[str]) -> str | None:
-    """A label's name as a coordinate of the name set, or None if the set does not hold it."""
+    """A label's name as a schema.org name of the contract, or None: the meaning tier holds schema.org's names and nothing else."""
     if not name or name.lower() == "none":
         return None
-    text = name.strip().strip(",;")
-    if text.startswith("biz:"):
-        text = text[4:]
-        return f"biz:{text}" if text in PACK_NAMES else None
-    if text.startswith("schema:"):
-        text = text[7:]
-        return f"schema:{text}" if text in schema else None
-    if text in PACK_NAMES:
-        return f"biz:{text}"
-    if text in schema:
-        return f"schema:{text}"
-    return None
+    text = name.strip().strip(",;").removeprefix("schema:")
+    return f"schema:{text}" if text in schema else None
 
 
 def words_in(text: str) -> list[str]:

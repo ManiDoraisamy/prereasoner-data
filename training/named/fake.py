@@ -19,7 +19,7 @@ from engine.sheet import compile_workbook, workbook_from_json
 from engine.sheet.names import COLUMN_ROLES, LINE_ROLES, VALUE_KINDS
 from training.named.data import TabExample
 
-MEANINGS = ("biz:counterparty", "biz:region", "biz:contract_quantity", "biz:spot_price", "biz:trade_date", "biz:deal_number")
+MEANINGS = ("schema:customer", "schema:areaServed", "schema:orderQuantity", "schema:price", "schema:orderDate", "schema:orderNumber")
 # Each family's own words for the same columns: the reader must carry the meaning, not the spelling.
 FAMILY_HEADERS = (("Counterparty", "Region", "Volume MMBtu", "Price", "Trade Date", "Deal"),
                   ("Shipper", "Area", "Qty", "Px", "Flow Day", "Ticket"),
@@ -34,7 +34,7 @@ ASKED = {"quantity": ("volume", "how", "much", "gas"), "price": ("price", "paid"
 
 def fake_name_set() -> NameSet:
     structure = [f"column_role:{role}" for role in COLUMN_ROLES] + [f"value_kind:{kind}" for kind in VALUE_KINDS] + [f"line_role:{role}" for role in LINE_ROLES] + [f"word_role:{role}" for role in WORD_ROLES] + [f"answer_type:{name}" for name in ANSWER_TYPES]
-    return NameSet(tuple(sorted({*structure, *MEANINGS})))
+    return NameSet(tuple(sorted(set(structure))) + MEANINGS, len(set(structure)))
 
 
 class HashBackbone(nn.Module):
@@ -145,7 +145,7 @@ def fake_examples(families: int = 6) -> list[TabExample]:
     for family in range(families):
         catalog = fake_catalog(family)
         table = catalog.tables[0]
-        labels = {f"{table.id}.{position}": {"coordinates": [MEANINGS[position]], "value_coordinates": [MEANINGS[position]], "raw": MEANINGS[position].split(":")[1], "conf": 8} for position in range(len(MEANINGS))}
+        labels = {f"{table.id}.{position}": {"coordinates": [MEANINGS[position]], "raw": MEANINGS[position].split(":")[1], "conf": 8} for position in range(len(MEANINGS))}
         rows = fake_rows(family, catalog)
         out.append(TabExample(f"book{family}|{table.tab}", f"family{family}", f"fake{family}.xlsx", table.tab, "fake", [(t.id, t.kind, t.table) for t in catalog.tables], rows, labels))
     return out
