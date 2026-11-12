@@ -274,6 +274,31 @@ class Catalog:
     def table(self, table_id: str) -> CatalogTable:
         return self.by_id[table_id]
 
+    def with_glossary(self, glossary: dict | None) -> "Catalog":
+        """Hang a sheet glossary on the tables: the other names a person might say for a column or for a value it holds,
+        written once for the sheet and read by the word index beside the sheet's own words (index.TableIndex).
+        glossary: {"columns": {header: [phrase, ...]}, "values": {header: {value: [phrase, ...]}}}; headers and values
+        are matched by their fold on every table, and one the sheet does not hold is ignored. Each table's index is
+        rebuilt. With no glossary a table reads exactly as before."""
+        glossary = glossary or {}
+        columns = {fold(header): tuple(phrases) for header, phrases in glossary.get("columns", {}).items()}
+        values = {fold(header): {fold(value): tuple(phrases) for value, phrases in held.items()} for header, held in glossary.get("values", {}).items()}
+        for table in self.tables:
+            names: dict[int, tuple[str, ...]] = {}
+            cells: dict[int, dict[str, tuple[str, ...]]] = {}
+            for column in table.columns:
+                header = fold(column.name)
+                if header in columns:
+                    names[column.position] = columns[header]
+                if header in values:
+                    present = set(table.folds[column.position])
+                    held = {folded: phrases for folded, phrases in values[header].items() if folded in present}
+                    if held:
+                        cells[column.position] = held
+            table.__dict__["glossary"] = {"columns": names, "values": cells}
+            table.__dict__.pop("index", None)
+        return self
+
     def column_kind(self, column: Col) -> str:
         if column.position == SECTION:
             return V_TEXT

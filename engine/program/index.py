@@ -361,6 +361,27 @@ class TableIndex:
         return tuple(out)
 
     @cached_property
+    def alias_names(self) -> dict[int, tuple[frozenset[str], ...]]:
+        """A sheet glossary's other names for a column (catalog.Catalog.with_glossary), each as its words."""
+        held = (self.table.__dict__.get("glossary") or {}).get("columns", {})
+        return {position: tuple(words for words in (frozenset(words_of(phrase)) for phrase in phrases) if words) for position, phrases in held.items()}
+
+    @cached_property
+    def alias_phrases(self) -> dict[tuple[int, str], tuple[str, ...]]:
+        """(column, the fold of a value it holds) -> the glossary's other wordings of that value, folded."""
+        held = (self.table.__dict__.get("glossary") or {}).get("values", {})
+        return {(position, folded): tuple(fold(phrase) for phrase in phrases if fold(phrase)) for position, values in held.items() for folded, phrases in values.items()}
+
+    @cached_property
+    def alias_words(self) -> dict[str, list[tuple[int, str]]]:
+        """A word of a glossary phrase -> the (column, fold) of the values it is another wording of."""
+        out: dict[str, list[tuple[int, str]]] = {}
+        for (position, folded), phrases in sorted(self.alias_phrases.items()):
+            for word in sorted({word for phrase in phrases for word in words_of(phrase)}):
+                out.setdefault(word, []).append((position, folded))
+        return out
+
+    @cached_property
     def title_words(self) -> frozenset[str]:
         words = set(words_of(self.table.tab)) | set(words_of(self.table.table.name))
         for _, text in self.table.table.context.titles:
