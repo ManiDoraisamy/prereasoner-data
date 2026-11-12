@@ -221,7 +221,7 @@ class SheetEncoder:
                     positions = sorted(graph.columns)
                     if positions:
                         units_at = torch.as_tensor([graph.columns[position] for position in positions])
-                        probabilities = self.reader.served_probabilities(hidden[units_at], torch.stack([base_of(graph, graph.columns[position]) for position in positions]))
+                        probabilities = self.reader.coordinate_probabilities(hidden[units_at], torch.stack([base_of(graph, graph.columns[position]) for position in positions]))
                         vectors_open = self.reader.open_target(hidden[units_at])
                         rows = [where[(table.id, T_COLUMN, position, table.columns[position].name)] for position in positions]
                         hold(rows, probabilities)
@@ -229,14 +229,14 @@ class SheetEncoder:
                         column_scores.update(zip(rows, probabilities.numpy()))
                 top_hidden = torch.stack(table_hidden).mean(0)
                 at = where[(table.id, T_TABLE, -1, "")]
-                hold([at], self.reader.served_probabilities(top_hidden[None], torch.stack(table_base).mean(0)[None]))
+                hold([at], self.reader.coordinate_probabilities(top_hidden[None], torch.stack(table_base).mean(0)[None]))
                 opens[at] = self.reader.open_target(top_hidden).numpy()
                 for start in range(0, len(value_graphs), _VALUE_BATCH):
                     batch = value_graphs[start:start + _VALUE_BATCH]
                     hidden = self.read_graphs(batch, lookup)
                     # the value's unit is second in every value graph: after a name, or after a table's context
                     picked = hidden[:, 1]
-                    probabilities = self.reader.served_probabilities(picked, torch.stack([base_of(graph, 1) for graph in batch]))
+                    probabilities = self.reader.coordinate_probabilities(picked, torch.stack([base_of(graph, 1) for graph in batch]))
                     vectors_open = self.reader.open_target(picked)
                     rows = [where[target.key] for target in value_targets[start:start + _VALUE_BATCH]]
                     hold(rows, probabilities)

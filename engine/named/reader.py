@@ -135,7 +135,7 @@ def read_questions(backbone: TextBackbone, reader: NamedReader, config: ReaderCo
             closed = reader.closed_logits(hidden, pad)
             probabilities = {head: {name: round(float(p), 4) for name, p in zip(CLOSED_HEADS[head], torch.softmax(logits[0], -1).tolist())} for head, logits in closed.items()}
             word_hidden = hidden[0, :len(words)]
-            scores = reader.served_probabilities(word_hidden, vectors[:len(words)]).numpy() if len(words) else np.zeros((0, reader.structure_count + reader.meaning_count))
+            scores = reader.coordinate_probabilities(word_hidden, vectors[:len(words)]).numpy() if len(words) else np.zeros((0, reader.structure_count + reader.meaning_count))
             opens = reader.open_word(word_hidden).numpy()
             norm = np.maximum(np.linalg.norm(opens, axis=1, keepdims=True), 1e-9)
             out.append(QuestionRead(question, words, to_thousandths(scores), np.round(torch.softmax(reader.word_role(word_hidden), -1).numpy().astype(np.float64), 3), np.round(torch.softmax(reader.calc_side(word_hidden), -1).numpy().astype(np.float64), 3), probabilities, np.rint(opens / norm * 127.0).astype(np.int8)))

@@ -176,7 +176,9 @@ def test_order_invariance_by_construction() -> None:
     assert keyed(first, lambda position: mapping[position]) == keyed(second, lambda position: position)
     read_a = engine.ask("total volume", engine.prepare(catalog))
     read_b = engine.ask("total volume", engine.prepare(Catalog([moved], catalog.name)))
-    assert read_a.kind == read_b.kind and read_a.rows == read_b.rows
+    # the same lines and cells; a shown line lists its cells in its table's column order, which the shuffle changed
+    cells = lambda rows: sorted(sorted(map(str, row)) for row in rows or ())
+    assert read_a.kind == read_b.kind and cells(read_a.rows) == cells(read_b.rows)
 
 
 def test_table_edges_are_the_edges_of_the_owner() -> None:
@@ -601,7 +603,7 @@ def test_a_columns_property_is_its_meaning_and_its_linked_words_read_it() -> Non
 
 
 def test_the_meaning_tier_starts_from_each_propertys_own_text() -> None:
-    """Untrained, a unit stands where its own text puts it: a unit whose text is a property's own text reads that property first. Training moves units, never what a property means."""
+    """Each basis property is its own named output (a sigmoid, like a structure name), started at its own text: untrained, a unit whose text is a property's own text reads that property first and high, the others low. Labels anchor the outputs from there."""
     names = fake_name_set()
     backbone = HashBackbone()
     reader = NamedReader(backbone.dim, names.meaning_start, names.meaning, ReaderConfig(backbone="hash", hidden=36, blocks=1, open_dim=16)).float()
@@ -614,7 +616,20 @@ def test_the_meaning_tier_starts_from_each_propertys_own_text() -> None:
     with torch.no_grad():
         read = reader.coordinate_probabilities(torch.randn(len(texts), 36), base)[:, names.meaning_start:]
     assert read.argmax(-1).tolist() == list(range(len(MEANINGS)))
-    assert all(abs(float(row.sum()) - 1.0) < 1.0 for row in read), "a share of the properties and none"
+    assert all(float(row.max()) > 0.9 for row in read), "a property's own text reads it high"
+    both = reader.coordinate_probabilities(torch.randn(1, 36), base[:2].mean(0, keepdim=True))[0, names.meaning_start:]
+    assert float(both[0]) + float(both[1]) > 1.0 or float(both[:2].min()) > float(both[2:].max()), "outputs are not a share: a unit between two properties may hold both"
+
+
+def test_the_meaning_anchor_is_each_propertys_own_log_loss() -> None:
+    """Known units anchor every basis output (labelled on, the rest off); a unit whose meaning is unknown anchors nothing."""
+    from training.named.train import _meaning_loss
+    names = fake_name_set()
+    logits = torch.zeros((3, names.meaning))
+    assert _meaning_loss(logits, [None, None, None], names) is None
+    loss = _meaning_loss(logits, [[MEANINGS[0]], [], None], names)
+    expected = float(torch.nn.functional.binary_cross_entropy_with_logits(torch.zeros((2, names.meaning)), torch.tensor([[1.0] + [0.0] * (names.meaning - 1), [0.0] * names.meaning]), reduction="sum")) / 2 / 4.0
+    assert abs(float(loss) - expected) < 1e-5
 
 
 def test_batch_has_in_sheet_hard_negatives() -> None:
