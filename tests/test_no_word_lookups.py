@@ -1,11 +1,14 @@
 """The new engine reads no word of any language from its own code: no regular expression holds a word, no month or weekday
 is spelled, no stop list or word ending is kept. Meaning comes from the learned readers (owner's rule, 2026-11-12: "you
 can't have a single word in English anywhere in the code or config file to lookup"). This scans the serving packages'
-source, so a word list cannot come back unnoticed.
+source and the training packages that make its data (experiment snapshots under data/ excepted), so a word list cannot
+come back unnoticed.
 
-Allowed, and named here with the reason: the program language's own identifiers (names.py files: what a coordinate is
-called, never compared with a question or a cell), and the spreadsheet file format's own codes (Excel's error values and
-number-format tokens), which the file stores the same in every language.
+Allowed, and named here with the reason: the program language's own identifiers (names.py files and the factory's
+grammar: what a coordinate or an operator is called, never compared with a question or a cell); the spreadsheet file
+format's own codes (Excel's error values and number-format tokens), which the file stores the same in every language;
+the reply format the factory's own prompts define and parse; one public source's URL layout; and the factory's privacy
+screen, which decides what is never sent to an external model, not what anything means.
 usage: python -m tests.test_no_word_lookups"""
 from __future__ import annotations
 
@@ -15,11 +18,17 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-PACKAGES = ("engine/program", "engine/named", "engine/sheet")
-# the file format's own codes: Excel error values and number-format tokens, the same in every language
+PACKAGES = ("engine/program", "engine/named", "engine/sheet", "training/named", "training/factory")
+_REPLY_FORMAT = r"^COL\s+([tfn]\d+)\.(a?\d+)\s+(\S+)\s+([1-9])(?:\s+val\s+(\S+)\s+([1-9]))?\s*$"
+# what the docstring allows: the file format's own codes, the program grammar, the factory's reply format, a source's URL layout, the privacy screen
 FORMAT_GRAMMAR = {
     ("engine/sheet/values.py", r"^#(?:NULL!|DIV/0!|VALUE!|REF!|NAME\?|NUM!|N/A|ERROR!|GETTING_DATA)$"),
     ("engine/sheet/grid.py", None),
+    ("training/factory/grammar.py", None),
+    ("training/factory/factory.py", _REPLY_FORMAT),
+    ("training/factory/label_sample.py", r"^(?:COL\s+)?([tfn]\d+)\.(\d+)\s+(\S+)\s+([1-9])(?:\s+val\s+(\S+)\s+([1-9]))?\s*$"),
+    ("training/factory/public.py", r"edgar/data/(\d+)/(\d{10}-\d{2}-\d{6})\.txt"),
+    ("training/factory/screen.py", None),
 }
 _REGEX_CALLS = {"compile", "search", "match", "fullmatch", "findall", "finditer", "sub", "subn", "split"}
 _WORD_IN_PATTERN = re.compile(r"[A-Za-z]{3,}")
@@ -41,7 +50,9 @@ def _pattern_words(pattern: str) -> list[str]:
 def _sources():
     for package in PACKAGES:
         for path in sorted((ROOT / package).rglob("*.py")):
-            yield path.relative_to(ROOT).as_posix(), path.read_text(encoding="utf-8")
+            relative = path.relative_to(ROOT).as_posix()
+            if "/data/" not in relative:
+                yield relative, path.read_text(encoding="utf-8")
 
 
 def _allowed(path: str, pattern: str) -> bool:

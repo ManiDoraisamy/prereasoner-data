@@ -16,6 +16,7 @@ from engine.program.store import RequestTables
 from engine.sheet import compile_workbook, workbook_from_json
 from training.factory.agree import agrees, as_day, same_scalar
 from training.factory.assemble import apply_quotas, is_subject_only, link_records, named, rule_reaches
+from training.factory.overlap import common_words
 from training.factory.factory import parse_author
 from training.factory.grammar import Unbound, bind
 from training.factory.noise import SHARE, messy
@@ -128,7 +129,21 @@ def test_noise_is_stable_and_near_its_share() -> None:
         if change:
             changed += 1
             assert typed != "total volume delivered to the pipeline" and len(typed.split()) == 6
+            if change["kind"] == "shorthand":
+                assert change["word"].startswith(change["became"]) and len(change["became"]) in (3, 4), "shorthand is a long word cut short, in any script"
     assert abs(changed / 2000 - SHARE) < 0.03
+    kinds = {messy(f"q{at}", "volumen entregado al gasoducto")[1]["kind"] for at in range(2000) if messy(f"q{at}", "volumen entregado al gasoducto")[1]}
+    assert kinds == {"shorthand", "typo"}, "the same noise in another language: no word list decides it"
+
+
+def test_common_words_are_counted_from_the_questions() -> None:
+    questions = [f"de la región {i}" for i in range(60)] + ["volumen total"] + [f"precio {i}" for i in range(39)]
+    common = common_words(questions)
+    assert {"de", "la", "región", "precio"} <= common and "volumen" not in common, "a word in at least 2% of the questions is the language's"
+    q = {"program": 'agg sum 2 @t0 where 1="La Region"', "question": "la region volume", "links": "", "coordinates": ["measure:t0.2", "filter:t0.1"], "overlap": [], "used": [{"table": "t0", "position": 1, "letter": "B", "name": "Region"}]}
+    columns = {"t0": {1: [1, "Region", "text", "label", "B"], 2: [2, "Volume", "number", "measure", "C"]}}
+    by_rule = link_records(q, {}, columns, {}, frozenset({"la"}))
+    assert [(link["kind"], link["words"]) for link in by_rule] == [("value", "region")], "a common word never links by rule; a word links once"
 
 
 def test_links_and_rule() -> None:
@@ -139,12 +154,12 @@ def test_links_and_rule() -> None:
     q = {"program": 'agg sum 2 @t0 where 1="East"', "question": "east burn total", "links": "east>V1;burn>2;total>C;missing>3;burn>9", "coordinates": ["measure:t0.2", "filter:t0.1", "value:t0.1=east"], "overlap": []}
     columns = {"t0": {0: [0, "Counterparty", "text", "key"], 1: [1, "Region", "text", "label"], 2: [2, "Volume", "number", "measure"]}}
     labels = {("t0", "2"): {"coordinates": ["biz:volume"], "value_coordinates": []}, ("t0", "1"): {"coordinates": ["biz:region_trading"], "value_coordinates": ["biz:region_trading"]}}
-    links = link_records(q, {}, columns, labels)
+    links = link_records(q, {}, columns, labels, frozenset())
     assert [(link["kind"], link.get("position")) for link in links] == [("value", 1), ("column", 2), ("context", None)], "a word not in the question or a column the table lacks is dropped"
     assert links[0]["target"] == "East" and links[0]["own_words"] is True and links[0]["role"] == "filter"
     assert links[1]["coordinates"] == ["biz:volume"] and links[1]["role"] == "measure"
     unlinked = {"program": 'agg sum 2 @t0 where 1="East"', "question": "total volume east", "links": "", "coordinates": ["measure:t0.2", "filter:t0.1"], "overlap": ["volume"], "used": [{"table": "t0", "position": 2, "letter": "C", "name": "Volume"}, {"table": "t0", "position": 1, "letter": "B", "name": "Region"}]}
-    by_rule = link_records(unlinked, {}, columns, labels)
+    by_rule = link_records(unlinked, {}, columns, labels, frozenset())
     assert {(link["kind"], link["words"], link["source"]) for link in by_rule} == {("column", "volume", "rule"), ("value", "east", "rule")}, "what a question says outright links by rule"
     assert is_subject_only({"program": "agg sum 2 @t0", "overlap": []}, [links[2]])
     assert not is_subject_only(q, links)

@@ -15,6 +15,7 @@ from collections import Counter
 from training.factory.assemble import THRESHOLD, named, schema_names
 from training.factory.factory import load_tabs, read_journal, tab_key, usable
 from training.factory.paths import OUT, SEED, STAGED, pin
+from training.factory.coverage import own_name
 from training.factory.vocabulary import PACK
 
 GENERIC = frozenset({"line_description", "description", "comment", "category", "code_general", "amount_money", "quantity_count", "price_general", "location_general", "person_name", "company_name", "flag", "reference_number", "sequence_number", "percent", "ratio"})
@@ -71,7 +72,7 @@ def measure() -> dict:
             for at, row in list(asked.items())[:MAX_COLUMNS]:
                 counts["columns"] += 1
                 match = answered.get(at)
-                has_words = bool(re.search(r"[A-Za-z]{2,}", row[1])) and not row[1].startswith("Column ")
+                has_words = own_name(row)
                 counts["own_words"] += has_words
                 if match is None:
                     counts["unanswered"] += 1

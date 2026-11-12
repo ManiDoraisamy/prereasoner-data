@@ -98,7 +98,7 @@ def prepare_book(pick: dict) -> dict:
                     "dates": sum(1 for t in tables for c in t.columns if c.kind in ("date", "period")), "numbers": sum(1 for t in tables for c in t.columns if c.kind == "number"),
                     "texts": sum(1 for t in tables for c in t.columns if c.kind == "text"), "notes": sum(1 for t in tables if t.kind == "notes"), "families": sum(1 for t in tables if t.kind == "family")}
         out["tabs"].append({"tab": tab.name, "features": features, "rows_view": rows_view(tab.name, grids[tab.name]), "slots_view": slots_view(tables),
-                            "tables": [t.id for t in tables], "columns": {t.id: [[c.position, c.name, c.kind, c.role] for c in t.columns] for t in tables}})
+                            "tables": [t.id for t in tables], "columns": {t.id: [[c.position, c.name, c.kind, c.role, c.letter] for c in t.columns] for t in tables}})
     return _finish(done_path, out)
 
 

@@ -28,7 +28,9 @@ WORK = STAGED + "emails/"
 MAX_CANDIDATES = 2000
 USD_IN, USD_OUT = 0.75 / 1e6, 3.75 / 1e6
 CAP_USD = 1.0
-_QUOTED = re.compile(r"(?im)^(?:>.*|-+ ?original message ?-+.*|from: .*|sent: .*|to: .*|subject: .*|cc: .*)$")
+_SEPARATOR = re.compile(r"(?m)^\s*-{3,}.*$")
+_HEADER_LINE = re.compile(r"^\s*[^\W\d_][^\W\d]{1,15}:\s")
+HEADER_BLOCK = 3
 _SENTENCE = re.compile(r"[^.!?\n]{8,300}[.!?]")
 _FIGURE = re.compile(r"(?<![\w/-])\$?\d[\d,]*(?:\.\d+)?(?![\w/-])")
 
@@ -52,15 +54,20 @@ def body_of(message) -> str:
         text = part.get_content()
     except (LookupError, ValueError):
         return ""
-    cut = re.search(r"(?im)^-+ ?(?:original message|forwarded by).*$", text)
+    cut = _SEPARATOR.search(text)
     if cut:
         text = text[:cut.start()]
-    return _QUOTED.sub("", text)
+    lines = text.splitlines()
+    for at in range(len(lines) - HEADER_BLOCK + 1):
+        if all(_HEADER_LINE.match(lines[at + k]) for k in range(HEADER_BLOCK)):
+            lines = lines[:at]
+            break
+    return "\n".join(line for line in lines if not line.lstrip().startswith(">"))
 
 
 def stem_of(name: str) -> str:
     base = os.path.basename(name).rsplit(".", 1)[0].casefold()
-    return re.sub(r"[^a-z0-9]+", "", base)
+    return re.sub(r"[\W_]+", "", base)
 
 
 def frozen_index() -> dict[str, dict[str, list[str]]]:

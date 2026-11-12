@@ -10,15 +10,15 @@ usage: python -m training.factory.coverage [side ...]    Writes FACTORY/out/cove
 from __future__ import annotations
 
 import json
-import re
 import sys
 from collections import Counter
 
 from training.factory.paths import OUT
 
 
-def _has_words(name: str) -> bool:
-    return bool(re.search(r"[A-Za-z]{2,}", name)) and not name.startswith("Column ")
+def own_name(row: list) -> bool:
+    """A column record [position, name, kind, role, letter] whose name the sheet wrote: the compiler names a headerless column by its letter."""
+    return any(ch.isalpha() for ch in row[1]) and row[1] != row[4]
 
 
 def measure(side: str) -> dict:
@@ -30,7 +30,8 @@ def measure(side: str) -> dict:
             labels = tab["labels"]
             for table, rows in tab["columns"].items():
                 axis_labelled = any(key.startswith(f"{table}.a") and value["coordinates"] for key, value in labels.items())
-                for position, name, kind, role in rows:
+                for row in rows:
+                    position, name, kind, role = row[:4]
                     if role == "spacer":
                         continue
                     columns["all"] += 1
@@ -38,7 +39,7 @@ def measure(side: str) -> dict:
                     label = labels.get(f"{table}.{position}")
                     coordinates = (label or {}).get("coordinates") or []
                     has_meaning = bool(coordinates) or (role == "peer" and axis_labelled)
-                    has_words = _has_words(name)
+                    has_words = own_name(row)
                     columns["labelled_by_gemini"] += label is not None or (role == "peer" and axis_labelled)
                     columns["meaning"] += has_meaning
                     columns["own_words"] += has_words

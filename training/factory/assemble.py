@@ -15,6 +15,7 @@ from collections import Counter, defaultdict
 from training.factory.agree import agrees
 from training.factory.factory import final_tab, load_tabs, read_journal, safe_name, stage_dir, tab_key
 from training.factory.noise import messy
+from training.factory.overlap import common_words
 from training.factory.paths import OUT, pin
 from training.factory.prompts import PROMPT_VERSION
 from training.factory.split import mailbox
@@ -23,7 +24,7 @@ from training.factory.vocabulary import PACK
 THRESHOLD = 6                  # a label's 1-9 at or above this counts as named
 PACK_NAMES = frozenset(name for _, name, _ in PACK)
 SHORT_WORDS = 6
-_REF_TOKEN = re.compile(r"[a-z0-9]+")
+_REF_TOKEN = re.compile(r"[^\W_]+")
 ROLE_OF = {"measure": "measure", "key": "key", "shown": "key", "peers": "key", "filter": "filter", "value": "filter", "contains": "filter", "line": "filter", "section": "filter", "period": "filter", "number": "filter", "blank": "filter", "table": "context"}
 
 
@@ -86,7 +87,7 @@ def band_or_line(program: str, word: str) -> str | None:
     return match[1].replace('""', '"') if match else None
 
 
-def link_records(q: dict, tab: dict, columns: dict, labels: dict) -> list[dict]:
+def link_records(q: dict, tab: dict, columns: dict, labels: dict, common: frozenset[str]) -> list[dict]:
     """Parse the author's links against the question and program. A link whose words are not in the question, or whose reference names nothing the program reads, is dropped and counted."""
     program, default = q["program"], _first_table(q["program"])
     slots = defaultdict(set)
@@ -149,12 +150,12 @@ def link_records(q: dict, tab: dict, columns: dict, labels: dict) -> list[dict]:
             target = record.get("target") or record.get("column") or ""
             record["own_words"] = rule_reaches(words, target) if target else False
             out.append(record)
-    out.extend(_rule_links(q, tokens, out, columns, labels, default, slots))
+    out.extend(_rule_links(q, tokens, out, columns, labels, default, slots, common))
     return out
 
 
-def _rule_links(q: dict, tokens: list[str], have: list[dict], columns: dict, labels: dict, default: str, slots: dict) -> list[dict]:
-    """Links no model wrote: a word of a condition's value or of a used column's header standing in the question, where the author left it unlinked. By rule, so marked."""
+def _rule_links(q: dict, tokens: list[str], have: list[dict], columns: dict, labels: dict, default: str, slots: dict, common: frozenset[str]) -> list[dict]:
+    """Links no model wrote: a word of a condition's value or of a used column's header standing in the question, where the author left it unlinked, other than the side's common words (overlap.common_words). By rule, so marked."""
     covered = {at for link in have for at in link["span"]}
     out = []
     for used in q.get("used") or ():
@@ -167,7 +168,7 @@ def _rule_links(q: dict, tokens: list[str], have: list[dict], columns: dict, lab
         for kind, target, coordinates in (("value", value, label.get("value_coordinates")), ("column", column[1], label.get("coordinates"))):
             if not target:
                 continue
-            wanted = set(words_in(target)) - {"the", "of", "and", "a", "to", "in", "for"}
+            wanted = set(words_in(target)) - common
             span = [at for at, token in enumerate(tokens) if token in wanted and at not in covered]
             if not span:
                 continue
@@ -191,7 +192,7 @@ def agreement_kind(q: dict, answer: object) -> str:
     return "exact"
 
 
-def assemble_tab(tab: dict, route: dict, schema: set[str], record: dict, side: str, source: str, teacher: str, commit: str, counts: Counter) -> tuple[list[dict], dict]:
+def assemble_tab(tab: dict, route: dict, schema: set[str], record: dict, side: str, source: str, teacher: str, commit: str, counts: Counter, common: frozenset[str]) -> tuple[list[dict], dict]:
     """(rows, labels) of one tab."""
     labels = {}
     for label in tab["labels"]:
@@ -208,7 +209,7 @@ def assemble_tab(tab: dict, route: dict, schema: set[str], record: dict, side: s
         result = route["results"].get(str(at))
         ask = route["asks"].get(str(at))
         qid = f"{tab['book']}.{safe_name(tab['tab'])[:6]}.{q['slot']}"
-        links = link_records(q, tab, columns, labels)
+        links = link_records(q, tab, columns, labels, common)
         typed, change = messy(qid, q["question"])
         row = dict(base, id=qid, question=typed, written=q["question"], first_written=q.get("first_written"), noise=change, form=q["form"], program=q["program"], used=q.get("used"), coordinates=q["coordinates"], answer_type=q["answer_type"], answer=q["rows"], links=links,
                    words=len(words_in(typed)), short=len(words_in(typed)) <= SHORT_WORDS, no_header_word=not q["overlap"], subject_only=is_subject_only(q, links), header_words=q["header_words"], route_program=route["programs"].get(str(at)))
@@ -300,6 +301,11 @@ def shares(rows: list[dict]) -> dict:
             "forms": dict(forms), "program_parts": dict(words), "gold_families": len(families), "families_ge8": len(big), "share_of_big_families_within": {"short_60_75": within(lambda m: 0.6 <= sum(r["short"] for r in m) / len(m) <= 0.75), "no_header_ge50": within(lambda m: sum(r["no_header_word"] for r in m) / len(m) >= 0.5), "subject_ge15": within(lambda m: sum(r["subject_only"] for r in m) / len(m) >= 0.15), "noise_10_20": within(lambda m: 0.1 <= sum(1 for r in m if r["noise"]) / len(m) <= 0.2)}}
 
 
+def _questions(path: str) -> list[str]:
+    with open(path, encoding="utf-8") as handle:
+        return [q["question"] for q in json.load(handle)["questions"] if q.get("question")]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--side", required=True)
@@ -315,7 +321,9 @@ def main() -> None:
     counts: Counter = Counter()
     rows, labels = [], []
     route_dir = stage_dir(side, "route")
-    for path in sorted(glob.glob(stage_dir(side, "cand") + "*.json")):
+    paths = sorted(glob.glob(stage_dir(side, "cand") + "*.json"))
+    common = common_words(question for path in paths for question in _questions(path))
+    for path in paths:
         name = os.path.basename(path)
         with open(path, encoding="utf-8") as handle:
             tab = final_tab(json.load(handle), rewrites)
@@ -325,7 +333,7 @@ def main() -> None:
             continue
         with open(route_dir + name, encoding="utf-8") as handle:
             route = json.load(handle)
-        tab_rows, tab_labels = assemble_tab(tab, route, schema, records[tab["key"]], side, source, teacher, commit[:7], counts)
+        tab_rows, tab_labels = assemble_tab(tab, route, schema, records[tab["key"]], side, source, teacher, commit[:7], counts, common)
         rows.extend(tab_rows)
         labels.append(tab_labels)
         counts["tabs"] += 1

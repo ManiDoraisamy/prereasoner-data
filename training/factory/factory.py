@@ -29,7 +29,6 @@ from concurrent.futures import ProcessPoolExecutor
 from training.factory.paths import JOURNAL, MODELS, STAGED, TABS, pin
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-STOP_WORDS = frozenset("a an and at by for from in is it of on or per the to with total no num number name".split())
 MIN_NO_OVERLAP = 0.55
 MAX_ROWS_KEPT = 50
 
@@ -152,17 +151,17 @@ def used_columns(program) -> list:
     return out
 
 
-def header_words(program, catalog) -> set[str]:
-    """The words of the headers of the columns a program uses: a "Column F" names nothing; a peer rank's headers count too."""
+def header_words(program, catalog, common: frozenset[str]) -> set[str]:
+    """The words of the headers of the columns a program uses, less the side's common words (overlap.common_words): a column no header names has no words; a peer rank's headers count too."""
     from engine.program.index import words_of
     from engine.program.language import Calc, Rank, SECTION
     words: set[str] = set()
     for column in used_columns(program):
         if column.position == SECTION:
             continue
-        name = catalog.table(column.table).columns[column.position].name
-        if not name.startswith("Column "):
-            words.update(words_of(name))
+        named = catalog.table(column.table).columns[column.position]
+        if named.path:
+            words.update(words_of(named.name))
     programs = [program]
     while programs:
         current = programs.pop()
@@ -172,7 +171,7 @@ def header_words(program, catalog) -> set[str]:
             table = catalog.table(current.table)
             for position in current.peers:
                 words.update(words_of(table.columns[position].name))
-    return {word for word in words if len(word) >= 2 and word not in STOP_WORDS and not word.isdigit()}
+    return {word for word in words if len(word) >= 2 and word not in common and not word.isdigit()}
 
 
 def overlap_words(question: str, words: set[str]) -> list[str]:
@@ -186,13 +185,10 @@ def _plain_cell(cell):
     return str(cell)
 
 
-_NAMES_POSITION = re.compile(r"(?:col(?:umn)?|row)\.? ?(?:[A-Za-z]{1,2}|\d+)|cell [A-Z]{1,2}\d+")
-
-
 def execute_tab(job: tuple) -> dict:
     """One workbook's tabs: bind and run each program. Returns counts; writes a file per tab."""
     pin()
-    book, items, side = job
+    book, items, side, common = job
     from engine.program.catalog import Catalog
     from engine.program.execute import run
     from engine.program.language import answer_type_of, coordinates, form_of
@@ -213,9 +209,6 @@ def execute_tab(job: tuple) -> dict:
             counts["written"] += 1
             if not q["question"] or not q["program"]:
                 counts["drop_blank"] += 1
-                continue
-            if _NAMES_POSITION.search(q["question"]):
-                counts["drop_names_a_position"] += 1
                 continue
             try:
                 program = bind(q["program"], catalog, allowed)
@@ -241,7 +234,7 @@ def execute_tab(job: tuple) -> dict:
             if "row_dump" in evidence and form_of(program) != "show":
                 counts["drop_row_dump"] += 1
                 continue
-            words = header_words(program, catalog)
+            words = header_words(program, catalog, common)
             used = [{"table": column.table, "position": column.position, "letter": "band" if column.position < 0 else catalog.table(column.table).columns[column.position].letter, "name": "band" if column.position < 0 else catalog.table(column.table).columns[column.position].name} for column in dict.fromkeys(used_columns(program))]
             kept.append({**q, "form": form_of(program), "used": used, "listing": getattr(program, "listing", False), "repr": repr(program), "coordinates": list(coordinates(program, catalog.column_kind)), "answer_type": answer_type_of(program, catalog.column_kind),
                          "rows": [[_plain_cell(cell) for cell in row] for row in rows], "header_words": sorted(words), "overlap": overlap_words(q["question"], words)})
@@ -257,7 +250,9 @@ def execute_tab(job: tuple) -> dict:
 
 
 def execute(side: str, workers: int) -> dict:
+    from training.factory.overlap import common_words
     journal = read_journal(f"author_{side}")
+    common = common_words(q["question"] for entry in journal.values() for q in parse_author(entry["reply"])["questions"] if q["question"])
     folder = stage_dir(side, "cand")
     by_book: dict[str, list] = defaultdict(list)
     for record in load_tabs(side):
@@ -273,7 +268,7 @@ def execute(side: str, workers: int) -> dict:
     for first in range(0, len(books), 100):
         # A fresh pool per chunk gives memory back; max_tasks_per_child stops replacing workers on this Python.
         with ProcessPoolExecutor(workers) as pool:
-            futures = [pool.submit(execute_tab, (book, items, side)) for book, items in books[first:first + 100]]
+            futures = [pool.submit(execute_tab, (book, items, side, common)) for book, items in books[first:first + 100]]
             for future in futures:
                 try:
                     totals.update(future.result())

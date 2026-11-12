@@ -19,7 +19,7 @@ from concurrent.futures import ProcessPoolExecutor
 from training.factory.paths import FILES, MODELS, NEVER, OUT, pin
 from training.factory.prepare import book_id
 
-WORD = re.compile(r"[A-Za-z]{2,}")
+WORD = re.compile(r"[^\W\d_]{2,}")
 CALL = re.compile(r"^=?\s*([A-Z][A-Z0-9.]*)\((.*)\)\s*$", re.S)
 RANGE = re.compile(r"^(?:(?:'((?:[^']|'')+)'|([A-Za-z0-9_. ]+))!)?\$?([A-Z]{1,3})\$?(\d+)(?::\$?([A-Z]{1,3})\$?(\d+))?$")
 PLAIN = {"SUM": "sum", "AVERAGE": "avg", "MAX": "max", "MIN": "min", "COUNT": "count", "VLOOKUP": "lookup", "SUMIF": "sumif", "COUNTIF": "countif"}
