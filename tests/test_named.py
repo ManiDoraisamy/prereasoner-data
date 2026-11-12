@@ -34,7 +34,7 @@ from training.named.choose import MARGINS, CandidateRecord, calibrate, choose_po
 from training.named.data import TabExample, check_held_out, read_examples, split_families, write_shard
 from training.named.evaluate import GATE_A, Item, gate_a, graded, record_of, run_mode, run_survival
 from training.named.fake import MEANINGS, HashBackbone, fake_catalog, fake_examples, fake_name_set, fake_rows
-from training.named.lease import bundle_mb, ensure_same_tables, ensure_size_aware, plan_candidate, pod_code, remote_command
+from training.named.lease import bundle_mb, dataclass_fields, ensure_same_tables, ensure_size_aware, plan_candidate, pod_code, remote_command
 from training.named.train import TrainConfig, build_batch, read_descriptions, train
 
 HERE = Path(__file__).resolve().parent
@@ -775,6 +775,10 @@ def test_lease_plan_is_size_aware() -> None:
     assert 0 < small.dollars_low < small.dollars_high and small.dollars_low < large.dollars_low
     assert plan_candidate("bge-small", 10, 10, steps=500).steps == 500
     ensure_same_tables("HEAD")
+    pickled = 'class Cell:\n    """one cell"""\n    raw: str\n    kind: str\n'
+    assert dataclass_fields(pickled) == dataclass_fields(pickled.replace("one cell", "a cell")), "a docstring is nothing a pickle holds"
+    assert dataclass_fields(pickled) != dataclass_fields(pickled.replace("    kind: str\n", "")), "a field is"
+    assert "engine/data/schema_org_v30.json" in pod_code(), "the meaning tier's contract travels with the pod"
     command = remote_command("bge-small", 500, 3)
     assert "training.named.train" in command and "--seed 3" in command and "--steps 500" in command and "exit 4" in command
 

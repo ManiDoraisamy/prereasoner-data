@@ -29,7 +29,7 @@ DOLLARS_PER_HOUR = (0.60, 0.80)
 QUESTIONS_PER_STEP = 8
 # Whole packages the pod imports, globbed at staging, and the single modules besides them.
 POD_PACKAGES = ("engine/named", "engine/sheet", "engine/program", "training/named")
-POD_FILES = ("engine/__init__.py", "engine/encoder_model.py", "engine/fk_edges.py", "engine/numeric.py", "engine/data/sheet_line_model.json", "engine/data/named_coordinates.json", "training/__init__.py", "training/factory/__init__.py", "training/factory/noise.py", "training/factory/paths.py", "training/readers/__init__.py", "training/tools/__init__.py")
+POD_FILES = ("engine/__init__.py", "engine/encoder_model.py", "engine/fk_edges.py", "engine/numeric.py", "engine/data/sheet_line_model.json", "engine/data/named_coordinates.json", "engine/data/schema_org_v30.json", "training/__init__.py", "training/factory/__init__.py", "training/factory/noise.py", "training/factory/paths.py", "training/readers/__init__.py", "training/tools/__init__.py")
 
 
 @dataclass(frozen=True)
@@ -86,11 +86,22 @@ def ensure_size_aware() -> None:
         raise SystemExit(f"refused: training/tools/runpod_api.py lacks the size-aware transfers ({', '.join(missing)}): merge them from C:/work/prereasoner-phase0 before any paid lease")
 
 
+PICKLED = ("engine/sheet/model.py", "engine/sheet/values.py")
+
+
+def dataclass_fields(source: str) -> dict[str, tuple[str, ...]]:
+    """Each class of a module with its annotated fields in order: what a pickle of it carries."""
+    import ast
+    return {node.name: tuple(item.target.id for item in node.body if isinstance(item, ast.AnnAssign) and isinstance(item.target, ast.Name)) for node in ast.parse(source).body if isinstance(node, ast.ClassDef)}
+
+
 def ensure_same_tables(commit: str, root: Path = ROOT) -> None:
-    """Examples are pickled tables of the factory's pinned commit and the pod runs this checkout: refuse if the classes they pickle differ."""
-    changed = subprocess.run(["git", "-C", str(root), "diff", "--name-only", commit, "HEAD", "--", "engine/sheet/model.py", "engine/sheet/values.py"], capture_output=True, text=True, check=True).stdout.strip()
-    if changed:
-        raise SystemExit(f"refused: the examples' table classes changed since {commit[:7]}: {changed}. Export again, or stage the pinned commit's engine/sheet.")
+    """Examples are pickled tables of the factory's pinned commit and the pod runs this checkout: refuse if a class they pickle has other fields. A changed function or docstring beside them changes nothing a pickle holds."""
+    for path in PICKLED:
+        then = subprocess.run(["git", "-C", str(root), "show", f"{commit}:{path}"], capture_output=True, text=True, encoding="utf-8", check=True).stdout
+        now = (root / path).read_text(encoding="utf-8")
+        if dataclass_fields(then) != dataclass_fields(now):
+            raise SystemExit(f"refused: the classes the examples pickle changed in {path} since {commit[:7]}. Export again, or stage the pinned commit's engine/sheet.")
 
 
 def pod_code(root: Path = ROOT) -> list[str]:

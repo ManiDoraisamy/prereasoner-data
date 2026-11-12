@@ -22,6 +22,7 @@ _RARE = math.log(0.01 / 0.99)    # a coordinate is rare: its output starts where
 LINK_KINDS = ("column", "value", "line", "band", "table")
 MEANING_SCALE = 20.0              # the meaning tier's starting sharpness: a softmax over cosines at temperature 0.05, the zero-shot reading that ranked best
 NONE_LEVEL = 0.8                  # the cosine at which none of the properties starts as likely as one of them
+MEANING_FLOOR = 0.01              # served, a property's share under this says nothing: an index and a question keep only what is over it
 
 
 @dataclass(frozen=True)
@@ -102,6 +103,12 @@ class NamedReader(nn.Module):
         """[units, coordinates] in the name set's order: the structure tier's own probabilities, then each property's share (none's share left out)."""
         meaning = torch.softmax(self.meaning_logits(hidden, base), dim=-1)[..., :-1]
         return torch.cat([torch.sigmoid(self.structure(hidden)), meaning], dim=-1)
+
+    def served_probabilities(self, hidden: torch.Tensor, base: torch.Tensor) -> torch.Tensor:
+        """What an index and a question read keep: coordinate_probabilities with each property's share under MEANING_FLOOR at zero. Training reads them whole."""
+        read = self.coordinate_probabilities(hidden, base)
+        meaning = read[..., self.structure_count:]
+        return torch.cat([read[..., :self.structure_count], torch.where(meaning >= MEANING_FLOOR, meaning, torch.zeros_like(meaning))], dim=-1)
 
     def coordinate_weights(self) -> torch.Tensor:
         return nn.functional.softplus(self.raw_coordinate_weights)
