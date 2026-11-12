@@ -1,0 +1,412 @@
+{
+ "added": "2026-11-12",
+ "approved_by": "owner, 2026-11-12 evening ('Go with your recommendations': the rule and the properties that pass it; additions on next-engine until integration)",
+ "rule": "at least 25 train columns at confidence 6+ in at least 10 families; at least 10 held-out (factory val) columns; two-pass agreement at least 0.9 on the held-out tabs; a direct property of a schema.org class that fewer than 5 basis properties can describe; generic catch-alls value and comment left out before the paid half",
+ "audit": "training/readers/data/experiments/basis-audit-20261112 (contract, local/report.py, result/basis_audit.json): Gemini's catalogue-wide column labels of the factory's 8,429 tabs and of the teacher pools' WikiTableQuestions-train and DataBench-train tables; a second independent multi-label pass over the 574 held-out tabs",
+ "note": "engine/data/alloc.json on main still lists the 90 dimensions of the promoted model, which carries its own allocation inside its checkpoint; these entries (dim_id 90 on) have no slot in that model and reach main only at integration",
+ "properties": [
+  {
+   "property": "price",
+   "dim_id": 90,
+   "train_columns": 4810,
+   "by_source": {
+    "train": 4662,
+    "pub_eia": 139,
+    "wtq_train": 3,
+    "databench_train": 6
+   },
+   "families": 532,
+   "held_out_columns": 593,
+   "two_pass_agreement": [
+    580,
+    591
+   ],
+   "classes_needing_it": [
+    "PriceSpecification"
+   ]
+  },
+  {
+   "property": "identifier",
+   "dim_id": 91,
+   "train_columns": 2662,
+   "by_source": {
+    "train": 2553,
+    "pub_eia": 6,
+    "pub_sec": 1,
+    "wtq_train": 83,
+    "databench_train": 19
+   },
+   "families": 690,
+   "held_out_columns": 216,
+   "two_pass_agreement": [
+    213,
+    214
+   ],
+   "classes_needing_it": [
+    "Thing"
+   ]
+  },
+  {
+   "property": "startDate",
+   "dim_id": 92,
+   "train_columns": 1117,
+   "by_source": {
+    "train": 770,
+    "wtq_train": 344,
+    "databench_train": 3
+   },
+   "families": 657,
+   "held_out_columns": 85,
+   "two_pass_agreement": [
+    79,
+    83
+   ],
+   "classes_needing_it": [
+    "DatedMoneySpecification",
+    "MerchantReturnPolicySeasonalOverride",
+    "Role"
+   ]
+  },
+  {
+   "property": "description",
+   "dim_id": 93,
+   "train_columns": 933,
+   "by_source": {
+    "train": 728,
+    "pub_eia": 2,
+    "wtq_train": 194,
+    "databench_train": 9
+   },
+   "families": 511,
+   "held_out_columns": 78,
+   "two_pass_agreement": [
+    71,
+    78
+   ],
+   "classes_needing_it": [
+    "Thing"
+   ]
+  },
+  {
+   "property": "observationDate",
+   "dim_id": 94,
+   "train_columns": 544,
+   "by_source": {
+    "train": 543,
+    "databench_train": 1
+   },
+   "families": 197,
+   "held_out_columns": 62,
+   "two_pass_agreement": [
+    62,
+    62
+   ],
+   "classes_needing_it": [
+    "Observation"
+   ]
+  },
+  {
+   "property": "orderQuantity",
+   "dim_id": 95,
+   "train_columns": 443,
+   "by_source": {
+    "train": 442,
+    "databench_train": 1
+   },
+   "families": 121,
+   "held_out_columns": 54,
+   "two_pass_agreement": [
+    54,
+    54
+   ],
+   "classes_needing_it": [
+    "OrderItem"
+   ]
+  },
+  {
+   "property": "customer",
+   "dim_id": 96,
+   "train_columns": 426,
+   "by_source": {
+    "train": 426
+   },
+   "families": 168,
+   "held_out_columns": 74,
+   "two_pass_agreement": [
+    68,
+    74
+   ],
+   "classes_needing_it": [
+    "Order"
+   ]
+  },
+  {
+   "property": "orderDate",
+   "dim_id": 97,
+   "train_columns": 352,
+   "by_source": {
+    "train": 350,
+    "databench_train": 2
+   },
+   "families": 134,
+   "held_out_columns": 24,
+   "two_pass_agreement": [
+    24,
+    24
+   ],
+   "classes_needing_it": [
+    "Order"
+   ]
+  },
+  {
+   "property": "endDate",
+   "dim_id": 98,
+   "train_columns": 271,
+   "by_source": {
+    "train": 218,
+    "pub_sec": 6,
+    "wtq_train": 47
+   },
+   "families": 154,
+   "held_out_columns": 29,
+   "two_pass_agreement": [
+    28,
+    28
+   ],
+   "classes_needing_it": [
+    "DatedMoneySpecification",
+    "MerchantReturnPolicySeasonalOverride",
+    "Role"
+   ]
+  },
+  {
+   "property": "seller",
+   "dim_id": 99,
+   "train_columns": 222,
+   "by_source": {
+    "train": 220,
+    "wtq_train": 1,
+    "databench_train": 1
+   },
+   "families": 98,
+   "held_out_columns": 13,
+   "two_pass_agreement": [
+    12,
+    13
+   ],
+   "classes_needing_it": [
+    "Order"
+   ]
+  },
+  {
+   "property": "duration",
+   "dim_id": 100,
+   "train_columns": 212,
+   "by_source": {
+    "train": 124,
+    "wtq_train": 85,
+    "databench_train": 3
+   },
+   "families": 132,
+   "held_out_columns": 17,
+   "two_pass_agreement": [
+    17,
+    17
+   ],
+   "classes_needing_it": [
+    "QuantitativeValueDistribution",
+    "ServicePeriod"
+   ]
+  }
+ ],
+ "considered_and_left_out": [
+  {
+   "property": "value",
+   "train_columns": 2348,
+   "held_out_columns": 43,
+   "two_pass_agreement": [
+    1,
+    42
+   ],
+   "failed": [
+    "agreement",
+    "not_generic"
+   ]
+  },
+  {
+   "property": "temporalCoverage",
+   "train_columns": 1183,
+   "held_out_columns": 98,
+   "two_pass_agreement": [
+    52,
+    98
+   ],
+   "failed": [
+    "agreement",
+    "class_need"
+   ]
+  },
+  {
+   "property": "comment",
+   "train_columns": 481,
+   "held_out_columns": 59,
+   "two_pass_agreement": [
+    1,
+    59
+   ],
+   "failed": [
+    "agreement",
+    "class_need",
+    "not_generic"
+   ]
+  },
+  {
+   "property": "legalName",
+   "train_columns": 469,
+   "held_out_columns": 54,
+   "two_pass_agreement": [
+    53,
+    54
+   ],
+   "failed": [
+    "class_need"
+   ]
+  },
+  {
+   "property": "amount",
+   "train_columns": 442,
+   "held_out_columns": 77,
+   "two_pass_agreement": [
+    63,
+    77
+   ],
+   "failed": [
+    "agreement"
+   ]
+  },
+  {
+   "property": "employee",
+   "train_columns": 398,
+   "held_out_columns": 60,
+   "two_pass_agreement": [
+    59,
+    59
+   ],
+   "failed": [
+    "class_need"
+   ]
+  },
+  {
+   "property": "validFrom",
+   "train_columns": 329,
+   "held_out_columns": 52,
+   "two_pass_agreement": [
+    36,
+    52
+   ],
+   "failed": [
+    "agreement"
+   ]
+  },
+  {
+   "property": "athlete",
+   "train_columns": 275,
+   "held_out_columns": 13,
+   "two_pass_agreement": [
+    0,
+    13
+   ],
+   "failed": [
+    "agreement",
+    "class_need"
+   ]
+  },
+  {
+   "property": "validThrough",
+   "train_columns": 235,
+   "held_out_columns": 42,
+   "two_pass_agreement": [
+    27,
+    42
+   ],
+   "failed": [
+    "agreement"
+   ]
+  },
+  {
+   "property": "participant",
+   "train_columns": 179,
+   "held_out_columns": 16,
+   "two_pass_agreement": [
+    12,
+    16
+   ],
+   "failed": [
+    "agreement",
+    "class_need"
+   ]
+  },
+  {
+   "property": "department",
+   "train_columns": 174,
+   "held_out_columns": 15,
+   "two_pass_agreement": [
+    12,
+    14
+   ],
+   "failed": [
+    "agreement",
+    "class_need"
+   ]
+  },
+  {
+   "property": "paymentDueDate",
+   "train_columns": 70,
+   "held_out_columns": 15,
+   "two_pass_agreement": [
+    11,
+    15
+   ],
+   "failed": [
+    "agreement"
+   ]
+  },
+  {
+   "property": "areaServed",
+   "train_columns": 60,
+   "held_out_columns": 12,
+   "two_pass_agreement": [
+    5,
+    12
+   ],
+   "failed": [
+    "agreement"
+   ]
+  },
+  {
+   "property": "dateModified",
+   "train_columns": 51,
+   "held_out_columns": 17,
+   "two_pass_agreement": [
+    0,
+    17
+   ],
+   "failed": [
+    "agreement",
+    "class_need"
+   ]
+  },
+  {
+   "property": "currency",
+   "train_columns": 72,
+   "held_out_columns": 12,
+   "two_pass_agreement": [
+    11,
+    12
+   ],
+   "failed": [
+    "passes the rule, but the allocation already has a dimension of this name in family struct (dim_id 8): the owner's call"
+   ]
+  }
+ ]
+}

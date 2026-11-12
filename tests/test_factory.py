@@ -188,7 +188,7 @@ def test_named_coordinates() -> None:
     schema = schema_names()
     assert named("schema:weight", schema) == "schema:weight"
     assert named("weight", schema) == "schema:weight"
-    assert named("schema:price", schema) is None, "a catalogue property outside the basis names nothing"
+    assert named("schema:translationOfWork", schema) is None, "a catalogue property outside the basis names nothing"
     assert named("schema:nosuch", schema) is None and named("biz:counterparty", schema) is None and named("counterparty", schema) is None and named("none", schema) is None, "no trade's vocabulary: schema.org's names only"
 
 
@@ -232,7 +232,9 @@ def test_name_set_is_whole() -> None:
     assert set(document["tiers"]) == {"structure", "meaning"}, "two tiers and nothing else"
     meaning = document["tiers"]["meaning"]
     assert document["schema_version"] == 3 and set(meaning) == {"basis", "properties", "classes", "fine_classes"}
-    assert meaning["basis"]["source"] == "engine/data/alloc.json" and meaning["basis"]["count"] == len(meaning["properties"]) == 71, "the selected basis, never the catalogue"
+    with open(os.path.join(os.path.dirname(NAME_SET_PATH), "alloc.json"), encoding="utf-8") as source:
+        selected = sum(row["family"] == "taxonomy" for row in json.load(source)["dims"])
+    assert meaning["basis"]["source"] == "engine/data/alloc.json" and meaning["basis"]["count"] == len(meaning["properties"]) == selected < 200, "the selected basis, never the catalogue"
     assert all(row["name"].startswith("schema:") and row["text"] for row in meaning["properties"])
     basis = {row["name"] for row in meaning["properties"]}
     assert all(item["property"] in basis for row in meaning["classes"] for item in row["signature"]), "classes are superpositions over the basis"

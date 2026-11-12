@@ -1,5 +1,5 @@
 {
- "n_content": 90,
+ "n_content": 101,
  "dims": [
   {
    "name": "is_str",
@@ -450,6 +450,61 @@
    "name": "intent_limit",
    "family": "intent",
    "dim_id": 89
+  },
+  {
+   "name": "price",
+   "family": "taxonomy",
+   "dim_id": 90
+  },
+  {
+   "name": "identifier",
+   "family": "taxonomy",
+   "dim_id": 91
+  },
+  {
+   "name": "startDate",
+   "family": "taxonomy",
+   "dim_id": 92
+  },
+  {
+   "name": "description",
+   "family": "taxonomy",
+   "dim_id": 93
+  },
+  {
+   "name": "observationDate",
+   "family": "taxonomy",
+   "dim_id": 94
+  },
+  {
+   "name": "orderQuantity",
+   "family": "taxonomy",
+   "dim_id": 95
+  },
+  {
+   "name": "customer",
+   "family": "taxonomy",
+   "dim_id": 96
+  },
+  {
+   "name": "orderDate",
+   "family": "taxonomy",
+   "dim_id": 97
+  },
+  {
+   "name": "endDate",
+   "family": "taxonomy",
+   "dim_id": 98
+  },
+  {
+   "name": "seller",
+   "family": "taxonomy",
+   "dim_id": 99
+  },
+  {
+   "name": "duration",
+   "family": "taxonomy",
+   "dim_id": 100
   }
  ],
  "warm_from_alloc": {

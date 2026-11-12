@@ -518,7 +518,7 @@
 },
 "provenance": "training/props/",
 "schema_org": "30.0",
-"count": 71,
+"count": 82,
 "prefix": "schema:"
 },
 "properties": [
@@ -947,6 +947,72 @@
 "uri": "https://schema.org/width",
 "text": "width: The width of the item.",
 "fine": null
+},
+{
+"name": "schema:price",
+"uri": "https://schema.org/price",
+"text": "price: The offer price of a product, or of a price component when attached to PriceSpecification and its subtypes.\\n\\nUsage guidelines:\\n\\n* Use the priceCurrency property (with standard formats: [ISO 4217 currency format](http://en.wikipedia.org/wiki/ISO_4217), e.g. \"USD\"; [Ticker symbol](https://en.wikipedia.org/wiki/List_of_cryptocurrencies) for cryptocurrencies, e.g. \"BTC\"; well known names for [Local Exchange Trading Systems](https://en.wikipedia.org/wiki/Local_exchange_trading_system) (LETS) and other currency types, e.g. \"Ithaca HOUR\") instead of including [ambiguous symbols](http://en.wikipedia.org/wiki/Dollar_sign#Currencies_that_use_the_dollar_or_peso_sign) such as '$' in the value.\\n* Use '.' (Unicode 'FULL STOP' (U+002E)) rather than ',' to indicate a decimal point. Avoid using these symbols as a readability separator.\\n* Note that both [RDFa](http://www.w3.org/TR/xhtml-rdfa-primer/#using-the-content-attribute) and Microdata syntax allow the use of a \"content=\" attribute for publishing simple machine-readable values alongside more human-friendly formatting.\\n* Use values from 0123456789 (Unicode 'DIGIT ZERO' (U+0030) to 'DIGIT NINE' (U+0039)) rather than superficially similar Unicode symbols.",
+"fine": null
+},
+{
+"name": "schema:identifier",
+"uri": "https://schema.org/identifier",
+"text": "identifier: The identifier property represents any kind of identifier for any kind of Thing, such as ISBNs, GTIN codes, UUIDs etc. Schema.org provides dedicated properties for representing many of these, either as textual strings or as URL (URI) links. See [background notes](/docs/datamodel.html#identifierBg) for more details.",
+"fine": null
+},
+{
+"name": "schema:startDate",
+"uri": "https://schema.org/startDate",
+"text": "start date: The start date and time of the item (in [ISO 8601 date format](http://en.wikipedia.org/wiki/ISO_8601)).",
+"fine": null
+},
+{
+"name": "schema:description",
+"uri": "https://schema.org/description",
+"text": "description: A description of the item.",
+"fine": null
+},
+{
+"name": "schema:observationDate",
+"uri": "https://schema.org/observationDate",
+"text": "observation date: The observationDate of an Observation.",
+"fine": null
+},
+{
+"name": "schema:orderQuantity",
+"uri": "https://schema.org/orderQuantity",
+"text": "order quantity: The number of the item ordered. If the property is not set, assume the quantity is one.",
+"fine": null
+},
+{
+"name": "schema:customer",
+"uri": "https://schema.org/customer",
+"text": "customer: Party placing the order or paying the invoice.",
+"fine": null
+},
+{
+"name": "schema:orderDate",
+"uri": "https://schema.org/orderDate",
+"text": "order date: Date order was placed.",
+"fine": null
+},
+{
+"name": "schema:endDate",
+"uri": "https://schema.org/endDate",
+"text": "end date: The end date and time of the item (in [ISO 8601 date format](http://en.wikipedia.org/wiki/ISO_8601)).",
+"fine": null
+},
+{
+"name": "schema:seller",
+"uri": "https://schema.org/seller",
+"text": "seller: An entity which offers (sells / leases / lends / loans) the services / goods. A seller may also be a provider.",
+"fine": null
+},
+{
+"name": "schema:duration",
+"uri": "https://schema.org/duration",
+"text": "duration: The duration of the item (movie, audio recording, event, etc.) in [ISO 8601 duration format](http://en.wikipedia.org/wiki/ISO_8601).",
+"fine": null
 }
 ],
 "classes": [
@@ -974,6 +1040,16 @@
 "signature": [
 {
 "property": "schema:connectedTo",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:Audiobook",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:duration",
 "weight": 4.0
 }
 ]
@@ -1028,6 +1104,16 @@
 "signature": [
 {
 "property": "schema:numberOfEmployees",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:BuyAction",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:seller",
 "weight": 4.0
 }
 ]
@@ -1195,11 +1281,19 @@
 "weight": 4.0
 },
 {
+"property": "schema:endDate",
+"weight": 4.0
+},
+{
 "property": "schema:partOfSeries",
 "weight": 4.0
 },
 {
 "property": "schema:productionCompany",
+"weight": 4.0
+},
+{
+"property": "schema:startDate",
 "weight": 4.0
 }
 ]
@@ -1209,7 +1303,15 @@
 "bias": -4.0,
 "signature": [
 {
+"property": "schema:endDate",
+"weight": 4.0
+},
+{
 "property": "schema:issn",
+"weight": 4.0
+},
+{
+"property": "schema:startDate",
 "weight": 4.0
 }
 ]
@@ -1230,6 +1332,20 @@
 "signature": [
 {
 "property": "schema:issn",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:DatedMoneySpecification",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:endDate",
+"weight": 4.0
+},
+{
+"property": "schema:startDate",
 "weight": 4.0
 }
 ]
@@ -1275,6 +1391,20 @@
 {
 "property": "schema:asin",
 "weight": 4.0
+},
+{
+"property": "schema:seller",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:DonateAction",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:price",
+"weight": 4.0
 }
 ]
 },
@@ -1283,7 +1413,15 @@
 "bias": -4.0,
 "signature": [
 {
+"property": "schema:endDate",
+"weight": 4.0
+},
+{
 "property": "schema:provider",
+"weight": 4.0
+},
+{
+"property": "schema:startDate",
 "weight": 4.0
 }
 ]
@@ -1298,6 +1436,10 @@
 },
 {
 "property": "schema:director",
+"weight": 4.0
+},
+{
+"property": "schema:duration",
 "weight": 4.0
 },
 {
@@ -1331,11 +1473,23 @@
 "weight": 4.0
 },
 {
+"property": "schema:duration",
+"weight": 4.0
+},
+{
+"property": "schema:endDate",
+"weight": 4.0
+},
+{
 "property": "schema:inLanguage",
 "weight": 4.0
 },
 {
 "property": "schema:location",
+"weight": 4.0
+},
+{
+"property": "schema:startDate",
 "weight": 4.0
 }
 ]
@@ -1360,6 +1514,16 @@
 },
 {
 "property": "schema:publisher",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:Flight",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:seller",
 "weight": 4.0
 }
 ]
@@ -1439,6 +1603,10 @@
 "bias": -4.0,
 "signature": [
 {
+"property": "schema:customer",
+"weight": 4.0
+},
+{
 "property": "schema:provider",
 "weight": 4.0
 }
@@ -1469,6 +1637,10 @@
 "bias": -4.0,
 "signature": [
 {
+"property": "schema:duration",
+"weight": 4.0
+},
+{
 "property": "schema:height",
 "weight": 4.0
 },
@@ -1491,6 +1663,20 @@
 ]
 },
 {
+"name": "class:MerchantReturnPolicySeasonalOverride",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:endDate",
+"weight": 4.0
+},
+{
+"property": "schema:startDate",
+"weight": 4.0
+}
+]
+},
+{
 "name": "class:Movie",
 "bias": -4.0,
 "signature": [
@@ -1504,6 +1690,10 @@
 },
 {
 "property": "schema:director",
+"weight": 4.0
+},
+{
+"property": "schema:duration",
 "weight": 4.0
 },
 {
@@ -1567,6 +1757,30 @@
 {
 "property": "schema:byArtist",
 "weight": 4.0
+},
+{
+"property": "schema:duration",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:MusicRelease",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:duration",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:Observation",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:observationDate",
+"weight": 4.0
 }
 ]
 },
@@ -1580,6 +1794,14 @@
 },
 {
 "property": "schema:asin",
+"weight": 4.0
+},
+{
+"property": "schema:price",
+"weight": 4.0
+},
+{
+"property": "schema:seller",
 "weight": 4.0
 }
 ]
@@ -1598,6 +1820,34 @@
 },
 {
 "property": "schema:width",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:Order",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:customer",
+"weight": 4.0
+},
+{
+"property": "schema:orderDate",
+"weight": 4.0
+},
+{
+"property": "schema:seller",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:OrderItem",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:orderQuantity",
 "weight": 4.0
 }
 ]
@@ -1799,6 +2049,16 @@
 ]
 },
 {
+"name": "class:PriceSpecification",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:price",
+"weight": 4.0
+}
+]
+},
+{
 "name": "class:Product",
 "bias": -4.0,
 "signature": [
@@ -1855,6 +2115,16 @@
 ]
 },
 {
+"name": "class:QuantitativeValueDistribution",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:duration",
+"weight": 4.0
+}
+]
+},
+{
 "name": "class:RadioSeries",
 "bias": -4.0,
 "signature": [
@@ -1893,9 +2163,35 @@
 ]
 },
 {
+"name": "class:Role",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:endDate",
+"weight": 4.0
+},
+{
+"property": "schema:startDate",
+"weight": 4.0
+}
+]
+},
+{
 "name": "class:Schedule",
 "bias": -4.0,
 "signature": [
+{
+"property": "schema:duration",
+"weight": 4.0
+},
+{
+"property": "schema:endDate",
+"weight": 4.0
+},
+{
+"property": "schema:startDate",
+"weight": 4.0
+},
 {
 "property": "schema:startTime",
 "weight": 4.0
@@ -1924,6 +2220,16 @@
 },
 {
 "property": "schema:provider",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:ServicePeriod",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:duration",
 "weight": 4.0
 }
 ]
@@ -2045,6 +2351,14 @@
 "weight": 4.0
 },
 {
+"property": "schema:description",
+"weight": 4.0
+},
+{
+"property": "schema:identifier",
+"weight": 4.0
+},
+{
 "property": "schema:image",
 "weight": 4.0
 },
@@ -2054,6 +2368,16 @@
 },
 {
 "property": "schema:name",
+"weight": 4.0
+}
+]
+},
+{
+"name": "class:TradeAction",
+"bias": -4.0,
+"signature": [
+{
+"property": "schema:price",
 "weight": 4.0
 }
 ]
