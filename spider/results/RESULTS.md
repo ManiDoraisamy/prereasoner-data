@@ -5,6 +5,81 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
+## Steps 0b-3: the anchored meanings fail the gate on labels that disagree with its truth; the decoder had no stop on its condition search (2026-11-13)
+
+- The plan's steps 0b (the lookup design on the 83-property basis), 1-3 (the anchoring run: self-anchors, Gemini's
+  column labels, corpus profiles; links untrained) and the per-dimension gate, on next-engine. Both bundles are bge-small,
+  39,285 steps, seed 0, the same 7,857 factory tabs (examples_v5); 0b on the throwaway worktree at `5c08f5a`, the
+  anchoring run at `37be918`. Measured with `distill-probe-20261112/local/step_named_eval.sh` (mode named: the unnamed
+  channel only proposes) from a worktree pinned at `17d8a64`; dev sets measured, never mined. Machine shared with up
+  to three other engine processes, so the latencies are upper bounds.
+
+**A decoder defect found by the measure.** The 0b run stalled two hours on one fresh-dev question. The search for k
+conditions that sit together on a data line (`engine/program/decoder.py:_Conditions`) had no stop of its own:
+`max_pops` bounds the outer k-best, but a slot searched on until a set occurred. Conditions that share only a printed
+total line keep a line at every prefix and never complete; that question's slot pushed 143 million nodes over 1,536
+conditions. Now one budget of checks per question (`Policy.condition_checks`, 2,000,000, next-engine `17d8a64`) bounds
+every slot; when it is spent the slot finds no further set, at the same check on every run. The value is read from
+training-split questions only (`decoder-checks-20261112/local/probe_checks.py`): WikiTableQuestions train, 561
+questions, median 0, p99 50,371, max 823,618 checks (0.62 s); DataBench train, 169 questions, max 21,054; none near
+the stop, about 1.5 s of checks here. The 0b sets measured before the fix (studied, messy, wtq) list the same counts
+after it (84, 53, 174 right answers listed). Regression test `test_a_condition_search_stops_at_its_budget_of_checks`. A hardening, not an accuracy gain.
+
+| Dev set (CLEF path right) | 0b listed | anchoring listed | 0b first right (of n) | anchoring first right (of n) |
+|---|---|---|---|---|
+| Studied (77 of 186) | 50 (64.9%) | 47 (61.0%) | 37 | 35 |
+| Messy dev (74 of 120) | 41 (55.4%) | 34 (45.9%) | 19 | 19 |
+| WikiTableQuestions dev (144 of 300) | 103 (71.5%) | 111 (77.1%) | 44 | 74 |
+| DataBench dev (212 of 300) | 100 (47.2%) | 101 (47.6%) | 62 | 55 |
+| Fresh dev twin (76 of 176) | 36 (47.4%) | 39 (51.3%) | 24 | 26 |
+| **All (583 of 1,082)** | **330 (56.6%)** | **332 (56.9%)** | **186 (17.2%)** | **209 (19.3%)** |
+
+Listed is the right answer anywhere in the list, as a share of the questions the CLEF path answers right; named alone
+(through named terms and exact text, no proposal from the unnamed channel) is 328 (56.3%) for 0b and 308 (52.8%) for
+the anchoring bundle. The catalogue readers were 56.9% (1,521 properties) and 55.4% (the field student's catalogue)
+alone, so the selected basis loses nothing in 0b. p50 / p90 per question (4 threads): 0.06-0.20 s / 0.07-1.08 s on
+every set but DataBench, where the p90 is 17.6 s (0b) and 22.6 s (anchoring), almost all in reading its largest tables.
+
+**The gate fails, and the first cause is the gate's own truth.** Every property needs held-out precision 0.95 on at
+least 25 positives as a column and as a word to enter a link. As written, a threshold was set on the run's held-out
+train families under the factory's first-pass labels and judged on the val side under the second pass's multi-label
+truth. Nothing qualified (columns 4 pass: price, identifier, customer, endDate; words 0;
+`gate_first_pass_calibration.json`). The two truths disagree (`gate-diagnosis-20261113/local/diagnose_gate.py`): at
+one reading, 0.5, price as a column is 0.73 precise on calibration and 0.99 on the held-out side, identifier 0.67 and
+0.96, orderQuantity 0.43 and 1.0; 226 of 254 column false positives and 375 of 431 word false positives at calibration
+were columns the first pass called none. On the val side, where both passes exist, the second pass agrees with the
+first pass's basis label on 2,063 of 2,213 columns (93%), but gives a basis property to 1,053 of the 5,630 columns the
+first pass called none (19%) and to 708 of the 1,345 it gave a property outside the basis or was unsure of. The gate
+now sets and judges each threshold on one truth: the val families in two folds, each judged at the threshold the other
+sets (next-engine `e58e12d`, test `test_the_gate_judges_each_fold_at_the_threshold_the_other_folds_set`; the bar is
+unchanged). Result on the anchoring bundle: columns 3 pass of 14 judged (startDate 0.953, observationDate 0.955,
+endDate 0.983), words 1 of 14 (price 0.951); price as a column 0.899, identifier 0.933 and 0.934, customer 0.943;
+**qualified for links: none**. Profiles of the corpus's tables pass 33 of 50 judged; a table's class read back from its
+profile comes first for 1,017 of 2,400 held-out tables (42%). A second threshold rule (stop at the first reading where
+precision falls under 0.95) was previewed on random folds and qualifies nothing either, so it was not adopted.
+
+**What is left is the training labels.** The same 19% of first-pass "none" columns, and the outside-basis ones, were
+trained as off for every property. The plan allows one retry; its contract named the anchor weights doubled, but the
+failure is classified as label disagreement, which heavier anchoring would fit harder. The retry instead trains the
+meaning tier on the gate's truth where it exists and stops teaching the doubtful negatives: `named_anchor_second_s0`,
+examples_v6 (`second-pass-meaning-20261113/local/meaning_examples.py`): 596 training tabs carry the second pass's
+labels (the one-tab-per-family pass bought in 0a: 2,977 columns with basis properties, 2,193 none, 2,331 unknown);
+the other 7,261 keep the first pass's basis properties as positives (13,012 columns) and its none, outside-basis and
+unsure labels become unknown (87,503 columns). The closed heads read the labels as before (next-engine `53af9b8`,
+`label["meaning"]`, test `test_a_labels_own_meaning_trains_the_meaning_tier_and_leaves_the_closed_heads_alone`).
+If it fails too, the meaning route stops here: a second pass over every training tab would need about 1.3M output
+tokens, and the factory's hard budget has about 0.74M left (9.16M of 10.2M spent), which is the owner's call.
+
+**Step 4 runs meanwhile on the anchoring bundle**, with no property in a link: the link is the structure tier plus
+exact-text evidence. 4a (`named_links_s0`, gold links) and 4b with CLEF's picks on all, half and a quarter of the pick
+workbooks (`named_picks_s0`, `named_picks50_s0`, `named_picks25_s0`, the learning curve). Their first launches paid
+for three pods that died copying the starting bundle: scp does not make the folder a file lands in; fixed in
+next-engine `2f9b521` (test `test_a_file_upload_makes_its_folder_on_the_pod_first`). The forms branch
+(`next-engine-forms`) has the decoder stop merged (`157a507`).
+
+Spend this entry: GPU about $2 (0b about $1, anchoring $0.80 on an RTX 3090, three failed pods a few cents), Gemini
+none. No push, no deploy, no promotion.
+
 ## The basis audit: the 71 properties cover 3% of sheet columns; 12 are added by a rule (83); a third of gold links point at columns schema.org has no property for (2026-11-12)
 
 - The owner's correction of the evening: the reader's meaning dimensions are the selected basis of
