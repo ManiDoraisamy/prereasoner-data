@@ -5,6 +5,52 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
+## Step E and the pick learning curve: bge-m3 fails its gate (+12 listed of 583, WTQ p90 3.7x) while putting 38 more right answers first; past a quarter of CLEF's picks, more picks do not move the reader (2026-11-13)
+
+- The plan's step E (bge-m3 head to head) and step 4's learning curve, both measured with the step-2 measure
+  (`distill-probe-20261112/local/step_named_eval.sh`, mode named, no chooser) on the five dev sets from next-engine
+  `9cdaaa9` (serving equal to `7a4d9e0`, the only engine change since step 4 is bge-m3's backbone entry). Dev sets
+  measured, never mined.
+
+**Step E.** One stage of 15,000 steps on each backbone, the same recipe (self-anchors, Gemini's column labels, the
+schema.org corpus, gold links, CLEF's recorded picks, the unnamed channel detached; contracts `named_m3_one_s0`,
+`named_small_one_s0`). Latency measured with each bundle alone (2 processes, 4 threads); DataBench's large tables are
+outside the latency gate.
+
+| One stage, 15,000 steps | right listed (of 583) | listed by named terms alone | first right (of 1,082) | p90 studied / messy / WTQ / fresh dev (s) | memory on load |
+|---|---|---|---|---|---|
+| bge-small (33M) | 364 | 286 | 207 | 0.311 / 0.455 / 0.073 / 0.600 | 0.43 GB |
+| bge-m3 (568M) | 376 (+12) | 319 (+33) | 245 (+38) | 0.468 / 0.684 / 0.272 / 0.696 | 2.55 GB |
+
+The contract's gate (written before either run): at least 18 more listed and p90 under 3x bge-small's on every set
+but DataBench. bge-m3 lists 12 more and its WTQ p90 is 3.7x (p50 3.5x), so **E stops at this stage and bge-small
+stays**. The gain sits in the first place instead: 89 questions gain a right first answer and 51 lose one (z about
+3.2), and one bge-m3 stage puts a right answer first as often as the two-stage bge-small bundle of step 4b (245 against
+244; 76 wins, 75 losses). That is recorded, not acted on: the gate is not moved after the measure. GPU: about $2.60 of
+E's $10 (bge-m3 2.65 h including the 2.27 GB backbone upload, bge-small 1.1 h, both at $0.69/h).
+
+**The learning curve.** Step 4b again at 50% and 25% of CLEF's picks (the training workbooks halved and quartered, the
+same 144 held), from the same start (`named_anchor_s0`) and code (`2f9b521`):
+
+| CLEF's picks | right listed (of 583) | named alone | first right (of 1,082) | studied / messy / WTQ / fresh dev / DataBench first right |
+|---|---|---|---|---|
+| 0% (4a, gold links only) | 327 | 320 | 178 | 36 / 16 / 51 / 20 / 55 |
+| 25% | 356 | 308 | 230 | 29 / 20 / 72 / 21 / 88 |
+| 50% | 351 | 312 | 225 | 28 / 17 / 75 / 17 / 88 |
+| 100% (4b) | 357 | 309 | 244 | 24 / 25 / 82 / 25 / 88 |
+
+Picks matter (178 to 225-244), but from a quarter of them on the reader stays where it is: 25% to 100% moves first
+right by 67 wins against 53 losses and listed by one. The 25% bundle is its run's best of 9 of 10 evals (step 31,424 of
+39,285): the lease ran out and its training state did not come back from a host that resets long transfers
+(60.249.37.148), and a full rerun would have passed the owner's $20 GPU ceiling for steps 0a-4 (spent about $18.80).
+**Reading for step D:** more CLEF picks of the same kind (a CLEF pod at $4/h, about 1,350 questions an hour) are not
+supported by the curve; D stops here. Its other part, gold-checked questions on new public sheets, needs the owner's go
+for Gemini.
+
+**Where this leaves the bar.** The best dev reading is 244-245 first right of 1,082 (22.6%), with a right answer
+listed at all for 496 (4b) to 514 (bge-m3) of 1,082; the launch bar is 80% right. Neither more picks nor the larger backbone's listing gain
+closes that: what limits is what the reader lists.
+
 ## Step C: the named chooser adds 16 right picks on dev (244 to 260 of 1,082) once two fit defects are fixed; at its wrong bound it answers 120 right and 140 wrong (2026-11-13)
 
 - The plan's step C on the step-4 bundle (`named_picks_s0`, mode named): the named additive chooser
