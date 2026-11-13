@@ -923,7 +923,7 @@ def train(examples: list[TabExample], names: NameSet, backbone: nn.Module, confi
     started = time.time()
     begin = cursor_at = 0
     if config.resume:
-        held_state = torch.load(config.resume, map_location=device, weights_only=False)
+        held_state = torch.load(config.resume, map_location=device, weights_only=True)
         backbone.load_state_dict(held_state["backbone"])
         reader.load_state_dict(held_state["reader"])
         optimizer.load_state_dict(held_state["optimizer"])

@@ -442,6 +442,10 @@ RECOVERY_SECONDS = 30 * 60      # what a failed command's partial artifacts may 
 # What a download leaves of the lease (half of what remains, when that is less) to pull the files another way: a pod kept
 # with the deadline at hand goes to its watchdog with them.
 PULL_RESERVE_SECONDS = 30 * 60
+# What the remote command leaves of the lease (half of what remains, when that is less) to bring back what it made so far:
+# a command that ran to the lease's end left no time for recovery, and two named-reader runs on slow cards came back
+# without their training log (2026-11-13).
+COMMAND_RESERVE_SECONDS = 10 * 60
 
 
 def _within(remaining, seconds: float):
@@ -451,7 +455,7 @@ def _within(remaining, seconds: float):
     def left() -> float:
         allowed = min(remaining(), end - time.monotonic())
         if allowed <= 0:
-            raise TimeoutError("the time set for this transfer is over")
+            raise TimeoutError("the time set for this step is over")
         return allowed
     return left
 
@@ -517,7 +521,8 @@ def run_lease(max_minutes: int, command: list[str], keep: bool = False,
                 raise FileNotFoundError(f"upload source does not exist: {source}")
             _upload(ssh, scp, ip, source, remote, remaining)
         if command:
-            _run_detached(ssh, command, remaining)
+            seconds = remaining()
+            _run_detached(ssh, command, _within(remaining, seconds - min(COMMAND_RESERVE_SECONDS, seconds / 2)))
         finished = True
         if downloads:
             seconds = remaining()

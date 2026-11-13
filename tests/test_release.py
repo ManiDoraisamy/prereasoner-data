@@ -687,6 +687,48 @@ def test_runpod_failed_command_downloads_before_termination():
     assert events == ["download", "terminate"], events
 
 
+def test_runpod_command_that_runs_out_leaves_time_to_recover_its_artifacts():
+    # 2026-11-13: two named-reader runs on slow cards trained to the lease's end; recovery then found the lease expired
+    # and brought nothing back, not even the training log. The command now stops with a reserve of the lease left.
+    from training.tools import runpod_api
+
+    clock = [1000.0]
+    events = []
+
+    def run_detached(ssh, command, remaining):      # the poll loop: a minute at a time until its time is over
+        while True:
+            clock[0] += 60
+            remaining()
+
+    def run(command, **kwargs):
+        if command[-1].startswith("find "):
+            return subprocess.CompletedProcess(command, 0, stdout="train.log\t1\n")
+        return subprocess.CompletedProcess(command, 0, stdout="")
+
+    def transfer(command, remaining, attempts=3, size=0):
+        remaining()
+        Path(command[-1]).write_text("x")
+        events.append("download")
+
+    with tempfile.TemporaryDirectory() as directory, \
+            patch.object(runpod_api.time, "monotonic", side_effect=lambda: clock[0]), \
+            patch.object(runpod_api, "reconcile"), \
+            patch.object(runpod_api, "create", return_value="pod-slow"), \
+            patch.object(runpod_api, "poll", return_value=("127.0.0.1", 22)), \
+            patch.object(runpod_api, "_run_detached", side_effect=run_detached), \
+            patch.object(runpod_api.subprocess, "run", side_effect=run), \
+            patch.object(runpod_api, "_run_transfer", side_effect=transfer), \
+            patch.object(runpod_api, "terminate", side_effect=lambda *args: events.append("terminate")):
+        try:
+            runpod_api.run_lease(30, ["train"], downloads=(("/workspace/out", str(Path(directory) / "out")),))
+        except TimeoutError:
+            pass
+        else:
+            raise AssertionError("a command past its time was not stopped")
+    assert events == ["download", "terminate"], events
+    assert clock[0] - 1000.0 <= 20 * 60, "the command ran into the reserve"
+
+
 def test_runpod_resume_requires_ownership_and_never_creates_a_pod():
     import time
 
@@ -1204,16 +1246,18 @@ def test_runpod_transfers_are_inside_the_owned_lease():
             uploads=((str(source), "/workspace/input.jsonl"),),
             downloads=(("/workspace/output", str(Path(directory) / "output")),),
         )
-        assert run.call_count == 6
-        assert "input.jsonl" in run.call_args_list[0].args[0][-2]
+        assert run.call_count == 7
+        # A file upload makes its folder first (scp does not), then copies the file.
+        assert run.call_args_list[0].args[0][-1] == "mkdir -p -- /workspace"
+        assert "input.jsonl" in run.call_args_list[1].args[0][-2]
         # The command runs detached from the session, and its exit status and output are read back.
-        assert "train_property_head" in run.call_args_list[1].args[0][-1]
-        assert "nohup setsid" in run.call_args_list[1].args[0][-1]
-        assert run.call_args_list[2].args[0][-1].startswith(f"cat {runpod_api.EXIT_FILE}")
-        assert run.call_args_list[3].args[0][-1] == f"cat {runpod_api.OUTPUT_FILE}"
+        assert "train_property_head" in run.call_args_list[2].args[0][-1]
+        assert "nohup setsid" in run.call_args_list[2].args[0][-1]
+        assert run.call_args_list[3].args[0][-1].startswith(f"cat {runpod_api.EXIT_FILE}")
+        assert run.call_args_list[4].args[0][-1] == f"cat {runpod_api.OUTPUT_FILE}"
         # The pod's files and sizes, then each one onto its own path, before termination (_download).
-        assert run.call_args_list[4].args[0][-1].startswith("find /workspace/output -type f")
-        assert "/workspace/output/result.json" in run.call_args_list[5].args[0][-2]
+        assert run.call_args_list[5].args[0][-1].startswith("find /workspace/output -type f")
+        assert "/workspace/output/result.json" in run.call_args_list[6].args[0][-2]
         assert events[-1] == ("DELETE", "/pods/pod-3")
         assert not runpod_api.STATE.exists()
         try:
@@ -1834,6 +1878,7 @@ TESTS = [
     test_runpod_transfers_are_inside_the_owned_lease,
     test_runpod_price_cap_terminates_before_any_work,
     test_runpod_failed_command_downloads_before_termination,
+    test_runpod_command_that_runs_out_leaves_time_to_recover_its_artifacts,
     test_runpod_downloads_match_the_pods_files_before_termination,
     test_a_download_that_stops_after_the_command_succeeded_keeps_the_pod,
     test_a_kept_pod_is_finished_by_a_resumed_lease_with_no_command,
