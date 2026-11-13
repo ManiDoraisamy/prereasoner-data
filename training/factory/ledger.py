@@ -5,7 +5,7 @@ import glob
 import json
 import os
 
-HARD_OUTPUT = 10_200_000       # 8M through the factory; +2.2M for the schema.org labels of every column (schema_labels.py, 2026-11-12)
+HARD_OUTPUT = 11_700_000       # 8M through the factory; +2.2M for the schema.org labels of every column (schema_labels.py, 2026-11-12); +1.5M for the second pass over every training tab (the owner's go, 2026-11-13)
 HARD_INPUT = 120_000_000
 STOP_SHARE = 0.97
 
