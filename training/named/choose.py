@@ -1,10 +1,10 @@
-"""The chooser's fit, on families the reader never trained on: run the engine with the prior chooser, keep every candidate's named evidence and whether its answer is right (enron_grade), fit a multinomial logistic model among each question's candidates on one part of those families, calibrate the chosen candidate per form on another, set each form's answer threshold and the margin there. The decoder's slot weights are fit the same way on what each candidate's coordinates sum to per slot.
+"""The chooser's fit, on families the reader never trained on: run the engine with the prior chooser, keep every candidate's named evidence and whether its answer is right (enron_grade), fit a multinomial logistic model among each question's candidates on one part of those families, calibrate the chosen candidate per form on another, set each form's answer threshold and the margin there. The decoder's slot weights stay the bundle's unless --slot-weights asks: then they are fit the same way on what each candidate's coordinates sum to per slot, and the records are collected again under them before the chooser is fit, because they steer the decoder's pool and every link and decoder feature the chooser reads (fit from the same records, they cost a served step-4 chooser 72 right answers listed and 56 picks on 2,581 held training questions, 2026-11-13).
 
 numpy Newton steps, a fixed count of them, no random draw: the same records give the same bytes. Candidates only: the result goes into a bundle under the experiment's folder.
 
 The chooser's weights come from cross-folds of the train families the reader never saw (fold_report says how they hold up out of fold). Calibration, thresholds and margin come from validation folds (cross_fit): a validation question is decided by the fit of the folds it is not in, so Gate A never reads a threshold set on its own answer.
 
-usage: python -m training.named.choose --bundle <dir> --side train,pub_eia,pub_sec --families <out>/held_families.json --seed 0 --out <new bundle dir> [--limit N]
+usage: python -m training.named.choose --bundle <dir> --side train,pub_eia,pub_sec --families <out>/held_families.json --seed 0 --out <new bundle dir> [--limit N] [--slot-weights]
 """
 from __future__ import annotations
 
@@ -166,7 +166,11 @@ def fit_conditional(groups: Sequence[tuple[np.ndarray, np.ndarray]], columns: in
 
 
 def fold_report(rows: Sequence["CandidateRecord"], folds: int = FOLDS, names: Sequence[str] = FEATURES) -> dict:
-    """Weights over names fit on all folds but one, read out of fold on the one left: top-1 right per question, against the prior order. What the chooser's weights are worth on families neither saw."""
+    """Weights over names fit on all folds but one, read out of fold on the one left: top-1 right per question, against the prior order. What the chooser's weights are worth on families neither saw.
+
+    The prior order is the order the records were collected in (engine.score's, what is served), not the decoder's rank:
+    against the rank a step-4 chooser read 1,579 against 1,111 of 5,170 out of fold, against the served order 806 against
+    687 of the 2,581 held questions it was then run on (2026-11-13)."""
     right = base = questions = 0
     for fold in range(folds):
         kept = [row for row in rows if fold_of(row.family, folds) != fold]
@@ -181,7 +185,7 @@ def fold_report(rows: Sequence["CandidateRecord"], folds: int = FOLDS, names: Se
             _, best, _ = decision_of(group, chooser)
             ran = [row for row in group if row.ran]
             right += bool(best is not None and best.right)
-            base += bool(ran and min(ran, key=lambda row: row.rank).right)
+            base += bool(ran and ran[0].right)
             questions += 1
     return {"questions": questions, "top1_right_chooser": right, "top1_right_decoder_order": base}
 
@@ -202,6 +206,17 @@ def collect(items: list, engine: NamedEngine, *, k: int = 50, progress: bool = F
             print(f"collected {at + 1} of {len(items)}", flush=True)
     runner.close()
     return out
+
+
+def chooser_records(items: list, engine: NamedEngine, seed: int, *, refit_slots: bool, collect=collect) -> list[CandidateRecord]:
+    """The records the chooser is fit on, under the slot weights the bundle will serve. With refit_slots the decoder's slot
+    weights are fit first (on the fit side of the families) and set on the engine, and the records are collected again under
+    them: the slot weights steer the decoder's pool and every link and decoder feature the chooser reads."""
+    records = collect(items, engine, progress=True)
+    if not refit_slots:
+        return records
+    engine.slot_weights = fit_slot_weights([record for record in records if family_share(record.family, seed + 1) >= 0.5])
+    return collect(items, engine, progress=True)
 
 
 def fit_logistic(matrix: np.ndarray, labels: np.ndarray, *, l2: float = L2, steps: int = NEWTON_STEPS) -> tuple[np.ndarray, float]:
@@ -373,7 +388,7 @@ def main() -> None:
     parser.add_argument("--out", required=True, help="a new bundle folder under the experiment: the reader's weights copied, this fit beside them")
     parser.add_argument("--records", help="where to keep the candidates' records, to fit again without reading")
     parser.add_argument("--biases", type=int, default=0, help="how many questions set each kind's bias first")
-    parser.add_argument("--no-slot-weights", action="store_true", help="the decoder's slots stay at weight 1")
+    parser.add_argument("--slot-weights", action="store_true", help="fit the decoder's slot weights first, then collect the records again under them for the chooser")
     args = parser.parse_args()
     from training.named.evaluate import load_factory_set
     families = json.loads(Path(args.families).read_text(encoding="utf-8"))
@@ -385,7 +400,7 @@ def main() -> None:
         for row in sorted(table, key=lambda item: -item["top5"])[:12]:
             print(json.dumps(row, sort_keys=True), flush=True)
         engine.weights = replace(engine.weights, slot_biases={**engine.weights.slot_biases, **chosen})
-    records = collect(items, engine, progress=True)
+    records = chooser_records(items, engine, args.seed, refit_slots=args.slot_weights)
     if args.records:
         with gzip.open(args.records, "wb") as sink:
             pickle.dump(records, sink, protocol=4)
@@ -393,7 +408,7 @@ def main() -> None:
     fit = [record for record in records if family_share(record.family, args.seed + 1) >= 0.5]
     held = [record for record in records if family_share(record.family, args.seed + 1) < 0.5]
     chooser = fit_chooser(fit, held)
-    slot_weights = engine.slot_weights if args.no_slot_weights else fit_slot_weights(fit)
+    slot_weights = engine.slot_weights
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(Path(args.bundle) / BUNDLE_STATE, out / BUNDLE_STATE)
@@ -404,7 +419,7 @@ def main() -> None:
     print(json.dumps({"questions": len({record.question for record in records}), "candidates": len(records), "right": sum(record.right for record in records), "fit_families": len({record.family for record in fit}), "held_families": len({record.family for record in held}), "calibration": dict(chooser.calibration), "thresholds": dict(chooser.thresholds)}, sort_keys=True), flush=True)
 
 
-__all__ = ["CandidateRecord", "answer_key", "calibrate", "calibrated", "choose_policy", "choose_thresholds", "collect", "cross_fit", "decision_of", "fit_chooser", "fit_biases", "fit_conditional", "fit_logistic", "groups_of", "fit_slot_weights", "fold_of", "fold_report", "records_of"]
+__all__ = ["CandidateRecord", "answer_key", "calibrate", "calibrated", "choose_policy", "choose_thresholds", "collect", "cross_fit", "decision_of", "fit_chooser", "fit_biases", "fit_conditional", "fit_logistic", "groups_of", "fit_slot_weights", "fold_of", "fold_report", "chooser_records", "records_of"]
 
 if __name__ == "__main__":
     main()

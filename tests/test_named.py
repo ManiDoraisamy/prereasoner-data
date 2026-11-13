@@ -521,6 +521,34 @@ def test_chooser_fit_keeps_families_apart() -> None:
     assert all(value >= 0 for value in fit_slot_weights(fit).by_slot.values())
 
 
+def test_the_chooser_is_judged_against_the_served_order_and_fit_under_the_slot_weights_it_serves() -> None:
+    """2026-11-13: fold_report took the decoder's rank for the prior order (a step-4 chooser read 1,579 against 1,111 of
+    5,170, but 806 against 687 on the served path), and the chooser was fit on records collected under slot weights the
+    same fit then replaced (72 right answers listed and 56 picks lost on 2,581 held training questions)."""
+    from training.named.choose import chooser_records, fold_report
+    # the served order lists the right answer first; the decoder ranked it second
+    rows = []
+    for at in range(40):
+        family = f"f{at}"
+        rows.append(CandidateRecord(f"q{at}", family, "agg", {"words_explained": 1.0}, {"measure": 1.0}, True, 2, "x"))
+        rows.append(CandidateRecord(f"q{at}", family, "agg", {"words_explained": 0.2}, {"measure": 0.1}, False, 1, "y"))
+    report = fold_report(rows)
+    assert report["questions"] == 40 and report["top1_right_decoder_order"] == 40, report
+
+    class Engine:
+        slot_weights = "the bundle's"
+    seen = []
+
+    def collect(items, engine, progress=False):
+        seen.append(engine.slot_weights)
+        return rows
+    engine = Engine()
+    assert chooser_records([], engine, 0, refit_slots=False, collect=collect) is rows and seen == ["the bundle's"]
+    seen.clear()
+    chooser_records([], engine, 0, refit_slots=True, collect=collect)
+    assert len(seen) == 2 and seen[0] == "the bundle's" and seen[1] is engine.slot_weights and seen[1] != "the bundle's", "the chooser's records come under the slot weights it will serve"
+
+
 # ---------------------------------------------------------------------------------- augmentation, held-out data
 def test_survival_ops_keep_gold_answers() -> None:
     catalog = fake_catalog(0, lines=16)
