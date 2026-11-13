@@ -107,6 +107,24 @@ def _phrases(words: list[str], common: frozenset[str]) -> list[tuple[str, ...]]:
     return out
 
 
+def _is_word_character(character: str) -> bool:
+    """What a regular expression's \\w matches in a str: a letter or digit of any script, or the underscore."""
+    return character.isalnum() or character == "_"
+
+
+def stands_whole(text: str, held: str) -> bool:
+    """held stands in text as a whole: at some place where no word character touches it on either side. The same answer
+    as searching (?<!\\w)held(?!\\w), without building and compiling a pattern for each of a table's values: on a table of
+    20,776 lines that took 47 of a question's 54 seconds (31,314 patterns past the regular expressions' cache)."""
+    at = text.find(held)
+    while at != -1:
+        end = at + len(held)
+        if (at == 0 or not _is_word_character(text[at - 1])) and (end == len(text) or not _is_word_character(text[end])):
+            return True
+        at = text.find(held, at + 1)
+    return False
+
+
 def _covered(text: str, question_words: set[str]) -> float:
     """How much of a label the question's words cover: a whole word counts 1, a label word a question word begins (Transco, Transcontinental) counts half."""
     words = words_of(text)
@@ -170,7 +188,7 @@ def _table_words(table_id: str, index: TableIndex, question_words: set[str], raw
             seen.add((position, folded))
     for position, folded in seen:
         text = words_of(folded)
-        whole = re.search(rf"(?<!\w){re.escape(folded)}(?!\w)", low) is not None
+        whole = stands_whole(low, folded)
         telling = [word for word in text if word not in common_values]
         if not whole and not any(word in question_words for word in telling):
             continue

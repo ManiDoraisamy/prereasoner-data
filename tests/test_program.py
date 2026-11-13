@@ -19,7 +19,7 @@ from engine.program.scoring import Reading, Weights, score_program
 from engine.program.semantics import (SEMANTIC_COUNTS, cell_day, exact_wins, fold, share_forms, stated_number)
 from engine.program.store import RequestTables
 from engine.program.verifier import LINES_READ, MIN_RUN, adds_across_members, is_exact, significant_digits, verify, verify_one
-from engine.program.words import read_question
+from engine.program.words import read_question, stands_whole
 from engine.sheet import compile_workbook, workbook_from_json
 from engine.sql_ast import (Abs, Aggregate, ASTValidationError, BinaryExpr, BlankAsZero, ColumnRef, OrderTerm, SelectItem, SelectQuery, SQLType, render_query)
 
@@ -1299,6 +1299,37 @@ def test_verifier_stops_at_its_budget_of_lines():
     assert MIN_RUN <= len(done) < 40 and sum(len(table.lines) for _ in done) <= max(LINES_READ, MIN_RUN * len(table.lines))
 
 
+def test_a_value_stands_whole_without_a_pattern_for_each_value():
+    """Whether a table's value stands whole in the question is the answer (?<!\\w)value(?!\\w) gives, read without building a
+    pattern per value: a DataBench table of 20,776 lines took 54 seconds to read a question, 47 of them compiling 31,314
+    patterns past the regular expressions' cache."""
+    import re
+    cases = [("the price of tea", "tea"), ("the price of team", "tea"), ("tea_time", "tea"), ("über tea", "über"), ("x über", "ber"), ("a-b c", "a-b"),
+             ("2020 sales", "20"), ("sales 2020", "2020"), ("café crème", "café"), ("teatea tea", "tea"), ("", "a"), ("a", ""), ("东京 tokyo", "东京"), ("ab", "b"), ("(a) b", "(a)")]
+    for text, held in cases:
+        assert stands_whole(text, held) == (re.search(rf"(?<!\w){re.escape(held)}(?!\w)", text) is not None), (text, held)
+    catalog, _, _ = _setup([["Name", "Note"]] + [[f"n{at}", f"room {at} by the park"] for at in range(3000)])
+    decoder = Decoder(catalog)
+    compiled = []
+    held = re._compile
+    re._compile = lambda *args, **kwargs: (compiled.append(args[0]), held(*args, **kwargs))[1]
+    try:
+        reading = read_question("which room by the park is cheapest", catalog, decoder)
+    finally:
+        re._compile = held
+    assert len(compiled) < 50, len(compiled)
+    import engine.program.words as words
+    asked = ("which room by the park is cheapest", "what is noted for room 12 by the park")
+    now = [read_question(question, catalog, decoder).scores for question in asked]
+    kept = words.stands_whole
+    words.stands_whole = lambda text, value: re.search(rf"(?<!\w){re.escape(value)}(?!\w)", text) is not None
+    try:
+        assert [read_question(question, catalog, decoder).scores for question in asked] == now
+    finally:
+        words.stands_whole = kept
+    assert now[0] == reading.scores and any(name.startswith("value:") for name in now[1]), "a whole value reads as a value"
+
+
 def test_a_condition_search_stops_at_its_budget_of_checks():
     """Conditions that share only a printed total line never sit together on a data line: every prefix of them keeps a line and none
     completes, so the search for a set that occurs would try their combinations without end (a dev question's decode ran two hours).
@@ -1411,7 +1442,7 @@ def test_explain_carries_the_named_contributions():
 
 
 TESTS = [
-    test_several_shown_columns_cost_a_named_coordinate, test_a_stated_number_a_column_holds_reads_as_its_value, test_a_misspelled_word_reads_as_the_sheets_word, test_a_word_only_one_column_holds_says_which, test_several_columns_shown_type_the_same_however_they_stand, test_across_adds_peer_columns_of_a_line, test_the_decoder_reaches_across_when_a_word_asks, test_a_text_other_than, test_answer_types_place_money_quantity, test_decoder_ties_do_not_follow_sheet_order, test_a_family_adding_twice_says_so, test_axes_are_read_by_their_kind, test_a_question_reads_the_tables_its_links_reach, test_verifier_stops_at_its_budget_of_lines, test_a_condition_search_stops_at_its_budget_of_checks,
+    test_several_shown_columns_cost_a_named_coordinate, test_a_stated_number_a_column_holds_reads_as_its_value, test_a_misspelled_word_reads_as_the_sheets_word, test_a_word_only_one_column_holds_says_which, test_several_columns_shown_type_the_same_however_they_stand, test_across_adds_peer_columns_of_a_line, test_the_decoder_reaches_across_when_a_word_asks, test_a_text_other_than, test_answer_types_place_money_quantity, test_decoder_ties_do_not_follow_sheet_order, test_a_family_adding_twice_says_so, test_axes_are_read_by_their_kind, test_a_question_reads_the_tables_its_links_reach, test_verifier_stops_at_its_budget_of_lines, test_a_condition_search_stops_at_its_budget_of_checks, test_a_value_stands_whole_without_a_pattern_for_each_value,
     test_every_name_is_from_a_closed_list, test_forms_refuse_what_they_cannot_say, test_signs, test_printed_lines_are_read_by_label_and_never_added, test_shortest_label_first_and_unlabelled_printed_lines, test_a_column_filled_only_on_printed_lines_reads_them,
     test_partial_value_match, test_case_and_spacing_do_not_count, test_periods, test_blanks, test_ties_keep_every_tied_line, test_units, test_mixed_columns, test_repeated_rows, test_sections_nested_bands_and_the_section_shown, test_python_masks_agree_with_the_sql,
     test_calc_shapes, test_rank_across_peer_columns, test_a_rank_keeps_as_many_as_the_question_states, test_the_decoder_proposes_how_many_a_question_states, test_a_check_says_yes_or_no, test_the_decoder_checks_only_when_the_reading_names_a_check, test_a_choice_among_named_values, test_a_check_asks_what_the_top_one_is, test_a_check_asks_whether_the_top_one_is_the_same_or_compares_two_aggregates, test_a_read_takes_the_line_after_or_before_the_kept_one, test_new_ast_nodes_render_and_validate, test_plan_schema_holds_only_what_a_query_reads, test_perfect_readings_give_the_gold_first, test_decoder_is_deterministic_and_order_free, test_the_list_does_not_depend_on_hash_order,
