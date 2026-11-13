@@ -1226,6 +1226,11 @@ def test_runpod_transfers_are_inside_the_owned_lease():
         return 204, None
 
     def fake_run(command, **kwargs):
+        # 2026-11-13: a reused address and port presented a new pod's key against the user's known_hosts and the
+        # lease lost its pod; every connection now names the pod's own host key file, which ssh writes on first contact.
+        hosts = [part for part in command if part.startswith("UserKnownHostsFile=")]
+        assert hosts == [f"UserKnownHostsFile={runpod_api.known_hosts('pod-3').as_posix()}"], command
+        runpod_api.known_hosts("pod-3").write_text("host key\n", encoding="utf-8")
         if command[0] == "scp" and "@" in command[-2]:
             Path(command[-1]).write_text("{}", encoding="utf-8")
         stdout = ("0" if command[-1].startswith(f"cat {runpod_api.EXIT_FILE}")
@@ -1260,6 +1265,7 @@ def test_runpod_transfers_are_inside_the_owned_lease():
         assert "/workspace/output/result.json" in run.call_args_list[6].args[0][-2]
         assert events[-1] == ("DELETE", "/pods/pod-3")
         assert not runpod_api.STATE.exists()
+        assert not runpod_api.known_hosts("pod-3").exists(), "the pod's host key outlived the pod"
         try:
             runpod_api._remote_path("/workspace/../root/.ssh")
         except ValueError:

@@ -448,6 +448,13 @@ PULL_RESERVE_SECONDS = 30 * 60
 COMMAND_RESERVE_SECONDS = 10 * 60
 
 
+def known_hosts(pid: str) -> Path:
+    """One pod's host key file. RunPod hands the same address and port to pod after pod, so a key the user's known_hosts
+    kept for an earlier pod refused a new one ("host key has changed", a paid pod lost, 2026-11-13): each pod's key is
+    accepted on first contact for that pod alone, and the file goes with the pod."""
+    return STATE.parent / f"known_hosts.{pid}"
+
+
 def _within(remaining, seconds: float):
     """``remaining`` that also runs out ``seconds`` from now."""
     end = time.monotonic() + seconds
@@ -504,15 +511,16 @@ def run_lease(max_minutes: int, command: list[str], keep: bool = False,
                 raise TimeoutError(f"pod {pid} lease expired")
             return seconds
 
+        hosts = f"UserKnownHostsFile={known_hosts(pid).as_posix()}"
         ssh = [
             "ssh", "-i", str(Path.home() / ".ssh" / "runpod_prereasoner"),
-            "-p", str(port), "-o", "StrictHostKeyChecking=accept-new",
+            "-p", str(port), "-o", "StrictHostKeyChecking=accept-new", "-o", hosts,
             "-o", "ServerAliveInterval=30", "-o", "ServerAliveCountMax=6", f"root@{ip}",
         ]
         # A dead connection ends an attempt here too, instead of waiting out a limit that can now be hours.
         scp = [
             "scp", "-i", str(Path.home() / ".ssh" / "runpod_prereasoner"),
-            "-P", str(port), "-o", "StrictHostKeyChecking=accept-new",
+            "-P", str(port), "-o", "StrictHostKeyChecking=accept-new", "-o", hosts,
             "-o", "ServerAliveInterval=30", "-o", "ServerAliveCountMax=6",
         ]
         for local, remote in uploads:
@@ -558,6 +566,7 @@ def run_lease(max_minutes: int, command: list[str], keep: bool = False,
         else:
             try:
                 terminate(pid)
+                known_hosts(pid).unlink(missing_ok=True)
             except Exception as cleanup_error:
                 # Preserve the training failure that triggered cleanup. The provider-side
                 # pod-local deletion watchdog remains the final cost bound if all deletes fail.
