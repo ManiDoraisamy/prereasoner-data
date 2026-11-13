@@ -4,12 +4,12 @@ Losses, each on named outputs. Every coordinate counts its own log loss, unweigh
   target coordinates   a column's, value's, line's and band's structure names, always: what the compiler knows (column role, value kind, line role); and the basis properties where Gemini's label speaks (training/factory/schema_labels.py): a basis property at the threshold is on and the rest off, a property outside the basis or none all off, an unsure label nothing
   word coordinates     the same head over the question's words: a word in a link to a column or a value reads that column's properties as known; other words have no meaning label
   self-anchors         each basis property's own schema.org label and comment, as a lone header, reads that property at 1; a property the frozen base encoder reads at RELATED_AT or more on that text keeps that soft value, every other goes to 0. Only schema.org's text: no structure definition is read. --anchor-steps trains the property rows alone on them first (backbone and relational blocks frozen); afterwards they stay as an auxiliary loss
-  picks                --picks: training-split questions with CLEF's recorded reading (each field's options as program coordinates and the one it picked at PICK_MIN or more). For a field over sheet targets (measure, key, shown, filter, value, line, section, table) the link to CLEF's pick must beat the links to the other options and "none of these": the same sum of named terms and exact-text evidence serving computes, the span the best-linking word, as serving chooses it. No target is invented for any dimension: the gradient moves the named readings, and the anchors above stay on, so a pick can sharpen a dimension and not change what it means. A closed field's pick trains that named head. The unnamed channel never enters this sum
+  picks                --picks: training-split questions with CLEF's recorded reading (each field's options as program coordinates and the one it picked at PICK_MIN or more). For a field over sheet targets (measure, key, shown, filter, value, line, section, table) the link to CLEF's pick must beat the links to the other options and "none of these": the same sum of named terms and exact-text evidence serving computes, the span the best-linking word, as serving chooses it. No target is invented for any dimension: the gradient moves the named readings, and the anchors above stay on, so a pick can sharpen a dimension and not change what it means. A closed field's pick trains that named head. The unnamed channel enters this sum only under --open-in-link
   profiles             --corpus: main's schema.org corpus (training/schema_org, rendered tables of Wikidata and publisher instances with the set of properties each shows): the highest reading of each property over a table's columns must be its set, the table's profile, from which its class is the superposition. The first part of an instance's text names its source relation and so its class: never read
 Gemini names a single property per column, so the properties that hold together with it on one column are unknown there, not absent: <examples>/co_held.json lists them, measured on a multi-label pass over one tab of each of 600 train families, and they are masked on a unit labelled with the property alone. Properties whose texts merely read alike (RELATED_AT) keep their negatives: a start date is not an end date. A label of a property outside the basis says nothing of the basis and is masked whole.
   closed heads         form, aggregate, direction, size, entity, comparison, row and calc operators, answer type, blank, how many conditions; word role and calc side per word
   links                link(span, target) over the target and its in-sheet hard negatives: the sum over named coordinates of weight x question x target, plus named rule evidence and the word's role. The one formula of engine/named/links.py, its weights learned here. Beside the candidates stands "links to nothing", at a learned bias per kind of target: a content word no link stands on is an example of it. The bias is what a coordinate reads below at serving, so each kind needs its own such examples: a word linked to a column links to no value, and one linked to a value to no column. (With examples on columns alone the value bias stayed at .58, under what a value read from its word's role alone, and spurious values won: 57 of 207 misses lost most on the value slot.)
-  open                 the separate unnamed channel, on the same candidates. It trains its own two projections and, unless --open-detached, the shared encoder.
+  open                 the separate unnamed channel, on the same candidates. It trains its own two projections and, unless --open-detached, the shared encoder. --open-in-link also puts it in every link's and pick's sum as the one labelled unnamed term serving's named_plus_open adds (its learned weight times the best cosine of any of the question's words to the target, never below 0), and the held link ranks use that sum: the decision itself then trains the channel, not only its own loss.
 
 Each property's output starts at its own text as the backbone reads it at the start; from there its labels anchor it.
 
@@ -90,6 +90,7 @@ class TrainConfig:
     eval_tabs: int = 200
     amp: bool = False
     open_detached: bool = False
+    open_in_link: bool = False     # the one labelled unnamed term in every link's and pick's sum, at a learned weight, as serving's named_plus_open adds it
     augment: dict = field(default_factory=lambda: dict(TRAINING_SHARES))
     link_weight: float = LOSS_WEIGHTS["link"]     # 0: anchoring alone, the links' weights left where they start
     open_weight: float = LOSS_WEIGHTS["open"]
@@ -705,7 +706,15 @@ def pick_links(row: dict, tables: dict, all_targets: dict, floor: dict, stems: s
     return out
 
 
-def losses_of(reader: NamedReader, names: NameSet, batch: Batch, out: Forward, open_detached: bool, device: str, related: torch.Tensor | None = None, qualified: torch.Tensor | None = None) -> dict[str, torch.Tensor]:
+def open_link_terms(reader: NamedReader, words_hidden: torch.Tensor, open_units: torch.Tensor, candidates: torch.Tensor, detached: bool) -> torch.Tensor:
+    """[candidates] the one labelled unnamed term serving's named_plus_open adds to a link (engine/named/reader.py): the
+    learned weight times the best cosine of any of the question's words to the target in the open channel, never below 0.
+    open_units: the targets' open vectors, normalized."""
+    words = nn.functional.normalize(reader.open_word(words_hidden.detach() if detached else words_hidden), dim=-1)
+    return reader.open_weight() * (words @ open_units[candidates].T).max(0).values.clamp(min=0.0)
+
+
+def losses_of(reader: NamedReader, names: NameSet, batch: Batch, out: Forward, open_detached: bool, device: str, related: torch.Tensor | None = None, qualified: torch.Tensor | None = None, open_in_link: bool = False) -> dict[str, torch.Tensor]:
     structure_labels = torch.zeros((len(batch.targets), names.meaning_start), device=device)
     for at, held in enumerate(batch.positive):
         for name in held:
@@ -747,19 +756,21 @@ def losses_of(reader: NamedReader, names: NameSet, batch: Batch, out: Forward, o
         targets_read = out.target_read(reader)
         words_by_question = {question: out.word_read(reader, question) for question in sorted({link.question for link in batch.links})}
         open_targets = reader.open_target(out.target_hidden.detach() if open_detached else out.target_hidden)
+        open_units = nn.functional.normalize(open_targets, dim=-1)
         for link in batch.links:
             candidates = torch.as_tensor(link.candidates, device=device)
             rules = torch.as_tensor(link.rules, device=device)
             roles = torch.softmax(reader.word_role(out.word_hidden[link.question][link.span]), -1)[:, WORD_ROLE_CLASSES.index(link.role)]
             wanted = torch.as_tensor([0 if link.nothing else 1], device=device)
+            unnamed = open_link_terms(reader, out.word_hidden[link.question], open_units, candidates, open_detached) if open_in_link else 0.0
             if link.any_word:
                 # each candidate's link from the word that links it best: the span serving would choose
                 best = (weights * words_by_question[link.question][link.span][:, None, :] * targets_read[candidates][None]).sum(-1).max(0)
-                scores = best.values + (rules * rule_weights).sum(-1) + reader.role_weight() * roles[best.indices]
+                scores = best.values + (rules * rule_weights).sum(-1) + reader.role_weight() * roles[best.indices] + unnamed
                 pick_terms.append(nn.functional.cross_entropy(torch.cat([biases[LINK_KINDS.index(link.kind)][None], scores])[None], wanted))
                 continue
             words_read = words_by_question[link.question][link.span].mean(0)
-            scores = (weights * words_read * targets_read[candidates]).sum(-1) + (rules * rule_weights).sum(-1) + reader.role_weight() * roles.mean()
+            scores = (weights * words_read * targets_read[candidates]).sum(-1) + (rules * rule_weights).sum(-1) + reader.role_weight() * roles.mean() + unnamed
             link_terms.append(nn.functional.cross_entropy(torch.cat([biases[LINK_KINDS.index(link.kind)][None], scores])[None], wanted))
             if link.nothing:
                 continue
@@ -784,11 +795,11 @@ def link_weights_of(reader: NamedReader, qualified: torch.Tensor | None = None) 
     """The learned weights as the plain numbers a bundle carries: a property the gate did not qualify weighs nothing in a link."""
     with torch.no_grad():
         biases = {slot: round(float(value), 6) for kind, value in zip(LINK_KINDS, reader.link_biases().cpu().tolist()) for slot in SLOTS_OF_LINK_KIND[kind]}
-        return LinkWeights((reader.coordinate_weights() if qualified is None else reader.coordinate_weights() * qualified).cpu().double().numpy().round(6), {rule: round(float(value), 6) for rule, value in zip(RULES, reader.rule_weights().cpu().tolist())}, round(float(reader.role_weight()), 6), round(float(reader.closed_weight()), 6), biases)
+        return LinkWeights((reader.coordinate_weights() if qualified is None else reader.coordinate_weights() * qualified).cpu().double().numpy().round(6), {rule: round(float(value), 6) for rule, value in zip(RULES, reader.rule_weights().cpu().tolist())}, round(float(reader.role_weight()), 6), round(float(reader.closed_weight()), 6), biases, round(float(reader.open_weight()), 6))
 
 
-def held_metrics(backbone, reader, config, names, examples, device, limit: int, seed: int, qualified: torch.Tensor | None = None) -> dict:
-    """Held-out families, no augmentation: where each link's target ranks among its candidates under the sum a bundle serves (a property the gate did not qualify weighs nothing), and the closed heads."""
+def held_metrics(backbone, reader, config, names, examples, device, limit: int, seed: int, qualified: torch.Tensor | None = None, open_in_link: bool = False) -> dict:
+    """Held-out families, no augmentation: where each link's target ranks among its candidates under the sum a bundle serves (a property the gate did not qualify weighs nothing; under open_in_link the unnamed term is in it), and the closed heads."""
     reader.eval()
     backbone.eval()
     rng = random.Random(seed)
@@ -805,6 +816,7 @@ def held_metrics(backbone, reader, config, names, examples, device, limit: int, 
             out = run_batch(backbone, reader, config, batch, device)
             read = out.target_read(reader)
             words = {question: out.word_read(reader, question) for question in sorted({link.question for link in batch.links})}
+            open_units = nn.functional.normalize(reader.open_target(out.target_hidden), dim=-1) if open_in_link else None
             meaning_at = torch.as_tensor([at for at, held in enumerate(batch.meaning) if held], device=device)     # units with a basis property: is the top output one of theirs
             if len(meaning_at):
                 top = read[meaning_at, names.meaning_start:].argmax(-1).tolist()
@@ -818,6 +830,8 @@ def held_metrics(backbone, reader, config, names, examples, device, limit: int, 
                 candidates = torch.as_tensor(link.candidates, device=device)
                 rules = torch.as_tensor(link.rules, device=device)
                 scores = (weights * words_read * read[candidates]).sum(-1) + (rules * rule_weights).sum(-1)
+                if open_units is not None:
+                    scores = scores + open_link_terms(reader, out.word_hidden[link.question], open_units, candidates, False)
                 if link.nothing:
                     nothing_links += 1
                     nothing_right += float(scores.max()) < float(reader.link_biases()[LINK_KINDS.index(link.kind)])
@@ -835,8 +849,8 @@ def held_metrics(backbone, reader, config, names, examples, device, limit: int, 
     return {"links": links, "link_top1": round(top1 / max(1, links), 4), "link_top10": round(top10 / max(1, links), 4), "reads_nothing": round(nothing_right / max(1, nothing_links), 4), "labelled": labelled, "property_top1": round(labelled_right / max(1, labelled), 4), "questions": questions, "closed": {head: round(value / max(1, questions), 4) for head, value in right.items()}}
 
 
-def pick_metrics(backbone, reader, config, names, examples, device, limit: int, seed: int, qualified: torch.Tensor | None) -> dict:
-    """Held-out pick examples (the verifier's held workbooks, never trained on): how often the named link sum puts the teacher's pick first, or, where it picked none of the options, keeps them all under the bias."""
+def pick_metrics(backbone, reader, config, names, examples, device, limit: int, seed: int, qualified: torch.Tensor | None, open_in_link: bool = False) -> dict:
+    """Held-out pick examples (the verifier's held workbooks, never trained on): how often the link sum (named, and under open_in_link the unnamed term) puts the teacher's pick first, or, where it picked none of the options, keeps them all under the bias."""
     reader.eval()
     backbone.eval()
     rng = random.Random(seed)
@@ -851,6 +865,7 @@ def pick_metrics(backbone, reader, config, names, examples, device, limit: int, 
             out = run_batch(backbone, reader, config, batch, device)
             read = out.target_read(reader)
             words = {question: out.word_read(reader, question) for question in sorted({link.question for link in batch.links})}
+            open_units = nn.functional.normalize(reader.open_target(out.target_hidden), dim=-1) if open_in_link else None
             for link in batch.links:
                 if not link.any_word:
                     continue
@@ -858,6 +873,8 @@ def pick_metrics(backbone, reader, config, names, examples, device, limit: int, 
                 roles = torch.softmax(reader.word_role(out.word_hidden[link.question][link.span]), -1)[:, WORD_ROLE_CLASSES.index(link.role)]
                 best = (weights * words[link.question][link.span][:, None, :] * read[candidates][None]).sum(-1).max(0)
                 scores = best.values + (torch.as_tensor(link.rules, device=device) * rule_weights).sum(-1) + reader.role_weight() * roles[best.indices]
+                if open_units is not None:
+                    scores = scores + open_link_terms(reader, out.word_hidden[link.question], open_units, candidates, False)
                 bias = float(reader.link_biases()[LINK_KINDS.index(link.kind)])
                 total += 1
                 right += float(scores.max()) < bias if link.nothing else (int(scores.argmax()) == 0 and float(scores[0]) > bias)
@@ -950,7 +967,7 @@ def train(examples: list[TabExample], names: NameSet, backbone: nn.Module, confi
             with torch.autocast(device_type=device, dtype=torch.bfloat16, enabled=use_amp):
                 outputs = run_batch(backbone, reader, reader_config, batch, device)
             with torch.autocast(device_type=device, enabled=False):
-                parts = losses_of(reader, names, batch, outputs, config.open_detached, device, co_held, qualified)
+                parts = losses_of(reader, names, batch, outputs, config.open_detached, device, co_held, qualified, config.open_in_link)
                 if not picks:
                     del parts["pick"]
             if picks and step % PICK_EVERY == 0:
@@ -959,7 +976,7 @@ def train(examples: list[TabExample], names: NameSet, backbone: nn.Module, confi
                     with torch.autocast(device_type=device, dtype=torch.bfloat16, enabled=use_amp):
                         pick_outputs = run_batch(backbone, reader, reader_config, pick_batch, device)
                     with torch.autocast(device_type=device, enabled=False):
-                        pick_parts = losses_of(reader, names, pick_batch, pick_outputs, config.open_detached, device, co_held, qualified)
+                        pick_parts = losses_of(reader, names, pick_batch, pick_outputs, config.open_detached, device, co_held, qualified, config.open_in_link)
                     parts["pick"], parts["pick_closed"] = pick_parts["pick"], pick_parts["closed"]
             if anchors is not None and step % ANCHOR_EVERY == 0:
                 with torch.autocast(device_type=device, dtype=torch.bfloat16, enabled=use_amp):
@@ -991,9 +1008,9 @@ def train(examples: list[TabExample], names: NameSet, backbone: nn.Module, confi
                 if log_print and step % 50 == 0:
                     print(json.dumps(row), flush=True)
             if (step % config.eval_every == 0 or step == config.steps) and held:
-                metrics = held_metrics(backbone, reader, reader_config, names, held, device, config.eval_tabs, config.seed, qualified)
+                metrics = held_metrics(backbone, reader, reader_config, names, held, device, config.eval_tabs, config.seed, qualified, config.open_in_link)
                 if held_picks:
-                    metrics.update(pick_metrics(backbone, reader, reader_config, names, held_picks, device, config.eval_tabs, config.seed, qualified))
+                    metrics.update(pick_metrics(backbone, reader, reader_config, names, held_picks, device, config.eval_tabs, config.seed, qualified, config.open_in_link))
                 metrics.update(step=step, seconds=round(time.time() - started, 1))
                 log.write(json.dumps(metrics) + "\n")
                 log.flush()
@@ -1035,6 +1052,7 @@ def start_from(folder: str | Path, backbone, reader: NamedReader, names: NameSet
         reader.raw_role_weight.copy_(raw(weights.role))
         reader.raw_closed_weight.copy_(raw(weights.closed))
         reader.raw_link_bias.copy_(raw([weights.bias(SLOTS_OF_LINK_KIND[kind][0]) for kind in LINK_KINDS]))
+        reader.raw_open_weight.copy_(raw(weights.open_weight))
 
 
 def read_descriptions(backbone, reader: NamedReader, names: NameSet) -> None:
@@ -1075,6 +1093,7 @@ def main() -> None:
     parser.add_argument("--amp", action="store_true")
     parser.add_argument("--resume-from", help="a last_state.pt to go on from")
     parser.add_argument("--open-detached", action="store_true")
+    parser.add_argument("--open-in-link", action="store_true", help="the one labelled unnamed term in every link's and pick's sum, at a learned weight (served by named_plus_open)")
     parser.add_argument("--no-augment", action="store_true")
     parser.add_argument("--link-weight", type=float, default=LOSS_WEIGHTS["link"], help="0: anchoring alone")
     parser.add_argument("--open-weight", type=float, default=LOSS_WEIGHTS["open"])
@@ -1103,7 +1122,7 @@ def main() -> None:
         signatures = ClassSignatures.from_ontology()
         reader_config = ReaderConfig(backbone=args.backbone, backbone_layers=args.layers, hidden=args.hidden, blocks=args.blocks, sample_rows=args.sample_rows, window_columns=args.window_columns, keep=args.keep)
     record["names_sha"] = names.sha
-    config = TrainConfig(reader=reader_config, steps=args.steps, accumulate=args.accumulate, questions=args.questions, lr=args.lr, head_lr=args.head_lr, seed=args.seed, held_share=args.held_share, eval_every=args.eval_every, eval_tabs=args.eval_tabs, amp=args.amp, open_detached=args.open_detached, augment={} if args.no_augment else dict(TRAINING_SHARES), resume=args.resume_from, link_weight=args.link_weight, open_weight=args.open_weight, anchor_steps=args.anchor_steps, corpus=args.corpus, init=args.init, picks=args.picks, qualified=args.qualified,
+    config = TrainConfig(reader=reader_config, steps=args.steps, accumulate=args.accumulate, questions=args.questions, lr=args.lr, head_lr=args.head_lr, seed=args.seed, held_share=args.held_share, eval_every=args.eval_every, eval_tabs=args.eval_tabs, amp=args.amp, open_detached=args.open_detached, open_in_link=args.open_in_link, augment={} if args.no_augment else dict(TRAINING_SHARES), resume=args.resume_from, link_weight=args.link_weight, open_weight=args.open_weight, anchor_steps=args.anchor_steps, corpus=args.corpus, init=args.init, picks=args.picks, qualified=args.qualified,
                          co_held=str(Path(args.examples) / "co_held.json") if args.examples and (Path(args.examples) / "co_held.json").exists() else None)
     summary = train(examples, names, backbone, config, out, record=record, signatures=signatures)
     (out / "summary.json").write_text(json.dumps({**summary, **record}, indent=1, sort_keys=True, default=str) + "\n", encoding="utf-8", newline="\n")

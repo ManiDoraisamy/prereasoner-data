@@ -814,6 +814,51 @@ def test_a_pick_is_a_link_to_the_teachers_choice_with_no_span_and_no_invented_ta
     assert reader.open_word.weight.grad is None, "the unnamed channel is not in the sum a pick trains"
 
 
+def test_the_unnamed_term_enters_a_link_only_when_asked_and_as_serving_adds_it() -> None:
+    """--open-in-link: the one labelled unnamed term joins a pick's sum at a learned weight, the decision's gradient
+    reaches the open channel and that weight, and a bundle carries the weight serving's named_plus_open multiplies by.
+    Without the flag the sum is unchanged and the weight exports as 1, serving's default before the weight was learned."""
+    import random
+    from training.named.train import link_weights_of, losses_of, open_link_terms, run_batch
+    names = fake_name_set()
+    batch = build_batch(_pick_example(), CONFIG, names, random.Random(0), questions=4, shares=None)
+    torch.manual_seed(0)
+    backbone = HashBackbone()
+    reader = NamedReader(backbone.dim, names.meaning_start, names.meaning, CONFIG).float()
+    read_descriptions(backbone, reader, names)
+    assert link_weights_of(reader).open_weight == 1.0, "untrained, a bundle's weight is serving's old default"
+    out = run_batch(backbone, reader, CONFIG, batch, "cpu")
+    off = losses_of(reader, names, batch, out, False, "cpu")
+    on = losses_of(reader, names, batch, out, False, "cpu", open_in_link=True)
+    assert float(on["pick"]) != float(off["pick"]), "the term is in the sum a pick trains"
+    on["pick"].backward()
+    assert float(reader.open_word.weight.grad.abs().sum()) > 0 and float(reader.raw_open_weight.grad) != 0, "the decision trains the channel and its weight"
+    measure = batch.links[0]
+    with torch.no_grad():
+        reader.raw_open_weight.fill_(0.3)
+        units = torch.nn.functional.normalize(reader.open_target(out.target_hidden), dim=-1)
+        term = open_link_terms(reader, out.word_hidden[0], units, torch.as_tensor(measure.candidates), False).numpy()
+        words = reader.open_word(out.word_hidden[0]).numpy()
+        targets = reader.open_target(out.target_hidden).numpy()[measure.candidates]
+    words /= np.linalg.norm(words, axis=1, keepdims=True)
+    targets /= np.linalg.norm(targets, axis=1, keepdims=True)
+    weight = float(np.log1p(np.exp(0.3)))
+    assert np.allclose(term, weight * np.maximum((words @ targets.T).max(0), 0.0), atol=1e-5), "serving's term: the weight times the best word's cosine, never below 0"
+    assert link_weights_of(reader).open_weight == round(weight, 6), "the bundle carries the learned weight serving multiplies by"
+
+
+def test_training_with_the_unnamed_term_in_the_links() -> None:
+    with tempfile.TemporaryDirectory() as folder:
+        picks = Path(folder) / "picks"
+        picks.mkdir()
+        write_shard(picks, 0, [_pick_example("clef", 0), _pick_example("clef", 1), _pick_example("clef_held", 2)])
+        config = TrainConfig(reader=ReaderConfig(backbone="hash", hidden=36, blocks=1, open_dim=16, sample_rows=3), steps=9, questions=6, seed=0, held_share=0.2, eval_every=4, eval_tabs=2, picks=str(picks), open_in_link=True)
+        out = Path(folder) / "out"
+        summary = train(fake_examples(6), fake_name_set(), HashBackbone(), config, out, log_print=False)
+        weights = json.loads((out / "best" / "named_bundle.json").read_text(encoding="utf-8"))["weights"]
+    assert summary["steps"] == 9 and weights["open_weight"] != 1.0, "the term's weight is learned and travels in the bundle"
+
+
 def test_only_qualified_properties_enter_a_links_sum() -> None:
     from training.named.train import link_weights_of, qualified_mask
     names = fake_name_set()

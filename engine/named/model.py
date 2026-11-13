@@ -76,6 +76,7 @@ class NamedReader(nn.Module):
         self.raw_role_weight = nn.Parameter(torch.tensor(_ONE))
         self.raw_closed_weight = nn.Parameter(torch.tensor(_ONE))
         self.raw_link_bias = nn.Parameter(torch.full((len(LINK_KINDS),), _ONE))
+        self.raw_open_weight = nn.Parameter(torch.tensor(_ONE))     # the one labelled unnamed term's weight in a link (named_plus_open); trained only under --open-in-link
 
     def hidden(self, inputs: torch.Tensor, edges: torch.Tensor, pad: torch.Tensor) -> torch.Tensor:
         return self.relational(inputs, edges, pad)["content"]
@@ -107,6 +108,9 @@ class NamedReader(nn.Module):
 
     def closed_weight(self) -> torch.Tensor:
         return nn.functional.softplus(self.raw_closed_weight)
+
+    def open_weight(self) -> torch.Tensor:
+        return nn.functional.softplus(self.raw_open_weight)
 
     def link_biases(self) -> torch.Tensor:
         """What a link must reach, per kind of target, to say more than that the word links to nothing."""
