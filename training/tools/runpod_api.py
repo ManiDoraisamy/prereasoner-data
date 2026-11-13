@@ -249,6 +249,8 @@ def _upload(ssh: list[str], scp: list[str], ip: str, source: Path, remote: str, 
     exists nests inside it, so a retried or resumed upload left its copy one level down and the old code in place."""
     target = _remote_path(remote)
     if source.is_file():
+        folder = target.rsplit("/", 1)[0] or "/"           # scp does not make the folder a file lands in (a bundle's /workspace/init/)
+        _run_transfer([*ssh, shlex.join(["mkdir", "-p", "--", folder])], remaining)
         _run_transfer([*scp, str(source), f"root@{ip}:{target}"], remaining, size=source.stat().st_size)
         return
     files = {path.relative_to(source).as_posix(): path for path in source.rglob("*") if path.is_file()}

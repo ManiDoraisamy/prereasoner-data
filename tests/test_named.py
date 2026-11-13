@@ -997,6 +997,24 @@ def test_lease_refuses_until_transfers_are_size_aware() -> None:
     raise AssertionError("a paid lease would have run on the 15-minute transfers")
 
 
+def test_a_file_upload_makes_its_folder_on_the_pod_first() -> None:
+    """scp does not make the folder a file lands in: three step-4 leases paid for a pod and died copying the --init bundle's
+    files into /workspace/init/. Every file upload makes its folder first."""
+    from training.tools import runpod_api
+    sent = []
+    held = runpod_api._run_transfer
+    runpod_api._run_transfer = lambda command, remaining, size=0: sent.append(command)
+    try:
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder) / "named_bundle.json"
+            source.write_text("{}", encoding="utf-8")
+            runpod_api._upload(["ssh", "pod"], ["scp"], "1.2.3.4", source, "/workspace/init/named_bundle.json", lambda: 60)
+    finally:
+        runpod_api._run_transfer = held
+    assert sent[0] == ["ssh", "pod", "mkdir -p -- /workspace/init"], sent
+    assert sent[1] == ["scp", str(source), "root@1.2.3.4:/workspace/init/named_bundle.json"]
+
+
 def test_pod_code_is_a_closed_set() -> None:
     """What a pod receives imports the trainer with nothing else of the repository, and pulls in no SQL stack it does not have."""
     with tempfile.TemporaryDirectory() as folder:
