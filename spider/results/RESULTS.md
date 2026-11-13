@@ -5,6 +5,63 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
+## Step C: the named chooser adds 16 right picks on dev (244 to 260 of 1,082) once two fit defects are fixed; at its wrong bound it answers 120 right and 140 wrong (2026-11-13)
+
+- The plan's step C on the step-4 bundle (`named_picks_s0`, mode named): the named additive chooser
+  (`engine/named/chooser.py`, fitted by `training/named/choose.py`'s conditional logit, calibration and policy) on
+  gold-checked candidates of training-split questions the bundle never trained on
+  (`named-chooser-20261112/local/fit_chooser.py`): 5,170 questions (4,282 factory held families, 768 WikiTableQuestions
+  and 120 DataBench training questions on the workbooks CLEF's picks held out), 3,287 with a right candidate, 256,759
+  candidates. Dev measured with `distill-probe-20261112/local/step_chooser_eval.sh` (`--chooser engine`), never mined;
+  the classification below reads training questions only.
+
+**The first fit looked strong and failed on dev.** Out of fold it put a right answer first for 1,579 of 5,170 against
+1,111 in "decoder order"; on dev its pick was right 217 times against the decoder's first 244, and its policy answered
+70 right and 106 wrong. Two defects, both in the fit, found on the 2,581 calibration-family training questions by
+running the served path (`named-chooser-20261112/local/serve_check.py`):
+
+| Calibration questions (2,581) | right listed | first right | chooser's pick right | answered right / asked / wrong |
+|---|---|---|---|---|
+| The bundle as trained | 1,665 | 687 | 687 | 640 / 410 / 1,531 |
+| Fitted chooser and refit slot weights (as first written) | 1,593 | 653 | 750 | 294 / 2,013 / 274 |
+| Fitted chooser, the bundle's slot weights | 1,665 | 687 | 806 | 372 / 1,934 / 275 |
+
+(1) The fit wrote new decoder slot weights from the same records it fitted the chooser on, records collected under the
+old ones. Slot weights steer the decoder's pool and every link and decoder feature the chooser reads (filter, contains,
+listing and four more went to 0, number to 1.77): the served chooser met candidates it was not fit on, and 72 right
+answers left the list. (2) `fold_report` measured the chooser against the decoder's rank (575 right first) instead of the
+served order the records are kept in (687), so the out-of-fold gain read +42% where the served gain is +17%, nearly all on
+factory questions (WTQ 104 against 101). Fixed in next-engine `9cdaaa9`: the report reads the served order; slot weights
+stay the bundle's unless `--slot-weights` asks, and then the records are collected again under them before the chooser is
+fit (`chooser_records`); test `test_the_chooser_is_judged_against_the_served_order_and_fit_under_the_slot_weights_it_serves`
+(the old report reads 0 of 40 where the served order lists every right answer first). With the bundle's slot weights the
+served decisions equal the records' replay exactly.
+
+| Dev set | decoder's first right | chooser's pick right | answered right / asked / wrong |
+|---|---|---|---|
+| Studied (186) | 24 | 32 | 13 / 138 / 35 |
+| Messy dev (120) | 25 | 23 | 15 / 98 / 7 |
+| WikiTableQuestions dev (300) | 82 | 88 | 34 / 227 / 39 |
+| Fresh dev twin (176) | 25 | 26 | 14 / 143 / 19 |
+| DataBench dev (300) | 88 | 91 | 44 / 216 / 40 |
+| **All (1,082)** | **244 (22.6%)** | **260 (24.0%)** | **120 (11.1%) / 822 (76.0%) / 140 (12.9%)** |
+
+**Reading.** Fitted correctly, the chooser's features add 16 right picks on dev; its policy (thresholds agg 0.30, rank
+0.35, show 0.45, calc 0.95, margin 0.5, set on calibration families to bound wrong answers among all questions) answers
+a quarter of the questions and is wrong on more than half of those. Against the launch bar (80% right, at most 8% wrong
+without a warning) the chooser is not the limit; the list is (496 of 1,082 have a right answer listed at all, and the
+first-pass reading behind them): a chooser cannot pick an answer the reader never lists. The bundle with the fitted
+chooser is `named_picks_s0/out/candidate_chooser_oldslots` (a record, not promoted).
+
+**Step E launched.** bge-m3 (BAAI/bge-m3, pinned revision `5617a9f6`, an XLM-R large retrained for multilingual
+retrieval) is a third named backbone on next-engine (`7a4d9e0`). Its hub revision holds only `pytorch_model.bin`, which
+transformers will not load under the pods' torch 2.4; the same tensors are kept as safetensors in
+`C:/work/datasets/models/bge-m3` (hidden states bit-identical to the hub's, `bge-m3-20261113/local/convert.py`), and a
+lease uploads a backbone's local copy. Staged by contract: one-stage runs of 15,000 steps on bge-m3 and on bge-small
+(the same recipe: self-anchors, labels, corpus, gold links, CLEF's picks), capped at $10; the full two-stage recipe only
+if bge-m3 lists at least 18 more of the 583 with p90 under three times bge-small's. bge-small's measured step rate is
+3.0-3.9 steps/s (the lease plan's STEP_RATE was 6.0).
+
 ## Step 4: CLEF's picks through the link sum raise the right answer listed from 330 to 357 of 583; the meaning-in-links route stops after a full second pass of labels (2026-11-13)
 
 - The plan's retry of the anchoring gate, the full second pass of labels the owner approved for it (2026-11-13 01:55:
