@@ -5,6 +5,81 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
+## Step 4: CLEF's picks through the link sum raise the right answer listed from 330 to 357 of 583; the meaning-in-links route stops after a full second pass of labels (2026-11-13)
+
+- The plan's retry of the anchoring gate, the full second pass of labels the owner approved for it (2026-11-13 01:55:
+  "Yes, to both"), and step 4 on next-engine. Every bundle is bge-small, 39,285 steps, seed 0, the 7,857 factory tabs;
+  measured with `distill-probe-20261112/local/step_named_eval.sh` from a worktree pinned at next-engine `92f4ed2`
+  (mode named unless stated); dev sets measured, never mined. Machine shared with up to three other engine processes.
+  GPU for steps 0a-4 so far about $10.40 of the $20 ceiling; Gemini about $17 for the second pass.
+
+**The retry and the full second pass: no property qualifies, so the meaning-in-links route stops.**
+`named_anchor_second_s0` (examples_v6: the second pass's labels on 596 training tabs, the first pass's doubtful
+negatives unknown) passed columns 4 (identifier, observationDate, endDate, location), words 1 (price), profiles 39 of
+50, and qualified none; its outputs over-fire without the negatives (thresholds 0.95-0.99). It improved some
+precisions and missed the gate, the owner's condition for buying the second pass over every training tab: 7,257
+requests (train 5,666, pub_eia 258, pub_sec 1,333), none failed, 17.7M prompt and 0.96M output tokens, about $17; the
+factory's hard output budget went from 10.2M to 11.7M at his word (next-engine `faf22c0`). examples_v7 carries the
+second pass's labels on 7,824 tabs (39,589 columns with basis properties, 33,204 none, 35,936 unknown) and the first
+pass's basis positives on 33. `named_anchor_truth_s0` trained on them: columns 3 pass (endDate 0.964, startDate 0.952,
+observationDate 0.950; identifier 0.950 / 0.949 just under as column and word), words 0 (identifier 0.949, price 0.933,
+name 0.925, orderQuantity 0.907; 10 of 14 judged words reach no threshold at 0.95), profiles 36 of 50; **qualified for
+links: none**, as for both earlier bundles. Judged columns at precision 0.90 or better rose from 8 to 9, words from 2 to
+4: closer, not through. By the owner's terms the route stops: a link stays the structure tier plus exact-text evidence;
+the meaning tier is kept for table profiles and classes, measured, never in a link sum.
+
+| Bundle (first right of 1,082) | Studied | Messy dev | WTQ dev | DataBench dev | Fresh dev twin | All listed of 583 | Named alone | First right |
+|---|---|---|---|---|---|---|---|---|
+| 0b lookup | 50 / 37 | 41 / 19 | 103 / 44 | 100 / 62 | 36 / 24 | 330 (56.6%) | 328 | 186 (17.2%) |
+| Anchoring, first-pass labels | 47 / 35 | 34 / 19 | 111 / 74 | 101 / 55 | 39 / 26 | 332 (56.9%) | 308 | 209 (19.3%) |
+| Retry, second pass on 596 tabs | 43 / 31 | 30 / 15 | 105 / 64 | 86 / 52 | 40 / 29 | 304 (52.1%) | 293 | 191 (17.7%) |
+| Full second pass | 48 / 33 | 30 / 15 | 104 / 65 | 88 / 47 | 35 / 27 | 305 (52.3%) | 294 | 187 (17.3%) |
+| 4a gold links | 49 / 36 | 42 / 16 | 100 / 51 | 100 / 55 | 36 / 20 | 327 (56.1%) | 320 | 178 (16.5%) |
+| **4b + CLEF's picks** | 42 / 24 | 44 / 25 | 111 / 82 | 126 / 88 | 34 / 25 | **357 (61.2%)** | 309 | **244 (22.6%)** |
+| 4b, mode b (unnamed term 0.5) | 46 / 26 | 45 / 23 | 110 / 76 | 124 / 84 | 33 / 24 | 358 (61.4%) | 307 | 233 (21.5%) |
+
+Each cell is right answers listed (of the CLEF path's right: studied 77, messy 74, WTQ 144, DataBench 212, fresh 76) /
+right first (of the set's n: 186, 120, 300, 300, 176). Named alone is listed through named terms and exact text, no
+proposal from the unnamed channel.
+
+**Step 4.** Both runs start from the anchoring bundle with no property in a link (`--qualified` none). 4a
+(`named_links_s0`) trains the link sum on gold links and lists about what the anchoring bundle listed (327 against 332)
+with fewer right first (178 against 209). 4b (`named_picks_s0`) adds CLEF's recorded picks on 808 training workbooks
+(4,134 questions; CLEF's pick must beat the other options through the link sum, no per-dimension target): listed 357
+(+27 over 0b), right first 244 of 1,082 (+58). The gain sits where the picks come from: WikiTableQuestions and
+DataBench training workbooks, and their dev sets gain (WTQ right first 51 to 82, DataBench 55 to 88), messy dev gains
+a little (16 to 25), studied falls (36 to 24), and fresh dev is level with the anchoring bundle (26, 25). Named alone falls from
+320 to 309: more of the listed answers now come through the unnamed channel's proposals. The pod code was next-engine
+`2f9b521` (the code folder checked file by file). Latency p50 / p90 per question: 0.05-0.10 s / 0.07-0.59 s on four
+sets, DataBench 0.19 s / 3.15 s.
+
+**Mode b.** The one labelled unnamed-similarity term's weight was fitted last on training-split questions the bundle
+never trained on (`named-chooser-20261112/local/fit_open_weight.py`, 575 questions of held factory families and of
+the workbooks CLEF's picks held out): grid 0 / 0.25 / 0.5 / 1 / 2 / 4 lists 406 / 410 / 413 / 413 / 411 / 398, so 0.5
+(the smaller weight on the tie). On dev it lists 358 against 357 and puts the right answer first for 233 against 244.
+The term does not earn its place; the served mode stays named, the interpretable one.
+
+**Step B (program forms) closes without a retrain.** The 885 training-split questions whose CLEF list held no right
+answer, read by the 4b bundle grown onto the forms branch's 191 names (`forms-labels-20261112/local/mine_forms.py`):
+19 get a label (one new form gives a first program with the gold answer: median 4, first number 6, gap 7, text length
+2), 141 are right with no new form, 725 no forced form helps. On the anchoring bundle it was 8 of 885. Nineteen labels
+over eight new outputs cannot train them, so no B run; the branch `next-engine-forms` stays unmerged and is listed for
+the owner as removable.
+
+**Three lease defects, fixed (next-engine).** (1) A remote command that ran to the lease's end left no time to bring
+anything back: the two learning-curve runs (`named_picks50_s0`, `named_picks25_s0`) trained on 3090-class cards past
+their 330-minute leases and came back without even their training log (about $2.10 spent). The command now stops with
+a reserve of the lease left for recovery (`3f138b9`, test
+`test_runpod_command_that_runs_out_leaves_time_to_recover_its_artifacts`); the trainer's resume now loads weights only,
+as the security baseline requires. (2) RunPod hands one address and port to pod after pod; a stale key in the user's
+known_hosts refused a relaunched pod minutes after creation. Each pod's key now lives in its own file (`7f12534`).
+(3) `test_runpod_transfers_are_inside_the_owned_lease` had counted the calls from before the upload fix `2f9b521`; it
+now expects the folder's mkdir. The curve runs are relaunched on 4090- and L40-class cards from a worktree pinned at
+the 100% run's code (`2f9b521`; the trainer's best-checkpoint rule changed after it, in `39c0ff3`).
+
+Next: the learning curve (decides how many more picks D buys), step C's named additive chooser fitted on gold-checked
+options of held training questions for the 4b bundle, then E (bge-m3 head to head). No push, no deploy, no promotion.
+
 ## Steps 0b-3: the anchored meanings fail the gate on labels that disagree with its truth; the decoder had no stop on its condition search (2026-11-13)
 
 - The plan's steps 0b (the lookup design on the 83-property basis), 1-3 (the anchoring run: self-anchors, Gemini's
