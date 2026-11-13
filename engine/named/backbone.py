@@ -1,4 +1,5 @@
-"""The one text encoder of both sides: bge-small (33M parameters) or XLM-R base (278M), chosen by name.
+"""The one text encoder of both sides: bge-small (33M parameters), XLM-R base (278M) or bge-m3 (568M, an XLM-R large
+retrained for retrieval in many languages), chosen by name.
 
 A text's vector is the mean of its tokens' last hidden states; a question's words are the same, over each word's own tokens. float32 always. Distinct texts are read once, in an order fixed by the texts themselves, so a batch never depends on what else a sheet holds or on the sheet's order.
 Only local files: nothing here downloads.
@@ -33,8 +34,12 @@ class BackboneSpec:
 
 
 BACKBONES = {"bge-small": BackboneSpec("bge-small", "BAAI/bge-small-en-v1.5", 384, 12, 33_360_000, 11_720_448, "5c38ec7c405ec4b44b94cc5a9bb96e735b38267a"),
-             "xlmr-base": BackboneSpec("xlmr-base", "FacebookAI/xlm-roberta-base", 768, 12, 278_043_648, 192_001_536, "e73636d4f797dec63c3081bb6ed5c7b0bb3f2089")}
-_LOCAL = {"xlmr-base": "C:/work/datasets/models/xlm-roberta-base"}
+             "xlmr-base": BackboneSpec("xlmr-base", "FacebookAI/xlm-roberta-base", 768, 12, 278_043_648, 192_001_536, "e73636d4f797dec63c3081bb6ed5c7b0bb3f2089"),
+             # parameters with the pooler as the others count them (566,705,152 without it), from the pinned config
+             "bge-m3": BackboneSpec("bge-m3", "BAAI/bge-m3", 1024, 24, 567_754_752, 256_002_048, "5617a9f61b028005a4858fdac845db406aefb181")}
+# bge-m3's copy is the pinned revision's weights as safetensors beside its own config and tokenizer files: the hub holds
+# only pytorch_model.bin, which transformers will not load under torch < 2.6 (a lease's pod runs 2.4)
+_LOCAL = {"xlmr-base": "C:/work/datasets/models/xlm-roberta-base", "bge-m3": "C:/work/datasets/models/bge-m3"}
 
 
 def source_of(spec: BackboneSpec) -> tuple[str, bool]:
@@ -59,7 +64,7 @@ class TextBackbone(nn.Module):
         self.dim = int(encoder.config.hidden_size)
 
     def freeze_table(self) -> None:
-        """The word table stays the base model's: a third of bge-small and two thirds of XLM-R base, never fine-tuned, so a checkpoint need not carry it."""
+        """The word table stays the base model's: a third of bge-small, two thirds of XLM-R base and nearly half of bge-m3, never fine-tuned, so a checkpoint need not carry it."""
         self.encoder.get_input_embeddings().weight.requires_grad_(False)
 
     def forward_tokens(self, ids: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:

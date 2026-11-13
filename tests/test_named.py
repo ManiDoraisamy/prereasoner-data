@@ -991,6 +991,9 @@ def test_lease_plan_is_size_aware() -> None:
     assert large.transfer_minutes_limit > small.transfer_minutes_limit and large.lease_minutes > small.lease_minutes
     assert 0 < small.dollars_low < small.dollars_high and small.dollars_low < large.dollars_low
     assert plan_candidate("bge-small", 10, 10, steps=500).steps == 500
+    # bge-m3 brings back its encoder without the frozen word table: about 1.2 GB, and a longer lease than XLM-R base
+    m3 = plan_candidate("bge-m3", 7000, 40000)
+    assert 1100 < m3.bundle_mb < 1300 and m3.lease_minutes > large.lease_minutes and m3.dollars_low > large.dollars_low
     ensure_same_tables("HEAD")
     pickled = 'class Cell:\n    """one cell"""\n    raw: str\n    kind: str\n'
     assert dataclass_fields(pickled) == dataclass_fields(pickled.replace("one cell", "a cell")), "a docstring is nothing a pickle holds"
@@ -998,6 +1001,25 @@ def test_lease_plan_is_size_aware() -> None:
     assert "engine/data/schema_org_v30.json" not in pod_code(), "the pod reads the name set's basis, never the catalogue"
     command = remote_command("bge-small", 500, 3)
     assert "training.named.train" in command and "--seed 3" in command and "--steps 500" in command and "exit 4" in command
+
+
+def test_a_backbone_read_from_a_copy_here_is_uploaded_and_read_there() -> None:
+    """bge-m3's hub revision holds only pytorch_model.bin, which transformers will not load under the pod's torch 2.4: a
+    backbone with a copy on this machine goes up with the lease and the pod reads it there; one without reads the hub."""
+    from engine.named import backbone
+    from training.named import lease
+    assert lease.backbone_upload("bge-small") is None
+    assert "NAMED_BACKBONE_ONLINE=1" in remote_command("bge-small", 500, 3)
+    with tempfile.TemporaryDirectory() as folder:
+        held = dict(backbone._LOCAL)
+        backbone._LOCAL["bge-m3"] = folder
+        try:
+            assert lease.backbone_upload("bge-m3") == (folder, "/workspace/backbones/bge-m3")
+        finally:
+            backbone._LOCAL.clear()
+            backbone._LOCAL.update(held)
+    command = remote_command("bge-m3", 500, 3, uploaded_backbone=True)
+    assert "NAMED_BACKBONE_DIR=/workspace/backbones" in command and "NAMED_BACKBONE_ONLINE" not in command
 
 
 def test_lease_refuses_until_transfers_are_size_aware() -> None:

@@ -38,7 +38,7 @@ import psutil
 import torch
 from torch import nn
 
-from engine.named.backbone import question_words
+from engine.named.backbone import BACKBONES, question_words
 from engine.named.index import ClassSignatures
 from engine.named.links import LinkWeights, RULES, SLOTS_OF_LINK_KIND, rule_evidence, is_stated_word
 from engine.named.model import LINK_KINDS, NamedReader, ReaderConfig
@@ -1056,7 +1056,7 @@ def main() -> None:
     parser.add_argument("--experiment", required=True)
     parser.add_argument("--out")
     parser.add_argument("--fake", action="store_true", help="the small fake and the hashing backbone: a pipeline check")
-    parser.add_argument("--backbone", default="bge-small", choices=("bge-small", "xlmr-base"))
+    parser.add_argument("--backbone", default="bge-small", choices=sorted(BACKBONES))
     parser.add_argument("--layers", type=int, help="keep the backbone's first N layers")
     parser.add_argument("--hidden", type=int, default=384)
     parser.add_argument("--blocks", type=int, default=3)

@@ -4,7 +4,7 @@ Before any paid lease: runpod_api must have the size-aware transfers (a transfer
 
 The lease's time limit is planned from the data, not a flat number (readers_v16a hit a flat 330 minutes at 50,000 steps and lost $3.24): steps at a conservative rate, evals, plus the download's own reserve for its size at the slowest link waited for.
 
-usage: python -m training.named.lease --experiment <id> --examples <dir> --backbone bge-small|xlmr-base [--steps N | --epochs 4] [--seed 0] [--rate $/h] [--go]
+usage: python -m training.named.lease --experiment <id> --examples <dir> --backbone bge-small|xlmr-base|bge-m3 [--steps N | --epochs 4] [--seed 0] [--rate $/h] [--go]
 """
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ import tarfile
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from engine.named.backbone import BACKBONES
+from engine.named.backbone import BACKBONES, source_of
 from training.named import EXPERIMENTS_DIR
 from training.readers.lease import ALLOC, CUDA_CHECK, LARGE_GPUS, NAME, PIP, RECORDED_CUDA, RECORDED_IMAGE, lease
 from training.tools import runpod_api
@@ -50,7 +50,11 @@ class Plan:
 
 
 # Tabs read a second on an L40S. Estimates, unmeasured on this model on a GPU; a lease's first log lines say the truth, and the contract stops one running at under half of this. What they rest on: the CPU smoke's production-config step (bge-small, 12 layers, 3 blocks, 384 hidden, 8 rows, 4 threads) read 37 distinct texts and 8 questions in 1.6 s, 12 ms of it building; XLM-R large at 16 x 256 tokens ran 4.1 steps/s there (16,800 tokens/s), so a step of about 350 tokens is a small GPU load and the Python around it (building, a loop per link) bounds it. XLM-R base costs about 3.5x per token.
-STEP_RATE = {"bge-small": 6.0, "xlmr-base": 4.0}
+# Measured since (2026-11-12/13, 39,285 steps each, 3090- to 4090-class cards): bge-small ran 3.0-3.9 steps/s, 0.26-0.33 s a
+# step of which the forward pass is about 0.21 s (much the same on a 3090 as on a 4090: small kernels, not the card's
+# arithmetic, bound it). XLM-R base (12 layers of 768, about 3.5x per token) and bge-m3 (24 layers of 1024, about 17x)
+# are estimates, unmeasured on a GPU.
+STEP_RATE = {"bge-small": 3.8, "xlmr-base": 2.5, "bge-m3": 1.5}
 EVAL_SHARE = 0.10
 HEADS_MB = 24.0
 
@@ -127,9 +131,24 @@ def latest_state(experiment: Path) -> Path | None:
     return held[-1] if held else None
 
 
-def remote_command(backbone: str, steps: int, seed: int, *, hidden: int = 384, blocks: int = 3, resume: bool = False, extra: str = "", picks: bool = False) -> str:
+POD_BACKBONES = "/workspace/backbones"
+
+
+def backbone_upload(backbone: str) -> tuple[str, str] | None:
+    """(this machine's copy, the pod's path) when the backbone is read from a copy here, else None and the pod reads the
+    hub at the pinned revision. bge-m3's hub revision holds only pytorch_model.bin, which transformers will not load under
+    the pod's torch 2.4: the copy here holds the same weights as safetensors, and the pod reads that copy."""
+    spec = BACKBONES[backbone]
+    source, local_only = source_of(spec)
+    if source == spec.hub or not local_only:
+        return None
+    return source, f"{POD_BACKBONES}/{spec.name}"
+
+
+def remote_command(backbone: str, steps: int, seed: int, *, hidden: int = 384, blocks: int = 3, resume: bool = False, extra: str = "", picks: bool = False, uploaded_backbone: bool = False) -> str:
     """Unpack, check CUDA by running a kernel, train into out/candidate. A failed run exits 4 with its log's tail; out/ always travels back. Evals come every tenth of the run, and the state is written with them."""
-    train = f"{ALLOC} NAMED_BACKBONE_ONLINE=1 python -m training.named.train --examples examples --experiment pod --out out/candidate --backbone {backbone} --steps {steps} --accumulate 4 --seed {seed} --hidden {hidden} --blocks {blocks} --amp --eval-every {max(500, steps // 10)}" + (f" {extra}" if extra else "") + (" --resume-from resume_state.pt" if resume else "")
+    read_from = f"NAMED_BACKBONE_DIR={POD_BACKBONES}" if uploaded_backbone else "NAMED_BACKBONE_ONLINE=1"
+    train = f"{ALLOC} {read_from} python -m training.named.train --examples examples --experiment pod --out out/candidate --backbone {backbone} --steps {steps} --accumulate 4 --seed {seed} --hidden {hidden} --blocks {blocks} --amp --eval-every {max(500, steps // 10)}" + (f" {extra}" if extra else "") + (" --resume-from resume_state.pt" if resume else "")
     return f"cd /workspace && mkdir -p out && tar -xf examples.tar && {'tar -xf picks.tar && ' if picks else ''}{PIP}; pip install -q psutil 2>&1 | tail -1; {CUDA_CHECK}; {train} > out/train.log 2>&1 || {{ tail -5 out/train.log; exit 4; }}; tail -2 out/train.log; ls -la out/candidate out/candidate/best"
 
 
@@ -163,7 +182,8 @@ def main(argv: list[str] | None = None) -> int:
     experiment = EXPERIMENTS_DIR / args.experiment
     state = latest_state(experiment)
     extra = " ".join(part for part in (args.train_flags, "--corpus corpus.jsonl" if args.corpus else "", "--init init" if args.init else "", "--picks picks" if args.picks else "", "--qualified gate.json" if args.qualified else "") if part)
-    remote = remote_command(args.backbone, plan.steps, args.seed, resume=state is not None, extra=extra, picks=bool(args.picks))
+    copy = backbone_upload(args.backbone)
+    remote = remote_command(args.backbone, plan.steps, args.seed, resume=state is not None, extra=extra, picks=bool(args.picks), uploaded_backbone=copy is not None)
     args.minutes = args.minutes or plan.lease_minutes
     args.dry_run = not args.go
     if not args.go:
@@ -177,6 +197,8 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit(f"refused: {free:.1f} GB free")
     archive = packed_examples(args.examples, experiment)
     uploads = [(str(archive), "/workspace/examples.tar")]
+    if copy is not None:
+        uploads.append(copy)
     if args.corpus:
         uploads.append((str(Path(args.corpus)), "/workspace/corpus.jsonl"))
     if args.picks:
