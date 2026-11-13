@@ -787,8 +787,8 @@ def link_weights_of(reader: NamedReader, qualified: torch.Tensor | None = None) 
         return LinkWeights((reader.coordinate_weights() if qualified is None else reader.coordinate_weights() * qualified).cpu().double().numpy().round(6), {rule: round(float(value), 6) for rule, value in zip(RULES, reader.rule_weights().cpu().tolist())}, round(float(reader.role_weight()), 6), round(float(reader.closed_weight()), 6), biases)
 
 
-def held_metrics(backbone, reader, config, names, examples, device, limit: int, seed: int) -> dict:
-    """Held-out families, no augmentation: where each link's target ranks among its candidates, and the closed heads."""
+def held_metrics(backbone, reader, config, names, examples, device, limit: int, seed: int, qualified: torch.Tensor | None = None) -> dict:
+    """Held-out families, no augmentation: where each link's target ranks among its candidates under the sum a bundle serves (a property the gate did not qualify weighs nothing), and the closed heads."""
     reader.eval()
     backbone.eval()
     rng = random.Random(seed)
@@ -796,7 +796,7 @@ def held_metrics(backbone, reader, config, names, examples, device, limit: int, 
     right = {head: 0 for head in CLOSED_HEADS}
     questions = 0
     with torch.no_grad():
-        weights = reader.coordinate_weights()
+        weights = reader.coordinate_weights() if qualified is None else reader.coordinate_weights() * qualified
         rule_weights = reader.rule_weights()
         for example in sorted(examples, key=lambda item: item.key)[:limit]:
             batch = build_batch(example, config, names, rng, questions=8, shares=None)
@@ -991,7 +991,7 @@ def train(examples: list[TabExample], names: NameSet, backbone: nn.Module, confi
                 if log_print and step % 50 == 0:
                     print(json.dumps(row), flush=True)
             if (step % config.eval_every == 0 or step == config.steps) and held:
-                metrics = held_metrics(backbone, reader, reader_config, names, held, device, config.eval_tabs, config.seed)
+                metrics = held_metrics(backbone, reader, reader_config, names, held, device, config.eval_tabs, config.seed, qualified)
                 if held_picks:
                     metrics.update(pick_metrics(backbone, reader, reader_config, names, held_picks, device, config.eval_tabs, config.seed, qualified))
                 metrics.update(step=step, seconds=round(time.time() - started, 1))

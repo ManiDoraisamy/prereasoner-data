@@ -797,6 +797,22 @@ def test_only_qualified_properties_enter_a_links_sum() -> None:
     reader = NamedReader(32, names.meaning_start, names.meaning, ReaderConfig(backbone="hash", hidden=36, blocks=1, open_dim=16))
     weights = link_weights_of(reader, mask).coordinates
     assert weights[names.meaning_start] > 0 and not weights[names.meaning_start + 1:].any(), "a property the gate did not qualify weighs nothing in a bundle's links"
+    # the held link ranks are the served sum's: a mask that takes every coordinate out ranks as a reader whose coordinates all weigh nothing
+    from training.named.train import held_metrics
+    config = ReaderConfig(backbone="hash", hidden=36, blocks=1, open_dim=16, sample_rows=3)
+    examples = fake_examples(4)
+    torch.manual_seed(0)
+    backbone = HashBackbone()
+    reader = NamedReader(backbone.dim, names.meaning_start, names.meaning, config)
+    nothing = torch.zeros(len(names.names))
+    masked = held_metrics(backbone, reader, config, names, examples, "cpu", 4, 0, nothing)
+    held = reader.coordinate_weights
+    reader.coordinate_weights = lambda: held() * 0.0
+    try:
+        weightless = held_metrics(backbone, reader, config, names, examples, "cpu", 4, 0)
+    finally:
+        reader.coordinate_weights = held
+    assert masked["links"] > 0 and masked == weightless
 
 
 def test_training_on_picks_beside_the_sheets() -> None:
