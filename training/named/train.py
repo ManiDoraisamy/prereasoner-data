@@ -12,6 +12,7 @@ Gemini names a single property per column, so the properties that hold together 
   open                 the separate unnamed channel, on the same candidates. It trains its own two projections and, unless --open-detached, the shared encoder. --open-in-link also puts it in every link's and pick's sum as the one labelled unnamed term serving's named_plus_open adds (its learned weight times the best cosine of any of the question's words to the target, never below 0), and the held link ranks use that sum: the decision itself then trains the channel, not only its own loss.
 
 Each property's output starts at its own text as the backbone reads it at the start; from there its labels anchor it.
+An experiment may read another name set (--names: the structure names it keeps and schema.org properties, candidates outside the basis allowed, each anchored by its own schema.org text) and start listed meaning outputs at a readout of the hidden state (--name-rows: a feature found in the reader, its own-text row zero, in links at weight one); a start bundle of another name set gives each output it shares by name. A property enters the basis only through alloc.json.
 
 Each step reads one tab, and --accumulate of them make one optimizer step: its tables through the augmentations (renames, masks, shuffles, distractor columns; training/named/augment.py), its questions with the question words alone. A checkpoint is chosen on held-out families by top-1 link recall (top 10 among a link's in-sheet candidates is nearly full early on, and says little). float32 unless --amp. A candidate goes only to training/named/data/experiments/<id>/out/: promotion is separate.
 
@@ -41,7 +42,7 @@ from torch import nn
 from engine.named.backbone import BACKBONES, question_words
 from engine.named.index import ClassSignatures
 from engine.named.links import LinkWeights, RULES, SLOTS_OF_LINK_KIND, rule_evidence, is_stated_word
-from engine.named.model import LINK_KINDS, NamedReader, ReaderConfig
+from engine.named.model import _ONE, LINK_KINDS, NamedReader, ReaderConfig
 from engine.named.names import CALC_SIDES, CLASS_PREFIX, CLOSED_HEADS, LEFT, MEANING_PREFIX, RIGHT, WORD_ROLE_CLASSES, NameSet, closed_labels, fine_answer_type, load_name_set, meaning_names, property_texts
 from engine.named.bundle import write_bundle
 from engine.named.units import T_BAND, T_COLUMN, T_LINE, T_TABLE, T_VALUE, Graph, Target, collate, question_graph, rendered_graph, table_graphs, targets_of, value_graph
@@ -100,6 +101,8 @@ class TrainConfig:
     picks: str | None = None       # a folder of pick examples (the teacher's recorded picks on training-split questions)
     qualified: str | None = None   # a gate.json: only the properties it qualified for links enter a link's sum
     init: str | None = None        # a bundle to start from: the step before this one
+    name_rows: str | None = None   # an .npz of meaning outputs that start at a feature of the hidden state (set_name_rows)
+    name_texts: dict = field(default_factory=dict)     # an experiment name set's candidates' own texts (name_set_from)
     resume: str | None = None      # a last_state.pt to go on from
     stop_at: int | None = None     # stop here with the state written, for a test
 
@@ -560,6 +563,52 @@ class SelfAnchors:
     related: torch.Tensor       # [properties, properties] bool, symmetric, never a property with itself
 
 
+def meaning_texts(names: NameSet, candidates: dict[str, str] | None = None) -> list[str]:
+    """Each meaning output's own text: a basis property's as the name set file writes it; a candidate outside the basis (an experiment's --names) the text its name set carries, written from schema.org as the basis writes its own (training/schema_org/basis.py:property_text). The pod never reads the catalogue."""
+    text_of = {**dict(zip(meaning_names(), property_texts())), **(candidates or {})}
+    missing = [name for name in names.names[names.meaning_start:] if name not in text_of]
+    if missing:
+        raise ValueError(f"meaning names without a text: {missing}")
+    return [text_of[name] for name in names.names[names.meaning_start:]]
+
+
+def name_set_from(path: str | Path) -> tuple[NameSet, dict[str, str]]:
+    """An experiment's name set and its candidates' texts: {"structure": the structure names kept, "meaning": schema.org properties, "texts": {property: its text} for each outside the basis}. Every structure name must be one of the name set file's."""
+    document = json.loads(Path(path).read_text(encoding="utf-8"))
+    known = set(load_name_set().names)
+    structure = tuple(sorted(document["structure"]))
+    unknown = [name for name in structure if name not in known or name.startswith(MEANING_PREFIX)]
+    if unknown:
+        raise ValueError(f"structure names outside the name set: {unknown}")
+    meaning = tuple(document["meaning"])
+    if not all(name.startswith(MEANING_PREFIX) for name in meaning):
+        raise ValueError("a meaning name is a schema.org property")
+    names = NameSet(structure + meaning, len(structure))
+    texts = dict(document.get("texts") or {})
+    meaning_texts(names, texts)       # every property has its own text, or this raises
+    return names, texts
+
+
+def set_name_rows(reader: NamedReader, names: NameSet, path: str | Path) -> list[str]:
+    """Meaning outputs that start where a feature of the hidden state reads (an .npz of names, read [n, hidden], read_bias [n]): the relational read's row and bias set, the own-text row and bias zero, so the output starts as that readout alone and its anchor and labels train it from there."""
+    with np.load(path, allow_pickle=False) as held:      # closed after reading: an open .npz holds its file on Windows
+        rows = {key: held[key] for key in ("names", "read", "read_bias")}
+    done = []
+    with torch.no_grad():
+        for name, read, bias in zip(rows["names"].tolist(), rows["read"], rows["read_bias"]):
+            at = names.at(name)
+            if at is None or at < names.meaning_start:
+                raise ValueError(f"a row for a name outside the meaning tier: {name}")
+            row = at - names.meaning_start
+            reader.meaning_read.weight[row] = torch.as_tensor(read, dtype=reader.meaning_read.weight.dtype)
+            reader.meaning_read.bias[row] = float(bias)
+            reader.meaning_text.weight[row] = 0.0
+            reader.meaning_text.bias[row] = 0.0
+            reader.raw_coordinate_weights[at] = _ONE          # in a link at weight one from the start, as a fresh name is
+            done.append(name)
+    return done
+
+
 def co_held_matrix(path: str | Path, names: NameSet, device: str) -> torch.Tensor:
     """[properties, properties] bool: row P marks the properties that hold together with P on one column, masked on a unit labelled P alone."""
     out = torch.zeros((names.meaning, names.meaning), dtype=torch.bool, device=device)
@@ -570,10 +619,9 @@ def co_held_matrix(path: str | Path, names: NameSet, device: str) -> torch.Tenso
     return out
 
 
-def self_anchors(backbone, reader: NamedReader, names: NameSet, device: str) -> SelfAnchors:
+def self_anchors(backbone, reader: NamedReader, names: NameSet, device: str, candidates: dict[str, str] | None = None) -> SelfAnchors:
     """Built once, at the start, from the base encoder and the outputs' starting rows (read_descriptions), before any state is loaded: a text's own property 1; a property read at RELATED_AT or more keeps that value; every other 0."""
-    text_of = dict(zip(meaning_names(), property_texts()))
-    texts = [text_of[name] for name in names.names[names.meaning_start:]]
+    texts = meaning_texts(names, candidates)
     was_training = backbone.training
     backbone.eval()
     with torch.no_grad():
@@ -912,14 +960,16 @@ def train(examples: list[TabExample], names: NameSet, backbone: nn.Module, confi
     backbone = backbone.to(device).float().train()
     reader_config = config.reader
     reader = NamedReader(backbone.dim, names.meaning_start, names.meaning, reader_config).to(device).float().train()
-    read_descriptions(backbone, reader, names)
-    anchors = self_anchors(backbone, reader, names, device) if names.meaning else None
+    read_descriptions(backbone, reader, names, config.name_texts)
+    anchors = self_anchors(backbone, reader, names, device, config.name_texts) if names.meaning else None
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
     if anchors is not None and config.anchor_steps and not config.resume and not config.init:
         (out / "self_anchors.json").write_text(json.dumps({**train_self_anchors(backbone, reader, anchors, config.anchor_steps, config.head_lr), "names": list(names.names[names.meaning_start:])}, indent=1) + "\n", encoding="utf-8", newline="\n")
     if config.init and not config.resume:
         start_from(config.init, backbone, reader, names, device)
+    if config.name_rows and not config.resume:
+        set_name_rows(reader, names, config.name_rows)
     corpus = [instance for instance in read_corpus(config.corpus, names) if instance.split == "train"] if config.corpus else []
     weights_of_losses = {**LOSS_WEIGHTS, "link": config.link_weight, "open": config.open_weight}
     co_held = co_held_matrix(config.co_held, names, device) if config.co_held else None
@@ -1036,18 +1086,22 @@ def train(examples: list[TabExample], names: NameSet, backbone: nn.Module, confi
 
 
 def start_from(folder: str | Path, backbone, reader: NamedReader, names: NameSet, device: str) -> None:
-    """Start from a bundle, the step before this one: its tensors, and its link weights back into the parameters they came from."""
+    """Start from a bundle, the step before this one: its tensors, and its link weights back into the parameters they came from. From a bundle of another name set, each output it shares by name comes over and an output it lacks keeps its start."""
     from engine.named.bundle import BUNDLE_META, BUNDLE_STATE
     document = json.loads((Path(folder) / BUNDLE_META).read_text(encoding="utf-8"))
-    if document["names_sha"] != names.sha:
-        raise ValueError("a start bundle of another name set")
+    old = NameSet(tuple(document["names"]), int(document["meaning_start"]))
+    if old.sha != document["names_sha"]:
+        raise ValueError("a start bundle's names do not match their sha")
     state = torch.load(Path(folder) / BUNDLE_STATE, map_location=device, weights_only=True)
     backbone.load_state_dict({name[len("backbone."):]: value for name, value in state.items() if name.startswith("backbone.")}, strict=False)
-    reader.load_state_dict({name[len("reader."):]: value for name, value in state.items() if name.startswith("reader.")}, strict=False)
+    reader_state = {name[len("reader."):]: value for name, value in state.items() if name.startswith("reader.")}
+    if old.sha != names.sha:
+        reader_state = _rows_by_name(reader_state, reader.state_dict(), old, names)
+    reader.load_state_dict(reader_state, strict=False)
     weights = LinkWeights.from_record(document["weights"])
     raw = lambda values: torch.log(torch.expm1(torch.as_tensor(values, dtype=torch.float32, device=device).clamp(min=1e-4)))     # softplus undone
     with torch.no_grad():
-        reader.raw_coordinate_weights.copy_(raw(weights.coordinates))
+        reader.raw_coordinate_weights.copy_(raw([weights.coordinates[old.at(name)] if old.at(name) is not None else 1.0 for name in names.names]))
         reader.raw_rule_weights.copy_(raw([weights.rules[rule] for rule in RULES]))
         reader.raw_role_weight.copy_(raw(weights.role))
         reader.raw_closed_weight.copy_(raw(weights.closed))
@@ -1055,10 +1109,29 @@ def start_from(folder: str | Path, backbone, reader: NamedReader, names: NameSet
         reader.raw_open_weight.copy_(raw(weights.open_weight))
 
 
-def read_descriptions(backbone, reader: NamedReader, names: NameSet) -> None:
+_NAMED_ROWS = {"structure.weight": "structure", "structure.bias": "structure", "meaning_text.weight": "meaning", "meaning_text.bias": "meaning", "meaning_read.weight": "meaning", "meaning_read.bias": "meaning", "raw_coordinate_weights": "all"}
+
+
+def _rows_by_name(state: dict, fresh: dict, old: NameSet, names: NameSet) -> dict:
+    """A reader state of one name set as another's: each per-name row copied by name, a name the old set lacks keeping the fresh reader's row."""
+    out = dict(state)
+    for key, tier in _NAMED_ROWS.items():
+        if key not in state:
+            continue
+        rows = fresh[key].clone()
+        new_names = names.names[:names.meaning_start] if tier == "structure" else names.names[names.meaning_start:] if tier == "meaning" else names.names
+        for at, name in enumerate(new_names):
+            held = old.at(name)
+            if held is None or (tier == "structure" and held >= old.meaning_start) or (tier == "meaning" and held < old.meaning_start):
+                continue
+            rows[at] = state[key][held - old.meaning_start if tier == "meaning" else held]
+        out[key] = rows
+    return out
+
+
+def read_descriptions(backbone, reader: NamedReader, names: NameSet, candidates: dict[str, str] | None = None) -> None:
     """Each basis property's output started at its own text as the backbone reads it, no gradient, dropout off (NamedReader.set_descriptions)."""
-    text_of = dict(zip(meaning_names(), property_texts()))
-    texts = [text_of[name] for name in names.names[names.meaning_start:]]
+    texts = meaning_texts(names, candidates)
     was_training = backbone.training
     backbone.eval()
     with torch.no_grad():
@@ -1102,6 +1175,8 @@ def main() -> None:
     parser.add_argument("--init", help="a bundle to start from")
     parser.add_argument("--picks", help="a folder of pick examples: the teacher's recorded picks on training-split questions")
     parser.add_argument("--qualified", help="a gate.json: only the properties it qualified enter a link's sum")
+    parser.add_argument("--names", help="an experiment's name set (name_set_from): the structure names kept and the schema.org properties, candidates outside the basis allowed")
+    parser.add_argument("--name-rows", help="an .npz of meaning outputs that start at a feature of the hidden state (set_name_rows)")
     args = parser.parse_args()
     out = Path(args.out) if args.out else EXPERIMENTS_DIR / args.experiment / "out"
     record = {"experiment": args.experiment, **_commit(), "examples": args.examples, "fake": args.fake, "flags": {k: v for k, v in vars(args).items() if k not in ("examples", "experiment", "out", "fake")}}
@@ -1116,13 +1191,13 @@ def main() -> None:
         from engine.named.backbone import load_backbone
         examples = read_examples(args.examples)
         record["examples_sha256"] = examples_sha(args.examples)
-        names = load_name_set()
+        names, name_texts = name_set_from(args.names) if args.names else (load_name_set(), {})
         backbone = load_backbone(args.backbone, layers=args.layers)
         backbone.freeze_table()
         signatures = ClassSignatures.from_ontology()
         reader_config = ReaderConfig(backbone=args.backbone, backbone_layers=args.layers, hidden=args.hidden, blocks=args.blocks, sample_rows=args.sample_rows, window_columns=args.window_columns, keep=args.keep)
     record["names_sha"] = names.sha
-    config = TrainConfig(reader=reader_config, steps=args.steps, accumulate=args.accumulate, questions=args.questions, lr=args.lr, head_lr=args.head_lr, seed=args.seed, held_share=args.held_share, eval_every=args.eval_every, eval_tabs=args.eval_tabs, amp=args.amp, open_detached=args.open_detached, open_in_link=args.open_in_link, augment={} if args.no_augment else dict(TRAINING_SHARES), resume=args.resume_from, link_weight=args.link_weight, open_weight=args.open_weight, anchor_steps=args.anchor_steps, corpus=args.corpus, init=args.init, picks=args.picks, qualified=args.qualified,
+    config = TrainConfig(reader=reader_config, steps=args.steps, accumulate=args.accumulate, questions=args.questions, lr=args.lr, head_lr=args.head_lr, seed=args.seed, held_share=args.held_share, eval_every=args.eval_every, eval_tabs=args.eval_tabs, amp=args.amp, open_detached=args.open_detached, open_in_link=args.open_in_link, augment={} if args.no_augment else dict(TRAINING_SHARES), resume=args.resume_from, link_weight=args.link_weight, open_weight=args.open_weight, anchor_steps=args.anchor_steps, corpus=args.corpus, init=args.init, name_rows=args.name_rows, name_texts=name_texts if not args.fake else {}, picks=args.picks, qualified=args.qualified,
                          co_held=str(Path(args.examples) / "co_held.json") if args.examples and (Path(args.examples) / "co_held.json").exists() else None)
     summary = train(examples, names, backbone, config, out, record=record, signatures=signatures)
     (out / "summary.json").write_text(json.dumps({**summary, **record}, indent=1, sort_keys=True, default=str) + "\n", encoding="utf-8", newline="\n")

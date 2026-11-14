@@ -1216,6 +1216,100 @@ def test_the_gate_judges_each_fold_at_the_threshold_the_other_folds_set():
     assert never["why"] == "no threshold reaches the precision on the calibration units"
 
 
+def test_an_experiment_name_set_holds_kept_structure_names_and_any_current_property() -> None:
+    from training.named.train import meaning_texts, name_set_from
+    from training.schema_org.basis import property_text
+    abridged = property_text("schema:abridged")
+    assert abridged.startswith("abridged: "), "a candidate's text is written from schema.org as the basis writes its own"
+    with tempfile.TemporaryDirectory() as folder:
+        path = Path(folder) / "names.json"
+        path.write_text(json.dumps({"structure": ["value_kind:number", "column_role:measure"], "meaning": ["schema:price", "schema:abridged"], "texts": {"schema:abridged": abridged}}), encoding="utf-8")
+        names, texts = name_set_from(path)
+        assert names.names == ("column_role:measure", "value_kind:number", "schema:price", "schema:abridged") and names.meaning_start == 2
+        assert meaning_texts(names, texts) == [dict(zip(meaning_names(), property_texts()))["schema:price"], abridged], "a basis property keeps the name set file's text, a candidate the text its name set carries"
+        for document in ({"structure": ["column_role:nonsense"], "meaning": []}, {"structure": ["schema:price"], "meaning": []}, {"structure": [], "meaning": ["schema:abridged"]}, {"structure": [], "meaning": ["column_role:key"]}):
+            path.write_text(json.dumps(document), encoding="utf-8")
+            try:
+                name_set_from(path)
+            except ValueError:
+                continue
+            raise AssertionError(f"accepted {document}")
+
+
+def test_a_start_bundle_of_another_name_set_gives_each_output_it_shares_by_name() -> None:
+    from training.named.train import link_weights_of, start_from
+    torch.manual_seed(0)
+    backbone = HashBackbone()
+    config = ReaderConfig(backbone="hash", hidden=36, blocks=1, open_dim=16, sample_rows=3)
+    old = fake_name_set()
+    before = NamedReader(backbone.dim, old.meaning_start, old.meaning, config)
+    with torch.no_grad():
+        for parameter in before.parameters():
+            parameter.normal_()
+    structure = tuple(name for name in old.names[:old.meaning_start] if not name.startswith("answer_type:"))
+    new = NameSet(structure + (MEANINGS[2], "schema:abridged", MEANINGS[0]), len(structure))
+    after = NamedReader(backbone.dim, new.meaning_start, new.meaning, config)
+    fresh = {key: value.clone() for key, value in after.state_dict().items()}
+    with tempfile.TemporaryDirectory() as folder:
+        write_bundle(Path(folder), backbone, before, old, config, link_weights_of(before))
+        start_from(folder, backbone, after, new, "cpu")
+    for name in (structure[0], structure[-1]):
+        assert torch.equal(after.structure.weight[new.at(name)], before.structure.weight[old.at(name)]), name
+    for name in (MEANINGS[2], MEANINGS[0]):
+        row_new, row_old = new.at(name) - new.meaning_start, old.at(name) - old.meaning_start
+        assert torch.equal(after.meaning_read.weight[row_new], before.meaning_read.weight[row_old]) and torch.equal(after.meaning_text.bias[row_new], before.meaning_text.bias[row_old]), name
+    row = new.at("schema:abridged") - new.meaning_start
+    assert torch.equal(after.meaning_read.weight[row], fresh["meaning_read.weight"][row]), "a name the start bundle lacks keeps its start"
+    assert all(torch.equal(a, b) for a, b in zip(after.relational.state_dict().values(), before.relational.state_dict().values())), "the encoder comes over whole"
+    weights = torch.nn.functional.softplus(after.raw_coordinate_weights)
+    assert abs(float(weights[new.at(MEANINGS[0])]) - float(torch.nn.functional.softplus(before.raw_coordinate_weights)[old.at(MEANINGS[0])])) < 1e-4
+    assert abs(float(weights[new.at("schema:abridged")]) - 1.0) < 1e-4, "a new name's link weight starts at one"
+
+
+def test_name_rows_start_a_meaning_output_at_a_readout_of_the_hidden_state() -> None:
+    from engine.named.model import _ONE
+    from training.named.train import set_name_rows
+    names = fake_name_set()
+    config = ReaderConfig(backbone="hash", hidden=36, blocks=1, open_dim=16)
+    reader = NamedReader(32, names.meaning_start, names.meaning, config)
+    with torch.no_grad():
+        reader.raw_coordinate_weights.fill_(-3.0)
+    read, bias = np.linspace(-1.0, 1.0, 36).astype(np.float32), 0.25
+    with tempfile.TemporaryDirectory() as folder:
+        path = Path(folder) / "rows.npz"
+        np.savez(path, names=np.asarray([MEANINGS[1]]), read=read[None], read_bias=np.asarray([bias], dtype=np.float32))
+        assert set_name_rows(reader, names, path) == [MEANINGS[1]]
+    hidden, base = torch.randn(4, 36), torch.randn(4, 32)
+    with torch.no_grad():
+        read_out = reader.coordinate_probabilities(hidden, base)[:, names.at(MEANINGS[1])]
+    assert torch.allclose(read_out, torch.sigmoid(hidden @ torch.as_tensor(read) + bias), atol=1e-6), "the output starts as the readout alone: its own-text row is zero"
+    assert abs(float(reader.raw_coordinate_weights[names.at(MEANINGS[1])]) - _ONE) < 1e-6 and float(reader.raw_coordinate_weights[names.at(MEANINGS[0])]) == -3.0, "the readout's link weight starts at one, the others stay"
+    try:
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "rows.npz"
+            np.savez(path, names=np.asarray([names.names[0]]), read=read[None], read_bias=np.asarray([bias], dtype=np.float32))
+            set_name_rows(reader, names, path)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("a structure name took a meaning row")
+
+
+def test_training_on_an_experiment_name_set_with_name_rows() -> None:
+    from training.schema_org.basis import property_text
+    old = fake_name_set()
+    structure = tuple(name for name in old.names[:old.meaning_start] if not name.startswith("answer_type:"))
+    names = NameSet(structure + (MEANINGS[0], "schema:abridged"), len(structure))
+    with tempfile.TemporaryDirectory() as folder:
+        rows = Path(folder) / "rows.npz"
+        np.savez(rows, names=np.asarray(["schema:abridged"]), read=np.full((1, 36), 0.01, dtype=np.float32), read_bias=np.asarray([-1.0], dtype=np.float32))
+        config = TrainConfig(reader=ReaderConfig(backbone="hash", hidden=36, blocks=1, open_dim=16, sample_rows=3), steps=3, questions=6, seed=0, held_share=0.2, eval_every=2, eval_tabs=2, name_rows=str(rows), anchor_steps=2, name_texts={"schema:abridged": property_text("schema:abridged")})
+        out = Path(folder) / "out"
+        summary = train(fake_examples(6), names, HashBackbone(), config, out, log_print=False)
+        document = json.loads((out / "best" / "named_bundle.json").read_text(encoding="utf-8"))
+    assert summary["steps"] == 3 and tuple(document["names"]) == names.names and document["meaning_start"] == names.meaning_start
+
+
 def main() -> int:
     tests = [(name, item) for name, item in globals().items() if name.startswith("test_") and callable(item)]
     failed = 0

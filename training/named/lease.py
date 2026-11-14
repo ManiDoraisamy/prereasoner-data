@@ -171,6 +171,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--init", help="a bundle to start from (the step before): uploaded")
     parser.add_argument("--picks", help="a folder of pick examples (the teacher's recorded picks): uploaded")
     parser.add_argument("--qualified", help="a gate.json: uploaded; only the properties it qualified enter a link")
+    parser.add_argument("--names", help="an experiment's name set (training.named.train --names): uploaded")
+    parser.add_argument("--name-rows", help="an .npz of meaning outputs started at a feature of the hidden state (training.named.train --name-rows): uploaded")
     parser.add_argument("--train-flags", default="", help="more flags for training.named.train, as one string (--link-weight 0 --anchor-steps 300)")
     parser.add_argument("--go", action="store_true", help="lease and pay; without it, only the plan")
     args = parser.parse_args(argv)
@@ -181,7 +183,7 @@ def main(argv: list[str] | None = None) -> int:
     print(json.dumps(asdict(plan), indent=0, sort_keys=True))
     experiment = EXPERIMENTS_DIR / args.experiment
     state = latest_state(experiment)
-    extra = " ".join(part for part in (args.train_flags, "--corpus corpus.jsonl" if args.corpus else "", "--init init" if args.init else "", "--picks picks" if args.picks else "", "--qualified gate.json" if args.qualified else "") if part)
+    extra = " ".join(part for part in (args.train_flags, "--corpus corpus.jsonl" if args.corpus else "", "--init init" if args.init else "", "--picks picks" if args.picks else "", "--qualified gate.json" if args.qualified else "", "--names names.json" if args.names else "", "--name-rows name_rows.npz" if args.name_rows else "") if part)
     copy = backbone_upload(args.backbone)
     remote = remote_command(args.backbone, plan.steps, args.seed, resume=state is not None, extra=extra, picks=bool(args.picks), uploaded_backbone=copy is not None)
     args.minutes = args.minutes or plan.lease_minutes
@@ -209,6 +211,10 @@ def main(argv: list[str] | None = None) -> int:
         uploads.append((str(packed), "/workspace/picks.tar"))
     if args.qualified:
         uploads.append((str(Path(args.qualified)), "/workspace/gate.json"))
+    if args.names:
+        uploads.append((str(Path(args.names)), "/workspace/names.json"))
+    if args.name_rows:
+        uploads.append((str(Path(args.name_rows)), "/workspace/name_rows.npz"))
     if args.init:
         uploads.extend((str(Path(args.init) / name), f"/workspace/init/{name}") for name in ("named_bundle.json", "reader.pt"))
     if state is not None:

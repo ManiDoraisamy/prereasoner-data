@@ -30,6 +30,17 @@ def _text(entry) -> str:
     return f"{words}: {comment}"
 
 
+def property_text(name: str) -> str:
+    """A current schema.org property's own text, written as the basis writes its own. An experiment's name set may hold a
+    property outside the basis as a candidate (training/named/train.py --names); it enters the basis only through alloc.json."""
+    from engine.named.names import MEANING_PREFIX
+    from engine.schema_org import load_contract
+    entry = load_contract().property(name.removeprefix(MEANING_PREFIX))
+    if entry is None or entry.superseded_by:
+        raise ValueError(f"not a current schema.org property: {name}")
+    return _text(entry)
+
+
 def meaning_tier() -> dict:
     """The basis as the runtime reads it: properties with their texts and fine types, classes as their superpositions, the fine types' classes."""
     from engine.named.names import FINE_CLASSES, MEANING_PREFIX, CLASS_PREFIX
