@@ -5,6 +5,50 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
+## The unnamed term in the decision: bge-m3 lists 398 of 583 (+22) and 361 through named terms alone (+42); only 16 of the 183 named dimensions ever reach a link (2026-11-14)
+
+- Owner's go of 2026-11-13 evening ("Yes, write the contract and run it"), after the CSS reading (a model whose anchored
+  dimensions do not starve its unnamed ones keeps what nobody named). Contract `named_m3_open_s0` (next-engine, gitignored
+  experiments folder), code next-engine `f7c910a`: `--open-in-link` puts the one labelled unnamed term (its learned weight
+  times the best cosine of any question word to the target, never below 0) in every link's and pick's sum, and the
+  unnamed channel trains the encoder. Otherwise the control's recipe exactly (`named_m3_one_s0`: bge-m3, one stage of
+  15,000 steps, the same labels, corpus, gold links and CLEF's picks). Measured with the step-2 measure on the five dev
+  sets from next-engine `f7c910a`, each bundle alone; dev measured, never mined.
+
+| bge-m3, one stage | right listed (of 583) | listed by named terms alone | first right (of 1,082) | p90 studied / messy / WTQ / fresh dev (s) |
+|---|---|---|---|---|
+| control, mode named | 376 | 319 | 245 | 0.468 / 0.684 / 0.272 / 0.696 |
+| control, the unnamed term at a weight fitted on training questions (0.25) | 369 | 314 | 232 | 0.512 / 0.726 / 0.275 / 0.574 |
+| **treatment, the unnamed term at its learned weight (1.18)** | **398** | **361** | **258** | 0.475 / 0.553 / 0.309 / 0.728 |
+| treatment, mode named (the term not served) | 397 | 361 | 247 | 0.386 / 0.444 / 0.311 / 0.965 (shared CPU, not clean) |
+
+The contract's gate (written before the run): at least 18 more listed than the control's better mode, more first right,
+and p90 at most 1.25x. The treatment lists 22 more (54 wins, 32 losses; two-sided sign test p 0.023), puts 13 more first
+(75 wins, 62 losses; p 0.31, not significant) and its p90 is at most 1.14x: **the gate passes**. Held links read top 1 at
+0.695 against 0.648. Two readings matter more than the gate. Listed through named terms alone rises by 42, more than the
+whole gain, and the same bundle without the term at serving lists 397: the gain is the training, not the term served.
+Letting the decision train the unnamed capacity made the named terms better. And the run sits at 68% of the CLEF path's
+right answers, 36-43 below the opaque references (434 and 441) and 127 below the 90% mark (525). GPU about $3.71 (one
+L40S lease; its own download failed on a host that resets long transfers, and a 16-part checked pull recovered the bundle).
+
+**Which named dimensions work.** On 575 training-split questions over 58 workbooks (3,841 question words, 10,325 sheet
+targets, 104,734 written links), counted per dimension in the treatment bundle:
+
+| dimensions | count | what they do in a link |
+|---|---|---|
+| structure names that never fire | 82 | none reads 0.5 on any word or target; zero link terms. 73 are copies of the closed heads' program names (form, aggregate, direction, comparison, operators, answer type, period, size and the like): the coordinate head labels a target only with its column role, value kind and line role, so these train to 0 everywhere while the closed heads read the same meanings; 9 line-role and value-kind names never occurred |
+| structure names on the sheet side only | 2 | `column_role:spacer`, `value_kind:blank`: no question word reads them |
+| meaning properties | 83 | link weight 0 (the gate qualified none); 37 of them have no training label at all, and 80% of labelled training columns carry no basis property (`price` alone is 40% of the positives) |
+| working | 16 | `column_role` measure, key, peer, label, row total, derived, section label, date, tab name, period; `value_kind` number, date, period, text (on every value and no word: always on); `line_role` total, band |
+
+`column_role:measure`, `value_kind:number` and `column_role:key` carry 71% of all named link mass, the top nine 95%. Every
+working name says what kind of target a target is; none says which of two targets of one kind a word means. That choice
+falls to exact text and, served, to the unnamed term. **Reading:** reducing the named dimensions changes no link score;
+the gap to 90% is information no named dimension carries. The owner's plan of 2026-11-14 (DISCOVER AND NAME: find the
+reader's own decision-relevant features, name them by schema.org text, train them as named dimensions; drop the 84 names
+that never fire) is under way.
+
+
 ## Step E and the pick learning curve: bge-m3 fails its gate (+12 listed of 583, WTQ p90 3.7x) while putting 38 more right answers first; past a quarter of CLEF's picks, more picks do not move the reader (2026-11-13)
 
 - The plan's step E (bge-m3 head to head) and step 4's learning curve, both measured with the step-2 measure
