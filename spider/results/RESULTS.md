@@ -5,6 +5,59 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
+## Discover and name: the reader's own decision features, named by schema.org text and trained as named dimensions, do not move dev; the 185 lost answers are lost in the reading, not the language (2026-11-14)
+
+- The owner's plan of 2026-11-14 (DISCOVER AND NAME; GPU cap $10; candidates outside the basis allowed; the 84 never-firing
+  structure names dropped). Steps 1-4 on the training split only (next-engine experiments `named_discover_s0`); step 5 two
+  contracts (`named_m3_found_s0`, `named_m3_found_ctl_s0`), code next-engine `95a5313` (`--names`, `--name-rows`). **Every
+  bundle in this entry, like every bundle since step 4b, was trained on CLEF's picks unreviewed**; the owner ruled the same
+  day that CLEF only drafts and that only data he has reviewed trains the reader.
+
+**Steps 1-4.** The `named_m3_open_s0` reader over 2,242 training tabs (132,670 units, 19,113 links with a target): a top-k
+sparse autoencoder (1,024 features, 8 active, 90% of variance) on the hidden state the named head reads; 294 features fire
+selectively on both question words and sheet targets, 79 decide something (a weight fitted on 12,577 kept-family links
+raises held-family link top 1 with more wins than losses). All 79 together: held link top 1 4,161 -> 4,432 of 6,536 over the
+named-only sum, 4,365 -> 4,515 over the served sum. Naming by the centred cosine of a feature's top units' own texts to
+1,454 schema.org texts is weak: on 25 known properties it names 8 right at rank 1, and 5 of the 12 that pass its threshold
+(42% precision). It named 42 features (36 properties, 6 in the basis); those 42 together: +2.8 points held top 1
+named-only, +1.3 served, which passed the step-5 go rule fixed before step 3 was read.
+
+**Step 5.** From `named_m3_open_s0`, 5,000 more steps each: the treatment with the 36 found dimensions (each output started at
+its feature's readout, anchored by its schema.org text, in the link sum), the control with the same name-set cut and none.
+Dev, step-2 measure, mode named_plus_open:
+
+| | right listed (of 583) | listed by named terms alone | first right (of 1,082) |
+|---|---|---|---|
+| baseline `named_m3_open_s0` | 398 | 361 | 258 |
+| control (cut name set, 5,000 more steps) | 392 | 347 | 252 |
+| treatment (+ 36 found dimensions) | 396 | 356 | 238 |
+| the plan's gate | >= 416 | > 361 | > 258 |
+
+**The gate fails on all three.** Against the control the found dimensions add 4 listed (22 wins, 18 losses) and 9 named-alone
+and lose 14 first right (34 wins, 48 losses); against the baseline first right falls (39 wins, 59 losses). The held-link gain
+did not carry to dev. No expansion, no further spend; GPU about $3.60 of $10. Cutting 84 never-firing names changed nothing
+measurable, as their zero link mass said it would.
+
+**Where the 185 lost answers are.** The CLEF path answers 583 dev questions right; the baseline lists 398 of them. For each of
+the other 185 the same reading was decoded to depth 500 and run in order (`named_discover_s0/split_unlisted_e_m3_open.jsonl`):
+
+| where the right program is | questions |
+|---|---|
+| beyond depth 500 | 114 |
+| the decoder's space ends before 500 without it | 8 |
+| ranks 51-500 (quartiles 85 / 165 / 303) | 57 |
+| in the first 50 but past the verifier's line budget | 6 |
+
+The CLEF path builds these programs with the same decoder and language, from its own reading, inside its first 50; ours
+puts two thirds of them past 500. **The gap is the reading, not what the language can say.** Where the right program ranks
+51-500, the slot where it loses most to the top program is a closed head in 32 (direction 9, conditions 7, answer type 7,
+aggregate 6, entity 2, form 1) and a link in 25 (value 10, shown 7, measure 3, filter 2, contains 2, key 1).
+
+**Reviewed data.** Under the owner's rule the 1,441 CLEF drafts on WTQ training tables were run as CLEF read them: 740 return
+WTQ's gold answer and are accepted (his call); 657 miss and offer one to five readings that do, which he reviews on a private
+page; 44 offer none and are dropped (`review_wtq_v1`). Those labels, not unreviewed picks, are what the reader trains on next.
+
+
 ## The unnamed term in the decision: bge-m3 lists 398 of 583 (+22) and 361 through named terms alone (+42); only 16 of the 183 named dimensions ever reach a link (2026-11-14)
 
 - Owner's go of 2026-11-13 evening ("Yes, write the contract and run it"), after the CSS reading (a model whose anchored
