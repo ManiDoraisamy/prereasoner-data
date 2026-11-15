@@ -1295,6 +1295,55 @@ def test_name_rows_start_a_meaning_output_at_a_readout_of_the_hidden_state() -> 
         raise AssertionError("a structure name took a meaning row")
 
 
+def test_the_unnamed_mode_reads_a_link_from_the_unnamed_channel_alone() -> None:
+    from engine.named.names import WORD_ROLE_CLASSES
+    from engine.named.reader import MODE_UNNAMED
+    from engine.program.names import ROLE_OF_SLOT
+    engine, prepared, read, view = _proposal_case()             # word 0 and column 2 share an open direction; no named term reaches it
+    name = coordinate(SLOT_MEASURE, Col("t0", 2).name)
+    unnamed = _build(engine, read, prepared, mode=MODE_UNNAMED)
+    evidence = unnamed.book[name]
+    assert evidence.span == (0,) and not evidence.contributions and not evidence.proposal
+    role = engine.weights.role * float(read.roles[[0], WORD_ROLE_CLASSES.index(ROLE_OF_SLOT[SLOT_MEASURE])].mean())
+    assert abs(unnamed.reading.score(name) - (role - engine.weights.bias(SLOT_MEASURE) + engine.weights.open_weight * 1.0)) < 1e-3, "the unnamed term, the role of its span and the slot's bias"
+    # a word the named terms reach and the unnamed channel does not: in the unnamed mode no named term enters
+    at = _target_at(view, T_COLUMN, 3)
+    coordinate_id = int(view.ids[at][int(np.argmax(view.values[at]))])
+    read.coordinates[0, coordinate_id] = 1000
+    named = _build(engine, read, prepared, mode=MODE_NAMED)
+    other = coordinate(SLOT_MEASURE, Col("t0", 3).name)
+    assert named.book[other].contributions, "the named mode reads the named term"
+    assert not _build(engine, read, prepared, mode=MODE_UNNAMED).book[other].contributions, "the unnamed mode never does"
+
+
+def test_unnamed_only_training_keeps_named_terms_out_and_takes_a_picks_span_from_the_unnamed_term() -> None:
+    from training.named.train import unnamed_span_scores
+    torch.manual_seed(0)
+    reader = NamedReader(32, 5, 2, ReaderConfig(backbone="hash", hidden=36, blocks=1, open_dim=16))
+    words = torch.randn(4, 36)
+    units = torch.nn.functional.normalize(torch.randn(6, 16), dim=-1)
+    candidates = torch.as_tensor([5, 1, 3])
+    best = unnamed_span_scores(reader, words, [1, 3], units, candidates, False)
+    cosine = torch.nn.functional.normalize(reader.open_word(words[[1, 3]]), dim=-1) @ units[candidates].T
+    expected = (reader.open_weight() * cosine.clamp(min=0.0)).max(0)
+    assert torch.allclose(best.values, expected.values) and torch.equal(best.indices, expected.indices), "per candidate, the span word the unnamed term reads closest"
+    with tempfile.TemporaryDirectory() as folder:
+        picks = Path(folder) / "picks"
+        picks.mkdir()
+        write_shard(picks, 0, [_pick_example("clef", 0), _pick_example("clef", 1), _pick_example("clef_held", 2)])
+        base = dict(reader=ReaderConfig(backbone="hash", hidden=36, blocks=1, open_dim=16, sample_rows=3), steps=6, questions=6, seed=0, held_share=0.2, eval_every=3, eval_tabs=2, picks=str(picks))
+        try:
+            train(fake_examples(6), fake_name_set(), HashBackbone(), TrainConfig(**base, unnamed_only=True), Path(folder) / "refused", log_print=False)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("--unnamed-only ran without the unnamed term in the link")
+        summary = train(fake_examples(6), fake_name_set(), HashBackbone(), TrainConfig(**base, open_in_link=True, unnamed_only=True), Path(folder) / "out", log_print=False)
+        weights = json.loads((Path(folder) / "out" / "best" / "named_bundle.json").read_text(encoding="utf-8"))["weights"]
+    assert summary["steps"] == 6 and not any(weights["coordinates"]), "no named term weighs anything in the bundle's links"
+    assert weights["open_weight"] != 1.0, "the unnamed term's weight is learned"
+
+
 def test_training_on_an_experiment_name_set_with_name_rows() -> None:
     from training.schema_org.basis import property_text
     old = fake_name_set()

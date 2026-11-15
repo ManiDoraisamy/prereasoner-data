@@ -2,7 +2,7 @@
 
 Each coordinate of a reading is a sum of named parts: the link of the words that reach it (links.py), the word's role, the slot's bias, a closed head's log odds. The book keeps every part by coordinate, so a score reads back as its terms.
 
-The open channel: an unnamed projection and a dot product. It may put a target before the decoder when nothing named reaches it, at one fixed small score, so its similarity orders nothing: a program resting on such a link is marked needs_asking and is not answered. In MODE_NAMED_PLUS_OPEN alone, kept for the comparison the owner was promised, the similarity joins the sum and may decide. Named-only is the engine; the other mode is a measurement.
+The open channel: an unnamed projection and a dot product. It may put a target before the decoder when nothing named reaches it, at one fixed small score, so its similarity orders nothing: a program resting on such a link is marked needs_asking and is not answered. In MODE_NAMED_PLUS_OPEN alone, kept for the comparison the owner was promised, the similarity joins the sum and may decide. In MODE_UNNAMED, the owner's named-against-unnamed comparison (2026-11-15), no named term enters a link: a link is the unnamed term, the rules and the word's role, and its span is the words the unnamed channel reads closest. Named-only is the engine; the other modes are measurements.
 """
 from __future__ import annotations
 
@@ -27,7 +27,8 @@ from engine.program.words import FILTER_NAME_SHARE, read_question
 
 MODE_NAMED = "named"
 MODE_NAMED_PLUS_OPEN = "named_plus_open"
-MODES = (MODE_NAMED, MODE_NAMED_PLUS_OPEN)
+MODE_UNNAMED = "unnamed"
+MODES = (MODE_NAMED, MODE_NAMED_PLUS_OPEN, MODE_UNNAMED)
 
 # Where a program's links stand. A filter column is carried by its value's link; a period or a number is stated, not linked.
 LINK_SLOTS = (SLOT_MEASURE, SLOT_KEY, SLOT_SHOWN, SLOT_VALUE, SLOT_CONTAINS, SLOT_LINE, SLOT_SECTION)
@@ -202,9 +203,9 @@ class _Builder:
             return 0.0
         return float(self.read.roles[list(span), WORD_ROLE_CLASSES.index(role)].mean())
 
-    def write(self, name: str, span: tuple[int, ...], terms: tuple[Contribution, ...], rules: tuple[RuleHit, ...], open_score: float, proposal: bool) -> None:
+    def write(self, name: str, span: tuple[int, ...], terms: tuple[Contribution, ...], rules: tuple[RuleHit, ...], open_score: float, proposal: bool, reached: bool = False) -> None:
         slot = slot_of(name)
-        role = self.weights.role * self.role_of(span, slot) if (terms or rules) else 0.0
+        role = self.weights.role * self.role_of(span, slot) if (terms or rules or reached) else 0.0
         bias = self.weights.bias(slot)
         named = sum(term.value for term in terms)
         if slot == SLOT_FILTER:                       # a column's name says little of a condition until a value is read there too: the role stays with the value
@@ -213,7 +214,7 @@ class _Builder:
         total = named + sum(hit.value for hit in rules) + role - bias
         if proposal:
             total = PROPOSAL_SCORE                    # one fixed score: a proposal comes before the decoder and its similarity orders nothing
-        if self.mode == MODE_NAMED_PLUS_OPEN:
+        if self.mode in (MODE_NAMED_PLUS_OPEN, MODE_UNNAMED):
             total += self.weights.open_weight * max(open_score, 0.0)
         total = round(total, 4)
         self.scores[name] = total
@@ -225,7 +226,8 @@ class _Builder:
         question = self.read.coordinates
         keep = view.ids
         best = n.max(axis=0) if n.size else np.zeros(len(view.targets))
-        proposals = self._proposals(view, dots, best, catalog_table)
+        unnamed = self.mode == MODE_UNNAMED                  # n is then the unnamed term per word: it chooses spans and values, and no named term is read
+        proposals = {} if unnamed else self._proposals(view, dots, best, catalog_table)
         numbers = list(index.number_columns)
         texts = list(index.text_columns)
         value_rows = [at for at, target in enumerate(view.targets) if target.kind in (T_VALUE, T_LINE, T_BAND)]
@@ -242,7 +244,7 @@ class _Builder:
             names = coordinates_of[at]
             span = _span_of(n[:, at], self.content) if n.size else ()
             terms = ()
-            if span and best[at] > 0:
+            if span and best[at] > 0 and not unnamed:
                 terms = contributions_of(question[list(span)].mean(axis=0), keep[at], view.values[at], self.weights.coordinates, self.names.names)
             open_score = float(dots[:, at].max()) if dots.size else 0.0
             for name in names:
@@ -253,11 +255,12 @@ class _Builder:
                     rules += (RuleHit(ONLY_OF_TYPE, float(self.weights.rules[ONLY_OF_TYPE]), 1.0),)
                 if rules and not span:
                     span = words_in_text(self.read.words, target.text) or (words_in_text(self.read.words, catalog_table.tab) if target.kind == T_TABLE else ())
+                reached = unnamed and bool(span) and best[at] >= SUPPORT
                 has_named = bool(rules) or sum(term.value for term in terms) >= SUPPORT
                 proposal = at in proposals and not has_named
-                if not has_named and not proposal and target.kind in (T_VALUE, T_LINE, T_BAND):
+                if not has_named and not proposal and not reached and target.kind in (T_VALUE, T_LINE, T_BAND):
                     continue                          # a value no word reaches reads 0, as one the index never looked at does
-                self.write(name, span if (has_named or proposal) else (), terms, rules, open_score, proposal)
+                self.write(name, span if (has_named or proposal or reached) else (), terms, rules, open_score, proposal, reached)
 
     def _proposals(self, view: TableView, dots: np.ndarray, best: np.ndarray, table) -> dict[int, float]:
         """What the open channel puts forward: per word, its top targets reaching OPEN_MIN and with no named support. In the order of (rounded similarity, target), and only as a set after that."""
@@ -330,10 +333,10 @@ def build_reading(read: QuestionRead, windex: WorkbookIndex, catalog: Catalog, d
         view = windex.views.get(table.id)
         if view is None or not table.lines:
             continue
-        n = named_matrix(read.coordinates, view.ids, view.values, weights.coordinates)
+        dots = question_open @ (view.open.astype(np.float64) / 127.0).T if len(read.words) and len(view.targets) else np.zeros((0, len(view.targets)))
+        n = weights.open_weight * np.clip(dots, 0.0, None) if mode == MODE_UNNAMED else named_matrix(read.coordinates, view.ids, view.values, weights.coordinates)
         if len(read.words):
             n = np.where(builder.content[:, None], n, 0.0)
-        dots = question_open @ (view.open.astype(np.float64) / 127.0).T if len(read.words) and len(view.targets) else np.zeros((0, len(view.targets)))
         builder.table(table.id, view, n, dots)
         builder.section(table)
         builder.conditions(table.id)
@@ -371,4 +374,4 @@ def needs_asking(program: Program, named: NamedReading, catalog: Catalog) -> boo
     return named.mode == MODE_NAMED and bool(unsupported_links(program, named, catalog))
 
 
-__all__ = ["Evidence", "LINK_SLOTS", "MODES", "MODE_NAMED", "MODE_NAMED_PLUS_OPEN", "NamedReading", "PROPOSAL_SCORE", "QuestionRead", "build_reading", "closed_reading", "needs_asking", "read_questions", "unsupported_links"]
+__all__ = ["Evidence", "LINK_SLOTS", "MODES", "MODE_NAMED", "MODE_NAMED_PLUS_OPEN", "MODE_UNNAMED", "NamedReading", "PROPOSAL_SCORE", "QuestionRead", "build_reading", "closed_reading", "needs_asking", "read_questions", "unsupported_links"]
