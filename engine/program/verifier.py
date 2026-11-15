@@ -6,6 +6,7 @@ Agreement between siblings is worthless (sibling readers agree on 111 of 118 and
 """
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass
 
@@ -49,14 +50,16 @@ def _number(cell: object) -> float | None:
     if isinstance(cell, bool) or cell is None:
         return None
     if isinstance(cell, (int, float)):
-        return float(cell)
-    text = str(cell).strip()
-    if _ISO.match(text):
-        return None
-    try:
-        return float(text)
-    except ValueError:
-        return None
+        value = float(cell)
+    else:
+        text = str(cell).strip()
+        if _ISO.match(text):
+            return None
+        try:
+            value = float(text)
+        except ValueError:
+            return None
+    return value if math.isfinite(value) else None     # as the sheet reads cells: a non-finite value (a code such as INF) is not a number
 
 
 def _kind(cell: object) -> str:

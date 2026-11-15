@@ -1067,6 +1067,17 @@ def test_verifier_runs_the_top_programs_and_never_raises():
     assert verify_one(broken, tables, A_NUMBER).held(EV_FAILED)
 
 
+def test_a_code_python_reads_as_infinite_is_text_to_the_verifier():
+    """A position code INF (and NaN, Infinity) is text in a sheet; float() reads it as a non-finite number, and the count
+    check then rounded infinity and raised. The verifier follows the sheet: a non-finite value is not a number."""
+    rows = [["Name", "Position", "Weight"], ["a", "INF", 150], ["b", "NaN", 185], ["c", "Infinity", 180], ["d", "OF", 175]]
+    catalog, table, tables = _setup(rows)
+    name, position = Col(table.id, 0), Col(table.id, 1)
+    for who in ("a", "b", "c"):
+        checked = _verified(Show(table.id, (position,), (Equals(name, who),)), tables, catalog, A_COUNT)
+        assert checked.result.rows and checked.held(EV_WRONG_KIND), (who, checked.evidence)
+
+
 class _Kinds:
     @staticmethod
     def column_kind(_column):
@@ -1447,7 +1458,7 @@ TESTS = [
     test_partial_value_match, test_case_and_spacing_do_not_count, test_periods, test_blanks, test_ties_keep_every_tied_line, test_units, test_mixed_columns, test_repeated_rows, test_sections_nested_bands_and_the_section_shown, test_python_masks_agree_with_the_sql,
     test_calc_shapes, test_rank_across_peer_columns, test_a_rank_keeps_as_many_as_the_question_states, test_the_decoder_proposes_how_many_a_question_states, test_a_check_says_yes_or_no, test_the_decoder_checks_only_when_the_reading_names_a_check, test_a_choice_among_named_values, test_a_check_asks_what_the_top_one_is, test_a_check_asks_whether_the_top_one_is_the_same_or_compares_two_aggregates, test_a_read_takes_the_line_after_or_before_the_kept_one, test_new_ast_nodes_render_and_validate, test_plan_schema_holds_only_what_a_query_reads, test_perfect_readings_give_the_gold_first, test_decoder_is_deterministic_and_order_free, test_the_list_does_not_depend_on_hash_order,
     test_scores_come_in_as_data_and_nothing_else_moves_the_list, test_contributions_are_named_and_sum_to_the_score, test_intervention_a_named_coordinate_moves_the_score_by_its_weight, test_policy_prunes_values_only_where_it_says, test_conditions_stay_on_distinct_columns,
-    test_a_value_of_a_few_valued_number_column_is_named, test_a_number_condition_may_be_an_equality, test_a_breakdown_gives_a_figure_for_each_group, test_amounts_in_several_currencies_are_given_per_currency, test_a_number_compares_with_the_line_a_value_names, test_the_decoder_breaks_down_only_when_the_reading_names_a_breakdown, test_times_read_as_numbers_in_the_sheet_and_the_question, test_an_ordinal_is_not_a_stated_number, test_words_alone_read_a_question, test_verifier_shape_and_type_evidence, test_printed_total_ties_only_under_its_exact_conditions, test_verifier_runs_the_top_programs_and_never_raises, test_read_as_in_the_sheets_own_words,
+    test_a_value_of_a_few_valued_number_column_is_named, test_a_number_condition_may_be_an_equality, test_a_breakdown_gives_a_figure_for_each_group, test_amounts_in_several_currencies_are_given_per_currency, test_a_number_compares_with_the_line_a_value_names, test_the_decoder_breaks_down_only_when_the_reading_names_a_breakdown, test_times_read_as_numbers_in_the_sheet_and_the_question, test_an_ordinal_is_not_a_stated_number, test_words_alone_read_a_question, test_verifier_shape_and_type_evidence, test_printed_total_ties_only_under_its_exact_conditions, test_verifier_runs_the_top_programs_and_never_raises, test_a_code_python_reads_as_infinite_is_text_to_the_verifier, test_read_as_in_the_sheets_own_words,
     test_cells_are_the_exact_addresses_used, test_formula_a_user_can_check, test_explain_carries_the_named_contributions,
 ]
 
