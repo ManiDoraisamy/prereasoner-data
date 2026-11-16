@@ -613,8 +613,19 @@ def test_families_stay_held_out() -> None:
         try:
             read_examples(folder, "train")
         except ValueError:
+            pass
+        else:
+            raise AssertionError("a side was read as another")
+    with tempfile.TemporaryDirectory() as folder:      # the public table sources' factory rows are read; their test splits never have a side
+        public = [TabExample(f"k{at}", f"wtq|{at}", "f", "t", side, [], [], {}) for at, side in enumerate(("pub_wtq", "pub_databench"))]
+        write_shard(folder, 0, public)
+        assert [e.side for e in read_examples(folder)] == ["pub_wtq", "pub_databench"]
+        write_shard(folder, 0, [TabExample("k", "wtq|test", "f", "t", "pub_wtq_test", [], [], {})])
+        try:
+            read_examples(folder)
+        except ValueError:
             return
-    raise AssertionError("a side was read as another")
+    raise AssertionError("a test-split side was read")
 
 
 def test_a_columns_property_is_its_meaning_and_its_linked_words_read_it() -> None:
