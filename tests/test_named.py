@@ -661,6 +661,49 @@ def test_a_labels_own_meaning_trains_the_meaning_tier_and_leaves_the_closed_head
     assert after.closed == before.closed, "the closed heads read the label, not its meaning"
 
 
+def test_marked_parts_train_the_structure_tier_on_their_words() -> None:
+    """A question whose program parts are all marked on its words (row["structure_spans"]) gives each word the structure
+    names its part says and every other word none; a table's own families (column_role, value_kind, line_role) and names
+    outside the name set are never a word's; an unmarked question leaves its words unknown. Before this, no question-side
+    structure name had any target, and 81 of 100 never fired on any unit."""
+    import random
+    from engine.named.backbone import question_words
+    from training.named.train import losses_of, run_batch, word_structure_mask
+    example = fake_examples(4)[0]
+    names = fake_name_set()
+    config = ReaderConfig(backbone="hash", hidden=36, blocks=1, open_dim=16, sample_rows=3)
+    first, second = [row for row in example.rows if row.get("label") == "gold"][:2]
+    words = len(question_words(first["question"]))
+    marked = {**first, "structure_spans": [{"span": [0, 99], "names": ["answer_type:count", "column_role:key", "aggregate:avg"]}]}
+    batch = build_batch(example, config, names, random.Random(0), questions=2, shares=None, rows=[marked, second])
+    assert batch.word_structure[0] == [["answer_type:count"]] + [[] for _ in range(words - 1)]
+    assert all(held is None for held in batch.word_structure[1]), "an unmarked question's words stay unknown, never off"
+    mask = word_structure_mask(names, "cpu")
+    assert mask[names.at("column_role:key")] == 0 and mask[names.at("answer_type:count")] == 1
+    torch.manual_seed(0)
+    backbone = HashBackbone()
+    reader = NamedReader(backbone.dim, names.meaning_start, names.meaning, config)
+    parts = losses_of(reader, names, batch, run_batch(backbone, reader, config, batch, "cpu"), False, "cpu")
+    assert parts["word_structure"] > 0
+    unmarked = build_batch(example, config, names, random.Random(0), questions=2, shares=None, rows=[first, second])
+    assert losses_of(reader, names, unmarked, run_batch(backbone, reader, config, unmarked, "cpu"), False, "cpu")["word_structure"].item() == 0.0
+
+
+def test_a_printed_line_target_reads_its_own_line_role() -> None:
+    """A subtotal line's target holds line_role:subtotal, a total's line_role:total: every printed line was called a total."""
+    from engine.sheet import compile_tab
+    from engine.sheet.payload import tab_from_json
+    from engine.program.semantics import fold
+    from training.named.train import _printed_role
+    rows = [["Book", "Amt", "Qty"], ["a", 1, 2], ["b", 3, 4], ["Subtotal", 4, 6], ["c", 5, 6], ["d", 7, 8], ["All books", 16, 20]]
+    formulas = [[3, 1, "=SUM(B2:B3)"], [3, 2, "=SUM(C2:C3)"], [6, 1, "=B4+SUM(B5:B6)"], [6, 2, "=C4+SUM(C5:C6)"]]
+    table = CatalogTable("t0", compile_tab(tab_from_json({"name": "Sheet1", "rows": rows, "formulas": formulas})).tables[0], "table")
+    roles = {line.label: line.role for line in table.table.printed}
+    assert set(roles.values()) == {"subtotal", "total"}
+    for label, role in roles.items():
+        assert _printed_role(table, fold(label)) == role
+
+
 def test_the_meaning_tier_starts_from_each_propertys_own_text() -> None:
     """Each basis property is its own named output (a sigmoid, like a structure name), started at its own text: untrained, a unit whose text is a property's own text reads that property first and high, the others low. Labels anchor the outputs from there."""
     names = fake_name_set()

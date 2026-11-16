@@ -3,6 +3,7 @@
 Losses, each on named outputs. Every coordinate counts its own log loss, unweighted, so what it outputs is a probability: the structure tier's names always; each basis property (engine/named/model.py) on units whose meaning is known, the anchor that keeps each output its property's. A link's sum means how much two readings share.
   target coordinates   a column's, value's, line's and band's structure names, always: what the compiler knows (column role, value kind, line role); and the basis properties where Gemini's label speaks (training/factory/schema_labels.py): a basis property at the threshold is on and the rest off, a property outside the basis or none all off, an unsure label nothing
   word coordinates     the same head over the question's words: a word in a link to a column or a value reads that column's properties as known; other words have no meaning label
+  word structure       a question whose every program part is marked on its words (row["structure_spans"], each part's span with the structure names it says) trains the structure tier on its words: a word holds the names of the parts it says, every other name a question can say is off (TARGET_STRUCTURE's families, which a table gives its own units, stay masked). A question without the marks leaves its words' structure unknown
   self-anchors         each basis property's own schema.org label and comment, as a lone header, reads that property at 1; a property the frozen base encoder reads at RELATED_AT or more on that text keeps that soft value, every other goes to 0. Only schema.org's text: no structure definition is read. --anchor-steps trains the property rows alone on them first (backbone and relational blocks frozen); afterwards they stay as an auxiliary loss
   picks                --picks: training-split questions with CLEF's recorded reading (each field's options as program coordinates and the one it picked at PICK_MIN or more). For a field over sheet targets (measure, key, shown, filter, value, line, section, table) the link to CLEF's pick must beat the links to the other options and "none of these": the same sum of named terms and exact-text evidence serving computes, the span the best-linking word, as serving chooses it. No target is invented for any dimension: the gradient moves the named readings, and the anchors above stay on, so a pick can sharpen a dimension and not change what it means. A closed field's pick trains that named head. The unnamed channel enters this sum only under --open-in-link
   profiles             --corpus: main's schema.org corpus (training/schema_org, rendered tables of Wikidata and publisher instances with the set of properties each shows): the highest reading of each property over a table's columns must be its set, the table's profile, from which its class is the superposition. The first part of an instance's text names its source relation and so its class: never read
@@ -51,6 +52,7 @@ from engine.program.decoder import Decoder
 from engine.program.names import A_NAME, ROLE_CONTEXT, ROLE_FILTER, ROLE_KEY, ROLE_MEASURE, SLOT_ANSWER_TYPE, SLOT_CALC_LEFT, slot_of
 from engine.program.semantics import fold
 from engine.program.words import read_question
+from engine.sheet.names import BAND, SUBTOTAL, TOTAL
 from training.named import EXPERIMENTS_DIR
 from training.named.augment import TRAINING_SHARES, augmented
 from training.named.data import TabExample, check_held_out, read_examples, split_families
@@ -64,7 +66,7 @@ VALUE_NEGATIVES = 16
 TABLES_PER_STEP = 3
 UNLINKED_WORDS = 2         # a question's content words no link stands on, read as links to nothing
 ROW_NAMES = 4.0            # about how many names a target or a word holds: scales the coordinates' summed log loss to one row's worth
-LOSS_WEIGHTS = {"target": 1.0, "meaning": 1.0, "word": 1.0, "closed": 1.0, "role": 0.5, "side": 0.25, "link": 2.0, "open": 0.5, "anchor": 0.25, "profile": 1.0, "pick": 1.0, "pick_closed": 0.5}
+LOSS_WEIGHTS = {"target": 1.0, "meaning": 1.0, "word": 1.0, "word_structure": 1.0, "closed": 1.0, "role": 0.5, "side": 0.25, "link": 2.0, "open": 0.5, "anchor": 0.25, "profile": 1.0, "pick": 1.0, "pick_closed": 0.5}
 DESCRIPTION_TOKENS = 64
 RELATED_AT = 0.1           # the frozen base encoder reads a property at this or more on another's own text: related, a soft target there and masked on a labelled unit
 ANCHOR_EVERY = 4           # the self-anchors and a corpus batch join every this many steps
@@ -74,6 +76,8 @@ PICK = "pick"              # a row holding the teacher's picks, no gold program
 PICK_EVERY = 2             # a pick batch joins every this many steps
 PICK_CANDIDATES = 32       # a field's options read per pick: the pick, then the others in their order
 PICK_ROLES = {"measure": ROLE_MEASURE, "key": ROLE_KEY, "shown": ROLE_KEY, "filter": ROLE_FILTER, "value": ROLE_FILTER, "line": ROLE_FILTER, "section": ROLE_FILTER, "table": ROLE_CONTEXT}
+# The structure families a compiled table gives its own units (_column_structure, add_value): never a word's to say.
+TARGET_STRUCTURE = ("column_role", "value_kind", "line_role")
 
 
 @dataclass
@@ -135,6 +139,7 @@ class Batch:
     questions: list[str]
     closed: list[dict[str, str]]
     word_positive: list[list[list[str] | None]]  # per question, per word: basis properties ([] none), or None when unknown
+    word_structure: list[list[list[str] | None]]  # per question, per word: the structure names it says ([] none), or None when the question's parts are not marked
     word_role: list[list[int]]
     word_side: list[list[int]]
     links: list[LinkExample]
@@ -166,6 +171,26 @@ def _value_class(label: dict | None) -> list[str]:
     if not label or not label.get("value_class") or int(label.get("value_conf", 0)) < THRESHOLD:
         return []
     return [f"{CLASS_PREFIX}{label['value_class']}"]
+
+
+def _printed_role(table: CatalogTable, label: str) -> str:
+    """A printed line's own line role as the compiler read it: subtotal when every printed line under this label is one, else total."""
+    roles = {line.role for line in table.table.printed if fold(line.label) == label}
+    return SUBTOTAL if roles == {SUBTOTAL} else TOTAL
+
+
+def _said_structure(row: dict, words: int, names: NameSet) -> list[list[str] | None]:
+    """Per word, the structure names the program parts it says hold (row["structure_spans"]: each part's span and names), [] for a word that says none; all None when the row's parts are not marked."""
+    spans = row.get("structure_spans")
+    if spans is None:
+        return [None] * words
+    said: list[list[str] | None] = [[] for _ in range(words)]
+    for part in spans:
+        held = [name for name in part.get("names", ()) if names.at(name) is not None and names.at(name) < names.meaning_start and name.split(":", 1)[0] not in TARGET_STRUCTURE]
+        for at in part.get("span", ()):
+            if 0 <= at < words:
+                said[at] = sorted(set(said[at]) | set(held))
+    return said
 
 
 def _column_structure(column) -> list[str]:
@@ -261,7 +286,7 @@ def build_batch(example: TabExample, reader_config: ReaderConfig, names: NameSet
             inverse = {new: old for old, new in moved[target.table].items()}
             at = add_target(target, ["value_kind:text"], _meaning_names(example.labels.get(f"{target.table}.{inverse.get(target.position)}")))
         else:
-            at = add_target(target, [f"line_role:{'band' if target.kind == T_BAND else 'total'}"], None)
+            at = add_target(target, [f"line_role:{BAND if target.kind == T_BAND else _printed_role(table, target.text)}"], None)
         if fresh:
             value_graphs.append(value_graph(table, target, units, orders[target.table]))
             values.append(at)
@@ -270,6 +295,7 @@ def build_batch(example: TabExample, reader_config: ReaderConfig, names: NameSet
     links: list[LinkExample] = []
     closed = []
     word_positive = []
+    word_structure = []
     word_role = []
     word_side = []
     texts = []
@@ -281,6 +307,7 @@ def build_batch(example: TabExample, reader_config: ReaderConfig, names: NameSet
         if row.get("label") == PICK:
             closed.append({head: (row.get("closed") or {}).get(head) for head in CLOSED_HEADS})     # None: the teacher did not say
             word_positive.append([None for _ in words])
+            word_structure.append([None for _ in words])
             word_role.append([UNKNOWN] * len(words))
             word_side.append([UNKNOWN] * len(words))
             links.extend(pick_links(row, tables, all_targets, read_question(question, catalog, decoder).scores, set(words), at_question, words, at_target, add_value))
@@ -363,9 +390,10 @@ def build_batch(example: TabExample, reader_config: ReaderConfig, names: NameSet
                 if nothing is not None:
                     links.append(nothing)
         word_positive.append(read_as)
+        word_structure.append(_said_structure(row, len(words), names))
         word_role.append(roles)
         word_side.append(sides)
-    return Batch(graphs, columns, tables_at, value_graphs, values, targets, positive, meaning, texts, closed, word_positive, word_role, word_side, links)
+    return Batch(graphs, columns, tables_at, value_graphs, values, targets, positive, meaning, texts, closed, word_positive, word_structure, word_role, word_side, links)
 
 
 def _nothing_among_columns(table, table_id, span, question, floor, stems, rng, at_target) -> LinkExample | None:
@@ -770,6 +798,27 @@ def open_link_terms(reader: NamedReader, words_hidden: torch.Tensor, open_units:
     return reader.open_weight() * (words @ open_units[candidates].T).max(0).values.clamp(min=0.0)
 
 
+def word_structure_mask(names: NameSet, device) -> torch.Tensor:
+    """[structure names] 1 for a name a question's words can say, 0 for TARGET_STRUCTURE's, which a table gives its own units."""
+    return torch.as_tensor([0.0 if name.split(":", 1)[0] in TARGET_STRUCTURE else 1.0 for name in names.names[:names.meaning_start]], device=device)
+
+
+def _word_structure_loss(reader: NamedReader, names: NameSet, batch: Batch, out: Forward, device) -> torch.Tensor | None:
+    """The structure tier over the words of the questions whose parts are marked: each name's own log loss, a word's said names on, every other name a word can say off. None when no question is marked."""
+    mask_row = word_structure_mask(names, device)
+    losses = []
+    for at, said in enumerate(batch.word_structure):
+        rows = [word for word, held in enumerate(said) if held is not None]
+        if not rows or not len(out.word_hidden[at]):
+            continue
+        labels = torch.zeros((len(rows), names.meaning_start), device=device)
+        for row, word in enumerate(rows):
+            for name in said[word]:
+                labels[row, names.at(name)] = 1.0
+        losses.append(_row_loss(reader.structure(out.word_hidden[at][rows]), labels, mask_row.expand(len(rows), -1)))
+    return torch.stack(losses).mean() if losses else None
+
+
 def losses_of(reader: NamedReader, names: NameSet, batch: Batch, out: Forward, open_detached: bool, device: str, related: torch.Tensor | None = None, qualified: torch.Tensor | None = None, open_in_link: bool = False, unnamed_only: bool = False) -> dict[str, torch.Tensor]:
     structure_labels = torch.zeros((len(batch.targets), names.meaning_start), device=device)
     for at, held in enumerate(batch.positive):
@@ -795,6 +844,8 @@ def losses_of(reader: NamedReader, names: NameSet, batch: Batch, out: Forward, o
             role_losses.append(nn.functional.cross_entropy(reader.word_role(out.word_hidden[at]), torch.as_tensor(batch.word_role[at], device=device)))
             side_losses.append(nn.functional.cross_entropy(reader.calc_side(out.word_hidden[at]), torch.as_tensor(batch.word_side[at], device=device)))
     result["word"] = torch.stack(word_losses).mean() if word_losses else zero
+    said = _word_structure_loss(reader, names, batch, out, device)
+    result["word_structure"] = said if said is not None else zero
     result["role"] = torch.stack(role_losses).mean() if role_losses else zero
     result["side"] = torch.stack(side_losses).mean() if side_losses else zero
     closed_terms = []
