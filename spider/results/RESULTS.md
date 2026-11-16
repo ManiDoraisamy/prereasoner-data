@@ -5,6 +5,73 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
+## The Argon labelling pilot: 2,218 reviewed questions on new public tables list 418 of 583 (+10), five short of the gate, with first right unchanged; the property gate cannot see the new labels (2026-11-16)
+
+- After the reviewed-label plan's STOP (the entry below), on the owner's orders of 2026-11-16 ("go with deepseek, run the
+  census first"; "use openrouter for the bake-off"; "go with argon, run the pilot"; "go ahead, run it all"). Training data
+  only: a frontier model writes questions and labels, the engine computes every answer, blind Claude reviewers keep or
+  reject, and bge-m3 is the only model trained or served (no logits, no generated SQL). Only public training tables went
+  out (WTQ train tables no dev question reads, DataBench 001-049, EIA and SEC public sides); no dev, frozen, OGL or Enron
+  table. Code next-engine `2e51423` (`6133705` + `training/named/data.py` sides `pub_wtq`, `pub_databench`); measure from
+  the eval worktree `9bc24e4`, as every bundle below. Experiments in next-engine `training/named/data/experiments/`
+  (`writer_bakeoff`, `argon_pilot`, `named_pilot_a_s0`).
+
+**Census** (training data only). Of the 83 schema.org properties in the reader's basis, 39 have no labelled factory column
+and 43 no question linked to them; 13 have at least 100 on both sides. None of the 1,131 reviewed tabs carries a property
+label, and the reviewed labels hold almost no row arithmetic, dates or percentages. The meaning heads had nothing to learn
+from on the question side, which is why the property gate qualified none (`named_rev2_a_s0`: three properties pass as a
+column, identifier, description and observationDate, and none as a word).
+
+**Writer bake-off** (20 public tabs, the factory's prompt f7, 153 question slots per writer, OpenRouter with reasoning
+effort low; 9 blind Claude reviewers judge each runnable question on meaning and natural wording and each distinct column
+label; my sample agrees on 22 of 24 questions and 12 of 12 labels):
+
+| writer | ran | kept | kept, no column words | labels right in the basis | cost |
+|---|---|---|---|---|---|
+| DeepSeek V4.1 Flash | 138 | 84 | 51 | 11 | $0.04 |
+| DeepSeek V4 Pro | 114 | 69 | 43 | 19 | $0.58 |
+| Kimi K3.1 Pro | 144 | 84 | 68 | 17 | $0.52 |
+| Gemini 3.8 Flash (wrote all of `examples_v5`) | 146 | 96 | 53 | 10 | $0.07 |
+| Gemini 4 Argon | 145 | 86 | 66 | 29 | $0.17 |
+
+DeepSeek broke the label format, and Pro misnamed tables. 80 of the 187 rejections on meaning come from the engine's
+reading of the tables (subtotal and division lines read as data, balance-sheet sections running past their end), the same
+for every writer. Argon writes the most questions without the column's own words and the most right basis labels.
+
+**Pilot funnel**: 1,049 eligible public train tabs labelled by Argon ($3.73; the factory screen applied, a tenth of each
+source held as in the review batches). 470 were chosen to cover the thin properties (fewer than 100 linked questions): 52 of
+the 69 thin ones, while the other 17 occur on none. Argon wrote 3,696 questions ($4.12). Of those, 3,529 ran, and 30 blind
+Claude reviewers kept 2,218 (means 2,900, natural 2,661; my hash sample of 40 agrees on 38). Thin properties with at least
+25 linked questions went from 4 to 22 of 69, and 70% of the pilot's links are not in the column's own words. Training set
+`examples_pilot` = `examples_v5` unchanged + the pilot: 8,327 tabs, 46,101 gold rows. OpenRouter spend about $10.4 in all
+(bake-off $2.6 with a discarded first round, pilot about $7.9); the lease about $3.1 (GPU on the plan now about $15 of
+$40).
+
+**Training** (`named_pilot_a_s0`, `named_rev2_a_s0`'s recipe and picks, the gold examples the only change; gate fixed
+before the run: at least 423 listed, rev2 + 15):
+
+| | right listed (of 583) | named alone | first right (of 1,082) | studied / messy / WTQ / DataBench / fresh dev listed | first right by set |
+|---|---|---|---|---|---|
+| `named_rev2_a_s0` | 408 | 368 | 281 | 57 / 45 / 113 / 147 / 46 | 28 / 28 / 88 / 106 / 31 |
+| `named_pilot_a_s0` | 418 | 374 | 281 | 57 / 50 / 118 / 148 / 45 | 32 / 24 / 90 / 105 / 30 |
+
+The pilot fails its gate (418 < 423). Listed: 34 wins, 24 losses (sign test p about 0.24); by set, messy +5 (10 wins, 5
+losses), WTQ +5 (11, 6), DataBench +1, studied 0, fresh dev -1. First right: 57 wins, 57 losses. Messy dev listing, flat at
+45-46 through every reviewed-label step, moves for the first time, in the direction the hypothesis expects; but the gain
+cannot be told from noise and the first candidate is no better. Training-side held link top 1 is 0.692 (rev2 0.696). The bundle has the same
+size and decode as rev2; its measured p50 / p90 (0.20-0.30 s / 0.28-2.31 s by set) are below rev2's measure only because
+the box was less loaded.
+
+**Property gate on the pilot bundle** (`training/named/gate_dimensions.py` unchanged, truth the factory's val second pass,
+precision >= 0.95 on at least 25 held positives, both roles): none qualifies for links, as on `named_rev2_a_s0`. As a
+column, startDate passes (0.969 precision, 0.33 recall; rev2 0.944) while identifier, description and observationDate fall
+just under 0.95 (0.911, 0.942, 0.937; rev2 passed them at 0.956, 0.971, 0.955). As a word nothing passes in either
+bundle; for 12 of the 14 properties with 25 held positives no threshold reaches the precision at all. The gate's truth
+holds only those 14 properties, and none of them is a thin property the pilot added, so the gate cannot see what the pilot
+wrote; a truth for the thin properties (reviewed questions on held tables) is the owner's decision, and by the plan no
+second lease runs.
+
+
 ## Reviewed data to 90%, phases 1-3: on reviewed labels only the named reader lists 408 of 583; doubling the labels again moves nothing (407), so the plan stops below its ~470 line (2026-11-16)
 
 - The owner's plan of 2026-11-15 (REVIEWED DATA TO 90%; GPU cap $40; approved ~03:55). Under his rule of 2026-11-14 the
