@@ -617,9 +617,9 @@ def test_families_stay_held_out() -> None:
         else:
             raise AssertionError("a side was read as another")
     with tempfile.TemporaryDirectory() as folder:      # the public table sources' factory rows are read; their test splits never have a side
-        public = [TabExample(f"k{at}", f"wtq|{at}", "f", "t", side, [], [], {}) for at, side in enumerate(("pub_wtq", "pub_databench"))]
+        public = [TabExample(f"k{at}", f"wtq|{at}", "f", "t", side, [], [], {}) for at, side in enumerate(("pub_wtq", "pub_databench", "pub_coverage"))]
         write_shard(folder, 0, public)
-        assert [e.side for e in read_examples(folder)] == ["pub_wtq", "pub_databench"]
+        assert [e.side for e in read_examples(folder)] == ["pub_wtq", "pub_databench", "pub_coverage"]
         write_shard(folder, 0, [TabExample("k", "wtq|test", "f", "t", "pub_wtq_test", [], [], {})])
         try:
             read_examples(folder)
