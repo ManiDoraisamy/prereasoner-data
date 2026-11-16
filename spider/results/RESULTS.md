@@ -5,6 +5,82 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
+## Reviewed data to 90%, phases 1-3: on reviewed labels only the named reader lists 408 of 583; doubling the labels again moves nothing (407), so the plan stops below its ~470 line (2026-11-16)
+
+- The owner's plan of 2026-11-15 (REVIEWED DATA TO 90%; GPU cap $40; approved ~03:55). Under his rule of 2026-11-14 the
+  reader trains only on reviewed labels: CLEF and the kept engine draft, frontier reviewers and the engine check, nothing
+  unreviewed trains. Code next-engine `9bc24e4` (every bundle trained and measured on it; the eval worktree stayed there),
+  recipe of `named_m3_open_s0` (bge-m3, 15,000 steps, anchor 300, open-in-link, seed 0), dev step-2 measure on the five dev
+  sets in mode named_plus_open: the CLEF path's 583 right answers listed by the small reader's first 50 candidates, those
+  listed through named terms and exact text alone, and the first candidate right of all 1,082. Contracts and results in
+  next-engine `training/named/data/experiments/named_rev{,2,3}_a_s0`, `named_rev_b_s0`; GPU about $12 of $40.
+
+**Labels.** Phase 0: 1,066 reviewed WTQ labels (`reviewed_wtq_v1`, from CLEF's drafts on WTQ training tables; a second
+review accepted by the owner on 2026-11-15, each label re-checked by the kept engine). Phase 2, per batch: the kept bundle's readings that return the gold answer, drafted on unused WTQ train questions and
+DataBench train (a tenth of the tables held for measuring, never trained on); reviewer 1 picks the one reading that means
+what the question asks, or none; an independent reviewer 2 sees only the picked reading and keeps or rejects it on meaning;
+every kept label is re-run to gold on the reader's own tables; I check a hash-drawn sample of every slice set.
+
+| batch | drafted | with a gold-returning reading | reviewer 1 picked | reviewer 2 kept | my sample agrees |
+|---|---|---|---|---|---|
+| 1, WTQ | 2,000 | 1,374 | 856 | 822 (820 after the 2 my sample excluded) | 38 of 40 |
+| 1, DataBench (tables <= 10,000 rows, <= 60 columns) | 528 | 314 | 234 | 233 | 25 of 25 |
+| 2, WTQ | 4,500 | 3,042 | 1,775 | 1,727 | 80 of 80 |
+| 2, DataBench (the 12 larger or wider tables) | 240 | 122 | 81 | 81 | 25 of 25 |
+
+Reviewer 2 rejects few after reviewer 1 (DataBench 1 of 315 across both batches): the reviewers' work is reviewer 1's
+choice among readings that all return the gold answer, most of them by coincidence. Label sets: `reviewed_v2` = phase 0 +
+batch 1, 2,119 labels on 748 tabs; `reviewed_v3` = + batch 2, 3,927 labels on 1,285 tabs; every batch validated through
+the training losses before a lease.
+
+**Phase 1, named against unnamed** (the same 1,066 labels):
+
+| | right listed (of 583) | listed by named terms alone | first right (of 1,082) |
+|---|---|---|---|
+| baseline `named_m3_open_s0` (414 unreviewed DataBench + 3,127 unreviewed factory picks) | 398 | 361 | 258 |
+| A, named (`named_rev_a_s0`) | 369 | 339 | 231 |
+| B, unnamed (`named_rev_b_s0`, no named term in a link) | 328 | 253 | 227 |
+
+B fails its gate (41 fewer listed than A: 27 wins, 68 losses); A carries forward. A against the baseline is DataBench -42
+(1 win, 43 losses) and +13 on the other four sets: the owner's rule costs exactly the set whose unreviewed picks it removed.
+
+**Phase 3, the learning curve** (arm A's recipe, the label set the only change; rule: keep scaling while a doubling adds
+>= 15 listed):
+
+| | labels | right listed (of 583) | named alone | first right (of 1,082) | studied / messy / WTQ / DataBench / fresh dev listed |
+|---|---|---|---|---|---|
+| A `named_rev_a_s0` | 1,066 | 369 | 339 | 231 | 58 / 46 / 112 / 107 / 46 |
+| `named_rev2_a_s0` | 2,119 | 408 | 368 | 281 | 57 / 45 / 113 / 147 / 46 |
+| `named_rev3_a_s0` | 3,927 | 407 | 348 | 263 | 53 / 46 / 113 / 149 / 46 |
+
+The first doubling passes (+39: 65 wins, 26 losses), and its whole gain is DataBench (+40), where batch 1 brought the first
+233 reviewed DataBench labels; 820 more WTQ labels moved no listing but put more right first (WTQ 88 vs 75, messy 28 vs 18).
+Reviewed labels alone then beat the reader trained on unreviewed picks (408 / 368 / 281 against 398 / 361 / 258). The second
+doubling fails (-1: 28 wins, 29 losses; first right -18, 41 wins and 59 losses, sign test p about 0.09). 1,808 more labels of
+the same kinds (WTQ-shaped tables, large DataBench tables) add neither coverage nor ordering: data of these kinds is not the
+limit. Studied, messy and fresh dev, the sets most like real sheets, did not move in any step. The curve is flat at 408,
+below the plan's ~470 line, so its STOP holds: no further spend, the third batch (2,269 WTQ and 58 DataBench drafts with a
+gold-returning reading, on the last eligible WTQ train questions and DataBench tables over 60,000 rows) is not reviewed, and
+`named_rev2_a_s0` stays the better bundle. Its training-side held link top 1 is flat across all three (0.70 / 0.70 / 0.70).
+
+A WTQ cell `INF` crashed a third-batch drafter: the verifier rounded `float('INF')`. Fixed in the owner (next-engine
+`6133705`: a value `float()` reads as non-finite is not a number, as the sheet reads cells; regression test
+`test_a_code_python_reads_as_infinite_is_text_to_the_verifier`).
+
+**Phase 4a, decode depth** (no spend; `named_rev2_a_s0`, mode named_plus_open, first candidate, eval worktree `9bc24e4`;
+listed at 50 and 100 read from the same run's rank of the first right candidate):
+
+| depth | right listed (of 583) | first right (of 1,082) | p90 studied / messy / WTQ / fresh dev / DataBench (s) |
+|---|---|---|---|
+| 50 (the gate's measure, this run) | 410 | 284 | 0.39 / 0.43 / 0.25 / 0.99 / 2.51 (rev3's idle measure) |
+| 100 | 428 | 284 | not measured alone |
+| 200 | 444 | 284 | 1.21 / 1.36 / 0.84 / 1.48 / 5.99 (shared CPU) |
+
+Depth adds coverage further down the list only (first right is the same candidate): +18 at 100, +34 at 200, most on
+messy (+8) and DataBench (+11). At 200 every p90 is 1.5 to 3.3 times depth 50's, over the 1.25 latency gate even
+allowing for the shared CPU; 100 was not measured alone. Neither depth reaches the ~470 line, so phase 4a does not lift
+the STOP.
+
 ## Discover and name: the reader's own decision features, named by schema.org text and trained as named dimensions, do not move dev; the 185 lost answers are lost in the reading, not the language (2026-11-14)
 
 - The owner's plan of 2026-11-14 (DISCOVER AND NAME; GPU cap $10; candidates outside the basis allowed; the 84 never-firing
