@@ -5,6 +5,95 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
+## Coverage data: reviewed questions on synthetic sheets for all 91 schema.org classes make 12-15 structure names fire (none before) and qualify 5-6 properties, but listing stays at 418-428 of 583 and the aligned chooser answers 173 right and 163 wrong (pilot 161 and 173); the listing and answer gates fail (2026-11-17)
+
+- On the owner's orders of 2026-11-16 ("go ahead, synthetic tables allowed"; "go ahead, run it all", spending past caps
+  and working around failures). Training data only: Gemini 4 Argon (OpenRouter) writes synthetic sheets and questions,
+  the engine computes every answer, blind Claude reviewers keep or reject, and bge-m3 is the only model trained or served.
+  No dev, frozen, OGL or Enron table went out. Code next-engine `fc5c3c3` (word-structure targets, printed line roles) +
+  `529f12a` (side `pub_coverage`) + `b484dad` (main's RunPod v2 client); measure from the eval worktree `9bc24e4`, as
+  every bundle below. Experiments in next-engine `training/named/data/experiments/` (`coverage`, `named_coverage_a_s0`,
+  `named_coverage_q_s0`, `named_{coverage,pilot}_a_s0/aligned`; each contract, with its data and artifact hashes, in
+  its `experiment-contract.json`).
+
+**The finding that started it.** 81 of the reader's 100 structure names (operators, functions, filters, word roles) never
+fired in `named_rev2_a_s0`: the trainer taught question words only through linked columns' meanings, and operators only
+through the closed heads; the factory prompt even said operator words need no link. Nothing gave a question word a
+structure target. `fc5c3c3` adds one: rows that carry `structure_spans` (words a reviewer confirmed say a part of the
+program) train the word-structure loss.
+
+**Coverage pipeline** (`coverage/coverage.py`, 14 commands). All 91 schema.org classes over the 83-property basis get
+messy working sheets (31 held and 15 train tables per property; host-written books with SUM formulas, printed totals and
+subtotals; the factory screen skipped for synthetic books only): 1,136 sheets. Questions are program first: the grammar
+enumerates programs on each compiled table, a quota choice fills each structure name, and Argon writes the question and
+marks each part's words, or skips (28%). 60 blind Claude reviewers judged 8,282: 6,706 kept (meaning and natural wording),
+6,473 with marks passed; my sample agrees on 19 of 20. Training part: 3,069 rows on 437 tabs; held truth 3,637 rows on
+697 tabs (5,969 labelled columns; 80 of 83 properties have at least 25 held positives on both roles). Spend $30.0 (tables
+$14.7, questions $12.3, labels $3.0; OpenRouter total about $40.5 of $50).
+
+Some names cannot be reached by construction: answer_type code and money, period half / season / relative / week /
+weekday / hour, size signed, and by_size; entity peer and measure_kind across stay thin. Reviewers' rejection notes name
+the engine's table reading again: text dates read as text (83), printed totals and subtotals read as data rows (222),
+banded values (52).
+
+**Training** (`named_pilot_a_s0`'s recipe, seed and picks; gates fixed before each run):
+
+| | right listed (of 583) | named alone | first right (of 1,082) | studied / messy / WTQ / DataBench / fresh dev listed | first right by set |
+|---|---|---|---|---|---|
+| `named_pilot_a_s0` | 418 | 374 | 281 | 57 / 50 / 118 / 148 / 45 | 32 / 24 / 90 / 105 / 30 |
+| `named_coverage_a_s0` (coverage examples) | 418 | 387 | 297 | 55 / 46 / 118 / 150 / 49 | 25 / 28 / 99 / 107 / 38 |
+| `named_coverage_q_s0` (+ the 6 qualified properties in links) | 428 | 381 | 280 | 56 / 47 / 119 / 157 / 49 | 30 / 23 / 84 / 107 / 36 |
+
+- `named_coverage_a_s0` fails its listed gate (at least 433, pilot + 15): listed 25 wins, 25 losses; named alone 37 / 24
+  (p 0.12); first right 74 / 58 (p 0.19). It passes its structure gate: on the held marked words
+  (`coverage/structure_fire.py`, at least 25 positives, precision 0.9, recall 0.5), 12 of 61 judged names fire, the
+  pilot 0 (aggregate avg / sum, answer_type count / percent, calc /, condition equals / period, form rank, period range,
+  word role filter / key / measure). On the coverage truth the property gate passes 26 properties as a column and 11 as a
+  word (the pilot 15 and 2), and 6 qualify for links (byArtist, director, email, image, issn, numberOfEmployees; the
+  pilot none).
+- `named_coverage_q_s0` puts those 6 in links (`--qualified`) and fails its gate (at least 433, coverage + 15): 428,
+  listed 32 wins, 22 losses (p 0.22), DataBench +7, every other set +1 or 0; first right 44 / 61 (p 0.12), WTQ 9 / 24.
+  15 structure names fire (adds comparison <, condition comparison / not_equals, row_op /; loses word role measure); the
+  property gate passes 23 / 12 and qualifies 5 (orderDate in, image and issn out).
+- Latency (p50 / p90 total, by set) 0.23-0.47 s / 0.27-1.03 s, DataBench p90 3.6-4.7 s; same decode as the pilot.
+
+**Why listing cannot show the structure gain, and the alignment fit.** The decoder that builds the pool does not read
+word structure; the aligner does (`engine/named/align.py`, its "structure" evidence feeding the chooser), and no
+coverage or pilot bundle had a fitted alignment, while the step-2 measure takes the decoder's first candidate. The H7
+recipe (`training/named/align.py`, collect / train / chooser) was fitted on both bundles on CPU with the pilot's 390 held
+families (held 2,000 questions, train 3,005): on the held questions the aligned chooser puts 578 right first for the
+coverage bundle (decoder order 415; out of fold 581) and 602 for the pilot (425; 611), with 1,200 and 1,207 listed.
+On the five dev sets with the fitted chooser (`--chooser engine`, which answers or asks; of 1,082 questions):
+
+| aligned bundle | answered right | asked | answered wrong | chooser's pick right | first right without the fit |
+|---|---|---|---|---|---|
+| `named_pilot_a_s0` | 161 | 748 | 173 | 320 | 281 |
+| `named_coverage_a_s0` | 173 | 746 | 163 | 333 | 297 |
+
+The fit raises the right pick by 36 and 39. The coverage bundle answers 12 more right (62 wins, 50 losses, p 0.30) and
+10 fewer wrong (85 / 95, p 0.50); listed is unchanged (47 / 46). The right gate (at least the pilot's + 15, 176) fails by
+3; the wrong gate passes. Right / wrong by set, coverage: studied 21 / 32, messy 12 / 8, WTQ 60 / 57, DataBench 57 / 34,
+fresh dev 23 / 32; pilot 26 / 34, 12 / 5, 48 / 52, 53 / 42, 22 / 40. Latency p50 / p90 0.37-0.62 s / 0.47-1.38 s,
+DataBench p90 6.2 s, while the box also ran the q bundle's gates; the chooser adds about 0.04 s at p50.
+
+**Where this leaves the plan.** Every data step since the reviewed-label plan stops listing at 407-428 of 583, against
+the plan's line near 525: reviewed WTQ and DataBench labels, Argon's pilot on public tables, and coverage sheets for every
+class alike. The structure names that now fire do not change what the decoder builds, and through the aligner they move
+answers within noise. With the fitted chooser, about half of what it answers is wrong (173 right, 163 wrong), and the
+launch bar asks at most 8% unwarned wrong. The reviewers' rejections keep naming the engine's table reading (totals and
+subtotals read as data, text dates, bands), which no reader training changes. No further lease runs on this plan without
+the owner's decision.
+
+**GPU and lease incidents.** RunPod's `rest.runpod.io` stopped resolving mid-run (the first lease could not terminate its
+pod; terminated through `api.runpod.io/v2`); next-engine `b484dad` takes main's v2 client with its command reserve and six
+lease tests (release suite 63 of 64, the failure the pre-existing scan of gitignored experiment copies). Every create then
+failed with "no instances available": the named lease's recorded CUDA list (12.4-12.9) matches no host now (hosts run
+13.x), so the floor is passed instead. The q run ran out of GPU memory on a 24 GB RTX 4090 near step 650 and moved to 48
+GB cards (RTX 6000 Ada, $1.09/h, 360 minutes, past the contract's $0.80/h on the owner's order). Three retry loops I had
+stopped with TaskStop survived, woke up and leased three more pods (2 L40S, one RTX 5090) that billed about 1.5 h before
+I terminated them; about $4 of GPU was lost. Leases this entry: coverage about $3.4, q about $3.65; GPU on the plan about
+$27 of $40.
+
 ## The Argon labelling pilot: 2,218 reviewed questions on new public tables list 418 of 583 (+10), five short of the gate, with first right unchanged; the property gate cannot see the new labels (2026-11-16)
 
 - After the reviewed-label plan's STOP (the entry below), on the owner's orders of 2026-11-16 ("go with deepseek, run the
