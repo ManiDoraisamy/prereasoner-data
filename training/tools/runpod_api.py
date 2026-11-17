@@ -11,9 +11,10 @@ a dropped ssh connection does not end it (``_run_detached``).
 
 Environment overrides, each leaving the default below when unset:
   RUNPOD_GPUS   comma-separated GPU types, most wanted first (replaces GPU_PRIORITY)
-  RUNPOD_CLOUD  the pod's cloudType (default SECURE)
+  RUNPOD_CLOUD  the pod's cloud (default SECURE)
   RUNPOD_IMAGE  the runner image (default the digest-pinned IMAGE)
-  RUNPOD_CUDA   comma-separated allowedCudaVersions (default 12.8)
+  RUNPOD_CUDA   explicit comma-separated allowedCudaVersions (optional)
+  RUNPOD_MIN_CUDA  CUDA driver floor for live-catalog discovery (default 12.8)
   PREREASONER_RUNPOD_STATE  the lease state file, one per concurrent lease
 """
 from __future__ import annotations
@@ -30,12 +31,13 @@ import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import zlib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-REST = "https://rest.runpod.io/v1"
+REST = "https://api.runpod.io/v2"
 IMAGE = os.environ.get("RUNPOD_IMAGE") or (
     "runpod/pytorch:1.2.0-rc.162-cu1281-torch2130-ubuntu2204"
     "@sha256:ed683f5f23a4b50f2738cddaccea02254bf8303dcbcc33485c95a31b76555422"
@@ -47,10 +49,12 @@ GPU_PRIORITY = [
 if os.environ.get("RUNPOD_GPUS"):                  # a job's own list, most wanted first
     GPU_PRIORITY = [name.strip() for name in os.environ["RUNPOD_GPUS"].split(",") if name.strip()]
 CLOUD = os.environ.get("RUNPOD_CLOUD") or "SECURE"
-CUDA_VERSIONS = [version.strip() for version in (os.environ.get("RUNPOD_CUDA") or "12.8").split(",")
+CUDA_VERSIONS = [version.strip() for version in (os.environ.get("RUNPOD_CUDA") or "").split(",")
                  if version.strip()]
+MIN_CUDA = os.environ.get("RUNPOD_MIN_CUDA") or "12.8"
 STATE = Path(os.environ.get("PREREASONER_RUNPOD_STATE") or
              Path.home() / ".cache" / "prereasoner" / "runpod_active.json")
+MAX_LEASE_MINUTES = 72 * 60
 
 
 def credentials() -> tuple[str, str]:
@@ -68,10 +72,10 @@ def credentials() -> tuple[str, str]:
     )
 
 
-def rest(method, path, body=None, timeout=90, *, key=None):
+def rest(method, path, body=None, timeout=90, *, key=None, base=REST):
     key = key or credentials()[0]
     request = urllib.request.Request(
-        REST + path,
+        base + path,
         method=method,
         headers={
             "Authorization": f"Bearer {key}",
@@ -93,17 +97,43 @@ def rest(method, path, body=None, timeout=90, *, key=None):
         return -1, str(exc)
 
 
+def cuda_constraints():
+    """An image driver floor by default; exact versions only when explicit."""
+    if CUDA_VERSIONS:
+        return {"allowedCudaVersions": CUDA_VERSIONS}
+    if not re.fullmatch(r"\d+\.\d+", MIN_CUDA):
+        raise ValueError("CUDA floor must be major.minor")
+    return {"minCudaVersion": MIN_CUDA}
+
+
 def pubkey() -> str:
     return (Path.home() / ".ssh" / "runpod_prereasoner.pub").read_text(encoding="utf-8").strip()
 
 
 def ssh_endpoint(pod):
     pod = pod or {}
-    for port in (pod.get("runtime") or {}).get("ports") or []:
-        if str(port.get("privatePort")) == "22" and port.get("isIpPublic") and port.get("type") == "tcp":
-            return port.get("ip"), port.get("publicPort")
-    ip, mappings = pod.get("publicIp"), pod.get("portMappings") or {}
-    return (ip, mappings.get("22")) if ip and mappings.get("22") else (None, None)
+    direct = (pod.get("ssh") or {}).get("direct") or {}
+    if direct.get("username") == "root" and direct.get("host") and direct.get("port"):
+        return direct["host"], direct["port"]
+    return None, None
+
+
+def list_pods():
+    """Read every page before ownership reconciliation; never assume one page."""
+    pods, cursor, visited = [], None, set()
+    while True:
+        path = "/pods" if cursor is None else "/pods?cursor=" + urllib.parse.quote(cursor, safe="")
+        status, result = rest("GET", path)
+        if status != 200 or not isinstance(result, dict) or not isinstance(result.get("pods"), list):
+            raise RuntimeError("cannot list owned Runpod leases")
+        pods.extend(result["pods"])
+        page = result.get("pagination", {})
+        if not page.get("hasNextPage"):
+            return pods
+        cursor = page.get("nextCursor")
+        if not isinstance(cursor, str) or not cursor or cursor in visited:
+            raise RuntimeError("invalid Runpod pagination cursor")
+        visited.add(cursor)
 
 
 def _record(pid: str, max_minutes: int, token: str = "") -> None:
@@ -125,10 +155,25 @@ def _clear(pid: str) -> None:
         STATE.unlink(missing_ok=True)
 
 
-def create(max_minutes: int) -> str:
-    # RunPod REST does not accept the CLI-documented `terminateAfter` field. Arm the
-    # provider-supplied, pod-scoped CLI before /start.sh instead. Current images use
-    # ``pod delete``; the older spelling remains only as a compatibility fallback.
+def termination_guard(seconds: int) -> str:
+    """Pod-local deadline using the provider's scoped credential; no host key is copied."""
+    if type(seconds) is not int or not 1 <= seconds <= MAX_LEASE_MINUTES * 60:
+        raise ValueError("guard exceeds the bounded owned lease duration")
+    return (f"sleep {seconds}; "
+            'until curl -fsS --connect-timeout 10 --max-time 30 -X DELETE '
+            '"https://api.runpod.io/v2/pods/$RUNPOD_POD_ID" '
+            '-H "Authorization: Bearer $RUNPOD_API_KEY"; do sleep 30; done')
+
+
+def create(max_minutes: int, *, network_volume_id: str | None = None, data_center_id: str | None = None,
+           container_disk_gb: int = 25) -> str:
+    if type(container_disk_gb) is not int or not 10 <= container_disk_gb <= 1024:
+        raise ValueError("training container disk must be in 10..1024 GB")
+    if bool(network_volume_id) != bool(data_center_id):
+        raise ValueError("a persistent training volume requires its verified data center")
+    cuda = cuda_constraints()
+    # RunPod REST does not accept `terminateAfter`. The pinned image still ships
+    # runpodctl 1.x, so use the v2 API with the provider's pod-scoped init credentials.
     # The caller's finally block is a second, independent deletion path.
     # Ownership token recorded BEFORE the POST: if the create response is lost, reconcile()
     # can identify OUR pod by name without ever touching other machines' leases.
@@ -141,28 +186,33 @@ def create(max_minutes: int) -> str:
         "max_minutes": max_minutes,
     }, sort_keys=True) + "\n", encoding="utf-8")
     guard_seconds = max_minutes * 60
-    delete_self = (
-        f"sleep {guard_seconds}; "
-        'runpodctl pod delete "$RUNPOD_POD_ID" || '
-        'runpodctl remove pod "$RUNPOD_POD_ID" || '
-        'curl -fsS -X DELETE "https://rest.runpod.io/v1/pods/$RUNPOD_POD_ID" '
-        '-H "Authorization: Bearer $RUNPOD_API_KEY"'
-    )
+    delete_self = termination_guard(guard_seconds)
     body = {
-        "name": f"prereasoner-train-{token}", "imageName": IMAGE, "cloudType": CLOUD,
-        "gpuTypeIds": GPU_PRIORITY, "gpuCount": 1, "containerDiskInGb": 25,
-        "volumeInGb": 0, "ports": ["22/tcp"],
-        "allowedCudaVersions": CUDA_VERSIONS,
-        "dockerStartCmd": [
+        "name": f"prereasoner-train-{token}", "image": IMAGE, "cloud": CLOUD,
+        "disk": container_disk_gb, "ports": ["22/tcp"], "startSsh": True,
+        "cmd": [
             "bash", "-lc",
-            f"({delete_self}) >/tmp/prereasoner-lease-guard.log 2>&1 & exec /start.sh",
+            f"({delete_self}) >/tmp/prereasoner-lease-guard.log 2>&1 & echo $! >/tmp/prereasoner-lease-guard.pid; exec /start.sh",
         ],
         "env": {
             "PUBLIC_KEY": pubkey(),
             "PREREASONER_TRAINING_IMAGE": IMAGE,
         },
     }
-    status, response = rest("POST", "/pods", body)
+    if network_volume_id or data_center_id:
+        body.update(dataCenterIds=[data_center_id],
+                    mounts={"network": [{"volumeId": network_volume_id, "path": "/workspace"}]})
+    # Preserve the configured GPU priority under v2's single-type request.
+    # Only a definite capacity refusal can advance; a lost response may have
+    # created a billable pod and must be reconciled by its ownership token.
+    for gpu in GPU_PRIORITY:
+        body["gpu"] = {"id": gpu, "count": 1, **cuda}
+        status, response = rest("POST", "/pods", body)
+        if status in (200, 201) and isinstance(response, dict) and response.get("id"):
+            break
+        message = json.dumps(response).lower()
+        if status not in (400, 503) or not any(text in message for text in ("no available instances", "no instances currently available", "no longer any instances available", "insufficient capacity")):
+            raise RuntimeError(f"RunPod create failed: HTTP {status} {response}")
     if status not in (200, 201) or not isinstance(response, dict) or not response.get("id"):
         raise RuntimeError(f"RunPod create failed: HTTP {status} {response}")
     pid = response["id"]
@@ -187,15 +237,17 @@ def terminate(pid: str, attempts: int = 3) -> None:
     raise RuntimeError(f"RunPod termination failed for {pid}: HTTP {status} {response}")
 
 
-def poll(pid: str, timeout_minutes=20):
+def poll(pid: str, timeout_minutes=8):
     deadline = time.monotonic() + timeout_minutes * 60
     while time.monotonic() < deadline:
         status, pod = rest("GET", f"/pods/{pid}")
         if status == 200 and isinstance(pod, dict):
             ip, port = ssh_endpoint(pod)
-            print(f"status={pod.get('desiredStatus')} ssh={f'{ip}:{port}' if ip else 'pending'}", flush=True)
-            if pod.get("desiredStatus") == "RUNNING" and ip:
+            print(f"status={pod.get('status')} ssh={f'{ip}:{port}' if ip else 'pending'}", flush=True)
+            if pod.get("status") == "RUNNING" and ip:
                 return ip, port
+            if pod.get("status") in {"ERROR", "FAILED", "TERMINATED"}:
+                raise RuntimeError("owned pod entered terminal state: " + pod["status"])
         else:
             print(f"pod status failed: HTTP {status} {pod}", flush=True)
         time.sleep(15)
@@ -249,8 +301,8 @@ def _upload(ssh: list[str], scp: list[str], ip: str, source: Path, remote: str, 
     exists nests inside it, so a retried or resumed upload left its copy one level down and the old code in place."""
     target = _remote_path(remote)
     if source.is_file():
-        folder = target.rsplit("/", 1)[0] or "/"           # scp does not make the folder a file lands in (a bundle's /workspace/init/)
-        _run_transfer([*ssh, shlex.join(["mkdir", "-p", "--", folder])], remaining)
+        parent = target.rsplit("/", 1)[0] or "/"
+        _run_transfer([*ssh, shlex.join(["mkdir", "-p", "--", parent])], remaining)
         _run_transfer([*scp, str(source), f"root@{ip}:{target}"], remaining, size=source.stat().st_size)
         return
     files = {path.relative_to(source).as_posix(): path for path in source.rglob("*") if path.is_file()}
@@ -388,6 +440,7 @@ def _run_detached(ssh: list[str], command: list[str], remaining) -> None:
         time.sleep(min(POLL_SECONDS, remaining()))
         try:
             status = subprocess.run([*ssh, POLL], check=True, capture_output=True, text=True,
+                                    encoding="utf-8",
                                     timeout=min(remaining(), 60)).stdout.strip()
             failures = 0
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
@@ -396,6 +449,7 @@ def _run_detached(ssh: list[str], command: list[str], remaining) -> None:
                 raise
     try:
         print(subprocess.run([*ssh, f"cat {OUTPUT_FILE}"], capture_output=True, text=True,
+                             encoding="utf-8", errors="replace",
                              timeout=min(remaining(), 120)).stdout, end="", flush=True)
     except subprocess.TimeoutExpired:
         pass
@@ -427,9 +481,7 @@ def reconcile() -> None:
     token = active.get("pending_token")
     if not token:
         return
-    status, response = rest("GET", "/pods")
-    if status != 200 or not isinstance(response, list):
-        return
+    response = list_pods()
     for pod in response:
         if pod.get("name") == f"prereasoner-train-{token}":
             print(f"reconcile: terminating our lost-creation pod {pod['id']}",
@@ -448,13 +500,6 @@ PULL_RESERVE_SECONDS = 30 * 60
 COMMAND_RESERVE_SECONDS = 10 * 60
 
 
-def known_hosts(pid: str) -> Path:
-    """One pod's host key file. RunPod hands the same address and port to pod after pod, so a key the user's known_hosts
-    kept for an earlier pod refused a new one ("host key has changed", a paid pod lost, 2026-11-13): each pod's key is
-    accepted on first contact for that pod alone, and the file goes with the pod."""
-    return STATE.parent / f"known_hosts.{pid}"
-
-
 def _within(remaining, seconds: float):
     """``remaining`` that also runs out ``seconds`` from now."""
     end = time.monotonic() + seconds
@@ -467,14 +512,88 @@ def _within(remaining, seconds: float):
     return left
 
 
+def renew_owned_deadline(ssh, active, max_minutes, max_hourly_cost, max_total_cost):
+    """Explicitly replace an owned guard only after price and total-cost checks.
+
+    The replacement is armed before the old guard is stopped. Provider-scoped
+    credentials stay in the pod; a client token is never put in a command line.
+    """
+    status, pod = rest("GET", f"/pods/{active['pod_id']}")
+    price = pod.get("cost") if isinstance(pod, dict) else None
+    if (status != 200 or not isinstance(pod, dict) or pod.get("name") != "prereasoner-train-" + active["token"]
+            or type(price) not in (int, float) or not math.isfinite(price)
+            or not 0 <= price <= max_hourly_cost or price * max_minutes / 60 > max_total_cost):
+        raise RuntimeError("owned deadline renewal exceeds its verified price or total-cost bound")
+    deadline = int(time.time()) + max_minutes * 60
+    parameters = {"pod_id": active["pod_id"], "token": active["token"], "deadline_epoch": deadline,
+                  "command": termination_guard(max_minutes * 60), "max_total_cost": max_total_cost,
+                  "hourly_cost": price}
+    script = '''import json,os,signal,subprocess,sys,time,urllib.request
+from pathlib import Path
+p=json.loads(sys.argv[1]);assert 0<p['deadline_epoch']-time.time()<=259200
+provider=dict(item.split(b'=',1) for item in Path('/proc/1/environ').read_bytes().split(b'\\0') if b'=' in item)
+env={k.decode():v.decode() for k,v in provider.items()}
+assert env['RUNPOD_POD_ID']==p['pod_id']
+r=urllib.request.Request('https://api.runpod.io/v2/pods/'+p['pod_id'],headers={'Authorization':'Bearer '+env['RUNPOD_API_KEY']})
+with urllib.request.urlopen(r,timeout=20) as response:pod=json.load(response)
+assert pod['name']=='prereasoner-train-'+p['token']
+pidfile=Path('/tmp/prereasoner-lease-guard.pid');old=int(pidfile.read_text())
+assert old>1
+oldcmd=Path(f'/proc/{old}/cmdline').read_bytes()
+assert b'api.runpod.io/v2/pods/$RUNPOD_POD_ID' in oldcmd and b'until curl' in oldcmd
+seconds=int(p['deadline_epoch']-time.time());command=p['command'].split(';',1)[1]
+with open('/tmp/prereasoner-lease-guard.log','ab',buffering=0) as log:
+ child=subprocess.Popen(['bash','-c',f'sleep {seconds};'+command],env=env,stdout=log,stderr=subprocess.STDOUT,start_new_session=True)
+assert child.poll() is None
+pidfile.write_text(str(child.pid))
+for entry in Path('/proc').iterdir():
+ if not entry.name.isdigit():continue
+ try:
+  stat=(entry/'stat').read_text();ppid=int(stat[stat.rfind(')')+2:].split()[1])
+  if ppid==old and (entry/'cmdline').read_bytes().startswith(b'sleep\\0'):os.kill(int(entry.name),signal.SIGTERM)
+ except (FileNotFoundError,ProcessLookupError,PermissionError):pass
+os.kill(old,signal.SIGTERM)
+record={k:v for k,v in p.items() if k!='command'}
+record.update(guard_pid=child.pid,replaced_guard_pid=old,provider_scoped_auth_verified=True,armed_at_epoch=time.time())
+Path('/tmp/prereasoner-lease-deadline.json').write_text(json.dumps(record,indent=2))
+print(json.dumps(record))'''
+    result = subprocess.run([*ssh, "python -c " + shlex.quote(script) + " " + shlex.quote(json.dumps(parameters))],
+                            capture_output=True, text=True, check=True, timeout=90)
+    record = json.loads(result.stdout)
+    if (record.get("pod_id") != active["pod_id"] or record.get("deadline_epoch") != deadline
+            or not record.get("provider_scoped_auth_verified")):
+        raise RuntimeError("renewed provider deadline failed read-back")
+    updated = {**active, "created_at": deadline - max_minutes * 60, "max_minutes": max_minutes,
+               "previous_deadline": active["created_at"] + active["max_minutes"] * 60,
+               "renewal": record}
+    temporary = STATE.with_suffix(".part")
+    temporary.write_text(json.dumps(updated, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(temporary, STATE)
+    print(json.dumps({"stage": "owned_deadline_renewed", **record}), flush=True)
+    return deadline
+
+
 def run_lease(max_minutes: int, command: list[str], keep: bool = False,
               uploads: tuple[tuple[str, str], ...] = (),
               downloads: tuple[tuple[str, str], ...] = (),
-              max_hourly_cost: float | None = None, resume: bool = False) -> str:
-    if not 1 <= max_minutes <= 360:
-        raise ValueError("--max-minutes must be between 1 and 360")
+              max_hourly_cost: float | None = None, resume: bool = False,
+              network_volume_id: str | None = None, data_center_id: str | None = None,
+              container_disk_gb: int = 25, max_total_cost: float | None = None,
+              renew: bool = False) -> str:
+    if type(max_minutes) is not int or not 1 <= max_minutes <= MAX_LEASE_MINUTES:
+        raise ValueError("--max-minutes exceeds the bounded lease duration")
     if max_hourly_cost is not None and (not math.isfinite(max_hourly_cost) or max_hourly_cost <= 0):
         raise ValueError("max hourly cost must be finite and positive")
+    if max_total_cost is not None and (not math.isfinite(max_total_cost) or max_total_cost <= 0):
+        raise ValueError("max total cost must be finite and positive")
+    if max_total_cost is not None and (max_hourly_cost is None or max_hourly_cost * max_minutes / 60 > max_total_cost):
+        raise ValueError("whole-duration compute exceeds the declared cost bound")
+    if max_minutes > 360 or renew:
+        if (max_hourly_cost is None or max_total_cost is None
+                or max_hourly_cost * max_minutes / 60 > max_total_cost):
+            raise ValueError("long or renewed leases require hourly and whole-duration cost bounds")
+    if renew and not resume:
+        raise ValueError("only an explicitly resumed owned lease can be renewed")
     reconcile()
     if resume:
         active = json.loads(STATE.read_text(encoding="utf-8"))
@@ -490,7 +609,8 @@ def run_lease(max_minutes: int, command: list[str], keep: bool = False,
         seconds_left = min(seconds_left, max_minutes * 60)
         print(f"resuming owned pod {pid}; {seconds_left / 60:.1f} minutes remain; deadline not extended", flush=True)
     else:
-        pid = create(max_minutes)
+        pid = create(max_minutes, network_volume_id=network_volume_id, data_center_id=data_center_id,
+                     container_disk_gb=container_disk_gb)
         seconds_left = max_minutes * 60
     deadline = time.monotonic() + seconds_left
     scp, ip = None, None
@@ -499,7 +619,7 @@ def run_lease(max_minutes: int, command: list[str], keep: bool = False,
     try:
         if max_hourly_cost is not None:
             status, details = rest("GET", f"/pods/{pid}")
-            price = details.get("costPerHr") if isinstance(details, dict) else None
+            price = details.get("cost") if isinstance(details, dict) else None
             if (status != 200 or type(price) not in (int, float)
                     or not math.isfinite(price) or not 0 <= price <= max_hourly_cost):
                 raise RuntimeError("pod hourly price unavailable or exceeds the approved cap")
@@ -511,18 +631,20 @@ def run_lease(max_minutes: int, command: list[str], keep: bool = False,
                 raise TimeoutError(f"pod {pid} lease expired")
             return seconds
 
-        hosts = f"UserKnownHostsFile={known_hosts(pid).as_posix()}"
         ssh = [
             "ssh", "-i", str(Path.home() / ".ssh" / "runpod_prereasoner"),
-            "-p", str(port), "-o", "StrictHostKeyChecking=accept-new", "-o", hosts,
+            "-p", str(port), "-o", "StrictHostKeyChecking=accept-new",
             "-o", "ServerAliveInterval=30", "-o", "ServerAliveCountMax=6", f"root@{ip}",
         ]
         # A dead connection ends an attempt here too, instead of waiting out a limit that can now be hours.
         scp = [
             "scp", "-i", str(Path.home() / ".ssh" / "runpod_prereasoner"),
-            "-P", str(port), "-o", "StrictHostKeyChecking=accept-new", "-o", hosts,
+            "-P", str(port), "-o", "StrictHostKeyChecking=accept-new",
             "-o", "ServerAliveInterval=30", "-o", "ServerAliveCountMax=6",
         ]
+        if renew:
+            renewed = renew_owned_deadline(ssh, active, max_minutes, max_hourly_cost, max_total_cost)
+            deadline = time.monotonic() + renewed - time.time()
         for local, remote in uploads:
             source = Path(local).resolve()
             if not source.exists():
@@ -566,7 +688,6 @@ def run_lease(max_minutes: int, command: list[str], keep: bool = False,
         else:
             try:
                 terminate(pid)
-                known_hosts(pid).unlink(missing_ok=True)
             except Exception as cleanup_error:
                 # Preserve the training failure that triggered cleanup. The provider-side
                 # pod-local deletion watchdog remains the final cost bound if all deletes fail.
@@ -576,6 +697,12 @@ def run_lease(max_minutes: int, command: list[str], keep: bool = False,
 
 
 def main(argv=None) -> int:
+    # Redirected Windows stdout otherwise uses the legacy code page. Native
+    # training logs contain Unicode; reporting success must not turn a finished
+    # job into a failed lease and a lengthy recovery.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(description="RunPod training with an owned, time-bounded lease")
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("check")
@@ -585,7 +712,12 @@ def main(argv=None) -> int:
     lease.add_argument("--max-minutes", type=int, default=120)
     lease.add_argument("--keep", action="store_true")
     lease.add_argument("--max-hourly-cost", type=float, default=None)
+    lease.add_argument("--max-total-cost", type=float, default=None, help="maximum compute charge over the whole requested lease")
     lease.add_argument("--resume", action="store_true", help="resume only this state file's owned pod within its original deadline")
+    lease.add_argument("--renew", action="store_true", help="explicitly rearm an owned resumed pod for a measured duration with total-cost bounds")
+    lease.add_argument("--network-volume-id", help="existing volume whose data center was verified before allocation")
+    lease.add_argument("--data-center-id", help="verified data center of --network-volume-id")
+    lease.add_argument("--container-disk-gb", type=int, default=25, help="ephemeral model/cache disk, GB")
     lease.add_argument("--upload", action="append", nargs=2, default=[],
                        metavar=("LOCAL", "REMOTE"))
     lease.add_argument("--download", action="append", nargs=2, default=[],
@@ -596,12 +728,12 @@ def main(argv=None) -> int:
     if not credentials()[0]:
         parser.error("RUNPOD_API_KEY must be set in the environment or repo-root .env")
     if args.command == "check":
-        status_code, pods = rest("GET", "/pods")
-        print(f"HTTP {status_code}; pods={len(pods) if isinstance(pods, list) else pods}")
+        pods = list_pods()
+        print(f"HTTP 200; pods={len(pods)}")
     elif args.command == "status":
         status_code, pod = rest("GET", f"/pods/{args.pod_id}")
         ip, port = ssh_endpoint(pod) if isinstance(pod, dict) else (None, None)
-        print(f"HTTP {status_code} status={pod.get('desiredStatus') if isinstance(pod, dict) else pod} ssh={ip}:{port}")
+        print(f"HTTP {status_code} status={pod.get('status') if isinstance(pod, dict) else pod} ssh={ip}:{port}")
     elif args.command == "term":
         terminate(args.pod_id)
     else:
@@ -616,6 +748,11 @@ def main(argv=None) -> int:
                 tuple(map(tuple, args.upload)), tuple(map(tuple, args.download)),
                 args.max_hourly_cost,
                 args.resume,
+                network_volume_id=args.network_volume_id,
+                data_center_id=args.data_center_id,
+                container_disk_gb=args.container_disk_gb,
+                max_total_cost=args.max_total_cost,
+                renew=args.renew,
             )
         except IncompleteDownload as exc:
             print(f"incomplete download: {exc}", file=sys.stderr)

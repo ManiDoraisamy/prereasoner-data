@@ -572,7 +572,7 @@ def test_runpod_training_is_an_owned_bounded_lease():
             create_bodies.append(body)
             return 201, {"id": "pod-1"}
         if method == "GET":
-            return 200, {"desiredStatus": "RUNNING", "publicIp": "127.0.0.1", "portMappings": {"22": 22}}
+            return 200, {"status": "RUNNING", "ssh": {"direct": {"host": "127.0.0.1", "port": 22, "username": "root"}}}
         return 204, None
 
     with tempfile.TemporaryDirectory() as directory, \
@@ -590,16 +590,30 @@ def test_runpod_training_is_an_owned_bounded_lease():
         assert not runpod_api.STATE.exists()
         body = create_bodies[0]
         assert "terminateAfter" not in body
-        assert body["imageName"] == runpod_api.IMAGE and "@sha256:" in body["imageName"]
-        assert "runpodctl pod delete" in body["dockerStartCmd"][-1]
+        assert body["image"] == runpod_api.IMAGE and "@sha256:" in body["image"]
+        guard = body["cmd"][-1]
+        assert "sleep 60; until curl" in guard and "do sleep 30; done" in guard
+        assert 'https://api.runpod.io/v2/pods/$RUNPOD_POD_ID' in guard
+        assert 'Authorization: Bearer $RUNPOD_API_KEY' in guard
+        assert "--connect-timeout 10 --max-time 30" in guard
         assert "HF_TOKEN" not in body["env"]
+        assert body["gpu"]["minCudaVersion"] == "12.8"
+        assert body["ports"] == ["22/tcp"] and body["startSsh"] is True
+        assert runpod_api.REST == "https://api.runpod.io/v2"
 
     assert not (ROOT / "training/data/pod_id.txt").exists()
     source = _text("training/tools/runpod_api.py")
     assert "finally:" in source and "--keep" in source and "max_minutes * 60" in source
-    assert '"dockerStartCmd"' in source and "runpodctl pod delete" in source
+    assert '"cmd"' in source and "until curl -fsS" in source
     assert '"terminateAfter"' not in source
     assert "@sha256:" in source
+    for seconds in (0, -1, runpod_api.MAX_LEASE_MINUTES * 60 + 1, True):
+        try:
+            runpod_api.termination_guard(seconds)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("invalid independent guard deadline accepted")
 
 
 def test_runpod_cleanup_failure_does_not_hide_training_failure():
@@ -609,8 +623,7 @@ def test_runpod_cleanup_failure_does_not_hide_training_failure():
         if method == "POST":
             return 201, {"id": "pod-2"}
         if method == "GET":
-            return 200, {"desiredStatus": "RUNNING", "publicIp": "127.0.0.1",
-                         "portMappings": {"22": 22}}
+            return 200, {"status": "RUNNING", "ssh": {"direct": {"host": "127.0.0.1", "port": 22, "username": "root"}}}
         return 503, "provider unavailable"
 
     with tempfile.TemporaryDirectory() as directory, \
@@ -633,7 +646,7 @@ def test_runpod_price_cap_terminates_before_any_work():
 
     with patch.object(runpod_api, "reconcile"), \
             patch.object(runpod_api, "create", return_value="pod-price"), \
-            patch.object(runpod_api, "rest", return_value=(200, {"costPerHr": 3.0})), \
+            patch.object(runpod_api, "rest", return_value=(200, {"cost": 3.0})), \
             patch.object(runpod_api, "terminate") as terminate, \
             patch.object(runpod_api, "poll") as poll:
         try:
@@ -1220,17 +1233,11 @@ def test_runpod_transfers_are_inside_the_owned_lease():
         if method == "POST":
             return 201, {"id": "pod-3"}
         if method == "GET":
-            return 200, {"desiredStatus": "RUNNING", "publicIp": "127.0.0.1",
-                         "portMappings": {"22": 22}}
+            return 200, {"status": "RUNNING", "ssh": {"direct": {"host": "127.0.0.1", "port": 22, "username": "root"}}}
         events.append((method, path))
         return 204, None
 
     def fake_run(command, **kwargs):
-        # 2026-11-13: a reused address and port presented a new pod's key against the user's known_hosts and the
-        # lease lost its pod; every connection now names the pod's own host key file, which ssh writes on first contact.
-        hosts = [part for part in command if part.startswith("UserKnownHostsFile=")]
-        assert hosts == [f"UserKnownHostsFile={runpod_api.known_hosts('pod-3').as_posix()}"], command
-        runpod_api.known_hosts("pod-3").write_text("host key\n", encoding="utf-8")
         if command[0] == "scp" and "@" in command[-2]:
             Path(command[-1]).write_text("{}", encoding="utf-8")
         stdout = ("0" if command[-1].startswith(f"cat {runpod_api.EXIT_FILE}")
@@ -1252,7 +1259,6 @@ def test_runpod_transfers_are_inside_the_owned_lease():
             downloads=(("/workspace/output", str(Path(directory) / "output")),),
         )
         assert run.call_count == 7
-        # A file upload makes its folder first (scp does not), then copies the file.
         assert run.call_args_list[0].args[0][-1] == "mkdir -p -- /workspace"
         assert "input.jsonl" in run.call_args_list[1].args[0][-2]
         # The command runs detached from the session, and its exit status and output are read back.
@@ -1265,13 +1271,163 @@ def test_runpod_transfers_are_inside_the_owned_lease():
         assert "/workspace/output/result.json" in run.call_args_list[6].args[0][-2]
         assert events[-1] == ("DELETE", "/pods/pod-3")
         assert not runpod_api.STATE.exists()
-        assert not runpod_api.known_hosts("pod-3").exists(), "the pod's host key outlived the pod"
         try:
             runpod_api._remote_path("/workspace/../root/.ssh")
         except ValueError:
             pass
         else:
             raise AssertionError("unsafe remote transfer path was accepted")
+
+
+def test_a_unicode_training_log_is_decoded_as_utf8_without_losing_success():
+    from contextlib import redirect_stdout
+    import io
+    from training.tools import runpod_api
+
+    real_run = subprocess.run
+    def run(command, **kwargs):
+        if command[-1] == f"cat {runpod_api.OUTPUT_FILE}":
+            assert kwargs.get("encoding") == "utf-8"
+            return real_run([sys.executable, "-c", "import sys;sys.stdout.buffer.write(bytes.fromhex('e296810a'))"], **kwargs)
+        if command[-1] == runpod_api.POLL:
+            return subprocess.CompletedProcess(command, 0, stdout="0\n")
+        return subprocess.CompletedProcess(command, 0, stdout="")
+    output = io.StringIO()
+    with patch.object(runpod_api.subprocess, "run", side_effect=run), \
+            patch.object(runpod_api, "POLL_SECONDS", 0), redirect_stdout(output):
+        runpod_api._run_detached(["ssh"], ["python", "train.py"], lambda: 100.0)
+    assert output.getvalue() == "\u2581\n"
+
+
+def test_runpod_capacity_retry_preserves_priority_but_never_retries_a_lost_creation():
+    from training.tools import runpod_api
+    with tempfile.TemporaryDirectory() as folder, \
+            patch.object(runpod_api, "STATE", Path(folder) / "state.json"), \
+            patch.object(runpod_api, "GPU_PRIORITY", ["first", "second"]), \
+            patch.object(runpod_api, "pubkey", return_value="key"):
+        requested = []
+        def request(method, path, body):
+            requested.append(body["gpu"]["id"])
+            return (503, {"detail": "No available instances"}) if len(requested) == 1 else (201, {"id": "owned"})
+        with patch.object(runpod_api, "rest", side_effect=request):
+            assert runpod_api.create(1) == "owned" and requested == ["first", "second"]
+        with patch.object(runpod_api, "rest", return_value=(-1, "response lost")) as request:
+            try:
+                runpod_api.create(1)
+            except RuntimeError:
+                pass
+            else:
+                raise AssertionError("a lost POST response must preserve reconciliation state")
+            assert request.call_count == 1 and json.loads(runpod_api.STATE.read_text())["pending_token"]
+
+
+def test_runpod_cuda_floor_admits_newer_hosts_and_rejects_old_or_unavailable_versions():
+    from training.tools import runpod_api
+    with patch.object(runpod_api, "CUDA_VERSIONS", []), patch.object(runpod_api, "MIN_CUDA", "12.8"):
+        assert runpod_api.cuda_constraints() == {"minCudaVersion": "12.8"}
+    with patch.object(runpod_api, "CUDA_VERSIONS", ["13.2"]):
+        assert runpod_api.cuda_constraints() == {"allowedCudaVersions": ["13.2"]}
+    with patch.object(runpod_api, "CUDA_VERSIONS", []), patch.object(runpod_api, "MIN_CUDA", "invalid"):
+        try:
+            runpod_api.cuda_constraints()
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("invalid CUDA floor must fail before allocation")
+
+
+def test_runpod_long_lease_requires_whole_duration_budget_and_verifies_guard_replacement():
+    import shlex
+    import time
+    from types import SimpleNamespace
+    from training.tools import runpod_api
+
+    for minutes, hourly, total in ((361, None, None), (361, 2, None), (361, 2, 10), (30, 2, -1)):
+        with patch.object(runpod_api, "reconcile") as reconcile:
+            try:
+                runpod_api.run_lease(minutes, [], max_hourly_cost=hourly, max_total_cost=total)
+            except ValueError:
+                pass
+            else:
+                raise AssertionError("unbounded compute reservation accepted")
+            reconcile.assert_not_called()
+    active = {"pod_id": "owned", "token": "mine", "created_at": int(time.time()), "max_minutes": 60}
+    with tempfile.TemporaryDirectory() as folder, \
+            patch.object(runpod_api, "STATE", Path(folder) / "state.json"), \
+            patch.object(runpod_api, "rest", return_value=(200, {"name": "prereasoner-train-mine", "cost": 1.79})):
+        runpod_api.STATE.write_text(json.dumps(active))
+        def arm(command, **kwargs):
+            parts = shlex.split(command[-1]); script, params = parts[2], json.loads(parts[3])
+            compile(script, "pod-local-guard", "exec")
+            assert script.index("subprocess.Popen") < script.index("os.kill(old")
+            assert "'/proc/1/environ'" in script and "provider_scoped_auth_verified" in script
+            assert params["command"].startswith("sleep 198000; until curl")
+            return SimpleNamespace(stdout=json.dumps({**{k: v for k, v in params.items() if k != "command"},
+                                                       "provider_scoped_auth_verified": True, "guard_pid": 123}))
+        with patch.object(runpod_api.subprocess, "run", side_effect=arm):
+            deadline = runpod_api.renew_owned_deadline(["ssh", "owned"], active, 3300, 1.8, 99)
+        saved = json.loads(runpod_api.STATE.read_text())
+        assert saved["created_at"] + saved["max_minutes"] * 60 == deadline
+        assert saved["renewal"]["guard_pid"] == 123 and saved["token"] == "mine"
+        with patch.object(runpod_api, "rest", return_value=(200, {"name": "foreign", "cost": 1.79})), \
+                patch.object(runpod_api.subprocess, "run") as run:
+            try:
+                runpod_api.renew_owned_deadline(["ssh", "owned"], active, 3300, 1.8, 99)
+            except RuntimeError:
+                pass
+            else:
+                raise AssertionError("foreign resource renewal accepted")
+            run.assert_not_called()
+
+
+def test_runpod_reconciliation_reads_every_v2_page_and_only_terminates_its_owner():
+    from training.tools import runpod_api
+    calls = []
+    def request(method, path, body=None):
+        calls.append((method, path))
+        if path == "/pods":
+            return 200, {"pods": [{"id": "foreign", "name": "prereasoner-train-other"}],
+                         "pagination": {"hasNextPage": True, "nextCursor": "next/token"}}
+        if path == "/pods?cursor=next%2Ftoken":
+            return 200, {"pods": [{"id": "owned", "name": "prereasoner-train-mine"}],
+                         "pagination": {"hasNextPage": False, "nextCursor": None}}
+        assert (method, path) == ("DELETE", "/pods/owned")
+        return 204, None
+    with tempfile.TemporaryDirectory() as folder, \
+            patch.object(runpod_api, "STATE", Path(folder) / "state.json"), \
+            patch.object(runpod_api, "rest", side_effect=request):
+        runpod_api.STATE.write_text(json.dumps({"pending_token": "mine"}))
+        runpod_api.reconcile()
+        assert not runpod_api.STATE.exists()
+        assert ("DELETE", "/pods/foreign") not in calls
+        assert calls[-1] == ("DELETE", "/pods/owned")
+
+
+def test_runpod_training_volume_and_cache_size_preserve_the_owned_lease():
+    from training.tools import runpod_api
+
+    with tempfile.TemporaryDirectory() as directory, \
+            patch.object(runpod_api, "STATE", Path(directory) / "active.json"), \
+            patch.object(runpod_api, "rest", return_value=(201, {"id": "owned"})) as rest, \
+            patch.object(runpod_api, "pubkey", return_value="ssh-ed25519 test"):
+        assert runpod_api.create(30, network_volume_id="volume", data_center_id="verified-dc",
+                                 container_disk_gb=100) == "owned"
+        body = rest.call_args.args[2]
+        assert body["mounts"]["network"][0]["volumeId"] == "volume" and body["dataCenterIds"] == ["verified-dc"]
+        assert body["mounts"]["network"][0]["path"] == "/workspace" and body["disk"] == 100
+        assert "sleep 1800" in body["cmd"][-1]
+        runpod_api.STATE.unlink()
+        rest.reset_mock()
+        for args in ({"network_volume_id": "volume"}, {"data_center_id": "dc"},
+                     {"container_disk_gb": 0}, {"container_disk_gb": True}):
+            try:
+                runpod_api.create(30, **args)
+            except ValueError:
+                pass
+            else:
+                raise AssertionError("invalid training placement/cache size admitted")
+            assert not runpod_api.STATE.exists()
+        rest.assert_not_called()
 
 
 def test_runpod_retries_only_idempotent_transfers():
@@ -1897,6 +2053,12 @@ TESTS = [
     test_a_dropped_connection_does_not_end_the_remote_command,
     test_runpod_resume_requires_ownership_and_never_creates_a_pod,
     test_runpod_retries_only_idempotent_transfers,
+    test_a_unicode_training_log_is_decoded_as_utf8_without_losing_success,
+    test_runpod_capacity_retry_preserves_priority_but_never_retries_a_lost_creation,
+    test_runpod_cuda_floor_admits_newer_hosts_and_rejects_old_or_unavailable_versions,
+    test_runpod_long_lease_requires_whole_duration_budget_and_verifies_guard_replacement,
+    test_runpod_reconciliation_reads_every_v2_page_and_only_terminates_its_owner,
+    test_runpod_training_volume_and_cache_size_preserve_the_owned_lease,
     test_cloud_build_context_is_git_archive_plus_manifested_weights,
     test_engine_release_build_runs_the_real_server_until_health_ready,
     test_engine_release_runs_full_live_product_gate_before_image_publication,
