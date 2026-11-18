@@ -5,7 +5,7 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
-## Connected questions: with the knowledgebase columns an uploaded column reaches offered as options and run as joins through production's bridges, the Decisions path answers 69 of the 91 demo questions right (56 without; production's own gate 91), and offering them costs nothing on 129 dev questions (2026-11-18)
+## Connected questions: with the knowledgebase columns an uploaded column reaches offered as options and run as joins through production's bridges, the Decisions path answers 69 of the 91 demo questions right (56 without; production's own gate 91), and offering them costs nothing on 181 dev questions (2026-11-18)
 
 - On the owner's correction and order of 2026-11-18: the closed questions must offer the input tables' columns plus the
   knowledgebase tables their columns connect to ("city in order table is foreign key in Wikipedia city and Wikipedia
@@ -62,21 +62,31 @@ counts right only when the picked reading uses a converted column):
   conversions on 5. Production also types columns falsely: product names (Alpha, Delta) and "category" as cities,
   customer names as films or musical groups; the false entity types hold no country and reach nothing.
 
-**No harm on the dev sets** (stage 5: the questions of every messy and WikiTableQuestions workbook production links,
-connections on, against the same arm without):
+**No harm on the dev sets** (stage 5: the questions of every dev workbook production links, connections on, against
+the same arm without; wins / losses per question):
 
-| pass | questions | right answer listed, wins / losses | pick right | unwarned right |
+| pass | questions | right answer listed | pick right | unwarned right |
 |---|---|---|---|---|
-| first: links at 80% of cells | 145 | 7 / 3 | 6 / 7 | 7 / 11 (p 0.48) |
-| with the three-cell floor | 129 | 6 / 2 | 5 / 3 | 5 / 7 (p 0.77) |
+| first: links at 80% of cells (messy, WikiTableQuestions) | 145 | 7 / 3 | 6 / 7 | 7 / 11 (p 0.48) |
+| with the three-cell floor: messy 72, WikiTableQuestions 57, fresh dev 52 | 181 | 6 / 3 | 6 / 4 | 6 / 8 (p 0.79) |
 
 - The first pass lost four right picks on 16 messy questions whose workbook has a Yes/No column ("No Show",
   "Reimbursed") that production routes as a city column: "Yes" and "No" are city names and 2 of 2 cells matched. The
   floor removes those links. On WikiTableQuestions the true links help (a Nation column reaching its continent):
-  listed 6 wins, 1 loss; pick 5 / 2.
-- Fresh dev and DataBench are not in this table: production's preparation of their larger workbooks was still running.
+  listed 6 wins, 1 loss; pick 5 / 2. Fresh dev's links are nearly all US state columns and change nothing (pick 1 / 1).
+- DataBench has no usable link in this pass: seven of its tables exceed the 5,000 record lines given to production's
+  preparation here, and the rest route nothing.
 
-**Cost.** About $0.25 of Decisions API calls for all of the above; the night's total about $3.2 of the $25 cap.
+**Links between two uploaded tables** (a column production's `ingest` finds to be a key into another upload reaches
+that table's columns, and what they reach: "customer → city → country"). Built and measured on the demo datasets, it
+**failed its gate and is not kept on**: 67 right, 6 flagged right, 8 asked, 3 flagged wrong, 7 wrong, against 69 / 4 /
+12 / 2 / 4 with the three kinds above. The reach works: "total amount in Belgium in US dollars" on customers with
+orders reads as the total of amount → USD on orders where customer → city → country is "Belgium". But with the
+commission and tier tables reachable, the path now answers the calculation questions it used to ask, and wrongly:
+"total commission amount for card payments" as amount times commission_percent with no percent. The experimental
+engine has no percent-of or discount calculation; production registers these (`engine/calculations`).
+
+**Cost.** About $0.6 of Decisions API calls for all of the above; the night's total about $3.6 of the $25 cap.
 
 **Reading.** The owner's design holds where it was tested: a question about a country, a continent or a currency is
 one value on a connected column, the outside model reads it as reliably as a sheet's own column, and the join runs on
