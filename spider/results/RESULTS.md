@@ -5,6 +5,93 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
+## The Gemini Decisions API in CLEF's two places: on the four public and synthetic dev sets the same bundle goes from 152 right and 131 wrong of 896 to 600 right and 89 wrong (317 + 148 flagged right and 30 wrong at the CLEF path's own decision); level with the 27B CLEF reference, and short of the launch bar at 65% right for 8% wrong (2026-11-18)
+
+- On the owner's order of 2026-11-18 ("go ahead, run the dev measurement with the decisions api"). Experiment code
+  only, outside production imports: `training/readers/data/experiments/decisions-probe-20261118/` (gitignored; the
+  contract, written before the run, with hashes, gates and the results, in its `experiment-contract.json`). Nothing is
+  served. Serving it would change the rule that own-data selection uses no external model; that is the owner's decision.
+- **What ran.** `clef-serve-20261109/local/clef_path.py` unchanged (sha256 `71dcb507`), with `gemini-decision-1`
+  (Google's Decisions API, Developer API, launched 2026-11-11; closed questions in, a probability per option out, no
+  text) behind `clef_client`'s interface (`local/decisions_client.py`, `453af62a`; driver `local/run_decisions.py`,
+  `f249e9f1`). Reading: one call, each field of the reading record one closed choice question over the record's own
+  options (measure, filter, value, aggregate, form and the rest, 17 fields), the probabilities fused into the reader's
+  scores at W = 2; the decoder builds the pool of 50 and the engine runs it. Choice: one call over the candidates that
+  ran (each one's read-as sentence and a 3-row preview of its answer) and "none". No model writes SQL. W and the
+  thresholds (ask below 0.42, flag below 0.575) are the CLEF path's own, fixed before the run and not tuned for this
+  API. Two paths per question on the same prepared workbook: **full** (the API reads and chooses) and **choose_only**
+  (the reader's own pool; the API only chooses).
+- **Bundle and code.** `named_coverage_a_s0/aligned` (reader.pt sha256 `6bf41460ef95`), mode `named_plus_open`; main
+  `01313e2` clean, eval worktree `9bc24e4` clean.
+- **Sets** (896 questions): messy dev 120 (invented workbooks), WikiTableQuestions dev sample 300, DataBench dev 300,
+  fresh dev twin 176 (public US government workbooks). The driver refuses the Enron set: no Enron sheet goes to an
+  outside model. Sent per question: the question, each tab's column headers, kinds and three example cells, the
+  record's options (up to 160 cell values and 80 printed line labels), and for the choice each candidate's read-as
+  sentence and 3-row preview. No whole table.
+- **Run.** 2026-11-18 00:26-02:29: 2,655 live calls and 24 from the pilot's cache, no error, no retry; 14.08M input
+  tokens, $1.41 at the list price ($0.10 per 1M). The full path costs 11,617 tokens a question ($0.0012).
+
+**Outcomes** (of 896). "As served" is the CLEF path's decision on the likeliest candidate. "Per answer" sums a
+candidate's probability over the listed candidates that return the same answer and applies the same two thresholds;
+it was added to the contract after an 8-question pilot and before the full run, because this API splits its
+probability across candidates that agree on the answer.
+
+| | right | flagged right | asked | flagged wrong | wrong | right answer listed | first right | pick right, always answering |
+|---|---|---|---|---|---|---|---|---|
+| named reader alone (`cov_al`, its fitted chooser) | 152 | | 613 | | 131 | 498 | 272 | 284 |
+| choose_only, as served | 308 | 68 | 417 | 52 | 51 | 498 | 272 | 432 |
+| choose_only, per answer | 380 | 31 | 335 | 60 | 90 | 498 | 272 | 428 |
+| full, as served | 317 | 148 | 364 | 37 | 30 | 750 | 514 | 650 |
+| **full, per answer** | **600** | 29 | 129 | 49 | 89 | 750 | 514 | 649 |
+| CLEF reference (27B decoder, bge-small reader, fitted chooser) | 393 | 113 | 341 | 24 | 25 | 735 | 466 | 637 |
+
+Full path by set, per answer (as served in brackets):
+
+| set | right | flagged right | asked | flagged wrong | wrong | listed | pick right |
+|---|---|---|---|---|---|---|---|
+| messy dev (120) | 76 (46) | 5 (25) | 22 (36) | 9 (10) | 8 (3) | 113 | 85 |
+| WikiTableQuestions (300) | 187 (57) | 10 (55) | 42 (168) | 23 (10) | 38 (10) | 243 | 207 |
+| DataBench (300) | 244 (175) | 8 (42) | 19 (61) | 7 (8) | 22 (14) | 279 | 256 |
+| fresh dev (176) | 93 (39) | 6 (26) | 46 (99) | 10 (9) | 21 (3) | 115 | 101 |
+
+- **Gates** (full path, fixed before the run). Right answers given at least 304: **passed** on both readings (465 as
+  served, 629 per answer). Unwarned wrong at most 71: **passed as served (30), failed per answer (89)**. Right answer
+  listed at least 528: **passed** (750).
+- **Against the named reader alone** (per question, sign tests): listed 265 wins, 13 losses; per-answer right 479 / 2;
+  per-answer wrong 103 / 96 (p 0.67); pick right 378 / 13. The gain is the reading: choose_only lists the same 498 and
+  its pick is right on 428-432.
+- **Against the CLEF reference** (not a control: an older reader and commit, a chooser fitted for CLEF). At equal
+  coverage the two are level: the full path's 418 surest per-answer picks are 394 right and 24 wrong (CLEF's 418
+  unwarned answers 393 and 25); its 555 surest are 513 and 42 (CLEF's 555 answers 506 and 49). Per question: listed
+  37 / 22 (p 0.07), first right 123 / 75 (p 0.0008), per-answer pick 62 / 53 (p 0.46).
+- **The risk curve** (not gated). Dev-chosen threshold, so optimistic: per answer 579 right at 71 wrong, 350 at 17.
+  Cross-fitted (one threshold fitted on half the questions by id hash, applied to the other half; post hoc, not in
+  the contract): **583 right, 240 asked, 73 wrong (65.1%, 8.1%)** at the 8% cap and 349 / 528 / 19 at the 2% cap; the
+  CLEF reference under the same fit 591 / 232 / 73 and 358 / 520 / 18; choose_only 363 / 466 / 67.
+- **Where the full path loses a question** (per answer, of 896): right answer not in the pool 146 (messy 7, WTQ 57,
+  DataBench 21, fresh dev 61); in the pool but the pick is wrong 101 (28, 36, 23, 14); pick right 649 (85, 207, 256,
+  101). Where listed, the right answer is the decoder's first for 514, at ranks 2-5 for 150, 6-20 for 62, 21-50 for 24.
+  "None" is likeliest on 73, 16 of them with the right answer listed.
+- **Latency** (full path, per question after workbook preparation; dev box CPU, 4 threads, two measuring processes
+  sharing the box): total p50 1.00 s, p90 2.19 s, p99 8.1 s. The read call p50 0.37 s / p90 0.59 s, the choice call
+  0.29 s / 0.49 s; the reader 0.21 s / 0.40 s and the pool 0.07 s / 0.85 s (DataBench's large tables carry the tail).
+- **Repeatable.** The first 40 WikiTableQuestions questions asked again with an empty cache (120 live calls, 02:31):
+  all 7,133 read probabilities and every choice probability identical to the main run's, the same pool and the same
+  outcome on 40 of 40 for both paths.
+
+**Reading.** Closed questions over the reader's own options, answered by an outside model that returns only
+probabilities, take the engine from 17% right to 67% on these sets with no model writing SQL, at the accuracy of the
+self-hosted 27B decoder, for about a tenth of a cent and one second a question. It does not reach the launch bar (80%
+right, at most 8% unwarned wrong): always answering is right on 649 of 896 (72.4%), the pool holds the right answer for
+750 (83.7%), and at 8% wrong it answers 583 right (65.1%). WikiTableQuestions: pick right 207 of 300 (69.0%; the bar
+70%). What is left is the pool (146 questions, most on fresh dev and WikiTableQuestions) and the choice among listed
+candidates (101), not the outside model's probabilities.
+
+**Not measured.** The Enron set (refused) and the frozen sets (never read); follow-up turns; the trained reader's own
+share under fusion (no arm without its scores; the CLEF reference lists 735 with the older bge-small reader); rate
+limits under load (this run made about 0.4 calls a second); Vertex (the API is on the Developer API only).
+
+
 ## Coverage data: reviewed questions on synthetic sheets for all 91 schema.org classes make 12-15 structure names fire (none before) and qualify 5-6 properties, but listing stays at 418-428 of 583 and the aligned chooser answers 173 right and 163 wrong (pilot 161 and 173); the listing and answer gates fail (2026-11-17)
 
 - On the owner's orders of 2026-11-16 ("go ahead, synthetic tables allowed"; "go ahead, run it all", spending past caps
