@@ -5,6 +5,105 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
+## All of the day's changes together: on the 896 dev questions the no-trained-model Decisions path picks 677 right against this morning's 636 (listed 759 against 737), and a value-set question raises that to 687 but fails the demo gate by one wrong answer; the decided-set rule and an exact-totals compile rule fail their gates, and on WikiTableQuestions no change to the chooser moves its pick by more than 2 of 299 (2026-11-18)
+
+- Continues the entry below the same day, on the owner's order ("Build, measure, continue with next steps. Do not wait
+  for me") and the owner's later "go ahead, continue with the next steps". Every run is the no-trained-model arm (stock bge-m3
+  shortlist, the engine's word reader, the Gemini Decisions API reads and chooses), per answer at the CLEF path's
+  thresholds, on public and synthetic tables only. Experiment code in
+  `training/readers/data/experiments/decisions-probe-20261118/local/` (gitignored); each gate was written to its
+  `experiment-contract.json` before its run (sections `typed_dates`, `family_tabs`, `stated_years`,
+  `value_against_none`, `choice_misses_review`, `combined`, `value_count`, `value_sets`, `value_sets_decided`,
+  `exact_totals`, `unlisted_review`, `chooser_replay`). Engine: eval worktree `9bc24e4`, plus the
+  two engine changes below as diffs on it (next-engine `5a748ee` printed totals, `191e11e` family tabs; local); main `f3bd0ef` (clean). Nothing is
+  served, pushed or promoted.
+
+**Measured, in the order run** (right answer listed / best pick right / unwarned right / unwarned wrong):
+
+| Change | Questions | Before | After | Listed wins, losses | Pick wins, losses | Gate |
+|---|---|---|---|---|---|---|
+| Dates a sheet writes as text, typed as days when the workbook loads | 596 | 487 / 416 / 358 / 70 | 489 / 417 / 360 / 72 | 2, 0 | 3, 2 | passed, within noise |
+| A family of tabs named by all its tabs (engine read-as and sheet description) | 596 | 489 / 417 / 360 / 72 | 488 / 418 / 362 / 72 | 2, 3 | 3, 2 | passed, no gain |
+| A closed question for a year compared with a column of plain year numbers | 596 | 488 / 418 / 362 / 72 | 489 / 420 / 366 / 73 | 2, 1 | 5, 3 | passed |
+| The value slot read against none | 896 | 750 / 657 / 584 / 94 | 754 / 667 / 599 / 92 | 18, 14 | 31, 21 | passed, kept |
+| every slot that offers none read against none | 896 | 750 / 657 / 584 / 94 | 761 / 665 / 589 / 91 | 26, 15 | 39, 31 | passed, fewer picks: not kept |
+| All of the above with printed totals, against the first arm | 896 | 737 / 636 / 569 / 86 | 759 / 677 / 610 / 88 | 36, 14 (p 0.003) | 58, 17 | passed |
+| + a closed question for how many values the question names | 896 | 759 / 677 / 610 / 88 | 761 / 680 / 610 / 84 | 3, 1 | 5, 2 | passed, within noise |
+| + one choice over sets of the top four values, each value scored by its marginal (second call) | 896 | 759 / 677 / 610 / 88 | 766 / 687 / 617 / 85 | 10, 3 | 20, 10 (p 0.10) | passed; demo failed by one wrong: not kept yet |
+| the same call, only the likeliest set decides | 596 | 484 / 424 / 367 / 70 (vs1: 491 / 434 / 375 / 66) | 493 / 429 / 370 / 64 | 9, 0 against all2 | 12, 7 against all2; 7, 12 against vs1 | failed: messy pick 90 to 86 |
+| a total equal, exactly, to five or more whole cells of its block is printed (sheet compile) | 2 changed workbooks | | no gain, one more confident wrong | | | not kept |
+
+**All of today's changes together** (tag `all2`, engine worktree 9bc24e4 + the printed-totals and family-tab diffs):
+on all 896 dev questions the right answer is listed for 759 against the first arm's 737, the best pick is right on
+677 against 636, and as served 610 are unwarned right against 569 and 88 unwarned wrong against 86. By set (listed /
+pick / unwarned right / unwarned wrong, first arm then now): messy 110 / 85 / 69 / 9 to 109 / 90 / 76 / 9; fresh dev
+114 / 97 / 84 / 20 to 130 / 121 / 111 / 20; WikiTableQuestions 243 / 208 / 185 / 36 to 245 / 213 / 180 / 41; DataBench
+270 / 246 / 231 / 21 to 275 / 253 / 243 / 18. The cross-fitted 8% point moves from 545 right at 69 wrong to 555 at 57.
+As rates of 896: pick 75.6%; served unwarned right 68.1%, unwarned wrong 9.8%, warned 10.8%, asked 11.3%, against the
+bar's 80% right, at most 8% unwarned wrong and at most 20% warned. "Listed" counts a yes/no question as listed whenever
+its pool holds both answers; without the 90 such pools it is 676 of 806 (the first arm 648 of 798).
+
+**The demo datasets** (91 questions, production's own gate questions, run through run_connected.py with the connected
+knowledgebase columns; right and wrong count warned answers too). All of today's changes together (tag `demo7`) fail
+their gate against the morning's `demo6`: 75 right and 5 wrong against 76 and 4. The count question adds nothing there
+(`demo8`, identical question by question). The value-set question fails it by one wrong answer (`demo9`: 75 right, 6
+wrong against `demo7`'s 75 and 5). Every demo move is a currency-conversion question: the pick between the total for
+each currency and the total of all currencies flips both ways on two wordings of one question (customer-orders #5 and
+#6), so the choice there is unstable whatever the value reading does. The breakdown is offered in three phrasings
+against one for the total, and the per-answer pick sums them (0.36 + 0.18 + 0.03 against 0.38 on #5). One option per
+distinct answer, which would remove that, was measured on the 896 this morning as a wash; switching it on for the demo
+questions alone would tune toward the release-gate set, so it is not.
+
+**The value-set question** (`vs1`). After the value reading, a second closed question offers one choice over the
+subsets of the value reading's top four values, and each value is scored by its marginal. It lists 7 more right answers
+and picks 10 more on the 896 (20 wins, 10 losses, p 0.10), with unwarned wrong 88 to 85. The gain is WikiTableQuestions'
+either-or questions (7 of the 9 value-against-none lost from the list come back) and fresh dev's comparisons; DataBench
+does not move. On messy it costs confidence: a value lies in half the sets, so an unsure answer spreads its marginals
+toward one half (messy22: four amounts read 0.46-0.67 in although the first reading put none at 0.49), and one text in
+four tabs counts as four values (messy0, messy2, messy3). The rule where only the likeliest set decides (`vs2`), meant
+to remove that, fails its gate on the three sets already: messy's pick falls from 90 to 86, and against vs1 it picks 5
+fewer for 2 fewer unwarned wrong. vs1 passed the dev gate but not the demo gate, so it is not in the stack yet.
+
+**Totals the compile misses.** A whole figure of at least 1,000 equal, exactly, to the sum of five or more whole cells of
+its block, taken as a printed total on its own (scratch worktree `prereasoner-next-strongtie`, one new sheet-compile test
+that fails before the change): only 2 of the 236 dev workbooks compile differently, both fresh dev, and on their 8
+questions nothing is gained while one warned wrong answer becomes an unwarned one (FD-0043: with both totals printed, the
+rank of costs still returns "Other foodborne gastroenteritis", and the gold ranks pathogens only). Not kept. The top-N
+misses need the reading of which lines a question ranks, not more arithmetic.
+
+**What is still not listed** (vs1: WikiTableQuestions 49 of 300, fresh dev 44 of 176, messy 12 of 120). Fresh dev's
+largest kind is "which three X had the highest" (12 of the 44; the count is read right, 0.80-1.00): printed subtotals
+the compile keeps as data lines (FD-0043, FD-0151, FD-0155, FD-0167), a total column ranked among its peer columns
+(FD-0106, FD-0108: "United States" beside the states), a range's upper year not read (FD-0020), a threshold with a scale
+word (FD-0040 "more than one million"), a filter column not read (FD-0022), and a choice among number keys (FD-0192;
+`OneOf` takes text values only). WikiTableQuestions has no dominant cause: either-or between two named lines or years
+(nt-14117, nt-4371, nt-1856, nt-5804, nt-12998), a value taken from a named line (nt-4336, nt-7021), counts ranked by
+group (nt-11359, nt-12015, nt-9904), answers that are words the engine does not print ("more", "after"), and one empty
+pool. Messy's 12 are mostly duration bands and trends. Two are gaps in the program language itself: a peer rank keeps
+one column (`Rank` refuses a count above 1 for peers), and a total column among the peers is ranked with them.
+
+**The choice.** Wherever the right answer is listed but not picked (about 70 questions of the 896 outside two-answer
+pools), it was offered to the chooser (all 50 listed readings are); for 40 of them it is the second answer by choice
+mass. Summing the choice over the readings that return one answer, as served, or taking its largest reading, picks the
+same 677. A chooser replay over the requests as sent (`--dump-choose`, `replay_choose.py`; contract `chooser_replay`)
+asks the same choice with one change at a time. On WikiTableQuestions no change moves the pick by more than 2 of 299
+(213 as run; options said to be unordered 215, presented in reverse 215, both orders averaged 214, a final between the
+top two answers 211, only the first 20 options 215), and the replay of the run's own requests reproduces its choice
+exactly from the cache.
+
+**Where this leaves the bar.** As served, all 896 dev questions with vs1: 617 unwarned right (68.9%), 85 unwarned wrong
+(9.5%), 91 warned (10.2%), 103 asked; the best pick is right on 687 (76.7%). The bar is 80% right with at most 8%
+unwarned wrong and at most 20% warned. Each change measured today moves between 0 and 10 of 896; the remaining misses
+are spread over many small families (above), and some of WikiTableQuestions' choice misses are label noise (nt-8887
+expects "1" for the span 1886-1887; nt-1397 expects the runner-up as the top score).
+
+**Cost.** The Decisions API cache holds 16,368 calls and 89.4M input tokens for the whole of 2026-11-18, about $8.94
+of the owner's $25 cap; the re-runs of today's arms ask it nothing (every request is kept by its hash).
+
+**A correction to the record.** Six "written" times in `experiment-contract.json` had been estimated without reading
+a clock (one said 22:55 when the clock read 20:43). Each now states the time the run's log file was created, which
+the file times show, and says the first figure was estimated. The gates themselves were written before their runs.
+
 ## What nothing read: a count written as a word, a day written with its month, and totals printed over their block; on three dev sets the no-trained-model Decisions path goes from 390 to 422 right picks of 596 (listed 467 to 492) and on the demo datasets from 69 to 71 right with wrong 4 to 1; the value-option fix alone is a wash on all 896, and choosing per answer adds nothing (2026-11-18)
 
 - Continues the entries below on the owner's order of 2026-11-18 ("Build, measure, continue with next steps. Do not wait
