@@ -5,6 +5,101 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
+## What nothing read: a count written as a word, a day written with its month, and totals printed over their block; on three dev sets the no-trained-model Decisions path goes from 390 to 422 right picks of 596 (listed 467 to 492) and on the demo datasets from 69 to 71 right with wrong 4 to 1; the value-option fix alone is a wash on all 896, and choosing per answer adds nothing (2026-11-18)
+
+- Continues the entries below on the owner's order of 2026-11-18 ("Build, measure, continue with next steps. Do not wait
+  for me"). Every run is the no-trained-model arm (stock bge-m3 shortlist, the engine's word reader, the Gemini Decisions
+  API reads and chooses), per answer at the CLEF path's thresholds, on public and synthetic tables only. Experiment code in
+  `training/readers/data/experiments/decisions-probe-20261118/local/` (gitignored); every gate was written to its
+  `experiment-contract.json` before its run (sections `answer_choice`, `canonical_values`, `stated_numbers`,
+  `stated_periods`, `written_days`, `printed_totals`, `value_against_none`). Engine: eval worktree `9bc24e4`; the compiler
+  change below is measured as a diff on it and committed as next-engine `5a748ee` (local). main `491f171` (clean).
+  Nothing is served, pushed or promoted.
+
+**Where the questions were lost.** Fresh dev names each question's kind. Of its 28 "which three ..." questions, 27 never
+listed the right answer, in every arm so far and in the CLEF reference alike; DataBench, which writes its counts in
+digits, gets 96 of its 120 list questions right. A count written as a word was read by nothing: the word reader reads
+digits, the API was never asked a number, and the decoder builds a rank of N only from a number it holds.
+
+**Measured, in the order run** (right answer listed / best pick right / unwarned right / wrong):
+
+| Change | Questions | Before | After | Listed wins, losses | Pick wins, losses | Gate |
+|---|---|---|---|---|---|---|
+| Choice asked per distinct answer | 596 | 467 / 390 / 338 / 65 | 467 / 391 / 300 / 56 | 0, 0 | 19, 18 | passed, no gain: not kept |
+| Value options on the coordinates programs read | 896 | 737 / 636 / 569 / 86 | 736 / 641 / 568 / 94 | 11, 12 | 19, 14 | passed, no gain |
+| the same, without DataBench | 596 | 467 / 390 / 338 / 65 | 473 / 401 / 343 / 69 | 9, 3 | 17, 6 (p 0.035) | |
+| the same, DataBench alone | 300 | 270 / 246 / 231 / 21 | 263 / 240 / 225 / 25 | 2, 9 | 2, 8 | |
+| + a closed question for a number written as a word | 596 | 473 / 401 / 343 / 69 | 487 / 416 / 358 / 70 | 14, 0 | 15, 0 | passed; top_n clause missed by one |
+| + a closed question for a period written in words | 596 | 487 / 416 / 358 / 70 | the same | 0, 0 | 0, 0 | passed, no gain |
+| + printed totals over their block (compiler) | 476 | 379 / 331 / 289 / 60 | 384 / 337 / 294 / 56 | 5, 0 | 6, 0 (p 0.031) | passed |
+| All of the above against the first arm | 596 | 467 / 390 / 338 / 65 | 492 / 422 / 363 / 66 | | | |
+
+- **Per answer.** Listing each distinct answer once in the choice call leaves the pick where it was and separates right
+  from wrong less well (at about 8% wrong: 299 right against 312). Summing a candidate-level choice over the candidates
+  that return the same answer carries a vote that the shorter call throws away. It saves a third of the choice tokens.
+- **Value options.** The reading record named an expanded value by the sheet's spelling, a coordinate no program reads,
+  so the API's probability was split or lost (in every CLEF and Decisions run so far). Mapping each option to the
+  coordinate programs read gains 11 picks on three sets and loses 6 on DataBench: 7 of its 9 lost answers are "the most
+  common X" on two survey tables, which filter nothing. With 160 value options a value at 1% sits above the uniform
+  share, so its term is positive and filtered candidates outrank the unfiltered one.
+- **The rule that came out of it.** An option that decides whether a condition is built at all is read against the
+  slot's own "none", W * (log p - log p(none)), not against the uniform share 1/n. The number question's first run
+  showed the same fault (a number at 5% of 22 options was positive on 48 of 176 fresh dev questions, which gained and
+  lost one answer each; the 36 the API read as a number carried all the gain) and was re-run with this rule; its numbers
+  above are that re-run. For the value slot, and for every slot that offers none, the rule is under test now; on fresh
+  dev alone it moves nothing (pick 114 and 113 against 113).
+- **Numbers.** Options are 0 to 20 as digits and none; no number word is written anywhere. A number the question writes
+  in digits keeps the word reader's score. Fresh dev: listed 115 to 128 (13 wins, 0 losses), pick 99 to 113, unwarned
+  right 88 to 102, wrong 20 to 22; its top_n kind lists 13 of 28 (1 before; the gate asked for 14). WikiTableQuestions
+  gains one question, messy none. The API reads "first" and "only" as 1 on 22 WikiTableQuestions questions; none of
+  them moved. With the question added to a call, the API's other answers in that call are unchanged (largest
+  difference 1.4e-8), so a question that reads no number is read exactly as before.
+- **Periods.** Options are built from the years and days the question writes in digits: each year's months and
+  quarters, before, up to, from and after each, the range between two. The API reads them right (12 of 124 fresh dev
+  questions name one) and no outcome moves on any set: those sheets hold their dates as text (a month written as a
+  word, or 03/01/2019 12:00:00 AM), which the compiler does not type as days, so no date condition can be built.
+- **Printed totals** (next-engine `5a748ee`: `engine/sheet/line_facts.py`, three tests in `tests/test_sheet_compile.py`). Of the
+  15 top_n questions still unlisted, several sit on a table whose national line is printed over the states, or whose
+  total follows a subtotal and more lines; a rank of three returned it. The compiler knew a total by arithmetic only
+  when it stood under its block and tied to the cent. Three cases were added, with no word read: a line that sums the
+  lines under it (on at least two figures); a line that sums every record above it once a subtotal has closed a
+  block; whole numbers that miss their sum by the cells' rounding (half a unit a cell, never more than 0.1% of the
+  figure). Of 251 dev workbooks 6 recompile (5 fresh dev, 1 WikiTableQuestions, no messy, no DataBench). The 20 fresh
+  dev questions on them gain 5 listed and 6 right picks, and the set's wrong answers go from 22 to 18; no other
+  question changes its outcome. A first version let one tying figure do: it read a medal table's "USA, 10 golds" as a total over the four
+  lines under it and failed next-engine's own `tests.test_program`, which I had not run before measuring. The
+  two-figure rule fixes that, the medal table is a contrast test, and every dev workbook compiles as measured.
+
+**Demo datasets** (91 questions, connections place, entity and conversion; right / warned right / asked / warned wrong /
+wrong, and the right answer listed):
+
+| | right | warned right | asked | warned wrong | wrong | listed |
+|---|---|---|---|---|---|---|
+| as recorded below | 69 | 4 | 12 | 2 | 4 | 74 |
+| + value options | 67 | 5 | 13 | 4 | 2 | 77 |
+| + numbers, + periods | 67 | 5 | 13 | 4 | 2 | 77 |
+| + a day written with its month | 71 | 5 | 11 | 3 | 1 | 80 |
+
+- The four date-range questions write a day with its month as a word ("before July 10, 2026", "between August 4 and
+  August 9, 2026"). Two more closed questions read them: which day (every month of the year the question writes, with
+  each number from 1 to 31 its text writes, as ISO days) and how a date is restricted to it (on, before, until, from,
+  after, between). Day and relation compose into one period, which the decoder already turns into a date condition.
+  All four go to right and the other 87 questions do not move. The four were seen in a smoke test first (it found the
+  engine's word reader drops a number a comma follows), so only the no-harm half of that gate was blind. Production's
+  own gate on this set is 91 of 91.
+
+**Not finished at this entry.** DataBench with the number and period questions (its counts are in digits; running); the
+against-none rule for the value slot on messy, WikiTableQuestions and DataBench (running); the written-day questions on
+the dev sets (asked only of a question that writes a year and a day number over a workbook with a day column).
+
+**What the runs showed is still unread or unbuilt.** Dates a sheet holds as text; a year range on a column of plain
+year numbers ("after 1940"); a scale word ("one million" reads as 1); a parent line over two children; a header line
+repeated among the records; and, on messy, the choice among listed candidates (23 of its 35 lost questions list the
+right answer).
+
+**Cost.** About 27M API tokens this morning, under $3; about $7 of the night's $25 cap in all. No GPU.
+
+
 ## Connected questions: with the knowledgebase columns an uploaded column reaches offered as options and run as joins through production's bridges, the Decisions path answers 69 of the 91 demo questions right (56 without; production's own gate 91), and offering them costs nothing on 181 dev questions (2026-11-18)
 
 - On the owner's correction and order of 2026-11-18: the closed questions must offer the input tables' columns plus the
