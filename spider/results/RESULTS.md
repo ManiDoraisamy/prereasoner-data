@@ -5,6 +5,89 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
+## Connected questions: with the knowledgebase columns an uploaded column reaches offered as options and run as joins through production's bridges, the Decisions path answers 69 of the 91 demo questions right (56 without; production's own gate 91), and offering them costs nothing on 129 dev questions (2026-11-18)
+
+- On the owner's correction and order of 2026-11-18: the closed questions must offer the input tables' columns plus the
+  knowledgebase tables their columns connect to ("city in order table is foreign key in Wikipedia city and Wikipedia
+  city is connected to country, continent etc"); "Build the full design doc and plan"; "Build, measure, continue with
+  next steps. Do not wait for me"; live database read and write on his login; API cap $25. The design and the staged
+  plan, written before any stage ran, are `training/readers/data/experiments/decisions-probe-20261118/design/
+  CONNECTED_QUESTIONS.md`; the contract's `connected` section holds the results. Experiment code only; nothing served.
+- **The fault.** The Decisions path offered only the uploaded sheet's own columns. On Orders (customer, amount, city),
+  "total sales in france" could only land on a list of cities: right with two French cities, never built with three
+  (the experimental engine's one-of holds two values).
+- **What was built** (`local/connected.py`, `build_maps.py`, `build_dev_maps.py`, `run_connected.py`,
+  `run_connected_dev.py`). Production's own code, unchanged, prepares each workbook in the experimental branch's
+  worktree: `q11.ingest`, `route`, the bridge of every routed column with production's pairing (`_city_bridge_sql`,
+  `_cell_bridge_sql`), entity columns (`_nongeo_matches`, `_persist_connected`), and the exchange rates of the table's
+  days (`load_rates`). The request database it fills (bridges in `main`, knowledgebase rows) is kept per workbook.
+  Each linked column then gains the columns it reaches, named by their path: "city → country", "city → country →
+  continent", "bank → country", "amount → USD". The uploaded table is stored with its own columns; a temporary view of
+  the table's name carries the joins to the bridge and the knowledgebase tables, so a program that names a connected
+  column runs the join. The decoder's in-memory values are read through the same join and checked against it line for
+  line on every workbook. Nothing is copied into the upload.
+- **Three kinds of connection.** Place columns (city, country, state: country, continent, currency, population);
+  entity columns (bank, hospital, restaurant: country, continent); a money column with a currency-code column
+  (converted at the knowledgebase rate of the row's currency on the row's day, the as-of day for a table without a
+  date column, as production binds it). Conversion adds one closed question, "convert to which currency", used only to
+  decide which currency's converted columns are offered (from probability 0.1); the reading and the choice decide.
+- **Links offered** only where at least 80% of a column's cells matched (production's route threshold) and at least
+  three distinct cells did (production's floor for typing a column from its cells; added after the first dev pass,
+  below).
+
+**Demo datasets** (every prompt and standalone follow-up of `tests/test_datasets.py`, 91 questions on 24 datasets; the
+no-trained-model arm of the entry below; per answer at the CLEF path's thresholds; an answer to a conversion question
+counts right only when the picked reading uses a converted column):
+
+| connections offered | right | flagged right | asked | flagged wrong | wrong |
+|---|---|---|---|---|---|
+| none | 56 | 0 | 23 | 4 | 8 |
+| place | 59 | 1 | 18 | 6 | 7 |
+| place + entity | 63 | 3 | 14 | 5 | 6 |
+| place + entity + conversion | 69 | 4 | 12 | 2 | 4 |
+| production (`tests.test_datasets`, live, engine only, 92 records, 0 failures) | 91 | | | | |
+
+- By dataset kind, none against all three: own data (47) 43 right and 42 with 1 flagged right; knowledgebase (22) 10
+  and 17 with 2 flagged right; knowledgebase with conversion (17) 3 and 10 with 1 flagged right; complex multi-table
+  (5) 0 and 0.
+- Examples of the picked readings: "total delivery fee in Europe" as the total of fee where city → country →
+  continent is "Europe" (asked before); "total transfers for hospitals in United States" as the total of transfers
+  where hospital → country is "United States" (asked before); "total amount in France in US dollars" as the total of
+  amount → USD where city → country is "France" (asked before).
+- The 18 still not right: 5 complex multi-step questions; 5 that need two uploaded tables or a calculation across
+  them; 4 date ranges (before, after, between: the experimental engine has no such condition on a date column and the
+  API is never asked a period); 1 count off by a line; 3 conversion readings (a per-currency breakdown picked twice;
+  "total amount of GBP orders in Europe" now asked, its conversion question reading 0.24 convert).
+- The maps: 13 place links on 12 datasets, entity links on 3 (hospital 5 of 6 cells, bank 6 of 6, restaurant 6 of 6),
+  conversions on 5. Production also types columns falsely: product names (Alpha, Delta) and "category" as cities,
+  customer names as films or musical groups; the false entity types hold no country and reach nothing.
+
+**No harm on the dev sets** (stage 5: the questions of every messy and WikiTableQuestions workbook production links,
+connections on, against the same arm without):
+
+| pass | questions | right answer listed, wins / losses | pick right | unwarned right |
+|---|---|---|---|---|
+| first: links at 80% of cells | 145 | 7 / 3 | 6 / 7 | 7 / 11 (p 0.48) |
+| with the three-cell floor | 129 | 6 / 2 | 5 / 3 | 5 / 7 (p 0.77) |
+
+- The first pass lost four right picks on 16 messy questions whose workbook has a Yes/No column ("No Show",
+  "Reimbursed") that production routes as a city column: "Yes" and "No" are city names and 2 of 2 cells matched. The
+  floor removes those links. On WikiTableQuestions the true links help (a Nation column reaching its continent):
+  listed 6 wins, 1 loss; pick 5 / 2.
+- Fresh dev and DataBench are not in this table: production's preparation of their larger workbooks was still running.
+
+**Cost.** About $0.25 of Decisions API calls for all of the above; the night's total about $3.2 of the $25 cap.
+
+**Reading.** The owner's design holds where it was tested: a question about a country, a continent or a currency is
+one value on a connected column, the outside model reads it as reliably as a sheet's own column, and the join runs on
+the bridges production already builds. What production still does that this path does not: links between two uploaded
+tables, calculations across them, date ranges, and multi-step questions. What this path does that production does not:
+it reads these questions with no word list (`WORLD_COL_SYN`, `MEASURE_NOUNS`, `ARGMAX_CUES`, `AGG_CUES`), and it uses
+an entity column without the question naming its type. The first build's join is a view over the request's own
+connection; the typed join in the program and the plan, with both emitters, is not built and needs the owner's word on
+ownership.
+
+
 ## The Decisions path without the trained reader: its scores add nothing once the API reads (755 listed, 653 picked right of 896 against 750 and 649), and with no trained model at all the path lists 737 and picks 636, behind mostly on DataBench's large tables (2026-11-18)
 
 - On the owner's order of 2026-11-18 ("go ahead, run both"), after the entry below. Experiment code only
