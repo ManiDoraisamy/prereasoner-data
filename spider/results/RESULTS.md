@@ -5,6 +5,59 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
+## The Decisions path without the trained reader: its scores add nothing once the API reads (755 listed, 653 picked right of 896 against 750 and 649), and with no trained model at all the path lists 737 and picks 636, behind mostly on DataBench's large tables (2026-11-18)
+
+- On the owner's order of 2026-11-18 ("go ahead, run both"), after the entry below. Experiment code only
+  (`training/readers/data/experiments/decisions-probe-20261118/local/run_arms.py`, sha256 `32704f28` as run; the
+  contract's `arms` section, with the reading rule, was written before the run). Nothing is served.
+- **The question.** Does the trained reader still carry any of the full path's gain once the Decisions API reads?
+- **Two arms**, beside the full path of the entry below, on the same 896 questions, prepared workbooks, record options,
+  W, decoder depth, prior-chooser order, evidence choice and thresholds:
+  - **zero**: the trained reader still builds the reading record (which options the API is shown). On every slot the
+    API answers, the decoder reads only the API's term W x (log p - log 1/n); an option not shown reads below every
+    shown one. Slots the API is never asked (size, row_op, calc_left, conditions, contains, period, number) keep the
+    reader's scores. The read call is the full path's own request.
+  - **stock**: nothing we trained. Stock bge-m3 (the base model's weights) scores each workbook target by its best
+    cosine to the question's 1-3 word phrases and the whole question (the top 64 values and lines per table, as the
+    reader keeps); the engine's word reader (`engine/program/words.py`) adds what it reads; every closed head offers
+    every class. The decoder reads the API's terms on the slots it answers and the word reader's scores elsewhere.
+    No fitted alignment, no reader evidence for the candidate order.
+- **Run.** 2026-11-18 02:55-06:10, bundle `named_coverage_a_s0/aligned`, eval worktree `9bc24e4` clean, main
+  `b798e6d` clean. 2,665 live calls and 917 from the cache, no error, no retry, 14.90M input tokens, $1.49.
+
+Per answer, at the CLEF path's thresholds (of 896):
+
+| | right | flagged right | asked | flagged wrong | wrong | right answer listed | first right | pick right | right at 8% wrong, cross-fitted |
+|---|---|---|---|---|---|---|---|---|---|
+| full (reader's scores + API) | 600 | 29 | 129 | 49 | 89 | 750 | 514 | 649 | 583 |
+| zero (reader as shortlist only) | 577 | 51 | 131 | 53 | 84 | 755 | 526 | 653 | 560 |
+| stock (no trained model) | 569 | 44 | 134 | 63 | 86 | 737 | 502 | 636 | 545 |
+
+Listed and pick right by set (messy 120 / WikiTableQuestions 300 / DataBench 300 / fresh dev 176): full 113, 243, 279,
+115 and 85, 207, 256, 101; zero 110, 252, 278, 115 and 88, 215, 251, 99; stock 110, 243, 270, 114 and 85, 208, 246, 97.
+
+- **By the rule fixed before the run** (an arm loses where listed or the per-answer pick right falls with a two-sided
+  sign test p < 0.05): neither arm loses. zero against full: listed 15 wins, 10 losses (p 0.42); pick 26 / 22
+  (p 0.67). stock against full: listed 18 / 31 (p 0.085); pick 34 / 47 (p 0.18).
+- **Beside the rule.** The stock arm trails on every count. Against the full path, nine of its net thirteen lost
+  listings are on DataBench (1 win, 10 losses), whose tables hold thousands of values and the shortlist decides which
+  160 the API sees. Against the zero arm it loses on listing outright (11 wins, 29 losses, p 0.006; pick 29 / 46,
+  p 0.064). So the trained reader still helps as a shortlist on large tables, by about 13 to 18 questions of 896, and
+  its scores help nowhere.
+- **Fewer unwarned right answers in both arms** at these thresholds (600, 577, 569; zero 23 wins, 46 losses, p 0.008;
+  stock 36 / 67, p 0.003), while right answers in all, warned included, are 629, 628 and 613. Without the reader's
+  scores the choice is a little less sure. The thresholds are the CLEF path's and were fitted for neither.
+- **Latency** (per question, dev box CPU, p50 / p90): full 1.00 s / 2.19 s; zero the same path with its read call
+  from the cache; stock 2.12 s / 7.39 s, its reading step 1.18 s / 5.72 s, because it embeds a workbook's targets when
+  the first question arrives (that work belongs at upload and is not a cost of the design).
+
+**Reading.** On this path the trained reader's reading of the question is not needed: an outside model reading closed
+questions over the sheet's own options does all of it. What remains of the reader is a shortlist of values on very
+large tables, worth about two points, and a shortlist need not be learned: asking the columns first and then the values
+of the chosen columns would remove the cap. The data plans of the last two weeks (reviewed labels, the Argon pilot,
+coverage sheets) were aimed at a part this path does not use.
+
+
 ## The Gemini Decisions API in CLEF's two places: on the four public and synthetic dev sets the same bundle goes from 152 right and 131 wrong of 896 to 600 right and 89 wrong (317 + 148 flagged right and 30 wrong at the CLEF path's own decision); level with the 27B CLEF reference, and short of the launch bar at 65% right for 8% wrong (2026-11-18)
 
 - On the owner's order of 2026-11-18 ("go ahead, run the dev measurement with the decisions api"). Experiment code
