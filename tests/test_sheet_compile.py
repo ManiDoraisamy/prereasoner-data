@@ -154,6 +154,53 @@ def test_total_word_in_prose_is_no_mark():
 
 
 
+def test_a_total_printed_over_its_block_is_printed():
+    """Government tables print the national line first ("United States" over the states). Its figures are the sums of
+    their columns below it: a printed line by that arithmetic, whatever it is called, and never a record to rank."""
+    rows = [["Area", "Tax", "Fees"], ["Whole", 60, 15], ["a", 10, 4], ["b", 20, 5], ["c", 30, 6]]
+    table = _tab(rows).tables[0]
+    assert [line.row for line in table.lines] == [3, 4, 5]
+    assert [line.row for line in table.printed] == [2]
+    # the same shape with a first line that sums nothing below it: the largest of a sorted list is a record
+    rows = [["Area", "Tax", "Fees"], ["z", 70, 19], ["a", 10, 4], ["b", 20, 5], ["c", 30, 6]]
+    table = _tab(rows).tables[0]
+    assert [line.row for line in table.lines] == [2, 3, 4, 5] and not table.printed
+    # one small figure of two that happens to equal the sum under it is chance: 10 golds over 3, 1, 3 and 3 (a medal table)
+    rows = [["Nation", "Gold", "Total"], ["Canada", 3, 5], ["USA", 10, 20], ["Japan", 3, 7], ["Norway", 1, 2], ["Spain", 3, 4], ["", 3, 6]]
+    table = _tab(rows).tables[0]
+    assert [line.row for line in table.lines] == [2, 3, 4, 5, 6, 7] and not table.printed
+
+
+def test_a_total_over_subtotals_and_loose_lines_is_printed():
+    """"States", then two more lines, "States and territories", two more, "Total": each wider line sums every record
+    above it, not only those since the last printed line (two records are too few to tie on their own)."""
+    rows = [["Area", "Amt", "Qty"], ["a", 10, 1], ["b", 20, 2], ["c", 30, 3], ["First", 60, 6], ["d", 5, 4], ["e", 7, 5], ["Wider", 72, 15],
+            ["f", 100, 7], ["g", 200, 8], ["All", 372, 30]]
+    table = _tab(rows).tables[0]
+    assert [line.row for line in table.lines] == [2, 3, 4, 6, 7, 9, 10]
+    assert [line.row for line in table.printed] == [5, 8, 11]
+    assert sum(line.cells[1].value for line in table.lines) == 372
+    # a last line that is not the sum of all above stays a record
+    rows = rows[:-1] + [["h", 371, 31]]
+    table = _tab(rows).tables[0]
+    assert [line.row for line in table.printed] == [5, 8] and 11 in [line.row for line in table.lines]
+
+
+def test_published_whole_numbers_tie_within_their_rounding():
+    """A published total of rounded whole numbers misses the sum of its lines by their rounding (here by 2 in five
+    million). Small counts tie only exactly, and so do figures with fractions."""
+    rows = [["Area", "Dollars"], ["a", 1234567], ["b", 2345678], ["c", 1456789], ["d", 345679], ["All", 5382715]]
+    table = _tab(rows).tables[0]
+    assert sum(line.cells[1].value for line in table.lines) == 5382713
+    assert [line.row for line in table.printed] == [6] and [line.row for line in table.lines] == [2, 3, 4, 5]
+    rows = [["Area", "Count"], ["a", 3], ["b", 4], ["c", 5], ["d", 6], ["e", 19]]
+    table = _tab(rows).tables[0]
+    assert not table.printed and len(table.lines) == 5, "18 is the sum; 19 is one more line"
+    rows = [["Area", "Rate"], ["a", 1234567.5], ["b", 2345678.25], ["c", 1456789.0], ["d", 345679.0], ["e", 5382715.0]]
+    table = _tab(rows).tables[0]
+    assert not table.printed and len(table.lines) == 5, "fractions were not rounded to whole numbers: a miss of 1.25 is no tie"
+
+
 def test_running_balance_is_not_a_total():
     rows = [["Day", "In", "Balance"], ["a", 1, 1], ["b", 2, 3], ["c", 3, 6], ["d", 4, 10]]
     formulas = [[r, 2, f"=SUM(C{r}:C{r})+B{r + 1}"] for r in ()] + [[2, 2, "=C2+B3"], [3, 2, "=C3+B4"], [4, 2, "=C4+B5"]]
@@ -815,6 +862,7 @@ def test_xlsx_reader_builds_the_wire_payload():
 TESTS = [
     test_number_parser, test_period_parser, test_format_kinds, test_formula_shapes, test_clean_table_comes_out_unchanged, test_title_lines_give_context, test_multi_row_header_joins_with_merges,
     test_total_lines_are_printed_and_never_records, test_total_word_inside_a_name_stays_a_record, test_total_word_in_prose_is_no_mark,
+    test_a_total_printed_over_its_block_is_printed, test_a_total_over_subtotals_and_loose_lines_is_printed, test_published_whole_numbers_tie_within_their_rounding,
     test_a_key_left_of_repeated_names_goes_with_every_block, test_all_names_alike_are_a_peer_run_not_blocks, test_a_column_beyond_the_named_blocks_stays_in_a_table,
     test_the_line_model_artifact_is_small_pinned_and_retrains_the_same, test_training_labels_hold_row_numbers_and_hashes_only, test_a_units_line_repeating_over_new_names_opens_a_table, test_a_total_word_naming_a_column_can_be_a_header,
     test_a_closing_total_ends_its_table_when_records_resume, test_titles_with_one_cell_a_block_part_side_by_side_blocks, test_each_side_by_side_list_has_its_own_bands, test_a_lone_label_between_a_total_and_figures_is_a_band, test_axes_cross_spacers_and_totals_and_reach_flag_columns,

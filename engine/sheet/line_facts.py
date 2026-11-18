@@ -73,30 +73,70 @@ def _style_share(grid: Grid, row: int) -> tuple[float, float, float]:
 
 
 BLOCK_TIE_CELLS = 3     # a block total sums at least this many nonzero cells: two small figures adding to a third is chance
+ROUNDED_SHARE = 0.001   # a total of published whole numbers may miss its sum by the cells' rounding, never by more than this share of itself
+OVER_TIE_FIGURES = 2    # a total printed over its block ties on at least two figures: one small figure equal to the sum of the lines under it is chance (10 golds over 3, 1, 3 and 3)
 
 
 def _block_ties(grid: Grid) -> dict[int, int]:
-    """For each line, how many of its figures equal, to the cent and nonzero, the sum of their column over the lines since
-    the last line whose figures did so (or since the top), summing at least BLOCK_TIE_CELLS nonzero cells: a printed total
-    or subtotal by its arithmetic, in any language and whatever its label says."""
+    """For each line, how many of its nonzero figures equal (_tied: to the cent, or within rounding for whole numbers) the
+    sum of their column over a block of lines beside it, summing at least BLOCK_TIE_CELLS nonzero cells: a printed total or subtotal by its arithmetic, in
+    any language and whatever its label says. Three blocks count: the lines since the last such line (a subtotal under
+    its block); every summed line since the top once a subtotal has closed a block (the total of a table whose
+    subtotals leave lines outside them); and the same two read upward from the bottom, for a total printed over its
+    block ("United States" over the states), where at least OVER_TIE_FIGURES figures must tie. A line that ties one way is
+    no part of a sum the other way."""
+    under = _ties_one_way(grid, grid.filled, {}, 1)
+    over = _ties_one_way(grid, list(reversed(grid.filled)), under, OVER_TIE_FIGURES)
+    return {**over, **under}
+
+
+def _tied(total: float, value: float, cells: int, whole: bool) -> bool:
+    """A figure equals a sum of cells: to the cent; or, when every cell and the figure are whole numbers, within what
+    rounding each published cell to a whole number can move the sum (half a unit a cell, the figure's own half
+    included), and never by more than ROUNDED_SHARE of the figure, so small counts still tie only exactly."""
+    gap = abs(total - value)
+    return gap < 0.005 or (whole and gap <= min((cells + 1) / 2, ROUNDED_SHARE * abs(value)))
+
+
+def _ties_one_way(grid: Grid, order: list[int], taken: dict[int, int], fewest: int) -> dict[int, int]:
     ties: dict[int, int] = {}
     running: dict[int, float] = {}
     counted: dict[int, int] = {}
+    whole: dict[int, float] = {}
+    whole_counted: dict[int, int] = {}
+    fractional: set[int] = set()            # columns that summed a cell with a fraction since the last tie
+    whole_fractional: set[int] = set()
+    closed = False     # a subtotal has closed a block since the last total
     shapes = grid.shapes or {}
-    for r in grid.filled:
+    for r in order:
+        if r in taken:
+            continue
         numbers = {c: cell.value for c, cell in grid.rows[r].items() if cell.kind == V_NUMBER}
         # a cell its own formula computes other than as its column's sum (a running balance, a line's arithmetic) is no
         # block's total, whatever it equals; a formula sum is read as one by the formula rules
         running_cells = {c for c in numbers if (shape := shapes.get((r, c))) is not None and shape.kind != FX_AGG_COLUMN}
-        hits = sum(1 for c, v in numbers.items() if v and c not in running_cells and counted.get(c, 0) >= BLOCK_TIE_CELLS and abs(running.get(c, 0.0) - v) < 0.005)
-        if hits and hits * 2 >= len(numbers):
+        hits = sum(1 for c, v in numbers.items() if v and c not in running_cells and counted.get(c, 0) >= BLOCK_TIE_CELLS
+                   and _tied(running.get(c, 0.0), v, counted[c], c not in fractional and float(v).is_integer()))
+        if hits >= fewest and hits * 2 >= len(numbers):
             ties[r] = hits
-            running, counted = {}, {}
+            running, counted, fractional, closed = {}, {}, set(), True
             continue
+        if closed:
+            hits = sum(1 for c, v in numbers.items() if v and c not in running_cells and whole_counted.get(c, 0) >= BLOCK_TIE_CELLS
+                       and _tied(whole.get(c, 0.0), v, whole_counted[c], c not in whole_fractional and float(v).is_integer()))
+            if hits >= fewest and hits * 2 >= len(numbers):
+                ties[r] = hits
+                running, counted, fractional = {}, {}, set()     # the whole sum runs on: a wider total may follow ("states", "states and territories", "total")
+                continue
         for c, v in numbers.items():
             running[c] = running.get(c, 0.0) + v
+            whole[c] = whole.get(c, 0.0) + v
             if v:
                 counted[c] = counted.get(c, 0) + 1
+                whole_counted[c] = whole_counted.get(c, 0) + 1
+                if not float(v).is_integer():
+                    fractional.add(c)
+                    whole_fractional.add(c)
     return ties
 
 
