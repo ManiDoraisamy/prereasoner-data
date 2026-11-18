@@ -1266,6 +1266,23 @@ def test_a_family_adding_twice_says_so():
     assert not adds_across_members(Agg(SUM, Col("t0", 2), "t0"), catalog)
 
 
+def test_a_family_of_tabs_reads_as_all_its_tabs():
+    """A family merging month tabs reads every member: its read-as names them all, not the first tab alone. A family
+    of repeated blocks on one tab, and a plain table, keep their one tab's name."""
+    def book(tab, base):
+        return {"name": tab, "rows": [["Deal", "Desk", "Volume"]] + [[f"{tab}{at}", "w" if at % 2 else "e", float(base + at)] for at in range(6)]}
+    catalog = Catalog.from_model(compile_workbook(workbook_from_json({"name": "book", "tabs": [book("Jan", 10), book("Feb", 40)]})))
+    family = next(table for table in catalog.tables if table.kind == "family")
+    words = read_as(Agg(SUM, Col(family.id, 3), family.id), catalog)
+    assert 'on "Jan" and "Feb" together' in words, words
+    plain = next(table for table in catalog.tables if table.kind != "family" and table.lines)
+    assert f'on "{plain.tab}"' in read_as(Agg(SUM, Col(plain.id, 2), plain.id), catalog)
+    months = [book(tab, 10 * at) for at, tab in enumerate(("Jan", "Feb", "Mar", "Apr"))]
+    catalog = Catalog.from_model(compile_workbook(workbook_from_json({"name": "book", "tabs": months})))
+    family = next(table for table in catalog.tables if table.kind == "family")
+    assert 'on the 4 tabs "Jan" to "Apr" together' in read_as(Agg(COUNT, None, family.id), catalog)
+
+
 def test_axes_are_read_by_their_kind():
     """A flag axis counts marks and adds nothing; an axis named only by a total beside it is a peer set only where a question asks."""
     marks = [["Deal", "Master", "ISDA", "CSA"], ["1", "Y", "N", "Y"], ["2", "Y", "Y", "N"], ["3", "N", "Y", "N"], ["4", "Y", "N", "N"]]
@@ -1453,7 +1470,7 @@ def test_explain_carries_the_named_contributions():
 
 
 TESTS = [
-    test_several_shown_columns_cost_a_named_coordinate, test_a_stated_number_a_column_holds_reads_as_its_value, test_a_misspelled_word_reads_as_the_sheets_word, test_a_word_only_one_column_holds_says_which, test_several_columns_shown_type_the_same_however_they_stand, test_across_adds_peer_columns_of_a_line, test_the_decoder_reaches_across_when_a_word_asks, test_a_text_other_than, test_answer_types_place_money_quantity, test_decoder_ties_do_not_follow_sheet_order, test_a_family_adding_twice_says_so, test_axes_are_read_by_their_kind, test_a_question_reads_the_tables_its_links_reach, test_verifier_stops_at_its_budget_of_lines, test_a_condition_search_stops_at_its_budget_of_checks, test_a_value_stands_whole_without_a_pattern_for_each_value,
+    test_several_shown_columns_cost_a_named_coordinate, test_a_stated_number_a_column_holds_reads_as_its_value, test_a_misspelled_word_reads_as_the_sheets_word, test_a_word_only_one_column_holds_says_which, test_several_columns_shown_type_the_same_however_they_stand, test_across_adds_peer_columns_of_a_line, test_the_decoder_reaches_across_when_a_word_asks, test_a_text_other_than, test_answer_types_place_money_quantity, test_decoder_ties_do_not_follow_sheet_order, test_a_family_adding_twice_says_so, test_a_family_of_tabs_reads_as_all_its_tabs, test_axes_are_read_by_their_kind, test_a_question_reads_the_tables_its_links_reach, test_verifier_stops_at_its_budget_of_lines, test_a_condition_search_stops_at_its_budget_of_checks, test_a_value_stands_whole_without_a_pattern_for_each_value,
     test_every_name_is_from_a_closed_list, test_forms_refuse_what_they_cannot_say, test_signs, test_printed_lines_are_read_by_label_and_never_added, test_shortest_label_first_and_unlabelled_printed_lines, test_a_column_filled_only_on_printed_lines_reads_them,
     test_partial_value_match, test_case_and_spacing_do_not_count, test_periods, test_blanks, test_ties_keep_every_tied_line, test_units, test_mixed_columns, test_repeated_rows, test_sections_nested_bands_and_the_section_shown, test_python_masks_agree_with_the_sql,
     test_calc_shapes, test_rank_across_peer_columns, test_a_rank_keeps_as_many_as_the_question_states, test_the_decoder_proposes_how_many_a_question_states, test_a_check_says_yes_or_no, test_the_decoder_checks_only_when_the_reading_names_a_check, test_a_choice_among_named_values, test_a_check_asks_what_the_top_one_is, test_a_check_asks_whether_the_top_one_is_the_same_or_compares_two_aggregates, test_a_read_takes_the_line_after_or_before_the_kept_one, test_new_ast_nodes_render_and_validate, test_plan_schema_holds_only_what_a_query_reads, test_perfect_readings_give_the_gold_first, test_decoder_is_deterministic_and_order_free, test_the_list_does_not_depend_on_hash_order,

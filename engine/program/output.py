@@ -99,8 +99,18 @@ def _measure_words(catalog: Catalog, measure: Measure) -> str:
     return f"{_measure_words(catalog, measure.left)} {_OP_WORDS[measure.op]} {_measure_words(catalog, measure.right)}"
 
 
+FAMILY_TABS_NAMED = 3     # a family of more member tabs is named by its first and last
+
+
 def _in_tab(table: CatalogTable) -> str:
-    return f'on "{table.tab}"'
+    """Where a program reads. A family merging several tabs reads all of them, and says so: named by its first tab
+    alone it read as that one tab ("SI" for SI and FF together)."""
+    tabs = list(dict.fromkeys(line.tab for line in table.lines)) if table.kind == KIND_FAMILY else []
+    if len(tabs) < 2:
+        return f'on "{table.tab}"'
+    if len(tabs) <= FAMILY_TABS_NAMED:
+        return "on " + " and ".join(f'"{tab}"' for tab in tabs) + " together"
+    return f'on the {len(tabs)} tabs "{tabs[0]}" to "{tabs[-1]}" together'
 
 
 def _check_words(program: Check, catalog: Catalog) -> str:
