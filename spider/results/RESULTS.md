@@ -5,6 +5,168 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
+## The demo datasets through the Decisions path reach 86 right and 2 wrong of 91 (75 and 5 before the night) with one currency, a percent under its own row operator, links between two uploads, a count share, a breakdown by month and a last record kept; on the 896 dev questions a span of years raises the best pick to 693 right (77.3%) against 689, unwarned wrong 86 (9.6%); a deeper pool, number either-or, a closed question for the row operator and six chooser variants fail their gates (2026-11-19)
+
+- Continues the entry below, on the owner's order ("Build, measure, continue with next steps. Do not wait for me")
+  and "go ahead, continue with the next steps". Every run is the no-trained-model arm (stock bge-m3 shortlist, the
+  engine's word reader, the Gemini Decisions API reads and chooses), per answer at the CLEF path's thresholds, on
+  public and synthetic tables only. Experiment code in
+  `training/readers/data/experiments/decisions-probe-20261118/local/` (gitignored); each gate was written to its
+  `experiment-contract.json` before its run (sections `chooser_replay`, `pool_depth`, `pool_depth_arms`,
+  `number_either_or`, `one_currency_column`, `kept_stack`, `percent_of`, `trailing_record`, `count_share`,
+  `month_breakdown`, `year_span`, `row_op_question`, `order_agreement_probe`, `percent_operator`). Engine changes are on next-engine (local, not pushed): `0ec2ac8` one currency, `6e06e569` the
+  last record, `138c583` the count share, `70b9dd5` the month breakdown, `5e82de6` the span of years, `271111b` the percent; each was measured in a worktree of `9bc24e4` plus the diffs before it. Main
+  `de45990` (clean). Nothing is served, pushed or promoted. The demo datasets are production's own gate questions
+  (91), run through `run_connected.py` with the knowledgebase columns an upload reaches; right and wrong there count
+  warned answers too.
+
+**Measured, in the order run** (demo: right / asked / wrong of 91, warned answers counted with their side; dev: right
+answer listed / best pick right of the questions named):
+
+| Change | Where it moves | Before | After | Gate |
+|---|---|---|---|---|
+| The chooser asked six other ways (unranked, reversed, two orders, a final between two, top 20), replayed offline | 896 dev | pick 680 | 674 to 680 | failed every variant |
+| The decoder's pool at 150 candidates, the chooser shown the first 50 | 896 dev | 761 / 680 | 779 / 683 (listed 18, 0) | dev passed |
+| the same | demo | 75 / 11 / 5 | 73 / 10 / 8 | failed: not kept |
+| A choice among two or more named numbers ("1898 or 1893") | 896 dev | 761 / 680 | 762 / 680 (pick 1, 1) | not kept (a tie) |
+| A column stating its own currency is one figure, never split by the lines' currency | demo | 75 / 11 / 5 | 78 / 10 / 3 | passed, kept |
+| The value-set question (yesterday's vs1), re-gated with it | demo | 78 / 10 / 3 | 78 / 10 / 3 | passed, kept |
+| The deeper pool, re-gated with it | demo | 78 / 10 / 3 | 78 / 9 / 4 | failed again |
+| A rate's percent of a measure, links between two uploads, one value for a key and its reference | demo | 78 / 10 / 3 | 83 / 5 / 3 | passed |
+| the same, the percent | 896 dev | 765 / 689 | 764 / 685 (listed 2, 3; pick 4, 8) | failed: not on next-engine |
+| A last line sharing a value with the records above it is a record | demo | 83 / 5 / 3 | 84 / 5 / 2 | passed, kept (no dev workbook moves) |
+| A count share ("what percentage of orders are from Lyon") | demo | 84 / 5 / 2 | 85 / 4 / 2 | passed |
+| the same | 896 dev | 764 / 685 | 764 / 685 (every outcome identical) | passed, kept |
+| A breakdown by a date's month ("orders per month") | demo | 85 / 4 / 2 | 86 / 3 / 2 | passed |
+| the same | 896 dev | 764 / 685 | 764 / 685 (one warned right answer unwarned) | passed, kept |
+| A span of whole years over a column of year numbers ("between 2015 and 2020"), the period question asked where such a column is the only dated one | 896 dev (260 on workbooks with a year column) | 765 / 689 | 769 / 693 (listed 4, 0; pick 4, 0) | passed, kept |
+| the same | demo | 86 / 3 / 2 | 86 / 3 / 2 (nothing read differently) | passed |
+| A closed question for the row operator: a formula over a line's two figures, in symbols, scored against none | 896 dev | 765 / 689 | 766 / 693 (listed 1, 0; pick 11, 7); unwarned wrong 88 to 93 | failed: not kept |
+| the same | demo | 86 / 3 / 2 | 86 / 3 / 2 | passed |
+| the same, the percent under it | 896 dev | 765 / 689 | 766 / 691 (against the question alone: pick 0, 2); unwarned wrong 88 to 93 | failed: not kept |
+| What is kept without the percent (next-engine `5e82de6` as committed, the same flags) | demo | 86 / 3 / 2 | 83 / 4 / 4 | the commission answers need a percent |
+| The kept stack measured whole (`base2`, replacing the projection) | 896 dev | 765 / 689 | 769 / 693 (listed 4, 0; pick 4, 0); unwarned wrong 88 to 86 | measured |
+| A percent under its own row operator, scored from the formula question; the four operators stay unread | demo | 83 / 4 / 4 | 86 / 3 / 2 | passed |
+| the same | 896 dev | 769 / 693 | 769 / 693 (no listed or pick moves); unwarned wrong 86 to 86 | passed, kept |
+
+**The chooser is not where the dev questions are lost.** Every chooser record of the 896 was dumped and replayed
+offline against the same API (`replay_choose.py`): options said to be in no order, the options reversed, the question
+asked twice in two orders, a final between the top two answers, and only the top 20. None gains on the 896 (best: two
+orders, 680 against 680, 13 wins and 13 losses). Reversing the options loses 8 on DataBench (p 0.04): the decoder's
+order carries information the chooser uses.
+
+**A deeper pool lists more but picks little more.** At 150 candidates the right answer is listed for 779 of 896
+against 761 (18 wins, no loss), the best pick is right on 683 against 680 (18 wins, 15 losses), and unwarned wrong is
+83 against 84. Of the newly listed, 12 rank past 50 and the chooser never sees them. It passed the dev gate narrowly
+and failed the demo gate twice: once on currency questions whose choice flipped with the options under the top eight,
+and, after the currency fix, on "how many orders per month?", which the deeper pool answered with one count per order
+day. Not kept; it returns with the breakdown by month below.
+
+**Number either-or** (a choice among named numbers in a number column, both emitters, one new test) lists the right
+answer for WikiTableQuestions' "was the quantity higher in 1894 or 1893" and "which had more ger numbers, 1898 or
+1893"; on DataBench numeric choices enter eight pools and one loses its right reading. Pick ties at 680 (1 win, 1
+loss): not kept, and next-engine is unchanged.
+
+**One currency.** The demo's "total amount in France in US dollars" read the converted column "amount → USD", but
+the decoder split every total over a table with a currency-code column into one figure per currency, and offered the
+single total only as "the size of the total … (all currency together)"; the chooser's split between the two moved
+with the options under them, which is what failed both the value-set question and the deeper pool on the demo
+yesterday and tonight. A column whose unit is an ISO 4217 code (a header "Amount (USD)", or a conversion to one
+currency) holds that currency on every line: the decoder gives its plain figure, and so for a share of it or a sum or
+difference of two figures in it. A column of mixed currencies is still split. No dev workbook has such a column; on
+the demo right goes 75 to 78 and wrong 5 to 3. The value-set question passes the demo with it and is kept in the arm.
+
+**Two uploads and a percent.** With production's links between uploaded tables (a key into another upload reaches
+its columns), yesterday's run answered the commission questions wrongly for want of a percent. A measure's percent of a
+rate column (`PercentOf`: measure × rate ÷ 100, a rate being a number column within 0 to 100) is offered where times
+is read, and the measure less or plus it where minus or plus is; it reads the coordinates of times, so the trained
+readers' operator classes are unchanged, and both emitters compute it. Every rate column pairs with a measure the
+reading names: a reading of one measure does not name its second operand (the first run left "total amount after
+subtracting commission" with no percent reading and answered it as total amount less the total rate). One value
+question: a key and the column it keys into hold the same values, so the value set's marginal sums the two
+("digital wallet" in payments 0.38 and in the commission rates 0.67 read as one value at 0.96); the same text in
+columns no key links stays two values ("GBP" as an order's currency and its country's, which summed made the British
+pounds question wrong). On the demo five asked questions become right and none is lost: the card commission (9.28),
+the amount after commission, the amount after commission for digital wallet payments, and the France and Belgium
+totals across two uploads. On the 896 dev questions it fails its gate: the best pick is right on 685 against 689 (4 wins, 8 losses), unwarned wrong 90 against 88. In the no-trained-model arm nothing reads the row operator (its four coordinates sit at a uniform 0), so a percent is built for every measure a reading names beside every rate column of its table; in the pools that moved, percent candidates hold 14 or 15 of the 50 places the chooser sees (places 20 to 47), and the chooser's choices move with them. Read from times, the percent stays off next-engine; read under its own operator it is kept (below).
+
+**A last record kept.** "number of contracts" (183) counted 182: the sheet's last line, a file name of 68 characters
+with no notice period, was read as a note under the table, since a trailing line of two cells needed text of 60
+characters or fewer to count as a record. A line holding a text the records above hold in the same column is one of
+them. No dev workbook compiles differently; the demo's wrong answer becomes right.
+
+**A count share and a month.** "What percentage of orders are from Lyon?" (0.3) had only a ratio of summed order
+numbers in its pool, right by chance and declined by the chooser; the decoder now offers the count of the lines a
+condition keeps over the count of all lines, picked at 0.91. "How many orders per month?" grouped by each order day; a
+breakdown's grain now groups a date key by its year-month through the typed AST's existing `DatePart`, which both
+emitters compute, offered beside the day's own groups and picked at 0.92. Neither moves the dev questions: with the share every outcome of the 896 stays as it was, and with the month listed and pick stay as they were and one warned right answer is no longer warned (both frames need a reading the dev questions rarely make). Both are on next-engine, without the percent.
+
+**A span of years.** Thirteen dev questions name a span of two years, all on the fresh dev twin, and eight had no
+right answer listed or picked: "the three calendar years with the highest total income between 2015 and 2020" read as
+"Calendar Year is at least 2015". A period tests only a column of days, and a column of plain year numbers holds none,
+so a span became one number bound at most. `InYears` keeps the lines whose year number falls in a span of whole years,
+both ends kept, over a column whose every figure is a whole number from 1000 to 2999; it reads a period condition's
+coordinates and lowers to two number comparisons, which both emitters compute. The decoder offers it for a span of two
+or more years (one year is a value of such a column, which its few numbers already name: offering it for one year
+pushed "cars from 2020" out of an existing test's pool). The arm's period question, which offers "2015 to 2020, both
+included", was asked only of a workbook holding a column of days; it is now asked where a column of year numbers is
+the only dated column too. Only questions on such workbooks can move (260 of the 896), and on them the right answer is
+listed for 220 against 216 and the best pick is right on 193 against 189, with no loss: four fresh dev questions go
+from wrong to right at 0.91 to 0.96. One WikiTableQuestions question goes from asked to wrong. The demo datasets read
+and decode exactly as before.
+
+**A closed question for the row operator.** The percent failed because nothing in the no-trained-model arm reads
+the row operator. One more closed question in the same read call asks for the formula over a line's two figures, in
+symbols only (a × b, a − b, a + b, a ÷ b, a × b ÷ 100, a − a × b ÷ 100, a + a × b ÷ 100, or none), and scores each
+operator against none. Alone, on all 896: the right answer is listed for 766 against 765, the best pick is right on
+693 against 689 (11 wins, 7 losses, p 0.48), and unwarned wrong rises from 88 to 93, past the gate's 3. The API
+answers none at a median of 0.995 on WikiTableQuestions, which pushes row arithmetic far down the pool; the chooser
+then answers 11 more questions, about as many wrong as right, and at an equal rate of wrong it answers fewer right (the
+cross-fitted 8% point 576 against 584). With the percent under it, the percent no longer crowds the pool (2 losses
+against the question alone, where it lost 8 without it) but gains nothing on the dev questions. Neither is kept; the
+demo datasets answer every question as before with the question.
+
+**The percent under its own operator.** Without the percent, what next-engine holds answers the demo 83 right and 4
+wrong (`demo23`): the card commission and the amount after commission are wrong at 0.86 and 0.94, the digital-wallet
+net is asked and the tier-discount total warned. `PercentOf` now reads its own row operator, `%` (`PERCENT_OP`), apart
+from the four the trained readers know, so their classes are unchanged and a reading that does not score it offers
+no percent; a reading of times alone gives the product and no percent (a new regression, which fails under the
+times rule). In the arm the formula question scores only `%` (the three formulas over 100 against none) and the four
+operators stay unread, as in the kept stack. On the demo the four answers come back (86 right, 2 wrong, `demo24`); on
+the 896 no listed answer or pick moves and unwarned wrong stays 86 (`pg1` against `base2`; three messy answers move
+between asked and warned wrong as the read call gains a field). On next-engine as `271111b`.
+
+**Warning where the options' order changes the answer** (a probe of cached replays, no API call). Unwarned wrong is now
+the binding limit (88 of 896 in `keep1`, 86 in `base2`, against the bar's 71), not the pick. Asked with its options reversed, the chooser
+disagrees with its answer on 108 of 895 questions, of which 40 are right; 25 of the 108 were answered unwarned (10
+wrong). Warning those moves 25 answers from unwarned to warned (15 right, 10 wrong): unwarned wrong 84 to 74, right
+counted with warned unchanged at 659, warned 104 to 129; at the cross-fitted 8% point 594 right against 590. A small
+step for one more chooser call per question; not run on today's stack and not kept, since it changes no pick and right
+is the larger gap (the bar needs 717 right of 896, the best pick is 693).
+
+**The kept stack on the dev questions** (tag `keep1`: yesterday's flags with the count question and the value-set
+question together): on all 896 the right answer is listed for 765 and the best pick is right
+on 689 (76.9%), against yesterday morning's combined run's 759 and 677 (pick 21 wins, 9 losses, p 0.04); as served,
+620 unwarned right, 43 warned right, 104 asked, 41 warned wrong and 88 unwarned wrong (9.8%). By set (listed / pick /
+unwarned right / unwarned wrong): WikiTableQuestions 251 / 220 / 189 / 37, messy 107 / 91 / 73 / 13, fresh dev
+132 / 124 / 116 / 19, DataBench 275 / 254 / 242 / 19. The bar is 80% right with at most 8% unwarned wrong; the
+cross-fitted 8% point is 584 right (65.2%) at 66 wrong. On messy the value-set question costs confidence (unwarned
+wrong 9 to 13 against the count question alone). With the span of years, measured on all 896 (`base2`): listed 769, best pick right 693 (77.3%);
+as served, 625 unwarned right, 42 warned right, 103 asked, 40 warned wrong and 86 unwarned wrong (9.6%); by set
+WikiTableQuestions 251 / 220 / 189 / 38, messy 107 / 91 / 74 / 13, fresh dev 136 / 128 / 120 / 16, DataBench
+275 / 254 / 242 / 19; the cross-fitted 8% point is 594 right (66.3%) at 71 wrong. The projection from the 260
+questions on workbooks with a year column held exactly, and the percent changes none of it.
+
+**What the demo still misses** (5 of 91): three multi-part questions ("the top 2 categories by revenue and the top 2
+customers …, then …"), which are production's decomposition, not one program; "the product names that no customer
+from Paris has bought", a set difference across two tables, also decomposed in production; and "total amount in
+Europe in GBP", read as converted and also kept to orders whose country's currency is GBP, an ambiguity between a
+conversion target and a filter the value question cannot settle (the question names the code once).
+
+Cost: the night's and day's API calls, from the cache, 5,454 calls and 31.8 million tokens since 22:58 (about
+$3.18); all Decisions API use so far 21,822 calls, 121.2 million tokens, about $12.12 of the $25 the owner set.
+
+
 ## All of the day's changes together: on the 896 dev questions the no-trained-model Decisions path picks 677 right against this morning's 636 (listed 759 against 737), and a value-set question raises that to 687 but fails the demo gate by one wrong answer; the decided-set rule and an exact-totals compile rule fail their gates, and on WikiTableQuestions no change to the chooser moves its pick by more than 2 of 299 (2026-11-18)
 
 - Continues the entry below the same day, on the owner's order ("Build, measure, continue with next steps. Do not wait
