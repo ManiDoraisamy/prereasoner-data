@@ -13,7 +13,7 @@ from engine.program.index import Atom, TableIndex
 from engine.program.language import (Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, NotEquals, OnLine, PeriodSpan, Rank, RowArithmetic, SECTION, Show, Size, answer_type_of, coordinates, form_of, tables_of, is_sound, period_from_name)
 from engine.program.lowering import plan_schema, to_query
 from engine.program.names import (A_COUNT, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, AFTER, ANY, BEFORE, BREAKDOWN, SAME, CHECK, EQ, EVERY, IS, LT, NE, NO, VERSUS, ANSWER_TYPES, AVG, CALC, COMPARISONS, COUNT, COUNT_DISTINCT, ENDS, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, EV_ADDS_TWICE, EV_BARE_ZERO, EV_EMPTY, EV_FAILED, EV_FILTER_DID_NOTHING, EV_FRACTION_FOR_COUNT, EV_MANY_ROWS, EV_PRINTED_TIE, EV_RAN,
-                                  EV_REPEATED_LINES, EV_ROW_COUNT_FOR_AMOUNT, EV_SHAPE_AGREES, EV_TOO_LARGE_FOR_SHARE, EV_TYPE_AGREES, EV_WRONG_KIND, EVIDENCE, FORMS, GE, GT, HIGHEST, LOWEST, MAX, MIN, MINUS, OVER, PLUS, SEMANTICS, SLOT_AGGREGATE, SLOT_FORM, SLOTS, STARTS, SUM, TIMES, coarse_type, coordinate, slot_of)
+                                  EV_REPEATED_LINES, EV_ROW_COUNT_FOR_AMOUNT, EV_SHAPE_AGREES, EV_TOO_LARGE_FOR_SHARE, EV_TYPE_AGREES, EV_WRONG_KIND, EVIDENCE, FORMS, GE, GT, HIGHEST, LOWEST, MAX, MIN, MINUS, OVER, PLUS, SEMANTICS, SLOT_AGGREGATE, SLOT_FORM, SLOTS, STARTS, SUM, TIMES, coarse_type, coordinate, slot_of, GRAIN_MONTH)
 from engine.program.output import cells_used, compress, explain, formula, read_as
 from engine.program.scoring import Reading, Weights, score_program
 from engine.program.semantics import (SEMANTIC_COUNTS, cell_day, exact_wins, fold, share_forms, stated_number)
@@ -965,6 +965,28 @@ def test_a_share_of_lines_counts_both_sides():
     assert share in Decoder(catalog).enumerate(Reading({name: 1.0 for name in coordinates(share, catalog.column_kind)}), k=50)[0][:3]
 
 
+def test_a_date_key_breaks_down_by_its_month():
+    """"How many orders per month?" grouped the lines by each order date, one group a day, and only a deeper pool held
+    that reading, which the chooser then took. A breakdown's grain GRAIN_MONTH groups a date key by its year-month
+    (sql_ast.DatePart, which both emitters compute), groups in the order they first appear and a blank date in none;
+    the decoder offers it beside the day's own groups wherever it offers a breakdown by a date column."""
+    rows = [["Order", "Order date", "Amount"], ["o1", "2024-01-05", 10.0], ["o2", "2024-01-20", 20.0], ["o3", "2024-02-02", 5.0],
+            ["o4", "2024-03-11", 7.0], ["o5", "2024-02-27", 8.0], ["o6", "", 3.0]]
+    catalog, table, tables = _setup(rows)
+    day, amount = Col(table.id, 1), Col(table.id, 2)
+    monthly = Breakdown(COUNT, None, table.id, (day,), grain=GRAIN_MONTH)
+    assert _answer(monthly, tables) == (("2024-01", 2), ("2024-02", 2), ("2024-03", 1))
+    assert _answer(Breakdown(SUM, amount, table.id, (day,), grain=GRAIN_MONTH), tables) == (("2024-01", 30.0), ("2024-02", 13.0), ("2024-03", 7.0))
+    assert read_as(monthly, catalog) == 'the number of lines for each month of Order date on "Sheet1"'
+    assert monthly in Decoder(catalog).enumerate(Reading({name: 1.0 for name in coordinates(monthly, catalog.column_kind)}), k=50)[0][:3]
+    for bad in (lambda: Breakdown(COUNT, None, table.id, (), unit=amount, grain=GRAIN_MONTH), lambda: Breakdown(COUNT, None, table.id, (day,), grain="week")):
+        try:
+            bad()
+        except ValueError:
+            continue
+        raise AssertionError("a grain is the year-month of a first key")
+
+
 def test_the_decoder_breaks_down_only_when_the_reading_names_a_breakdown():
     """The small reader's form head is the four FORMS, and an unread form scores 0 (a log probability of 1): breakdown
     frames are spent only where a reading names the form, as CLEF's can; then the breakdown is in the top 50."""
@@ -1510,7 +1532,7 @@ TESTS = [
     test_partial_value_match, test_case_and_spacing_do_not_count, test_periods, test_blanks, test_ties_keep_every_tied_line, test_units, test_mixed_columns, test_repeated_rows, test_sections_nested_bands_and_the_section_shown, test_python_masks_agree_with_the_sql,
     test_calc_shapes, test_rank_across_peer_columns, test_a_rank_keeps_as_many_as_the_question_states, test_the_decoder_proposes_how_many_a_question_states, test_a_check_says_yes_or_no, test_the_decoder_checks_only_when_the_reading_names_a_check, test_a_choice_among_named_values, test_a_check_asks_what_the_top_one_is, test_a_check_asks_whether_the_top_one_is_the_same_or_compares_two_aggregates, test_a_read_takes_the_line_after_or_before_the_kept_one, test_new_ast_nodes_render_and_validate, test_plan_schema_holds_only_what_a_query_reads, test_perfect_readings_give_the_gold_first, test_decoder_is_deterministic_and_order_free, test_the_list_does_not_depend_on_hash_order,
     test_scores_come_in_as_data_and_nothing_else_moves_the_list, test_contributions_are_named_and_sum_to_the_score, test_intervention_a_named_coordinate_moves_the_score_by_its_weight, test_policy_prunes_values_only_where_it_says, test_conditions_stay_on_distinct_columns,
-    test_a_value_of_a_few_valued_number_column_is_named, test_a_number_condition_may_be_an_equality, test_a_breakdown_gives_a_figure_for_each_group, test_amounts_in_several_currencies_are_given_per_currency, test_a_column_stating_its_currency_is_not_split_by_currency, test_a_share_of_lines_counts_both_sides, test_a_number_compares_with_the_line_a_value_names, test_the_decoder_breaks_down_only_when_the_reading_names_a_breakdown, test_times_read_as_numbers_in_the_sheet_and_the_question, test_an_ordinal_is_not_a_stated_number, test_words_alone_read_a_question, test_verifier_shape_and_type_evidence, test_printed_total_ties_only_under_its_exact_conditions, test_verifier_runs_the_top_programs_and_never_raises, test_a_code_python_reads_as_infinite_is_text_to_the_verifier, test_read_as_in_the_sheets_own_words,
+    test_a_value_of_a_few_valued_number_column_is_named, test_a_number_condition_may_be_an_equality, test_a_breakdown_gives_a_figure_for_each_group, test_amounts_in_several_currencies_are_given_per_currency, test_a_column_stating_its_currency_is_not_split_by_currency, test_a_share_of_lines_counts_both_sides, test_a_date_key_breaks_down_by_its_month, test_a_number_compares_with_the_line_a_value_names, test_the_decoder_breaks_down_only_when_the_reading_names_a_breakdown, test_times_read_as_numbers_in_the_sheet_and_the_question, test_an_ordinal_is_not_a_stated_number, test_words_alone_read_a_question, test_verifier_shape_and_type_evidence, test_printed_total_ties_only_under_its_exact_conditions, test_verifier_runs_the_top_programs_and_never_raises, test_a_code_python_reads_as_infinite_is_text_to_the_verifier, test_read_as_in_the_sheets_own_words,
     test_cells_are_the_exact_addresses_used, test_formula_a_user_can_check, test_explain_carries_the_named_contributions,
 ]
 

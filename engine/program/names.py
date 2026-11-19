@@ -78,6 +78,7 @@ MINUS = "-"
 TIMES = "*"
 OVER = "/"
 ROW_OPS = (PLUS, MINUS, TIMES, OVER)
+GRAIN_MONTH = "year_month"     # a breakdown's date key grouped by its year-month (sql_ast.DatePart's part of that name)
 CALC_OPS = (MINUS, PLUS, OVER)
 
 # What the answer is. The fine list is what the question reads as (answer_location.txt); a program states a coarse type, since a sheet does not say whether a name is a person's or a company's.

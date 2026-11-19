@@ -151,7 +151,7 @@ def read_as(program: Program, catalog: Catalog) -> str:
     if isinstance(program, Breakdown):
         where = _where_words(catalog, program.where)
         head = "the number of lines" if program.function == COUNT else f"the {_AGG_WORDS[program.function]} of {_measure_words(catalog, program.measure)}"
-        each = " and ".join(_name(catalog, column) for column in program.groups)
+        each = " and ".join(f"month of {_name(catalog, column)}" if program.grain is not None and at == 0 else _name(catalog, column) for at, column in enumerate(program.groups))
         return f"{head} for each {each} {place}" + (f" where {where}" if where else "")
     if isinstance(program, Agg):
         where = _where_words(catalog, program.where)
@@ -264,7 +264,7 @@ def cells_used(program: Program, tables: RequestTables, rows: tuple[tuple, ...])
     elif isinstance(program, (Agg, Breakdown)):
         columns = measure_columns(program.measure) if isinstance(program.measure, (Col, RowArithmetic, Size, DateOf, Across)) else ()
         if isinstance(program, Breakdown):      # a line with a blank key or unit is in no group
-            folds = [table.section_folds if column.position == SECTION else table.folds[column.position] for column in program.groups]
+            folds = [table.days[column.position] if getattr(program, "grain", None) is not None and at == 0 else table.section_folds if column.position == SECTION else table.folds[column.position] for at, column in enumerate(program.groups)]
             kept = [i for i in kept if all(held[i] is not None for held in folds)]
         for i in kept:
             for column in columns:
@@ -469,7 +469,7 @@ def _breakdown_formula(program: Breakdown, table: CatalogTable, tables: RequestT
     """GROUPBY over the groups' ranges and the measure's, the kept lines as its filter; a band, a printed line inside the
     range or a measure computed line by line has no plain range, and is stated by its read-as and cells."""
     tests = _filter_array(tables.catalog, program.where)
-    if tests is None or not _plain_range(table) or any(column.position == SECTION for column in program.groups):
+    if tests is None or not _plain_range(table) or any(column.position == SECTION for column in program.groups) or program.grain is not None:
         return "=NA()"
     if program.function == COUNT:
         values, function = _range(table, program.groups[0].position), "COUNTA"

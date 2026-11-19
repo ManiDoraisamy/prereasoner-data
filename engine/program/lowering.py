@@ -194,7 +194,7 @@ def _breakdown_query(program: Breakdown, catalog: Catalog) -> SelectQuery:
         value, guard = Aggregate("COUNT", Star()), None
     else:
         value, guard = Aggregate(_FUNCTIONS[program.function], _measure(program.measure)), _present(program.measure)
-    groups = tuple(_fold(column) for column in program.groups)
+    groups = tuple(DatePart(program.grain, _day(column)) if program.grain is not None and at == 0 else _fold(column) for at, column in enumerate(program.groups))
     printed = addresses_printed(program.where) or (program.measure is not None and _reads_printed(program.measure, catalog.table(table)))
     where = _where(None if printed else _data_lines(table), *map(_condition, program.where), *(_is_null(group, negated=True) for group in groups), guard)
     select = tuple(SelectItem(group, f"{KEY}_{at}") for at, group in enumerate(groups)) + (SelectItem(value, VALUE),)

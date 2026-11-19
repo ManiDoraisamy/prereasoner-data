@@ -10,7 +10,7 @@ from typing import TypeAlias
 
 from engine.program.names import (A_COUNT, A_DATE, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, AFTER, ANY, BEFORE, BREAKDOWN, CHECK, CHECK_OPS, COMPARE_OPS, EQ, EVERY, IS, NO, QUANTIFIERS, SAME, SLOT_NEIGHBOUR, SLOT_QUANTIFIER, AGG, AGGREGATES, ANCHORS, ANYWHERE, BY_SIZE, CALC, CALC_OPS, COUNT, COUNT_DISTINCT, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, HIGHEST,
                                   MINUS, NE, NUMBER_AGGREGATES, OVER, PLUS, RANK, RANK_ENTITIES, ROW_OPS, SHOW, SLOT_AGGREGATE, SLOT_ANSWER_TYPE, SLOT_BLANK, SLOT_CALC_LEFT, SLOT_CALC_OP, SLOT_COMPARISON, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_DIRECTION, SLOT_ENTITY, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE,
-                                  SLOT_LISTING, SLOT_MEASURE, SLOT_NUMBER, SLOT_PEERS, SLOT_PERIOD, SLOT_ROW_OP, SLOT_SECTION, SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, STATED_BY_SIZE, coordinate)
+                                  SLOT_LISTING, SLOT_MEASURE, SLOT_NUMBER, SLOT_PEERS, SLOT_PERIOD, SLOT_ROW_OP, SLOT_SECTION, SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, STATED_BY_SIZE, GRAIN_MONTH, coordinate)
 from engine.program.semantics import fold, number_text
 from engine.sheet.names import P_DAY, P_MONTH, P_QUARTER, P_RANGE, P_YEAR, PERIOD_KINDS
 
@@ -451,13 +451,16 @@ class Breakdown:
 
     keys   the columns whose values make the groups ("visits per department"); none when only the unit splits a figure.
     unit   the column naming the unit each line's figure is in (a currency code column): figures in different units do
-           not add, so each group's figure is given per unit, the unit's cell after the keys'."""
+           not add, so each group's figure is given per unit, the unit's cell after the keys'.
+    grain  GRAIN_MONTH: the first key is a date column whose lines group by their year-month ("orders per month"), the
+           group's cell the year-month as '2026-08'; None groups by the key's own values."""
     function: str
     measure: Measure | None
     table: str
     keys: tuple[Col, ...] = ()
     where: tuple[Condition, ...] = ()
     unit: Col | None = None
+    grain: str | None = None
 
     def __post_init__(self):
         if self.function not in (*NUMBER_AGGREGATES, COUNT):
@@ -471,6 +474,8 @@ class Breakdown:
         groups = (*self.keys, *((self.unit,) if self.unit is not None else ()))
         if len(self.keys) > 2 or len(set(groups)) != len(groups) or any(column.table != self.table for column in groups):
             raise ValueError("a breakdown groups by one or two distinct key columns of its table, its unit none of them")
+        if self.grain is not None and (self.grain != GRAIN_MONTH or not self.keys):
+            raise ValueError("a breakdown's grain is the year-month of its first key")
 
     @property
     def groups(self) -> tuple[Col, ...]:

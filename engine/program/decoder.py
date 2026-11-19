@@ -20,7 +20,7 @@ from engine.program.semantics import fold
 from engine.program.language import (Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Condition, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, NotEquals, OnLine, Program, Rank, RowArithmetic, SECTION, Show, Size, answer_type_of, is_sound, measure_coordinates, peers_name, period_from_name, shown_together)
 from engine.program.names import (A_COUNT, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, ANY, BREAKDOWN, CHECK, CHECK_OPS, COMPARE_OPS, EQ, EVERY, GT, IS, LT, NEIGHBOURS, NO, SAME, SLOT_NEIGHBOUR, SLOT_QUANTIFIER, VERSUS, AGG, ANCHORS, ANYWHERE, AVG, BY_SIZE, CALC, CALC_OPS, COUNT, COUNT_DISTINCT, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, MAX, MIN, MINUS, NE, NUMBER_AGGREGATES, OVER, PLUS, RANK, ROW_OPS, SHOW, SLOT_AGGREGATE,
                                   SLOT_ANSWER_TYPE, SLOT_BLANK, SLOT_CALC_LEFT, SLOT_CALC_OP, SLOT_COMPARISON, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_DIRECTION, SLOT_ENTITY, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE, SLOT_LISTING, SLOT_MEASURE, SLOT_NUMBER, SLOT_PEERS, SLOT_PERIOD, SLOT_ROW_OP, SLOT_SECTION,
-                                  SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, STATED_BY_SIZE, SUM, TIMES, coordinate, slot_of)
+                                  SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, STATED_BY_SIZE, SUM, TIMES, GRAIN_MONTH, coordinate, slot_of)
 from engine.program.scoring import DEFAULT_WEIGHTS, Reading, ScoredProgram, Weights, score_program
 from engine.sheet.names import PRINTED_ROLES
 
@@ -344,7 +344,7 @@ def _per_unit(program: Agg | Breakdown, unit: Col | None, index: TableIndex) -> 
         return program
     if isinstance(program, Agg):
         return Breakdown(program.function, program.measure, program.table, (), program.where, unit=unit)
-    return Breakdown(program.function, program.measure, program.table, program.keys, program.where, unit=unit)
+    return Breakdown(program.function, program.measure, program.table, program.keys, program.where, unit=unit, grain=program.grain)
 
 
 def _bound(frame: _Frame, indices: tuple[int, ...]) -> float | None:
@@ -833,6 +833,14 @@ class _Search:
             frames += self.condition_frames(base, (grouped, figures), lambda options, where, f=function: _per_unit(Breakdown(f, options[1], table.id, (options[0],), where), unit, index), table, index, atoms, max_policy=2, choices=True)
         counted = each + s(coordinate(SLOT_AGGREGATE, COUNT)) + self.type_score(A_COUNT)
         frames += self.condition_frames(counted, (keys,), lambda options, where: Breakdown(COUNT, None, table.id, (options[0],), where), table, index, atoms, max_policy=2, choices=True)
+        # a date key grouped by its month ("orders per month"): offered beside the day's own groups, under the same scores
+        dated = [option for option in grouped if option.payload.position in index.date_columns]
+        if dated:
+            for function in NUMBER_AGGREGATES:
+                base = each + s(coordinate(SLOT_AGGREGATE, function)) + self.type_score(A_NUMBER)
+                figures = measures if function == SUM else plain
+                frames += self.condition_frames(base, (dated, figures), lambda options, where, f=function: _per_unit(Breakdown(f, options[1], table.id, (options[0],), where, grain=GRAIN_MONTH), unit, index), table, index, atoms, max_policy=2)
+            frames += self.condition_frames(counted, (dated,), lambda options, where: Breakdown(COUNT, None, table.id, (options[0],), where, grain=GRAIN_MONTH), table, index, atoms, max_policy=2)
         return frames
 
     def check_frames(self, table: CatalogTable, index: TableIndex, atoms: list[_Option], measures: list[_Option], plain: list[_Option]) -> list[_Frame]:
