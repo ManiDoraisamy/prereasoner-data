@@ -622,6 +622,20 @@ def test_text_records_after_a_dated_title_stay_records():
     assert [line.row for line in model.tables[0].lines] == [2, 3, 4, 5, 6] and _roles(model)[7] == NOTE
 
 
+def test_a_last_record_with_a_long_name_and_no_figure_stays_a_record():
+    """A contracts export ends on a line with a blank notice period and a file name of 68 characters: a line after the
+    last figures filling two of three columns, with text over 60 characters, was read as a note under the table, and
+    "number of contracts" counted 182 of 183. A line holding a text the records above hold in the same column
+    ("termination") is one of them; a note under the table shares no value with them and stays a note."""
+    name = "KUBIENT,INC_07_02_2020-EX-10.14-MASTER SERVICES AGREEMENT_Part1.pdf"
+    rows = [["contract_name", "notice_days", "clause_type"], ["Alpha.pdf", 30, "termination"], ["Beta.pdf", 60, "renewal"],
+            ["Gamma.pdf", 90, "termination"], ["Delta.pdf", "", "renewal"], [name, "", "termination"]]
+    model = _tab(rows)
+    assert [line.row for line in model.tables[0].lines] == [2, 3, 4, 5, 6]
+    model = _tab(rows + [["Prepared on the last day of the month by the contracts desk of the legal team", "", "see the index"]])
+    assert [line.row for line in model.tables[0].lines] == [2, 3, 4, 5, 6] and _roles(model)[7] == NOTE
+
+
 def test_a_solid_block_ending_early_does_not_fill_down():
     # F3: a column filled on the first lines and blank after gave thousands of lines a value they never had.
     rows = [["ID", "Book", "Desk", "Amt"]] + [[f"i{k}", "P", "D", k] for k in range(1, 6)] + [[f"i{k}", "", "", k] for k in range(6, 30)]
@@ -868,7 +882,7 @@ TESTS = [
     test_a_closing_total_ends_its_table_when_records_resume, test_titles_with_one_cell_a_block_part_side_by_side_blocks, test_each_side_by_side_list_has_its_own_bands, test_a_lone_label_between_a_total_and_figures_is_a_band, test_axes_cross_spacers_and_totals_and_reach_flag_columns,
     test_a_later_line_styled_as_the_header_is_a_header, test_rule_lines_are_spacers_and_never_names, test_no_header_inside_the_filter_range, test_a_data_line_joined_to_a_repeated_header_stays_data, test_a_lone_data_line_called_a_header_stays_in_its_table,
     test_a_spacer_column_does_not_part_labels_from_their_figures, test_statistic_lines_under_a_date_key_are_printed, test_a_repeated_block_that_differs_opens_a_section, test_a_repeat_after_a_band_keeps_the_bands_section,
-    test_the_lone_title_over_a_header_is_the_first_band, test_text_records_after_a_dated_title_stay_records, test_a_solid_block_ending_early_does_not_fill_down, test_a_sparse_comment_right_of_a_full_key_does_not_fill_down,
+    test_the_lone_title_over_a_header_is_the_first_band, test_text_records_after_a_dated_title_stay_records, test_a_last_record_with_a_long_name_and_no_figure_stays_a_record, test_a_solid_block_ending_early_does_not_fill_down, test_a_sparse_comment_right_of_a_full_key_does_not_fill_down,
     test_continuation_lines_take_no_label, test_a_family_says_how_much_its_members_repeat_each_other, test_a_date_from_the_clock_is_no_as_of, test_an_unchanged_sheet_keeps_its_hash_and_its_model,
     test_an_axis_holds_one_grain_and_no_totals, test_a_group_axis_needs_one_format, test_a_tall_merge_over_a_number_is_one_figure, test_a_name_keeps_what_the_sheet_wrote, test_running_balance_is_not_a_total, test_bands_give_sections,
     test_sparse_label_column_fills_down_and_traces_to_its_source, test_stacked_tables_split, test_repeated_header_continues_its_table, test_side_by_side_blocks_split, test_spacer_columns_do_not_split_one_table,

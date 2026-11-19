@@ -6,7 +6,7 @@ from engine.sheet.grid import Grid
 from engine.sheet.line_facts import LineFacts, line_facts
 from engine.sheet.line_model import final_scores, line_features, load_model
 from engine.sheet.names import (BAND, HEADER, NOTE, RECORD, S_ABOVE_TABLE, S_ALONE_AFTER_GAP, S_ALONE_AFTER_TOTAL, S_ALONE_BEFORE_HEADER, S_ALONE_STYLED, S_ARITHMETIC_TIE, S_AUTOFILTER_TOP, S_BELOW_TABLE, S_FIGURES, S_FORMULA_CLOSES_BLOCK,
-                                S_FORMULA_COMPUTED, S_FORMULA_TOTAL, S_FROZEN_LAST, S_JOINED_ABOVE, S_JOINED_BELOW, S_LABEL_VALUE, S_MERGED_OVER_COLUMNS, S_MODEL, S_NAMES_BODY, S_STYLE_OF_HEADER, S_TEXT_LINE, TITLE, TOTAL)
+                                S_FORMULA_COMPUTED, S_FORMULA_TOTAL, S_FROZEN_LAST, S_JOINED_ABOVE, S_JOINED_BELOW, S_LABEL_VALUE, S_MERGED_OVER_COLUMNS, S_MODEL, S_NAMES_BODY, S_STYLE_OF_HEADER, S_TEXT_LINE, TITLE, TOTAL, V_TEXT)
 
 
 
@@ -88,7 +88,20 @@ def _fills_table(grid: Grid, r: int, f: LineFacts, heads: dict[int, list[str]]) 
     named = grid.rows[max(above)]
     if not all(c in named for c in grid.rows[r]):
         return False
-    return f.filled >= 3 or (f.filled * 2 >= len(named) and not f.wordy and f.longest <= 60)
+    if f.filled >= 3 or (f.filled * 2 >= len(named) and not f.wordy and f.longest <= 60):
+        return True
+    return f.filled * 2 >= len(named) and _shares_a_value(grid, r, max(above))
+
+
+def _shares_a_value(grid: Grid, r: int, head: int) -> bool:
+    """A line holding, in some column, a text a line between the header and it holds in that column: it is one of the
+    records, however long its other text (a file name of 68 characters), as a note under a table shares no cell value
+    with the records above it."""
+    texts = {c: str(cell.value).lower() for c, cell in grid.rows[r].items() if cell.kind == V_TEXT}
+    for x in grid.filled:
+        if head < x < r and any(cell.kind == V_TEXT and texts.get(c) == str(cell.value).lower() for c, cell in grid.rows[x].items()):
+            return True
+    return False
 
 
 def assign_roles(grid: Grid, facts: dict[int, LineFacts], heads: dict[int, list[str]], printed: dict[int, list[str]]) -> dict[int, tuple[str, tuple[str, ...]]]:
