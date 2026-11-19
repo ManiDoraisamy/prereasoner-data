@@ -989,6 +989,8 @@ class _Search:
         if self.positive(SLOT_CALC_LEFT):
             parts = sorted((_Option(option.score + sum(self.s(coordinate(SLOT_CALC_LEFT, name)) for name in option.payload[0].names), option.payload) for option in parts), key=lambda option: round(-option.score, _ROUND))
         frames.append(_Frame(share + aggregate, (plain, parts), lambda options: _part_of_whole(table, options)))
+        # the share of lines a condition keeps: "what percentage of orders are from Lyon" counts lines on both sides
+        frames.append(_Frame(share + s(coordinate(SLOT_AGGREGATE, COUNT)), (parts,), lambda options: _count_share(table, options)))
         frames.append(_Frame(share + s(coordinate(SLOT_CALC_OP, PLUS)), (left_shown, shown_numbers, read_lines[0]), lambda options: _share_on_a_line(table, options)))
         return frames
 
@@ -1110,6 +1112,11 @@ def _two_measures(table, options, op):
 def _part_of_whole(table, options):
     measure, atoms = options
     return Calc(Agg(SUM, measure, table.id, (atoms[0].condition,)), OVER, Agg(SUM, measure, table.id))
+
+
+def _count_share(table, options):
+    (atoms,) = options
+    return Calc(Agg(COUNT, None, table.id, (atoms[0].condition,)), OVER, Agg(COUNT, None, table.id))
 
 
 def _share_on_a_line(table, options):
