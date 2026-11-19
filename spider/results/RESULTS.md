@@ -5,6 +5,28 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
+## Two checks on the served confidence fail to add anything a threshold does not; the pick, not the unwarned wrong, is what holds the Decisions path below the bar (693 right of 896 when always answering, 717 needed)
+
+- Continues the entry below, on the same orders. Stack: next-engine `271111b`, flags as `pg1` (the kept stack, listed
+  769, pick 693, served at T_ASK 0.42 / T_FLAG 0.575 per answer: right 625, warned right 42, asked 102, warned wrong
+  41, wrong 86). Contracts `order_warning` and `single_check` in
+  `training/readers/data/experiments/decisions-probe-20261118/experiment-contract.json`, written before the runs.
+- Determinism: `pgd1` re-runs `pg1`'s flags with the chooser records dumped (two processes); it equals `pg1` on all
+  896 (0 moves on listed, pick and every served count; 4 uncached calls changed nothing).
+- Order warning (warn an unwarned answer where the chooser, asked with its options reversed, picks another answer):
+  unwarned wrong 86 -> 80 and unwarned right 625 -> 607; FAILED (right falls 18, the gate allows 12). The cross-fitted
+  8% point falls 593 -> 585 right. 581 calls, 2.2M tokens.
+- Single check (ask the chooser about the picked answer alone, its likeliest reading beside the same none, and warn
+  where none wins): unwarned wrong 86 -> 64, unwarned right 625 -> 583, warned 147 of 896, no pick moves; by set wrong
+  WTQ 38 -> 29, messy 13 -> 9, fresh dev 16 -> 10, DataBench 19 -> 16. The written gate passed, but it compared
+  against the fixed T_FLAG: raising T_FLAG on the pick mass alone to 0.651 gives 585 right at 64 wrong with no call
+  (in sample), and the cross-fitted 8% point falls 593 -> 582. Not kept. 711 calls, 1.3M tokens.
+- What it shows: thresholding the pick mass already reaches 8% unwarned wrong at 593 right cross-fitted (66.2%).
+  The limit is the pick: 693 of 896 (77.3%) when always answering, while 80% right needs 717 with no answer withheld.
+  Of the 203 pick misses, 127 list no right answer (WTQ 49, fresh dev 40, DataBench 25, messy 13) and 76 list one the
+  chooser passes over; no family holds more than a few.
+- Spend on the Decisions API since 2026-11-18: about $12.5 of the $25 cap.
+
 ## The demo datasets through the Decisions path reach 86 right and 2 wrong of 91 (75 and 5 before the night) with one currency, a percent under its own row operator, links between two uploads, a count share, a breakdown by month and a last record kept; on the 896 dev questions a span of years raises the best pick to 693 right (77.3%) against 689, unwarned wrong 86 (9.6%); a deeper pool, number either-or, a closed question for the row operator and six chooser variants fail their gates (2026-11-19)
 
 - Continues the entry below, on the owner's order ("Build, measure, continue with next steps. Do not wait for me")
