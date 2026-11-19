@@ -187,9 +187,13 @@ def read_as(program: Program, catalog: Catalog) -> str:
 # ----------------------------------------------------------------------------------------------------------- cells
 def _units_added(program: Agg, table: CatalogTable, catalog: Catalog) -> str:
     """A figure over a table whose lines name their currency, no condition fixing one, adds amounts in several
-    currencies together: the read-as says so, as the person and the chooser should both see it."""
-    unit = index_of(table).currency_column
+    currencies together: the read-as says so, as the person and the chooser should both see it. A measure column that
+    states its own currency (TableIndex.states_currency) adds none."""
+    index = index_of(table)
+    unit = index.currency_column
     if unit is None or program.function not in _SHEET_FUNCTION:
+        return ""
+    if isinstance(program.measure, Col) and index.states_currency(program.measure.position):
         return ""
     if any(isinstance(condition, (Equals, OneOf)) and condition.column.position == unit for condition in program.where):
         return ""

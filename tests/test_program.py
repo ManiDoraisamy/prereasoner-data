@@ -930,6 +930,29 @@ def test_amounts_in_several_currencies_are_given_per_currency():
     assert TableIndex(_setup(TRADES, formats=TRADE_FORMATS)[1]).currency_column is None
 
 
+def test_a_column_stating_its_currency_is_not_split_by_currency():
+    """A payments export prints each line's own currency and the same amount in one currency ("Amount (USD)"), and a
+    knowledgebase conversion reads an amount in a target currency: every figure of such a column is in the currency its
+    header states. The demo's "total amount in France in US dollars" was offered only as one total per source currency
+    or as "the size of the total ... (all Currency together)", and the choice between them flipped with the options
+    under them. A measure column whose unit is an ISO 4217 code gives its plain figure, with no note that currencies
+    were added; a column of mixed currencies is still split."""
+    rows = [[*SUBSCRIPTIONS[0], "Amount (USD)"]] + [[*line, value] for line, value in zip(SUBSCRIPTIONS[1:], (100.0, 60.0, 50.0, 76.0, 30.0, 10.0))]
+    catalog, table, tables = _setup(rows)
+    currency, amount, sector, usd = Col(table.id, 2), Col(table.id, 3), Col(table.id, 4), Col(table.id, 5)
+    assert TableIndex(table).currency_column == 2 and table.columns[5].unit == "USD"
+    plain = Agg(SUM, usd, table.id, (Equals(sector, "retail"),))
+    assert _one(_answer(plain, tables)) == 236.0
+    assert read_as(plain, catalog) == 'the total of Amount (USD) on "Sheet1" where Sector is "Retail"', "one currency: nothing was added across currencies"
+    programs = Decoder(catalog).enumerate(Reading({name: 1.0 for name in coordinates(plain, catalog.column_kind)}), k=50)[0]
+    assert plain in programs[:3], "the plain total of a column stating its currency"
+    assert not any(isinstance(p, Breakdown) and p.measure == usd and p.unit is not None for p in programs), "never split by the lines' currency"
+    split = Breakdown(SUM, amount, table.id, (), (Equals(sector, "retail"),), unit=currency)
+    mixed = Agg(SUM, amount, table.id, (Equals(sector, "retail"),))
+    assert split in Decoder(catalog).enumerate(Reading({name: 1.0 for name in coordinates(mixed, catalog.column_kind)}), k=50)[0][:3], "mixed currencies still split"
+    assert read_as(mixed, catalog).endswith("(all Currency together)")
+
+
 def test_the_decoder_breaks_down_only_when_the_reading_names_a_breakdown():
     """The small reader's form head is the four FORMS, and an unread form scores 0 (a log probability of 1): breakdown
     frames are spent only where a reading names the form, as CLEF's can; then the breakdown is in the top 50."""
@@ -1475,7 +1498,7 @@ TESTS = [
     test_partial_value_match, test_case_and_spacing_do_not_count, test_periods, test_blanks, test_ties_keep_every_tied_line, test_units, test_mixed_columns, test_repeated_rows, test_sections_nested_bands_and_the_section_shown, test_python_masks_agree_with_the_sql,
     test_calc_shapes, test_rank_across_peer_columns, test_a_rank_keeps_as_many_as_the_question_states, test_the_decoder_proposes_how_many_a_question_states, test_a_check_says_yes_or_no, test_the_decoder_checks_only_when_the_reading_names_a_check, test_a_choice_among_named_values, test_a_check_asks_what_the_top_one_is, test_a_check_asks_whether_the_top_one_is_the_same_or_compares_two_aggregates, test_a_read_takes_the_line_after_or_before_the_kept_one, test_new_ast_nodes_render_and_validate, test_plan_schema_holds_only_what_a_query_reads, test_perfect_readings_give_the_gold_first, test_decoder_is_deterministic_and_order_free, test_the_list_does_not_depend_on_hash_order,
     test_scores_come_in_as_data_and_nothing_else_moves_the_list, test_contributions_are_named_and_sum_to_the_score, test_intervention_a_named_coordinate_moves_the_score_by_its_weight, test_policy_prunes_values_only_where_it_says, test_conditions_stay_on_distinct_columns,
-    test_a_value_of_a_few_valued_number_column_is_named, test_a_number_condition_may_be_an_equality, test_a_breakdown_gives_a_figure_for_each_group, test_amounts_in_several_currencies_are_given_per_currency, test_a_number_compares_with_the_line_a_value_names, test_the_decoder_breaks_down_only_when_the_reading_names_a_breakdown, test_times_read_as_numbers_in_the_sheet_and_the_question, test_an_ordinal_is_not_a_stated_number, test_words_alone_read_a_question, test_verifier_shape_and_type_evidence, test_printed_total_ties_only_under_its_exact_conditions, test_verifier_runs_the_top_programs_and_never_raises, test_a_code_python_reads_as_infinite_is_text_to_the_verifier, test_read_as_in_the_sheets_own_words,
+    test_a_value_of_a_few_valued_number_column_is_named, test_a_number_condition_may_be_an_equality, test_a_breakdown_gives_a_figure_for_each_group, test_amounts_in_several_currencies_are_given_per_currency, test_a_column_stating_its_currency_is_not_split_by_currency, test_a_number_compares_with_the_line_a_value_names, test_the_decoder_breaks_down_only_when_the_reading_names_a_breakdown, test_times_read_as_numbers_in_the_sheet_and_the_question, test_an_ordinal_is_not_a_stated_number, test_words_alone_read_a_question, test_verifier_shape_and_type_evidence, test_printed_total_ties_only_under_its_exact_conditions, test_verifier_runs_the_top_programs_and_never_raises, test_a_code_python_reads_as_infinite_is_text_to_the_verifier, test_read_as_in_the_sheets_own_words,
     test_cells_are_the_exact_addresses_used, test_formula_a_user_can_check, test_explain_carries_the_named_contributions,
 ]
 

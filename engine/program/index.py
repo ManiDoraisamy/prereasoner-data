@@ -149,6 +149,12 @@ class TableIndex:
                 return position
         return None
 
+    def states_currency(self, position: int) -> bool:
+        """A column whose unit is an ISO 4217 code (a header such as "Amount (USD)"; an amount a knowledgebase rate converts
+        to one currency) holds that currency on every line: a figure over it adds no currencies together, whatever the
+        currency each line names."""
+        return fold(self.table.columns[position].unit or "") in CURRENCY_CODES
+
     @cached_property
     def text_columns(self) -> tuple[int, ...]:
         return tuple(column.position for column in self.table.columns if column.kind != V_NUMBER and column.filled and not self.table.is_date_column(column.position))
