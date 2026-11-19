@@ -17,10 +17,10 @@ from typing import Callable, Sequence
 from engine.program.catalog import Catalog, CatalogTable
 from engine.program.index import Atom, TableIndex, index_of
 from engine.program.semantics import fold
-from engine.program.language import (Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Condition, Contains, DateOf, Equals, InPeriod, InYears, InSection, IsBlank, IsNumber, NotEquals, OnLine, Program, Rank, RowArithmetic, SECTION, Show, Size, answer_type_of, is_sound, measure_coordinates, peers_name, period_from_name, shown_together)
+from engine.program.language import (Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Condition, Contains, DateOf, Equals, InPeriod, InYears, InSection, IsBlank, IsNumber, NotEquals, OnLine, PercentOf, Program, Rank, RowArithmetic, SECTION, Show, Size, answer_type_of, is_sound, measure_columns, measure_coordinates, peers_name, period_from_name, shown_together)
 from engine.program.names import (A_COUNT, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, ANY, BREAKDOWN, CHECK, CHECK_OPS, COMPARE_OPS, EQ, EVERY, GT, IS, LT, NEIGHBOURS, NO, SAME, SLOT_NEIGHBOUR, SLOT_QUANTIFIER, VERSUS, AGG, ANCHORS, ANYWHERE, AVG, BY_SIZE, CALC, CALC_OPS, COUNT, COUNT_DISTINCT, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, MAX, MIN, MINUS, NE, NUMBER_AGGREGATES, OVER, PLUS, RANK, ROW_OPS, SHOW, SLOT_AGGREGATE,
                                   SLOT_ANSWER_TYPE, SLOT_BLANK, SLOT_CALC_LEFT, SLOT_CALC_OP, SLOT_COMPARISON, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_DIRECTION, SLOT_ENTITY, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE, SLOT_LISTING, SLOT_MEASURE, SLOT_NUMBER, SLOT_PEERS, SLOT_PERIOD, SLOT_ROW_OP, SLOT_SECTION,
-                                  SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, STATED_BY_SIZE, SUM, TIMES, GRAIN_MONTH, coordinate, slot_of)
+                                  SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, STATED_BY_SIZE, SUM, TIMES, GRAIN_MONTH, PERCENT_OP, coordinate, slot_of)
 from engine.program.scoring import DEFAULT_WEIGHTS, Reading, ScoredProgram, Weights, score_program
 from engine.sheet.names import PRINTED_ROLES
 
@@ -110,9 +110,11 @@ def _measure_order(table: CatalogTable, measure) -> tuple:
         return (0, "", (rank[measure.position],))
     if isinstance(measure, Size):
         return (1, "", _measure_order(table, measure.measure)[2])
-    if isinstance(measure, RowArithmetic):
+    if isinstance(measure, RowArithmetic) and isinstance(measure.left, Col) and isinstance(measure.right, Col):
         sides = [rank[side.position] for side in (measure.left, measure.right)]
         return (2, measure.op, tuple(sorted(sides) if measure.op in (PLUS, TIMES) else sides))
+    if isinstance(measure, (RowArithmetic, PercentOf)):     # a share of a measure, or a measure less or plus its share: after plain arithmetic
+        return (2, f"~{measure.op if isinstance(measure, RowArithmetic) else TIMES}", tuple(rank[column.position] for column in measure_columns(measure)))
     if isinstance(measure, DateOf):
         return (3, "", (rank[measure.column.position],))
     return (4, "", tuple(sorted(rank[column.position] for column in measure.columns)))
@@ -337,10 +339,10 @@ def _size(slot) -> int:
 def _per_unit(program: Agg | Breakdown, unit: Col | None, index: TableIndex) -> Agg | Breakdown:
     """Amounts in different currencies do not add: where a table names each line's currency (TableIndex.currency_column),
     a sum, average, lowest or highest is given per currency, unless a condition fixes one currency or the measure column
-    states its own (TableIndex.states_currency: "Amount (USD)", an amount converted to one currency)."""
+    states its own (TableIndex.stated_currency: "Amount (USD)", an amount converted to one currency, a share of it)."""
     if unit is None or any(isinstance(condition, Equals) and condition.column == unit for condition in program.where):
         return program
-    if isinstance(program.measure, Col) and index.states_currency(program.measure.position):
+    if program.measure is not None and index.stated_currency(program.measure) is not None:
         return program
     if isinstance(program, Agg):
         return Breakdown(program.function, program.measure, program.table, (), program.where, unit=unit)
@@ -681,6 +683,7 @@ class _Search:
                         if a.payload != b.payload and (op in (MINUS, OVER) or a.payload < b.payload):
                             sided = self.s(coordinate(SLOT_CALC_LEFT, coordinate(SLOT_MEASURE, a.payload.name))) if op in (MINUS, OVER) else 0.0
                             options.append(_Option(a.score + b.score + weight + sided, RowArithmetic(a.payload, op, b.payload)))
+            options.extend(self.percent_options(top, [option for option in columns if option.payload.position in index.rate_columns], index))
             if coordinate(SLOT_ROW_OP, PLUS) in self.reading.scores:
                 weight = self.s(coordinate(SLOT_ROW_OP, PLUS))
                 for peers in self.peer_options(table, index):
@@ -690,6 +693,29 @@ class _Search:
         held = sorted(((option, _measure_order(table, option.payload)) for option in options), key=lambda item: (round(-item[0].score, _ROUND), item[1]))
         self.slots[key] = [option for option, _ in held]
         return self.slots[key]
+
+    def percent_options(self, top: list[_Option], rates: list[_Option], index: TableIndex) -> list[_Option]:
+        """A measure and a rate column (TableIndex.rate_columns): the rate's share of the measure (PercentOf) where the
+        reading scores the percent operator (PERCENT_OP), and the measure less or plus that share where it also scores
+        minus or plus ("the amount after a 2.9% commission"). A reading that does not score PERCENT_OP offers no percent:
+        built from times alone, a percent beside every rate column crowded the pools of questions that ask for none."""
+        options = []
+        percent = coordinate(SLOT_ROW_OP, PERCENT_OP)
+        if percent not in self.reading.scores:
+            return options
+        weight = self.s(percent)
+        weights = {op: self.s(coordinate(SLOT_ROW_OP, op)) for op in (MINUS, PLUS) if coordinate(SLOT_ROW_OP, op) in self.reading.scores}
+        for a in top:
+            for b in rates:         # the rate is the second operand, which a reading of one measure need not name: every rate column, at its own score
+                if a.payload == b.payload:
+                    continue
+                share = PercentOf(a.payload, b.payload)
+                options.append(_Option(a.score + b.score + weight, share))
+                for op in (MINUS, PLUS):
+                    if op in weights:
+                        sided = self.s(coordinate(SLOT_CALC_LEFT, coordinate(SLOT_MEASURE, a.payload.name))) if op == MINUS else 0.0
+                        options.append(_Option(a.score + b.score + weight + weights[op] + sided, RowArithmetic(a.payload, op, share)))
+        return options
 
     def shown_options(self, table: CatalogTable, positions: Sequence[int]) -> list[_Option]:
         """One shown column, or several when the reading names several: only columns it scores positively combine."""

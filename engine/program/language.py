@@ -10,7 +10,7 @@ from typing import TypeAlias
 
 from engine.program.names import (A_COUNT, A_DATE, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, AFTER, ANY, BEFORE, BREAKDOWN, CHECK, CHECK_OPS, COMPARE_OPS, EQ, EVERY, IS, NO, QUANTIFIERS, SAME, SLOT_NEIGHBOUR, SLOT_QUANTIFIER, AGG, AGGREGATES, ANCHORS, ANYWHERE, BY_SIZE, CALC, CALC_OPS, COUNT, COUNT_DISTINCT, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, HIGHEST,
                                   MINUS, NE, NUMBER_AGGREGATES, OVER, PLUS, RANK, RANK_ENTITIES, ROW_OPS, SHOW, SLOT_AGGREGATE, SLOT_ANSWER_TYPE, SLOT_BLANK, SLOT_CALC_LEFT, SLOT_CALC_OP, SLOT_COMPARISON, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_DIRECTION, SLOT_ENTITY, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE,
-                                  SLOT_LISTING, SLOT_MEASURE, SLOT_NUMBER, SLOT_PEERS, SLOT_PERIOD, SLOT_ROW_OP, SLOT_SECTION, SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, STATED_BY_SIZE, GRAIN_MONTH, coordinate)
+                                  SLOT_LISTING, SLOT_MEASURE, SLOT_NUMBER, SLOT_PEERS, SLOT_PERIOD, SLOT_ROW_OP, SLOT_SECTION, SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, STATED_BY_SIZE, GRAIN_MONTH, PERCENT_OP, coordinate)
 from engine.program.semantics import fold, number_text
 from engine.sheet.names import P_DAY, P_MONTH, P_QUARTER, P_RANGE, P_YEAR, PERIOD_KINDS
 
@@ -43,6 +43,15 @@ class RowArithmetic:
 
 
 @dataclass(frozen=True, slots=True)
+class PercentOf:
+    """A share of a measure: the measure times a rate read as a percent, over 100 (a 2.9 commission rate on each
+    payment's amount). The rate is a number column of the same line; a blank on either side leaves the line out. It
+    reads the coordinates of the measure and the rate under its own row operator, PERCENT_OP."""
+    measure: "Measure"
+    rate: Col
+
+
+@dataclass(frozen=True, slots=True)
 class Size:
     """A measure with its sign dropped, line by line."""
     measure: "Measure"
@@ -64,7 +73,7 @@ class Across:
             raise ValueError("across adds two or more columns of one table")
 
 
-Measure: TypeAlias = Col | RowArithmetic | Size | DateOf | Across
+Measure: TypeAlias = Col | RowArithmetic | PercentOf | Size | DateOf | Across
 
 
 def measure_columns(measure: Measure) -> tuple[Col, ...]:
@@ -76,6 +85,8 @@ def measure_columns(measure: Measure) -> tuple[Col, ...]:
         return measure.columns
     if isinstance(measure, Size):
         return measure_columns(measure.measure)
+    if isinstance(measure, PercentOf):
+        return measure_columns(measure.measure) + (measure.rate,)
     return measure_columns(measure.left) + measure_columns(measure.right)
 
 
@@ -563,6 +574,8 @@ def measure_coordinates(measure: Measure) -> list[str]:
         return [coordinate(SLOT_ROW_OP, PLUS), coordinate(SLOT_PEERS, measure.columns[0].table, peers_name(tuple(column.position for column in measure.columns)))]
     if isinstance(measure, Size):
         return [coordinate(SLOT_SIZE, EACH_BY_SIZE)] + measure_coordinates(measure.measure)
+    if isinstance(measure, PercentOf):
+        return measure_coordinates(measure.measure) + [coordinate(SLOT_ROW_OP, PERCENT_OP)] + measure_coordinates(measure.rate)
     left = measure_coordinates(measure.left)
     sided = [coordinate(SLOT_CALC_LEFT, name) for name in left if name.startswith(f"{SLOT_MEASURE}:")] if measure.op in (MINUS, OVER) else []
     return left + [coordinate(SLOT_ROW_OP, measure.op)] + measure_coordinates(measure.right) + sided
@@ -678,5 +691,5 @@ def _type_of_column(column: Col, column_kind) -> str:
     return A_NUMBER if kind == "number" else A_DATE if kind in ("date", "period") else A_NAME
 
 
-__all__ = ["Across", "Agg", "Breakdown", "Calc", "Check", "OneOf", "Col", "Compare", "CompareColumns", "CompareLine", "Condition", "Contains", "DateOf", "Equals", "InPeriod", "InYears", "InSection", "IsBlank", "IsNumber", "Measure", "NotEquals", "OnLine", "PeriodSpan", "Program", "Rank", "RowArithmetic", "SECTION", "Show", "Size",
+__all__ = ["Across", "Agg", "Breakdown", "Calc", "Check", "OneOf", "Col", "Compare", "CompareColumns", "CompareLine", "Condition", "Contains", "DateOf", "Equals", "InPeriod", "InYears", "InSection", "IsBlank", "IsNumber", "Measure", "NotEquals", "OnLine", "PercentOf", "PeriodSpan", "Program", "Rank", "RowArithmetic", "SECTION", "Show", "Size",
            "TOGETHER", "addresses_printed", "answer_type_of", "coordinates", "shown_together", "conditions_of", "form_of", "measure_columns", "tables_of", "peers_name"]

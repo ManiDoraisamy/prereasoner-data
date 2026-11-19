@@ -78,6 +78,8 @@ MINUS = "-"
 TIMES = "*"
 OVER = "/"
 ROW_OPS = (PLUS, MINUS, TIMES, OVER)
+PERCENT_OP = "%"   # a rate's percent of a measure (PercentOf): a row operator apart from ROW_OPS, so the trained readers' operator
+                   # classes stay ROW_OPS and only a reading that scores it offers a percent
 GRAIN_MONTH = "year_month"     # a breakdown's date key grouped by its year-month (sql_ast.DatePart's part of that name)
 CALC_OPS = (MINUS, PLUS, OVER)
 

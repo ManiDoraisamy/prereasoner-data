@@ -13,8 +13,8 @@ from functools import cached_property
 import numpy as np
 
 from engine.program.catalog import CatalogTable
-from engine.program.language import Col, Compare, CompareLine, Condition, Contains, Equals, InPeriod, InYears, InSection, IsBlank, IsNumber, OnLine, OneOf, condition_coordinates
-from engine.program.names import ENDS, EQ, GE, GT, LE, LT, NE, STARTS
+from engine.program.language import Col, Compare, CompareLine, Condition, Contains, Equals, InPeriod, InYears, InSection, IsBlank, IsNumber, OnLine, OneOf, PercentOf, RowArithmetic, Size, condition_coordinates
+from engine.program.names import ENDS, EQ, GE, GT, LE, LT, MINUS, NE, PLUS, STARTS
 from engine.program.semantics import CURRENCY_CODES, fold
 from engine.sheet.values import parse_number
 from engine.sheet.names import AXIS_FLAG, AXIS_TOTALLED, F_DATE, PEER, ROW_TOTAL, V_NUMBER
@@ -162,11 +162,37 @@ class TableIndex:
                 return position
         return None
 
+    @cached_property
+    def rate_columns(self) -> frozenset[int]:
+        """Number columns that can be read as a percent rate: every filled figure within 0 to 100, at least one above 0
+        and at least one not a whole number or at most 30, so a column of years or large counts is no rate. The rate's
+        meaning is the reading's to choose: the decoder offers a measure times it as it is and as a percent."""
+        out = set()
+        for position in self.number_columns:
+            figures = [number for number in self.table.numbers[position] if number is not None]
+            if (figures and all(0 <= number <= 100 for number in figures) and any(number > 0 for number in figures)
+                    and any(not float(number).is_integer() or number <= 30 for number in figures)):
+                out.add(position)
+        return frozenset(out)
+
     def states_currency(self, position: int) -> bool:
         """A column whose unit is an ISO 4217 code (a header such as "Amount (USD)"; an amount a knowledgebase rate converts
         to one currency) holds that currency on every line: a figure over it adds no currencies together, whatever the
         currency each line names."""
         return fold(self.table.columns[position].unit or "") in CURRENCY_CODES
+
+    def stated_currency(self, measure) -> str | None:
+        """The one currency a measure's figures are in, when its columns state it (states_currency): a column's own; a
+        share of an amount (PercentOf) or its size is in the amount's; a sum or difference of two figures in one
+        currency stays in it. None otherwise, a product or a ratio included."""
+        if isinstance(measure, Col):
+            return fold(self.table.columns[measure.position].unit) if self.states_currency(measure.position) else None
+        if isinstance(measure, (PercentOf, Size)):
+            return self.stated_currency(measure.measure)
+        if isinstance(measure, RowArithmetic) and measure.op in (PLUS, MINUS):
+            left = self.stated_currency(measure.left)
+            return left if left is not None and left == self.stated_currency(measure.right) else None
+        return None
 
     @cached_property
     def text_columns(self) -> tuple[int, ...]:

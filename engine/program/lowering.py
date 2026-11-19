@@ -9,8 +9,8 @@ from dataclasses import replace
 
 from engine.deterministic import AnalysisPlan, lower_calculation, lower_select_query
 from engine.program.catalog import Catalog
-from engine.program.language import (Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Condition, Contains, DateOf, Equals, InPeriod, InYears, InSection, IsBlank, IsNumber, Measure, NotEquals, OnLine, Program, Rank, RowArithmetic, SECTION, Show, Size, addresses_printed)
-from engine.program.names import AFTER, ANY, IS, SAME, ANYWHERE, AVG, COUNT, COUNT_DISTINCT, ENDS, ENTITY_GROUP, ENTITY_LINE, EQ, EVERY, GE, GT, HIGHEST, LE, LT, MAX, MIN, MINUS, NE, NO, OVER, PLUS, STARTS, SUM
+from engine.program.language import (Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Condition, Contains, DateOf, Equals, InPeriod, InYears, InSection, IsBlank, IsNumber, Measure, NotEquals, OnLine, PercentOf, Program, Rank, RowArithmetic, SECTION, Show, Size, addresses_printed)
+from engine.program.names import AFTER, ANY, IS, SAME, ANYWHERE, AVG, COUNT, COUNT_DISTINCT, ENDS, ENTITY_GROUP, ENTITY_LINE, EQ, EVERY, GE, GT, HIGHEST, LE, LT, MAX, MIN, MINUS, NE, NO, OVER, PLUS, STARTS, SUM, TIMES
 from engine.program.semantics import fold as fold_text
 from engine.program.store import (LABEL, LABEL_LENGTH, LINE, ONE_ROW, PEER_FOLD, PEER_NAME, PEER_NUMBER, ROLE, SECTION_FOLD, SECTION_PATH, SECTION_TEXT, day_column, fold_column, number_column, peers_table, text_column)
 from engine.sheet.names import RECORD
@@ -108,6 +108,8 @@ def _measure(measure: Measure):
         return _day(measure.column)
     if isinstance(measure, Size):
         return Abs(_measure(measure.measure))
+    if isinstance(measure, PercentOf):
+        return BinaryExpr(BinaryExpr(_measure(measure.measure), TIMES, _number(measure.rate)), OVER, Literal(100.0))
     if isinstance(measure, Across):
         total = BlankAsZero(_number(measure.columns[0]))
         for column in measure.columns[1:]:
@@ -128,6 +130,8 @@ def _present(measure: Measure):
         return _is_null(_day(measure.column), negated=True)
     if isinstance(measure, Size):
         return _present(measure.measure)
+    if isinstance(measure, PercentOf):
+        return BooleanExpr("AND", (_present(measure.measure), _is_null(_number(measure.rate), negated=True)))
     if isinstance(measure, Across):
         return BooleanExpr("OR", tuple(_is_null(_number(column), negated=True) for column in measure.columns))
     left, right = _present(measure.left), _present(measure.right)
@@ -181,7 +185,7 @@ def _agg_query(program: Agg, catalog: Catalog) -> SelectQuery:
         value = Aggregate("COUNT", _fold(program.measure), distinct=True)
     else:
         value = Aggregate(_FUNCTIONS[program.function], _measure(program.measure))
-        if isinstance(program.measure, (RowArithmetic, Size, Across)):
+        if isinstance(program.measure, (RowArithmetic, PercentOf, Size, Across)):
             guard = _present(program.measure)
     if program.magnitude:
         value = Abs(value)

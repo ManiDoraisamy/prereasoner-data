@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 from engine.program.catalog import Catalog, CatalogTable, KIND_FAMILY
 from engine.program.index import index_of
-from engine.program.language import (Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Condition, Contains, DateOf, Equals, InPeriod, InYears, InSection, IsBlank, IsNumber, Measure, NotEquals, Program, Rank, RowArithmetic, SECTION, Show, Size, addresses_printed, answer_type_of, measure_columns)
+from engine.program.language import (Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Condition, Contains, DateOf, Equals, InPeriod, InYears, InSection, IsBlank, IsNumber, Measure, NotEquals, PercentOf, Program, Rank, RowArithmetic, SECTION, Show, Size, addresses_printed, answer_type_of, measure_columns)
 from engine.program.names import (A_PERCENT, AFTER, ANY, SAME, ANYWHERE, EQ, EVERY, IS, NO, AVG, COUNT, COUNT_DISTINCT, ENDS, ENTITY_GROUP, ENTITY_LINE, GE, GT, HIGHEST, LE, LT, MAX, MIN, MINUS, NE, OVER, PLUS, STARTS, SUM, TIMES)
 from engine.program.scoring import ScoredProgram
 from engine.program.semantics import fold, number_text, share_forms
@@ -97,6 +97,8 @@ def _measure_words(catalog: Catalog, measure: Measure) -> str:
         return _name(catalog, measure.column)
     if isinstance(measure, Size):
         return f"the size of {_measure_words(catalog, measure.measure)}"
+    if isinstance(measure, PercentOf):
+        return f"{_name(catalog, measure.rate)} % of {_measure_words(catalog, measure.measure)}"
     if isinstance(measure, Across):
         names = [_name(catalog, column) for column in measure.columns]
         return f"{names[0]} to {names[-1]} added across" if len(names) > 3 else " plus ".join(names)
@@ -197,7 +199,7 @@ def _units_added(program: Agg, table: CatalogTable, catalog: Catalog) -> str:
     unit = index.currency_column
     if unit is None or program.function not in _SHEET_FUNCTION:
         return ""
-    if isinstance(program.measure, Col) and index.states_currency(program.measure.position):
+    if program.measure is not None and index.stated_currency(program.measure) is not None:
         return ""
     if any(isinstance(condition, (Equals, OneOf)) and condition.column.position == unit for condition in program.where):
         return ""
@@ -266,7 +268,7 @@ def cells_used(program: Program, tables: RequestTables, rows: tuple[tuple, ...])
                 for column in program.shown:
                     add(line, column.position)
     elif isinstance(program, (Agg, Breakdown)):
-        columns = measure_columns(program.measure) if isinstance(program.measure, (Col, RowArithmetic, Size, DateOf, Across)) else ()
+        columns = measure_columns(program.measure) if isinstance(program.measure, (Col, RowArithmetic, PercentOf, Size, DateOf, Across)) else ()
         if isinstance(program, Breakdown):      # a line with a blank key or unit is in no group
             folds = [table.days[column.position] if getattr(program, "grain", None) is not None and at == 0 else table.section_folds if column.position == SECTION else table.folds[column.position] for at, column in enumerate(program.groups)]
             kept = [i for i in kept if all(held[i] is not None for held in folds)]
@@ -325,6 +327,9 @@ def _line_value(measure: Measure, table: CatalogTable, i: int):
     if isinstance(measure, Size):
         inner = _line_value(measure.measure, table, i)
         return None if inner is None else abs(inner)
+    if isinstance(measure, PercentOf):
+        inner, rate = _line_value(measure.measure, table, i), table.numbers[measure.rate.position][i]
+        return None if inner is None or rate is None else inner * rate / 100.0
     if isinstance(measure, Across):
         held = [table.numbers[column.position][i] for column in measure.columns]
         return None if all(value is None for value in held) else sum(value or 0.0 for value in held)
@@ -507,7 +512,7 @@ def _agg_formula(program: Agg, table: CatalogTable, tables: RequestTables) -> st
     if isinstance(program.measure, Col) and plain:
         target = _range(table, program.measure.position)
         body = f"{_IFS[function]}({target},{','.join(criteria)})" if criteria else f"{_SHEET_FUNCTION[function]}({target})"
-    elif isinstance(program.measure, (RowArithmetic, Size, Across)):
+    elif isinstance(program.measure, (RowArithmetic, PercentOf, Size, Across)):
         body = _arithmetic_formula(program, table, tables)
     else:
         cells = compress(cells_used(program, tables, ()))
@@ -533,6 +538,9 @@ def _line_term(measure: Measure, table: CatalogTable, i: int) -> str | None:
     if isinstance(measure, Size):
         inner = _line_term(measure.measure, table, i)
         return None if inner is None else f"ABS({inner})"
+    if isinstance(measure, PercentOf):
+        inner, rate = _line_term(measure.measure, table, i), _line_term(measure.rate, table, i)
+        return None if inner is None or rate is None else f"({inner}*{rate}/100)"
     if isinstance(measure, DateOf):
         return _line_term(measure.column, table, i)
     if isinstance(measure, Across):
@@ -544,6 +552,19 @@ def _line_term(measure: Measure, table: CatalogTable, i: int) -> str | None:
             return None
         return f"({left or 0}{measure.op}{right or 0})"
     return None if left is None or right is None else f"({left}{measure.op}{right})"
+
+
+def _range_terms(measure: Measure, table: CatalogTable) -> str:
+    """Row arithmetic over whole columns, for a rank's MATCH: the measure's columns as ranges under its operators."""
+    if isinstance(measure, (Col, DateOf)):
+        return _range(table, measure_columns(measure)[0].position)
+    if isinstance(measure, Size):
+        return f"ABS({_range_terms(measure.measure, table)})"
+    if isinstance(measure, Across):
+        return "(" + "+".join(_range(table, column.position) for column in measure.columns) + ")"
+    if isinstance(measure, PercentOf):
+        return f"({_range_terms(measure.measure, table)}*{_range(table, measure.rate.position)}/100)"
+    return f"({_range_terms(measure.left, table)}{measure.op}{_range_terms(measure.right, table)})"
 
 
 def _rank_formula(program: Rank, table: CatalogTable, tables: RequestTables) -> str:
@@ -562,8 +583,11 @@ def _rank_formula(program: Rank, table: CatalogTable, tables: RequestTables) -> 
         if isinstance(program.measure, Across):
             added = "+".join(_range(table, column.position) for column in program.measure.columns)
             return f"=INDEX({shown},MATCH({way}({added}),{added},0))"
-        a, b = (_range(table, column.position) for column in measure_columns(program.measure)[:2])
-        return f"=INDEX({shown},MATCH({way}({a}{program.measure.op}{b}),{a}{program.measure.op}{b},0))"
+        if isinstance(program.measure, RowArithmetic) and isinstance(program.measure.left, Col) and isinstance(program.measure.right, Col):
+            a, b = (_range(table, column.position) for column in measure_columns(program.measure)[:2])
+            return f"=INDEX({shown},MATCH({way}({a}{program.measure.op}{b}),{a}{program.measure.op}{b},0))"
+        ranged = _range_terms(program.measure, table)
+        return f"=INDEX({shown},MATCH({way}({ranged}),{ranged},0))"
     if program.entity == ENTITY_GROUP:
         key = _range(table, program.key.position) if program.key.position != SECTION else "Section"
         criteria = _criteria(tables.catalog, program.where) or []
