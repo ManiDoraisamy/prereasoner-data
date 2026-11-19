@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 from engine.program.execute import Result, run
 from engine.program.index import index_of
-from engine.program.language import Agg, Breakdown, Calc, Check, Col, Contains, Equals, InPeriod, InSection, OnLine, Program, Rank, Show, addresses_printed, answer_type_of, conditions_of, measure_columns
+from engine.program.language import Agg, Breakdown, Calc, Check, Col, Contains, Equals, InPeriod, InYears, InSection, OnLine, Program, Rank, Show, addresses_printed, answer_type_of, conditions_of, measure_columns
 from engine.program.names import (A_CODE, A_COUNT, A_DATE, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, COUNT, COUNT_DISTINCT, ENTITY_LINE, EV_ADDS_TWICE, EV_BARE_ZERO, EV_EMPTY, EV_FAILED, EV_FILTER_DID_NOTHING, EV_FRACTION_FOR_COUNT, EV_MANY_ROWS, EV_PRINTED_TIE, EV_RAN, EV_REPEATED_LINES, EV_ROW_COUNT_FOR_AMOUNT, EV_ROW_DUMP, EV_SHAPE_AGREES,
                                   EV_TOO_LARGE_FOR_SHARE, EV_TYPE_AGREES, EV_WRONG_KIND, SUM, coarse_type)
 from engine.program.scoring import ScoredProgram
@@ -210,7 +210,7 @@ def adds_across_members(program: Program, catalog) -> bool:
     if isinstance(program, Rank) and program.entity == ENTITY_LINE:
         return False
     member = Col(table.id, 0)
-    return not any(isinstance(condition, (Equals, Contains, InPeriod)) and condition.column == member for condition in program.where)
+    return not any(isinstance(condition, (Equals, Contains, InPeriod, InYears)) and condition.column == member for condition in program.where)
 
 
 # How many lines a question's candidates may read in all. The first MIN_RUN always run. A hard, deterministic stop: time depends on the machine and so may not decide what runs.

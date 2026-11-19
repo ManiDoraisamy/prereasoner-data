@@ -8,7 +8,7 @@ from __future__ import annotations
 import hashlib
 from functools import cached_property
 
-from engine.program.language import (Col, Compare, CompareColumns, CompareLine, Condition, Contains, Equals, InPeriod, InSection, IsBlank, IsNumber, NotEquals, OnLine, OneOf, SECTION)
+from engine.program.language import (Col, Compare, CompareColumns, CompareLine, Condition, Contains, Equals, InPeriod, InYears, InSection, IsBlank, IsNumber, NotEquals, OnLine, OneOf, SECTION)
 from engine.program.names import ANYWHERE, ENDS, EQ, GE, GT, LE, LT, NE, STARTS
 from engine.program.semantics import cell_day, cell_fold, cell_number, cell_text, duration_numbers, fold, is_filled
 from engine.sheet.model import Cell, Column, Context, Line, SheetModel, Table
@@ -171,6 +171,9 @@ class CatalogTable:
             if span.start is None:
                 return int(day[5:7]) == span.month
             return span.start <= day <= (span.end or span.start)
+        if isinstance(condition, InYears):
+            number = self.numbers[condition.column.position][i]
+            return number is not None and condition.first <= number <= condition.last
         if isinstance(condition, Compare):
             number = self.numbers[condition.column.position][i]
             return number is not None and _compared(number, condition.op, condition.number)

@@ -13,7 +13,7 @@ from functools import cached_property
 import numpy as np
 
 from engine.program.catalog import CatalogTable
-from engine.program.language import Col, Compare, CompareLine, Condition, Contains, Equals, InPeriod, InSection, IsBlank, IsNumber, OnLine, OneOf, condition_coordinates
+from engine.program.language import Col, Compare, CompareLine, Condition, Contains, Equals, InPeriod, InYears, InSection, IsBlank, IsNumber, OnLine, OneOf, condition_coordinates
 from engine.program.names import ENDS, EQ, GE, GT, LE, LT, NE, STARTS
 from engine.program.semantics import CURRENCY_CODES, fold
 from engine.sheet.values import parse_number
@@ -115,6 +115,19 @@ class TableIndex:
     @cached_property
     def number_columns(self) -> tuple[int, ...]:
         return tuple(position for position, numbers in enumerate(self.table.numbers) if any(number is not None for number in numbers))
+
+    @cached_property
+    def year_columns(self) -> tuple[int, ...]:
+        """Number columns of plain year numbers: at least two figures, every one a whole number 1000 to 2999. They hold
+        no day a period could test, so a period of whole years tests their numbers (InYears)."""
+        out = []
+        for position in self.number_columns:
+            if position in self.date_columns:
+                continue
+            figures = [number for number in self.table.numbers[position] if number is not None]
+            if len(figures) >= 2 and all(float(number).is_integer() and 1000 <= number <= 2999 for number in figures):
+                out.append(position)
+        return tuple(out)
 
     @cached_property
     def few_numbers(self) -> dict[int, list[float]]:
@@ -268,6 +281,9 @@ class TableIndex:
             return bitmask([line for value in condition.values for line in lines.get(fold(value), [])], size)
         if isinstance(condition, Compare):
             return _as_mask(COMPARE_ARRAYS[condition.op](self.number_arrays[condition.column.position], condition.number) & ~np.isnan(self.number_arrays[condition.column.position]))
+        if isinstance(condition, InYears):
+            years = self.number_arrays[condition.column.position]
+            return _as_mask((years >= condition.first) & (years <= condition.last) & ~np.isnan(years))
         if isinstance(condition, IsNumber):
             return _as_mask(~np.isnan(self.number_arrays[condition.column.position]))
         if isinstance(condition, CompareLine):

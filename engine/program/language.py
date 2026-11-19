@@ -180,6 +180,26 @@ class InPeriod:
 
 
 @dataclass(frozen=True, slots=True)
+class InYears:
+    """A number cell holding a year falls in a period of whole years ("between 2015 and 2020" over a column of plain year
+    numbers, which holds no day a period could test): both end years kept; text and blanks never pass."""
+    column: Col
+    span: PeriodSpan
+
+    def __post_init__(self):
+        if self.span.start is None or self.span.start[5:] != "01-01" or (self.span.end or self.span.start)[5:] != "12-31":
+            raise ValueError("a period of whole years")
+
+    @property
+    def first(self) -> int:
+        return int(self.span.start[:4])
+
+    @property
+    def last(self) -> int:
+        return int((self.span.end or self.span.start)[:4])
+
+
+@dataclass(frozen=True, slots=True)
 class Compare:
     """A number cell compares with a number the question states; text and blanks never pass."""
     column: Col
@@ -250,7 +270,7 @@ class OnLine:
     role: str | None = None
 
 
-Condition: TypeAlias = Equals | OneOf | NotEquals | Contains | InPeriod | Compare | CompareColumns | CompareLine | IsBlank | IsNumber | InSection | OnLine
+Condition: TypeAlias = Equals | OneOf | NotEquals | Contains | InPeriod | InYears | Compare | CompareColumns | CompareLine | IsBlank | IsNumber | InSection | OnLine
 
 
 def addresses_printed(where: tuple[Condition, ...]) -> bool:
@@ -269,7 +289,7 @@ def condition_coordinates(condition: Condition) -> tuple[str, ...]:
         if condition.anchor != ANYWHERE:
             return (coordinate(SLOT_FILTER, condition.column.name), coordinate(SLOT_CONTAINS, condition.column.name, fold(condition.text), condition.anchor))
         return (coordinate(SLOT_FILTER, condition.column.name), coordinate(SLOT_CONTAINS, condition.column.name, fold(condition.text)))
-    if isinstance(condition, InPeriod):
+    if isinstance(condition, (InPeriod, InYears)):
         return (coordinate(SLOT_FILTER, condition.column.name), coordinate(SLOT_PERIOD, condition.span.name))
     if isinstance(condition, Compare):
         return (coordinate(SLOT_FILTER, condition.column.name), coordinate(SLOT_COMPARISON, condition.op), coordinate(SLOT_NUMBER, number_text(condition.number)))
@@ -658,5 +678,5 @@ def _type_of_column(column: Col, column_kind) -> str:
     return A_NUMBER if kind == "number" else A_DATE if kind in ("date", "period") else A_NAME
 
 
-__all__ = ["Across", "Agg", "Breakdown", "Calc", "Check", "OneOf", "Col", "Compare", "CompareColumns", "CompareLine", "Condition", "Contains", "DateOf", "Equals", "InPeriod", "InSection", "IsBlank", "IsNumber", "Measure", "NotEquals", "OnLine", "PeriodSpan", "Program", "Rank", "RowArithmetic", "SECTION", "Show", "Size",
+__all__ = ["Across", "Agg", "Breakdown", "Calc", "Check", "OneOf", "Col", "Compare", "CompareColumns", "CompareLine", "Condition", "Contains", "DateOf", "Equals", "InPeriod", "InYears", "InSection", "IsBlank", "IsNumber", "Measure", "NotEquals", "OnLine", "PeriodSpan", "Program", "Rank", "RowArithmetic", "SECTION", "Show", "Size",
            "TOGETHER", "addresses_printed", "answer_type_of", "coordinates", "shown_together", "conditions_of", "form_of", "measure_columns", "tables_of", "peers_name"]

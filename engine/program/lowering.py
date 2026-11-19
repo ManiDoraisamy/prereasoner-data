@@ -9,7 +9,7 @@ from dataclasses import replace
 
 from engine.deterministic import AnalysisPlan, lower_calculation, lower_select_query
 from engine.program.catalog import Catalog
-from engine.program.language import (Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Condition, Contains, DateOf, Equals, InPeriod, InSection, IsBlank, IsNumber, Measure, NotEquals, OnLine, Program, Rank, RowArithmetic, SECTION, Show, Size, addresses_printed)
+from engine.program.language import (Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Condition, Contains, DateOf, Equals, InPeriod, InYears, InSection, IsBlank, IsNumber, Measure, NotEquals, OnLine, Program, Rank, RowArithmetic, SECTION, Show, Size, addresses_printed)
 from engine.program.names import AFTER, ANY, IS, SAME, ANYWHERE, AVG, COUNT, COUNT_DISTINCT, ENDS, ENTITY_GROUP, ENTITY_LINE, EQ, EVERY, GE, GT, HIGHEST, LE, LT, MAX, MIN, MINUS, NE, NO, OVER, PLUS, STARTS, SUM
 from engine.program.semantics import fold as fold_text
 from engine.program.store import (LABEL, LABEL_LENGTH, LINE, ONE_ROW, PEER_FOLD, PEER_NAME, PEER_NUMBER, ROLE, SECTION_FOLD, SECTION_PATH, SECTION_TEXT, day_column, fold_column, number_column, peers_table, text_column)
@@ -63,6 +63,9 @@ def _condition(condition: Condition):
         if span.start is None:
             return Comparison(DatePart("month", day), "=", Literal(span.month))
         return BooleanExpr("AND", (Comparison(day, ">=", Literal(span.start, SQLType.DATE)), Comparison(day, "<=", Literal(span.end or span.start, SQLType.DATE))))
+    if isinstance(condition, InYears):
+        year = _number(condition.column)
+        return BooleanExpr("AND", (Comparison(year, ">=", Literal(float(condition.first))), Comparison(year, "<=", Literal(float(condition.last)))))
     if isinstance(condition, Compare):
         return Comparison(_number(condition.column), "!=" if condition.op == NE else condition.op, Literal(float(condition.number)))
     if isinstance(condition, CompareColumns):
