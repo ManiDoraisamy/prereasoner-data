@@ -9,8 +9,8 @@ measured), on the request tables of its workbook, each table's grid the tab its 
 is replaced by a replay of the measurement's own cache (cache/<hash[:2]>/<hash>.json, keyed by engine.llm.decision_hash):
 the API is never called, no key is read, and a body the cache does not hold raises. A miss means the serving path built a
 request the measurement did not; its body is written to <out>/misses/<hash>.json for a diff. Each question is then
-compared with its set's measured outcome (REFERENCE_TAGS): the listed answers (answer hashes, in order), their grades,
-the choice probabilities and the per-answer label (summarize.decided at level "answer").
+compared with its set's measured outcome (REFERENCE_TAGS, the latest layer that measured it): the listed answers (answer
+hashes, in order), their grades, the choice probabilities and the per-answer label (summarize.decided at level "answer").
 
 The sets load exactly as the measurement's run_stock.py loaded them (its loaders, read from the experiment folders), and
 each workbook's tabs are the wire-form tabs its loader compiles (header and typed rows for messy, WikiTableQuestions and
@@ -64,10 +64,13 @@ from engine.tables import TableQuery, csv_table, normalize_tables
 ROOT = Path(__file__).resolve().parents[1]
 EXPERIMENTS = Path("C:/work/prereasoner-data/training/readers/data/experiments")
 PROBE = EXPERIMENTS / "decisions-probe-20261118"
-# Each set against its measured tag (decisions-probe-20261118 results/e2e_<tag>_stock_<set>.jsonl.gz): eor1, the kept
-# stack with the tab in view named and the said call; DataBench against pgd1, the kept stack before those two, since no
-# workbook of it has two tabs and no question of it reads a word pair (its records are pgd1's but for the said call)
-REFERENCE_TAGS = {"messy": "eor1", "freshdev": "eor1", "wtq": "eor1", "databench": "pgd1"}
+# Each set against its kept stack (decisions-probe-20261118 results/e2e_<tag>_stock_<set>.jsonl.gz), measured in layers:
+# first the whole set, eor1 (the kept stack with the tab in view named and the said call) or, on DataBench, pgd1 (the
+# kept stack before those two, since no workbook of it has two tabs and no question of it reads a word pair), then each
+# kept change's rerun of the questions it touches (gs1, af1, wm1 and DataBench's wm1b), a later measurement of a question
+# replacing an earlier one
+REFERENCE_TAGS = {"messy": ("eor1",), "freshdev": ("eor1", "gs1", "wm1"), "wtq": ("eor1", "af1", "wm1"),
+                  "databench": ("pgd1", "wm1", "wm1b")}
 SETS = ("messy", "wtq", "databench", "freshdev", "demo")
 # The demo set against demo25 (results/e2e_demo25_con_stock.jsonl.gz): the stock arm on the connected catalog (place,
 # entity, currency and key links, the kept closed questions, the tab in view named), read on the request databases
@@ -209,10 +212,14 @@ def label_of(kind: str, right: bool) -> str:
     return ("flagged_" if kind == WARNED else "") + ("right" if right else "wrong")
 
 
-def reference(name: str) -> dict:
-    target = DEMO_REFERENCE if name == "demo" else f"e2e_{REFERENCE_TAGS[name]}_stock_{name}.jsonl.gz"
-    with gzip.open(PROBE / "results" / target, "rt", encoding="utf-8") as source:
-        return {row["id"]: row for row in map(json.loads, source) if row}
+def reference(name: str, probe: Path = PROBE) -> dict:
+    """Each question's measured outcome: the last of its set's layers (REFERENCE_TAGS, in order) that measured it."""
+    targets = [DEMO_REFERENCE] if name == "demo" else [f"e2e_{tag}_stock_{name}.jsonl.gz" for tag in REFERENCE_TAGS[name]]
+    held = {}
+    for target in targets:
+        with gzip.open(probe / "results" / target, "rt", encoding="utf-8") as source:
+            held.update({row["id"]: row for row in map(json.loads, source) if row})
+    return held
 
 
 @dataclass(frozen=True)

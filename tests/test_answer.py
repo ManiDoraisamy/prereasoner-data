@@ -382,6 +382,30 @@ def test_digit_dates_ask_the_order_only_when_the_column_never_shows_it() -> None
     assert _with_transport(transport, lambda: typed_dates(catalog)) == {"1999/07/01": "1999-07-01", "2001/12/25": "2001-12-25", "2003/01/09": "2003-01-09"}
 
 
+def test_the_dev_replay_holds_each_question_to_its_latest_kept_measurement() -> None:
+    """A kept change was measured by rerunning only the questions it touches, so a question's reference is the last
+    layer that measured it; the base run's outcome of a remeasured question is no longer the stack's."""
+    import gzip
+    import tempfile
+    from pathlib import Path
+    from regress.run_dev_decisions import REFERENCE_TAGS, reference
+    base, *layers = REFERENCE_TAGS["databench"]
+    assert layers, "DataBench's kept changes were remeasured in layers"
+    with tempfile.TemporaryDirectory() as folder:
+        results = Path(folder) / "results"
+        results.mkdir()
+        def measured(tag, rows):
+            with gzip.open(results / f"e2e_{tag}_stock_databench.jsonl.gz", "wt", encoding="utf-8") as sink:
+                sink.write("".join(json.dumps(row) + "\n" for row in rows))
+        measured(base, [{"id": "a", "tag": base}, {"id": "b", "tag": base}, {"id": "c", "tag": base}])
+        for at, tag in enumerate(layers):
+            measured(tag, [{"id": "b", "tag": tag}] + ([{"id": "c", "tag": tag}] if at == 0 else []))
+        held = reference("databench", Path(folder))
+    assert held["a"]["tag"] == base, "a question no kept change touched keeps the base measurement"
+    assert held["b"]["tag"] == layers[-1], "the latest layer wins"
+    assert held["c"]["tag"] == layers[0], "a layer holds until a later one remeasures the question"
+
+
 TESTS = [
     test_a_candidates_probability_is_summed_over_the_same_answer, test_ties_go_to_the_earlier_listing, test_thresholds_ask_warn_and_answer,
     test_none_likelier_than_the_best_answer_asks, test_nothing_listed_asks, test_answer_key_tells_rows_apart,
@@ -392,6 +416,7 @@ TESTS = [
     test_the_request_body_is_sorted_and_hashable, test_answer_reads_decodes_and_chooses_through_its_calls, test_said_spans_are_the_questions_own_words,
     test_said_words_join_the_reading_only_above_none, test_an_either_or_is_answered_in_the_questions_words, test_a_failed_call_reaches_the_caller,
     test_text_dates_are_typed_when_the_workbook_loads, test_digit_dates_ask_the_order_only_when_the_column_never_shows_it,
+    test_the_dev_replay_holds_each_question_to_its_latest_kept_measurement,
 ]
 
 if __name__ == "__main__":
