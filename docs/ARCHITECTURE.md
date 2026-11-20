@@ -410,8 +410,11 @@ reach (step 3) is a column of that table, so a question over a place's country, 
 another currency reads one table. Two tables no single-column key with unique values links are not joined, nor is a
 Spider schema read through its foreign keys (the Spider evaluator registers no linker). A request answers on one
 connected workbook: a decomposition whose leaves want different currencies cannot share its database. A decomposition's leaves are programs over one workbook; an
-anti-join binds the leaves' keys by the store column each reads (`_bind_merge_keys`), so leaves over different tabs
-bind only through a foreign key, which store tables do not have.
+anti-join binds the leaves' keys by the column each reads holds (`_bind_merge_keys` with `store.column_lineage`): a key
+the request's links find, and each column a key reaches, hold the values of the column at the end of their chain
+(`Catalog.identities`), so leaves over different tabs bind where the request's keys connect them. A fused answer's
+folded key shows the sheet's spelling (`decomposition.shown_output`). A leaf that lists several columns of each record
+("customer name and product name for each purchase") has no program yet: a listing shows one column.
 
 The Spider evaluator (`spider/probe/full_eval.py`) and the dev replay (`regress/run_dev_decisions.py`) call the same
 `select_query`. The Spider evaluator can partition its questions by input position and merge only exhaustive,
