@@ -578,28 +578,31 @@ LOANS = [["Name", "Region", "Loan", "Months", "Score"], ["a", "x", 100.0, 12.0, 
 
 
 def test_an_answer_prints_the_cell_as_the_sheet_wrote_it():
-    """DataBench dev 050_ING/12 and /14: an author is written "DrJaus  ..." with a no-break space, the stored text
+    """DataBench dev 050_ING/12 and /14: an author is written "DrJaus \u00a0..." with a no-break space, the stored text
     cleaned it to a plain space, and the printed answer was no longer the cell's own text, so an exact comparison failed.
-    An answer prints the cell exactly as written (a line's shown cell, a listing, a group's key, a breakdown's group),
-    the same in the typed SQL and the dual emitter; matching and the read-as keep the cleaned text, so a question still
-    finds the cell however it is spaced."""
-    nbsp = " "
+    An answer prints each cell on one line: a line break inside it and a run of plain spaces are the sheet's layout and
+    print as one space (WikiTableQuestions nt-13343, "Paul Jones" written over two lines, printed its line break while it
+    was kept); every other character prints as the sheet wrote it, the no-break space included. The same for a line's
+    shown cell, a listing, a group's key and a breakdown's group, in the typed SQL and the dual emitter; matching and the
+    read-as keep the cleaned text, so a question still finds the cell however it is spaced."""
+    nbsp = "\u00a0"
     rows = [["Author", "Team", "Likes", "Joined"], ["DrJaus " + nbsp + "X", "a  b", 9.0, "2020-01-05"], ["Ann Lee", "a b", 3.0, "2020-02-01"],
-            ["Bo", "c", 5.0, "2020-03-01"], ["Cy", "c", 1.0, "2020-04-01"]]
+            ["Paul Jones\n(Paul Frederick)", "c\td", 5.0, "2020-03-01"], ["Cy", "c d", 1.0, "2020-04-01"]]
     catalog, table, tables = _setup(rows)
     author, team, likes, joined = (Col(table.id, at) for at in range(4))
     assert _answer(Rank(ENTITY_LINE, table.id, HIGHEST, (), likes, (author,)), tables) == (("DrJaus " + nbsp + "X", 9.0),)
     assert _answer(Show(table.id, (author,), (Equals(author, "drjaus x"),)), tables) == (("DrJaus " + nbsp + "X",),)     # found by its fold
     assert _answer(Show(table.id, (author,), (), listing=True), tables)[0] == ("DrJaus " + nbsp + "X",)
-    assert _answer(Rank(ENTITY_GROUP, table.id, HIGHEST, (), likes, key=team, function=SUM), tables) == (("a  b", 12.0),)     # "a  b" and "a b" are one group
-    assert _answer(Breakdown(SUM, likes, table.id, (team,)), tables)[0] == ("a  b", 12.0)
+    assert _answer(Show(table.id, (author,), (Equals(author, "paul jones (paul frederick)"),)), tables) == (("Paul Jones (Paul Frederick)",),)   # one line
+    assert _answer(Rank(ENTITY_GROUP, table.id, HIGHEST, (), likes, key=team, function=SUM), tables) == (("a b", 12.0),)     # "a  b" and "a b": one group, one space
+    assert _answer(Breakdown(SUM, likes, table.id, (team,)), tables)[1] == ("c d", 6.0)     # a tab is layout too
     assert read_as(Show(table.id, (author,), (Equals(author, "drjaus x"),)), catalog) == 'Author on "Sheet1" where Author is "DrJaus X"'
     # contrastive: a cell written plainly prints as before, and a date prints its day, not its text
     assert _answer(Rank(ENTITY_LINE, table.id, LOWEST, (), likes, (author, joined)), tables) == (("Cy", "2020-04-01", 1.0),)
     # negative: only spacing sets the written text apart; any other difference prints the cleaned reading
     from engine.program.semantics import cell_written
     from engine.sheet.model import Cell
-    assert cell_written(Cell(1, 1, "x" + nbsp + " y", "text", "x y")) == "x" + nbsp + " y"
+    assert cell_written(Cell(1, 1, "x" + nbsp + "  y\n", "text", "x y")) == "x" + nbsp + " y"
     assert cell_written(Cell(1, 1, "1,234", "number", 1234.0)) == "1234" and cell_written(None) is None
 
 

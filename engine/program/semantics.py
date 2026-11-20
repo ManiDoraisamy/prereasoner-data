@@ -117,15 +117,22 @@ def cell_text(cell: Cell | None) -> str | None:
     return text or None
 
 
+LAYOUT = " \t\r\n\x0b\x0c\u2028\u2029"      # the sheet's layout inside a cell: plain spaces, tabs and line breaks
+_LAYOUT_RUN = re.compile(f"[{LAYOUT}]+")
+
+
 def cell_written(cell: Cell | None) -> str | None:
-    """A cell as an answer prints it: the text exactly as the sheet wrote it, its own spaces kept (a no-break space,
-    a line break, a space at its end), where only spacing sets it apart from cell_text; anything else as cell_text
-    gives it. Matching and lookups read cell_text and its fold, so a question still finds the cell however it is spaced."""
+    """A cell as an answer prints it, one line per cell: a line break inside the cell and a run of plain spaces are
+    the sheet's layout and print as one space (none at either end); every other character prints as the sheet wrote
+    it, a no-break space included. Where more than spacing sets the cell apart from cell_text, cell_text. Matching and
+    lookups read cell_text and its fold, so a question still finds the cell however it is spaced."""
     text = cell_text(cell)
     raw = None if cell is None else cell.raw
     if text is None or not isinstance(raw, str) or raw == text:
         return text
-    return raw if " ".join(raw.split()) == text else text
+    if " ".join(raw.split()) != text:
+        return text
+    return _LAYOUT_RUN.sub(" ", raw).strip(LAYOUT)
 
 
 def cell_fold(cell: Cell | None) -> str | None:
