@@ -10,7 +10,7 @@ from engine.program.catalog import Catalog
 from engine.program.decoder import Decoder, POLICY, _Checks, _Conditions, _Option
 from engine.program.execute import run, run_dual
 from engine.program.index import Atom, TableIndex
-from engine.program.language import (Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Contains, DateOf, Equals, InPeriod, InSection, InYears, IsBlank, IsNumber, NotEquals, OnLine, PercentOf, PeriodSpan, Rank, RowArithmetic, SECTION, Show, Size, Words, answer_type_of, coordinates, form_of, tables_of, is_sound, period_from_name, shown_together)
+from engine.program.language import (Absent, Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Contains, DateOf, Equals, InPeriod, InSection, InYears, IsBlank, IsNumber, NotEquals, OnLine, PercentOf, PeriodSpan, Rank, RowArithmetic, SECTION, Show, Size, Words, answer_type_of, coordinates, form_of, tables_of, is_sound, period_from_name, shown_together)
 from engine.program.lowering import plan_schema, to_query
 from engine.program.names import (A_COUNT, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, AFTER, ANY, BEFORE, BREAKDOWN, SAME, CHECK, EQ, EVERY, IS, LT, NE, NO, VERSUS, ANSWER_TYPES, AVG, CALC, COMPARISONS, COUNT, COUNT_DISTINCT, ENDS, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, EV_ADDS_TWICE, EV_BARE_ZERO, EV_EMPTY, EV_FAILED, EV_FILTER_DID_NOTHING, EV_FRACTION_FOR_COUNT, EV_MANY_ROWS, EV_PRINTED_TIE, EV_RAN,
                                   EV_REPEATED_LINES, EV_ROW_COUNT_FOR_AMOUNT, EV_SHAPE_AGREES, EV_TOO_LARGE_FOR_SHARE, EV_TYPE_AGREES, EV_WRONG_KIND, EVIDENCE, FORMS, GE, GT, HIGHEST, LOWEST, MAX, MIN, MINUS, OVER, PLUS, SEMANTICS, SLOT_AGGREGATE, SLOT_FORM, SLOTS, STARTS, SUM, TIMES, coarse_type, coordinate, slot_of, GRAIN_MONTH)
@@ -284,6 +284,55 @@ def test_a_fused_leaf_shows_its_answer_without_the_tie_order():
     # contrastive: a rank of two lines has no tie column, and its plan is returned as it is
     two = to_plan(Rank(ENTITY_LINE, table.id, LOWEST, (), speed, (name,), count=2), catalog, "leaf", whole_tables=True)
     assert shown_plan(two) is two
+
+
+def test_a_listing_of_values_no_line_holds():
+    """complex-unsold-products: "List the product names that no customer from Paris has bought" was answered unwarned as
+    the different product_name on "purchases" where city is other than "Paris" (Gamma, Delta; the CSVs give Delta and
+    Omega): the language had no absence. A listing keeps only the lines whose key no line holding some conditions
+    holds: on another table, by the column the request's links connect to the key (Catalog.identities), or on its own
+    table, the key itself; NOT IN over the held keys in the typed SQL, an anti-join in the dual plan, both the same. The
+    decoder builds it only where the reading asks for a list: across a link (the demo prompt's reading reads no
+    quantifier), and on a table's own lines only where it also reads the quantifier "no"."""
+    products = [["product_id", "product_name", "category"], [1.0, "Alpha", "Toys"], [2.0, "Beta", "Home"], [3.0, "Gamma", "Office"], [4.0, "Delta", "Toys"], [5.0, "Omega", "Home"]]
+    purchases = [["purchase_id", "customer_name", "city", "product_name"], [1.0, "Alice", "Paris", "Alpha"], [2.0, "Alice", "Paris", "Beta"], [3.0, "Bob", "Lyon", "Gamma"],
+                 [4.0, "Cara", "Paris", "Gamma"], [5.0, "Dan", "Berlin", "Delta"], [6.0, "Eve", "paris", "Alpha"], [7.0, "Fay", "Paris", None]]
+    catalog = Catalog.from_model(compile_workbook(workbook_from_json({"name": "book", "tabs": [{"name": "products", "rows": products}, {"name": "purchases", "rows": purchases}]})))
+    tables = RequestTables(catalog)
+    p, q = catalog.tables[0].id, catalog.tables[1].id
+    name, bought, city = Col(p, 1), Col(q, 3), Col(q, 2)
+    paris = (Equals(city, "paris"),)
+    unsold = Show(p, (name,), (), listing=True, absent=Absent(name, bought, paris))
+    assert _answer(unsold, tables) == (("Delta",), ("Omega",))     # a blank product bought in Paris holds no key
+    assert _answer(Show(p, (Col(p, 2),), (), listing=True, absent=Absent(name, bought, paris)), tables) == (("Toys",), ("Home",))     # shown and key apart
+    assert read_as(unsold, catalog) == 'the different product_name on "products" whose product_name no line on "purchases" holds in product_name where city is "Paris"', read_as(unsold, catalog)
+    assert answer_type_of(unsold, catalog.column_kind) == A_LIST and cells_used(unsold, tables, ()) == ("'products'!B5", "'products'!B6")
+    # its own table: the products bought only outside Paris
+    own = Show(q, (bought,), (), listing=True, absent=Absent(bought, bought, paris))
+    assert _answer(own, tables) == (("Delta",),) and read_as(own, catalog) == 'the different product_name on "purchases" whose product_name no line holds where city is "Paris"'
+    catalog.identities[(q, 3)] = (p, 1)
+    reading = Reading({name_: 1.0 for name_ in coordinates(unsold, catalog.column_kind)})
+    assert [scored.program for scored in Decoder(catalog).decode(reading, k=50).programs][0] == unsold
+    # contrastive: read with no list, no absence is built; read with no quantifier, the linked absence is still built
+    # but no own-table one; and "other than Paris" stays what it was
+    unlisted = Reading({name_: score for name_, score in reading.scores.items() if name_ not in (coordinate("answer_type", A_LIST), coordinate("listing", "yes"))})
+    assert not any(isinstance(scored.program, Show) and scored.program.absent is not None for scored in Decoder(catalog).decode(unlisted, k=200).programs)
+    without = Reading({name_: score for name_, score in reading.scores.items() if name_ != coordinate("quantifier", NO)})
+    absences = [scored.program for scored in Decoder(catalog).decode(without, k=200).programs if isinstance(scored.program, Show) and scored.program.absent is not None]
+    assert unsold in absences and not any(program.absent.by.table == program.table for program in absences)
+    assert _answer(Show(q, (bought,), (NotEquals(city, "paris"),), listing=True), tables) == (("Gamma",), ("Delta",))
+    # negative: with no link between the tables, no absence reads one table's key in the other; an absence names
+    # conditions and keeps a listing's lines
+    catalog.identities.clear()
+    assert not any(isinstance(scored.program, Show) and scored.program.absent is not None and scored.program.absent.by.table != scored.program.table
+                   for scored in Decoder(catalog).decode(reading, k=200).programs)
+    for bad in (lambda: Absent(name, bought, ()), lambda: Show(p, (name,), (), absent=Absent(name, bought, paris))):
+        try:
+            bad()
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("an absence without conditions or outside a listing")
 
 
 def test_a_listing_of_several_columns_gives_their_distinct_combinations():
@@ -1832,7 +1881,7 @@ def test_explain_carries_the_named_contributions():
 
 
 TESTS = [
-    test_a_listing_of_several_columns_gives_their_distinct_combinations, test_tied_lines_print_in_sheet_order, test_a_fused_leaf_shows_its_answer_without_the_tie_order, test_a_rank_by_words_prints_the_word_counts, test_an_answer_prints_the_cell_as_the_sheet_wrote_it, test_a_column_of_prose_is_measured_by_its_words, test_several_shown_columns_cost_a_named_coordinate, test_a_stated_number_a_column_holds_reads_as_its_value, test_a_misspelled_word_reads_as_the_sheets_word, test_a_word_only_one_column_holds_says_which, test_several_columns_shown_type_the_same_however_they_stand, test_across_adds_peer_columns_of_a_line, test_the_decoder_reaches_across_when_a_word_asks, test_a_text_other_than, test_answer_types_place_money_quantity, test_decoder_ties_do_not_follow_sheet_order, test_a_family_adding_twice_says_so, test_a_family_of_tabs_reads_as_all_its_tabs, test_axes_are_read_by_their_kind, test_a_question_reads_the_tables_its_links_reach, test_verifier_stops_at_its_budget_of_lines, test_a_condition_search_stops_at_its_budget_of_checks, test_a_value_stands_whole_without_a_pattern_for_each_value,
+    test_a_listing_of_values_no_line_holds, test_a_listing_of_several_columns_gives_their_distinct_combinations, test_tied_lines_print_in_sheet_order, test_a_fused_leaf_shows_its_answer_without_the_tie_order, test_a_rank_by_words_prints_the_word_counts, test_an_answer_prints_the_cell_as_the_sheet_wrote_it, test_a_column_of_prose_is_measured_by_its_words, test_several_shown_columns_cost_a_named_coordinate, test_a_stated_number_a_column_holds_reads_as_its_value, test_a_misspelled_word_reads_as_the_sheets_word, test_a_word_only_one_column_holds_says_which, test_several_columns_shown_type_the_same_however_they_stand, test_across_adds_peer_columns_of_a_line, test_the_decoder_reaches_across_when_a_word_asks, test_a_text_other_than, test_answer_types_place_money_quantity, test_decoder_ties_do_not_follow_sheet_order, test_a_family_adding_twice_says_so, test_a_family_of_tabs_reads_as_all_its_tabs, test_axes_are_read_by_their_kind, test_a_question_reads_the_tables_its_links_reach, test_verifier_stops_at_its_budget_of_lines, test_a_condition_search_stops_at_its_budget_of_checks, test_a_value_stands_whole_without_a_pattern_for_each_value,
     test_every_name_is_from_a_closed_list, test_forms_refuse_what_they_cannot_say, test_signs, test_printed_lines_are_read_by_label_and_never_added, test_shortest_label_first_and_unlabelled_printed_lines, test_a_column_filled_only_on_printed_lines_reads_them,
     test_partial_value_match, test_case_and_spacing_do_not_count, test_periods, test_blanks, test_ties_keep_every_tied_line, test_units, test_mixed_columns, test_repeated_rows, test_sections_nested_bands_and_the_section_shown, test_python_masks_agree_with_the_sql,
     test_calc_shapes, test_rank_across_peer_columns, test_a_rank_keeps_as_many_as_the_question_states, test_the_decoder_proposes_how_many_a_question_states, test_a_check_says_yes_or_no, test_the_decoder_checks_only_when_the_reading_names_a_check, test_a_choice_among_named_values, test_a_check_asks_what_the_top_one_is, test_a_check_asks_whether_the_top_one_is_the_same_or_compares_two_aggregates, test_a_check_answers_in_the_questions_own_words, test_a_read_takes_the_line_after_or_before_the_kept_one, test_new_ast_nodes_render_and_validate, test_plan_schema_holds_only_what_a_query_reads, test_perfect_readings_give_the_gold_first, test_decoder_is_deterministic_and_order_free, test_the_list_does_not_depend_on_hash_order,

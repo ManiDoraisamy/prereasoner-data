@@ -17,7 +17,7 @@ from typing import Callable, Sequence
 from engine.program.catalog import Catalog, CatalogTable
 from engine.program.index import Atom, TableIndex, index_of
 from engine.program.semantics import fold
-from engine.program.language import (Words, Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Condition, Contains, DateOf, Equals, InPeriod, InYears, InSection, IsBlank, IsNumber, NotEquals, OnLine, PercentOf, Program, Rank, RowArithmetic, SECTION, Show, Size, answer_type_of, is_sound, measure_columns, measure_coordinates, peers_name, period_from_name, shown_together)
+from engine.program.language import (Absent, Words, Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Condition, Contains, DateOf, Equals, InPeriod, InYears, InSection, IsBlank, IsNumber, NotEquals, OnLine, PercentOf, Program, Rank, RowArithmetic, SECTION, Show, Size, answer_type_of, is_sound, measure_columns, measure_coordinates, peers_name, period_from_name, shown_together)
 from engine.program.names import (A_COUNT, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, ANY, BREAKDOWN, CHECK, CHECK_OPS, COMPARE_OPS, EQ, EVERY, GT, IS, LT, NEIGHBOURS, NO, SAID_ABOVE, SAID_BELOW, SAME, SLOT_NEIGHBOUR, SLOT_QUANTIFIER, SLOT_SAID, VERSUS, AGG, ANCHORS, ANYWHERE, AVG, BY_SIZE, CALC, CALC_OPS, COUNT, COUNT_DISTINCT, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, MAX, MIN, MINUS, NE, NUMBER_AGGREGATES, OVER, PLUS, RANK, ROW_OPS, SHOW, SLOT_AGGREGATE,
                                   SLOT_ANSWER_TYPE, SLOT_BLANK, SLOT_CALC_LEFT, SLOT_CALC_OP, SLOT_COMPARISON, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_DIRECTION, SLOT_ENTITY, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE, SLOT_LISTING, SLOT_MEASURE, SLOT_NUMBER, SLOT_PEERS, SLOT_PERIOD, SLOT_ROW_OP, SLOT_SECTION,
                                   SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, STATED_BY_SIZE, SUM, TIMES, GRAIN_MONTH, PERCENT_OP, coordinate, slot_of)
@@ -416,6 +416,13 @@ def _score(frame: _Frame, indices: tuple[int, ...]) -> float:
     return frame.base + sum(frame.slots[j][i].score for j, i in enumerate(indices))
 
 
+def _absent_listing(table_id: str, shown: Col, key: Col, by: Col, where: tuple[Condition, ...]) -> Show | None:
+    """A listing of shown whose key no line holding where holds; none where a condition reads a band or a printed line."""
+    if any(isinstance(condition, (InSection, OnLine)) or condition.column.table != by.table for condition in where):
+        return None
+    return Show(table_id, (shown,), (), listing=True, absent=Absent(key, by, where))
+
+
 class _Search:
     """One question's frames."""
 
@@ -783,6 +790,32 @@ class _Search:
             frames.append(_Frame(total, slots + (slot,), lambda options, b=build: b(options[:-1], tuple(atom.condition for atom in options[-1]))))
         return frames
 
+    def absent_frames(self, table: CatalogTable, index: TableIndex, atoms: list[_Option], listed: float, columns: list[_Option]) -> list[_Frame]:
+        """A list of the values whose key no line holding some conditions holds ("the product names no customer from
+        Paris has bought"), only where the reading asks for a list: on each table holding a column the request's links
+        connect to one of this table's (Catalog.identities), both columns the sheets' own and not reached through a
+        link, that column holding the key, the link being what says a line of one table stands for a value of the other; and on the table's own lines, the shown column its own key,
+        only where the reading also reads the quantifier "no", since no link says it there."""
+        s = self.s
+        if not (s(coordinate(SLOT_LISTING, "yes")) > 0 or self.type_score(A_LIST) > 0):
+            return []
+        no = listed + s(coordinate(SLOT_QUANTIFIER, NO))
+        catalog = self.decoder.catalog
+        frames = []
+        if s(coordinate(SLOT_QUANTIFIER, NO)) > 0:
+            frames += self.condition_frames(no, (columns,), lambda options, where: _absent_listing(table.id, options[0], options[0], options[0], where),
+                                            table, index, atoms, min_conditions=1, max_policy=2)
+        for (other_id, by), (held_id, key) in sorted(catalog.identities.items()):
+            if held_id != table.id or other_id == table.id or other_id not in catalog.by_id or not catalog.table(other_id).lines:
+                continue
+            if catalog.table(other_id).columns[by].col < 0 or table.columns[key].col < 0:     # the link's own columns, none it reached
+                continue
+            other, other_index = catalog.table(other_id), self.decoder.indexes[other_id]
+            frames += self.condition_frames(no + s(coordinate(SLOT_TABLE, other_id)), (columns,),
+                                            lambda options, where, k=Col(table.id, key), b=Col(other_id, by): _absent_listing(table.id, options[0], k, b, where),
+                                            other, other_index, self.atoms_of(other, other_index), min_conditions=1, max_policy=2)
+        return frames
+
     def table_frames(self, table: CatalogTable) -> list[_Frame]:
         index = self.decoder.indexes[table.id]
         if not table.lines:
@@ -813,6 +846,7 @@ class _Search:
         together.sort(key=lambda option: (round(-option.score, _ROUND), len(option.payload), tuple(sorted(table.column_rank[column.position] for column in option.payload))))
         if together and (s(coordinate(SLOT_LISTING, "yes")) > 0 or self.type_score(A_LIST) > 0):     # only where it asks for a list
             frames += self.condition_frames(listed, (together,), lambda options, where: Show(table.id, options[0], where, listing=True), table, index, atoms, max_policy=2)
+        frames += self.absent_frames(table, index, atoms, listed, columns)
         # agg
         agg = s(coordinate(SLOT_FORM, AGG)) + table_score
         measures = self.measure_options(table, index)

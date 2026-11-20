@@ -327,18 +327,37 @@ def condition_coordinates(condition: Condition) -> tuple[str, ...]:
     return (coordinate(SLOT_LINE, condition.table, fold(condition.text)),)
 
 
+@dataclass(frozen=True, slots=True)
+class Absent:
+    """A kept line's key stands on no line of a table that holds these conditions ("the product names no customer from
+    Paris has bought": the products whose name no purchase from Paris holds). by is that table's column holding the
+    key's values: a column the request's links connect to the key (Catalog.identities), or the key itself on its own
+    table; where reads that table's data lines and its own columns. A line blank in its key is in none."""
+    key: Col
+    by: Col
+    where: tuple[Condition, ...]
+
+    def __post_init__(self):
+        if not self.where:
+            raise ValueError("an absence names the conditions no line holds")
+        if any(isinstance(condition, (InSection, OnLine)) or condition.column.table != self.by.table for condition in self.where):
+            raise ValueError("an absence's conditions read the data lines of the table that holds its key")
+
+
 # ------------------------------------------------------------------------------------------------------------ forms
 @dataclass(frozen=True, slots=True)
 class Show:
     """The cell at a labelled line and named column (the first such line, printed lines included), or with listing=True the distinct values on the kept data lines: of one column, or of several shown columns their distinct combinations ("customer name and product name for each purchase"), each in the order its first line stands; a line blank in any of them is in none.
 
     step   AFTER reads the first data line below the first line the conditions keep, BEFORE the last data line above
-           it ("who finished after Bo?"); None reads the kept line itself."""
+           it ("who finished after Bo?"); None reads the kept line itself.
+    absent a listing keeps only the lines whose key no line holding its conditions holds (Absent)."""
     table: str
     shown: tuple[Col, ...]
     where: tuple[Condition, ...] = ()
     listing: bool = False
     step: str | None = None
+    absent: Absent | None = None
 
     def __post_init__(self):
         if not self.shown:
@@ -347,6 +366,8 @@ class Show:
             raise ValueError("a list shows each column once")
         if self.step is not None and (self.step not in (AFTER, BEFORE) or self.listing or not self.where):
             raise ValueError("a neighbouring line is after or before the line a read's conditions keep")
+        if self.absent is not None and (not self.listing or self.absent.key.table != self.table or addresses_printed(self.where)):
+            raise ValueError("an absence keeps the data lines of a listing by their own key")
 
 
 @dataclass(frozen=True, slots=True)
@@ -553,7 +574,9 @@ def is_sound(program: Program) -> bool:
     if isinstance(program, Check):
         return all(is_sound(side) for side in _sides(program))
     fixed = {condition.column for condition in program.where if isinstance(condition, Equals)}
-    if isinstance(program, Show):           # the line after Bo's may show the column that names Bo
+    if isinstance(program, Show):           # the line after Bo's may show the column that names Bo; no key is absent from itself
+        if program.absent is not None and any(isinstance(condition, Equals) and condition.column == program.absent.by for condition in program.absent.where):
+            return False
         return program.step is not None or not fixed.intersection(program.shown)
     measured = set(measure_columns(program.measure)) if program.measure is not None else set()
     if isinstance(program, Agg):
@@ -579,6 +602,8 @@ def tables_of(program: Program) -> tuple[str, ...]:
         return tuple(dict.fromkeys(tables_of(program.left) + tables_of(program.right)))
     if isinstance(program, Check):
         return tuple(dict.fromkeys(table for side in _sides(program) for table in tables_of(side)))
+    if isinstance(program, Show) and program.absent is not None:
+        return tuple(dict.fromkeys((program.table, program.absent.by.table)))
     return (program.table,)
 
 
@@ -637,6 +662,12 @@ def _body_coordinates(program: Program) -> list[str]:
             names.append(coordinate(SLOT_LISTING, "yes"))
         if program.step is not None:
             names.append(coordinate(SLOT_NEIGHBOUR, program.step))
+        if program.absent is not None:     # no line holds them: the quantifier "no", on the table holding the key
+            names.append(coordinate(SLOT_QUANTIFIER, NO))
+            if program.absent.by.table != program.table:
+                names.extend((coordinate(SLOT_TABLE, program.absent.by.table), coordinate(SLOT_CONDITIONS, program.absent.by.table, len(set(program.absent.where)))))
+            for condition in program.absent.where:
+                names.extend(condition_coordinates(condition))
     elif isinstance(program, Agg):
         names.append(coordinate(SLOT_AGGREGATE, program.function))
         if program.measure is not None:
@@ -720,5 +751,5 @@ def _type_of_column(column: Col, column_kind) -> str:
     return A_NUMBER if kind == "number" else A_DATE if kind in ("date", "period") else A_NAME
 
 
-__all__ = ["Across", "Agg", "Breakdown", "Calc", "Check", "OneOf", "Col", "Compare", "CompareColumns", "CompareLine", "Condition", "Contains", "DateOf", "Equals", "InPeriod", "InYears", "InSection", "IsBlank", "IsNumber", "Measure", "NotEquals", "OnLine", "PercentOf", "PeriodSpan", "Program", "Rank", "RowArithmetic", "SECTION", "Show", "Size", "Words",
+__all__ = ["Absent", "Across", "Agg", "Breakdown", "Calc", "Check", "OneOf", "Col", "Compare", "CompareColumns", "CompareLine", "Condition", "Contains", "DateOf", "Equals", "InPeriod", "InYears", "InSection", "IsBlank", "IsNumber", "Measure", "NotEquals", "OnLine", "PercentOf", "PeriodSpan", "Program", "Rank", "RowArithmetic", "SECTION", "Show", "Size", "Words",
            "TOGETHER", "addresses_printed", "answer_type_of", "coordinates", "shown_together", "conditions_of", "form_of", "measure_columns", "tables_of", "peers_name"]

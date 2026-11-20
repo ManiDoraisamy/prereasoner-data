@@ -141,6 +141,32 @@ def _check_words(program: Check, catalog: Catalog) -> str:
     return f"whether {read_as(program.left, catalog)} is {_VERDICT_WORDS[program.op]} {other}"
 
 
+def _absent_words(program: Show, catalog: Catalog) -> str:
+    """A listing's absence: whose key no line holds, on its own table or in the column of another that holds it."""
+    absent = program.absent
+    if absent is None:
+        return ""
+    other = "" if absent.by.table == program.table else f" {_in_tab(catalog.table(absent.by.table))}"
+    held = "" if absent.by == absent.key else f" in {_name(catalog, absent.by)}"
+    return f" whose {_name(catalog, absent.key)} no line{other} holds{held} where {_where_words(catalog, absent.where)}"
+
+
+def absent_lines(program: Show, catalog: Catalog, kept: list[int]) -> list[int]:
+    """The kept lines a listing's absence keeps: a filled key no data line of its table holding the conditions holds,
+    as the query reads it (NOT IN over the folded keys)."""
+    absent = program.absent
+    if absent is None:
+        return kept
+    other = catalog.table(absent.by.table)
+    index = index_of(other)
+    mask = other.data_mask
+    for condition in absent.where:
+        mask &= index.mask(condition)
+    held = {other.folds[absent.by.position][i] for i in range(len(other.lines)) if mask >> i & 1} - {None}
+    keys = catalog.table(program.table).folds[absent.key.position]
+    return [i for i in kept if keys[i] is not None and keys[i] not in held]
+
+
 def read_as(program: Program, catalog: Catalog) -> str:
     """The program in the sheet's own words."""
     if isinstance(program, Check):
@@ -157,7 +183,7 @@ def read_as(program: Program, catalog: Catalog) -> str:
             pairs = " and ".join(_name(catalog, column) for column in program.shown)
             return f"the different combinations of {pairs} {place}" + (f" where {where}" if where else "")
         if program.listing:
-            return f"the different {shown} {place}" + (f" where {where}" if where else "")
+            return f"the different {shown} {place}" + (f" where {where}" if where else "") + _absent_words(program, catalog)
         if program.step is not None:
             return f"{shown} {place} on the line {program.step} the line where {where}"
         return f"{shown} {place} where {where}"
@@ -296,7 +322,7 @@ def cells_used(program: Program, tables: RequestTables, rows: tuple[tuple, ...])
 
     if isinstance(program, Show):
         if program.listing:
-            for i in kept:
+            for i in absent_lines(program, catalog, kept):
                 if all(table.folds[column.position][i] is not None for column in program.shown):     # a line blank in a shown column is in no combination
                     for column in program.shown:
                         add(i, column.position)
@@ -490,7 +516,7 @@ def formula(program: Program, tables: RequestTables) -> str:
             return f"={cells[0]}" if len(cells) == 1 else "={" + ",".join(cells) + "}" if cells else "=NA()"
         if len(program.shown) > 1:     # the combinations: the shown ranges side by side, the lines filled in all and kept
             tests = _filter_array(catalog, program.where)
-            if tests is None or not _plain_range(table) or any(column.position == SECTION for column in program.shown):
+            if tests is None or program.absent is not None or not _plain_range(table) or any(column.position == SECTION for column in program.shown):
                 return "=NA()"
             ranges = [_range(table, column.position) for column in program.shown]
             keep = "*".join([f'({range_}<>"")' for range_ in ranges] + ([tests] if tests else []))

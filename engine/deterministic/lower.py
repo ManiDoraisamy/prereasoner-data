@@ -14,6 +14,7 @@ from types import MappingProxyType
 from engine.deterministic.plan import (
     AggregateValue,
     AnalysisPlan,
+    AntiJoinView,
     BinaryValue,
     CalculatedView,
     ColumnSpec,
@@ -24,6 +25,7 @@ from engine.deterministic.plan import (
     FunctionValue,
     JunctionValue,
     LiteralValue,
+    MergeKey,
     PredicateValue,
     ProjectedView,
     ReducedView,
@@ -47,6 +49,7 @@ from engine.sql_ast import (
     Comparison,
     DatePart,
     DateSpan,
+    InPredicate,
     Lower,
     Literal,
     ScalarSubquery,
@@ -55,7 +58,7 @@ from engine.sql_ast import (
     Star,
 )
 from engine.sql_ast import SQLType as ASTType
-from engine.sql_ast import share_aggregate
+from engine.sql_ast import and_predicates, share_aggregate
 from engine.sql_schema import is_surrogate_key
 
 
@@ -245,13 +248,20 @@ def lower_select_query(
     )
 
     views = [CombinedView(f"{slug}_combined", table_order)]
+    # A key no line of a subquery holds (a column NOT IN a SELECT, ANDed into the filter: the program language's
+    # absence) keeps the rows an anti-join on that key keeps; the subquery lowers as its own branch, as a scalar
+    # subquery does, and the rest of the filter reads the same projected values.
+    terms = query.where.terms if isinstance(query.where, BooleanExpr) and query.where.operator == "AND" else (query.where,)
+    absent = tuple(term for term in terms if isinstance(term, InPredicate) and term.negated and isinstance(term.left, ColumnRef) and isinstance(term.source, SelectQuery))
+    if absent:
+        query = replace(query, where=and_predicates(term for term in terms if term not in absent))
     # A row filter may compare with a scalar subquery ("the line after the first line a condition keeps": a line
     # number above the MIN of the kept lines' numbers). Each subquery lowers as its own branch, as a calculation's do;
     # the merge stages take value relations, so the columns the query reads are projected into named values first,
     # crossed with each branch's one value, and every later stage reads those names (`bound`).
     anchors = tuple(dict.fromkeys(_outer_nodes(query.where, ScalarSubquery)))
     bound: dict[object, str] = {}
-    if anchors:
+    if anchors or absent:
         if any(isinstance(item.expression, Abs) or share_aggregate(item.expression, query) is not None
                for item in query.select):
             raise UnsupportedDeterministicPlan("a share or a size beside a filter on a scalar subquery")
@@ -277,6 +287,19 @@ def lower_select_query(
             views.append(CrossView(f"{slug}_anchored_{at}", rows, views[-1].name))
             rows = views[-1].name
             bound[anchor] = f"anchor_{at}"
+        for at, term in enumerate(absent, 1):
+            if term.left not in bound:
+                raise UnsupportedDeterministicPlan("an absent key is a column the query reads")
+            branch = lower_select_query(f"{slug}_held_{at}", term.source, schema, foreign_keys)
+            outputs = branch.view_columns()[str(branch.output)]
+            if len(outputs) != 1:
+                raise UnsupportedDeterministicPlan("a NOT IN subquery has one output")
+            for table in branch.tables:     # a table the query reads keeps its own spec
+                if table.name not in {spec.name for spec in table_specs}:
+                    table_specs += (table,)
+            views.extend(branch.views)
+            views.append(AntiJoinView(f"{slug}_absent_{at}", rows, str(branch.output), (MergeKey(bound[term.left], outputs[0]),)))
+            rows = views[-1].name
     if query.where is not None:
         views.append(
             FilteredView(

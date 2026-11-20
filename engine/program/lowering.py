@@ -9,13 +9,13 @@ from dataclasses import replace
 
 from engine.deterministic import AnalysisPlan, lower_calculation, lower_select_query
 from engine.program.catalog import Catalog
-from engine.program.language import (Words, Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Condition, Contains, DateOf, Equals, InPeriod, InYears, InSection, IsBlank, IsNumber, Measure, NotEquals, OnLine, PercentOf, Program, Rank, RowArithmetic, SECTION, Show, Size, addresses_printed)
+from engine.program.language import (Absent, Words, Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Condition, Contains, DateOf, Equals, InPeriod, InYears, InSection, IsBlank, IsNumber, Measure, NotEquals, OnLine, PercentOf, Program, Rank, RowArithmetic, SECTION, Show, Size, addresses_printed)
 from engine.program.names import AFTER, ANY, IS, SAME, ANYWHERE, AVG, COUNT, COUNT_DISTINCT, ENDS, ENTITY_GROUP, ENTITY_LINE, EQ, EVERY, GE, GT, HIGHEST, LE, LT, MAX, MIN, MINUS, NE, NO, OVER, PLUS, STARTS, SUM, TIMES
 from engine.program.semantics import fold as fold_text
 from engine.program.store import (DATE, INTEGER, LABEL, LABEL_LENGTH, LINE, ONE_ROW, PEER_FOLD, PEER_NAME, PEER_NUMBER, REAL, ROLE, SECTION_FOLD, SECTION_PATH, SECTION_TEXT, TEXT, day_column, fold_column,
                                   number_column, peers_table, sql_table, table_columns, table_id_of, text_column, words_column)
 from engine.sheet.names import RECORD
-from engine.sql_ast import (Abs, Aggregate, BinaryExpr, BlankAsZero, BooleanExpr, ColumnRef, Comparison, DatePart, Join, Literal, OrderTerm, ScalarSubquery, SelectItem, SelectQuery, SQLType, Star, and_predicates, column_refs)
+from engine.sql_ast import (Abs, Aggregate, BinaryExpr, BlankAsZero, BooleanExpr, ColumnRef, Comparison, DatePart, InPredicate, Join, Literal, OrderTerm, ScalarSubquery, SelectItem, SelectQuery, SQLType, Star, and_predicates, column_refs)
 
 _FUNCTIONS = {SUM: "SUM", AVG: "AVG", MIN: "MIN", MAX: "MAX"}
 VALUE = "value"
@@ -165,7 +165,7 @@ def _order(direction: str) -> str:
 def _show_query(program: Show, *, scalar: bool = False) -> SelectQuery:
     if program.listing:
         keys = tuple(_fold(column) for column in program.shown)
-        where = _where(None if addresses_printed(program.where) else _data_lines(program.table), *map(_condition, program.where), *(_is_null(key, negated=True) for key in keys))
+        where = _where(None if addresses_printed(program.where) else _data_lines(program.table), *map(_condition, program.where), *(_is_null(key, negated=True) for key in keys), *_absent(program.absent))
         select = (SelectItem(keys[0], VALUE),) if len(keys) == 1 else tuple(SelectItem(key, f"{KEY}_{at}") for at, key in enumerate(keys))
         return SelectQuery(select, sql_table(program.table), where=where, group_by=keys, order_by=(OrderTerm(Aggregate("MIN", ColumnRef(sql_table(program.table), LINE, SQLType.INTEGER))),))
     columns = [_number(program.shown[0])] if scalar else [_shown(column) for column in program.shown]
@@ -182,6 +182,16 @@ def _show_query(program: Show, *, scalar: bool = False) -> SelectQuery:
     if addresses_printed(program.where):
         order.insert(0, OrderTerm(ColumnRef(sql_table(program.table), LABEL_LENGTH, SQLType.INTEGER)))
     return SelectQuery(select, sql_table(program.table), where=_where(*map(_condition, program.where)), order_by=tuple(order), limit=1)
+
+
+def _absent(absent: Absent | None) -> tuple:
+    """A key no kept line of the table holding it holds: NOT IN over that table's filled keys, the key itself filled
+    (so a blank key is in none, as SQL's NOT IN and an anti-join both read it)."""
+    if absent is None:
+        return ()
+    key, by = _fold(absent.key), _fold(absent.by)
+    held = SelectQuery((SelectItem(by, VALUE),), sql_table(absent.by.table), where=_where(_data_lines(absent.by.table), *map(_condition, absent.where), _is_null(by, negated=True)))
+    return (_is_null(key, negated=True), InPredicate(key, held, negated=True))
 
 
 def _reads_printed(measure: Measure, table) -> bool:
