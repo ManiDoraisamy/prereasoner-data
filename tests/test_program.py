@@ -577,6 +577,32 @@ def test_a_check_asks_what_the_top_one_is():
 LOANS = [["Name", "Region", "Loan", "Months", "Score"], ["a", "x", 100.0, 12.0, 1.0], ["b", "y", 500.0, 48.0, 9.0], ["c", "x", 300.0, 60.0, 5.0], ["d", "z", 50.0, 6.0, 2.0]]
 
 
+def test_an_answer_prints_the_cell_as_the_sheet_wrote_it():
+    """DataBench dev 050_ING/12 and /14: an author is written "DrJaus  ..." with a no-break space, the stored text
+    cleaned it to a plain space, and the printed answer was no longer the cell's own text, so an exact comparison failed.
+    An answer prints the cell exactly as written (a line's shown cell, a listing, a group's key, a breakdown's group),
+    the same in the typed SQL and the dual emitter; matching and the read-as keep the cleaned text, so a question still
+    finds the cell however it is spaced."""
+    nbsp = " "
+    rows = [["Author", "Team", "Likes", "Joined"], ["DrJaus " + nbsp + "X", "a  b", 9.0, "2020-01-05"], ["Ann Lee", "a b", 3.0, "2020-02-01"],
+            ["Bo", "c", 5.0, "2020-03-01"], ["Cy", "c", 1.0, "2020-04-01"]]
+    catalog, table, tables = _setup(rows)
+    author, team, likes, joined = (Col(table.id, at) for at in range(4))
+    assert _answer(Rank(ENTITY_LINE, table.id, HIGHEST, (), likes, (author,)), tables) == (("DrJaus " + nbsp + "X", 9.0),)
+    assert _answer(Show(table.id, (author,), (Equals(author, "drjaus x"),)), tables) == (("DrJaus " + nbsp + "X",),)     # found by its fold
+    assert _answer(Show(table.id, (author,), (), listing=True), tables)[0] == ("DrJaus " + nbsp + "X",)
+    assert _answer(Rank(ENTITY_GROUP, table.id, HIGHEST, (), likes, key=team, function=SUM), tables) == (("a  b", 12.0),)     # "a  b" and "a b" are one group
+    assert _answer(Breakdown(SUM, likes, table.id, (team,)), tables)[0] == ("a  b", 12.0)
+    assert read_as(Show(table.id, (author,), (Equals(author, "drjaus x"),)), catalog) == 'Author on "Sheet1" where Author is "DrJaus X"'
+    # contrastive: a cell written plainly prints as before, and a date prints its day, not its text
+    assert _answer(Rank(ENTITY_LINE, table.id, LOWEST, (), likes, (author, joined)), tables) == (("Cy", "2020-04-01", 1.0),)
+    # negative: only spacing sets the written text apart; any other difference prints the cleaned reading
+    from engine.program.semantics import cell_written
+    from engine.sheet.model import Cell
+    assert cell_written(Cell(1, 1, "x" + nbsp + " y", "text", "x y")) == "x" + nbsp + " y"
+    assert cell_written(Cell(1, 1, "1,234", "number", 1234.0)) == "1234" and cell_written(None) is None
+
+
 POSTS = [["Author", "Kind", "Text", "Likes"], ["ana", "reply", "thanks for the quick answer today", 3.0], ["bo", "original", "no", 9.0],
          ["cy", "reply", "the app fails every time I log in from my phone", 1.0], ["di", "original", "great news for all of us here", 4.0],
          ["ed", "reply", "where is my card please tell me now", 0.0], ["fa", "reply", "ok then", 2.0]]
@@ -1683,7 +1709,7 @@ def test_explain_carries_the_named_contributions():
 
 
 TESTS = [
-    test_a_column_of_prose_is_measured_by_its_words, test_several_shown_columns_cost_a_named_coordinate, test_a_stated_number_a_column_holds_reads_as_its_value, test_a_misspelled_word_reads_as_the_sheets_word, test_a_word_only_one_column_holds_says_which, test_several_columns_shown_type_the_same_however_they_stand, test_across_adds_peer_columns_of_a_line, test_the_decoder_reaches_across_when_a_word_asks, test_a_text_other_than, test_answer_types_place_money_quantity, test_decoder_ties_do_not_follow_sheet_order, test_a_family_adding_twice_says_so, test_a_family_of_tabs_reads_as_all_its_tabs, test_axes_are_read_by_their_kind, test_a_question_reads_the_tables_its_links_reach, test_verifier_stops_at_its_budget_of_lines, test_a_condition_search_stops_at_its_budget_of_checks, test_a_value_stands_whole_without_a_pattern_for_each_value,
+    test_an_answer_prints_the_cell_as_the_sheet_wrote_it, test_a_column_of_prose_is_measured_by_its_words, test_several_shown_columns_cost_a_named_coordinate, test_a_stated_number_a_column_holds_reads_as_its_value, test_a_misspelled_word_reads_as_the_sheets_word, test_a_word_only_one_column_holds_says_which, test_several_columns_shown_type_the_same_however_they_stand, test_across_adds_peer_columns_of_a_line, test_the_decoder_reaches_across_when_a_word_asks, test_a_text_other_than, test_answer_types_place_money_quantity, test_decoder_ties_do_not_follow_sheet_order, test_a_family_adding_twice_says_so, test_a_family_of_tabs_reads_as_all_its_tabs, test_axes_are_read_by_their_kind, test_a_question_reads_the_tables_its_links_reach, test_verifier_stops_at_its_budget_of_lines, test_a_condition_search_stops_at_its_budget_of_checks, test_a_value_stands_whole_without_a_pattern_for_each_value,
     test_every_name_is_from_a_closed_list, test_forms_refuse_what_they_cannot_say, test_signs, test_printed_lines_are_read_by_label_and_never_added, test_shortest_label_first_and_unlabelled_printed_lines, test_a_column_filled_only_on_printed_lines_reads_them,
     test_partial_value_match, test_case_and_spacing_do_not_count, test_periods, test_blanks, test_ties_keep_every_tied_line, test_units, test_mixed_columns, test_repeated_rows, test_sections_nested_bands_and_the_section_shown, test_python_masks_agree_with_the_sql,
     test_calc_shapes, test_rank_across_peer_columns, test_a_rank_keeps_as_many_as_the_question_states, test_the_decoder_proposes_how_many_a_question_states, test_a_check_says_yes_or_no, test_the_decoder_checks_only_when_the_reading_names_a_check, test_a_choice_among_named_values, test_a_check_asks_what_the_top_one_is, test_a_check_asks_whether_the_top_one_is_the_same_or_compares_two_aggregates, test_a_check_answers_in_the_questions_own_words, test_a_read_takes_the_line_after_or_before_the_kept_one, test_new_ast_nodes_render_and_validate, test_plan_schema_holds_only_what_a_query_reads, test_perfect_readings_give_the_gold_first, test_decoder_is_deterministic_and_order_free, test_the_list_does_not_depend_on_hash_order,

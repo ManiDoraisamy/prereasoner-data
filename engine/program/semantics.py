@@ -117,6 +117,17 @@ def cell_text(cell: Cell | None) -> str | None:
     return text or None
 
 
+def cell_written(cell: Cell | None) -> str | None:
+    """A cell as an answer prints it: the text exactly as the sheet wrote it, its own spaces kept (a no-break space,
+    a line break, a space at its end), where only spacing sets it apart from cell_text; anything else as cell_text
+    gives it. Matching and lookups read cell_text and its fold, so a question still finds the cell however it is spaced."""
+    text = cell_text(cell)
+    raw = None if cell is None else cell.raw
+    if text is None or not isinstance(raw, str) or raw == text:
+        return text
+    return raw if " ".join(raw.split()) == text else text
+
+
 def cell_fold(cell: Cell | None) -> str | None:
     text = cell_text(cell)
     return None if text is None else fold(text)

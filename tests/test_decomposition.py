@@ -320,7 +320,7 @@ def test_a_fused_answer_shows_the_sheets_spelling_of_a_folded_key():
 
     class Table:
         columns = ("id", "name")
-        spelling = {1: {"delta": "Delta", "omega": "Omega"}}
+        written_spelling = {1: {"delta": "Delta", "omega": "Omega"}}
 
     class Workbook:
         by_id = {"t0": Table()}

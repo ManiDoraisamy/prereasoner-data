@@ -20,7 +20,7 @@ SQL_DIALECT = "standard"
 
 @dataclass(frozen=True, slots=True)
 class Result:
-    """A program's answer: rows of cells, the sheet's own spelling restored where the program keyed by the fold."""
+    """A program's answer: rows of cells as the sheet wrote them, its own spelling restored where the program keyed by the fold."""
     rows: tuple[tuple, ...]
 
 
@@ -48,7 +48,7 @@ def _displayed(program: Program, rows, tables: RequestTables) -> tuple[tuple, ..
     if isinstance(program, Check):          # a verdict, 1 or 0 from either program, reads as the yes or no it is
         return (("True" if rows[0][0] else "False",),)
     if isinstance(program, Breakdown):      # each group's cells by their fold, back in the sheet's spelling
-        spellings = [tables.catalog.table(column.table).spelling[column.position] for column in program.groups]
+        spellings = [tables.catalog.table(column.table).written_spelling[column.position] for column in program.groups]
         width = len(spellings)
         return tuple(tuple(words.get(cell, cell) for words, cell in zip(spellings, row[:width])) + tuple(row[width:]) for row in rows)
     keyed: Col | None = None
@@ -58,7 +58,7 @@ def _displayed(program: Program, rows, tables: RequestTables) -> tuple[tuple, ..
         keyed = program.key
     if keyed is None:
         return tuple(tuple(row) for row in rows)
-    words = tables.catalog.table(keyed.table).spelling[keyed.position]
+    words = tables.catalog.table(keyed.table).written_spelling[keyed.position]
     return tuple((words.get(row[0], row[0]), *row[1:]) for row in rows)
 
 

@@ -2,7 +2,7 @@
 
 They live on the request's one database (engine/prepared.py RequestDatabase.program_tables) beside the request's own tables, and every name
 starts with an underscore, which no request table's canonical name does (engine/request_validation.canonical_table_name strips it): catalog
-table t3 is the SQL table _t3. It holds, per line: _line (its order), _role, _label (fold) and _label_len, _section (fold), _section_text, _section_path (fold). Per column at position p: c{p}_t the cell as shown, c{p}_f its fold, c{p}_n its number as the sheet's binary float, which SQLite computes natively for the candidates and both deterministic programs read as its
+table t3 is the SQL table _t3. It holds, per line: _line (its order), _role, _label (fold) and _label_len, _section (fold), _section_text, _section_path (fold). Per column at position p: c{p}_t the cell as an answer prints it (as the sheet wrote it, CatalogTable.written), c{p}_f its fold, c{p}_n its number as the sheet's binary float, which SQLite computes natively for the candidates and both deterministic programs read as its
 shortest decimal for a chosen one (ColumnSpec.binary_float), c{p}_d its ISO day. A blank is NULL in all four. A column of prose (CatalogTable.prose_columns) also holds c{p}_w, its cell's number of words. _t3_peers holds one row per line and column: _line, _role, _label, _section, _name, _f, _n. "_one" is the one row
 a calculation selects from. Identifiers are ours, so nothing a sheet writes reaches SQL except as a bound value or a typed literal.
 """
@@ -107,7 +107,7 @@ def write_table(connection: sqlite3.Connection, name: str, table: CatalogTable, 
     for i, line in enumerate(table.lines):
         row = [i, line.role, table.label_folds[i], len(table.label_folds[i]), table.section_folds[i], table.section_texts[i], table.section_paths[i]]
         for position in range(len(table.columns)):
-            row.extend((table.texts[position][i], table.folds[position][i], table.numbers[position][i], table.days[position][i]))
+            row.extend((table.written[position][i], table.folds[position][i], table.numbers[position][i], table.days[position][i]))
         row.extend(held[i] for held in words)
         rows.append(row)
     connection.executemany(f'INSERT INTO "{name}" VALUES ({",".join("?" * len(columns))})', rows)

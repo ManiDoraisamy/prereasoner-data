@@ -10,7 +10,7 @@ from functools import cached_property
 
 from engine.program.language import (Col, Compare, CompareColumns, CompareLine, Condition, Contains, Equals, InPeriod, InYears, InSection, IsBlank, IsNumber, NotEquals, OnLine, OneOf, SECTION)
 from engine.program.names import ANYWHERE, ENDS, EQ, GE, GT, LE, LT, NE, STARTS
-from engine.program.semantics import cell_day, cell_fold, cell_number, cell_text, duration_numbers, fold, is_filled
+from engine.program.semantics import cell_day, cell_fold, cell_number, cell_text, cell_written, duration_numbers, fold, is_filled
 from engine.sheet.model import Cell, Column, Context, Line, SheetModel, Table
 from engine.sheet.names import LABEL, NOTE, PRINTED_ROLES, RECORD, V_DATE, V_NUMBER, V_PERIOD, V_TEXT
 
@@ -26,7 +26,7 @@ PROSE_LINES = 5         # ... over at least this many filled text cells
 class CatalogTable:
     """One table a program can read. id is stable for a workbook: "t3" by compiled order, "f1" a family, "n2" a tab's notes."""
 
-    __slots__ = ("id", "table", "kind", "adds_twice", "lines", "folds", "numbers", "days", "texts", "__dict__")
+    __slots__ = ("id", "table", "kind", "adds_twice", "lines", "folds", "numbers", "days", "texts", "written", "__dict__")
 
     def __init__(self, table_id: str, table: Table, kind: str, adds_twice: bool = False):
         self.id = table_id
@@ -38,12 +38,14 @@ class CatalogTable:
             order.setdefault(line.tab, len(order))
         self.lines: list[Line] = sorted((*table.lines, *table.printed), key=lambda line: (order[line.tab], line.row))
         self.texts: list[list[str | None]] = []
+        self.written: list[list[str | None]] = []      # each cell as an answer prints it: as the sheet wrote it (cell_written)
         self.folds: list[list[str | None]] = []
         self.numbers: list[list[float | None]] = []
         self.days: list[list[str | None]] = []
         for position in range(len(table.columns)):
             cells = [line.cells.get(position) for line in self.lines]
             self.texts.append([cell_text(cell) for cell in cells])
+            self.written.append([cell_written(cell) for cell in cells])
             self.folds.append([cell_fold(cell) for cell in cells])
             numbers = [cell_number(cell) for cell in cells]
             if table.columns[position].kind != V_NUMBER and not any(number is not None for number in numbers):
@@ -145,6 +147,20 @@ class CatalogTable:
             if folded is not None and folded not in words:
                 words[folded] = text
         out[SECTION] = words
+        return out
+
+    @cached_property
+    def written_spelling(self) -> dict[int, dict[str, str]]:
+        """Per column, fold -> the first cell as the sheet wrote it: what an answer keyed by the fold prints. spelling
+        keeps the cleaned text, which a read-as line quotes."""
+        out: dict[int, dict[str, str]] = {}
+        for position in range(len(self.table.columns)):
+            words: dict[str, str] = {}
+            for text, folded in zip(self.written[position], self.folds[position]):
+                if folded is not None and folded not in words:
+                    words[folded] = text
+            out[position] = words
+        out[SECTION] = self.spelling[SECTION]
         return out
 
     @cached_property

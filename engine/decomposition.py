@@ -681,7 +681,7 @@ def shown_output(plan, columns, rows, catalogs) -> list[tuple]:
         table = catalog.table(table_id_of(origin[0]))
         position = next((p for p in range(len(table.columns)) if fold_column(p) == origin[1]), None)
         if position is not None:
-            words[at] = table.spelling[position]
+            words[at] = table.written_spelling[position]
     return [tuple(words[at].get(cell, cell) if at in words else cell for at, cell in enumerate(row)) for row in rows]
 
 
