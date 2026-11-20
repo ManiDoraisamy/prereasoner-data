@@ -16,7 +16,7 @@ from engine.sheet.grid import Grid, clean
 from engine.sheet.line_roles import read_roles, repeats_line
 from engine.sheet.model import Axis, Cell, Column, Context, Line, Note, Stray, TabModel, Table
 from engine.sheet.names import (AXIS_FLAG, AXIS_GROUP, AXIS_PERIOD, AXIS_SEQUENCE, BAND, BLANK, DATE, DERIVED, F_CURRENCY, F_GENERAL, F_NUMBER, F_PERCENT, FX_AGG_COLUMN, FX_AGG_ROW, FX_ROW_ARITH, FX_VOLATILE, HEADER, KEY, LABEL, MEASURE, MIXED, NOTE,
-                                P_YEAR, PEER, PERIOD, PRINTED_ROLES, RECORD, ROW_TOTAL, S_DATA_LINE, S_FILLED_DOWN, S_REPEATED_HEADER, S_RULE_LINE, S_STRAY_KEY, S_TOTAL_OTHER_BLOCK, SECTION_LABEL, SHEET_CHART, SPACER, STRAY_DATE,
+                                P_YEAR, PEER, PERIOD, PRINTED_ROLES, RECORD, ROW_TOTAL, S_DATA_LINE, S_FILLED_DOWN, S_GROUP_TIE, S_REPEATED_HEADER, S_RULE_LINE, S_STRAY_KEY, S_TOTAL_OTHER_BLOCK, SECTION_LABEL, SHEET_CHART, SPACER, STRAY_DATE,
                                 STRAY_ERROR, STRAY_LABEL, STRAY_MARKER, STRAY_NOTE, STRAY_NUMBER_WITH_WORD, STRAY_REPEATED_HEADER, SUBTOTAL, TITLE, TOTAL, V_BLANK, V_BOOL, V_DATE, V_ERROR, V_MARKER, V_NUMBER, V_PERIOD, V_TEXT)
 from engine.sheet.payload import TabPayload
 from engine.sheet.values import Period, number_with_word, parse_period, quantity_of, year_number
@@ -655,11 +655,13 @@ def _fill_down(position: int, records: list[Line], printed: list[Line]) -> int:
 
 
 def _printed_kinds(printed: list[Line], last_record_row: int) -> None:
-    """Totals from subtotals: the last printed line under every record, or one whose formula reads other printed lines, is the total."""
+    """Totals from subtotals: the last printed line under every record, or one whose formula reads other printed lines, is the total. A line that sums one group of the records is that group's subtotal wherever it stands."""
     rows = {line.row for line in printed}
     for at, line in enumerate(printed):
         reads_printed = line.scope is not None and any(line.scope[0] <= r <= line.scope[1] for r in rows if r != line.row)
-        if reads_printed or (at == len(printed) - 1 and line.row > last_record_row):
+        if S_GROUP_TIE in line.signals and not reads_printed:
+            line.role = SUBTOTAL
+        elif reads_printed or (at == len(printed) - 1 and line.row > last_record_row):
             line.role = TOTAL
         else:
             line.role = SUBTOTAL

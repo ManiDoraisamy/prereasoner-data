@@ -6,7 +6,7 @@ from engine.sheet.grid import Grid
 from engine.sheet.line_facts import LineFacts, line_facts
 from engine.sheet.line_model import final_scores, line_features, load_model
 from engine.sheet.names import (BAND, HEADER, NOTE, RECORD, S_ABOVE_TABLE, S_ALONE_AFTER_GAP, S_ALONE_AFTER_TOTAL, S_ALONE_BEFORE_HEADER, S_ALONE_STYLED, S_ARITHMETIC_TIE, S_AUTOFILTER_TOP, S_BELOW_TABLE, S_FIGURES, S_FORMULA_CLOSES_BLOCK,
-                                S_FORMULA_COMPUTED, S_FORMULA_TOTAL, S_FROZEN_LAST, S_JOINED_ABOVE, S_JOINED_BELOW, S_LABEL_VALUE, S_MERGED_OVER_COLUMNS, S_MODEL, S_NAMES_BODY, S_STYLE_OF_HEADER, S_TEXT_LINE, TITLE, TOTAL, V_TEXT)
+                                S_FORMULA_COMPUTED, S_FORMULA_TOTAL, S_FROZEN_LAST, S_GROUP_TIE, S_JOINED_ABOVE, S_JOINED_BELOW, S_LABEL_VALUE, S_MERGED_OVER_COLUMNS, S_MODEL, S_NAMES_BODY, S_STYLE_OF_HEADER, S_TEXT_LINE, TITLE, TOTAL, V_TEXT)
 
 
 
@@ -28,6 +28,9 @@ def _printed_signals(facts: dict[int, LineFacts]) -> dict[int, list[str]]:
         elif f.block_ties and f.text <= 2:
             # its figures are their columns' sums since the last such line: a printed total in any language, whatever its label says
             signals.append(S_ARITHMETIC_TIE)
+        elif f.group_ties:
+            # its figures are their columns' sums over the other lines sharing one of its texts: that group's printed subtotal
+            signals.append(S_GROUP_TIE)
         if signals:
             printed[r] = signals
     return printed

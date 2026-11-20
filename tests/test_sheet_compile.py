@@ -186,6 +186,29 @@ def test_a_total_over_subtotals_and_loose_lines_is_printed():
     assert [line.row for line in table.printed] == [5, 8] and 11 in [line.row for line in table.lines]
 
 
+def test_a_groups_subtotal_is_printed_wherever_it_stands():
+    """An export prints each platform's line after the states of every platform ("Total, Total, HC.gov", then "Total,
+    Total, SBM"): its figures are the sums of the other lines holding its platform, so it is that group's printed
+    subtotal by arithmetic, whatever its words say, and never a record to add or rank with the states. Before this rule
+    both lines were records: "the states on platform P" summed 180 with P's own line among them."""
+    rows = [["State", "Platform", "New", "Back"], ["a", "P", 10, 1], ["b", "Q", 20, 2], ["c", "P", 30, 3], ["d", "Q", 40, 4], ["e", "P", 50, 5],
+            ["f", "Q", 60, 6], ["g", "P", 7, 1], ["Sum", "P", 97, 10], ["Sum", "Q", 120, 12]]
+    table = _tab(rows).tables[0]
+    assert [line.row for line in table.printed] == [9, 10]
+    assert all(line.role == SUBTOTAL and names.S_GROUP_TIE in line.signals for line in table.printed)
+    assert sum(line.cells[2].value for line in table.lines if line.cells[1].value == "P") == 97
+    # contrastive: the same lines where P's line ties on one figure of two is chance, and it stays a record
+    rows[8] = ["Sum", "P", 97, 11]
+    table = _tab(rows).tables[0]
+    assert [line.row for line in table.printed] == [10] and 9 in [line.row for line in table.lines]
+    # negative: a group of three lines is too few to tie (two small figures adding to a third is chance), and a list
+    # whose repeated values sum nothing has no printed line
+    rows = [["State", "Platform", "New", "Back"], ["a", "P", 10, 1], ["b", "Q", 20, 2], ["c", "P", 30, 3], ["d", "P", 40, 4]]
+    assert not _tab(rows).tables[0].printed
+    rows = [["Store", "Region", "Sales", "Staff"], ["a", "N", 10, 2], ["b", "S", 20, 3], ["c", "N", 30, 4], ["d", "S", 40, 5], ["e", "N", 50, 6], ["f", "N", 60, 7]]
+    assert not _tab(rows).tables[0].printed
+
+
 def test_published_whole_numbers_tie_within_their_rounding():
     """A published total of rounded whole numbers misses the sum of its lines by their rounding (here by 2 in five
     million). Small counts tie only exactly, and so do figures with fractions."""
@@ -884,7 +907,7 @@ TESTS = [
     test_a_spacer_column_does_not_part_labels_from_their_figures, test_statistic_lines_under_a_date_key_are_printed, test_a_repeated_block_that_differs_opens_a_section, test_a_repeat_after_a_band_keeps_the_bands_section,
     test_the_lone_title_over_a_header_is_the_first_band, test_text_records_after_a_dated_title_stay_records, test_a_last_record_with_a_long_name_and_no_figure_stays_a_record, test_a_solid_block_ending_early_does_not_fill_down, test_a_sparse_comment_right_of_a_full_key_does_not_fill_down,
     test_continuation_lines_take_no_label, test_a_family_says_how_much_its_members_repeat_each_other, test_a_date_from_the_clock_is_no_as_of, test_an_unchanged_sheet_keeps_its_hash_and_its_model,
-    test_an_axis_holds_one_grain_and_no_totals, test_a_group_axis_needs_one_format, test_a_tall_merge_over_a_number_is_one_figure, test_a_name_keeps_what_the_sheet_wrote, test_running_balance_is_not_a_total, test_bands_give_sections,
+    test_an_axis_holds_one_grain_and_no_totals, test_a_group_axis_needs_one_format, test_a_tall_merge_over_a_number_is_one_figure, test_a_name_keeps_what_the_sheet_wrote, test_running_balance_is_not_a_total, test_a_groups_subtotal_is_printed_wherever_it_stands, test_bands_give_sections,
     test_sparse_label_column_fills_down_and_traces_to_its_source, test_stacked_tables_split, test_repeated_header_continues_its_table, test_side_by_side_blocks_split, test_spacer_columns_do_not_split_one_table,
     test_repeated_blocks_merge_into_one_family, test_months_across_are_an_axis, test_sequence_and_group_axes, test_stray_cells_are_set_apart_by_kind, test_a_column_of_one_unit_reads_as_numbers, test_hidden_lines_and_columns_are_kept_and_flagged,
     test_label_value_notes, test_tab_family_merges_with_the_tab_name_as_a_column, test_direct_markers_name_the_header, test_style_alone_never_moves_the_first_header, test_a_chart_tab_and_empty_tabs_do_not_crash,

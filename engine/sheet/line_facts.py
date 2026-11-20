@@ -36,6 +36,7 @@ class LineFacts:
     formula_line: bool          # computed cells make most of its figures
     arith_ties: int             # figures equal to the sum of the cells above them
     block_ties: int             # figures equal to their column's sum since the last such line (_block_ties)
+    group_ties: int             # figures equal to their column's sum over the other lines holding one of its texts (_group_ties)
     bold: float
     fill: float
     under: float
@@ -88,6 +89,45 @@ def _block_ties(grid: Grid) -> dict[int, int]:
     under = _ties_one_way(grid, grid.filled, {}, 1)
     over = _ties_one_way(grid, list(reversed(grid.filled)), under, OVER_TIE_FIGURES)
     return {**over, **under}
+
+
+def _group_ties(grid: Grid, taken: dict[int, int]) -> dict[int, int]:
+    """For each line, how many of its nonzero figures equal (_tied) the sum of their column over the other lines holding
+    the same text in one of its text columns, summing at least BLOCK_TIE_CELLS nonzero cells: a printed subtotal of a
+    group, by its arithmetic and whatever its words, wherever it stands (a platform's line under the states of both
+    platforms). At least OVER_TIE_FIGURES and half of its figures must tie, through one text column. Lines that tie a
+    block (taken) are no part of a group's sum and need no group."""
+    shapes = grid.shapes or {}
+    numbers: dict[int, dict[int, float]] = {}
+    groups: dict[tuple[int, str], list[int]] = {}
+    for r in grid.filled:
+        numbers[r] = {c: cell.value for c, cell in grid.rows[r].items() if cell.kind == V_NUMBER and (shapes.get((r, c)) is None or shapes[(r, c)].kind == FX_AGG_COLUMN)}
+        for c, cell in grid.rows[r].items():
+            if cell.kind == V_TEXT:
+                groups.setdefault((c, str(cell.value)), []).append(r)
+    ties: dict[int, int] = {}
+    for key in sorted(groups, key=lambda key: (key[0], key[1])):
+        rows = [r for r in groups[key] if r not in taken]
+        if len(rows) <= BLOCK_TIE_CELLS:
+            continue
+        total: dict[int, float] = {}
+        nonzero: dict[int, int] = {}
+        fractional: set[int] = set()
+        for r in rows:
+            for c, v in numbers[r].items():
+                total[c] = total.get(c, 0.0) + v
+                if v:
+                    nonzero[c] = nonzero.get(c, 0) + 1
+                    if not float(v).is_integer():
+                        fractional.add(c)
+        for r in rows:
+            own = numbers[r]
+            figures = sum(1 for cell in grid.rows[r].values() if cell.kind == V_NUMBER)
+            hits = sum(1 for c, v in own.items() if v and nonzero.get(c, 0) - 1 >= BLOCK_TIE_CELLS
+                       and _tied(total[c] - v, v, nonzero[c] - 1, c not in fractional))
+            if hits >= OVER_TIE_FIGURES and hits * 2 >= figures and hits > ties.get(r, 0):
+                ties[r] = hits
+    return ties
 
 
 def _tied(total: float, value: float, cells: int, whole: bool) -> bool:
@@ -244,6 +284,7 @@ def line_facts(grid: Grid) -> dict[int, LineFacts]:
     shapes = grid.shapes
     ties = _arith_ties(grid)
     blocks = _block_ties(grid)
+    groups = _group_ties(grid, blocks)
     repeats = _repeats(grid)
     style = {r: _style_share(grid, r) for r in filled}
     position = {r: i for i, r in enumerate(filled)}
@@ -307,7 +348,7 @@ def line_facts(grid: Grid) -> dict[int, LineFacts]:
             agg_column=agg_column, agg_row=agg_row, computed=computed,
             formula_major=agg_column > 0 and (agg_column + agg_row) * 2 >= figures,
             formula_line=bool(numbers) and computed + agg_column > 0 and (agg_column + agg_row + computed) * 2 >= figures,
-            arith_ties=ties.get(r, 0), block_ties=blocks.get(r, 0), bold=style[r][0], fill=style[r][1], under=style[r][2],
+            arith_ties=ties.get(r, 0), block_ties=blocks.get(r, 0), group_ties=groups.get(r, 0), bold=style[r][0], fill=style[r][1], under=style[r][2],
             bold_next=apart(r, 0, 1), fill_next=apart(r, 1, 1), under_next=apart(r, 2, 1), bold_prev=apart(r, 0, -1), fill_prev=apart(r, 1, -1),
             repeated=r in repeats, real_figures=real_figures, sequence=sequence, gap_above=prev_row is None or prev_row != r - 1, gap_below=next_row is None or next_row != r + 1,
             prev=prev_row, next=next_row, wide_merge=wide[1] - wide[0] + 1 if wide else 0, label_value=any(_LABEL_VALUE.match(t) for t in texts),

@@ -123,6 +123,7 @@ S_FORMULA_TOTAL = "formula_total"              # aggregates of its own column ma
 S_FORMULA_COMPUTED = "formula_computed"        # computed from lines of its own column, closing a block
 S_FORMULA_CLOSES_BLOCK = "formula_closes_block"
 S_ARITHMETIC_TIE = "arithmetic_tie"            # adds up by arithmetic, set apart by style
+S_GROUP_TIE = "group_tie"                      # its figures are the sums of the other lines holding one of its texts in the same column: a group's subtotal
 S_AUTOFILTER_TOP = "autofilter_top"
 S_FROZEN_LAST = "frozen_last"
 S_JOINED_ABOVE = "joined_above"                # a name line joined to the header under it
@@ -148,6 +149,6 @@ S_REPEATED_HEADER = "repeated_header"          # repeats its table's header
 S_ALONE_AFTER_TOTAL = "alone_after_total"      # a lone label in the key column between a printed line and the next block's figures
 S_STYLE_OF_HEADER = "style_of_header"          # the marks of a header above, set off from the line under it, on the same columns
 S_KEY_OVER_KEYS = "key_over_keys"              # in a side-by-side list of keys, the key with a figure beside it heads the keys under it
-LINE_SIGNALS = (S_TOTAL_WORD, S_FORMULA_TOTAL, S_FORMULA_COMPUTED, S_FORMULA_CLOSES_BLOCK, S_ARITHMETIC_TIE, S_AUTOFILTER_TOP, S_FROZEN_LAST, S_JOINED_ABOVE, S_JOINED_BELOW, S_MERGED_OVER_COLUMNS, S_ALONE_STYLED,
+LINE_SIGNALS = (S_TOTAL_WORD, S_FORMULA_TOTAL, S_FORMULA_COMPUTED, S_FORMULA_CLOSES_BLOCK, S_ARITHMETIC_TIE, S_GROUP_TIE, S_AUTOFILTER_TOP, S_FROZEN_LAST, S_JOINED_ABOVE, S_JOINED_BELOW, S_MERGED_OVER_COLUMNS, S_ALONE_STYLED,
                 S_ALONE_BEFORE_HEADER, S_ALONE_AFTER_GAP, S_ABOVE_TABLE, S_BELOW_TABLE, S_LABEL_VALUE, S_FIGURES, S_TEXT_LINE, S_NAMES_BODY, S_MODEL, S_RULE_LINE, S_TOTAL_WORD_IN_KEY, S_TOTAL_OTHER_BLOCK, S_STRAY_KEY,
                 S_DATA_LINE, S_FILLED_DOWN, S_REPEATED_HEADER, S_ALONE_AFTER_TOTAL, S_KEY_OVER_KEYS, S_STYLE_OF_HEADER)
