@@ -246,11 +246,13 @@ def build_decomposed_plan(
     proposal: dict[str, Any],
     *,
     question: str,
+    catalogs: list | None = None,
 ) -> AnalysisPlan:
     """Plan every leaf normally, then fuse their typed outputs with validated merges.
 
     `question` is the question the proposal decomposes: a leaf may keep only a row cutoff it
-    states (`unstated_cutoff_rejection`).
+    states (`unstated_cutoff_rejection`). `catalogs`, when given, receives the workbook each
+    leaf was read on (`shown_output` restores the sheet's spelling from it).
 
     An anti-join's evidence leaf is chosen when its merge is built: the first of its
     contract-compatible readings, in selection order, that keeps every dimension of the left
@@ -289,6 +291,8 @@ def build_decomposed_plan(
     outputs: dict[str, str] = {}
     row_bounds: dict[str, int | None] = {}
     pending = {}
+    catalogs = [] if catalogs is None else catalogs
+    lineage: dict[tuple[str, str], tuple[str, str]] = {}   # store columns holding another's values (_leaf_readings)
 
     def fused(trial=()):
         """Every committed leaf view in subquestion order, a trial leaf's, then the merges."""
@@ -324,7 +328,7 @@ def build_decomposed_plan(
                         raise DecompositionError(rejection)
         readings = _leaf_readings(
             planner, slug, node, tables,
-            feeds_cross=node["id"] in cross_inputs, question=question,
+            feeds_cross=node["id"] in cross_inputs, question=question, lineage=lineage, catalogs=catalogs,
         )
         first = next(readings)
         if node["id"] in evidence:
@@ -362,7 +366,7 @@ def build_decomposed_plan(
                         trial = fused(child.views)
                         keys = _bind_merge_keys(
                             trial, _shapes(trial, tuple(merged.values()), slug),
-                            left, str(child.output), foreign_keys,
+                            left, str(child.output), foreign_keys, lineage,
                         )
                     except DecompositionError as exc:
                         if first_failure is None:
@@ -376,7 +380,7 @@ def build_decomposed_plan(
                 current = fused()
                 keys = _bind_merge_keys(
                     current, _shapes(current, tuple(tables_by_name.values()), slug),
-                    left, outputs[right_id], foreign_keys,
+                    left, outputs[right_id], foreign_keys, lineage,
                 )
             view = AntiJoinView(
                 name,
@@ -402,7 +406,7 @@ def build_decomposed_plan(
 
     views = fused()
     shapes = _shapes(views, tuple(tables_by_name.values()), slug)
-    repeated = duplicated_output_dimension(views, shapes, outputs[proposal["output"]])
+    repeated = duplicated_output_dimension(views, shapes, outputs[proposal["output"]], lineage)
     if repeated is not None:
         raise DecompositionError(repeated)
 
@@ -427,17 +431,26 @@ def build_decomposed_plan(
     )
 
 
-def _leaf_readings(planner, slug, node, tables, *, feeds_cross: bool, question: str):
+def _leaf_readings(planner, slug, node, tables, *, feeds_cross: bool, question: str, lineage=None, catalogs=None):
     """Yield a leaf's contract-compatible readings, lowered and named for the root slug.
 
     Readings come in the selection's order (`leaf_candidates`), each its program's one plan with its tables declared
     whole, so the leaves' plans over one table fuse (sql_rank.PoolSelection.plan). Raises DecompositionError, naming
     the first reason a reading failed, when the leaf has none: the model restates the leaf (a bounded correction).
+    ``lineage`` gains the store columns of the leaf's workbook that hold another column's values
+    (engine/program/store.py column_lineage): the request's links connect the tables the leaves read; ``catalogs``
+    gains the workbook itself.
     """
     from engine.analysis import analysis_view_name
     from engine.deterministic.lower import UnsupportedDeterministicPlan
 
     selection = planner.select_query(node["question"], tables)
+    if selection.catalog is not None:
+        from engine.program.store import column_lineage
+        if lineage is not None:
+            lineage.update(column_lineage(selection.catalog))
+        if catalogs is not None:
+            catalogs.append(selection.catalog)
     if not selection.pool:
         raise DecompositionError(
             f"subquestion {node['id']!r} produced no typed AST candidate"
@@ -482,11 +495,10 @@ def _leaf_readings(planner, slug, node, tables, *, feeds_cross: bool, question: 
                 replace(
                     view,
                     name=names[view.name],
-                    **(
-                        {"source": names[view.source]}
-                        if hasattr(view, "source")
-                        else {}
-                    ),
+                    # every input a view reads: a single view's source, a merge's two (a leaf read as a
+                    # calculation lowers to one, engine/deterministic/lower.py lower_calculation)
+                    **{field: names[getattr(view, field)]
+                       for field in ("source", "left", "right") if hasattr(view, field)},
                 )
                 for view in child.views
             ),
@@ -649,7 +661,37 @@ def _merge_key_columns(views, shapes, name: str) -> dict[str, tuple[str, str]]:
     return {}
 
 
-def duplicated_output_dimension(views, shapes, output: str) -> str | None:
+def shown_output(plan, columns, rows, catalogs) -> list[tuple]:
+    """The fused answer's rows with the sheet's spelling back. The own-data path keys a listing and a group by a
+    column's fold (engine/program/store.py fold_column); an output column whose lineage is such a column shows each
+    value as that column first spells it, as a single answer does (engine/program/execute.py _displayed). Other
+    columns, and plans over the request's own tables, are unchanged."""
+    from engine.program.store import fold_column, table_id_of
+
+    rows = [tuple(row) for row in rows]
+    if not catalogs or not rows:
+        return rows
+    lineage = _merge_key_columns(plan.views, _shapes(plan.views, plan.tables, plan.slug), str(plan.output))
+    words = {}
+    for at, name in enumerate(columns):
+        origin = lineage.get(name)
+        catalog = next((held for held in catalogs if origin and table_id_of(origin[0]) in held.by_id), None)
+        if catalog is None:
+            continue
+        table = catalog.table(table_id_of(origin[0]))
+        position = next((p for p in range(len(table.columns)) if fold_column(p) == origin[1]), None)
+        if position is not None:
+            words[at] = table.spelling[position]
+    return [tuple(words[at].get(cell, cell) if at in words else cell for at, cell in enumerate(row)) for row in rows]
+
+
+def _canonical(keys: dict[str, tuple[str, str]], lineage=None) -> dict[str, tuple[str, str]]:
+    """Each output's lineage as the column whose values it holds (``lineage``: store columns the request's links
+    connect, engine/program/store.py column_lineage); a column that holds no other's is its own."""
+    return {name: (lineage or {}).get(origin, origin) for name, origin in keys.items()}
+
+
+def duplicated_output_dimension(views, shapes, output: str, lineage=None) -> str | None:
     """Reject an answer whose grain repeats one physical dimension.
 
     Crossing two leaves that describe the SAME entity produces an output with two
@@ -660,7 +702,7 @@ def duplicated_output_dimension(views, shapes, output: str) -> str | None:
     so two measures that share a name cannot trip this.
     """
     seen: dict[tuple[str, str], str] = {}
-    for name, origin in _merge_key_columns(views, shapes, output).items():
+    for name, origin in _canonical(_merge_key_columns(views, shapes, output), lineage).items():
         if origin in seen:
             return (
                 f"the combined answer would repeat the {origin[0]}.{origin[1]} column "
@@ -671,13 +713,16 @@ def duplicated_output_dimension(views, shapes, output: str) -> str | None:
     return None
 
 
-def _bind_merge_keys(views, shapes, left, right, foreign_keys=()):
+def _bind_merge_keys(views, shapes, left, right, foreign_keys=(), lineage=None):
     """Bind aliases only when physical lineage matches or a direct FK proves identity.
 
     Ambiguous duplicate projections and unrelated columns sharing an alias fail
     closed. A direct, single-column inclusion dependency is sufficient to compare
     the same named entity key across its source and referenced table; composite or
-    partial dependencies are deliberately not treated as identity.
+    partial dependencies are deliberately not treated as identity. On the own-data
+    path's store tables, ``lineage`` names those dependencies: a key the request's
+    links find and each column a key reaches holds the values of the column at the
+    end of its chain (``_canonical``).
     """
     from engine.deterministic.plan import MergeKey
 
@@ -702,8 +747,8 @@ def _bind_merge_keys(views, shapes, left, right, foreign_keys=()):
             for edge in foreign_keys
         )
 
-    left_keys = _merge_key_columns(views, shapes, left)
-    right_keys = _merge_key_columns(views, shapes, right)
+    left_keys = _canonical(_merge_key_columns(views, shapes, left), lineage)
+    right_keys = _canonical(_merge_key_columns(views, shapes, right), lineage)
     if any(
         not equivalent(left_keys[name], right_keys[name])
         for name in left_keys.keys() & right_keys.keys()

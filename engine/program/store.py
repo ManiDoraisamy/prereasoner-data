@@ -85,6 +85,17 @@ def table_columns(catalog: Catalog, sql_name: str) -> list[tuple[str, str]]:
 _STORAGE = {INTEGER: "INTEGER", TEXT: "TEXT", REAL: "REAL", DATE: "TEXT"}
 
 
+def column_lineage(catalog: Catalog) -> dict[tuple[str, str], tuple[str, str]]:
+    """Each store column of a column that holds another column's values (Catalog.identities), as (SQL table, SQL
+    column), mapped to the same store column of the column it holds them from: a plan reading either reads the same
+    values (engine/decomposition.py binds merge keys by it)."""
+    out = {}
+    for (table_id, position), (root_id, root_position) in catalog.identities.items():
+        for name_of in (text_column, fold_column, number_column, day_column):
+            out[(sql_table(table_id), name_of(position))] = (sql_table(root_id), name_of(root_position))
+    return out
+
+
 def write_table(connection: sqlite3.Connection, name: str, table: CatalogTable, temporary: bool = False) -> None:
     """Create the SQL table ``name`` holding ``table``'s lines in its stored layout (table_layout); ``temporary``: a TEMP
     table, which the connection alone sees (engine/program/connected.py reads a table's own columns from one)."""

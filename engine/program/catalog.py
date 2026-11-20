@@ -266,12 +266,17 @@ def _notes_table(tab: str, notes: list, index: int) -> Table | None:
 
 
 class Catalog:
-    """Every table of one compiled workbook, in a stable order: compiled tables, then families, then notes."""
+    """Every table of one compiled workbook, in a stable order: compiled tables, then families, then notes.
 
-    def __init__(self, tables: list[CatalogTable], name: str = ""):
+    ``identities``: (table id, position) -> (table id, position) of a column that holds another column's values, the
+    one it holds them from at the end of its chain: a key the request's links find and each column a key reaches
+    (engine/program/connected.py connect). A compiled workbook has none."""
+
+    def __init__(self, tables: list[CatalogTable], name: str = "", identities: dict | None = None):
         self.name = name
         self.tables = tables
         self.by_id = {table.id: table for table in tables}
+        self.identities: dict[tuple[str, int], tuple[str, int]] = dict(identities or {})
 
     @classmethod
     def from_model(cls, model: SheetModel) -> "Catalog":

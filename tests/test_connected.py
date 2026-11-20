@@ -98,6 +98,26 @@ def test_a_place_column_reaches_its_country_continent_currency_and_population() 
     print("  PASS  a place column reaches its country, continent, currency and population")
 
 
+def test_a_key_and_what_it_reaches_hold_the_other_tables_values() -> None:
+    """The connected catalog records which column holds another's values (Catalog.identities): the key holds the
+    column it keys into and each column it reaches holds the column it was read from, so a decomposition binds an
+    anti-join key on either side by its lineage (engine/program/store.py column_lineage). A place a link reaches is
+    the knowledgebase's, never a request table's: it holds no request column's values. The plain workbook has none."""
+    from engine.program.store import column_lineage, fold_column, text_column
+
+    _key, plain, _connected_key, connected = _connected()
+    names = _names(connected.catalog)
+    tier = names.index(f"Customer{ARROW}Tier")
+    identities = connected.catalog.identities
+    assert identities[("t0", 0)] == ("t1", 0), identities
+    assert identities[("t0", tier)] == ("t1", 1), identities
+    assert not any(key[1] == names.index(f"City{ARROW}country") for key in identities if key[0] == "t0"), identities
+    assert plain.catalog.identities == {}
+    lineage = column_lineage(connected.catalog)
+    assert lineage[("_t0", fold_column(tier))] == ("_t1", fold_column(1))
+    assert lineage[("_t0", text_column(0))] == ("_t1", text_column(0))
+
+
 def test_a_key_reaches_the_other_tables_columns() -> None:
     _key, _plain, _connected_key, connected = _connected()
     tiers, _ = _column(connected.catalog, f"Customer{ARROW}Tier")
@@ -254,6 +274,7 @@ def test_select_query_reads_the_connected_workbook_and_asks_the_currency_first()
 
 
 TESTS = [
+    test_a_key_and_what_it_reaches_hold_the_other_tables_values,
     test_a_place_column_reaches_its_country_continent_currency_and_population,
     test_a_key_reaches_the_other_tables_columns,
     test_a_money_column_reads_in_the_target_currency_on_the_as_of_day,

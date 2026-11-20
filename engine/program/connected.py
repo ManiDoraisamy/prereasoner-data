@@ -272,6 +272,7 @@ def connect(catalog: Catalog, links: list, reached: tuple) -> Catalog:
     plain = Catalog([copies.get(table.id, table) for table in catalog.tables], catalog.name)
     order = [r for r, link in enumerate(links) if not isinstance(link, Upload)]
     pending = [r for r, link in enumerate(links) if isinstance(link, Upload)]
+    holds: dict[tuple[str, int], tuple[str, int]] = {}     # a column -> the column whose values it holds
     while pending:      # a table another table's key reads comes first
         ready = [r for r in pending if not any(links[q].table_id == links[r].other for q in pending if q != r)] or pending[:1]
         order.extend(ready)
@@ -291,6 +292,7 @@ def connect(catalog: Catalog, links: list, reached: tuple) -> Catalog:
                     keys[key] = j
             if not unique or not keys:
                 continue
+            holds[(link.table_id, link.position)] = (link.other, link.key)
             name = table.columns[link.position].name
             for q, column in enumerate(list(other.table.columns)):
                 if q == link.key:
@@ -306,6 +308,7 @@ def connect(catalog: Catalog, links: list, reached: tuple) -> Catalog:
                         seen.add(cell.value)
                 if not filled:
                     continue
+                holds[(link.table_id, position)] = (link.other, q)
                 path = (name, *(column.path if column.path and column.col == -1 else (column.name,)))
                 table.columns.append(Column(position, -1, "", ARROW.join(path), path=path, role=column.role, kind=column.kind, format_kind=column.format_kind,
                                             unit=column.unit, filled=filled, distinct=len(seen)))
@@ -326,7 +329,17 @@ def connect(catalog: Catalog, links: list, reached: tuple) -> Catalog:
                                         role="measure" if column.kind == V_NUMBER else "label", kind=column.kind, filled=filled, distinct=len(seen),
                                         unit=link.unit()))
     return Catalog([CatalogTable(table.id, table.table, table.kind, table.adds_twice) if table.id in copies else table for table in plain.tables],
-                   catalog.name)
+                   catalog.name, {column: _root(holds, column) for column in holds})
+
+
+def _root(holds: dict[tuple[str, int], tuple[str, int]], column: tuple[str, int]) -> tuple[str, int]:
+    """The column at the end of ``column``'s chain of held values ("order_id → customer_id → customer_name" on
+    order_items holds orders' "customer_id → customer_name", which holds customers' customer_name)."""
+    seen = {column}
+    while column in holds and holds[column] not in seen:
+        column = holds[column]
+        seen.add(column)
+    return column
 
 
 __all__ = ["ARROW", "Conversion", "LINK_MIN_CELLS", "Link", "Upload", "connect", "conversion_targets", "linked_columns", "links_on", "reach"]

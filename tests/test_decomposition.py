@@ -287,6 +287,58 @@ def test_an_answer_grain_cannot_repeat_one_physical_dimension():
         (source, left), {"source": (), "left": ("product_name",)}, "left") is None
 
 
+def test_store_columns_a_key_connects_bind_by_the_column_they_hold():
+    """On the own-data path's store tables a key-reached column holds the values of the column it was read from
+    (engine/program/store.py column_lineage): "all product names" on the products tab and "product names bought in
+    Paris" on the purchases tab bind one anti-join key (complex-unsold-products, demo gate 2026-11-20), and a cross of
+    a column with one that holds its values repeats one dimension. Without the lineage the two stay different columns."""
+    from engine.decomposition import duplicated_output_dimension
+    from engine.deterministic.plan import CrossView
+
+    views = [
+        CombinedView("source", ("_t0", "_t1")),
+        ProjectedView("products", "source", (SelectedValue("value", ColumnValue("_t0", "c1_f")),)),
+        ProjectedView("purchases", "source", (SelectedValue("value", ColumnValue("_t1", "c3_f")),)),
+    ]
+    lineage = {("_t1", "c3_f"): ("_t0", "c1_f")}
+    keys = _bind_merge_keys(views, {}, "products", "purchases", (), lineage)
+    assert [(key.left, key.right) for key in keys] == [("value", "value")]
+    _reject(lambda: _bind_merge_keys(views, {}, "products", "purchases", ()))
+    _reject(lambda: _bind_merge_keys(views, {}, "products", "purchases", (), {("_t1", "c2_f"): ("_t0", "c1_f")}))
+    crossed = CrossView("paired", "products", "purchases", "other_")
+    shapes = {"source": (), "products": ("value",), "purchases": ("value",), "paired": ("value", "other_value")}
+    assert duplicated_output_dimension((*views, crossed), shapes, "paired") is None
+    assert duplicated_output_dimension((*views, crossed), shapes, "paired", lineage) is not None
+
+
+def test_a_fused_answer_shows_the_sheets_spelling_of_a_folded_key():
+    """The own-data path keys a listing by a column's fold; a fused answer whose output column is such a fold shows
+    each value as the sheet first spells it ("delta" was served for "Delta", demo gate 2026-11-20). Other columns and a
+    plan over the request's own tables are unchanged."""
+    from engine.decomposition import shown_output
+    from engine.deterministic.plan import AnalysisPlan
+
+    class Table:
+        columns = ("id", "name")
+        spelling = {1: {"delta": "Delta", "omega": "Omega"}}
+
+    class Workbook:
+        by_id = {"t0": Table()}
+
+        def table(self, table_id):
+            return self.by_id[table_id]
+
+    plan = Mock(spec=AnalysisPlan)
+    plan.views = (CombinedView("source", ("_t0",)),
+                  ProjectedView("names", "source", (SelectedValue("value", ColumnValue("_t0", "c1_f")),
+                                                    SelectedValue("n", ColumnValue("_t0", "c0_n")))))
+    plan.tables, plan.slug, plan.output = (), "s", "names"
+    with patch("engine.decomposition._shapes", lambda views, tables, slug: {"source": (), "names": ("value", "n")}):
+        assert shown_output(plan, ["value", "n"], [("delta", 1), ("omega", 2), ("zeta", 3)], [Workbook()]) == [
+            ("Delta", 1), ("Omega", 2), ("zeta", 3)]
+        assert shown_output(plan, ["value", "n"], [("delta", 1)], []) == [("delta", 1)]
+
+
 def test_failed_compound_probe_cannot_authorize_a_partial_composed_answer():
     planner = Mock()
     planner.ingest.side_effect = RuntimeError("planner unavailable")
@@ -524,6 +576,8 @@ TESTS = [
     test_anti_join_evidence_must_preserve_the_complete_left_grain,
     test_ranked_cross_input_must_stay_at_the_ranked_entity_grain,
     test_an_answer_grain_cannot_repeat_one_physical_dimension,
+    test_store_columns_a_key_connects_bind_by_the_column_they_hold,
+    test_a_fused_answer_shows_the_sheets_spelling_of_a_folded_key,
     test_failed_compound_probe_cannot_authorize_a_partial_composed_answer,
 ]
 

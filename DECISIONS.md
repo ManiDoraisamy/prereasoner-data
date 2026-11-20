@@ -85,6 +85,15 @@ decomposition leaves, compose's probe, the hybrid search's check and every evalu
   one assessment kept is a currency the question wants its answer in when no money column of the request could be
   read in another (`PoolSelection.converts` false): the path had no way to convert, so the registry's currency
   assessment asks back rather than serve the amount unconverted. The registry still gates every other route.
+- **A decomposition binds store columns by the column they hold.** The leaves of a decomposition are the own-data
+  path's programs over its store tables, so the fusion's lineage check (physical column, or a direct inclusion
+  dependency) saw a key-reached column and the column it was read from as two dimensions: "all product names" and
+  "product names bought in Paris" never bound (complex-unsold-products, demo gate 2026-11-20). The connected catalog
+  records which column holds another's values (`Catalog.identities`: a key the request's links find, and each
+  column a key reaches, resolved to the end of its chain); `store.column_lineage` names them per store column, and
+  the decomposition binds anti-join keys and finds repeated dimensions by that lineage. A fused answer's folded key
+  shows the sheet's spelling (`decomposition.shown_output`), as a single answer does. The leaves' calculation
+  plans now fuse: every view input is renamed with the leaf, a merge's two included.
 - **The tab in view is passed, not ordered.** The request's `active_sheet` (a table's canonical name) rides on the request
   database into both records; `on_screen_first`, which reordered the tables for the readers, is deleted, so switching
   tabs does not prepare the workbook again.

@@ -256,9 +256,9 @@ TESTS = [
 # Load the runtime bundle (the planner's schema); the second group also reads questions through the Decisions API.
 MODEL_BACKED = (
     test_a_decomposition_cannot_invent_a_cutoff,
-    test_full_complex_prompts_request_decomposition_without_executing_a_partial_answer,
 )
-DECISIONS_BACKED = (
+DECISIONS_BACKED = (     # each serves a question through the one selection, which reads it through the Decisions API
+    test_full_complex_prompts_request_decomposition_without_executing_a_partial_answer,
     test_a_negated_existence_prompt_is_answered_as_one_query,
     test_shipped_complex_datasets_match_gold_in_python_and_sql,
     test_compose_surface_does_not_swallow_a_compound_question,

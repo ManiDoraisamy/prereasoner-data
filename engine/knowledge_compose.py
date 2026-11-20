@@ -650,7 +650,7 @@ class ComposedKnowledgeQuery:
         dataset_semantics=(),
     ):
         """Fuse planner-selected leaf ASTs and execute one dual-emitter snapshot."""
-        from engine.decomposition import build_decomposed_plan
+        from engine.decomposition import build_decomposed_plan, shown_output
         from engine.deterministic.context import (
             current_analysis_context,
             current_execution_record,
@@ -662,6 +662,7 @@ class ComposedKnowledgeQuery:
         context = current_analysis_context()
         if context is None:
             raise RuntimeError("decomposition requires an analysis execution context")
+        catalogs = []
         plan = build_decomposed_plan(
             self.qw,
             context.slug,
@@ -669,6 +670,7 @@ class ComposedKnowledgeQuery:
             inferred_fks,
             decomposition,
             question=question,
+            catalogs=catalogs,
         )
         # Execute through the own-data executor (q11): it holds the normalized tables in the request's
         # database and runs the plan through the ONE deterministic executor.
@@ -692,6 +694,6 @@ class ComposedKnowledgeQuery:
             },
             "views": record["views"],
             "sql": record["final_sql"],
-            "result": {"columns": columns, "rows": wire_rows(rows)},
+            "result": {"columns": columns, "rows": wire_rows(shown_output(plan, columns, rows, catalogs))},
             "dataset_semantics": list(dataset_semantics or ()),
         }

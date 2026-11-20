@@ -284,6 +284,7 @@ def main() -> int:
                     "clarify": bool(response.get("clarify")),
                     "error": response.get("error"),
                     "reason": response.get("reason"),
+                    "detail": response.get("detail"),     # a rejected decomposition's correction for its proposer
                     "execution": response.get("execution"),
                     "timings": request_timing.snapshot(),
                     "manifest": response.get("deterministic", {}).get("manifest"),
