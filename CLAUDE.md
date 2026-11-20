@@ -30,9 +30,11 @@ decisions belong in `DECISIONS.md`, and measured SQL results belong in
   replacing external models are operator responsibilities. Do not make users manage architecture.
 - Replace external presentation/orchestration with a local model only through the controlled model
   experiment and promotion rules below. Keep SQL construction, calculation semantics, and
-  verification deterministic, and make provider migration transparent to users. Own-data selection uses
-  no external model: the turn's read-as line shows the readers' plain reading (never a paragraph in the
-  answer).
+  verification deterministic, and make provider migration transparent to users. Own-data selection may
+  use an external closed-choice model (owner's decision, 2026-11-20): it answers closed questions whose
+  options the engine built, returns probabilities only, and never writes text, SQL, or a program. It is
+  called only through `engine/llm.py`, under `EXTERNAL_LLM_ENABLED`. The turn's read-as line shows the
+  plain reading of the query that ran (never a paragraph in the answer).
 
 ## Non-negotiable outcome
 
@@ -167,7 +169,11 @@ Consolidation is part of each phase, not a future cleanup phase.
   readings, the deterministic builder makes every served query a typed AST from them, and the
   readers' re-scorer and refusal choose among the built candidates that run. Raise accuracy through
   the readers (data, training, decoding) and the builder, never by adding a SQL-generating model, a
-  generative model in selection, or a second selection path. No question-specific word lists or
+  generative model in selection, or a second selection path. An external closed-choice model
+  (probabilities over options the engine built, no generated text) may take the readers' place in
+  reading a question and choosing among the built candidates; it enters production only by replacing
+  them in one migration under the one implementation rule, never as a path beside them. No
+  question-specific word lists or
   patches: a rule in the decoder or builder must be generic semantics (dates, a pinned column, list
   marks) that hold across schemas.
 - The typed AST is the only own-data SQL representation. New SQL behavior must

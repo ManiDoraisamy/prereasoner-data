@@ -5525,3 +5525,25 @@ All 20 latest reviewed questions pass their preparation and mechanical/control
 checks, including native ACE and full-source SQL for 19 executable programs.
 This remains quarantined data evidence, not model accuracy or complete independent
 English certification; the full 32,798-question preparation is still separate.
+
+## An external closed-choice model may read own-data questions (2026-11-20)
+
+The owner changed the rule that own-data selection uses no external model. An external closed-choice
+model may now read an own-data question and choose among the candidates the deterministic builder made.
+It answers closed questions whose options the engine built and returns probabilities only; it never
+writes text, SQL, or a program. `CLAUDE.md` carries the rule (the privacy experience rule and the SQL
+planner rules).
+
+Evidence (`spider/results/RESULTS.md`, entries of 2026-11-18 to 2026-11-19; experiment
+`training/readers/data/experiments/decisions-probe-20261118`): on 896 public and synthetic dev questions
+the trained named reader alone answers 152 right; the Gemini Decisions API reading and choosing, with no
+trained model, picks 693 right (77.3%) and lists a right answer for 769, at about a tenth of a cent and
+about a second a question. These are per-answer harness measurements, not served ones; the launch bar
+(80% right) is not met.
+
+What does not change: no model writes SQL; the typed AST and the builder stay deterministic; there is
+one selection path. Production still runs the trained readers. The closed-choice model enters production
+only by replacing them in one migration (callers, tests, artifacts and documents together), called through
+`engine/llm.py` under `EXTERNAL_LLM_ENABLED`; the ownership map changes in that same change. The
+Decisions endpoint is on the Gemini Developer API, not Vertex, so serving it needs an API key held as a
+deployment secret.
