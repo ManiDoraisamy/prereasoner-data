@@ -21,7 +21,7 @@ and a batch's padding can move a vector in its last bits, so a run keeps the mea
 each. Results: regress/results/dev_decisions/<tag>/<set>.jsonl and summary_<sets>.json.
 
 --sets demo is the demo gate (tests/test_datasets.py: each dataset's prompt and its standalone eval.txt follow-ups) against
-demo25, graded on rows as demo25 was: each question is a served request's own-data selection, on its own request database
+vtdemo, graded on rows as vtdemo was: each question is a served request's own-data selection, on its own request database
 with the world layer's links registered (engine/knowledge_bridges.py link_request), so it reads the live knowledgebase
 through the Cloud SQL proxy. --demo-maps reads each dataset instead on the request database production built for it on
 2026-11-18 (build_maps.py's maps folder), the inputs demo25 read, with the links recorded there.
@@ -70,14 +70,15 @@ PROBE = EXPERIMENTS / "decisions-probe-20261118"
 # kept change's rerun of the questions it touches (gs1, af1, wm1 and DataBench's wm1b; cf1 and cf1b, the cell as the sheet
 # wrote it; fg1 and fg1b, a prose column's word counts; ol1 and ol1b, each cell on one line; to1 and to1b, tied lines in
 # sheet order), a later measurement of a question replacing an earlier one
-REFERENCE_TAGS = {"messy": ("eor1", "to1"), "freshdev": ("eor1", "gs1", "wm1", "cf1", "fg1", "ol1", "to1"),
-                  "wtq": ("eor1", "af1", "wm1", "cf1", "fg1", "ol1", "to1"),
-                  "databench": ("pgd1", "wm1", "wm1b", "cf1", "cf1b", "fg1", "fg1b", "ol1", "ol1b", "to1", "to1b")}
+REFERENCE_TAGS = {"messy": ("eor1", "to1", "pl1b", "vt1"), "freshdev": ("eor1", "gs1", "wm1", "cf1", "fg1", "ol1", "to1", "vt1"),
+                  "wtq": ("eor1", "af1", "wm1", "cf1", "fg1", "ol1", "to1", "pl1b"),
+                  "databench": ("pgd1", "wm1", "wm1b", "cf1", "cf1b", "fg1", "fg1b", "ol1", "ol1b", "to1", "to1b", "pl1", "pl1b", "vt1b")}
 SETS = ("messy", "wtq", "databench", "freshdev", "demo")
-# The demo set against demo25 (results/e2e_demo25_con_stock.jsonl.gz): the stock arm on the connected catalog (place,
-# entity, currency and key links, the kept closed questions, the tab in view named), read on the request databases
-# production built for the demo datasets on 2026-11-18 (the day their money columns with no date convert on).
-DEMO_REFERENCE = "e2e_demo25_con_stock.jsonl.gz"
+# The demo set against vtdemo (results/e2e_vtdemo_con_stock.jsonl.gz): the stock arm on the connected catalog (place,
+# entity, currency and key links with each key's identities, the kept closed questions, the tab in view named, the
+# value targets' token bound), read on the request databases production built for the demo datasets on 2026-11-18 (the
+# day their money columns with no date convert on).
+DEMO_REFERENCE = "e2e_vtdemo_con_stock.jsonl.gz"
 DEMO_AS_OF = "2026-11-18"
 CENT = 0.01                 # run_connected.py: a scalar within one cent, a row's cells to the cent
 
@@ -227,7 +228,7 @@ def reference(name: str, probe: Path = PROBE) -> dict:
 @dataclass(frozen=True)
 class DemoItem:
     """One question of the demo gate (tests/test_datasets.py: each dataset's prompt and its standalone eval.txt
-    follow-ups, chat lines left out), graded on rows as demo25 was (run_connected.py grade)."""
+    follow-ups, chat lines left out), graded on rows as vtdemo was (run_connected.py grade)."""
     id: str
     question: str
     book: str

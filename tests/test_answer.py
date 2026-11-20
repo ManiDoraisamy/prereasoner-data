@@ -53,6 +53,9 @@ class FakeBackbone:
         vectors = [[(hashlib.sha256(f"{text}|{i}".encode()).digest()[0] - 127.5) / 127.5 for i in range(self.dim)] for text in distinct]
         return distinct, torch.tensor(vectors, dtype=torch.float32) if vectors else torch.zeros((0, self.dim))
 
+    def text_tokens(self, texts, *, max_tokens=32):
+        return [min(len(text) + 2, max_tokens) for text in texts]
+
 
 def _use_fake_reader():
     stock._READER = stock.StockReader(FakeBackbone())

@@ -83,6 +83,12 @@ class TextBackbone(nn.Module):
             parts.append((hidden * weight).sum(1) / weight.sum(1).clamp(min=1.0))
         return distinct, (torch.cat(parts) if parts else torch.zeros((0, self.dim), device=device))
 
+    def text_tokens(self, texts: list[str], *, max_tokens: int = 32) -> list[int]:
+        """Each text's tokens as encode_texts reads it: special tokens included, truncated at max_tokens."""
+        if not texts:
+            return []
+        return [len(ids) for ids in self.tokenizer([text or " " for text in texts], truncation=True, max_length=max_tokens)["input_ids"]]
+
     def encode_questions(self, questions: list[str], *, max_tokens: int = 64) -> list[tuple[list[str], torch.Tensor]]:
         """Per question, (its words, one vector per word): the mean over the word's own tokens. A word past the token limit reads as zeros."""
         if not questions:

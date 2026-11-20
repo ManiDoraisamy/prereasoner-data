@@ -3,9 +3,10 @@
 Two parts, added on each coordinate:
   - the engine's word reader (engine/program/words.py read_question): digits, periods and the sheet's own words;
   - stock bge-m3 (engine/named/backbone.py, the base model's own weights): each workbook target (engine/named/units.py
-    targets_of: the table, its columns, the values of its text columns, its printed lines' labels, its bands) is scored by
-    its best cosine to the question's one- to three-word phrases and to the whole question. Of a table's values, lines
-    and bands only the VALUE_TOP most similar are kept.
+    targets_of: the table, its columns, the values of its text columns, its printed lines' labels, its bands; a
+    workbook's values held to a token bound, bounded_targets) is scored by its best cosine to the question's one- to
+    three-word phrases and to the whole question. Of a table's values, lines and bands only the VALUE_TOP most similar
+    are kept.
 Every closed head offers every class at its uniform share, and each head's classes stand on the reading at 0.0, so the
 closed questions (engine/program/closed.py) can read them; the word roles say nothing.
 
@@ -24,7 +25,7 @@ import torch
 from engine.named.backbone import TextBackbone, load_backbone, question_words
 from engine.named.names import CALC_SIDES, CLOSED_HEADS, NONE, WORD_ROLE_CLASSES
 from engine.named.reader import MODE_NAMED_PLUS_OPEN, VALUE_TOP, NamedReading, QuestionRead
-from engine.named.units import T_BAND, T_LINE, T_TABLE, T_VALUE, Target, UnitsConfig, targets_of
+from engine.named.units import T_BAND, T_LINE, T_TABLE, T_VALUE, Target, UnitsConfig, bounded_targets
 from engine.program.catalog import Catalog
 from engine.program.decoder import Decoder, table_reach
 from engine.program.names import SIGNED, SLOT_ANSWER_TYPE, SLOT_CONDITIONS, SLOT_SIZE, coarse_type, coordinate
@@ -62,12 +63,11 @@ def workbook_texts(catalog: Catalog, targets: dict[str, tuple[list[Target], list
 
 
 def workbook_targets(catalog: Catalog) -> dict[str, tuple[list[Target], list[tuple[str, ...]]]]:
-    """Each table's targets and the coordinates each fills, read once per workbook."""
-    out = {}
-    for table in catalog.tables:
-        targets = targets_of(table, UnitsConfig())
-        out[table.id] = (targets, [target.coordinates() for target in targets])
-    return out
+    """Each table's targets and the coordinates each fills, read once per workbook: the workbook's value targets held
+    to engine/named/units.py VALUE_TOKENS as the stock backbone reads them (bounded_targets), so a workbook's first
+    question encodes a bounded number of tokens however many values its text columns hold."""
+    bounded = bounded_targets(catalog.tables, UnitsConfig(), stock_reader().text_tokens)
+    return {table.id: (targets, [target.coordinates() for target in targets]) for table in catalog.tables for targets in (bounded[table.id],)}
 
 
 class StockReader:
@@ -96,6 +96,10 @@ class StockReader:
             if not texts:
                 return np.zeros((0, self.backbone.dim), np.float32)
             return np.stack([self.cache[text] for text in texts]).astype(np.float32)
+
+    def text_tokens(self, texts: list[str]) -> list[int]:
+        """Each text's tokens as encode reads it."""
+        return self.backbone.text_tokens(texts, max_tokens=TEXT_TOKENS)
 
     def vectors(self, texts: list[str]) -> tuple[list[str], np.ndarray]:
         """(the distinct texts, their float16 vectors as the cache holds them), encoding those not yet read KEEP_CHUNK

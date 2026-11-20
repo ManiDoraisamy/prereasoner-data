@@ -286,6 +286,34 @@ def test_a_fused_leaf_shows_its_answer_without_the_tie_order():
     assert shown_plan(two) is two
 
 
+def test_a_workbook_reads_its_values_within_a_token_bound():
+    """eval-neartail-ecommerce: the stock reading encodes every value target on a workbook's first question, and the
+    2,000 order ids cost 49,704 of its 49,799 tokens, about 156 s on Cloud Run against a 180 s call. A workbook's value
+    targets are held to a token bound shared equally among its text columns: a column under its share keeps every
+    value, the others keep theirs in value_cap's digest order while they fit; tables, columns, labels and bands always.
+    No word and no column name decides what is kept, and a workbook under the bound reads every value as before."""
+    from engine.named.units import T_COLUMN, T_TABLE, T_VALUE, UnitsConfig, bounded_targets, targets_of
+    codes = [f"{at:04d}-a1b2c3d4-e5f6" for at in range(60)]
+    rows = [["Order", "Channel", "Amount"], *[[code, ("web", "shop", "phone")[at % 3], float(at)] for at, code in enumerate(codes)]]
+    catalog, table, _ = _setup(rows)
+    length = lambda texts: [len(text) for text in texts]     # noqa: E731 - a counter of its own: one token a character
+    everything = targets_of(table, UnitsConfig())
+    assert bounded_targets(catalog.tables, UnitsConfig(), length, bound=10_000)[table.id] == everything     # under the bound: as before
+    held = bounded_targets(catalog.tables, UnitsConfig(), length, bound=300)[table.id]
+    values = [target for target in held if target.kind == T_VALUE]
+    kept_codes = {target.text for target in values if target.position == 0}
+    assert {target.text for target in values if target.position == 1} == {"web", "shop", "phone"}     # under its share: all
+    assert sum(len(target.text) for target in values) <= 300 and 0 < len(kept_codes) < 60
+    assert [target for target in held if target.kind in (T_TABLE, T_COLUMN)] == [target for target in everything if target.kind in (T_TABLE, T_COLUMN)]
+    smaller = {target.text for target in bounded_targets(catalog.tables, UnitsConfig(), length, bound=200)[table.id] if target.kind == T_VALUE and target.position == 0}
+    assert smaller < kept_codes     # a smaller bound keeps a prefix of the same digest order
+    # negative: the column's name and place decide nothing; the same values under other headers, in another order, keep the same
+    renamed = [["Channel", "Amount", "Reference"], *[[row[1], row[2], row[0]] for row in rows[1:]]]
+    other, other_table, _ = _setup(renamed)
+    moved = {target.text for target in bounded_targets(other.tables, UnitsConfig(), length, bound=300)[other_table.id] if target.kind == T_VALUE and target.position == 2}
+    assert moved == kept_codes
+
+
 def test_a_listing_of_values_no_line_holds():
     """complex-unsold-products: "List the product names that no customer from Paris has bought" was answered unwarned as
     the different product_name on "purchases" where city is other than "Paris" (Gamma, Delta; the CSVs give Delta and
@@ -1881,7 +1909,7 @@ def test_explain_carries_the_named_contributions():
 
 
 TESTS = [
-    test_a_listing_of_values_no_line_holds, test_a_listing_of_several_columns_gives_their_distinct_combinations, test_tied_lines_print_in_sheet_order, test_a_fused_leaf_shows_its_answer_without_the_tie_order, test_a_rank_by_words_prints_the_word_counts, test_an_answer_prints_the_cell_as_the_sheet_wrote_it, test_a_column_of_prose_is_measured_by_its_words, test_several_shown_columns_cost_a_named_coordinate, test_a_stated_number_a_column_holds_reads_as_its_value, test_a_misspelled_word_reads_as_the_sheets_word, test_a_word_only_one_column_holds_says_which, test_several_columns_shown_type_the_same_however_they_stand, test_across_adds_peer_columns_of_a_line, test_the_decoder_reaches_across_when_a_word_asks, test_a_text_other_than, test_answer_types_place_money_quantity, test_decoder_ties_do_not_follow_sheet_order, test_a_family_adding_twice_says_so, test_a_family_of_tabs_reads_as_all_its_tabs, test_axes_are_read_by_their_kind, test_a_question_reads_the_tables_its_links_reach, test_verifier_stops_at_its_budget_of_lines, test_a_condition_search_stops_at_its_budget_of_checks, test_a_value_stands_whole_without_a_pattern_for_each_value,
+    test_a_workbook_reads_its_values_within_a_token_bound, test_a_listing_of_values_no_line_holds, test_a_listing_of_several_columns_gives_their_distinct_combinations, test_tied_lines_print_in_sheet_order, test_a_fused_leaf_shows_its_answer_without_the_tie_order, test_a_rank_by_words_prints_the_word_counts, test_an_answer_prints_the_cell_as_the_sheet_wrote_it, test_a_column_of_prose_is_measured_by_its_words, test_several_shown_columns_cost_a_named_coordinate, test_a_stated_number_a_column_holds_reads_as_its_value, test_a_misspelled_word_reads_as_the_sheets_word, test_a_word_only_one_column_holds_says_which, test_several_columns_shown_type_the_same_however_they_stand, test_across_adds_peer_columns_of_a_line, test_the_decoder_reaches_across_when_a_word_asks, test_a_text_other_than, test_answer_types_place_money_quantity, test_decoder_ties_do_not_follow_sheet_order, test_a_family_adding_twice_says_so, test_a_family_of_tabs_reads_as_all_its_tabs, test_axes_are_read_by_their_kind, test_a_question_reads_the_tables_its_links_reach, test_verifier_stops_at_its_budget_of_lines, test_a_condition_search_stops_at_its_budget_of_checks, test_a_value_stands_whole_without_a_pattern_for_each_value,
     test_every_name_is_from_a_closed_list, test_forms_refuse_what_they_cannot_say, test_signs, test_printed_lines_are_read_by_label_and_never_added, test_shortest_label_first_and_unlabelled_printed_lines, test_a_column_filled_only_on_printed_lines_reads_them,
     test_partial_value_match, test_case_and_spacing_do_not_count, test_periods, test_blanks, test_ties_keep_every_tied_line, test_units, test_mixed_columns, test_repeated_rows, test_sections_nested_bands_and_the_section_shown, test_python_masks_agree_with_the_sql,
     test_calc_shapes, test_rank_across_peer_columns, test_a_rank_keeps_as_many_as_the_question_states, test_the_decoder_proposes_how_many_a_question_states, test_a_check_says_yes_or_no, test_the_decoder_checks_only_when_the_reading_names_a_check, test_a_choice_among_named_values, test_a_check_asks_what_the_top_one_is, test_a_check_asks_whether_the_top_one_is_the_same_or_compares_two_aggregates, test_a_check_answers_in_the_questions_own_words, test_a_read_takes_the_line_after_or_before_the_kept_one, test_new_ast_nodes_render_and_validate, test_plan_schema_holds_only_what_a_query_reads, test_perfect_readings_give_the_gold_first, test_decoder_is_deterministic_and_order_free, test_the_list_does_not_depend_on_hash_order,

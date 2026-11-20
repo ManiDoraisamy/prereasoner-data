@@ -36,6 +36,7 @@ T_BAND = "band"
 T_TABLE = "table"
 TARGET_KINDS = (T_COLUMN, T_VALUE, T_LINE, T_BAND, T_TABLE)
 _TEXT_LIMIT = 80
+VALUE_TOKENS = 12_000     # a workbook's value targets, in the reader's tokens: its first question's encoding stays well inside a minute on Cloud Run's CPU
 
 
 @dataclass(frozen=True, slots=True)
@@ -194,6 +195,46 @@ def targets_of(table: CatalogTable, config: UnitsConfig) -> list[Target]:
     return out
 
 
+def bounded_targets(tables: list[CatalogTable], config: UnitsConfig, tokens, bound: int = VALUE_TOKENS) -> dict[str, list[Target]]:
+    """Each table's targets (targets_of), a workbook's value targets held to `bound` tokens as `tokens` counts them (a
+    list of texts -> each one's tokens, as the reader reads it). The table, its columns, its printed lines' labels and
+    its bands are always kept. The bound is shared equally among the workbook's text columns: a column whose values
+    cost less than its share keeps them all and leaves the rest to the others, until every column left costs more than
+    an equal share of what remains, and each of those keeps its values in value_cap's digest order while they fit that
+    share. So the rule reads no word and no column's name, a column's values under a smaller bound are a prefix of
+    those under a larger, and a workbook under the bound reads every value; rules still reach the rest."""
+    held = {table.id: targets_of(table, config) for table in tables}
+    costs: dict[tuple[str, int], list[tuple[str, str, int]]] = {}
+    for table in tables:
+        values = [target for target in held[table.id] if target.kind == T_VALUE]
+        for target, cost in zip(values, tokens([target.text for target in values]) if values else ()):
+            costs.setdefault((table.id, target.position), []).append((_digest(target.text), target.text, cost))
+    if sum(cost for column in costs.values() for _, _, cost in column) <= bound:
+        return held
+    order = {key: sorted(column) for key, column in costs.items()}
+    kept: dict[tuple[str, int], set[str]] = {}
+    left, budget = sorted(order), bound
+    while left:
+        share = budget // len(left)
+        under = [key for key in left if sum(cost for _, _, cost in order[key]) <= share]
+        if not under:
+            break
+        for key in under:
+            kept[key] = {text for _, text, _ in order[key]}
+            budget -= sum(cost for _, _, cost in order[key])
+        left = [key for key in left if key not in under]
+    for key in left:
+        share, spent, texts = budget // len(left), 0, set()
+        for _, text, cost in order[key]:
+            if spent + cost > share:
+                break
+            spent += cost
+            texts.add(text)
+        kept[key] = texts
+    return {table_id: [target for target in targets if target.kind != T_VALUE or target.text in kept[(table_id, target.position)]]
+            for table_id, targets in held.items()}
+
+
 def value_graph(table: CatalogTable, target: Target, config: UnitsConfig, order) -> Graph:
     """A stored value read with its column's name and cells of the line holding it; a label or band read with its table's context."""
     index = index_of(table)
@@ -275,4 +316,4 @@ def collate(graphs: list[Graph], vectors: list[torch.Tensor]) -> tuple[torch.Ten
     return inputs, edges, pad
 
 
-__all__ = ["FEATURES", "Graph", "T_BAND", "T_COLUMN", "T_LINE", "T_TABLE", "T_VALUE", "TARGET_KINDS", "Target", "UnitsConfig", "cell_text", "collate", "question_graph", "rendered_graph", "sampled_lines", "table_context", "table_graphs", "targets_of", "value_graph", "word_features"]
+__all__ = ["FEATURES", "Graph", "T_BAND", "T_COLUMN", "T_LINE", "T_TABLE", "T_VALUE", "TARGET_KINDS", "Target", "UnitsConfig", "VALUE_TOKENS", "bounded_targets", "cell_text", "collate", "question_graph", "rendered_graph", "sampled_lines", "table_context", "table_graphs", "targets_of", "value_graph", "word_features"]
