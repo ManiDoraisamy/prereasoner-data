@@ -13,7 +13,8 @@ its header, kind and three example cells; on a workbook of several tabs, the tab
                    workbook with days, or with a column of year numbers), a day written with its month as a word and how a
                    date is restricted to it, a year compared with a column of year numbers, how many cell values are
                    named, and whether a line's figure is a percent of a rate. A second call asks which set of the value
-                   question's likeliest values the question names.
+                   question's likeliest values the question names. The said call, over the question alone, asks which
+                   of its own words answer a versus when one figure is above the other and which when below.
   choice record    one question over the candidates that ran (at most CHOOSE_K, decoder order): each one's read-as
                    sentence and a preview of the answer it returns, and none.
 
@@ -38,13 +39,14 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from itertools import combinations
 
+from engine.named.backbone import WORD
 from engine.named.names import CLOSED_HEADS, NONE
 from engine.named.reader import NamedReading
 from engine.program.catalog import KIND_FAMILY, KIND_TABLE, Catalog
 from engine.program.decoder import table_reach
 from engine.program.index import index_of
 from engine.program.language import PeriodSpan, period_from_name
-from engine.program.names import PERCENT_OP, SLOT_ANSWER_TYPE, SLOT_NUMBER, SLOT_PERIOD, SLOT_ROW_OP, coarse_type, coordinate
+from engine.program.names import PERCENT_OP, SAID_ABOVE, SAID_BELOW, SLOT_ANSWER_TYPE, SLOT_NUMBER, SLOT_PERIOD, SLOT_ROW_OP, SLOT_SAID, coarse_type, coordinate
 from engine.program.scoring import Reading
 from engine.program.semantics import fold, number_text
 from engine.sheet.names import P_DAY, P_MONTH, P_QUARTER, P_RANGE, P_YEAR
@@ -664,10 +666,76 @@ def api_closed(record: ReadingRecord, fields: Mapping[str, Mapping[str, float]],
     return out
 
 
+# ------------------------------------------------------------------------------------- the question's own two words
+SAID_ABOVE_QUESTION = ("Does the question ask which of two outcomes of a comparison holds, its answer being one of the "
+                       "question's own words for how one figure compares with another (more or less, higher or lower, "
+                       "before or after, longer or shorter)? Choose the words of the question that answer it when what the "
+                       "question asks about is more, higher, larger, later or longer than what it is compared with. none if "
+                       "the question asks no such either-or, or if its alternatives are things or values it names rather "
+                       "than how they compare.")
+SAID_BELOW_QUESTION = ("Does the question ask which of two outcomes of a comparison holds, its answer being one of the "
+                       "question's own words for how one figure compares with another (more or less, higher or lower, "
+                       "before or after, longer or shorter)? Choose the words of the question that answer it when what the "
+                       "question asks about is less, lower, smaller, earlier or shorter than what it is compared with. none "
+                       "if the question asks no such either-or, or if its alternatives are things or values it names rather "
+                       "than how they compare.")
+SAID_SPAN_WORDS = 3          # a said word is a span of one to three of the question's words
+SAID_OPTIONS_MOST = 254      # the API's 255 options, none among them
+
+
+def said_spans(question: str) -> list[str]:
+    """The question's own word spans of one to SAID_SPAN_WORDS words, as written (the readers' WORD pattern, case kept),
+    each distinct span (folded) once, in the order it first stands; at most SAID_OPTIONS_MOST."""
+    words = WORD.findall(question)
+    seen, out = set(), []
+    for size in range(1, SAID_SPAN_WORDS + 1):
+        for at in range(len(words) - size + 1):
+            span = " ".join(words[at:at + size])
+            if fold(span) not in seen:
+                seen.add(fold(span))
+                out.append(span)
+    return out[:SAID_OPTIONS_MOST]
+
+
+def said_record(question: str) -> tuple[dict, dict, dict[str, str]]:
+    """The said call: two closed questions over the question alone (STATE is the question; no sheet is needed to read its
+    words): which of its spans answers when what it asks about is above what it is compared with, and which when below.
+    Options are the spans under keys w000, w001, ... Returns (STATE, questions, {key: span}); all empty for a question
+    with no word."""
+    spans = said_spans(question)
+    if not spans:
+        return {}, {}, {}
+    mapping = {f"w{at:03d}": span for at, span in enumerate(spans)}
+    criteria = {**mapping, NONE: "none"}
+    return ({"question": question},
+            {"said_above": {"instructions": SAID_ABOVE_QUESTION, "criteria": criteria},
+             "said_below": {"instructions": SAID_BELOW_QUESTION, "criteria": dict(criteria)}}, mapping)
+
+
+def said_scores(scores: Mapping[str, float], mapping: Mapping[str, str], fields: Mapping[str, Mapping[str, float]]) -> dict[str, float]:
+    """Each span the API holds likelier than none on a side joins the reading as said:<side>=<the span folded>, at
+    W * (log p - log p(none)), as added_scores reads its questions; a coordinate already held keeps its score. The decoder
+    builds a versus in the question's words only when both sides hold one (engine/program/decoder.py said_words)."""
+    out = dict(scores)
+    for side, name_of_field in ((SAID_ABOVE, "said_above"), (SAID_BELOW, "said_below")):
+        probabilities = fields.get(name_of_field) or {}
+        if not probabilities:
+            continue
+        none = max(probabilities.get(NONE, 0.0), P_FLOOR)
+        for key, span in mapping.items():
+            term = W * (_log(probabilities.get(key, 0.0)) - math.log(none))
+            name = coordinate(SLOT_SAID, side, fold(span))
+            if term > 0 and name not in scores:
+                out[name] = max(out.get(name, 0.0), round(term, SCORE_DIGITS))
+    return out
+
+
 def fused_reading(named: NamedReading, record: ReadingRecord, fields: Mapping[str, Mapping[str, float]],
-                  set_names: Sequence[str] = (), set_probabilities: Mapping[str, float] | None = None) -> NamedReading:
+                  set_names: Sequence[str] = (), set_probabilities: Mapping[str, float] | None = None,
+                  said_words: Mapping[str, str] | None = None, said_fields: Mapping[str, Mapping[str, float]] | None = None) -> NamedReading:
     """The stock reading with the API's answers in it, applied in order: the slots' terms, the percent operator, the
-    stated number, period and year, the value set, the counted values, the composed period; and the closed heads."""
+    stated number, period and year, the value set, the counted values, the composed period, the question's own two
+    words; and the closed heads."""
     scores = api_scores(named.reading.scores, record, fields)
     scores = percent_scores(scores, record.percent, fields.get("row_formula"))
     scores = added_scores(scores, record.numbers, fields.get("stated_number"))
@@ -677,6 +745,8 @@ def fused_reading(named: NamedReading, record: ReadingRecord, fields: Mapping[st
     if record.counted:
         scores = counted_value_scores(scores, record, fields)
     scores = composed_period_scores(scores, record, fields)
+    if said_words and said_fields:
+        scores = said_scores(scores, said_words, said_fields)
     reading = Reading(scores)
     read = replace(named.read, closed=api_closed(record, fields, named.read.closed))
     return replace(named, read=read, reading=reading, reach=table_reach(reading))
@@ -753,4 +823,4 @@ def choose_answer(probabilities: Mapping[str, float] | None, answers: Sequence[s
 
 
 __all__ = ["ANSWERED", "ASKED", "CHOOSE_K", "T_ASK", "T_FLAG", "W", "WARNED", "AnswerChoice", "ReadingRecord", "answer_key",
-           "choice_record", "choose_answer", "fused_reading", "reading_record", "sheet_state", "value_set_question"]
+           "choice_record", "choose_answer", "fused_reading", "reading_record", "said_record", "sheet_state", "value_set_question"]

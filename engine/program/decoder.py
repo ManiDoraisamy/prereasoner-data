@@ -18,7 +18,7 @@ from engine.program.catalog import Catalog, CatalogTable
 from engine.program.index import Atom, TableIndex, index_of
 from engine.program.semantics import fold
 from engine.program.language import (Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Condition, Contains, DateOf, Equals, InPeriod, InYears, InSection, IsBlank, IsNumber, NotEquals, OnLine, PercentOf, Program, Rank, RowArithmetic, SECTION, Show, Size, answer_type_of, is_sound, measure_columns, measure_coordinates, peers_name, period_from_name, shown_together)
-from engine.program.names import (A_COUNT, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, ANY, BREAKDOWN, CHECK, CHECK_OPS, COMPARE_OPS, EQ, EVERY, GT, IS, LT, NEIGHBOURS, NO, SAME, SLOT_NEIGHBOUR, SLOT_QUANTIFIER, VERSUS, AGG, ANCHORS, ANYWHERE, AVG, BY_SIZE, CALC, CALC_OPS, COUNT, COUNT_DISTINCT, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, MAX, MIN, MINUS, NE, NUMBER_AGGREGATES, OVER, PLUS, RANK, ROW_OPS, SHOW, SLOT_AGGREGATE,
+from engine.program.names import (A_COUNT, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, ANY, BREAKDOWN, CHECK, CHECK_OPS, COMPARE_OPS, EQ, EVERY, GT, IS, LT, NEIGHBOURS, NO, SAID_ABOVE, SAID_BELOW, SAME, SLOT_NEIGHBOUR, SLOT_QUANTIFIER, SLOT_SAID, VERSUS, AGG, ANCHORS, ANYWHERE, AVG, BY_SIZE, CALC, CALC_OPS, COUNT, COUNT_DISTINCT, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, MAX, MIN, MINUS, NE, NUMBER_AGGREGATES, OVER, PLUS, RANK, ROW_OPS, SHOW, SLOT_AGGREGATE,
                                   SLOT_ANSWER_TYPE, SLOT_BLANK, SLOT_CALC_LEFT, SLOT_CALC_OP, SLOT_COMPARISON, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_DIRECTION, SLOT_ENTITY, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE, SLOT_LISTING, SLOT_MEASURE, SLOT_NUMBER, SLOT_PEERS, SLOT_PERIOD, SLOT_ROW_OP, SLOT_SECTION,
                                   SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, STATED_BY_SIZE, SUM, TIMES, GRAIN_MONTH, PERCENT_OP, coordinate, slot_of)
 from engine.program.scoring import DEFAULT_WEIGHTS, Reading, ScoredProgram, Weights, score_program
@@ -456,6 +456,20 @@ class _Search:
                     out.append(index.atom_of(OneOf(Col(table.id, position), pair), position))
         return out
 
+    def said_words(self) -> tuple[tuple[str, str], float] | None:
+        """The question's own two words for a versus's outcomes ("more or less than 2126"): the likeliest word the reading
+        scores positively for the left number above the other, and the likeliest different one for it below, with the two
+        words' score; None unless the reading names both."""
+        def likeliest(side: str, other: str | None = None) -> tuple[str, str] | None:
+            prefix = f"{SLOT_SAID}:{side}="
+            held = sorted((name for name in self.positive(SLOT_SAID) if name.startswith(prefix) and name[len(prefix):] != other), key=lambda name: (round(-self.s(name), _ROUND), name))
+            return (held[0][len(prefix):], held[0]) if held else None
+        above = likeliest(SAID_ABOVE)
+        below = likeliest(SAID_BELOW, above[0] if above else None)
+        if above is None or below is None:
+            return None
+        return (above[0], below[0]), self.s(above[1]) + self.s(below[1])
+
     def rank_counts(self) -> list[tuple[int, str]]:
         """The whole numbers the question states that could say how many a rank keeps (2 to RANK_COUNT_MOST), each with
         the coordinate that states it; at most two, the likeliest first."""
@@ -892,6 +906,9 @@ class _Search:
             frames += self.condition_frames(every, (), lambda options, where, i=at: _every(table.id, where, i), table, index, atoms, min_conditions=at + 1, max_policy=2)
         asked = [op for op in CHECK_OPS if coordinate(SLOT_COMPARISON, op) in self.reading.scores and self.s(coordinate(SLOT_COMPARISON, op)) > 0] or [GT, LT, EQ]
         versus = base + s(coordinate(SLOT_QUANTIFIER, VERSUS))
+        # a versus the question names in its own two words ("more or less than 2126") is also built in those words, each
+        # versus below once, scored by the words in place of a comparison
+        said = self.said_words()
         for stated in self.positive(SLOT_NUMBER)[:2]:
             number = float(stated.split(":", 1)[1])
             for op in asked:
@@ -899,6 +916,12 @@ class _Search:
                 for function in NUMBER_AGGREGATES:
                     frames += self.condition_frames(head + s(coordinate(SLOT_AGGREGATE, function)), (measures if function == SUM else plain,), lambda options, where, f=function, o=op, n=number: Check(VERSUS, Agg(f, options[0], table.id, where), op=o, number=n), table, index, atoms, max_policy=2)
                 frames += self.condition_frames(head + counted, (), lambda options, where, o=op, n=number: Check(VERSUS, Agg(COUNT, None, table.id, where), op=o, number=n), table, index, atoms, max_policy=2)
+            if said is not None:
+                words, spoken = said
+                head = versus + spoken + s(stated)
+                for function in NUMBER_AGGREGATES:
+                    frames += self.condition_frames(head + s(coordinate(SLOT_AGGREGATE, function)), (measures if function == SUM else plain,), lambda options, where, f=function, n=number, w=words: Check(VERSUS, Agg(f, options[0], table.id, where), number=n, said=w), table, index, atoms, max_policy=2)
+                frames += self.condition_frames(head + counted, (), lambda options, where, n=number, w=words: Check(VERSUS, Agg(COUNT, None, table.id, where), number=n, said=w), table, index, atoms, max_policy=2)
         frames += self.is_frames(table, index, atoms, base, asked)
         # a number against another aggregate of the same lines ("is the average of a above the average of b?"), and
         # whether a column's values are all different (its distinct count is the count of lines)
@@ -906,6 +929,10 @@ class _Search:
             head = versus + s(coordinate(SLOT_COMPARISON, op))
             for function in NUMBER_AGGREGATES:
                 frames += self.condition_frames(head + s(coordinate(SLOT_AGGREGATE, function)), (measures if function == SUM else plain, plain), lambda options, where, f=function, o=op: _versus_aggregate(table.id, options, where, f, o), table, index, atoms, max_policy=1)
+        if said is not None:
+            words, spoken = said
+            for function in NUMBER_AGGREGATES:
+                frames += self.condition_frames(versus + spoken + s(coordinate(SLOT_AGGREGATE, function)), (measures if function == SUM else plain, plain), lambda options, where, f=function, w=words: _versus_aggregate(table.id, options, where, f, None, w), table, index, atoms, max_policy=1)
         all_positions = [column.position for column in table.columns]
         distinct = versus + s(coordinate(SLOT_COMPARISON, EQ)) + s(coordinate(SLOT_AGGREGATE, COUNT_DISTINCT)) + counted
         frames += self.condition_frames(distinct, (self.column_options(table, all_positions, SLOT_MEASURE),), lambda options, where: Check(VERSUS, Agg(COUNT_DISTINCT, options[0], table.id, where), op=EQ, right=Agg(COUNT, None, table.id, where)), table, index, atoms, max_policy=1)
@@ -915,6 +942,8 @@ class _Search:
         for held, other in self.contrast_groups(table, _without_choices(atoms)):
             for op in asked:
                 frames.append(_Frame(versus + s(coordinate(SLOT_COMPARISON, op)) + two, (shown_numbers, held, other), lambda options, o=op: _versus_lines(table, options, o)))
+            if said is not None:
+                frames.append(_Frame(versus + said[1] + two, (shown_numbers, held, other), lambda options, w=said[0]: _versus_lines(table, options, None, w)))
         # whether the top one by one rank is also the top one by another: the same line, or the same group's key
         same = base + s(coordinate(SLOT_QUANTIFIER, SAME))
         rank_measures = self.measure_options(table, index, dates=True)
@@ -1108,18 +1137,18 @@ def _columns_on_a_line(table, options, op):
     return Calc(Show(table.id, (a,), where), op, Show(table.id, (b,), where))
 
 
-def _versus_lines(table, options, op):
+def _versus_lines(table, options, op, said=None):
     column, left, right = options
     if left is right:
         return None
-    return Check(VERSUS, Show(table.id, (column,), (left.condition,)), op=op, right=Show(table.id, (column,), (right.condition,)))
+    return Check(VERSUS, Show(table.id, (column,), (left.condition,)), op=op, right=Show(table.id, (column,), (right.condition,)), said=said)
 
 
-def _versus_aggregate(table_id, options, where, function, op):
+def _versus_aggregate(table_id, options, where, function, op, said=None):
     a, b = options
     if a == b:
         return None
-    return Check(VERSUS, Agg(function, a, table_id, where), op=op, right=Agg(function, b, table_id, where))
+    return Check(VERSUS, Agg(function, a, table_id, where), op=op, right=Agg(function, b, table_id, where), said=said)
 
 
 def _same_lines(table_id, options, where, first, second):

@@ -65,6 +65,11 @@ VERSUS = "versus"      # one number against a stated number or another program's
 IS = "is"              # the top line's shown value, or the top group's key, against a stated text or number
 SAME = "same"          # the top line (or group) by one rank is also the top one by another
 QUANTIFIERS = (ANY, NO, EVERY, VERSUS, IS, SAME)
+# The two outcomes of a versus a question names in its own words ("more or less than 2126", "before or after the 3S"):
+# the word for the left number above the right one, and the word for it below. The words are the reading's, never ours.
+SAID_ABOVE = "above"
+SAID_BELOW = "below"
+SAID_SIDES = (SAID_ABOVE, SAID_BELOW)
 
 # Which line a read takes beside the one its conditions keep ("who finished after Bo?"): a slot the small reader has
 # no head for; CLEF's reading names it.
@@ -162,8 +167,9 @@ SLOT_LISTING = "listing"
 SLOT_CONDITIONS = "conditions"
 SLOT_QUANTIFIER = "quantifier"
 SLOT_NEIGHBOUR = "neighbour"
+SLOT_SAID = "said"         # a versus answered in the question's own words: said:above=<word>, said:below=<word>
 SLOTS = (SLOT_FORM, SLOT_AGGREGATE, SLOT_DIRECTION, SLOT_SIZE, SLOT_ENTITY, SLOT_COMPARISON, SLOT_ROW_OP, SLOT_CALC_OP, SLOT_CALC_LEFT, SLOT_ANSWER_TYPE, SLOT_TABLE, SLOT_MEASURE, SLOT_KEY, SLOT_SHOWN, SLOT_FILTER, SLOT_VALUE,
-         SLOT_CONTAINS, SLOT_LINE, SLOT_SECTION, SLOT_PERIOD, SLOT_NUMBER, SLOT_BLANK, SLOT_PEERS, SLOT_LISTING, SLOT_CONDITIONS, SLOT_QUANTIFIER, SLOT_NEIGHBOUR)
+         SLOT_CONTAINS, SLOT_LINE, SLOT_SECTION, SLOT_PERIOD, SLOT_NUMBER, SLOT_BLANK, SLOT_PEERS, SLOT_LISTING, SLOT_CONDITIONS, SLOT_QUANTIFIER, SLOT_NEIGHBOUR, SLOT_SAID)
 
 # The fixed semantics, each named so a read-as line or a test can cite one.
 SEM_SIGNS = "signs"

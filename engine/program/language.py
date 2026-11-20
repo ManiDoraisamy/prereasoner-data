@@ -8,7 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TypeAlias
 
-from engine.program.names import (A_COUNT, A_DATE, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, AFTER, ANY, BEFORE, BREAKDOWN, CHECK, CHECK_OPS, COMPARE_OPS, EQ, EVERY, IS, NO, QUANTIFIERS, SAME, SLOT_NEIGHBOUR, SLOT_QUANTIFIER, AGG, AGGREGATES, ANCHORS, ANYWHERE, BY_SIZE, CALC, CALC_OPS, COUNT, COUNT_DISTINCT, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, HIGHEST,
+from engine.program.names import (A_COUNT, A_DATE, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, AFTER, ANY, BEFORE, BREAKDOWN, CHECK, CHECK_OPS, COMPARE_OPS, EQ, EVERY, IS, NO, QUANTIFIERS, SAID_ABOVE, SAID_BELOW, SAME, SLOT_NEIGHBOUR, SLOT_QUANTIFIER, SLOT_SAID, VERSUS, AGG, AGGREGATES, ANCHORS, ANYWHERE, BY_SIZE, CALC, CALC_OPS, COUNT, COUNT_DISTINCT, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, HIGHEST,
                                   MINUS, NE, NUMBER_AGGREGATES, OVER, PLUS, RANK, RANK_ENTITIES, ROW_OPS, SHOW, SLOT_AGGREGATE, SLOT_ANSWER_TYPE, SLOT_BLANK, SLOT_CALC_LEFT, SLOT_CALC_OP, SLOT_COMPARISON, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_DIRECTION, SLOT_ENTITY, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE,
                                   SLOT_LISTING, SLOT_MEASURE, SLOT_NUMBER, SLOT_PEERS, SLOT_PERIOD, SLOT_ROW_OP, SLOT_SECTION, SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, STATED_BY_SIZE, GRAIN_MONTH, PERCENT_OP, coordinate)
 from engine.program.semantics import fold, number_text
@@ -425,17 +425,33 @@ class Check:
     is      the top line's one shown value, or the top group's key (left, a rank of one), against a stated text (equal
             or not, case and spacing aside) or a stated number (by op);
     same    the top line of one rank of one is also the top line of another (right) on the same table, or the top
-            group's key of one is the other's (the same groups); a tie goes to the first line, or the first key."""
+            group's key of one is the other's (the same groups); a tie goes to the first line, or the first key.
+
+    said    a versus answered in the question's own two words ("more or less than 2126", "before or after the 3S"): the
+            first when left is above the number (or right's number), the second when below; equal, or a blank side, says
+            nothing. It states no comparison (op is None): which word holds is the answer."""
     quantifier: str
     left: "Program"
     op: str | None = None
     number: float | None = None
     right: "Program | None" = None
     text: str | None = None
+    said: tuple[str, str] | None = None
 
     def __post_init__(self):
         if self.quantifier not in QUANTIFIERS:
             raise ValueError(f"unknown quantifier: {self.quantifier}")
+        if self.said is not None:
+            if self.quantifier != VERSUS or self.op is not None or self.text is not None:
+                raise ValueError("said words answer a versus that states no comparison")
+            if len(self.said) != 2 or not all(isinstance(word, str) and fold(word) for word in self.said) or fold(self.said[0]) == fold(self.said[1]):
+                raise ValueError("a versus is said in two different words")
+            if (self.number is None) == (self.right is None):
+                raise ValueError("versus compares one number with a stated number or another program's number")
+            for side in (self.left, self.right):
+                if side is not None and (not isinstance(side, (Show, Agg, Calc)) or (isinstance(side, Show) and (side.listing or len(side.shown) != 1))):
+                    raise ValueError("versus reads programs of one number each")
+            return
         if self.quantifier == SAME:
             a, b = self.left, self.right
             if not (isinstance(a, Rank) and isinstance(b, Rank) and a.count == 1 and b.count == 1 and a.entity == b.entity
@@ -596,6 +612,8 @@ def _body_coordinates(program: Program) -> list[str]:
     if isinstance(program, Check):
         stated = [coordinate(SLOT_COMPARISON, program.op)] if program.op is not None else []
         stated += [coordinate(SLOT_NUMBER, number_text(program.number))] if program.number is not None else []
+        if program.said is not None:
+            stated += [coordinate(SLOT_SAID, SAID_ABOVE, fold(program.said[0])), coordinate(SLOT_SAID, SAID_BELOW, fold(program.said[1]))]
         if program.text is not None:
             compared = program.left.shown[0] if program.left.entity == ENTITY_LINE else program.left.key
             stated.append(coordinate(SLOT_VALUE, compared.name, fold(program.text)))

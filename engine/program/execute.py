@@ -42,6 +42,9 @@ def _displayed(program: Program, rows, tables: RequestTables) -> tuple[tuple, ..
     """Rows with the sheet's spelling back, and no row at all for a result that says nothing: a sum over no lines is one row of NULL."""
     if not rows or all(all(cell is None for cell in row) for row in rows):
         return ()
+    if isinstance(program, Check) and program.said is not None:     # the question's word that holds; equal says neither
+        verdict = float(rows[0][0])
+        return ((program.said[0],),) if verdict > 0 else ((program.said[1],),) if verdict < 0 else ()
     if isinstance(program, Check):          # a verdict, 1 or 0 from either program, reads as the yes or no it is
         return (("True" if rows[0][0] else "False",),)
     if isinstance(program, Breakdown):      # each group's cells by their fold, back in the sheet's spelling

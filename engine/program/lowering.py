@@ -297,7 +297,8 @@ def _top_value(program: Rank, catalog: Catalog, numeric: bool, line: bool = Fals
 
 def _check_query(program: Check, catalog: Catalog) -> SelectQuery:
     """A check is one verdict over one-number programs on the one-row table: any is count > 0, no is count = 0,
-    every is (count with the one more condition) = (count of the base lines), versus is left op (number or right)."""
+    every is (count with the one more condition) = (count of the base lines), versus is left op (number or right), and
+    a versus said in the question's words is (left > right) - (left < right)."""
     if program.quantifier == SAME:          # the same line (its number) or the same key, the top of each side
         same = BinaryExpr(_top_value(program.left, catalog, numeric=False, line=True), "=", _top_value(program.right, catalog, numeric=False, line=True))
         return SelectQuery((SelectItem(same, VALUE),), ONE_ROW)
@@ -314,7 +315,10 @@ def _check_query(program: Check, catalog: Catalog) -> SelectQuery:
         verdict = BinaryExpr(left, "=", _scalar(program.right, catalog))
     else:
         right = Literal(program.number) if program.number is not None else _scalar(program.right, catalog)
-        verdict = BinaryExpr(left, _VERDICT_SQL[program.op], right)
+        if program.said is not None:        # which of the question's two words holds: +1 above, -1 below, 0 equal
+            verdict = BinaryExpr(BinaryExpr(left, ">", right), "-", BinaryExpr(left, "<", right))
+        else:
+            verdict = BinaryExpr(left, _VERDICT_SQL[program.op], right)
     return SelectQuery((SelectItem(verdict, VALUE),), ONE_ROW)
 
 

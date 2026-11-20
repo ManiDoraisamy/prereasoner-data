@@ -4,7 +4,8 @@
             them (engine/program/dates.py), the decoder warmed, the request's SQLite tables built (store.py) and each
             table's targets listed for the stock reading.
   answer    the stock reading (stock.py) -> the reading record (closed.py) -> one decide call, and a second over the value
-            sets when the value question has an answer -> the fused reading -> the typed k-best decoder, top DECODE_K,
+            sets when the value question has an answer; beside them the said call over the question's own words ->
+            the fused reading -> the typed k-best decoder, top DECODE_K,
             every program verified on the request's tables -> the candidate order of the engine's prior chooser -> the
             candidates that returned rows -> the choice record -> one decide call -> the per-answer decision.
 
@@ -14,13 +15,16 @@ LLMUnavailable reaches the caller: a question is not answered from a reading the
 """
 from __future__ import annotations
 
+import contextvars
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
 from engine.llm import decide
 from engine.named.chooser import PRIOR, score_candidates
 from engine.named.units import Target
 from engine.program.catalog import Catalog
-from engine.program.closed import ANSWERED, ASKED, WARNED, answer_key, choice_record, choose_answer, fused_reading, reading_record, value_set_question
+from engine.program.closed import (ANSWERED, ASKED, WARNED, answer_key, choice_record, choose_answer, fused_reading, reading_record, said_record,
+                                   value_set_question)
 from engine.program.dates import typed_dates
 from engine.program.decoder import Decoder
 from engine.program.language import Program, coordinates
@@ -97,13 +101,18 @@ def answer(question: str, prepared: Prepared, active_sheet: str | None = None) -
     with span("program_read"):
         named = stock_reader().read(question, catalog, prepared.decoder, prepared.targets)
         record = reading_record(question, named, catalog, in_view)
-    with span("decisions_read"):
+    said_state, said_questions, said_words = said_record(question)
+    with span("decisions_read"), ThreadPoolExecutor(max_workers=1) as beside:
+        # the said call reads the question alone, so it runs beside the reading call and the value-set call
+        said_call = beside.submit(contextvars.copy_context().run, decide, said_state, said_questions) if said_questions else None
         reading = decide(record.state, record.questions)
         set_question, set_names = value_set_question(record, reading.fields)
         sets = decide(record.state, {"value_set": set_question}) if set_question else None
-    tokens = reading.tokens + (sets.tokens if sets else 0)
+        said = said_call.result() if said_call is not None else None
+    tokens = reading.tokens + (sets.tokens if sets else 0) + (said.tokens if said else 0)
     with span("program_pool"):
-        fused = fused_reading(named, record, reading.fields, set_names, sets.fields["value_set"] if sets else None)
+        fused = fused_reading(named, record, reading.fields, set_names, sets.fields["value_set"] if sets else None,
+                              said_words, said.fields if said else None)
         decoded = prepared.decoder.decode(fused.reading, k=DECODE_K, weights=DEFAULT_WEIGHTS)
         verified = verify(decoded.programs, prepared.tables, fused.expected, top=DECODE_K)
         listed = [candidate for candidate in score_candidates(verified, fused, catalog, PRIOR) if candidate.rows]

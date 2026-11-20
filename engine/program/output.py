@@ -134,6 +134,8 @@ def _check_words(program: Check, catalog: Catalog) -> str:
     if program.quantifier == IS and program.text is not None:
         return f'whether {read_as(program.left, catalog)} is {"not " if program.op == NE else ""}"{program.text}"'
     other = number_text(program.number) if program.number is not None else read_as(program.right, catalog)
+    if program.said is not None:
+        return f"'{program.said[0]}' if {read_as(program.left, catalog)} is {_VERDICT_WORDS[GT]} {other}, '{program.said[1]}' if {_VERDICT_WORDS[LT]}"
     return f"whether {read_as(program.left, catalog)} is {_VERDICT_WORDS[program.op]} {other}"
 
 
@@ -436,6 +438,8 @@ def formula(program: Program, tables: RequestTables) -> str:
         if program.quantifier in (ANY, NO):
             return f"=({left}){'>' if program.quantifier == ANY else '='}0"
         right = number_text(program.number) if program.number is not None else f'"{program.text}"' if program.text is not None else f"({formula(program.right, tables).lstrip('=')})"
+        if program.said is not None:
+            return f'=IF(({left})>{right},"{program.said[0]}",IF(({left})<{right},"{program.said[1]}",""))'
         return f"=({left}){'=' if program.quantifier in (EVERY, SAME) else _VERDICT_FORMULA[program.op]}{right}"
     if isinstance(program, Calc):
         left, right = formula(program.left, tables).lstrip("="), formula(program.right, tables).lstrip("=")

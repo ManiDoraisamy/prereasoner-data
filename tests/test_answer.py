@@ -17,11 +17,11 @@ import engine.llm as llm
 import engine.program.stock as stock
 from engine.program.answer import ANSWERED, ASKED, WARNED, answer, prepare
 from engine.program.catalog import Catalog
-from engine.program.closed import (CHOICE_NONE, CHOOSE_K, NONE, T_ASK, T_FLAG, TAB_IN_VIEW_CONVENTION, W, answer_key, choice_record, choose_answer, fused_reading, preview,
-                                   reading_record, sheet_state, value_set_question)
+from engine.program.closed import (CHOICE_NONE, CHOOSE_K, NONE, SAID_OPTIONS_MOST, T_ASK, T_FLAG, TAB_IN_VIEW_CONVENTION, W, answer_key, choice_record, choose_answer, fused_reading, preview,
+                                   reading_record, said_record, said_scores, said_spans, sheet_state, value_set_question)
 from engine.program.dates import typed_dates
 from engine.program.decoder import Decoder
-from engine.program.names import PERCENT_OP, SLOT_NUMBER, SLOT_PERIOD, SLOT_ROW_OP, coordinate
+from engine.program.names import PERCENT_OP, SAID_ABOVE, SLOT_NUMBER, SLOT_PERIOD, SLOT_ROW_OP, SLOT_SAID, coordinate
 from engine.sheet import compile_workbook, workbook_from_json
 
 ROWS = [["Region", "Product", "Amount", "Date", "Year built"],
@@ -259,8 +259,48 @@ def test_the_request_body_is_sorted_and_hashable() -> None:
     assert body["input"] == 'STATE:\n{"question": "q", "workbook": []}' and llm.decision_hash(payload) == hashlib.sha256(payload).hexdigest()
 
 
+
+def test_said_spans_are_the_questions_own_words() -> None:
+    """Spans of one to three words as written, each distinct (folded) span once, in the order it first stands; the
+    said call's STATE is the question alone and both questions offer the same spans."""
+    assert said_spans("More or less? more") == ["More", "or", "less", "More or", "or less", "less more", "More or less", "or less more"]
+    state, questions, words = said_record("is it more or less")
+    assert state == {"question": "is it more or less"} and list(questions) == ["said_above", "said_below"]
+    assert questions["said_above"]["criteria"] == {**words, NONE: "none"} == questions["said_below"]["criteria"] and words["w000"] == "is"
+    assert said_record("?!") == ({}, {}, {}) and len(said_spans(" ".join(f"w{i}" for i in range(200)))) == SAID_OPTIONS_MOST
+
+
+def test_said_words_join_the_reading_only_above_none() -> None:
+    _, _, words = said_record("is it more or less")
+    more, less = (key for key, span in words.items() if span in ("more", "less"))
+    fields = {"said_above": {more: 0.7, NONE: 0.2, less: 0.1}, "said_below": {less: 0.05, NONE: 0.9, more: 0.05}}
+    scores = said_scores({}, words, fields)
+    assert scores == {coordinate(SLOT_SAID, SAID_ABOVE, "more"): round(W * (math.log(0.7) - math.log(0.2)), 4)}
+    held = {coordinate(SLOT_SAID, SAID_ABOVE, "more"): 9.0}
+    assert said_scores(held, words, fields) == held, "a coordinate already held keeps its score"
+
+
+def test_an_either_or_is_answered_in_the_questions_words() -> None:
+    """"more or less than 200": the said call reads "more" for above and "less" for below, and the check answers in them."""
+    _use_fake_reader()
+    prepared = _with_transport(FakeTransport(lambda *a: {}), lambda: prepare(_workbook()))
+
+    def rule(name, question, state):
+        if name == "reading":
+            return {next(option for option in question["criteria"] if option != NONE): 0.8}
+        if name in ("said_above", "said_below"):
+            word = "more" if name == "said_above" else "less"
+            return {next(key for key, text in question["criteria"].items() if text == word): 0.8, NONE: 0.1}
+        wanted = {"form": "check", "quantifier": "versus", "aggregate": "sum", "measure": "Amount", "value": "'East'", "filter": "Region"}
+        if name in wanted and _option(question, wanted[name]) is not None:
+            return {_option(question, wanted[name]): 0.8, NONE: 0.15} if NONE in question["criteria"] else {_option(question, wanted[name]): 0.9}
+        return {NONE: 0.9} if NONE in question["criteria"] else {}
+    said = _with_transport(FakeTransport(rule), lambda: answer("is the total amount for East more or less than 200", prepared))
+    assert said.kind == ANSWERED and said.rows == (("more",),) and said.read_as.startswith("'more' if ")
+
 # --------------------------------------------------------------------------------------------------------- the path
-def test_answer_reads_decodes_and_chooses_through_two_calls() -> None:
+def test_answer_reads_decodes_and_chooses_through_its_calls() -> None:
+    """The reading call (and the value-set call), the said call beside them, then the choice call."""
     _use_fake_reader()
     prepared = _with_transport(FakeTransport(lambda *a: {}), lambda: prepare(_workbook()))
     question = "total amount for East"
@@ -273,7 +313,8 @@ def test_answer_reads_decodes_and_chooses_through_two_calls() -> None:
     transport = FakeTransport(rule)
     said = _with_transport(transport, lambda: answer(question, prepared))
     names = [list(body["questions"]) for body in transport.bodies]
-    assert names[-1] == ["reading"] and "value" in names[0] and len(names) in (2, 3), names
+    assert names[-1] == ["reading"] and ["said_above", "said_below"] in names and any("value" in called for called in names), names
+    assert len(names) in (3, 4), names
     assert said.listed_rows and said.probabilities is not None and len(said.probabilities) == min(len(said.listed_rows), CHOOSE_K) + 1
     assert said.listed_answers == tuple(answer_key(rows) for rows in said.listed_rows)
     expected = choose_answer(said.probabilities, said.listed_answers)
@@ -345,7 +386,8 @@ TESTS = [
     test_reading_record_offers_each_slot_its_coordinates, test_written_day_questions_need_a_year_and_a_day_number,
     test_a_sheet_without_days_or_years_asks_no_period, test_fused_reading_reads_the_api_against_the_uniform_share_and_values_against_none,
     test_value_sets_ask_about_the_likeliest_values, test_choice_record_lists_each_candidate_with_its_answer_and_none,
-    test_the_request_body_is_sorted_and_hashable, test_answer_reads_decodes_and_chooses_through_two_calls, test_a_failed_call_reaches_the_caller,
+    test_the_request_body_is_sorted_and_hashable, test_answer_reads_decodes_and_chooses_through_its_calls, test_said_spans_are_the_questions_own_words,
+    test_said_words_join_the_reading_only_above_none, test_an_either_or_is_answered_in_the_questions_words, test_a_failed_call_reaches_the_caller,
     test_text_dates_are_typed_when_the_workbook_loads, test_digit_dates_ask_the_order_only_when_the_column_never_shows_it,
 ]
 

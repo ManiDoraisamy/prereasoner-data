@@ -625,6 +625,56 @@ def test_a_check_asks_whether_the_top_one_is_the_same_or_compares_two_aggregates
         assert decoded.programs and decoded.programs[0].program == gold, (gold, [p.program for p in decoded.programs[:3]])
 
 
+
+def test_a_check_answers_in_the_questions_own_words():
+    """"Did kurt thomas play more or less than 2126 minutes?", "was the sandia peak tramway inaugurated before or after
+    the 3s aerial tramway?" (WikiTableQuestions dev nt-6833, nt-4369, nt-11106: the right versus was picked and answered
+    True where the answer is the question's own word): a versus the reading names in the question's two words (said:
+    the word for the left number above the other, the word for it below) answers in them, the same in the typed SQL and
+    the dual emitter, for a stated number, two aggregates and two lines; equal or a blank side says nothing. It states no
+    comparison, names both words, reads as a sentence, has a formula, refuses one word, the same word twice or a stated
+    comparison beside them; the decoder builds it only when the reading names both words and the check form."""
+    catalog, table, tables = _setup(LOANS)
+    name, region, loan, months, score = (Col(table.id, at) for at in range(5))
+    x = (Equals(region, "x"),)
+    plain = Check(VERSUS, Agg(AVG, loan, table.id, x), op=GT, number=150.0)
+    words = {"said:above=more": 1.0, "said:below=less": 1.0}
+    asked = {n: 1.0 for n in coordinates(plain, catalog.column_kind) if n != coordinate("comparison", GT)}
+    top = Decoder(catalog).decode(Reading({**asked, **words}), k=50).programs[0].program
+    assert _answer(top, tables) == (("more",),), (top, _answer(top, tables))      # the average of x's loans, 200, is above 150
+    said = Check(VERSUS, Agg(AVG, loan, table.id, x), number=150.0, said=("more", "less"))
+    assert top == said, top
+    cases = [(said, (("more",),)), (Check(VERSUS, Agg(AVG, loan, table.id, x), number=250.0, said=("more", "less")), (("less",),)),
+             (Check(VERSUS, Agg(AVG, loan, table.id, x), number=200.0, said=("more", "less")), ()),                       # equal says neither
+             (Check(VERSUS, Agg(AVG, loan, table.id), right=Agg(AVG, months, table.id), said=("higher", "lower")), (("higher",),)),
+             (Check(VERSUS, Show(table.id, (loan,), (Equals(name, "a"),)), right=Show(table.id, (loan,), (Equals(name, "c"),)), said=("after", "before")), (("before",),)),
+             (Check(VERSUS, Show(table.id, (loan,), (Equals(name, "q"),)), right=Show(table.id, (loan,), (Equals(name, "c"),)), said=("after", "before")), ())]   # no such line
+    for program, want in cases:
+        assert _answer(program, tables) == want, (program, _answer(program, tables))
+    names = coordinates(said, catalog.column_kind)
+    assert coordinate("said", "above", "more") in names and coordinate("said", "below", "less") in names and not any(n.startswith("comparison:") for n in names), names
+    assert answer_type_of(said, catalog.column_kind) == A_YES_NO and is_sound(said)
+    assert read_as(said, catalog).startswith("'more' if the average of Loan") and read_as(said, catalog).endswith("above 150, 'less' if below"), read_as(said, catalog)
+    assert formula(said, tables).startswith("=IF(") and '"more"' in formula(said, tables) and '"less"' in formula(said, tables), formula(said, tables)
+    count = Agg(COUNT, None, table.id, x)
+    for bad in (lambda: Check(VERSUS, count, number=1.0, said=("more",)), lambda: Check(VERSUS, count, number=1.0, said=("more", "More")),
+                lambda: Check(VERSUS, count, op=GT, number=1.0, said=("more", "less")), lambda: Check(ANY, count, said=("more", "less")),
+                lambda: Check(VERSUS, count, said=("more", "less"))):
+        try:
+            bad()
+        except ValueError:
+            continue
+        raise AssertionError("a said versus accepted what it cannot say")
+    # Contrastive: the same reading without the words answers the plain yes or no; negative: words without the check form build no check.
+    unsaid = Decoder(catalog).decode(Reading(asked), k=50).programs[0].program
+    assert isinstance(unsaid, Check) and unsaid.said is None and _answer(unsaid, tables)[0][0] in ("True", "False"), unsaid
+    formless = Reading({n: v for n, v in {**asked, **words}.items() if n != coordinate("form", "check")})
+    assert not any(isinstance(p.program, Check) for p in Decoder(catalog).decode(formless, k=50).programs)
+    # Two aggregates of the same lines and one column on two lines are built in the words too.
+    for gold in (cases[3][0], cases[4][0]):
+        reading = Reading({n: 1.0 for n in coordinates(gold, catalog.column_kind)})
+        assert any(p.program == gold for p in Decoder(catalog).decode(reading, k=50).programs), gold
+
 def test_a_read_takes_the_line_after_or_before_the_kept_one():
     """"Who comes after c?", "what is the age of the one before e?" (WikiTableQuestions dev: 145 of 2,831 questions read
     a neighbouring line and none could run): the data line nearest the first line the conditions keep, below or above it,
@@ -1602,7 +1652,7 @@ TESTS = [
     test_several_shown_columns_cost_a_named_coordinate, test_a_stated_number_a_column_holds_reads_as_its_value, test_a_misspelled_word_reads_as_the_sheets_word, test_a_word_only_one_column_holds_says_which, test_several_columns_shown_type_the_same_however_they_stand, test_across_adds_peer_columns_of_a_line, test_the_decoder_reaches_across_when_a_word_asks, test_a_text_other_than, test_answer_types_place_money_quantity, test_decoder_ties_do_not_follow_sheet_order, test_a_family_adding_twice_says_so, test_a_family_of_tabs_reads_as_all_its_tabs, test_axes_are_read_by_their_kind, test_a_question_reads_the_tables_its_links_reach, test_verifier_stops_at_its_budget_of_lines, test_a_condition_search_stops_at_its_budget_of_checks, test_a_value_stands_whole_without_a_pattern_for_each_value,
     test_every_name_is_from_a_closed_list, test_forms_refuse_what_they_cannot_say, test_signs, test_printed_lines_are_read_by_label_and_never_added, test_shortest_label_first_and_unlabelled_printed_lines, test_a_column_filled_only_on_printed_lines_reads_them,
     test_partial_value_match, test_case_and_spacing_do_not_count, test_periods, test_blanks, test_ties_keep_every_tied_line, test_units, test_mixed_columns, test_repeated_rows, test_sections_nested_bands_and_the_section_shown, test_python_masks_agree_with_the_sql,
-    test_calc_shapes, test_rank_across_peer_columns, test_a_rank_keeps_as_many_as_the_question_states, test_the_decoder_proposes_how_many_a_question_states, test_a_check_says_yes_or_no, test_the_decoder_checks_only_when_the_reading_names_a_check, test_a_choice_among_named_values, test_a_check_asks_what_the_top_one_is, test_a_check_asks_whether_the_top_one_is_the_same_or_compares_two_aggregates, test_a_read_takes_the_line_after_or_before_the_kept_one, test_new_ast_nodes_render_and_validate, test_plan_schema_holds_only_what_a_query_reads, test_perfect_readings_give_the_gold_first, test_decoder_is_deterministic_and_order_free, test_the_list_does_not_depend_on_hash_order,
+    test_calc_shapes, test_rank_across_peer_columns, test_a_rank_keeps_as_many_as_the_question_states, test_the_decoder_proposes_how_many_a_question_states, test_a_check_says_yes_or_no, test_the_decoder_checks_only_when_the_reading_names_a_check, test_a_choice_among_named_values, test_a_check_asks_what_the_top_one_is, test_a_check_asks_whether_the_top_one_is_the_same_or_compares_two_aggregates, test_a_check_answers_in_the_questions_own_words, test_a_read_takes_the_line_after_or_before_the_kept_one, test_new_ast_nodes_render_and_validate, test_plan_schema_holds_only_what_a_query_reads, test_perfect_readings_give_the_gold_first, test_decoder_is_deterministic_and_order_free, test_the_list_does_not_depend_on_hash_order,
     test_scores_come_in_as_data_and_nothing_else_moves_the_list, test_contributions_are_named_and_sum_to_the_score, test_intervention_a_named_coordinate_moves_the_score_by_its_weight, test_policy_prunes_values_only_where_it_says, test_conditions_stay_on_distinct_columns,
     test_a_value_of_a_few_valued_number_column_is_named, test_a_number_condition_may_be_an_equality, test_a_breakdown_gives_a_figure_for_each_group, test_amounts_in_several_currencies_are_given_per_currency, test_a_column_stating_its_currency_is_not_split_by_currency, test_a_rate_column_gives_a_percent_share_of_a_measure, test_a_share_of_lines_counts_both_sides, test_a_date_key_breaks_down_by_its_month, test_a_period_of_whole_years_tests_a_column_of_year_numbers, test_a_number_compares_with_the_line_a_value_names, test_the_decoder_breaks_down_only_when_the_reading_names_a_breakdown, test_times_read_as_numbers_in_the_sheet_and_the_question, test_an_ordinal_is_not_a_stated_number, test_words_alone_read_a_question, test_verifier_shape_and_type_evidence, test_printed_total_ties_only_under_its_exact_conditions, test_verifier_runs_the_top_programs_and_never_raises, test_a_code_python_reads_as_infinite_is_text_to_the_verifier, test_read_as_in_the_sheets_own_words,
     test_cells_are_the_exact_addresses_used, test_formula_a_user_can_check, test_explain_carries_the_named_contributions,

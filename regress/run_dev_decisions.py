@@ -1,5 +1,6 @@
 """The program path's parity with the Decisions measurement it was ported from (decisions-probe-20261118: the stock arm
-with the kept closed questions, tag pgd1, and the same with the tab in view named, tag tiv1), on the 896 dev questions:
+with the kept closed questions, the tab in view named and the said call, tag eor1; DataBench, tag pgd1), on the 896 dev
+questions:
 messy dev, the WikiTableQuestions dev sample, DataBench dev and the fresh dev twin. No frozen set is read, and no Enron
 sheet.
 
@@ -13,7 +14,7 @@ order), their grades, the choice probabilities and the per-answer label (summari
 The sets load exactly as the measurement's run_stock.py loaded them (its loaders, read from the experiment folders), and
 each workbook's payload is the one its loader compiles. The stock reader keeps the vectors of the texts it read before,
 and a batch's padding can move a vector in its last bits, so a run keeps the measurement's history by its order, at
---threads 4: --sets messy,freshdev (as tiv1 ran), --sets wtq and --sets freshdev,databench (as pgd1 ran), one process
+--threads 4: --sets wtq and --sets messy,freshdev (as eor1 ran) and --sets freshdev,databench (as pgd1 ran), one process
 each. Results: regress/results/dev_decisions/<tag>/<set>.jsonl and summary_<sets>.json.
 
 usage: python -X utf8 -m regress.run_dev_decisions [--sets messy,freshdev] [--limit N] [--tag NAME] [--threads 4] [--resume]
@@ -38,9 +39,10 @@ from engine.program.answer import ASKED, WARNED, answer, prepare
 ROOT = Path(__file__).resolve().parents[1]
 EXPERIMENTS = Path("C:/work/prereasoner-data/training/readers/data/experiments")
 PROBE = EXPERIMENTS / "decisions-probe-20261118"
-# Each set against its measured tag: pgd1, the kept stack; tiv1, the same with the tab in view named, on the sets holding
-# workbooks of several tabs (WikiTableQuestions and DataBench hold none, so their records are pgd1's)
-REFERENCE_TAGS = {"messy": "tiv1", "freshdev": "tiv1", "wtq": "pgd1", "databench": "pgd1"}
+# Each set against its measured tag (decisions-probe-20261118 results/e2e_<tag>_stock_<set>.jsonl.gz): eor1, the kept
+# stack with the tab in view named and the said call; DataBench against pgd1, the kept stack before those two, since no
+# workbook of it has two tabs and no question of it reads a word pair (its records are pgd1's but for the said call)
+REFERENCE_TAGS = {"messy": "eor1", "freshdev": "eor1", "wtq": "eor1", "databench": "pgd1"}
 SETS = ("messy", "wtq", "databench", "freshdev")
 
 
