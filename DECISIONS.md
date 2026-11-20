@@ -5659,7 +5659,10 @@ holds it, and the ownership map's line for `engine/llm.py` changes in that same 
 Serving the closed-choice model needs a Gemini Developer API key (the Decisions endpoint is not on Vertex AI).
 Terraform creates it in the deployment's own project (`google_apikeys_key.gemini`, restricted to
 `generativelanguage.googleapis.com`), keeps it in Secret Manager (`<service>-gemini-api-key`) and gives it to the
-engine alone as `GOOGLE_API_KEY`, so the one-click Community deploy collects no key. Compatibility shim: the
+engine alone as `GOOGLE_API_KEY`, so the one-click Community deploy collects no key. The build's offline gate and product
+suite read own-data questions through the same key (cloudbuild.yaml `availableSecrets`, `_GEMINI_SECRET`):
+`deploy/gcp/deploy.sh` creates it in its bootstrap apply, before the image build, and lets the build's account read
+that one secret. Compatibility shim: the
 `moved` block in `infra/main.tf` (`run_vertex_ai[0]` to `run_vertex_ai`) keeps an existing deployment's Vertex AI
 grant when the grant loses its `count`. Consumer: Terraform state of deployments made before this change
 (production and Community installs). Removal condition: every such deployment has applied once. Removal date:

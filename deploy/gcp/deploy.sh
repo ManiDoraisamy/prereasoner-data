@@ -311,6 +311,7 @@ mapfile -t bootstrap_vars < <(tf_vars "$dummy_image" true false)
 terraform -chdir="$ROOT/infra" apply -auto-approve -input=false \
   -target=google_project_service.apis \
   -target=google_artifact_registry_repository.engine \
+  -target=google_secret_manager_secret_version.gemini_api_key \
   "${bootstrap_vars[@]}"
 
 cache_dir="${HOME}/.cache/prereasoner-deploy"
@@ -350,6 +351,11 @@ gcloud projects add-iam-policy-binding "$PROJECT_ID" \
   --member="serviceAccount:${build_service_account}" \
   --role=roles/artifactregistry.writer --condition=None --quiet >/dev/null
 BUILD_SERVICE_ACCOUNT="$build_service_account"
+# The build's offline gate and product suite read own-data questions through the Decisions API: the build reads the
+# engine's key, which the bootstrap apply above created.
+gcloud secrets add-iam-policy-binding "${SERVICE_NAME}-gemini-api-key" --project="$PROJECT_ID" \
+  --member="serviceAccount:${build_service_account}" \
+  --role=roles/secretmanager.secretAccessor --condition=None --quiet >/dev/null
 
 commit="$(git -C "$ROOT" rev-parse --short=12 HEAD)"
 image_tag="${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REPO}/engine:community-${commit}"
@@ -358,7 +364,7 @@ submit_build "$BUILD_CONTEXT" \
   --ignore-file="$BUILD_CONTEXT/cloudbuild.hermetic.ignore" \
   --config="$BUILD_CONTEXT/cloudbuild.yaml" \
   --timeout=10800s \
-  --substitutions="_REGION=${REGION},_REPO=${ARTIFACT_REPO},_TAG=community-${commit}"
+  --substitutions="_REGION=${REGION},_REPO=${ARTIFACT_REPO},_TAG=community-${commit},_GEMINI_SECRET=${SERVICE_NAME}-gemini-api-key"
 digest="$(gcloud artifacts docker images describe "$image_tag" \
   --project="$PROJECT_ID" --format='value(image_summary.digest)')"
 [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || die "could not resolve the built image digest"

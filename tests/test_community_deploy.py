@@ -570,9 +570,35 @@ def test_public_build_needs_no_hugging_face_secret():
     dockerfile = _text("Dockerfile")
     cloudbuild = _text("cloudbuild.yaml")
     assert "id=hf_token" not in dockerfile
-    assert "secretEnv: ['HF_TOKEN']" not in cloudbuild
-    assert "availableSecrets:" not in cloudbuild
+    assert "HF_TOKEN" not in cloudbuild
     assert "engine.fetch_weights" in _text("deploy/gcp/deploy.sh")
+
+
+def test_the_builds_gates_read_own_data_questions_with_the_engines_key():
+    """The offline gate and the product suite send own-data questions to the Decisions API as the served engine does
+    (engine/llm.py decide), so the build reads one secret, the engine's Gemini API key, and the deploy creates that
+    key before the build and lets the build read it: a first install builds before its full apply."""
+    import re
+    cloudbuild = _text("cloudbuild.yaml")
+    secrets = re.findall(r"versionName: projects/\$\{PROJECT_ID\}/secrets/([^/]+)/versions/latest", cloudbuild)
+    assert secrets == ["${_GEMINI_SECRET}"], secrets
+    assert "_GEMINI_SECRET: prereasoner-api-gemini-api-key" in cloudbuild
+    steps = cloudbuild.split("  - id: ")
+    offline = next(step for step in steps if step.startswith("regress-offline"))
+    product = next(step for step in steps if step.startswith("live-product-suite"))
+    assert "secretEnv: ['GOOGLE_API_KEY']" in offline and "- GOOGLE_API_KEY" in offline
+    assert "secretEnv: ['GOOGLE_API_KEY']" in product
+    suite = _text("deploy/gcp/run_product_suite.sh")
+    assert suite.count("--env GOOGLE_API_KEY") == 2, "the live suites and the HTTP smoke server both read through the API"
+    deploy = _text("deploy/gcp/deploy.sh")
+    bootstrap = deploy[deploy.index("-target=google_project_service.apis"):deploy.index("cache_dir=")]
+    assert "-target=google_secret_manager_secret_version.gemini_api_key" in bootstrap
+    build = deploy.index("--config=\"$BUILD_CONTEXT/cloudbuild.yaml\"")
+    grant = deploy.index('gcloud secrets add-iam-policy-binding "${SERVICE_NAME}-gemini-api-key"')
+    assert grant < build and "roles/secretmanager.secretAccessor" in deploy[grant:build]
+    assert "_GEMINI_SECRET=${SERVICE_NAME}-gemini-api-key" in deploy[build - 400:build + 400]
+    infra = _text("infra/main.tf")
+    assert 'secret_id = "${var.service_name}-gemini-api-key"' in infra
 
 
 def test_chat_image_copy_list_and_build_context_agree():
@@ -878,6 +904,7 @@ TESTS = [
     test_release_smoke_checks_current_chat_migration,
     test_serving_identity_cannot_read_the_admin_database_secret,
     test_public_build_needs_no_hugging_face_secret,
+    test_the_builds_gates_read_own_data_questions_with_the_engines_key,
     test_chat_image_copy_list_and_build_context_agree,
     test_community_install_provisions_an_auth_provider_it_can_actually_enable,
     test_uninstall_actually_removes_the_billable_deployment,

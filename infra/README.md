@@ -66,6 +66,17 @@ gcloud builds submit /tmp/prereasoner-engine-build \
   --config /tmp/prereasoner-engine-build/cloudbuild.yaml
 ```
 
+The build's offline gate and product suite send their own-data questions to the Decisions API, so the build reads
+the engine's Gemini API key from Secret Manager (`<service>-gemini-api-key`, cloudbuild.yaml `_GEMINI_SECRET`).
+Create it first and let the build read it (`deploy/gcp/deploy.sh` does both):
+
+```bash
+terraform -chdir=infra apply -target=google_secret_manager_secret_version.gemini_api_key
+gcloud secrets add-iam-policy-binding prereasoner-api-gemini-api-key \
+  --member="serviceAccount:$(gcloud builds get-default-service-account --format='value(serviceAccountEmail)' | sed 's|.*/||')" \
+  --role=roles/secretmanager.secretAccessor
+```
+
 (The very first submit may fail with "repository not found" if the Artifact Registry
 repo doesn't exist yet — either run step 2 first and re-submit, or pre-create it:
 `gcloud artifacts repositories create prereasoner --repository-format=docker

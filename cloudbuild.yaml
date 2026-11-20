@@ -30,11 +30,14 @@ steps:
   - id: regress-offline
     name: gcr.io/cloud-builders/docker@sha256:e85f8f20f7b533e74a4b1be279b9ff2b45dcc20ab97de9b302c26715a9d9ffc8
     waitFor: ['build']
+    secretEnv: ['GOOGLE_API_KEY']     # own-data questions read through the Decisions API, as served ones do
     args:
       - run
       - --rm
       - --cpus=4
       - --memory=16g
+      - --env
+      - GOOGLE_API_KEY
       - --entrypoint
       - python
       - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/engine:${_TAG}
@@ -80,6 +83,7 @@ steps:
     name: gcr.io/cloud-builders/docker@sha256:e85f8f20f7b533e74a4b1be279b9ff2b45dcc20ab97de9b302c26715a9d9ffc8
     entrypoint: bash
     waitFor: ['runtime-server-smoke']
+    secretEnv: ['GOOGLE_API_KEY']
     args:
       - -ceu
       - |
@@ -91,12 +95,21 @@ steps:
 images:
   - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/engine:${_TAG}
 
+# The engine's Gemini Developer API key (infra/main.tf google_apikeys_key.gemini, kept in Secret Manager as
+# <service>-gemini-api-key): the offline gate and the product suite send their own-data questions to the Decisions
+# API as the served engine does. deploy/gcp/deploy.sh creates the key before this build and lets the build read it.
+availableSecrets:
+  secretManager:
+    - versionName: projects/${PROJECT_ID}/secrets/${_GEMINI_SECRET}/versions/latest
+      env: GOOGLE_API_KEY
+
 substitutions:
   _REGION: us-central1 # must match infra/ var.region
   _REPO: prereasoner   # must match infra/ var.artifact_repo
   _TAG: latest
   _ENGINE_LOCK: requirements.lock.txt # requirements-gpu.lock.txt for the hosted edition's L4 (infra var.gpu)
   _RUN_PRODUCT_SUITES: "1"
+  _GEMINI_SECRET: prereasoner-api-gemini-api-key # infra: "${var.service_name}-gemini-api-key"
   _PGVECTOR_IMAGE: pgvector/pgvector:pg16@sha256:eac621400b7b7ff52493883e41e930e3d104695fea5b68cc0c42370cf7880067
 
 options:
