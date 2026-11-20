@@ -1084,7 +1084,69 @@ def test_a_new_accounts_concurrent_first_requests_share_one_principal():
         assert auth._storage_principal("fb-uid-3", None) == "fb-uid-3"
 
 
+def _physical_import_metadata(row=2):
+    return {"sourceSheet": "Original", "sourceRange": "A1:B4", "headerRow": 1,
+            "sourceRows": {"encoding": "ranges", "count": 1, "ranges": [[0, row, 1]]},
+            "columnBindings": [{"name": "id", "column": "A"}, {"name": "amount", "column": "B"}]}
+
+
+def test_physical_import_metadata_survives_validation_storage_and_source_identity():
+    from engine.conversations import _store_tables, source_snapshot_hash
+    from engine.request_validation import validate_tables
+
+    source = [{"name": "Data", "data": "id,amount\n1,2", "import": _physical_import_metadata()}]
+    validated = validate_tables(source)
+    stored = _store_tables(validated)
+    assert stored[0]["import"]["sourceRows"]["ranges"] == [[0, 2, 1]]
+    moved = [{**validated[0], "import": _physical_import_metadata(3)}]
+    assert source_snapshot_hash(validated) != source_snapshot_hash(moved)
+    # Descriptive metadata must not become a data-rewrite instruction.
+    injected = [{**source[0], "import": {**source[0]["import"], "fill_missing_values": True}}]
+    assert "fill_missing_values" not in validate_tables(injected)[0]["import"]
+
+
+def test_parsed_table_cache_binds_source_positions_and_returns_fresh_metadata():
+    from engine import server
+
+    a = [{"name": "data", "data": "id,amount\n1,2", "import": _physical_import_metadata()}]
+    b = [{**a[0], "import": _physical_import_metadata(3)}]
+    with patch.dict(server._PARSED_TABLES, {}, clear=True):
+        first = server._parsed_tables(a)
+        second = server._parsed_tables(b)
+        assert first[0]["rows"] == second[0]["rows"]
+        assert first[0]["import"]["sourceRows"]["ranges"] != second[0]["import"]["sourceRows"]["ranges"]
+        first[0]["import"]["sourceRows"]["ranges"][0][1] = 999
+        assert server._parsed_tables(a)[0]["import"]["sourceRows"]["ranges"] == [[0, 2, 1]]
+        wrong = [{**a[0], "import": {**a[0]["import"], "sourceRows": {"encoding": "ranges", "count": 2, "ranges": [[0, 2, 2]]}}}]
+        try:
+            server._parsed_tables(wrong)
+        except RequestValidationError:
+            pass
+        else:
+            raise AssertionError("a row map for different CSV rows entered the parsed source cache")
+
+
+def test_physical_columns_obey_excel_bounds_even_without_a_declared_range():
+    from engine.request_validation import RequestValidationError, validate_import_metadata
+
+    meta = _physical_import_metadata()
+    meta.pop("sourceRange")
+    meta["columnBindings"][1]["column"] = "XFD"
+    assert validate_import_metadata(meta)["columnBindings"][1]["column"] == "XFD"
+    for column in ("XFE", "ZZZ"):
+        meta["columnBindings"][1]["column"] = column
+        try:
+            validate_import_metadata(meta)
+        except RequestValidationError:
+            pass
+        else:
+            raise AssertionError("out-of-sheet physical address was accepted without sourceRange")
+
+
 TESTS = [
+    test_physical_columns_obey_excel_bounds_even_without_a_declared_range,
+    test_physical_import_metadata_survives_validation_storage_and_source_identity,
+    test_parsed_table_cache_binds_source_positions_and_returns_fresh_metadata,
     test_a_new_accounts_concurrent_first_requests_share_one_principal,
     test_a_chat_on_a_deleted_conversation_answers_404_not_500,
     test_raw_csv_repeated_blank_and_long_headers_preserve_every_value,

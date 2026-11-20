@@ -63,6 +63,81 @@ def validate_source(source):
                 raise RequestValidationError("table source scope names are invalid")
             normalized["scope"][key] = list(names)
     return normalized
+
+
+def validate_import_metadata(value, *, row_count=None, column_names=None):
+    """Bounded descriptive source positions, never data-normalization instructions.
+
+    Legacy display-only import records have no row map and retain their old
+    behavior. Physical addresses require a complete original-sheet row/column map.
+    Optional observed shape is supplied after the canonical CSV parser runs.
+    """
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise RequestValidationError("table import metadata must be an object")
+    if "sourceRows" not in value:
+        return None
+    mapping = value["sourceRows"]
+    if (not isinstance(mapping, dict) or set(mapping) != {"encoding", "count", "ranges"}
+            or mapping["encoding"] != "ranges" or type(mapping["count"]) is not int
+            or not 0 <= mapping["count"] <= MAX_UPLOAD_ROWS
+            or not isinstance(mapping["ranges"], list) or len(mapping["ranges"]) > MAX_UPLOAD_ROWS):
+        raise RequestValidationError("table import row map is invalid")
+    if row_count is not None and mapping["count"] != row_count:
+        raise RequestValidationError("table import row map does not match its CSV rows")
+    offset, last_source = 0, 0
+    for run in mapping["ranges"]:
+        if (not isinstance(run, list) or len(run) != 3 or any(type(i) is not int for i in run)
+                or run[0] != offset or run[1] <= last_source or run[2] <= 0
+                or run[1] + run[2] - 1 > 1048576):
+            raise RequestValidationError("table import row ranges are invalid")
+        offset += run[2]
+        last_source = run[1] + run[2] - 1
+    if offset != mapping["count"]:
+        raise RequestValidationError("table import row ranges do not cover its declared rows")
+    def col_number(text):
+        out = 0
+        for letter in text:
+            out = out * 26 + ord(letter) - ord("A") + 1
+        return out
+
+    bindings = value.get("columnBindings")
+    if (not isinstance(bindings, list) or not 1 <= len(bindings) <= MAX_UPLOAD_COLUMNS
+            or any(not isinstance(b, dict) or not isinstance(b.get("name"), str)
+                   or not 1 <= len(b["name"]) <= 256 or not isinstance(b.get("column"), str)
+                   or not re.fullmatch(r"[A-Z]{1,3}", b["column"])
+                   or col_number(b["column"]) > 16384 for b in bindings)
+            or len({b["column"] for b in bindings}) != len(bindings)):
+        raise RequestValidationError("table import column map is invalid")
+    if column_names is not None and [b["name"] for b in bindings] != list(column_names):
+        raise RequestValidationError("table import column map does not match its CSV columns")
+    sheet = value.get("sourceSheet")
+    if not isinstance(sheet, str) or not 1 <= len(sheet) <= MAX_TABLE_DISPLAY_NAME_CHARS:
+        raise RequestValidationError("table import source sheet is invalid")
+    source_range = value.get("sourceRange")
+    if source_range is not None:
+        match = re.fullmatch(r"([A-Z]{1,3})([1-9]\d{0,6})(?::([A-Z]{1,3})([1-9]\d{0,6}))?", source_range) if isinstance(source_range, str) else None
+        if match is None:
+            raise RequestValidationError("table import source range is invalid")
+
+        left, top = col_number(match[1]), int(match[2])
+        right, bottom = col_number(match[3] or match[1]), int(match[4] or match[2])
+        if (not 1 <= left <= right <= 16384 or not 1 <= top <= bottom <= 1048576
+                or any(not left <= col_number(b["column"]) <= right for b in bindings)
+                or any(run[1] < top or run[1] + run[2] - 1 > bottom for run in mapping["ranges"])):
+            raise RequestValidationError("table import cell lies outside its source range")
+    out = {"sourceSheet": sheet, "sourceRange": source_range,
+           "sourceRows": {"encoding": "ranges", "count": mapping["count"],
+                          "ranges": [list(run) for run in mapping["ranges"]]},
+           "columnBindings": [{"name": b["name"], "column": b["column"]} for b in bindings]}
+    # Preserve only the bounded header fact used by the existing upload preview.
+    if "headerRow" in value:
+        header = value["headerRow"]
+        if header is not None and (type(header) is not int or not 1 <= header <= 1048576):
+            raise RequestValidationError("table import header row is invalid")
+        out["headerRow"] = header
+    return out
 _EXECUTION_USE = {
     "auto": "auto",
     "sql": "sql",
@@ -164,6 +239,9 @@ def validate_tables(value, *, allow_single: bool = False) -> list[dict]:
         source = table.get("source")
         if source is not None:
             normalized["source"] = validate_source(source)
+        imported = validate_import_metadata(table.get("import"))
+        if imported is not None:
+            normalized["import"] = imported
         tables.append(normalized)
     return tables
 

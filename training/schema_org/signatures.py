@@ -20,6 +20,59 @@ MIN_PROPERTY_FREQUENCY = 0.10
 MIN_LIFT = 1.25
 
 
+def expected_observation_profiles(instances, property_order, *, contract=None, min_train_groups=MIN_TRAIN,
+                                  levels=16):
+    """Train-only class priors in the SAME named property basis as source evidence.
+
+    A value is P(source annotates property | annotated leaf class), not a claim
+    that an individual lacks a property. Companion/mixed-class and template groups
+    are excluded; derivation variants count once. Source-class supervision cannot
+    certify cross-role calibration or justify exposing an individual observed fact.
+    """
+    from training.schema_org.instances import group_id
+
+    contract = load_contract() if contract is None else contract
+    if len(set(property_order)) != len(property_order) or any(p not in contract.properties for p in property_order):
+        raise ValueError("expected profiles require unique pinned Schema.org properties")
+    if type(min_train_groups) is not int or min_train_groups < 1 or type(levels) is not int or levels < 1:
+        raise ValueError("invalid expected-profile support or quantization gate")
+    groups = {}
+    for item in instances:
+        if item.split != "train" or item.source == "product_templates":
+            continue
+        group = groups.setdefault(group_id(item.instance_id), {"classes": set(), "properties": set()})
+        group["classes"].update(item.classes)
+        group["properties"].update(item.properties)
+    support, positive = Counter(), defaultdict(Counter)
+    excluded = 0
+    for group in groups.values():
+        classes = group["classes"]
+        ancestors = {a for uri in classes for a in contract.classes[uri].ancestors}
+        leaves = classes - ancestors
+        if len(leaves) != 1:
+            excluded += 1
+            continue
+        uri = next(iter(leaves))
+        support[uri] += 1
+        positive[uri].update(group["properties"])
+    profiles = {}
+    for uri, count in sorted(support.items()):
+        if count < min_train_groups:
+            continue
+        profiles[uri] = {"train_groups": count,
+                         "probabilities": {p: positive[uri][p] / count for p in property_order},
+                         "quantized": [int(positive[uri][p] * levels / count + 0.5) for p in property_order]}
+    collisions = defaultdict(list)
+    for uri, profile in profiles.items():
+        collisions[tuple(profile["quantized"])].append(uri)
+    collisions = [uris for uris in collisions.values() if len(uris) > 1]
+    return {"meaning": "empirical train-source property-observation probability conditioned on one annotated leaf class; not negative world facts",
+            "property_order": list(property_order), "profiles": profiles,
+            "min_train_groups": min_train_groups, "quantization_levels": levels,
+            "excluded_mixed_or_classless_groups": excluded, "quantized_class_collisions": collisions,
+            "calibrated": False, "servable": False}
+
+
 def _class_data_ready(n_train: int, n_validation: int, candidates, real_sources) -> bool:
     """Determine calibration eligibility without observing the test split."""
     return (

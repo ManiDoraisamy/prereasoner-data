@@ -1,0 +1,150 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1160" viewBox="0 0 1600 1160" role="img" aria-labelledby="title desc">
+  <title id="title">How a question becomes an answer in Prereasoner</title>
+  <desc id="desc">A user asks a question about uploaded tables. The chat orchestrator asks Gemini to select or restate the question as a constrained tool call. The engine routes the request, reads the question against the schema with encoder readers, builds and selects typed SQL candidates deterministically, emits SQL and, for supported plans, readable Python from one shared plan, executes against a private request database, and returns computed result rows and evidence. The orchestrator formats the engine's result for display.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b1220"/><stop offset="1" stop-color="#111d31"/>
+    </linearGradient>
+    <linearGradient id="engine" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#122239"/><stop offset="1" stop-color="#102b35"/>
+    </linearGradient>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L10,5 L0,10 z" fill="#8ca6c8"/>
+    </marker>
+    <marker id="arrowGreen" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L10,5 L0,10 z" fill="#63d6b1"/>
+    </marker>
+    <style>
+      text{font-family:Inter,Segoe UI,Arial,sans-serif;fill:#edf4ff}
+      .title{font-size:38px;font-weight:750;letter-spacing:-.6px}
+      .subtitle{font-size:17px;fill:#a9bad2}
+      .eyebrow{font-size:12px;font-weight:700;letter-spacing:1.8px;fill:#83a3ca}
+      .card{fill:#17263b;stroke:#314662;stroke-width:1.5}
+      .cardSoft{fill:#142237;stroke:#2c425e;stroke-width:1.4}
+      .cardGreen{fill:#102d2d;stroke:#287a68;stroke-width:1.5}
+      .cardGold{fill:#302817;stroke:#8c6c31;stroke-width:1.5}
+      .head{font-size:19px;font-weight:700}
+      .body{font-size:14px;fill:#c0cde0}
+      .small{font-size:12px;fill:#a9bad2}
+      .code{font-family:Consolas,Menlo,monospace;font-size:13px;fill:#c8e7dc}
+      .connector{fill:none;stroke:#8ca6c8;stroke-width:2.2;marker-end:url(#arrow)}
+      .connectorGreen{fill:none;stroke:#63d6b1;stroke-width:2.4;marker-end:url(#arrowGreen)}
+      .pill{fill:#203751;stroke:#385474;stroke-width:1}
+      .pillText{font-size:11px;font-weight:700;letter-spacing:.4px;fill:#bed3ee}
+      .number{fill:#1f4861;stroke:#5ec9bd;stroke-width:1.3}
+      .numberText{font-size:13px;font-weight:800;fill:#d8fff4}
+      .muted{fill:#8fa4c0}
+    </style>
+  </defs>
+  <rect width="1600" height="1160" fill="url(#bg)"/>
+
+  <text x="72" y="72" class="eyebrow">PREREASONER · DATA QUESTION LIFECYCLE</text>
+  <text x="72" y="122" class="title">From a question to an answer you can inspect</text>
+  <text x="72" y="154" class="subtitle">Example: “What was the total order amount in France?” — the wording and values below are illustrative.</text>
+
+  <!-- User, chat boundary, and constrained Gemini intent step -->
+  <rect x="72" y="198" width="260" height="170" rx="16" class="card"/>
+  <circle cx="101" cy="228" r="15" class="number"/><text x="101" y="233" text-anchor="middle" class="numberText">1</text>
+  <text x="128" y="234" class="head">User + uploaded sheet</text>
+  <text x="96" y="270" class="body">Question, workbook snapshot, and</text>
+  <text x="96" y="291" class="body">optional conversation context.</text>
+  <rect x="96" y="315" width="211" height="34" rx="8" class="pill"/>
+  <text x="108" y="337" class="code">“total order amount in France?”</text>
+
+  <path d="M332 283 H378" class="connector"/>
+  <rect x="390" y="198" width="265" height="170" rx="16" class="card"/>
+  <circle cx="419" cy="228" r="15" class="number"/><text x="419" y="233" text-anchor="middle" class="numberText">2</text>
+  <text x="446" y="234" class="head">Chat orchestrator</text>
+  <text x="414" y="270" class="body">Validates the request, loads the</text>
+  <text x="414" y="291" class="body">conversation’s sheets, then calls</text>
+  <text x="414" y="312" class="body">Gemini for a constrained tool call.</text>
+  <text x="414" y="345" class="small">The tool carries question + analysis intent.</text>
+
+  <path d="M655 283 H701" class="connector"/>
+  <rect x="713" y="198" width="305" height="170" rx="16" class="cardGold"/>
+  <circle cx="742" cy="228" r="15" fill="#614b22" stroke="#d5a84e" stroke-width="1.3"/><text x="742" y="233" text-anchor="middle" class="numberText">3</text>
+  <text x="769" y="234" class="head">Gemini: intent, not query code</text>
+  <text x="737" y="270" class="body">Chooses the data question and analysis</text>
+  <text x="737" y="291" class="body">action/slug. Follow-ups may be resolved</text>
+  <text x="737" y="312" class="body">using bounded conversation context.</text>
+  <text x="737" y="345" class="small">It does not author SQL, Python, or numeric answers.</text>
+
+  <path d="M1018 283 H1063" class="connector"/>
+  <rect x="1075" y="198" width="453" height="170" rx="16" class="card"/>
+  <circle cx="1104" cy="228" r="15" class="number"/><text x="1104" y="233" text-anchor="middle" class="numberText">4</text>
+  <text x="1131" y="234" class="head">Question sent to the engine</text>
+  <text x="1099" y="270" class="body">A complete, validated question with its data context.</text>
+  <rect x="1099" y="289" width="405" height="43" rx="8" class="pill"/>
+  <text x="1112" y="316" class="code">“What was the total order amount in France?”</text>
+  <text x="1099" y="352" class="small">Standalone wording is kept faithful; a follow-up can be clarified.</text>
+
+  <!-- Engine boundary -->
+  <rect x="72" y="408" width="1456" height="495" rx="22" fill="url(#engine)" stroke="#2a6470" stroke-width="2"/>
+  <text x="102" y="449" class="eyebrow" fill="#7de0cc">ENGINE · DETERMINISTIC QUERY CONSTRUCTION AND EXECUTION</text>
+  <text x="102" y="476" class="small">The learned readers supply evidence about meaning; ordinary engine code owns the query, execution, and result.</text>
+
+  <rect x="102" y="515" width="255" height="174" rx="14" class="card"/>
+  <circle cx="130" cy="545" r="15" class="number"/><text x="130" y="550" text-anchor="middle" class="numberText">5</text>
+  <text x="157" y="551" class="head">Route + read</text>
+  <text x="126" y="585" class="body">Route checks whether the upload</text>
+  <text x="126" y="606" class="body">can answer, or whether world data</text>
+  <text x="126" y="627" class="body">and composition are needed.</text>
+  <text x="126" y="660" class="small">Request runs on its private data snapshot.</text>
+
+  <path d="M357 602 H393" class="connector"/>
+  <rect x="405" y="515" width="286" height="174" rx="14" class="card"/>
+  <text x="429" y="550" class="head">Encoder readers + schema</text>
+  <text x="429" y="581" class="body">Read the question beside table and</text>
+  <text x="429" y="602" class="body">column names, types, samples, and</text>
+  <text x="429" y="623" class="body">question-linked values.</text>
+  <rect x="429" y="645" width="237" height="27" rx="13" class="pill"/>
+  <text x="447" y="663" class="pillText">ENCODER SIGNALS · NO SQL GENERATION</text>
+
+  <path d="M691 602 H727" class="connector"/>
+  <rect x="739" y="515" width="260" height="174" rx="14" class="card"/>
+  <text x="763" y="550" class="head">Deterministic planner</text>
+  <text x="763" y="581" class="body">Builds typed SQL AST candidates</text>
+  <text x="763" y="602" class="body">from reader signals; grounds them</text>
+  <text x="763" y="623" class="body">against schema and relationships.</text>
+  <text x="763" y="660" class="small">Re-scores, executes, and selects a fit.</text>
+
+  <path d="M999 602 H1035" class="connector"/>
+  <rect x="1047" y="515" width="218" height="174" rx="14" class="card"/>
+  <text x="1071" y="550" class="head">One shared plan</text>
+  <text x="1071" y="581" class="body">Selected typed plan becomes</text>
+  <text x="1071" y="602" class="body">an ordered, named operation</text>
+  <text x="1071" y="623" class="body">pipeline.</text>
+  <text x="1071" y="660" class="small">The plan defines the computation.</text>
+
+  <path d="M1265 602 H1301" class="connector"/>
+  <rect x="1313" y="515" width="185" height="174" rx="14" class="cardGreen"/>
+  <text x="1337" y="550" class="head">Emit + execute</text>
+  <text x="1337" y="581" class="body">SQL, Python, or</text>
+  <text x="1337" y="602" class="body">both, on request-</text>
+  <text x="1337" y="623" class="body">local data.</text>
+  <text x="1337" y="660" class="small">Bounds + checks; rows computed.</text>
+
+  <!-- Emission and output evidence -->
+  <rect x="405" y="748" width="1093" height="116" rx="14" class="cardGreen"/>
+  <text x="429" y="781" class="head">Inspectable execution: one plan, readable source</text>
+  <rect x="429" y="800" width="180" height="38" rx="8" class="pill"/>
+  <text x="449" y="824" class="code">SQL: SELECT …</text>
+  <rect x="623" y="800" width="350" height="38" rx="8" class="pill"/>
+  <text x="643" y="824" class="code">Python: named stages + operator calls</text>
+  <text x="995" y="813" class="small">Supported shared plans can run SQL, Python, or both</text>
+  <text x="995" y="834" class="small">and compare stages; other shapes use guarded SQL.</text>
+
+  <!-- Answer back to user -->
+  <path d="M1405 689 V944 H1280" class="connectorGreen"/>
+  <rect x="72" y="944" width="1456" height="148" rx="18" class="card"/>
+  <circle cx="105" cy="977" r="15" class="number"/><text x="105" y="982" text-anchor="middle" class="numberText">6</text>
+  <text x="132" y="983" class="head">Engine result → locally rendered answer</text>
+  <text x="102" y="1020" class="body">Engine returns result rows, the plain “read as” interpretation, and evidence such as SQL, derivation stages, and provenance.</text>
+  <text x="102" y="1045" class="body">The orchestrator formats those engine facts into the chat reply; the interface shows the answer and keeps the derivation inspectable.</text>
+  <rect x="1100" y="964" width="390" height="95" rx="12" class="cardGreen"/>
+  <text x="1124" y="993" class="small">DISPLAYED ANSWER · EXAMPLE</text>
+  <text x="1124" y="1028" class="head" fill="#a8f0d5">€12,450</text>
+  <text x="1124" y="1047" class="small">Read as: total order amount in France</text>
+
+  <text x="72" y="1126" class="small">Special cases: world-dependent questions can route through grounded composition. If a compound query cannot fit one plan, the engine may request one bounded Gemini decomposition proposal, then the engine plans and executes every leaf.</text>
+</svg>

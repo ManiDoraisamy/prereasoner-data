@@ -96,6 +96,10 @@ def _store_tables(sheets):
             if isinstance(source, dict) and isinstance(source.get("kind"), str):
                 from engine.request_validation import validate_source
                 table["source"] = validate_source(source)
+            from engine.request_validation import validate_import_metadata
+            imported = validate_import_metadata(s.get("import"))
+            if imported is not None:
+                table["import"] = imported
             out.append(table)
     return out[:8]
 

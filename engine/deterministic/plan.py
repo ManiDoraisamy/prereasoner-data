@@ -367,8 +367,8 @@ class ReducedView:
         object.__setattr__(self, "group_by", tuple(self.group_by))
         _require_identifier(self.name, "view name")
         _require_identifier(self.source, "source view name")
-        if not self.aggregates:
-            raise ValueError("reduced view requires at least one aggregate")
+        if not self.aggregates and not self.group_by:
+            raise ValueError("reduced view requires an aggregate or a grouping key")
 
 
 @dataclass(frozen=True)

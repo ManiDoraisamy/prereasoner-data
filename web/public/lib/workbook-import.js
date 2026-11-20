@@ -125,6 +125,19 @@
          rows.slice(i).every(r=>count(r)<=1)) {end=i;break;}
     }
     const data=[]; const skipped=[]; const summaryRows=[];
+    const dataSourceRows=[],summarySourceRows=[];
+    // Compact positional lineage: [output row index, original 1-based sheet row,
+    // run length]. Gaps and separated totals start a new run; repeated data rows
+    // remain different source observations. No source values are inferred here.
+    const sourceRows=positions=>{
+      const ranges=[];
+      positions.forEach((source,index)=>{
+        const last=ranges[ranges.length-1];
+        if(last&&last[0]+last[2]===index&&last[1]+last[2]===source)last[2]++;
+        else ranges.push([index,source,1]);
+      });
+      return {encoding:'ranges',count:positions.length,ranges};
+    };
     if(merges.some(m=>m.e.r>=start+1+bounds.s.r&&m.s.r<end+bounds.s.r&&
         m.s.c<width+bounds.s.c&&m.e.c>=bounds.s.c))
       warnings.push('Merged data cells were kept as stored: blank cells were not filled with invented values.');
@@ -143,7 +156,8 @@
         // instead of silently truncating a timestamp to a calendar date.
         return iso.endsWith('T00:00:00.000Z')?iso.slice(0,10):iso.slice(0,-1);
       });
-      if(summary)summaryRows.push(normalizedRow);else data.push(normalizedRow);
+      if(summary){summaryRows.push(normalizedRow);summarySourceRows.push(i+bounds.s.r+1);}
+      else{data.push(normalizedRow);dataSourceRows.push(i+bounds.s.r+1);}
     }
     if(summaryRows.length)warnings.push('Explicit total/subtotal rows were separated into a summaries table to avoid counting them twice.');
     if(!data.length)return null;
@@ -153,6 +167,7 @@
       version:2,method:'deterministic-layout',headerRow:start<0?null:start+bounds.s.r+1,
       dataRows:data.length,columns:keep.length,leftOutColumns:[],skippedBlankRows:skipped,warnings,
       columnBindings:keep.map((c,i)=>({name:columns[i],column:letter(c),originalHeader:start>=0?headers[c]:null})),
+      sourceRange:sheet['!ref'],sourceRows:sourceRows(dataSourceRows),summarySourceRows:sourceRows(summarySourceRows),
       prefixRows:Math.max(0,start),suffixRows:rows.length-end,formulaValues:'cached-only',
     }};
   }
@@ -229,12 +244,15 @@
           leaving(name,'the expanded workbook is too large',false);continue;
         }
         total+=normalized.csv.length;
+        normalized.import.sourceSheet=name;
         sheets.push({name,...normalized});
         if(normalized.summaryCsv){
           total+=normalized.summaryCsv.length;
           const base=name+' summaries';let summaryName=base;
           while(workbook.SheetNames.includes(summaryName)||sheets.some(s=>s.name===summaryName))summaryName+=' summary';
-          sheets.push({name:summaryName,csv:normalized.summaryCsv,import:{...normalized.import,section:'summaries',warnings:[],dataRows:normalized.summaryCsv.split('\n').length-1}});
+          sheets.push({name:summaryName,csv:normalized.summaryCsv,import:{...normalized.import,section:'summaries',warnings:[],
+            sourceRows:normalized.import.summarySourceRows,summarySourceRows:{encoding:'ranges',count:0,ranges:[]},
+            dataRows:normalized.import.summarySourceRows.count}});
         }
       }
       // A summaries table holds only the total rows set aside from its region, so summaries give way

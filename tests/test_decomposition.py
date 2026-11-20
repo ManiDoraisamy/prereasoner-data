@@ -353,7 +353,7 @@ def test_decomposition_tries_next_ranked_candidate_when_best_cannot_dual_lower()
         {"table": "products", "name": "id", "affinity": "INTEGER", "values": [1, 2]}
     ]
     product_id = ColumnRef("products", "id", SQLType.INTEGER)
-    unsupported = SelectQuery((SelectItem(product_id),), "products", distinct=True)
+    unsupported = SelectQuery((SelectItem(product_id),), "products", limit=1)
     supported = SelectQuery((SelectItem(product_id),), "products")
     pool = (
         ScoredQuery(unsupported, render_query(unsupported), 2.0, ()),
@@ -369,7 +369,7 @@ def test_decomposition_tries_next_ranked_candidate_when_best_cannot_dual_lower()
         planner, "fallback", tables, schema, (), _proposal(),
         question="available products never purchased",
     )
-    # Two leaves were compiled, and neither emitter received the rejected DISTINCT AST.
+    # Two leaves were compiled, and neither emitter received the unordered LIMIT AST.
     assert planner.guard.call_args_list[0].args[0] == render_query(unsupported)
     assert planner.guard.call_args_list[1].args[0] == render_query(supported)
     assert plan.output

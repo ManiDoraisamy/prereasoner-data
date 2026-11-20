@@ -12,7 +12,10 @@ from enum import Enum
 import math
 from numbers import Integral, Real
 import re
-from typing import Any, Iterable, Sequence, TypeAlias
+from typing import Any, Iterable, Sequence, TypeAlias, get_args, get_origin, get_type_hints, Union
+import types
+from dataclasses import MISSING
+from functools import lru_cache
 
 
 class SQLType(str, Enum):
@@ -173,9 +176,9 @@ ScalarExpr: TypeAlias = (ColumnRef | Star | Literal | Aggregate | ScalarSubquery
 
 @dataclass(frozen=True)
 class Comparison:
-    left: ColumnRef | Aggregate | ScalarSubquery | DatePart | Lower | DateSpan
+    left: ColumnRef | Literal | Aggregate | ScalarSubquery | BinaryExpr | DatePart | Lower | DateSpan
     operator: str
-    right: ColumnRef | Literal | Aggregate | ScalarSubquery
+    right: ColumnRef | Literal | Aggregate | ScalarSubquery | BinaryExpr
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "operator", self.operator.upper())
@@ -456,7 +459,7 @@ def _validate_query(query: Query, outer_scope: frozenset[str]) -> None:
 
     visible = frozenset(joined) | outer_scope
     for item in query.select:
-        _validate_expr(item.expression, visible)
+        _validate_expr(item.expression, visible, allow_star=item.alias is None)
     for group in query.group_by:
         if not isinstance(group, (ColumnRef, DatePart)):
             raise ASTValidationError("GROUP BY reads a column or a period of a date column")
@@ -761,7 +764,11 @@ def conjunction(predicates: Iterable[Predicate]) -> Predicate | None:
     return and_predicates(out)
 
 
-def _validate_expr(expr: ScalarExpr, visible: frozenset[str]) -> None:
+def _validate_expr(expr: ScalarExpr, visible: frozenset[str], *, allow_star: bool = False) -> None:
+    if isinstance(expr, Star):
+        if not allow_star:
+            raise ASTValidationError("a bare star is only valid as an unaliased SELECT item")
+        return
     if isinstance(expr, Abs):
         if not isinstance(expr.operand, (ColumnRef, BinaryExpr, Aggregate, BlankAsZero)):
             raise ASTValidationError("a size reads a column, a row expression or an aggregate")
@@ -1152,3 +1159,206 @@ def _predicate_query_tables(predicate: Predicate | None) -> set[str]:
     if isinstance(predicate, Comparison):
         return _expr_query_tables(predicate.left) | _expr_query_tables(predicate.right)
     return set()
+
+
+_TREE_DECIMAL_PATTERN = r"^[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[Ee][+-]?[0-9]+)?$"
+
+
+@lru_cache(maxsize=None)
+def _tree_hints(cls):
+    return get_type_hints(cls)
+
+
+def _tree_field_enums():
+    return {(Aggregate, "function"): AGGREGATES, (BinaryExpr, "operator"): ARITHMETIC_OPERATORS,
+            (Comparison, "operator"): COMPARISONS, (SetQuery, "operator"): SET_OPERATORS,
+            (DatePart, "part"): DATE_PARTS, (DateSpan, "unit"): DAYS_PER_UNIT,
+            (OrderTerm, "direction"): ("ASC", "DESC"), (BooleanExpr, "operator"): ("AND", "OR"),
+            (Join, "kind"): ("INNER", "LEFT")}
+
+
+def _tree_registry():
+    """Only types reachable from this owner's Query annotations can be decoded."""
+    found, pending = {}, list(get_args(Query))
+    while pending:
+        cls = pending.pop()
+        if cls.__name__ in found:
+            continue
+        found[cls.__name__] = cls
+
+        def visit(hint):
+            if isinstance(hint, type) and (is_dataclass(hint) or issubclass(hint, Enum)):
+                pending.append(hint)
+            else:
+                for part in get_args(hint):
+                    visit(part)
+        if is_dataclass(cls):
+            for hint in _tree_hints(cls).values():
+                visit(hint)
+    return found
+
+
+def query_tree_schema():
+    """Draft 2020-12 schema for the existing read-only typed AST, not all SQL.
+
+    Syntax acceptance never certifies English meaning or request-schema grounding.
+    Fixed tuples use prefixItems; a Draft7 validator is not a substitute.
+    """
+    nodes = _tree_registry()
+
+    def shape(hint):
+        if hint is Any:
+            return {"oneOf": [{"type": ["string", "number", "boolean", "null"]},
+                              {"type": "object", "properties": {"decimal": {"type": "string",
+                               "pattern": _TREE_DECIMAL_PATTERN}},
+                               "required": ["decimal"], "additionalProperties": False}]}
+        if hint is type(None):
+            return {"type": "null"}
+        if hint in (str, int, float, bool):
+            return {"type": {str: "string", int: "integer", float: "number", bool: "boolean"}[hint]}
+        if isinstance(hint, type) and hint.__name__ in nodes:
+            return {"$ref": "#/$defs/" + hint.__name__}
+        origin, args = get_origin(hint), get_args(hint)
+        if origin in (Union, types.UnionType):
+            return {"oneOf": [shape(h) for h in args]}
+        if origin is tuple:
+            if len(args) == 2 and args[1] is Ellipsis:
+                return {"type": "array", "items": shape(args[0])}
+            return {"type": "array", "prefixItems": [shape(h) for h in args],
+                    "items": False, "minItems": len(args), "maxItems": len(args)}
+        raise TypeError("unsupported typed AST annotation: " + str(hint))
+
+    enums = _tree_field_enums()
+    definitions = {}
+    for name, cls in sorted(nodes.items()):
+        if issubclass(cls, Enum):
+            definitions[name] = {"type": "string", "enum": [v.value for v in cls]}
+            continue
+        props, required, hints = {"node": {"const": name}}, ["node"], _tree_hints(cls)
+        for field in fields(cls):
+            props[field.name] = shape(hints[field.name])
+            if (cls, field.name) in enums:
+                props[field.name] = {"type": "string", "enum": sorted(enums[cls, field.name])}
+            if field.default is MISSING and field.default_factory is MISSING:
+                required.append(field.name)
+        if cls is SelectQuery:
+            props["select"]["minItems"] = 1
+        definitions[name] = {"type": "object", "properties": props, "required": required,
+                             "additionalProperties": False}
+    return {"$schema": "https://json-schema.org/draft/2020-12/schema",
+            "title": "Prereasoner recursive SQL query AST",
+            "description": "Derived from engine.sql_ast; semantic validation and actual schema bindings are required.",
+            **shape(Query), "$defs": definitions}
+
+
+def query_from_tree(document, *, max_depth=128, max_nodes=10000):
+    """Strict bounded JSON decode into this owner's classes, without a parser dependency.
+
+    Reject extra fields, malformed tuples, booleans in integer fields and unsafe
+    values before construction. The existing semantic validator owns the result.
+    Column names/types supplied by a document still need request-schema binding.
+    """
+    if any(type(v) is not int or v < 1 for v in (max_depth, max_nodes)):
+        raise ValueError("AST tree bounds must be positive integers")
+    seen = 0
+    enums = _tree_field_enums()
+
+    def decode(value, hint, depth):
+        nonlocal seen
+        seen += 1
+        if depth > max_depth or seen > max_nodes:
+            raise ValueError("AST tree resource bound exceeded")
+        origin, args = get_origin(hint), get_args(hint)
+        if origin in (Union, types.UnionType):
+            if isinstance(value, dict) and isinstance(value.get("node"), str):
+                options = [h for h in args if isinstance(h, type) and is_dataclass(h) and h.__name__ == value["node"]]
+            elif value is None:
+                options = [h for h in args if h is type(None)]
+            else:
+                options = [h for h in args if h is Any or h is type(value) or get_origin(h) is tuple and isinstance(value, list)]
+            if len(options) != 1:
+                raise ValueError("AST tree value does not identify exactly one declared type")
+            return decode(value, options[0], depth)
+        if hint is Any:
+            if isinstance(value, dict) and set(value) == {"decimal"} and isinstance(value["decimal"], str):
+                if re.fullmatch(_TREE_DECIMAL_PATTERN, value["decimal"]) is None:
+                    raise ValueError("invalid AST decimal spelling")
+                result = Decimal(value["decimal"])
+                if not result.is_finite():
+                    raise ValueError("non-finite AST decimal")
+                return result
+            if value is None or type(value) in (str, int, bool) or type(value) is float and math.isfinite(value):
+                return value
+            raise ValueError("unsafe AST literal value")
+        if hint is type(None):
+            if value is None:
+                return None
+            raise ValueError("expected AST null")
+        if hint in (str, int, float, bool):
+            if type(value) is hint or hint is float and type(value) is int:
+                if type(value) is float and not math.isfinite(value):
+                    raise ValueError("non-finite AST number")
+                return value
+            raise ValueError("AST primitive type mismatch")
+        if isinstance(hint, type) and issubclass(hint, Enum):
+            if not isinstance(value, str):
+                raise ValueError("AST enum must be a string")
+            return hint(value)
+        if origin is tuple:
+            if not isinstance(value, list):
+                raise ValueError("AST tuple must be a JSON array")
+            if len(args) == 2 and args[1] is Ellipsis:
+                return tuple(decode(v, args[0], depth + 1) for v in value)
+            if len(value) != len(args):
+                raise ValueError("AST fixed tuple has the wrong length")
+            return tuple(decode(v, h, depth + 1) for v, h in zip(value, args))
+        if isinstance(hint, type) and is_dataclass(hint):
+            if not isinstance(value, dict) or value.get("node") != hint.__name__:
+                raise ValueError("AST node kind mismatch")
+            hints, declared = _tree_hints(hint), {f.name: f for f in fields(hint)}
+            if set(value) - {"node", *declared}:
+                raise ValueError("unknown AST node fields")
+            if any(f.default is MISSING and f.default_factory is MISSING and name not in value
+                   for name, f in declared.items()):
+                raise ValueError("missing required AST node field")
+            for name, item in value.items():
+                if (hint, name) in enums and (not isinstance(item, str) or item not in enums[hint, name]):
+                    raise ValueError("invalid AST field enum")
+            return hint(**{name: decode(v, hints[name], depth + 1) for name, v in value.items() if name != "node"})
+        raise ValueError("unsupported AST tree annotation")
+    query = decode(document, Query, 0)
+    validate_query(query)
+    return query
+
+
+def query_to_tree(query):
+    """Canonical JSON form: omit defaults, preserve decimal values exactly."""
+    validate_query(query)
+
+    def encode(value):
+        if isinstance(value, Enum):
+            return value.value
+        if is_dataclass(value):
+            out = {"node": type(value).__name__}
+            for field in fields(value):
+                item = getattr(value, field.name)
+                if field.default is not MISSING and item == field.default:
+                    continue
+                if field.default_factory is not MISSING and item == field.default_factory():
+                    continue
+                out[field.name] = encode(item)
+            return out
+        if isinstance(value, tuple):
+            return [encode(v) for v in value]
+        if isinstance(value, Decimal):
+            if not value.is_finite():
+                raise ValueError("non-finite AST decimal")
+            return {"decimal": str(value)}
+        if value is None or type(value) in (str, int, bool) or type(value) is float and math.isfinite(value):
+            return value
+        raise ValueError("unsafe AST value")
+    document = encode(query)
+    # The same typed decoder rejects permissive Python dataclass construction
+    # (for example bool where an integer limit is declared).
+    query_from_tree(document)
+    return document

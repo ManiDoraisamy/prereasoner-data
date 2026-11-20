@@ -10,8 +10,8 @@ from sqlglot import expressions as sge
 
 from engine.sql_ast import (
     Aggregate, BinaryExpr, BooleanExpr, ColumnRef, Comparison, ExistsPredicate,
-    InPredicate, Join, Literal, OrderTerm, ScalarSubquery, SelectItem,
-    SelectQuery, SetQuery, Star,
+    InPredicate, Join, Literal, Lower, OrderTerm, ScalarSubquery, SelectItem,
+    SelectQuery, SetQuery, Star, SQLType, value_type,
 )
 from engine.sql_schema import SchemaGraph
 
@@ -121,6 +121,8 @@ def _scalar(node, scope: _Scope):
             raise
     if isinstance(node, sge.Star):
         return Star()
+    if isinstance(node, sge.Lower):
+        return Lower(_scalar(node.this, scope))
     if type(node) in _AGGREGATES:
         operand, distinct = node.this, False
         if isinstance(operand, sge.Distinct):
@@ -135,15 +137,26 @@ def _scalar(node, scope: _Scope):
     if type(node) in _ARITHMETIC:
         left = _scalar(node.left, scope)
         right = _scalar(node.right, scope)
-        # BinaryExpr is numeric row/aggregate arithmetic; its operands may not themselves
-        # be aggregates (the validator enforces this), so a bare Sub of two columns or
-        # literals is in range while SUM(a)-SUM(b) is left to the calculation path.
-        if isinstance(left, Aggregate) or isinstance(right, Aggregate):
-            raise Unsupported("arithmetic:aggregate-operand")
+        # SQLite truncates INTEGER / INTEGER; this AST deliberately renders
+        # real, zero-safe division. Reject rather than changing the source's
+        # arithmetic, even when its current rows happen to produce a match.
+        if isinstance(node, sge.Div) and all(value_type(x) == SQLType.INTEGER for x in (left, right)):
+            raise Unsupported("arithmetic:integer-division")
+        # The AST already supports arithmetic between aggregate results as well
+        # as within an aggregate. Its validator owns numeric scope and rejects
+        # aggregates nested inside another SUM/AVG.
         return BinaryExpr(left, _ARITHMETIC[type(node)], right)
     if isinstance(node, (sge.Literal, sge.Neg, sge.Boolean, sge.Null)):
         return _literal(node)
     raise Unsupported(f"scalar:{type(node).__name__}")
+
+
+def _null_test(node, scope: _Scope, *, negated=False):
+    # IS TRUE/FALSE has truthiness semantics, unlike IS 1/0. Admit the
+    # supported NULL test without silently changing non-NULL IS expressions.
+    if not isinstance(node.expression, sge.Null):
+        raise Unsupported('is:non-null')
+    return Comparison(_scalar(node.this, scope), 'IS NOT' if negated else 'IS', Literal(None))
 
 
 def _predicate(node, scope: _Scope):
@@ -153,16 +166,23 @@ def _predicate(node, scope: _Scope):
     if isinstance(node, sge.Or):
         return BooleanExpr("OR", (_predicate(node.left, scope), _predicate(node.right, scope)))
     if isinstance(node, sge.Not):
-        inner = node.this
+        inner = node.this.unnest() if isinstance(node.this, sge.Paren) else node.this
         if isinstance(inner, sge.In):
             return _in_predicate(inner, scope, negated=True)
         if isinstance(inner, sge.Exists):
             return ExistsPredicate(_select(inner.this.unnest(), scope.graph, scope), negated=True)
+        if isinstance(inner, sge.Is):
+            return _null_test(inner, scope, negated=True)
+        if isinstance(inner, sge.Like):
+            return Comparison(_scalar(inner.left, scope), "LIKE" if inner.args.get("negate") else "NOT LIKE",
+                              _scalar(inner.right, scope))
         raise Unsupported(f"not:{type(inner).__name__}")
     if isinstance(node, sge.In):
         return _in_predicate(node, scope, negated=False)
     if isinstance(node, sge.Exists):
         return ExistsPredicate(_select(node.this.unnest(), scope.graph, scope), negated=False)
+    if isinstance(node, sge.Is):
+        return _null_test(node, scope)
     if isinstance(node, sge.Between):
         column = _scalar(node.this, scope)
         return BooleanExpr("AND", (
@@ -170,7 +190,9 @@ def _predicate(node, scope: _Scope):
             Comparison(column, "<=", _scalar(node.args["high"], scope)),
         ))
     if type(node) in _COMPARISONS:
-        return Comparison(_scalar(node.left, scope), _COMPARISONS[type(node)],
+        # SQLGlot represents NOT LIKE as Like(negate=True), rather than Not(Like).
+        operator = "NOT LIKE" if isinstance(node, sge.Like) and node.args.get("negate") else _COMPARISONS[type(node)]
+        return Comparison(_scalar(node.left, scope), operator,
                           _scalar(node.right, scope))
     raise Unsupported(f"predicate:{type(node).__name__}")
 
@@ -187,7 +209,11 @@ def _in_predicate(node, scope: _Scope, negated: bool):
 
 
 def _select(node, graph: SchemaGraph, parent: _Scope | None = None) -> SelectQuery:
+    if node.args.get("offset") is not None:
+        raise Unsupported("query:offset")
     if type(node) in _SET_OPS:
+        if node.args.get("order") is not None or node.args.get("limit") is not None:
+            raise Unsupported("query:compound-order-or-limit")
         return SetQuery(_select(node.this, graph, parent), _SET_OPS[type(node)],
                         _select(node.expression, graph, parent))
     if not isinstance(node, sge.Select):

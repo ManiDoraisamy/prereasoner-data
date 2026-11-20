@@ -7,6 +7,36 @@ from engine.tables import TableQuery
 
 
 class NumericStorageTests(unittest.TestCase):
+    def test_zero_padded_codes_survive_csv_schema_and_request_execution(self):
+        import numpy as np
+        from engine.numeric import stored_as_numbers, parse_decimal
+        from engine.tables import csv_table
+        from engine.prepared import RequestDatabase
+        from engine.sql_schema import SchemaGraph
+
+        table = csv_table('id,postal,amount\n0877,02110,5\n877,90210,8\n', 'codes')
+        self.assertEqual(table['rows'], [['0877', '02110', 5], [877, 90210, 8]])
+        self.assertFalse(stored_as_numbers(['0877', '877']))
+        self.assertEqual(observed_numeric_affinity(['02110', '90210']), 'TEXT')
+        self.assertTrue(stored_as_numbers([0, '5', '0.25', '1e-3']))
+        self.assertEqual(parse_decimal('00877'), 877)  # Explicit arithmetic still parses a number.
+        planner = TableQuery()
+        planner.dims = [{'name': 'is_num', 'family': 'struct', 'dim_id': 0}]
+        planner._encode = lambda names: np.ones((len(names), 1))
+        planner._layers = lambda units, encoded: [encoded]
+        schema, _, _ = planner.schema([table], [])
+        self.assertEqual([c['affinity'] for c in schema], ['TEXT', 'TEXT', 'INTEGER'])
+        self.assertEqual([c.ref.type.value for c in SchemaGraph.from_planner(schema, []).columns],
+                         [c.ref.type.value for c in SchemaGraph.from_tables([table], []).columns])
+        database = RequestDatabase()
+        try:
+            connection = database.load({'codes': table}, schema)
+            self.assertEqual(connection.execute("SELECT postal FROM codes WHERE id='0877'").fetchall(), [('02110',)])
+            self.assertEqual(connection.execute("SELECT postal FROM codes WHERE id='877'").fetchall(), [('90210',)])
+            self.assertEqual(connection.execute('SELECT SUM(amount) FROM codes').fetchone()[0], 13)
+        finally:
+            database.close()
+
     def test_schema_uses_storage_bounds_for_observed_values(self):
         import numpy as np
         planner = TableQuery()
@@ -31,6 +61,11 @@ class NumericStorageTests(unittest.TestCase):
             self.assertEqual(observed_numeric_affinity(values), "REAL")
         for values in (["not recorded"], ["#DIV/0!"], ["1e100"], ["0.0000000000000000000001"]):
             self.assertEqual(observed_numeric_affinity(values), "TEXT")
+        from engine.sql_schema import SchemaGraph
+        for value in ('123456789012345678901234567890123456789012', '0.0000000000000000000001'):
+            column = SchemaGraph.from_tables([{'name': 'raw', 'columns': ['value'], 'rows': [[value]]}], []).columns[0]
+            self.assertEqual(column.ref.type.value, 'text')
+            self.assertEqual(column.values, (value,))
 
     def test_a_comma_is_read_only_where_it_groups_digits(self):
         """Every comma was dropped, so a decimal comma read 100 times too large: "1,50" was 150, "12,34"

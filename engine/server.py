@@ -24,6 +24,7 @@ Run: python -m engine.server
 from __future__ import annotations
 
 import datetime
+from copy import deepcopy
 import hashlib
 import os
 import threading
@@ -94,6 +95,7 @@ from engine.request_validation import (
     upload_row_limit_error,
     validate_reason_request,
     validate_tables,
+    validate_import_metadata,
 )
 from engine.sheet_sessions import clear_sheet_session, restore_sheet_session, save_sheet_session
 from engine.tables import csv_table, normalize_tables, on_screen_first, table_name
@@ -185,7 +187,7 @@ def _parsed_tables(sheets, snapshot=None):
         usable = [sheet for sheet in sheets[:MAX_SHEETS]
                   if isinstance(sheet, dict) and (sheet.get("data") or "").strip()]
         key = ("snapshot:" + snapshot if snapshot else
-               hashlib.sha256(json_dumps([[sheet["name"], sheet["data"]] for sheet in usable],
+               hashlib.sha256(json_dumps([[sheet["name"], sheet["data"], sheet.get("import")] for sheet in usable],
                                          ensure_ascii=False).encode("utf-8")).hexdigest())
     with _PARSED_TABLES_LOCK:
         cached = _PARSED_TABLES.get(key)
@@ -194,7 +196,15 @@ def _parsed_tables(sheets, snapshot=None):
     if cached is None and sheets is None:
         return None
     if cached is None:
-        parsed = tuple(csv_table(sheet["data"], sheet["name"]) for sheet in usable)
+        parsed = []
+        for sheet in usable:
+            table = csv_table(sheet["data"], sheet["name"])
+            imported = validate_import_metadata(sheet.get("import"), row_count=len(table["rows"]),
+                                                column_names=table["columns"] if table["columns"] else None)
+            if imported is not None:
+                table["import"] = imported
+            parsed.append(table)
+        parsed = tuple(parsed)
         cells = sum(len(table["rows"]) * max(1, len(table["columns"])) for table in parsed)
         cached = (parsed, cells)
         if cells <= _PARSED_TABLES_MAX_CELLS:
@@ -203,7 +213,8 @@ def _parsed_tables(sheets, snapshot=None):
                 while sum(entry[1] for entry in _PARSED_TABLES.values()) > _PARSED_TABLES_MAX_CELLS:
                     _PARSED_TABLES.popitem(last=False)
     return [{"name": table["name"], "columns": list(table["columns"]),
-             "rows": [list(row) for row in table["rows"]]} for table in cached[0]]
+             "rows": [list(row) for row in table["rows"]],
+             **({"import": deepcopy(table["import"])} if "import" in table else {})} for table in cached[0]]
 
 
 def _json_safe(value):
@@ -787,7 +798,10 @@ class H(BaseHTTPRequestHandler):
                 pass                                         # the snapshot, parsed already
             elif sheets:
                 source_sheets = sheets
-                tabs = _parsed_tables(sheets, snapshot)
+                try:
+                    tabs = _parsed_tables(sheets, snapshot)
+                except RequestValidationError as exc:
+                    self._send(exc.status_code, json_dumps({"error": str(exc)})); return
             else:
                 data = req["data"]
                 if not data.strip():

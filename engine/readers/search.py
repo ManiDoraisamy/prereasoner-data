@@ -65,6 +65,8 @@ def readers_share(readings, readers):
 
 
 class ReadingSearch:
+    semantic = False
+
     def __init__(self, directory=READERS_DIR, rescore=True):
         """``rescore`` False loads the readers alone, for a caller that decides by its own named evidence
         (engine/named/proposals.py): ``pool`` then serves and ``rescore`` refuses."""
@@ -72,6 +74,18 @@ class ReadingSearch:
 
         from engine.readers import models
         directory = Path(directory)
+        self.semantic = (directory / "semantic-model.json").is_file()
+        if self.semantic:
+            from engine.readers.decisions import NamedDecisionPolicy
+            self.model = models.load("semantic", directory)
+            self.tokenizer = AutoTokenizer.from_pretrained(directory / "tokenizer")
+            qualification = json.loads((directory / "qualification.json").read_text(encoding="utf-8"))
+            policy = qualification["decision_policy"]
+            self.policy = NamedDecisionPolicy(tuple(policy["min_score"]), tuple(policy["min_margin"]))
+            metadata = json.loads((directory / "semantic-model.json").read_text(encoding="utf-8"))
+            self.max_len = metadata["max_len"]
+            self.last_named_result = None
+            return
         self.tokenizer = AutoTokenizer.from_pretrained(directory / "stage1")
         self.stage1 = models.load("schema_items", directory / "stage1")
         # each stage-2 model with whether it reads the question's values beside their columns (reader.json)
@@ -135,13 +149,30 @@ class ReadingSearch:
                 "columns": [{"name": f"{t}.{c}", "span": column_spans[f"{t}.{c}"][0]}
                             for t in kept for c in columns_of[t]]}
 
-    def pool(self, question, graph):
+    def pool(self, question, graph, *, turns=None):
         """The readers' candidates for the question, most probable first: [ScoredQuery], each SQL once. A
         candidate's evidence is its read-as line; its features carry its rank among its model's readings.
 
         A request reads its question more than once (the decomposition probe, compose's leaves, the selection), each
         over its own copy of the same graph; the pool depends only on the question and the data, so it is read
         once and kept by both (``_POOLS``)."""
+        if self.semantic:
+            # Candidate bundles use the same production selection owner. They
+            # never invoke the promoted readers or an independent re-scorer.
+            self.last_named_graph = graph
+            result = self.model.read_query(self.tokenizer, turns if turns is not None else
+                                           [{"role": "user", "content": question}], graph, self.policy, max_len=self.max_len)
+            self.last_named_result = result
+            if result["action"] != "answer":
+                return []
+            query = result["query"]
+            from fractions import Fraction
+            decisions = [result["named_trace"]["action"], *(field["decision"] for field in result["named_trace"]["fields"])]
+            minimum = min(Fraction(*row["score"]) for decision in decisions
+                          for row in decision["contributions"] if row["option"] == decision["choice"])
+            return [ScoredQuery(query, render_query(query), float(minimum), (result["ace"],), named_trace=result["named_trace"])]
+        if turns is not None:
+            raise ValueError("this readers bundle has no qualified conversation input")
         key = (question, _signature(graph))
         with _LOCK:
             kept = _POOLS.get(key)
@@ -190,6 +221,8 @@ class ReadingSearch:
         The re-scorers' logits depend only on the question and what each candidate says and returned, so a
         request's second selection over the same pool (the compose probe's, then the delegate's) reads them once
         (``_SCORES``: each candidate's logits, one per re-scorer)."""
+        if self.semantic:
+            return [member.score if shape is not None else None for member, shape in zip(pool, shapes)]
         if self.choice is None:
             raise ValueError("these readers were loaded without their re-scorers and choice")
         ran = [i for i, shape in enumerate(shapes) if shape is not None]
@@ -217,11 +250,19 @@ class ReadingSearch:
         so it is the confidence refusal reads. None for a candidate the readers did not score."""
         if scores[chosen] is None:
             return None
+        if self.semantic:
+            # Weakest accepted proposition, not a calibrated probability that
+            # the entire question was answered correctly.
+            return pool[chosen].score
         return 1.0 / (1.0 + math.exp(-scores[chosen]))
 
     def confident(self, confidence):
         """Whether ``confidence`` meets the choice's threshold; an unscored choice, or a choice fitted without a
         threshold (an evaluation that records every confidence), always does."""
+        if self.semantic:
+            # Every grammar field already passed the named qualification,
+            # threshold and margin gates; execution is a separate validity gate.
+            return confidence is not None
         threshold = self.choice.get("threshold")
         return confidence is None or threshold is None or confidence >= threshold
 

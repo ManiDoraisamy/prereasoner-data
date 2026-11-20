@@ -7,6 +7,7 @@ point.
 from __future__ import annotations
 
 import collections
+import math
 from typing import Any, Mapping, Sequence
 
 
@@ -73,7 +74,10 @@ def normalize_value(value: Any) -> str | float:
         return "\u2205"
     text = str(value).strip()
     try:
-        return round(float(text.replace(",", "").lstrip("$").rstrip("%")), 3)
+        number = float(text.replace(",", "").lstrip("$").rstrip("%"))
+        # Names such as Nan are text. NaN is unequal even to itself, so
+        # admitting its float spelling makes identical result sets disagree.
+        return round(number, 3) if math.isfinite(number) else text.lower()
     except (ValueError, AttributeError):
         return text.lower()
 

@@ -5,6 +5,40 @@ separate frontend repo, three Cloud Run services). Every structural choice below
 deliberately during that consolidation; this file records what changed and why, so reviewers
 don't have to reverse-engineer the reasoning.
 
+## Recursive named decisions remain inside the existing planner and selector (2026-11-07)
+
+The recursive candidate traverses `engine/sql_ast.py:query_tree_schema`, rather than maintaining a
+second SQL grammar or asking a model to write SQL. One CLEF prefill and one shared named projection
+supply quantized conditional role/operator propositions; deterministic construction and the existing
+`TableQuery.select_query` still own the query and its served selection. Candidate injection loads one
+unpromoted artifact and no promoted encoder/ranker fallback. Physical bindings and literal values
+remain explicit. The canonical ACE application view losslessly represents the constructed tree; it
+does not independently certify that a fluent ACE question preserves the original English.
+
+The trace can replay both named AST choices and the serving owner's currency/group/tie transforms
+without an encoder. Currency bindings are checked against the request graph, including when the
+transform leaves the AST unchanged. These checks establish the inspected decision boundary, not
+transparent encoder internals or correct interpretation. The 71 expected-property channels train
+jointly, but real noun/column/value property alignment and causal use of those profiles remain open.
+The frozen recursive experiment is isolated from the runtime bundle; its measured benchmark results
+and qualification determine subsequent work. No promotion follows merely from successful training.
+
+## Source-row identity belongs to execution, not value matching (2026-11-06)
+
+The existing deterministic Python operator owner propagates ORM source keys through its actual
+operations. Runtime provenance pools those keys once and links each emitted row to occurrences in
+that pool. The request database attests its loaded snapshot and insertion order before a SQLite
+rowid is interpreted as an input ordinal. The provenance owner resolves keys against immutable
+request inputs and importer address maps. Natural-key ambiguity and changed snapshots refuse a
+claimed origin; equal-valued rows are never collapsed by output-value matching. SQL-only execution
+reports missing row provenance rather than manufacturing it.
+
+Projected DISTINCT uses the existing grouping operation with no aggregates, retaining all duplicate
+source occurrences. This extends the one lowering/emission/execution path. Its trace records positive
+source rows; it does not certify minimal per-cell influence, missing/negative evidence or causal
+use of learned named coordinates. Saved Enron selections are execution diagnostics, never new model
+predictions or gradient-admitted training examples.
+
 ## Count outputs, ranking occurrences and table-owned full names (2026-10-13)
 
 The independent review of the committed October 12 build and the completed October 13 package preserves the
@@ -5158,3 +5192,363 @@ goes to its watchdog with the files. Each file travels alone onto its own path, 
 Large `.jsonl` and `.pt` outputs are gzipped on the pod beside their originals and restored here. A folder upload goes file by file
 too: `scp -r` left a resumed pod running its old code. `--resume` with a `--download` and no command brings back what is missing and
 terminates the pod, for the jobs `pull_parts.sh` does not know.
+
+## Readings can preserve the exact relationship keys (2026-11-05)
+
+Table membership alone cannot distinguish a friendship's owner from its friend when both columns reference the
+same people table. Agreement on the original rows can conceal that loss. The existing readings builder therefore
+accepts an explicit root and ordered joins, with each join's kind and column pairs, and its inverse can retain them
+with `include_joins=True`. Explicit bindings use the typed AST's scope validation and fail closed; an invalid binding
+never becomes an inferred path. This extends the one builder. The currently promoted item readers continue to
+supply their existing facts; the ACE and joint-decision candidate does not replace the production model loader.
+
+## A causal decision option reads the complete state; compiler capacity is separate from head capacity (2026-11-05)
+
+CLEF's candidate input serializer shared option embeddings with scalar occurrences inside the conversation/schema
+state. With a causal backbone, a column-name span could not read the type and samples written after that name.
+The candidate encoder now shares options in a bank after the complete state, with a regression requiring every
+option span to follow the last state token. Existing trial weights were trained with the earlier serialization;
+their immutable input contracts are retained, and inference with later spans is a separately measured ablation.
+No runtime model or loader was replaced.
+
+The ACE compiler profile has independent finite bounds: 16 projections, 16 conditions, eight grouping keys,
+two HAVING terms and eight order keys per block. Source programs exceeded the neural head's four projections,
+four conditions and two order keys. Keeping those head limits as ACE limits excluded programs the typed compiler
+already supports. Wider encoding does not expand the trained head or certify English-to-program equivalence.
+The added round-trip and excess-bound regression covers this distinction; corpus results are recorded in
+`spider/results/RESULTS.md`.
+
+## Source AST admission precedes the readings codec (2026-11-06)
+
+The wider recursive-target audit exposed valid arithmetic source programs absent from the named-reading
+corpus. The existing gold oracle now exposes its import/execution check as `read_program`; `read_gold` calls
+that shared check before its unchanged readings conversion. A codec exclusion is not evidence that the typed
+compiler cannot represent the source. Every excluded source and failed neural binding remains recorded;
+source execution agreement alone does not certify the original English meaning.
+
+The AST's comparison annotations omitted arithmetic operands and literal left operands that its validator
+and renderer already accepted. Correcting those annotations repairs generated schemas without changing SQL
+execution. The recursive schema uses Draft 2020-12 fixed tuples: a Draft7-only validator ignores `prefixItems`
+and wrongly rejects nonempty composite join pairs when it sees `items: false`. The audit uses the existing
+Draft202012Validator. Running model experiments retain their frozen source/schema/input format; these target
+corrections do not silently migrate trained weights or change the promoted runtime bundle.
+
+Changed-row source checks also exposed two admission errors hidden by agreement on original rows: an
+OFFSET was discarded, and SQLite integer division was converted to the AST's real division. The offline
+importer now rejects OFFSET, compound ORDER BY/LIMIT that the current compound node cannot carry, and
+INTEGER/INTEGER division. It uses the AST owner's `value_type` so an explicit real literal or AVG remains
+real division. These are unsupported-source exclusions, not new serving operators or relaxed grading.
+
+## Restore the shared Schema.org semantic requirement (2026-11-06)
+
+The owner requires noun, column and contextualized-value meanings in one Schema.org property basis,
+with those coordinates causally deciding semantic bindings. The October 21 adoption of learned readers
+records an accuracy direction; it does not record permission to abandon that requirement or a failed
+head-to-head evaluation of a complete shared-property implementation. Current own-data readers bypass
+that interface. An audit of the CLEF candidate separately found opaque contextual/lexical and residual
+scoring, AST/action labels, and no common property-coordinate supervision. Its program-level
+interpretability is not evidence of the requested semantic binding architecture.
+
+The generic-AST training trial was interrupted after preserving checkpoint 384 of the planned 512,
+with its original contract unchanged. The checkpoint and verified file hashes remain on the existing
+durable volume; the local adapter transfer is incomplete and is not a complete local model bundle.
+The GPU was deleted and absence verified. The additional CPU VM was never created. No new paid
+training, promotion or deployment follows from this steering, and the interrupted trial must not be
+relabelled as a shared-property model or a completed accuracy experiment.
+
+The migration must extend the existing semantic model/readers, retain pointers and identity alongside
+profiles, distinguish expected from observed evidence and mask unknown labels. Every downstream
+semantic binding must use the named interface with accounted contributions and explicit role/identity
+constraints. Opaque residual choices with post-hoc property explanations are excluded. The one readings
+builder, typed AST, deterministic emitters, request database and production selector remain the owners.
+Architecture, data, causal semantic tests and serving regression gates must be frozen before a newly
+authorized training run. Existing table-property calibration and legacy coordinate names are not
+automatically valid across roles or encoders.
+
+### Reuse the selected property basis; do not allocate the full ontology
+
+The initial shared-interface draft incorrectly treated all 1,521 ontology properties as required
+model coordinates. That allocation is withdrawn. The earlier property-superposition design is
+documented in commit `7cd2cfd`, the original training runbook in `35af7a4`, and the vendored
+`training/props/` pipeline. It selected 67 property coordinates, subsequently expanded to 71; the
+current allocation is 9 structural + 71 property-named + 10 intent = 90. Current family signatures
+use 47 distinct properties. The separate URI head's 80 trained / 56 qualified properties describe
+training and release coverage, not a mandate to replace that selection with the full ontology.
+
+The shared noun/column/value migration must start from these existing artifacts and their selection
+evidence. Preserve coordinate provenance, reconcile historical non-property labels explicitly, and
+justify any missing coordinates through held-out coverage/task evidence. Existing column-name and
+cell-value supervision in `training/props/` is reusable; cross-role ACE noun supervision and causal
+binding still need verification. This correction changes no runtime weights or serving behavior.
+
+## Define the shared interface before qualifying a model (2026-11-06)
+
+The owner authorized execution of the shared CLEF plan, including training. The candidate's one
+vocabulary owner is `engine/readers/layout.py:named_coordinate_contract`: 71 selected property URIs,
+64 SQL, 32 bounded ACE frames, 32 structural/type/role and 16 dialogue coordinates. All 215 slots are
+defined, all remain uncalibrated. Ten inherited intents and nine structural signals are included,
+not added again. Proposal AST-node-presence labels have been replaced by argument roles; recursive
+AST grammar remains explicit. The `GeoCoordinates`/`taxonName` property migration requires fresh
+targets, not reinterpretation of promoted weights.
+
+The candidate reader has one backbone/shared named projection. CLEF's stock lexical/residual choice
+head is discarded. Static column/value prefills precede conversation text, so their causal states
+cannot encode question-specific selection. Downstream named binding accepts no hidden vectors or
+residual scores: integer property terms, masks, normalization and constraints reproduce its result
+exactly, including clarification for ambiguous physical identities. Production selection remains
+unchanged pending a coherent integration and separate promotion authorization.
+
+SQL supervision comes from the current typed AST owner, with scoped argument paths. Empirical
+expected-property profiles use distinct training source groups; templates and mixed leaf-class
+groups do not estimate those priors. Unknown observed instance properties do not become negative
+world facts. The 27-class preparation exposes four all-zero class collisions. They are coverage
+failures requiring abstention, not a reason to conceal another semantic score. ACE frame and English
+span alignment remain unannotated in this preparation. A vocabulary or lossless program rendering
+is not independent certification of natural-language meaning.
+
+The current source-position owner remains the shared workbook importer. It emits compact physical
+row maps and column letters. Request validation/persistence, parse cache keys and browser upload
+fingerprints bind those maps to the actual input. Source lineage preserves original parsed values,
+explicit section evidence and contributor multiplicity; it does not infer blank-fill scopes or
+silently reinterpret original data. Older unmapped inputs report unknown physical positions.
+
+The existing owned Runpod lease now accepts a verified co-located network volume and explicit
+container-cache disk size; its deadline, price cap, ownership and cleanup remain in the same owner.
+Candidate experiments stay outside `engine/data/`, use immutable package/data manifests, and do not
+authorize promotion, publishing or deployment. Measured results and unresolved training status
+belong in `spider/results/RESULTS.md`.
+
+The first 256-update shared-head fit completed and its adapter/head hashes and quantized reload check
+were recovered. A separate typed-field audit found missing ASC/INNER defaults in its labels; the gold
+owner now reads actual dataclass defaults, with a regression test. The corrected dataset retains all
+raw inputs and other annotations. This is a label-only controlled repeat, not qualification of the
+first candidate. Exact pilot metrics, limitations and data hashes are recorded in the results owner.
+
+The conversation example owner also checks the bounded generator's complete source-reading deltas
+before annotating reference/order/limit controls. It retains source readings for this check: canonical
+MIN/MAX optimization can erase the user's ordering history. Gold program/controls stay outside the
+encoder input; unannotated arbitrary conversations retain unknown labels. This separate data revision
+does not alter the running corrected-label experiment.
+
+Named-coordinate qualification cannot be inferred across roles. `BindingBasis` now pins explicit
+per-role masks and checks that the global mask equals their union. The shared head masks exports by
+role; binding independently enforces query/candidate qualification and records masked contributions.
+Missing role evidence cannot be overridden by a physical identity. Existing all-unqualified candidate
+records keep their exact serialized basis and identity; globally qualified prototype records lacking
+role evidence fail validation. These candidate-format checks do not qualify or promote a pilot.
+
+The meaning head exports expected-concept evidence only. Passing an observed-instance evidence kind
+to the neural head is rejected; source-attested observations must retain their independent provenance.
+The corrected candidate's complete calibration remains unqualified: complete SQL presence vectors
+match on 641/2,901 answerable questions and all 20 clarification cases fail. Its sparse-coordinate
+scores, numerical variation and training-exposure counts are recorded in the results owner, rather
+than being presented as served accuracy or full-model determinism.
+
+## Recover original graph sources before restoring stripped literal types (2026-11-06)
+
+The owner directed a search of every `C:/work/prereasoner-*` directory and current/historical versions
+of prereasoner-data and prereasoner-flat-data. The latter retains the original SQL generators and
+quoted source corpora, pinned at `a2cb5dd30378a6ddcdb9aaace7cf334fb2ff8549`. All 6,481 saved training
+pairs match their originals after metadata, complete token annotations and physical pointer checks.
+The existing sources/gold owners restore quoted literals only after that match. Explicit numeric
+column declarations are backed by generator input requirements; they do not attest missing CSV cells.
+The original held-out split has disjoint files/schemas but overlapping question/SQL pairs. Its
+recovered evaluation removes 169 overlapping records, eight further duplicates and 75 identical
+English questions with different SQL, retaining 670 unique pairs. This does not move eval labels
+into training or authorize source admission.
+
+Both corpora pass the existing schema/codecs, synthetic changed-row execution and actual APE gates,
+including nonempty witnesses for every filter. Full Git blob hashes also permit exact raw CSV
+recovery from the public archive: 118 files reproduce historical conversion row counts, and 812
+training/62 eval questions pass original-window row parity. Formatted numeric values are recorded
+beside the existing parser's interpretations; original rows remain unchanged. Another 756 files
+are rate-limit deferred. Independent English argument meanings remain unverified. Random table
+nouns in the source generator are aliases, never ontology-class supervision. No competing parser,
+builder, selector, training pipeline or runtime bundle was introduced.
+
+Input-identity checks additionally isolate 42 training and 16 eval records whose full question/schema
+inputs are identical while SELECT projections differ. No single-target admission may arbitrarily
+pick among those gold programs. Specify the output contract, clarify it, or grade multiple valid
+programs; a successful AST/schema/parser check alone cannot resolve the ambiguity.
+
+## Bound frozen-head fitting by measured native throughput (2026-11-07)
+
+The full recursive LoRA schedule forecasts about 134 A100 hours and exceeds the controlled compute
+ceiling. Preserve its verified 128-update runtime bytes as the unqualified frozen source; do not call
+that partial checkpoint a completed epoch. The next controlled experiment keeps the corpus, named
+projection, loss and serving/evaluation owners, freezes that encoder, and uses batch one to avoid
+padding complete long inputs. No full intermediate feature cache is required. The original cache
+pilot's native-reload mismatch remains failed evidence, not permission to relax equality gates.
+
+PEFT input-gradient hooks require explicit inference-mode prefills for frozen-head training. Merely
+turning off weight gradients retained an encoder graph and exhausted 80 GB before an optimizer
+update. The corrected diagnostic completes its epoch and native quantized reload. This validates
+the training mechanism, not question accuracy or causal noun/column/value property alignment.
+
+The owner explicitly authorized unattended training and requested a calculated timeout beyond chat
+quota limits. Extend the existing lifecycle owner, rather than install a competing scheduler: leases
+over six hours and explicit renewals require hourly and whole-duration cost caps, verified ownership,
+and an armed replacement pod-local deadline before the previous guard is stopped. The hard maximum
+is 72 hours; ordinary resume keeps its original deadline. Jobs retain checkpoints/evidence on the
+existing network volume and arm a further 30-minute completion guard while the host pulls artifacts.
+No promotion, publication, deployment, commit or push follows from this experiment.
+
+## Audit source meaning before another paid fit (2026-11-07)
+
+The owner cancelled the unattended full fit and requires local English/ACE/SQL audit results before
+any further paid compute. The Pod and its dedicated network volume were deleted; a future
+experiment must verify which exact checkpoint bytes remain available. The gated execution plan is
+in `training/readers/README.md`; no previous training authorization starts a new run.
+
+Original-database checks must distinguish full data from capped snapshots, source-answer agreement
+from English correctness, and execution budgets from invalid SQL. Every question gets a result and
+unresolved admission status. A schema-valid ACE serialization of an incorrect SQL target remains an
+incorrect training label. Bounded English-template fixtures certify only their declared profile.
+
+The full-data audit exposed a stored positive LIKE target for a source NOT LIKE query. SQLGlot
+represents this spelling as `Like(negate=True)`: the offline importer now consumes that flag and
+preserves outer negation, including double negation. Regression cases cover positive and negative
+patterns, NULLs and empty strings. Repair source-backed labels in derived records and rerun their
+checks; do not patch serving by question wording. The same question also demonstrates that a
+source's official SQL may count donations when its English asks for donors, so original target
+agreement alone cannot certify meaning. No model accuracy gain or promotion follows from these
+data and importer corrections.
+
+The continuing audit repairs source labels only through the offline examples owner,
+with originals, reviewer reasons and source-row evidence retained. Input-only source
+retrieval may recover a quoted name beyond a row cap; it may not consume the target
+literal. Private database copies may gain indexes to complete an execution check,
+but the original database and previous witness snapshots stay unchanged. Reusing an
+execution witness requires exact program identity and unchanged source bytes; an
+empty answer is recorded and cannot establish English correctness.
+
+The audit also exposed loss of zero-padded source codes during shared schema type
+inference: text publisher ID `0877` became integer `877`. The existing
+`engine/sql_schema.py:_infer_type` now keeps zero-padded integer strings as text,
+preserving distinct codes and postal values. Native numbers and ordinary decimal
+fractions retain numeric inference. This conservative preservation can require
+explicit measure metadata for padded quantities; silently discarding source bytes
+is not a substitute for such metadata. The question-number reader separately
+distinguishes adjacent hyphenated ranges from genuinely signed, space-separated
+numbers. Both changes have contrastive regressions and trigger a full current
+question-conformance rerun; neither establishes a trained-model accuracy gain.
+
+The November 8 continuation pins restored author-source database versions and
+publisher column dictionaries explicitly. A source revision cannot be substituted
+under a witness for an empty database. Private indexes need identical complete
+typed row streams and unchanged table definitions, in addition to source/copy
+file hashes. The existing source loader and grammar bank share physical schema
+evidence and input-only retrieval; training preparation must not omit rows used
+by admission. Retrieval resource failures contribute no additional facts. The
+source grouping normalizer also runs before replaying a
+generated conversational correction, using only declared non-null primary keys
+and inner-join equality proofs. Arbitrary bare-column grouping remains invalid.
+
+Official SQL is evidence to audit, not semantic truth: the continuation found wrong
+entities, missing user filters, incorrect AM/PM, inclusive-bound mistakes and
+reviewer first names counted as people. An unresolved constant in target SQL must
+not be mistaken for an unresolved user question. Repairs retain the original
+question/target and their review basis, propagate through verified generated
+dialogue variants and require fresh checks. All question rows remain quarantined
+pending independent meaning review; no training or promotion is authorized by
+these repairs.
+
+An admitted binding is separate from a completed SQL witness. A pair that was
+previously rejected may reuse an exact native syntax-tree witness, but cannot
+inherit its old grounding rejection as the outcome of a new SQL check. The
+offline pair export requires a new complete answer check for that transition.
+Indexed answer witnesses also link the immutable complete-row lineage proof,
+not only the file hash of the private indexed copy. SQL and native-parser time
+limits are verification resource bounds; a timeout is recorded as incomplete
+verification and cannot become a grammar, meaning or accuracy pass. A longer
+local verification budget must retain the failed attempt, declare the new
+budget and preserve exact schema/tree/answer checks.
+
+Actual preparation exposed an additional failure: eager optional lookups rejected
+four of eight targeted questions whose targets already fit the original input
+bank. The source owner now commits all optional rows or none, retains the original
+bank on a declared resource limit, and records that unavailability separately.
+Missing required values still reject, partial retrieved IDs never enter the bank,
+and non-resource database errors still propagate. The matched eight-case rerun
+has four preparation recoveries and zero losses; unavailable cases use byte-identical
+base inputs. This is a preparation correction, not model accuracy.
+
+Input-matched reference descriptions can also expose actual related categorical
+rows beyond a cap. The source sampler uses bounded, target-independent key/value
+groups; it adds no hardcoded question IDs, answer strings or planner relationships.
+The schema graph explicitly identifies complete observed rows, and the existing
+grammar consumes them under its evidence bounds. This repairs visibility of
+survey responses hidden behind earlier age/gender rows. Source meanings remain
+separate: current, past and ever-diagnosed conditions are different survey items.
+The new complex season label also exceeds 256 traversal positions, so complete
+preparation must measure the required capacity rather than assume the old setting.
+
+The complete preparation attempt exposed a Decimal reference key passed directly
+to SQLite. The source owner now binds its canonical numeric spelling with the
+existing numeric helper, preserving exact observed keys and JSON-safe evidence.
+The exact phone-source crash record replays successfully. Compact observed names
+also receive bounded choices per input-overlapping word; the existing relevance
+choices remain. A first proposal ranked all compact matches together and failed
+the actual Shattuck Avenue case, so it was rejected before the current run.
+Both the synthetic crowding contrast and that actual source record now prepare.
+These changes introduce no runtime alias table or question-specific decoder rule.
+
+The 119-question preparation diagnostic retains all 84 admissions from its
+116-question predecessor and recovers eight rejected questions; 24 still reject
+and three added regressions admit. This combines input and reviewed-label changes,
+not a model experiment. The concurrent 540.70-second run is not an isolated latency
+measurement. Full preparation remains gated on its own complete receipt and
+independent English review remains open. Superseded generated pair exports may
+be compacted with their exact hashes and assessments retained; source parents,
+review labels, native parser records, SQL witnesses and the latest full pair
+export remain available. Private indexes require complete typed-row and table
+definition identity proofs before their execution evidence is accepted.
+
+The incoming-citation review exposed real dangling references: cited paper ID
+17741 has 68 distinct incoming citation records but no paper-catalog row.
+Correct citation-direction grouping alone therefore does not answer a catalog
+paper question. The reviewed targets intersect receiving IDs with the actual
+paper catalog and retain distinct citing-paper counts. Under a whole-source
+proof, the final answers have 1,290,651 (>10 citations) and 2,565,518 (at least
+five) IDs. Omitting catalog membership includes 465 and 983 extra identities.
+The publisher's precomputed count columns are not silently substituted for the
+provided edge relation. Both absent targets and duplicate catalog/edge rows have
+contrastive fixtures.
+
+A private Scholar copy with one covering citation index passes complete typed-row
+and table-definition identity checks for ten tables and 147,416,275 rows. The
+same three questions then pass their existing 120-second SQL bound, preserving
+the earlier timeout receipts. The current 128-question diagnostic combines only
+matching-code preparation receipts and per-record target identities: 105 admit,
+23 reject, nine original failures recover and no prior admissions are lost.
+All 20 latest reviewed questions pass their preparation and mechanical/control
+checks, including native ACE and full-source SQL for 19 executable programs.
+This remains quarantined data evidence, not model accuracy or complete independent
+English certification; the full 32,798-question preparation is still separate.
+
+## An external closed-choice model may read own-data questions (2026-11-20)
+
+The owner changed the rule that own-data selection uses no external model. An external closed-choice
+model may now read an own-data question and choose among the candidates the deterministic builder made.
+It answers closed questions whose options the engine built and returns probabilities only; it never
+writes text, SQL, or a program. `CLAUDE.md` carries the rule (the privacy experience rule and the SQL
+planner rules).
+
+Evidence (`spider/results/RESULTS.md`, entries of 2026-11-18 to 2026-11-19; experiment
+`training/readers/data/experiments/decisions-probe-20261118`): on 896 public and synthetic dev questions
+the trained named reader alone answers 152 right; the Gemini Decisions API reading and choosing, with no
+trained model, picks 693 right (77.3%) and lists a right answer for 769, at about a tenth of a cent and
+about a second a question. These are per-answer harness measurements, not served ones; the launch bar
+(80% right) is not met.
+
+What does not change: no model writes SQL; the typed AST and the builder stay deterministic; there is
+one selection path. Production still runs the trained readers. The closed-choice model enters production
+only by replacing them in one migration (callers, tests, artifacts and documents together), called through
+`engine/llm.py`; the ownership map changes in that same change. The
+Decisions endpoint is on the Gemini Developer API, not Vertex, so serving it needs an API key held as a
+deployment secret.
+
+Amended the same night (owner): there is no switch for external processing. Gemini is always on, in
+production and in the open-source deploy on GCP (it already rewrites prompts there), and there is one path.
+`EXTERNAL_LLM_ENABLED` and everything that reads it are deleted in the migration; until then the code still
+holds it, and the ownership map's line for `engine/llm.py` changes in that same change.

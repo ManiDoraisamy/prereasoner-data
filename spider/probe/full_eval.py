@@ -34,6 +34,7 @@ import argparse
 import collections
 import json
 import os
+import re
 from pathlib import Path
 import sys
 import time
@@ -134,7 +135,7 @@ def _source_paths(root):
     return paths
 
 
-def _input_paths(data, dbs, db_ids):
+def _input_paths(data, dbs, db_ids, *, include_encoder=True):
     """Every file a run reads apart from the model bundle, which validate_weight_bundle fingerprints whole:
     the questions and schemas, the databases the picked examples read, the encoder and every source file.
     The databases were left out, so a changed row kept a --resume checkpoint valid (release review,
@@ -145,8 +146,8 @@ def _input_paths(data, dbs, db_ids):
     return {
         "dev": os.path.join(data, "dev.json"),
         "tables": os.path.join(data, "tables.json"),
-        "encoder": DATA_DIR / "encoder.pt",
-        "encoder_meta": DATA_DIR / "encoder_meta.pt",
+        **({"encoder": DATA_DIR / "encoder.pt", "encoder_meta": DATA_DIR / "encoder_meta.pt"}
+           if include_encoder else {}),
         **{f"dbs/{db_id}.sqlite": os.path.join(dbs, db_id + ".sqlite") for db_id in db_ids},
         **_source_paths(ROOT),
     }
@@ -234,6 +235,21 @@ def _ast_predict(enc, tabs, question, schema_fks, schema_cache, selection, execu
         "selected_candidate_rank": chosen.selected,
         "selection": chosen.record(),
     }
+    if getattr(enc, "named_reader", None) is not None:
+        from engine.readers.grammar import replay_query_trace
+        result = enc.named_reader.last_named_result
+        evidence["named_trace"] = result["named_trace"]
+        replayed = replay_query_trace([{"role": "user", "content": question}],
+                                     enc.named_reader.last_named_graph, result["named_trace"])
+        evidence["named_trace_replayed"] = (replayed is None) == (result["query"] is None)
+        if chosen.candidate is not None:
+            evidence["served_named_trace"] = chosen.candidate.named_trace
+            from engine.sql_rank import replay_served_query_trace
+            from engine.sql_ast import query_to_tree
+            served = replay_served_query_trace(
+                [{"role": "user", "content": question}], enc.named_reader.last_named_graph,
+                chosen.candidate.named_trace)
+            evidence["served_named_trace_replayed"] = query_to_tree(served) == query_to_tree(chosen.candidate.query)
 
     def execute(candidate):
         ok, why = enc.guard(candidate.sql)
@@ -498,6 +514,61 @@ def _load_checkpoint_records(records, picked, retry_timeouts=False):
     return completed
 
 
+def _shard_indices(picked, shard):
+    """Partition a frozen denominator by position, without reading outcomes."""
+    if shard is None:
+        return list(picked)
+    try:
+        part, count = map(int, shard.split("/"))
+    except (AttributeError, TypeError, ValueError) as exc:
+        raise ValueError("shard must be a zero-based i/n pair") from exc
+    if count < 1 or not 0 <= part < count:
+        raise ValueError("shard requires n > 0 and 0 <= i < n")
+    return list(picked)[part::count]
+
+
+def _dependency_fingerprints(items):
+    """Bind injected evaluation dependencies to their immutable contents."""
+    result = {}
+    for item in items:
+        name, separator, digest = item.partition("=")
+        if (not separator or not re.fullmatch(r"[A-Za-z0-9_.-]+", name)
+                or not re.fullmatch(r"[0-9a-f]{64}", digest) or name in result):
+            raise ValueError("dependency fingerprints require unique name=sha256 entries")
+        result[name] = digest
+    return result
+
+
+def _merge_checkpoints(contract, checkpoints):
+    """Require complete, matching shards before reusing the owner's grader."""
+    base = {k: v for k, v in contract.items() if k not in {"picked", "shard"}}
+    records, seen_parts, counts = [], set(), set()
+    for checkpoint in checkpoints:
+        other = checkpoint.get("contract", {})
+        if {k: v for k, v in other.items() if k not in {"picked", "shard"}} != base:
+            raise ValueError("shard checkpoint contracts differ")
+        shard = other.get("shard")
+        if shard is None:
+            raise ValueError("merge requires explicitly identified shards")
+        expected = _shard_indices(contract["picked"], shard)
+        if other.get("picked") != expected:
+            raise ValueError("shard has a different denominator")
+        part, count = map(int, shard.split("/"))
+        if part in seen_parts:
+            raise ValueError("duplicate shard partition")
+        seen_parts.add(part); counts.add(count)
+        completed = _load_checkpoint_records(checkpoint.get("records"), expected)
+        if set(completed) != set(expected):
+            raise ValueError("incomplete shard checkpoint")
+        records.extend(completed.values())
+    if len(counts) != 1 or seen_parts != set(range(next(iter(counts)))):
+        raise ValueError("missing or inconsistent shard partitions")
+    completed = _load_checkpoint_records(records, contract["picked"])
+    if set(completed) != set(contract["picked"]):
+        raise ValueError("merged checkpoint does not cover the full denominator")
+    return completed
+
+
 def compose_predict(eng, tabs, question):
     res = eng.run(tabs, question, world=None)
     ans = res.get("answer")
@@ -594,6 +665,7 @@ def main():
     # --- ablation knob (NOT serving; serving always routes through compose). ---
     ap.add_argument("--no-compose", action="store_true",
                     help="ablation: isolate the own-data planner (skip DEPTH compose routing)")
+    ap.add_argument("--reader-candidate", help="unpromoted named readers bundle, through TableQuery.select_query")
     ap.add_argument("--cap", type=int, default=5000, help="row cap per table (bounds exec; only wta_1 is capped)")
     ap.add_argument("--timeout", type=float, default=12.0,
                     help="soft prediction latency budget; evaluation is never abandoned")
@@ -601,13 +673,28 @@ def main():
     ap.add_argument("--checkpoint-every", type=int, default=25)
     ap.add_argument("--resume", action="store_true")
     ap.add_argument("--retry-timeouts", action="store_true")
+    ap.add_argument("--shard", help="zero-based i/n partition of the picked questions")
+    ap.add_argument("--merge-checkpoints", nargs="+", metavar="PATH",
+                    help="validate complete shard checkpoints and grade their union without inference")
+    ap.add_argument("--dependency-fingerprint", action="append", default=[], metavar="NAME=SHA256",
+                    help="fingerprint an injected model/prediction dependency in resume and merge contracts")
     ap.add_argument("--max-new", type=int, default=0,
                     help="checkpoint and exit cleanly after this many new predictions")
     args = ap.parse_args()
+    if args.reader_candidate and not args.no_compose:
+        ap.error("a named own-data candidate requires --no-compose; it has no promoted compose model")
     if args.checkpoint_every < 0 or args.max_new < 0 or args.python_row_limit < 0:
         ap.error("checkpoint cadence, max-new, and row limits must be nonnegative")
     if args.selection == "pool_oracle" and args.backend != "sql":
         ap.error("pool_oracle is a SQL-backend oracle ablation; use --backend sql")
+    if args.merge_checkpoints and (args.shard or args.resume or args.max_new or args.retry_timeouts):
+        ap.error("merge-checkpoints cannot be combined with shard, resume, max-new, or retry-timeouts")
+    if args.scalar_only and (args.shard or args.merge_checkpoints):
+        ap.error("shard and merge-checkpoints require the full question denominator")
+    try:
+        dependencies = _dependency_fingerprints(args.dependency_fingerprint)
+    except ValueError as exc:
+        ap.error(str(exc))
 
     with open(os.path.join(args.data, "dev.json"), encoding="utf-8") as handle:
         dev = json.load(handle)
@@ -622,6 +709,11 @@ def main():
     for d in DIFFS:
         picked += (buckets[d][:args.per_diff] if args.per_diff else buckets[d])
     picked.sort()
+    full_picked = list(picked)
+    try:
+        picked = _shard_indices(full_picked, args.shard)
+    except ValueError as exc:
+        ap.error(str(exc))
 
     os.makedirs(args.out, exist_ok=True)
     suffix = ("_" + args.tag) if args.tag else ""
@@ -630,6 +722,8 @@ def main():
     )
     checkpoint_contract = {
         "picked": picked,
+        "shard": args.shard,
+        "dependencies": dependencies,
         "ingestion": "production_declared_plus_discovered",
         "config": args.config,
         "selection": args.selection,
@@ -647,12 +741,21 @@ def main():
     # thresholds (anchor_assignment.npz) change answers without touching the encoder: any edit must
     # invalidate a --resume checkpoint, or stale predictions get silently reused.
     checkpoint_contract["artifacts"] = {
-        **fingerprint_paths(_input_paths(args.data, args.dbs, sorted({dev[i]["db_id"] for i in picked}))),
-        "encoder_adapter": adapter_sha256(DATA_DIR / "qwen_lora"),
-        "weight_bundle": validate_weight_bundle(DATA_DIR),
+        **fingerprint_paths(_input_paths(args.data, args.dbs, sorted({dev[i]["db_id"] for i in full_picked}),
+                                         include_encoder=not args.reader_candidate)),
+        **({"reader_candidate": fingerprint_paths({path.relative_to(args.reader_candidate).as_posix(): path
+                                                   for path in Path(args.reader_candidate).rglob("*") if path.is_file()})}
+           if args.reader_candidate else {"encoder_adapter": adapter_sha256(DATA_DIR / "qwen_lora"),
+                                          "weight_bundle": validate_weight_bundle(DATA_DIR)}),
         **_git_provenance(ROOT),   # source_commit + worktree_dirty: a run traces to an exact tree; a dirty
     }                              # tree (or a different commit) invalidates a --resume checkpoint.
     completed = {}
+    if args.merge_checkpoints:
+        checkpoints = []
+        for path in args.merge_checkpoints:
+            with open(path, encoding="utf-8") as handle:
+                checkpoints.append(json.load(handle))
+        completed = _merge_checkpoints(checkpoint_contract, checkpoints)
     if args.resume and os.path.exists(checkpoint_path):
         with open(checkpoint_path, encoding="utf-8") as handle:
             checkpoint = json.load(handle)
@@ -663,13 +766,20 @@ def main():
         )
         print(f"resuming from {len(completed)} checkpointed examples", flush=True)
 
-    print("loading the runtime bundle (encoder)...", flush=True)
-    from engine.compose import ComposeEngine
-    from engine.encoder_overlay import EncoderQuery
-    from engine.primitive_head import PrimitiveReader
-    enc = EncoderQuery()
-    reader = PrimitiveReader(encoder=enc)
-    eng = ComposeEngine(reader=reader)
+    enc = eng = reader = None
+    if len(completed) != len(picked):
+        print("loading the runtime bundle (encoder)...", flush=True)
+        if args.reader_candidate:
+            from engine.readers.search import ReadingSearch
+            from engine.tables import TableQuery
+            enc = TableQuery(named_reader=ReadingSearch(args.reader_candidate))
+        else:
+            from engine.compose import ComposeEngine
+            from engine.encoder_overlay import EncoderQuery
+            from engine.primitive_head import PrimitiveReader
+            enc = EncoderQuery()
+            reader = PrimitiveReader(encoder=enc)
+            eng = ComposeEngine(reader=reader)
     print(f"loaded. evaluating {len(picked)} examples (config={args.config})\n", flush=True)
 
     db_cache = {}
@@ -819,6 +929,8 @@ def main():
     N = max(tot["n"], 1)
     summary = {
         "n": tot["n"], "config": args.config,
+        "shard": args.shard,
+        "dependencies": dependencies,
         "ingestion": checkpoint_contract["ingestion"],
         "selection": args.selection,
         "backend": args.backend,
