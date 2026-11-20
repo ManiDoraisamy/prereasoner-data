@@ -6,7 +6,7 @@ The live stack routes each question (ComposedKnowledgeQuery._composed):
   * everything else -> the delegate, whose SQL for a self-contained (no-world) table is the own-data
     planner (tables.py select_query -> engine/program/answer.py): the Decisions path reads each table of the
     database as a tab of one workbook, connected as serving connects it: each key between the tables (declared and
-    found from the rows) gains the other table's columns (engine/prepared.py table_links, engine/program/connected.py;
+    found from the rows) gains the other table's columns (engine/prepared.py link_tables, engine/program/connected.py;
     Spider has no knowledgebase, so no place, entity or money link), closed questions over options the engine built
     read the question, the decoder builds programs (each a typed SQL AST over one table and what its keys reach), the
     verifier runs them, and one choice call weighs those that returned rows; the likeliest answer is answered, warned
@@ -189,20 +189,13 @@ def ast_predict(
     `enc.select_query` is the production selection (engine/tables.py). `selection="pool_oracle"`
     additionally executes every pooled candidate so the evaluator can score the pool's best
     member (an oracle ablation, never serving)."""
-    from engine.prepared import scratch_database
+    from engine.prepared import link_tables, scratch_database
 
     with scratch_database() as database:
-        _connect(database, enc, schema_fks)
+        link_tables(database, enc, schema_fks)   # the request's own links, as serving registers them
         return _ast_predict(enc, tabs, question, schema_fks, schema_cache, selection, execution_backend,
                             python_row_limit)
 
-
-def _connect(database, enc, schema_fks):
-    """Register the request's links as serving does (engine/knowledge.py registers link_request), without the
-    knowledgebase Spider has none of: the keys between its tables (engine/prepared.py table_links)."""
-    from engine.prepared import table_links
-
-    database.link_with(lambda tables: table_links(*enc.ingest(tables, explicit_fks=schema_fks or ())))
 
 
 def _ast_predict(enc, tabs, question, schema_fks, schema_cache, selection, execution_backend,
@@ -481,10 +474,10 @@ def predict(enc, eng, reader, tabs, question, schema_fks=None,
     use_compose gates compose routing (ablation only; serving is always True). use_compose=False isolates
     the own-data planner. One question is one request database, as in serving, so the compose probe and the
     selection share one set of Decisions calls (engine/prepared.py RequestDatabase.answered)."""
-    from engine.prepared import scratch_database
+    from engine.prepared import link_tables, scratch_database
 
     with scratch_database() as database:
-        _connect(database, enc, schema_fks)
+        link_tables(database, enc, schema_fks)   # the request's own links, as serving registers them
         return _predict(enc, eng, reader, tabs, question, schema_fks, ast_schema_cache, selection, use_compose,
                         execution_backend, python_row_limit)
 

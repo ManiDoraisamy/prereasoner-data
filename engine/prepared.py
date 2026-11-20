@@ -601,8 +601,8 @@ class RequestLinks:
 def table_links(norm, fks) -> RequestLinks:
     """A request's links among its own tables: each table's columns and the single-column keys between them (``fks``,
     engine/tables.py ingest's relationships, declared and found from the rows), each side named by its tab. The world
-    layer adds what the tables reach in the knowledgebase (engine/knowledge_bridges.py request_links); the Spider
-    evaluator, which has no knowledgebase, registers these alone (spider/probe/full_eval.py)."""
+    layer adds what the tables reach in the knowledgebase (engine/knowledge_bridges.py request_links); a caller with no
+    knowledgebase registers these alone (link_tables)."""
     named = {}
     for table in norm:
         named.setdefault(table["name"], table)
@@ -616,6 +616,13 @@ def table_links(norm, fks) -> RequestLinks:
         keys.append(KeyLink(tab[source["name"]], fk["from_col"], source["columns"].index(fk["from_col"]),
                             tab[target["name"]], fk["to_col"], target["columns"].index(fk["to_col"])))
     return RequestLinks({tab[table["name"]]: tuple(table["columns"]) for table in norm}, keys=tuple(keys))
+
+
+def link_tables(database, planner, explicit_fks=()) -> None:
+    """Register the request's own links (table_links) on ``database`` for a caller with no knowledgebase (the Spider
+    evaluator, a hermetic test): its tables connect by their keys as a served request's do, where
+    engine/knowledge_bridges.py request_links adds the knowledgebase's places, entities and money."""
+    database.link_with(lambda tables: table_links(*planner.ingest(tables, explicit_fks=explicit_fks or ())))
 
 
 # ---------------------------------------------------------------------------------------------------------------

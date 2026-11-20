@@ -47,10 +47,11 @@ def _quote(identifier: str) -> str:
 def _run_fixture(planner: EncoderQuery, directory: Path, proposal: dict | None = None,
                  question: str | None = None, raw_tables: list[dict] | None = None):
     """Compile `proposal` (default: the shipped fixture) for `question` (default: the prompt)
-    over `raw_tables` (default: the fixture's tables in file-name order), on one request database, as serving does."""
+    over `raw_tables` (default: the fixture's tables in file-name order), on one request database whose tables connect
+    by their keys, as serving does (engine/prepared.py link_tables)."""
     from sqlalchemy.pool import StaticPool
 
-    from engine.prepared import SharedConnection, scratch_database
+    from engine.prepared import SharedConnection, link_tables, scratch_database
 
     raw_tables = raw_tables or _tables(directory)
     tables, foreign_keys = planner.ingest(raw_tables)
@@ -58,6 +59,7 @@ def _run_fixture(planner: EncoderQuery, directory: Path, proposal: dict | None =
         (directory / "decomposition.json").read_text(encoding="utf-8")
     )
     with scratch_database() as database:
+        link_tables(database, planner)
         plan = build_decomposed_plan(
             planner,
             directory.name.replace("-", "_"),
@@ -141,6 +143,8 @@ def test_shipped_complex_datasets_match_gold_in_python_and_sql():
 
 
 def test_full_complex_prompts_request_decomposition_without_executing_a_partial_answer():
+    from engine.prepared import link_tables, scratch_database
+
     planner = EncoderQuery()
     for name in COMPOUND_DATASETS:
         directory = DATASET_DIR / name
@@ -150,7 +154,8 @@ def test_full_complex_prompts_request_decomposition_without_executing_a_partial_
             planner,
             "execute",
             side_effect=AssertionError("a compound probe executed a partial SQL answer"),
-        ) as execute:
+        ) as execute, scratch_database() as database:
+            link_tables(database, planner)        # the tables connect by their keys, as serving connects them
             response = planner.serve(_tables(directory), question)
         assert response.get("decomposition_required"), (name, response)
         assert response.get("result") is None and response.get("error") is None
@@ -163,6 +168,7 @@ def test_compose_surface_does_not_swallow_a_compound_question():
     trigger (one layer down) never ran. The compose arm must consult the same
     execution-free probe before composing."""
     from engine.decomposition import search_probe
+    from engine.prepared import link_tables, scratch_database
 
     planner = EncoderQuery()
     for name in COMPOUND_DATASETS:
@@ -172,7 +178,8 @@ def test_compose_surface_does_not_swallow_a_compound_question():
             planner,
             "execute",
             side_effect=AssertionError("the compound probe executed a query"),
-        ):
+        ), scratch_database() as database:
+            link_tables(database, planner)        # the tables connect by their keys, as serving connects them
             required = search_probe(planner, _tables(directory), question).decomposition_required
         assert required is not None, name
         assert "compound" in required["reason"], name
@@ -234,10 +241,14 @@ def test_a_negated_existence_prompt_is_answered_as_one_query():
     """"List the product names that no customer from Paris has bought" asks for the rows no referencing row matches:
     one query, the products whose name is not among the names Paris customers bought, answered directly with the
     rows derived from the CSVs, with no decomposition and no clarification."""
+    from engine.prepared import link_tables, scratch_database
+
     planner = EncoderQuery()
     directory = DATASET_DIR / "complex-unsold-products"
     question = (directory / "prompt.txt").read_text(encoding="utf-8").strip()
-    response = planner.serve(_tables(directory), question)
+    with scratch_database() as database:
+        link_tables(database, planner)        # the tables connect by their keys, as serving connects them
+        response = planner.serve(_tables(directory), question)
     assert not response.get("decomposition_required") and not response.get("clarify"), response
     _, expected = EXPECTED["complex-unsold-products"]
     assert [list(row) for row in response["result"]["rows"]] == expected["rows"], response["result"]

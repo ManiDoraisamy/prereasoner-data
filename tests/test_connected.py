@@ -274,12 +274,18 @@ def test_select_query_reads_the_connected_workbook_and_asks_the_currency_first()
 
 
 def test_the_spider_evaluator_connects_the_keys_serving_finds() -> None:
-    """The Spider evaluator registers the request's own links as serving does (engine/prepared.py table_links, which
-    engine/knowledge_bridges.py request_links extends with the knowledgebase), so a key between two tables reaches the
-    other table's columns; before, the evaluator registered no linker and read every database unconnected."""
-    from spider.probe.full_eval import _connect
+    """The Spider evaluator registers the request's own links as serving does (engine/prepared.py link_tables, whose
+    table_links engine/knowledge_bridges.py request_links extends with the knowledgebase), so a key between two tables
+    reaches the other table's columns; before, the evaluator registered no linker and read every database
+    unconnected."""
+    import inspect
+
+    import spider.probe.full_eval as full_eval
+    from engine.prepared import link_tables
+    assert inspect.getsource(full_eval.predict).count("link_tables(database, enc, schema_fks)") == 1
+    assert inspect.getsource(full_eval.ast_predict).count("link_tables(database, enc, schema_fks)") == 1
     with scratch_database() as database:
-        _connect(database, TableQuery(), None)
+        link_tables(database, TableQuery(), None)
         tables = _tables()
         key, _prepared = prepared_workbook(tables)
         links = database.links(key, tables)
