@@ -312,7 +312,9 @@ class PoolSelection:
     ``confidence`` is the likeliest answer's probability and ``probabilities`` the choice's own, per listing (r00, r01,
     ..., and none). ``programs``, ``rows`` and ``catalog`` hold each candidate's program, the rows it returned on the
     candidates' floats (what the choice read) and the workbook it reads; ``tables`` the request's tables the programs
-    run on (engine/program/store.py, on the request's database)."""
+    run on (engine/program/store.py, on the request's database). ``converts``: the request's money columns could be
+    read in another currency, so the path's own convert question read whether the question wants its answer in one
+    (engine/program/answer.py convert_target)."""
     pool: tuple[ScoredQuery, ...]
     ranking: tuple[int, ...]
     selected: int | None
@@ -326,6 +328,7 @@ class PoolSelection:
     rows: tuple = ()
     catalog: object = None
     tables: object = None
+    converts: bool = False
 
     @property
     def candidate(self) -> ScoredQuery | None:

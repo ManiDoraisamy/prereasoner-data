@@ -451,6 +451,7 @@ class TableQuery:
         with scratch_database() as database:
             key, prepared = prepared_workbook(tables)
             links = database.links(key, tables)
+            targets = ()
             if links is not None:
                 own_key, own = key, prepared
                 key, prepared = database.connected(own_key, None, lambda: connected_workbook(own_key, own, links, database.connection))
@@ -475,7 +476,7 @@ class TableQuery:
         asked = said.kind == ASKED
         return PoolSelection(tuple(pool), ranking, None if asked else said.pick, said.mass,
                              said.pick if asked else None, said.kind == WARNED, said.uncertain, said.runner_up,
-                             said.probabilities, said.listed_programs, said.listed_rows, prepared.catalog, store)
+                             said.probabilities, said.listed_programs, said.listed_rows, prepared.catalog, store, bool(targets))
 
     def _serve_ast(self, question, norm, tablemap):
         """Select the own-data query (``select_query``) and run it. In an analysis, as every served request is, the
@@ -741,15 +742,18 @@ class TableQuery:
             from engine.sql_ast import share_output
             if share_output(candidate.query):
                 response["unit"] = "percent"         # a share of a whole: 0.3 is stated as 30%
-            from engine.calculations import assess_calculations
-            from engine.calculations.registry import attach_calculation_evidence
-            assessments = assess_calculations(
-                question,
-                norm,
-                graph,
-                computation,
-            )
-            attach_calculation_evidence(response, assessments)
+            # The Decisions path's reading is its own certificate for the calculation it chose: the registry
+            # (engine/calculations) reads the request's schema and the path's programs read its store tables, so the
+            # registry can never find a ratio, a rate or a currency filter in this query, and its gate would ask back
+            # every answer it detects one in. What the reading cannot certify is a conversion the path had no way to
+            # make: a currency the question wants its answer in when no money column of the request can be read in
+            # another (``converts``); the registry's currency assessment keeps that answer from being served unconverted.
+            if not selection.converts:
+                from engine.calculations import assess_calculations
+                from engine.calculations.registry import attach_calculation_evidence
+                attach_calculation_evidence(response, tuple(
+                    row for row in assess_calculations(question, norm, graph, computation)
+                    if row.get("specification") == "currency" and row.get("operation") == "convert"))
         from engine.deterministic.context import current_execution_record
         deterministic = current_execution_record()
         if deterministic is not None:

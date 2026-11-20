@@ -77,6 +77,14 @@ decomposition leaves, compose's probe, the hybrid search's check and every evalu
   every long question because they never read one in training; the Decisions path reads them: three of the 896 dev
   questions are longer (31, 32 and 36 words) and two are answered right, and the three demo prompts of 39 to 44 words
   are asked back, so they still reach the decomposition.
+- **The path's reading certifies its calculation.** The calculation registry (`engine/calculations`) reads the
+  request's schema; the path's programs read its store tables, so the registry never found a commission, a ratio
+  or a currency filter in the path's query and asked back every answer it detected one in ("how many orders in
+  GBP", the demo gate's dry run). `_serve_ast` no longer assesses the path's query, and
+  `KnowledgeReasoner._verify_calculations` passes a Decisions-path answer that carries no unmet calculation. The
+  one assessment kept is a currency the question wants its answer in when no money column of the request could be
+  read in another (`PoolSelection.converts` false): the path had no way to convert, so the registry's currency
+  assessment asks back rather than serve the amount unconverted. The registry still gates every other route.
 - **The tab in view is passed, not ordered.** The request's `active_sheet` (a table's canonical name) rides on the request
   database into both records; `on_screen_first`, which reordered the tables for the readers, is deleted, so switching
   tabs does not prepare the workbook again.

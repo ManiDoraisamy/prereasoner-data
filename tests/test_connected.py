@@ -240,6 +240,7 @@ def test_select_query_reads_the_connected_workbook_and_asks_the_currency_first()
         prepared_module.connected_workbook = held
     assert built == [None, "USD"], f"a request connects its workbook once per currency: {built}"
     assert again.pool == selection.pool
+    assert selection.converts, "the convert question read the currency: the path's reading certifies a conversion"
     called = [name for name, _ in states]
     assert called.count("convert") == 1, "the convert question is asked once per request"
     assert called[0] == "convert", called

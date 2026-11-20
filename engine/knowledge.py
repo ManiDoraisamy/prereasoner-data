@@ -27,6 +27,7 @@ from engine.relations import request_memo
 from engine.request_state import request_scope
 from engine.sql_expansion import FUNCTION_WORDS
 from engine.sql_schema import SchemaGraph
+from engine.tables import PROGRAM_MODEL
 
 NEAR = re.compile(r"\b(near(?:est|by)?|closest|around|close to)\b", re.I)
 STOP = {"cities", "city", "towns", "town", "places", "show", "find", "list", "me", "the", "biggest", "big",
@@ -108,6 +109,8 @@ class KnowledgeReasoner:
         if not detect_calculations(question):
             return res
         assessments = tuple(res.get("calculations") or ())
+        if not assessments and res.get("model") == PROGRAM_MODEL:
+            return res      # the own-data path's reading certifies its calculation (engine/tables.py _serve_ast)
         if not assessments:
             # A route that cannot expose typed arithmetic must fail closed. Its SQL/result may be useful
             # context for clarification, but it is not evidence that a requested calculation occurred.

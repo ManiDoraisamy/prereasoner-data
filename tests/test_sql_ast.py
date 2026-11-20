@@ -2198,6 +2198,29 @@ def test_a_long_question_the_path_asks_back_asks_for_the_decomposition():
     assert short["clarify"] is True and not short.get("decomposition_required"), short
 
 
+def test_the_decisions_paths_reading_certifies_its_calculation_but_a_conversion_it_could_not_make():
+    """The calculation registry reads the request's schema and the Decisions path's programs read its store tables, so
+    the registry never found a commission, a ratio or a currency filter in the path's query: every answer it detected
+    one in was asked back ("how many orders in GBP", demo gate dry run 2026-11-20). The path's reading certifies its
+    calculation; a currency the question wants its answer in, with no money column the path could read in another
+    currency, is still assessed by the registry, so that answer is never served unconverted."""
+    from engine.knowledge import KnowledgeReasoner
+
+    planner = _hermetic_planner()
+    gate = KnowledgeReasoner.__new__(KnowledgeReasoner)
+    for question in ("what is the total commission amount for East", "how many orders for East in GBP",
+                     "total amount for East per capita"):
+        served, _ = _decided(_choice(0.9), lambda: planner.serve(_orders_request(), question))
+        assert served["valid"] and served["result"]["rows"] and not served.get("calculations"), (question, served)
+        kept = gate._verify_calculations(served, _orders_request(), question, ())
+        assert kept is served and not kept.get("clarify"), (question, kept)
+    question = "total amount for East in euros"
+    served, _ = _decided(_choice(0.9), lambda: planner.serve(_orders_request(), question))
+    assert [row["specification"] for row in served["calculations"]] == ["currency"], served.get("calculations")
+    asked = gate._verify_calculations(served, _orders_request(), question, ())
+    assert asked["clarify"] is True and asked["result"] is None, asked
+
+
 def test_the_store_shares_the_request_database_with_a_table_named_like_its_own():
     """The program's tables live on the request's one database beside the request's own tables, under names no request
     table takes: a sheet sent with no name is the table "t0" (request_validation.canonical_table_name), and its copy in
@@ -2299,6 +2322,7 @@ TESTS = [
     test_a_warned_answer_is_served_with_what_else_it_may_mean,
     test_an_analysis_runs_the_chosen_program_on_both_emitters,
     test_a_long_question_the_path_asks_back_asks_for_the_decomposition,
+    test_the_decisions_paths_reading_certifies_its_calculation_but_a_conversion_it_could_not_make,
     test_the_store_shares_the_request_database_with_a_table_named_like_its_own,
     test_one_question_is_answered_once_per_request,
     test_the_tab_in_view_is_the_requests_active_sheet,
