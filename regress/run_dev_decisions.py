@@ -67,10 +67,12 @@ PROBE = EXPERIMENTS / "decisions-probe-20261118"
 # Each set against its kept stack (decisions-probe-20261118 results/e2e_<tag>_stock_<set>.jsonl.gz), measured in layers:
 # first the whole set, eor1 (the kept stack with the tab in view named and the said call) or, on DataBench, pgd1 (the
 # kept stack before those two, since no workbook of it has two tabs and no question of it reads a word pair), then each
-# kept change's rerun of the questions it touches (gs1, af1, wm1 and DataBench's wm1b; cf1, the cell as the sheet wrote
-# it; fg1 and DataBench's fg1b, a prose column's word counts), a later measurement of a question replacing an earlier one
-REFERENCE_TAGS = {"messy": ("eor1",), "freshdev": ("eor1", "gs1", "wm1", "cf1", "fg1"), "wtq": ("eor1", "af1", "wm1", "cf1", "fg1"),
-                  "databench": ("pgd1", "wm1", "wm1b", "cf1", "fg1", "fg1b")}
+# kept change's rerun of the questions it touches (gs1, af1, wm1 and DataBench's wm1b; cf1 and cf1b, the cell as the sheet
+# wrote it; fg1 and fg1b, a prose column's word counts; ol1 and ol1b, each cell on one line; to1 and to1b, tied lines in
+# sheet order), a later measurement of a question replacing an earlier one
+REFERENCE_TAGS = {"messy": ("eor1", "to1"), "freshdev": ("eor1", "gs1", "wm1", "cf1", "fg1", "ol1", "to1"),
+                  "wtq": ("eor1", "af1", "wm1", "cf1", "fg1", "ol1", "to1"),
+                  "databench": ("pgd1", "wm1", "wm1b", "cf1", "cf1b", "fg1", "fg1b", "ol1", "ol1b", "to1", "to1b")}
 SETS = ("messy", "wtq", "databench", "freshdev", "demo")
 # The demo set against demo25 (results/e2e_demo25_con_stock.jsonl.gz): the stock arm on the connected catalog (place,
 # entity, currency and key links, the kept closed questions, the tab in view named), read on the request databases
