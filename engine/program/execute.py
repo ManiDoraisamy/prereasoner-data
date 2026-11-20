@@ -10,7 +10,7 @@ from engine.deterministic import DeterministicAnalysis, ExecutionMode
 from engine.prepared import SharedConnection
 from engine.program.language import Breakdown, Calc, Check, Col, Program, Rank, Show, tables_of
 from engine.program.lowering import to_plan, to_query
-from engine.program.names import ENTITY_GROUP, ENTITY_PEER
+from engine.program.names import ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER
 from engine.program.store import RequestTables
 from engine.sql_ast import render_query
 
@@ -40,6 +40,8 @@ def prepare(program: Program, tables: RequestTables) -> None:
 
 def _displayed(program: Program, rows, tables: RequestTables) -> tuple[tuple, ...]:
     """Rows with the sheet's spelling back, and no row at all for a result that says nothing: a sum over no lines is one row of NULL."""
+    if isinstance(program, Rank) and program.entity == ENTITY_LINE and program.count == 1:
+        rows = [tuple(row[1:]) for row in rows]      # the line number that put tied lines in sheet order (lowering.TIED_LINE)
     if not rows or all(all(cell is None for cell in row) for row in rows):
         return ()
     if isinstance(program, Check) and program.said is not None:     # the question's word that holds; equal says neither

@@ -20,6 +20,7 @@ from engine.sql_ast import (Abs, Aggregate, BinaryExpr, BlankAsZero, BooleanExpr
 _FUNCTIONS = {SUM: "SUM", AVG: "AVG", MIN: "MIN", MAX: "MAX"}
 VALUE = "value"
 KEY = "key"
+TIED_LINE = "tied_line"     # the line number a line rank's tied lines are ordered by (execute drops it from the answer)
 POSITION = "position"
 
 
@@ -229,7 +230,9 @@ def _rank_query(program: Rank, catalog: Catalog) -> SelectQuery:
         where = _where(None if printed else _data_lines(table), *map(_condition, program.where), _present(program.measure))
         if program.count > 1:      # exactly that many lines, a tie broken by sheet order
             return SelectQuery(select, sql_table(table), where=where, order_by=(OrderTerm(value, order), OrderTerm(ColumnRef(sql_table(table), LINE, SQLType.INTEGER))), limit=program.count)
-        return SelectQuery(select, sql_table(table), where=where, order_by=(OrderTerm(value, order),), limit=1, with_ties=True)
+        # every tied line, in sheet order: its line number leads the row, so both programs order tied lines by it
+        tied = SelectItem(ColumnRef(sql_table(table), LINE, SQLType.INTEGER), TIED_LINE)
+        return SelectQuery((tied, *select), sql_table(table), where=where, order_by=(OrderTerm(value, order),), limit=1, with_ties=True)
     if program.entity == ENTITY_GROUP:
         key = _fold(program.key)
         if program.function == COUNT:
@@ -382,4 +385,4 @@ def to_plan(program: Program, catalog: Catalog, slug: str = "program", whole_tab
     return replace(plan, tables=tables)
 
 
-__all__ = ["KEY", "VALUE", "plan_schema", "to_plan", "to_query"]
+__all__ = ["KEY", "TIED_LINE", "VALUE", "plan_schema", "to_plan", "to_query"]
