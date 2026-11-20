@@ -13,7 +13,11 @@ the same cells again cost more. Now:
   Nothing else writes it, so no question waits for another.
 * ``prepared_workbook`` is the own-data path's preparation of the request's workbook (engine/program/answer.py
   prepare: the sheet compile, its text dates typed by one Decisions call, the decoder and the stock reading's
-  targets), once per workbook content and kept in the process.
+  targets), once per workbook content and kept in the process. The stock reading's vectors of a synced table's targets
+  (engine/program/stock.py) are encoded in the background after the sync and kept in ``chat.prepared_table`` under
+  their own key (``keep_sheet_vectors``): they depend on the table's content and the stock model alone, so a
+  knowledgebase refresh keeps them, and a question on any instance reads them before its reading
+  (``hold_sheet_vectors``) rather than encoding thousands of cells within its deadline.
 * ``TablePreparation`` is what one table needs from the knowledgebase, computed once per version of the table:
   its column routes and typing evidence, every candidate entity of each distinct cell of a routed column (a cell
   can name several Parises, and the country a question names chooses among them), the entity type and matches of
@@ -71,8 +75,11 @@ VERSION_SECONDS = 60.0
 PREPARATION_CACHE_BYTES = 256 * 1024 * 1024
 RATES_CACHE_BYTES = 64 * 1024 * 1024
 NAMES_CACHE_ENTRIES = 200_000
-# Preparations kept per conversation in chat.prepared_table: its sheets, saved references and their versions.
-STORED_PER_CONVERSATION = 32
+# Preparations kept per conversation in chat.prepared_table: its sheets, saved references and their versions, and the
+# stock reading's vectors of each sheet (keep_sheet_vectors).
+STORED_PER_CONVERSATION = 64
+# The stored form of a table's stock-reading vectors. Raise it whenever what the record holds changes.
+VECTORS_FORMAT = 1
 # How many SQLite VM steps run between two checks of the request's deadline.
 DEADLINE_STEPS = 20_000
 # Prepared workbooks (``prepared_workbook``) are kept until they hold these many cells: a prepared workbook holds its
@@ -722,6 +729,12 @@ class RequestDatabase:
             raise ValueError("a request's database holds the program tables of one workbook")
         return self._program[1]
 
+    @property
+    def served(self) -> bool:
+        """A served request's database, which holds the knowledgebase's base image; an evaluator's or a test's scratch
+        database holds none and reads nothing stored."""
+        return self._base is not None
+
     def link_with(self, linker):
         """Have ``linker(tables)`` build the request's links (RequestLinks) when the own-data path first reads a
         workbook of the request. The world layer registers it for a served request (engine/knowledge_bridges.py
@@ -1159,47 +1172,13 @@ class Preparations:
     def _read_stored(conversation, key, version):
         if not conversation:
             return None
-        from engine.pg import _pg
-        connection = _pg()
-        try:
-            cursor = connection.cursor()
-            cursor.execute('SELECT record FROM "chat"."prepared_table" '
-                           'WHERE conversation_id = %s AND table_key = %s AND preparation_version = %s',
-                           (conversation, key, version))
-            row = cursor.fetchone()
-            connection.commit()
-        finally:
-            connection.close()
-        return TablePreparation.decode(key, version, bytes(row[0])) if row else None
+        blob = read_stored_records(conversation, [key], version).get(key)
+        return TablePreparation.decode(key, version, blob) if blob is not None else None
 
     @staticmethod
     def _store(conversation, preparation):
-        """Keep ``preparation`` for ``conversation``: its newest STORED_PER_CONVERSATION preparations stay. A
-        preparation is derived data, rebuilt when missing, so it is not counted against the user's storage."""
-        from engine.pg import _pg
-        blob = preparation.encode()
-        connection = _pg()
-        try:
-            cursor = connection.cursor()
-            cursor.execute(
-                'INSERT INTO "chat"."prepared_table" (conversation_id, table_key, preparation_version, record, '
-                'record_bytes) SELECT %s, %s, %s, %s, %s WHERE EXISTS '
-                '(SELECT 1 FROM "chat"."conversation" WHERE conversation_id = %s) '
-                'ON CONFLICT (conversation_id, table_key) DO UPDATE SET preparation_version = '
-                'EXCLUDED.preparation_version, record = EXCLUDED.record, record_bytes = EXCLUDED.record_bytes, '
-                'prepared_at = now()',
-                (conversation, preparation.key, preparation.version, blob, len(blob), conversation))
-            cursor.execute(
-                'DELETE FROM "chat"."prepared_table" WHERE conversation_id = %s AND table_key IN '
-                '(SELECT table_key FROM "chat"."prepared_table" WHERE conversation_id = %s '
-                'ORDER BY prepared_at DESC, table_key OFFSET %s)',
-                (conversation, conversation, STORED_PER_CONVERSATION))
-            connection.commit()
-        except Exception as error:                       # noqa: BLE001 - a preparation is rebuilt when missing
-            connection.rollback()
-            print(f"[prepared] store skipped: {type(error).__name__}", flush=True)
-        finally:
-            connection.close()
+        """Keep ``preparation`` for ``conversation`` (store_record)."""
+        store_record(conversation, preparation.key, preparation.version, preparation.encode())
 
 
 _PREPARATIONS = Preparations()
@@ -1209,9 +1188,143 @@ def preparations():
     return _PREPARATIONS
 
 
+def read_stored_records(conversation, keys, version) -> dict[str, bytes]:
+    """The records ``conversation`` keeps in chat.prepared_table under ``keys`` at ``version``, by key."""
+    if not conversation or not keys:
+        return {}
+    from engine.pg import _pg
+    connection = _pg()
+    try:
+        cursor = connection.cursor()
+        cursor.execute('SELECT table_key, record FROM "chat"."prepared_table" '
+                       'WHERE conversation_id = %s AND table_key = ANY(%s) AND preparation_version = %s',
+                       (conversation, list(keys), version))
+        rows = cursor.fetchall()
+        connection.commit()
+    finally:
+        connection.close()
+    return {key: bytes(record) for key, record in rows}
+
+
+def store_record(conversation, key, version, blob) -> None:
+    """Keep ``blob`` for ``conversation`` in chat.prepared_table under ``key``: its newest STORED_PER_CONVERSATION
+    records stay. A record is derived data, rebuilt when missing, so it is not counted against the user's storage."""
+    from engine.pg import _pg
+    connection = _pg()
+    try:
+        cursor = connection.cursor()
+        cursor.execute(
+            'INSERT INTO "chat"."prepared_table" (conversation_id, table_key, preparation_version, record, '
+            'record_bytes) SELECT %s, %s, %s, %s, %s WHERE EXISTS '
+            '(SELECT 1 FROM "chat"."conversation" WHERE conversation_id = %s) '
+            'ON CONFLICT (conversation_id, table_key) DO UPDATE SET preparation_version = '
+            'EXCLUDED.preparation_version, record = EXCLUDED.record, record_bytes = EXCLUDED.record_bytes, '
+            'prepared_at = now()',
+            (conversation, key, version, blob, len(blob), conversation))
+        cursor.execute(
+            'DELETE FROM "chat"."prepared_table" WHERE conversation_id = %s AND table_key IN '
+            '(SELECT table_key FROM "chat"."prepared_table" WHERE conversation_id = %s '
+            'ORDER BY prepared_at DESC, table_key OFFSET %s)',
+            (conversation, conversation, STORED_PER_CONVERSATION))
+        connection.commit()
+    except Exception as error:                       # noqa: BLE001 - a record is rebuilt when missing
+        connection.rollback()
+        print(f"[prepared] store skipped: {type(error).__name__}", flush=True)
+    finally:
+        connection.close()
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# The stock reading's vectors of a synced table's targets
+# ---------------------------------------------------------------------------------------------------------------
+
+_HELD_VECTORS = set()             # (record key, version, the reader's cache generation) this process has held
+_HELD_VECTORS_LOCK = threading.Lock()
+
+
+def vectors_key(table) -> str:
+    """The key of a table's stock-reading vectors in chat.prepared_table: its content's (table_key), apart from its
+    preparation's."""
+    return hashlib.sha256(f"stock-vectors|{table_key(table)}".encode("utf-8")).hexdigest()
+
+
+def vectors_version() -> str:
+    """The record format and the stock model's pinned files (weights_manifest.json base_models): vectors of another
+    model are encoded again."""
+    from engine.config import DATA_DIR
+    from engine.program.stock import STOCK_BACKBONE
+    manifest = json.loads((Path(DATA_DIR) / "weights_manifest.json").read_text(encoding="utf-8"))
+    pinned = json.dumps(manifest["base_models"][STOCK_BACKBONE], sort_keys=True)
+    return f"vectors|{VECTORS_FORMAT}|{hashlib.sha256(pinned.encode('utf-8')).hexdigest()[:16]}"
+
+
+def vector_record(texts, vectors) -> bytes:
+    """The stored form of ``texts`` and their float16 ``vectors``: a JSON head, then the vectors' bytes, compressed."""
+    head = json.dumps({"texts": list(texts), "dim": int(vectors.shape[1])}, ensure_ascii=False).encode("utf-8")
+    return zlib.compress(len(head).to_bytes(4, "big") + head + np.ascontiguousarray(vectors, dtype=np.float16).tobytes(), 6)
+
+
+def vector_entries(blob) -> tuple[list[str], np.ndarray]:
+    """(texts, float16 vectors) of a stored record (vector_record's inverse)."""
+    raw = zlib.decompress(blob)
+    size = int.from_bytes(raw[:4], "big")
+    head = json.loads(raw[4:4 + size].decode("utf-8"))
+    return head["texts"], np.frombuffer(raw[4 + size:], dtype=np.float16).reshape(len(head["texts"]), head["dim"])
+
+
+def keep_sheet_vectors(tables, conversation) -> int:
+    """Encode the stock reading's vectors of each table's targets and keep them for ``conversation``, a table already
+    kept skipped; returns the tables encoded. Each table is read as its own workbook (prepared_workbook), so its
+    targets are the cells, columns and labels a question's workbook reads of it; a text a question reads that no table
+    held alone (a family of tabs read as one) is encoded by the question."""
+    from engine.program.stock import stock_reader, workbook_texts
+    if not conversation:
+        return 0
+    version = vectors_version()
+    keys = {vectors_key(table): table for table in tables}
+    kept = read_stored_records(conversation, list(keys), version)
+    encoded = 0
+    for key, table in keys.items():
+        if key in kept:
+            continue
+        _workbook, prepared = prepared_workbook([table])
+        texts, vectors = stock_reader().vectors(workbook_texts(prepared.catalog, prepared.targets))
+        if texts:
+            store_record(conversation, key, version, vector_record(texts, vectors))
+            encoded += 1
+    return encoded
+
+
+def hold_sheet_vectors(tables, database) -> None:
+    """Before a question's reading, hold in the stock reader the vectors the request's conversation keeps for its tables
+    (keep_sheet_vectors), each record once per process and reader cache. Outside a served request's conversation
+    (``database`` a scratch one, or no conversation), nothing is read."""
+    from engine.deterministic.context import current_analysis_context
+    from engine.program.stock import stock_reader
+    context = current_analysis_context()
+    conversation = context.conversation_id if context is not None else None
+    if not conversation or not database.served:
+        return
+    reader = stock_reader()
+    version = vectors_version()
+    with _HELD_VECTORS_LOCK:
+        wanted = [key for key in dict.fromkeys(vectors_key(table) for table in tables)
+                  if (key, version, reader.generation) not in _HELD_VECTORS]
+    if not wanted:
+        return
+    with request_timing.span("prepare_vectors"):
+        records = read_stored_records(conversation, wanted, version)
+        for key, blob in records.items():
+            texts, vectors = vector_entries(blob)
+            reader.hold(texts, vectors)
+            with _HELD_VECTORS_LOCK:
+                _HELD_VECTORS.add((key, version, reader.generation))
+
+
 def prepare_sheets_in_background(resolver, tables, conversation):
-    """Prepare a conversation's tables after its sheets sync, so its first question finds them prepared. A question
-    that arrives first waits for the preparation in progress rather than starting another."""
+    """Prepare a conversation's tables after its sheets sync, so its first question finds them prepared: each table's
+    preparation, then the stock reading's vectors of its targets (keep_sheet_vectors). A question that arrives first
+    waits for the preparation in progress rather than starting another."""
     def run():
         from engine.request_state import request_scope
         try:
@@ -1219,6 +1332,8 @@ def prepare_sheets_in_background(resolver, tables, conversation):
                 norm, _fks = resolver.ingest(tables)
                 for table in norm:
                     preparations().get(resolver, table, conversation)
+                with request_timing.span("prepare_vectors_keep"):
+                    keep_sheet_vectors(norm, conversation)
         except Exception as error:                   # noqa: BLE001 - the first question prepares instead
             print(f"[prepared] background preparation skipped: {type(error).__name__}", flush=True)
         finally:

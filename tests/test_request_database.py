@@ -14,6 +14,8 @@ from contextlib import contextmanager
 from decimal import Decimal
 from unittest.mock import patch
 
+import numpy as np
+
 from engine import prepared
 from engine.prepared import BaseImage, RequestDatabase, TablePreparation, table_key
 
@@ -342,6 +344,65 @@ def test_a_decimal_result_compares_with_an_untyped_number():
                                              dialect="sqlite_decimal")
 
 
+def test_a_synced_sheets_vectors_are_kept_once_and_read_by_a_question_on_any_instance():
+    """A 10,000-line sheet's first question spent 124 s encoding its 2,024 targets with the stock model (demo gate,
+    2026-11-20; about 4 minutes at 4 vCPU, past the request's deadline). The sync's background preparation encodes them
+    once and keeps them for the conversation (keep_sheet_vectors); a question on another process holds them before its
+    reading (hold_sheet_vectors) and encodes none of them."""
+    import engine.llm as llm
+    import engine.program.stock as stock
+    from engine.deterministic.context import analysis_execution_context
+    from engine.tables import normalize_tables
+    from tests.test_answer import FakeBackbone, FakeTransport
+
+    class Counting(FakeBackbone):
+        def __init__(self):
+            self.read = []
+
+        def encode_texts(self, texts, **kw):
+            self.read.extend(texts)
+            return super().encode_texts(texts, **kw)
+
+    stored = {}
+    def read(conversation, keys, version):
+        return {key: stored[(conversation, key, version)] for key in keys if (conversation, key, version) in stored}
+    def store(conversation, key, version, blob):
+        stored[(conversation, key, version)] = blob
+    tables = normalize_tables([{"name": "orders", "columns": ["Order", "Status", "Amount"],
+                                "rows": [[f"o{i}", ["Shipped", "Returned", "Delivered"][i % 3], i] for i in range(30)]}])
+    held_reader, held_transport = stock._READER, llm.DECISIONS_TRANSPORT
+    try:
+        llm.DECISIONS_TRANSPORT = FakeTransport(lambda name, question, state: {})
+        with patch.object(prepared, "read_stored_records", read), patch.object(prepared, "store_record", store):
+            stock._READER = stock.StockReader(background := Counting())
+            assert prepared.keep_sheet_vectors(tables, "conv-1") == 1
+            assert {"returned", "o7", "Status"} <= set(background.read), "the cells and the column names"
+            assert prepared.keep_sheet_vectors(tables, "conv-1") == 0, "a kept table is not encoded again"
+            assert prepared.keep_sheet_vectors(tables, None) == 0, "no conversation keeps nothing"
+            texts, vectors = prepared.vector_entries(next(iter(stored.values())))
+            assert vectors.dtype == np.float16 and vectors.shape == (len(texts), FakeBackbone.dim)
+            assert np.array_equal(vectors, stock._READER.encode(texts).astype(np.float16)), "the reader's own vectors"
+
+            stock._READER = stock.StockReader(question := Counting())     # another instance
+            _key, workbook = prepared.prepared_workbook(tables)
+            served = RequestDatabase(_base({}))
+            try:
+                with analysis_execution_context(None, "conv-1"):
+                    prepared.hold_sheet_vectors(tables, served)
+                stock._READER.read("how many orders were returned?", workbook.catalog, workbook.decoder, workbook.targets)
+            finally:
+                served.close()
+            assert not set(question.read) & set(texts), "the question encodes none of the kept targets, only its phrases"
+
+            stock._READER = stock.StockReader(scratch := Counting())
+            with analysis_execution_context(None, "conv-1"):
+                prepared.hold_sheet_vectors(tables, RequestDatabase())
+            stock._READER.read("how many orders were returned?", workbook.catalog, workbook.decoder, workbook.targets)
+            assert "returned" in scratch.read, "a scratch database reads nothing stored"
+    finally:
+        stock._READER, llm.DECISIONS_TRANSPORT = held_reader, held_transport
+
+
 TESTS = [
     test_a_decimal_result_compares_with_an_untyped_number,
     test_every_value_is_held_exactly_as_the_planner_types_it,
@@ -357,6 +418,7 @@ TESTS = [
     test_the_world_paths_check_queries_run_on_the_request_database,
     test_a_conversion_holds_one_rate_row_per_currency_and_day,
     test_a_preparation_round_trips_through_its_stored_form,
+    test_a_synced_sheets_vectors_are_kept_once_and_read_by_a_question_on_any_instance,
 ]
 
 

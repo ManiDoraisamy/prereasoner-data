@@ -426,7 +426,8 @@ class TableQuery:
         decomposition leaves and the evaluators (the Spider evaluator, the messy benchmark, the dev replay) call it.
 
         The tables are one workbook, a tab per table in their order, each its ``grid`` (``table_grid``), prepared once
-        per content (engine/prepared.py prepared_workbook). In a served request the world layer's links connect it
+        per content (engine/prepared.py prepared_workbook), with the stock reading's vectors its conversation keeps for
+        its tables (engine/prepared.py hold_sheet_vectors). In a served request the world layer's links connect it
         (engine/program/connected.py, engine/prepared.py connected_workbook): each place or entity column gains the
         knowledgebase columns it reaches, each key the other table's columns, and, when the convert question names the
         currency the question wants (engine/program/answer.py convert_target), each money column its amount in that
@@ -439,7 +440,7 @@ class TableQuery:
         (engine/program/lowering.py) and SQL with its read-as line as evidence. A question longer than
         ONE_QUERY_WORDS words that the path asks back about asks, in an analysis, for the decomposition proposal
         (engine/decomposition.py declined_compound). Raises LLMUnavailable when a Decisions call fails."""
-        from engine.prepared import connected_workbook, prepared_workbook, scratch_database
+        from engine.prepared import connected_workbook, hold_sheet_vectors, prepared_workbook, scratch_database
         from engine.program.answer import ASKED, WARNED, answer, convert_target
         from engine.program.closed import answer_masses
         from engine.program.connected import conversion_targets
@@ -450,6 +451,7 @@ class TableQuery:
 
         with scratch_database() as database:
             key, prepared = prepared_workbook(tables)
+            hold_sheet_vectors(tables, database)
             links = database.links(key, tables)
             targets = ()
             if links is not None:

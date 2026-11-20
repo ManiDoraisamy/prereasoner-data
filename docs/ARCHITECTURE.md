@@ -152,8 +152,13 @@ can name several Parises; the country a question names chooses among them), the 
 entity type of every other column, the entity each of that column's cells names, and the knowledgebase rows and
 labels those reach. Preparation reads PostgreSQL and the models; it starts in the background when a client syncs
 its sheets (`/api/conversation/sync`), else the first question computes it, and a question that arrives meanwhile
-waits for it instead of preparing again. It is kept in `chat.prepared_table` for the conversation (the newest 32
-per conversation, deleted with it, not counted against the user's storage) and cached in the process.
+waits for it instead of preparing again. It is kept in `chat.prepared_table` for the conversation (the newest 64
+records per conversation, deleted with it, not counted against the user's storage) and cached in the process. The
+same background step then encodes the stock reading's vectors of each table's targets (`keep_sheet_vectors`: bge-m3
+over its cells, column names and labels, about 18 texts a second on 8 threads and 7.5 on 4) and keeps them there under
+their own key, by the table's content and the stock model alone, so a knowledgebase refresh keeps them; a question on
+any instance holds them before its reading (`hold_sheet_vectors`). Measured 2026-11-20 on a 10,000-line sheet of 2,024
+targets: the first question's reading took 124.6 s when it encoded them, 0.4 s after the background step.
 
 At question time PostgreSQL answers only what the request cannot hold: conversation records and saved
 references, the exact-name lookup of the question's words (each name cached per instance), the exchange rates of a
@@ -356,7 +361,8 @@ program. No model writes SQL.
    appended to the grid as to the table (`dataset_semantics.apply`). The workbook is one tab per table, named as the
    table is, in the request's order.
 2. `prepared_workbook` compiles it, types its text dates (one Decisions call), warms the decoder and lists each
-   table's targets, once per content, kept in the process (`WORKBOOK_CACHE_CELLS`).
+   table's targets, once per content, kept in the process (`WORKBOOK_CACHE_CELLS`); in a served request the stock
+   reading's vectors its conversation keeps for its tables are held before the reading (`hold_sheet_vectors`).
 3. In a served request the world layer's links connect it (`engine/program/connected.py`). `KnowledgeReasoner._serve`
    registers `link_request` on the request's database; the own-data path's first read of the workbook builds the
    request's links once (`request_links`): each routed place column's bridge (production's own pairing), each column

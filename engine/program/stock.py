@@ -11,7 +11,8 @@ closed questions (engine/program/closed.py) can read them; the word roles say no
 
 This reading is a shortlist: it decides which options the reading record offers the Decisions API, and keeps its
 scores on the slots the API is not asked. The vectors of texts read before are kept (CACHE_MOST, float16), so a
-workbook's targets are encoded on its first question only.
+workbook's targets are encoded once per process; a synced sheet's are encoded in the background after the sync and
+kept for its conversation (engine/prepared.py keep_sheet_vectors), and a question's process reads them (hold).
 """
 from __future__ import annotations
 
@@ -33,6 +34,7 @@ from engine.program.words import read_question
 STOCK_BACKBONE = "bge-m3"
 PHRASE_WORDS = 3           # a question's phrases: every run of one to this many of its words
 CACHE_MOST = 400_000       # vectors kept by text; past this the cache is cleared
+KEEP_CHUNK = 256           # texts a background encoding reads at a time, so a question's encoding waits for one chunk
 TEXT_TOKENS = 32           # tokens of a text or phrase the backbone reads
 ENCODE_BATCH = 64
 TABLE_COLUMNS_NAMED = 8    # a table with no tab name is read by its first columns' names
@@ -40,6 +42,23 @@ SCORE_DIGITS = 4
 
 _READER = None
 _READER_LOCK = threading.Lock()
+
+
+def target_texts(table, targets: list[Target]) -> list[str]:
+    """The texts the stock reading encodes for one table's targets: a target's own text, the table by its tab's name or
+    its first columns' names."""
+    return [target.text if target.kind != T_TABLE else (table.tab or " ".join(c.name for c in table.columns[:TABLE_COLUMNS_NAMED]))
+            for target in targets]
+
+
+def workbook_texts(catalog: Catalog, targets: dict[str, tuple[list[Target], list[tuple[str, ...]]]]) -> list[str]:
+    """Every text the stock reading encodes for a workbook's targets (StockReader.read), in its order."""
+    texts = []
+    for table in catalog.tables:
+        held = targets.get(table.id)
+        if held is not None and table.lines and held[0]:
+            texts.extend(target_texts(table, held[0]))
+    return texts
 
 
 def workbook_targets(catalog: Catalog) -> dict[str, tuple[list[Target], list[tuple[str, ...]]]]:
@@ -58,6 +77,7 @@ class StockReader:
     def __init__(self, backbone: TextBackbone):
         self.backbone = backbone
         self.cache: dict[str, np.ndarray] = {}
+        self.generation = 0        # raised each time the cache is cleared, so what was held into it is held again
         self._lock = threading.Lock()
 
     def encode(self, texts: list[str]) -> np.ndarray:
@@ -67,6 +87,7 @@ class StockReader:
             if missing:
                 if len(self.cache) + len(missing) > CACHE_MOST:
                     self.cache.clear()
+                    self.generation += 1
                     missing = list(dict.fromkeys(texts))
                 with torch.inference_mode():
                     distinct, vectors = self.backbone.encode_texts(missing, max_tokens=TEXT_TOKENS, batch=ENCODE_BATCH)
@@ -75,6 +96,25 @@ class StockReader:
             if not texts:
                 return np.zeros((0, self.backbone.dim), np.float32)
             return np.stack([self.cache[text] for text in texts]).astype(np.float32)
+
+    def vectors(self, texts: list[str]) -> tuple[list[str], np.ndarray]:
+        """(the distinct texts, their float16 vectors as the cache holds them), encoding those not yet read KEEP_CHUNK
+        at a time, so a question's encoding waits for one chunk of a background encoding, never all of it."""
+        distinct = list(dict.fromkeys(texts))
+        for start in range(0, len(distinct), KEEP_CHUNK):
+            self.encode(distinct[start:start + KEEP_CHUNK])
+        if not distinct:
+            return [], np.zeros((0, self.backbone.dim), np.float16)
+        return distinct, self.encode(distinct).astype(np.float16)
+
+    def hold(self, texts: list[str], vectors: np.ndarray) -> None:
+        """Keep stored ``vectors`` (float16, engine/prepared.py) as the vectors of ``texts`` that hold none yet."""
+        with self._lock:
+            if len(self.cache) + len(texts) > CACHE_MOST:
+                self.cache.clear()
+                self.generation += 1
+            for text, vector in zip(texts, vectors):
+                self.cache.setdefault(text, vector)
 
     def read(self, question: str, catalog: Catalog, decoder: Decoder, targets: dict[str, tuple[list[Target], list[tuple[str, ...]]]]) -> NamedReading:
         """The question's stock reading: the word reader's scores, each target's similarity added on the coordinates its
@@ -89,7 +129,7 @@ class StockReader:
             if held is None or not table.lines or not held[0]:
                 continue
             table_targets, filled = held
-            texts = [target.text if target.kind != T_TABLE else (table.tab or " ".join(c.name for c in table.columns[:TABLE_COLUMNS_NAMED])) for target in table_targets]
+            texts = target_texts(table, table_targets)
             similarity = (asked @ self.encode(texts).T).max(axis=0)
             value_rows = [at for at, target in enumerate(table_targets) if target.kind in (T_VALUE, T_LINE, T_BAND)]
             kept = set(sorted(value_rows, key=lambda at: (-round(float(similarity[at]), SCORE_DIGITS), texts[at], at))[:VALUE_TOP])
@@ -123,4 +163,4 @@ def stock_reader() -> StockReader:
         return _READER
 
 
-__all__ = ["STOCK_BACKBONE", "StockReader", "stock_reader", "workbook_targets"]
+__all__ = ["STOCK_BACKBONE", "StockReader", "stock_reader", "target_texts", "workbook_targets", "workbook_texts"]
