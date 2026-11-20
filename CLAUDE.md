@@ -25,7 +25,9 @@ decisions belong in `DECISIONS.md`, and measured SQL results belong in
   starters, the thread, the composer, the status of a sheet being read, and (once a chat exists) a
   header with New chat and the sheet's sync time, which the owner asked for (2026-10-04); nothing else.
 - Do not add per-request fields described as user consent for ordinary service processing. External
-  processing is controlled by the operator's `EXTERNAL_LLM_ENABLED` deployment switch.
+  processing has no switch: Gemini is always on, in production and in the open-source deploy on GCP, and
+  there is one path (owner, 2026-11-20). The code's `EXTERNAL_LLM_ENABLED` is deleted, with everything that
+  reads it, in the migration that serves the closed-choice model.
 - Choosing processors, maintaining a lawful basis and contracts, minimizing transferred data, and
   replacing external models are operator responsibilities. Do not make users manage architecture.
 - Replace external presentation/orchestration with a local model only through the controlled model
@@ -33,7 +35,7 @@ decisions belong in `DECISIONS.md`, and measured SQL results belong in
   verification deterministic, and make provider migration transparent to users. Own-data selection may
   use an external closed-choice model (owner's decision, 2026-11-20): it answers closed questions whose
   options the engine built, returns probabilities only, and never writes text, SQL, or a program. It is
-  called only through `engine/llm.py`, under `EXTERNAL_LLM_ENABLED`. The turn's read-as line shows the
+  called only through `engine/llm.py`. The turn's read-as line shows the
   plain reading of the query that ran (never a paragraph in the answer).
 
 ## Non-negotiable outcome

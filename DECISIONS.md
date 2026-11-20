@@ -5544,6 +5544,11 @@ about a second a question. These are per-answer harness measurements, not served
 What does not change: no model writes SQL; the typed AST and the builder stay deterministic; there is
 one selection path. Production still runs the trained readers. The closed-choice model enters production
 only by replacing them in one migration (callers, tests, artifacts and documents together), called through
-`engine/llm.py` under `EXTERNAL_LLM_ENABLED`; the ownership map changes in that same change. The
+`engine/llm.py`; the ownership map changes in that same change. The
 Decisions endpoint is on the Gemini Developer API, not Vertex, so serving it needs an API key held as a
 deployment secret.
+
+Amended the same night (owner): there is no switch for external processing. Gemini is always on, in
+production and in the open-source deploy on GCP (it already rewrites prompts there), and there is one path.
+`EXTERNAL_LLM_ENABLED` and everything that reads it are deleted in the migration; until then the code still
+holds it, and the ownership map's line for `engine/llm.py` changes in that same change.
