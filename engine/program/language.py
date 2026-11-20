@@ -371,7 +371,8 @@ class Agg:
 class Rank:
     """The top line, group or peer column; every tied one is kept.
 
-    line   shown columns of the line(s) with the top measure.
+    line   shown columns of the line(s) with the top measure; with no shown column (several lines ranked by a prose
+           column's Words, which no column holds) the figures themselves.
     group  the key whose lines give the top f(measure), or the top count when function is count.
     peer   which of the peer columns (positions) holds the top sum across the kept lines, or with mark the most cells equal to it.
     by_size ranks groups and peers by size, the sign dropped; a line's size is a Size measure.
@@ -398,8 +399,8 @@ class Rank:
             raise ValueError(f"unknown rank entity: {self.entity}")
         if self.direction not in DIRECTIONS:
             raise ValueError(f"unknown direction: {self.direction}")
-        if self.entity == ENTITY_LINE and (not self.shown or self.measure is None):
-            raise ValueError("a line rank shows a column and ranks a measure")
+        if self.entity == ENTITY_LINE and (self.measure is None or (not self.shown and not (self.count > 1 and isinstance(self.measure, Words)))):
+            raise ValueError("a line rank shows a column and ranks a measure; only several lines ranked by words may show the words alone")
         if self.entity == ENTITY_GROUP:
             if self.key is None or self.function not in (*NUMBER_AGGREGATES, COUNT) or (self.function == COUNT) != (self.measure is None):
                 raise ValueError("a group rank needs a key, and a function over a measure or a count")
@@ -701,6 +702,8 @@ def answer_type_of(program: Program, column_kind) -> str:
         return _type_of_shown(program.shown, column_kind)
     if program.entity == ENTITY_PEER:
         return A_NAME
+    if program.entity == ENTITY_LINE and not program.shown:      # the figures themselves
+        return A_NUMBER
     return _type_of_column(program.key, column_kind) if program.entity == ENTITY_GROUP else _type_of_shown(program.shown, column_kind)
 
 

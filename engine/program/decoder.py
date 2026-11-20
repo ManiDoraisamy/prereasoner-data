@@ -842,6 +842,9 @@ class _Search:
             for n, stated in counts:     # "the 5 oldest", "the 2 most common": exactly that many, scored by the stated number
                 many = s(stated)
                 frames += self.condition_frames(line + many, (shown, rank_measures), lambda options, where, d=direction, n=n: Rank(ENTITY_LINE, table.id, d, where, options[1], options[0], count=n), table, index, atoms, rank=True)
+                worded = [option for option in rank_measures if isinstance(option.payload, Words)]
+                if worded:     # "the word counts of the 3 longest posts": the figures themselves, which no column shows
+                    frames += self.condition_frames(line + many + self.type_score(A_NUMBER), (worded,), lambda options, where, d=direction, n=n: Rank(ENTITY_LINE, table.id, d, where, options[0], (), count=n), table, index, atoms, rank=True)
                 frames += self.condition_frames(counted + many, (group_keys,), lambda options, where, d=direction, n=n: Rank(ENTITY_GROUP, table.id, d, where, None, key=options[0], function=COUNT, count=n), table, index, atoms, rank=True, max_policy=2)
                 summed = group + s(coordinate(SLOT_AGGREGATE, SUM)) + many
                 frames += self.condition_frames(summed, (group_keys, measures), lambda options, where, d=direction, n=n: Rank(ENTITY_GROUP, table.id, d, where, options[1], key=options[0], function=SUM, count=n), table, index, atoms, rank=True, max_policy=2)

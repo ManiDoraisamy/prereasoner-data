@@ -177,6 +177,8 @@ def read_as(program: Program, catalog: Catalog) -> str:
     way = "highest" if program.direction == HIGHEST else "lowest"
     where = _where_words(catalog, program.where)
     tail = f" where {where}" if where else ""
+    if program.entity == ENTITY_LINE and not program.shown:
+        return f"the {program.count} {way} of {_measure_words(catalog, program.measure)} {place}{tail}"
     if program.entity == ENTITY_LINE:
         shown = ", ".join(_name(catalog, column) for column in program.shown)
         lines = f"the {program.count} lines" if program.count > 1 else "the line"
@@ -310,7 +312,7 @@ def cells_used(program: Program, tables: RequestTables, rows: tuple[tuple, ...])
                 add(i, min(table.lines[i].cells))      # a count: one cell of each line it counts
     elif program.entity == ENTITY_LINE:
         columns = measure_columns(program.measure)
-        reads = {column.position: table.numbers[column.position] for column in columns}
+        reads = {column.position: table.words(column.position) if isinstance(program.measure, Words) else table.numbers[column.position] for column in columns}
         top = {str(row[-1]) for row in rows}
         for i in kept:
             if any(reads[column.position][i] is not None for column in columns) and _line_is_top(program, table, i, top):
@@ -614,6 +616,8 @@ def _range_terms(measure: Measure, table: CatalogTable) -> str:
 
 def _rank_formula(program: Rank, table: CatalogTable, tables: RequestTables) -> str:
     way = "MAX" if program.direction == HIGHEST else "MIN"
+    if program.entity == ENTITY_LINE and not program.shown:      # the figures themselves, the top ones first
+        return f"=TAKE(SORT({_range_terms(program.measure, table)},1,{-1 if program.direction == HIGHEST else 1}),{program.count})"
     if program.entity == ENTITY_LINE:
         shown = _range(table, program.shown[0].position) if program.shown[0].position != SECTION else "Section"
         if isinstance(program.measure, Col):

@@ -637,6 +637,35 @@ def test_a_column_of_prose_is_measured_by_its_words():
     assert names_table.prose_columns == ()
 
 
+def test_a_rank_by_words_prints_the_word_counts():
+    """DataBench dev 050_ING/17 "what are the word counts of the 3 longest posts?" and /19 (the 6 shortest): the line
+    rank by words printed each post with its count after it, and the grader reads each row's first cell; no column holds
+    the counts to show. Several lines ranked by a prose column's words may print the counts alone, the same in the typed
+    SQL and the dual emitter, typed a number, with a read-as and a formula; the decoder builds it beside the rank that
+    shows a column. One line, or a plain column, still needs a shown column."""
+    catalog, table, tables = _setup(POSTS)
+    author, kind, text, likes = (Col(table.id, at) for at in range(4))
+    figures = Rank(ENTITY_LINE, table.id, HIGHEST, (), Words(text), (), count=3)
+    assert _answer(figures, tables) == ((11.0,), (8.0,), (7.0,))
+    assert answer_type_of(figures, catalog.column_kind) == A_NUMBER and is_sound(figures)
+    assert read_as(figures, catalog) == 'the 3 highest of the number of words of Text on "Sheet1"', read_as(figures, catalog)
+    assert formula(figures, tables).startswith("=TAKE(SORT(") and cells_used(figures, tables, _answer(figures, tables))
+    from engine.named.chooser import answer_column
+    assert answer_column(figures) is None and answer_column(Rank(ENTITY_LINE, table.id, HIGHEST, (), Words(text), (author,))) == author
+    decoded = [scored.program for scored in Decoder(catalog).decode(Reading({name: 1.0 for name in coordinates(figures, catalog.column_kind)}), k=50).programs]
+    assert decoded[0] == figures, decoded[0]
+    # contrastive: the rank showing the posts is built beside it, and its cells now read the words it ranks by
+    shown = Rank(ENTITY_LINE, table.id, HIGHEST, (), Words(text), (text,), count=3)
+    assert shown in decoded and cells_used(shown, tables, _answer(shown, tables))
+    # negative: one line, or a plain column, with no shown column is refused
+    for bad in (lambda: Rank(ENTITY_LINE, table.id, HIGHEST, (), Words(text), ()), lambda: Rank(ENTITY_LINE, table.id, HIGHEST, (), likes, (), count=3)):
+        try:
+            bad()
+        except ValueError:
+            continue
+        raise AssertionError("a line rank showed nothing where it must show a column")
+
+
 def test_a_check_asks_whether_the_top_one_is_the_same_or_compares_two_aggregates():
     """"Is the borrower with the highest loan also the one with the longest loan?", "is the region with the most lines
     also the one with the most loans?" (DataBench dev: 9 of 60 yes/no questions), "is the average loan above the average
@@ -1709,7 +1738,7 @@ def test_explain_carries_the_named_contributions():
 
 
 TESTS = [
-    test_an_answer_prints_the_cell_as_the_sheet_wrote_it, test_a_column_of_prose_is_measured_by_its_words, test_several_shown_columns_cost_a_named_coordinate, test_a_stated_number_a_column_holds_reads_as_its_value, test_a_misspelled_word_reads_as_the_sheets_word, test_a_word_only_one_column_holds_says_which, test_several_columns_shown_type_the_same_however_they_stand, test_across_adds_peer_columns_of_a_line, test_the_decoder_reaches_across_when_a_word_asks, test_a_text_other_than, test_answer_types_place_money_quantity, test_decoder_ties_do_not_follow_sheet_order, test_a_family_adding_twice_says_so, test_a_family_of_tabs_reads_as_all_its_tabs, test_axes_are_read_by_their_kind, test_a_question_reads_the_tables_its_links_reach, test_verifier_stops_at_its_budget_of_lines, test_a_condition_search_stops_at_its_budget_of_checks, test_a_value_stands_whole_without_a_pattern_for_each_value,
+    test_a_rank_by_words_prints_the_word_counts, test_an_answer_prints_the_cell_as_the_sheet_wrote_it, test_a_column_of_prose_is_measured_by_its_words, test_several_shown_columns_cost_a_named_coordinate, test_a_stated_number_a_column_holds_reads_as_its_value, test_a_misspelled_word_reads_as_the_sheets_word, test_a_word_only_one_column_holds_says_which, test_several_columns_shown_type_the_same_however_they_stand, test_across_adds_peer_columns_of_a_line, test_the_decoder_reaches_across_when_a_word_asks, test_a_text_other_than, test_answer_types_place_money_quantity, test_decoder_ties_do_not_follow_sheet_order, test_a_family_adding_twice_says_so, test_a_family_of_tabs_reads_as_all_its_tabs, test_axes_are_read_by_their_kind, test_a_question_reads_the_tables_its_links_reach, test_verifier_stops_at_its_budget_of_lines, test_a_condition_search_stops_at_its_budget_of_checks, test_a_value_stands_whole_without_a_pattern_for_each_value,
     test_every_name_is_from_a_closed_list, test_forms_refuse_what_they_cannot_say, test_signs, test_printed_lines_are_read_by_label_and_never_added, test_shortest_label_first_and_unlabelled_printed_lines, test_a_column_filled_only_on_printed_lines_reads_them,
     test_partial_value_match, test_case_and_spacing_do_not_count, test_periods, test_blanks, test_ties_keep_every_tied_line, test_units, test_mixed_columns, test_repeated_rows, test_sections_nested_bands_and_the_section_shown, test_python_masks_agree_with_the_sql,
     test_calc_shapes, test_rank_across_peer_columns, test_a_rank_keeps_as_many_as_the_question_states, test_the_decoder_proposes_how_many_a_question_states, test_a_check_says_yes_or_no, test_the_decoder_checks_only_when_the_reading_names_a_check, test_a_choice_among_named_values, test_a_check_asks_what_the_top_one_is, test_a_check_asks_whether_the_top_one_is_the_same_or_compares_two_aggregates, test_a_check_answers_in_the_questions_own_words, test_a_read_takes_the_line_after_or_before_the_kept_one, test_new_ast_nodes_render_and_validate, test_plan_schema_holds_only_what_a_query_reads, test_perfect_readings_give_the_gold_first, test_decoder_is_deterministic_and_order_free, test_the_list_does_not_depend_on_hash_order,

@@ -119,7 +119,9 @@ def answer_column(program: Program) -> Col | None:
     if isinstance(program, Breakdown):
         return program.keys[0] if program.keys else program.measure if isinstance(program.measure, Col) else None
     if isinstance(program, Rank):
-        return program.shown[0] if program.entity == ENTITY_LINE else program.key if program.entity == ENTITY_GROUP else None
+        if program.entity == ENTITY_LINE:
+            return program.shown[0] if program.shown else None      # a rank that prints its figures answers from no column
+        return program.key if program.entity == ENTITY_GROUP else None
     return None
 
 
