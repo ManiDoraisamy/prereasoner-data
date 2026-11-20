@@ -662,16 +662,17 @@ def _merge_key_columns(views, shapes, name: str) -> dict[str, tuple[str, str]]:
     return {}
 
 
-def shown_output(plan, columns, rows, catalogs) -> list[tuple]:
-    """The fused answer's rows with the sheet's spelling back. The own-data path keys a listing and a group by a
-    column's fold (engine/program/store.py fold_column); an output column whose lineage is such a column shows each
-    value as that column first spells it, as a single answer does (engine/program/execute.py _displayed). Other
-    columns, and plans over the request's own tables, are unchanged."""
-    from engine.program.store import fold_column, table_id_of
+def shown_output(plan, columns, rows, catalogs) -> tuple[list[str], list[tuple]]:
+    """The fused answer's columns and rows as the sheet shows them. An output column whose lineage is a column of the
+    own-data path's tables (engine/program/store.py) is named by that column's header, as a single answer names it
+    (engine/program/output.py answer_columns), unless another output column already has that name; and a key held as
+    its fold (store.fold_column) shows each value as the column first spells it (engine/program/execute.py
+    _displayed). Other columns (a figure a leaf computed), and plans over the request's own tables, are unchanged."""
+    from engine.program.store import day_column, fold_column, number_column, table_id_of, text_column
 
-    rows = [tuple(row) for row in rows]
-    if not catalogs or not rows:
-        return rows
+    names, rows = [str(name) for name in columns], [tuple(row) for row in rows]
+    if not catalogs:
+        return names, rows
     lineage = _merge_key_columns(plan.views, _shapes(plan.views, plan.tables, plan.slug), str(plan.output))
     words = {}
     for at, name in enumerate(columns):
@@ -680,10 +681,16 @@ def shown_output(plan, columns, rows, catalogs) -> list[tuple]:
         if catalog is None:
             continue
         table = catalog.table(table_id_of(origin[0]))
-        position = next((p for p in range(len(table.columns)) if fold_column(p) == origin[1]), None)
-        if position is not None:
+        position = next((p for p in range(len(table.columns))
+                         if origin[1] in (text_column(p), fold_column(p), number_column(p), day_column(p))), None)
+        if position is None:
+            continue
+        header = table.column_name(position)
+        if header not in names:
+            names[at] = header
+        if origin[1] == fold_column(position):
             words[at] = table.written_spelling[position]
-    return [tuple(words[at].get(cell, cell) if at in words else cell for at, cell in enumerate(row)) for row in rows]
+    return names, [tuple(words[at].get(cell, cell) if at in words else cell for at, cell in enumerate(row)) for row in rows]
 
 
 def _canonical(keys: dict[str, tuple[str, str]], lineage=None) -> dict[str, tuple[str, str]]:

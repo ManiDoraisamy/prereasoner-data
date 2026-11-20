@@ -681,6 +681,7 @@ class ComposedKnowledgeQuery:
         record = current_execution_record()
         if record is None:
             raise RuntimeError("decomposed execution did not produce a deterministic record")
+        shown = shown_output(plan, columns, rows, catalogs)
         return {
             "question": question,
             "as_of": as_of,
@@ -694,6 +695,6 @@ class ComposedKnowledgeQuery:
             },
             "views": record["views"],
             "sql": record["final_sql"],
-            "result": {"columns": columns, "rows": wire_rows(shown_output(plan, columns, rows, catalogs))},
+            "result": {"columns": shown[0], "rows": wire_rows(shown[1])},
             "dataset_semantics": list(dataset_semantics or ()),
         }

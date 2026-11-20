@@ -313,14 +313,18 @@ def test_store_columns_a_key_connects_bind_by_the_column_they_hold():
 
 def test_a_fused_answer_shows_the_sheets_spelling_of_a_folded_key():
     """The own-data path keys a listing by a column's fold; a fused answer whose output column is such a fold shows
-    each value as the sheet first spells it ("delta" was served for "Delta", demo gate 2026-11-20). Other columns and a
-    plan over the request's own tables are unchanged."""
+    each value as the sheet first spells it ("delta" was served for "Delta", demo gate 2026-11-20), and each column
+    drawn from a sheet column is named by its header ("value" was served for "product_name", demo gate 2026-11-20).
+    A plan over the request's own tables is unchanged."""
     from engine.decomposition import shown_output
     from engine.deterministic.plan import AnalysisPlan
 
     class Table:
         columns = ("id", "name")
         written_spelling = {1: {"delta": "Delta", "omega": "Omega"}}
+
+        def column_name(self, position):
+            return self.columns[position]
 
     class Workbook:
         by_id = {"t0": Table()}
@@ -334,9 +338,13 @@ def test_a_fused_answer_shows_the_sheets_spelling_of_a_folded_key():
                                                     SelectedValue("n", ColumnValue("_t0", "c0_n")))))
     plan.tables, plan.slug, plan.output = (), "s", "names"
     with patch("engine.decomposition._shapes", lambda views, tables, slug: {"source": (), "names": ("value", "n")}):
-        assert shown_output(plan, ["value", "n"], [("delta", 1), ("omega", 2), ("zeta", 3)], [Workbook()]) == [
-            ("Delta", 1), ("Omega", 2), ("zeta", 3)]
-        assert shown_output(plan, ["value", "n"], [("delta", 1)], []) == [("delta", 1)]
+        assert shown_output(plan, ["value", "n"], [("delta", 1), ("omega", 2), ("zeta", 3)], [Workbook()]) == (
+            ["name", "id"], [("Delta", 1), ("Omega", 2), ("zeta", 3)])
+        assert shown_output(plan, ["value", "n"], [], [Workbook()]) == (["name", "id"], []), "an empty answer is named too"
+        # contrastive: a header another output column already has keeps the plan's name
+        assert shown_output(plan, ["value", "name"], [("delta", 1)], [Workbook()])[0] == ["value", "name"]
+        # negative: a plan over the request's own tables is unchanged
+        assert shown_output(plan, ["value", "n"], [("delta", 1)], []) == (["value", "n"], [("delta", 1)])
 
 
 def test_failed_compound_probe_cannot_authorize_a_partial_composed_answer():
