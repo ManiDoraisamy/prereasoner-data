@@ -10,9 +10,9 @@ from engine.program.catalog import Catalog
 from engine.program.decoder import Decoder, POLICY, _Checks, _Conditions, _Option
 from engine.program.execute import run, run_dual
 from engine.program.index import Atom, TableIndex
-from engine.program.language import (Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Contains, DateOf, Equals, InPeriod, InSection, InYears, IsBlank, IsNumber, NotEquals, OnLine, PercentOf, PeriodSpan, Rank, RowArithmetic, SECTION, Show, Size, Words, answer_type_of, coordinates, form_of, tables_of, is_sound, period_from_name)
+from engine.program.language import (Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Contains, DateOf, Equals, InPeriod, InSection, InYears, IsBlank, IsNumber, NotEquals, OnLine, PercentOf, PeriodSpan, Rank, RowArithmetic, SECTION, Show, Size, Words, answer_type_of, coordinates, form_of, tables_of, is_sound, period_from_name, shown_together)
 from engine.program.lowering import plan_schema, to_query
-from engine.program.names import (A_COUNT, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, AFTER, ANY, BEFORE, BREAKDOWN, SAME, CHECK, EQ, EVERY, IS, LT, NE, NO, VERSUS, ANSWER_TYPES, AVG, CALC, COMPARISONS, COUNT, COUNT_DISTINCT, ENDS, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, EV_ADDS_TWICE, EV_BARE_ZERO, EV_EMPTY, EV_FAILED, EV_FILTER_DID_NOTHING, EV_FRACTION_FOR_COUNT, EV_MANY_ROWS, EV_PRINTED_TIE, EV_RAN,
+from engine.program.names import (A_COUNT, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, AFTER, ANY, BEFORE, BREAKDOWN, SAME, CHECK, EQ, EVERY, IS, LT, NE, NO, VERSUS, ANSWER_TYPES, AVG, CALC, COMPARISONS, COUNT, COUNT_DISTINCT, ENDS, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, EV_ADDS_TWICE, EV_BARE_ZERO, EV_EMPTY, EV_FAILED, EV_FILTER_DID_NOTHING, EV_FRACTION_FOR_COUNT, EV_MANY_ROWS, EV_PRINTED_TIE, EV_RAN,
                                   EV_REPEATED_LINES, EV_ROW_COUNT_FOR_AMOUNT, EV_SHAPE_AGREES, EV_TOO_LARGE_FOR_SHARE, EV_TYPE_AGREES, EV_WRONG_KIND, EVIDENCE, FORMS, GE, GT, HIGHEST, LOWEST, MAX, MIN, MINUS, OVER, PLUS, SEMANTICS, SLOT_AGGREGATE, SLOT_FORM, SLOTS, STARTS, SUM, TIMES, coarse_type, coordinate, slot_of, GRAIN_MONTH)
 from engine.program.output import cells_used, compress, explain, formula, read_as
 from engine.program.scoring import Reading, Weights, score_program
@@ -284,6 +284,52 @@ def test_a_fused_leaf_shows_its_answer_without_the_tie_order():
     # contrastive: a rank of two lines has no tie column, and its plan is returned as it is
     two = to_plan(Rank(ENTITY_LINE, table.id, LOWEST, (), speed, (name,), count=2), catalog, "leaf", whole_tables=True)
     assert shown_plan(two) is two
+
+
+def test_a_listing_of_several_columns_gives_their_distinct_combinations():
+    """The demo prompts of complex-promotions, complex-promotions-xlsx and complex-category-gaps decompose into a leaf
+    "list customer name and product name for each purchase", which no program could say: a listing showed exactly one
+    column, and a show of several columns needs a condition and returns one line. A listing of several shown columns is
+    their distinct combinations over the kept data lines, each in the order its first line stands, any number of
+    conditions, zero included, a line blank in any of them in none; the same in the typed SQL and the dual emitter, each
+    column in the sheet's spelling, with a read-as, cells and a formula. The decoder builds it only where the reading
+    names those columns together and the form is a listing."""
+    rows = [["Customer", "Product", "Qty", "Region"], ["Ann", "Pen", 1.0, "N"], ["Bo", "Ink", 2.0, "S"], ["ann", "Pen", 3.0, "N"],
+            ["Ann", "Ink", 1.0, "S"], ["Bo", "Ink", 5.0, "N"], ["Cy", None, 1.0, "N"]]
+    catalog, table, tables = _setup(rows)
+    customer, product, qty, region = (Col(table.id, at) for at in range(4))
+    pairs = Show(table.id, (customer, product), (), listing=True)
+    assert _answer(pairs, tables) == (("Ann", "Pen"), ("Bo", "Ink"), ("Ann", "Ink"))     # "ann"/"Ann" one value; Cy has no product
+    assert _answer(Show(table.id, (customer, product), (Equals(region, "N"),), listing=True), tables) == (("Ann", "Pen"), ("Bo", "Ink"))
+    assert answer_type_of(pairs, catalog.column_kind) == A_LIST and is_sound(pairs)
+    assert read_as(pairs, catalog) == 'the different combinations of Customer and Product on "Sheet1"', read_as(pairs, catalog)
+    assert formula(pairs, tables).startswith("=UNIQUE(FILTER(HSTACK(") and len(cells_used(pairs, tables, ())) == 10
+    reading = Reading({name: 1.0 for name in coordinates(pairs, catalog.column_kind)})
+    decoded = [scored.program for scored in Decoder(catalog).decode(reading, k=50).programs]
+    assert decoded[0] == pairs, decoded[0]
+    # the reading's count of shown columns joins a column it names less firmly than shown_together: the demo leaf "list
+    # customer name and product name for each purchase" read one name at 1.1, the other at -0.9 and together=2 at 7.1
+    weak = Reading({**{name: 1.0 for name in coordinates(pairs, catalog.column_kind)}, coordinate("shown", product.name): -0.9, coordinate("shown", qty.name): -5.0, coordinate("shown", region.name): -5.0})
+    assert [scored.program for scored in Decoder(catalog).decode(weak, k=50).programs][0] == pairs
+    # contrastive: one shown column stays the one-column listing, its query as before
+    one = Show(table.id, (customer,), (), listing=True)
+    assert _answer(one, tables) == (("Ann",), ("Bo",), ("Cy",)) and read_as(one, catalog) == 'the different Customer on "Sheet1"'
+    assert [item.alias for item in to_query(one, catalog).select] == ["value"]
+    # negative: the same two columns read without a list build no listing of several (a show of one line needs a
+    # condition); nor does the weakly named column without the reading's count; a reading naming one shown column
+    # builds none either; a column twice is refused
+    unlisted = Reading({name: 1.0 for name in coordinates(pairs, catalog.column_kind) if name not in (coordinate("answer_type", A_LIST), coordinate("listing", "yes"))})
+    assert not any(isinstance(scored.program, Show) and scored.program.listing and len(scored.program.shown) > 1 for scored in Decoder(catalog).decode(unlisted, k=200).programs)
+    no_count = Reading({name: score for name, score in weak.scores.items() if name != shown_together((customer, product))[0]})
+    assert not any(isinstance(scored.program, Show) and scored.program.listing and len(scored.program.shown) > 1 for scored in Decoder(catalog).decode(no_count, k=200).programs)
+    single = Reading({name: 1.0 for name in coordinates(one, catalog.column_kind)})
+    assert not any(isinstance(scored.program, Show) and scored.program.listing and len(scored.program.shown) > 1 for scored in Decoder(catalog).decode(single, k=200).programs)
+    try:
+        Show(table.id, (customer, customer), (), listing=True)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("a listing showed a column twice")
 
 
 def test_units():
@@ -1786,7 +1832,7 @@ def test_explain_carries_the_named_contributions():
 
 
 TESTS = [
-    test_tied_lines_print_in_sheet_order, test_a_fused_leaf_shows_its_answer_without_the_tie_order, test_a_rank_by_words_prints_the_word_counts, test_an_answer_prints_the_cell_as_the_sheet_wrote_it, test_a_column_of_prose_is_measured_by_its_words, test_several_shown_columns_cost_a_named_coordinate, test_a_stated_number_a_column_holds_reads_as_its_value, test_a_misspelled_word_reads_as_the_sheets_word, test_a_word_only_one_column_holds_says_which, test_several_columns_shown_type_the_same_however_they_stand, test_across_adds_peer_columns_of_a_line, test_the_decoder_reaches_across_when_a_word_asks, test_a_text_other_than, test_answer_types_place_money_quantity, test_decoder_ties_do_not_follow_sheet_order, test_a_family_adding_twice_says_so, test_a_family_of_tabs_reads_as_all_its_tabs, test_axes_are_read_by_their_kind, test_a_question_reads_the_tables_its_links_reach, test_verifier_stops_at_its_budget_of_lines, test_a_condition_search_stops_at_its_budget_of_checks, test_a_value_stands_whole_without_a_pattern_for_each_value,
+    test_a_listing_of_several_columns_gives_their_distinct_combinations, test_tied_lines_print_in_sheet_order, test_a_fused_leaf_shows_its_answer_without_the_tie_order, test_a_rank_by_words_prints_the_word_counts, test_an_answer_prints_the_cell_as_the_sheet_wrote_it, test_a_column_of_prose_is_measured_by_its_words, test_several_shown_columns_cost_a_named_coordinate, test_a_stated_number_a_column_holds_reads_as_its_value, test_a_misspelled_word_reads_as_the_sheets_word, test_a_word_only_one_column_holds_says_which, test_several_columns_shown_type_the_same_however_they_stand, test_across_adds_peer_columns_of_a_line, test_the_decoder_reaches_across_when_a_word_asks, test_a_text_other_than, test_answer_types_place_money_quantity, test_decoder_ties_do_not_follow_sheet_order, test_a_family_adding_twice_says_so, test_a_family_of_tabs_reads_as_all_its_tabs, test_axes_are_read_by_their_kind, test_a_question_reads_the_tables_its_links_reach, test_verifier_stops_at_its_budget_of_lines, test_a_condition_search_stops_at_its_budget_of_checks, test_a_value_stands_whole_without_a_pattern_for_each_value,
     test_every_name_is_from_a_closed_list, test_forms_refuse_what_they_cannot_say, test_signs, test_printed_lines_are_read_by_label_and_never_added, test_shortest_label_first_and_unlabelled_printed_lines, test_a_column_filled_only_on_printed_lines_reads_them,
     test_partial_value_match, test_case_and_spacing_do_not_count, test_periods, test_blanks, test_ties_keep_every_tied_line, test_units, test_mixed_columns, test_repeated_rows, test_sections_nested_bands_and_the_section_shown, test_python_masks_agree_with_the_sql,
     test_calc_shapes, test_rank_across_peer_columns, test_a_rank_keeps_as_many_as_the_question_states, test_the_decoder_proposes_how_many_a_question_states, test_a_check_says_yes_or_no, test_the_decoder_checks_only_when_the_reading_names_a_check, test_a_choice_among_named_values, test_a_check_asks_what_the_top_one_is, test_a_check_asks_whether_the_top_one_is_the_same_or_compares_two_aggregates, test_a_check_answers_in_the_questions_own_words, test_a_read_takes_the_line_after_or_before_the_kept_one, test_new_ast_nodes_render_and_validate, test_plan_schema_holds_only_what_a_query_reads, test_perfect_readings_give_the_gold_first, test_decoder_is_deterministic_and_order_free, test_the_list_does_not_depend_on_hash_order,

@@ -164,9 +164,10 @@ def _order(direction: str) -> str:
 
 def _show_query(program: Show, *, scalar: bool = False) -> SelectQuery:
     if program.listing:
-        key = _fold(program.shown[0])
-        where = _where(None if addresses_printed(program.where) else _data_lines(program.table), *map(_condition, program.where), _is_null(key, negated=True))
-        return SelectQuery((SelectItem(key, VALUE),), sql_table(program.table), where=where, group_by=(key,), order_by=(OrderTerm(Aggregate("MIN", ColumnRef(sql_table(program.table), LINE, SQLType.INTEGER))),))
+        keys = tuple(_fold(column) for column in program.shown)
+        where = _where(None if addresses_printed(program.where) else _data_lines(program.table), *map(_condition, program.where), *(_is_null(key, negated=True) for key in keys))
+        select = (SelectItem(keys[0], VALUE),) if len(keys) == 1 else tuple(SelectItem(key, f"{KEY}_{at}") for at, key in enumerate(keys))
+        return SelectQuery(select, sql_table(program.table), where=where, group_by=keys, order_by=(OrderTerm(Aggregate("MIN", ColumnRef(sql_table(program.table), LINE, SQLType.INTEGER))),))
     columns = [_number(program.shown[0])] if scalar else [_shown(column) for column in program.shown]
     select = tuple(SelectItem(column, f"shown_{at}") for at, column in enumerate(columns))
     line = ColumnRef(sql_table(program.table), LINE, SQLType.INTEGER)

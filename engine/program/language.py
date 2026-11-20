@@ -330,7 +330,7 @@ def condition_coordinates(condition: Condition) -> tuple[str, ...]:
 # ------------------------------------------------------------------------------------------------------------ forms
 @dataclass(frozen=True, slots=True)
 class Show:
-    """The cell at a labelled line and named column (the first such line, printed lines included), or with listing=True the distinct values on the kept data lines.
+    """The cell at a labelled line and named column (the first such line, printed lines included), or with listing=True the distinct values on the kept data lines: of one column, or of several shown columns their distinct combinations ("customer name and product name for each purchase"), each in the order its first line stands; a line blank in any of them is in none.
 
     step   AFTER reads the first data line below the first line the conditions keep, BEFORE the last data line above
            it ("who finished after Bo?"); None reads the kept line itself."""
@@ -343,8 +343,8 @@ class Show:
     def __post_init__(self):
         if not self.shown:
             raise ValueError("a show names a column")
-        if self.listing and len(self.shown) != 1:
-            raise ValueError("a list shows one column")
+        if self.listing and len(set(self.shown)) != len(self.shown):
+            raise ValueError("a list shows each column once")
         if self.step is not None and (self.step not in (AFTER, BEFORE) or self.listing or not self.where):
             raise ValueError("a neighbouring line is after or before the line a read's conditions keep")
 

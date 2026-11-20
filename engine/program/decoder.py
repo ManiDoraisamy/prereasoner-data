@@ -805,6 +805,14 @@ class _Search:
         listed = form + s(coordinate(SLOT_LISTING, "yes")) + self.type_score(A_LIST)
         columns = self.column_options(table, all_positions, SLOT_SHOWN)
         frames += self.condition_frames(listed, (columns,), lambda options, where: Show(table.id, (options[0],), where, listing=True), table, index, atoms, max_policy=2)
+        together = [option for option in shown if len(option.payload) > 1]     # columns the reading names together (shown_options)
+        for size in (2, 3):     # and the table's top columns, as many as the reading says are shown together, however firmly each is named
+            top = tuple(sorted((option.payload for option in columns[:size]), key=lambda column: column.position))
+            if len(top) == size and self.reading.score(shown_together(top)[0]) > 0 and all(option.payload != top for option in together):
+                together.append(_Option(sum(s(coordinate(SLOT_SHOWN, column.name)) for column in top) + sum(s(name) for name in shown_together(top)) + self.type_score(answer_type_of(Show(table.id, top), self.decoder.catalog.column_kind)), top))
+        together.sort(key=lambda option: (round(-option.score, _ROUND), len(option.payload), tuple(sorted(table.column_rank[column.position] for column in option.payload))))
+        if together and (s(coordinate(SLOT_LISTING, "yes")) > 0 or self.type_score(A_LIST) > 0):     # only where it asks for a list
+            frames += self.condition_frames(listed, (together,), lambda options, where: Show(table.id, options[0], where, listing=True), table, index, atoms, max_policy=2)
         # agg
         agg = s(coordinate(SLOT_FORM, AGG)) + table_score
         measures = self.measure_options(table, index)

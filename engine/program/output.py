@@ -153,6 +153,9 @@ def read_as(program: Program, catalog: Catalog) -> str:
     if isinstance(program, Show):
         shown = ", ".join(_name(catalog, column) for column in program.shown)
         where = _where_words(catalog, program.where)
+        if program.listing and len(program.shown) > 1:
+            pairs = " and ".join(_name(catalog, column) for column in program.shown)
+            return f"the different combinations of {pairs} {place}" + (f" where {where}" if where else "")
         if program.listing:
             return f"the different {shown} {place}" + (f" where {where}" if where else "")
         if program.step is not None:
@@ -294,7 +297,9 @@ def cells_used(program: Program, tables: RequestTables, rows: tuple[tuple, ...])
     if isinstance(program, Show):
         if program.listing:
             for i in kept:
-                add(i, program.shown[0].position)
+                if all(table.folds[column.position][i] is not None for column in program.shown):     # a line blank in a shown column is in no combination
+                    for column in program.shown:
+                        add(i, column.position)
         else:
             line = _read_line(program, table, kept)
             if line is not None:
@@ -483,6 +488,13 @@ def formula(program: Program, tables: RequestTables) -> str:
         if not program.listing:
             cells = cells_used(program, tables, ())
             return f"={cells[0]}" if len(cells) == 1 else "={" + ",".join(cells) + "}" if cells else "=NA()"
+        if len(program.shown) > 1:     # the combinations: the shown ranges side by side, the lines filled in all and kept
+            tests = _filter_array(catalog, program.where)
+            if tests is None or not _plain_range(table) or any(column.position == SECTION for column in program.shown):
+                return "=NA()"
+            ranges = [_range(table, column.position) for column in program.shown]
+            keep = "*".join([f'({range_}<>"")' for range_ in ranges] + ([tests] if tests else []))
+            return f"=UNIQUE(FILTER(HSTACK({','.join(ranges)}),{keep}))"
         cells = compress(cells_used(program, tables, ()))
         return "=UNIQUE(VSTACK(" + ",".join(cells) + "))" if cells else "=NA()"
     if isinstance(program, Agg):
