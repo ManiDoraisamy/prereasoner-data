@@ -9,11 +9,11 @@ from dataclasses import replace
 
 from engine.deterministic import AnalysisPlan, lower_calculation, lower_select_query
 from engine.program.catalog import Catalog
-from engine.program.language import (Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Condition, Contains, DateOf, Equals, InPeriod, InYears, InSection, IsBlank, IsNumber, Measure, NotEquals, OnLine, PercentOf, Program, Rank, RowArithmetic, SECTION, Show, Size, addresses_printed)
+from engine.program.language import (Words, Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Condition, Contains, DateOf, Equals, InPeriod, InYears, InSection, IsBlank, IsNumber, Measure, NotEquals, OnLine, PercentOf, Program, Rank, RowArithmetic, SECTION, Show, Size, addresses_printed)
 from engine.program.names import AFTER, ANY, IS, SAME, ANYWHERE, AVG, COUNT, COUNT_DISTINCT, ENDS, ENTITY_GROUP, ENTITY_LINE, EQ, EVERY, GE, GT, HIGHEST, LE, LT, MAX, MIN, MINUS, NE, NO, OVER, PLUS, STARTS, SUM, TIMES
 from engine.program.semantics import fold as fold_text
 from engine.program.store import (DATE, INTEGER, LABEL, LABEL_LENGTH, LINE, ONE_ROW, PEER_FOLD, PEER_NAME, PEER_NUMBER, REAL, ROLE, SECTION_FOLD, SECTION_PATH, SECTION_TEXT, TEXT, day_column, fold_column,
-                                  number_column, peers_table, sql_table, table_columns, table_id_of, text_column)
+                                  number_column, peers_table, sql_table, table_columns, table_id_of, text_column, words_column)
 from engine.sheet.names import RECORD
 from engine.sql_ast import (Abs, Aggregate, BinaryExpr, BlankAsZero, BooleanExpr, ColumnRef, Comparison, DatePart, Join, Literal, OrderTerm, ScalarSubquery, SelectItem, SelectQuery, SQLType, Star, and_predicates, column_refs)
 
@@ -103,9 +103,15 @@ def _data_lines(table: str):
     return Comparison(ColumnRef(sql_table(table), ROLE, SQLType.TEXT), "=", Literal(RECORD, SQLType.TEXT))
 
 
+def _words(column: Col) -> ColumnRef:
+    return ColumnRef(sql_table(column.table), words_column(column.position), SQLType.REAL)
+
+
 def _measure(measure: Measure):
     if isinstance(measure, Col):
         return _number(measure)
+    if isinstance(measure, Words):
+        return _words(measure.column)
     if isinstance(measure, DateOf):
         return _day(measure.column)
     if isinstance(measure, Size):
@@ -128,6 +134,8 @@ def _present(measure: Measure):
     """The lines a measure reads: a blank is skipped, in + and - only when both sides are, and a zero denominator leaves its line out."""
     if isinstance(measure, Col):
         return _is_null(_number(measure), negated=True)
+    if isinstance(measure, Words):
+        return _is_null(_words(measure.column), negated=True)
     if isinstance(measure, DateOf):
         return _is_null(_day(measure.column), negated=True)
     if isinstance(measure, Size):
@@ -187,7 +195,7 @@ def _agg_query(program: Agg, catalog: Catalog) -> SelectQuery:
         value = Aggregate("COUNT", _fold(program.measure), distinct=True)
     else:
         value = Aggregate(_FUNCTIONS[program.function], _measure(program.measure))
-        if isinstance(program.measure, (RowArithmetic, PercentOf, Size, Across)):
+        if isinstance(program.measure, (RowArithmetic, PercentOf, Size, Across, Words)):
             guard = _present(program.measure)
     if program.magnitude:
         value = Abs(value)

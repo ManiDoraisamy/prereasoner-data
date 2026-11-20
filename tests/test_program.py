@@ -10,7 +10,7 @@ from engine.program.catalog import Catalog
 from engine.program.decoder import Decoder, POLICY, _Checks, _Conditions, _Option
 from engine.program.execute import run, run_dual
 from engine.program.index import Atom, TableIndex
-from engine.program.language import (Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Contains, DateOf, Equals, InPeriod, InSection, InYears, IsBlank, IsNumber, NotEquals, OnLine, PercentOf, PeriodSpan, Rank, RowArithmetic, SECTION, Show, Size, answer_type_of, coordinates, form_of, tables_of, is_sound, period_from_name)
+from engine.program.language import (Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Contains, DateOf, Equals, InPeriod, InSection, InYears, IsBlank, IsNumber, NotEquals, OnLine, PercentOf, PeriodSpan, Rank, RowArithmetic, SECTION, Show, Size, Words, answer_type_of, coordinates, form_of, tables_of, is_sound, period_from_name)
 from engine.program.lowering import plan_schema, to_query
 from engine.program.names import (A_COUNT, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, AFTER, ANY, BEFORE, BREAKDOWN, SAME, CHECK, EQ, EVERY, IS, LT, NE, NO, VERSUS, ANSWER_TYPES, AVG, CALC, COMPARISONS, COUNT, COUNT_DISTINCT, ENDS, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, EV_ADDS_TWICE, EV_BARE_ZERO, EV_EMPTY, EV_FAILED, EV_FILTER_DID_NOTHING, EV_FRACTION_FOR_COUNT, EV_MANY_ROWS, EV_PRINTED_TIE, EV_RAN,
                                   EV_REPEATED_LINES, EV_ROW_COUNT_FOR_AMOUNT, EV_SHAPE_AGREES, EV_TOO_LARGE_FOR_SHARE, EV_TYPE_AGREES, EV_WRONG_KIND, EVIDENCE, FORMS, GE, GT, HIGHEST, LOWEST, MAX, MIN, MINUS, OVER, PLUS, SEMANTICS, SLOT_AGGREGATE, SLOT_FORM, SLOTS, STARTS, SUM, TIMES, coarse_type, coordinate, slot_of, GRAIN_MONTH)
@@ -575,6 +575,40 @@ def test_a_check_asks_what_the_top_one_is():
 
 
 LOANS = [["Name", "Region", "Loan", "Months", "Score"], ["a", "x", 100.0, 12.0, 1.0], ["b", "y", 500.0, 48.0, 9.0], ["c", "x", 300.0, 60.0, 5.0], ["d", "z", 50.0, 6.0, 2.0]]
+
+
+POSTS = [["Author", "Kind", "Text", "Likes"], ["ana", "reply", "thanks for the quick answer today", 3.0], ["bo", "original", "no", 9.0],
+         ["cy", "reply", "the app fails every time I log in from my phone", 1.0], ["di", "original", "great news for all of us here", 4.0],
+         ["ed", "reply", "where is my card please tell me now", 0.0], ["fa", "reply", "ok then", 2.0]]
+
+
+def test_a_column_of_prose_is_measured_by_its_words():
+    """"What is the length of the longest post (based on the number of words)?", "who is the author of the post with the
+    most words?", "who are the authors of the 4 shortest posts?" (DataBench dev 050_ING/5, /10, /14: no candidate read a
+    post's words, so none was listed): a column of prose (half its cells five words or more) is a measure by its number
+    of words, the same in the typed SQL and the dual emitter, for an aggregate, a line rank and its count; it reads as a
+    sentence and has a formula. The decoder offers it only on a prose column the reading names as the measure."""
+    catalog, table, tables = _setup(POSTS)
+    author, kind, text, likes = (Col(table.id, at) for at in range(4))
+    assert table.prose_columns == (2,), table.prose_columns
+    words = Words(text)
+    assert _answer(Agg(MAX, words, table.id), tables) == ((11.0,),)
+    assert _answer(Agg(AVG, words, table.id, (Equals(kind, "original"),)), tables) == ((4.0,),)    # 1 and 7 words
+    assert _answer(Rank(ENTITY_LINE, table.id, HIGHEST, (), words, (author,)), tables) == (("cy", 11.0),)
+    assert [row[0] for row in _answer(Rank(ENTITY_LINE, table.id, LOWEST, (), words, (author,), count=2), tables)] == ["bo", "fa"]
+    assert read_as(Agg(MAX, words, table.id), catalog) == "the highest of the number of words of Text on \"Sheet1\"", read_as(Agg(MAX, words, table.id), catalog)
+    assert "LEN(TRIM(" in formula(Agg(MAX, words, table.id), tables) and is_sound(Rank(ENTITY_LINE, table.id, HIGHEST, (), words, (author,)))
+    asked = Reading({name: 1.0 for name in coordinates(Rank(ENTITY_LINE, table.id, HIGHEST, (), words, (author,)), catalog.column_kind)})
+    top = Decoder(catalog).decode(asked, k=50).programs[0].program
+    assert top == Rank(ENTITY_LINE, table.id, HIGHEST, (), words, (author,)), top
+    # contrastive: the same reading naming Likes ranks by Likes, and a reading that names no prose measure builds no words
+    likes_read = Reading({name: 1.0 for name in coordinates(Rank(ENTITY_LINE, table.id, HIGHEST, (), likes, (author,)), catalog.column_kind)})
+    decoded = Decoder(catalog).decode(likes_read, k=200).programs
+    assert decoded[0].program == Rank(ENTITY_LINE, table.id, HIGHEST, (), likes, (author,)), decoded[0].program
+    assert not any(isinstance(getattr(scored.program, "measure", None), Words) for scored in decoded)
+    # negative: short names are no prose, and a table of them has no words to measure
+    names, names_table, _ = _setup([["Author", "Likes"], *[[f"user {at}", float(at)] for at in range(8)]])
+    assert names_table.prose_columns == ()
 
 
 def test_a_check_asks_whether_the_top_one_is_the_same_or_compares_two_aggregates():
@@ -1649,7 +1683,7 @@ def test_explain_carries_the_named_contributions():
 
 
 TESTS = [
-    test_several_shown_columns_cost_a_named_coordinate, test_a_stated_number_a_column_holds_reads_as_its_value, test_a_misspelled_word_reads_as_the_sheets_word, test_a_word_only_one_column_holds_says_which, test_several_columns_shown_type_the_same_however_they_stand, test_across_adds_peer_columns_of_a_line, test_the_decoder_reaches_across_when_a_word_asks, test_a_text_other_than, test_answer_types_place_money_quantity, test_decoder_ties_do_not_follow_sheet_order, test_a_family_adding_twice_says_so, test_a_family_of_tabs_reads_as_all_its_tabs, test_axes_are_read_by_their_kind, test_a_question_reads_the_tables_its_links_reach, test_verifier_stops_at_its_budget_of_lines, test_a_condition_search_stops_at_its_budget_of_checks, test_a_value_stands_whole_without_a_pattern_for_each_value,
+    test_a_column_of_prose_is_measured_by_its_words, test_several_shown_columns_cost_a_named_coordinate, test_a_stated_number_a_column_holds_reads_as_its_value, test_a_misspelled_word_reads_as_the_sheets_word, test_a_word_only_one_column_holds_says_which, test_several_columns_shown_type_the_same_however_they_stand, test_across_adds_peer_columns_of_a_line, test_the_decoder_reaches_across_when_a_word_asks, test_a_text_other_than, test_answer_types_place_money_quantity, test_decoder_ties_do_not_follow_sheet_order, test_a_family_adding_twice_says_so, test_a_family_of_tabs_reads_as_all_its_tabs, test_axes_are_read_by_their_kind, test_a_question_reads_the_tables_its_links_reach, test_verifier_stops_at_its_budget_of_lines, test_a_condition_search_stops_at_its_budget_of_checks, test_a_value_stands_whole_without_a_pattern_for_each_value,
     test_every_name_is_from_a_closed_list, test_forms_refuse_what_they_cannot_say, test_signs, test_printed_lines_are_read_by_label_and_never_added, test_shortest_label_first_and_unlabelled_printed_lines, test_a_column_filled_only_on_printed_lines_reads_them,
     test_partial_value_match, test_case_and_spacing_do_not_count, test_periods, test_blanks, test_ties_keep_every_tied_line, test_units, test_mixed_columns, test_repeated_rows, test_sections_nested_bands_and_the_section_shown, test_python_masks_agree_with_the_sql,
     test_calc_shapes, test_rank_across_peer_columns, test_a_rank_keeps_as_many_as_the_question_states, test_the_decoder_proposes_how_many_a_question_states, test_a_check_says_yes_or_no, test_the_decoder_checks_only_when_the_reading_names_a_check, test_a_choice_among_named_values, test_a_check_asks_what_the_top_one_is, test_a_check_asks_whether_the_top_one_is_the_same_or_compares_two_aggregates, test_a_check_answers_in_the_questions_own_words, test_a_read_takes_the_line_after_or_before_the_kept_one, test_new_ast_nodes_render_and_validate, test_plan_schema_holds_only_what_a_query_reads, test_perfect_readings_give_the_gold_first, test_decoder_is_deterministic_and_order_free, test_the_list_does_not_depend_on_hash_order,

@@ -73,13 +73,21 @@ class Across:
             raise ValueError("across adds two or more columns of one table")
 
 
-Measure: TypeAlias = Col | RowArithmetic | PercentOf | Size | DateOf | Across
+@dataclass(frozen=True, slots=True)
+class Words:
+    """A text cell's number of words, line by line: its text, spaces cleaned, split at its spaces ("the longest post",
+    "the 4 shortest posts" by their words). Only a column of prose holds them (CatalogTable.prose_columns); a blank
+    cell is no line."""
+    column: Col
+
+
+Measure: TypeAlias = Col | RowArithmetic | PercentOf | Size | DateOf | Across | Words
 
 
 def measure_columns(measure: Measure) -> tuple[Col, ...]:
     if isinstance(measure, Col):
         return (measure,)
-    if isinstance(measure, DateOf):
+    if isinstance(measure, (DateOf, Words)):
         return (measure.column,)
     if isinstance(measure, Across):
         return measure.columns
@@ -584,7 +592,7 @@ def conditions_of(program: Program) -> tuple[Condition, ...]:
 def measure_coordinates(measure: Measure) -> list[str]:
     if isinstance(measure, Col):
         return [coordinate(SLOT_MEASURE, measure.name)]
-    if isinstance(measure, DateOf):
+    if isinstance(measure, (DateOf, Words)):
         return [coordinate(SLOT_MEASURE, measure.column.name)]
     if isinstance(measure, Across):
         return [coordinate(SLOT_ROW_OP, PLUS), coordinate(SLOT_PEERS, measure.columns[0].table, peers_name(tuple(column.position for column in measure.columns)))]
@@ -709,5 +717,5 @@ def _type_of_column(column: Col, column_kind) -> str:
     return A_NUMBER if kind == "number" else A_DATE if kind in ("date", "period") else A_NAME
 
 
-__all__ = ["Across", "Agg", "Breakdown", "Calc", "Check", "OneOf", "Col", "Compare", "CompareColumns", "CompareLine", "Condition", "Contains", "DateOf", "Equals", "InPeriod", "InYears", "InSection", "IsBlank", "IsNumber", "Measure", "NotEquals", "OnLine", "PercentOf", "PeriodSpan", "Program", "Rank", "RowArithmetic", "SECTION", "Show", "Size",
+__all__ = ["Across", "Agg", "Breakdown", "Calc", "Check", "OneOf", "Col", "Compare", "CompareColumns", "CompareLine", "Condition", "Contains", "DateOf", "Equals", "InPeriod", "InYears", "InSection", "IsBlank", "IsNumber", "Measure", "NotEquals", "OnLine", "PercentOf", "PeriodSpan", "Program", "Rank", "RowArithmetic", "SECTION", "Show", "Size", "Words",
            "TOGETHER", "addresses_printed", "answer_type_of", "coordinates", "shown_together", "conditions_of", "form_of", "measure_columns", "tables_of", "peers_name"]

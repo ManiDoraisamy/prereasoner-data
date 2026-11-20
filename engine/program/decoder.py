@@ -17,7 +17,7 @@ from typing import Callable, Sequence
 from engine.program.catalog import Catalog, CatalogTable
 from engine.program.index import Atom, TableIndex, index_of
 from engine.program.semantics import fold
-from engine.program.language import (Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Condition, Contains, DateOf, Equals, InPeriod, InYears, InSection, IsBlank, IsNumber, NotEquals, OnLine, PercentOf, Program, Rank, RowArithmetic, SECTION, Show, Size, answer_type_of, is_sound, measure_columns, measure_coordinates, peers_name, period_from_name, shown_together)
+from engine.program.language import (Words, Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Condition, Contains, DateOf, Equals, InPeriod, InYears, InSection, IsBlank, IsNumber, NotEquals, OnLine, PercentOf, Program, Rank, RowArithmetic, SECTION, Show, Size, answer_type_of, is_sound, measure_columns, measure_coordinates, peers_name, period_from_name, shown_together)
 from engine.program.names import (A_COUNT, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, ANY, BREAKDOWN, CHECK, CHECK_OPS, COMPARE_OPS, EQ, EVERY, GT, IS, LT, NEIGHBOURS, NO, SAID_ABOVE, SAID_BELOW, SAME, SLOT_NEIGHBOUR, SLOT_QUANTIFIER, SLOT_SAID, VERSUS, AGG, ANCHORS, ANYWHERE, AVG, BY_SIZE, CALC, CALC_OPS, COUNT, COUNT_DISTINCT, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, MAX, MIN, MINUS, NE, NUMBER_AGGREGATES, OVER, PLUS, RANK, ROW_OPS, SHOW, SLOT_AGGREGATE,
                                   SLOT_ANSWER_TYPE, SLOT_BLANK, SLOT_CALC_LEFT, SLOT_CALC_OP, SLOT_COMPARISON, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_DIRECTION, SLOT_ENTITY, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE, SLOT_LISTING, SLOT_MEASURE, SLOT_NUMBER, SLOT_PEERS, SLOT_PERIOD, SLOT_ROW_OP, SLOT_SECTION,
                                   SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, STATED_BY_SIZE, SUM, TIMES, GRAIN_MONTH, PERCENT_OP, coordinate, slot_of)
@@ -117,6 +117,8 @@ def _measure_order(table: CatalogTable, measure) -> tuple:
         return (2, f"~{measure.op if isinstance(measure, RowArithmetic) else TIMES}", tuple(rank[column.position] for column in measure_columns(measure)))
     if isinstance(measure, DateOf):
         return (3, "", (rank[measure.column.position],))
+    if isinstance(measure, Words):
+        return (5, "", (rank[measure.column.position],))
     return (4, "", tuple(sorted(rank[column.position] for column in measure.columns)))
 
 
@@ -704,6 +706,9 @@ class _Search:
                     options.append(_Option(peers.score + weight, Across(tuple(Col(table.id, position) for position in peers.payload))))
         if dates:
             options.extend(_Option(self.s(coordinate(SLOT_MEASURE, Col(table.id, position).name)), DateOf(Col(table.id, position))) for position in index.date_columns)
+        # a column of prose measured by its words ("the longest post"), where the reading names it as the measure
+        options.extend(_Option(self.s(coordinate(SLOT_MEASURE, Col(table.id, position).name)), Words(Col(table.id, position)))
+                       for position in table.prose_columns if self.s(coordinate(SLOT_MEASURE, Col(table.id, position).name)) > 0)
         held = sorted(((option, _measure_order(table, option.payload)) for option in options), key=lambda item: (round(-item[0].score, _ROUND), item[1]))
         self.slots[key] = [option for option, _ in held]
         return self.slots[key]

@@ -18,6 +18,8 @@ KIND_TABLE = "table"
 KIND_FAMILY = "family"
 KIND_NOTES = "notes"
 SECTION_NAME = "§"      # the band column's shown name: a sign, not a word a question could hold
+PROSE_WORDS = 5         # a text column of prose: half its cells hold at least this many words
+PROSE_LINES = 5         # ... over at least this many filled text cells
 
 
 
@@ -90,6 +92,28 @@ class CatalogTable:
     @cached_property
     def section_folds(self) -> list[str | None]:
         return [None if text is None else fold(text) for text in self.section_texts]
+
+    @cached_property
+    def prose_columns(self) -> tuple[int, ...]:
+        """Text columns of prose: at least PROSE_LINES filled text cells, half of them PROSE_WORDS words or more (a post,
+        a review, a comment). Their words are a number a question can rank or add ("the longest post")."""
+        out = []
+        for position, column in enumerate(self.table.columns):
+            if column.kind == V_NUMBER:
+                continue
+            counts = sorted(len(text.split()) for text, number in zip(self.texts[position], self.numbers[position]) if text is not None and number is None)
+            if len(counts) >= PROSE_LINES and counts[len(counts) // 2] >= PROSE_WORDS:
+                out.append(position)
+        return tuple(out)
+
+    @cached_property
+    def word_counts(self) -> dict[int, list[float | None]]:
+        """Each prose column's cells as their number of words (texts are stored with spaces cleaned); None for a blank or a figure."""
+        return {position: [None if text is None or number is not None else float(len(text.split())) for text, number in zip(self.texts[position], self.numbers[position])]
+                for position in self.prose_columns}
+
+    def words(self, position: int) -> list[float | None]:
+        return self.word_counts[position]
 
     @cached_property
     def label_folds(self) -> list[str]:

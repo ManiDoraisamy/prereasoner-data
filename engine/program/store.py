@@ -3,7 +3,7 @@
 They live on the request's one database (engine/prepared.py RequestDatabase.program_tables) beside the request's own tables, and every name
 starts with an underscore, which no request table's canonical name does (engine/request_validation.canonical_table_name strips it): catalog
 table t3 is the SQL table _t3. It holds, per line: _line (its order), _role, _label (fold) and _label_len, _section (fold), _section_text, _section_path (fold). Per column at position p: c{p}_t the cell as shown, c{p}_f its fold, c{p}_n its number as the sheet's binary float, which SQLite computes natively for the candidates and both deterministic programs read as its
-shortest decimal for a chosen one (ColumnSpec.binary_float), c{p}_d its ISO day. A blank is NULL in all four. _t3_peers holds one row per line and column: _line, _role, _label, _section, _name, _f, _n. "_one" is the one row
+shortest decimal for a chosen one (ColumnSpec.binary_float), c{p}_d its ISO day. A blank is NULL in all four. A column of prose (CatalogTable.prose_columns) also holds c{p}_w, its cell's number of words. _t3_peers holds one row per line and column: _line, _role, _label, _section, _name, _f, _n. "_one" is the one row
 a calculation selects from. Identifiers are ours, so nothing a sheet writes reaches SQL except as a bound value or a typed literal.
 """
 from __future__ import annotations
@@ -40,6 +40,11 @@ def table_id_of(sql_name: str) -> str:
     return sql_name[1:]
 
 
+def words_column(position: int) -> str:
+    """A prose column's number of words per line (CatalogTable.prose_columns): stored only for those columns."""
+    return f"c{position}_w"
+
+
 def peers_table(table_id: str) -> str:
     return f"_{table_id}_peers"
 
@@ -69,6 +74,7 @@ def table_columns(catalog: Catalog, sql_name: str) -> list[tuple[str, str]]:
     columns = [(LINE, INTEGER), (ROLE, TEXT), (LABEL, TEXT), (LABEL_LENGTH, INTEGER), (SECTION_FOLD, TEXT), (SECTION_TEXT, TEXT), (SECTION_PATH, TEXT)]
     for position in range(len(table.columns)):
         columns.extend(((text_column(position), TEXT), (fold_column(position), TEXT), (number_column(position), REAL), (day_column(position), DATE)))
+    columns.extend((words_column(position), REAL) for position in table.prose_columns)
     return columns
 
 
@@ -93,12 +99,14 @@ class RequestTables:
         table = self.catalog.table(table_id)
         columns = [f'"{name}" {_STORAGE[kind]}' + (" PRIMARY KEY" if name == LINE else "") for name, kind in table_columns(self.catalog, sql_table(table_id))]
         self.connection.execute(f'CREATE TABLE "{sql_table(table_id)}" ({", ".join(columns)})')
+        words = [table.words(position) for position in table.prose_columns]
         width = len(columns)
         rows = []
         for i, line in enumerate(table.lines):
             row = [i, line.role, table.label_folds[i], len(table.label_folds[i]), table.section_folds[i], table.section_texts[i], table.section_paths[i]]
             for position in range(len(table.columns)):
                 row.extend((table.texts[position][i], table.folds[position][i], table.numbers[position][i], table.days[position][i]))
+            row.extend(held[i] for held in words)
             rows.append(row)
         self.connection.executemany(f'INSERT INTO "{sql_table(table_id)}" VALUES ({",".join("?" * width)})', rows)
         self.connection.commit()

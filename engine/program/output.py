@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 from engine.program.catalog import Catalog, CatalogTable, KIND_FAMILY
 from engine.program.index import index_of
-from engine.program.language import (Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Condition, Contains, DateOf, Equals, InPeriod, InYears, InSection, IsBlank, IsNumber, Measure, NotEquals, PercentOf, Program, Rank, RowArithmetic, SECTION, Show, Size, addresses_printed, answer_type_of, measure_columns)
+from engine.program.language import (Words, Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Condition, Contains, DateOf, Equals, InPeriod, InYears, InSection, IsBlank, IsNumber, Measure, NotEquals, PercentOf, Program, Rank, RowArithmetic, SECTION, Show, Size, addresses_printed, answer_type_of, measure_columns)
 from engine.program.names import (A_PERCENT, AFTER, ANY, SAME, ANYWHERE, EQ, EVERY, IS, NO, AVG, COUNT, COUNT_DISTINCT, ENDS, ENTITY_GROUP, ENTITY_LINE, GE, GT, HIGHEST, LE, LT, MAX, MIN, MINUS, NE, OVER, PLUS, STARTS, SUM, TIMES)
 from engine.program.scoring import ScoredProgram
 from engine.program.semantics import fold, number_text, share_forms
@@ -93,6 +93,8 @@ def _where_words(catalog: Catalog, where: tuple[Condition, ...]) -> str:
 def _measure_words(catalog: Catalog, measure: Measure) -> str:
     if isinstance(measure, Col):
         return _name(catalog, measure)
+    if isinstance(measure, Words):
+        return f"the number of words of {_name(catalog, measure.column)}"
     if isinstance(measure, DateOf):
         return _name(catalog, measure.column)
     if isinstance(measure, Size):
@@ -297,7 +299,7 @@ def cells_used(program: Program, tables: RequestTables, rows: tuple[tuple, ...])
                 for column in program.shown:
                     add(line, column.position)
     elif isinstance(program, (Agg, Breakdown)):
-        columns = measure_columns(program.measure) if isinstance(program.measure, (Col, RowArithmetic, PercentOf, Size, DateOf, Across)) else ()
+        columns = measure_columns(program.measure) if isinstance(program.measure, (Col, RowArithmetic, PercentOf, Size, DateOf, Across, Words)) else ()
         if isinstance(program, Breakdown):      # a line with a blank key or unit is in no group
             folds = [table.days[column.position] if getattr(program, "grain", None) is not None and at == 0 else table.section_folds if column.position == SECTION else table.folds[column.position] for at, column in enumerate(program.groups)]
             kept = [i for i in kept if all(held[i] is not None for held in folds)]
@@ -351,6 +353,8 @@ def _line_is_top(program: Rank, table: CatalogTable, i: int, top: set[str]) -> b
 def _line_value(measure: Measure, table: CatalogTable, i: int):
     if isinstance(measure, Col):
         return table.numbers[measure.position][i]
+    if isinstance(measure, Words):
+        return table.words(measure.column.position)[i]
     if isinstance(measure, DateOf):
         return table.days[measure.column.position][i]
     if isinstance(measure, Size):
@@ -543,7 +547,7 @@ def _agg_formula(program: Agg, table: CatalogTable, tables: RequestTables) -> st
     if isinstance(program.measure, Col) and plain:
         target = _range(table, program.measure.position)
         body = f"{_IFS[function]}({target},{','.join(criteria)})" if criteria else f"{_SHEET_FUNCTION[function]}({target})"
-    elif isinstance(program.measure, (RowArithmetic, PercentOf, Size, Across)):
+    elif isinstance(program.measure, (RowArithmetic, PercentOf, Size, Across, Words)):
         body = _arithmetic_formula(program, table, tables)
     else:
         cells = compress(cells_used(program, tables, ()))
@@ -562,7 +566,15 @@ def _arithmetic_formula(program: Agg, table: CatalogTable, tables: RequestTables
     return f"{function}({','.join(terms)})" if terms else "0"
 
 
+def _words_formula(cells: str) -> str:
+    """A cell's number of words as a sheet counts them: its spaces, trimmed, plus one."""
+    return f'(LEN(TRIM({cells}))-LEN(SUBSTITUTE(TRIM({cells})," ",""))+1)'
+
+
 def _line_term(measure: Measure, table: CatalogTable, i: int) -> str | None:
+    if isinstance(measure, Words):
+        address = _cell_address(table, i, measure.column.position)
+        return None if address is None or table.words(measure.column.position)[i] is None else _words_formula(_with_tab(table, i, address))
     if isinstance(measure, Col):
         address = _cell_address(table, i, measure.position)
         return None if address is None or table.numbers[measure.position][i] is None else _with_tab(table, i, address)
@@ -589,6 +601,8 @@ def _range_terms(measure: Measure, table: CatalogTable) -> str:
     """Row arithmetic over whole columns, for a rank's MATCH: the measure's columns as ranges under its operators."""
     if isinstance(measure, (Col, DateOf)):
         return _range(table, measure_columns(measure)[0].position)
+    if isinstance(measure, Words):
+        return _words_formula(_range(table, measure.column.position))
     if isinstance(measure, Size):
         return f"ABS({_range_terms(measure.measure, table)})"
     if isinstance(measure, Across):
@@ -626,6 +640,8 @@ def _rank_formula(program: Rank, table: CatalogTable, tables: RequestTables) -> 
         order = "-1" if program.direction == HIGHEST else "1"
         if program.function == COUNT:
             inner = f"COUNTIFS({key},UNIQUE({key}){tail})"
+        elif isinstance(program.measure, Words):
+            return "=NA()"      # words have no range a MAXIFS reads: the read-as and the cells state it
         else:
             columns = measure_columns(program.measure)
             inner = f"{_IFS[program.function]}({_range(table, columns[0].position)},{key},UNIQUE({key}){tail})"
