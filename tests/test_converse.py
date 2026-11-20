@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import os
 import sys
 import types
 from unittest.mock import patch
@@ -227,7 +226,8 @@ def test_a_malformed_converse_body_is_a_client_error_not_a_500():
 
 
 def test_unavailable_gemini_reaches_reference_generation_as_llm_unavailable():
-    with patch.dict('os.environ', {'EXTERNAL_LLM_ENABLED': 'false'}):
+    from engine import config as cfg
+    with patch.object(cfg, 'GOOGLE_CLOUD_PROJECT', None):
         try:
             converse.generate_master('series', ['series'], [['Doyle']])
         except llm.LLMUnavailable:
@@ -312,22 +312,6 @@ def test_no_entities_returns_empty_without_calling_the_model():
     assert "user" not in cap, "the model was called for an empty entity list"
 
 
-def test_external_llm_requires_deployment_authorization():
-    import engine.config as cfg
-
-    previous = os.environ.get("EXTERNAL_LLM_ENABLED")
-    try:
-        os.environ.pop("EXTERNAL_LLM_ENABLED", None)
-        assert not cfg.external_llm_enabled()
-        os.environ["EXTERNAL_LLM_ENABLED"] = "true"
-        assert cfg.external_llm_enabled()
-    finally:
-        if previous is None:
-            os.environ.pop("EXTERNAL_LLM_ENABLED", None)
-        else:
-            os.environ["EXTERNAL_LLM_ENABLED"] = previous
-
-
 def test_trace_deletion_filters_by_conversation():
     import engine.trace as trace
 
@@ -398,7 +382,6 @@ TESTS = [
     test_fallback_when_model_returns_one_nested_json_blob,
     test_fallback_handles_a_code_fence,
     test_no_entities_returns_empty_without_calling_the_model,
-    test_external_llm_requires_deployment_authorization,
     test_trace_deletion_filters_by_conversation,
 ]
 

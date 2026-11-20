@@ -72,7 +72,7 @@ const ORCH = (()=>{ try{
 }catch(_){} return WB.chat!==false; })();
 const CHAT_ENDPOINT = API_BASE + (WB.chatEndpoint || '/chat');
 // ---- external LLM: /chat sends wording context and schema metadata to Gemini.
-// Only explicit /api/master/generate sends reference cells. EXTERNAL_LLM_ENABLED is the operator switch. The
+// Only explicit /api/master/generate sends reference cells. Gemini is always on; there is no switch. The
 // durable disclosure is /privacy; do not add notices to the answer rail. ?chat=0 is a developer
 // routing control that runs the deterministic /api/reason path without the orchestrator.
 let HISTORY=[];                                  // lean cross-turn transcript for the orchestrator [{role,content}]

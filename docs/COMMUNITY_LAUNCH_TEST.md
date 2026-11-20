@@ -49,7 +49,8 @@ Test ID: `CE-GCP-001`
    ```
 
    The installer must not prompt for a model key. It enables Vertex AI, grants the chat and engine
-   service accounts `roles/aiplatform.user`, and imports the pinned Community seed artifact.
+   service accounts `roles/aiplatform.user`, creates the engine's Gemini Developer API key in Secret
+   Manager (Terraform, never shown), and imports the pinned Community seed artifact.
 
    It must also complete with NO console work. A Community deployment signs users in with Firebase
    ANONYMOUS auth, which the hosting release enables over the API. Google sign-in is deliberately

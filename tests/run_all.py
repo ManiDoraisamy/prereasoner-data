@@ -3,8 +3,8 @@
 Runs each suite as a subprocess and aggregates exit codes. Suites self-skip when their infra isn't
 present, so this is safe to run anywhere:
   - test_mcp            always runs (in-process stub; no external deps)
-  - test_orchestrator   runs iff Gemini is enabled and configured (EXTERNAL_LLM_ENABLED, GOOGLE_CLOUD_PROJECT,
-                        application-default credentials; else SKIP, exit 0)
+  - test_orchestrator   runs iff Gemini is configured (GOOGLE_CLOUD_PROJECT, application-default
+                        credentials; else SKIP, exit 0)
   - test_world/geo/...  run iff KB_PG_PASSWORD is set (else SKIP, exit 0) — the real engine tests
 
 The PRE-DEPLOY gate is `regress.run_regression` (offline text-to-SQL goldens + world-model-join goldens);

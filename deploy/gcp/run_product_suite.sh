@@ -39,7 +39,7 @@ docker run --rm --cpus=4 --memory=16g \
   --workdir /app \
   --env PATH=/opt/node:/opt/venv/bin:/usr/local/bin:/usr/bin:/bin \
   --env RUN_ENGINE_TESTS=0 --env RUN_ORCHESTRATOR_TESTS=0 \
-  --env INSTALL_CI_REQUIREMENTS=1 --env EXTERNAL_LLM_ENABLED=false \
+  --env INSTALL_CI_REQUIREMENTS=1 \
   --entrypoint /bin/sh "$image" /workspace/deploy/gcp/run_hermetic_suite.sh
 
 docker run -d --name "$db_name" --network "$network" --network-alias product-db \

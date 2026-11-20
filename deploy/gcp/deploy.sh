@@ -292,7 +292,7 @@ fi
 [[ -z "$(git -C "$ROOT" status --porcelain --untracked-files=all)" ]] \
   || die "deployment requires a clean checkout; commit or remove every local change first"
 
-confirm DEPLOY "Prereasoner will create a ZONAL Cloud SQL instance, required Cloud Run engine and chat services, Firebase Hosting release, Secret Manager secrets, Cloud Builds, Vertex AI Gemini access for both services, and a small versioned state bucket in ${PROJECT_ID}. These are billable resources; Gemini is billed per request. Cloud Run scales to zero; Cloud SQL is the main recurring cost."
+confirm DEPLOY "Prereasoner will create a ZONAL Cloud SQL instance, required Cloud Run engine and chat services, Firebase Hosting release, Secret Manager secrets (including a Gemini API key restricted to the Gemini API, for the engine), Cloud Builds, Vertex AI Gemini access for both services, and a small versioned state bucket in ${PROJECT_ID}. These are billable resources; Gemini is billed per request. Cloud Run scales to zero; Cloud SQL is the main recurring cost."
 
 if ((!SKIP_BOOTSTRAP)); then
   [[ "$COMMUNITY_SEED_URI" =~ ^https:// ]] || die "COMMUNITY_SEED_URI must be an HTTPS object URL"

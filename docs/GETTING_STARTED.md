@@ -20,9 +20,9 @@ that can exercise the code you are touching.
 | Typed AST, routing, reference selection | `requirements-ci-windows.lock.txt`; no model weights or Postgres |
 | Source parser or synchronizer | `db/sync/requirements.lock.txt` on Linux; PostgreSQL only for an actual load |
 | Browser state and static UI | Node 20 and a static/Firebase server |
-| Full engine request | Runtime weights and PostgreSQL |
+| Full engine request | Runtime weights, PostgreSQL, and Gemini: `GOOGLE_CLOUD_PROJECT` with the Vertex AI API enabled and Application Default Credentials, and a Gemini Developer API key in `GOOGLE_API_KEY` for the own-data closed choices (the Decisions API) |
 | World grounding | Runtime weights and a seeded knowledgebase with the required offline projections |
-| Conversational presentation and chat | Everything above plus `GOOGLE_CLOUD_PROJECT` with the Vertex AI API enabled, Application Default Credentials, and `EXTERNAL_LLM_ENABLED=true` |
+| Conversational presentation and chat | Everything above; chat uses the same Vertex AI project and credentials |
 
 Start with hermetic tests. Add infrastructure only when the owner you are changing needs it.
 
@@ -103,14 +103,13 @@ docker compose --profile seed run --rm seed
 docker compose up --build
 ```
 
-For the complete local UI/chat installation, set `GOOGLE_CLOUD_PROJECT` in `.env` (a project with the
-Vertex AI API enabled) and run `gcloud auth application-default login` once before the last command.
-Compose enables Gemini (`EXTERNAL_LLM_ENABLED=true`) for its engine and chat services and mounts your
-gcloud configuration directory read-only; on Windows set `GCLOUD_CONFIG_DIR` to `%APPDATA%\gcloud`.
-No model API key exists. Compose also mounts the canonical `web/public` directory into the chat
-service, so local development and Firebase Hosting use one static-file source. Without a project the
-stack still starts: chat answers 503, and the engine-only service remains available for backend-only
-work.
+Gemini is always on, so before the last command set `GOOGLE_CLOUD_PROJECT` in `.env` (a project with the
+Vertex AI API enabled), set `GOOGLE_API_KEY` to a Gemini Developer API key (the engine's Decisions calls), and
+run `gcloud auth application-default login` once. Compose passes the project to its engine and chat services,
+the key to the engine alone, and mounts your gcloud configuration directory read-only; on Windows set
+`GCLOUD_CONFIG_DIR` to `%APPDATA%\gcloud`. Compose also mounts the canonical `web/public` directory into the chat
+service, so local development and Firebase Hosting use one static-file source. Without them the stack still
+starts, but chat answers 503 and the engine's Gemini calls fail; the hermetic tests need neither.
 
 The seed is a one-time operation. It builds the resolution index, taxonomy, and world tables described in
 [../db/README.md](../db/README.md). The engine listens on `http://localhost:8080` and Compose sets the development-

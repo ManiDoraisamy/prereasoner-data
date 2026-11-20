@@ -73,8 +73,8 @@ of the marketing website.
 Release readiness belongs to one exact, clean, tagged commit that has completed the checklist below.
 A dirty working tree or a prior deployment is not release evidence. Hosted readiness must be recorded
 separately for the exact image digest and database release used in production.
-External LLM calls are disabled unless the operator enables the deployment switch. Hosted operators
-must publish an accurate privacy notice and establish an appropriate legal basis and processor terms.
+Gemini calls are always on; there is no deployment switch. Hosted operators must publish an accurate
+privacy notice and establish an appropriate legal basis and processor terms.
 The target Terraform configuration uses dedicated service accounts, a non-superuser serving role,
 Cloud SQL backups/PITR, immutable image digests, daily conversation cleanup, and RTDB cleanup when trace
 streaming is enabled. Those are code-level guarantees until a plan against the intended deployment state is
@@ -143,14 +143,14 @@ runner image and records that runtime in the model candidate manifest.
 
 ## Deployment Boundary
 
-Terraform defaults to a core engine with external model processing disabled: no Vertex AI API,
-IAM grant, or Gemini call. Gemini on Vertex AI, in the deployment's own project, is the only
-external model. Set `enable_external_llm=true` for the engine's Gemini features alone, or set
-`enable_orchestrator=true` and provide an immutable `chat_image`, which enables Gemini for the
-engine and chat together. Neither mode needs a model API key or secret: each service account is
-granted `roles/aiplatform.user`. Reference enrichment is
-also independently opt-in through code approval, database grants, and
-`ENRICHMENT_ACTIVE_DATASETS`.
+Gemini, in the deployment's own project, is the only external model, and it is always on: there is
+no switch. Terraform enables the Vertex AI API and grants the engine's service account
+`roles/aiplatform.user`; set `enable_orchestrator=true` and provide an immutable `chat_image` to add
+the chat service, whose service account receives the same grant. For the engine's own-data closed
+choices, Terraform creates a Gemini Developer API key restricted to the Generative Language API,
+stores it in the Secret Manager secret `${service_name}-gemini-api-key`, and gives it to the engine
+alone as `GOOGLE_API_KEY`; no key is collected from the operator. Reference enrichment is
+independently opt-in through code approval, database grants, and `ENRICHMENT_ACTIVE_DATASETS`.
 
 Do not apply this repository's Terraform to an existing GCP project from an empty state.
 Validation proves configuration shape, not ownership of live resources; restore the real

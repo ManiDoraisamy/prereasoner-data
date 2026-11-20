@@ -39,7 +39,8 @@ It shows one cost confirmation, then:
 1. creates a private, versioned Terraform-state bucket in this project;
 2. enables the required APIs and creates Artifact Registry;
 3. enables Vertex AI for Gemini, which the chat service and the engine call, and grants both Cloud
-   Run service accounts `roles/aiplatform.user`;
+   Run service accounts `roles/aiplatform.user`; enables the Gemini Developer API and creates an API key
+   restricted to it, kept in Secret Manager for the engine's own-data questions (Decisions);
 4. downloads and verifies the public manifested weights;
 5. builds and regression-tests immutable engine and chat images in Cloud Build;
 6. applies the Zonal, scale-to-zero Community Terraform profile with chat enabled;

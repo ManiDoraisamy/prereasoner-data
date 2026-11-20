@@ -467,9 +467,9 @@ def test_public_deployer_has_isolated_state_and_cost_safe_defaults():
         assert required in deploy
     assert "prompt_and_store_chat_key" not in deploy
     assert "cleanup_chat_secret" not in deploy
-    # Gemini on Vertex AI is the only model; enabling chat enables it for both services.
+    # Gemini is the only external model and always on: the installer passes no model provider and no switch.
     assert "anthropic" not in deploy.lower() and "llm_provider" not in deploy
-    assert "-var=enable_external_llm" not in deploy
+    assert "external_llm" not in deploy.lower()
     assert "Type %s to continue" in deploy
     assert "gcloud auth login --update-adc" in deploy
     assert "--allow-unauthenticated" not in deploy

@@ -137,14 +137,19 @@ Full sync variant (several hours) and per-type syncs: `db/README.md` §3.
 here because the seed is a one-time, long-running, Wikidata-rate-limited task that is
 easier to babysit interactively.
 
-### 3a. Chat orchestrator
+### 3a. Gemini and the chat orchestrator
 
-The engine does not require an external model. Terraform can create the chat service and its
-dedicated service account. The chat model is Gemini on Vertex AI in this project (`gemini_model`,
-default `gemini-3.8-flash`; `gemini_location`, default `global`); no API key or secret is involved.
-Enabling chat enables Gemini for the engine too (reference generation): Terraform enables the
-Vertex AI API, grants both service accounts
-`roles/aiplatform.user`, and sets `EXTERNAL_LLM_ENABLED=true` on both services.
+Gemini is the only external model, and it is always on: there is no switch. Every apply enables the
+Vertex AI API and grants the engine's service account `roles/aiplatform.user` (reference generation,
+in this project: `gemini_model`, default `gemini-3.8-flash`; `gemini_location`, default `global`).
+For the engine's own-data closed choices (the Gemini Developer API's Decisions endpoint), Terraform
+enables the Generative Language and API Keys APIs, creates an API key restricted to the Generative
+Language API (`google_apikeys_key.gemini`), stores it in the `${service_name}-gemini-api-key` secret,
+grants the engine's service account access to that secret, and injects it into the engine alone as
+`GOOGLE_API_KEY`. No key is collected from the operator, and none reaches the chat service.
+
+Terraform can also create the chat service and its dedicated service account, which receives its
+own `roles/aiplatform.user` grant and calls Gemini on Vertex AI with no API key or secret.
 
 ```bash
 python deploy/gcp/build_context.py --target chat --output /tmp/prereasoner-chat-build
@@ -162,11 +167,10 @@ terraform -chdir=infra apply \
   -var chat_image=<chat-image@sha256:digest>
 ```
 
-Enabling the module is the authoritative deployment switch for external model processing. Publish
-an accurate `/privacy` page and complete the operator review in `PRIVACY.md` before exposing the
-Hosting route. Do not add a generic popup or model-provider choice to the reference client.
+Publish an accurate `/privacy` page and complete the operator review in `PRIVACY.md` before exposing
+the Hosting route. Do not add a generic popup or model-provider choice to the reference client.
 
-The chat startup probe calls `/readyz`, which checks the selected provider configuration and imports
+The chat startup probe calls `/readyz`, which checks the Gemini configuration and imports
 the real MCP server module. `/healthz` is liveness only and must not be used as the deployment
 readiness gate.
 
@@ -215,10 +219,8 @@ Community deployment explicitly enables the reviewed `iana_country` dataset.
 - `serving_db_role` — name of the mandatory non-superuser Cloud SQL role.
 - `admin_emails` - explicit Firebase email allowlist for `/api/admin/*`. Empty (the default)
   disables admin API access; forks never inherit a maintainer identity.
-- `enable_external_llm` - explicit opt-in for the engine's Gemini feature (reference generation)
-  in a deployment without chat. It defaults to false;
-  `enable_orchestrator=true` enables them regardless, because chat needs Gemini.
 - `gemini_model`, `gemini_location` - the Vertex AI Gemini model and location both services use.
+  Gemini itself has no on/off variable.
 - `enrichment_active_datasets` — the deployment **allowlist** (2nd activation key; the 1st is
   per-dataset code approval in `engine/enrichment/registry.py`). Empty = enrichment off.
 
@@ -231,6 +233,13 @@ Community deployment explicitly enables the reviewed `iana_country` dataset.
 > removes both Anthropic secret bindings and the `ANTHROPIC_*` / `LLM_PROVIDER` environment, and
 > adds the Vertex AI grants. The out-of-band Anthropic secret itself was never Terraform-managed:
 > delete it with `gcloud secrets delete` once the new revision serves.
+>
+> Upgrade note: Gemini no longer has an on/off variable or environment switch; remove the old
+> external-model variable from saved variable files. The next plan drops the switch's environment
+> entry from both services, keeps an existing engine Vertex AI grant (a `moved` block re-addresses
+> it) or creates it, enables the Generative Language and API Keys APIs, and adds the engine's
+> Gemini API key, its `${service_name}-gemini-api-key` secret, the engine's accessor grant, and
+> `GOOGLE_API_KEY` on the engine.
 >
 > Upgrade note: `admin_emails` now reaches the service as an explicit `ADMIN_EMAILS` env var, and
 > `engine/admin.py` no longer carries a hardcoded owner fallback. An existing deployment that used

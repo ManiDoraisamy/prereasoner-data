@@ -8,9 +8,9 @@ structural relevance signals, and the own-data readers' readings of a question. 
 a deterministic builder makes every own-data query a typed AST from the readers' readings, and the
 engine validates, renders, and executes it. Selection, route ownership, source-key authorization,
 calculation semantics, SQL rendering, and execution are deterministic for fixed inputs and pinned
-artifacts. Gemini, an optional external model, serves the chat orchestrator, starter questions and
-reference generation; it takes no part in own-data query selection
-([Gemini](#gemini-external-optional)).
+artifacts. Gemini, an external model that is always on, serves the chat orchestrator, starter questions
+and reference generation on Vertex AI, and answers the engine's own-data closed choices on the Decisions
+API with probabilities over options the engine built, never SQL ([Gemini](#gemini-external-always-on)).
 
 Schema.org 30.0 is the required common semantic coordinate system. The current implementation uses it
 for property/class evidence and world-resolution proposals, but own-data noun/column/value bindings
@@ -282,17 +282,19 @@ The exact per-property and per-class support, thresholds, precision, recall, F1,
 counts are in `engine/data/schema_property_model.json`. Training identity, dependencies, source
 releases, split policy, seed, and metrics are in `engine/data/schema_training_manifest.json`.
 
-### Gemini (external, optional)
+### Gemini (external, always on)
 
-- Model: Gemini on Vertex AI (`GEMINI_MODEL`, default `gemini-3.8-flash`), called through
-  `engine/llm.py`. It is an external service, not part of the weight bundle, and Prereasoner does not
-  train or fine-tune it.
-- Gate: it runs only when the operator enabled external models (`EXTERNAL_LLM_ENABLED`, default
-  off; the guided Community deployment turns it on together with chat) and configured a Vertex AI
-  project.
-- Uses: the chat orchestrator's tool loop, starter questions, and explicit reference-table generation.
-  All sit outside the SQL planner; see [MCP.md](MCP.md). Own-data query selection calls no external
-  model.
+- Model: Gemini on Vertex AI (`GEMINI_MODEL`, default `gemini-3.8-flash`) and the Gemini Developer
+  API's closed-choice Decisions model (`DECISIONS_MODEL`, default `gemini-decision-1`), both called
+  through `engine/llm.py`. They are external services, not part of the weight bundle, and Prereasoner
+  does not train or fine-tune them.
+- Configuration: always on, with no switch. Vertex AI needs a project (`GOOGLE_CLOUD_PROJECT`) and
+  Application Default Credentials; the Decisions API needs a key (`GOOGLE_API_KEY`), which a
+  deployment reads from Secret Manager.
+- Uses: on Vertex AI, the chat orchestrator's tool loop, starter questions, and explicit
+  reference-table generation, all outside the SQL planner (see [MCP.md](MCP.md)). On the Decisions
+  API, own-data questions: closed choices among options the engine built, answered as probabilities,
+  never text, SQL, or a program.
 
 ### Entity-resolution embedder
 

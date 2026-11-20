@@ -64,8 +64,8 @@ with the conversation. The true direct path
 (`?chat=0`, no model in front of the engine) stays deterministic: it accepts already-persisted
 metadata but never mints it.
 
-Marginal cost: ~50-150 output tokens on a round that already runs. Gates: `EXTERNAL_LLM_ENABLED`
-and the existing paid-call budgets, unchanged.
+Marginal cost: ~50-150 output tokens on a round that already runs. Gate: the existing paid-call
+budgets, unchanged (Gemini is always on; there is no switch).
 
 ## Determinism and provenance
 

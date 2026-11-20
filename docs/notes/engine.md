@@ -71,9 +71,10 @@ The engine is a proper package run from the repo root (no `sys.path` hacks).
 | `DEVICE` | `cpu` | torch device for the router/encoder (`cuda` honored only if available). |
 | `BASE_MODEL_ID` | `Qwen/Qwen2.5-0.5B` | the Qwen base the LoRA adapter attaches to; matches the training/ package. |
 | `KB_MODEL_ROUTE` | `1` | `0` disables model-driven column routing (value-membership fallback). |
-| `EXTERNAL_LLM_ENABLED` | `false` | Authoritative switch for every Gemini call (`engine/llm.py`). |
-| `GOOGLE_CLOUD_PROJECT` | *(unset)* | OPTIONAL. The Vertex AI project for Gemini (ADC credentials, no key): `/api/master/generate`. Own-data selection and factual presentation do not need Gemini. |
+| `GOOGLE_CLOUD_PROJECT` | *(unset)* | REQUIRED (Gemini is always on; there is no switch). The Vertex AI project for Gemini (ADC credentials, no key): `/api/master/generate`. Factual presentation does not need Gemini. |
 | `GEMINI_MODEL` / `GEMINI_LOCATION` | `gemini-3.8-flash` / `global` | the Vertex AI model and location. |
+| `GOOGLE_API_KEY` | *(unset)* | REQUIRED. The Gemini Developer API key for the own-data closed choices (`engine/llm.py:decide`, the Decisions API); a deployment reads it from Secret Manager. Never logged. |
+| `DECISIONS_MODEL` | `gemini-decision-1` | the Decisions API model. |
 | `GEO_TEST_SUB` | `geotest` | tests only. |
 
 ## Data files (engine/data — see its README for the full table)
@@ -154,11 +155,11 @@ records the engine surface for maintainers.
   answers. Structured values, nulls, currency and percentage evidence determine factual text;
   clarification and retry messages come from the engine envelope. No computed results are sent to Gemini.
 - **`engine/server.py`**: `POST /api/converse` (`_post_converse`) — Firebase-auth'd like the reason
-  routes; uses the shared deterministic renderer. The Gemini switch does not disable factual rendering.
-- **`engine/reference_generation.py`**: the explicit reference-fill feature, the engine's one Gemini
-  path. It uses the single `engine/llm.py` client and honors the deployment switch. Own-data query
-  selection calls no external model; how the question was read is the response's `read_as`, shown as
-  the turn's "read as" line.
+  routes; uses the shared deterministic renderer, which calls no model.
+- **`engine/reference_generation.py`**: the explicit reference-fill feature, the engine's Vertex AI
+  Gemini path. It uses the single `engine/llm.py` client. Own-data questions use the same client's
+  `decide` (the Decisions API: probabilities over the engine's built options); how the question was
+  read is the response's `read_as`, shown as the turn's "read as" line.
 - **`engine/knowledge.py`** (`KnowledgeReasoner.serve`): the COVERAGE PRE-GATE (`_has_data_signal` → return
   `low_confidence` before reasoning) and `_tag_present` (apply the `present` flag when a real answer
   is human-toned), applied across both the geo and composed paths. `KnowledgeReasoner` also lives here.
@@ -167,5 +168,6 @@ records the engine surface for maintainers.
   a column is data, not tone). Lexicons: `_DATA_INTENT`, `_META_STOP`, `_HUMAN_CUE`, `_HUMAN_RE`.
 - **`engine/trace.py`** (`stream_final`): streams `low_confidence` and `present` alongside the
   existing terminal nodes.
-- **`engine/config.py`**: `GOOGLE_CLOUD_PROJECT` (with `EXTERNAL_LLM_ENABLED`) is OPTIONAL for the
-  engine — they enable reference generation. `/api/converse` renders facts locally.
+- **`engine/config.py`**: `GOOGLE_CLOUD_PROJECT` (Vertex AI: reference generation) and `GOOGLE_API_KEY`
+  (the Decisions API: own-data closed choices) configure the always-on Gemini; there is no switch.
+  `/api/converse` renders facts locally.

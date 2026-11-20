@@ -2,7 +2,8 @@
 
 No network and no credentials: the google-genai client is replaced by fakes, while every request is
 built from the real SDK types, so a field the pinned SDK does not accept fails here first. Pins: the
-operator switch and the configuration gate every call; JSON mode, temperature 0, seed 0, and the
+configuration gates every call (there is no switch); the Decisions call sends one sorted body and returns each
+question's probabilities over exactly its options; JSON mode, temperature 0, seed 0, and the
 timeout reach the request; every failure reaches callers only as LLMUnavailable, without its message;
 one client per process; the chat facade replays a function call with its thought signature and maps
 the tool loop's tool_choice to Gemini's function-calling modes.
@@ -36,10 +37,9 @@ TOOLS = [
 
 
 @contextmanager
-def _gemini(enabled=True, project="test-project"):
-    """Gemini switched on (or off) and configured (or not), whatever the developer's environment says."""
-    with patch.dict("os.environ", {"EXTERNAL_LLM_ENABLED": "true" if enabled else "false"}), \
-            patch.object(config, "GOOGLE_CLOUD_PROJECT", project), \
+def _gemini(project="test-project"):
+    """Gemini configured (or not), whatever the developer's environment says."""
+    with patch.object(config, "GOOGLE_CLOUD_PROJECT", project), \
             patch.object(config, "GEMINI_MODEL", "gemini-test"):
         yield
 
@@ -76,17 +76,55 @@ def _unavailable(call):
     raise AssertionError("expected LLMUnavailable")
 
 
-def test_disabled_or_unconfigured_gemini_is_unavailable_without_a_call():
+def test_unconfigured_gemini_is_unavailable_without_a_call():
+    """No switch exists: a configured project is all Gemini on Vertex AI needs."""
     def no_client():
         raise AssertionError("a client was created while Gemini is unavailable")
 
-    for enabled, project in ((False, "test-project"), (True, None)):
-        with _gemini(enabled, project), patch.object(llm, "_client", no_client):
-            assert not llm.available()
-            _unavailable(lambda: llm.generate_text(system="s", prompt="p", max_output_tokens=8))
-            _unavailable(lambda: llm.stream_text(system="s", prompt="p", max_output_tokens=8))
-    with _gemini():
+    assert not hasattr(config, "external_llm_enabled")
+    with _gemini(None), patch.object(llm, "_client", no_client), patch.dict("os.environ", {"EXTERNAL_LLM_ENABLED": "true"}):
+        assert not llm.available()
+        _unavailable(lambda: llm.generate_text(system="s", prompt="p", max_output_tokens=8))
+        _unavailable(lambda: llm.stream_text(system="s", prompt="p", max_output_tokens=8))
+    with _gemini(), patch.dict("os.environ", {"EXTERNAL_LLM_ENABLED": "false"}):
         assert llm.available() and llm.model_id() == "gemini-test"
+
+
+def test_a_decision_sends_one_sorted_body_and_returns_each_questions_options():
+    """decide() sends the STATE and each closed question as one body whose keys are sorted (the same record gives the
+    same body, so an evaluation replays a recorded answer by its hash), and returns each question's probabilities over
+    exactly its options. An answer missing an option, a transport failure, and a missing key all reach the caller as
+    LLMUnavailable."""
+    import json
+
+    state = {"question": "how many orders", "workbook": [{"table": "t0", "tab": "Orders", "lines": 3}]}
+    questions = {"reading": {"instructions": "Choose the reading.", "criteria": {"r00": "the number of lines", "none": "none"}},
+                 "form": {"instructions": "What kind of answer?", "criteria": {"o00": "agg", "o01": "show"}}}
+    sent = []
+
+    def transport(payload):
+        sent.append(payload)
+        return {"answers": {"reading": {"probabilities": {"r00": 0.9, "none": 0.1}},
+                            "form": {"probabilities": {"o00": 0.7, "o01": 0.3}}}, "tokens": 120}
+
+    with patch.object(llm, "DECISIONS_TRANSPORT", transport), patch.object(config, "DECISIONS_MODEL", "gemini-decision-1"):
+        decision = llm.decide(state, questions)
+        assert decision.fields == {"reading": {"r00": 0.9, "none": 0.1}, "form": {"o00": 0.7, "o01": 0.3}} and decision.tokens == 120
+        body = json.loads(sent[0])
+        assert body["model"] == "gemini-decision-1" and body["input"] == "STATE:\n" + json.dumps(state, ensure_ascii=False)
+        assert body["questions"]["form"] == {"type": "choice", "instructions": "What kind of answer?", "criteria": questions["form"]["criteria"]}
+        assert sent[0] == llm.decisions_payload(state, dict(reversed(list(questions.items()))))
+        assert llm.decision_hash(sent[0]) == llm.decision_hash(llm.decisions_payload(state, questions))
+    with patch.object(llm, "DECISIONS_TRANSPORT", lambda payload: {"answers": {"reading": {"probabilities": {"r00": 1.0}}}}):
+        _unavailable(lambda: llm.decide(state, {"reading": questions["reading"]}))
+    with patch.dict("os.environ", {"GOOGLE_API_KEY": ""}):
+        _unavailable(lambda: llm.decide(state, questions))
+    try:
+        llm.decisions_payload(state, {"one": {"instructions": "x", "criteria": {"o00": "only"}}})
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("a question with one option was sent")
 
 
 def test_json_request_is_deterministic_and_carries_the_schema():
@@ -341,7 +379,8 @@ def test_external_calls_share_the_request_deadline():
 
 TESTS = [
     test_external_calls_share_the_request_deadline,
-    test_disabled_or_unconfigured_gemini_is_unavailable_without_a_call,
+    test_unconfigured_gemini_is_unavailable_without_a_call,
+    test_a_decision_sends_one_sorted_body_and_returns_each_questions_options,
     test_json_request_is_deterministic_and_carries_the_schema,
     test_failures_reach_callers_only_as_unavailable,
     test_stream_yields_chunks_and_fails_as_unavailable,

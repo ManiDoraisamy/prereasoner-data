@@ -436,18 +436,33 @@ def test_privacy_is_a_published_route_not_a_request_dialog():
     )
 
 
-def test_external_model_deployment_fails_closed():
+def test_gemini_is_always_on_in_the_deployment():
     variables = _text("infra/variables.tf")
     main = _text("infra/main.tf")
     orchestrator_tf = _text("infra/orchestrator.tf")
-    assert 'variable "enable_external_llm"' in variables
-    external_var = variables.split('variable "enable_external_llm"', 1)[1].split("}", 1)[0]
-    assert re.search(r"default\s*=\s*false", external_var)
-    # One switch for both services: chat needs Gemini, so enabling chat enables it for the engine too.
-    assert "external_llm_enabled = var.enable_external_llm || var.enable_orchestrator" in main
-    assert 'value = tostring(local.external_llm_enabled)' in main
-    assert 'value = tostring(local.external_llm_enabled)' in orchestrator_tf
-    assert 'count   = local.external_llm_enabled ? 1 : 0' in main      # the engine's Vertex AI grant
+    # No switch (owner, 2026-11-20): no variable, local or service environment turns Gemini off.
+    assert "external_llm" not in (variables + main + orchestrator_tf).lower()
+    assert "LLM_ENABLED" not in (main + orchestrator_tf)
+    # The engine's Vertex AI grant and API are unconditional.
+    vertex = main.split('resource "google_project_iam_member" "run_vertex_ai"', 1)[1].split("\n}", 1)[0]
+    assert not re.search(r"^\s*count\s*=", vertex, re.MULTILINE) and 'role    = "roles/aiplatform.user"' in vertex
+    apis = main.split("required_apis = [", 1)[1].split("]", 1)[0]
+    for api in ("aiplatform.googleapis.com", "generativelanguage.googleapis.com", "apikeys.googleapis.com"):
+        assert f'"{api}"' in apis
+    # The engine, and only the engine, receives the Decisions API key from Secret Manager.
+    assert 'resource "google_secret_manager_secret" "gemini_api_key"' in main
+    assert 'secret_id = "${var.service_name}-gemini-api-key"' in main
+    assert "secret_data = google_apikeys_key.gemini.key_string" in main
+    assert 'service = "generativelanguage.googleapis.com"' in main.split('resource "google_apikeys_key" "gemini"', 1)[1]
+    accessor = main.split('resource "google_secret_manager_secret_iam_member" "run_gemini_api_key"', 1)[1].split("\n}", 1)[0]
+    assert "google_secret_manager_secret.gemini_api_key.id" in accessor
+    assert "serviceAccount:${google_service_account.run.email}" in accessor
+    engine = main.split('resource "google_cloud_run_v2_service" "api"', 1)[1].split('resource "', 1)[0]
+    key_env = engine.split('name = "GOOGLE_API_KEY"', 1)[1].split("env {", 1)[0]
+    assert "secret  = local.gemini_api_key_secret_id" in key_env and 'version = "latest"' in key_env
+    assert "gemini_api_key_secret_id      = google_secret_manager_secret.gemini_api_key.secret_id" in main
+    assert "google_secret_manager_secret_iam_member.run_gemini_api_key" in engine
+    assert "GOOGLE_API_KEY" not in orchestrator_tf and "gemini_api_key" not in orchestrator_tf
     assert "anthropic" not in (variables + main + orchestrator_tf).lower()
     assert 'resource "google_secret_manager_secret" "dataset_attestation"' in main
     assert 'name = "DATASET_ATTESTATION_KEY"' in main
@@ -2042,7 +2057,7 @@ TESTS = [
     test_cached_weight_fetch_does_not_silently_ignore_source_override,
     test_supported_model_stack_is_security_baseline,
     test_privacy_is_a_published_route_not_a_request_dialog,
-    test_external_model_deployment_fails_closed,
+    test_gemini_is_always_on_in_the_deployment,
     test_orchestrator_prompt_owns_generic_question_fidelity,
     test_wikidata_precreator_is_non_destructive,
     test_local_documentation_links_resolve,

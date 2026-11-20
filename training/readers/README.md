@@ -422,7 +422,7 @@ python -m training.readers.examples ... $E/data_v7b (as v7a) --no-anchors
 
 ### 2b. Written training questions and the v11 data (two of the shipped readers' data)
 
-Gemini (`engine/llm.py`; `EXTERNAL_LLM_ENABLED=1`, Vertex AI, model `gemini-3.8-flash`, thinking LOW) writes three
+Gemini (`engine/llm.py`; Vertex AI, model `gemini-3.8-flash`, thinking LOW) writes three
 sets on the training databases, never on calibration or test ones:
 
 ```
@@ -472,8 +472,8 @@ python -m training.readers.examples ... $E/readers_v13/data_v13b (as data_v13a) 
 
 - Regenerated gold: 46 Spider training, 7 calibration and 1 BIRD `SELECT *` questions became readable; 433 training
   questions an older builder could not rebuild now rebuild to gold's rows. Gemini (`gemini-3.8-flash`, thinking LOW)
-  needs `EXTERNAL_LLM_ENABLED=1 GOOGLE_CLOUD_PROJECT=prereasoner-inference GEMINI_MODEL=gemini-3.8-flash
-  GEMINI_LOCATION=global`; without them every call fails.
+  needs `GOOGLE_CLOUD_PROJECT=prereasoner-inference GEMINI_MODEL=gemini-3.8-flash GEMINI_LOCATION=global`;
+  without them every call fails.
 - 1,085 sheet rewordings (of 1,172 asked) and 1,124 listing questions on 195 databases (564 queries).
 - Stage-2 rows: 32,677 (`data_v13a` sha256 `776fc6563c7be14e`, `data_v13b` `feb1312a9c920d22`).
 

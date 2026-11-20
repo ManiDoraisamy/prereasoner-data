@@ -218,7 +218,7 @@ class H(BaseHTTPRequestHandler):
                 uid = None
             if not uid:
                 self._send(401, json_dumps({"error": "sign in required"})); return
-            if not llm.available():                         # the operator's switch, and a project to call
+            if not llm.available():                         # a configured project to call
                 self._send(503, json_dumps({
                     "error": "assistant processing is unavailable for this request"
                 })); return

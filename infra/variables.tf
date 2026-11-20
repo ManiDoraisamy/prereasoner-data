@@ -88,12 +88,6 @@ variable "admin_emails" {
   default     = ""
 }
 
-variable "enable_external_llm" {
-  description = "Enable Gemini schema-only question rewriting and reference-generation features without the chat service. Enabling chat enables them too. Gemini does not generate SQL or receive source cells for query planning. False with chat off leaves the Vertex AI API, IAM grant, and request paths disabled."
-  type        = bool
-  default     = false
-}
-
 variable "gemini_model" {
   description = "Vertex AI Gemini model id used by the engine and the chat service."
   type        = string

@@ -620,10 +620,6 @@ def _test_server(engine_base):
     # environment before reloading config so the envelope test exercises chat, not real Firebase.
     os.environ["APP_ENV"] = "test"
     os.environ["AUTH_TEST_SUB"] = "localdev"
-    # Relaying the message to Gemini is egress, so /chat requires the operator's deployment
-    # switch. Set it explicitly so the test does not depend on the developer's environment.
-    previous_egress = os.environ.get("EXTERNAL_LLM_ENABLED")
-    os.environ["EXTERNAL_LLM_ENABLED"] = "1"
     # reimport config so ENGINE_BASE_URL/ORCH_PORT take effect
     import importlib
     from engine import config as _cfg
@@ -650,15 +646,11 @@ def _test_server(engine_base):
         ok("reply" in granted and isinstance(granted.get("history"), list),
            "POST /chat returns {reply, history}")
 
-        os.environ["EXTERNAL_LLM_ENABLED"] = "0"
-        status, disabled = post(message, timeout=30)
-        ok(status == 503 and "reply" not in disabled,
-           "the deployment-level egress switch disables chat")
+        with patch.object(_cfg, "GOOGLE_CLOUD_PROJECT", None):
+            status, unconfigured = post(message, timeout=30)
+        ok(status == 503 and "reply" not in unconfigured,
+           "chat answers 503 when Gemini has no project to call (there is no switch)")
     finally:
-        if previous_egress is None:
-            os.environ.pop("EXTERNAL_LLM_ENABLED", None)
-        else:
-            os.environ["EXTERNAL_LLM_ENABLED"] = previous_egress
         httpd.shutdown()
         if previous_app_env is None:
             os.environ.pop("APP_ENV", None)

@@ -912,8 +912,10 @@ maintenance command from loading model artifacts.
 | `spider/` | Serving-faithful evaluation and research artifacts | Production selection shortcuts |
 
 The engine container includes the complete runtime. The orchestrator is opt-in in Docker Compose and Terraform.
-The engine runs without Gemini: with `EXTERNAL_LLM_ENABLED` off it makes no external model call, and
-selection has no fallback. The orchestrator container copies only the auth, trace, request
+Gemini is always on; there is no switch. The engine calls it on Vertex AI (`GOOGLE_CLOUD_PROJECT`, Application
+Default Credentials) for reference generation, and on the Gemini Developer API's Decisions endpoint
+(`GOOGLE_API_KEY`, from Secret Manager in a deployment) for its own-data closed choices, which return probabilities
+over the engine's built options and never text, SQL, or a program. The orchestrator container copies only the auth, trace, request
 validation, currency-intent, configuration, and adapter modules it imports; it does not contain planner weights or
 planner implementation modules.
 
@@ -963,7 +965,7 @@ The repository has one owner per decision:
   `engine.tables.TableQuery.select_query`;
 - the readers (schema items, readings, builder, re-scorer, choice): `engine.readers`; their training
   `training.readers`, and their installation `training.readers.promote`;
-- the one external model client (Gemini on Vertex AI): `engine.llm`;
+- the one external model client (Gemini on Vertex AI and the Gemini Developer API's Decisions endpoint): `engine.llm`;
 - dual SQL/Python plan, source emission, and parity: `engine.deterministic`;
 - bounded compound-question proposal validation and typed-plan fusion: `engine.decomposition`;
 - private-reference behavior: `engine.master`;

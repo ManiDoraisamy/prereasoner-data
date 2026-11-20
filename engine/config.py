@@ -33,10 +33,11 @@ Env contract:
   BASE_MODEL_REVISION  Immutable Hugging Face commit for that base model
   KB_MODEL_ROUTE    "0" disables model-driven column routing (falls back to value membership; default on)
 
-  --- External model: Gemini on Vertex AI (engine/llm.py) — reference generation, starter
-      questions, and the chat orchestrator ---
-  EXTERNAL_LLM_ENABLED Authoritative deployment switch for every Gemini call; default false. See PRIVACY.md.
+  --- External model: Gemini (engine/llm.py) — the own-data closed questions and choice (the Decisions API),
+      reference generation, starter questions, and the chat orchestrator. Always on: no switch ---
   GEMINI_MODEL         Vertex AI Gemini model id (default gemini-3.8-flash)
+  DECISIONS_MODEL      Gemini Developer API closed-choice model id (default gemini-decision-1)
+  GOOGLE_API_KEY       Gemini Developer API key for the Decisions API (a deployment secret; never logged)
   GEMINI_LOCATION      Vertex AI location (default global)
   GOOGLE_CLOUD_PROJECT Google Cloud project whose Vertex AI serves Gemini. Credentials are Application Default
                        Credentials (the Cloud Run service account; `gcloud auth application-default login`
@@ -215,6 +216,7 @@ def kb_model_route_enabled():
 # with Application Default Credentials when the first call is made.
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash")
 GEMINI_LOCATION = os.environ.get("GEMINI_LOCATION", "global")
+DECISIONS_MODEL = os.environ.get("DECISIONS_MODEL", "gemini-decision-1")
 GOOGLE_CLOUD_PROJECT = os.environ.get("GOOGLE_CLOUD_PROJECT") or os.environ.get("GCP_PROJECT") or None
 # The engine's own port (8080 by default) — NOT the orchestrator's PORT. Kept literal so a launcher that
 # injects PORT for the orchestrator process (e.g. a dev-server manager) can't accidentally point the MCP
@@ -229,11 +231,6 @@ ORCH_AUTH_MODE = os.environ.get("ORCH_AUTH_MODE") or (
     "test" if ("127.0.0.1" in ENGINE_BASE_URL or "localhost" in ENGINE_BASE_URL) else "firebase")
 
 
-def external_llm_enabled() -> bool:
-    """Return the operator's authoritative switch for external model processing."""
-    return os.environ.get("EXTERNAL_LLM_ENABLED", "").strip().lower() in {"1", "true", "yes"}
-
-
 def llm_model() -> str:
     """Return the Gemini model id every external-model call uses."""
     return GEMINI_MODEL
@@ -243,3 +240,9 @@ def llm_configured() -> bool:
     """Return whether Gemini has the configuration it needs. Vertex AI authenticates with ADC (the
     Cloud Run service account in GCP, the user's ADC locally), so a project is all it needs here."""
     return bool(GEMINI_MODEL and GOOGLE_CLOUD_PROJECT)
+
+
+def decisions_key() -> str | None:
+    """The Gemini Developer API key the Decisions API reads (GOOGLE_API_KEY), read when called so a secret mounted
+    after import is seen. Never logged."""
+    return os.environ.get("GOOGLE_API_KEY") or None

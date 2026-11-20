@@ -18,8 +18,8 @@ external MCP: MCP client -> mcp_server/server.py (stdio)
 - `mcp_server/server.py` publishes `prereasoner_query` and `prereasoner_describe` over stdio for
   EXTERNAL MCP clients. The chat orchestrator does not spawn it — a per-turn Python subprocess cost
   a measured 0.86s of interpreter startup to relay an HTTP call the orchestrator can make itself.
-- `orchestrator` runs an optional Gemini tool loop (Vertex AI, through `engine/llm.py`, enabled by the operator's
-  `EXTERNAL_LLM_ENABLED` switch). It makes follow-up wording explicit and requests typed engine operations.
+- `orchestrator` runs a Gemini tool loop (Vertex AI, through `engine/llm.py`; Gemini is always on, with no
+  switch). It makes follow-up wording explicit and requests typed engine operations.
   Each request receives schema metadata, at most two recent user questions (named as the latest question and
   the one before it), and the authoritative analysis catalog. Earlier assistant answers, source cells, generated
   SQL and computed result values are excluded.
@@ -127,9 +127,9 @@ own-data AST and world-aware execution. Serving and Spider evaluation continue t
 
 Start the engine, then run the orchestrator service described in
 [`../docker-compose.yml`](../docker-compose.yml) with `GOOGLE_CLOUD_PROJECT` (a project with the Vertex AI API
-enabled) and `EXTERNAL_LLM_ENABLED=true`. Gemini authenticates with Application Default Credentials: run
-`gcloud auth application-default login` once; no API key exists. The MCP, orchestrator, and Gemini-client
-contract tests are:
+enabled). The orchestrator's Gemini authenticates with Application Default Credentials: run
+`gcloud auth application-default login` once; it uses no API key (only the engine's Decisions calls do, with
+`GOOGLE_API_KEY`). The MCP, orchestrator, and Gemini-client contract tests are:
 
 ```powershell
 python -m tests.test_mcp

@@ -7,7 +7,7 @@
 # (Vertex AI Gemini, through engine/llm.py) plus mcp + httpx.
 #
 # Build:  docker build -f Dockerfile.orchestrator -t prereasoner-chat .
-# Run:    docker run -p 8090:8090 -e EXTERNAL_LLM_ENABLED=true -e GOOGLE_CLOUD_PROJECT=... \
+# Run:    docker run -p 8090:8090 -e GOOGLE_CLOUD_PROJECT=... \
 #           -e ENGINE_BASE_URL=https://<engine-url> prereasoner-chat
 #         (Vertex AI authenticates with Application Default Credentials: the Cloud Run service account
 #         in a deployment; locally, mount your gcloud ADC file and set GOOGLE_APPLICATION_CREDENTIALS.)

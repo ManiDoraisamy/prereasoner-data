@@ -1,6 +1,11 @@
-"""llm.py — the ONE Gemini client (Vertex AI through ``google-genai``) for the whole product.
+"""llm.py — the ONE Gemini client for the whole product.
 
-Gemini is the only external model. Two surfaces share this module:
+Gemini is the only external model, and it is always on: there is no switch. Three surfaces share this module:
+
+- ``decide``: one call to the Gemini Developer API's closed-choice Decisions endpoint. A record's STATE (the
+  question and the sheet's description) is the input; each of its questions is a closed choice among options the
+  engine built, answered as a probability for every option. It returns probabilities only, never text, SQL or a
+  program. It authenticates with GOOGLE_API_KEY (the Developer API; the endpoint is not on Vertex AI).
 
 - The synchronous calls: ``generate_text`` (starter questions, orchestrator/suggestions.py) and
   ``stream_text`` (reference generation, /api/master/generate). One ``genai.Client`` per process, created lazily under a lock.
@@ -11,14 +16,18 @@ Gemini is the only external model. Two surfaces share this module:
   ``get_final_message``, and ``text`` / ``tool_use`` / ``tool_result`` blocks); this class
   translates it to Gemini's content API.
 
-``EXTERNAL_LLM_ENABLED`` (engine/config.py) is the operator's authoritative switch for every call.
 Vertex AI authenticates with Application Default Credentials: the Cloud Run service account in a
 deployment, ``gcloud auth application-default login`` locally. Nothing here logs a prompt, a
 question, a cell, or a reply (engine/request_timing.py rules).
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import threading
+import time
+import urllib.error
+import urllib.request
 import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass, field
@@ -28,7 +37,7 @@ from engine import config
 
 
 class LLMUnavailable(RuntimeError):
-    """Gemini is disabled, unconfigured, or the call failed or timed out."""
+    """Gemini is unconfigured, or the call failed or timed out."""
 
 
 _CLIENT = None
@@ -54,9 +63,96 @@ def model_id() -> str:
 
 
 def available() -> bool:
-    """Whether the operator enabled external model processing and configured Gemini."""
-    return config.external_llm_enabled() and config.llm_configured()
+    """Whether Gemini on Vertex AI is configured (a project; credentials are Application Default Credentials)."""
+    return config.llm_configured()
 
+
+
+DECISIONS_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/decisions"
+DECISIONS_MAX_OPTIONS = 255              # the endpoint's limit on one question's options
+# A call answered in 0.4 s at the median and 2.2 s at p90 over 2,655 calls (decisions-probe-20261118); a stalled call
+# is sent again rather than waited out. 429 and 5xx are sent again on the same budget, with the server's Retry-After.
+DECISIONS_TIMEOUT_SECONDS = 20.0
+DECISIONS_ATTEMPTS = 4
+DECISIONS_RETRY_STATUS_CODES = (408, 429, 500, 502, 503, 504)
+
+
+@dataclass(frozen=True)
+class Decision:
+    """One Decisions answer: for each question, the probability of each of its options; the input tokens billed."""
+    fields: dict[str, dict[str, float]]
+    tokens: int
+
+
+def decisions_payload(state: dict, questions: dict) -> bytes:
+    """The request body, as bytes: one STATE input and one closed choice per question. Keys are sorted, so a record
+    gives one body, and an evaluation can replay a recorded answer by the body's hash (``decision_hash``)."""
+    body = {"model": config.DECISIONS_MODEL, "input": "STATE:\n" + json.dumps(state, ensure_ascii=False), "questions": {}}
+    for name, question in questions.items():
+        criteria = question["criteria"]
+        if not 2 <= len(criteria) <= DECISIONS_MAX_OPTIONS:
+            raise ValueError(f"question {name} has {len(criteria)} options")
+        body["questions"][name] = {"type": "choice", "instructions": question["instructions"], "criteria": criteria}
+    return json.dumps(body, ensure_ascii=False, sort_keys=True).encode("utf-8")
+
+
+def decision_hash(payload: bytes) -> str:
+    """The body's identity (sha256), the key a recorded answer is replayed by."""
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _post_decisions(payload: bytes) -> dict:
+    """The endpoint's answer to one body: {"answers": {...}, "tokens": n}. Raises LLMUnavailable."""
+    from engine.request_deadline import remaining
+
+    key = config.decisions_key()
+    if not key:
+        raise LLMUnavailable("the Decisions API has no key for this deployment")
+    wait = 1.0
+    for attempt in range(DECISIONS_ATTEMPTS):
+        budget = remaining()
+        timeout = DECISIONS_TIMEOUT_SECONDS if budget is None else max(0.1, min(DECISIONS_TIMEOUT_SECONDS, budget))
+        request = urllib.request.Request(DECISIONS_ENDPOINT, data=payload, method="POST",
+                                         headers={"Content-Type": "application/json", "x-goog-api-key": key})
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                result = json.loads(response.read().decode("utf-8"))
+            tokens = int((result.get("usage") or {}).get("total_input_tokens") or 0)
+            return {"answers": result["answers"], "tokens": tokens}
+        except urllib.error.HTTPError as exc:
+            if exc.code not in DECISIONS_RETRY_STATUS_CODES or attempt + 1 == DECISIONS_ATTEMPTS:
+                raise LLMUnavailable(f"Decisions call failed ({exc.code})") from None
+            after = exc.headers.get("Retry-After") if exc.headers else None
+            pause = float(after) if after and after.replace(".", "", 1).isdigit() else wait
+        except (urllib.error.URLError, TimeoutError, ConnectionError, OSError, ValueError, KeyError) as exc:
+            if attempt + 1 == DECISIONS_ATTEMPTS:
+                raise LLMUnavailable(f"Decisions call failed ({type(exc).__name__})") from None
+            pause = wait
+        budget = remaining()
+        if budget is not None and budget <= pause:
+            raise LLMUnavailable("Decisions call ran out of the request's time")
+        time.sleep(pause)
+        wait = min(wait * 2, 8.0)
+    raise LLMUnavailable("Decisions call failed")
+
+
+# The transport ``decide`` sends a body through. An evaluation may set it to replay recorded answers by
+# ``decision_hash``; serving never changes it.
+DECISIONS_TRANSPORT = _post_decisions
+
+
+def decide(state: dict, questions: dict) -> Decision:
+    """One closed-choice call: ``questions`` maps a name to {"instructions", "criteria": {option: description}}.
+    Returns each question's probabilities over exactly its options. Raises LLMUnavailable and nothing else."""
+    payload = decisions_payload(state, questions)
+    answer = DECISIONS_TRANSPORT(payload)
+    fields = {}
+    for name, question in questions.items():
+        probabilities = ((answer.get("answers") or {}).get(name) or {}).get("probabilities")
+        if not isinstance(probabilities, dict) or set(probabilities) != set(question["criteria"]):
+            raise LLMUnavailable(f"Decisions answer for {name} does not hold its options")
+        fields[name] = {option: float(value) for option, value in probabilities.items()}
+    return Decision(fields, int(answer.get("tokens") or 0))
 
 def _client():
     """The process's one Vertex AI client. Its credentials are read on its first request."""
@@ -102,7 +198,7 @@ def generate_text(*, system: str, prompt: str, max_output_tokens: int,
     ``timeout_seconds`` bounds the call. ``thinking`` is the model's thinking level ("LOW", "HIGH");
     None leaves the model's default. Raises ``LLMUnavailable`` and nothing else."""
     if not available():
-        raise LLMUnavailable("Gemini is not enabled for this deployment")
+        raise LLMUnavailable("Gemini is not configured for this deployment")
     try:
         response = _client().models.generate_content(
             model=model_id(), contents=prompt,
@@ -123,7 +219,7 @@ def stream_text(*, system: str, prompt: str, max_output_tokens: int,
     ``timeout_seconds`` bounds each wait for the next chunk. Raises ``LLMUnavailable`` here when
     Gemini is not available, and from the iteration when the call fails or produces no text."""
     if not available():
-        raise LLMUnavailable("Gemini is not enabled for this deployment")
+        raise LLMUnavailable("Gemini is not configured for this deployment")
     return _stream(system, prompt, max_output_tokens, timeout_seconds)
 
 

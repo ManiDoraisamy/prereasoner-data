@@ -5552,3 +5552,12 @@ Amended the same night (owner): there is no switch for external processing. Gemi
 production and in the open-source deploy on GCP (it already rewrites prompts there), and there is one path.
 `EXTERNAL_LLM_ENABLED` and everything that reads it are deleted in the migration; until then the code still
 holds it, and the ownership map's line for `engine/llm.py` changes in that same change.
+
+Serving the closed-choice model needs a Gemini Developer API key (the Decisions endpoint is not on Vertex AI).
+Terraform creates it in the deployment's own project (`google_apikeys_key.gemini`, restricted to
+`generativelanguage.googleapis.com`), keeps it in Secret Manager (`<service>-gemini-api-key`) and gives it to the
+engine alone as `GOOGLE_API_KEY`, so the one-click Community deploy collects no key. Compatibility shim: the
+`moved` block in `infra/main.tf` (`run_vertex_ai[0]` to `run_vertex_ai`) keeps an existing deployment's Vertex AI
+grant when the grant loses its `count`. Consumer: Terraform state of deployments made before this change
+(production and Community installs). Removal condition: every such deployment has applied once. Removal date:
+2026-12-31.

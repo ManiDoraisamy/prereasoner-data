@@ -17,8 +17,8 @@ every user-facing surface. The operator is responsible for choosing and document
 legal basis, maintaining processor agreements, minimizing data, and honoring privacy rights.
 
 If a particular deployment or data category legally requires an opt-in, the operator must not
-enable that processing until it has a suitable lawful workflow. Do not add a generic prompt to the
-reference product as a substitute for that assessment.
+serve that deployment or accept that data until it has a suitable lawful workflow. Do not add a
+generic prompt to the reference product as a substitute for that assessment.
 
 ## Data Processed By The Core Engine
 
@@ -50,8 +50,11 @@ Google User Data and Developer Policy, including its Limited Use requirements. R
 anonymized, and derived Google user data is used only for the visible user-facing features the user
 requests and the security and support needed to operate them. It is not used, transferred, or sold
 to create, train, or improve generalized or non-personalized AI or ML models. The external model
-(Gemini on Vertex AI) receives request data only to produce the requested feature output; the
-operator must not authorize Google or third-party model training on that data.
+(Gemini, on Vertex AI and on the Gemini Developer API) receives request data only to produce the
+requested feature output; the operator must not authorize Google or third-party model training on
+that data. The Developer API key must therefore belong to a Cloud project with billing enabled, so
+that the paid-service data terms of the Gemini API Additional Terms of Service apply; the unpaid
+tier's terms let Google use submitted content to improve its products.
 
 ## Data Protection
 
@@ -64,8 +67,10 @@ The production reference deployment protects user data through the following con
 - Cloud SQL accepts runtime access through the IAM-authenticated connector with no authorized
   public networks. Dedicated service accounts and a non-superuser serving role enforce least
   privilege.
-- Credentials are stored in Secret Manager, never in browser code or application logs. Gemini is
-  reached with the service account's own Google Cloud identity; no model API key exists.
+- Credentials are stored in Secret Manager, never in browser code or application logs. Vertex AI
+  Gemini is reached with the service account's own Google Cloud identity. The engine's Gemini
+  Developer API key is created by Terraform, restricted to that API, kept in Secret Manager, and
+  given to the engine service alone.
 - Request, row, rate, and storage limits bound exposure. Production logs exclude raw request bodies,
   questions, conversation history, generated SQL, credentials, spreadsheet rows, source values,
   and full exception messages.
@@ -79,21 +84,26 @@ No source values, formulas, conversation history or computed answers are include
 three supported operations and field indices, which the service validates before rendering suggested
 wording. Suggestions do not execute a query or alter a workbook; selecting one fills the composer.
 
-The open-source default is `EXTERNAL_LLM_ENABLED=false`. When the operator enables it, Prereasoner
-uses one external model: Google's Gemini on Vertex AI, called in the operator's own Google Cloud
-project under that project's service account. Deploying the chat service enables it for the engine
-as well. Question answering uses Gemini to interpret intent and normalize wording. The
-conversational request contains the current question, at most two previous user questions,
-table/column names, and an analysis catalog containing identifiers, revisions and canonical
-questions. Interpretation status can be returned to the model. Source/result cells, generated
-SQL and previous assistant answers are not sent in this workflow. Values that the user writes
-in a question are part of that question and may therefore reach Gemini.
+Prereasoner uses one external model, Google's Gemini, and it is always on: there is no switch, in
+the reference deployment or in the open-source deployment on Google Cloud. Gemini is reached through
+two Google services, both under the operator's own Google Cloud project: Vertex AI (chat, starter
+questions and reference generation) and the Gemini Developer API (own-data questions).
 
-The engine's stateless wording helper receives one question and schema metadata (table/column
-names, types and foreign keys), without history or example values. It can return canonical
-wording, never SQL or a query plan. The local engine validates the rewrite and builds, checks,
-executes and labels its own plan. Final factual replies are rendered from verified engine output
-without a model presentation round.
+The chat service calls Gemini on Vertex AI under its service account to interpret intent and
+normalize wording. The conversational request contains the current question, at most two previous
+user questions, table/column names, and an analysis catalog containing identifiers, revisions and
+canonical questions. Interpretation status can be returned to the model. Source/result cells,
+generated SQL and previous assistant answers are not sent in this workflow. Values that the user
+writes in a question are part of that question and may therefore reach Gemini.
+
+The engine reads each own-data question through the Gemini Developer API's closed-choice Decisions
+endpoint (`generativelanguage.googleapis.com`), authenticated by the deployment's API key. Each
+request contains the question and a description of the sheet: tab and table names, column headers
+and kinds, a few example cells per column, candidate cell values the question may name, and the
+readings the engine built, each with a short preview of its answer. It asks closed questions whose
+options the engine built, and the endpoint returns a probability for each option, never text, SQL,
+or a program. The engine builds, executes and checks the chosen reading's query itself. Final
+factual replies are rendered from verified engine output without a model presentation round.
 
 Explicit reference-cell generation is a separate feature. When the user requests it, Gemini
 receives the requested headers, entity names, existing reference cells and generation instruction.
@@ -101,13 +111,10 @@ Generated reference content is labelled; it is not verified knowledgebase data.
 
 The deterministic SQL path computes every answer: Gemini never executes a query or calculates a
 result. Google's handling of this data is governed by the operator's Google Cloud agreement and the terms
-and data-governance commitments that apply to Vertex AI in that project. Do not make training,
-retention, residency, or deletion claims on Google's behalf unless they are verified against the
-applicable agreement and configuration.
-
-The server-side `EXTERNAL_LLM_ENABLED` switch is authoritative for every Gemini call. When false,
-gated endpoints refuse the call and the engine runs without its wording helper. Self-hosters can
-therefore run the deterministic engine without an external model.
+and data-governance commitments that apply to Vertex AI in that project, and by the Gemini API
+Additional Terms of Service for the Decisions endpoint. Do not make training, retention, residency,
+or deletion claims on Google's behalf unless they are verified against the applicable agreement and
+configuration.
 
 The architectural target is to replace external presentation and orchestration with a locally
 operated model once a candidate passes the repository's quality, latency, security, and cost gates.
@@ -157,8 +164,8 @@ Before accepting customer data, a hosted operator must:
 2. Review the lawful basis and contracts for the intended users and data categories.
 3. Configure and verify deletion, trace cleanup, backup retention, access control, and incident
    handling.
-4. Keep external processing disabled for regulated data unless the deployment has the necessary
-   contractual and technical controls.
+4. Do not accept regulated data unless the deployment has the contractual and technical controls
+   it needs, including for the Gemini processing above, which every deployment performs.
 5. Update both privacy documents before changing processors or materially changing a data flow.
 
 ## Security And Contact

@@ -5,35 +5,37 @@
 # Hosting-version resource does not support static files.
 
 locals {
-  # Gemini on Vertex AI in this project is the only external model (engine/llm.py). The chat service
-  # cannot work without it, so enabling chat enables it for the engine too; enable_external_llm
-  # turns it on for a deployment without chat. EXTERNAL_LLM_ENABLED carries this to both services.
-  external_llm_enabled = var.enable_external_llm || var.enable_orchestrator
+  # Gemini is the only external model, and it is always on (engine/llm.py): Vertex AI in this project
+  # for the chat service, starter questions and reference generation, authorized by each service
+  # account; and the Gemini Developer API's Decisions endpoint for the engine's own-data closed
+  # choices, authorized by the API key below (GOOGLE_API_KEY).
 
   # The engine grows to four CPU instances, or to as many L4 instances as the project's quota holds.
   engine_max_instances = var.gpu != "" ? var.gpu_instances : 4
 
-  required_apis = concat([
-    "firebase.googleapis.com",         # Firebase project APIs
-    "firebasehosting.googleapis.com",  # Firebase Hosting release stage
-    "identitytoolkit.googleapis.com",  # Firebase Authentication
-    "firebasedatabase.googleapis.com", # Firebase Realtime Database client
-    "run.googleapis.com",              # Cloud Run
-    "sqladmin.googleapis.com",         # Cloud SQL
-    "secretmanager.googleapis.com",    # DB password
-    "artifactregistry.googleapis.com", # engine image
-    "cloudbuild.googleapis.com",       # gcloud builds submit
-    "iam.googleapis.com",              # dedicated service account
-    "cloudscheduler.googleapis.com",   # scheduled conversation and trace retention
-    ], local.external_llm_enabled ? [
-    "aiplatform.googleapis.com", # Vertex AI Gemini
-  ] : [])
+  required_apis = [
+    "firebase.googleapis.com",           # Firebase project APIs
+    "firebasehosting.googleapis.com",    # Firebase Hosting release stage
+    "identitytoolkit.googleapis.com",    # Firebase Authentication
+    "firebasedatabase.googleapis.com",   # Firebase Realtime Database client
+    "run.googleapis.com",                # Cloud Run
+    "sqladmin.googleapis.com",           # Cloud SQL
+    "secretmanager.googleapis.com",      # DB passwords, attestation key, Gemini API key
+    "artifactregistry.googleapis.com",   # engine image
+    "cloudbuild.googleapis.com",         # gcloud builds submit
+    "iam.googleapis.com",                # dedicated service account
+    "cloudscheduler.googleapis.com",     # scheduled conversation and trace retention
+    "aiplatform.googleapis.com",         # Vertex AI Gemini
+    "generativelanguage.googleapis.com", # Gemini Developer API: the engine's Decisions calls
+    "apikeys.googleapis.com",            # the Decisions API key (google_apikeys_key.gemini)
+  ]
 
   image = var.image
 
   serving_user                  = var.serving_db_role
   serving_secret_id             = google_secret_manager_secret.serving_db_password.secret_id
   dataset_attestation_secret_id = google_secret_manager_secret.dataset_attestation.secret_id
+  gemini_api_key_secret_id      = google_secret_manager_secret.gemini_api_key.secret_id
 }
 
 resource "google_project_service" "apis" {
@@ -190,6 +192,49 @@ resource "google_secret_manager_secret_iam_member" "run_dataset_attestation" {
   member    = "serviceAccount:${google_service_account.run.email}"
 }
 
+# The engine's Gemini Developer API key: engine/llm.py:decide calls the Decisions endpoint, which is not
+# on Vertex AI and authenticates by key. Terraform creates the key in this project, restricted to that
+# API, and keeps it in Secret Manager; only the engine receives it, as GOOGLE_API_KEY. Browsers, the chat
+# service, model output and logs never do. A deleted key stays restorable for 30 days, so its id carries
+# a suffix that a reinstall in the same project does not reuse.
+resource "random_id" "gemini_api_key" {
+  byte_length = 4
+}
+
+resource "google_apikeys_key" "gemini" {
+  name         = "${var.service_name}-gemini-${random_id.gemini_api_key.hex}"
+  display_name = "Prereasoner engine: Gemini Decisions API"
+
+  restrictions {
+    api_targets {
+      service = "generativelanguage.googleapis.com"
+    }
+  }
+
+  depends_on = [google_project_service.apis]
+}
+
+resource "google_secret_manager_secret" "gemini_api_key" {
+  secret_id = "${var.service_name}-gemini-api-key"
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [google_project_service.apis]
+}
+
+resource "google_secret_manager_secret_version" "gemini_api_key" {
+  secret      = google_secret_manager_secret.gemini_api_key.id
+  secret_data = google_apikeys_key.gemini.key_string
+}
+
+resource "google_secret_manager_secret_iam_member" "run_gemini_api_key" {
+  secret_id = google_secret_manager_secret.gemini_api_key.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.run.email}"
+}
+
 # ---------- Secret Manager: DB password ----------
 
 resource "google_secret_manager_secret" "db_password" {
@@ -233,12 +278,17 @@ resource "google_project_iam_member" "run_rtdb" {
   member  = "serviceAccount:${google_service_account.run.email}"
 }
 
-# Gemini on Vertex AI (engine/llm.py): the engine's reference generation.
+# Gemini on Vertex AI (engine/llm.py): the engine's reference generation. Always granted.
 resource "google_project_iam_member" "run_vertex_ai" {
-  count   = local.external_llm_enabled ? 1 : 0
   project = var.project_id
   role    = "roles/aiplatform.user"
   member  = "serviceAccount:${google_service_account.run.email}"
+}
+
+# The grant was counted while a switch could turn Gemini off; an existing deployment's [0] is the same grant.
+moved {
+  from = google_project_iam_member.run_vertex_ai[0]
+  to   = google_project_iam_member.run_vertex_ai
 }
 
 resource "google_secret_manager_secret_iam_member" "sync_db_password" {
@@ -339,12 +389,7 @@ resource "google_cloud_run_v2_service" "api" {
           }
         }
       }
-      env {
-        name  = "EXTERNAL_LLM_ENABLED" # authoritative deployment switch; see PRIVACY.md
-        value = tostring(local.external_llm_enabled)
-      }
-      # Gemini on Vertex AI in this project, authorized by the service account (run_vertex_ai). With
-      # the switch off, /api/master/generate answers 503 and the UI falls back to local text.
+      # Gemini on Vertex AI in this project, authorized by the service account (run_vertex_ai).
       env {
         name  = "GEMINI_MODEL"
         value = var.gemini_model
@@ -356,6 +401,16 @@ resource "google_cloud_run_v2_service" "api" {
       env {
         name  = "GOOGLE_CLOUD_PROJECT"
         value = var.project_id
+      }
+      # The Gemini Developer API key the engine's Decisions calls send (google_apikeys_key.gemini).
+      env {
+        name = "GOOGLE_API_KEY"
+        value_source {
+          secret_key_ref {
+            secret  = local.gemini_api_key_secret_id
+            version = "latest"
+          }
+        }
       }
       env {
         name  = "CORS_ORIGINS"
@@ -457,6 +512,8 @@ resource "google_cloud_run_v2_service" "api" {
     google_secret_manager_secret_iam_member.run_serving_db_password,
     google_secret_manager_secret_version.dataset_attestation,
     google_secret_manager_secret_iam_member.run_dataset_attestation,
+    google_secret_manager_secret_version.gemini_api_key,
+    google_secret_manager_secret_iam_member.run_gemini_api_key,
     google_project_iam_member.run_vertex_ai,
   ]
 }

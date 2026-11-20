@@ -3,7 +3,7 @@
 # A SECOND, lightweight Cloud Run service alongside the engine (google_cloud_run_v2_service.api in
 # main.tf). It calls the engine over HTTP and Vertex AI Gemini in this project; it does NOT touch
 # Postgres. Its SA receives only Vertex AI access, RTDB access when configured, and the shared
-# attestation key. Enabling it enables Gemini for the engine too (local.external_llm_enabled).
+# attestation key. It never receives the engine's Gemini Developer API key.
 #
 # The guided deployer performs the complete order in one install:
 #   1. build and push the tests-gated chat image;
@@ -125,10 +125,6 @@ resource "google_cloud_run_v2_service" "chat" {
           }
         }
       }
-      env {
-        name  = "EXTERNAL_LLM_ENABLED" # authoritative deployment switch; see PRIVACY.md
-        value = tostring(local.external_llm_enabled)
-      }
       # The engine's own Cloud Run URL (server-to-server). The forwarded Firebase token authenticates
       # /api/reason at the app layer; the engine allows unauthenticated invocations at the network layer.
       env {
@@ -145,8 +141,8 @@ resource "google_cloud_run_v2_service" "chat" {
         }
       }
 
-      # Readiness imports the engine client the turns use and verifies Gemini is enabled and
-      # configured and the attestation key is present, which a shallow liveness probe cannot see.
+      # Readiness imports the engine client the turns use and verifies Gemini is configured and the
+      # attestation key is present, which a shallow liveness probe cannot see.
       startup_probe {
         http_get {
           path = "/readyz"

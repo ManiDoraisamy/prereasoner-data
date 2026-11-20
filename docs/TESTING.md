@@ -129,7 +129,7 @@ onward run last, after the orchestrator suites, unless `RUN_ENGINE_TESTS=0`:
 | Suite | Primary boundary |
 |---|---|
 | `tests.test_sql_ast` | Typed planning, ranking, recursion, constraints, extrema, evaluation contract |
-| `tests.test_llm` | The one Gemini client (`engine/llm.py`): the switch and configuration gate, deterministic JSON requests against the real SDK types, failures only as `LLMUnavailable`, one client per process, and the chat facade's thought-signature replay and forced/disabled tool calls; no network |
+| `tests.test_llm` | The one Gemini client (`engine/llm.py`): the configuration gate (there is no switch), the Decisions call's one sorted body and per-question probabilities, deterministic JSON requests against the real SDK types, failures only as `LLMUnavailable`, one client per process, and the chat facade's thought-signature replay and forced/disabled tool calls; no network |
 | `tests.test_calculations` | Typed arithmetic, operand eligibility, complete joins, all-branch proof, abstention, and clarify transport |
 | `tests.test_analysis` | Slug/identity validation, effective table/relationship/semantic hashing, bounded unique view names, executed-SQL preservation, and HTTP/live-stream parity |
 | `tests.test_deterministic_emitters` | Plan validation, byte-stable source, ORM object relationships, stage alignment, execution policy, and SQL/Python parity |
@@ -224,9 +224,9 @@ regressions. These use mocked backend responses and are NOT live model accuracy 
 
 For unmocked Chrome evaluation, run `node regress/browser_matrix.js` against `EVAL_BASE_URL` (default
 `http://127.0.0.1:8091`). Start the real engine and orchestrator on loopback with the same isolated
-test principal, `APP_ENV=test`, `RTDB_URL` empty, and `EXTERNAL_LLM_ENABLED=1` explicitly enabled for
-the requested Gemini evaluation (with `GOOGLE_CLOUD_PROJECT` and Application Default Credentials).
-PostgreSQL should use the IAM proxy and serving role. No database
+test principal, `APP_ENV=test`, `RTDB_URL` empty, and Gemini configured as in a deployment
+(`GOOGLE_CLOUD_PROJECT` with Application Default Credentials, and `GOOGLE_API_KEY` for the engine's
+Decisions calls). PostgreSQL should use the IAM proxy and serving role. No database
 firewall changes or production auth bypasses are required. For a deployed origin, supply an authorized
 Playwright `EVAL_STORAGE_STATE`; the harness does not mint credentials or automate Google login.
 For customer-facing examples listed in `dataset.txt`, the runner opens the exact `?load=<dataset>` URL,
@@ -356,8 +356,7 @@ python -m spider.probe.full_eval `
   --out spider/results/<unique-tag>/whole_db/full_eval_whole_db
 ```
 
-The selection runs the own-data readers from `engine/data/readers/` and calls no external model, so
-`EXTERNAL_LLM_ENABLED` does not change the result. Recorded run times are in
+The evaluator runs the production selection (`engine.tables.TableQuery.select_query`). Recorded run times are in
 [RESULTS.md](../spider/results/RESULTS.md). The readers' training sources include Spider's dev
 questions, so a DEV run is not a held-out measurement of them.
 
@@ -407,11 +406,12 @@ The engine image entrypoint lets `python -m engine.retention_cleanup` run withou
 that command only against a disposable or explicitly selected database. CI asserts the entrypoint contract without
 connecting to customer storage; the live database suite covers cleanup behavior with isolated fixtures.
 
-CI also runs credential-free, no-refresh plans to prove that the default creates no chat or
-Vertex AI resources and leaves the engine's `EXTERNAL_LLM_ENABLED` false, and that
-`enable_orchestrator=true` needs no secret: it creates the chat resources, grants both service
-accounts Vertex AI access, and sets `EXTERNAL_LLM_ENABLED` true on both services. Both image inputs
-are dummy immutable digests in this structural plan; no image is pulled.
+CI also runs credential-free, no-refresh plans to prove that Gemini has no switch: the default
+creates no chat resources, grants the engine Vertex AI access, passes no switch to the engine, and
+gives it `GOOGLE_API_KEY` from the `prereasoner-api-gemini-api-key` Secret Manager secret; and that
+`enable_orchestrator=true` creates the chat resources, grants both service accounts Vertex AI access,
+and gives the chat service no API key. Both image inputs are dummy immutable digests in this
+structural plan; no image is pulled.
 
 If Docker or Terraform is unavailable, say so explicitly. Static parsing and unit tests do not replace an image
 build or Terraform validation. On a fresh checkout, `terraform init -backend=false` is credential-free; an existing

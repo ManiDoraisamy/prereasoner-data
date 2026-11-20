@@ -95,7 +95,7 @@ schema-linking mistakes, selection mistakes, source gaps, or entity-resolution e
 | IANA country enrichment | **Current in guided Community deploy** | Raw Terraform remains opt-in; the guided deployment applies grants and activates it |
 | Other synchronized publisher datasets | **Current storage, not serving** | Planner activation remains gated |
 | Firebase trace streaming | **Opt-in** | Completed HTTP responses still render when RTDB is disabled |
-| Gemini on Vertex AI: conversational orchestration, starter questions, and reference generation | **Opt-in** | Requires the `EXTERNAL_LLM_ENABLED` deployment switch and a Vertex AI project; the guided Community deploy enables both together with chat |
+| Gemini: conversational orchestration, starter questions, and reference generation on Vertex AI; own-data closed choices on the Gemini Developer API's Decisions endpoint | **Current** | Always on, with no switch; needs a Vertex AI project and a Gemini Developer API key, which Terraform creates and keeps in Secret Manager |
 | Runtime weights | **External** | Public, manifest-pinned Hugging Face bundle |
 | Seeded knowledge database | **External** | Community restores a minimal pinned seed dump; the production database is built through source ETL and not distributed |
 | `wikidata` migration, organization tenancy, and generic temporal enrichment | **Planned** | Do not describe these as shipped |

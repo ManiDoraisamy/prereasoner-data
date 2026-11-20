@@ -34,7 +34,7 @@ footer{border-top:1px solid var(--line);padding-top:24px;margin-top:52px;color:v
 <header><nav class="nav" aria-label="Primary"><a class="brand" href="https://prereasoner.com/">Prereasoner</a><a class="back" href="/">Back to the app</a></nav></header>
 <main>
   <h1>Privacy</h1>
-  <div class="updated">Last updated: October 3, 2026</div>
+  <div class="updated">Last updated: November 20, 2026</div>
 
   <p class="plain">Prereasoner analyzes the spreadsheet data and questions you submit so it can
   compute an answer and show the steps used to reach it. The reference service at
@@ -59,10 +59,10 @@ footer{border-top:1px solid var(--line);padding-top:24px;margin-top:52px;color:v
   </ul>
 
   <h2>How answers are produced</h2>
-  <p>The core engine builds and executes inspectable SQL against your data. It uses a frozen model as
-  an encoder for intent and schema signals; no model on the service's servers writes SQL or invents the
-  numerical answer, and the database computes it. When the engine cannot build a query on its own, it can
-  ask Gemini for help as described below, and the answer says so.</p>
+  <p>The core engine builds and executes inspectable SQL against your data. No model writes SQL or
+  invents the numerical answer, and the database computes it. For a question about your own data, the
+  engine builds the possible readings of the question and asks Gemini which one the question means, as
+  described below.</p>
 
   <div class="important"><p><strong>Assistant processing.</strong> The hosted assistant uses
   Google's Gemini models on Vertex AI, in the service's own Google Cloud project. Assistant requests
@@ -72,11 +72,13 @@ footer{border-top:1px solid var(--line);padding-top:24px;margin-top:52px;color:v
   SQL and earlier assistant answers are not sent for question answering. Answers are rendered from
   engine results without a presentation model.</p></div>
 
-  <p>When the engine cannot build a query for a question on its own, it can ask Gemini to reword the
-  question once. That request contains the question, the table and
-  column names, column types and foreign keys. It contains no example cell values or conversation
-  history. The deterministic typed search builds and validates every query, and the database
-  computes every number. Values you include in your question are part of that question.</p>
+  <p>To read a question about your own data, the engine uses Google's Gemini Developer API (its
+  Decisions service), with the service's API key. Each request contains the question and a description
+  of your sheet: tab and table names, column headers and kinds, a few example cells per column, cell
+  values the question may name, and the readings the engine built, each with a short preview of its
+  answer. Gemini returns only a probability for each reading the engine offered, never text, SQL or a
+  program. The engine builds and checks every query, and the database computes every number. Values
+  you include in your question are part of that question.</p>
 
   <p>Starter questions are generated from sheet names, column names, the active sheet and selected source scope only. No cell values, formulas, computed answers or conversation history are sent for suggestions. Only visible, non-empty sheets are described, and a suggested question names only sheets and columns that exist; selecting it fills the question box for your review.</p>
 
@@ -87,7 +89,9 @@ footer{border-top:1px solid var(--line);padding-top:24px;margin-top:52px;color:v
   <p>Google receives those requests through the service's Google Cloud project. Its handling is
   governed by the operator's Google Cloud agreement and is also described in
   <a href="https://cloud.google.com/vertex-ai/generative-ai/docs/data-governance" rel="noopener">Vertex
-  AI data governance</a> and the
+  AI data governance</a>, the
+  <a href="https://ai.google.dev/gemini-api/terms" rel="noopener">Gemini API Additional Terms of
+  Service</a> for the paid service, and the
   <a href="https://cloud.google.com/terms/cloud-privacy-notice" rel="noopener">Google Cloud Privacy
   Notice</a>. Prereasoner is working toward operating this assistant layer locally once a local
   model meets the required quality, latency, security, and cost standards. The calculation and
@@ -98,7 +102,9 @@ footer{border-top:1px solid var(--line);padding-top:24px;margin-top:52px;color:v
     <li><strong>Google Cloud and Firebase:</strong> hosting, authentication, databases, and reasoning-trace delivery. See
     <a href="https://firebase.google.com/support/privacy" rel="noopener">Firebase privacy and security</a>.</li>
     <li><strong>Google Cloud Vertex AI (Gemini):</strong> language processing for the hosted assistant
-    features and the optional wording rewrite described above.</li>
+    features described above.</li>
+    <li><strong>Google Gemini Developer API (Decisions):</strong> choosing among the engine's readings
+    of a question about your own data, as described above.</li>
   </ul>
 
   <p>Microsoft sign-in for Excel uses Microsoft's standard identity response through Firebase
@@ -122,8 +128,8 @@ footer{border-top:1px solid var(--line);padding-top:24px;margin-top:52px;color:v
   conversations, and related security and support functions described on this page. We do not use,
   transfer, or sell raw, aggregated, anonymized, or derived Google user data to create, train, or
   improve generalized or non-personalized artificial-intelligence or machine-learning models. Data
-  sent to Gemini on Vertex AI is used only to process the user's requested feature; it is not sent
-  or authorized for Google or third-party model training.</p>
+  sent to Gemini, on Vertex AI or the Gemini Developer API's paid service, is used only to process the
+  user's requested feature; it is not sent or authorized for Google or third-party model training.</p>
 
   <h2>Sharing and international processing</h2>
   <p>We do not sell customer spreadsheet data or use it for targeted advertising. We share data with
@@ -144,9 +150,10 @@ footer{border-top:1px solid var(--line);padding-top:24px;margin-top:52px;color:v
     <li>Cloud SQL is reached through an IAM-authenticated connector rather than an open database
     network. Runtime services use dedicated, least-privilege service accounts and a non-superuser
     database role.</li>
-    <li>Database credentials are stored in Google Secret Manager and are not embedded in client
-    code or operational logs. Gemini is called with the service's own Google Cloud identity, so no
-    model API key exists.</li>
+    <li>Database credentials and the engine's Gemini API key are stored in Google Secret Manager and
+    are not embedded in client code or operational logs. Gemini on Vertex AI is called with the
+    service's own Google Cloud identity; the API key is restricted to the Gemini Developer API and only
+    the engine service receives it.</li>
     <li>Request-size, row, rate, and storage limits reduce abuse and unnecessary data exposure.
     Production logs exclude spreadsheet rows, questions, conversation history, generated SQL,
     credentials, request bodies, and full error messages.</li>

@@ -1,14 +1,15 @@
 # Prereasoner local stack: Postgres (pgvector) + serving engine + required chat/UI service.
 #
-#   cp .env.example .env            # set GOOGLE_CLOUD_PROJECT; KB_PG_PASSWORD defaults to "devpassword"
+#   cp .env.example .env            # set GOOGLE_CLOUD_PROJECT and GOOGLE_API_KEY; KB_PG_PASSWORD defaults to "devpassword"
 #   gcloud auth application-default login     # once: the Gemini credentials mounted below
 #   docker compose up --build       # db + engine + chat/UI (http://localhost:8090)
 #
-# Gemini on Vertex AI (engine/llm.py) is the one external model. As in a deployment with chat, it is
-# enabled for both the engine and chat, in GOOGLE_CLOUD_PROJECT (which needs the Vertex AI API), with
-# your gcloud configuration directory (it holds the Application Default Credentials file) mounted
-# read-only. On Windows set GCLOUD_CONFIG_DIR in .env. Without GOOGLE_CLOUD_PROJECT the stack still
-# starts: chat answers 503, and the engine runs without Gemini.
+# Gemini (engine/llm.py) is the one external model, and it is always on, as in a deployment. The engine
+# and chat call it on Vertex AI in GOOGLE_CLOUD_PROJECT (which needs the Vertex AI API), with your gcloud
+# configuration directory (it holds the Application Default Credentials file) mounted read-only; on
+# Windows set GCLOUD_CONFIG_DIR in .env. The engine also calls the Gemini Developer API's Decisions
+# endpoint with GOOGLE_API_KEY. Without them the stack still starts, but chat answers 503 and the
+# engine's Gemini calls fail.
 #
 # AUTH_TEST_SUB=localdev is set on the engine so reviewers can call /api/reason and
 # /api/knowledge WITHOUT a Firebase ID token (test-only bypass; never set it in production).
@@ -28,7 +29,6 @@
 #              python db/sync/build_words.py --cities --city-aliases && python db/sync/sync_types.py"
 
 x-gemini-environment: &gemini-environment
-  EXTERNAL_LLM_ENABLED: "true"
   GOOGLE_CLOUD_PROJECT: ${GOOGLE_CLOUD_PROJECT:-}
   GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.8-flash}
   GEMINI_LOCATION: ${GEMINI_LOCATION:-global}
@@ -63,6 +63,8 @@ services:
       - *gemini-credentials
     environment:
       <<: *gemini-environment
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}    # the Decisions API key; the engine alone receives it
+      DECISIONS_MODEL: ${DECISIONS_MODEL:-gemini-decision-1}
       KB_PG_HOST: db
       KB_PG_PORT: "5432"
       KB_PG_DB: world

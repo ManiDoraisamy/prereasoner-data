@@ -117,9 +117,9 @@ publishes the UI to Firebase Hosting, and loads the world database from a versio
 
 [![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https%3A%2F%2Fgithub.com%2FManiDoraisamy%2Fprereasoner-data&cloudshell_git_branch=v0.2.23&cloudshell_tutorial=deploy%2Fgcp%2Fcloudshell-tutorial.md&cloudshell_workspace=.&show=terminal)
 
-**Nothing to configure afterwards.** Sign-in is set up for you, and chat runs on Vertex AI Gemini
-through the service account: no API keys, no console steps. You supply a Google login, a project,
-and a billing account.
+**Nothing to configure afterwards.** Sign-in is set up for you, chat runs on Vertex AI Gemini
+through the service account, and the deployment creates the engine's Gemini API key in Secret Manager
+itself: no keys to enter, no console steps. You supply a Google login, a project, and a billing account.
 
 It takes about 30 minutes and costs roughly **$90/month** while it runs, almost all of it Cloud SQL.
 
@@ -208,9 +208,10 @@ The browser does not guess provenance from column names. The server returns one
 ## Install On A Local Machine
 
 The full local installation runs the engine, the chat service, and PostgreSQL through Docker
-Compose. Chat and reference generation need a Google Cloud project with Vertex AI and your
-application-default credentials (`gcloud auth application-default login`); set `GOOGLE_CLOUD_PROJECT`
-and `EXTERNAL_LLM_ENABLED=true` in the local `.env` file. The engine alone needs neither.
+Compose. Gemini is always on: chat and reference generation use Vertex AI in a Google Cloud project with
+your application-default credentials (`gcloud auth application-default login`), and the engine's own-data
+closed choices use the Gemini Developer API's Decisions endpoint with an API key. Set
+`GOOGLE_CLOUD_PROJECT` and `GOOGLE_API_KEY` in the local `.env` file. The hermetic tests need neither.
 
 Requirements:
 
@@ -235,7 +236,7 @@ that needs world facts:
 
 ```powershell
 Copy-Item .env.example .env
-# Edit .env and set: GOOGLE_CLOUD_PROJECT=... and EXTERNAL_LLM_ENABLED=true
+# Edit .env and set: GOOGLE_CLOUD_PROJECT=... and GOOGLE_API_KEY=...
 python -m engine.fetch_weights
 docker compose up -d db
 docker compose --profile seed run --rm seed
@@ -251,8 +252,8 @@ every file against the revision and hashes in `engine/data/weights_manifest.json
 installed only by `training/readers/promote.py`, which records their hashes in the same manifest
 ([training/readers/README.md](training/readers/README.md)).
 
-The guided Google Cloud deployment uses Vertex AI Gemini through its service account and does not ask
-for a key.
+The guided Google Cloud deployment uses Vertex AI Gemini through its service account, and Terraform
+creates the engine's Gemini Developer API key and keeps it in Secret Manager; it does not ask for a key.
 
 Currency conversion uses the synchronized ECB release through the daily
 `knowledgebase.exchange_rate` projection. Each published rate covers the following calendar days
