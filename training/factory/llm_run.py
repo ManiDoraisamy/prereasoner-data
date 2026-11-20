@@ -15,7 +15,6 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-os.environ["EXTERNAL_LLM_ENABLED"] = "1"
 os.environ["GOOGLE_CLOUD_PROJECT"] = "prereasoner-inference"
 sys.path.insert(0, os.getcwd())
 sys.dont_write_bytecode = True
